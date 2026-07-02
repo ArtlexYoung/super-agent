@@ -38,7 +38,7 @@ class DisclosureBundle:
     index_path: Path
     history_path: Path
 
-    def as_instruction(self) -> str:
+    def build_prompt_with_cache_paths(self) -> str:
         lines = [
             "Disclosure cache:",
             f"- index: {self.index_path}",
@@ -56,29 +56,29 @@ class ProgressiveDisclosure:
         self.index_path = cache_root / "index.json"
         self.history_path = cache_root / "history.jsonl"
 
-    def index(self, enabled: list[str] | None = None) -> list[DisclosureEntry]:
-        manifests = self._filtered_manifests(enabled)
-        entries = [self._entry_for(manifest) for manifest in manifests]
+    def write_skill_cache_index(self, enabled: list[str] | None = None) -> list[DisclosureEntry]:
+        manifests = self._list_enabled_manifests(enabled)
+        entries = [self._build_cache_entry_for_manifest(manifest) for manifest in manifests]
         for entry in entries:
-            self._write_json(entry.manifest_path, _entry_data(entry))
-        self._write_json(self.index_path, {"skills": [_entry_data(entry) for entry in entries]})
-        self._record(DisclosureEvent(name="*", stage="index", path=self.index_path))
+            self._write_json_file(entry.manifest_path, _entry_to_json(entry))
+        self._write_json_file(self.index_path, {"skills": [_entry_to_json(entry) for entry in entries]})
+        self._record_disclosure_event(DisclosureEvent(name="*", stage="index", path=self.index_path))
         return entries
 
-    def disclose(self, name: str, stage: str = "instructions") -> CachedDisclosure:
+    def write_skill_instructions_to_cache(self, name: str, stage: str = "instructions") -> CachedDisclosure:
         if stage != "instructions":
             raise ValueError(f"unknown disclosure stage: {stage}")
-        skill = self.loader.load(name)
-        path = self._instruction_path(name)
-        self._write_text(path, skill.instructions)
-        self._record(DisclosureEvent(name=name, stage=stage, path=path))
+        skill = self.loader.load_skill(name)
+        path = self._make_instruction_cache_path(name)
+        self._write_text_file(path, skill.instructions)
+        self._record_disclosure_event(DisclosureEvent(name=name, stage=stage, path=path))
         return CachedDisclosure(name=name, stage=stage, cache_path=path, content=skill.instructions)
 
-    def prepare(self, prompt: str, enabled: list[str] | None = None) -> DisclosureBundle:
-        entries = self.index(enabled)
-        skills = self._selected_skills(prompt, enabled)
+    def prepare_disclosure_for_prompt(self, prompt: str, enabled: list[str] | None = None) -> DisclosureBundle:
+        entries = self.write_skill_cache_index(enabled)
+        skills = self._load_skills_for_prompt(prompt, enabled)
         for skill in skills:
-            self.disclose(skill.manifest.name)
+            self.write_skill_instructions_to_cache(skill.manifest.name)
         return DisclosureBundle(skills=skills, entries=entries, index_path=self.index_path, history_path=self.history_path)
 
     def read_cache(self, path: str | Path) -> str:
@@ -87,7 +87,7 @@ class ProgressiveDisclosure:
             raise ValueError(f"path outside disclosure cache: {path}")
         return cache_path.read_text(encoding="utf-8")
 
-    def history(self) -> list[DisclosureEvent]:
+    def read_disclosure_history(self) -> list[DisclosureEvent]:
         if not self.history_path.exists():
             return []
         events: list[DisclosureEvent] = []
@@ -96,46 +96,46 @@ class ProgressiveDisclosure:
             events.append(DisclosureEvent(name=str(data["name"]), stage=str(data["stage"]), path=Path(data["path"])))
         return events
 
-    def _filtered_manifests(self, enabled: list[str] | None) -> list[SkillManifest]:
+    def _list_enabled_manifests(self, enabled: list[str] | None) -> list[SkillManifest]:
         enabled_names = set(enabled or [])
-        manifests = self.loader.discover()
+        manifests = self.loader.list_skill_manifests()
         if not enabled_names:
             return manifests
         return [manifest for manifest in manifests if manifest.name in enabled_names]
 
-    def _selected_skills(self, prompt: str, enabled: list[str] | None) -> list[Skill]:
-        return self.loader.select(prompt, enabled)
+    def _load_skills_for_prompt(self, prompt: str, enabled: list[str] | None) -> list[Skill]:
+        return self.loader.load_skills_for_prompt(prompt, enabled)
 
-    def _entry_for(self, manifest: SkillManifest) -> DisclosureEntry:
+    def _build_cache_entry_for_manifest(self, manifest: SkillManifest) -> DisclosureEntry:
         return DisclosureEntry(
             name=manifest.name,
             description=manifest.description,
             triggers=manifest.triggers,
-            manifest_path=self._manifest_path(manifest.name),
-            instruction_path=self._instruction_path(manifest.name),
+            manifest_path=self._make_manifest_cache_path(manifest.name),
+            instruction_path=self._make_instruction_cache_path(manifest.name),
         )
 
-    def _manifest_path(self, name: str) -> Path:
+    def _make_manifest_cache_path(self, name: str) -> Path:
         return self.cache_root / "skills" / name / "manifest.json"
 
-    def _instruction_path(self, name: str) -> Path:
+    def _make_instruction_cache_path(self, name: str) -> Path:
         return self.cache_root / "skills" / name / "instructions.md"
 
-    def _record(self, event: DisclosureEvent) -> None:
+    def _record_disclosure_event(self, event: DisclosureEvent) -> None:
         self.history_path.parent.mkdir(parents=True, exist_ok=True)
         with self.history_path.open("a", encoding="utf-8") as file:
-            file.write(json.dumps(_event_data(event), ensure_ascii=False) + "\n")
+            file.write(json.dumps(_event_to_json(event), ensure_ascii=False) + "\n")
 
-    def _write_json(self, path: Path, data: dict[str, object]) -> None:
+    def _write_json_file(self, path: Path, data: dict[str, object]) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    def _write_text(self, path: Path, text: str) -> None:
+    def _write_text_file(self, path: Path, text: str) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")
 
 
-def _entry_data(entry: DisclosureEntry) -> dict[str, object]:
+def _entry_to_json(entry: DisclosureEntry) -> dict[str, object]:
     return {
         "name": entry.name,
         "description": entry.description,
@@ -145,5 +145,5 @@ def _entry_data(entry: DisclosureEntry) -> dict[str, object]:
     }
 
 
-def _event_data(event: DisclosureEvent) -> dict[str, str]:
+def _event_to_json(event: DisclosureEvent) -> dict[str, str]:
     return {"name": event.name, "stage": event.stage, "path": str(event.path)}

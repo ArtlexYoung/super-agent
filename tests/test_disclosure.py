@@ -18,11 +18,11 @@ class ProgressiveDisclosureTests(unittest.TestCase):
                 root / ".super-agent" / "memory" / "disclosure",
             )
 
-            entries = disclosure.index(enabled=["echo"])
-            instruction = disclosure.disclose("echo", "instructions")
+            entries = disclosure.write_skill_cache_index(enabled=["echo"])
+            instruction = disclosure.write_skill_instructions_to_cache("echo", "instructions")
 
             index_data = json.loads(disclosure.index_path.read_text(encoding="utf-8"))
-            history = disclosure.history()
+            history = disclosure.read_disclosure_history()
 
             self.assertEqual("echo", entries[0].name)
             self.assertTrue(instruction.cache_path.exists())
@@ -37,7 +37,7 @@ class ProgressiveDisclosureTests(unittest.TestCase):
             config_path = _write_config(root)
             provider = MockProvider("ok")
 
-            result = Agent(AgentConfig.from_file(config_path), provider=provider).run("echo hello")
+            result = Agent(AgentConfig.load_from_file(config_path), provider=provider).run("echo hello")
 
             content = provider.last_messages[0]["content"]
             self.assertEqual(["echo"], result.skills)
@@ -86,4 +86,3 @@ memory = ".super-agent/memory"
         encoding="utf-8",
     )
     return config_path
-

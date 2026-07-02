@@ -5,6 +5,7 @@ from super_agent.core.provider import (
     ChatProvider,
     MockProvider,
     OpenAICompatibleProvider,
+    create_chat_provider,
 )
 
 __all__ = [
@@ -17,5 +18,5 @@ __all__ = [
     "ModelSettings",
     "OpenAICompatibleProvider",
     "PathsSettings",
+    "create_chat_provider",
 ]
-

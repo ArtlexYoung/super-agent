@@ -20,7 +20,7 @@ class SkillManifest:
     path: Path
 
     @classmethod
-    def from_file(cls, path: Path) -> "SkillManifest":
+    def load_from_file(cls, path: Path) -> "SkillManifest":
         data = tomllib.loads(path.read_text(encoding="utf-8"))
         name = str(data.get("name", "")).strip()
         if not name:
@@ -46,43 +46,43 @@ class SkillLoader:
     def __init__(self, roots: list[Path]) -> None:
         self.roots = [root.expanduser() for root in roots]
 
-    def discover(self) -> list[SkillManifest]:
+    def list_skill_manifests(self) -> list[SkillManifest]:
         manifests: list[SkillManifest] = []
         for root in self.roots:
             if root.is_dir():
-                manifests.extend(self._discover_root(root))
+                manifests.extend(self._list_manifests_in_root(root))
         return sorted(manifests, key=lambda item: item.name)
 
-    def load(self, name: str) -> Skill:
-        for manifest in self.discover():
+    def load_skill(self, name: str) -> Skill:
+        for manifest in self.list_skill_manifests():
             if manifest.name == name:
-                return self._load_manifest(manifest)
+                return self._load_skill_from_manifest(manifest)
         raise KeyError(f"skill not found: {name}")
 
-    def select(self, prompt: str, enabled: list[str] | None = None) -> list[Skill]:
+    def load_skills_for_prompt(self, prompt: str, enabled: list[str] | None = None) -> list[Skill]:
         enabled_names = set(enabled or [])
         prompt_text = prompt.lower()
         selected: list[Skill] = []
-        for manifest in self.discover():
-            if manifest.name in enabled_names or _matches_trigger(manifest, prompt_text):
-                selected.append(self._load_manifest(manifest))
+        for manifest in self.list_skill_manifests():
+            if manifest.name in enabled_names or _prompt_matches_skill_triggers(manifest, prompt_text):
+                selected.append(self._load_skill_from_manifest(manifest))
         return selected
 
-    def _discover_root(self, root: Path) -> list[SkillManifest]:
+    def _list_manifests_in_root(self, root: Path) -> list[SkillManifest]:
         manifests: list[SkillManifest] = []
         for child in root.iterdir():
             manifest_path = child / "skill.toml"
             if child.is_dir() and manifest_path.exists():
-                manifests.append(SkillManifest.from_file(manifest_path))
+                manifests.append(SkillManifest.load_from_file(manifest_path))
         return manifests
 
-    def _load_manifest(self, manifest: SkillManifest) -> Skill:
+    def _load_skill_from_manifest(self, manifest: SkillManifest) -> Skill:
         instruction_path = manifest.path / manifest.entry.instructions
         instructions = instruction_path.read_text(encoding="utf-8").strip()
         return Skill(manifest=manifest, instructions=instructions)
 
 
-def _matches_trigger(manifest: SkillManifest, prompt: str) -> bool:
+def _prompt_matches_skill_triggers(manifest: SkillManifest, prompt: str) -> bool:
     return any(trigger and trigger in prompt for trigger in manifest.triggers)
 
 

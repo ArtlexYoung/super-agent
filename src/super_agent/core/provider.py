@@ -13,7 +13,7 @@ Message = dict[str, str]
 
 
 class ChatProvider(Protocol):
-    def complete(self, messages: list[Message], model: str) -> str:
+    def send_chat_messages(self, messages: list[Message], model: str) -> str:
         ...
 
 
@@ -22,7 +22,7 @@ class MockProvider:
         self.response = response
         self.last_messages: list[Message] = []
 
-    def complete(self, messages: list[Message], model: str) -> str:
+    def send_chat_messages(self, messages: list[Message], model: str) -> str:
         self.last_messages = messages
         return self.response
 
@@ -32,9 +32,9 @@ class OpenAICompatibleProvider:
     base_url: str
     api_key: str
 
-    def complete(self, messages: list[Message], model: str) -> str:
+    def send_chat_messages(self, messages: list[Message], model: str) -> str:
         payload = {"model": model, "messages": messages}
-        data = _post_json(f"{self.base_url.rstrip('/')}/chat/completions", payload, self.api_key)
+        data = _send_json_post_request(f"{self.base_url.rstrip('/')}/chat/completions", payload, self.api_key)
         return str(data["choices"][0]["message"]["content"])
 
 
@@ -43,19 +43,19 @@ class AnthropicCompatibleProvider:
     base_url: str
     api_key: str
 
-    def complete(self, messages: list[Message], model: str) -> str:
-        system, user_messages = _split_system(messages)
+    def send_chat_messages(self, messages: list[Message], model: str) -> str:
+        system, user_messages = _split_system_message_from_user_messages(messages)
         payload = {"model": model, "max_tokens": 4096, "system": system, "messages": user_messages}
-        data = _post_json(f"{self.base_url.rstrip('/')}/v1/messages", payload, self.api_key)
+        data = _send_json_post_request(f"{self.base_url.rstrip('/')}/v1/messages", payload, self.api_key)
         blocks = data.get("content", [])
         return "".join(str(block.get("text", "")) for block in blocks if block.get("type") == "text")
 
 
-def build_provider(settings: ModelSettings) -> ChatProvider:
+def create_chat_provider(settings: ModelSettings) -> ChatProvider:
     provider = settings.provider.lower()
     if provider == "mock":
         return MockProvider()
-    api_key = _api_key_from_env(settings.api_key_env)
+    api_key = _read_api_key_from_env(settings.api_key_env)
     if provider in {"openai", "openai-compatible"}:
         return OpenAICompatibleProvider(settings.base_url or "https://api.openai.com/v1", api_key)
     if provider in {"anthropic", "anthropic-compatible"}:
@@ -63,7 +63,7 @@ def build_provider(settings: ModelSettings) -> ChatProvider:
     raise ValueError(f"unknown provider: {settings.provider}")
 
 
-def _api_key_from_env(name: str | None) -> str:
+def _read_api_key_from_env(name: str | None) -> str:
     if not name:
         raise ValueError("api_key_env is required for non-mock providers")
     value = os.getenv(name)
@@ -72,7 +72,7 @@ def _api_key_from_env(name: str | None) -> str:
     return value
 
 
-def _post_json(url: str, payload: dict[str, object], api_key: str) -> dict[str, object]:
+def _send_json_post_request(url: str, payload: dict[str, object], api_key: str) -> dict[str, object]:
     body = json.dumps(payload).encode("utf-8")
     request = urllib.request.Request(
         url,
@@ -89,8 +89,7 @@ def _post_json(url: str, payload: dict[str, object], api_key: str) -> dict[str, 
         return json.loads(response.read().decode("utf-8"))
 
 
-def _split_system(messages: list[Message]) -> tuple[str, list[Message]]:
+def _split_system_message_from_user_messages(messages: list[Message]) -> tuple[str, list[Message]]:
     if messages and messages[0]["role"] == "system":
         return messages[0]["content"], messages[1:]
     return "", messages
-

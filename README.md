@@ -36,11 +36,55 @@ super-agent memory habits --config demo-agent/agent.toml
 ```python
 from super_agent import Agent, AgentConfig
 
-config = AgentConfig.from_file("agent.toml")
+config = AgentConfig.load_from_file("agent.toml")
 agent = Agent(config)
 result = agent.run("总结这个项目的设计")
 
 print(result.text)
+```
+
+常用方法名尽量直白：
+
+- `AgentConfig.load_from_file(path)`：从 TOML 文件读取配置。
+- `Agent.load_from_config_file(path)`：从配置文件创建 agent。
+- `Agent.add_subagent(agent, ...)`：给主 agent 添加从 agent。
+- `Agent.list_subagents()`：查看已经添加的从 agent。
+- `SkillLoader.list_skill_manifests()`：列出 skill 配置摘要。
+- `SkillLoader.load_skills_for_prompt(prompt)`：按输入加载命中的 skill。
+- `MiniMemory.record_agent_run(...)`：记录本次运行习惯。
+- `MiniMemory.build_prompt_instruction()`：把记忆生成给模型看的提示词。
+
+## 代码式多 Agent
+
+主从关系用代码组合，不写进 TOML。每个 agent 都是普通 `Agent`，各自有独立配置、模型、skill、memory、workflow。
+
+```python
+from super_agent import Agent
+
+main = Agent.load_from_config_file("agents/main.toml")
+coder = Agent.load_from_config_file("agents/coder.toml")
+reviewer = Agent.load_from_config_file("agents/reviewer.toml")
+
+main.add_subagent(coder, name="coder", description="实现代码和测试", triggers=["代码", "实现", "测试"])
+main.add_subagent(reviewer, description="审查风险和边界", triggers=["review", "风险"])
+
+result = main.run("实现一个轻量的 agent 功能并 review")
+print(result.text)
+```
+
+`name` 可选。不传时会自动生成 `subagent01`、`subagent02` 这样的稳定名称。默认规则很小：带 `triggers` 时只在命中后运行；不带 `triggers` 时每次主 agent 运行都会调用该从 agent。主 agent 会把从 agent 输出作为 `Subagent results` 加入最终回答上下文。
+
+从 agent 可以继续添加自己的从 agent。runtime 不做安全阀，不会因为嵌套层数或循环链路强行停止；每个 agent 是否结束由自己的 workflow 决定。执行前只做一次轻量链路检查：
+
+- 如果配置了 `max_agent_chain_depth`，链路深度超过配置时返回 warning，例如 `main -> coder -> reviewer`。
+- 如果发现循环链路，会返回 warning，例如 `main -> coder -> reviewer -> main`。
+- 不配置 `max_agent_chain_depth` 时默认无限深度。
+
+代码里也可以主动检查：
+
+```python
+for warning in main.check_subagent_links():
+    print(warning)
 ```
 
 ## 配置格式
@@ -51,6 +95,8 @@ name = "super-agent"
 system = "You are a concise, helpful agent."
 workflow = "direct"
 skills = ["echo"]
+# 可选；不配置表示无限深度。超过后只 warning，不阻止执行。
+max_agent_chain_depth = 5
 
 [model]
 provider = "mock"
@@ -139,8 +185,8 @@ super-agent memory habits --config agent.toml
 ```text
 src/super_agent/
   cli.py         # CLI 入口：init、run、skills list
-  core/          # Agent、agent.toml、provider
-  skill/         # skill manifest、loader、selector、渐进式披露缓存
+  core/          # Agent、子 agent 编排、agent.toml、provider
+  skill/         # skill manifest、loader、触发词匹配、渐进式披露缓存
   workflow/      # direct、plan、react、loop 的轻量 workflow
   memory/        # mini memory 与调用习惯自更新
 ```

@@ -19,6 +19,7 @@ name = "demo"
 system = "You are concise."
 workflow = "direct"
 skills = ["echo"]
+max_agent_chain_depth = 4
 
 [model]
 provider = "mock"
@@ -31,11 +32,12 @@ memory = ".super-agent/memory"
                 encoding="utf-8",
             )
 
-            config = AgentConfig.from_file(config_path)
+            config = AgentConfig.load_from_file(config_path)
 
             self.assertEqual("demo", config.agent.name)
             self.assertEqual("direct", config.agent.workflow)
             self.assertEqual(["echo"], config.agent.skills)
+            self.assertEqual(4, config.agent.max_agent_chain_depth)
             self.assertEqual("mock", config.model.provider)
             self.assertEqual([root / "skills"], config.paths.skills)
 
@@ -58,8 +60,8 @@ instructions = "SKILL.md"
             (skill_dir / "SKILL.md").write_text("Always answer briefly.", encoding="utf-8")
 
             loader = SkillLoader([Path(tmp) / "skills"])
-            loaded = loader.load("echo")
-            selected = loader.select("please repeat this", ["echo"])
+            loaded = loader.load_skill("echo")
+            selected = loader.load_skills_for_prompt("please repeat this", ["echo"])
 
             self.assertEqual("echo", loaded.manifest.name)
             self.assertEqual("Always answer briefly.", loaded.instructions)
@@ -102,7 +104,7 @@ skills = ["skills"]
                 encoding="utf-8",
             )
 
-            config = AgentConfig.from_file(config_path)
+            config = AgentConfig.load_from_file(config_path)
             provider = MockProvider("ok")
             agent = Agent(config, provider=provider)
             result = agent.run("echo hello")

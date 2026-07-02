@@ -13,13 +13,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
     if args.command == "init":
-        return _init(Path(args.path))
+        return _run_init_command(Path(args.path))
     if args.command == "run":
-        return _run(Path(args.config), " ".join(args.prompt))
+        return _run_prompt_command(Path(args.config), " ".join(args.prompt))
     if args.command == "skills" and args.skill_command == "list":
-        return _list_skills(Path(args.config))
+        return _run_skills_list_command(Path(args.config))
     if args.command == "memory" and args.memory_command == "habits":
-        return _memory_habits(Path(args.config))
+        return _run_memory_habits_command(Path(args.config))
     parser.print_help()
     return 1
 
@@ -47,44 +47,46 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _init(root: Path) -> int:
+def _run_init_command(root: Path) -> int:
     root.mkdir(parents=True, exist_ok=True)
     skill_dir = root / "skills" / "echo"
     skill_dir.mkdir(parents=True, exist_ok=True)
-    _write_if_missing(root / "agent.toml", _default_config())
-    _write_if_missing(skill_dir / "skill.toml", _default_skill_manifest())
-    _write_if_missing(skill_dir / "SKILL.md", "Answer briefly and clearly.\n")
+    _write_file_if_missing(root / "agent.toml", _default_agent_config())
+    _write_file_if_missing(skill_dir / "skill.toml", _default_skill_manifest())
+    _write_file_if_missing(skill_dir / "SKILL.md", "Answer briefly and clearly.\n")
     print(f"Initialized super-agent project at {root}")
     return 0
 
 
-def _run(config_path: Path, prompt: str) -> int:
-    config = AgentConfig.from_file(config_path)
+def _run_prompt_command(config_path: Path, prompt: str) -> int:
+    config = AgentConfig.load_from_file(config_path)
     result = Agent(config).run(prompt)
+    for warning in result.warning_messages or []:
+        print(f"Warning: {warning}")
     print(result.text)
     return 0
 
 
-def _list_skills(config_path: Path) -> int:
-    config = AgentConfig.from_file(config_path)
-    for manifest in SkillLoader(config.paths.skills).discover():
+def _run_skills_list_command(config_path: Path) -> int:
+    config = AgentConfig.load_from_file(config_path)
+    for manifest in SkillLoader(config.paths.skills).list_skill_manifests():
         print(f"{manifest.name}\t{manifest.description}")
     return 0
 
 
-def _memory_habits(config_path: Path) -> int:
-    config = AgentConfig.from_file(config_path)
-    instruction = MiniMemory(config.paths.memory).as_instruction()
+def _run_memory_habits_command(config_path: Path) -> int:
+    config = AgentConfig.load_from_file(config_path)
+    instruction = MiniMemory(config.paths.memory).build_prompt_instruction()
     print(instruction or "No memory yet.")
     return 0
 
 
-def _write_if_missing(path: Path, content: str) -> None:
+def _write_file_if_missing(path: Path, content: str) -> None:
     if not path.exists():
         path.write_text(content, encoding="utf-8")
 
 
-def _default_config() -> str:
+def _default_agent_config() -> str:
     return """
 [agent]
 name = "super-agent"

@@ -12,10 +12,10 @@ class MiniMemoryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             memory = MiniMemory(Path(tmp))
 
-            memory.add("Prefer short answers.")
+            memory.add_memory_item("Prefer short answers.")
 
-            self.assertEqual(["Prefer short answers."], memory.recent())
-            self.assertIn("Prefer short answers.", memory.as_instruction())
+            self.assertEqual(["Prefer short answers."], memory.read_recent_memory_items())
+            self.assertIn("Prefer short answers.", memory.build_prompt_instruction())
 
     def test_agent_includes_memory_when_memory_file_exists(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -46,7 +46,7 @@ memory = ".super-agent/memory"
             )
 
             provider = MockProvider("ok")
-            agent = Agent(AgentConfig.from_file(config_path), provider=provider)
+            agent = Agent(AgentConfig.load_from_file(config_path), provider=provider)
             agent.run("hello")
 
             self.assertIn("Memory", provider.last_messages[0]["content"])
@@ -56,14 +56,14 @@ memory = ".super-agent/memory"
         with tempfile.TemporaryDirectory() as tmp:
             memory = MiniMemory(Path(tmp))
 
-            memory.record_usage(workflow="direct", skills=["echo"])
-            memory.record_usage(workflow="direct", skills=["echo"])
+            memory.record_agent_run(workflow="direct", skills=["echo"])
+            memory.record_agent_run(workflow="direct", skills=["echo"])
 
-            habits = memory.habits()
+            habits = memory.read_usage_habits()
             self.assertEqual(2, habits["total_runs"])
             self.assertEqual(2, habits["workflows"]["direct"])
             self.assertEqual(2, habits["skills"]["echo"])
-            self.assertIn("workflow direct used 2 times", memory.as_instruction())
+            self.assertIn("workflow direct used 2 times", memory.build_prompt_instruction())
 
     def test_agent_updates_usage_habits_after_successful_run(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -88,10 +88,10 @@ memory = ".super-agent/memory"
                 encoding="utf-8",
             )
 
-            agent = Agent(AgentConfig.from_file(config_path), provider=MockProvider("ok"))
+            agent = Agent(AgentConfig.load_from_file(config_path), provider=MockProvider("ok"))
             agent.run("first")
             agent.run("second")
             memory = MiniMemory(root / ".super-agent" / "memory")
 
-            self.assertEqual(2, memory.habits()["total_runs"])
+            self.assertEqual(2, memory.read_usage_habits()["total_runs"])
             self.assertIn("workflow direct used 1 times", agent.provider.last_messages[0]["content"])
