@@ -1,0 +1,8 @@
+name = "echo"
+description = "Minimal example skill"
+version = "0.1.0"
+triggers = ["echo", "brief"]
+
+[entry]
+instructions = "SKILL.md"
+

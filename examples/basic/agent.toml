@@ -1,0 +1,14 @@
+[agent]
+name = "basic"
+system = "You are a concise, helpful agent."
+workflow = "direct"
+skills = ["echo"]
+
+[model]
+provider = "mock"
+model = "mock"
+
+[paths]
+skills = ["skills"]
+memory = ".super-agent/memory"
+
