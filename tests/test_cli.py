@@ -17,6 +17,7 @@ class CliTests(unittest.TestCase):
             self.assertTrue((root / "agent.toml").exists())
             self.assertTrue((root / "skills" / "echo" / "skill.toml").exists())
             self.assertTrue((root / "skills" / "echo" / "SKILL.md").exists())
+            self.assertTrue((root / "mcp" / "filesystem" / "mcp.toml").exists())
 
     def test_skills_list_prints_available_skills(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -28,6 +29,7 @@ class CliTests(unittest.TestCase):
 
             self.assertEqual(0, code)
             self.assertIn("echo", output.getvalue())
+            self.assertIn("filesystem", output.getvalue())
 
     def test_run_uses_mock_provider_from_config(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -4,6 +4,8 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
+from super_agent.mcp import McpServer
+
 
 @dataclass(frozen=True)
 class SkillEntry:
@@ -18,6 +20,7 @@ class SkillManifest:
     triggers: list[str]
     entry: SkillEntry
     path: Path
+    kind: str = "skill"
 
     @classmethod
     def load_from_file(cls, path: Path) -> "SkillManifest":
@@ -43,15 +46,27 @@ class Skill:
 
 
 class SkillLoader:
-    def __init__(self, roots: list[Path]) -> None:
-        self.roots = [root.expanduser() for root in roots]
+    def __init__(
+        self,
+        skill_roots: list[Path],
+        *,
+        mcp_roots: list[Path] | None = None,
+        disabled_names: list[str] | None = None,
+    ) -> None:
+        self.skill_roots = [root.expanduser() for root in skill_roots]
+        self.mcp_roots = [root.expanduser() for root in mcp_roots or []]
+        self.disabled_names = [name.lower() for name in disabled_names or []]
 
     def list_skill_manifests(self) -> list[SkillManifest]:
         manifests: list[SkillManifest] = []
-        for root in self.roots:
+        for root in self.skill_roots:
             if root.is_dir():
-                manifests.extend(self._list_manifests_in_root(root))
-        return sorted(manifests, key=lambda item: item.name)
+                manifests.extend(self._list_skill_manifests_in_root(root))
+        for root in self.mcp_roots:
+            if root.is_dir():
+                manifests.extend(self._list_mcp_manifests_in_root(root))
+        usable = [manifest for manifest in manifests if not _manifest_is_disabled(manifest, self.disabled_names)]
+        return sorted(usable, key=lambda item: item.name)
 
     def load_skill(self, name: str) -> Skill:
         for manifest in self.list_skill_manifests():
@@ -68,7 +83,7 @@ class SkillLoader:
                 selected.append(self._load_skill_from_manifest(manifest))
         return selected
 
-    def _list_manifests_in_root(self, root: Path) -> list[SkillManifest]:
+    def _list_skill_manifests_in_root(self, root: Path) -> list[SkillManifest]:
         manifests: list[SkillManifest] = []
         for child in root.iterdir():
             manifest_path = child / "skill.toml"
@@ -76,7 +91,29 @@ class SkillLoader:
                 manifests.append(SkillManifest.load_from_file(manifest_path))
         return manifests
 
+    def _list_mcp_manifests_in_root(self, root: Path) -> list[SkillManifest]:
+        manifests: list[SkillManifest] = []
+        for child in root.iterdir():
+            manifest_path = child / "mcp.toml"
+            if child.is_dir() and manifest_path.exists():
+                server = McpServer.load_from_file(manifest_path)
+                manifests.append(
+                    SkillManifest(
+                        name=server.name,
+                        description=server.description,
+                        version=server.version,
+                        triggers=server.triggers,
+                        entry=SkillEntry(instructions="mcp.toml"),
+                        path=server.path,
+                        kind="mcp",
+                    )
+                )
+        return manifests
+
     def _load_skill_from_manifest(self, manifest: SkillManifest) -> Skill:
+        if manifest.kind == "mcp":
+            server = McpServer.load_from_file(manifest.path / "mcp.toml")
+            return Skill(manifest=manifest, instructions=server.build_skill_instructions())
         instruction_path = manifest.path / manifest.entry.instructions
         instructions = instruction_path.read_text(encoding="utf-8").strip()
         return Skill(manifest=manifest, instructions=instructions)
@@ -84,6 +121,12 @@ class SkillLoader:
 
 def _prompt_matches_skill_triggers(manifest: SkillManifest, prompt: str) -> bool:
     return any(trigger and trigger in prompt for trigger in manifest.triggers)
+
+
+def _manifest_is_disabled(manifest: SkillManifest, disabled_names: list[str]) -> bool:
+    name = manifest.name.lower()
+    kind = manifest.kind.lower()
+    return kind in disabled_names or name in disabled_names or f"{kind}:{name}" in disabled_names
 
 
 from super_agent.skill.disclosure import (  # noqa: E402

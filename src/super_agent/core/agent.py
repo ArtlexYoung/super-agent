@@ -27,7 +27,7 @@ class Agent:
     ) -> None:
         self.config = config
         self.provider = provider or create_chat_provider(config.model)
-        self.skill_loader = skill_loader or SkillLoader(config.paths.skills)
+        self.skill_loader = skill_loader or create_skill_loader_for_agent_config(config)
         self._subagents: list[SubAgent] = []
 
     @classmethod
@@ -79,13 +79,15 @@ class Agent:
         include_subagents: bool = True,
         check_subagent_links_before_run: bool = True,
     ) -> RunResult:
-        memory = MiniMemory(self.config.paths.memory)
+        memory = MiniMemory(self.config.paths.memory) if _should_use_feature(self.config, "memory") else None
         disclosure = ProgressiveDisclosure(self.skill_loader, self.config.paths.memory / "disclosure")
         disclosure_bundle = disclosure.prepare_disclosure_for_prompt(prompt, self.config.agent.skills)
         workflow = create_workflow(self.config.agent.workflow)
         warning_messages = self.check_subagent_links() if include_subagents and check_subagent_links_before_run else []
         subagent_results = self._run_subagents_that_match_prompt(prompt) if include_subagents else []
-        system = _add_memory_to_system_prompt(self.config.agent.system, memory)
+        system = self.config.agent.system
+        if memory is not None:
+            system = _add_memory_to_system_prompt(system, memory)
         system = _add_subagent_results_to_system_prompt(system, subagent_results)
         system = _add_disclosure_cache_paths_to_system_prompt(
             system,
@@ -98,7 +100,8 @@ class Agent:
             skills=disclosure_bundle.skills,
             provider=self.provider,
         )
-        memory.record_agent_run(result.workflow, result.skills)
+        if memory is not None:
+            memory.record_agent_run(result.workflow, result.skills)
         return RunResult(
             text=result.text,
             workflow=result.workflow,
@@ -159,6 +162,18 @@ def _prompt_matches_subagent_triggers(subagent: SubAgent, prompt: str) -> bool:
     if not subagent.triggers:
         return True
     return any(trigger and trigger in prompt for trigger in subagent.triggers)
+
+
+def create_skill_loader_for_agent_config(config: AgentConfig) -> SkillLoader:
+    skill_roots = config.paths.skills if _should_use_feature(config, "skill") else []
+    mcp_roots = config.paths.mcp if _should_use_feature(config, "mcp") else []
+    return SkillLoader(skill_roots, mcp_roots=mcp_roots, disabled_names=config.agent.disable_names)
+
+
+def _should_use_feature(config: AgentConfig, name: str) -> bool:
+    feature = name.lower()
+    disabled_names = set(config.agent.disable_names)
+    return feature in config.agent.use_features and feature not in disabled_names
 
 
 def _find_cycle_chains(agent: Agent, chain: list[str], seen_ids: set[int]) -> list[list[str]]:

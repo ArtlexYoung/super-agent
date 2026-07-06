@@ -5,8 +5,8 @@ from pathlib import Path
 from typing import Sequence
 
 from super_agent import Agent, AgentConfig
+from super_agent.core import create_skill_loader_for_agent_config
 from super_agent.memory import MiniMemory
-from super_agent.skill import SkillLoader
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -50,10 +50,13 @@ def _build_parser() -> argparse.ArgumentParser:
 def _run_init_command(root: Path) -> int:
     root.mkdir(parents=True, exist_ok=True)
     skill_dir = root / "skills" / "echo"
+    mcp_dir = root / "mcp" / "filesystem"
     skill_dir.mkdir(parents=True, exist_ok=True)
+    mcp_dir.mkdir(parents=True, exist_ok=True)
     _write_file_if_missing(root / "agent.toml", _default_agent_config())
     _write_file_if_missing(skill_dir / "skill.toml", _default_skill_manifest())
     _write_file_if_missing(skill_dir / "SKILL.md", "Answer briefly and clearly.\n")
+    _write_file_if_missing(mcp_dir / "mcp.toml", _default_mcp_manifest())
     print(f"Initialized super-agent project at {root}")
     return 0
 
@@ -69,7 +72,7 @@ def _run_prompt_command(config_path: Path, prompt: str) -> int:
 
 def _run_skills_list_command(config_path: Path) -> int:
     config = AgentConfig.load_from_file(config_path)
-    for manifest in SkillLoader(config.paths.skills).list_skill_manifests():
+    for manifest in create_skill_loader_for_agent_config(config).list_skill_manifests():
         print(f"{manifest.name}\t{manifest.description}")
     return 0
 
@@ -93,6 +96,8 @@ name = "super-agent"
 system = "You are a concise, helpful agent."
 workflow = "direct"
 skills = ["echo"]
+use_features = ["skill", "memory", "mcp"]
+disable_names = []
 
 [model]
 provider = "mock"
@@ -100,6 +105,7 @@ model = "mock"
 
 [paths]
 skills = ["skills"]
+mcp = ["mcp"]
 memory = ".super-agent/memory"
 """.lstrip()
 
@@ -113,6 +119,18 @@ triggers = ["echo", "brief"]
 
 [entry]
 instructions = "SKILL.md"
+""".lstrip()
+
+
+def _default_mcp_manifest() -> str:
+    return """
+name = "filesystem"
+description = "Example stdio MCP server"
+version = "0.1.0"
+triggers = ["filesystem", "files"]
+transport = "stdio"
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-filesystem"]
 """.lstrip()
 
 

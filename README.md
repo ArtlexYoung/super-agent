@@ -1,8 +1,12 @@
 # Super Agent
 
+Skill is all you need.
+
 Super Agent 是一个简单、轻量、配置化的 **skill-first agent runtime**。
 
-目标不是再造一个重型编排框架，而是把 agent 能力拆成可渐进加载的 skill：prompt、工具、记忆、workflow 都可以用同一套格式声明、组合和复用。
+将 agent 能力拆成可渐进加载的 skill：prompt、工具、记忆、workflow 都可以用同一套格式声明、组合和复用。
+
+验证全skill化agent的可行性。
 
 ## 核心定位
 
@@ -95,6 +99,8 @@ name = "super-agent"
 system = "You are a concise, helpful agent."
 workflow = "direct"
 skills = ["echo"]
+use_features = ["skill", "memory", "mcp"]
+disable_names = []
 # 可选；不配置表示无限深度。超过后只 warning，不阻止执行。
 max_agent_chain_depth = 5
 
@@ -104,8 +110,18 @@ model = "mock"
 
 [paths]
 skills = ["skills"]
+mcp = ["mcp"]
 memory = ".super-agent/memory"
 ```
+
+`use_features` 控制启用哪些目录能力，默认等于 `["skill", "memory", "mcp"]`。`disable_names` 是批量关闭列表，可以写功能名，也可以写具体 skill 名：
+
+```toml
+[agent]
+disable_names = ["memory", "skill:echo", "mcp:github"]
+```
+
+不带前缀的名字会同时匹配普通 skill 和 MCP skill，例如 `disable_names = ["github"]` 会关闭名为 `github` 的注册项。
 
 当前 provider：
 
@@ -136,6 +152,32 @@ instructions = "SKILL.md"
 ```
 
 `SKILL.md` 存放真正给 agent 的说明。runtime 会根据配置和触发词选择 skill，并把命中的说明注入本次运行。
+
+## MCP 格式
+
+MCP 也注册成 skill，放在 `mcp/` 目录下：
+
+```text
+mcp/filesystem/
+  mcp.toml
+```
+
+`mcp.toml`：
+
+```toml
+name = "filesystem"
+description = "Example stdio MCP server"
+version = "0.1.0"
+triggers = ["filesystem", "files"]
+transport = "stdio"
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-filesystem"]
+
+[env]
+ROOT_PATH = "/tmp"
+```
+
+runtime 会把 MCP manifest 转成一个普通 skill。环境变量只会把变量名写入提示词，不会把值注入模型上下文。
 
 ## 动态渐进式披露
 
@@ -183,10 +225,11 @@ super-agent memory habits --config agent.toml
 ## 架构
 
 ```text
-src/super_agent/
+src/
   cli.py         # CLI 入口：init、run、skills list
   core/          # Agent、子 agent 编排、agent.toml、provider
   skill/         # skill manifest、loader、触发词匹配、渐进式披露缓存
+  mcp/           # MCP manifest 读取与 skill 指令生成
   workflow/      # direct、plan、react、loop 的轻量 workflow
   memory/        # mini memory 与调用习惯自更新
 ```

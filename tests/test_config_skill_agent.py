@@ -20,6 +20,8 @@ system = "You are concise."
 workflow = "direct"
 skills = ["echo"]
 max_agent_chain_depth = 4
+use_features = ["skill", "memory", "mcp"]
+disable_names = ["mcp:github"]
 
 [model]
 provider = "mock"
@@ -27,6 +29,7 @@ model = "unit-test"
 
 [paths]
 skills = ["skills"]
+mcp = ["mcp"]
 memory = ".super-agent/memory"
 """.strip(),
                 encoding="utf-8",
@@ -38,8 +41,11 @@ memory = ".super-agent/memory"
             self.assertEqual("direct", config.agent.workflow)
             self.assertEqual(["echo"], config.agent.skills)
             self.assertEqual(4, config.agent.max_agent_chain_depth)
+            self.assertEqual(["skill", "memory", "mcp"], config.agent.use_features)
+            self.assertEqual(["mcp:github"], config.agent.disable_names)
             self.assertEqual("mock", config.model.provider)
             self.assertEqual([root / "skills"], config.paths.skills)
+            self.assertEqual([root / "mcp"], config.paths.mcp)
 
     def test_skill_loader_reads_manifest_and_instruction(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

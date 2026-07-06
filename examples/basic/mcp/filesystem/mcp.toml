@@ -1,0 +1,7 @@
+name = "filesystem"
+description = "Example stdio MCP server"
+version = "0.1.0"
+triggers = ["filesystem", "files"]
+transport = "stdio"
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-filesystem"]
