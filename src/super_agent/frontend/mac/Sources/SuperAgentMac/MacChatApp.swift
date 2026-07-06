@@ -8,7 +8,7 @@ struct MacChatApp: App {
         WindowGroup {
             ChatPage()
                 .environmentObject(chatStore)
-                .frame(minWidth: 1120, minHeight: 720)
+                .frame(minWidth: 1310, minHeight: 760)
         }
         .commands {
             CommandGroup(replacing: .newItem) {
@@ -16,6 +16,17 @@ struct MacChatApp: App {
                     chatStore.createNewConversation()
                 }
                 .keyboardShortcut("n")
+            }
+            CommandGroup(after: .newItem) {
+                Button("打开配置") {
+                    chatStore.openTomlConfigFile()
+                }
+                .keyboardShortcut("o")
+
+                Button("保存配置") {
+                    chatStore.saveTomlConfigFile()
+                }
+                .keyboardShortcut("s")
             }
         }
     }

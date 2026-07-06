@@ -1,28 +1,116 @@
 import SwiftUI
 
+private enum MainPage: String, CaseIterable, Identifiable {
+    case chat = "对话"
+    case config = "配置"
+
+    var id: String { rawValue }
+
+    var iconName: String {
+        switch self {
+        case .chat:
+            return "bubble.left.and.bubble.right"
+        case .config:
+            return "slider.horizontal.3"
+        }
+    }
+}
+
 struct ChatPage: View {
+    @State private var selectedPage: MainPage = .chat
+
     var body: some View {
         HStack(spacing: 0) {
-            ConversationListView()
-                .frame(width: 260)
+            AppSidebarView(selectedPage: $selectedPage)
+                .frame(width: 164)
 
             Divider()
 
-            ChatMessagesView()
-                .frame(minWidth: 520)
-
-            Divider()
-
-            ConfigPanelView()
-                .frame(width: 320)
+            switch selectedPage {
+            case .chat:
+                ChatWorkspaceView()
+            case .config:
+                ConfigPageView()
+            }
         }
         .background(
             LinearGradient(
-                colors: [Color(nsColor: .windowBackgroundColor), Color.blue.opacity(0.05)],
+                colors: [Color(nsColor: .windowBackgroundColor), Color.teal.opacity(0.06)],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
         )
+    }
+}
+
+private struct AppSidebarView: View {
+    @Binding var selectedPage: MainPage
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Super Agent")
+                    .font(.title3.weight(.semibold))
+                Text("轻量助手")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 14)
+            .padding(.top, 18)
+
+            VStack(spacing: 6) {
+                ForEach(MainPage.allCases) { page in
+                    SidebarItemView(
+                        page: page,
+                        isSelected: page == selectedPage
+                    ) {
+                        selectedPage = page
+                    }
+                }
+            }
+            .padding(.horizontal, 10)
+
+            Spacer()
+        }
+        .background(Color(nsColor: .controlBackgroundColor).opacity(0.72))
+    }
+}
+
+private struct SidebarItemView: View {
+    let page: MainPage
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: page.iconName)
+                    .frame(width: 18)
+                Text(page.rawValue)
+                    .font(.body.weight(.medium))
+                Spacer()
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .foregroundStyle(isSelected ? Color.accentColor : Color.primary)
+            .background(isSelected ? Color.accentColor.opacity(0.14) : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct ChatWorkspaceView: View {
+    var body: some View {
+        HStack(spacing: 0) {
+            ConversationListView()
+                .frame(width: 300)
+
+            Divider()
+
+            ChatMessagesView()
+                .frame(minWidth: 680)
+        }
     }
 }
 
@@ -66,7 +154,7 @@ private struct ConversationListView: View {
                 Button("删除") {
                     chatStore.deleteSelectedConversation()
                 }
-                Button("清空消息") {
+                Button("清空") {
                     chatStore.clearSelectedConversationMessages()
                 }
             }
@@ -84,9 +172,12 @@ private struct ConversationRowView: View {
             Text(conversation.title)
                 .font(.headline)
                 .lineLimit(1)
-            Text("\(conversation.messages.count) 条消息")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            HStack(spacing: 8) {
+                Text("\(conversation.messages.count) 条")
+                Text(conversation.updatedAt, style: .relative)
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
         .padding(.vertical, 8)
     }
@@ -103,13 +194,18 @@ private struct ChatMessagesView: View {
 
             ScrollViewReader { scrollProxy in
                 ScrollView {
-                    LazyVStack(spacing: 14) {
-                        ForEach(chatStore.selectedConversation?.messages ?? []) { message in
-                            MessageBubbleView(message: message)
-                                .id(message.id)
+                    if (chatStore.selectedConversation?.messages ?? []).isEmpty {
+                        EmptyConversationView()
+                            .padding(.top, 80)
+                    } else {
+                        LazyVStack(spacing: 14) {
+                            ForEach(chatStore.selectedConversation?.messages ?? []) { message in
+                                MessageBubbleView(message: message)
+                                    .id(message.id)
+                            }
                         }
+                        .padding(24)
                     }
-                    .padding(24)
                 }
                 .onChange(of: chatStore.selectedConversation?.messages.count ?? 0) { _ in
                     guard let lastMessage = chatStore.selectedConversation?.messages.last else {
@@ -128,6 +224,22 @@ private struct ChatMessagesView: View {
     }
 }
 
+private struct EmptyConversationView: View {
+    var body: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "sparkles.rectangle.stack")
+                .font(.system(size: 42))
+                .foregroundStyle(.secondary)
+            Text("开始一段新对话")
+                .font(.title3.weight(.semibold))
+            Text("在配置页选择或编辑 agent.toml 后，输入消息即可按模型配置发送。")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
+
 private struct ChatHeaderView: View {
     @EnvironmentObject private var chatStore: ChatStore
 
@@ -143,12 +255,16 @@ private struct ChatHeaderView: View {
             .font(.title3.weight(.semibold))
             .textFieldStyle(.plain)
 
+            Text("模型：\(chatStore.config.modelSummary)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
             if let warningMessage = chatStore.warningMessage {
                 Text(warningMessage)
                     .font(.caption)
                     .foregroundStyle(.orange)
-            } else {
-                Text("当前对话会先使用本地模拟回复，后续可接入 Python runtime。")
+            } else if let statusMessage = chatStore.statusMessage {
+                Text(statusMessage)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -171,9 +287,14 @@ private struct MessageBubbleView: View {
             }
 
             VStack(alignment: .leading, spacing: 8) {
-                Text(message.role.rawValue)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                HStack {
+                    Text(message.role.rawValue)
+                        .font(.caption.weight(.semibold))
+                    Spacer()
+                    Text(message.createdAt.formatted(date: .omitted, time: .shortened))
+                        .font(.caption2)
+                }
+                .foregroundStyle(.secondary)
 
                 Text(message.text)
                     .font(.body)
@@ -198,62 +319,28 @@ private struct MessageInputView: View {
         VStack(spacing: 10) {
             TextEditor(text: $chatStore.draftMessage)
                 .font(.body)
-                .frame(height: 92)
+                .frame(height: 96)
                 .padding(8)
                 .background(Color(nsColor: .textBackgroundColor))
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .disabled(chatStore.isSendingMessage)
 
             HStack {
-                Text("Enter 换行，点击发送提交。")
+                Text("Command + Return 发送。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
+                if chatStore.isSendingMessage {
+                    ProgressView()
+                        .scaleEffect(0.75)
+                }
                 Button("发送") {
                     chatStore.sendDraftMessage()
                 }
                 .keyboardShortcut(.return, modifiers: [.command])
                 .buttonStyle(.borderedProminent)
+                .disabled(chatStore.isSendingMessage)
             }
-        }
-        .padding(20)
-    }
-}
-
-private struct ConfigPanelView: View {
-    @EnvironmentObject private var chatStore: ChatStore
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("配置")
-                    .font(.title2.weight(.semibold))
-                Text("运行参数先保存在内存中。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Form {
-                TextField("服务地址", text: $chatStore.config.endpoint)
-                TextField("模型名称", text: $chatStore.config.modelName)
-                SecureField("API Key", text: $chatStore.config.apiKey)
-
-                VStack(alignment: .leading) {
-                    Text("温度 \(chatStore.config.temperature, specifier: "%.1f")")
-                    Slider(value: $chatStore.config.temperature, in: 0...1, step: 0.1)
-                }
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("系统提示词")
-                    TextEditor(text: $chatStore.config.systemPrompt)
-                        .frame(height: 120)
-                        .padding(6)
-                        .background(Color(nsColor: .textBackgroundColor))
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                }
-            }
-            .formStyle(.grouped)
-
-            Spacer()
         }
         .padding(20)
     }
