@@ -7,6 +7,7 @@ from typing import Sequence
 from super_agent import Agent, AgentConfig
 from super_agent.core import create_skill_loader_for_agent_config
 from super_agent.memory import MiniMemory
+from super_agent.skill import SkillFreshnessStore
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -24,6 +25,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_skills_update_command(args)
     if args.command == "skills" and args.skill_command == "optimize":
         return _run_skills_optimize_command(args)
+    if args.command == "skills" and args.skill_command == "freshness":
+        return _run_skills_freshness_command(Path(args.config))
     if args.command == "memory" and args.memory_command == "habits":
         return _run_memory_habits_command(Path(args.config))
     parser.print_help()
@@ -55,6 +58,8 @@ def _build_parser() -> argparse.ArgumentParser:
     optimize_parser.add_argument("--config", default="agent.toml")
     optimize_parser.add_argument("--name", required=True)
     optimize_parser.add_argument("--goal", required=True)
+    freshness_parser = skill_subparsers.add_parser("freshness", help="show runtime skill freshness stats")
+    freshness_parser.add_argument("--config", default="agent.toml")
 
     memory_parser = subparsers.add_parser("memory", help="inspect memory")
     memory_subparsers = memory_parser.add_subparsers(dest="memory_command")
@@ -93,6 +98,8 @@ def _run_skills_list_command(config_path: Path) -> int:
             f"{manifest.name}\t{manifest.kind}"
             f"\tagent_created={str(manifest.agent_created).lower()}"
             f"\tagent_can_update={str(manifest.agent_can_update).lower()}"
+            f"\tfreshness={manifest.freshness:.2f}"
+            f"\tfunction_group={manifest.function_group}"
             f"\t{manifest.description}"
         )
     return 0
@@ -128,6 +135,23 @@ def _run_skills_optimize_command(args: argparse.Namespace) -> int:
     agent = Agent.load_from_config_file(args.config)
     manifest = agent.optimize_skill(args.name, goal=args.goal)
     print(f"Optimized skill: {manifest.name}")
+    return 0
+
+
+def _run_skills_freshness_command(config_path: Path) -> int:
+    config = AgentConfig.load_from_file(config_path)
+    stats = SkillFreshnessStore(config.paths.memory).read_skill_stats()
+    if not stats:
+        print("No skill freshness stats yet.")
+        return 0
+    for name, item in sorted(stats.items()):
+        print(
+            f"{name}\tfreshness={float(item['freshness']):.2f}"
+            f"\tcalls={int(item['call_count'])}"
+            f"\tgroup={item['function_group']}"
+            f"\tsuccess={int(item['success_count'])}"
+            f"\treplacements={int(item['same_function_successful_followups'])}"
+        )
     return 0
 
 
@@ -202,6 +226,8 @@ description = "Minimal example skill"
 version = "0.1.0"
 agent_created = false
 agent_can_update = false
+freshness = 70
+function_group = "general"
 triggers = ["echo", "brief"]
 
 [entry]

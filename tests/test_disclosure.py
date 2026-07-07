@@ -30,6 +30,8 @@ class ProgressiveDisclosureTests(unittest.TestCase):
             self.assertEqual("echo", index_data["skills"][0]["name"])
             self.assertFalse(index_data["skills"][0]["agent_created"])
             self.assertFalse(index_data["skills"][0]["agent_can_update"])
+            self.assertEqual(70.0, index_data["skills"][0]["freshness"])
+            self.assertEqual("echo", index_data["skills"][0]["function_group"])
             self.assertEqual(["index", "instructions"], [item.stage for item in history])
 
     def test_agent_exposes_disclosure_cache_paths_to_model(self) -> None:

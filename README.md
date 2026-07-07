@@ -22,6 +22,7 @@ python -m super_agent.cli init --path demo-agent
 python -m super_agent.cli run --config demo-agent/agent.toml "hello"
 python -m super_agent.cli skills list --config demo-agent/agent.toml
 python -m super_agent.cli skills create --config demo-agent/agent.toml --name note --instructions "Write concise notes."
+python -m super_agent.cli skills freshness --config demo-agent/agent.toml
 python -m super_agent.cli memory habits --config demo-agent/agent.toml
 ```
 
@@ -32,6 +33,7 @@ super-agent init --path demo-agent
 super-agent run --config demo-agent/agent.toml "hello"
 super-agent skills list --config demo-agent/agent.toml
 super-agent skills create --config demo-agent/agent.toml --name note --instructions "Write concise notes."
+super-agent skills freshness --config demo-agent/agent.toml
 super-agent memory habits --config demo-agent/agent.toml
 ```
 
@@ -154,6 +156,8 @@ description = "Minimal example skill"
 version = "0.1.0"
 agent_created = false
 agent_can_update = false
+freshness = 70
+function_group = "general"
 triggers = ["echo", "brief"]
 
 [entry]
@@ -161,6 +165,40 @@ instructions = "SKILL.md"
 ```
 
 `SKILL.md` 存放真正给 agent 的说明。runtime 会根据配置和触发词选择 skill，并把命中的说明注入本次运行。
+
+### Skill 保鲜度
+
+skill 可以声明静态保鲜度字段：
+
+```toml
+freshness = 70
+function_group = "research"
+freshness_updated_at = "2026-07-07T12:00:00Z"
+```
+
+runtime 不用大模型给保鲜度打分，而是把每次调用写入动态统计：
+
+```text
+.super-agent/memory/
+  skill_events.jsonl   # 每次 skill 调用事件
+  skill_stats.json     # 聚合后的保鲜度、调用次数、替代统计
+```
+
+当前保鲜度由多个可解释信号综合计算：
+
+- `quality`：近期成功率 EWMA。
+- `recency`：距离上次调用时间，按 7 天半衰期衰减。
+- `frequency`：调用频率，避免长期不用的 skill 虚高。
+- `efficiency`：粗略输入输出 token 成本。
+- `reliability`：成功率、空输出率。
+- `replacement`：调用后短时间内是否又调用同 `function_group` 的其他 skill，且后者成功。
+- `confidence`：调用次数少时回归默认值，避免冷启动误判。
+
+查看动态统计：
+
+```bash
+super-agent skills freshness --config agent.toml
+```
 
 ### Skill 自更新
 

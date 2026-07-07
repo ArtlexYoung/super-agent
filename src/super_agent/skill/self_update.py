@@ -7,6 +7,7 @@ from pathlib import Path
 
 from super_agent.core.provider import ChatProvider, Message
 from super_agent.skill import SkillLoader, SkillManifest
+from super_agent.skill.freshness import DEFAULT_FRESHNESS
 
 
 SKILL_INSTRUCTION_FILE = "SKILL.md"
@@ -21,6 +22,9 @@ class SkillWriteRequest:
     version: str = "0.1.0"
     agent_created: bool = True
     agent_can_update: bool = True
+    freshness: float = DEFAULT_FRESHNESS
+    function_group: str = ""
+    freshness_updated_at: str = ""
 
 
 @dataclass(frozen=True)
@@ -31,6 +35,9 @@ class SkillUpdateRequest:
     triggers: list[str] | None = None
     version: str | None = None
     agent_can_update: bool | None = None
+    freshness: float | None = None
+    function_group: str | None = None
+    freshness_updated_at: str | None = None
 
 
 def create_agent_skill(skill_root: Path, request: SkillWriteRequest) -> SkillManifest:
@@ -50,6 +57,9 @@ def create_agent_skill(skill_root: Path, request: SkillWriteRequest) -> SkillMan
             version=request.version,
             agent_created=request.agent_created,
             agent_can_update=request.agent_can_update,
+            freshness=request.freshness,
+            function_group=request.function_group or skill_name,
+            freshness_updated_at=request.freshness_updated_at,
         ),
     )
     return SkillManifest.load_from_file(skill_dir / "skill.toml")
@@ -78,6 +88,11 @@ def update_agent_skill(loader: SkillLoader, request: SkillUpdateRequest) -> Skil
         agent_can_update=manifest.agent_can_update
         if request.agent_can_update is None
         else request.agent_can_update,
+        freshness=manifest.freshness if request.freshness is None else request.freshness,
+        function_group=manifest.function_group if request.function_group is None else request.function_group,
+        freshness_updated_at=manifest.freshness_updated_at
+        if request.freshness_updated_at is None
+        else request.freshness_updated_at,
     )
     _write_skill_files(manifest.path, write_request)
     return SkillManifest.load_from_file(manifest.path / "skill.toml")
@@ -116,6 +131,9 @@ def _build_skill_manifest_text(request: SkillWriteRequest) -> str:
             f"version = {_quote_toml_string(request.version)}",
             f"agent_created = {_quote_toml_bool(request.agent_created)}",
             f"agent_can_update = {_quote_toml_bool(request.agent_can_update)}",
+            f"freshness = {_quote_toml_number(request.freshness)}",
+            f"function_group = {_quote_toml_string(request.function_group or request.name)}",
+            *_optional_freshness_updated_at_line(request.freshness_updated_at),
             f"triggers = {_quote_toml_string_array(request.triggers or [])}",
             "",
             "[entry]",
@@ -171,5 +189,13 @@ def _quote_toml_bool(value: bool) -> str:
     return "true" if value else "false"
 
 
+def _quote_toml_number(value: float) -> str:
+    return str(round(float(value), 2)).rstrip("0").rstrip(".")
+
+
 def _quote_toml_string_array(values: list[str]) -> str:
     return "[" + ", ".join(_quote_toml_string(value.lower()) for value in values) + "]"
+
+
+def _optional_freshness_updated_at_line(value: str) -> list[str]:
+    return [f"freshness_updated_at = {_quote_toml_string(value)}"] if value else []

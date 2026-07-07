@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from super_agent.mcp import McpServer
+from super_agent.skill.freshness import DEFAULT_FRESHNESS
 
 
 @dataclass(frozen=True)
@@ -23,6 +24,9 @@ class SkillManifest:
     kind: str = "skill"
     agent_created: bool = False
     agent_can_update: bool = False
+    freshness: float = DEFAULT_FRESHNESS
+    function_group: str = ""
+    freshness_updated_at: str = ""
 
     @classmethod
     def load_from_file(cls, path: Path) -> "SkillManifest":
@@ -41,6 +45,9 @@ class SkillManifest:
             path=path.parent,
             agent_created=agent_created,
             agent_can_update=_read_bool(data, "agent_can_update", agent_created),
+            freshness=_read_freshness(data),
+            function_group=str(data.get("function_group", name)).strip() or name,
+            freshness_updated_at=str(data.get("freshness_updated_at", "")),
         )
 
 
@@ -119,6 +126,9 @@ class SkillLoader:
                         kind="mcp",
                         agent_created=False,
                         agent_can_update=False,
+                        freshness=DEFAULT_FRESHNESS,
+                        function_group=server.name,
+                        freshness_updated_at="",
                     )
                 )
         return manifests
@@ -149,6 +159,16 @@ def _read_bool(data: dict[str, object], name: str, default: bool) -> bool:
     return value
 
 
+def _read_freshness(data: dict[str, object]) -> float:
+    value = data.get("freshness", DEFAULT_FRESHNESS)
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise ValueError("freshness must be a TOML number")
+    number = float(value)
+    if number < 0 or number > 100:
+        raise ValueError("freshness must be between 0 and 100")
+    return number
+
+
 from super_agent.skill.disclosure import (  # noqa: E402
     CachedDisclosure,
     DisclosureBundle,
@@ -163,6 +183,10 @@ from super_agent.skill.self_update import (  # noqa: E402
     optimize_agent_skill,
     update_agent_skill,
 )
+from super_agent.skill.freshness import (  # noqa: E402
+    SkillFreshnessStore,
+    SkillRunRecord,
+)
 
 __all__ = [
     "CachedDisclosure",
@@ -174,6 +198,8 @@ __all__ = [
     "SkillEntry",
     "SkillLoader",
     "SkillManifest",
+    "SkillFreshnessStore",
+    "SkillRunRecord",
     "SkillUpdateRequest",
     "SkillWriteRequest",
     "create_agent_skill",

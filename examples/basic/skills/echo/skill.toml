@@ -3,6 +3,8 @@ description = "Minimal example skill"
 version = "0.1.0"
 agent_created = false
 agent_can_update = false
+freshness = 70
+function_group = "general"
 triggers = ["echo", "brief"]
 
 [entry]

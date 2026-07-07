@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from super_agent.skill import Skill, SkillLoader, SkillManifest
+from super_agent.skill.freshness import DEFAULT_FRESHNESS
 
 
 @dataclass(frozen=True)
@@ -16,6 +17,8 @@ class DisclosureEntry:
     instruction_path: Path
     agent_created: bool = False
     agent_can_update: bool = False
+    freshness: float = DEFAULT_FRESHNESS
+    function_group: str = ""
 
 
 @dataclass(frozen=True)
@@ -118,6 +121,8 @@ class ProgressiveDisclosure:
             instruction_path=self._make_instruction_cache_path(manifest.name),
             agent_created=manifest.agent_created,
             agent_can_update=manifest.agent_can_update,
+            freshness=manifest.freshness,
+            function_group=manifest.function_group,
         )
 
     def _make_manifest_cache_path(self, name: str) -> Path:
@@ -149,6 +154,8 @@ def _entry_to_json(entry: DisclosureEntry) -> dict[str, object]:
         "instruction_path": str(entry.instruction_path),
         "agent_created": entry.agent_created,
         "agent_can_update": entry.agent_can_update,
+        "freshness": entry.freshness,
+        "function_group": entry.function_group,
     }
 
 

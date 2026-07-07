@@ -86,6 +86,8 @@ instructions = "SKILL.md"
             self.assertEqual("research-note", manifest.name)
             self.assertTrue(manifest.agent_created)
             self.assertTrue(manifest.agent_can_update)
+            self.assertEqual(70.0, manifest.freshness)
+            self.assertEqual("research-note", manifest.function_group)
             self.assertIn("Summarize research notes", loaded.instructions)
             self.assertTrue((Path(tmp) / "skills" / "research-note" / "skill.toml").exists())
 

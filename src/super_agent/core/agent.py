@@ -6,7 +6,8 @@ from pathlib import Path
 from super_agent.core.config import AgentConfig
 from super_agent.core.provider import ChatProvider, create_chat_provider
 from super_agent.memory import MiniMemory
-from super_agent.skill import ProgressiveDisclosure, SkillLoader, SkillManifest
+from super_agent.skill import ProgressiveDisclosure, Skill, SkillLoader, SkillManifest
+from super_agent.skill.freshness import DEFAULT_FRESHNESS, SkillFreshnessStore, SkillRunRecord
 from super_agent.skill.self_update import (
     SkillUpdateRequest,
     SkillWriteRequest,
@@ -76,6 +77,8 @@ class Agent:
         triggers: list[str] | None = None,
         version: str = "0.1.0",
         allow_agent_update: bool = True,
+        function_group: str = "",
+        freshness: float = DEFAULT_FRESHNESS,
     ) -> SkillManifest:
         return create_agent_skill(
             self._get_first_skill_root(),
@@ -87,6 +90,8 @@ class Agent:
                 version=version,
                 agent_created=True,
                 agent_can_update=allow_agent_update,
+                function_group=function_group,
+                freshness=freshness,
             ),
         )
 
@@ -99,6 +104,8 @@ class Agent:
         triggers: list[str] | None = None,
         version: str | None = None,
         allow_agent_update: bool | None = None,
+        function_group: str | None = None,
+        freshness: float | None = None,
     ) -> SkillManifest:
         return update_agent_skill(
             self.skill_loader,
@@ -109,6 +116,8 @@ class Agent:
                 triggers=triggers,
                 version=version,
                 agent_can_update=allow_agent_update,
+                function_group=function_group,
+                freshness=freshness,
             ),
         )
 
@@ -158,13 +167,18 @@ class Agent:
             system,
             disclosure_bundle.build_prompt_with_cache_paths(),
         )
-        result = workflow.run(
-            prompt=prompt,
-            system=system,
-            model=self.config.model.model,
-            skills=disclosure_bundle.skills,
-            provider=self.provider,
-        )
+        try:
+            result = workflow.run(
+                prompt=prompt,
+                system=system,
+                model=self.config.model.model,
+                skills=disclosure_bundle.skills,
+                provider=self.provider,
+            )
+        except Exception:
+            self._record_skill_freshness(disclosure_bundle.skills, prompt, "", success=False)
+            raise
+        self._record_skill_freshness(disclosure_bundle.skills, prompt, result.text, success=bool(result.text.strip()))
         if memory is not None:
             memory.record_agent_run(result.workflow, result.skills)
         return RunResult(
@@ -210,6 +224,21 @@ class Agent:
         if not self.config.paths.skills:
             raise ValueError("agent has no skill path configured")
         return self.config.paths.skills[0]
+
+    def _record_skill_freshness(self, skills: list[Skill], prompt: str, output: str, *, success: bool) -> None:
+        if not skills:
+            return
+        store = SkillFreshnessStore(self.config.paths.memory)
+        for skill in skills:
+            store.record_skill_run(
+                SkillRunRecord(
+                    skill_name=skill.manifest.name,
+                    function_group=skill.manifest.function_group,
+                    input_text=prompt,
+                    output_text=output,
+                    success=success,
+                )
+            )
 
 
 def _add_memory_to_system_prompt(system: str, memory: MiniMemory) -> str:

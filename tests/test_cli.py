@@ -101,3 +101,18 @@ class CliTests(unittest.TestCase):
                 "Write compact notes with sources.\n",
                 (root / "skills" / "agent-note" / "SKILL.md").read_text(encoding="utf-8"),
             )
+
+    def test_skills_freshness_prints_runtime_stats(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            config = str(Path(tmp) / "agent.toml")
+            main(["init", "--path", tmp])
+            main(["run", "--config", config, "echo hello"])
+
+            output = StringIO()
+            with patch("sys.stdout", output):
+                code = main(["skills", "freshness", "--config", config])
+
+            self.assertEqual(0, code)
+            self.assertIn("echo", output.getvalue())
+            self.assertIn("calls=1", output.getvalue())
+            self.assertIn("freshness=", output.getvalue())
