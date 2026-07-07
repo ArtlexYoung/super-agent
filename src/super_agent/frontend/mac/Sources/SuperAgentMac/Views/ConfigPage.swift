@@ -213,14 +213,12 @@ private struct SkillManifestListView: View {
 
     var body: some View {
         ConfigSectionBox(title: "技能") {
-            if chatStore.availableSkillNames.isEmpty {
+            if chatStore.availableSkillChoices.isEmpty {
                 EmptyChoiceTextView("没有扫描到技能。请先打开 agent.toml，或确认技能目录里有 skill.toml。")
             } else {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), alignment: .leading)], alignment: .leading) {
-                    ForEach(chatStore.availableSkillNames, id: \.self) { name in
-                        Toggle(name, isOn: skillIsOpenBinding(name))
-                            .toggleStyle(.checkbox)
-                            .help("勾选后打开 \(name)，并写入 [agent].skills。取消勾选会禁用 skill:\(name)。")
+                    ForEach(chatStore.availableSkillChoices) { choice in
+                        SkillChoiceToggleView(choice: choice, isOpen: skillIsOpenBinding(choice.name))
                     }
                 }
             }
@@ -232,6 +230,25 @@ private struct SkillManifestListView: View {
             get: { skillIsOpen(name, config: chatStore.config) },
             set: { setSkillOpen(name, isOpen: $0, config: $chatStore.config) }
         )
+    }
+}
+
+private struct SkillChoiceToggleView: View {
+    let choice: SkillManifestChoice
+    let isOpen: Binding<Bool>
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Toggle(choice.name, isOn: isOpen)
+                .toggleStyle(.checkbox)
+            if choice.agentCreated {
+                DefaultTagView(text: "自建")
+            }
+            if choice.agentCanUpdate {
+                DefaultTagView(text: "可更新")
+            }
+        }
+        .help("勾选后打开 \(choice.name)。自建表示 agent 创建；可更新表示允许 agent 自动更新这个 skill。")
     }
 }
 

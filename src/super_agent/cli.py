@@ -18,6 +18,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_prompt_command(Path(args.config), " ".join(args.prompt))
     if args.command == "skills" and args.skill_command == "list":
         return _run_skills_list_command(Path(args.config))
+    if args.command == "skills" and args.skill_command == "create":
+        return _run_skills_create_command(args)
+    if args.command == "skills" and args.skill_command == "update":
+        return _run_skills_update_command(args)
+    if args.command == "skills" and args.skill_command == "optimize":
+        return _run_skills_optimize_command(args)
     if args.command == "memory" and args.memory_command == "habits":
         return _run_memory_habits_command(Path(args.config))
     parser.print_help()
@@ -39,6 +45,16 @@ def _build_parser() -> argparse.ArgumentParser:
     skill_subparsers = skills_parser.add_subparsers(dest="skill_command")
     list_parser = skill_subparsers.add_parser("list", help="list available skills")
     list_parser.add_argument("--config", default="agent.toml")
+    create_parser = skill_subparsers.add_parser("create", help="create an agent-owned skill")
+    _add_skill_change_arguments(create_parser, require_instructions=True)
+    create_parser.add_argument("--lock-agent-update", action="store_true")
+    update_parser = skill_subparsers.add_parser("update", help="update an agent-updateable skill")
+    _add_skill_change_arguments(update_parser, require_instructions=False)
+    update_parser.add_argument("--allow-agent-update", choices=["true", "false"])
+    optimize_parser = skill_subparsers.add_parser("optimize", help="optimize a skill with the configured model")
+    optimize_parser.add_argument("--config", default="agent.toml")
+    optimize_parser.add_argument("--name", required=True)
+    optimize_parser.add_argument("--goal", required=True)
 
     memory_parser = subparsers.add_parser("memory", help="inspect memory")
     memory_subparsers = memory_parser.add_subparsers(dest="memory_command")
@@ -73,7 +89,45 @@ def _run_prompt_command(config_path: Path, prompt: str) -> int:
 def _run_skills_list_command(config_path: Path) -> int:
     config = AgentConfig.load_from_file(config_path)
     for manifest in create_skill_loader_for_agent_config(config).list_skill_manifests():
-        print(f"{manifest.name}\t{manifest.description}")
+        print(
+            f"{manifest.name}\t{manifest.kind}"
+            f"\tagent_created={str(manifest.agent_created).lower()}"
+            f"\tagent_can_update={str(manifest.agent_can_update).lower()}"
+            f"\t{manifest.description}"
+        )
+    return 0
+
+
+def _run_skills_create_command(args: argparse.Namespace) -> int:
+    agent = Agent.load_from_config_file(args.config)
+    manifest = agent.create_skill(
+        args.name,
+        _read_instruction_argument(args),
+        description=args.description,
+        triggers=args.trigger,
+        allow_agent_update=not args.lock_agent_update,
+    )
+    print(f"Created skill: {manifest.name}")
+    return 0
+
+
+def _run_skills_update_command(args: argparse.Namespace) -> int:
+    agent = Agent.load_from_config_file(args.config)
+    manifest = agent.update_skill(
+        args.name,
+        instructions=_read_optional_instruction_argument(args),
+        description=args.description,
+        triggers=args.trigger,
+        allow_agent_update=_read_optional_bool(args.allow_agent_update),
+    )
+    print(f"Updated skill: {manifest.name}")
+    return 0
+
+
+def _run_skills_optimize_command(args: argparse.Namespace) -> int:
+    agent = Agent.load_from_config_file(args.config)
+    manifest = agent.optimize_skill(args.name, goal=args.goal)
+    print(f"Optimized skill: {manifest.name}")
     return 0
 
 
@@ -87,6 +141,37 @@ def _run_memory_habits_command(config_path: Path) -> int:
 def _write_file_if_missing(path: Path, content: str) -> None:
     if not path.exists():
         path.write_text(content, encoding="utf-8")
+
+
+def _add_skill_change_arguments(parser: argparse.ArgumentParser, *, require_instructions: bool) -> None:
+    parser.add_argument("--config", default="agent.toml")
+    parser.add_argument("--name", required=True)
+    parser.add_argument("--description", default=None if not require_instructions else "")
+    parser.add_argument("--trigger", action="append", default=None if not require_instructions else [])
+    instruction_group = parser.add_mutually_exclusive_group(required=require_instructions)
+    instruction_group.add_argument("--instructions")
+    instruction_group.add_argument("--instructions-file")
+
+
+def _read_instruction_argument(args: argparse.Namespace) -> str:
+    value = _read_optional_instruction_argument(args)
+    if value is None:
+        raise ValueError("--instructions or --instructions-file is required")
+    return value
+
+
+def _read_optional_instruction_argument(args: argparse.Namespace) -> str | None:
+    if args.instructions is not None:
+        return str(args.instructions)
+    if args.instructions_file is not None:
+        return Path(args.instructions_file).read_text(encoding="utf-8")
+    return None
+
+
+def _read_optional_bool(value: str | None) -> bool | None:
+    if value is None:
+        return None
+    return value == "true"
 
 
 def _default_agent_config() -> str:
@@ -115,6 +200,8 @@ def _default_skill_manifest() -> str:
 name = "echo"
 description = "Minimal example skill"
 version = "0.1.0"
+agent_created = false
+agent_can_update = false
 triggers = ["echo", "brief"]
 
 [entry]

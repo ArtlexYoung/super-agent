@@ -21,6 +21,7 @@ Super Agent 是一个简单、轻量、配置化的 **skill-first agent runtime*
 python -m super_agent.cli init --path demo-agent
 python -m super_agent.cli run --config demo-agent/agent.toml "hello"
 python -m super_agent.cli skills list --config demo-agent/agent.toml
+python -m super_agent.cli skills create --config demo-agent/agent.toml --name note --instructions "Write concise notes."
 python -m super_agent.cli memory habits --config demo-agent/agent.toml
 ```
 
@@ -30,6 +31,7 @@ python -m super_agent.cli memory habits --config demo-agent/agent.toml
 super-agent init --path demo-agent
 super-agent run --config demo-agent/agent.toml "hello"
 super-agent skills list --config demo-agent/agent.toml
+super-agent skills create --config demo-agent/agent.toml --name note --instructions "Write concise notes."
 super-agent memory habits --config demo-agent/agent.toml
 ```
 
@@ -55,6 +57,9 @@ print(result.text)
 - `Agent.list_subagents()`：查看已经添加的从 agent。
 - `SkillLoader.list_skill_manifests()`：列出 skill 配置摘要。
 - `SkillLoader.load_skills_for_prompt(prompt)`：按输入加载命中的 skill。
+- `Agent.create_skill(...)`：让 agent 创建一个自己拥有的 skill。
+- `Agent.update_skill(...)`：更新允许 agent 更新的 skill。
+- `Agent.optimize_skill(...)`：用当前模型优化允许更新的 skill。
 - `MiniMemory.record_agent_run(...)`：记录本次运行习惯。
 - `MiniMemory.build_prompt_instruction()`：把记忆生成给模型看的提示词。
 
@@ -77,6 +82,8 @@ print(result.text)
 ```
 
 `name` 可选。不传时会自动生成 `subagent01`、`subagent02` 这样的稳定名称。默认规则很小：带 `triggers` 时只在命中后运行；不带 `triggers` 时每次主 agent 运行都会调用该从 agent。主 agent 会把从 agent 输出作为 `Subagent results` 加入最终回答上下文。
+
+如果子 agent 是由 agent 动态创建的，挂载时传 `created_by_agent=True`。运行结果会保留这个标记，并把嵌套子 agent 结果作为树返回，方便前端展示运行对话。
 
 从 agent 可以继续添加自己的从 agent。runtime 不做安全阀，不会因为嵌套层数或循环链路强行停止；每个 agent 是否结束由自己的 workflow 决定。执行前只做一次轻量链路检查：
 
@@ -145,6 +152,8 @@ skills/echo/
 name = "echo"
 description = "Minimal example skill"
 version = "0.1.0"
+agent_created = false
+agent_can_update = false
 triggers = ["echo", "brief"]
 
 [entry]
@@ -152,6 +161,35 @@ instructions = "SKILL.md"
 ```
 
 `SKILL.md` 存放真正给 agent 的说明。runtime 会根据配置和触发词选择 skill，并把命中的说明注入本次运行。
+
+### Skill 自更新
+
+每个普通 skill 都可以标记两个字段：
+
+- `agent_created`：是否由 agent 自己创建。
+- `agent_can_update`：是否允许 agent 更新；不写时默认等于 `agent_created`。
+
+也就是说，人类写的旧 skill 默认不可更新；agent 自己创建的 skill 默认可以继续更新和优化。
+
+```python
+agent = Agent.load_from_config_file("agent.toml")
+agent.create_skill(
+    "research-note",
+    instructions="Summarize research notes with sources.",
+    description="Research note helper",
+    triggers=["research", "source"],
+)
+agent.update_skill("research-note", instructions="Write compact notes with sources.")
+agent.optimize_skill("research-note", goal="make the instruction easier to follow")
+```
+
+CLI 也提供同一组轻量入口：
+
+```bash
+super-agent skills create --config agent.toml --name research-note --instructions "Summarize research notes."
+super-agent skills update --config agent.toml --name research-note --instructions "Summarize with sources."
+super-agent skills optimize --config agent.toml --name research-note --goal "make it clearer"
+```
 
 ## MCP 格式
 
@@ -226,17 +264,20 @@ super-agent memory habits --config agent.toml
 
 ```text
 src/
-  cli.py         # CLI 入口：init、run、skills list
+  cli.py         # CLI 入口：init、run、skills、memory
   core/          # Agent、子 agent 编排、agent.toml、provider
-  skill/         # skill manifest、loader、触发词匹配、渐进式披露缓存
+  skill/         # skill manifest、loader、触发词匹配、渐进式披露缓存、自更新
   mcp/           # MCP manifest 读取与 skill 指令生成
   workflow/      # direct、plan、react、loop 的轻量 workflow
   memory/        # mini memory 与调用习惯自更新
+  frontend/mac/  # SwiftUI 桌面端：对话、配置、运行树
 ```
 
 首版刻意保持小内核。`plan`、`react`、`loop` 现在是轻量 prompt workflow，后续可以升级成真正的工具循环和 goal loop，但不把复杂度提前塞进内核。
 
 `memory` 当前采用最小 Markdown + JSON 存储。存在内容时，runtime 会把最近记忆和调用习惯加入本次运行；后续可以把它升级为完整 skill 包。
+
+macOS 前端会把会话保存成 JSON，并为每次运行生成类似文件树的运行节点。点击运行树里的主 agent 或子 agent 节点，可以查看该节点的输入与输出。
 
 ## 开发验证
 

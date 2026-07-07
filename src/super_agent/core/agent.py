@@ -1,11 +1,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 from super_agent.core.config import AgentConfig
 from super_agent.core.provider import ChatProvider, create_chat_provider
 from super_agent.memory import MiniMemory
-from super_agent.skill import ProgressiveDisclosure, SkillLoader
+from super_agent.skill import ProgressiveDisclosure, SkillLoader, SkillManifest
+from super_agent.skill.self_update import (
+    SkillUpdateRequest,
+    SkillWriteRequest,
+    create_agent_skill,
+    optimize_agent_skill,
+    update_agent_skill,
+)
 from super_agent.workflow import RunResult, SubAgentResult, create_workflow
 
 
@@ -15,6 +23,7 @@ class SubAgent:
     agent: "Agent"
     description: str
     triggers: list[str]
+    created_by_agent: bool = False
 
 
 class Agent:
@@ -41,6 +50,7 @@ class Agent:
         name: str | None = None,
         description: str = "",
         triggers: list[str] | None = None,
+        created_by_agent: bool = False,
     ) -> str:
         subagent_name = name or self._make_next_subagent_name()
         self._subagents.append(
@@ -49,12 +59,67 @@ class Agent:
                 agent=agent,
                 description=description,
                 triggers=[item.lower() for item in triggers or []],
+                created_by_agent=created_by_agent,
             )
         )
         return subagent_name
 
     def list_subagents(self) -> list[SubAgent]:
         return list(self._subagents)
+
+    def create_skill(
+        self,
+        name: str,
+        instructions: str,
+        *,
+        description: str = "",
+        triggers: list[str] | None = None,
+        version: str = "0.1.0",
+        allow_agent_update: bool = True,
+    ) -> SkillManifest:
+        return create_agent_skill(
+            self._get_first_skill_root(),
+            SkillWriteRequest(
+                name=name,
+                instructions=instructions,
+                description=description,
+                triggers=triggers,
+                version=version,
+                agent_created=True,
+                agent_can_update=allow_agent_update,
+            ),
+        )
+
+    def update_skill(
+        self,
+        name: str,
+        *,
+        instructions: str | None = None,
+        description: str | None = None,
+        triggers: list[str] | None = None,
+        version: str | None = None,
+        allow_agent_update: bool | None = None,
+    ) -> SkillManifest:
+        return update_agent_skill(
+            self.skill_loader,
+            SkillUpdateRequest(
+                name=name,
+                instructions=instructions,
+                description=description,
+                triggers=triggers,
+                version=version,
+                agent_can_update=allow_agent_update,
+            ),
+        )
+
+    def optimize_skill(self, name: str, *, goal: str) -> SkillManifest:
+        return optimize_agent_skill(
+            self.skill_loader,
+            self.provider,
+            model=self.config.model.model,
+            name=name,
+            goal=goal,
+        )
 
     def check_subagent_links(self) -> list[str]:
         warnings: list[str] = []
@@ -134,9 +199,17 @@ class Agent:
                         name=subagent.name,
                         description=subagent.description,
                         text=result.text,
+                        prompt=prompt,
+                        created_by_agent=subagent.created_by_agent,
+                        subagent_results=result.subagent_results,
                     )
                 )
         return results
+
+    def _get_first_skill_root(self) -> Path:
+        if not self.config.paths.skills:
+            raise ValueError("agent has no skill path configured")
+        return self.config.paths.skills[0]
 
 
 def _add_memory_to_system_prompt(system: str, memory: MiniMemory) -> str:

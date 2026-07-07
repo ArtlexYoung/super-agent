@@ -124,6 +124,23 @@ class SubAgentTests(unittest.TestCase):
 
             self.assertIn("Agent chain has cycle: main -> coder -> reviewer -> main", warnings)
 
+    def test_subagent_result_keeps_created_flag_and_child_results(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            main = _agent(root, "main", "main-ok")
+            coder = _agent(root, "coder", "coder-ok")
+            helper = _agent(root, "helper", "helper-ok")
+            main.add_subagent(coder, name="coder", created_by_agent=True)
+            coder.add_subagent(helper, name="helper", created_by_agent=True)
+
+            result = main.run("build this")
+
+            self.assertEqual("build this", result.subagent_results[0].prompt)
+            self.assertTrue(result.subagent_results[0].created_by_agent)
+            self.assertEqual("helper", result.subagent_results[0].subagent_results[0].name)
+            self.assertEqual("build this", result.subagent_results[0].subagent_results[0].prompt)
+            self.assertTrue(result.subagent_results[0].subagent_results[0].created_by_agent)
+
 
 def _agent(
     root: Path,

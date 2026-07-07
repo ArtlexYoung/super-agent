@@ -62,6 +62,14 @@ struct ModelProfile: Identifiable, Codable, Equatable {
     }
 }
 
+struct SkillManifestChoice: Identifiable, Equatable {
+    var name: String
+    var agentCreated: Bool
+    var agentCanUpdate: Bool
+
+    var id: String { name }
+}
+
 struct AgentTomlPathsSection: Codable, Equatable {
     var skills: [String]
     var mcp: [String]

@@ -21,6 +21,8 @@ class SkillManifest:
     entry: SkillEntry
     path: Path
     kind: str = "skill"
+    agent_created: bool = False
+    agent_can_update: bool = False
 
     @classmethod
     def load_from_file(cls, path: Path) -> "SkillManifest":
@@ -29,6 +31,7 @@ class SkillManifest:
         if not name:
             raise ValueError(f"skill manifest missing name: {path}")
         entry = data.get("entry", {})
+        agent_created = _read_bool(data, "agent_created", False)
         return cls(
             name=name,
             description=str(data.get("description", "")),
@@ -36,6 +39,8 @@ class SkillManifest:
             triggers=[str(item).lower() for item in data.get("triggers", [])],
             entry=SkillEntry(instructions=str(entry.get("instructions", "SKILL.md"))),
             path=path.parent,
+            agent_created=agent_created,
+            agent_can_update=_read_bool(data, "agent_can_update", agent_created),
         )
 
 
@@ -69,10 +74,16 @@ class SkillLoader:
         return sorted(usable, key=lambda item: item.name)
 
     def load_skill(self, name: str) -> Skill:
+        manifest = self.find_skill_manifest(name)
+        if manifest is not None:
+            return self._load_skill_from_manifest(manifest)
+        raise KeyError(f"skill not found: {name}")
+
+    def find_skill_manifest(self, name: str) -> SkillManifest | None:
         for manifest in self.list_skill_manifests():
             if manifest.name == name:
-                return self._load_skill_from_manifest(manifest)
-        raise KeyError(f"skill not found: {name}")
+                return manifest
+        return None
 
     def load_skills_for_prompt(self, prompt: str, enabled: list[str] | None = None) -> list[Skill]:
         enabled_names = set(enabled or [])
@@ -106,6 +117,8 @@ class SkillLoader:
                         entry=SkillEntry(instructions="mcp.toml"),
                         path=server.path,
                         kind="mcp",
+                        agent_created=False,
+                        agent_can_update=False,
                     )
                 )
         return manifests
@@ -129,12 +142,26 @@ def _manifest_is_disabled(manifest: SkillManifest, disabled_names: list[str]) ->
     return kind in disabled_names or name in disabled_names or f"{kind}:{name}" in disabled_names
 
 
+def _read_bool(data: dict[str, object], name: str, default: bool) -> bool:
+    value = data.get(name, default)
+    if not isinstance(value, bool):
+        raise ValueError(f"{name} must be a TOML boolean")
+    return value
+
+
 from super_agent.skill.disclosure import (  # noqa: E402
     CachedDisclosure,
     DisclosureBundle,
     DisclosureEntry,
     DisclosureEvent,
     ProgressiveDisclosure,
+)
+from super_agent.skill.self_update import (  # noqa: E402
+    SkillUpdateRequest,
+    SkillWriteRequest,
+    create_agent_skill,
+    optimize_agent_skill,
+    update_agent_skill,
 )
 
 __all__ = [
@@ -147,4 +174,9 @@ __all__ = [
     "SkillEntry",
     "SkillLoader",
     "SkillManifest",
+    "SkillUpdateRequest",
+    "SkillWriteRequest",
+    "create_agent_skill",
+    "optimize_agent_skill",
+    "update_agent_skill",
 ]

@@ -150,6 +150,10 @@ private struct ConversationListView: View {
             }
             .scrollContentBackground(.hidden)
 
+            Divider()
+
+            AgentRunTreeView()
+
             HStack {
                 Button("删除") {
                     chatStore.deleteSelectedConversation()
@@ -194,7 +198,10 @@ private struct ChatMessagesView: View {
 
             ScrollViewReader { scrollProxy in
                 ScrollView {
-                    if (chatStore.selectedConversation?.messages ?? []).isEmpty {
+                    if let node = chatStore.selectedAgentRunNode {
+                        AgentRunDetailView(node: node)
+                            .padding(24)
+                    } else if (chatStore.selectedConversation?.messages ?? []).isEmpty {
                         EmptyConversationView()
                             .padding(.top, 80)
                     } else {
@@ -221,6 +228,173 @@ private struct ChatMessagesView: View {
 
             MessageInputView()
         }
+    }
+}
+
+private struct AgentRunTreeView: View {
+    @EnvironmentObject private var chatStore: ChatStore
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("运行树")
+                    .font(.headline)
+                Spacer()
+                Button {
+                    chatStore.selectAgentRunNode(nil)
+                } label: {
+                    Image(systemName: "rectangle.stack")
+                }
+                .buttonStyle(.plain)
+                .help("返回完整对话")
+            }
+
+            let runs = chatStore.selectedConversation?.agentRuns ?? []
+            if runs.isEmpty {
+                Text("发送消息后会生成运行节点。子 agent 结果会像文件树一样挂在父节点下。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 3) {
+                        ForEach(runs) { node in
+                            AgentRunNodeRowView(node: node, depth: 0)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxHeight: 220)
+            }
+        }
+    }
+}
+
+private struct AgentRunNodeRowView: View {
+    @EnvironmentObject private var chatStore: ChatStore
+    let node: AgentRunNode
+    let depth: Int
+
+    private var isSelected: Bool {
+        chatStore.selectedAgentRunNodeID == node.id
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Button {
+                chatStore.selectAgentRunNode(node.id)
+            } label: {
+                HStack(spacing: 7) {
+                    Spacer()
+                        .frame(width: CGFloat(depth * 14))
+                    Image(systemName: node.children.isEmpty ? "doc.text" : "folder")
+                        .frame(width: 16)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(node.title.isEmpty ? node.agentName : node.title)
+                            .lineLimit(1)
+                        Text(node.agentName)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    if node.createdByAgent {
+                        Text("自建")
+                            .font(.caption2.weight(.semibold))
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(Color.accentColor.opacity(0.14))
+                            .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                .background(isSelected ? Color.accentColor.opacity(0.14) : Color.clear)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .help("查看 \(node.agentName) 的运行对话")
+
+            ForEach(node.children) { child in
+                AgentRunNodeRowView(node: child, depth: depth + 1)
+            }
+        }
+    }
+}
+
+private struct AgentRunDetailView: View {
+    @EnvironmentObject private var chatStore: ChatStore
+    let node: AgentRunNode
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(node.title.isEmpty ? "运行对话" : node.title)
+                        .font(.title3.weight(.semibold))
+                    HStack(spacing: 8) {
+                        Text(node.agentName)
+                        if node.createdByAgent {
+                            Text("agent 自建")
+                        }
+                        Text(node.updatedAt, style: .relative)
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("完整对话") {
+                    chatStore.selectAgentRunNode(nil)
+                }
+                .buttonStyle(.bordered)
+            }
+
+            RunTextBlockView(title: "输入", text: node.prompt, isResponse: false)
+            RunTextBlockView(title: "输出", text: node.response, isResponse: true)
+
+            if !node.children.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("子 agent")
+                        .font(.headline)
+                    ForEach(node.children) { child in
+                        Button {
+                            chatStore.selectAgentRunNode(child.id)
+                        } label: {
+                            HStack {
+                                Image(systemName: "arrow.turn.down.right")
+                                Text(child.title.isEmpty ? child.agentName : child.title)
+                                Spacer()
+                                Text(child.agentName)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: 760, alignment: .leading)
+    }
+}
+
+private struct RunTextBlockView: View {
+    let title: String
+    let text: String
+    let isResponse: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text(text)
+                .font(.body)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(14)
+        .background(isResponse ? Color(nsColor: .textBackgroundColor) : Color.accentColor.opacity(0.12))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
 

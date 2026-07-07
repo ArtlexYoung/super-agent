@@ -14,6 +14,8 @@ class DisclosureEntry:
     triggers: list[str]
     manifest_path: Path
     instruction_path: Path
+    agent_created: bool = False
+    agent_can_update: bool = False
 
 
 @dataclass(frozen=True)
@@ -45,7 +47,8 @@ class DisclosureBundle:
             f"- history: {self.history_path}",
         ]
         for entry in self.entries:
-            lines.append(f"- {entry.name}: {entry.description} -> {entry.instruction_path}")
+            update_label = "agent-updateable" if entry.agent_can_update else "locked"
+            lines.append(f"- {entry.name} ({update_label}): {entry.description} -> {entry.instruction_path}")
         return "\n".join(lines)
 
 
@@ -113,6 +116,8 @@ class ProgressiveDisclosure:
             triggers=manifest.triggers,
             manifest_path=self._make_manifest_cache_path(manifest.name),
             instruction_path=self._make_instruction_cache_path(manifest.name),
+            agent_created=manifest.agent_created,
+            agent_can_update=manifest.agent_can_update,
         )
 
     def _make_manifest_cache_path(self, name: str) -> Path:
@@ -142,6 +147,8 @@ def _entry_to_json(entry: DisclosureEntry) -> dict[str, object]:
         "triggers": entry.triggers,
         "manifest_path": str(entry.manifest_path),
         "instruction_path": str(entry.instruction_path),
+        "agent_created": entry.agent_created,
+        "agent_can_update": entry.agent_can_update,
     }
 
 

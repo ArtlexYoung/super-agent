@@ -11,6 +11,7 @@ final class ChatStore: ObservableObject {
     @Published private(set) var selectedConversationID: UUID? {
         didSet { saveAppStateIfReady() }
     }
+    @Published private(set) var selectedAgentRunNodeID: UUID?
     @Published var config: AgentTomlConfig {
         didSet {
             configTomlText = AgentTomlFile.makeTomlText(from: config)
@@ -32,6 +33,7 @@ final class ChatStore: ObservableObject {
     @Published var statusMessage: String?
     @Published private(set) var isSendingMessage: Bool
     @Published private(set) var availableSkillNames: [String]
+    @Published private(set) var availableSkillChoices: [SkillManifestChoice]
     @Published private(set) var availableMCPNames: [String]
 
     private var isReadyToSaveState = false
@@ -64,6 +66,7 @@ final class ChatStore: ObservableObject {
 
         conversations = initialConversations
         selectedConversationID = selectedID
+        selectedAgentRunNodeID = nil
         config = activeConfig
         configTomlText = AgentTomlFile.makeTomlText(from: activeConfig)
         configFilePath = state?.configFilePath
@@ -74,6 +77,7 @@ final class ChatStore: ObservableObject {
         statusMessage = nil
         isSendingMessage = false
         availableSkillNames = []
+        availableSkillChoices = []
         availableMCPNames = []
         refreshConfigChoices()
         isReadyToSaveState = true
@@ -93,6 +97,13 @@ final class ChatStore: ObservableObject {
         return modelProfiles.first { $0.id == selectedModelProfileID }
     }
 
+    var selectedAgentRunNode: AgentRunNode? {
+        guard let selectedAgentRunNodeID else {
+            return nil
+        }
+        return findAgentRunNode(selectedAgentRunNodeID, in: selectedConversation?.agentRuns ?? [])
+    }
+
     func createNewConversation() {
         let conversation = ChatConversation()
         conversations.insert(conversation, at: 0)
@@ -102,6 +113,7 @@ final class ChatStore: ObservableObject {
 
     func selectConversation(_ id: UUID) {
         selectedConversationID = id
+        selectedAgentRunNodeID = nil
         warningMessage = nil
     }
 
@@ -128,12 +140,21 @@ final class ChatStore: ObservableObject {
         }
         if selectedConversationID == id {
             selectedConversationID = conversations.first?.id
+            selectedAgentRunNodeID = nil
         }
         warningMessage = nil
     }
 
     func clearSelectedConversationMessages() {
-        updateSelectedConversation { $0.messages.removeAll() }
+        updateSelectedConversation {
+            $0.messages.removeAll()
+            $0.agentRuns.removeAll()
+        }
+        selectedAgentRunNodeID = nil
+    }
+
+    func selectAgentRunNode(_ id: UUID?) {
+        selectedAgentRunNodeID = id
     }
 
     func sendDraftMessage() {
@@ -156,11 +177,14 @@ final class ChatStore: ObservableObject {
             do {
                 let reply = try await ModelChatClient.sendReply(config: configSnapshot, messages: messages)
                 appendMessageToSelectedConversation(ChatMessage(role: .assistant, text: reply))
+                appendAgentRunToSelectedConversation(prompt: text, response: reply)
                 statusMessage = "已使用 \(configSnapshot.modelSummary) 回复。"
             } catch {
                 let detail = error.localizedDescription
                 warningMessage = detail
-                appendMessageToSelectedConversation(ChatMessage(role: .assistant, text: "调用失败：\(detail)"))
+                let failureText = "调用失败：\(detail)"
+                appendMessageToSelectedConversation(ChatMessage(role: .assistant, text: failureText))
+                appendAgentRunToSelectedConversation(prompt: text, response: failureText)
             }
             isSendingMessage = false
         }
@@ -264,9 +288,11 @@ final class ChatStore: ObservableObject {
     }
 
     func refreshConfigChoices() {
-        let skillNames = readSkillNamesFromConfiguredPaths()
+        let skillChoices = readSkillChoicesFromConfiguredPaths()
+        availableSkillChoices = mergeSkillChoices(configuredNames: config.agent.skills, scannedChoices: skillChoices)
+        let skillNames = availableSkillChoices.map(\.name)
         let mcpNames = readMCPNamesFromConfiguredPaths()
-        availableSkillNames = sortedUnique(config.agent.skills + skillNames)
+        availableSkillNames = skillNames
         availableMCPNames = sortedUnique(extractDisabledNames(prefix: "mcp:") + mcpNames)
         statusMessage = "已刷新可选配置项。"
     }
@@ -305,6 +331,19 @@ final class ChatStore: ObservableObject {
         }
     }
 
+    private func appendAgentRunToSelectedConversation(prompt: String, response: String) {
+        let run = AgentRunNode(
+            agentName: config.agent.name,
+            title: String(prompt.prefix(24)),
+            prompt: prompt,
+            response: response,
+            createdByAgent: false
+        )
+        updateSelectedConversation { conversation in
+            conversation.agentRuns.append(run)
+        }
+    }
+
     private func updateSelectedConversation(_ change: (inout ChatConversation) -> Void) {
         guard let selectedConversationID,
               let index = conversations.firstIndex(where: { $0.id == selectedConversationID }) else {
@@ -327,8 +366,10 @@ final class ChatStore: ObservableObject {
         return messages
     }
 
-    private func readSkillNamesFromConfiguredPaths() -> [String] {
-        scanManifestNames(in: config.paths.skills, manifestFileName: "skill.toml")
+    private func readSkillChoicesFromConfiguredPaths() -> [SkillManifestChoice] {
+        config.paths.skills.flatMap { path in
+            readManifestChoices(in: resolveConfigPath(path))
+        }
     }
 
     private func readMCPNamesFromConfiguredPaths() -> [String] {
@@ -361,18 +402,56 @@ final class ChatStore: ObservableObject {
         }
     }
 
+    private func readManifestChoices(in root: URL) -> [SkillManifestChoice] {
+        let fileManager = FileManager.default
+        let directManifest = root.appendingPathComponent("skill.toml")
+        if fileManager.fileExists(atPath: directManifest.path),
+           let choice = readSkillChoice(from: directManifest) {
+            return [choice]
+        }
+        guard let children = try? fileManager.contentsOfDirectory(
+            at: root,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return []
+        }
+        return children.compactMap { child in
+            let manifest = child.appendingPathComponent("skill.toml")
+            return fileManager.fileExists(atPath: manifest.path) ? readSkillChoice(from: manifest) : nil
+        }
+    }
+
     private func readManifestName(from url: URL) -> String? {
-        guard let text = try? String(contentsOf: url, encoding: .utf8) else {
+        readSkillManifestValues(from: url)["name"]
+    }
+
+    private func readSkillChoice(from url: URL) -> SkillManifestChoice? {
+        let values = readSkillManifestValues(from: url)
+        guard let name = values["name"] else {
             return nil
         }
+        let agentCreated = values["agent_created"] == "true"
+        let agentCanUpdate = values["agent_can_update"].map { $0 == "true" } ?? agentCreated
+        return SkillManifestChoice(name: name, agentCreated: agentCreated, agentCanUpdate: agentCanUpdate)
+    }
+
+    private func readSkillManifestValues(from url: URL) -> [String: String] {
+        guard let text = try? String(contentsOf: url, encoding: .utf8) else {
+            return [:]
+        }
+        var values: [String: String] = [:]
         for rawLine in text.components(separatedBy: .newlines) {
             let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard line.hasPrefix("name"), let equalIndex = line.firstIndex(of: "=") else {
+            guard let equalIndex = line.firstIndex(of: "=") else {
                 continue
             }
-            return cleanTomlString(String(line[line.index(after: equalIndex)...]))
+            let key = String(line[..<equalIndex]).trimmingCharacters(in: .whitespacesAndNewlines)
+            if ["name", "agent_created", "agent_can_update"].contains(key) {
+                values[key] = cleanTomlString(String(line[line.index(after: equalIndex)...]))
+            }
         }
-        return nil
+        return values
     }
 
     private func cleanTomlString(_ rawValue: String) -> String {
@@ -411,6 +490,22 @@ final class ChatStore: ObservableObject {
 
     private func sortedUnique(_ values: [String]) -> [String] {
         Array(Set(values.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty })).sorted()
+    }
+
+    private func mergeSkillChoices(
+        configuredNames: [String],
+        scannedChoices: [SkillManifestChoice]
+    ) -> [SkillManifestChoice] {
+        var choicesByName: [String: SkillManifestChoice] = [:]
+        for choice in scannedChoices {
+            choicesByName[choice.name] = choice
+        }
+        for name in configuredNames {
+            if choicesByName[name] == nil {
+                choicesByName[name] = SkillManifestChoice(name: name, agentCreated: false, agentCanUpdate: false)
+            }
+        }
+        return choicesByName.values.sorted { $0.name < $1.name }
     }
 
     private func syncSelectedModelProfileFromConfig(title: String) {

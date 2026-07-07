@@ -28,6 +28,8 @@ class ProgressiveDisclosureTests(unittest.TestCase):
             self.assertTrue(instruction.cache_path.exists())
             self.assertEqual("Always answer briefly.", disclosure.read_cache(instruction.cache_path))
             self.assertEqual("echo", index_data["skills"][0]["name"])
+            self.assertFalse(index_data["skills"][0]["agent_created"])
+            self.assertFalse(index_data["skills"][0]["agent_can_update"])
             self.assertEqual(["index", "instructions"], [item.stage for item in history])
 
     def test_agent_exposes_disclosure_cache_paths_to_model(self) -> None:

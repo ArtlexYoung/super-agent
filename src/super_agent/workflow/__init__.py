@@ -20,6 +20,9 @@ class SubAgentResult:
     name: str
     description: str
     text: str
+    prompt: str = ""
+    created_by_agent: bool = False
+    subagent_results: list["SubAgentResult"] | None = None
 
 
 class Workflow:

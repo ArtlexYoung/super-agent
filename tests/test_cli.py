@@ -55,3 +55,49 @@ class CliTests(unittest.TestCase):
             self.assertEqual(0, code)
             self.assertIn("total runs: 1", output.getvalue())
             self.assertIn("workflow direct used 1 times", output.getvalue())
+
+    def test_skills_create_and_update_manage_agent_created_skill(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            config = str(Path(tmp) / "agent.toml")
+            main(["init", "--path", tmp])
+
+            create_code = main(
+                [
+                    "skills",
+                    "create",
+                    "--config",
+                    config,
+                    "--name",
+                    "agent-note",
+                    "--description",
+                    "Agent note helper",
+                    "--trigger",
+                    "note",
+                    "--instructions",
+                    "Write compact notes.",
+                ]
+            )
+            update_code = main(
+                [
+                    "skills",
+                    "update",
+                    "--config",
+                    config,
+                    "--name",
+                    "agent-note",
+                    "--instructions",
+                    "Write compact notes with sources.",
+                ]
+            )
+
+            root = Path(tmp)
+            self.assertEqual(0, create_code)
+            self.assertEqual(0, update_code)
+            self.assertIn(
+                "agent_created = true",
+                (root / "skills" / "agent-note" / "skill.toml").read_text(encoding="utf-8"),
+            )
+            self.assertEqual(
+                "Write compact notes with sources.\n",
+                (root / "skills" / "agent-note" / "SKILL.md").read_text(encoding="utf-8"),
+            )
