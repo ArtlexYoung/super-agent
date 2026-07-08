@@ -21,6 +21,7 @@ class McpServer:
     @classmethod
     def load_from_file(cls, path: Path) -> "McpServer":
         data = tomllib.loads(path.read_text(encoding="utf-8"))
+        mcp_data = _read_mcp_section(data, path)
         name = str(data.get("name", "")).strip()
         if not name:
             raise ValueError(f"mcp manifest missing name: {path}")
@@ -29,10 +30,10 @@ class McpServer:
             description=str(data.get("description", "")),
             version=str(data.get("version", "0.1.0")),
             triggers=[str(item).lower() for item in data.get("triggers", [])],
-            transport=str(data.get("transport", "stdio")),
-            command=str(data.get("command", "")),
-            args=[str(item) for item in data.get("args", [])],
-            env=_read_env_names(data.get("env", {})),
+            transport=str(mcp_data.get("transport", "stdio")),
+            command=str(mcp_data.get("command", "")),
+            args=[str(item) for item in mcp_data.get("args", [])],
+            env=_read_env_names(mcp_data.get("env", {})),
             path=path.parent,
         )
 
@@ -50,6 +51,13 @@ class McpServer:
         if self.env:
             lines.append("Environment variables: " + ", ".join(sorted(self.env)))
         return "\n".join(line for line in lines if line)
+
+
+def _read_mcp_section(data: dict[str, Any], path: Path) -> dict[str, Any]:
+    value = data.get("mcp")
+    if not isinstance(value, dict):
+        raise ValueError(f"mcp skill manifest missing [mcp]: {path}")
+    return value
 
 
 def _read_env_names(value: Any) -> dict[str, str]:

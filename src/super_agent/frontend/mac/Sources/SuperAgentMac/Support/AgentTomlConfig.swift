@@ -10,8 +10,9 @@ struct AgentTomlConfig: Codable, Equatable {
             name: "super-agent",
             system: "You are a concise, helpful agent.",
             workflow: "direct",
+            memory: "default",
             skills: ["echo"],
-            useFeatures: ["skill", "memory", "mcp"],
+            useFeatures: ["skill"],
             disableNames: [],
             maxAgentChainDepth: nil
         ),
@@ -23,7 +24,6 @@ struct AgentTomlConfig: Codable, Equatable {
         ),
         paths: AgentTomlPathsSection(
             skills: ["skills"],
-            mcp: ["mcp"],
             memory: ".super-agent/memory"
         )
     )
@@ -37,6 +37,7 @@ struct AgentTomlAgentSection: Codable, Equatable {
     var name: String
     var system: String
     var workflow: String
+    var memory: String
     var skills: [String]
     var useFeatures: [String]
     var disableNames: [String]
@@ -64,14 +65,47 @@ struct ModelProfile: Identifiable, Codable, Equatable {
 
 struct SkillManifestChoice: Identifiable, Equatable {
     var name: String
+    var kind: String
     var agentCreated: Bool
     var agentCanUpdate: Bool
+    var freshness: Double
+    var functionGroup: String
+    var freshnessUpdatedAt: String
+    var callCount: Int
+    var successCount: Int
+    var replacementCount: Int
+    var hasRuntimeStats: Bool
 
     var id: String { name }
+
+    init(
+        name: String,
+        kind: String = "prompt",
+        agentCreated: Bool,
+        agentCanUpdate: Bool,
+        freshness: Double = 70,
+        functionGroup: String = "",
+        freshnessUpdatedAt: String = "",
+        callCount: Int = 0,
+        successCount: Int = 0,
+        replacementCount: Int = 0,
+        hasRuntimeStats: Bool = false
+    ) {
+        self.name = name
+        self.kind = kind
+        self.agentCreated = agentCreated
+        self.agentCanUpdate = agentCanUpdate
+        self.freshness = freshness
+        self.functionGroup = functionGroup.isEmpty ? name : functionGroup
+        self.freshnessUpdatedAt = freshnessUpdatedAt
+        self.callCount = callCount
+        self.successCount = successCount
+        self.replacementCount = replacementCount
+        self.hasRuntimeStats = hasRuntimeStats
+    }
 }
 
 struct AgentTomlPathsSection: Codable, Equatable {
     var skills: [String]
-    var mcp: [String]
     var memory: String
 }

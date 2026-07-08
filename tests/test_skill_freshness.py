@@ -8,6 +8,7 @@ from super_agent import Agent, AgentConfig
 from super_agent.core.provider import MockProvider
 from super_agent.skill import SkillManifest
 from super_agent.skill.freshness import SkillFreshnessStore, SkillRunRecord
+from test_helpers import write_workflow_skill
 
 
 class SkillFreshnessTests(unittest.TestCase):
@@ -95,6 +96,7 @@ instructions = "SKILL.md"
     def test_agent_run_records_skill_freshness_stats(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
+            write_workflow_skill(root)
             _write_skill(root, "echo", "general")
             config_path = _write_config(root)
             agent = Agent(AgentConfig.load_from_file(config_path), provider=MockProvider("useful answer"))
@@ -135,6 +137,7 @@ def _write_config(root: Path) -> Path:
 name = "demo"
 system = "Base system."
 workflow = "direct"
+memory = "default"
 skills = ["echo"]
 
 [model]

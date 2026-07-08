@@ -5,6 +5,7 @@ from pathlib import Path
 from super_agent import Agent, AgentConfig
 from super_agent.core.provider import MockProvider
 from super_agent.skill import SkillLoader
+from test_helpers import write_memory_skill, write_workflow_skill
 
 
 class McpSkillTests(unittest.TestCase):
@@ -13,7 +14,7 @@ class McpSkillTests(unittest.TestCase):
             root = Path(tmp)
             _write_mcp_server(root, "filesystem", "Filesystem MCP", "npx", ["-y", "@mcp/server-filesystem"])
 
-            loader = SkillLoader([], mcp_roots=[root / "mcp"])
+            loader = SkillLoader([root / "skills"])
             skill = loader.load_skill("filesystem")
             selected = loader.load_skills_for_prompt("please inspect filesystem")
 
@@ -35,26 +36,38 @@ class McpSkillTests(unittest.TestCase):
                 env={"GITHUB_TOKEN": "secret-token"},
             )
 
-            skill = SkillLoader([], mcp_roots=[root / "mcp"]).load_skill("github")
+            skill = SkillLoader([root / "skills"]).load_skill("github")
 
             self.assertIn("Environment variables: GITHUB_TOKEN", skill.instructions)
             self.assertNotIn("secret-token", skill.instructions)
 
-    def test_config_can_disable_mcp_directory_by_feature_list(self) -> None:
+    def test_mcp_skill_requires_mcp_section(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            _write_mcp_server(root, "github", "GitHub MCP", "npx", ["-y", "@mcp/server-github"])
-            config_path = _write_agent_config(root, use_features=["skill", "memory"])
-            provider = MockProvider("ok")
+            server_dir = root / "skills" / "mcp" / "bad"
+            server_dir.mkdir(parents=True)
+            (server_dir / "skill.toml").write_text(
+                """
+name = "bad"
+kind = "mcp"
+description = "Missing mcp table"
+transport = "stdio"
+command = "npx"
+args = ["-y", "@mcp/server-bad"]
 
-            result = Agent(AgentConfig.load_from_file(config_path), provider=provider).run("github")
+[entry]
+instructions = "SKILL.md"
+""".strip(),
+                encoding="utf-8",
+            )
 
-            self.assertEqual([], result.skills)
-            self.assertNotIn("GitHub MCP", provider.last_messages[0]["content"])
+            with self.assertRaises(ValueError):
+                SkillLoader([root / "skills"]).load_skill("bad")
 
     def test_config_can_disable_whole_mcp_feature_by_name_list(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
+            write_workflow_skill(root)
             _write_mcp_server(root, "github", "GitHub MCP", "npx", ["-y", "@mcp/server-github"])
             config_path = _write_agent_config(root, disable_names=["mcp"])
             provider = MockProvider("ok")
@@ -67,6 +80,8 @@ class McpSkillTests(unittest.TestCase):
     def test_config_can_disable_memory_and_named_skills_in_one_list(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
+            write_workflow_skill(root)
+            write_memory_skill(root)
             _write_skill(root, "echo", "Echo helper", "Use echo skill.")
             _write_mcp_server(root, "github", "GitHub MCP", "npx", ["-y", "@mcp/server-github"])
             memory_dir = root / ".super-agent" / "memory"
@@ -75,7 +90,7 @@ class McpSkillTests(unittest.TestCase):
             config_path = _write_agent_config(
                 root,
                 skills=["echo", "github"],
-                disable_names=["memory", "echo", "mcp:github"],
+                disable_names=["memory:default", "echo", "mcp:github"],
             )
             provider = MockProvider("ok")
 
@@ -97,19 +112,25 @@ def _write_mcp_server(
     args: list[str],
     env: dict[str, str] | None = None,
 ) -> None:
-    server_dir = root / "mcp" / name
+    server_dir = root / "skills" / "mcp" / name
     server_dir.mkdir(parents=True)
     args_text = ", ".join(f'"{item}"' for item in args)
     env_text = ""
     if env:
         env_lines = "\n".join(f'{key} = "{value}"' for key, value in env.items())
-        env_text = f"\n[env]\n{env_lines}"
-    (server_dir / "mcp.toml").write_text(
+        env_text = f"\n[mcp.env]\n{env_lines}"
+    (server_dir / "skill.toml").write_text(
         f"""
 name = "{name}"
+kind = "mcp"
 description = "{description}"
 version = "0.1.0"
 triggers = ["{name}"]
+
+[entry]
+instructions = "SKILL.md"
+
+[mcp]
 transport = "stdio"
 command = "{command}"
 args = [{args_text}]
@@ -117,6 +138,7 @@ args = [{args_text}]
 """.strip(),
         encoding="utf-8",
     )
+    (server_dir / "SKILL.md").write_text("Use this MCP skill when needed.", encoding="utf-8")
 
 
 def _write_skill(root: Path, name: str, description: str, instruction: str) -> None:
@@ -154,6 +176,7 @@ def _write_agent_config(
 name = "demo"
 system = "Base system."
 workflow = "direct"
+memory = "default"
 skills = {skills_text}
 {use_features_line}
 {disable_names_line}
@@ -164,7 +187,6 @@ model = "unit-test"
 
 [paths]
 skills = ["skills"]
-mcp = ["mcp"]
 memory = ".super-agent/memory"
 """.strip(),
         encoding="utf-8",

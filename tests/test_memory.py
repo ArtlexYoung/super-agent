@@ -4,7 +4,8 @@ from pathlib import Path
 
 from super_agent import Agent, AgentConfig
 from super_agent.core.provider import MockProvider
-from super_agent.memory import MiniMemory
+from super_agent.skill import MiniMemory
+from test_helpers import write_memory_skill, write_workflow_skill
 
 
 class MiniMemoryTests(unittest.TestCase):
@@ -20,6 +21,8 @@ class MiniMemoryTests(unittest.TestCase):
     def test_agent_includes_memory_when_memory_file_exists(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
+            write_workflow_skill(root)
+            write_memory_skill(root)
             (root / ".super-agent" / "memory").mkdir(parents=True)
             (root / ".super-agent" / "memory" / "memory.md").write_text(
                 "- User likes concise answers.\n",
@@ -32,6 +35,7 @@ class MiniMemoryTests(unittest.TestCase):
 name = "demo"
 system = "Base system."
 workflow = "direct"
+memory = "default"
 skills = []
 
 [model]
@@ -68,6 +72,8 @@ memory = ".super-agent/memory"
     def test_agent_updates_usage_habits_after_successful_run(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
+            write_workflow_skill(root)
+            write_memory_skill(root)
             config_path = root / "agent.toml"
             config_path.write_text(
                 """
@@ -75,6 +81,7 @@ memory = ".super-agent/memory"
 name = "demo"
 system = "Base system."
 workflow = "direct"
+memory = "default"
 skills = []
 
 [model]

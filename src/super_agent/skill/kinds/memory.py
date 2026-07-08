@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import json
+import tomllib
 from pathlib import Path
 from typing import Any
+
+from super_agent.skill.manifest import SkillManifest
 
 
 HABITS_FILE = "habits.json"
@@ -99,3 +102,18 @@ def _build_count_lines(label: str, counts: object) -> list[str]:
     if not isinstance(counts, dict):
         return []
     return [f"- {label} {name} used {count} times" for name, count in sorted(counts.items())]
+
+
+def create_memory_from_skill_manifest(manifest: SkillManifest, root: Path) -> MiniMemory:
+    if manifest.kind != "memory":
+        raise ValueError(f"skill is not a memory kind: {manifest.name}")
+    _read_memory_section(manifest.path / "skill.toml")
+    return MiniMemory(root)
+
+
+def _read_memory_section(path: Path) -> dict[str, Any]:
+    data = tomllib.loads(path.read_text(encoding="utf-8"))
+    value = data.get("memory")
+    if not isinstance(value, dict):
+        raise ValueError(f"memory skill manifest missing [memory]: {path}")
+    return value

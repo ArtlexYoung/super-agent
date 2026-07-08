@@ -6,8 +6,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from super_agent.core.provider import ChatProvider, Message
-from super_agent.skill import SkillLoader, SkillManifest
 from super_agent.skill.freshness import DEFAULT_FRESHNESS
+from super_agent.skill.loader import SkillLoader
+from super_agent.skill.manifest import SkillManifest
 
 
 SKILL_INSTRUCTION_FILE = "SKILL.md"
@@ -18,6 +19,7 @@ class SkillWriteRequest:
     name: str
     instructions: str
     description: str = ""
+    kind: str = "prompt"
     triggers: list[str] | None = None
     version: str = "0.1.0"
     agent_created: bool = True
@@ -53,6 +55,7 @@ def create_agent_skill(skill_root: Path, request: SkillWriteRequest) -> SkillMan
             name=skill_name,
             instructions=instructions,
             description=request.description,
+            kind=request.kind,
             triggers=request.triggers,
             version=request.version,
             agent_created=request.agent_created,
@@ -69,8 +72,8 @@ def update_agent_skill(loader: SkillLoader, request: SkillUpdateRequest) -> Skil
     manifest = loader.find_skill_manifest(request.name)
     if manifest is None:
         raise KeyError(f"skill not found: {request.name}")
-    if manifest.kind != "skill":
-        raise PermissionError(f"only normal skill files can be updated by agent: {request.name}")
+    if manifest.kind != "prompt":
+        raise PermissionError(f"only prompt skill files can be updated by agent: {request.name}")
     if not manifest.agent_can_update:
         raise PermissionError(f"skill does not allow agent update: {request.name}")
 
@@ -82,6 +85,7 @@ def update_agent_skill(loader: SkillLoader, request: SkillUpdateRequest) -> Skil
         name=manifest.name,
         instructions=instructions,
         description=manifest.description if request.description is None else request.description,
+        kind=manifest.kind,
         triggers=manifest.triggers if request.triggers is None else request.triggers,
         version=manifest.version if request.version is None else request.version,
         agent_created=manifest.agent_created,
@@ -127,6 +131,7 @@ def _build_skill_manifest_text(request: SkillWriteRequest) -> str:
     return "\n".join(
         [
             f"name = {_quote_toml_string(request.name)}",
+            f"kind = {_quote_toml_string(request.kind)}",
             f"description = {_quote_toml_string(request.description)}",
             f"version = {_quote_toml_string(request.version)}",
             f"agent_created = {_quote_toml_bool(request.agent_created)}",

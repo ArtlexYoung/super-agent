@@ -1,4 +1,5 @@
 name = "echo"
+kind = "prompt"
 description = "Minimal example skill"
 version = "0.1.0"
 agent_created = false

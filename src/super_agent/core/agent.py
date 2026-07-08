@@ -5,9 +5,20 @@ from pathlib import Path
 
 from super_agent.core.config import AgentConfig
 from super_agent.core.provider import ChatProvider, create_chat_provider
-from super_agent.memory import MiniMemory
-from super_agent.skill import ProgressiveDisclosure, Skill, SkillLoader, SkillManifest
-from super_agent.skill.freshness import DEFAULT_FRESHNESS, SkillFreshnessStore, SkillRunRecord
+from super_agent.skill import (
+    MiniMemory,
+    ProgressiveDisclosure,
+    RunResult,
+    Skill,
+    SkillFreshnessStore,
+    SkillLoader,
+    SkillManifest,
+    SkillRunRecord,
+    SubAgentResult,
+    create_memory_from_skill_manifest,
+    create_workflow_from_skill_manifest,
+)
+from super_agent.skill.freshness import DEFAULT_FRESHNESS
 from super_agent.skill.self_update import (
     SkillUpdateRequest,
     SkillWriteRequest,
@@ -15,7 +26,6 @@ from super_agent.skill.self_update import (
     optimize_agent_skill,
     update_agent_skill,
 )
-from super_agent.workflow import RunResult, SubAgentResult, create_workflow
 
 
 @dataclass(frozen=True)
@@ -153,10 +163,10 @@ class Agent:
         include_subagents: bool = True,
         check_subagent_links_before_run: bool = True,
     ) -> RunResult:
-        memory = MiniMemory(self.config.paths.memory) if _should_use_feature(self.config, "memory") else None
+        memory = self._create_memory_for_agent_run()
         disclosure = ProgressiveDisclosure(self.skill_loader, self.config.paths.memory / "disclosure")
         disclosure_bundle = disclosure.prepare_disclosure_for_prompt(prompt, self.config.agent.skills)
-        workflow = create_workflow(self.config.agent.workflow)
+        workflow = self._create_workflow_for_agent_run()
         warning_messages = self.check_subagent_links() if include_subagents and check_subagent_links_before_run else []
         subagent_results = self._run_subagents_that_match_prompt(prompt) if include_subagents else []
         system = self.config.agent.system
@@ -225,6 +235,18 @@ class Agent:
             raise ValueError("agent has no skill path configured")
         return self.config.paths.skills[0]
 
+    def _create_memory_for_agent_run(self) -> MiniMemory | None:
+        manifest = self.skill_loader.find_skill_manifest_by_kind(self.config.agent.memory, "memory")
+        if manifest is None:
+            return None
+        return create_memory_from_skill_manifest(manifest, self.config.paths.memory)
+
+    def _create_workflow_for_agent_run(self) -> Workflow:
+        manifest = self.skill_loader.find_skill_manifest_by_kind(self.config.agent.workflow, "workflow")
+        if manifest is None:
+            raise KeyError(f"workflow skill not found: {self.config.agent.workflow}")
+        return create_workflow_from_skill_manifest(manifest)
+
     def _record_skill_freshness(self, skills: list[Skill], prompt: str, output: str, *, success: bool) -> None:
         if not skills:
             return
@@ -268,8 +290,7 @@ def _prompt_matches_subagent_triggers(subagent: SubAgent, prompt: str) -> bool:
 
 def create_skill_loader_for_agent_config(config: AgentConfig) -> SkillLoader:
     skill_roots = config.paths.skills if _should_use_feature(config, "skill") else []
-    mcp_roots = config.paths.mcp if _should_use_feature(config, "mcp") else []
-    return SkillLoader(skill_roots, mcp_roots=mcp_roots, disabled_names=config.agent.disable_names)
+    return SkillLoader(skill_roots, disabled_names=config.agent.disable_names)
 
 
 def _should_use_feature(config: AgentConfig, name: str) -> bool:

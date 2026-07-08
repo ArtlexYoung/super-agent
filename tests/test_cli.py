@@ -17,7 +17,11 @@ class CliTests(unittest.TestCase):
             self.assertTrue((root / "agent.toml").exists())
             self.assertTrue((root / "skills" / "echo" / "skill.toml").exists())
             self.assertTrue((root / "skills" / "echo" / "SKILL.md").exists())
-            self.assertTrue((root / "mcp" / "filesystem" / "mcp.toml").exists())
+            self.assertTrue((root / "skills" / "mcp" / "filesystem" / "skill.toml").exists())
+            self.assertTrue((root / "skills" / "mcp" / "filesystem" / "SKILL.md").exists())
+            self.assertTrue((root / "skills" / "memory" / "default" / "skill.toml").exists())
+            self.assertTrue((root / "skills" / "workflow" / "direct" / "skill.toml").exists())
+            self.assertFalse((root / "mcp").exists())
 
     def test_skills_list_prints_available_skills(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

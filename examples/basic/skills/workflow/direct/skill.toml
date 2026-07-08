@@ -1,0 +1,8 @@
+name = "direct"
+kind = "workflow"
+description = "Direct workflow"
+version = "0.1.0"
+triggers = []
+
+[workflow]
+mode = "direct"

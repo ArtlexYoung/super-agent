@@ -4,7 +4,12 @@ Skill is all you need.
 
 Super Agent 是一个简单、轻量、配置化的 **skill-first agent runtime**。
 
-将 agent 能力拆成可渐进加载的 skill：prompt、工具、记忆、workflow 都可以用同一套格式声明、组合和复用。
+全Skill、全自动、全进化
+
+具体的：
+1. 全Skill：将 agent 能力拆成可渐进加载的 skill：prompt、工具、记忆、workflow 都可以用同一套格式声明、组合和复用。
+2. 全自动：agent自动控制一切。
+3. 全进化：所有依赖均可进化。
 
 验证全skill化agent的可行性。
 
@@ -107,8 +112,9 @@ for warning in main.check_subagent_links():
 name = "super-agent"
 system = "You are a concise, helpful agent."
 workflow = "direct"
+memory = "default"
 skills = ["echo"]
-use_features = ["skill", "memory", "mcp"]
+use_features = ["skill"]
 disable_names = []
 # 可选；不配置表示无限深度。超过后只 warning，不阻止执行。
 max_agent_chain_depth = 5
@@ -119,18 +125,19 @@ model = "mock"
 
 [paths]
 skills = ["skills"]
-mcp = ["mcp"]
 memory = ".super-agent/memory"
 ```
 
-`use_features` 控制启用哪些目录能力，默认等于 `["skill", "memory", "mcp"]`。`disable_names` 是批量关闭列表，可以写功能名，也可以写具体 skill 名：
+`workflow` 和 `memory` 是名称选择器，分别选择 `kind = "workflow"` 和 `kind = "memory"` 的 skill。`paths.memory` 只表示记忆数据目录，不表示记忆能力目录。
+
+`use_features` 控制是否扫描统一技能树，默认等于 `["skill"]`。`disable_names` 是批量关闭列表，可以写 kind，也可以写具体 skill 名：
 
 ```toml
 [agent]
-disable_names = ["memory", "skill:echo", "mcp:github"]
+disable_names = ["memory:default", "workflow:direct", "prompt:echo", "mcp:github"]
 ```
 
-不带前缀的名字会同时匹配普通 skill 和 MCP skill，例如 `disable_names = ["github"]` 会关闭名为 `github` 的注册项。
+不带前缀的名字会同时匹配所有 skill kind，例如 `disable_names = ["github"]` 会关闭名为 `github` 的注册项。
 
 当前 provider：
 
@@ -152,6 +159,7 @@ skills/echo/
 
 ```toml
 name = "echo"
+kind = "prompt"
 description = "Minimal example skill"
 version = "0.1.0"
 agent_created = false
@@ -165,6 +173,13 @@ instructions = "SKILL.md"
 ```
 
 `SKILL.md` 存放真正给 agent 的说明。runtime 会根据配置和触发词选择 skill，并把命中的说明注入本次运行。
+
+`kind` 是唯一分类依据：
+
+- `prompt`：普通提示词 skill，读取 `SKILL.md`。
+- `mcp`：MCP 工具 skill，读取 `[mcp]`。
+- `memory`：记忆行为 skill，读取 `[memory]`，数据仍写入 `[paths].memory`。
+- `workflow`：执行流程 skill，读取 `[workflow]`。
 
 ### Skill 保鲜度
 
@@ -229,31 +244,38 @@ super-agent skills update --config agent.toml --name research-note --instruction
 super-agent skills optimize --config agent.toml --name research-note --goal "make it clearer"
 ```
 
-## MCP 格式
+## MCP Skill 格式
 
-MCP 也注册成 skill，放在 `mcp/` 目录下：
+MCP 也是一种 skill，放在统一 `skills/` 目录下：
 
 ```text
-mcp/filesystem/
-  mcp.toml
+skills/mcp/filesystem/
+  skill.toml
+  SKILL.md
 ```
 
-`mcp.toml`：
+`skill.toml`：
 
 ```toml
 name = "filesystem"
+kind = "mcp"
 description = "Example stdio MCP server"
 version = "0.1.0"
 triggers = ["filesystem", "files"]
+
+[entry]
+instructions = "SKILL.md"
+
+[mcp]
 transport = "stdio"
 command = "npx"
 args = ["-y", "@modelcontextprotocol/server-filesystem"]
 
-[env]
+[mcp.env]
 ROOT_PATH = "/tmp"
 ```
 
-runtime 会把 MCP manifest 转成一个普通 skill。环境变量只会把变量名写入提示词，不会把值注入模型上下文。
+runtime 会按 `kind = "mcp"` 把它加载成 MCP skill。环境变量只会把变量名写入提示词，不会把值注入模型上下文。
 
 ## 动态渐进式披露
 
@@ -278,6 +300,21 @@ runtime 会把 MCP manifest 转成一个普通 skill。环境变量只会把变�
 
 ## 记忆自更新
 
+记忆也是一种 skill：
+
+```text
+skills/memory/default/
+  skill.toml
+```
+
+```toml
+name = "default"
+kind = "memory"
+description = "Default memory behavior"
+
+[memory]
+```
+
 `MiniMemory` 现在会自动更新调用方式与习惯：
 
 ```text
@@ -298,22 +335,46 @@ runtime 会把 MCP manifest 转成一个普通 skill。环境变量只会把变�
 super-agent memory habits --config agent.toml
 ```
 
+## Workflow Skill 格式
+
+workflow 也是一种 skill：
+
+```text
+skills/workflow/direct/
+  skill.toml
+```
+
+```toml
+name = "direct"
+kind = "workflow"
+description = "Direct workflow"
+
+[workflow]
+mode = "direct"
+```
+
+内置 `mode` 当前支持 `direct`、`plan`、`react`、`loop`。也可以通过 `instruction` 给 workflow 增加额外提示：
+
+```toml
+[workflow]
+mode = "plan"
+instruction = "Prefer short numbered steps."
+```
+
 ## 架构
 
 ```text
 src/
   cli.py         # CLI 入口：init、run、skills、memory
   core/          # Agent、子 agent 编排、agent.toml、provider
-  skill/         # skill manifest、loader、触发词匹配、渐进式披露缓存、自更新
-  mcp/           # MCP manifest 读取与 skill 指令生成
-  workflow/      # direct、plan、react、loop 的轻量 workflow
-  memory/        # mini memory 与调用习惯自更新
+  skill/         # manifest、loader、kind、渐进式披露缓存、自更新、保鲜度
+    kinds/       # prompt、mcp、memory、workflow 等 skill kind
   frontend/mac/  # SwiftUI 桌面端：对话、配置、运行树
 ```
 
-首版刻意保持小内核。`plan`、`react`、`loop` 现在是轻量 prompt workflow，后续可以升级成真正的工具循环和 goal loop，但不把复杂度提前塞进内核。
+首版刻意保持小内核。`plan`、`react`、`loop` 现在是轻量 workflow skill，后续可以升级成真正的工具循环和 goal loop，但不把复杂度提前塞进内核。
 
-`memory` 当前采用最小 Markdown + JSON 存储。存在内容时，runtime 会把最近记忆和调用习惯加入本次运行；后续可以把它升级为完整 skill 包。
+`memory` 当前采用最小 Markdown + JSON 存储，实现在 `skill/kinds/memory.py`。存在内容时，runtime 会把最近记忆和调用习惯加入本次运行。
 
 macOS 前端会把会话保存成 JSON，并为每次运行生成类似文件树的运行节点。点击运行树里的主 agent 或子 agent 节点，可以查看该节点的输入与输出。
 
@@ -327,6 +388,6 @@ PYTHONPATH=src python3 -m unittest discover -s tests
 
 - 内核只负责装配和运行，不持有业务 prompt。
 - skill 是扩展边界，不是写死在代码里的分支。
-- memory、workflow、tool 都应该能逐步迁移成 skill。
+- prompt、mcp、memory、workflow 都用 `skill.toml` 和 `kind` 分类。
 - 默认失败要清楚，不用隐式 fallback 掩盖配置错误。
 - 新能力先用最小 API 跑通，再沉淀成稳定 schema。

@@ -36,6 +36,7 @@ enum AgentTomlFile {
                 name: try readString(agentValues["name"]) ?? fallback.agent.name,
                 system: try readString(agentValues["system"]) ?? fallback.agent.system,
                 workflow: try readString(agentValues["workflow"]) ?? fallback.agent.workflow,
+                memory: try readString(agentValues["memory"]) ?? fallback.agent.memory,
                 skills: try readStringArray(agentValues["skills"]) ?? fallback.agent.skills,
                 useFeatures: try readStringArray(agentValues["use_features"]) ?? fallback.agent.useFeatures,
                 disableNames: try readStringArray(agentValues["disable_names"]) ?? fallback.agent.disableNames,
@@ -49,7 +50,6 @@ enum AgentTomlFile {
             ),
             paths: AgentTomlPathsSection(
                 skills: try readStringArray(pathValues["skills"]) ?? fallback.paths.skills,
-                mcp: try readStringArray(pathValues["mcp"]) ?? fallback.paths.mcp,
                 memory: try readString(pathValues["memory"]) ?? fallback.paths.memory
             )
         )
@@ -61,6 +61,7 @@ enum AgentTomlFile {
         lines.append("name = \(quote(config.agent.name))")
         lines.append("system = \(quote(config.agent.system))")
         lines.append("workflow = \(quote(config.agent.workflow))")
+        lines.append("memory = \(quote(config.agent.memory))")
         lines.append("skills = \(quoteArray(config.agent.skills))")
         lines.append("use_features = \(quoteArray(config.agent.useFeatures))")
         lines.append("disable_names = \(quoteArray(config.agent.disableNames))")
@@ -80,7 +81,6 @@ enum AgentTomlFile {
         lines.append("")
         lines.append("[paths]")
         lines.append("skills = \(quoteArray(config.paths.skills))")
-        lines.append("mcp = \(quoteArray(config.paths.mcp))")
         lines.append("memory = \(quote(config.paths.memory))")
         lines.append("")
         return lines.joined(separator: "\n")

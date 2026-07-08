@@ -5,6 +5,7 @@ from pathlib import Path
 from super_agent import Agent, AgentConfig
 from super_agent.core.provider import MockProvider
 from super_agent.skill import SkillLoader
+from test_helpers import write_workflow_skill
 
 
 class ConfigSkillAgentTests(unittest.TestCase):
@@ -18,9 +19,10 @@ class ConfigSkillAgentTests(unittest.TestCase):
 name = "demo"
 system = "You are concise."
 workflow = "direct"
+memory = "default"
 skills = ["echo"]
 max_agent_chain_depth = 4
-use_features = ["skill", "memory", "mcp"]
+use_features = ["skill"]
 disable_names = ["mcp:github"]
 
 [model]
@@ -29,7 +31,6 @@ model = "unit-test"
 
 [paths]
 skills = ["skills"]
-mcp = ["mcp"]
 memory = ".super-agent/memory"
 """.strip(),
                 encoding="utf-8",
@@ -39,13 +40,36 @@ memory = ".super-agent/memory"
 
             self.assertEqual("demo", config.agent.name)
             self.assertEqual("direct", config.agent.workflow)
+            self.assertEqual("default", config.agent.memory)
             self.assertEqual(["echo"], config.agent.skills)
             self.assertEqual(4, config.agent.max_agent_chain_depth)
-            self.assertEqual(["skill", "memory", "mcp"], config.agent.use_features)
+            self.assertEqual(["skill"], config.agent.use_features)
             self.assertEqual(["mcp:github"], config.agent.disable_names)
             self.assertEqual("mock", config.model.provider)
             self.assertEqual([root / "skills"], config.paths.skills)
-            self.assertEqual([root / "mcp"], config.paths.mcp)
+
+    def test_default_features_do_not_include_legacy_mcp_feature(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config_path = root / "agent.toml"
+            config_path.write_text(
+                """
+[agent]
+name = "demo"
+
+[model]
+provider = "mock"
+model = "unit-test"
+
+[paths]
+skills = ["skills"]
+""".strip(),
+                encoding="utf-8",
+            )
+
+            config = AgentConfig.load_from_file(config_path)
+
+            self.assertEqual(["skill"], config.agent.use_features)
 
     def test_skill_loader_reads_manifest_and_instruction(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -76,6 +100,7 @@ instructions = "SKILL.md"
     def test_agent_direct_workflow_includes_configured_skill_context(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
+            write_workflow_skill(root)
             skill_dir = root / "skills" / "echo"
             skill_dir.mkdir(parents=True)
             (skill_dir / "skill.toml").write_text(
@@ -98,6 +123,7 @@ instructions = "SKILL.md"
 name = "demo"
 system = "Base system."
 workflow = "direct"
+memory = "default"
 skills = ["echo"]
 
 [model]

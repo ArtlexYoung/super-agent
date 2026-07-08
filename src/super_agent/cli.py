@@ -6,8 +6,7 @@ from typing import Sequence
 
 from super_agent import Agent, AgentConfig
 from super_agent.core import create_skill_loader_for_agent_config
-from super_agent.memory import MiniMemory
-from super_agent.skill import SkillFreshnessStore
+from super_agent.skill import MiniMemory, SkillFreshnessStore
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -71,13 +70,20 @@ def _build_parser() -> argparse.ArgumentParser:
 def _run_init_command(root: Path) -> int:
     root.mkdir(parents=True, exist_ok=True)
     skill_dir = root / "skills" / "echo"
-    mcp_dir = root / "mcp" / "filesystem"
+    mcp_skill_dir = root / "skills" / "mcp" / "filesystem"
+    memory_skill_dir = root / "skills" / "memory" / "default"
+    workflow_skill_dir = root / "skills" / "workflow" / "direct"
     skill_dir.mkdir(parents=True, exist_ok=True)
-    mcp_dir.mkdir(parents=True, exist_ok=True)
+    mcp_skill_dir.mkdir(parents=True, exist_ok=True)
+    memory_skill_dir.mkdir(parents=True, exist_ok=True)
+    workflow_skill_dir.mkdir(parents=True, exist_ok=True)
     _write_file_if_missing(root / "agent.toml", _default_agent_config())
     _write_file_if_missing(skill_dir / "skill.toml", _default_skill_manifest())
     _write_file_if_missing(skill_dir / "SKILL.md", "Answer briefly and clearly.\n")
-    _write_file_if_missing(mcp_dir / "mcp.toml", _default_mcp_manifest())
+    _write_file_if_missing(mcp_skill_dir / "skill.toml", _default_mcp_skill_manifest())
+    _write_file_if_missing(mcp_skill_dir / "SKILL.md", "Use this skill when filesystem MCP access is needed.\n")
+    _write_file_if_missing(memory_skill_dir / "skill.toml", _default_memory_skill_manifest())
+    _write_file_if_missing(workflow_skill_dir / "skill.toml", _default_workflow_skill_manifest())
     print(f"Initialized super-agent project at {root}")
     return 0
 
@@ -204,8 +210,9 @@ def _default_agent_config() -> str:
 name = "super-agent"
 system = "You are a concise, helpful agent."
 workflow = "direct"
+memory = "default"
 skills = ["echo"]
-use_features = ["skill", "memory", "mcp"]
+use_features = ["skill"]
 disable_names = []
 
 [model]
@@ -214,7 +221,6 @@ model = "mock"
 
 [paths]
 skills = ["skills"]
-mcp = ["mcp"]
 memory = ".super-agent/memory"
 """.lstrip()
 
@@ -222,6 +228,7 @@ memory = ".super-agent/memory"
 def _default_skill_manifest() -> str:
     return """
 name = "echo"
+kind = "prompt"
 description = "Minimal example skill"
 version = "0.1.0"
 agent_created = false
@@ -235,15 +242,46 @@ instructions = "SKILL.md"
 """.lstrip()
 
 
-def _default_mcp_manifest() -> str:
+def _default_mcp_skill_manifest() -> str:
     return """
 name = "filesystem"
+kind = "mcp"
 description = "Example stdio MCP server"
 version = "0.1.0"
 triggers = ["filesystem", "files"]
+
+[entry]
+instructions = "SKILL.md"
+
+[mcp]
 transport = "stdio"
 command = "npx"
 args = ["-y", "@modelcontextprotocol/server-filesystem"]
+""".lstrip()
+
+
+def _default_memory_skill_manifest() -> str:
+    return """
+name = "default"
+kind = "memory"
+description = "Default memory behavior"
+version = "0.1.0"
+triggers = []
+
+[memory]
+""".lstrip()
+
+
+def _default_workflow_skill_manifest() -> str:
+    return """
+name = "direct"
+kind = "workflow"
+description = "Direct workflow"
+version = "0.1.0"
+triggers = []
+
+[workflow]
+mode = "direct"
 """.lstrip()
 
 

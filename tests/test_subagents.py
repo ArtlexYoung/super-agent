@@ -4,6 +4,7 @@ from pathlib import Path
 
 from super_agent import Agent, AgentConfig
 from super_agent.core.provider import MockProvider
+from test_helpers import write_workflow_skill
 
 
 class SubAgentTests(unittest.TestCase):
@@ -150,6 +151,7 @@ def _agent(
     max_agent_chain_depth: int | None = None,
 ) -> Agent:
     config_path = root / f"{name}.toml"
+    write_workflow_skill(root)
     memory_path = f".super-agent/memory/{name}"
     max_depth_line = "" if max_agent_chain_depth is None else f"max_agent_chain_depth = {max_agent_chain_depth}"
     config_path.write_text(
@@ -158,6 +160,7 @@ def _agent(
 name = "{name}"
 system = "{name} system."
 workflow = "direct"
+memory = "default"
 skills = []
 {max_depth_line}
 

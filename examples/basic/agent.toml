@@ -2,8 +2,9 @@
 name = "basic"
 system = "You are a concise, helpful agent."
 workflow = "direct"
+memory = "default"
 skills = ["echo"]
-use_features = ["skill", "memory", "mcp"]
+use_features = ["skill"]
 disable_names = []
 
 [model]
@@ -12,5 +13,4 @@ model = "mock"
 
 [paths]
 skills = ["skills"]
-mcp = ["mcp"]
 memory = ".super-agent/memory"

@@ -34,6 +34,8 @@ final class ChatStore: ObservableObject {
     @Published private(set) var isSendingMessage: Bool
     @Published private(set) var availableSkillNames: [String]
     @Published private(set) var availableSkillChoices: [SkillManifestChoice]
+    @Published private(set) var availableMemoryChoices: [SkillManifestChoice]
+    @Published private(set) var availableWorkflowChoices: [SkillManifestChoice]
     @Published private(set) var availableMCPNames: [String]
 
     private var isReadyToSaveState = false
@@ -78,6 +80,8 @@ final class ChatStore: ObservableObject {
         isSendingMessage = false
         availableSkillNames = []
         availableSkillChoices = []
+        availableMemoryChoices = []
+        availableWorkflowChoices = []
         availableMCPNames = []
         refreshConfigChoices()
         isReadyToSaveState = true
@@ -288,11 +292,15 @@ final class ChatStore: ObservableObject {
     }
 
     func refreshConfigChoices() {
-        let skillChoices = readSkillChoicesFromConfiguredPaths()
-        availableSkillChoices = mergeSkillChoices(configuredNames: config.agent.skills, scannedChoices: skillChoices)
-        let skillNames = availableSkillChoices.map(\.name)
-        let mcpNames = readMCPNamesFromConfiguredPaths()
-        availableSkillNames = skillNames
+        let allSkillChoices = mergeSkillChoices(
+            configuredNames: config.agent.skills,
+            scannedChoices: readSkillChoicesFromConfiguredPaths()
+        )
+        availableSkillChoices = allSkillChoices.filter { $0.kind == "prompt" }
+        availableMemoryChoices = allSkillChoices.filter { $0.kind == "memory" }
+        availableWorkflowChoices = allSkillChoices.filter { $0.kind == "workflow" }
+        availableSkillNames = allSkillChoices.map(\.name)
+        let mcpNames = allSkillChoices.filter { $0.kind == "mcp" }.map(\.name)
         availableMCPNames = sortedUnique(extractDisabledNames(prefix: "mcp:") + mcpNames)
         statusMessage = "已刷新可选配置项。"
     }
@@ -367,104 +375,10 @@ final class ChatStore: ObservableObject {
     }
 
     private func readSkillChoicesFromConfiguredPaths() -> [SkillManifestChoice] {
-        config.paths.skills.flatMap { path in
-            readManifestChoices(in: resolveConfigPath(path))
-        }
-    }
-
-    private func readMCPNamesFromConfiguredPaths() -> [String] {
-        scanManifestNames(in: config.paths.mcp, manifestFileName: "mcp.toml")
-    }
-
-    private func scanManifestNames(in paths: [String], manifestFileName: String) -> [String] {
-        paths.flatMap { path in
-            readManifestNames(in: resolveConfigPath(path), manifestFileName: manifestFileName)
-        }
-    }
-
-    private func readManifestNames(in root: URL, manifestFileName: String) -> [String] {
-        let fileManager = FileManager.default
-        let directManifest = root.appendingPathComponent(manifestFileName)
-        if fileManager.fileExists(atPath: directManifest.path),
-           let name = readManifestName(from: directManifest) {
-            return [name]
-        }
-        guard let children = try? fileManager.contentsOfDirectory(
-            at: root,
-            includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles]
-        ) else {
-            return []
-        }
-        return children.compactMap { child in
-            let manifest = child.appendingPathComponent(manifestFileName)
-            return fileManager.fileExists(atPath: manifest.path) ? readManifestName(from: manifest) : nil
-        }
-    }
-
-    private func readManifestChoices(in root: URL) -> [SkillManifestChoice] {
-        let fileManager = FileManager.default
-        let directManifest = root.appendingPathComponent("skill.toml")
-        if fileManager.fileExists(atPath: directManifest.path),
-           let choice = readSkillChoice(from: directManifest) {
-            return [choice]
-        }
-        guard let children = try? fileManager.contentsOfDirectory(
-            at: root,
-            includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles]
-        ) else {
-            return []
-        }
-        return children.compactMap { child in
-            let manifest = child.appendingPathComponent("skill.toml")
-            return fileManager.fileExists(atPath: manifest.path) ? readSkillChoice(from: manifest) : nil
-        }
-    }
-
-    private func readManifestName(from url: URL) -> String? {
-        readSkillManifestValues(from: url)["name"]
-    }
-
-    private func readSkillChoice(from url: URL) -> SkillManifestChoice? {
-        let values = readSkillManifestValues(from: url)
-        guard let name = values["name"] else {
-            return nil
-        }
-        let agentCreated = values["agent_created"] == "true"
-        let agentCanUpdate = values["agent_can_update"].map { $0 == "true" } ?? agentCreated
-        return SkillManifestChoice(name: name, agentCreated: agentCreated, agentCanUpdate: agentCanUpdate)
-    }
-
-    private func readSkillManifestValues(from url: URL) -> [String: String] {
-        guard let text = try? String(contentsOf: url, encoding: .utf8) else {
-            return [:]
-        }
-        var values: [String: String] = [:]
-        for rawLine in text.components(separatedBy: .newlines) {
-            let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard let equalIndex = line.firstIndex(of: "=") else {
-                continue
-            }
-            let key = String(line[..<equalIndex]).trimmingCharacters(in: .whitespacesAndNewlines)
-            if ["name", "agent_created", "agent_can_update"].contains(key) {
-                values[key] = cleanTomlString(String(line[line.index(after: equalIndex)...]))
-            }
-        }
-        return values
-    }
-
-    private func cleanTomlString(_ rawValue: String) -> String {
-        let value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        if value.hasPrefix("\""), value.hasSuffix("\""),
-           let data = value.data(using: .utf8),
-           let text = try? JSONDecoder().decode(String.self, from: data) {
-            return text
-        }
-        if value.hasPrefix("'"), value.hasSuffix("'") {
-            return String(value.dropFirst().dropLast())
-        }
-        return value
+        SkillManifestScanner.readSkillChoices(
+            in: config.paths.skills.map(resolveConfigPath),
+            memoryURL: resolveConfigPath(config.paths.memory)
+        )
     }
 
     private func resolveConfigPath(_ path: String) -> URL {
@@ -498,11 +412,12 @@ final class ChatStore: ObservableObject {
     ) -> [SkillManifestChoice] {
         var choicesByName: [String: SkillManifestChoice] = [:]
         for choice in scannedChoices {
-            choicesByName[choice.name] = choice
+            choicesByName["\(choice.kind):\(choice.name)"] = choice
         }
         for name in configuredNames {
-            if choicesByName[name] == nil {
-                choicesByName[name] = SkillManifestChoice(name: name, agentCreated: false, agentCanUpdate: false)
+            let key = "prompt:\(name)"
+            if choicesByName[key] == nil {
+                choicesByName[key] = SkillManifestChoice(name: name, kind: "prompt", agentCreated: false, agentCanUpdate: false)
             }
         }
         return choicesByName.values.sorted { $0.name < $1.name }

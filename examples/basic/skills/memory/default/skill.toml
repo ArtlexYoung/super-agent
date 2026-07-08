@@ -1,0 +1,7 @@
+name = "default"
+kind = "memory"
+description = "Default memory behavior"
+version = "0.1.0"
+triggers = []
+
+[memory]

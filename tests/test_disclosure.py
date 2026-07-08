@@ -6,6 +6,7 @@ from pathlib import Path
 from super_agent import Agent, AgentConfig
 from super_agent.core.provider import MockProvider
 from super_agent.skill import ProgressiveDisclosure, SkillLoader
+from test_helpers import write_workflow_skill
 
 
 class ProgressiveDisclosureTests(unittest.TestCase):
@@ -37,6 +38,7 @@ class ProgressiveDisclosureTests(unittest.TestCase):
     def test_agent_exposes_disclosure_cache_paths_to_model(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
+            write_workflow_skill(root)
             _write_skill(root, "echo", "Echo helper", "Use cached context.")
             config_path = _write_config(root)
             provider = MockProvider("ok")
@@ -77,6 +79,7 @@ def _write_config(root: Path) -> Path:
 name = "demo"
 system = "Base system."
 workflow = "direct"
+memory = "default"
 skills = ["echo"]
 
 [model]

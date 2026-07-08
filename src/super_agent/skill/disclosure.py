@@ -4,8 +4,9 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from super_agent.skill import Skill, SkillLoader, SkillManifest
 from super_agent.skill.freshness import DEFAULT_FRESHNESS
+from super_agent.skill.loader import PROMPT_CONTEXT_KINDS, SkillLoader
+from super_agent.skill.manifest import Skill, SkillManifest
 
 
 @dataclass(frozen=True)
@@ -105,6 +106,7 @@ class ProgressiveDisclosure:
     def _list_enabled_manifests(self, enabled: list[str] | None) -> list[SkillManifest]:
         enabled_names = set(enabled or [])
         manifests = self.loader.list_skill_manifests()
+        manifests = [manifest for manifest in manifests if manifest.kind in PROMPT_CONTEXT_KINDS]
         if not enabled_names:
             return manifests
         return [manifest for manifest in manifests if manifest.name in enabled_names]

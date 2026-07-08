@@ -1,11 +1,5 @@
 import SwiftUI
 
-private let workflowChoices = [
-    ToggleChoice(id: "direct", title: "直接执行", help: "默认行为。收到输入后直接组织上下文并请求模型。"),
-    ToggleChoice(id: "plan", title: "计划优先", help: "先用计划式提示组织任务，再输出结果。"),
-    ToggleChoice(id: "react", title: "观察思考", help: "适合后续接工具循环时使用的 ReAct 风格提示。"),
-    ToggleChoice(id: "loop", title: "循环任务", help: "适合由 workflow 定义结束条件的多轮任务。")
-]
 private let providerOptions = ["mock", "openai-compatible", "anthropic-compatible", "openai", "anthropic"]
 private let modelOptions = ["mock", "gpt-4.1-mini", "gpt-4.1", "claude-sonnet-4", "claude-opus-4"]
 private let baseURLOptions = ["", "https://api.openai.com/v1", "https://api.anthropic.com"]
@@ -88,7 +82,7 @@ private struct ConfigFileToolbarView: View {
                     Button("另存为") { chatStore.saveTomlConfigFileAs() }
                     Button("恢复默认") { chatStore.resetConfigToDefault() }
                     Button("重新扫描") { chatStore.refreshConfigChoices() }
-                    HelpHintView("打开或保存当前 agent.toml。重新扫描会读取技能目录和 MCP 目录，刷新可勾选列表。")
+                    HelpHintView("打开或保存当前 agent.toml。重新扫描会递归读取技能目录，刷新普通技能和 MCP 列表。")
                 }
                 .buttonStyle(.bordered)
 
@@ -156,6 +150,15 @@ private struct WorkflowDefaultView: View {
             }
         }
     }
+
+    private var workflowChoices: [ToggleChoice] {
+        if chatStore.availableWorkflowChoices.isEmpty {
+            return [ToggleChoice(id: chatStore.config.agent.workflow, title: chatStore.config.agent.workflow, help: "当前配置的 workflow skill。")]
+        }
+        return chatStore.availableWorkflowChoices.map {
+            ToggleChoice(id: $0.name, title: $0.name, help: "来自 kind = \"workflow\" 的 skill.toml。")
+        }
+    }
 }
 
 private struct MemoryDefaultView: View {
@@ -166,27 +169,39 @@ private struct MemoryDefaultView: View {
             HStack {
                 FieldTitleView(
                     title: "默认记忆行为",
-                    help: "对应 [agent].use_features 里的 memory。默认开启会注入 memory.md 并更新 habits.json。"
+                    help: "对应 [agent].memory。运行时会选择同名 kind = \"memory\" 的 skill，并使用 [paths].memory 保存数据。"
                 )
-                DefaultTagView(text: memoryIsEnabled ? "默认开启" : "默认关闭")
-                Button("设为默认开启") {
-                    setFeature("memory", isEnabled: true)
-                }
-                Button("设为默认关闭") {
-                    setFeature("memory", isEnabled: false)
+                DefaultTagView(text: chatStore.config.agent.memory)
+                Button("恢复 default") {
+                    chatStore.config.agent.memory = "default"
                 }
             }
-            Toggle("打开记忆", isOn: Binding(get: { memoryIsEnabled }, set: { setFeature("memory", isEnabled: $0) }))
-                .toggleStyle(.checkbox)
+            ChoiceButtonListView(
+                choices: memoryChoices,
+                selectedID: chatStore.config.agent.memory,
+                buttonTitle: "设为默认"
+            ) { choice in
+                chatStore.config.agent.memory = choice.id
+            }
+            Toggle(
+                "允许当前记忆",
+                isOn: Binding(
+                    get: { memoryIsOpen(chatStore.config.agent.memory, config: chatStore.config) },
+                    set: { setMemoryOpen(chatStore.config.agent.memory, isOpen: $0, config: $chatStore.config) }
+                )
+            )
+            .toggleStyle(.checkbox)
+            .help("关闭会写入 disable_names = [\"memory:\(chatStore.config.agent.memory)\"]。")
         }
     }
 
-    private var memoryIsEnabled: Bool {
-        featureIsEnabled("memory", config: chatStore.config)
-    }
-
-    private func setFeature(_ name: String, isEnabled: Bool) {
-        setFeatureEnabled(name, isEnabled: isEnabled, config: $chatStore.config)
+    private var memoryChoices: [ToggleChoice] {
+        if chatStore.availableMemoryChoices.isEmpty {
+            return [ToggleChoice(id: chatStore.config.agent.memory, title: chatStore.config.agent.memory, help: "当前配置的 memory skill。")]
+        }
+        return chatStore.availableMemoryChoices.map {
+            ToggleChoice(id: $0.name, title: $0.name, help: "来自 kind = \"memory\" 的 skill.toml。")
+        }
     }
 }
 
@@ -216,19 +231,19 @@ private struct SkillManifestListView: View {
             if chatStore.availableSkillChoices.isEmpty {
                 EmptyChoiceTextView("没有扫描到技能。请先打开 agent.toml，或确认技能目录里有 skill.toml。")
             } else {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), alignment: .leading)], alignment: .leading) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 260), alignment: .leading)], alignment: .leading) {
                     ForEach(chatStore.availableSkillChoices) { choice in
-                        SkillChoiceToggleView(choice: choice, isOpen: skillIsOpenBinding(choice.name))
+                        SkillChoiceToggleView(choice: choice, isOpen: skillIsOpenBinding(choice))
                     }
                 }
             }
         }
     }
 
-    private func skillIsOpenBinding(_ name: String) -> Binding<Bool> {
+    private func skillIsOpenBinding(_ choice: SkillManifestChoice) -> Binding<Bool> {
         Binding(
-            get: { skillIsOpen(name, config: chatStore.config) },
-            set: { setSkillOpen(name, isOpen: $0, config: $chatStore.config) }
+            get: { skillIsOpen(choice.name, kind: choice.kind, config: chatStore.config) },
+            set: { setSkillOpen(choice.name, kind: choice.kind, isOpen: $0, config: $chatStore.config) }
         )
     }
 }
@@ -238,17 +253,74 @@ private struct SkillChoiceToggleView: View {
     let isOpen: Binding<Bool>
 
     var body: some View {
-        HStack(spacing: 6) {
-            Toggle(choice.name, isOn: isOpen)
-                .toggleStyle(.checkbox)
-            if choice.agentCreated {
-                DefaultTagView(text: "自建")
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Toggle(choice.name, isOn: isOpen)
+                    .toggleStyle(.checkbox)
+                if choice.agentCreated {
+                    DefaultTagView(text: "自建")
+                }
+                if choice.agentCanUpdate {
+                    DefaultTagView(text: "可更新")
+                }
+                if choice.freshness < 45 {
+                    DefaultTagView(text: "建议优化")
+                }
             }
-            if choice.agentCanUpdate {
-                DefaultTagView(text: "可更新")
+
+            SkillFreshnessBarView(choice: choice)
+
+            HStack(spacing: 8) {
+                Text("分组：\(choice.functionGroup)")
+                if choice.hasRuntimeStats {
+                    Text("调用：\(choice.callCount)")
+                    Text("成功：\(choice.successCount)")
+                    Text("替代：\(choice.replacementCount)")
+                } else {
+                    Text("配置值")
+                }
             }
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
         }
-        .help("勾选后打开 \(choice.name)。自建表示 agent 创建；可更新表示允许 agent 自动更新这个 skill。")
+        .padding(10)
+        .background(Color(nsColor: .textBackgroundColor).opacity(0.72))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .help(helpText)
+    }
+
+    private var helpText: String {
+        "保鲜度来自 skill.toml 和运行时 skill_stats.json。动态值会覆盖配置值；替代表示同功能 skill 后续成功接替次数。"
+    }
+}
+
+private struct SkillFreshnessBarView: View {
+    let choice: SkillManifestChoice
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("保鲜度")
+                    .font(.caption.weight(.semibold))
+                Spacer()
+                Text("\(Int(choice.freshness.rounded()))")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(freshnessColor)
+            }
+            ProgressView(value: min(max(choice.freshness, 0), 100), total: 100)
+                .tint(freshnessColor)
+        }
+    }
+
+    private var freshnessColor: Color {
+        if choice.freshness >= 75 {
+            return .green
+        }
+        if choice.freshness >= 45 {
+            return .orange
+        }
+        return .red
     }
 }
 
@@ -258,22 +330,23 @@ private struct MCPManifestListView: View {
     var body: some View {
         ConfigSectionBox(title: "MCP") {
             Toggle(
-                "打开 MCP 能力",
+                "允许 MCP 类型",
                 isOn: Binding(
-                    get: { featureIsEnabled("mcp", config: chatStore.config) },
-                    set: { setFeatureEnabled("mcp", isEnabled: $0, config: $chatStore.config) }
+                    get: { skillKindIsEnabled("mcp", config: chatStore.config) },
+                    set: { setSkillKindEnabled("mcp", isEnabled: $0, config: $chatStore.config) }
                 )
             )
             .toggleStyle(.checkbox)
+            .help("MCP 不再是独立 use_features。关闭会写入 disable_names = [\"mcp\"]，运行时仍从 [paths].skills 递归扫描 kind = \"mcp\" 的 skill。")
 
             if chatStore.availableMCPNames.isEmpty {
-                EmptyChoiceTextView("没有扫描到 MCP。请先打开 agent.toml，或确认 MCP 目录里有 mcp.toml。")
+                EmptyChoiceTextView("没有扫描到 MCP。请确认技能目录里有 kind = \"mcp\" 的 skill.toml。")
             } else {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), alignment: .leading)], alignment: .leading) {
                     ForEach(chatStore.availableMCPNames, id: \.self) { name in
                         Toggle(name, isOn: mcpIsOpenBinding(name))
                             .toggleStyle(.checkbox)
-                            .help("勾选后打开 \(name)。取消勾选会写入 disable_names = [\"mcp:\(name)\"]。")
+                            .help("勾选后会加入 [agent].skills。取消勾选会写入 disable_names = [\"mcp:\(name)\"]。")
                     }
                 }
             }
@@ -451,15 +524,9 @@ private struct PathsConfigEditorView: View {
         ConfigSectionBox(title: "路径设置") {
             DirectoryListView(
                 title: "技能目录",
-                help: "对应 [paths].skills。runtime 会在这些目录下查找 skill.toml 和 SKILL.md。",
+                help: "对应 [paths].skills。runtime 会在这些目录下递归查找 prompt、MCP、memory、workflow 等 skill。",
                 items: $chatStore.config.paths.skills,
                 defaultName: "skills"
-            )
-            DirectoryListView(
-                title: "MCP 目录",
-                help: "对应 [paths].mcp。runtime 会在这些目录下查找 mcp.toml，并把 MCP 注册成可披露 skill。",
-                items: $chatStore.config.paths.mcp,
-                defaultName: "mcp"
             )
             DirectoryPathView(
                 title: "记忆目录",

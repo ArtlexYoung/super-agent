@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import tomllib
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
 
 from super_agent.core.provider import ChatProvider, Message
-from super_agent.skill import Skill
+from super_agent.skill.manifest import Skill, SkillManifest
 
 
 @dataclass(frozen=True)
@@ -46,15 +49,23 @@ class Workflow:
 
 def create_workflow(name: str) -> Workflow:
     key = name.lower()
-    instructions = {
-        "direct": "",
-        "plan": "Before answering, produce a compact plan and then execute it.",
-        "react": "Reason step by step, decide whether tool use is needed, then answer.",
-        "loop": "Work toward the goal iteratively until the requested result is complete.",
-    }
-    if key not in instructions:
+    instruction = _workflow_instruction_for_mode(key)
+    if instruction is None:
         raise ValueError(f"unknown workflow: {name}")
-    return Workflow(key, instructions[key])
+    return Workflow(key, instruction)
+
+
+def create_workflow_from_skill_manifest(manifest: SkillManifest) -> Workflow:
+    if manifest.kind != "workflow":
+        raise ValueError(f"skill is not a workflow kind: {manifest.name}")
+    data = _read_workflow_section(manifest.path / "skill.toml")
+    mode = str(data.get("mode", manifest.name)).strip().lower()
+    base_instruction = _workflow_instruction_for_mode(mode)
+    if base_instruction is None:
+        raise ValueError(f"unknown workflow mode: {mode}")
+    extra_instruction = str(data.get("instruction", "")).strip()
+    instruction = "\n".join(part for part in [base_instruction, extra_instruction] if part)
+    return Workflow(manifest.name, instruction)
 
 
 def _build_chat_messages(system: str, extra: str, skills: list[Skill], prompt: str) -> list[Message]:
@@ -69,3 +80,21 @@ def _build_system_prompt(system: str, extra: str, skills: list[Skill]) -> str:
     for skill in skills:
         parts.append(f"Skill: {skill.manifest.name}\n{skill.instructions}")
     return "\n\n".join(part for part in parts if part)
+
+
+def _workflow_instruction_for_mode(mode: str) -> str | None:
+    instructions = {
+        "direct": "",
+        "plan": "Before answering, produce a compact plan and then execute it.",
+        "react": "Reason step by step, decide whether tool use is needed, then answer.",
+        "loop": "Work toward the goal iteratively until the requested result is complete.",
+    }
+    return instructions.get(mode)
+
+
+def _read_workflow_section(path: Path) -> dict[str, Any]:
+    data = tomllib.loads(path.read_text(encoding="utf-8"))
+    value = data.get("workflow")
+    if not isinstance(value, dict):
+        raise ValueError(f"workflow skill manifest missing [workflow]: {path}")
+    return value

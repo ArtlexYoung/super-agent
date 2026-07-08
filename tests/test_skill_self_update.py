@@ -5,6 +5,7 @@ from pathlib import Path
 from super_agent import Agent, AgentConfig
 from super_agent.core.provider import MockProvider
 from super_agent.skill import SkillManifest
+from test_helpers import write_workflow_skill
 
 
 class SkillSelfUpdateTests(unittest.TestCase):
@@ -120,6 +121,7 @@ instructions = "SKILL.md"
 
 
 def _make_agent(root: Path, provider: MockProvider | None = None) -> Agent:
+    write_workflow_skill(root)
     config_path = root / "agent.toml"
     config_path.write_text(
         """
@@ -127,6 +129,7 @@ def _make_agent(root: Path, provider: MockProvider | None = None) -> Agent:
 name = "demo"
 system = "Base system."
 workflow = "direct"
+memory = "default"
 skills = []
 
 [model]

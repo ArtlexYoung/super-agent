@@ -11,6 +11,7 @@ class AgentSettings:
     name: str
     system: str
     workflow: str
+    memory: str
     skills: list[str]
     max_agent_chain_depth: int | None
     use_features: list[str]
@@ -28,7 +29,6 @@ class ModelSettings:
 @dataclass(frozen=True)
 class PathsSettings:
     skills: list[Path]
-    mcp: list[Path]
     memory: Path
 
 
@@ -57,9 +57,10 @@ def _read_agent_settings(data: dict[str, Any]) -> AgentSettings:
         name=str(data.get("name", "super-agent")),
         system=str(data.get("system", "You are a helpful agent.")),
         workflow=str(data.get("workflow", "direct")),
+        memory=str(data.get("memory", "default")),
         skills=[str(item) for item in data.get("skills", [])],
         max_agent_chain_depth=_optional_positive_int(data.get("max_agent_chain_depth")),
-        use_features=_normalize_feature_names(data.get("use_features", ["skill", "memory", "mcp"])),
+        use_features=_normalize_feature_names(data.get("use_features", ["skill"])),
         disable_names=[str(item).lower() for item in data.get("disable_names", [])],
     )
 
@@ -75,11 +76,9 @@ def _read_model_settings(data: dict[str, Any]) -> ModelSettings:
 
 def _read_paths_settings(data: dict[str, Any], base_dir: Path) -> PathsSettings:
     skill_paths = data.get("skills", ["skills"])
-    mcp_paths = data.get("mcp", ["mcp"])
     memory_path = Path(str(data.get("memory", ".super-agent/memory")))
     return PathsSettings(
         skills=[_resolve_path(base_dir, Path(str(item))) for item in skill_paths],
-        mcp=[_resolve_path(base_dir, Path(str(item))) for item in mcp_paths],
         memory=_resolve_path(base_dir, memory_path),
     )
 
@@ -106,5 +105,5 @@ def _optional_positive_int(value: Any) -> int | None:
 
 def _normalize_feature_names(value: Any) -> list[str]:
     names = [str(item).lower() for item in value]
-    aliases = {"skills": "skill", "memory": "memory", "memories": "memory", "mcp": "mcp"}
+    aliases = {"skills": "skill"}
     return [aliases.get(name, name) for name in names]
