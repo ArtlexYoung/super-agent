@@ -5,6 +5,8 @@ from pathlib import Path
 from super_agent.skill.kinds.mcp import McpServer
 from super_agent.skill.manifest import Skill, SkillManifest
 
+# 只有会直接进入模型上下文的 kind 才能走 load_skill/load_skills_for_prompt。
+# memory/workflow 是运行控制能力，由 Agent 按 kind 单独装配。
 PROMPT_CONTEXT_KINDS = {"prompt", "mcp"}
 
 
@@ -62,6 +64,7 @@ class SkillLoader:
 
     def _list_skill_manifests_in_root(self, root: Path) -> list[SkillManifest]:
         manifests: list[SkillManifest] = []
+        # 递归扫描让 skills/mcp、skills/memory、skills/workflow 都能共享同一入口。
         for manifest_path in root.rglob("skill.toml"):
             if manifest_path.is_file():
                 manifests.append(SkillManifest.load_from_file(manifest_path))

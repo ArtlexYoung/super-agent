@@ -163,6 +163,7 @@ class Agent:
         include_subagents: bool = True,
         check_subagent_links_before_run: bool = True,
     ) -> RunResult:
+        # memory/workflow 是运行控制 skill；prompt/mcp 通过 disclosure 进入模型上下文。
         memory = self._create_memory_for_agent_run()
         disclosure = ProgressiveDisclosure(self.skill_loader, self.config.paths.memory / "disclosure")
         disclosure_bundle = disclosure.prepare_disclosure_for_prompt(prompt, self.config.agent.skills)
@@ -236,12 +237,14 @@ class Agent:
         return self.config.paths.skills[0]
 
     def _create_memory_for_agent_run(self) -> MiniMemory | None:
+        # 没有配置同名 memory skill 时保持无记忆运行，不隐式创建旧式能力。
         manifest = self.skill_loader.find_skill_manifest_by_kind(self.config.agent.memory, "memory")
         if manifest is None:
             return None
         return create_memory_from_skill_manifest(manifest, self.config.paths.memory)
 
     def _create_workflow_for_agent_run(self) -> Workflow:
+        # workflow 必须显式存在，避免拼错名称时悄悄退回 direct。
         manifest = self.skill_loader.find_skill_manifest_by_kind(self.config.agent.workflow, "workflow")
         if manifest is None:
             raise KeyError(f"workflow skill not found: {self.config.agent.workflow}")

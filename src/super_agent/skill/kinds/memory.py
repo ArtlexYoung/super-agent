@@ -107,6 +107,7 @@ def _build_count_lines(label: str, counts: object) -> list[str]:
 def create_memory_from_skill_manifest(manifest: SkillManifest, root: Path) -> MiniMemory:
     if manifest.kind != "memory":
         raise ValueError(f"skill is not a memory kind: {manifest.name}")
+    # manifest 只声明记忆行为；root 是实际数据目录，避免能力定义和用户数据混放。
     _read_memory_section(manifest.path / "skill.toml")
     return MiniMemory(root)
 

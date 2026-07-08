@@ -10,7 +10,9 @@ from typing import Any
 class AgentSettings:
     name: str
     system: str
+    # 这里存的是 skill 名称；实际能力由 kind = "workflow" 的 manifest 决定。
     workflow: str
+    # 这里存的是 skill 名称；记忆数据目录仍由 PathsSettings.memory 决定。
     memory: str
     skills: list[str]
     max_agent_chain_depth: int | None
@@ -28,7 +30,9 @@ class ModelSettings:
 
 @dataclass(frozen=True)
 class PathsSettings:
+    # 统一技能树入口，prompt、mcp、memory、workflow 都从这里递归扫描。
     skills: list[Path]
+    # 运行时数据目录：memory.md、habits.json、disclosure、skill_stats 都写这里。
     memory: Path
 
 

@@ -24,6 +24,7 @@ enum SkillManifestScanner {
             return []
         }
         var choices: [SkillManifestChoice] = []
+        // Python runtime 使用 root.rglob("skill.toml")；前端保持同样的递归扫描规则。
         for case let manifest as URL in enumerator where manifest.lastPathComponent == "skill.toml" {
             if let choice = readSkillChoice(from: manifest, runtimeStats: runtimeStats) {
                 choices.append(choice)
@@ -74,6 +75,7 @@ enum SkillManifestScanner {
         guard let stats = runtimeStats[choice.name] else {
             return choice
         }
+        // 运行时统计覆盖静态保鲜度，这样 UI 展示的是最新使用结果。
         return SkillManifestChoice(
             name: choice.name,
             kind: choice.kind,

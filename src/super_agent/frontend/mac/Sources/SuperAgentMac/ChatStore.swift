@@ -296,6 +296,7 @@ final class ChatStore: ObservableObject {
             configuredNames: config.agent.skills,
             scannedChoices: readSkillChoicesFromConfiguredPaths()
         )
+        // 同一棵 skills 目录按 kind 分组；配置页面不要把运行控制 skill 混进普通技能。
         availableSkillChoices = allSkillChoices.filter { $0.kind == "prompt" }
         availableMemoryChoices = allSkillChoices.filter { $0.kind == "memory" }
         availableWorkflowChoices = allSkillChoices.filter { $0.kind == "workflow" }

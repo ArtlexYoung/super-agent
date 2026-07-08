@@ -59,6 +59,7 @@ def create_workflow_from_skill_manifest(manifest: SkillManifest) -> Workflow:
     if manifest.kind != "workflow":
         raise ValueError(f"skill is not a workflow kind: {manifest.name}")
     data = _read_workflow_section(manifest.path / "skill.toml")
+    # manifest.name 是对外选择名；mode 复用内置执行提示，instruction 做局部增强。
     mode = str(data.get("mode", manifest.name)).strip().lower()
     base_instruction = _workflow_instruction_for_mode(mode)
     if base_instruction is None:
