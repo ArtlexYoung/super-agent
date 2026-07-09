@@ -4,9 +4,9 @@ import argparse
 from pathlib import Path
 from typing import Sequence
 
-from super_agent import Agent, AgentConfig
-from super_agent.core import create_skill_loader_for_agent_config
-from super_agent.skill import MiniMemory, SkillFreshnessStore
+from core import Agent, AgentConfig
+from core import create_skill_loader_for_agent_config
+from skill import MiniMemory, SkillFreshnessStore
 
 
 def main(argv: Sequence[str] | None = None) -> int:

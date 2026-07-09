@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from super_agent import Agent
+from core import Agent
 
 
 def main() -> None:

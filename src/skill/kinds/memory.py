@@ -5,7 +5,7 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
-from super_agent.skill.manifest import SkillManifest
+from skill.manifest import SkillManifest
 
 
 HABITS_FILE = "habits.json"

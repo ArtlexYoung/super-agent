@@ -29,14 +29,14 @@ api_key_env = "OPENAI_API_KEY"
 ## 运行
 
 ```bash
-cd src/super_agent/frontend/mac
+cd src/frontend/mac
 swift run SuperAgentMac
 ```
 
 ## 打包
 
 ```bash
-cd src/super_agent/frontend/mac
+cd src/frontend/mac
 ./package_release.sh
 ```
 

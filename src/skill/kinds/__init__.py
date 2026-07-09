@@ -1,6 +1,6 @@
-from super_agent.skill.kinds.mcp import McpServer
-from super_agent.skill.kinds.memory import MiniMemory, create_memory_from_skill_manifest
-from super_agent.skill.kinds.workflow import (
+from skill.kinds.mcp import McpServer
+from skill.kinds.memory import MiniMemory, create_memory_from_skill_manifest
+from skill.kinds.workflow import (
     RunResult,
     SubAgentResult,
     Workflow,

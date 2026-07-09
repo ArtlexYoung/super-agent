@@ -6,7 +6,7 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Protocol
 
-from super_agent.core.config import ModelSettings
+from core.config import ModelSettings
 
 
 Message = dict[str, str]

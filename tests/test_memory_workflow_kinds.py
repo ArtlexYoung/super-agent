@@ -2,8 +2,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from super_agent import Agent, AgentConfig
-from super_agent.core.provider import MockProvider
+from core import Agent, AgentConfig
+from core.provider import MockProvider
 
 
 class MemoryWorkflowKindTests(unittest.TestCase):

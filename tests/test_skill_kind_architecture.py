@@ -1,10 +1,11 @@
 import importlib
 import unittest
+from pathlib import Path
 
-from super_agent.skill import SkillLoader, SkillManifest
-from super_agent.skill.kinds.mcp import McpServer
-from super_agent.skill.kinds.memory import MiniMemory
-from super_agent.skill.kinds.workflow import RunResult, SubAgentResult, create_workflow
+from skill import SkillLoader, SkillManifest
+from skill.kinds.mcp import McpServer
+from skill.kinds.memory import MiniMemory
+from skill.kinds.workflow import RunResult, SubAgentResult, create_workflow
 
 
 class SkillKindArchitectureTests(unittest.TestCase):
@@ -18,6 +19,10 @@ class SkillKindArchitectureTests(unittest.TestCase):
         self.assertEqual("SkillManifest", SkillManifest.__name__)
 
     def test_old_top_level_kind_modules_are_removed(self) -> None:
-        for module_name in ["super_agent.mcp", "super_agent.memory", "super_agent.workflow"]:
+        for module_name in ["super_agent", "super_agent.mcp", "super_agent.memory", "super_agent.workflow"]:
             with self.assertRaises(ModuleNotFoundError):
                 importlib.import_module(module_name)
+
+    def test_kind_implementations_stay_inside_skill_package(self) -> None:
+        for path in ["src/mcp.py", "src/memory.py", "src/workflow.py", "src/mcp", "src/memory", "src/workflow"]:
+            self.assertFalse(Path(path).exists())

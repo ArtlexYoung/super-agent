@@ -3,9 +3,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from super_agent import Agent, AgentConfig
-from super_agent.core.provider import MockProvider
-from super_agent.skill import ProgressiveDisclosure, SkillLoader
+from core import Agent, AgentConfig
+from core.provider import MockProvider
+from skill import ProgressiveDisclosure, SkillLoader
 from test_helpers import write_workflow_skill
 
 

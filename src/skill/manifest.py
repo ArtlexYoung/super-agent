@@ -4,7 +4,7 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
-from super_agent.skill.freshness import DEFAULT_FRESHNESS
+from skill.freshness import DEFAULT_FRESHNESS
 
 
 @dataclass(frozen=True)

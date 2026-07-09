@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from super_agent.skill.kinds.mcp import McpServer
-from super_agent.skill.manifest import Skill, SkillManifest
+from skill.kinds.mcp import McpServer
+from skill.manifest import Skill, SkillManifest
 
 # 只有会直接进入模型上下文的 kind 才能走 load_skill/load_skills_for_prompt。
 # memory/workflow 是运行控制能力，由 Agent 按 kind 单独装配。

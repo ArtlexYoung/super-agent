@@ -5,8 +5,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from super_agent.core.provider import ChatProvider, Message
-from super_agent.skill.manifest import Skill, SkillManifest
+from core.provider import ChatProvider, Message
+from skill.manifest import Skill, SkillManifest
 
 
 @dataclass(frozen=True)

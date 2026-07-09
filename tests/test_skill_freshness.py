@@ -4,10 +4,10 @@ import unittest
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from super_agent import Agent, AgentConfig
-from super_agent.core.provider import MockProvider
-from super_agent.skill import SkillManifest
-from super_agent.skill.freshness import SkillFreshnessStore, SkillRunRecord
+from core import Agent, AgentConfig
+from core.provider import MockProvider
+from skill import SkillManifest
+from skill.freshness import SkillFreshnessStore, SkillRunRecord
 from test_helpers import write_workflow_skill
 
 

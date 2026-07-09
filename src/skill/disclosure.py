@@ -4,9 +4,9 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from super_agent.skill.freshness import DEFAULT_FRESHNESS
-from super_agent.skill.loader import PROMPT_CONTEXT_KINDS, SkillLoader
-from super_agent.skill.manifest import Skill, SkillManifest
+from skill.freshness import DEFAULT_FRESHNESS
+from skill.loader import PROMPT_CONTEXT_KINDS, SkillLoader
+from skill.manifest import Skill, SkillManifest
 
 
 @dataclass(frozen=True)

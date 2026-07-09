@@ -3,9 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from super_agent.core.config import AgentConfig
-from super_agent.core.provider import ChatProvider, create_chat_provider
-from super_agent.skill import (
+from core.config import AgentConfig
+from core.provider import ChatProvider, create_chat_provider
+from skill import (
     MiniMemory,
     ProgressiveDisclosure,
     RunResult,
@@ -18,8 +18,8 @@ from super_agent.skill import (
     create_memory_from_skill_manifest,
     create_workflow_from_skill_manifest,
 )
-from super_agent.skill.freshness import DEFAULT_FRESHNESS
-from super_agent.skill.self_update import (
+from skill.freshness import DEFAULT_FRESHNESS
+from skill.self_update import (
     SkillUpdateRequest,
     SkillWriteRequest,
     create_agent_skill,

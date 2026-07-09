@@ -5,10 +5,10 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from super_agent.core.provider import ChatProvider, Message
-from super_agent.skill.freshness import DEFAULT_FRESHNESS
-from super_agent.skill.loader import SkillLoader
-from super_agent.skill.manifest import SkillManifest
+from core.provider import ChatProvider, Message
+from skill.freshness import DEFAULT_FRESHNESS
+from skill.loader import SkillLoader
+from skill.manifest import SkillManifest
 
 
 SKILL_INSTRUCTION_FILE = "SKILL.md"

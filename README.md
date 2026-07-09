@@ -23,12 +23,12 @@ Super Agent 是一个简单、轻量、配置化的 **skill-first agent runtime*
 ## 快速开始
 
 ```bash
-python -m super_agent.cli init --path demo-agent
-python -m super_agent.cli run --config demo-agent/agent.toml "hello"
-python -m super_agent.cli skills list --config demo-agent/agent.toml
-python -m super_agent.cli skills create --config demo-agent/agent.toml --name note --instructions "Write concise notes."
-python -m super_agent.cli skills freshness --config demo-agent/agent.toml
-python -m super_agent.cli memory habits --config demo-agent/agent.toml
+PYTHONPATH=src python3 -m cli init --path demo-agent
+PYTHONPATH=src python3 -m cli run --config demo-agent/agent.toml "hello"
+PYTHONPATH=src python3 -m cli skills list --config demo-agent/agent.toml
+PYTHONPATH=src python3 -m cli skills create --config demo-agent/agent.toml --name note --instructions "Write concise notes."
+PYTHONPATH=src python3 -m cli skills freshness --config demo-agent/agent.toml
+PYTHONPATH=src python3 -m cli memory habits --config demo-agent/agent.toml
 ```
 
 安装为命令后：
@@ -47,7 +47,7 @@ super-agent memory habits --config demo-agent/agent.toml
 ## Python API
 
 ```python
-from super_agent import Agent, AgentConfig
+from core import Agent, AgentConfig
 
 config = AgentConfig.load_from_file("agent.toml")
 agent = Agent(config)
@@ -75,7 +75,7 @@ print(result.text)
 主从关系用代码组合，不写进 TOML。每个 agent 都是普通 `Agent`，各自有独立配置、模型、skill、memory、workflow。
 
 ```python
-from super_agent import Agent
+from core import Agent
 
 main = Agent.load_from_config_file("agents/main.toml")
 coder = Agent.load_from_config_file("agents/coder.toml")
