@@ -14,6 +14,8 @@ class DisclosureEntry:
     name: str
     description: str
     triggers: list[str]
+    provides: list[str]
+    requires: list[str]
     manifest_path: Path
     instruction_path: Path
     agent_created: bool = False
@@ -123,6 +125,8 @@ class ProgressiveDisclosure:
             name=manifest.name,
             description=manifest.description,
             triggers=manifest.triggers,
+            provides=manifest.provides,
+            requires=manifest.requires,
             manifest_path=self._make_manifest_cache_path(manifest.name),
             instruction_path=self._make_instruction_cache_path(manifest.name),
             agent_created=manifest.agent_created,
@@ -156,6 +160,8 @@ def _entry_to_json(entry: DisclosureEntry) -> dict[str, object]:
         "name": entry.name,
         "description": entry.description,
         "triggers": entry.triggers,
+        "provides": entry.provides,
+        "requires": entry.requires,
         "manifest_path": str(entry.manifest_path),
         "instruction_path": str(entry.instruction_path),
         "agent_created": entry.agent_created,

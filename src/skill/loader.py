@@ -40,7 +40,7 @@ class SkillLoader:
         for root in self.skill_roots:
             if root.is_dir():
                 manifests.extend(self._list_skill_manifests_in_root(root))
-        usable = [manifest for manifest in manifests if not _manifest_is_disabled(manifest, self.disabled_names)]
+        usable = [manifest for manifest in manifests if not skill_manifest_is_disabled(manifest, self.disabled_names)]
         return sorted(usable, key=lambda item: (item.kind, item.name))
 
     def load_skill(self, name: str) -> Skill:
@@ -149,7 +149,7 @@ def _list_manifest_paths(roots: list[Path]) -> list[Path]:
     return sorted(paths)
 
 
-def _manifest_is_disabled(manifest: SkillManifest, disabled_names: list[str]) -> bool:
+def skill_manifest_is_disabled(manifest: SkillManifest, disabled_names: list[str]) -> bool:
     name = manifest.name.lower()
     kind = manifest.kind.lower()
     return kind in disabled_names or name in disabled_names or f"{kind}:{name}" in disabled_names

@@ -20,17 +20,23 @@ class SkillTools:
         run_context: RunContext,
         *,
         memory: MiniMemory | None = None,
+        list_subagents_function: Callable[[], list[dict[str, object]]] | None = None,
+        run_subagent_function: Callable[[str, str], dict[str, object]] | None = None,
     ) -> None:
         self.loader = loader
         self.disclosure = disclosure
         self.run_context = run_context
         self.memory = memory
+        self.list_subagents_function = list_subagents_function
+        self.run_subagent_function = run_subagent_function
         self.used_skills: list[Skill] = []
 
     def get_tool_definitions(self) -> list[ToolDefinition]:
         definitions = _runtime_tool_definitions()
         if self.memory is not None:
             definitions.extend(_memory_tool_definitions())
+        if self.list_subagents_function is not None and self.run_subagent_function is not None:
+            definitions.extend(_subagent_tool_definitions())
         return definitions
 
     def run_tool_call(self, call: ToolCall) -> dict[str, object]:
@@ -70,6 +76,8 @@ class SkillTools:
                     "kind": manifest.kind,
                     "description": manifest.description,
                     "triggers": manifest.triggers,
+                    "provides": manifest.provides,
+                    "requires": manifest.requires,
                     "freshness": manifest.freshness,
                 }
                 for manifest in manifests
@@ -91,12 +99,22 @@ class SkillTools:
             "cache_path": str(cached.cache_path),
         }
 
-    def list_skill_tools(self, name: str) -> dict[str, object]:
+    def list_subagents(self) -> dict[str, object]:
+        if self.list_subagents_function is None:
+            raise RuntimeError("subagent tools require code-mounted subagents")
+        return {"subagents": self.list_subagents_function()}
+
+    def run_subagent(self, name: str, prompt: str) -> dict[str, object]:
+        if self.run_subagent_function is None:
+            raise RuntimeError("subagent tools require code-mounted subagents")
+        return self.run_subagent_function(name, prompt)
+
+    def _list_skill_tools(self, name: str) -> dict[str, object]:
         server = self._load_mcp_server(name)
         self._remember_used_skill(self.loader.load_skill(name))
         return {"name": name, "tools": server.list_tools()}
 
-    def run_skill(
+    def _run_skill(
         self,
         name: str,
         tool: str,
@@ -110,8 +128,8 @@ class SkillTools:
         handlers: dict[str, Callable[[], dict[str, object]]] = {
             "list_skills": self.list_skills,
             "read_skill": lambda: self.read_skill(_required_string(arguments, "name")),
-            "list_skill_tools": lambda: self.list_skill_tools(_required_string(arguments, "name")),
-            "run_skill": lambda: self.run_skill(
+            "list_skill_tools": lambda: self._list_skill_tools(_required_string(arguments, "name")),
+            "run_skill": lambda: self._run_skill(
                 _required_string(arguments, "name"),
                 _required_string(arguments, "tool"),
                 _object_argument(arguments, "arguments"),
@@ -119,6 +137,16 @@ class SkillTools:
         }
         if self.memory is not None:
             handlers.update(self._memory_tool_handlers(arguments))
+        if self.list_subagents_function is not None and self.run_subagent_function is not None:
+            handlers.update(
+                {
+                    "list_subagents": self.list_subagents,
+                    "run_subagent": lambda: self.run_subagent(
+                        _required_string(arguments, "name"),
+                        _required_string(arguments, "prompt"),
+                    ),
+                }
+            )
         handler = handlers.get(name)
         if handler is None:
             raise KeyError(f"unknown runtime tool: {name}")
@@ -249,6 +277,25 @@ def _memory_tool_definitions() -> list[ToolDefinition]:
             "consolidate_memory",
             "Deterministically merge duplicate active memory items.",
             {},
+        ),
+    ]
+
+
+def _subagent_tool_definitions() -> list[ToolDefinition]:
+    return [
+        _tool_definition(
+            "list_subagents",
+            "List subagents mounted on the current agent in code.",
+            {},
+        ),
+        _tool_definition(
+            "run_subagent",
+            "Run one mounted subagent and return its traced result.",
+            {
+                "name": {"type": "string"},
+                "prompt": {"type": "string"},
+            },
+            required=["name", "prompt"],
         ),
     ]
 

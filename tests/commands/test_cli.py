@@ -210,6 +210,33 @@ class CliTests(unittest.TestCase):
             self.assertEqual(0, explanation_code)
             self.assertIn("echo\tselected\tmatched trigger: echo", explanation_output.getvalue())
 
+    def test_skills_graph_and_lock_resolve_configured_skill_dependencies(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            main(["init", "--path", tmp])
+            config = str(Path(tmp) / "agent.toml")
+            lock_path = Path(tmp) / "skill.lock"
+            graph_output = StringIO()
+
+            with patch("sys.stdout", graph_output):
+                graph_code = main(["skills", "graph", "--config", config, "--name", "echo"])
+            lock_code = main(
+                [
+                    "skills",
+                    "lock",
+                    "--config",
+                    config,
+                    "--name",
+                    "echo",
+                    "--output",
+                    str(lock_path),
+                ]
+            )
+
+            self.assertEqual(0, graph_code)
+            self.assertEqual(0, lock_code)
+            self.assertIn("echo", graph_output.getvalue())
+            self.assertIn('name = "echo"', lock_path.read_text(encoding="utf-8"))
+
     def test_run_reads_stdin_request_and_streams_jsonl_events(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             main(["init", "--path", tmp])

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from core.config import AgentConfig
@@ -12,6 +12,7 @@ from skill import (
     ProgressiveDisclosure,
     RunResult,
     Skill,
+    SkillDependencyResolver,
     SkillEvolutionManager,
     SkillFreshnessStore,
     SkillLoader,
@@ -22,6 +23,7 @@ from skill import (
     create_memory_from_skill_manifest,
     create_workflow_from_skill_manifest,
 )
+from skill.loader import skill_manifest_is_disabled
 
 
 @dataclass(frozen=True)
@@ -59,7 +61,11 @@ class Agent:
         triggers: list[str] | None = None,
         created_by_agent: bool = False,
     ) -> str:
-        subagent_name = name or self._make_next_subagent_name()
+        subagent_name = self._make_next_subagent_name() if name is None else name.strip()
+        if not subagent_name:
+            raise ValueError("subagent name cannot be empty")
+        if any(item.name == subagent_name for item in self._subagents):
+            raise ValueError(f"subagent name already exists: {subagent_name}")
         self._subagents.append(
             SubAgent(
                 name=subagent_name,
@@ -111,17 +117,25 @@ class Agent:
         context = run_context or self._start_run_context(prompt)
         disclosed_skills: list[Skill] = []
         skill_tools: SkillTools | None = None
+        delegated_subagent_results: list[SubAgentResult] = []
         try:
             # memory/workflow 是运行控制 skill；prompt/mcp 通过 disclosure 进入模型上下文。
             memory = self._create_memory_for_agent_run()
             disclosure = ProgressiveDisclosure(self.skill_loader, self.config.paths.memory / "disclosure")
             workflow = self._create_workflow_for_agent_run()
+            enabled_skill_names = self._resolve_configured_skill_names()
             if workflow.mode in {"react", "loop"}:
-                disclosure_bundle = disclosure.prepare_disclosure_index(self.config.agent.skills)
+                disclosure_bundle = disclosure.prepare_disclosure_index(enabled_skill_names)
             else:
-                disclosure_bundle = disclosure.prepare_disclosure_for_prompt(prompt, self.config.agent.skills)
+                disclosure_bundle = disclosure.prepare_disclosure_for_prompt(prompt, enabled_skill_names)
             disclosed_skills = disclosure_bundle.skills
-            skill_tools = SkillTools(self.skill_loader, disclosure, context, memory=memory)
+            skill_tools = self._create_skill_tools(
+                disclosure,
+                context,
+                memory,
+                include_subagents,
+                delegated_subagent_results,
+            )
             context.record_event(
                 "skills.disclosed",
                 {
@@ -129,12 +143,10 @@ class Agent:
                     "index_path": str(disclosure_bundle.index_path),
                 },
             )
-            warning_messages = (
-                self.check_subagent_links() if include_subagents and check_subagent_links_before_run else []
-            )
-            subagent_results = (
-                self._run_subagents_that_match_prompt(prompt, context) if include_subagents else []
-            )
+            should_check_links = include_subagents and check_subagent_links_before_run
+            warning_messages = self.check_subagent_links() if should_check_links else []
+            should_run_by_trigger = include_subagents and workflow.mode not in {"react", "loop"}
+            subagent_results = self._run_subagents_that_match_prompt(prompt, context) if should_run_by_trigger else []
             system = self.config.agent.system
             if memory is not None:
                 system = _add_memory_to_system_prompt(system, memory, prompt)
@@ -175,7 +187,7 @@ class Agent:
                 text=result.text,
                 workflow=result.workflow,
                 skills=result.skills,
-                subagent_results=subagent_results,
+                subagent_results=subagent_results + delegated_subagent_results,
                 warning_messages=warning_messages,
                 run_id=context.run_id,
                 stop_reason=result.stop_reason,
@@ -203,6 +215,32 @@ class Agent:
                 return candidate
             index += 1
 
+    def _create_skill_tools(
+        self,
+        disclosure: ProgressiveDisclosure,
+        run_context: RunContext,
+        memory: MiniMemory | None,
+        include_subagents: bool,
+        collected_results: list[SubAgentResult],
+    ) -> SkillTools:
+        has_subagent_tools = include_subagents and bool(self._subagents)
+        run_subagent_function = None
+        if has_subagent_tools:
+            run_subagent_function = lambda name, prompt: self._run_named_subagent_for_model(
+                name,
+                prompt,
+                run_context,
+                collected_results,
+            )
+        return SkillTools(
+            self.skill_loader,
+            disclosure,
+            run_context,
+            memory=memory,
+            list_subagents_function=self._list_subagents_for_model if has_subagent_tools else None,
+            run_subagent_function=run_subagent_function,
+        )
+
     def _run_subagents_that_match_prompt(
         self,
         prompt: str,
@@ -212,36 +250,68 @@ class Agent:
         results: list[SubAgentResult] = []
         for subagent in self._subagents:
             if _prompt_matches_subagent_triggers(subagent, prompt_text):
-                child_context = RunTraceStore(
-                    subagent.agent.config.paths.memory / "runs"
-                ).start_run(
-                    subagent.agent.config.agent.name,
-                    prompt,
-                    parent_run_id=run_context.run_id,
-                    event_listener=run_context.event_listener,
-                )
-                result = subagent.agent.run(
-                    prompt,
-                    include_subagents=True,
-                    check_subagent_links_before_run=False,
-                    run_context=child_context,
-                )
-                results.append(
-                    SubAgentResult(
-                        name=subagent.name,
-                        description=subagent.description,
-                        text=result.text,
-                        prompt=prompt,
-                        created_by_agent=subagent.created_by_agent,
-                        subagent_results=result.subagent_results,
-                        run_id=result.run_id,
-                    )
-                )
-                run_context.record_event(
-                    "subagent.completed",
-                    {"name": subagent.name, "run_id": result.run_id},
-                )
+                results.append(self._run_subagent(subagent, prompt, run_context))
         return results
+
+    def _list_subagents_for_model(self) -> list[dict[str, object]]:
+        return [
+            {
+                "name": subagent.name,
+                "description": subagent.description,
+                "triggers": subagent.triggers,
+                "created_by_agent": subagent.created_by_agent,
+                "agent_name": subagent.agent.config.agent.name,
+            }
+            for subagent in self._subagents
+        ]
+
+    def _run_named_subagent_for_model(
+        self,
+        name: str,
+        prompt: str,
+        run_context: RunContext,
+        collected_results: list[SubAgentResult],
+    ) -> dict[str, object]:
+        subagent = next((item for item in self._subagents if item.name == name), None)
+        if subagent is None:
+            raise KeyError(f"subagent not found: {name}")
+        result = self._run_subagent(subagent, prompt, run_context)
+        collected_results.append(result)
+        return asdict(result)
+
+    def _run_subagent(
+        self,
+        subagent: SubAgent,
+        prompt: str,
+        run_context: RunContext,
+    ) -> SubAgentResult:
+        run_context.record_event("subagent.started", {"name": subagent.name, "prompt": prompt})
+        child_context = RunTraceStore(subagent.agent.config.paths.memory / "runs").start_run(
+            subagent.agent.config.agent.name,
+            prompt,
+            parent_run_id=run_context.run_id,
+            event_listener=run_context.event_listener,
+        )
+        result = subagent.agent.run(
+            prompt,
+            include_subagents=True,
+            check_subagent_links_before_run=False,
+            run_context=child_context,
+        )
+        subagent_result = SubAgentResult(
+            name=subagent.name,
+            description=subagent.description,
+            text=result.text,
+            prompt=prompt,
+            created_by_agent=subagent.created_by_agent,
+            subagent_results=result.subagent_results,
+            run_id=result.run_id,
+        )
+        run_context.record_event(
+            "subagent.completed",
+            {"name": subagent.name, "run_id": result.run_id},
+        )
+        return subagent_result
 
     def _start_run_context(self, prompt: str) -> RunContext:
         store = RunTraceStore(self.config.paths.memory / "runs")
@@ -265,6 +335,25 @@ class Agent:
         if manifest is None:
             raise KeyError(f"workflow skill not found: {self.config.agent.workflow}")
         return create_workflow_from_skill_manifest(manifest)
+
+    def _resolve_configured_skill_names(self) -> list[str]:
+        if not self.config.agent.skills:
+            return []
+        unfiltered_loader = SkillLoader(self.skill_loader.skill_roots)
+        enabled_names: list[str] = []
+        disabled_placeholders: list[str] = []
+        for name in self.config.agent.skills:
+            manifest = unfiltered_loader.find_skill_manifest(name)
+            is_disabled = manifest is not None and skill_manifest_is_disabled(
+                manifest,
+                self.skill_loader.disabled_names,
+            )
+            if is_disabled:
+                disabled_placeholders.append(name)
+            else:
+                enabled_names.append(name)
+        manifests = SkillDependencyResolver(self.skill_loader).resolve_skills(enabled_names)
+        return [manifest.name for manifest in manifests] + disabled_placeholders
 
     def _record_skill_freshness(self, skills: list[Skill], prompt: str, output: str, *, success: bool) -> None:
         if not skills:

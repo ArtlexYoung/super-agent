@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from skill.evolution.freshness import DEFAULT_FRESHNESS
@@ -30,6 +31,8 @@ class SkillManifest:
     freshness: float = DEFAULT_FRESHNESS
     function_group: str = ""
     freshness_updated_at: str = ""
+    provides: list[str] = field(default_factory=list)
+    requires: list[str] = field(default_factory=list)
 
     @classmethod
     def load_from_file(cls, path: Path) -> "SkillManifest":
@@ -55,6 +58,8 @@ class SkillManifest:
             freshness=_read_freshness(data),
             function_group=str(data.get("function_group", name)).strip() or name,
             freshness_updated_at=str(data.get("freshness_updated_at", "")),
+            provides=_read_capabilities(data, "provides", [name]),
+            requires=_read_capabilities(data, "requires", []),
         )
 
 
@@ -88,3 +93,33 @@ def _read_freshness(data: dict[str, object]) -> float:
     if number < 0 or number > 100:
         raise ValueError("freshness must be between 0 and 100")
     return number
+
+
+def _read_capabilities(
+    data: dict[str, object],
+    name: str,
+    default: list[str],
+) -> list[str]:
+    value = data.get(name, default)
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise ValueError(f"{name} must be a TOML string array")
+    capabilities = [item.strip().lower() for item in value]
+    if any(not item for item in capabilities):
+        raise ValueError(f"{name} cannot contain empty capabilities")
+    if len(capabilities) != len(set(capabilities)):
+        raise ValueError(f"{name} cannot contain duplicate capabilities")
+    return capabilities
+
+
+def calculate_skill_directory_sha256(path: Path) -> str:
+    if not path.is_dir():
+        raise FileNotFoundError(f"skill directory not found: {path}")
+    digest = hashlib.sha256()
+    for file_path in sorted(item for item in path.rglob("*") if item.is_file()):
+        if file_path.is_symlink():
+            raise ValueError(f"skill files cannot contain symlinks: {file_path}")
+        digest.update(file_path.relative_to(path).as_posix().encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(file_path.read_bytes())
+        digest.update(b"\0")
+    return digest.hexdigest()

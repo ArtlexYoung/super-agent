@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import re
 import shutil
@@ -12,7 +11,7 @@ from uuid import uuid4
 
 from core.provider import ChatProvider, Message
 from skill.loader import SkillLoader
-from skill.manifest import SKILL_SCHEMA_VERSION, SkillManifest
+from skill.manifest import SKILL_SCHEMA_VERSION, SkillManifest, calculate_skill_directory_sha256
 
 
 @dataclass(frozen=True)
@@ -58,7 +57,7 @@ def create_candidate(
     skill_path = candidate_dir / "skill"
     parent_version = "" if current is None else current.version
     proposed_version = "0.1.0" if current is None else increment_patch_version(current.version)
-    parent_sha256 = "" if current is None else hash_skill_directory(current.path)
+    parent_sha256 = "" if current is None else calculate_skill_directory_sha256(current.path)
     _write_candidate_skill(
         skill_path,
         current=current,
@@ -74,7 +73,7 @@ def create_candidate(
         parent_version=parent_version,
         proposed_version=proposed_version,
         parent_sha256=parent_sha256,
-        candidate_sha256=hash_skill_directory(skill_path),
+        candidate_sha256=calculate_skill_directory_sha256(skill_path),
         created_at=_utc_now_text(),
         skill_path=skill_path,
         metadata_path=candidate_dir / "candidate.json",
@@ -110,7 +109,7 @@ def load_candidate(candidate_root: Path, candidate_id: str) -> SkillCandidate:
 
 
 def verify_candidate_files(candidate: SkillCandidate) -> None:
-    actual = hash_skill_directory(candidate.skill_path)
+    actual = calculate_skill_directory_sha256(candidate.skill_path)
     if actual != candidate.candidate_sha256:
         raise ValueError(f"skill candidate files changed after proposal: {candidate.candidate_id}")
 
@@ -121,22 +120,6 @@ def resolve_skill_file(skill_path: Path, relative_path: str) -> Path:
     if path != root and root not in path.parents:
         raise ValueError(f"skill file must stay inside its directory: {relative_path}")
     return path
-
-
-def hash_skill_directory(path: Path) -> str:
-    if not path.is_dir():
-        raise FileNotFoundError(f"skill directory not found: {path}")
-    digest = hashlib.sha256()
-    files = sorted(item for item in path.rglob("*") if item.is_file())
-    for file_path in files:
-        if file_path.is_symlink():
-            raise ValueError(f"skill files cannot contain symlinks: {file_path}")
-        relative = file_path.relative_to(path).as_posix().encode("utf-8")
-        digest.update(relative)
-        digest.update(b"\0")
-        digest.update(file_path.read_bytes())
-        digest.update(b"\0")
-    return digest.hexdigest()
 
 
 def clean_skill_name(name: str) -> str:

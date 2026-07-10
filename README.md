@@ -94,7 +94,9 @@ result = main.run("实现一个轻量的 agent 功能并 review")
 print(result.text)
 ```
 
-`name` 可选。不传时会自动生成 `subagent01`、`subagent02` 这样的稳定名称。默认规则很小：带 `triggers` 时只在命中后运行；不带 `triggers` 时每次主 agent 运行都会调用该从 agent。主 agent 会把从 agent 输出作为 `Subagent results` 加入最终回答上下文。
+`name` 可选。不传时会自动生成 `subagent01`、`subagent02` 这样的稳定名称；显式名称不能重复。`direct` 和 `plan` workflow 保持触发式委派：带 `triggers` 时只在命中后运行，不带时每次运行都会调用。主 agent 会把结果作为 `Subagent results` 加入最终回答上下文。
+
+`react` 和 `loop` workflow 不预先运行子 agent，而是向模型提供 `list_subagents` 和 `run_subagent`。模型可以先查看代码挂载的能力，再按名字和新 prompt 选择委派对象。子运行拥有独立 `run_id`，其首个事件通过 `parent_run_id` 指向主运行；结果也会进入同一棵运行树。
 
 如果子 agent 是由 agent 动态创建的，挂载时传 `created_by_agent=True`。运行结果会保留这个标记，并把嵌套子 agent 结果作为树返回，方便前端展示运行对话。
 
@@ -172,6 +174,8 @@ agent_created = false
 agent_can_update = false
 freshness = 70
 function_group = "general"
+provides = ["echo"]
+requires = []
 triggers = ["echo", "brief"]
 
 [entry]
@@ -179,6 +183,23 @@ instructions = "SKILL.md"
 ```
 
 `SKILL.md` 存放真正给 agent 的说明。runtime 会根据配置和触发词选择 skill，并把命中的说明注入本次运行。
+
+`provides` 声明能力，`requires` 声明依赖能力。未写 `provides` 时默认提供与 Skill 名相同的能力。配置一个 Skill 后，runtime 会按依赖拓扑自动加载其全部依赖；缺失、循环或多个提供者造成的歧义都会直接报错。
+
+```toml
+name = "research"
+provides = ["facts"]
+requires = ["http"]
+```
+
+可以查看解析结果并生成可复现 lock：
+
+```bash
+super-agent skills graph --config agent.toml --name report
+super-agent skills lock --config agent.toml --name report --output skill.lock
+```
+
+`skill.lock` 按 Skill 名排序，记录 kind、版本、能力边和目录 SHA-256，不写本机绝对路径。同一组内容和输入会生成完全一致的文件。
 
 `kind` 是唯一分类依据：
 
@@ -439,6 +460,8 @@ instruction = "Prefer short numbered steps."
 - `read_skill`：按需读取一个 Skill。
 - `list_skill_tools`：读取 MCP 暴露的工具。
 - `run_skill`：执行一个 MCP 工具。
+- `list_subagents`：查看代码挂载在当前 agent 下的子 agent。
+- `run_subagent`：按名字和独立 prompt 运行一个子 agent。
 
 循环在模型不再请求工具时结束，也可以在 workflow Skill 中限制步数：
 
@@ -456,6 +479,7 @@ src/
   cli_commands/  # 按领域拆分的 CLI 参数和命令适配
   core/          # Agent、运行追踪、真实 Skill 工具、agent.toml、provider
   skill/         # manifest、loader、kind、渐进式披露、候选评价、进化历史
+    ecosystem/   # capability 依赖解析、确定性 lock、Skill 包管理
     kinds/       # prompt、mcp、memory、workflow 等 skill kind
   frontend/mac/  # SwiftUI 桌面端：对话、配置、运行树
 ```

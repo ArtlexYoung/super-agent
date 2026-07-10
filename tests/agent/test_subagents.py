@@ -2,8 +2,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from core import Agent, AgentConfig
-from core.provider import MockProvider
+from core import Agent, AgentConfig, RunTraceStore
+from core.provider import MockProvider, ModelResponse, ToolCall
 from support import write_workflow_skill
 
 
@@ -20,6 +20,15 @@ class SubAgentTests(unittest.TestCase):
             self.assertEqual("coder", first_name)
             self.assertEqual("subagent01", second_name)
             self.assertEqual(["coder", "subagent01"], [item.name for item in main.list_subagents()])
+
+    def test_add_subagent_rejects_duplicate_explicit_name(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            main = _agent(root, "main")
+            main.add_subagent(_agent(root, "coder"), name="worker")
+
+            with self.assertRaisesRegex(ValueError, "subagent name already exists: worker"):
+                main.add_subagent(_agent(root, "reviewer"), name="worker")
 
     def test_main_agent_includes_matching_subagent_result_before_final_answer(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -142,6 +151,51 @@ class SubAgentTests(unittest.TestCase):
             self.assertEqual("build this", result.subagent_results[0].subagent_results[0].prompt)
             self.assertTrue(result.subagent_results[0].subagent_results[0].created_by_agent)
 
+    def test_react_workflow_lets_model_select_subagent_and_links_child_trace(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            main_provider = MockProvider(
+                tool_responses=[
+                    ModelResponse(
+                        text="",
+                        tool_calls=[ToolCall("list", "list_subagents", {})],
+                        stop_reason="tool_calls",
+                    ),
+                    ModelResponse(
+                        text="",
+                        tool_calls=[
+                            ToolCall(
+                                "delegate",
+                                "run_subagent",
+                                {"name": "coder", "prompt": "write the implementation"},
+                            )
+                        ],
+                        stop_reason="tool_calls",
+                    ),
+                    ModelResponse(text="main-final", tool_calls=[], stop_reason="model_finished"),
+                ]
+            )
+            main = _agent(root, "main", provider=main_provider, workflow="react")
+            coder = _agent(root, "coder", provider=MockProvider("coder-result"))
+            main.add_subagent(coder, name="coder", description="writes code", triggers=["model-only"])
+
+            result = main.run("delegate coding")
+
+            self.assertEqual("main-final", result.text)
+            self.assertEqual(["coder"], [item.name for item in result.subagent_results])
+            child = result.subagent_results[0]
+            self.assertEqual("write the implementation", child.prompt)
+            self.assertTrue(child.run_id)
+            child_events = RunTraceStore(root / ".super-agent" / "memory" / "coder" / "runs").read_run_events(
+                child.run_id
+            )
+            self.assertEqual(result.run_id, child_events[0].parent_run_id)
+            parent_events = RunTraceStore(root / ".super-agent" / "memory" / "main" / "runs").read_run_events(
+                result.run_id
+            )
+            self.assertIn("subagent.completed", [event.event_type for event in parent_events])
+            self.assertIn("coder-result", str(main_provider.last_messages))
+
 
 def _agent(
     root: Path,
@@ -149,9 +203,10 @@ def _agent(
     response: str = "ok",
     provider: MockProvider | None = None,
     max_agent_chain_depth: int | None = None,
+    workflow: str = "direct",
 ) -> Agent:
     config_path = root / f"{name}.toml"
-    write_workflow_skill(root)
+    write_workflow_skill(root, name=workflow, mode=workflow)
     memory_path = f".super-agent/memory/{name}"
     max_depth_line = "" if max_agent_chain_depth is None else f"max_agent_chain_depth = {max_agent_chain_depth}"
     config_path.write_text(
@@ -159,7 +214,7 @@ def _agent(
 [agent]
 name = "{name}"
 system = "{name} system."
-workflow = "direct"
+workflow = "{workflow}"
 memory = "default"
 skills = []
 {max_depth_line}

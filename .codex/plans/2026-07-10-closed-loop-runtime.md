@@ -173,10 +173,10 @@ class SkillTools:
     def run_subagent(self, name: str, prompt: str) -> dict[str, object]: ...
 ```
 
-- [ ] Add failing tests for `provides`, `requires`, missing dependencies, cycles, deterministic locks, model-selected delegation, and child trace linkage.
-- [ ] Implement capability resolution and expose code-mounted subagents through explicit workflow tools while keeping `Agent.add_subagent` unchanged.
-- [ ] Add CLI `skills graph` and `skills lock` commands.
-- [ ] Update version to `0.0.14` and commit `feat(skill): 发布 v0.0.14 组合与委派`.
+- [x] Add failing tests for `provides`, `requires`, missing dependencies, cycles, deterministic locks, model-selected delegation, and child trace linkage.
+- [x] Implement capability resolution and expose code-mounted subagents through explicit workflow tools while keeping `Agent.add_subagent` unchanged.
+- [x] Add CLI `skills graph` and `skills lock` commands.
+- [x] Update version to `0.0.14` and commit `feat(skill): 发布 v0.0.14 组合与委派`.
 
 ### Task 7: v0.0.15 Local and Git Skill Ecosystem
 

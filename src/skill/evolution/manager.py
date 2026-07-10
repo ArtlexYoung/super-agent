@@ -14,7 +14,6 @@ from skill.evolution.candidate import (
     clean_record_id,
     clean_skill_name,
     create_candidate,
-    hash_skill_directory,
     load_candidate,
     verify_candidate_files,
 )
@@ -27,7 +26,7 @@ from skill.evolution.evaluation import (
     evaluate_candidate,
 )
 from skill.loader import SkillLoader
-from skill.manifest import SkillManifest
+from skill.manifest import SkillManifest, calculate_skill_directory_sha256
 
 
 @dataclass(frozen=True)
@@ -208,7 +207,7 @@ class SkillEvolutionManager:
             raise ValueError(f"candidate parent skill no longer exists: {candidate.name}")
         if not current.agent_can_update:
             raise PermissionError(f"skill does not allow agent evolution: {candidate.name}")
-        if hash_skill_directory(current.path) != candidate.parent_sha256:
+        if calculate_skill_directory_sha256(current.path) != candidate.parent_sha256:
             raise ValueError(f"active skill changed after candidate proposal: {candidate.name}")
         return current
 
@@ -234,7 +233,7 @@ class SkillEvolutionManager:
             action=action,
             created_at=_utc_now_text(),
             previous_revision_id=previous_revision_id,
-            sha256=hash_skill_directory(skill_path),
+            sha256=calculate_skill_directory_sha256(skill_path),
             skill_path=final_path / "skill",
             metadata_path=final_path / "revision.json",
         )

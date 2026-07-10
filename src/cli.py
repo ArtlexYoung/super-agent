@@ -9,16 +9,10 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from cli_commands.memory import configure_memory_parser, run_memory_command
+from cli_commands.skills import configure_skills_parser, run_skills_command
 from core import Agent, AgentConfig, RunEvent, RunTraceStore
-from core import create_skill_loader_for_agent_config
 from core.provider import Message
-from skill import (
-    EvaluationCase,
-    RunResult,
-    SkillFreshnessStore,
-    explain_skill_selection,
-    validate_skill_manifests,
-)
+from skill import RunResult
 
 
 @dataclass(frozen=True)
@@ -35,24 +29,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "run":
         request = _read_runtime_request_from_stdin() if args.request_stdin else _read_runtime_request_from_args(args)
         return _run_prompt_command(Path(args.config), request, args.output)
-    if args.command == "skills" and args.skill_command == "list":
-        return _run_skills_list_command(Path(args.config))
-    if args.command == "skills" and args.skill_command == "propose":
-        return _run_skills_propose_command(args)
-    if args.command == "skills" and args.skill_command == "evaluate":
-        return _run_skills_evaluate_command(args)
-    if args.command == "skills" and args.skill_command == "promote":
-        return _run_skills_promote_command(args)
-    if args.command == "skills" and args.skill_command == "evolve":
-        return _run_skills_evolve_command(args)
-    if args.command == "skills" and args.skill_command == "rollback":
-        return _run_skills_rollback_command(args)
-    if args.command == "skills" and args.skill_command == "freshness":
-        return _run_skills_freshness_command(Path(args.config))
-    if args.command == "skills" and args.skill_command == "validate":
-        return _run_skills_validate_command(Path(args.config))
-    if args.command == "skills" and args.skill_command == "explain":
-        return _run_skills_explain_command(Path(args.config), args.prompt)
+    if args.command == "skills":
+        return run_skills_command(args)
     if args.command == "memory":
         return run_memory_command(args)
     parser.print_help()
@@ -73,29 +51,7 @@ def _build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--request-stdin", action="store_true")
 
     skills_parser = subparsers.add_parser("skills", help="manage skills")
-    skill_subparsers = skills_parser.add_subparsers(dest="skill_command")
-    list_parser = skill_subparsers.add_parser("list", help="list available skills")
-    list_parser.add_argument("--config", default="agent.toml")
-    propose_parser = skill_subparsers.add_parser("propose", help="create an isolated skill candidate")
-    _add_evolution_name_arguments(propose_parser)
-    evaluate_parser = skill_subparsers.add_parser("evaluate", help="evaluate a skill candidate")
-    _add_evolution_candidate_arguments(evaluate_parser)
-    evaluate_parser.add_argument("--cases", required=True)
-    promote_parser = skill_subparsers.add_parser("promote", help="promote a passing skill candidate")
-    _add_evolution_candidate_arguments(promote_parser)
-    evolve_parser = skill_subparsers.add_parser("evolve", help="propose, evaluate, and promote a skill")
-    _add_evolution_name_arguments(evolve_parser)
-    evolve_parser.add_argument("--cases", required=True)
-    rollback_parser = skill_subparsers.add_parser("rollback", help="restore the previous skill revision")
-    rollback_parser.add_argument("--config", default="agent.toml")
-    rollback_parser.add_argument("--name", required=True)
-    freshness_parser = skill_subparsers.add_parser("freshness", help="show runtime skill freshness stats")
-    freshness_parser.add_argument("--config", default="agent.toml")
-    validate_parser = skill_subparsers.add_parser("validate", help="validate every skill manifest")
-    validate_parser.add_argument("--config", default="agent.toml")
-    explain_parser = skill_subparsers.add_parser("explain", help="explain skill selection for one prompt")
-    explain_parser.add_argument("--config", default="agent.toml")
-    explain_parser.add_argument("--prompt", required=True)
+    configure_skills_parser(skills_parser)
 
     memory_parser = subparsers.add_parser("memory", help="inspect memory")
     configure_memory_parser(memory_parser)
@@ -185,149 +141,9 @@ def _read_runtime_messages(value: object) -> list[Message]:
     return messages
 
 
-def _run_skills_list_command(config_path: Path) -> int:
-    config = AgentConfig.load_from_file(config_path)
-    for manifest in create_skill_loader_for_agent_config(config).list_skill_manifests():
-        print(
-            f"{manifest.name}\t{manifest.kind}"
-            f"\tagent_created={str(manifest.agent_created).lower()}"
-            f"\tagent_can_update={str(manifest.agent_can_update).lower()}"
-            f"\tfreshness={manifest.freshness:.2f}"
-            f"\tfunction_group={manifest.function_group}"
-            f"\t{manifest.description}"
-        )
-    return 0
-
-
-def _run_skills_propose_command(args: argparse.Namespace) -> int:
-    manager = Agent.load_from_config_file(args.config).create_skill_evolution_manager()
-    candidate = manager.create_skill_candidate(args.name, args.goal)
-    print(f"Proposed candidate: {candidate.candidate_id}")
-    return 0
-
-
-def _run_skills_evaluate_command(args: argparse.Namespace) -> int:
-    manager = Agent.load_from_config_file(args.config).create_skill_evolution_manager()
-    report = manager.evaluate_skill_candidate(args.candidate_id, _read_evaluation_cases(Path(args.cases)))
-    state = "passed" if report.passed else "rejected"
-    print(f"Evaluation {report.report_id}: {state} score={report.score:.4f}")
-    return 0
-
-
-def _run_skills_promote_command(args: argparse.Namespace) -> int:
-    manager = Agent.load_from_config_file(args.config).create_skill_evolution_manager()
-    manifest = manager.promote_skill_candidate(args.candidate_id)
-    print(f"Promoted skill: {manifest.name}@{manifest.version}")
-    return 0
-
-
-def _run_skills_evolve_command(args: argparse.Namespace) -> int:
-    manager = Agent.load_from_config_file(args.config).create_skill_evolution_manager()
-    result = manager.evolve_skill(args.name, args.goal, _read_evaluation_cases(Path(args.cases)))
-    print(
-        f"Evolution {result.status}: {result.candidate.candidate_id} "
-        f"score={result.report.score:.4f}"
-    )
-    return 0 if result.status == "promoted" else 1
-
-
-def _run_skills_rollback_command(args: argparse.Namespace) -> int:
-    manager = Agent.load_from_config_file(args.config).create_skill_evolution_manager()
-    manifest = manager.rollback_skill(args.name)
-    print(f"Rolled back skill: {manifest.name}@{manifest.version}")
-    return 0
-
-
-def _run_skills_freshness_command(config_path: Path) -> int:
-    config = AgentConfig.load_from_file(config_path)
-    stats = SkillFreshnessStore(config.paths.memory).read_skill_stats()
-    if not stats:
-        print("No skill freshness stats yet.")
-        return 0
-    for name, item in sorted(stats.items()):
-        print(
-            f"{name}\tfreshness={float(item['freshness']):.2f}"
-            f"\tcalls={int(item['call_count'])}"
-            f"\tgroup={item['function_group']}"
-            f"\tsuccess={int(item['success_count'])}"
-            f"\treplacements={int(item['same_function_successful_followups'])}"
-        )
-    return 0
-
-
-def _run_skills_validate_command(config_path: Path) -> int:
-    config = AgentConfig.load_from_file(config_path)
-    loader = create_skill_loader_for_agent_config(config)
-    issues = validate_skill_manifests(loader)
-    if issues:
-        for issue in issues:
-            print(f"{issue.path}: {issue.message}")
-        return 1
-    print(f"{len(loader.list_skill_manifests())} valid skills")
-    return 0
-
-
-def _run_skills_explain_command(config_path: Path, prompt: str) -> int:
-    config = AgentConfig.load_from_file(config_path)
-    loader = create_skill_loader_for_agent_config(config)
-    selections = explain_skill_selection(loader, prompt, config.agent.skills)
-    for selection in selections:
-        state = "selected" if selection.selected else "skipped"
-        print(f"{selection.name}\t{state}\t{selection.reason}")
-    return 0
-
-
 def _write_file_if_missing(path: Path, content: str) -> None:
     if not path.exists():
         path.write_text(content, encoding="utf-8")
-
-
-def _add_evolution_name_arguments(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--config", default="agent.toml")
-    parser.add_argument("--name", required=True)
-    parser.add_argument("--goal", required=True)
-
-
-def _add_evolution_candidate_arguments(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--config", default="agent.toml")
-    parser.add_argument("--candidate-id", required=True)
-
-
-def _read_evaluation_cases(path: Path) -> list[EvaluationCase]:
-    data = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(data, list):
-        raise ValueError("evaluation cases file must contain a JSON array")
-    cases: list[EvaluationCase] = []
-    for item in data:
-        if not isinstance(item, dict):
-            raise ValueError("each evaluation case must be a JSON object")
-        cases.append(
-            EvaluationCase(
-                name=_read_json_string(item, "name", required=True),
-                prompt=_read_json_string(item, "prompt", required=True),
-                expected_output_contains=_read_string_list(item, "expected_output_contains"),
-                forbidden_output_contains=_read_string_list(item, "forbidden_output_contains"),
-                evaluator_instruction=_read_json_string(item, "evaluator_instruction"),
-            )
-        )
-    return cases
-
-
-def _read_string_list(data: dict[str, object], name: str) -> list[str]:
-    value = data.get(name, [])
-    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
-        raise ValueError(f"evaluation case {name} must be a string array")
-    return list(value)
-
-
-def _read_json_string(data: dict[str, object], name: str, *, required: bool = False) -> str:
-    value = data.get(name)
-    if value is None and not required:
-        return ""
-    if not isinstance(value, str) or (required and not value.strip()):
-        requirement = "a non-empty string" if required else "a string"
-        raise ValueError(f"evaluation case {name} must be {requirement}")
-    return value
 
 
 def _default_agent_config() -> str:
@@ -362,6 +178,8 @@ agent_created = false
 agent_can_update = false
 freshness = 70
 function_group = "general"
+provides = ["echo"]
+requires = []
 triggers = ["echo", "brief"]
 
 [entry]
