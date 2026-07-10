@@ -38,26 +38,26 @@ class SkillManifest:
     def load_from_file(cls, path: Path) -> "SkillManifest":
         data = tomllib.loads(path.read_text(encoding="utf-8"))
         schema_version = _read_schema_version(data)
-        name = str(data.get("name", "")).strip()
+        name = _read_required_string(data, "name").strip()
         if not name:
             raise ValueError(f"skill manifest missing name: {path}")
-        entry = data.get("entry", {})
+        kind = _read_required_string(data, "kind").strip().lower()
+        entry = _read_entry(data, kind)
         agent_created = _read_bool(data, "agent_created", False)
-        kind = str(data.get("kind", "prompt")).strip().lower() or "prompt"
         return cls(
             name=name,
-            description=str(data.get("description", "")),
-            version=str(data.get("version", "0.1.0")),
-            triggers=[str(item).lower() for item in data.get("triggers", [])],
-            entry=SkillEntry(instructions=str(entry.get("instructions", "SKILL.md"))),
+            description=_read_required_string(data, "description"),
+            version=_read_required_string(data, "version"),
+            triggers=[item.lower() for item in _read_string_array(data, "triggers")],
+            entry=entry,
             path=path.parent,
             schema_version=schema_version,
             kind=kind,
             agent_created=agent_created,
             agent_can_update=_read_bool(data, "agent_can_update", agent_created),
             freshness=_read_freshness(data),
-            function_group=str(data.get("function_group", name)).strip() or name,
-            freshness_updated_at=str(data.get("freshness_updated_at", "")),
+            function_group=_read_optional_string(data, "function_group", name).strip() or name,
+            freshness_updated_at=_read_optional_string(data, "freshness_updated_at", ""),
             provides=_read_capabilities(data, "provides", [name]),
             requires=_read_capabilities(data, "requires", []),
         )
@@ -77,11 +77,16 @@ def _read_bool(data: dict[str, object], name: str, default: bool) -> bool:
 
 
 def _read_schema_version(data: dict[str, object]) -> int:
-    value = data.get("schema_version", SKILL_SCHEMA_VERSION)
+    if "schema_version" not in data:
+        raise ValueError("skill manifest missing schema_version; migrate by adding schema_version = 1")
+    value = data["schema_version"]
     if isinstance(value, bool) or not isinstance(value, int):
         raise ValueError("skill schema_version must be an integer")
     if value != SKILL_SCHEMA_VERSION:
-        raise ValueError(f"unsupported skill schema_version: {value}")
+        raise ValueError(
+            f"unsupported skill schema_version: {value}; "
+            "migrate the manifest before setting schema_version = 1"
+        )
     return value
 
 
@@ -109,6 +114,63 @@ def _read_capabilities(
     if len(capabilities) != len(set(capabilities)):
         raise ValueError(f"{name} cannot contain duplicate capabilities")
     return capabilities
+
+
+def _read_entry(data: dict[str, object], kind: str) -> SkillEntry:
+    value = data.get("entry")
+    if value is None and kind in {"memory", "workflow"}:
+        return SkillEntry(instructions="SKILL.md")
+    if not isinstance(value, dict):
+        raise ValueError(f"skill kind {kind} requires an [entry] table")
+    instructions = value.get("instructions")
+    if not isinstance(instructions, str) or not instructions.strip():
+        raise ValueError("skill entry.instructions must be a non-empty string")
+    return SkillEntry(instructions=instructions)
+
+
+def _read_required_string(data: dict[str, object], name: str) -> str:
+    value = data.get(name)
+    if not isinstance(value, str):
+        raise ValueError(f"skill {name} must be a string")
+    return value
+
+
+def _read_optional_string(data: dict[str, object], name: str, default: str) -> str:
+    value = data.get(name, default)
+    if not isinstance(value, str):
+        raise ValueError(f"skill {name} must be a string")
+    return value
+
+
+def _read_string_array(data: dict[str, object], name: str) -> list[str]:
+    value = data.get(name)
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise ValueError(f"skill {name} must be a TOML string array")
+    return list(value)
+
+
+def skill_manifest_to_dict(manifest: SkillManifest) -> dict[str, object]:
+    if manifest.schema_version != SKILL_SCHEMA_VERSION:
+        raise ValueError(
+            f"migrate skill schema_version {manifest.schema_version} to "
+            f"skill schema_version {SKILL_SCHEMA_VERSION}"
+        )
+    return {
+        "schema_version": manifest.schema_version,
+        "name": manifest.name,
+        "kind": manifest.kind,
+        "description": manifest.description,
+        "version": manifest.version,
+        "triggers": list(manifest.triggers),
+        "entry": {"instructions": manifest.entry.instructions},
+        "agent_created": manifest.agent_created,
+        "agent_can_update": manifest.agent_can_update,
+        "freshness": manifest.freshness,
+        "function_group": manifest.function_group,
+        "freshness_updated_at": manifest.freshness_updated_at,
+        "provides": list(manifest.provides),
+        "requires": list(manifest.requires),
+    }
 
 
 def calculate_skill_directory_sha256(path: Path) -> str:

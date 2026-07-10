@@ -8,6 +8,9 @@ _EXPORTS = {
     "Agent": ("core.agent", "Agent"),
     "AgentConfig": ("core.config", "AgentConfig"),
     "AgentSettings": ("core.config", "AgentSettings"),
+    "BenchmarkCase": ("core.benchmark", "BenchmarkCase"),
+    "BenchmarkCaseResult": ("core.benchmark", "BenchmarkCaseResult"),
+    "BenchmarkReport": ("core.benchmark", "BenchmarkReport"),
     "AnthropicCompatibleProvider": ("core.provider", "AnthropicCompatibleProvider"),
     "ChatProvider": ("core.provider", "ChatProvider"),
     "MockProvider": ("core.provider", "MockProvider"),
@@ -18,9 +21,13 @@ _EXPORTS = {
     "RunContext": ("core.run", "RunContext"),
     "RunEvent": ("core.run", "RunEvent"),
     "RunTraceStore": ("core.run", "RunTraceStore"),
+    "SkillBenchmark": ("core.benchmark", "SkillBenchmark"),
+    "run_event_from_dict": ("core.run", "run_event_from_dict"),
+    "run_event_to_dict": ("core.run", "run_event_to_dict"),
     "SkillTools": ("core.tools", "SkillTools"),
     "ToolCall": ("core.provider", "ToolCall"),
     "create_chat_provider": ("core.provider", "create_chat_provider"),
+    "benchmark_report_to_dict": ("core.benchmark", "benchmark_report_to_dict"),
     "create_skill_loader_for_agent_config": ("core.agent", "create_skill_loader_for_agent_config"),
 }
 

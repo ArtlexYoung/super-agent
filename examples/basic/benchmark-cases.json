@@ -1,0 +1,10 @@
+[
+  {
+    "name": "echo skill",
+    "prompt": "echo this answer briefly"
+  },
+  {
+    "name": "filesystem skill",
+    "prompt": "list files with the filesystem skill"
+  }
+]

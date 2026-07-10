@@ -322,6 +322,33 @@ instructions = "SKILL.md"
             self.assertEqual("result", lines[-1]["type"])
             self.assertEqual(lines[0]["event"]["run_id"], lines[-1]["result"]["run_id"])
 
+    def test_benchmark_prints_json_schema_v1_report(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            main(["init", "--path", tmp])
+            cases_path = root / "benchmark-cases.json"
+            cases_path.write_text(
+                json.dumps([{"name": "echo", "prompt": "echo this"}]),
+                encoding="utf-8",
+            )
+            output = StringIO()
+
+            with patch("sys.stdout", output):
+                code = main(
+                    [
+                        "benchmark",
+                        "--config",
+                        str(root / "agent.toml"),
+                        "--cases",
+                        str(cases_path),
+                    ]
+                )
+
+            report = json.loads(output.getvalue())
+            self.assertEqual(0, code)
+            self.assertEqual(1, report["schema_version"])
+            self.assertEqual("echo", report["cases"][0]["name"])
+
     def test_run_result_serialization_keeps_nested_subagents(self) -> None:
         result = RunResult(
             text="main",

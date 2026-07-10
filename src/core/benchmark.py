@@ -1,0 +1,177 @@
+from __future__ import annotations
+
+import json
+import math
+from dataclasses import dataclass, field
+
+from skill.ecosystem.resolver import SkillDependencyResolver
+from skill.loader import PROMPT_CONTEXT_KINDS, SkillLoader
+from skill.manifest import Skill, SkillManifest
+
+
+BENCHMARK_SCHEMA_VERSION = 1
+
+
+@dataclass(frozen=True)
+class BenchmarkCase:
+    name: str
+    prompt: str
+    enabled_skills: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class BenchmarkCaseResult:
+    name: str
+    selected_skills: list[str]
+    eager_context_tokens: int
+    progressive_context_tokens: int
+    saved_context_tokens: int
+    context_savings_ratio: float
+
+
+@dataclass(frozen=True)
+class BenchmarkReport:
+    schema_version: int
+    case_results: list[BenchmarkCaseResult]
+    total_eager_context_tokens: int
+    total_progressive_context_tokens: int
+    total_saved_context_tokens: int
+    context_savings_ratio: float
+
+    def to_dict(self) -> dict[str, object]:
+        return benchmark_report_to_dict(self)
+
+
+class SkillBenchmark:
+    def __init__(self, skill_loader: SkillLoader) -> None:
+        self.skill_loader = skill_loader
+
+    def run_cases(self, cases: list[BenchmarkCase]) -> BenchmarkReport:
+        if not cases:
+            raise ValueError("benchmark requires at least one case")
+        _reject_duplicate_case_names(cases)
+        manifests = _prompt_context_manifests(self.skill_loader)
+        disclosure_index = _build_disclosure_index(manifests)
+        eager_context = _join_context(
+            [disclosure_index, _build_eager_context(self.skill_loader, manifests)]
+        )
+        results = [
+            self._run_case(case, eager_context, disclosure_index)
+            for case in cases
+        ]
+        eager_total = sum(item.eager_context_tokens for item in results)
+        progressive_total = sum(item.progressive_context_tokens for item in results)
+        saved_total = eager_total - progressive_total
+        return BenchmarkReport(
+            schema_version=BENCHMARK_SCHEMA_VERSION,
+            case_results=results,
+            total_eager_context_tokens=eager_total,
+            total_progressive_context_tokens=progressive_total,
+            total_saved_context_tokens=saved_total,
+            context_savings_ratio=_savings_ratio(saved_total, eager_total),
+        )
+
+    def _run_case(
+        self,
+        case: BenchmarkCase,
+        eager_context: str,
+        disclosure_index: str,
+    ) -> BenchmarkCaseResult:
+        name = case.name.strip()
+        prompt = case.prompt.strip()
+        if not name or not prompt:
+            raise ValueError("benchmark case name and prompt cannot be empty")
+        enabled = _resolve_enabled_skill_names(self.skill_loader, case.enabled_skills)
+        selected = self.skill_loader.load_skills_for_prompt(prompt, enabled)
+        progressive_context = _join_context([disclosure_index, *[skill.instructions for skill in selected]])
+        eager_tokens = _estimate_tokens(eager_context)
+        progressive_tokens = _estimate_tokens(progressive_context)
+        saved_tokens = eager_tokens - progressive_tokens
+        return BenchmarkCaseResult(
+            name=name,
+            selected_skills=[skill.manifest.name for skill in selected],
+            eager_context_tokens=eager_tokens,
+            progressive_context_tokens=progressive_tokens,
+            saved_context_tokens=saved_tokens,
+            context_savings_ratio=_savings_ratio(saved_tokens, eager_tokens),
+        )
+
+
+def benchmark_report_to_dict(report: BenchmarkReport) -> dict[str, object]:
+    if report.schema_version != BENCHMARK_SCHEMA_VERSION:
+        raise ValueError(
+            f"benchmark schema_version {report.schema_version} requires migration to "
+            f"benchmark schema_version {BENCHMARK_SCHEMA_VERSION}"
+        )
+    return {
+        "schema_version": report.schema_version,
+        "cases": [
+            {
+                "name": item.name,
+                "selected_skills": list(item.selected_skills),
+                "eager_context_tokens": item.eager_context_tokens,
+                "progressive_context_tokens": item.progressive_context_tokens,
+                "saved_context_tokens": item.saved_context_tokens,
+                "context_savings_ratio": item.context_savings_ratio,
+            }
+            for item in report.case_results
+        ],
+        "total_eager_context_tokens": report.total_eager_context_tokens,
+        "total_progressive_context_tokens": report.total_progressive_context_tokens,
+        "total_saved_context_tokens": report.total_saved_context_tokens,
+        "context_savings_ratio": report.context_savings_ratio,
+    }
+
+
+def _prompt_context_manifests(loader: SkillLoader) -> list[SkillManifest]:
+    return [
+        manifest
+        for manifest in loader.list_skill_manifests()
+        if manifest.kind in PROMPT_CONTEXT_KINDS
+    ]
+
+
+def _build_eager_context(loader: SkillLoader, manifests: list[SkillManifest]) -> str:
+    skills: list[Skill] = [loader.load_skill(manifest.name) for manifest in manifests]
+    return _join_context([skill.instructions for skill in skills])
+
+
+def _build_disclosure_index(manifests: list[SkillManifest]) -> str:
+    entries = [
+        {
+            "name": manifest.name,
+            "kind": manifest.kind,
+            "description": manifest.description,
+            "triggers": manifest.triggers,
+            "provides": manifest.provides,
+            "requires": manifest.requires,
+        }
+        for manifest in manifests
+    ]
+    return json.dumps(entries, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def _resolve_enabled_skill_names(loader: SkillLoader, names: list[str]) -> list[str]:
+    if not names:
+        return []
+    manifests = SkillDependencyResolver(loader).resolve_skills(names)
+    return [manifest.name for manifest in manifests]
+
+
+def _reject_duplicate_case_names(cases: list[BenchmarkCase]) -> None:
+    names = [case.name.strip() for case in cases]
+    if len(names) != len(set(names)):
+        raise ValueError("benchmark case names must be unique")
+
+
+def _join_context(parts: list[str]) -> str:
+    return "\n\n".join(part for part in parts if part)
+
+
+def _estimate_tokens(text: str) -> int:
+    # 固定字符比率避免引入模型 tokenizer，并让不同机器得到相同报告。
+    return math.ceil(len(text) / 4) if text else 0
+
+
+def _savings_ratio(saved_tokens: int, eager_tokens: int) -> float:
+    return round(saved_tokens / eager_tokens, 4) if eager_tokens else 0.0

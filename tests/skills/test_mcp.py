@@ -72,9 +72,12 @@ class McpSkillTests(unittest.TestCase):
             server_dir.mkdir(parents=True)
             (server_dir / "skill.toml").write_text(
                 """
+schema_version = 1
 name = "bad"
 kind = "mcp"
 description = "Missing mcp table"
+version = "0.1.0"
+triggers = ["bad"]
 transport = "stdio"
 command = "npx"
 args = ["-y", "@mcp/server-bad"]
@@ -144,6 +147,7 @@ def _write_mcp_server(
         env_text = f"\n[mcp.env]\n{env_lines}"
     (server_dir / "skill.toml").write_text(
         f"""
+schema_version = 1
 name = "{name}"
 kind = "mcp"
 description = "{description}"
@@ -169,7 +173,9 @@ def _write_skill(root: Path, name: str, description: str, instruction: str) -> N
     skill_dir.mkdir(parents=True)
     (skill_dir / "skill.toml").write_text(
         f"""
+schema_version = 1
 name = "{name}"
+kind = "prompt"
 description = "{description}"
 version = "0.1.0"
 triggers = ["{name}"]

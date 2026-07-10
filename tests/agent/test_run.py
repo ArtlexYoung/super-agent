@@ -2,7 +2,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from core import Agent, AgentConfig, MockProvider, RunTraceStore
+from core import (
+    Agent,
+    AgentConfig,
+    MockProvider,
+    RunTraceStore,
+    run_event_from_dict,
+    run_event_to_dict,
+)
 from support import write_workflow_skill
 
 
@@ -83,6 +90,39 @@ class RunTraceTests(unittest.TestCase):
                 [message["role"] for message in provider.last_messages],
             )
             self.assertEqual("latest question", provider.last_messages[-1]["content"])
+
+    def test_run_event_serializer_round_trips_exact_schema_v1(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            event = RunTraceStore(Path(tmp)).start_run("main", "hello").record_event(
+                "custom.event", {"value": 1}
+            )
+
+            data = run_event_to_dict(event)
+            restored = run_event_from_dict(data)
+
+            self.assertEqual(
+                {
+                    "schema_version",
+                    "run_id",
+                    "sequence",
+                    "event_type",
+                    "created_at",
+                    "agent_name",
+                    "parent_run_id",
+                    "data",
+                },
+                set(data),
+            )
+            self.assertEqual(event, restored)
+
+    def test_run_event_rejects_schema_that_requires_migration(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            event = RunTraceStore(Path(tmp)).start_run("main", "hello").record_event("custom.event")
+            data = run_event_to_dict(event)
+            data["schema_version"] = 2
+
+            with self.assertRaisesRegex(ValueError, "migrate.*run event schema_version 1"):
+                run_event_from_dict(data)
 
 
 class _FailingProvider:

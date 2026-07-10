@@ -77,7 +77,9 @@ skills = ["skills"]
             skill_dir.mkdir(parents=True)
             (skill_dir / "skill.toml").write_text(
                 """
+schema_version = 1
 name = "echo"
+kind = "prompt"
 description = "Echo helper"
 version = "0.1.0"
 triggers = ["repeat", "echo"]
@@ -105,7 +107,9 @@ instructions = "SKILL.md"
             skill_dir.mkdir(parents=True)
             (skill_dir / "skill.toml").write_text(
                 """
+schema_version = 1
 name = "echo"
+kind = "prompt"
 description = "Echo helper"
 version = "0.1.0"
 triggers = ["echo"]

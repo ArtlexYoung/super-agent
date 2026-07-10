@@ -29,6 +29,7 @@ PYTHONPATH=src python3 -m cli skills list --config demo-agent/agent.toml
 PYTHONPATH=src python3 -m cli skills validate --config demo-agent/agent.toml
 PYTHONPATH=src python3 -m cli skills freshness --config demo-agent/agent.toml
 PYTHONPATH=src python3 -m cli memory habits --config demo-agent/agent.toml
+PYTHONPATH=src python3 -m cli benchmark --config examples/basic/agent.toml --cases examples/basic/benchmark-cases.json
 ```
 
 安装为命令后：
@@ -40,6 +41,7 @@ super-agent skills list --config demo-agent/agent.toml
 super-agent skills validate --config demo-agent/agent.toml
 super-agent skills freshness --config demo-agent/agent.toml
 super-agent memory habits --config demo-agent/agent.toml
+super-agent benchmark --config examples/basic/agent.toml --cases examples/basic/benchmark-cases.json
 ```
 
 默认配置使用 `mock` provider，不需要 API key，方便本地验证。
@@ -75,6 +77,9 @@ print(result.text)
 - `MiniMemory.forget_memory(...)`：追加遗忘事件，不破坏历史记录。
 - `MiniMemory.consolidate_memory()`：确定性合并重复记忆，不调用模型。
 - `MemoryUsageHabits.record_agent_run(...)`：独立更新 workflow 和 Skill 使用习惯。
+- `SkillBenchmark.run_cases(...)`：确定性比较全量加载与渐进披露的上下文用量。
+- `run_event_to_dict(...)` / `run_event_from_dict(...)`：按公开 schema v1 序列化运行事件。
+- `skill_manifest_to_dict(...)`：输出不含本机路径的规范化 Skill manifest。
 
 ## 代码式多 Agent
 
@@ -166,6 +171,7 @@ skills/echo/
 `skill.toml`：
 
 ```toml
+schema_version = 1
 name = "echo"
 kind = "prompt"
 description = "Minimal example skill"
@@ -183,6 +189,14 @@ instructions = "SKILL.md"
 ```
 
 `SKILL.md` 存放真正给 agent 的说明。runtime 会根据配置和触发词选择 skill，并把命中的说明注入本次运行。
+
+### 实验契约 v1
+
+`v0.0.16` 冻结了首个实验性 schema v1，但这不等于承诺 1.0 API 稳定性。Skill manifest 必须显式声明 `schema_version = 1`，并提供字符串字段 `name`、`kind`、`description`、`version` 和字符串数组 `triggers`。`prompt`、`mcp` 还必须提供 `[entry]`；`memory`、`workflow` 的行为入口是各自同名配置表。
+
+运行事件 v1 固定为 `schema_version`、`run_id`、`sequence`、`event_type`、`created_at`、`agent_name`、`parent_run_id` 和 `data` 八个字段。读取器拒绝缺失字段、未知字段、错误类型和其他 schema 版本，不做静默兼容；升级时应先显式迁移数据。公共序列化入口为 `skill_manifest_to_dict(...)`、`run_event_to_dict(...)` 和 `run_event_from_dict(...)`。
+
+在 `0.0.x` 阶段，Python 方法仍可能调整；持久化格式发生不兼容变化时会使用新的 schema 版本和明确迁移错误，不会把旧数据猜测成新格式。
 
 `provides` 声明能力，`requires` 声明依赖能力。未写 `provides` 时默认提供与 Skill 名相同的能力。配置一个 Skill 后，runtime 会按依赖拓扑自动加载其全部依赖；缺失、循环或多个提供者造成的歧义都会直接报错。
 
@@ -335,6 +349,7 @@ skills/mcp/filesystem/
 `skill.toml`：
 
 ```toml
+schema_version = 1
 name = "filesystem"
 kind = "mcp"
 description = "Example stdio MCP server"
@@ -376,6 +391,20 @@ runtime 会按 `kind = "mcp"` 把它加载成 MCP skill。`react` 和 `loop` wor
 
 这给后续 ReAct、Plan、Loop 留出了工具接口：模型先看索引，再选择需要展开的 skill，而不是一开始读完所有资源。
 
+### 渐进披露基准
+
+两侧都计入同一份能力索引；全量侧再加载全部 prompt/MCP 指令，渐进侧只展开命中指令：
+
+```bash
+super-agent benchmark \
+  --config examples/basic/agent.toml \
+  --cases examples/basic/benchmark-cases.json
+```
+
+用例文件是 JSON 数组，每项包含唯一 `name`、`prompt`，并可用 `enabled_skills` 指定需要先解析依赖的 Skill。报告输出每个用例及总计的 `eager_context_tokens`、`progressive_context_tokens`、`saved_context_tokens` 和 `context_savings_ratio`；使用 `--output report.json` 可保存结果。
+
+基准不调用模型，报告也不包含本机时间或本地路径。token 使用 `ceil(字符数 / 4)` 的固定近似值，因此适合在提交之间做可复现回归比较，不代表特定模型 tokenizer 的账单；负节省表示当前 Skill 集很小，索引成本高于省下的指令上下文。
+
 ## 运行追踪
 
 每次 `Agent.run(...)` 都会生成稳定的 `run_id`，并把有序事件写入：
@@ -411,9 +440,12 @@ skills/memory/default/
 ```
 
 ```toml
+schema_version = 1
 name = "default"
 kind = "memory"
 description = "Default memory behavior"
+version = "0.1.0"
+triggers = []
 
 [memory]
 default_scope = "agent"
@@ -461,9 +493,12 @@ skills/workflow/direct/
 ```
 
 ```toml
+schema_version = 1
 name = "direct"
 kind = "workflow"
 description = "Direct workflow"
+version = "0.1.0"
+triggers = []
 
 [workflow]
 mode = "direct"

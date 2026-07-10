@@ -58,7 +58,9 @@ def _write_skill(root: Path, name: str, description: str, instruction: str) -> N
     skill_dir.mkdir(parents=True)
     (skill_dir / "skill.toml").write_text(
         f"""
+schema_version = 1
 name = "{name}"
+kind = "prompt"
 description = "{description}"
 version = "0.1.0"
 triggers = ["{name}"]

@@ -1,11 +1,13 @@
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 
 from skill import (
     SkillLoader,
     SkillManifest,
     explain_skill_selection,
+    skill_manifest_to_dict,
     validate_skill_manifests,
 )
 
@@ -23,8 +25,44 @@ class SkillManifestContractTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             manifest_path = _write_skill(Path(tmp), schema_version=2)
 
-            with self.assertRaisesRegex(ValueError, "unsupported skill schema_version: 2"):
+            with self.assertRaisesRegex(ValueError, "migrate.*schema_version = 1"):
                 SkillManifest.load_from_file(manifest_path)
+
+    def test_manifest_requires_explicit_schema_version(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest_path = _write_skill(Path(tmp), schema_version=1)
+            text = manifest_path.read_text(encoding="utf-8").replace("schema_version = 1\n", "")
+            manifest_path.write_text(text, encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "missing schema_version.*schema_version = 1"):
+                SkillManifest.load_from_file(manifest_path)
+
+    def test_manifest_rejects_wrong_field_type_in_schema_v1(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest_path = _write_skill(Path(tmp), schema_version=1)
+            text = manifest_path.read_text(encoding="utf-8").replace('name = "demo"', "name = 123")
+            manifest_path.write_text(text, encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "skill name must be a string"):
+                SkillManifest.load_from_file(manifest_path)
+
+    def test_manifest_serializer_emits_normalized_schema_v1_without_local_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest = SkillManifest.load_from_file(_write_skill(Path(tmp), schema_version=1))
+
+            data = skill_manifest_to_dict(manifest)
+
+            self.assertEqual(1, data["schema_version"])
+            self.assertEqual("demo", data["name"])
+            self.assertEqual(["demo"], data["provides"])
+            self.assertNotIn("path", data)
+
+    def test_manifest_serializer_rejects_schema_that_requires_migration(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest = SkillManifest.load_from_file(_write_skill(Path(tmp), schema_version=1))
+
+            with self.assertRaisesRegex(ValueError, "migrate.*skill schema_version 1"):
+                skill_manifest_to_dict(replace(manifest, schema_version=2))
 
     def test_loader_reports_invalid_manifests_without_hiding_valid_ones(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

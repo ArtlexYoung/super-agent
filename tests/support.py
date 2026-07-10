@@ -6,6 +6,7 @@ def write_memory_skill(root: Path, name: str = "default") -> None:
     skill_dir.mkdir(parents=True, exist_ok=True)
     (skill_dir / "skill.toml").write_text(
         f"""
+schema_version = 1
 name = "{name}"
 kind = "memory"
 description = "Default memory"
@@ -23,6 +24,7 @@ def write_workflow_skill(root: Path, name: str = "direct", mode: str = "direct")
     skill_dir.mkdir(parents=True, exist_ok=True)
     (skill_dir / "skill.toml").write_text(
         f"""
+schema_version = 1
 name = "{name}"
 kind = "workflow"
 description = "{name} workflow"

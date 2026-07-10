@@ -18,8 +18,11 @@ class SkillFreshnessTests(unittest.TestCase):
             skill_dir.mkdir(parents=True)
             (skill_dir / "skill.toml").write_text(
                 """
+schema_version = 1
 name = "research"
+kind = "prompt"
 description = "Research helper"
+version = "0.1.0"
 freshness = 83.5
 function_group = "search"
 freshness_updated_at = "2026-07-07T12:00:00Z"
@@ -114,7 +117,9 @@ def _write_skill(root: Path, name: str, function_group: str) -> None:
     skill_dir.mkdir(parents=True)
     (skill_dir / "skill.toml").write_text(
         f"""
+schema_version = 1
 name = "{name}"
+kind = "prompt"
 description = "{name} helper"
 version = "0.1.0"
 freshness = 70

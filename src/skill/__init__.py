@@ -41,6 +41,7 @@ _EXPORTS = {
     "create_workflow": ("skill.kinds.workflow", "create_workflow"),
     "create_workflow_from_skill_manifest": ("skill.kinds.workflow", "create_workflow_from_skill_manifest"),
     "explain_skill_selection": ("skill.loader", "explain_skill_selection"),
+    "skill_manifest_to_dict": ("skill.manifest", "skill_manifest_to_dict"),
     "validate_skill_manifests": ("skill.loader", "validate_skill_manifests"),
 }
 

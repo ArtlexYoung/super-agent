@@ -2,6 +2,9 @@ from core import (
     Agent,
     AgentConfig,
     AgentSettings,
+    BenchmarkCase,
+    BenchmarkCaseResult,
+    BenchmarkReport,
     ChatProvider,
     ModelSettings,
     ModelResponse,
@@ -9,8 +12,12 @@ from core import (
     RunContext,
     RunEvent,
     RunTraceStore,
+    SkillBenchmark,
     SkillTools,
     ToolCall,
+    benchmark_report_to_dict,
+    run_event_from_dict,
+    run_event_to_dict,
 )
 from skill import (
     EvaluationCase,
@@ -30,12 +37,16 @@ from skill import (
     SkillManifest,
     SkillPackageManager,
     SubAgentResult,
+    skill_manifest_to_dict,
 )
 
 __all__ = [
     "Agent",
     "AgentConfig",
     "AgentSettings",
+    "BenchmarkCase",
+    "BenchmarkCaseResult",
+    "BenchmarkReport",
     "ChatProvider",
     "EvaluationCase",
     "EvaluationReport",
@@ -53,6 +64,7 @@ __all__ = [
     "RunResult",
     "RunTraceStore",
     "Skill",
+    "SkillBenchmark",
     "SkillCandidate",
     "SkillDependencyResolver",
     "SkillEvolutionManager",
@@ -62,4 +74,8 @@ __all__ = [
     "SkillPackageManager",
     "SubAgentResult",
     "ToolCall",
+    "benchmark_report_to_dict",
+    "run_event_from_dict",
+    "run_event_to_dict",
+    "skill_manifest_to_dict",
 ]

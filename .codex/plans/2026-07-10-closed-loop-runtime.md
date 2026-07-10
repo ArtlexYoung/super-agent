@@ -214,7 +214,7 @@ class SkillBenchmark:
     def run_cases(self, cases: list[BenchmarkCase]) -> BenchmarkReport: ...
 ```
 
-- [ ] Add failing tests for strict schema v1, explicit migration errors, event schema stability, public facade imports, benchmark context savings, and JSON report output.
-- [ ] Implement `super-agent benchmark`, freeze experimental schema v1, and document compatibility boundaries without claiming 1.0 stability.
-- [ ] Run full Python tests, wheel build/install smoke test, Swift build, CLI smoke tests, and source scans.
-- [ ] Update version to `0.0.16` and commit `feat(release): 发布 v0.0.16 闭环实验契约`.
+- [x] Add failing tests for strict schema v1, explicit migration errors, event schema stability, public facade imports, benchmark context savings, and JSON report output.
+- [x] Implement `super-agent benchmark`, freeze experimental schema v1, and document compatibility boundaries without claiming 1.0 stability.
+- [x] Run full Python tests, wheel build/install smoke test, Swift build, CLI smoke tests, and source scans.
+- [x] Update version to `0.0.16` and commit `feat(release): 发布 v0.0.16 闭环实验契约`.

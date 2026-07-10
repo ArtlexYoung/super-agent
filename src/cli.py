@@ -8,9 +8,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Sequence
 
+from cli_commands.benchmark import configure_benchmark_parser, run_benchmark_command
 from cli_commands.memory import configure_memory_parser, run_memory_command
 from cli_commands.skills import configure_skills_parser, run_skills_command
-from core import Agent, AgentConfig, RunEvent, RunTraceStore
+from core import Agent, AgentConfig, RunEvent, RunTraceStore, run_event_to_dict
 from core.provider import Message
 from skill import RunResult
 
@@ -33,6 +34,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return run_skills_command(args)
     if args.command == "memory":
         return run_memory_command(args)
+    if args.command == "benchmark":
+        return run_benchmark_command(args)
     parser.print_help()
     return 1
 
@@ -55,6 +58,8 @@ def _build_parser() -> argparse.ArgumentParser:
 
     memory_parser = subparsers.add_parser("memory", help="inspect memory")
     configure_memory_parser(memory_parser)
+    benchmark_parser = subparsers.add_parser("benchmark", help="measure progressive context savings")
+    configure_benchmark_parser(benchmark_parser)
     return parser
 
 
@@ -106,7 +111,7 @@ def run_result_to_dict(result: RunResult) -> dict[str, Any]:
 
 
 def _print_run_event(event: RunEvent) -> None:
-    print(json.dumps({"type": "event", "event": asdict(event)}, ensure_ascii=False), flush=True)
+    print(json.dumps({"type": "event", "event": run_event_to_dict(event)}, ensure_ascii=False), flush=True)
 
 
 def _read_runtime_request_from_args(args: argparse.Namespace) -> RuntimeRequest:
