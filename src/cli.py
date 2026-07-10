@@ -8,12 +8,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Sequence
 
+from cli_commands.memory import configure_memory_parser, run_memory_command
 from core import Agent, AgentConfig, RunEvent, RunTraceStore
 from core import create_skill_loader_for_agent_config
 from core.provider import Message
 from skill import (
     EvaluationCase,
-    MiniMemory,
     RunResult,
     SkillFreshnessStore,
     explain_skill_selection,
@@ -53,8 +53,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_skills_validate_command(Path(args.config))
     if args.command == "skills" and args.skill_command == "explain":
         return _run_skills_explain_command(Path(args.config), args.prompt)
-    if args.command == "memory" and args.memory_command == "habits":
-        return _run_memory_habits_command(Path(args.config))
+    if args.command == "memory":
+        return run_memory_command(args)
     parser.print_help()
     return 1
 
@@ -98,9 +98,7 @@ def _build_parser() -> argparse.ArgumentParser:
     explain_parser.add_argument("--prompt", required=True)
 
     memory_parser = subparsers.add_parser("memory", help="inspect memory")
-    memory_subparsers = memory_parser.add_subparsers(dest="memory_command")
-    habits_parser = memory_subparsers.add_parser("habits", help="show self-updated usage habits")
-    habits_parser.add_argument("--config", default="agent.toml")
+    configure_memory_parser(memory_parser)
     return parser
 
 
@@ -279,13 +277,6 @@ def _run_skills_explain_command(config_path: Path, prompt: str) -> int:
     return 0
 
 
-def _run_memory_habits_command(config_path: Path) -> int:
-    config = AgentConfig.load_from_file(config_path)
-    instruction = MiniMemory(config.paths.memory).build_prompt_instruction()
-    print(instruction or "No memory yet.")
-    return 0
-
-
 def _write_file_if_missing(path: Path, content: str) -> None:
     if not path.exists():
         path.write_text(content, encoding="utf-8")
@@ -407,6 +398,10 @@ version = "0.1.0"
 triggers = []
 
 [memory]
+default_scope = "agent"
+recall_limit = 20
+include_in_prompt = true
+include_usage_habits = true
 """.lstrip()
 
 

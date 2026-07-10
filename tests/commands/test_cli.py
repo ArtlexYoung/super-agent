@@ -63,6 +63,37 @@ class CliTests(unittest.TestCase):
             self.assertIn("total runs: 1", output.getvalue())
             self.assertIn("workflow direct used 1 times", output.getvalue())
 
+    def test_memory_commands_add_recall_list_forget_and_consolidate_items(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            config = str(Path(tmp) / "agent.toml")
+            main(["init", "--path", tmp])
+            add_output = StringIO()
+            with patch("sys.stdout", add_output):
+                add_code = main(
+                    ["memory", "add", "--config", config, "--text", "Remember Python.", "--scope", "project"]
+                )
+            item = json.loads(add_output.getvalue())
+            recall_output = StringIO()
+            with patch("sys.stdout", recall_output):
+                recall_code = main(
+                    ["memory", "recall", "--config", config, "--query", "Python", "--scope", "project"]
+                )
+            list_output = StringIO()
+            with patch("sys.stdout", list_output):
+                list_code = main(["memory", "list", "--config", config, "--scope", "project"])
+            forget_code = main(
+                ["memory", "forget", "--config", config, "--item-id", item["item_id"]]
+            )
+            consolidate_code = main(["memory", "consolidate", "--config", config])
+
+            self.assertEqual(0, add_code)
+            self.assertEqual(0, recall_code)
+            self.assertEqual(0, list_code)
+            self.assertEqual(0, forget_code)
+            self.assertEqual(0, consolidate_code)
+            self.assertEqual("Remember Python.", json.loads(recall_output.getvalue())["text"])
+            self.assertEqual(item["item_id"], json.loads(list_output.getvalue())["item_id"])
+
     def test_skills_propose_evaluate_and_promote_candidate(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             config = str(Path(tmp) / "agent.toml")

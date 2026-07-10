@@ -70,8 +70,11 @@ print(result.text)
 - `SkillEvolutionManager.promote_skill_candidate(...)`：只晋升通过评价且父版本未变化的候选。
 - `SkillEvolutionManager.evolve_skill(...)`：一次完成候选、评价和条件晋升。
 - `SkillEvolutionManager.rollback_skill(...)`：恢复上一份不可变 Skill 快照。
-- `MiniMemory.record_agent_run(...)`：记录本次运行习惯。
-- `MiniMemory.build_prompt_instruction()`：把记忆生成给模型看的提示词。
+- `MiniMemory.add_memory_item(...)`：追加带作用域和来源运行编号的记忆事件。
+- `MiniMemory.recall_memory(...)`：按作用域和词法相关度召回记忆。
+- `MiniMemory.forget_memory(...)`：追加遗忘事件，不破坏历史记录。
+- `MiniMemory.consolidate_memory()`：确定性合并重复记忆，不调用模型。
+- `MemoryUsageHabits.record_agent_run(...)`：独立更新 workflow 和 Skill 使用习惯。
 
 ## 代码式多 Agent
 
@@ -369,15 +372,23 @@ kind = "memory"
 description = "Default memory behavior"
 
 [memory]
+default_scope = "agent"
+recall_limit = 20
+include_in_prompt = true
+include_usage_habits = true
 ```
 
-`MiniMemory` 现在会自动更新调用方式与习惯：
+Skill manifest 只声明记忆策略，用户数据单独保存在：
 
 ```text
 .super-agent/memory/
-  memory.md      # 人类或工具写入的长期记忆
-  habits.json    # runtime 自动更新的调用习惯
+  memory_events.jsonl  # 添加、遗忘和归并的只追加事件
+  habits.json          # runtime 自动更新的调用习惯
 ```
+
+每条记忆都有 `item_id`、`scope`、`source_run_id` 和创建时间。`recall_memory` 先按作用域隔离，再用英文词、数字和中文字符做确定性词法排序。`consolidate_memory` 只合并同一作用域内规范化后完全相同的内容。
+
+在 `react` 或 `loop` workflow 中，模型可以直接调用 `list_memory_items`、`add_memory_item`、`recall_memory`、`forget_memory` 和 `consolidate_memory`。工具写入会自动记录当前 `run_id`，并同时进入运行事件追踪。
 
 每次成功运行后，runtime 会记录：
 
@@ -385,10 +396,15 @@ description = "Default memory behavior"
 - 使用过的 workflow。
 - 命中的 skill。
 
-下一次运行时，这些习惯会以 `Usage habits` 指令加入系统上下文。CLI 可以查看当前习惯：
+下一次运行时，相关记忆和这些习惯会加入系统上下文。CLI 提供完整操作：
 
 ```bash
 super-agent memory habits --config agent.toml
+super-agent memory list --config agent.toml --scope agent
+super-agent memory add --config agent.toml --text "Prefer concise answers." --scope agent
+super-agent memory recall --config agent.toml --query "answer style" --scope agent --limit 5
+super-agent memory forget --config agent.toml --item-id <memory-id>
+super-agent memory consolidate --config agent.toml
 ```
 
 ## Workflow Skill 格式
@@ -437,6 +453,7 @@ max_steps = 8
 ```text
 src/
   cli.py         # CLI 入口：init、run、skills、memory
+  cli_commands/  # 按领域拆分的 CLI 参数和命令适配
   core/          # Agent、运行追踪、真实 Skill 工具、agent.toml、provider
   skill/         # manifest、loader、kind、渐进式披露、候选评价、进化历史
     kinds/       # prompt、mcp、memory、workflow 等 skill kind
@@ -445,7 +462,7 @@ src/
 
 内核只保留 transport、运行事件和 Skill 装配机制。`direct`、`plan`、`react`、`loop` 都由 workflow Skill 声明，其中 `react` 和 `loop` 已通过统一工具协议执行多步模型循环。
 
-`memory` 当前采用最小 Markdown + JSON 存储，实现在 `skill/kinds/memory.py`。存在内容时，runtime 会把最近记忆和调用习惯加入本次运行。
+`memory` 采用 JSONL 事件存储，实现在 `skill/kinds/memory.py`。策略由 memory Skill 声明，数据不和能力定义混放。
 
 macOS 前端通过上述 JSONL 协议调用同一个 Python runtime，把会话保存成 JSON，并按真实 `run_id` 生成类似文件树的运行节点。点击主 agent 或子 agent 节点，可以查看对应输入与输出。
 

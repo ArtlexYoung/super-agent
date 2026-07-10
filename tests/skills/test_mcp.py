@@ -6,7 +6,7 @@ from pathlib import Path
 
 from core import Agent, AgentConfig
 from core.provider import MockProvider
-from skill import McpServer, SkillLoader
+from skill import McpServer, MiniMemory, SkillLoader
 from support import write_memory_skill, write_workflow_skill
 
 
@@ -109,8 +109,7 @@ instructions = "SKILL.md"
             _write_skill(root, "echo", "Echo helper", "Use echo skill.")
             _write_mcp_server(root, "github", "GitHub MCP", "npx", ["-y", "@mcp/server-github"])
             memory_dir = root / ".super-agent" / "memory"
-            memory_dir.mkdir(parents=True)
-            (memory_dir / "memory.md").write_text("- Keep answers short.\n", encoding="utf-8")
+            MiniMemory(memory_dir).add_memory_item("Keep answers short.")
             config_path = _write_agent_config(
                 root,
                 skills=["echo", "github"],

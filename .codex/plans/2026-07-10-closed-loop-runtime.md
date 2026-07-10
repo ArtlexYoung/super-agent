@@ -149,10 +149,10 @@ class MiniMemory:
     def consolidate_memory(self) -> list[MemoryItem]: ...
 ```
 
-- [ ] Add failing tests for scoped recall, lexical ranking, event-sourced writes, forgetting, deterministic consolidation, and model-invoked memory tools.
-- [ ] Implement memory policy loading from `[memory]`, keep policy separate from data, and expose explicit memory tools to workflows.
-- [ ] Add CLI `memory list/add/recall/forget/consolidate` commands.
-- [ ] Update version to `0.0.13` and commit `feat(memory): 发布 v0.0.13 记忆操作闭环`.
+- [x] Add failing tests for scoped recall, lexical ranking, event-sourced writes, forgetting, deterministic consolidation, and model-invoked memory tools.
+- [x] Implement memory policy loading from `[memory]`, keep policy separate from data, and expose explicit memory tools to workflows.
+- [x] Add CLI `memory list/add/recall/forget/consolidate` commands.
+- [x] Update version to `0.0.13` and commit `feat(memory): 发布 v0.0.13 记忆操作闭环`.
 
 ### Task 6: v0.0.14 Skill Composition and Delegation
 

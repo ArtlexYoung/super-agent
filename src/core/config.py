@@ -32,7 +32,7 @@ class ModelSettings:
 class PathsSettings:
     # 统一技能树入口，prompt、mcp、memory、workflow 都从这里递归扫描。
     skills: list[Path]
-    # 运行时数据目录：memory.md、habits.json、disclosure、skill_stats 都写这里。
+    # 运行时数据目录：memory_events.jsonl、habits、运行追踪和评价历史都写这里。
     memory: Path
 
 

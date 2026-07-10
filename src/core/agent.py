@@ -121,7 +121,7 @@ class Agent:
             else:
                 disclosure_bundle = disclosure.prepare_disclosure_for_prompt(prompt, self.config.agent.skills)
             disclosed_skills = disclosure_bundle.skills
-            skill_tools = SkillTools(self.skill_loader, disclosure, context)
+            skill_tools = SkillTools(self.skill_loader, disclosure, context, memory=memory)
             context.record_event(
                 "skills.disclosed",
                 {
@@ -137,7 +137,7 @@ class Agent:
             )
             system = self.config.agent.system
             if memory is not None:
-                system = _add_memory_to_system_prompt(system, memory)
+                system = _add_memory_to_system_prompt(system, memory, prompt)
             system = _add_subagent_results_to_system_prompt(system, subagent_results)
             system = _add_disclosure_cache_paths_to_system_prompt(
                 system,
@@ -162,7 +162,7 @@ class Agent:
             used_skills = _merge_used_skills(disclosed_skills, skill_tools.used_skills)
             self._record_skill_freshness(used_skills, prompt, result.text, success=bool(result.text.strip()))
             if memory is not None:
-                memory.record_agent_run(result.workflow, result.skills)
+                memory.usage_habits.record_agent_run(result.workflow, result.skills)
             context.record_event(
                 "run.completed",
                 {
@@ -282,8 +282,8 @@ class Agent:
             )
 
 
-def _add_memory_to_system_prompt(system: str, memory: MiniMemory) -> str:
-    instruction = memory.build_prompt_instruction()
+def _add_memory_to_system_prompt(system: str, memory: MiniMemory, prompt: str) -> str:
+    instruction = memory.build_prompt_instruction(prompt)
     return f"{system}\n\n{instruction}" if instruction else system
 
 

@@ -6,6 +6,9 @@ from typing import Any
 
 _EXPORTS = {
     "McpServer": ("skill.kinds.mcp", "McpServer"),
+    "MemoryItem": ("skill.kinds.memory", "MemoryItem"),
+    "MemoryPolicy": ("skill.kinds.memory", "MemoryPolicy"),
+    "MemoryUsageHabits": ("skill.kinds.memory", "MemoryUsageHabits"),
     "MiniMemory": ("skill.kinds.memory", "MiniMemory"),
     "RunResult": ("skill.kinds.workflow", "RunResult"),
     "SubAgentResult": ("skill.kinds.workflow", "SubAgentResult"),

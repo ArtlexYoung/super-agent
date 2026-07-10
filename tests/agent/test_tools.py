@@ -5,7 +5,7 @@ from pathlib import Path
 from core import RunTraceStore
 from core.provider import ToolCall
 from core.tools import SkillTools
-from skill import ProgressiveDisclosure, SkillLoader
+from skill import MiniMemory, ProgressiveDisclosure, SkillLoader
 
 
 class SkillToolsTests(unittest.TestCase):
@@ -42,6 +42,34 @@ class SkillToolsTests(unittest.TestCase):
                 tools.run_tool_call(ToolCall("bad", "unknown", {}))
 
             self.assertEqual("tool.failed", context.store.read_run_events(context.run_id)[-1].event_type)
+
+    def test_model_can_add_recall_and_forget_memory_with_runtime_tools(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            loader = SkillLoader([root / "skills"])
+            disclosure = ProgressiveDisclosure(loader, root / "cache")
+            context = RunTraceStore(root / "runs").start_run("main", "question")
+            memory = MiniMemory(root / "memory")
+            tools = SkillTools(loader, disclosure, context, memory=memory)
+
+            definitions = {item["function"]["name"] for item in tools.get_tool_definitions()}
+            added = tools.run_tool_call(
+                ToolCall("add", "add_memory_item", {"text": "Remember Python.", "scope": "agent"})
+            )
+            recalled = tools.run_tool_call(
+                ToolCall("recall", "recall_memory", {"query": "Python", "scope": "agent"})
+            )
+            tools.run_tool_call(
+                ToolCall("forget", "forget_memory", {"item_id": added["item"]["item_id"]})
+            )
+
+            self.assertTrue(
+                {"list_memory_items", "add_memory_item", "recall_memory", "forget_memory", "consolidate_memory"}
+                <= definitions
+            )
+            self.assertEqual("Remember Python.", recalled["items"][0]["text"])
+            self.assertEqual([], memory.list_memory_items())
+            self.assertEqual(context.run_id, added["item"]["source_run_id"])
 
 
 def _write_prompt_skill(root: Path, name: str) -> None:

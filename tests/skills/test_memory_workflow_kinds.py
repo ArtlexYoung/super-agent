@@ -4,6 +4,7 @@ from pathlib import Path
 
 from core import Agent, AgentConfig
 from core.provider import MockProvider
+from skill import MiniMemory
 
 
 class MemoryWorkflowKindTests(unittest.TestCase):
@@ -12,10 +13,12 @@ class MemoryWorkflowKindTests(unittest.TestCase):
             root = Path(tmp)
             _write_workflow_skill(root, "direct", "direct")
             _write_memory_skill(root, "default")
-            _write_memory_file(root, "- Remember via skill kind.\n")
+            _write_memory_item(root, "Remember via skill kind.")
             provider = MockProvider("ok")
 
-            result = Agent(AgentConfig.load_from_file(_write_config(root)), provider=provider).run("hello")
+            result = Agent(AgentConfig.load_from_file(_write_config(root)), provider=provider).run(
+                "remember via skill kind"
+            )
 
             self.assertEqual("ok", result.text)
             self.assertIn("Remember via skill kind.", provider.last_messages[0]["content"])
@@ -25,7 +28,7 @@ class MemoryWorkflowKindTests(unittest.TestCase):
             root = Path(tmp)
             _write_workflow_skill(root, "direct", "direct")
             _write_memory_skill(root, "default")
-            _write_memory_file(root, "- Should stay hidden.\n")
+            _write_memory_item(root, "Should stay hidden.")
             provider = MockProvider("ok")
 
             Agent(
@@ -86,10 +89,8 @@ mode = "{mode}"
     )
 
 
-def _write_memory_file(root: Path, text: str) -> None:
-    memory_dir = root / ".super-agent" / "memory"
-    memory_dir.mkdir(parents=True)
-    (memory_dir / "memory.md").write_text(text, encoding="utf-8")
+def _write_memory_item(root: Path, text: str) -> None:
+    MiniMemory(root / ".super-agent" / "memory").add_memory_item(text)
 
 
 def _write_config(

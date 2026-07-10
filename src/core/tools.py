@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from dataclasses import asdict
 from typing import Callable
 
 from core.provider import ToolCall, ToolDefinition
 from core.run import RunContext
 from skill.disclosure import ProgressiveDisclosure
 from skill.kinds.mcp import McpServer
+from skill.kinds.memory import MiniMemory
 from skill.loader import PROMPT_CONTEXT_KINDS, SkillLoader
 from skill.manifest import Skill
 
@@ -16,14 +18,20 @@ class SkillTools:
         loader: SkillLoader,
         disclosure: ProgressiveDisclosure,
         run_context: RunContext,
+        *,
+        memory: MiniMemory | None = None,
     ) -> None:
         self.loader = loader
         self.disclosure = disclosure
         self.run_context = run_context
+        self.memory = memory
         self.used_skills: list[Skill] = []
 
     def get_tool_definitions(self) -> list[ToolDefinition]:
-        return _runtime_tool_definitions()
+        definitions = _runtime_tool_definitions()
+        if self.memory is not None:
+            definitions.extend(_memory_tool_definitions())
+        return definitions
 
     def run_tool_call(self, call: ToolCall) -> dict[str, object]:
         self.run_context.record_event(
@@ -109,10 +117,64 @@ class SkillTools:
                 _object_argument(arguments, "arguments"),
             ),
         }
+        if self.memory is not None:
+            handlers.update(self._memory_tool_handlers(arguments))
         handler = handlers.get(name)
         if handler is None:
             raise KeyError(f"unknown runtime tool: {name}")
         return handler()
+
+    def _memory_tool_handlers(
+        self,
+        arguments: dict[str, object],
+    ) -> dict[str, Callable[[], dict[str, object]]]:
+        return {
+            "list_memory_items": lambda: self._list_memory_items(arguments),
+            "add_memory_item": lambda: self._add_memory_item(arguments),
+            "recall_memory": lambda: self._recall_memory(arguments),
+            "forget_memory": lambda: self._forget_memory(arguments),
+            "consolidate_memory": self._consolidate_memory,
+        }
+
+    def _list_memory_items(self, arguments: dict[str, object]) -> dict[str, object]:
+        memory = self._require_memory()
+        scope = _optional_string(arguments, "scope")
+        return {"items": [asdict(item) for item in memory.list_memory_items(scope)]}
+
+    def _add_memory_item(self, arguments: dict[str, object]) -> dict[str, object]:
+        memory = self._require_memory()
+        scope = _optional_string(arguments, "scope") or memory.policy.default_scope
+        item = memory.add_memory_item(
+            _required_string(arguments, "text"),
+            scope=scope,
+            source_run_id=self.run_context.run_id,
+        )
+        return {"item": asdict(item)}
+
+    def _recall_memory(self, arguments: dict[str, object]) -> dict[str, object]:
+        memory = self._require_memory()
+        scope = _optional_string(arguments, "scope") or memory.policy.default_scope
+        items = memory.recall_memory(
+            _required_string(arguments, "query"),
+            scope=scope,
+            limit=_optional_positive_int(arguments, "limit"),
+        )
+        return {"items": [asdict(item) for item in items]}
+
+    def _forget_memory(self, arguments: dict[str, object]) -> dict[str, object]:
+        memory = self._require_memory()
+        item_id = _required_string(arguments, "item_id")
+        memory.forget_memory(item_id)
+        return {"item_id": item_id, "forgotten": True}
+
+    def _consolidate_memory(self) -> dict[str, object]:
+        items = self._require_memory().consolidate_memory()
+        return {"items": [asdict(item) for item in items]}
+
+    def _require_memory(self) -> MiniMemory:
+        if self.memory is None:
+            raise RuntimeError("memory tools require a configured memory skill")
+        return self.memory
 
     def _load_mcp_server(self, name: str) -> McpServer:
         manifest = self.loader.find_skill_manifest_by_kind(name, "mcp")
@@ -153,6 +215,44 @@ def _runtime_tool_definitions() -> list[ToolDefinition]:
     ]
 
 
+def _memory_tool_definitions() -> list[ToolDefinition]:
+    scope = {"type": "string", "description": "Memory scope such as agent, project, or session."}
+    return [
+        _tool_definition(
+            "list_memory_items",
+            "List active memory items, optionally within one scope.",
+            {"scope": scope},
+        ),
+        _tool_definition(
+            "add_memory_item",
+            "Store one memory item in the event log.",
+            {"text": {"type": "string"}, "scope": scope},
+            required=["text"],
+        ),
+        _tool_definition(
+            "recall_memory",
+            "Recall memory items ranked by lexical relevance.",
+            {
+                "query": {"type": "string"},
+                "scope": scope,
+                "limit": {"type": "integer", "minimum": 1},
+            },
+            required=["query"],
+        ),
+        _tool_definition(
+            "forget_memory",
+            "Forget one active memory item by ID.",
+            {"item_id": {"type": "string"}},
+            required=["item_id"],
+        ),
+        _tool_definition(
+            "consolidate_memory",
+            "Deterministically merge duplicate active memory items.",
+            {},
+        ),
+    ]
+
+
 def _tool_definition(
     name: str,
     description: str,
@@ -186,4 +286,22 @@ def _object_argument(arguments: dict[str, object], name: str) -> dict[str, objec
     value = arguments.get(name)
     if not isinstance(value, dict):
         raise ValueError(f"tool argument {name!r} must be an object")
+    return value
+
+
+def _optional_string(arguments: dict[str, object], name: str) -> str | None:
+    value = arguments.get(name)
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"tool argument {name!r} must be a non-empty string")
+    return value
+
+
+def _optional_positive_int(arguments: dict[str, object], name: str) -> int | None:
+    value = arguments.get(name)
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(f"tool argument {name!r} must be a positive integer")
     return value

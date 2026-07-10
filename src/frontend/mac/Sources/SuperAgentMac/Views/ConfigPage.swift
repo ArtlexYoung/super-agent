@@ -530,7 +530,7 @@ private struct PathsConfigEditorView: View {
             )
             DirectoryPathView(
                 title: "记忆目录",
-                help: "对应 [paths].memory。保存 memory.md、habits.json 和渐进式披露缓存。",
+                help: "对应 [paths].memory。保存 memory_events.jsonl、habits.json、运行追踪和渐进式披露缓存。",
                 path: $chatStore.config.paths.memory,
                 defaultName: ".super-agent/memory"
             )
