@@ -237,6 +237,60 @@ class CliTests(unittest.TestCase):
             self.assertIn("echo", graph_output.getvalue())
             self.assertIn('name = "echo"', lock_path.read_text(encoding="utf-8"))
 
+    def test_skills_pack_remove_and_install_manage_local_package(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            main(["init", "--path", tmp])
+            config = str(root / "agent.toml")
+            package_path = root / "echo.zip"
+
+            pack_code = main(
+                ["skills", "pack", "--config", config, "--name", "echo", "--output", str(package_path)]
+            )
+            remove_code = main(["skills", "remove", "--config", config, "--name", "echo"])
+            install_code = main(
+                ["skills", "install", "--config", config, "--source", str(package_path)]
+            )
+            update_source = root / "updated-echo"
+            update_source.mkdir()
+            (update_source / "skill.toml").write_text(
+                """
+schema_version = 1
+name = "echo"
+kind = "prompt"
+description = "Updated echo"
+version = "0.2.0"
+triggers = ["echo"]
+
+[entry]
+instructions = "SKILL.md"
+""".strip(),
+                encoding="utf-8",
+            )
+            (update_source / "SKILL.md").write_text("Updated echo.", encoding="utf-8")
+            update_code = main(
+                [
+                    "skills",
+                    "update",
+                    "--config",
+                    config,
+                    "--name",
+                    "echo",
+                    "--source",
+                    str(update_source),
+                ]
+            )
+
+            self.assertEqual(0, pack_code)
+            self.assertEqual(0, remove_code)
+            self.assertEqual(0, install_code)
+            self.assertEqual(0, update_code)
+            self.assertTrue((root / "skills" / "echo" / "skill.toml").exists())
+            self.assertEqual(
+                "Updated echo.",
+                (root / "skills" / "echo" / "SKILL.md").read_text(encoding="utf-8"),
+            )
+
     def test_run_reads_stdin_request_and_streams_jsonl_events(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             main(["init", "--path", tmp])

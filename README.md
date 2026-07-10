@@ -201,6 +201,29 @@ super-agent skills lock --config agent.toml --name report --output skill.lock
 
 `skill.lock` 按 Skill 名排序，记录 kind、版本、能力边和目录 SHA-256，不写本机绝对路径。同一组内容和输入会生成完全一致的文件。
 
+### Skill 包管理
+
+Skill 可以打包为确定性 ZIP，也可以从本地目录、ZIP 或 Git 仓库安装：
+
+```bash
+super-agent skills pack --config agent.toml --name research --output research.zip
+super-agent skills install --config agent.toml --source ./research.zip
+super-agent skills install --config agent.toml --source 'git+https://github.com/example/skills.git#skills/research'
+super-agent skills update --config agent.toml --name research --source ./new-research
+super-agent skills remove --config agent.toml --name research
+```
+
+Git 来源格式为 `git+<repository>#<optional-subdirectory>`，克隆时禁用交互式凭据提示。`--expected-sha256` 可用于 install/update，校验规范化 Skill 目录内容哈希，与 `skill.lock` 的 `sha256` 一致，不是 ZIP 容器本身的哈希：
+
+```bash
+super-agent skills install \
+  --config agent.toml \
+  --source ./research.zip \
+  --expected-sha256 <sha256-from-skill-lock>
+```
+
+打包固定文件顺序、时间戳和权限。安装会先在临时目录完整校验，拒绝符号链接、ZIP 路径穿越、名称冲突和哈希不一致；更新通过同目录重命名切换，失败时恢复旧目录。
+
 `kind` 是唯一分类依据：
 
 - `prompt`：普通提示词 skill，读取 `SKILL.md`。

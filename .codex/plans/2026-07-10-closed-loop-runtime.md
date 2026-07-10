@@ -195,10 +195,10 @@ class SkillPackageManager:
     def remove_skill(self, name: str) -> None: ...
 ```
 
-- [ ] Add failing tests for deterministic ZIP output, local install, Git install through a local repository, hash rejection, update, remove, and path traversal rejection.
-- [ ] Implement package operations with `zipfile`, `hashlib`, `tempfile`, `shutil`, and non-interactive `git` subprocesses.
-- [ ] Add CLI `skills pack/install/update/remove` commands and document reproducible locks.
-- [ ] Update version to `0.0.15` and commit `feat(ecosystem): 发布 v0.0.15 Skill 包管理`.
+- [x] Add failing tests for deterministic ZIP output, local install, Git install through a local repository, hash rejection, update, remove, and path traversal rejection.
+- [x] Implement package operations with `zipfile`, `hashlib`, `tempfile`, `shutil`, and non-interactive `git` subprocesses.
+- [x] Add CLI `skills pack/install/update/remove` commands and document reproducible locks.
+- [x] Update version to `0.0.15` and commit `feat(ecosystem): 发布 v0.0.15 Skill 包管理`.
 
 ### Task 8: v0.0.16 Stable Experimental Contract and Benchmark
 

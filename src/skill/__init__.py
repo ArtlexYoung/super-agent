@@ -28,6 +28,7 @@ _EXPORTS = {
     "SkillEvolutionManager": ("skill.evolution", "SkillEvolutionManager"),
     "SkillFreshnessStore": ("skill.evolution.freshness", "SkillFreshnessStore"),
     "SkillHistoryRevision": ("skill.evolution", "SkillHistoryRevision"),
+    "SkillPackageManager": ("skill.ecosystem", "SkillPackageManager"),
     "SkillLoader": ("skill.loader", "SkillLoader"),
     "SkillManifest": ("skill.manifest", "SkillManifest"),
     "SkillRunRecord": ("skill.evolution.freshness", "SkillRunRecord"),

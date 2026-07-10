@@ -11,6 +11,7 @@ from skill import (
     SkillFreshnessStore,
     SkillLoader,
     SkillManifest,
+    SkillPackageManager,
     explain_skill_selection,
     validate_skill_manifests,
 )
@@ -45,6 +46,18 @@ def configure_skills_parser(parser: argparse.ArgumentParser) -> None:
     lock_parser = subparsers.add_parser("lock", help="write a deterministic skill lock")
     _add_composition_arguments(lock_parser)
     lock_parser.add_argument("--output", default="skill.lock")
+    pack_parser = subparsers.add_parser("pack", help="pack one skill as a deterministic ZIP")
+    pack_parser.add_argument("--config", default="agent.toml")
+    pack_parser.add_argument("--name", required=True)
+    pack_parser.add_argument("--output", required=True)
+    install_parser = subparsers.add_parser("install", help="install a local, ZIP, or Git skill")
+    _add_package_source_arguments(install_parser)
+    update_parser = subparsers.add_parser("update", help="replace an installed skill from a source")
+    _add_package_source_arguments(update_parser)
+    update_parser.add_argument("--name", required=True)
+    remove_parser = subparsers.add_parser("remove", help="remove one installed skill")
+    remove_parser.add_argument("--config", default="agent.toml")
+    remove_parser.add_argument("--name", required=True)
 
 
 def run_skills_command(args: argparse.Namespace) -> int:
@@ -60,6 +73,10 @@ def run_skills_command(args: argparse.Namespace) -> int:
         "explain": lambda: _explain_skills(Path(args.config), args.prompt),
         "graph": lambda: _show_skill_graph(args),
         "lock": lambda: _write_skill_lock(args),
+        "pack": lambda: _pack_skill(args),
+        "install": lambda: _install_skill(args),
+        "update": lambda: _update_skill(args),
+        "remove": lambda: _remove_skill(args),
     }
     handler = handlers.get(args.skill_command)
     if handler is None:
@@ -175,6 +192,38 @@ def _write_skill_lock(args: argparse.Namespace) -> int:
     return 0
 
 
+def _pack_skill(args: argparse.Namespace) -> int:
+    package_path = _load_package_manager(Path(args.config)).pack_skill(args.name, Path(args.output))
+    print(f"Packed skill: {package_path}")
+    return 0
+
+
+def _install_skill(args: argparse.Namespace) -> int:
+    manifest = _load_package_manager(Path(args.config)).install_skill(
+        args.source,
+        expected_sha256=args.expected_sha256,
+    )
+    print(f"Installed skill: {manifest.name}@{manifest.version}")
+    return 0
+
+
+def _update_skill(args: argparse.Namespace) -> int:
+    manifest = _load_package_manager(Path(args.config)).update_skill(
+        args.name,
+        args.source,
+        expected_sha256=args.expected_sha256,
+    )
+    print(f"Updated skill: {manifest.name}@{manifest.version}")
+    return 0
+
+
+def _remove_skill(args: argparse.Namespace) -> int:
+    manager = _load_package_manager(Path(args.config))
+    manager.remove_skill(args.name)
+    print(f"Removed skill: {args.name}")
+    return 0
+
+
 def _resolve_skills(config_path: Path, names: list[str]) -> list[SkillManifest]:
     resolver = SkillDependencyResolver(_load_skill_loader(config_path))
     return resolver.resolve_skills(names)
@@ -183,6 +232,13 @@ def _resolve_skills(config_path: Path, names: list[str]) -> list[SkillManifest]:
 def _load_skill_loader(config_path: Path) -> SkillLoader:
     config = AgentConfig.load_from_file(config_path)
     return create_skill_loader_for_agent_config(config)
+
+
+def _load_package_manager(config_path: Path) -> SkillPackageManager:
+    config = AgentConfig.load_from_file(config_path)
+    if not config.paths.skills:
+        raise ValueError("agent has no skill path configured")
+    return SkillPackageManager(create_skill_loader_for_agent_config(config), config.paths.skills[0])
 
 
 def _add_evolution_name_arguments(parser: argparse.ArgumentParser) -> None:
@@ -199,6 +255,12 @@ def _add_evolution_candidate_arguments(parser: argparse.ArgumentParser) -> None:
 def _add_composition_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--config", default="agent.toml")
     parser.add_argument("--name", action="append", required=True)
+
+
+def _add_package_source_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--config", default="agent.toml")
+    parser.add_argument("--source", required=True)
+    parser.add_argument("--expected-sha256", default="")
 
 
 def _read_evaluation_cases(path: Path) -> list[EvaluationCase]:

@@ -1,0 +1,294 @@
+from __future__ import annotations
+
+import hmac
+import os
+import re
+import shutil
+import stat
+import subprocess
+import tempfile
+import zipfile
+from pathlib import Path, PurePosixPath
+from urllib.parse import unquote
+from uuid import uuid4
+
+from skill.loader import SkillLoader
+from skill.manifest import SkillManifest, calculate_skill_directory_sha256
+
+
+FIXED_ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
+
+
+class SkillPackageManager:
+    def __init__(self, skill_loader: SkillLoader, skill_root: Path) -> None:
+        self.skill_loader = skill_loader
+        self.skill_root = skill_root.expanduser()
+
+    def pack_skill(self, name: str, output: Path) -> Path:
+        skill_name = _clean_skill_name(name)
+        manifest = self.skill_loader.find_skill_manifest(skill_name)
+        if manifest is None:
+            raise KeyError(f"skill not found: {skill_name}")
+        output_path = output.expanduser()
+        if _path_is_within(output_path.resolve(), manifest.path.resolve()):
+            raise ValueError("skill package output cannot be inside the skill directory")
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = output_path.parent / f".{output_path.name}.{uuid4().hex}.tmp"
+        try:
+            _write_deterministic_skill_zip(manifest.path, manifest.name, temporary)
+            os.replace(temporary, output_path)
+        finally:
+            if temporary.exists():
+                temporary.unlink()
+        return output_path
+
+    def install_skill(self, source: str, expected_sha256: str = "") -> SkillManifest:
+        with tempfile.TemporaryDirectory(prefix="super-agent-install-") as tmp:
+            staged = _stage_skill_source(source, Path(tmp))
+            manifest = _validate_staged_skill(staged, expected_sha256)
+            if self.skill_loader.find_skill_manifest(manifest.name) is not None:
+                raise FileExistsError(f"skill already exists: {manifest.name}")
+            target = self.skill_root / manifest.name
+            if target.exists():
+                raise FileExistsError(f"skill target already exists: {target}")
+            _install_skill_directory(staged, target)
+            return SkillManifest.load_from_file(target / "skill.toml")
+
+    def update_skill(
+        self,
+        name: str,
+        source: str,
+        expected_sha256: str = "",
+    ) -> SkillManifest:
+        skill_name = _clean_skill_name(name)
+        current = self.skill_loader.find_skill_manifest(skill_name)
+        if current is None:
+            raise KeyError(f"skill not found: {skill_name}")
+        _require_managed_skill_path(current.path, self.skill_root)
+        with tempfile.TemporaryDirectory(prefix="super-agent-update-") as tmp:
+            staged = _stage_skill_source(source, Path(tmp))
+            proposed = _validate_staged_skill(staged, expected_sha256)
+            if proposed.name != skill_name:
+                raise ValueError(
+                    f"updated skill name does not match target: {proposed.name} != {skill_name}"
+                )
+            _replace_skill_directory(staged, current.path)
+        return SkillManifest.load_from_file(current.path / "skill.toml")
+
+    def remove_skill(self, name: str) -> None:
+        skill_name = _clean_skill_name(name)
+        manifest = self.skill_loader.find_skill_manifest(skill_name)
+        if manifest is None:
+            raise KeyError(f"skill not found: {skill_name}")
+        _require_managed_skill_path(manifest.path, self.skill_root)
+        removed = manifest.path.parent / f".{manifest.path.name}.removed-{uuid4().hex}"
+        os.replace(manifest.path, removed)
+        try:
+            shutil.rmtree(removed)
+        except Exception:
+            if removed.exists() and not manifest.path.exists():
+                os.replace(removed, manifest.path)
+            raise
+
+
+def _stage_skill_source(source: str, temporary_root: Path) -> Path:
+    value = source.strip()
+    if not value:
+        raise ValueError("skill package source cannot be empty")
+    if value.startswith("git+"):
+        return _stage_git_source(value[4:], temporary_root)
+    path = Path(value).expanduser()
+    if path.is_dir():
+        copied = temporary_root / "local-source"
+        _copy_skill_tree(path, copied)
+        return _locate_skill_directory(copied)
+    if path.is_file() and zipfile.is_zipfile(path):
+        extracted = temporary_root / "archive"
+        _extract_skill_zip(path, extracted)
+        return _locate_skill_directory(extracted)
+    raise FileNotFoundError(f"skill package source not found or unsupported: {source}")
+
+
+def _stage_git_source(source: str, temporary_root: Path) -> Path:
+    repository, separator, fragment = source.partition("#")
+    if not repository.strip():
+        raise ValueError("Git skill source repository cannot be empty")
+    clone_path = temporary_root / "repository"
+    environment = dict(os.environ)
+    environment["GIT_TERMINAL_PROMPT"] = "0"
+    completed = subprocess.run(
+        ["git", "clone", "--quiet", "--depth", "1", "--", repository, str(clone_path)],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=environment,
+    )
+    if completed.returncode != 0:
+        message = completed.stderr.strip() or completed.stdout.strip()
+        raise RuntimeError(f"Git skill clone failed: {message}")
+    selected = _resolve_git_subdirectory(clone_path, unquote(fragment) if separator else "")
+    located = _locate_skill_directory(selected)
+    copied = temporary_root / "git-source"
+    _copy_skill_tree(located, copied)
+    return copied
+
+
+def _resolve_git_subdirectory(repository: Path, fragment: str) -> Path:
+    if not fragment:
+        return repository
+    relative = PurePosixPath(fragment.replace("\\", "/"))
+    if relative.is_absolute() or ".." in relative.parts:
+        raise ValueError(f"unsafe Git skill subdirectory: {fragment}")
+    selected = repository.joinpath(*relative.parts).resolve()
+    if not _path_is_within(selected, repository.resolve()):
+        raise ValueError(f"unsafe Git skill subdirectory: {fragment}")
+    if not selected.is_dir():
+        raise FileNotFoundError(f"Git skill subdirectory not found: {fragment}")
+    return selected
+
+
+def _extract_skill_zip(package_path: Path, output: Path) -> None:
+    with zipfile.ZipFile(package_path) as archive:
+        members = archive.infolist()
+        normalized = [_validate_zip_member(info) for info in members]
+        output.mkdir(parents=True, exist_ok=False)
+        for info, relative in zip(members, normalized, strict=True):
+            target = output.joinpath(*relative.parts)
+            if info.is_dir():
+                target.mkdir(parents=True, exist_ok=True)
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with archive.open(info) as source_file, target.open("wb") as target_file:
+                shutil.copyfileobj(source_file, target_file)
+
+
+def _validate_zip_member(info: zipfile.ZipInfo) -> PurePosixPath:
+    name = info.filename.replace("\\", "/")
+    relative = PurePosixPath(name)
+    file_type = (info.external_attr >> 16) & 0o170000
+    unsafe = (
+        not name
+        or relative.is_absolute()
+        or ".." in relative.parts
+        or re.match(r"^[a-zA-Z]:", name) is not None
+        or file_type == stat.S_IFLNK
+    )
+    if unsafe:
+        raise ValueError(f"unsafe path in skill package: {info.filename}")
+    return relative
+
+
+def _locate_skill_directory(root: Path) -> Path:
+    if (root / "skill.toml").is_file():
+        return root
+    candidates = sorted(
+        path for path in root.iterdir() if path.is_dir() and (path / "skill.toml").is_file()
+    )
+    if len(candidates) != 1:
+        raise ValueError("skill package must contain exactly one skill directory")
+    return candidates[0]
+
+
+def _validate_staged_skill(path: Path, expected_sha256: str) -> SkillManifest:
+    _reject_symlinks(path)
+    manifest = SkillManifest.load_from_file(path / "skill.toml")
+    _validate_manifest_file_paths(manifest, path)
+    clean_name = _clean_skill_name(manifest.name)
+    if clean_name != manifest.name:
+        raise ValueError(f"packaged skill name must be normalized: {manifest.name}")
+    actual = calculate_skill_directory_sha256(path)
+    expected = _clean_expected_sha256(expected_sha256)
+    if expected and not hmac.compare_digest(actual, expected):
+        raise ValueError(f"skill content SHA-256 mismatch: expected {expected}, got {actual}")
+    return manifest
+
+
+def _validate_manifest_file_paths(manifest: SkillManifest, skill_path: Path) -> None:
+    root = skill_path.resolve()
+    instruction_path = (skill_path / manifest.entry.instructions).resolve()
+    if not _path_is_within(instruction_path, root):
+        raise ValueError(
+            f"skill instruction path leaves skill directory: {manifest.entry.instructions}"
+        )
+
+
+def _copy_skill_tree(source: Path, target: Path) -> None:
+    shutil.copytree(
+        source,
+        target,
+        symlinks=True,
+        ignore=shutil.ignore_patterns(".git", "__pycache__"),
+    )
+    _reject_symlinks(target)
+
+
+def _install_skill_directory(source: Path, target: Path) -> None:
+    target.parent.mkdir(parents=True, exist_ok=True)
+    staging = target.parent / f".{target.name}.install-{uuid4().hex}"
+    _copy_skill_tree(source, staging)
+    try:
+        os.replace(staging, target)
+    finally:
+        if staging.exists():
+            shutil.rmtree(staging)
+
+
+def _replace_skill_directory(source: Path, target: Path) -> None:
+    staging = target.parent / f".{target.name}.update-{uuid4().hex}"
+    backup = target.parent / f".{target.name}.backup-{uuid4().hex}"
+    _copy_skill_tree(source, staging)
+    try:
+        os.replace(target, backup)
+        os.replace(staging, target)
+    except Exception:
+        if backup.exists() and not target.exists():
+            os.replace(backup, target)
+        raise
+    finally:
+        if staging.exists():
+            shutil.rmtree(staging)
+    if backup.exists():
+        shutil.rmtree(backup)
+
+
+def _write_deterministic_skill_zip(source: Path, name: str, output: Path) -> None:
+    _reject_symlinks(source)
+    files = sorted(path for path in source.rglob("*") if path.is_file())
+    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
+        for path in files:
+            relative = path.relative_to(source).as_posix()
+            info = zipfile.ZipInfo(f"{name}/{relative}", date_time=FIXED_ZIP_TIMESTAMP)
+            info.compress_type = zipfile.ZIP_DEFLATED
+            info.create_system = 3
+            info.external_attr = (stat.S_IFREG | 0o644) << 16
+            archive.writestr(info, path.read_bytes(), compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
+
+
+def _reject_symlinks(path: Path) -> None:
+    if path.is_symlink() or any(item.is_symlink() for item in path.rglob("*")):
+        raise ValueError(f"skill package cannot contain symbolic links: {path}")
+
+
+def _require_managed_skill_path(path: Path, root: Path) -> None:
+    resolved_path = path.resolve()
+    resolved_root = root.resolve()
+    if resolved_path == resolved_root or not _path_is_within(resolved_path, resolved_root):
+        raise ValueError(f"skill is outside managed root: {path}")
+
+
+def _path_is_within(path: Path, root: Path) -> bool:
+    return path == root or root in path.parents
+
+
+def _clean_skill_name(name: str) -> str:
+    value = name.strip().lower()
+    if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", value):
+        raise ValueError("skill name must use lowercase letters, numbers, '-' or '_'")
+    return value
+
+
+def _clean_expected_sha256(value: str) -> str:
+    expected = value.strip().lower()
+    if expected and not re.fullmatch(r"[0-9a-f]{64}", expected):
+        raise ValueError("expected skill SHA-256 must contain 64 hexadecimal characters")
+    return expected

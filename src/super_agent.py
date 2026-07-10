@@ -28,6 +28,7 @@ from skill import (
     SkillEvolutionManager,
     SkillLoader,
     SkillManifest,
+    SkillPackageManager,
     SubAgentResult,
 )
 
@@ -58,6 +59,7 @@ __all__ = [
     "SkillTools",
     "SkillLoader",
     "SkillManifest",
+    "SkillPackageManager",
     "SubAgentResult",
     "ToolCall",
 ]
