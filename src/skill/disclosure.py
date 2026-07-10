@@ -88,6 +88,10 @@ class ProgressiveDisclosure:
             self.write_skill_instructions_to_cache(skill.manifest.name)
         return DisclosureBundle(skills=skills, entries=entries, index_path=self.index_path, history_path=self.history_path)
 
+    def prepare_disclosure_index(self, enabled: list[str] | None = None) -> DisclosureBundle:
+        entries = self.write_skill_cache_index(enabled)
+        return DisclosureBundle(skills=[], entries=entries, index_path=self.index_path, history_path=self.history_path)
+
     def read_cache(self, path: str | Path) -> str:
         cache_path = Path(path)
         if self.cache_root not in cache_path.parents and cache_path != self.cache_root:

@@ -83,10 +83,10 @@ class SkillTools:
     def run_skill(self, name: str, tool: str, arguments: dict[str, object]) -> dict[str, object]: ...
 ```
 
-- [ ] Add failing tests for model-selected disclosure, multi-step React/loop execution, maximum-step termination, MCP initialize/tools-list/tools-call over a real fake stdio process, and tool trace events.
-- [ ] Implement provider tool-call parsing, clear built-in skill tools, MCP stdio JSON-RPC, and workflow stop conditions from TOML.
-- [ ] Verify direct mode remains one-shot while React/loop run until model completion or configured `max_steps`.
-- [ ] Update version to `0.0.10` and commit `feat(runtime): 发布 v0.0.10 真实 Skill 执行`.
+- [x] Add failing tests for model-selected disclosure, multi-step React/loop execution, maximum-step termination, MCP initialize/tools-list/tools-call over a real fake stdio process, and tool trace events.
+- [x] Implement provider tool-call parsing, clear built-in skill tools, MCP stdio JSON-RPC, and workflow stop conditions from TOML.
+- [x] Verify direct mode remains one-shot while React/loop run until model completion or configured `max_steps`.
+- [x] Update version to `0.0.10` and commit `feat(runtime): 发布 v0.0.10 真实 Skill 执行`.
 
 ### Task 3: v0.0.11 Unified CLI and macOS Runtime
 

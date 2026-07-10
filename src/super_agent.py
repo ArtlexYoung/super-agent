@@ -4,10 +4,13 @@ from core import (
     AgentSettings,
     ChatProvider,
     ModelSettings,
+    ModelResponse,
     PathsSettings,
     RunContext,
     RunEvent,
     RunTraceStore,
+    SkillTools,
+    ToolCall,
 )
 from skill import RunResult, Skill, SkillLoader, SkillManifest, SubAgentResult
 
@@ -17,13 +20,16 @@ __all__ = [
     "AgentSettings",
     "ChatProvider",
     "ModelSettings",
+    "ModelResponse",
     "PathsSettings",
     "RunContext",
     "RunEvent",
     "RunResult",
     "RunTraceStore",
     "Skill",
+    "SkillTools",
     "SkillLoader",
     "SkillManifest",
     "SubAgentResult",
+    "ToolCall",
 ]

@@ -1,14 +1,38 @@
 import tempfile
 import unittest
+import json
+import sys
 from pathlib import Path
 
 from core import Agent, AgentConfig
 from core.provider import MockProvider
-from skill import SkillLoader
+from skill import McpServer, SkillLoader
 from support import write_memory_skill, write_workflow_skill
 
 
 class McpSkillTests(unittest.TestCase):
+    def test_stdio_mcp_lists_and_calls_real_tool(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            server_script = root / "fake_mcp.py"
+            _write_fake_mcp_server(server_script)
+            _write_mcp_server(
+                root,
+                "calculator",
+                "Calculator MCP",
+                sys.executable,
+                [str(server_script)],
+                env={"MCP_TEST_VALUE": "from-env"},
+            )
+            server = McpServer.load_from_file(root / "skills" / "mcp" / "calculator" / "skill.toml")
+
+            tools = server.list_tools()
+            result = server.call_tool("add", {"left": 2, "right": 3})
+
+            self.assertEqual("add", tools[0]["name"])
+            self.assertEqual(5, result["structuredContent"]["sum"])
+            self.assertEqual("from-env", result["structuredContent"]["env"])
+
     def test_skill_loader_registers_mcp_server_as_skill(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -196,3 +220,47 @@ memory = ".super-agent/memory"
 
 def _toml_list(items: list[str]) -> str:
     return "[" + ", ".join(f'"{item}"' for item in items) + "]"
+
+
+def _write_fake_mcp_server(path: Path) -> None:
+    path.write_text(
+        """
+import json
+import os
+import sys
+
+for line in sys.stdin:
+    request = json.loads(line)
+    method = request.get("method")
+    if "id" not in request:
+        continue
+    if method == "initialize":
+        result = {
+            "protocolVersion": "2025-03-26",
+            "capabilities": {"tools": {}},
+            "serverInfo": {"name": "fake", "version": "1"},
+        }
+    elif method == "tools/list":
+        result = {
+            "tools": [{
+                "name": "add",
+                "description": "Add two numbers",
+                "inputSchema": {"type": "object"},
+            }]
+        }
+    elif method == "tools/call":
+        arguments = request["params"]["arguments"]
+        result = {
+            "content": [{"type": "text", "text": str(arguments["left"] + arguments["right"])}],
+            "structuredContent": {
+                "sum": arguments["left"] + arguments["right"],
+                "env": os.environ.get("MCP_TEST_VALUE"),
+            },
+        }
+    else:
+        print(json.dumps({"jsonrpc": "2.0", "id": request["id"], "error": {"code": -1, "message": method}}), flush=True)
+        continue
+    print(json.dumps({"jsonrpc": "2.0", "id": request["id"], "result": result}), flush=True)
+""".strip(),
+        encoding="utf-8",
+    )

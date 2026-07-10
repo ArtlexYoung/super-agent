@@ -275,7 +275,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem"]
 ROOT_PATH = "/tmp"
 ```
 
-runtime 会按 `kind = "mcp"` 把它加载成 MCP skill。环境变量只会把变量名写入提示词，不会把值注入模型上下文。
+runtime 会按 `kind = "mcp"` 把它加载成 MCP skill。`react` 和 `loop` workflow 可以通过 `list_skill_tools` 查看工具，再通过 `run_skill` 完成真实的 MCP stdio 调用。环境变量值只传给 MCP 子进程，模型上下文只看到变量名。
 
 ## 动态渐进式披露
 
@@ -377,12 +377,27 @@ mode = "plan"
 instruction = "Prefer short numbered steps."
 ```
 
+`direct` 和 `plan` 保持单次模型请求。`react` 和 `loop` 使用真实工具循环，模型可以调用：
+
+- `list_skills`：查看可用 Skill 摘要。
+- `read_skill`：按需读取一个 Skill。
+- `list_skill_tools`：读取 MCP 暴露的工具。
+- `run_skill`：执行一个 MCP 工具。
+
+循环在模型不再请求工具时结束，也可以在 workflow Skill 中限制步数：
+
+```toml
+[workflow]
+mode = "react"
+max_steps = 8
+```
+
 ## 架构
 
 ```text
 src/
   cli.py         # CLI 入口：init、run、skills、memory
-  core/          # Agent、子 agent 编排、agent.toml、provider
+  core/          # Agent、运行追踪、真实 Skill 工具、agent.toml、provider
   skill/         # manifest、loader、kind、渐进式披露缓存、自更新、保鲜度
     kinds/       # prompt、mcp、memory、workflow 等 skill kind
   frontend/mac/  # SwiftUI 桌面端：对话、配置、运行树

@@ -6,6 +6,7 @@ from pathlib import Path
 from core.config import AgentConfig
 from core.provider import ChatProvider, create_chat_provider
 from core.run import RunContext, RunTraceStore
+from core.tools import SkillTools
 from skill import (
     MiniMemory,
     ProgressiveDisclosure,
@@ -16,6 +17,7 @@ from skill import (
     SkillManifest,
     SkillRunRecord,
     SubAgentResult,
+    WorkflowRunRequest,
     create_memory_from_skill_manifest,
     create_workflow_from_skill_manifest,
 )
@@ -167,12 +169,18 @@ class Agent:
     ) -> RunResult:
         context = run_context or self._start_run_context(prompt)
         disclosed_skills: list[Skill] = []
+        skill_tools: SkillTools | None = None
         try:
             # memory/workflow 是运行控制 skill；prompt/mcp 通过 disclosure 进入模型上下文。
             memory = self._create_memory_for_agent_run()
             disclosure = ProgressiveDisclosure(self.skill_loader, self.config.paths.memory / "disclosure")
-            disclosure_bundle = disclosure.prepare_disclosure_for_prompt(prompt, self.config.agent.skills)
+            workflow = self._create_workflow_for_agent_run()
+            if workflow.mode in {"react", "loop"}:
+                disclosure_bundle = disclosure.prepare_disclosure_index(self.config.agent.skills)
+            else:
+                disclosure_bundle = disclosure.prepare_disclosure_for_prompt(prompt, self.config.agent.skills)
             disclosed_skills = disclosure_bundle.skills
+            skill_tools = SkillTools(self.skill_loader, disclosure, context)
             context.record_event(
                 "skills.disclosed",
                 {
@@ -180,7 +188,6 @@ class Agent:
                     "index_path": str(disclosure_bundle.index_path),
                 },
             )
-            workflow = self._create_workflow_for_agent_run()
             warning_messages = (
                 self.check_subagent_links() if include_subagents and check_subagent_links_before_run else []
             )
@@ -196,22 +203,31 @@ class Agent:
                 disclosure_bundle.build_prompt_with_cache_paths(),
             )
             result = workflow.run(
-                prompt=prompt,
-                system=system,
-                model=self.config.model.model,
-                skills=disclosed_skills,
-                provider=self.provider,
+                WorkflowRunRequest(
+                    prompt=prompt,
+                    system=system,
+                    model=self.config.model.model,
+                    skills=disclosed_skills,
+                    provider=self.provider,
+                    skill_tools=skill_tools,
+                    run_context=context,
+                )
             )
             context.record_event(
                 "model.completed",
                 {"text": result.text, "workflow": result.workflow, "skills": result.skills},
             )
-            self._record_skill_freshness(disclosed_skills, prompt, result.text, success=bool(result.text.strip()))
+            used_skills = _merge_used_skills(disclosed_skills, skill_tools.used_skills)
+            self._record_skill_freshness(used_skills, prompt, result.text, success=bool(result.text.strip()))
             if memory is not None:
                 memory.record_agent_run(result.workflow, result.skills)
             context.record_event(
                 "run.completed",
-                {"workflow": result.workflow, "skills": result.skills, "stop_reason": "completed"},
+                {
+                    "workflow": result.workflow,
+                    "skills": result.skills,
+                    "stop_reason": result.stop_reason,
+                },
             )
             return RunResult(
                 text=result.text,
@@ -220,10 +236,16 @@ class Agent:
                 subagent_results=subagent_results,
                 warning_messages=warning_messages,
                 run_id=context.run_id,
-                stop_reason="completed",
+                stop_reason=result.stop_reason,
             )
         except Exception as error:
-            self._record_skill_freshness(disclosed_skills, prompt, "", success=False)
+            dynamically_used = [] if skill_tools is None else skill_tools.used_skills
+            self._record_skill_freshness(
+                _merge_used_skills(disclosed_skills, dynamically_used),
+                prompt,
+                "",
+                success=False,
+            )
             context.record_event(
                 "run.failed",
                 {"error_type": type(error).__name__, "message": str(error)},
@@ -339,6 +361,16 @@ def _prompt_matches_subagent_triggers(subagent: SubAgent, prompt: str) -> bool:
     if not subagent.triggers:
         return True
     return any(trigger and trigger in prompt for trigger in subagent.triggers)
+
+
+def _merge_used_skills(first: list[Skill], second: list[Skill]) -> list[Skill]:
+    merged = list(first)
+    names = {skill.manifest.name for skill in merged}
+    for skill in second:
+        if skill.manifest.name not in names:
+            merged.append(skill)
+            names.add(skill.manifest.name)
+    return merged
 
 
 def create_skill_loader_for_agent_config(config: AgentConfig) -> SkillLoader:

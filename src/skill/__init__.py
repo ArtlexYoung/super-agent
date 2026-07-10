@@ -25,6 +25,7 @@ _EXPORTS = {
     "SkillWriteRequest": ("skill.self_update", "SkillWriteRequest"),
     "SubAgentResult": ("skill.kinds.workflow", "SubAgentResult"),
     "Workflow": ("skill.kinds.workflow", "Workflow"),
+    "WorkflowRunRequest": ("skill.kinds.workflow", "WorkflowRunRequest"),
     "create_agent_skill": ("skill.self_update", "create_agent_skill"),
     "create_memory_from_skill_manifest": ("skill.kinds.memory", "create_memory_from_skill_manifest"),
     "create_workflow": ("skill.kinds.workflow", "create_workflow"),
