@@ -6,6 +6,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 from cli import main
+from cli import run_result_to_dict
+from skill import RunResult, SubAgentResult
 
 
 class CliTests(unittest.TestCase):
@@ -154,3 +156,65 @@ class CliTests(unittest.TestCase):
             self.assertIn("4 valid skills", validation_output.getvalue())
             self.assertEqual(0, explanation_code)
             self.assertIn("echo\tselected\tmatched trigger: echo", explanation_output.getvalue())
+
+    def test_run_reads_stdin_request_and_streams_jsonl_events(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            main(["init", "--path", tmp])
+            request = {
+                "prompt": "latest question",
+                "messages": [
+                    {"role": "user", "content": "earlier question"},
+                    {"role": "assistant", "content": "earlier answer"},
+                ],
+            }
+            output = StringIO()
+
+            with patch("sys.stdin", StringIO(json.dumps(request))), patch("sys.stdout", output):
+                code = main(
+                    [
+                        "run",
+                        "--request-stdin",
+                        "--output",
+                        "jsonl",
+                        "--config",
+                        str(Path(tmp) / "agent.toml"),
+                    ]
+                )
+
+            lines = [json.loads(line) for line in output.getvalue().splitlines()]
+            self.assertEqual(0, code)
+            self.assertEqual("event", lines[0]["type"])
+            self.assertEqual("run.started", lines[0]["event"]["event_type"])
+            self.assertEqual("result", lines[-1]["type"])
+            self.assertEqual(lines[0]["event"]["run_id"], lines[-1]["result"]["run_id"])
+
+    def test_run_result_serialization_keeps_nested_subagents(self) -> None:
+        result = RunResult(
+            text="main",
+            workflow="direct",
+            skills=[],
+            run_id="main-run",
+            subagent_results=[
+                SubAgentResult(
+                    name="coder",
+                    description="writes code",
+                    text="child",
+                    prompt="build",
+                    created_by_agent=True,
+                    run_id="child-run",
+                    subagent_results=[
+                        SubAgentResult(
+                            name="reviewer",
+                            description="reviews",
+                            text="grandchild",
+                            run_id="review-run",
+                        )
+                    ],
+                )
+            ],
+        )
+
+        data = run_result_to_dict(result)
+
+        self.assertEqual("child-run", data["subagent_results"][0]["run_id"])
+        self.assertEqual("review-run", data["subagent_results"][0]["subagent_results"][0]["run_id"])

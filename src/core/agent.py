@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from core.config import AgentConfig
-from core.provider import ChatProvider, create_chat_provider
+from core.provider import ChatProvider, Message, create_chat_provider
 from core.run import RunContext, RunTraceStore
 from core.tools import SkillTools
 from skill import (
@@ -166,6 +166,7 @@ class Agent:
         include_subagents: bool = True,
         check_subagent_links_before_run: bool = True,
         run_context: RunContext | None = None,
+        messages: list[Message] | None = None,
     ) -> RunResult:
         context = run_context or self._start_run_context(prompt)
         disclosed_skills: list[Skill] = []
@@ -211,6 +212,7 @@ class Agent:
                     provider=self.provider,
                     skill_tools=skill_tools,
                     run_context=context,
+                    messages=messages,
                 )
             )
             context.record_event(
@@ -276,6 +278,7 @@ class Agent:
                     subagent.agent.config.agent.name,
                     prompt,
                     parent_run_id=run_context.run_id,
+                    event_listener=run_context.event_listener,
                 )
                 result = subagent.agent.run(
                     prompt,
@@ -291,6 +294,7 @@ class Agent:
                         prompt=prompt,
                         created_by_agent=subagent.created_by_agent,
                         subagent_results=result.subagent_results,
+                        run_id=result.run_id,
                     )
                 )
                 run_context.record_event(

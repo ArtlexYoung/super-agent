@@ -314,6 +314,15 @@ super-agent skills validate --config agent.toml
 super-agent skills explain --config agent.toml --prompt "hello"
 ```
 
+CLI 也提供给桌面端和其他进程使用的统一 JSONL 运行协议。请求从标准输入读取，运行事件逐行输出，最后一行是完整结果：
+
+```bash
+printf '%s' '{"prompt":"hello","messages":[]}' \
+  | super-agent run --config agent.toml --request-stdin --output jsonl
+```
+
+输出行的 `type` 为 `event` 或 `result`。主 agent 和子 agent 的结果都带有真实 `run_id`，因此调用方可以直接还原运行树，不需要重复实现 provider 或 workflow。
+
 ## 记忆自更新
 
 记忆也是一种 skill：
@@ -403,11 +412,11 @@ src/
   frontend/mac/  # SwiftUI 桌面端：对话、配置、运行树
 ```
 
-首版刻意保持小内核。`plan`、`react`、`loop` 现在是轻量 workflow skill，后续可以升级成真正的工具循环和 goal loop，但不把复杂度提前塞进内核。
+内核只保留 transport、运行事件和 Skill 装配机制。`direct`、`plan`、`react`、`loop` 都由 workflow Skill 声明，其中 `react` 和 `loop` 已通过统一工具协议执行多步模型循环。
 
 `memory` 当前采用最小 Markdown + JSON 存储，实现在 `skill/kinds/memory.py`。存在内容时，runtime 会把最近记忆和调用习惯加入本次运行。
 
-macOS 前端会把会话保存成 JSON，并为每次运行生成类似文件树的运行节点。点击运行树里的主 agent 或子 agent 节点，可以查看该节点的输入与输出。
+macOS 前端通过上述 JSONL 协议调用同一个 Python runtime，把会话保存成 JSON，并按真实 `run_id` 生成类似文件树的运行节点。点击主 agent 或子 agent 节点，可以查看对应输入与输出。
 
 ## 开发验证
 

@@ -104,10 +104,10 @@ class SkillTools:
 {"type":"result","result":{"text":"...","run_id":"...","subagent_results":[]}}
 ```
 
-- [ ] Add failing tests for JSON request input, JSONL event/result output, conversation messages, and serialized nested subagent results.
-- [ ] Implement the CLI runtime protocol and make Swift invoke `super-agent run --request-stdin --output jsonl`.
-- [ ] Remove duplicate provider HTTP behavior from Swift and construct the displayed run tree from runtime results.
-- [ ] Run Python tests and Swift build, update version to `0.0.11`, and commit `feat(frontend): 发布 v0.0.11 统一运行时`.
+- [x] Add failing tests for JSON request input, JSONL event/result output, conversation messages, and serialized nested subagent results.
+- [x] Implement the CLI runtime protocol and make Swift invoke `super-agent run --request-stdin --output jsonl`.
+- [x] Remove duplicate provider HTTP behavior from Swift and construct the displayed run tree from runtime results.
+- [x] Run Python tests and Swift build, update version to `0.0.11`, and commit `feat(frontend): 发布 v0.0.11 统一运行时`.
 
 ### Task 4: v0.0.12 Evaluated Skill Evolution
 

@@ -1,6 +1,6 @@
 # Super Agent Mac
 
-一个轻量 SwiftUI macOS 前端，用于管理对话、编辑 `agent.toml`、按 `[model]` 配置发送消息。
+一个轻量 SwiftUI macOS 前端，用于管理对话、编辑 `agent.toml`，并通过 Super Agent Python runtime 运行对话。
 
 ## 功能
 
@@ -12,7 +12,8 @@
 - 技能保鲜度：技能列表会读取 `skill.toml` 和 `.super-agent/memory/skill_stats.json`，展示保鲜度、分组、调用次数、成功次数和替代次数。
 - 默认行为：记忆和工作流有“默认”标签，并提供按钮快速切换默认行为。
 - 配置提示：每个配置项都有 `？` 图标，鼠标悬浮即可查看详细说明。
-- 模型对话：`mock` provider 返回本地回复；`openai-compatible/openai` 和 `anthropic-compatible/anthropic` 会按 TOML 配置请求模型。
+- 统一运行时：桌面端通过 JSONL 协议调用 `super-agent run`，provider、Skill、workflow 和子 agent 都只由 Python runtime 执行。
+- 真实运行树：主 agent 与子 agent 节点保存 runtime 返回的 `run_id`，可沿树查看每个节点的输入和输出。
 - 会话存储：桌面端会把每个会话按会话 ID 保存成独立 JSON，并在最外层维护 `index.json`。
 - 模型配置统一来自 TOML：`provider`、`model`、`base_url`、`api_key_env` 都写在 `[model]`。
 
@@ -28,9 +29,21 @@ api_key_env = "OPENAI_API_KEY"
 
 ## 运行
 
+先在当前 Python 环境安装根目录项目，确保 `super-agent` 命令可用：
+
+```bash
+python3 -m pip install -e ../../..
+```
+
 ```bash
 cd src/frontend/mac
 swift run SuperAgentMac
+```
+
+需要使用其他入口时，可以在启动前设置命令名或绝对路径：
+
+```bash
+SUPER_AGENT_COMMAND=/path/to/super-agent swift run SuperAgentMac
 ```
 
 ## 打包

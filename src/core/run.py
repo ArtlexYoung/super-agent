@@ -4,7 +4,7 @@ import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from uuid import uuid4
 
 
@@ -32,11 +32,13 @@ class RunContext:
         run_id: str,
         agent_name: str,
         parent_run_id: str | None,
+        event_listener: Callable[[RunEvent], None] | None = None,
     ) -> None:
         self.store = store
         self.run_id = run_id
         self.agent_name = agent_name
         self.parent_run_id = parent_run_id
+        self.event_listener = event_listener
         self._sequence = 0
 
     def record_event(self, event_type: str, data: dict[str, object] | None = None) -> RunEvent:
@@ -55,6 +57,8 @@ class RunContext:
             data=dict(data or {}),
         )
         self.store.append_run_event(event)
+        if self.event_listener is not None:
+            self.event_listener(event)
         return event
 
 
@@ -62,7 +66,13 @@ class RunTraceStore:
     def __init__(self, root: Path) -> None:
         self.root = root
 
-    def start_run(self, agent_name: str, prompt: str, parent_run_id: str | None = None) -> RunContext:
+    def start_run(
+        self,
+        agent_name: str,
+        prompt: str,
+        parent_run_id: str | None = None,
+        event_listener: Callable[[RunEvent], None] | None = None,
+    ) -> RunContext:
         name = agent_name.strip()
         if not name:
             raise ValueError("run agent_name cannot be empty")
@@ -71,6 +81,7 @@ class RunTraceStore:
             run_id=uuid4().hex,
             agent_name=name,
             parent_run_id=parent_run_id,
+            event_listener=event_listener,
         )
         context.record_event("run.started", {"prompt": prompt})
         return context

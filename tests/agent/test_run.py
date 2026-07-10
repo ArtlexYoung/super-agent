@@ -65,6 +65,25 @@ class RunTraceTests(unittest.TestCase):
         self.assertIs(Agent, super_agent.Agent)
         self.assertIs(RunTraceStore, super_agent.RunTraceStore)
 
+    def test_agent_includes_conversation_messages_before_latest_prompt(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            provider = MockProvider("finished")
+            agent = _make_agent(Path(tmp), provider)
+
+            agent.run(
+                "latest question",
+                messages=[
+                    {"role": "user", "content": "earlier question"},
+                    {"role": "assistant", "content": "earlier answer"},
+                ],
+            )
+
+            self.assertEqual(
+                ["system", "user", "assistant", "user"],
+                [message["role"] for message in provider.last_messages],
+            )
+            self.assertEqual("latest question", provider.last_messages[-1]["content"])
+
 
 class _FailingProvider:
     def send_chat_messages(self, messages: list[dict[str, str]], model: str) -> str:

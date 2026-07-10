@@ -62,6 +62,7 @@ struct ChatConversation: Identifiable, Codable, Equatable {
 
 struct AgentRunNode: Identifiable, Codable, Equatable {
     let id: UUID
+    var runID: String?
     var agentName: String
     var title: String
     var prompt: String
@@ -73,6 +74,7 @@ struct AgentRunNode: Identifiable, Codable, Equatable {
 
     init(
         id: UUID = UUID(),
+        runID: String? = nil,
         agentName: String,
         title: String,
         prompt: String,
@@ -83,6 +85,7 @@ struct AgentRunNode: Identifiable, Codable, Equatable {
         children: [AgentRunNode] = []
     ) {
         self.id = id
+        self.runID = runID
         self.agentName = agentName
         self.title = title
         self.prompt = prompt

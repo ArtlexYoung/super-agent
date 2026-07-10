@@ -176,19 +176,25 @@ final class ChatStore: ObservableObject {
         appendMessageToSelectedConversation(ChatMessage(role: .user, text: text))
         let messages = makeProviderMessagesForSelectedConversation()
         let configSnapshot = config
+        let runtimeConfigText = makeRuntimeConfigText()
         isSendingMessage = true
         Task {
             do {
-                let reply = try await ModelChatClient.sendReply(config: configSnapshot, messages: messages)
-                appendMessageToSelectedConversation(ChatMessage(role: .assistant, text: reply))
-                appendAgentRunToSelectedConversation(prompt: text, response: reply)
-                statusMessage = "已使用 \(configSnapshot.modelSummary) 回复。"
+                let result = try await AgentRuntimeClient.run(
+                    configText: runtimeConfigText,
+                    prompt: text,
+                    messages: messages
+                )
+                appendMessageToSelectedConversation(ChatMessage(role: .assistant, text: result.text))
+                appendAgentRunToSelectedConversation(prompt: text, result: result)
+                warningMessage = result.warningMessages?.joined(separator: "\n")
+                statusMessage = "运行完成：\(result.workflow) / \(configSnapshot.modelSummary)"
             } catch {
                 let detail = error.localizedDescription
                 warningMessage = detail
                 let failureText = "调用失败：\(detail)"
                 appendMessageToSelectedConversation(ChatMessage(role: .assistant, text: failureText))
-                appendAgentRunToSelectedConversation(prompt: text, response: failureText)
+                appendFailedAgentRunToSelectedConversation(prompt: text, response: failureText)
             }
             isSendingMessage = false
         }
@@ -340,17 +346,51 @@ final class ChatStore: ObservableObject {
         }
     }
 
-    private func appendAgentRunToSelectedConversation(prompt: String, response: String) {
+    private func appendAgentRunToSelectedConversation(prompt: String, result: AgentRuntimeResult) {
+        let run = makeAgentRunNode(agentName: config.agent.name, prompt: prompt, result: result)
+        updateSelectedConversation { conversation in
+            conversation.agentRuns.append(run)
+        }
+    }
+
+    private func appendFailedAgentRunToSelectedConversation(prompt: String, response: String) {
         let run = AgentRunNode(
             agentName: config.agent.name,
             title: String(prompt.prefix(24)),
             prompt: prompt,
-            response: response,
-            createdByAgent: false
+            response: response
         )
         updateSelectedConversation { conversation in
             conversation.agentRuns.append(run)
         }
+    }
+
+    private func makeAgentRunNode(
+        agentName: String,
+        prompt: String,
+        result: AgentRuntimeResult
+    ) -> AgentRunNode {
+        AgentRunNode(
+            runID: result.runId,
+            agentName: agentName,
+            title: String(prompt.prefix(24)),
+            prompt: prompt,
+            response: result.text,
+            createdByAgent: false,
+            children: (result.subagentResults ?? []).map(makeSubagentRunNode)
+        )
+    }
+
+    private func makeSubagentRunNode(_ result: AgentRuntimeSubagentResult) -> AgentRunNode {
+        AgentRunNode(
+            runID: result.runId,
+            agentName: result.name,
+            title: result.description.isEmpty ? result.name : result.description,
+            prompt: result.prompt,
+            response: result.text,
+            createdByAgent: result.createdByAgent,
+            children: (result.subagentResults ?? []).map(makeSubagentRunNode)
+        )
     }
 
     private func updateSelectedConversation(_ change: (inout ChatConversation) -> Void) {
@@ -364,15 +404,18 @@ final class ChatStore: ObservableObject {
 
     private func makeProviderMessagesForSelectedConversation() -> [ProviderChatMessage] {
         var messages: [ProviderChatMessage] = []
-        let system = config.agent.system.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !system.isEmpty {
-            messages.append(ProviderChatMessage(role: "system", content: system))
-        }
         for message in selectedConversation?.messages ?? [] {
             let role = message.role == .user ? "user" : "assistant"
             messages.append(ProviderChatMessage(role: role, content: message.text))
         }
         return messages
+    }
+
+    private func makeRuntimeConfigText() -> String {
+        var runtimeConfig = config
+        runtimeConfig.paths.skills = config.paths.skills.map { resolveConfigPath($0).path }
+        runtimeConfig.paths.memory = resolveConfigPath(config.paths.memory).path
+        return AgentTomlFile.makeTomlText(from: runtimeConfig)
     }
 
     private func readSkillChoicesFromConfiguredPaths() -> [SkillManifestChoice] {

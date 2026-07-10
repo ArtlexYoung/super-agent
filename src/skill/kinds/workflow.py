@@ -34,6 +34,7 @@ class SubAgentResult:
     prompt: str = ""
     created_by_agent: bool = False
     subagent_results: list["SubAgentResult"] | None = None
+    run_id: str = ""
 
 
 @dataclass(frozen=True)
@@ -45,6 +46,7 @@ class WorkflowRunRequest:
     provider: ChatProvider
     skill_tools: SkillTools
     run_context: RunContext
+    messages: list[Message] | None = None
 
 
 class Workflow:
@@ -69,6 +71,7 @@ class Workflow:
             self.extra_instruction,
             request.skills,
             request.prompt,
+            request.messages,
         )
         text = request.provider.send_chat_messages(messages, request.model)
         return RunResult(
@@ -84,6 +87,7 @@ class Workflow:
             self.extra_instruction,
             request.skills,
             request.prompt,
+            request.messages,
         )
         last_text = ""
         for step in range(1, self.max_steps + 1):
@@ -144,9 +148,19 @@ def create_workflow_from_skill_manifest(manifest: SkillManifest) -> Workflow:
     return Workflow(manifest.name, mode=mode, extra_instruction=instruction, max_steps=max_steps)
 
 
-def _build_chat_messages(system: str, extra: str, skills: list[Skill], prompt: str) -> list[Message]:
+def _build_chat_messages(
+    system: str,
+    extra: str,
+    skills: list[Skill],
+    prompt: str,
+    conversation: list[Message] | None = None,
+) -> list[Message]:
     content = _build_system_prompt(system, extra, skills)
-    return [{"role": "system", "content": content}, {"role": "user", "content": prompt}]
+    messages = [{"role": "system", "content": content}]
+    messages.extend(_copy_conversation_messages(conversation or []))
+    if messages[-1].get("role") != "user" or messages[-1].get("content") != prompt:
+        messages.append({"role": "user", "content": prompt})
+    return messages
 
 
 def _build_system_prompt(system: str, extra: str, skills: list[Skill]) -> str:
@@ -215,3 +229,12 @@ def _used_skill_names(request: WorkflowRunRequest) -> list[str]:
         if skill.manifest.name not in names:
             names.append(skill.manifest.name)
     return names
+
+
+def _copy_conversation_messages(messages: list[Message]) -> list[Message]:
+    copied: list[Message] = []
+    for message in messages:
+        role = str(message.get("role", ""))
+        if role in {"user", "assistant"}:
+            copied.append({"role": role, "content": str(message.get("content", ""))})
+    return copied
