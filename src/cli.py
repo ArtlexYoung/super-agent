@@ -1,12 +1,19 @@
 from __future__ import annotations
 
 import argparse
+import json
+from dataclasses import asdict
 from pathlib import Path
 from typing import Sequence
 
 from core import Agent, AgentConfig
 from core import create_skill_loader_for_agent_config
-from skill import MiniMemory, SkillFreshnessStore
+from skill import (
+    MiniMemory,
+    SkillFreshnessStore,
+    explain_skill_selection,
+    validate_skill_manifests,
+)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -15,7 +22,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "init":
         return _run_init_command(Path(args.path))
     if args.command == "run":
-        return _run_prompt_command(Path(args.config), " ".join(args.prompt))
+        return _run_prompt_command(Path(args.config), " ".join(args.prompt), args.output)
     if args.command == "skills" and args.skill_command == "list":
         return _run_skills_list_command(Path(args.config))
     if args.command == "skills" and args.skill_command == "create":
@@ -26,6 +33,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_skills_optimize_command(args)
     if args.command == "skills" and args.skill_command == "freshness":
         return _run_skills_freshness_command(Path(args.config))
+    if args.command == "skills" and args.skill_command == "validate":
+        return _run_skills_validate_command(Path(args.config))
+    if args.command == "skills" and args.skill_command == "explain":
+        return _run_skills_explain_command(Path(args.config), args.prompt)
     if args.command == "memory" and args.memory_command == "habits":
         return _run_memory_habits_command(Path(args.config))
     parser.print_help()
@@ -42,6 +53,7 @@ def _build_parser() -> argparse.ArgumentParser:
     run_parser = subparsers.add_parser("run", help="run one prompt")
     run_parser.add_argument("prompt", nargs="+")
     run_parser.add_argument("--config", default="agent.toml")
+    run_parser.add_argument("--output", choices=["text", "json"], default="text")
 
     skills_parser = subparsers.add_parser("skills", help="manage skills")
     skill_subparsers = skills_parser.add_subparsers(dest="skill_command")
@@ -59,6 +71,11 @@ def _build_parser() -> argparse.ArgumentParser:
     optimize_parser.add_argument("--goal", required=True)
     freshness_parser = skill_subparsers.add_parser("freshness", help="show runtime skill freshness stats")
     freshness_parser.add_argument("--config", default="agent.toml")
+    validate_parser = skill_subparsers.add_parser("validate", help="validate every skill manifest")
+    validate_parser.add_argument("--config", default="agent.toml")
+    explain_parser = skill_subparsers.add_parser("explain", help="explain skill selection for one prompt")
+    explain_parser.add_argument("--config", default="agent.toml")
+    explain_parser.add_argument("--prompt", required=True)
 
     memory_parser = subparsers.add_parser("memory", help="inspect memory")
     memory_subparsers = memory_parser.add_subparsers(dest="memory_command")
@@ -88,9 +105,12 @@ def _run_init_command(root: Path) -> int:
     return 0
 
 
-def _run_prompt_command(config_path: Path, prompt: str) -> int:
+def _run_prompt_command(config_path: Path, prompt: str, output: str) -> int:
     config = AgentConfig.load_from_file(config_path)
     result = Agent(config).run(prompt)
+    if output == "json":
+        print(json.dumps(asdict(result), ensure_ascii=False))
+        return 0
     for warning in result.warning_messages or []:
         print(f"Warning: {warning}")
     print(result.text)
@@ -161,6 +181,28 @@ def _run_skills_freshness_command(config_path: Path) -> int:
     return 0
 
 
+def _run_skills_validate_command(config_path: Path) -> int:
+    config = AgentConfig.load_from_file(config_path)
+    loader = create_skill_loader_for_agent_config(config)
+    issues = validate_skill_manifests(loader)
+    if issues:
+        for issue in issues:
+            print(f"{issue.path}: {issue.message}")
+        return 1
+    print(f"{len(loader.list_skill_manifests())} valid skills")
+    return 0
+
+
+def _run_skills_explain_command(config_path: Path, prompt: str) -> int:
+    config = AgentConfig.load_from_file(config_path)
+    loader = create_skill_loader_for_agent_config(config)
+    selections = explain_skill_selection(loader, prompt, config.agent.skills)
+    for selection in selections:
+        state = "selected" if selection.selected else "skipped"
+        print(f"{selection.name}\t{state}\t{selection.reason}")
+    return 0
+
+
 def _run_memory_habits_command(config_path: Path) -> int:
     config = AgentConfig.load_from_file(config_path)
     instruction = MiniMemory(config.paths.memory).build_prompt_instruction()
@@ -227,6 +269,7 @@ memory = ".super-agent/memory"
 
 def _default_skill_manifest() -> str:
     return """
+schema_version = 1
 name = "echo"
 kind = "prompt"
 description = "Minimal example skill"
@@ -244,6 +287,7 @@ instructions = "SKILL.md"
 
 def _default_mcp_skill_manifest() -> str:
     return """
+schema_version = 1
 name = "filesystem"
 kind = "mcp"
 description = "Example stdio MCP server"
@@ -262,6 +306,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem"]
 
 def _default_memory_skill_manifest() -> str:
     return """
+schema_version = 1
 name = "default"
 kind = "memory"
 description = "Default memory behavior"
@@ -274,6 +319,7 @@ triggers = []
 
 def _default_workflow_skill_manifest() -> str:
     return """
+schema_version = 1
 name = "direct"
 kind = "workflow"
 description = "Direct workflow"

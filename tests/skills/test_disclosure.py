@@ -6,7 +6,7 @@ from pathlib import Path
 from core import Agent, AgentConfig
 from core.provider import MockProvider
 from skill import ProgressiveDisclosure, SkillLoader
-from test_helpers import write_workflow_skill
+from support import write_workflow_skill
 
 
 class ProgressiveDisclosureTests(unittest.TestCase):

@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+import json
 from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
@@ -120,3 +121,36 @@ class CliTests(unittest.TestCase):
             self.assertIn("echo", output.getvalue())
             self.assertIn("calls=1", output.getvalue())
             self.assertIn("freshness=", output.getvalue())
+
+    def test_run_can_print_machine_readable_result_with_trace_id(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            main(["init", "--path", tmp])
+            output = StringIO()
+
+            with patch("sys.stdout", output):
+                code = main(
+                    ["run", "--output", "json", "--config", str(Path(tmp) / "agent.toml"), "hello"]
+                )
+
+            data = json.loads(output.getvalue())
+            self.assertEqual(0, code)
+            self.assertEqual("Mock response", data["text"])
+            self.assertEqual("completed", data["stop_reason"])
+            self.assertTrue(data["run_id"])
+
+    def test_skills_validate_and_explain_have_explicit_commands(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            main(["init", "--path", tmp])
+            config = str(Path(tmp) / "agent.toml")
+            validation_output = StringIO()
+            explanation_output = StringIO()
+
+            with patch("sys.stdout", validation_output):
+                validation_code = main(["skills", "validate", "--config", config])
+            with patch("sys.stdout", explanation_output):
+                explanation_code = main(["skills", "explain", "--config", config, "--prompt", "echo hello"])
+
+            self.assertEqual(0, validation_code)
+            self.assertIn("4 valid skills", validation_output.getvalue())
+            self.assertEqual(0, explanation_code)
+            self.assertIn("echo\tselected\tmatched trigger: echo", explanation_output.getvalue())

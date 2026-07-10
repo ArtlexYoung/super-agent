@@ -19,7 +19,8 @@ class SkillKindArchitectureTests(unittest.TestCase):
         self.assertEqual("SkillManifest", SkillManifest.__name__)
 
     def test_old_top_level_kind_modules_are_removed(self) -> None:
-        for module_name in ["super_agent", "super_agent.mcp", "super_agent.memory", "super_agent.workflow"]:
+        self.assertEqual("super_agent", importlib.import_module("super_agent").__name__)
+        for module_name in ["super_agent.mcp", "super_agent.memory", "super_agent.workflow"]:
             with self.assertRaises(ModuleNotFoundError):
                 importlib.import_module(module_name)
 

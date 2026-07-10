@@ -4,7 +4,7 @@ from pathlib import Path
 
 from core import Agent, AgentConfig
 from core.provider import MockProvider
-from test_helpers import write_workflow_skill
+from support import write_workflow_skill
 
 
 class SubAgentTests(unittest.TestCase):

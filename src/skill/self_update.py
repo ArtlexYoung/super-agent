@@ -8,7 +8,7 @@ from pathlib import Path
 from core.provider import ChatProvider, Message
 from skill.freshness import DEFAULT_FRESHNESS
 from skill.loader import SkillLoader
-from skill.manifest import SkillManifest
+from skill.manifest import SKILL_SCHEMA_VERSION, SkillManifest
 
 
 SKILL_INSTRUCTION_FILE = "SKILL.md"
@@ -130,6 +130,7 @@ def _write_skill_files(skill_dir: Path, request: SkillWriteRequest) -> None:
 def _build_skill_manifest_text(request: SkillWriteRequest) -> str:
     return "\n".join(
         [
+            f"schema_version = {SKILL_SCHEMA_VERSION}",
             f"name = {_quote_toml_string(request.name)}",
             f"kind = {_quote_toml_string(request.kind)}",
             f"description = {_quote_toml_string(request.description)}",

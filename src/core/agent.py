@@ -5,6 +5,7 @@ from pathlib import Path
 
 from core.config import AgentConfig
 from core.provider import ChatProvider, create_chat_provider
+from core.run import RunContext, RunTraceStore
 from skill import (
     MiniMemory,
     ProgressiveDisclosure,
@@ -162,43 +163,72 @@ class Agent:
         *,
         include_subagents: bool = True,
         check_subagent_links_before_run: bool = True,
+        run_context: RunContext | None = None,
     ) -> RunResult:
-        # memory/workflow 是运行控制 skill；prompt/mcp 通过 disclosure 进入模型上下文。
-        memory = self._create_memory_for_agent_run()
-        disclosure = ProgressiveDisclosure(self.skill_loader, self.config.paths.memory / "disclosure")
-        disclosure_bundle = disclosure.prepare_disclosure_for_prompt(prompt, self.config.agent.skills)
-        workflow = self._create_workflow_for_agent_run()
-        warning_messages = self.check_subagent_links() if include_subagents and check_subagent_links_before_run else []
-        subagent_results = self._run_subagents_that_match_prompt(prompt) if include_subagents else []
-        system = self.config.agent.system
-        if memory is not None:
-            system = _add_memory_to_system_prompt(system, memory)
-        system = _add_subagent_results_to_system_prompt(system, subagent_results)
-        system = _add_disclosure_cache_paths_to_system_prompt(
-            system,
-            disclosure_bundle.build_prompt_with_cache_paths(),
-        )
+        context = run_context or self._start_run_context(prompt)
+        disclosed_skills: list[Skill] = []
         try:
+            # memory/workflow 是运行控制 skill；prompt/mcp 通过 disclosure 进入模型上下文。
+            memory = self._create_memory_for_agent_run()
+            disclosure = ProgressiveDisclosure(self.skill_loader, self.config.paths.memory / "disclosure")
+            disclosure_bundle = disclosure.prepare_disclosure_for_prompt(prompt, self.config.agent.skills)
+            disclosed_skills = disclosure_bundle.skills
+            context.record_event(
+                "skills.disclosed",
+                {
+                    "names": [skill.manifest.name for skill in disclosed_skills],
+                    "index_path": str(disclosure_bundle.index_path),
+                },
+            )
+            workflow = self._create_workflow_for_agent_run()
+            warning_messages = (
+                self.check_subagent_links() if include_subagents and check_subagent_links_before_run else []
+            )
+            subagent_results = (
+                self._run_subagents_that_match_prompt(prompt, context) if include_subagents else []
+            )
+            system = self.config.agent.system
+            if memory is not None:
+                system = _add_memory_to_system_prompt(system, memory)
+            system = _add_subagent_results_to_system_prompt(system, subagent_results)
+            system = _add_disclosure_cache_paths_to_system_prompt(
+                system,
+                disclosure_bundle.build_prompt_with_cache_paths(),
+            )
             result = workflow.run(
                 prompt=prompt,
                 system=system,
                 model=self.config.model.model,
-                skills=disclosure_bundle.skills,
+                skills=disclosed_skills,
                 provider=self.provider,
             )
-        except Exception:
-            self._record_skill_freshness(disclosure_bundle.skills, prompt, "", success=False)
+            context.record_event(
+                "model.completed",
+                {"text": result.text, "workflow": result.workflow, "skills": result.skills},
+            )
+            self._record_skill_freshness(disclosed_skills, prompt, result.text, success=bool(result.text.strip()))
+            if memory is not None:
+                memory.record_agent_run(result.workflow, result.skills)
+            context.record_event(
+                "run.completed",
+                {"workflow": result.workflow, "skills": result.skills, "stop_reason": "completed"},
+            )
+            return RunResult(
+                text=result.text,
+                workflow=result.workflow,
+                skills=result.skills,
+                subagent_results=subagent_results,
+                warning_messages=warning_messages,
+                run_id=context.run_id,
+                stop_reason="completed",
+            )
+        except Exception as error:
+            self._record_skill_freshness(disclosed_skills, prompt, "", success=False)
+            context.record_event(
+                "run.failed",
+                {"error_type": type(error).__name__, "message": str(error)},
+            )
             raise
-        self._record_skill_freshness(disclosure_bundle.skills, prompt, result.text, success=bool(result.text.strip()))
-        if memory is not None:
-            memory.record_agent_run(result.workflow, result.skills)
-        return RunResult(
-            text=result.text,
-            workflow=result.workflow,
-            skills=result.skills,
-            subagent_results=subagent_results,
-            warning_messages=warning_messages,
-        )
 
     def _make_next_subagent_name(self) -> str:
         index = 1
@@ -209,15 +239,27 @@ class Agent:
                 return candidate
             index += 1
 
-    def _run_subagents_that_match_prompt(self, prompt: str) -> list[SubAgentResult]:
+    def _run_subagents_that_match_prompt(
+        self,
+        prompt: str,
+        run_context: RunContext,
+    ) -> list[SubAgentResult]:
         prompt_text = prompt.lower()
         results: list[SubAgentResult] = []
         for subagent in self._subagents:
             if _prompt_matches_subagent_triggers(subagent, prompt_text):
+                child_context = RunTraceStore(
+                    subagent.agent.config.paths.memory / "runs"
+                ).start_run(
+                    subagent.agent.config.agent.name,
+                    prompt,
+                    parent_run_id=run_context.run_id,
+                )
                 result = subagent.agent.run(
                     prompt,
                     include_subagents=True,
                     check_subagent_links_before_run=False,
+                    run_context=child_context,
                 )
                 results.append(
                     SubAgentResult(
@@ -229,7 +271,15 @@ class Agent:
                         subagent_results=result.subagent_results,
                     )
                 )
+                run_context.record_event(
+                    "subagent.completed",
+                    {"name": subagent.name, "run_id": result.run_id},
+                )
         return results
+
+    def _start_run_context(self, prompt: str) -> RunContext:
+        store = RunTraceStore(self.config.paths.memory / "runs")
+        return store.start_run(self.config.agent.name, prompt)
 
     def _get_first_skill_root(self) -> Path:
         if not self.config.paths.skills:

@@ -8,7 +8,7 @@ from core import Agent, AgentConfig
 from core.provider import MockProvider
 from skill import SkillManifest
 from skill.freshness import SkillFreshnessStore, SkillRunRecord
-from test_helpers import write_workflow_skill
+from support import write_workflow_skill
 
 
 class SkillFreshnessTests(unittest.TestCase):

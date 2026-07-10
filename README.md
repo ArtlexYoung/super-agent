@@ -47,7 +47,7 @@ super-agent memory habits --config demo-agent/agent.toml
 ## Python API
 
 ```python
-from core import Agent, AgentConfig
+from super_agent import Agent, AgentConfig
 
 config = AgentConfig.load_from_file("agent.toml")
 agent = Agent(config)
@@ -75,7 +75,7 @@ print(result.text)
 主从关系用代码组合，不写进 TOML。每个 agent 都是普通 `Agent`，各自有独立配置、模型、skill、memory、workflow。
 
 ```python
-from core import Agent
+from super_agent import Agent
 
 main = Agent.load_from_config_file("agents/main.toml")
 coder = Agent.load_from_config_file("agents/coder.toml")
@@ -297,6 +297,22 @@ runtime 会按 `kind = "mcp"` 把它加载成 MCP skill。环境变量只会把�
 4. 模型或上层 workflow 可以直接选择缓存路径，再通过 `ProgressiveDisclosure.read_cache(path)` 读取结果。
 
 这给后续 ReAct、Plan、Loop 留出了工具接口：模型先看索引，再选择需要展开的 skill，而不是一开始读完所有资源。
+
+## 运行追踪
+
+每次 `Agent.run(...)` 都会生成稳定的 `run_id`，并把有序事件写入：
+
+```text
+.super-agent/memory/runs/<run-id>/events.jsonl
+```
+
+事件包含 schema 版本、顺序号、agent 名称、父运行编号和事件数据。子 agent 使用自己的运行编号，并通过 `parent_run_id` 关联主运行。
+
+```bash
+super-agent run --output json --config agent.toml "hello"
+super-agent skills validate --config agent.toml
+super-agent skills explain --config agent.toml --prompt "hello"
+```
 
 ## 记忆自更新
 

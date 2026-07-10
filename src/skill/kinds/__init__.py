@@ -1,20 +1,28 @@
-from skill.kinds.mcp import McpServer
-from skill.kinds.memory import MiniMemory, create_memory_from_skill_manifest
-from skill.kinds.workflow import (
-    RunResult,
-    SubAgentResult,
-    Workflow,
-    create_workflow,
-    create_workflow_from_skill_manifest,
-)
+from __future__ import annotations
 
-__all__ = [
-    "McpServer",
-    "MiniMemory",
-    "RunResult",
-    "SubAgentResult",
-    "Workflow",
-    "create_memory_from_skill_manifest",
-    "create_workflow",
-    "create_workflow_from_skill_manifest",
-]
+from importlib import import_module
+from typing import Any
+
+
+_EXPORTS = {
+    "McpServer": ("skill.kinds.mcp", "McpServer"),
+    "MiniMemory": ("skill.kinds.memory", "MiniMemory"),
+    "RunResult": ("skill.kinds.workflow", "RunResult"),
+    "SubAgentResult": ("skill.kinds.workflow", "SubAgentResult"),
+    "Workflow": ("skill.kinds.workflow", "Workflow"),
+    "create_memory_from_skill_manifest": ("skill.kinds.memory", "create_memory_from_skill_manifest"),
+    "create_workflow": ("skill.kinds.workflow", "create_workflow"),
+    "create_workflow_from_skill_manifest": ("skill.kinds.workflow", "create_workflow_from_skill_manifest"),
+}
+
+__all__ = list(_EXPORTS)
+
+
+def __getattr__(name: str) -> Any:
+    target = _EXPORTS.get(name)
+    if target is None:
+        raise AttributeError(f"module 'skill.kinds' has no attribute {name!r}")
+    module_name, attribute_name = target
+    value = getattr(import_module(module_name), attribute_name)
+    globals()[name] = value
+    return value

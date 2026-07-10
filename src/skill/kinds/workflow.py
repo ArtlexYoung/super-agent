@@ -16,6 +16,8 @@ class RunResult:
     skills: list[str]
     subagent_results: list["SubAgentResult"] | None = None
     warning_messages: list[str] | None = None
+    run_id: str = ""
+    stop_reason: str = "completed"
 
 
 @dataclass(frozen=True)
