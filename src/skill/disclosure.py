@@ -4,7 +4,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from skill.freshness import DEFAULT_FRESHNESS
+from skill.evolution.freshness import DEFAULT_FRESHNESS
 from skill.loader import PROMPT_CONTEXT_KINDS, SkillLoader
 from skill.manifest import Skill, SkillManifest
 

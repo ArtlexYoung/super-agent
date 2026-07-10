@@ -12,13 +12,27 @@ from core import (
     SkillTools,
     ToolCall,
 )
-from skill import RunResult, Skill, SkillLoader, SkillManifest, SubAgentResult
+from skill import (
+    EvaluationCase,
+    EvaluationReport,
+    EvolutionResult,
+    RunResult,
+    Skill,
+    SkillCandidate,
+    SkillEvolutionManager,
+    SkillLoader,
+    SkillManifest,
+    SubAgentResult,
+)
 
 __all__ = [
     "Agent",
     "AgentConfig",
     "AgentSettings",
     "ChatProvider",
+    "EvaluationCase",
+    "EvaluationReport",
+    "EvolutionResult",
     "ModelSettings",
     "ModelResponse",
     "PathsSettings",
@@ -27,6 +41,8 @@ __all__ = [
     "RunResult",
     "RunTraceStore",
     "Skill",
+    "SkillCandidate",
+    "SkillEvolutionManager",
     "SkillTools",
     "SkillLoader",
     "SkillManifest",

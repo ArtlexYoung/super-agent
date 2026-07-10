@@ -26,7 +26,7 @@ Super Agent 是一个简单、轻量、配置化的 **skill-first agent runtime*
 PYTHONPATH=src python3 -m cli init --path demo-agent
 PYTHONPATH=src python3 -m cli run --config demo-agent/agent.toml "hello"
 PYTHONPATH=src python3 -m cli skills list --config demo-agent/agent.toml
-PYTHONPATH=src python3 -m cli skills create --config demo-agent/agent.toml --name note --instructions "Write concise notes."
+PYTHONPATH=src python3 -m cli skills validate --config demo-agent/agent.toml
 PYTHONPATH=src python3 -m cli skills freshness --config demo-agent/agent.toml
 PYTHONPATH=src python3 -m cli memory habits --config demo-agent/agent.toml
 ```
@@ -37,7 +37,7 @@ PYTHONPATH=src python3 -m cli memory habits --config demo-agent/agent.toml
 super-agent init --path demo-agent
 super-agent run --config demo-agent/agent.toml "hello"
 super-agent skills list --config demo-agent/agent.toml
-super-agent skills create --config demo-agent/agent.toml --name note --instructions "Write concise notes."
+super-agent skills validate --config demo-agent/agent.toml
 super-agent skills freshness --config demo-agent/agent.toml
 super-agent memory habits --config demo-agent/agent.toml
 ```
@@ -64,9 +64,12 @@ print(result.text)
 - `Agent.list_subagents()`：查看已经添加的从 agent。
 - `SkillLoader.list_skill_manifests()`：列出 skill 配置摘要。
 - `SkillLoader.load_skills_for_prompt(prompt)`：按输入加载命中的 skill。
-- `Agent.create_skill(...)`：让 agent 创建一个自己拥有的 skill。
-- `Agent.update_skill(...)`：更新允许 agent 更新的 skill。
-- `Agent.optimize_skill(...)`：用当前模型优化允许更新的 skill。
+- `Agent.create_skill_evolution_manager()`：创建候选、评价、晋升和回滚使用的进化管理器。
+- `SkillEvolutionManager.create_skill_candidate(...)`：生成隔离候选，不修改当前 Skill。
+- `SkillEvolutionManager.evaluate_skill_candidate(...)`：用真实 provider 运行用例并确定性评分。
+- `SkillEvolutionManager.promote_skill_candidate(...)`：只晋升通过评价且父版本未变化的候选。
+- `SkillEvolutionManager.evolve_skill(...)`：一次完成候选、评价和条件晋升。
+- `SkillEvolutionManager.rollback_skill(...)`：恢复上一份不可变 Skill 快照。
 - `MiniMemory.record_agent_run(...)`：记录本次运行习惯。
 - `MiniMemory.build_prompt_instruction()`：把记忆生成给模型看的提示词。
 
@@ -215,34 +218,62 @@ runtime 不用大模型给保鲜度打分，而是把每次调用写入动态统
 super-agent skills freshness --config agent.toml
 ```
 
-### Skill 自更新
+### Skill 评价进化闭环
 
 每个普通 skill 都可以标记两个字段：
 
 - `agent_created`：是否由 agent 自己创建。
 - `agent_can_update`：是否允许 agent 更新；不写时默认等于 `agent_created`。
 
-也就是说，人类写的旧 skill 默认不可更新；agent 自己创建的 skill 默认可以继续更新和优化。
+人类写的旧 Skill 默认不可进化；agent 新建的 Skill 默认允许继续进化。允许进化也不会直接改线上文件：模型先生成隔离候选，真实运行评价用例，达到阈值后才原子切换当前目录。
 
 ```python
-agent = Agent.load_from_config_file("agent.toml")
-agent.create_skill(
-    "research-note",
-    instructions="Summarize research notes with sources.",
-    description="Research note helper",
-    triggers=["research", "source"],
+from super_agent import Agent, EvaluationCase
+
+manager = Agent.load_from_config_file("agent.toml").create_skill_evolution_manager()
+candidate = manager.create_skill_candidate("research-note", "summarize with sources")
+report = manager.evaluate_skill_candidate(
+    candidate.candidate_id,
+    [
+        EvaluationCase(
+            name="contains source",
+            prompt="Summarize this note.",
+            expected_output_contains=["source"],
+            forbidden_output_contains=["unknown"],
+        )
+    ],
 )
-agent.update_skill("research-note", instructions="Write compact notes with sources.")
-agent.optimize_skill("research-note", goal="make the instruction easier to follow")
+if report.passed:
+    manager.promote_skill_candidate(candidate.candidate_id)
+
+manager.rollback_skill("research-note")
 ```
 
-CLI 也提供同一组轻量入口：
+评价用例是普通 JSON，断言直接检查模型输出，不再额外调用一个模型充当裁判：
+
+```json
+[
+  {
+    "name": "contains source",
+    "prompt": "Summarize this note.",
+    "expected_output_contains": ["source"],
+    "forbidden_output_contains": ["unknown"],
+    "evaluator_instruction": "Return a concise answer."
+  }
+]
+```
+
+CLI 提供同一套闭环操作：
 
 ```bash
-super-agent skills create --config agent.toml --name research-note --instructions "Summarize research notes."
-super-agent skills update --config agent.toml --name research-note --instructions "Summarize with sources."
-super-agent skills optimize --config agent.toml --name research-note --goal "make it clearer"
+super-agent skills propose --config agent.toml --name research-note --goal "summarize with sources"
+super-agent skills evaluate --config agent.toml --candidate-id <id> --cases evaluation-cases.json
+super-agent skills promote --config agent.toml --candidate-id <id>
+super-agent skills evolve --config agent.toml --name research-note --goal "make it clearer" --cases evaluation-cases.json
+super-agent skills rollback --config agent.toml --name research-note
 ```
+
+候选、评价报告和不可变历史默认写在 `.super-agent/memory/evolution/`。候选创建后如果当前 Skill 被人工修改，晋升会因父快照哈希不一致而拒绝，避免覆盖新修改。
 
 ## MCP Skill 格式
 
@@ -407,7 +438,7 @@ max_steps = 8
 src/
   cli.py         # CLI 入口：init、run、skills、memory
   core/          # Agent、运行追踪、真实 Skill 工具、agent.toml、provider
-  skill/         # manifest、loader、kind、渐进式披露缓存、自更新、保鲜度
+  skill/         # manifest、loader、kind、渐进式披露、候选评价、进化历史
     kinds/       # prompt、mcp、memory、workflow 等 skill kind
   frontend/mac/  # SwiftUI 桌面端：对话、配置、运行树
 ```

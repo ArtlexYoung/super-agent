@@ -4,7 +4,7 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
-from skill.freshness import DEFAULT_FRESHNESS
+from skill.evolution.freshness import DEFAULT_FRESHNESS
 
 
 SKILL_SCHEMA_VERSION = 1

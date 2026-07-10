@@ -12,6 +12,7 @@ from core import Agent, AgentConfig, RunEvent, RunTraceStore
 from core import create_skill_loader_for_agent_config
 from core.provider import Message
 from skill import (
+    EvaluationCase,
     MiniMemory,
     RunResult,
     SkillFreshnessStore,
@@ -36,12 +37,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_prompt_command(Path(args.config), request, args.output)
     if args.command == "skills" and args.skill_command == "list":
         return _run_skills_list_command(Path(args.config))
-    if args.command == "skills" and args.skill_command == "create":
-        return _run_skills_create_command(args)
-    if args.command == "skills" and args.skill_command == "update":
-        return _run_skills_update_command(args)
-    if args.command == "skills" and args.skill_command == "optimize":
-        return _run_skills_optimize_command(args)
+    if args.command == "skills" and args.skill_command == "propose":
+        return _run_skills_propose_command(args)
+    if args.command == "skills" and args.skill_command == "evaluate":
+        return _run_skills_evaluate_command(args)
+    if args.command == "skills" and args.skill_command == "promote":
+        return _run_skills_promote_command(args)
+    if args.command == "skills" and args.skill_command == "evolve":
+        return _run_skills_evolve_command(args)
+    if args.command == "skills" and args.skill_command == "rollback":
+        return _run_skills_rollback_command(args)
     if args.command == "skills" and args.skill_command == "freshness":
         return _run_skills_freshness_command(Path(args.config))
     if args.command == "skills" and args.skill_command == "validate":
@@ -71,16 +76,19 @@ def _build_parser() -> argparse.ArgumentParser:
     skill_subparsers = skills_parser.add_subparsers(dest="skill_command")
     list_parser = skill_subparsers.add_parser("list", help="list available skills")
     list_parser.add_argument("--config", default="agent.toml")
-    create_parser = skill_subparsers.add_parser("create", help="create an agent-owned skill")
-    _add_skill_change_arguments(create_parser, require_instructions=True)
-    create_parser.add_argument("--lock-agent-update", action="store_true")
-    update_parser = skill_subparsers.add_parser("update", help="update an agent-updateable skill")
-    _add_skill_change_arguments(update_parser, require_instructions=False)
-    update_parser.add_argument("--allow-agent-update", choices=["true", "false"])
-    optimize_parser = skill_subparsers.add_parser("optimize", help="optimize a skill with the configured model")
-    optimize_parser.add_argument("--config", default="agent.toml")
-    optimize_parser.add_argument("--name", required=True)
-    optimize_parser.add_argument("--goal", required=True)
+    propose_parser = skill_subparsers.add_parser("propose", help="create an isolated skill candidate")
+    _add_evolution_name_arguments(propose_parser)
+    evaluate_parser = skill_subparsers.add_parser("evaluate", help="evaluate a skill candidate")
+    _add_evolution_candidate_arguments(evaluate_parser)
+    evaluate_parser.add_argument("--cases", required=True)
+    promote_parser = skill_subparsers.add_parser("promote", help="promote a passing skill candidate")
+    _add_evolution_candidate_arguments(promote_parser)
+    evolve_parser = skill_subparsers.add_parser("evolve", help="propose, evaluate, and promote a skill")
+    _add_evolution_name_arguments(evolve_parser)
+    evolve_parser.add_argument("--cases", required=True)
+    rollback_parser = skill_subparsers.add_parser("rollback", help="restore the previous skill revision")
+    rollback_parser.add_argument("--config", default="agent.toml")
+    rollback_parser.add_argument("--name", required=True)
     freshness_parser = skill_subparsers.add_parser("freshness", help="show runtime skill freshness stats")
     freshness_parser.add_argument("--config", default="agent.toml")
     validate_parser = skill_subparsers.add_parser("validate", help="validate every skill manifest")
@@ -193,36 +201,42 @@ def _run_skills_list_command(config_path: Path) -> int:
     return 0
 
 
-def _run_skills_create_command(args: argparse.Namespace) -> int:
-    agent = Agent.load_from_config_file(args.config)
-    manifest = agent.create_skill(
-        args.name,
-        _read_instruction_argument(args),
-        description=args.description,
-        triggers=args.trigger,
-        allow_agent_update=not args.lock_agent_update,
-    )
-    print(f"Created skill: {manifest.name}")
+def _run_skills_propose_command(args: argparse.Namespace) -> int:
+    manager = Agent.load_from_config_file(args.config).create_skill_evolution_manager()
+    candidate = manager.create_skill_candidate(args.name, args.goal)
+    print(f"Proposed candidate: {candidate.candidate_id}")
     return 0
 
 
-def _run_skills_update_command(args: argparse.Namespace) -> int:
-    agent = Agent.load_from_config_file(args.config)
-    manifest = agent.update_skill(
-        args.name,
-        instructions=_read_optional_instruction_argument(args),
-        description=args.description,
-        triggers=args.trigger,
-        allow_agent_update=_read_optional_bool(args.allow_agent_update),
-    )
-    print(f"Updated skill: {manifest.name}")
+def _run_skills_evaluate_command(args: argparse.Namespace) -> int:
+    manager = Agent.load_from_config_file(args.config).create_skill_evolution_manager()
+    report = manager.evaluate_skill_candidate(args.candidate_id, _read_evaluation_cases(Path(args.cases)))
+    state = "passed" if report.passed else "rejected"
+    print(f"Evaluation {report.report_id}: {state} score={report.score:.4f}")
     return 0
 
 
-def _run_skills_optimize_command(args: argparse.Namespace) -> int:
-    agent = Agent.load_from_config_file(args.config)
-    manifest = agent.optimize_skill(args.name, goal=args.goal)
-    print(f"Optimized skill: {manifest.name}")
+def _run_skills_promote_command(args: argparse.Namespace) -> int:
+    manager = Agent.load_from_config_file(args.config).create_skill_evolution_manager()
+    manifest = manager.promote_skill_candidate(args.candidate_id)
+    print(f"Promoted skill: {manifest.name}@{manifest.version}")
+    return 0
+
+
+def _run_skills_evolve_command(args: argparse.Namespace) -> int:
+    manager = Agent.load_from_config_file(args.config).create_skill_evolution_manager()
+    result = manager.evolve_skill(args.name, args.goal, _read_evaluation_cases(Path(args.cases)))
+    print(
+        f"Evolution {result.status}: {result.candidate.candidate_id} "
+        f"score={result.report.score:.4f}"
+    )
+    return 0 if result.status == "promoted" else 1
+
+
+def _run_skills_rollback_command(args: argparse.Namespace) -> int:
+    manager = Agent.load_from_config_file(args.config).create_skill_evolution_manager()
+    manifest = manager.rollback_skill(args.name)
+    print(f"Rolled back skill: {manifest.name}@{manifest.version}")
     return 0
 
 
@@ -277,35 +291,52 @@ def _write_file_if_missing(path: Path, content: str) -> None:
         path.write_text(content, encoding="utf-8")
 
 
-def _add_skill_change_arguments(parser: argparse.ArgumentParser, *, require_instructions: bool) -> None:
+def _add_evolution_name_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--config", default="agent.toml")
     parser.add_argument("--name", required=True)
-    parser.add_argument("--description", default=None if not require_instructions else "")
-    parser.add_argument("--trigger", action="append", default=None if not require_instructions else [])
-    instruction_group = parser.add_mutually_exclusive_group(required=require_instructions)
-    instruction_group.add_argument("--instructions")
-    instruction_group.add_argument("--instructions-file")
+    parser.add_argument("--goal", required=True)
 
 
-def _read_instruction_argument(args: argparse.Namespace) -> str:
-    value = _read_optional_instruction_argument(args)
-    if value is None:
-        raise ValueError("--instructions or --instructions-file is required")
+def _add_evolution_candidate_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--config", default="agent.toml")
+    parser.add_argument("--candidate-id", required=True)
+
+
+def _read_evaluation_cases(path: Path) -> list[EvaluationCase]:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, list):
+        raise ValueError("evaluation cases file must contain a JSON array")
+    cases: list[EvaluationCase] = []
+    for item in data:
+        if not isinstance(item, dict):
+            raise ValueError("each evaluation case must be a JSON object")
+        cases.append(
+            EvaluationCase(
+                name=_read_json_string(item, "name", required=True),
+                prompt=_read_json_string(item, "prompt", required=True),
+                expected_output_contains=_read_string_list(item, "expected_output_contains"),
+                forbidden_output_contains=_read_string_list(item, "forbidden_output_contains"),
+                evaluator_instruction=_read_json_string(item, "evaluator_instruction"),
+            )
+        )
+    return cases
+
+
+def _read_string_list(data: dict[str, object], name: str) -> list[str]:
+    value = data.get(name, [])
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise ValueError(f"evaluation case {name} must be a string array")
+    return list(value)
+
+
+def _read_json_string(data: dict[str, object], name: str, *, required: bool = False) -> str:
+    value = data.get(name)
+    if value is None and not required:
+        return ""
+    if not isinstance(value, str) or (required and not value.strip()):
+        requirement = "a non-empty string" if required else "a string"
+        raise ValueError(f"evaluation case {name} must be {requirement}")
     return value
-
-
-def _read_optional_instruction_argument(args: argparse.Namespace) -> str | None:
-    if args.instructions is not None:
-        return str(args.instructions)
-    if args.instructions_file is not None:
-        return Path(args.instructions_file).read_text(encoding="utf-8")
-    return None
-
-
-def _read_optional_bool(value: str | None) -> bool | None:
-    if value is None:
-        return None
-    return value == "true"
 
 
 def _default_agent_config() -> str:

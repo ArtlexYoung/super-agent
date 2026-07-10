@@ -128,10 +128,10 @@ class SkillEvolutionManager:
     def evolve_skill(self, name: str, goal: str, cases: list[EvaluationCase]) -> EvolutionResult: ...
 ```
 
-- [ ] Add failing tests proving active files remain unchanged before promotion, locked skills cannot evolve, weak candidates are rejected, strong candidates are promoted, history is immutable, and rollback restores the previous version.
-- [ ] Implement deterministic case evaluation with optional evaluator instructions, candidate lineage, atomic promotion, and rollback.
-- [ ] Replace direct optimization commands with `propose`, `evaluate`, `promote`, `evolve`, and `rollback` commands.
-- [ ] Update version to `0.0.12` and commit `feat(evolution): 发布 v0.0.12 评价进化闭环`.
+- [x] Add failing tests proving active files remain unchanged before promotion, locked skills cannot evolve, weak candidates are rejected, strong candidates are promoted, history is immutable, and rollback restores the previous version.
+- [x] Implement deterministic case evaluation with optional evaluator instructions, candidate lineage, atomic promotion, and rollback.
+- [x] Replace direct optimization commands with `propose`, `evaluate`, `promote`, `evolve`, and `rollback` commands.
+- [x] Update version to `0.0.12` and commit `feat(evolution): 发布 v0.0.12 评价进化闭环`.
 
 ### Task 5: v0.0.13 Memory Operations
 

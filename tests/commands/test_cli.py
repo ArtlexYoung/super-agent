@@ -63,49 +63,71 @@ class CliTests(unittest.TestCase):
             self.assertIn("total runs: 1", output.getvalue())
             self.assertIn("workflow direct used 1 times", output.getvalue())
 
-    def test_skills_create_and_update_manage_agent_created_skill(self) -> None:
+    def test_skills_propose_evaluate_and_promote_candidate(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             config = str(Path(tmp) / "agent.toml")
             main(["init", "--path", tmp])
-
-            create_code = main(
+            cases_path = Path(tmp) / "evaluation-cases.json"
+            cases_path.write_text(
+                json.dumps(
+                    [
+                        {
+                            "name": "mock output",
+                            "prompt": "write a note",
+                            "expected_output_contains": ["Mock response"],
+                        }
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            propose_output = StringIO()
+            with patch("sys.stdout", propose_output):
+                propose_code = main(
+                    [
+                        "skills",
+                        "propose",
+                        "--config",
+                        config,
+                        "--name",
+                        "agent-note",
+                        "--goal",
+                        "write compact notes",
+                    ]
+                )
+            candidate_id = propose_output.getvalue().strip().split(": ", 1)[1]
+            evaluate_code = main(
                 [
                     "skills",
-                    "create",
+                    "evaluate",
                     "--config",
                     config,
-                    "--name",
-                    "agent-note",
-                    "--description",
-                    "Agent note helper",
-                    "--trigger",
-                    "note",
-                    "--instructions",
-                    "Write compact notes.",
+                    "--candidate-id",
+                    candidate_id,
+                    "--cases",
+                    str(cases_path),
                 ]
             )
-            update_code = main(
+            promote_code = main(
                 [
                     "skills",
-                    "update",
+                    "promote",
                     "--config",
                     config,
-                    "--name",
-                    "agent-note",
-                    "--instructions",
-                    "Write compact notes with sources.",
+                    "--candidate-id",
+                    candidate_id,
                 ]
             )
 
             root = Path(tmp)
-            self.assertEqual(0, create_code)
-            self.assertEqual(0, update_code)
+            self.assertEqual(0, propose_code)
+            self.assertEqual(0, evaluate_code)
+            self.assertEqual(0, promote_code)
             self.assertIn(
                 "agent_created = true",
                 (root / "skills" / "agent-note" / "skill.toml").read_text(encoding="utf-8"),
             )
             self.assertEqual(
-                "Write compact notes with sources.\n",
+                "Mock response\n",
                 (root / "skills" / "agent-note" / "SKILL.md").read_text(encoding="utf-8"),
             )
 

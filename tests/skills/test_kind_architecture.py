@@ -1,4 +1,7 @@
 import importlib
+import os
+import subprocess
+import sys
 import unittest
 from pathlib import Path
 
@@ -27,3 +30,20 @@ class SkillKindArchitectureTests(unittest.TestCase):
     def test_kind_implementations_stay_inside_skill_package(self) -> None:
         for path in ["src/mcp.py", "src/memory.py", "src/workflow.py", "src/mcp", "src/memory", "src/workflow"]:
             self.assertFalse(Path(path).exists())
+
+    def test_manifest_and_evolution_facade_import_in_fresh_process(self) -> None:
+        environment = dict(os.environ)
+        environment["PYTHONPATH"] = "src"
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import skill.manifest; from super_agent import SkillEvolutionManager",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            env=environment,
+        )
+
+        self.assertEqual(0, completed.returncode, completed.stderr)

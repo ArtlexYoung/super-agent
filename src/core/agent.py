@@ -12,6 +12,7 @@ from skill import (
     ProgressiveDisclosure,
     RunResult,
     Skill,
+    SkillEvolutionManager,
     SkillFreshnessStore,
     SkillLoader,
     SkillManifest,
@@ -20,14 +21,6 @@ from skill import (
     WorkflowRunRequest,
     create_memory_from_skill_manifest,
     create_workflow_from_skill_manifest,
-)
-from skill.freshness import DEFAULT_FRESHNESS
-from skill.self_update import (
-    SkillUpdateRequest,
-    SkillWriteRequest,
-    create_agent_skill,
-    optimize_agent_skill,
-    update_agent_skill,
 )
 
 
@@ -81,66 +74,13 @@ class Agent:
     def list_subagents(self) -> list[SubAgent]:
         return list(self._subagents)
 
-    def create_skill(
-        self,
-        name: str,
-        instructions: str,
-        *,
-        description: str = "",
-        triggers: list[str] | None = None,
-        version: str = "0.1.0",
-        allow_agent_update: bool = True,
-        function_group: str = "",
-        freshness: float = DEFAULT_FRESHNESS,
-    ) -> SkillManifest:
-        return create_agent_skill(
-            self._get_first_skill_root(),
-            SkillWriteRequest(
-                name=name,
-                instructions=instructions,
-                description=description,
-                triggers=triggers,
-                version=version,
-                agent_created=True,
-                agent_can_update=allow_agent_update,
-                function_group=function_group,
-                freshness=freshness,
-            ),
-        )
-
-    def update_skill(
-        self,
-        name: str,
-        *,
-        instructions: str | None = None,
-        description: str | None = None,
-        triggers: list[str] | None = None,
-        version: str | None = None,
-        allow_agent_update: bool | None = None,
-        function_group: str | None = None,
-        freshness: float | None = None,
-    ) -> SkillManifest:
-        return update_agent_skill(
-            self.skill_loader,
-            SkillUpdateRequest(
-                name=name,
-                instructions=instructions,
-                description=description,
-                triggers=triggers,
-                version=version,
-                agent_can_update=allow_agent_update,
-                function_group=function_group,
-                freshness=freshness,
-            ),
-        )
-
-    def optimize_skill(self, name: str, *, goal: str) -> SkillManifest:
-        return optimize_agent_skill(
-            self.skill_loader,
-            self.provider,
+    def create_skill_evolution_manager(self) -> SkillEvolutionManager:
+        return SkillEvolutionManager(
+            skill_loader=self.skill_loader,
+            skill_root=self._get_first_skill_root(),
+            state_root=self.config.paths.memory / "evolution",
+            provider=self.provider,
             model=self.config.model.model,
-            name=name,
-            goal=goal,
         )
 
     def check_subagent_links(self) -> list[str]:
