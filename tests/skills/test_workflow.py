@@ -2,7 +2,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from core import Agent, AgentConfig, MockProvider
+from core.agent import Agent
+from core.config import AgentConfig
+from core.provider import MockProvider
 from core.provider import ModelResponse, ToolCall
 
 

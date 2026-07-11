@@ -11,9 +11,11 @@ from typing import Any, Sequence
 from cli_commands.benchmark import configure_benchmark_parser, run_benchmark_command
 from cli_commands.memory import configure_memory_parser, run_memory_command
 from cli_commands.skills import configure_skills_parser, run_skills_command
-from core import Agent, AgentConfig, RunEvent, RunTraceStore, run_event_to_dict
+from core.agent import Agent
+from core.config import AgentConfig
+from core.run import RunEvent, RunTraceStore, run_event_to_dict
 from core.provider import Message
-from skill import RunResult
+from skill.kinds.workflow import RunResult
 
 
 @dataclass(frozen=True)

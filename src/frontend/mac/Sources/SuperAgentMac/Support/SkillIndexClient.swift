@@ -17,22 +17,6 @@ private struct SkillIndexEntry: Decodable {
     var successCount: Int
     var sameFunctionSuccessfulFollowups: Int
 
-    func makeChoice() -> SkillManifestChoice {
-        SkillManifestChoice(
-            key: key,
-            name: name,
-            kind: kind,
-            agentCreated: agentCreated,
-            agentCanUpdate: agentCanUpdate,
-            freshness: freshness,
-            functionGroup: functionGroup,
-            freshnessUpdatedAt: freshnessUpdatedAt,
-            callCount: callCount,
-            successCount: successCount,
-            replacementCount: sameFunctionSuccessfulFollowups,
-            hasRuntimeStats: callCount > 0 || !freshnessUpdatedAt.isEmpty
-        )
-    }
 }
 
 enum SkillIndexClient {
@@ -83,7 +67,26 @@ enum SkillIndexClient {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         let document = try decoder.decode(SkillIndexDocument.self, from: outputData)
-        return document.skills.map { $0.makeChoice() }
+        var choices: [SkillManifestChoice] = []
+        choices.reserveCapacity(document.skills.count)
+        for entry in document.skills {
+            let choice = SkillManifestChoice(
+                key: entry.key,
+                name: entry.name,
+                kind: entry.kind,
+                agentCreated: entry.agentCreated,
+                agentCanUpdate: entry.agentCanUpdate,
+                freshness: entry.freshness,
+                functionGroup: entry.functionGroup,
+                freshnessUpdatedAt: entry.freshnessUpdatedAt,
+                callCount: entry.callCount,
+                successCount: entry.successCount,
+                replacementCount: entry.sameFunctionSuccessfulFollowups,
+                hasRuntimeStats: entry.callCount > 0 || !entry.freshnessUpdatedAt.isEmpty
+            )
+            choices.append(choice)
+        }
+        return choices
     }
 
     private static func runtimeCommand() -> String {

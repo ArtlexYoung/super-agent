@@ -5,10 +5,11 @@ import sys
 import unittest
 from pathlib import Path
 
-from skill import ProgressiveDisclosureCore, SkillManifest
+from skill.disclosure import ProgressiveDisclosureCore
 from skill.kinds.mcp import McpServer
 from skill.kinds.memory import MiniMemory
 from skill.kinds.workflow import RunResult, SubAgentResult, create_workflow
+from skill.manifest import SkillManifest
 
 
 class SkillKindArchitectureTests(unittest.TestCase):
@@ -48,14 +49,27 @@ class SkillKindArchitectureTests(unittest.TestCase):
             ).exists()
         )
 
-    def test_manifest_and_evolution_facade_import_in_fresh_process(self) -> None:
+    def test_only_super_agent_aggregates_public_api(self) -> None:
+        for module_name, attribute_name in [
+            ("core", "Agent"),
+            ("skill", "SkillManifest"),
+            ("skill.ecosystem", "SkillPackageManager"),
+            ("skill.evolution", "SkillEvolutionManager"),
+            ("skill.kinds", "MiniMemory"),
+        ]:
+            module = importlib.import_module(module_name)
+            self.assertFalse(hasattr(module, attribute_name))
+
+    def test_real_modules_and_public_api_import_in_fresh_process(self) -> None:
         environment = dict(os.environ)
         environment["PYTHONPATH"] = "src"
         completed = subprocess.run(
             [
                 sys.executable,
                 "-c",
-                "import skill.manifest; from super_agent import SkillEvolutionManager",
+                "from skill.manifest import SkillManifest; "
+                "from skill.evolution.manager import SkillEvolutionManager; "
+                "from super_agent import Agent",
             ],
             check=False,
             capture_output=True,

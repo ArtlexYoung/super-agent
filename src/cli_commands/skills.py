@@ -4,17 +4,14 @@ import argparse
 import json
 from pathlib import Path
 
-from core import Agent, AgentConfig, create_progressive_disclosure_for_agent_config
-from skill import (
-    EvaluationCase,
-    SkillFreshnessStore,
-    ProgressiveDisclosureCore,
-    SkillIndexEntry,
-    SkillManifest,
-    SkillPackageManager,
-    skill_index_to_dict,
-)
+from core.agent import Agent, create_progressive_disclosure_for_agent_config
+from core.config import AgentConfig
+from skill.disclosure import ProgressiveDisclosureCore, SkillIndexEntry, skill_index_to_dict
+from skill.ecosystem.package import SkillPackageManager
+from skill.evolution.evaluation import EvaluationCase
+from skill.evolution.freshness import SkillFreshnessStore
 from skill.ecosystem.lock import write_skill_lock_file
+from skill.manifest import SkillManifest
 
 
 def configure_skills_parser(parser: argparse.ArgumentParser) -> None:

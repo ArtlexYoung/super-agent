@@ -43,10 +43,6 @@ class BenchmarkReport:
     total_saved_context_tokens: int
     context_savings_ratio: float
 
-    def to_dict(self) -> dict[str, object]:
-        return benchmark_report_to_dict(self)
-
-
 class SkillBenchmark:
     def __init__(self, skill_disclosure: ProgressiveDisclosureCore) -> None:
         self.skill_disclosure = skill_disclosure

@@ -2,14 +2,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from core import (
-    Agent,
-    AgentConfig,
-    MockProvider,
-    RunTraceStore,
-    run_event_from_dict,
-    run_event_to_dict,
-)
+from core.agent import Agent
+from core.config import AgentConfig
+from core.provider import MockProvider
+from core.run import RunTraceStore, run_event_from_dict, run_event_to_dict
 from support import write_workflow_skill
 
 

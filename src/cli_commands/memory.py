@@ -5,8 +5,9 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
-from core import AgentConfig, create_progressive_disclosure_for_agent_config
-from skill import MemoryItem, MiniMemory, create_memory_from_skill_disclosure
+from core.agent import create_progressive_disclosure_for_agent_config
+from core.config import AgentConfig
+from skill.kinds.memory import MemoryItem, MiniMemory, create_memory_from_skill_disclosure
 
 
 def configure_memory_parser(parser: argparse.ArgumentParser) -> None:

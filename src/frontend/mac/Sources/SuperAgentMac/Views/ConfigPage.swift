@@ -1,6 +1,6 @@
 import SwiftUI
 
-private let providerOptions = ["mock", "openai-compatible", "anthropic-compatible", "openai", "anthropic"]
+private let providerOptions = ["mock", "openai-compatible", "anthropic-compatible"]
 private let modelOptions = ["mock", "gpt-4.1-mini", "gpt-4.1", "claude-sonnet-4", "claude-opus-4"]
 private let baseURLOptions = ["", "https://api.openai.com/v1", "https://api.anthropic.com"]
 private let apiKeyEnvOptions = ["", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"]

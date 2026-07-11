@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from cli import main
 from cli import run_result_to_dict
-from skill import RunResult, SubAgentResult
+from skill.kinds.workflow import RunResult, SubAgentResult
 
 
 class CliTests(unittest.TestCase):

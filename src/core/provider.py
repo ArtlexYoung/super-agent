@@ -142,12 +142,12 @@ def create_chat_provider(settings: ModelSettings) -> ChatProvider:
     provider = settings.provider.lower()
     if provider == "mock":
         return MockProvider()
+    if provider not in {"openai-compatible", "anthropic-compatible"}:
+        raise ValueError(f"unknown provider: {settings.provider}")
     api_key = _read_api_key_from_env(settings.api_key_env)
-    if provider in {"openai", "openai-compatible"}:
+    if provider == "openai-compatible":
         return OpenAICompatibleProvider(settings.base_url or "https://api.openai.com/v1", api_key)
-    if provider in {"anthropic", "anthropic-compatible"}:
-        return AnthropicCompatibleProvider(settings.base_url or "https://api.anthropic.com", api_key)
-    raise ValueError(f"unknown provider: {settings.provider}")
+    return AnthropicCompatibleProvider(settings.base_url or "https://api.anthropic.com", api_key)
 
 
 def _read_openai_tool_call(data: dict[str, Any]) -> ToolCall:

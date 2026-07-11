@@ -2,8 +2,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from core import BenchmarkCase, SkillBenchmark
-from skill import ProgressiveDisclosureCore
+from core.benchmark import BenchmarkCase, SkillBenchmark, benchmark_report_to_dict
+from skill.disclosure import ProgressiveDisclosureCore
 
 
 class SkillBenchmarkTests(unittest.TestCase):
@@ -46,7 +46,7 @@ class SkillBenchmarkTests(unittest.TestCase):
             report = SkillBenchmark(_create_disclosure(root)).run_cases(
                 [BenchmarkCase(name="echo", prompt="echo this")]
             )
-            data = report.to_dict()
+            data = benchmark_report_to_dict(report)
 
             self.assertEqual(1, data["schema_version"])
             self.assertEqual("echo", data["cases"][0]["name"])

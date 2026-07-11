@@ -29,19 +29,12 @@ private struct StoredMacConfig: Codable {
     var selectedModelProfileID: UUID?
 }
 
-private struct LegacyMacAppState: Codable {
-    var conversations: [ChatConversation]
-    var selectedConversationID: UUID?
-    var config: AgentTomlConfig
-    var configFilePath: String?
-}
-
 enum MacAppStorage {
     static func loadState() throws -> StoredMacAppState? {
-        if FileManager.default.fileExists(atPath: try indexURL().path) {
-            return try loadIndexedState()
+        guard FileManager.default.fileExists(atPath: try indexURL().path) else {
+            return nil
         }
-        return try loadLegacyState()
+        return try loadIndexedState()
     }
 
     static func saveState(_ state: StoredMacAppState) throws {
@@ -66,24 +59,6 @@ enum MacAppStorage {
             configFilePath: storedConfig.configFilePath,
             modelProfiles: storedConfig.modelProfiles,
             selectedModelProfileID: storedConfig.selectedModelProfileID
-        )
-    }
-
-    private static func loadLegacyState() throws -> StoredMacAppState? {
-        let url = try legacyStateURL()
-        guard FileManager.default.fileExists(atPath: url.path) else {
-            return nil
-        }
-        let data = try Data(contentsOf: url)
-        let legacy = try JSONDecoder.storageDecoder.decode(LegacyMacAppState.self, from: data)
-        let profile = ModelProfile(title: legacy.config.model.model, settings: legacy.config.model)
-        return StoredMacAppState(
-            conversations: legacy.conversations,
-            selectedConversationID: legacy.selectedConversationID,
-            config: legacy.config,
-            configFilePath: legacy.configFilePath,
-            modelProfiles: [profile],
-            selectedModelProfileID: profile.id
         )
     }
 
@@ -194,9 +169,6 @@ enum MacAppStorage {
         try baseURL().appendingPathComponent("config.json")
     }
 
-    private static func legacyStateURL() throws -> URL {
-        try baseURL().appendingPathComponent("state.json")
-    }
 }
 
 private extension JSONEncoder {

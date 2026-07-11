@@ -80,9 +80,9 @@ struct SkillManifestChoice: Identifiable, Equatable, Sendable {
     var id: String { key }
 
     init(
-        key: String = "",
+        key: String,
         name: String,
-        kind: String = "prompt",
+        kind: String,
         agentCreated: Bool,
         agentCanUpdate: Bool,
         freshness: Double = 70,
@@ -93,13 +93,13 @@ struct SkillManifestChoice: Identifiable, Equatable, Sendable {
         replacementCount: Int = 0,
         hasRuntimeStats: Bool = false
     ) {
-        self.key = key.isEmpty ? "\(kind):\(name)" : key
+        self.key = key
         self.name = name
         self.kind = kind
         self.agentCreated = agentCreated
         self.agentCanUpdate = agentCanUpdate
         self.freshness = freshness
-        self.functionGroup = functionGroup.isEmpty ? name : functionGroup
+        self.functionGroup = functionGroup
         self.freshnessUpdatedAt = freshnessUpdatedAt
         self.callCount = callCount
         self.successCount = successCount

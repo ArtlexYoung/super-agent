@@ -2,7 +2,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from core import Agent, AgentConfig, RunTraceStore
+from core.agent import Agent
+from core.config import AgentConfig
+from core.run import RunTraceStore
 from core.provider import MockProvider, ModelResponse, ToolCall
 from support import write_workflow_skill
 

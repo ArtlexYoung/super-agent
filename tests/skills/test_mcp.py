@@ -4,10 +4,13 @@ import json
 import sys
 from pathlib import Path
 
-from core import Agent, AgentConfig
+from core.agent import Agent
+from core.config import AgentConfig
 from core.provider import MockProvider
 from core.tools import read_skill_for_model_context
-from skill import MiniMemory, ProgressiveDisclosureCore, create_mcp_server_from_skill_disclosure
+from skill.disclosure import ProgressiveDisclosureCore
+from skill.kinds.mcp import create_mcp_server_from_skill_disclosure
+from skill.kinds.memory import MiniMemory
 from support import write_memory_skill, write_workflow_skill
 
 

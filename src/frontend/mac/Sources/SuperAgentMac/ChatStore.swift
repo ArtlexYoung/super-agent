@@ -467,7 +467,14 @@ final class ChatStore: ObservableObject {
         for name in configuredNames {
             let key = "prompt:\(name)"
             if choicesByName[key] == nil {
-                choicesByName[key] = SkillManifestChoice(name: name, kind: "prompt", agentCreated: false, agentCanUpdate: false)
+                choicesByName[key] = SkillManifestChoice(
+                    key: key,
+                    name: name,
+                    kind: "prompt",
+                    agentCreated: false,
+                    agentCanUpdate: false,
+                    functionGroup: name
+                )
             }
         }
         return choicesByName.values.sorted { $0.name < $1.name }

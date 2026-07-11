@@ -2,10 +2,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from core import RunTraceStore
+from core.run import RunTraceStore
 from core.provider import ToolCall
 from core.tools import SkillTools
-from skill import MiniMemory, ProgressiveDisclosureCore
+from skill.disclosure import ProgressiveDisclosureCore
+from skill.kinds.memory import MiniMemory
 
 
 class SkillToolsTests(unittest.TestCase):

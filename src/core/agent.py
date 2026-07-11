@@ -7,21 +7,18 @@ from core.config import AgentConfig
 from core.provider import ChatProvider, Message, create_chat_provider
 from core.run import RunContext, RunTraceStore
 from core.tools import SkillTools, read_skill_for_model_context
-from skill import (
-    MiniMemory,
-    ProgressiveDisclosureCore,
+from skill.disclosure import ProgressiveDisclosureCore, SkillIndex, SkillReference
+from skill.evolution.freshness import SkillFreshnessStore, SkillRunRecord
+from skill.evolution.manager import SkillEvolutionManager
+from skill.kinds.memory import MiniMemory, create_memory_from_skill_disclosure
+from skill.kinds.workflow import (
     RunResult,
-    Skill,
-    SkillEvolutionManager,
-    SkillFreshnessStore,
-    SkillIndex,
-    SkillReference,
-    SkillRunRecord,
     SubAgentResult,
+    Workflow,
     WorkflowRunRequest,
-    create_memory_from_skill_disclosure,
     create_workflow_from_skill_disclosure,
 )
+from skill.manifest import Skill
 
 
 @dataclass(frozen=True)

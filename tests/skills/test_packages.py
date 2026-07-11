@@ -5,7 +5,8 @@ import unittest
 import zipfile
 from pathlib import Path
 
-from skill import ProgressiveDisclosureCore, SkillPackageManager
+from skill.disclosure import ProgressiveDisclosureCore
+from skill.ecosystem.package import SkillPackageManager
 
 
 class SkillPackageManagerTests(unittest.TestCase):

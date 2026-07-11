@@ -160,8 +160,8 @@ disable_names = ["memory:default", "workflow:direct", "prompt:echo", "mcp:github
 当前 provider：
 
 - `mock`：本地测试用。
-- `openai-compatible` / `openai`：请求 `/chat/completions`。
-- `anthropic-compatible` / `anthropic`：请求 `/v1/messages`。
+- `openai-compatible`：请求 `/chat/completions`。
+- `anthropic-compatible`：请求 `/v1/messages`。
 
 ## Skill 格式
 
@@ -398,6 +398,8 @@ runtime 会按 `kind = "mcp"` 把它加载成 MCP skill。`react` 和 `loop` wor
 Agent、CLI、benchmark、依赖解析、进化、包管理和 macOS 前端都消费这个索引；Skill TOML 只由中心 source parser 解析。模型先看索引，再选择需要展开的 Skill，而不是一开始读完所有资源。
 
 `v0.0.17` 不兼容删除 `SkillLoader`、旧 `ProgressiveDisclosure`、`SkillDependencyResolver`、`SkillManifest.load_from_file()` 和 `read_skill` 工具。库调用改用 `ProgressiveDisclosureCore`；工具调用改用 `read_skill_manifest`、`read_skill_instructions`、`read_skill_configuration` 和 `read_disclosed_content`。保鲜度统计键也统一为 `kind:name`，旧的裸名称统计不再读取。
+
+`v0.0.18` 继续删除过渡层：`core`、`skill` 及其子包不再动态转发业务对象，第三方统一从 `super_agent` 导入公共 API，项目内部直接导入定义模块。provider 只接受 `mock`、`openai-compatible`、`anthropic-compatible`；macOS 不再迁移旧 `state.json`，只读取当前分文件存储格式。
 
 ### 渐进披露基准
 

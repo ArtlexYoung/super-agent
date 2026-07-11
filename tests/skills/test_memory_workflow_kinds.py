@@ -2,9 +2,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from core import Agent, AgentConfig
+from core.agent import Agent
+from core.config import AgentConfig
 from core.provider import MockProvider
-from skill import MiniMemory
+from skill.kinds.memory import MiniMemory
 
 
 class MemoryWorkflowKindTests(unittest.TestCase):

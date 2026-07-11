@@ -3,10 +3,8 @@ import unittest
 from dataclasses import replace
 from pathlib import Path
 
-from skill import (
-    ProgressiveDisclosureCore,
-    skill_manifest_to_dict,
-)
+from skill.disclosure import ProgressiveDisclosureCore
+from skill.manifest import skill_manifest_to_dict
 
 
 class SkillManifestContractTests(unittest.TestCase):

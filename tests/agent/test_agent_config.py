@@ -2,9 +2,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from core import Agent, AgentConfig
+from core.agent import Agent
+from core.config import AgentConfig
 from core.provider import MockProvider
-from skill import ProgressiveDisclosureCore
+from skill.disclosure import ProgressiveDisclosureCore
 from support import write_workflow_skill
 
 
@@ -48,7 +49,7 @@ memory = ".super-agent/memory"
             self.assertEqual("mock", config.model.provider)
             self.assertEqual([root / "skills"], config.paths.skills)
 
-    def test_default_features_do_not_include_legacy_mcp_feature(self) -> None:
+    def test_default_features_only_enable_unified_skill_tree(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             config_path = root / "agent.toml"
