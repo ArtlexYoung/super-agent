@@ -156,7 +156,7 @@ private struct WorkflowDefaultView: View {
             return [ToggleChoice(id: chatStore.config.agent.workflow, title: chatStore.config.agent.workflow, help: "当前配置的 workflow skill。")]
         }
         return chatStore.availableWorkflowChoices.map {
-            ToggleChoice(id: $0.name, title: $0.name, help: "来自 kind = \"workflow\" 的 skill.toml。")
+            ToggleChoice(id: $0.name, title: $0.name, help: "来自中心披露索引中的 workflow Skill。")
         }
     }
 }
@@ -200,7 +200,7 @@ private struct MemoryDefaultView: View {
             return [ToggleChoice(id: chatStore.config.agent.memory, title: chatStore.config.agent.memory, help: "当前配置的 memory skill。")]
         }
         return chatStore.availableMemoryChoices.map {
-            ToggleChoice(id: $0.name, title: $0.name, help: "来自 kind = \"memory\" 的 skill.toml。")
+            ToggleChoice(id: $0.name, title: $0.name, help: "来自中心披露索引中的 memory Skill。")
         }
     }
 }
@@ -229,7 +229,7 @@ private struct SkillManifestListView: View {
     var body: some View {
         ConfigSectionBox(title: "技能") {
             if chatStore.availableSkillChoices.isEmpty {
-                EmptyChoiceTextView("没有扫描到技能。请先打开 agent.toml，或确认技能目录里有 skill.toml。")
+                EmptyChoiceTextView("中心披露索引中没有可用的 prompt Skill。")
             } else {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 260), alignment: .leading)], alignment: .leading) {
                     ForEach(chatStore.availableSkillChoices) { choice in
@@ -291,7 +291,7 @@ private struct SkillChoiceToggleView: View {
     }
 
     private var helpText: String {
-        "保鲜度来自 skill.toml 和运行时 skill_stats.json。动态值会覆盖配置值；替代表示同功能 skill 后续成功接替次数。"
+        "保鲜度、调用次数和替代统计均来自中心披露索引，桌面端不再单独读取运行数据。"
     }
 }
 
@@ -340,7 +340,7 @@ private struct MCPManifestListView: View {
             .help("MCP 不再是独立 use_features。关闭会写入 disable_names = [\"mcp\"]，运行时仍从 [paths].skills 递归扫描 kind = \"mcp\" 的 skill。")
 
             if chatStore.availableMCPNames.isEmpty {
-                EmptyChoiceTextView("没有扫描到 MCP。请确认技能目录里有 kind = \"mcp\" 的 skill.toml。")
+                EmptyChoiceTextView("中心披露索引中没有可用的 MCP Skill。")
             } else {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), alignment: .leading)], alignment: .leading) {
                     ForEach(chatStore.availableMCPNames, id: \.self) { name in

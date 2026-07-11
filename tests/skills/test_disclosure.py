@@ -5,7 +5,7 @@ from pathlib import Path
 
 from core import Agent, AgentConfig
 from core.provider import MockProvider
-from skill import ProgressiveDisclosure, SkillLoader
+from skill import ProgressiveDisclosureCore
 from support import write_workflow_skill
 
 
@@ -14,20 +14,23 @@ class ProgressiveDisclosureTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_skill(root, "echo", "Echo helper", "Always answer briefly.")
-            disclosure = ProgressiveDisclosure(
-                SkillLoader([root / "skills"]),
+            disclosure = ProgressiveDisclosureCore(
+                [root / "skills"],
                 root / ".super-agent" / "memory" / "disclosure",
             )
 
-            entries = disclosure.write_skill_cache_index(enabled=["echo"])
-            instruction = disclosure.write_skill_instructions_to_cache("echo", "instructions")
+            index = disclosure.prepare_skill_index()
+            instruction = disclosure.open_skill("echo", "prompt").read_instructions()
 
-            index_data = json.loads(disclosure.index_path.read_text(encoding="utf-8"))
+            index_data = json.loads(index.index_path.read_text(encoding="utf-8"))
             history = disclosure.read_disclosure_history()
 
-            self.assertEqual("echo", entries[0].name)
+            self.assertEqual("prompt:echo", index.entries[0].reference.key)
             self.assertTrue(instruction.cache_path.exists())
-            self.assertEqual("Always answer briefly.", disclosure.read_cache(instruction.cache_path))
+            self.assertEqual(
+                "Always answer briefly.",
+                disclosure.read_disclosed_content(instruction.cache_path),
+            )
             self.assertEqual("echo", index_data["skills"][0]["name"])
             self.assertFalse(index_data["skills"][0]["agent_created"])
             self.assertFalse(index_data["skills"][0]["agent_can_update"])
@@ -47,9 +50,9 @@ class ProgressiveDisclosureTests(unittest.TestCase):
 
             content = provider.last_messages[0]["content"]
             self.assertEqual(["echo"], result.skills)
-            self.assertIn("Disclosure cache", content)
+            self.assertIn("Progressive skill disclosure", content)
             self.assertIn("history.jsonl", content)
-            self.assertIn("skills/echo/instructions.md", content)
+            self.assertIn("skills/prompt/echo/manifest.json", content)
             self.assertTrue((root / ".super-agent" / "memory" / "disclosure" / "index.json").exists())
 
 

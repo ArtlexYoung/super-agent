@@ -6,7 +6,8 @@ from pathlib import Path
 
 from core import Agent, AgentConfig
 from core.provider import MockProvider
-from skill import SkillDependencyResolver, SkillLoader, SkillManifest
+from skill import ProgressiveDisclosureCore
+from skill.ecosystem.lock import write_skill_lock_file
 from support import write_workflow_skill
 
 
@@ -20,7 +21,8 @@ class SkillCompositionTests(unittest.TestCase):
                 requires=["http"],
             )
 
-            manifest = SkillManifest.load_from_file(path / "skill.toml")
+            disclosure, index = _prepare_disclosure(Path(tmp))
+            manifest = disclosure.open_skill("research", "prompt").read_manifest()
 
             self.assertEqual(["facts"], manifest.provides)
             self.assertEqual(["http"], manifest.requires)
@@ -31,30 +33,33 @@ class SkillCompositionTests(unittest.TestCase):
             _write_skill(root, "transport", provides=["http"])
             _write_skill(root, "research", provides=["facts"], requires=["http"])
             _write_skill(root, "report", requires=["facts"])
-            resolver = SkillDependencyResolver(SkillLoader([root]))
+            _, index = _prepare_disclosure(root)
 
-            resolved = resolver.resolve_skills(["report"])
+            resolved = index.resolve_skill_dependencies(["report"])
 
-            self.assertEqual(["transport", "research", "report"], [item.name for item in resolved])
+            self.assertEqual(
+                ["transport", "research", "report"],
+                [item.reference.name for item in resolved],
+            )
 
     def test_resolver_rejects_missing_dependency(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_skill(root, "report", requires=["missing-capability"])
-            resolver = SkillDependencyResolver(SkillLoader([root]))
+            _, index = _prepare_disclosure(root)
 
             with self.assertRaisesRegex(KeyError, "missing skill capability: missing-capability"):
-                resolver.resolve_skills(["report"])
+                index.resolve_skill_dependencies(["report"])
 
     def test_resolver_reports_dependency_cycle_chain(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_skill(root, "alpha", requires=["beta"])
             _write_skill(root, "beta", requires=["alpha"])
-            resolver = SkillDependencyResolver(SkillLoader([root]))
+            _, index = _prepare_disclosure(root)
 
-            with self.assertRaisesRegex(ValueError, "alpha -> beta -> alpha"):
-                resolver.resolve_skills(["alpha"])
+            with self.assertRaisesRegex(ValueError, "prompt:alpha -> prompt:beta -> prompt:alpha"):
+                index.resolve_skill_dependencies(["alpha"])
 
     def test_resolver_rejects_ambiguous_capability_provider(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -62,23 +67,27 @@ class SkillCompositionTests(unittest.TestCase):
             _write_skill(root, "first-http", provides=["http"])
             _write_skill(root, "second-http", provides=["http"])
             _write_skill(root, "research", requires=["http"])
-            resolver = SkillDependencyResolver(SkillLoader([root]))
+            _, index = _prepare_disclosure(root)
 
             with self.assertRaisesRegex(ValueError, "ambiguous skill capability http"):
-                resolver.resolve_skills(["research"])
+                index.resolve_skill_dependencies(["research"])
 
     def test_lock_is_deterministic_and_does_not_store_absolute_paths(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_skill(root, "transport", provides=["http"])
             _write_skill(root, "research", requires=["http"])
-            resolver = SkillDependencyResolver(SkillLoader([root]))
-            resolved = resolver.resolve_skills(["research"])
+            disclosure, index = _prepare_disclosure(root)
+            resolved = index.resolve_skill_dependencies(["research"])
+            manifests = [
+                disclosure.open_skill(item.reference.name, item.reference.kind).read_manifest()
+                for item in resolved
+            ]
             first_path = root / "first.lock"
             second_path = root / "second.lock"
 
-            resolver.write_skill_lock(resolved, first_path)
-            resolver.write_skill_lock(list(reversed(resolved)), second_path)
+            write_skill_lock_file(manifests, first_path)
+            write_skill_lock_file(list(reversed(manifests)), second_path)
 
             first = first_path.read_text(encoding="utf-8")
             lock_data = tomllib.loads(first)
@@ -162,3 +171,8 @@ instructions = "SKILL.md"
 
 def _toml_array(values: list[str]) -> str:
     return "[" + ", ".join(f'"{value}"' for value in values) + "]"
+
+
+def _prepare_disclosure(root: Path):
+    disclosure = ProgressiveDisclosureCore([root], root / ".disclosure-cache")
+    return disclosure, disclosure.prepare_skill_index()

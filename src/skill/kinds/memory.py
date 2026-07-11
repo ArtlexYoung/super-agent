@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import tomllib
 from collections import Counter
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
@@ -11,7 +10,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from skill.manifest import SkillManifest
+from skill.disclosure import SkillDisclosure
 
 
 HABITS_FILE = "habits.json"
@@ -204,18 +203,15 @@ class MiniMemory:
         return active
 
 
-def create_memory_from_skill_manifest(manifest: SkillManifest, root: Path) -> MiniMemory:
+def create_memory_from_skill_disclosure(disclosure: SkillDisclosure, root: Path) -> MiniMemory:
+    manifest = disclosure.read_manifest()
     if manifest.kind != "memory":
         raise ValueError(f"skill is not a memory kind: {manifest.name}")
-    policy = _read_memory_policy(manifest.path / "skill.toml")
+    policy = _read_memory_policy(disclosure.read_kind_configuration().content)
     return MiniMemory(root, policy)
 
 
-def _read_memory_policy(path: Path) -> MemoryPolicy:
-    data = tomllib.loads(path.read_text(encoding="utf-8"))
-    value = data.get("memory")
-    if not isinstance(value, dict):
-        raise ValueError(f"memory skill manifest missing [memory]: {path}")
+def _read_memory_policy(value: dict[str, object]) -> MemoryPolicy:
     return MemoryPolicy(
         default_scope=_clean_scope(_read_string(value, "default_scope", "agent")),
         recall_limit=_read_positive_limit(value.get("recall_limit", DEFAULT_RECALL_LIMIT)),

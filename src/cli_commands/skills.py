@@ -4,23 +4,26 @@ import argparse
 import json
 from pathlib import Path
 
-from core import Agent, AgentConfig, create_skill_loader_for_agent_config
+from core import Agent, AgentConfig, create_progressive_disclosure_for_agent_config
 from skill import (
     EvaluationCase,
-    SkillDependencyResolver,
     SkillFreshnessStore,
-    SkillLoader,
+    ProgressiveDisclosureCore,
+    SkillIndexEntry,
     SkillManifest,
     SkillPackageManager,
-    explain_skill_selection,
-    validate_skill_manifests,
+    skill_index_to_dict,
 )
+from skill.ecosystem.lock import write_skill_lock_file
 
 
 def configure_skills_parser(parser: argparse.ArgumentParser) -> None:
     subparsers = parser.add_subparsers(dest="skill_command")
     list_parser = subparsers.add_parser("list", help="list available skills")
     list_parser.add_argument("--config", default="agent.toml")
+    index_parser = subparsers.add_parser("index", help="print the central skill index as JSON")
+    index_parser.add_argument("--config", default="agent.toml")
+    index_parser.add_argument("--output", choices=["json"], default="json")
     propose_parser = subparsers.add_parser("propose", help="create an isolated skill candidate")
     _add_evolution_name_arguments(propose_parser)
     evaluate_parser = subparsers.add_parser("evaluate", help="evaluate a skill candidate")
@@ -63,6 +66,7 @@ def configure_skills_parser(parser: argparse.ArgumentParser) -> None:
 def run_skills_command(args: argparse.Namespace) -> int:
     handlers = {
         "list": lambda: _list_skills(Path(args.config)),
+        "index": lambda: _print_skill_index(Path(args.config)),
         "propose": lambda: _propose_skill(args),
         "evaluate": lambda: _evaluate_skill(args),
         "promote": lambda: _promote_skill(args),
@@ -85,18 +89,24 @@ def run_skills_command(args: argparse.Namespace) -> int:
 
 
 def _list_skills(config_path: Path) -> int:
-    config = AgentConfig.load_from_file(config_path)
-    for manifest in create_skill_loader_for_agent_config(config).list_skill_manifests():
+    index = _load_skill_disclosure(config_path).prepare_skill_index()
+    for entry in index.entries:
         print(
-            f"{manifest.name}\t{manifest.kind}"
-            f"\tagent_created={str(manifest.agent_created).lower()}"
-            f"\tagent_can_update={str(manifest.agent_can_update).lower()}"
-            f"\tfreshness={manifest.freshness:.2f}"
-            f"\tfunction_group={manifest.function_group}"
-            f"\tprovides={','.join(manifest.provides)}"
-            f"\trequires={','.join(manifest.requires)}"
-            f"\t{manifest.description}"
+            f"{entry.reference.name}\t{entry.reference.kind}"
+            f"\tagent_created={str(entry.agent_created).lower()}"
+            f"\tagent_can_update={str(entry.agent_can_update).lower()}"
+            f"\tfreshness={entry.freshness:.2f}"
+            f"\tfunction_group={entry.function_group}"
+            f"\tprovides={','.join(entry.provides)}"
+            f"\trequires={','.join(entry.requires)}"
+            f"\t{entry.description}"
         )
+    return 0
+
+
+def _print_skill_index(config_path: Path) -> int:
+    index = _load_skill_disclosure(config_path).prepare_skill_index()
+    print(json.dumps(skill_index_to_dict(index), ensure_ascii=False, indent=2, sort_keys=True))
     return 0
 
 
@@ -154,23 +164,51 @@ def _show_skill_freshness(config_path: Path) -> int:
 
 
 def _validate_skills(config_path: Path) -> int:
-    loader = _load_skill_loader(config_path)
-    issues = validate_skill_manifests(loader)
+    disclosure = _load_skill_disclosure(config_path)
+    issues = disclosure.validate_skill_sources()
     if issues:
         for issue in issues:
             print(f"{issue.path}: {issue.message}")
         return 1
-    print(f"{len(loader.list_skill_manifests())} valid skills")
+    print(f"{len(disclosure.prepare_skill_index().entries)} valid skills")
     return 0
 
 
 def _explain_skills(config_path: Path, prompt: str) -> int:
     config = AgentConfig.load_from_file(config_path)
-    loader = create_skill_loader_for_agent_config(config)
-    for selection in explain_skill_selection(loader, prompt, config.agent.skills):
-        state = "selected" if selection.selected else "skipped"
-        print(f"{selection.name}\t{state}\t{selection.reason}")
+    disclosure = create_progressive_disclosure_for_agent_config(config)
+    index = disclosure.prepare_skill_index()
+    selected = {
+        reference.key
+        for reference in disclosure.select_skill_references_for_prompt(
+            prompt,
+            config.agent.skills,
+            allowed_kinds={"prompt", "mcp"},
+        )
+    }
+    for entry in index.entries:
+        is_selected = entry.reference.key in selected
+        state = "selected" if is_selected else "skipped"
+        reason = _explain_index_entry(entry, prompt, config.agent.skills, is_selected)
+        print(f"{entry.reference.name}\t{state}\t{reason}")
     return 0
+
+
+def _explain_index_entry(
+    entry: SkillIndexEntry,
+    prompt: str,
+    enabled_names: list[str],
+    selected: bool,
+) -> str:
+    if entry.reference.kind not in {"prompt", "mcp"}:
+        return "runtime control skill"
+    prompt_text = prompt.lower()
+    trigger = next((value for value in entry.triggers if value and value in prompt_text), None)
+    if trigger is not None:
+        return f"matched trigger: {trigger}"
+    if entry.reference.name in {name.lower() for name in enabled_names}:
+        return "enabled by agent config"
+    return "selected as dependency" if selected else "no trigger matched"
 
 
 def _show_skill_graph(args: argparse.Namespace) -> int:
@@ -184,10 +222,15 @@ def _show_skill_graph(args: argparse.Namespace) -> int:
 
 
 def _write_skill_lock(args: argparse.Namespace) -> int:
-    resolver = SkillDependencyResolver(_load_skill_loader(Path(args.config)))
-    manifests = resolver.resolve_skills(args.name)
+    disclosure = _load_skill_disclosure(Path(args.config))
+    index = disclosure.prepare_skill_index()
+    entries = index.resolve_skill_dependencies(args.name)
+    manifests = [
+        disclosure.open_skill(entry.reference.name, entry.reference.kind).read_manifest()
+        for entry in entries
+    ]
     output = Path(args.output)
-    resolver.write_skill_lock(manifests, output)
+    write_skill_lock_file(manifests, output)
     print(f"Wrote skill lock: {output}")
     return 0
 
@@ -225,20 +268,24 @@ def _remove_skill(args: argparse.Namespace) -> int:
 
 
 def _resolve_skills(config_path: Path, names: list[str]) -> list[SkillManifest]:
-    resolver = SkillDependencyResolver(_load_skill_loader(config_path))
-    return resolver.resolve_skills(names)
+    disclosure = _load_skill_disclosure(config_path)
+    index = disclosure.prepare_skill_index()
+    return [
+        disclosure.open_skill(entry.reference.name, entry.reference.kind).read_manifest()
+        for entry in index.resolve_skill_dependencies(names)
+    ]
 
 
-def _load_skill_loader(config_path: Path) -> SkillLoader:
+def _load_skill_disclosure(config_path: Path) -> ProgressiveDisclosureCore:
     config = AgentConfig.load_from_file(config_path)
-    return create_skill_loader_for_agent_config(config)
+    return create_progressive_disclosure_for_agent_config(config)
 
 
 def _load_package_manager(config_path: Path) -> SkillPackageManager:
     config = AgentConfig.load_from_file(config_path)
     if not config.paths.skills:
         raise ValueError("agent has no skill path configured")
-    return SkillPackageManager(create_skill_loader_for_agent_config(config), config.paths.skills[0])
+    return SkillPackageManager(create_progressive_disclosure_for_agent_config(config), config.paths.skills[0])
 
 
 def _add_evolution_name_arguments(parser: argparse.ArgumentParser) -> None:

@@ -5,7 +5,7 @@ from pathlib import Path
 from core import RunTraceStore
 from core.provider import ToolCall
 from core.tools import SkillTools
-from skill import MiniMemory, ProgressiveDisclosure, SkillLoader
+from skill import MiniMemory, ProgressiveDisclosureCore
 
 
 class SkillToolsTests(unittest.TestCase):
@@ -13,14 +13,19 @@ class SkillToolsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_prompt_skill(root, "research")
-            loader = SkillLoader([root / "skills"])
-            disclosure = ProgressiveDisclosure(loader, root / "cache")
-            disclosure.write_skill_cache_index()
             context = RunTraceStore(root / "runs").start_run("main", "question")
-            tools = SkillTools(loader, disclosure, context)
+            disclosure = _create_disclosure(root, context)
+            index = disclosure.prepare_skill_index()
+            tools = SkillTools(disclosure, index, context)
 
             listed = tools.run_tool_call(ToolCall("call-1", "list_skills", {}))
-            read = tools.run_tool_call(ToolCall("call-2", "read_skill", {"name": "research"}))
+            read = tools.run_tool_call(
+                ToolCall(
+                    "call-2",
+                    "read_skill_instructions",
+                    {"name": "research", "kind": "prompt"},
+                )
+            )
 
             self.assertEqual("research", listed["skills"][0]["name"])
             self.assertEqual("Research carefully.", read["instructions"])
@@ -33,10 +38,10 @@ class SkillToolsTests(unittest.TestCase):
     def test_unknown_builtin_tool_fails_with_trace_event(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            loader = SkillLoader([root / "skills"])
-            disclosure = ProgressiveDisclosure(loader, root / "cache")
+            disclosure = _create_disclosure(root)
+            index = disclosure.prepare_skill_index()
             context = RunTraceStore(root / "runs").start_run("main", "question")
-            tools = SkillTools(loader, disclosure, context)
+            tools = SkillTools(disclosure, index, context)
 
             with self.assertRaisesRegex(KeyError, "unknown runtime tool"):
                 tools.run_tool_call(ToolCall("bad", "unknown", {}))
@@ -46,11 +51,11 @@ class SkillToolsTests(unittest.TestCase):
     def test_model_can_add_recall_and_forget_memory_with_runtime_tools(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            loader = SkillLoader([root / "skills"])
-            disclosure = ProgressiveDisclosure(loader, root / "cache")
+            disclosure = _create_disclosure(root)
+            index = disclosure.prepare_skill_index()
             context = RunTraceStore(root / "runs").start_run("main", "question")
             memory = MiniMemory(root / "memory")
-            tools = SkillTools(loader, disclosure, context, memory=memory)
+            tools = SkillTools(disclosure, index, context, memory=memory)
 
             definitions = {item["function"]["name"] for item in tools.get_tool_definitions()}
             added = tools.run_tool_call(
@@ -90,3 +95,11 @@ instructions = "SKILL.md"
         encoding="utf-8",
     )
     (skill_dir / "SKILL.md").write_text("Research carefully.", encoding="utf-8")
+
+
+def _create_disclosure(root: Path, run_context=None) -> ProgressiveDisclosureCore:
+    return ProgressiveDisclosureCore(
+        [root / "skills"],
+        root / "cache",
+        run_context=run_context,
+    )

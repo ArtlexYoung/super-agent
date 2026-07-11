@@ -12,7 +12,7 @@ from pathlib import Path, PurePosixPath
 from urllib.parse import unquote
 from uuid import uuid4
 
-from skill.loader import SkillLoader
+from skill.disclosure import ProgressiveDisclosureCore
 from skill.manifest import SkillManifest, calculate_skill_directory_sha256
 
 
@@ -20,15 +20,18 @@ FIXED_ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 
 
 class SkillPackageManager:
-    def __init__(self, skill_loader: SkillLoader, skill_root: Path) -> None:
-        self.skill_loader = skill_loader
+    def __init__(self, skill_disclosure: ProgressiveDisclosureCore, skill_root: Path) -> None:
+        self.skill_disclosure = ProgressiveDisclosureCore(
+            skill_disclosure.skill_roots,
+            skill_disclosure.cache_root,
+            disabled_names=skill_disclosure.disabled_names,
+            freshness_root=skill_disclosure.freshness_root,
+        )
         self.skill_root = skill_root.expanduser()
 
     def pack_skill(self, name: str, output: Path) -> Path:
-        skill_name = _clean_skill_name(name)
-        manifest = self.skill_loader.find_skill_manifest(skill_name)
-        if manifest is None:
-            raise KeyError(f"skill not found: {skill_name}")
+        skill_name, expected_kind = _split_skill_reference(name)
+        manifest = self._read_skill_manifest(skill_name, expected_kind)
         output_path = output.expanduser()
         if _path_is_within(output_path.resolve(), manifest.path.resolve()):
             raise ValueError("skill package output cannot be inside the skill directory")
@@ -46,13 +49,14 @@ class SkillPackageManager:
         with tempfile.TemporaryDirectory(prefix="super-agent-install-") as tmp:
             staged = _stage_skill_source(source, Path(tmp))
             manifest = _validate_staged_skill(staged, expected_sha256)
-            if self.skill_loader.find_skill_manifest(manifest.name) is not None:
-                raise FileExistsError(f"skill already exists: {manifest.name}")
-            target = self.skill_root / manifest.name
+            index = self.skill_disclosure.prepare_skill_index()
+            if index.find_skill(manifest.name, manifest.kind) is not None:
+                raise FileExistsError(f"skill already exists: {manifest.kind}:{manifest.name}")
+            target = _managed_skill_target(self.skill_root, manifest)
             if target.exists():
                 raise FileExistsError(f"skill target already exists: {target}")
             _install_skill_directory(staged, target)
-            return SkillManifest.load_from_file(target / "skill.toml")
+            return self._read_skill_manifest(manifest.name, manifest.kind)
 
     def update_skill(
         self,
@@ -60,10 +64,8 @@ class SkillPackageManager:
         source: str,
         expected_sha256: str = "",
     ) -> SkillManifest:
-        skill_name = _clean_skill_name(name)
-        current = self.skill_loader.find_skill_manifest(skill_name)
-        if current is None:
-            raise KeyError(f"skill not found: {skill_name}")
+        skill_name, expected_kind = _split_skill_reference(name)
+        current = self._read_skill_manifest(skill_name, expected_kind)
         _require_managed_skill_path(current.path, self.skill_root)
         with tempfile.TemporaryDirectory(prefix="super-agent-update-") as tmp:
             staged = _stage_skill_source(source, Path(tmp))
@@ -72,14 +74,16 @@ class SkillPackageManager:
                 raise ValueError(
                     f"updated skill name does not match target: {proposed.name} != {skill_name}"
                 )
+            if proposed.kind != current.kind:
+                raise ValueError(
+                    f"updated skill kind does not match target: {proposed.kind} != {current.kind}"
+                )
             _replace_skill_directory(staged, current.path)
-        return SkillManifest.load_from_file(current.path / "skill.toml")
+        return self._read_skill_manifest(skill_name, current.kind)
 
     def remove_skill(self, name: str) -> None:
-        skill_name = _clean_skill_name(name)
-        manifest = self.skill_loader.find_skill_manifest(skill_name)
-        if manifest is None:
-            raise KeyError(f"skill not found: {skill_name}")
+        skill_name, expected_kind = _split_skill_reference(name)
+        manifest = self._read_skill_manifest(skill_name, expected_kind)
         _require_managed_skill_path(manifest.path, self.skill_root)
         removed = manifest.path.parent / f".{manifest.path.name}.removed-{uuid4().hex}"
         os.replace(manifest.path, removed)
@@ -89,6 +93,14 @@ class SkillPackageManager:
             if removed.exists() and not manifest.path.exists():
                 os.replace(removed, manifest.path)
             raise
+
+    def _read_skill_manifest(
+        self,
+        name: str,
+        expected_kind: str | None = None,
+    ) -> SkillManifest:
+        self.skill_disclosure.prepare_skill_index()
+        return self.skill_disclosure.open_skill(name, expected_kind).read_manifest()
 
 
 def _stage_skill_source(source: str, temporary_root: Path) -> Path:
@@ -191,8 +203,12 @@ def _locate_skill_directory(root: Path) -> Path:
 
 def _validate_staged_skill(path: Path, expected_sha256: str) -> SkillManifest:
     _reject_symlinks(path)
-    manifest = SkillManifest.load_from_file(path / "skill.toml")
-    _validate_manifest_file_paths(manifest, path)
+    disclosure = ProgressiveDisclosureCore([path], path.parent / ".package-validation-cache")
+    index = disclosure.prepare_skill_index()
+    if len(index.entries) != 1:
+        raise ValueError("skill package must contain exactly one valid skill")
+    entry = index.entries[0]
+    manifest = disclosure.open_skill(entry.reference.name, entry.reference.kind).read_manifest()
     clean_name = _clean_skill_name(manifest.name)
     if clean_name != manifest.name:
         raise ValueError(f"packaged skill name must be normalized: {manifest.name}")
@@ -203,13 +219,10 @@ def _validate_staged_skill(path: Path, expected_sha256: str) -> SkillManifest:
     return manifest
 
 
-def _validate_manifest_file_paths(manifest: SkillManifest, skill_path: Path) -> None:
-    root = skill_path.resolve()
-    instruction_path = (skill_path / manifest.entry.instructions).resolve()
-    if not _path_is_within(instruction_path, root):
-        raise ValueError(
-            f"skill instruction path leaves skill directory: {manifest.entry.instructions}"
-        )
+def _managed_skill_target(skill_root: Path, manifest: SkillManifest) -> Path:
+    if manifest.kind == "prompt":
+        return skill_root / manifest.name
+    return skill_root / manifest.kind / manifest.name
 
 
 def _copy_skill_tree(source: Path, target: Path) -> None:
@@ -285,6 +298,16 @@ def _clean_skill_name(name: str) -> str:
     if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", value):
         raise ValueError("skill name must use lowercase letters, numbers, '-' or '_'")
     return value
+
+
+def _split_skill_reference(value: str) -> tuple[str, str | None]:
+    reference = value.strip().lower()
+    if ":" not in reference:
+        return _clean_skill_name(reference), None
+    kind, name = reference.split(":", 1)
+    if kind not in {"prompt", "mcp", "memory", "workflow"}:
+        raise ValueError(f"unsupported skill kind: {kind}")
+    return _clean_skill_name(name), kind
 
 
 def _clean_expected_sha256(value: str) -> str:

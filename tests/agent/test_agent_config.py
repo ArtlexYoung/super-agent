@@ -4,7 +4,7 @@ from pathlib import Path
 
 from core import Agent, AgentConfig
 from core.provider import MockProvider
-from skill import SkillLoader
+from skill import ProgressiveDisclosureCore
 from support import write_workflow_skill
 
 
@@ -71,7 +71,7 @@ skills = ["skills"]
 
             self.assertEqual(["skill"], config.agent.use_features)
 
-    def test_skill_loader_reads_manifest_and_instruction(self) -> None:
+    def test_disclosure_core_reads_manifest_instruction_and_selection(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             skill_dir = Path(tmp) / "skills" / "echo"
             skill_dir.mkdir(parents=True)
@@ -91,13 +91,21 @@ instructions = "SKILL.md"
             )
             (skill_dir / "SKILL.md").write_text("Always answer briefly.", encoding="utf-8")
 
-            loader = SkillLoader([Path(tmp) / "skills"])
-            loaded = loader.load_skill("echo")
-            selected = loader.load_skills_for_prompt("please repeat this", ["echo"])
+            disclosure = ProgressiveDisclosureCore(
+                [Path(tmp) / "skills"],
+                Path(tmp) / "cache",
+            )
+            disclosure.prepare_skill_index()
+            loaded = disclosure.open_skill("echo", expected_kind="prompt")
+            selected = disclosure.select_skill_references_for_prompt(
+                "please repeat this",
+                ["echo"],
+                allowed_kinds={"prompt", "mcp"},
+            )
 
-            self.assertEqual("echo", loaded.manifest.name)
-            self.assertEqual("Always answer briefly.", loaded.instructions)
-            self.assertEqual(["echo"], [skill.manifest.name for skill in selected])
+            self.assertEqual("echo", loaded.read_manifest().name)
+            self.assertEqual("Always answer briefly.", loaded.read_instructions().content)
+            self.assertEqual(["prompt:echo"], [reference.key for reference in selected])
 
     def test_agent_direct_workflow_includes_configured_skill_context(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -28,7 +28,10 @@ _EXPORTS = {
     "ToolCall": ("core.provider", "ToolCall"),
     "create_chat_provider": ("core.provider", "create_chat_provider"),
     "benchmark_report_to_dict": ("core.benchmark", "benchmark_report_to_dict"),
-    "create_skill_loader_for_agent_config": ("core.agent", "create_skill_loader_for_agent_config"),
+    "create_progressive_disclosure_for_agent_config": (
+        "core.agent",
+        "create_progressive_disclosure_for_agent_config",
+    ),
 }
 
 __all__ = list(_EXPORTS)

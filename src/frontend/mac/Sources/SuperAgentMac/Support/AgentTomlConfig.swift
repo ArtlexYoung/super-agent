@@ -63,7 +63,8 @@ struct ModelProfile: Identifiable, Codable, Equatable {
     }
 }
 
-struct SkillManifestChoice: Identifiable, Equatable {
+struct SkillManifestChoice: Identifiable, Equatable, Sendable {
+    var key: String
     var name: String
     var kind: String
     var agentCreated: Bool
@@ -76,9 +77,10 @@ struct SkillManifestChoice: Identifiable, Equatable {
     var replacementCount: Int
     var hasRuntimeStats: Bool
 
-    var id: String { name }
+    var id: String { key }
 
     init(
+        key: String = "",
         name: String,
         kind: String = "prompt",
         agentCreated: Bool,
@@ -91,6 +93,7 @@ struct SkillManifestChoice: Identifiable, Equatable {
         replacementCount: Int = 0,
         hasRuntimeStats: Bool = false
     ) {
+        self.key = key.isEmpty ? "\(kind):\(name)" : key
         self.name = name
         self.kind = kind
         self.agentCreated = agentCreated

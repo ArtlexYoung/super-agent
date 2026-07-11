@@ -38,6 +38,31 @@ class CliTests(unittest.TestCase):
             self.assertIn("echo", output.getvalue())
             self.assertIn("filesystem", output.getvalue())
 
+    def test_skills_index_prints_all_kinds_from_central_disclosure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            main(["init", "--path", tmp])
+            output = StringIO()
+
+            with patch("sys.stdout", output):
+                code = main(
+                    [
+                        "skills",
+                        "index",
+                        "--config",
+                        str(Path(tmp) / "agent.toml"),
+                        "--output",
+                        "json",
+                    ]
+                )
+
+            data = json.loads(output.getvalue())
+            self.assertEqual(0, code)
+            self.assertEqual(
+                {"mcp", "memory", "prompt", "workflow"},
+                {item["kind"] for item in data["skills"]},
+            )
+            self.assertTrue(all("key" in item for item in data["skills"]))
+
     def test_run_uses_mock_provider_from_config(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             main(["init", "--path", tmp])

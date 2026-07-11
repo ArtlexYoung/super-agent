@@ -298,9 +298,23 @@ final class ChatStore: ObservableObject {
     }
 
     func refreshConfigChoices() {
+        let configText = makeRuntimeConfigText()
+        Task {
+            do {
+                let choices = try await SkillIndexClient.readSkillChoices(configText: configText)
+                applySkillChoices(choices)
+                statusMessage = "已从中心披露核心刷新可选配置项。"
+                warningMessage = nil
+            } catch {
+                warningMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func applySkillChoices(_ scannedChoices: [SkillManifestChoice]) {
         let allSkillChoices = mergeSkillChoices(
             configuredNames: config.agent.skills,
-            scannedChoices: readSkillChoicesFromConfiguredPaths()
+            scannedChoices: scannedChoices
         )
         // 同一棵 skills 目录按 kind 分组；配置页面不要把运行控制 skill 混进普通技能。
         availableSkillChoices = allSkillChoices.filter { $0.kind == "prompt" }
@@ -309,7 +323,6 @@ final class ChatStore: ObservableObject {
         availableSkillNames = allSkillChoices.map(\.name)
         let mcpNames = allSkillChoices.filter { $0.kind == "mcp" }.map(\.name)
         availableMCPNames = sortedUnique(extractDisabledNames(prefix: "mcp:") + mcpNames)
-        statusMessage = "已刷新可选配置项。"
     }
 
     private func loadTomlConfig(from url: URL) {
@@ -416,13 +429,6 @@ final class ChatStore: ObservableObject {
         runtimeConfig.paths.skills = config.paths.skills.map { resolveConfigPath($0).path }
         runtimeConfig.paths.memory = resolveConfigPath(config.paths.memory).path
         return AgentTomlFile.makeTomlText(from: runtimeConfig)
-    }
-
-    private func readSkillChoicesFromConfiguredPaths() -> [SkillManifestChoice] {
-        SkillManifestScanner.readSkillChoices(
-            in: config.paths.skills.map(resolveConfigPath),
-            memoryURL: resolveConfigPath(config.paths.memory)
-        )
     }
 
     private func resolveConfigPath(_ path: String) -> URL {

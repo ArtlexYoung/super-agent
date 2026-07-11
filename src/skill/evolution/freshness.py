@@ -16,7 +16,7 @@ FOLLOWUP_WINDOW_MINUTES = 10
 
 @dataclass(frozen=True)
 class SkillRunRecord:
-    skill_name: str
+    skill_key: str
     function_group: str
     input_text: str
     output_text: str
@@ -85,8 +85,8 @@ def _normalize_record(record: SkillRunRecord, called_at: datetime) -> dict[str, 
     input_tokens = _estimate_tokens(record.input_text)
     output_tokens = _estimate_tokens(record.output_text)
     return {
-        "skill": record.skill_name,
-        "function_group": record.function_group or record.skill_name,
+        "skill": record.skill_key,
+        "function_group": record.function_group or record.skill_key,
         "called_at": _format_datetime(called_at),
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,

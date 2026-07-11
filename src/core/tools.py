@@ -5,26 +5,31 @@ from typing import Callable
 
 from core.provider import ToolCall, ToolDefinition
 from core.run import RunContext
-from skill.disclosure import ProgressiveDisclosure
-from skill.kinds.mcp import McpServer
+from skill.disclosure import (
+    ProgressiveDisclosureCore,
+    SkillDisclosure,
+    SkillIndex,
+    SkillReference,
+    skill_index_to_dict,
+)
+from skill.kinds.mcp import McpServer, create_mcp_server_from_skill_disclosure
 from skill.kinds.memory import MiniMemory
-from skill.loader import PROMPT_CONTEXT_KINDS, SkillLoader
 from skill.manifest import Skill
 
 
 class SkillTools:
     def __init__(
         self,
-        loader: SkillLoader,
-        disclosure: ProgressiveDisclosure,
+        disclosure: ProgressiveDisclosureCore,
+        skill_index: SkillIndex,
         run_context: RunContext,
         *,
         memory: MiniMemory | None = None,
         list_subagents_function: Callable[[], list[dict[str, object]]] | None = None,
         run_subagent_function: Callable[[str, str], dict[str, object]] | None = None,
     ) -> None:
-        self.loader = loader
         self.disclosure = disclosure
+        self.skill_index = skill_index
         self.run_context = run_context
         self.memory = memory
         self.list_subagents_function = list_subagents_function
@@ -63,41 +68,51 @@ class SkillTools:
         )
         return result
 
-    def list_skills(self) -> dict[str, object]:
-        manifests = [
-            manifest
-            for manifest in self.loader.list_skill_manifests()
-            if manifest.kind in PROMPT_CONTEXT_KINDS
-        ]
+    def _list_skills(self) -> dict[str, object]:
+        return skill_index_to_dict(self.skill_index)
+
+    def _read_skill_manifest(self, arguments: dict[str, object]) -> dict[str, object]:
+        opened = self._open_requested_skill(arguments)
+        manifest = opened.read_manifest()
         return {
-            "skills": [
-                {
-                    "name": manifest.name,
-                    "kind": manifest.kind,
-                    "description": manifest.description,
-                    "triggers": manifest.triggers,
-                    "provides": manifest.provides,
-                    "requires": manifest.requires,
-                    "freshness": manifest.freshness,
-                }
-                for manifest in manifests
-            ],
-            "index_path": str(self.disclosure.index_path),
+            "key": opened.index_entry.reference.key,
+            "manifest": {
+                "name": manifest.name,
+                "kind": manifest.kind,
+                "description": manifest.description,
+                "version": manifest.version,
+                "triggers": manifest.triggers,
+                "provides": manifest.provides,
+                "requires": manifest.requires,
+            },
+            "cache_path": str(opened.index_entry.manifest_cache_path),
         }
 
-    def read_skill(self, name: str) -> dict[str, object]:
-        cached = self.disclosure.write_skill_instructions_to_cache(name)
-        skill = self.loader.load_skill(name)
-        self._remember_used_skill(skill)
-        self.run_context.record_event(
-            "skill.disclosed",
-            {"name": name, "cache_path": str(cached.cache_path)},
-        )
+    def _read_skill_instructions(self, arguments: dict[str, object]) -> dict[str, object]:
+        opened = self._open_requested_skill(arguments)
+        disclosed = opened.read_instructions()
+        if opened.index_entry.reference.kind in {"prompt", "mcp"}:
+            self._remember_used_skill(
+                read_skill_for_model_context(self.disclosure, opened.index_entry.reference)
+            )
         return {
-            "name": name,
-            "instructions": cached.content,
-            "cache_path": str(cached.cache_path),
+            "key": opened.index_entry.reference.key,
+            "instructions": disclosed.content,
+            "cache_path": str(disclosed.cache_path),
         }
+
+    def _read_skill_configuration(self, arguments: dict[str, object]) -> dict[str, object]:
+        opened = self._open_requested_skill(arguments)
+        disclosed = opened.read_kind_configuration()
+        return {
+            "key": opened.index_entry.reference.key,
+            "configuration": disclosed.content,
+            "cache_path": str(disclosed.cache_path),
+        }
+
+    def _read_disclosed_content(self, arguments: dict[str, object]) -> dict[str, object]:
+        path = _required_string(arguments, "cache_path")
+        return {"cache_path": path, "content": self.disclosure.read_disclosed_content(path)}
 
     def list_subagents(self) -> dict[str, object]:
         if self.list_subagents_function is None:
@@ -111,7 +126,12 @@ class SkillTools:
 
     def _list_skill_tools(self, name: str) -> dict[str, object]:
         server = self._load_mcp_server(name)
-        self._remember_used_skill(self.loader.load_skill(name))
+        self._remember_used_skill(
+            read_skill_for_model_context(
+                self.disclosure,
+                self.skill_index.require_skill(name, "mcp").reference,
+            )
+        )
         return {"name": name, "tools": server.list_tools()}
 
     def _run_skill(
@@ -121,13 +141,21 @@ class SkillTools:
         arguments: dict[str, object],
     ) -> dict[str, object]:
         server = self._load_mcp_server(name)
-        self._remember_used_skill(self.loader.load_skill(name))
+        self._remember_used_skill(
+            read_skill_for_model_context(
+                self.disclosure,
+                self.skill_index.require_skill(name, "mcp").reference,
+            )
+        )
         return {"name": name, "tool": tool, "result": server.call_tool(tool, arguments)}
 
     def _run_named_tool(self, name: str, arguments: dict[str, object]) -> dict[str, object]:
         handlers: dict[str, Callable[[], dict[str, object]]] = {
-            "list_skills": self.list_skills,
-            "read_skill": lambda: self.read_skill(_required_string(arguments, "name")),
+            "list_skills": self._list_skills,
+            "read_skill_manifest": lambda: self._read_skill_manifest(arguments),
+            "read_skill_instructions": lambda: self._read_skill_instructions(arguments),
+            "read_skill_configuration": lambda: self._read_skill_configuration(arguments),
+            "read_disclosed_content": lambda: self._read_disclosed_content(arguments),
             "list_skill_tools": lambda: self._list_skill_tools(_required_string(arguments, "name")),
             "run_skill": lambda: self._run_skill(
                 _required_string(arguments, "name"),
@@ -205,24 +233,51 @@ class SkillTools:
         return self.memory
 
     def _load_mcp_server(self, name: str) -> McpServer:
-        manifest = self.loader.find_skill_manifest_by_kind(name, "mcp")
-        if manifest is None:
-            raise KeyError(f"MCP skill not found: {name}")
-        return McpServer.load_from_file(manifest.path / "skill.toml")
+        return create_mcp_server_from_skill_disclosure(
+            self.disclosure.open_skill(name, expected_kind="mcp")
+        )
+
+    def _open_requested_skill(self, arguments: dict[str, object]) -> SkillDisclosure:
+        name = _required_string(arguments, "name")
+        kind = _optional_string(arguments, "kind")
+        return self.disclosure.open_skill(name, expected_kind=kind)
 
     def _remember_used_skill(self, skill: Skill) -> None:
-        if all(item.manifest.name != skill.manifest.name for item in self.used_skills):
+        skill_key = f"{skill.manifest.kind}:{skill.manifest.name}"
+        existing_keys = {
+            f"{item.manifest.kind}:{item.manifest.name}"
+            for item in self.used_skills
+        }
+        if skill_key not in existing_keys:
             self.used_skills.append(skill)
 
 
 def _runtime_tool_definitions() -> list[ToolDefinition]:
     return [
-        _tool_definition("list_skills", "List available prompt and MCP skills.", {}),
+        _tool_definition("list_skills", "List every available skill kind from the central index.", {}),
         _tool_definition(
-            "read_skill",
-            "Read one skill's instructions through the disclosure cache.",
-            {"name": {"type": "string"}},
+            "read_skill_manifest",
+            "Disclose one skill manifest through the central cache.",
+            _skill_reference_properties(),
             required=["name"],
+        ),
+        _tool_definition(
+            "read_skill_instructions",
+            "Disclose one skill's instructions through the central cache.",
+            _skill_reference_properties(),
+            required=["name"],
+        ),
+        _tool_definition(
+            "read_skill_configuration",
+            "Disclose one skill's kind configuration through the central cache.",
+            _skill_reference_properties(),
+            required=["name"],
+        ),
+        _tool_definition(
+            "read_disclosed_content",
+            "Read content from a path already produced by the disclosure cache.",
+            {"cache_path": {"type": "string"}},
+            required=["cache_path"],
         ),
         _tool_definition(
             "list_skill_tools",
@@ -241,6 +296,28 @@ def _runtime_tool_definitions() -> list[ToolDefinition]:
             required=["name", "tool", "arguments"],
         ),
     ]
+
+
+def read_skill_for_model_context(
+    disclosure: ProgressiveDisclosureCore,
+    reference: SkillReference,
+) -> Skill:
+    opened = disclosure.open_skill(reference.name, expected_kind=reference.kind)
+    manifest = opened.read_manifest()
+    if reference.kind == "mcp":
+        instructions = create_mcp_server_from_skill_disclosure(opened).build_skill_instructions()
+    elif reference.kind == "prompt":
+        instructions = opened.read_instructions().content
+    else:
+        raise ValueError(f"skill kind cannot enter model context: {reference.key}")
+    return Skill(manifest=manifest, instructions=instructions)
+
+
+def _skill_reference_properties() -> dict[str, dict[str, object]]:
+    return {
+        "name": {"type": "string"},
+        "kind": {"type": "string", "enum": ["prompt", "mcp", "memory", "workflow"]},
+    }
 
 
 def _memory_tool_definitions() -> list[ToolDefinition]:

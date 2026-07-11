@@ -5,7 +5,7 @@ import unittest
 import zipfile
 from pathlib import Path
 
-from skill import SkillLoader, SkillPackageManager
+from skill import ProgressiveDisclosureCore, SkillPackageManager
 
 
 class SkillPackageManagerTests(unittest.TestCase):
@@ -14,7 +14,7 @@ class SkillPackageManagerTests(unittest.TestCase):
             root = Path(tmp)
             skill_root = root / "skills"
             _write_skill(skill_root / "demo", "demo", "0.1.0", "Use demo.")
-            manager = SkillPackageManager(SkillLoader([skill_root]), skill_root)
+            manager = _manager(skill_root)
             first = root / "first.zip"
             second = root / "second.zip"
 
@@ -34,7 +34,7 @@ class SkillPackageManagerTests(unittest.TestCase):
             source_root = root / "source"
             source = source_root / "demo"
             _write_skill(source, "demo", "0.1.0", "Use local demo.")
-            source_manager = SkillPackageManager(SkillLoader([source_root]), source_root)
+            source_manager = _manager(source_root)
             package_path = source_manager.pack_skill("demo", root / "demo.zip")
 
             directory_target = root / "directory-target"
@@ -94,6 +94,43 @@ class SkillPackageManagerTests(unittest.TestCase):
             manager.remove_skill("demo")
             self.assertFalse(current.exists())
 
+    def test_kind_name_selects_one_skill_when_names_are_shared(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            skill_root = root / "skills"
+            _write_skill(skill_root / "shared", "shared", "0.1.0", "Prompt instructions.")
+            _write_skill(
+                skill_root / "memory" / "shared",
+                "shared",
+                "0.2.0",
+                "Memory instructions.",
+                kind="memory",
+            )
+            manager = _manager(skill_root)
+
+            package_path = manager.pack_skill("memory:shared", root / "memory-shared.zip")
+
+            with zipfile.ZipFile(package_path) as archive:
+                manifest = archive.read("shared/skill.toml").decode("utf-8")
+            self.assertIn('kind = "memory"', manifest)
+
+    def test_update_rejects_changing_skill_kind(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            skill_root = root / "skills"
+            current = skill_root / "memory" / "shared"
+            source = root / "updated"
+            _write_skill(current, "shared", "0.1.0", "Memory instructions.", kind="memory")
+            _write_skill(source, "shared", "0.2.0", "Prompt instructions.")
+
+            with self.assertRaisesRegex(ValueError, "kind does not match target"):
+                _manager(skill_root).update_skill("memory:shared", str(source))
+
+            self.assertIn(
+                'kind = "memory"',
+                (current / "skill.toml").read_text(encoding="utf-8"),
+            )
+
     def test_install_rejects_zip_path_traversal(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -126,22 +163,34 @@ class SkillPackageManagerTests(unittest.TestCase):
 
 
 def _manager(skill_root: Path) -> SkillPackageManager:
-    return SkillPackageManager(SkillLoader([skill_root]), skill_root)
+    disclosure = ProgressiveDisclosureCore(
+        [skill_root],
+        skill_root.parent / ".package-disclosure-cache",
+    )
+    return SkillPackageManager(disclosure, skill_root)
 
 
-def _write_skill(path: Path, name: str, version: str, instructions: str) -> None:
+def _write_skill(
+    path: Path,
+    name: str,
+    version: str,
+    instructions: str,
+    *,
+    kind: str = "prompt",
+) -> None:
     path.mkdir(parents=True, exist_ok=True)
     (path / "skill.toml").write_text(
         f"""
 schema_version = 1
 name = "{name}"
-kind = "prompt"
+kind = "{kind}"
 description = "Packaged skill"
 version = "{version}"
 triggers = ["{name}"]
 
 [entry]
 instructions = "SKILL.md"
+{"" if kind == "prompt" else f"\n[{kind}]\ndefault_scope = \"agent\""}
 """.strip(),
         encoding="utf-8",
     )

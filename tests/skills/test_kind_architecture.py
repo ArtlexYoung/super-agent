@@ -5,7 +5,7 @@ import sys
 import unittest
 from pathlib import Path
 
-from skill import SkillLoader, SkillManifest
+from skill import ProgressiveDisclosureCore, SkillManifest
 from skill.kinds.mcp import McpServer
 from skill.kinds.memory import MiniMemory
 from skill.kinds.workflow import RunResult, SubAgentResult, create_workflow
@@ -18,8 +18,9 @@ class SkillKindArchitectureTests(unittest.TestCase):
         self.assertEqual("RunResult", RunResult.__name__)
         self.assertEqual("SubAgentResult", SubAgentResult.__name__)
         self.assertEqual("direct", create_workflow("direct").name)
-        self.assertEqual("SkillLoader", SkillLoader.__name__)
+        self.assertEqual("ProgressiveDisclosureCore", ProgressiveDisclosureCore.__name__)
         self.assertEqual("SkillManifest", SkillManifest.__name__)
+        self.assertFalse(Path("src/skill/loader.py").exists())
 
     def test_old_top_level_kind_modules_are_removed(self) -> None:
         self.assertEqual("super_agent", importlib.import_module("super_agent").__name__)
@@ -30,6 +31,22 @@ class SkillKindArchitectureTests(unittest.TestCase):
     def test_kind_implementations_stay_inside_skill_package(self) -> None:
         for path in ["src/mcp.py", "src/memory.py", "src/workflow.py", "src/mcp", "src/memory", "src/workflow"]:
             self.assertFalse(Path(path).exists())
+
+    def test_only_center_source_parser_reads_skill_toml(self) -> None:
+        python_sources = list(Path("src").rglob("*.py"))
+        direct_parsers = [
+            path
+            for path in python_sources
+            if "tomllib.loads" in path.read_text(encoding="utf-8")
+            and path != Path("src/core/config.py")
+        ]
+
+        self.assertEqual([Path("src/skill/disclosure/source.py")], direct_parsers)
+        self.assertFalse(
+            Path(
+                "src/frontend/mac/Sources/SuperAgentMac/Support/SkillManifestScanner.swift"
+            ).exists()
+        )
 
     def test_manifest_and_evolution_facade_import_in_fresh_process(self) -> None:
         environment = dict(os.environ)

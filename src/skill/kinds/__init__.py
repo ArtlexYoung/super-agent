@@ -14,9 +14,19 @@ _EXPORTS = {
     "SubAgentResult": ("skill.kinds.workflow", "SubAgentResult"),
     "Workflow": ("skill.kinds.workflow", "Workflow"),
     "WorkflowRunRequest": ("skill.kinds.workflow", "WorkflowRunRequest"),
-    "create_memory_from_skill_manifest": ("skill.kinds.memory", "create_memory_from_skill_manifest"),
+    "create_mcp_server_from_skill_disclosure": (
+        "skill.kinds.mcp",
+        "create_mcp_server_from_skill_disclosure",
+    ),
+    "create_memory_from_skill_disclosure": (
+        "skill.kinds.memory",
+        "create_memory_from_skill_disclosure",
+    ),
     "create_workflow": ("skill.kinds.workflow", "create_workflow"),
-    "create_workflow_from_skill_manifest": ("skill.kinds.workflow", "create_workflow_from_skill_manifest"),
+    "create_workflow_from_skill_disclosure": (
+        "skill.kinds.workflow",
+        "create_workflow_from_skill_disclosure",
+    ),
 }
 
 __all__ = list(_EXPORTS)

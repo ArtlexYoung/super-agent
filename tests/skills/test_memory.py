@@ -5,8 +5,7 @@ from pathlib import Path
 
 from core import Agent, AgentConfig
 from core.provider import MockProvider
-from skill import MiniMemory, create_memory_from_skill_manifest
-from skill.manifest import SkillManifest
+from skill import MiniMemory, ProgressiveDisclosureCore, create_memory_from_skill_disclosure
 from support import write_memory_skill, write_workflow_skill
 
 
@@ -84,9 +83,12 @@ include_usage_habits = false
 """.strip(),
                 encoding="utf-8",
             )
-            manifest = SkillManifest.load_from_file(skill_dir / "skill.toml")
-
-            memory = create_memory_from_skill_manifest(manifest, root / "data")
+            disclosure = ProgressiveDisclosureCore([root / "skills"], root / "cache")
+            disclosure.prepare_skill_index()
+            memory = create_memory_from_skill_disclosure(
+                disclosure.open_skill("project", "memory"),
+                root / "data",
+            )
 
             self.assertEqual("project", memory.policy.default_scope)
             self.assertEqual(3, memory.policy.recall_limit)

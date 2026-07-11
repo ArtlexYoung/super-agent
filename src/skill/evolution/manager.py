@@ -25,7 +25,7 @@ from skill.evolution.evaluation import (
     create_report_id,
     evaluate_candidate,
 )
-from skill.loader import SkillLoader
+from skill.disclosure import ProgressiveDisclosureCore
 from skill.manifest import SkillManifest, calculate_skill_directory_sha256
 
 
@@ -46,7 +46,7 @@ class SkillEvolutionManager:
     def __init__(
         self,
         *,
-        skill_loader: SkillLoader,
+        skill_disclosure: ProgressiveDisclosureCore,
         skill_root: Path,
         state_root: Path,
         provider: ChatProvider,
@@ -55,7 +55,12 @@ class SkillEvolutionManager:
     ) -> None:
         if minimum_score < 0 or minimum_score > 1:
             raise ValueError("minimum evaluation score must be between 0 and 1")
-        self.skill_loader = skill_loader
+        self.skill_disclosure = ProgressiveDisclosureCore(
+            skill_disclosure.skill_roots,
+            skill_disclosure.cache_root,
+            disabled_names=skill_disclosure.disabled_names,
+            freshness_root=skill_disclosure.freshness_root,
+        )
         self.skill_root = skill_root
         self.state_root = state_root
         self.provider = provider
@@ -64,7 +69,7 @@ class SkillEvolutionManager:
 
     def create_skill_candidate(self, name: str, goal: str) -> SkillCandidate:
         return create_candidate(
-            loader=self.skill_loader,
+            skill_disclosure=self.skill_disclosure,
             candidate_root=self.state_root / "candidates",
             provider=self.provider,
             model=self.model,
@@ -109,7 +114,9 @@ class SkillEvolutionManager:
         )
         target = self.skill_root / candidate.name if current is None else current.path
         _replace_skill_directory(candidate.skill_path, target)
-        promoted = SkillManifest.load_from_file(target / "skill.toml")
+        promoted = self._read_active_manifest(candidate.name)
+        if promoted is None:
+            raise RuntimeError(f"promoted skill not found after replacement: {candidate.name}")
         _write_json_exclusive(
             promotion_path,
             {
@@ -135,7 +142,7 @@ class SkillEvolutionManager:
         if not revision_id:
             raise ValueError(f"skill has no previous evolution revision: {skill_name}")
         revision = self._read_history_revision(skill_name, revision_id)
-        current = self.skill_loader.find_skill_manifest(skill_name)
+        current = self._read_active_manifest(skill_name)
         if current is None:
             raise KeyError(f"active skill not found: {skill_name}")
         self._snapshot_current_skill(
@@ -144,7 +151,9 @@ class SkillEvolutionManager:
             previous_revision_id=revision_id,
         )
         _replace_skill_directory(revision.skill_path, current.path)
-        restored = SkillManifest.load_from_file(current.path / "skill.toml")
+        restored = self._read_active_manifest(skill_name)
+        if restored is None:
+            raise RuntimeError(f"restored skill not found after rollback: {skill_name}")
         self._write_active_state(
             skill_name,
             candidate_id="",
@@ -198,7 +207,7 @@ class SkillEvolutionManager:
         return candidate
 
     def _verify_candidate_parent(self, candidate: SkillCandidate) -> SkillManifest | None:
-        current = self.skill_loader.find_skill_manifest(candidate.name)
+        current = self._read_active_manifest(candidate.name)
         if not candidate.parent_sha256:
             if current is not None:
                 raise ValueError(f"skill was created after candidate proposal: {candidate.name}")
@@ -210,6 +219,16 @@ class SkillEvolutionManager:
         if calculate_skill_directory_sha256(current.path) != candidate.parent_sha256:
             raise ValueError(f"active skill changed after candidate proposal: {candidate.name}")
         return current
+
+    def _read_active_manifest(self, name: str) -> SkillManifest | None:
+        index = self.skill_disclosure.prepare_skill_index()
+        entry = index.find_skill(name)
+        if entry is None:
+            return None
+        return self.skill_disclosure.open_skill(
+            entry.reference.name,
+            entry.reference.kind,
+        ).read_manifest()
 
     def _snapshot_current_skill(
         self,

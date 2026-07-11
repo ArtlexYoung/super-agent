@@ -5,8 +5,8 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
-from core import AgentConfig, create_skill_loader_for_agent_config
-from skill import MemoryItem, MiniMemory, create_memory_from_skill_manifest
+from core import AgentConfig, create_progressive_disclosure_for_agent_config
+from skill import MemoryItem, MiniMemory, create_memory_from_skill_disclosure
 
 
 def configure_memory_parser(parser: argparse.ArgumentParser) -> None:
@@ -92,11 +92,10 @@ def _consolidate_memory(config_path: Path) -> int:
 
 def _load_configured_memory(config_path: Path) -> MiniMemory:
     config = AgentConfig.load_from_file(config_path)
-    loader = create_skill_loader_for_agent_config(config)
-    manifest = loader.find_skill_manifest_by_kind(config.agent.memory, "memory")
-    if manifest is None:
-        raise KeyError(f"memory skill not found: {config.agent.memory}")
-    return create_memory_from_skill_manifest(manifest, config.paths.memory)
+    disclosure = create_progressive_disclosure_for_agent_config(config)
+    disclosure.prepare_skill_index()
+    skill = disclosure.open_skill(config.agent.memory, expected_kind="memory")
+    return create_memory_from_skill_disclosure(skill, config.paths.memory)
 
 
 def _print_memory_items(items: list[MemoryItem]) -> None:

@@ -6,24 +6,22 @@ from pathlib import Path
 from core.config import AgentConfig
 from core.provider import ChatProvider, Message, create_chat_provider
 from core.run import RunContext, RunTraceStore
-from core.tools import SkillTools
+from core.tools import SkillTools, read_skill_for_model_context
 from skill import (
     MiniMemory,
-    ProgressiveDisclosure,
+    ProgressiveDisclosureCore,
     RunResult,
     Skill,
-    SkillDependencyResolver,
     SkillEvolutionManager,
     SkillFreshnessStore,
-    SkillLoader,
-    SkillManifest,
+    SkillIndex,
+    SkillReference,
     SkillRunRecord,
     SubAgentResult,
     WorkflowRunRequest,
-    create_memory_from_skill_manifest,
-    create_workflow_from_skill_manifest,
+    create_memory_from_skill_disclosure,
+    create_workflow_from_skill_disclosure,
 )
-from skill.loader import skill_manifest_is_disabled
 
 
 @dataclass(frozen=True)
@@ -41,11 +39,9 @@ class Agent:
         config: AgentConfig,
         *,
         provider: ChatProvider | None = None,
-        skill_loader: SkillLoader | None = None,
     ) -> None:
         self.config = config
         self.provider = provider or create_chat_provider(config.model)
-        self.skill_loader = skill_loader or create_skill_loader_for_agent_config(config)
         self._subagents: list[SubAgent] = []
 
     @classmethod
@@ -82,7 +78,7 @@ class Agent:
 
     def create_skill_evolution_manager(self) -> SkillEvolutionManager:
         return SkillEvolutionManager(
-            skill_loader=self.skill_loader,
+            skill_disclosure=self._create_progressive_disclosure(),
             skill_root=self._get_first_skill_root(),
             state_root=self.config.paths.memory / "evolution",
             provider=self.provider,
@@ -119,18 +115,29 @@ class Agent:
         skill_tools: SkillTools | None = None
         delegated_subagent_results: list[SubAgentResult] = []
         try:
-            # memory/workflow 是运行控制 skill；prompt/mcp 通过 disclosure 进入模型上下文。
-            memory = self._create_memory_for_agent_run()
-            disclosure = ProgressiveDisclosure(self.skill_loader, self.config.paths.memory / "disclosure")
-            workflow = self._create_workflow_for_agent_run()
-            enabled_skill_names = self._resolve_configured_skill_names()
+            disclosure = self._create_progressive_disclosure(context)
+            skill_index = disclosure.prepare_skill_index()
+            # memory/workflow 是运行控制 skill；prompt/mcp 通过同一个 disclosure 进入模型上下文。
+            memory = self._create_memory_for_agent_run(disclosure)
+            workflow = self._create_workflow_for_agent_run(disclosure)
+            enabled_skill_names = self.config.agent.skills
             if workflow.mode in {"react", "loop"}:
-                disclosure_bundle = disclosure.prepare_disclosure_index(enabled_skill_names)
+                selected_references: list[SkillReference] = []
             else:
-                disclosure_bundle = disclosure.prepare_disclosure_for_prompt(prompt, enabled_skill_names)
-            disclosed_skills = disclosure_bundle.skills
+                selected_references = disclosure.select_skill_references_for_prompt(
+                    prompt,
+                    enabled_skill_names,
+                    allowed_kinds={"prompt", "mcp"},
+                )
+                disclosed_skills = [
+                    read_skill_for_model_context(disclosure, reference)
+                    for reference in selected_references
+                ]
+            if workflow.mode in {"react", "loop"}:
+                disclosed_skills = []
             skill_tools = self._create_skill_tools(
                 disclosure,
+                skill_index,
                 context,
                 memory,
                 include_subagents,
@@ -140,7 +147,7 @@ class Agent:
                 "skills.disclosed",
                 {
                     "names": [skill.manifest.name for skill in disclosed_skills],
-                    "index_path": str(disclosure_bundle.index_path),
+                    "index_path": str(skill_index.index_path),
                 },
             )
             should_check_links = include_subagents and check_subagent_links_before_run
@@ -153,7 +160,7 @@ class Agent:
             system = _add_subagent_results_to_system_prompt(system, subagent_results)
             system = _add_disclosure_cache_paths_to_system_prompt(
                 system,
-                disclosure_bundle.build_prompt_with_cache_paths(),
+                skill_index.build_prompt_with_cache_paths(),
             )
             result = workflow.run(
                 WorkflowRunRequest(
@@ -217,7 +224,8 @@ class Agent:
 
     def _create_skill_tools(
         self,
-        disclosure: ProgressiveDisclosure,
+        disclosure: ProgressiveDisclosureCore,
+        skill_index: SkillIndex,
         run_context: RunContext,
         memory: MiniMemory | None,
         include_subagents: bool,
@@ -233,8 +241,8 @@ class Agent:
                 collected_results,
             )
         return SkillTools(
-            self.skill_loader,
             disclosure,
+            skill_index,
             run_context,
             memory=memory,
             list_subagents_function=self._list_subagents_for_model if has_subagent_tools else None,
@@ -322,38 +330,27 @@ class Agent:
             raise ValueError("agent has no skill path configured")
         return self.config.paths.skills[0]
 
-    def _create_memory_for_agent_run(self) -> MiniMemory | None:
+    def _create_memory_for_agent_run(self, disclosure: ProgressiveDisclosureCore) -> MiniMemory | None:
         # 没有配置同名 memory skill 时保持无记忆运行，不隐式创建旧式能力。
-        manifest = self.skill_loader.find_skill_manifest_by_kind(self.config.agent.memory, "memory")
-        if manifest is None:
+        try:
+            skill = disclosure.open_skill(self.config.agent.memory, expected_kind="memory")
+        except KeyError:
             return None
-        return create_memory_from_skill_manifest(manifest, self.config.paths.memory)
+        return create_memory_from_skill_disclosure(skill, self.config.paths.memory)
 
-    def _create_workflow_for_agent_run(self) -> Workflow:
+    def _create_workflow_for_agent_run(self, disclosure: ProgressiveDisclosureCore) -> Workflow:
         # workflow 必须显式存在，避免拼错名称时悄悄退回 direct。
-        manifest = self.skill_loader.find_skill_manifest_by_kind(self.config.agent.workflow, "workflow")
-        if manifest is None:
-            raise KeyError(f"workflow skill not found: {self.config.agent.workflow}")
-        return create_workflow_from_skill_manifest(manifest)
+        try:
+            skill = disclosure.open_skill(self.config.agent.workflow, expected_kind="workflow")
+        except KeyError:
+            raise KeyError(f"workflow skill not found: {self.config.agent.workflow}") from None
+        return create_workflow_from_skill_disclosure(skill)
 
-    def _resolve_configured_skill_names(self) -> list[str]:
-        if not self.config.agent.skills:
-            return []
-        unfiltered_loader = SkillLoader(self.skill_loader.skill_roots)
-        enabled_names: list[str] = []
-        disabled_placeholders: list[str] = []
-        for name in self.config.agent.skills:
-            manifest = unfiltered_loader.find_skill_manifest(name)
-            is_disabled = manifest is not None and skill_manifest_is_disabled(
-                manifest,
-                self.skill_loader.disabled_names,
-            )
-            if is_disabled:
-                disabled_placeholders.append(name)
-            else:
-                enabled_names.append(name)
-        manifests = SkillDependencyResolver(self.skill_loader).resolve_skills(enabled_names)
-        return [manifest.name for manifest in manifests] + disabled_placeholders
+    def _create_progressive_disclosure(
+        self,
+        run_context: RunContext | None = None,
+    ) -> ProgressiveDisclosureCore:
+        return create_progressive_disclosure_for_agent_config(self.config, run_context)
 
     def _record_skill_freshness(self, skills: list[Skill], prompt: str, output: str, *, success: bool) -> None:
         if not skills:
@@ -362,7 +359,7 @@ class Agent:
         for skill in skills:
             store.record_skill_run(
                 SkillRunRecord(
-                    skill_name=skill.manifest.name,
+                    skill_key=f"{skill.manifest.kind}:{skill.manifest.name}",
                     function_group=skill.manifest.function_group,
                     input_text=prompt,
                     output_text=output,
@@ -398,17 +395,27 @@ def _prompt_matches_subagent_triggers(subagent: SubAgent, prompt: str) -> bool:
 
 def _merge_used_skills(first: list[Skill], second: list[Skill]) -> list[Skill]:
     merged = list(first)
-    names = {skill.manifest.name for skill in merged}
+    names = {f"{skill.manifest.kind}:{skill.manifest.name}" for skill in merged}
     for skill in second:
-        if skill.manifest.name not in names:
+        key = f"{skill.manifest.kind}:{skill.manifest.name}"
+        if key not in names:
             merged.append(skill)
-            names.add(skill.manifest.name)
+            names.add(key)
     return merged
 
 
-def create_skill_loader_for_agent_config(config: AgentConfig) -> SkillLoader:
+def create_progressive_disclosure_for_agent_config(
+    config: AgentConfig,
+    run_context: RunContext | None = None,
+) -> ProgressiveDisclosureCore:
     skill_roots = config.paths.skills if _should_use_feature(config, "skill") else []
-    return SkillLoader(skill_roots, disabled_names=config.agent.disable_names)
+    return ProgressiveDisclosureCore(
+        skill_roots,
+        config.paths.memory / "disclosure",
+        disabled_names=config.agent.disable_names,
+        freshness_root=config.paths.memory,
+        run_context=run_context,
+    )
 
 
 def _should_use_feature(config: AgentConfig, name: str) -> bool:

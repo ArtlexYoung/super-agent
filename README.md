@@ -26,6 +26,7 @@ Super Agent 是一个简单、轻量、配置化的 **skill-first agent runtime*
 PYTHONPATH=src python3 -m cli init --path demo-agent
 PYTHONPATH=src python3 -m cli run --config demo-agent/agent.toml "hello"
 PYTHONPATH=src python3 -m cli skills list --config demo-agent/agent.toml
+PYTHONPATH=src python3 -m cli skills index --config demo-agent/agent.toml --output json
 PYTHONPATH=src python3 -m cli skills validate --config demo-agent/agent.toml
 PYTHONPATH=src python3 -m cli skills freshness --config demo-agent/agent.toml
 PYTHONPATH=src python3 -m cli memory habits --config demo-agent/agent.toml
@@ -38,6 +39,7 @@ PYTHONPATH=src python3 -m cli benchmark --config examples/basic/agent.toml --cas
 super-agent init --path demo-agent
 super-agent run --config demo-agent/agent.toml "hello"
 super-agent skills list --config demo-agent/agent.toml
+super-agent skills index --config demo-agent/agent.toml --output json
 super-agent skills validate --config demo-agent/agent.toml
 super-agent skills freshness --config demo-agent/agent.toml
 super-agent memory habits --config demo-agent/agent.toml
@@ -64,8 +66,11 @@ print(result.text)
 - `Agent.load_from_config_file(path)`：从配置文件创建 agent。
 - `Agent.add_subagent(agent, ...)`：给主 agent 添加从 agent。
 - `Agent.list_subagents()`：查看已经添加的从 agent。
-- `SkillLoader.list_skill_manifests()`：列出 skill 配置摘要。
-- `SkillLoader.load_skills_for_prompt(prompt)`：按输入加载命中的 skill。
+- `ProgressiveDisclosureCore.prepare_skill_index()`：生成全部 Skill 类型共用的中心索引。
+- `ProgressiveDisclosureCore.select_skill_references_for_prompt(...)`：按配置、触发词和依赖选择 Skill。
+- `ProgressiveDisclosureCore.open_skill(...)`：按 `kind:name` 打开一个分阶段披露句柄。
+- `ProgressiveDisclosureCore.read_disclosed_content(path)`：读取中心缓存已经披露的内容。
+- `ProgressiveDisclosureCore.read_disclosure_history()`：读取完整披露路径历史。
 - `Agent.create_skill_evolution_manager()`：创建候选、评价、晋升和回滚使用的进化管理器。
 - `SkillEvolutionManager.create_skill_candidate(...)`：生成隔离候选，不修改当前 Skill。
 - `SkillEvolutionManager.evaluate_skill_candidate(...)`：用真实 provider 运行用例并确定性评分。
@@ -192,7 +197,7 @@ instructions = "SKILL.md"
 
 ### 实验契约 v1
 
-`v0.0.16` 冻结了首个实验性 schema v1，但这不等于承诺 1.0 API 稳定性。Skill manifest 必须显式声明 `schema_version = 1`，并提供字符串字段 `name`、`kind`、`description`、`version` 和字符串数组 `triggers`。`prompt`、`mcp` 还必须提供 `[entry]`；`memory`、`workflow` 的行为入口是各自同名配置表。
+`v0.0.16` 冻结了首个实验性 schema v1，`v0.0.17` 将所有读取入口收敛到中心披露核心，但这不等于承诺 1.0 API 稳定性。Skill manifest 必须显式声明 `schema_version = 1`，并提供字符串字段 `name`、`kind`、`description`、`version` 和字符串数组 `triggers`。`prompt`、`mcp` 还必须提供 `[entry]`；`memory`、`workflow` 的行为入口是各自同名配置表。
 
 运行事件 v1 固定为 `schema_version`、`run_id`、`sequence`、`event_type`、`created_at`、`agent_name`、`parent_run_id` 和 `data` 八个字段。读取器拒绝缺失字段、未知字段、错误类型和其他 schema 版本，不做静默兼容；升级时应先显式迁移数据。公共序列化入口为 `skill_manifest_to_dict(...)`、`run_event_to_dict(...)` 和 `run_event_from_dict(...)`。
 
@@ -378,18 +383,21 @@ runtime 会按 `kind = "mcp"` 把它加载成 MCP skill。`react` 和 `loop` wor
 .super-agent/memory/disclosure/
   index.json
   history.jsonl
-  skills/<skill-name>/manifest.json
-  skills/<skill-name>/instructions.md
+  skills/<kind>/<name>/manifest.json
+  skills/<kind>/<name>/instructions.md
+  skills/<kind>/<name>/configuration.json
 ```
 
 披露流程：
 
-1. runtime 先写入 `index.json`，只暴露 skill 名称、描述、触发词和缓存路径。
-2. 命中的 skill 才会披露 `instructions.md`，避免全量加载上下文。
-3. 每次披露都会追加到 `history.jsonl`，保留历史披露路径。
-4. 模型或上层 workflow 可以直接选择缓存路径，再通过 `ProgressiveDisclosure.read_cache(path)` 读取结果。
+1. `index` 阶段写入全部未禁用 Skill 的摘要、保鲜度和各阶段缓存路径，不读取指令正文。
+2. `manifest` 阶段按需写入规范化 manifest，并用 `kind:name` 区分同名类型。
+3. `instructions` 与 `configuration` 阶段分别披露 `SKILL.md` 和类型配置；内容 SHA-256 未变化时直接命中缓存。
+4. 每次披露都会追加到 `history.jsonl`；模型可调用 `read_disclosed_content` 直接读取索引给出的缓存路径。
 
-这给后续 ReAct、Plan、Loop 留出了工具接口：模型先看索引，再选择需要展开的 skill，而不是一开始读完所有资源。
+Agent、CLI、benchmark、依赖解析、进化、包管理和 macOS 前端都消费这个索引；Skill TOML 只由中心 source parser 解析。模型先看索引，再选择需要展开的 Skill，而不是一开始读完所有资源。
+
+`v0.0.17` 不兼容删除 `SkillLoader`、旧 `ProgressiveDisclosure`、`SkillDependencyResolver`、`SkillManifest.load_from_file()` 和 `read_skill` 工具。库调用改用 `ProgressiveDisclosureCore`；工具调用改用 `read_skill_manifest`、`read_skill_instructions`、`read_skill_configuration` 和 `read_disclosed_content`。保鲜度统计键也统一为 `kind:name`，旧的裸名称统计不再读取。
 
 ### 渐进披露基准
 
@@ -515,7 +523,10 @@ instruction = "Prefer short numbered steps."
 `direct` 和 `plan` 保持单次模型请求。`react` 和 `loop` 使用真实工具循环，模型可以调用：
 
 - `list_skills`：查看可用 Skill 摘要。
-- `read_skill`：按需读取一个 Skill。
+- `read_skill_manifest`：按需披露一个 Skill 的 manifest。
+- `read_skill_instructions`：按需披露一个 Skill 的指令。
+- `read_skill_configuration`：按需披露 MCP、记忆或工作流配置。
+- `read_disclosed_content`：读取中心索引中已经给出的缓存路径。
 - `list_skill_tools`：读取 MCP 暴露的工具。
 - `run_skill`：执行一个 MCP 工具。
 - `list_subagents`：查看代码挂载在当前 agent 下的子 agent。
@@ -536,8 +547,9 @@ src/
   cli.py         # CLI 入口：init、run、skills、memory
   cli_commands/  # 按领域拆分的 CLI 参数和命令适配
   core/          # Agent、运行追踪、真实 Skill 工具、agent.toml、provider
-  skill/         # manifest、loader、kind、渐进式披露、候选评价、进化历史
-    ecosystem/   # capability 依赖解析、确定性 lock、Skill 包管理
+  skill/         # manifest、中心渐进式披露、kind、候选评价、进化历史
+    disclosure/  # 唯一 source parser、中心索引、阶段缓存与披露历史
+    ecosystem/   # 确定性 lock 与 Skill 包管理
     kinds/       # prompt、mcp、memory、workflow 等 skill kind
   frontend/mac/  # SwiftUI 桌面端：对话、配置、运行树
 ```
@@ -546,7 +558,7 @@ src/
 
 `memory` 采用 JSONL 事件存储，实现在 `skill/kinds/memory.py`。策略由 memory Skill 声明，数据不和能力定义混放。
 
-macOS 前端通过上述 JSONL 协议调用同一个 Python runtime，把会话保存成 JSON，并按真实 `run_id` 生成类似文件树的运行节点。点击主 agent 或子 agent 节点，可以查看对应输入与输出。
+macOS 前端通过上述 JSONL 协议调用同一个 Python runtime，并通过 `skills index --output json` 获取全部配置选项和保鲜度；Swift 不扫描 Skill manifest。会话保存成 JSON，并按真实 `run_id` 生成类似文件树的运行节点。点击主 agent 或子 agent 节点，可以查看对应输入与输出。
 
 ## 开发验证
 

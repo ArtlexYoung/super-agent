@@ -3,14 +3,13 @@ from __future__ import annotations
 import json
 import re
 import shutil
-import tomllib
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
 from core.provider import ChatProvider, Message
-from skill.loader import SkillLoader
+from skill.disclosure import ProgressiveDisclosureCore, SkillDisclosure
 from skill.manifest import SKILL_SCHEMA_VERSION, SkillManifest, calculate_skill_directory_sha256
 
 
@@ -30,7 +29,7 @@ class SkillCandidate:
 
 def create_candidate(
     *,
-    loader: SkillLoader,
+    skill_disclosure: ProgressiveDisclosureCore,
     candidate_root: Path,
     provider: ChatProvider,
     model: str,
@@ -41,10 +40,19 @@ def create_candidate(
     evolution_goal = goal.strip()
     if not evolution_goal:
         raise ValueError("skill evolution goal cannot be empty")
-    current = loader.find_skill_manifest(skill_name)
+    index = skill_disclosure.prepare_skill_index()
+    current_entry = index.find_skill(skill_name)
+    current_disclosure = None
+    current = None
+    if current_entry is not None:
+        current_disclosure = skill_disclosure.open_skill(
+            current_entry.reference.name,
+            current_entry.reference.kind,
+        )
+        current = current_disclosure.read_manifest()
     if current is not None and not current.agent_can_update:
         raise PermissionError(f"skill does not allow agent evolution: {skill_name}")
-    current_instructions = _read_current_instructions(current)
+    current_instructions = _read_current_instructions(current_disclosure)
     proposed_instructions = provider.send_chat_messages(
         _build_candidate_messages(skill_name, evolution_goal, current, current_instructions),
         model,
@@ -66,6 +74,7 @@ def create_candidate(
         instructions=proposed_instructions,
         version=proposed_version,
     )
+    _validate_candidate_skill(skill_path)
     candidate = SkillCandidate(
         candidate_id=candidate_id,
         name=skill_name,
@@ -178,11 +187,10 @@ def _write_candidate_skill(
     instruction_path.write_text(instructions.rstrip() + "\n", encoding="utf-8")
 
 
-def _read_current_instructions(manifest: SkillManifest | None) -> str:
-    if manifest is None:
+def _read_current_instructions(disclosure: SkillDisclosure | None) -> str:
+    if disclosure is None:
         return ""
-    path = resolve_skill_file(manifest.path, manifest.entry.instructions)
-    return path.read_text(encoding="utf-8").strip() if path.is_file() else ""
+    return disclosure.read_instructions().content
 
 
 def _build_candidate_messages(
@@ -228,7 +236,7 @@ def _new_skill_manifest_text(name: str, goal: str, version: str) -> str:
 
 
 def _set_manifest_version(path: Path, version: str) -> None:
-    # 标准库只能读 TOML；这里只替换首个表之前的顶层 version，并重新解析校验。
+    # 标准库只能写文本；完整 schema 校验由中心披露核心在候选写完后执行。
     lines = path.read_text(encoding="utf-8").splitlines()
     replacement = f"version = {json.dumps(version)}"
     table_index = next((index for index, line in enumerate(lines) if line.lstrip().startswith("[")), len(lines))
@@ -241,8 +249,17 @@ def _set_manifest_version(path: Path, version: str) -> None:
     else:
         lines[version_index] = replacement
     text = "\n".join(lines).rstrip() + "\n"
-    tomllib.loads(text)
     path.write_text(text, encoding="utf-8")
+
+
+def _validate_candidate_skill(skill_path: Path) -> None:
+    disclosure = ProgressiveDisclosureCore(
+        [skill_path],
+        skill_path.parent / ".candidate-validation-cache",
+    )
+    index = disclosure.prepare_skill_index()
+    if len(index.entries) != 1:
+        raise ValueError("candidate must contain exactly one valid skill")
 
 
 def _write_candidate_metadata(candidate: SkillCandidate) -> None:

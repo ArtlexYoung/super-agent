@@ -6,8 +6,8 @@ from pathlib import Path
 from uuid import uuid4
 
 from core.provider import ChatProvider, Message
-from skill.evolution.candidate import SkillCandidate, resolve_skill_file
-from skill.manifest import SkillManifest
+from skill.disclosure import ProgressiveDisclosureCore
+from skill.evolution.candidate import SkillCandidate
 
 
 @dataclass(frozen=True)
@@ -151,11 +151,16 @@ def _score_output(
 
 
 def _read_candidate_instructions(candidate: SkillCandidate) -> str:
-    manifest = SkillManifest.load_from_file(candidate.skill_path / "skill.toml")
-    path = resolve_skill_file(candidate.skill_path, manifest.entry.instructions)
-    if not path.is_file():
-        raise FileNotFoundError(f"candidate instruction file not found: {path}")
-    instructions = path.read_text(encoding="utf-8").strip()
+    disclosure = ProgressiveDisclosureCore(
+        [candidate.skill_path],
+        candidate.skill_path.parent / ".evaluation-disclosure-cache",
+    )
+    index = disclosure.prepare_skill_index()
+    entry = index.entries[0]
+    instructions = disclosure.open_skill(
+        entry.reference.name,
+        entry.reference.kind,
+    ).read_instructions().content
     if not instructions:
         raise ValueError("candidate instructions cannot be empty")
     return instructions

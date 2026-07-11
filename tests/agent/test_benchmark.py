@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 
 from core import BenchmarkCase, SkillBenchmark
-from skill import SkillLoader
+from skill import ProgressiveDisclosureCore
 
 
 class SkillBenchmarkTests(unittest.TestCase):
@@ -13,7 +13,7 @@ class SkillBenchmarkTests(unittest.TestCase):
             _write_skill(root, "alpha", "Alpha rules. " * 8)
             _write_skill(root, "beta", "Beta rules. " * 8)
 
-            report = SkillBenchmark(SkillLoader([root])).run_cases(
+            report = SkillBenchmark(_create_disclosure(root)).run_cases(
                 [BenchmarkCase(name="alpha only", prompt="use alpha")]
             )
 
@@ -26,7 +26,7 @@ class SkillBenchmarkTests(unittest.TestCase):
             root = Path(tmp)
             for index in range(6):
                 _write_skill(root, f"skill{index}", (f"Instruction {index}. " * 250).strip())
-            benchmark = SkillBenchmark(SkillLoader([root]))
+            benchmark = SkillBenchmark(_create_disclosure(root))
 
             report = benchmark.run_cases(
                 [BenchmarkCase(name="one match", prompt="use skill0", enabled_skills=[])]
@@ -43,7 +43,7 @@ class SkillBenchmarkTests(unittest.TestCase):
             root = Path(tmp)
             _write_skill(root, "echo", "Answer briefly.")
 
-            report = SkillBenchmark(SkillLoader([root])).run_cases(
+            report = SkillBenchmark(_create_disclosure(root)).run_cases(
                 [BenchmarkCase(name="echo", prompt="echo this")]
             )
             data = report.to_dict()
@@ -72,3 +72,7 @@ instructions = "SKILL.md"
         encoding="utf-8",
     )
     (skill_dir / "SKILL.md").write_text(instructions, encoding="utf-8")
+
+
+def _create_disclosure(root: Path) -> ProgressiveDisclosureCore:
+    return ProgressiveDisclosureCore([root], root / ".disclosure-cache")

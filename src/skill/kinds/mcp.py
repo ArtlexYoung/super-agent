@@ -4,10 +4,11 @@ import json
 import os
 import selectors
 import subprocess
-import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from skill.disclosure import SkillDisclosure
 
 
 MCP_PROTOCOL_VERSION = "2025-03-26"
@@ -25,25 +26,6 @@ class McpServer:
     args: list[str]
     env: dict[str, str]
     path: Path
-
-    @classmethod
-    def load_from_file(cls, path: Path) -> "McpServer":
-        data = tomllib.loads(path.read_text(encoding="utf-8"))
-        mcp_data = _read_mcp_section(data, path)
-        name = str(data.get("name", "")).strip()
-        if not name:
-            raise ValueError(f"mcp manifest missing name: {path}")
-        return cls(
-            name=name,
-            description=str(data.get("description", "")),
-            version=str(data.get("version", "0.1.0")),
-            triggers=[str(item).lower() for item in data.get("triggers", [])],
-            transport=str(mcp_data.get("transport", "stdio")),
-            command=str(mcp_data.get("command", "")),
-            args=[str(item) for item in mcp_data.get("args", [])],
-            env=_read_env(mcp_data.get("env", {})),
-            path=path.parent,
-        )
 
     def build_skill_instructions(self) -> str:
         lines = [
@@ -113,7 +95,7 @@ class _McpStdioSession:
                 {
                     "protocolVersion": MCP_PROTOCOL_VERSION,
                     "capabilities": {},
-                    "clientInfo": {"name": "super-agent", "version": "0.0.10"},
+                    "clientInfo": {"name": "super-agent", "version": "0.0.17"},
                 },
             )
             self.send_notification("notifications/initialized", {})
@@ -191,11 +173,22 @@ class _McpStdioSession:
                 process.stdout.close()
 
 
-def _read_mcp_section(data: dict[str, Any], path: Path) -> dict[str, Any]:
-    value = data.get("mcp")
-    if not isinstance(value, dict):
-        raise ValueError(f"mcp skill manifest missing [mcp]: {path}")
-    return value
+def create_mcp_server_from_skill_disclosure(disclosure: SkillDisclosure) -> McpServer:
+    manifest = disclosure.read_manifest()
+    if manifest.kind != "mcp":
+        raise ValueError(f"skill is not an MCP kind: {manifest.name}")
+    configuration = disclosure.read_kind_configuration().content
+    return McpServer(
+        name=manifest.name,
+        description=manifest.description,
+        version=manifest.version,
+        triggers=list(manifest.triggers),
+        transport=str(configuration.get("transport", "stdio")),
+        command=str(configuration.get("command", "")),
+        args=[str(item) for item in configuration.get("args", [])],
+        env=_read_env(configuration.get("env", {})),
+        path=manifest.path,
+    )
 
 
 def _read_env(value: Any) -> dict[str, str]:

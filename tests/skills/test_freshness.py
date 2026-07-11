@@ -6,7 +6,7 @@ from pathlib import Path
 
 from core import Agent, AgentConfig
 from core.provider import MockProvider
-from skill import SkillManifest
+from skill import ProgressiveDisclosureCore
 from skill.evolution.freshness import SkillFreshnessStore, SkillRunRecord
 from support import write_workflow_skill
 
@@ -34,7 +34,9 @@ instructions = "SKILL.md"
                 encoding="utf-8",
             )
 
-            manifest = SkillManifest.load_from_file(skill_dir / "skill.toml")
+            disclosure = ProgressiveDisclosureCore([skill_dir.parent], Path(tmp) / "cache")
+            disclosure.prepare_skill_index()
+            manifest = disclosure.open_skill("research", "prompt").read_manifest()
 
             self.assertEqual(83.5, manifest.freshness)
             self.assertEqual("search", manifest.function_group)
@@ -47,7 +49,7 @@ instructions = "SKILL.md"
 
             store.record_skill_run(
                 SkillRunRecord(
-                    skill_name="research",
+                    skill_key="prompt:research",
                     function_group="search",
                     input_text="Find sources about agents.",
                     output_text="Three sources found.",
@@ -56,12 +58,12 @@ instructions = "SKILL.md"
                 )
             )
 
-            stats = store.read_skill_stats()["research"]
+            stats = store.read_skill_stats()["prompt:research"]
             events = (Path(tmp) / "skill_events.jsonl").read_text(encoding="utf-8").splitlines()
             self.assertEqual(1, stats["call_count"])
             self.assertEqual(1, stats["success_count"])
             self.assertGreater(stats["freshness"], 70)
-            self.assertEqual("research", json.loads(events[0])["skill"])
+            self.assertEqual("prompt:research", json.loads(events[0])["skill"])
 
     def test_same_function_successful_followup_reduces_previous_skill_freshness(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -71,7 +73,7 @@ instructions = "SKILL.md"
 
             store.record_skill_run(
                 SkillRunRecord(
-                    skill_name="old-search",
+                    skill_key="prompt:old-search",
                     function_group="search",
                     input_text="Find sources.",
                     output_text="Weak result.",
@@ -79,10 +81,10 @@ instructions = "SKILL.md"
                     called_at=first_time,
                 )
             )
-            before = store.read_skill_stats()["old-search"]["freshness"]
+            before = store.read_skill_stats()["prompt:old-search"]["freshness"]
             store.record_skill_run(
                 SkillRunRecord(
-                    skill_name="new-search",
+                    skill_key="prompt:new-search",
                     function_group="search",
                     input_text="Find better sources.",
                     output_text="Better result.",
@@ -91,7 +93,7 @@ instructions = "SKILL.md"
                 )
             )
 
-            old_stats = store.read_skill_stats()["old-search"]
+            old_stats = store.read_skill_stats()["prompt:old-search"]
             self.assertEqual(1, old_stats["same_function_followups"])
             self.assertEqual(1, old_stats["same_function_successful_followups"])
             self.assertLess(old_stats["freshness"], before)
@@ -108,8 +110,8 @@ instructions = "SKILL.md"
 
             stats_path = root / ".super-agent" / "memory" / "skill_stats.json"
             stats = json.loads(stats_path.read_text(encoding="utf-8"))
-            self.assertEqual(1, stats["skills"]["echo"]["call_count"])
-            self.assertGreater(stats["skills"]["echo"]["freshness"], 70)
+            self.assertEqual(1, stats["skills"]["prompt:echo"]["call_count"])
+            self.assertGreater(stats["skills"]["prompt:echo"]["freshness"], 70)
 
 
 def _write_skill(root: Path, name: str, function_group: str) -> None:

@@ -4,11 +4,8 @@ from dataclasses import replace
 from pathlib import Path
 
 from skill import (
-    SkillLoader,
-    SkillManifest,
-    explain_skill_selection,
+    ProgressiveDisclosureCore,
     skill_manifest_to_dict,
-    validate_skill_manifests,
 )
 
 
@@ -17,7 +14,7 @@ class SkillManifestContractTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             manifest_path = _write_skill(Path(tmp), schema_version=1)
 
-            manifest = SkillManifest.load_from_file(manifest_path)
+            manifest = _read_manifest(Path(tmp), "demo")
 
             self.assertEqual(1, manifest.schema_version)
 
@@ -26,7 +23,7 @@ class SkillManifestContractTests(unittest.TestCase):
             manifest_path = _write_skill(Path(tmp), schema_version=2)
 
             with self.assertRaisesRegex(ValueError, "migrate.*schema_version = 1"):
-                SkillManifest.load_from_file(manifest_path)
+                _create_disclosure(Path(tmp)).prepare_skill_index()
 
     def test_manifest_requires_explicit_schema_version(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -35,7 +32,7 @@ class SkillManifestContractTests(unittest.TestCase):
             manifest_path.write_text(text, encoding="utf-8")
 
             with self.assertRaisesRegex(ValueError, "missing schema_version.*schema_version = 1"):
-                SkillManifest.load_from_file(manifest_path)
+                _create_disclosure(Path(tmp)).prepare_skill_index()
 
     def test_manifest_rejects_wrong_field_type_in_schema_v1(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -44,11 +41,12 @@ class SkillManifestContractTests(unittest.TestCase):
             manifest_path.write_text(text, encoding="utf-8")
 
             with self.assertRaisesRegex(ValueError, "skill name must be a string"):
-                SkillManifest.load_from_file(manifest_path)
+                _create_disclosure(Path(tmp)).prepare_skill_index()
 
     def test_manifest_serializer_emits_normalized_schema_v1_without_local_path(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            manifest = SkillManifest.load_from_file(_write_skill(Path(tmp), schema_version=1))
+            _write_skill(Path(tmp), schema_version=1)
+            manifest = _read_manifest(Path(tmp), "demo")
 
             data = skill_manifest_to_dict(manifest)
 
@@ -59,36 +57,39 @@ class SkillManifestContractTests(unittest.TestCase):
 
     def test_manifest_serializer_rejects_schema_that_requires_migration(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            manifest = SkillManifest.load_from_file(_write_skill(Path(tmp), schema_version=1))
+            _write_skill(Path(tmp), schema_version=1)
+            manifest = _read_manifest(Path(tmp), "demo")
 
             with self.assertRaisesRegex(ValueError, "migrate.*skill schema_version 1"):
                 skill_manifest_to_dict(replace(manifest, schema_version=2))
 
-    def test_loader_reports_invalid_manifests_without_hiding_valid_ones(self) -> None:
+    def test_core_reports_invalid_manifests_without_hiding_valid_ones(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_skill(root, name="valid", schema_version=1)
             _write_skill(root, name="invalid", schema_version=2)
 
-            issues = validate_skill_manifests(SkillLoader([root]))
+            issues = _create_disclosure(root).validate_skill_sources()
 
             self.assertEqual(1, len(issues))
             self.assertEqual("invalid", issues[0].path.parent.name)
             self.assertIn("unsupported skill schema_version", issues[0].message)
 
-    def test_loader_explains_trigger_and_enabled_selection(self) -> None:
+    def test_core_selects_triggered_and_explicitly_enabled_skills(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_skill(root, name="echo", triggers=["echo"])
             _write_skill(root, name="always", triggers=[])
 
-            selections = explain_skill_selection(SkillLoader([root]), "please echo", enabled=["always"])
+            disclosure = _create_disclosure(root)
+            disclosure.prepare_skill_index()
+            selections = disclosure.select_skill_references_for_prompt(
+                "please echo",
+                enabled_names=["always"],
+                allowed_kinds={"prompt", "mcp"},
+            )
 
-            selected = {item.name: item for item in selections}
-            self.assertTrue(selected["echo"].selected)
-            self.assertEqual("matched trigger: echo", selected["echo"].reason)
-            self.assertTrue(selected["always"].selected)
-            self.assertEqual("enabled by agent config", selected["always"].reason)
+            self.assertEqual({"prompt:echo", "prompt:always"}, {item.key for item in selections})
 
 
 def _write_skill(
@@ -118,3 +119,13 @@ instructions = "SKILL.md"
     )
     (skill_dir / "SKILL.md").write_text(f"Use {name}.", encoding="utf-8")
     return manifest_path
+
+
+def _create_disclosure(root: Path) -> ProgressiveDisclosureCore:
+    return ProgressiveDisclosureCore([root], root / ".disclosure-cache")
+
+
+def _read_manifest(root: Path, name: str):
+    disclosure = _create_disclosure(root)
+    disclosure.prepare_skill_index()
+    return disclosure.open_skill(name, "prompt").read_manifest()

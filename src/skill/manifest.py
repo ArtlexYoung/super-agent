@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import hashlib
-import tomllib
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -34,33 +34,29 @@ class SkillManifest:
     provides: list[str] = field(default_factory=list)
     requires: list[str] = field(default_factory=list)
 
-    @classmethod
-    def load_from_file(cls, path: Path) -> "SkillManifest":
-        data = tomllib.loads(path.read_text(encoding="utf-8"))
-        schema_version = _read_schema_version(data)
-        name = _read_required_string(data, "name").strip()
-        if not name:
-            raise ValueError(f"skill manifest missing name: {path}")
-        kind = _read_required_string(data, "kind").strip().lower()
-        entry = _read_entry(data, kind)
-        agent_created = _read_bool(data, "agent_created", False)
-        return cls(
-            name=name,
-            description=_read_required_string(data, "description"),
-            version=_read_required_string(data, "version"),
-            triggers=[item.lower() for item in _read_string_array(data, "triggers")],
-            entry=entry,
-            path=path.parent,
-            schema_version=schema_version,
-            kind=kind,
-            agent_created=agent_created,
-            agent_can_update=_read_bool(data, "agent_can_update", agent_created),
-            freshness=_read_freshness(data),
-            function_group=_read_optional_string(data, "function_group", name).strip() or name,
-            freshness_updated_at=_read_optional_string(data, "freshness_updated_at", ""),
-            provides=_read_capabilities(data, "provides", [name]),
-            requires=_read_capabilities(data, "requires", []),
-        )
+def skill_manifest_from_dict(data: dict[str, object], path: Path) -> SkillManifest:
+    schema_version = _read_schema_version(data)
+    name = _read_skill_name(data, path)
+    kind = _read_required_string(data, "kind").strip().lower()
+    entry = _read_entry(data, kind)
+    agent_created = _read_bool(data, "agent_created", False)
+    return SkillManifest(
+        name=name,
+        description=_read_required_string(data, "description"),
+        version=_read_required_string(data, "version"),
+        triggers=[item.lower() for item in _read_string_array(data, "triggers")],
+        entry=entry,
+        path=path.parent,
+        schema_version=schema_version,
+        kind=kind,
+        agent_created=agent_created,
+        agent_can_update=_read_bool(data, "agent_can_update", agent_created),
+        freshness=_read_freshness(data),
+        function_group=_read_optional_string(data, "function_group", name).strip() or name,
+        freshness_updated_at=_read_optional_string(data, "freshness_updated_at", ""),
+        provides=_read_capabilities(data, "provides", [name]),
+        requires=_read_capabilities(data, "requires", []),
+    )
 
 
 @dataclass(frozen=True)
@@ -133,6 +129,15 @@ def _read_required_string(data: dict[str, object], name: str) -> str:
     if not isinstance(value, str):
         raise ValueError(f"skill {name} must be a string")
     return value
+
+
+def _read_skill_name(data: dict[str, object], path: Path) -> str:
+    name = _read_required_string(data, "name").strip()
+    if not name:
+        raise ValueError(f"skill manifest missing name: {path}")
+    if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", name):
+        raise ValueError("skill name must use lowercase letters, numbers, '-' or '_'")
+    return name
 
 
 def _read_optional_string(data: dict[str, object], name: str, default: str) -> str:

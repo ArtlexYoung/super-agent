@@ -6,7 +6,8 @@ from pathlib import Path
 
 from core import Agent, AgentConfig
 from core.provider import MockProvider
-from skill import McpServer, MiniMemory, SkillLoader
+from core.tools import read_skill_for_model_context
+from skill import MiniMemory, ProgressiveDisclosureCore, create_mcp_server_from_skill_disclosure
 from support import write_memory_skill, write_workflow_skill
 
 
@@ -24,7 +25,10 @@ class McpSkillTests(unittest.TestCase):
                 [str(server_script)],
                 env={"MCP_TEST_VALUE": "from-env"},
             )
-            server = McpServer.load_from_file(root / "skills" / "mcp" / "calculator" / "skill.toml")
+            disclosure = _prepare_disclosure(root)
+            server = create_mcp_server_from_skill_disclosure(
+                disclosure.open_skill("calculator", "mcp")
+            )
 
             tools = server.list_tools()
             result = server.call_tool("add", {"left": 2, "right": 3})
@@ -38,15 +42,18 @@ class McpSkillTests(unittest.TestCase):
             root = Path(tmp)
             _write_mcp_server(root, "filesystem", "Filesystem MCP", "npx", ["-y", "@mcp/server-filesystem"])
 
-            loader = SkillLoader([root / "skills"])
-            skill = loader.load_skill("filesystem")
-            selected = loader.load_skills_for_prompt("please inspect filesystem")
+            disclosure = _prepare_disclosure(root)
+            selected = disclosure.select_skill_references_for_prompt(
+                "please inspect filesystem",
+                allowed_kinds={"prompt", "mcp"},
+            )
+            skill = read_skill_for_model_context(disclosure, selected[0])
 
             self.assertEqual("filesystem", skill.manifest.name)
             self.assertEqual("mcp", skill.manifest.kind)
             self.assertIn("Protocol: mcp", skill.instructions)
             self.assertIn("Command: npx -y @mcp/server-filesystem", skill.instructions)
-            self.assertEqual(["filesystem"], [item.manifest.name for item in selected])
+            self.assertEqual(["mcp:filesystem"], [item.key for item in selected])
 
     def test_mcp_skill_instruction_lists_env_names_without_values(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -60,7 +67,11 @@ class McpSkillTests(unittest.TestCase):
                 env={"GITHUB_TOKEN": "secret-token"},
             )
 
-            skill = SkillLoader([root / "skills"]).load_skill("github")
+            disclosure = _prepare_disclosure(root)
+            skill = read_skill_for_model_context(
+                disclosure,
+                disclosure.prepare_skill_index().require_skill("github", "mcp").reference,
+            )
 
             self.assertIn("Environment variables: GITHUB_TOKEN", skill.instructions)
             self.assertNotIn("secret-token", skill.instructions)
@@ -89,7 +100,7 @@ instructions = "SKILL.md"
             )
 
             with self.assertRaises(ValueError):
-                SkillLoader([root / "skills"]).load_skill("bad")
+                _prepare_disclosure(root)
 
     def test_config_can_disable_whole_mcp_feature_by_name_list(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -269,3 +280,9 @@ for line in sys.stdin:
 """.strip(),
         encoding="utf-8",
     )
+
+
+def _prepare_disclosure(root: Path) -> ProgressiveDisclosureCore:
+    disclosure = ProgressiveDisclosureCore([root / "skills"], root / "cache")
+    disclosure.prepare_skill_index()
+    return disclosure

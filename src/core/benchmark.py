@@ -3,10 +3,15 @@ from __future__ import annotations
 import json
 import math
 from dataclasses import dataclass, field
+from pathlib import Path
 
-from skill.ecosystem.resolver import SkillDependencyResolver
-from skill.loader import PROMPT_CONTEXT_KINDS, SkillLoader
-from skill.manifest import Skill, SkillManifest
+from core.tools import read_skill_for_model_context
+from skill.disclosure import (
+    ProgressiveDisclosureCore,
+    SkillIndex,
+    SkillIndexEntry,
+    skill_index_to_dict,
+)
 
 
 BENCHMARK_SCHEMA_VERSION = 1
@@ -43,17 +48,20 @@ class BenchmarkReport:
 
 
 class SkillBenchmark:
-    def __init__(self, skill_loader: SkillLoader) -> None:
-        self.skill_loader = skill_loader
+    def __init__(self, skill_disclosure: ProgressiveDisclosureCore) -> None:
+        self.skill_disclosure = skill_disclosure
 
     def run_cases(self, cases: list[BenchmarkCase]) -> BenchmarkReport:
         if not cases:
             raise ValueError("benchmark requires at least one case")
         _reject_duplicate_case_names(cases)
-        manifests = _prompt_context_manifests(self.skill_loader)
-        disclosure_index = _build_disclosure_index(manifests)
+        skill_index = self.skill_disclosure.prepare_skill_index()
+        context_entries = [
+            entry for entry in skill_index.entries if entry.reference.kind in {"prompt", "mcp"}
+        ]
+        disclosure_index = _build_disclosure_index(skill_index, self.skill_disclosure.cache_root)
         eager_context = _join_context(
-            [disclosure_index, _build_eager_context(self.skill_loader, manifests)]
+            [disclosure_index, _build_eager_context(self.skill_disclosure, context_entries)]
         )
         results = [
             self._run_case(case, eager_context, disclosure_index)
@@ -81,9 +89,18 @@ class SkillBenchmark:
         prompt = case.prompt.strip()
         if not name or not prompt:
             raise ValueError("benchmark case name and prompt cannot be empty")
-        enabled = _resolve_enabled_skill_names(self.skill_loader, case.enabled_skills)
-        selected = self.skill_loader.load_skills_for_prompt(prompt, enabled)
-        progressive_context = _join_context([disclosure_index, *[skill.instructions for skill in selected]])
+        selected_references = self.skill_disclosure.select_skill_references_for_prompt(
+            prompt,
+            case.enabled_skills,
+            allowed_kinds={"prompt", "mcp"},
+        )
+        selected = [
+            read_skill_for_model_context(self.skill_disclosure, reference)
+            for reference in selected_references
+        ]
+        progressive_context = _join_context(
+            [disclosure_index, *[skill.instructions for skill in selected]]
+        )
         eager_tokens = _estimate_tokens(eager_context)
         progressive_tokens = _estimate_tokens(progressive_context)
         saved_tokens = eager_tokens - progressive_tokens
@@ -123,39 +140,25 @@ def benchmark_report_to_dict(report: BenchmarkReport) -> dict[str, object]:
     }
 
 
-def _prompt_context_manifests(loader: SkillLoader) -> list[SkillManifest]:
-    return [
-        manifest
-        for manifest in loader.list_skill_manifests()
-        if manifest.kind in PROMPT_CONTEXT_KINDS
+def _build_eager_context(
+    disclosure: ProgressiveDisclosureCore,
+    entries: list[SkillIndexEntry],
+) -> str:
+    skills = [
+        read_skill_for_model_context(disclosure, entry.reference)
+        for entry in entries
     ]
-
-
-def _build_eager_context(loader: SkillLoader, manifests: list[SkillManifest]) -> str:
-    skills: list[Skill] = [loader.load_skill(manifest.name) for manifest in manifests]
     return _join_context([skill.instructions for skill in skills])
 
 
-def _build_disclosure_index(manifests: list[SkillManifest]) -> str:
-    entries = [
-        {
-            "name": manifest.name,
-            "kind": manifest.kind,
-            "description": manifest.description,
-            "triggers": manifest.triggers,
-            "provides": manifest.provides,
-            "requires": manifest.requires,
-        }
-        for manifest in manifests
-    ]
-    return json.dumps(entries, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-
-
-def _resolve_enabled_skill_names(loader: SkillLoader, names: list[str]) -> list[str]:
-    if not names:
-        return []
-    manifests = SkillDependencyResolver(loader).resolve_skills(names)
-    return [manifest.name for manifest in manifests]
+def _build_disclosure_index(index: SkillIndex, cache_root: Path) -> str:
+    text = json.dumps(
+        skill_index_to_dict(index),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return text.replace(str(cache_root), "<disclosure-cache>")
 
 
 def _reject_duplicate_case_names(cases: list[BenchmarkCase]) -> None:

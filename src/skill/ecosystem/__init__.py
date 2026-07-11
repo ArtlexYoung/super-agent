@@ -6,7 +6,6 @@ from typing import Any
 
 _EXPORTS = {
     "LockedSkill": ("skill.ecosystem.lock", "LockedSkill"),
-    "SkillDependencyResolver": ("skill.ecosystem.resolver", "SkillDependencyResolver"),
     "SkillPackageManager": ("skill.ecosystem.package", "SkillPackageManager"),
 }
 

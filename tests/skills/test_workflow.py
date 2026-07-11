@@ -14,7 +14,17 @@ class ExecutableWorkflowTests(unittest.TestCase):
             config_path = _write_config(root, mode="react", max_steps=4)
             provider = MockProvider(
                 tool_responses=[
-                    ModelResponse("", [ToolCall("read-1", "read_skill", {"name": "research"})], "tool_calls"),
+                    ModelResponse(
+                        "",
+                        [
+                            ToolCall(
+                                "read-1",
+                                "read_skill_instructions",
+                                {"name": "research", "kind": "prompt"},
+                            )
+                        ],
+                        "tool_calls",
+                    ),
                     ModelResponse("final answer", [], "model_finished"),
                 ]
             )

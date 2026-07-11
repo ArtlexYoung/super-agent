@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 import json
-import tomllib
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING
 
 from core.provider import ChatProvider, Message, ToolCall
 from core.run import RunContext
-from core.tools import SkillTools
-from skill.manifest import Skill, SkillManifest
+from skill.disclosure import SkillDisclosure
+from skill.manifest import Skill
+
+if TYPE_CHECKING:
+    from core.tools import SkillTools
 
 
 DEFAULT_WORKFLOW_MAX_STEPS = 8
@@ -133,10 +134,11 @@ def create_workflow(name: str) -> Workflow:
     return Workflow(key, mode=key, extra_instruction=instruction)
 
 
-def create_workflow_from_skill_manifest(manifest: SkillManifest) -> Workflow:
+def create_workflow_from_skill_disclosure(disclosure: SkillDisclosure) -> Workflow:
+    manifest = disclosure.read_manifest()
     if manifest.kind != "workflow":
         raise ValueError(f"skill is not a workflow kind: {manifest.name}")
-    data = _read_workflow_section(manifest.path / "skill.toml")
+    data = disclosure.read_kind_configuration().content
     # manifest.name 是对外选择名；mode 复用内置执行机制，instruction 做局部增强。
     mode = str(data.get("mode", manifest.name)).strip().lower()
     base_instruction = _workflow_instruction_for_mode(mode)
@@ -180,14 +182,6 @@ def _workflow_instruction_for_mode(mode: str) -> str | None:
         "loop": "Use runtime tools iteratively until the goal is complete. Finish by returning text without a tool call.",
     }
     return instructions.get(mode)
-
-
-def _read_workflow_section(path: Path) -> dict[str, Any]:
-    data = tomllib.loads(path.read_text(encoding="utf-8"))
-    value = data.get("workflow")
-    if not isinstance(value, dict):
-        raise ValueError(f"workflow skill manifest missing [workflow]: {path}")
-    return value
 
 
 def _read_max_steps(value: object) -> int:
