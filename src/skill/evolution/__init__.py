@@ -1,1 +1,1 @@
-"""Skill 候选、评价、保鲜度与进化实现。"""
+"""Skill candidate, evaluation, freshness, and evolution implementations."""

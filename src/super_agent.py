@@ -1,4 +1,4 @@
-"""Super Agent 的唯一公共 Python API。内部代码应直接导入定义模块。"""
+"""The only public Python API for Super Agent; internal code imports definitions directly."""
 
 from core.agent import Agent, create_progressive_disclosure_for_agent_config
 from core.benchmark import (

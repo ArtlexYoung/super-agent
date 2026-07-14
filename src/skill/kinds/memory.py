@@ -179,7 +179,7 @@ class MiniMemory:
             os.fsync(file.fileno())
 
     def _replay_active_items(self) -> dict[str, MemoryItem]:
-        # JSONL 只追加事件；当前状态每次由事件重放得到，遗忘不会删除历史证据。
+        # JSONL is append-only; replay derives current state, so forgetting preserves history.
         active: dict[str, MemoryItem] = {}
         if not self.events_path.exists():
             return active

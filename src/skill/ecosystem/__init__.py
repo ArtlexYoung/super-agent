@@ -1,1 +1,1 @@
-"""Skill 依赖锁与包管理实现。"""
+"""Skill dependency locking and package management implementations."""

@@ -239,7 +239,7 @@ class SkillEvolutionManager:
     ) -> SkillHistoryRevision | None:
         if manifest is None:
             return None
-        # 历史目录只创建一次；后续晋升和回滚只读取，不覆盖已有 revision。
+        # Create history once; promotion and rollback read revisions without overwriting them.
         revision_id = f"revision-{uuid4().hex}"
         final_path = self.state_root / "history" / manifest.name / revision_id
         staging_path = final_path.parent / f".{revision_id}.tmp"
@@ -314,7 +314,7 @@ class SkillEvolutionManager:
 
 
 def _replace_skill_directory(source: Path, target: Path) -> None:
-    # 先完整复制候选，再用目录重命名切换；失败时把旧目录放回原位。
+    # Copy the full candidate before renaming directories, restoring the old directory on failure.
     target.parent.mkdir(parents=True, exist_ok=True)
     staging = target.parent / f".{target.name}.candidate-{uuid4().hex}"
     backup = target.parent / f".{target.name}.backup-{uuid4().hex}"

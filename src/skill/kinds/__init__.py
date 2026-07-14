@@ -1,1 +1,1 @@
-"""MCP、记忆与工作流 Skill 实现。"""
+"""MCP, memory, and workflow skill implementations."""

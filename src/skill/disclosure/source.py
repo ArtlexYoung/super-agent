@@ -16,7 +16,7 @@ SUPPORTED_SKILL_KINDS = {"prompt", "mcp", "memory", "workflow"}
 
 
 def read_skill_sources(skill_roots: list[Path], disabled_names: list[str]) -> SkillSourceScan:
-    # 所有消费者共享这一次解析结果，禁止在 kind 或上层入口重复读取 TOML。
+    # Every consumer shares this parse result instead of rereading TOML in kinds or entry points.
     sources: list[SkillSource] = []
     disabled_references: list[SkillReference] = []
     issues: list[SkillValidationIssue] = []
@@ -87,7 +87,7 @@ def _skill_is_disabled(reference: SkillReference, disabled_names: list[str]) -> 
 
 
 def _validate_instructions_path(skill_root: Path, instructions: str) -> None:
-    # 指令可位于 Skill 子目录，但不能借助相对路径或符号链接逃逸能力边界。
+    # Instructions may live below the skill root but cannot escape it through paths or symlinks.
     root = skill_root.resolve()
     path = (skill_root / instructions).resolve()
     if path != root and root not in path.parents:

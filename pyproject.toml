@@ -1,6 +1,6 @@
 [project]
 name = "super-agent"
-version = "0.0.18"
+version = "0.0.19"
 description = "A lightweight, configurable, skill-first agent runtime."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -19,4 +19,4 @@ only-include = ["src/cli.py", "src/super_agent.py", "src/cli_commands", "src/cor
 sources = ["src"]
 
 [tool.hatch.build.targets.sdist]
-only-include = ["README.md", "pyproject.toml", "src", "tests", "examples"]
+only-include = ["README.md", "README_cn.md", "pyproject.toml", "src", "tests", "examples"]

@@ -10,7 +10,7 @@ from uuid import uuid4
 
 RUN_EVENT_SCHEMA_VERSION = 1
 RUN_EVENTS_FILE = "events.jsonl"
-# schema v1 使用精确字段集，避免读取时静默丢失未知事件数据。
+# Schema v1 uses an exact field set so readers never silently discard unknown event data.
 RUN_EVENT_FIELDS = {
     "schema_version",
     "run_id",

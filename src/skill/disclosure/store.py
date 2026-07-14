@@ -105,7 +105,7 @@ class SkillDisclosureStore:
 
 
 def _write_bytes_if_changed(path: Path, content: bytes) -> tuple[str, bool]:
-    # 先比较内容哈希，命中时保留文件时间，便于外部消费者稳定复用缓存路径。
+    # Preserve the file timestamp on hash hits so external consumers can reuse stable cache paths.
     digest = hashlib.sha256(content).hexdigest()
     if path.is_file() and hashlib.sha256(path.read_bytes()).hexdigest() == digest:
         return digest, True

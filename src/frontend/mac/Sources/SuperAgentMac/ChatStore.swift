@@ -316,7 +316,7 @@ final class ChatStore: ObservableObject {
             configuredNames: config.agent.skills,
             scannedChoices: scannedChoices
         )
-        // 同一棵 skills 目录按 kind 分组；配置页面不要把运行控制 skill 混进普通技能。
+        // Group the shared skill tree by kind so runtime controls stay separate from prompt skills.
         availableSkillChoices = allSkillChoices.filter { $0.kind == "prompt" }
         availableMemoryChoices = allSkillChoices.filter { $0.kind == "memory" }
         availableWorkflowChoices = allSkillChoices.filter { $0.kind == "workflow" }

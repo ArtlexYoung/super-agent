@@ -114,7 +114,7 @@ class Agent:
         try:
             disclosure = self._create_progressive_disclosure(context)
             skill_index = disclosure.prepare_skill_index()
-            # memory/workflow 是运行控制 skill；prompt/mcp 通过同一个 disclosure 进入模型上下文。
+            # Memory and workflow control execution; prompt and MCP use the same disclosure context.
             memory = self._create_memory_for_agent_run(disclosure)
             workflow = self._create_workflow_for_agent_run(disclosure)
             enabled_skill_names = self.config.agent.skills
@@ -328,7 +328,7 @@ class Agent:
         return self.config.paths.skills[0]
 
     def _create_memory_for_agent_run(self, disclosure: ProgressiveDisclosureCore) -> MiniMemory | None:
-        # 没有配置同名 memory skill 时保持无记忆运行，不隐式创建旧式能力。
+        # Run without memory when no matching skill exists instead of creating an implicit fallback.
         try:
             skill = disclosure.open_skill(self.config.agent.memory, expected_kind="memory")
         except KeyError:
@@ -336,7 +336,7 @@ class Agent:
         return create_memory_from_skill_disclosure(skill, self.config.paths.memory)
 
     def _create_workflow_for_agent_run(self, disclosure: ProgressiveDisclosureCore) -> Workflow:
-        # workflow 必须显式存在，避免拼错名称时悄悄退回 direct。
+        # Require an explicit workflow so a misspelled name cannot silently fall back to direct mode.
         try:
             skill = disclosure.open_skill(self.config.agent.workflow, expected_kind="workflow")
         except KeyError:

@@ -47,7 +47,7 @@ class ProgressiveDisclosureCore:
         return read_skill_sources(self.skill_roots, self.disabled_names).issues
 
     def prepare_skill_index(self) -> SkillIndex:
-        # 一个核心实例持有一份快照，后续选择和披露不得重新扫描目录。
+        # One core instance owns one snapshot; later selection and disclosure never rescan roots.
         scan = read_skill_sources(self.skill_roots, self.disabled_names)
         if scan.issues:
             messages = "; ".join(f"{issue.path}: {issue.message}" for issue in scan.issues)
@@ -100,7 +100,7 @@ class ProgressiveDisclosureCore:
         return self._index
 
     def _remove_disabled_skill_names(self, names: list[str]) -> list[str]:
-        # 裸名称仅在所有同名 kind 都被关闭时忽略，避免误伤仍启用的同名能力。
+        # Ignore a bare name only when every matching kind is disabled, preserving enabled peers.
         index = self._require_index()
         disabled_keys = {reference.key for reference in self._disabled_references}
         disabled_names = {reference.name for reference in self._disabled_references}

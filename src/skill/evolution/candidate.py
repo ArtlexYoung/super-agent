@@ -236,7 +236,7 @@ def _new_skill_manifest_text(name: str, goal: str, version: str) -> str:
 
 
 def _set_manifest_version(path: Path, version: str) -> None:
-    # 标准库只能写文本；完整 schema 校验由中心披露核心在候选写完后执行。
+    # The standard library writes text; the disclosure core validates the complete candidate schema.
     lines = path.read_text(encoding="utf-8").splitlines()
     replacement = f"version = {json.dumps(version)}"
     table_index = next((index for index, line in enumerate(lines) if line.lstrip().startswith("[")), len(lines))

@@ -133,7 +133,7 @@ def _score_output(
     expected_values: list[str],
     forbidden_values: list[str],
 ) -> tuple[float, list[str]]:
-    # 评价结果完全由显式字符串断言计算，不再追加一次模型裁判调用。
+    # Explicit string assertions determine the score without an additional model-as-judge call.
     checks: list[tuple[bool, str]] = []
     for value in expected_values:
         text = value.strip()

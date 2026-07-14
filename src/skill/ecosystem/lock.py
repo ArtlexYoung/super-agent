@@ -23,7 +23,7 @@ class LockedSkill:
 
 
 def write_skill_lock_file(manifests: list[SkillManifest], path: Path) -> None:
-    # lock 不写时间和绝对路径，确保同一内容逐字节一致。
+    # Excluding timestamps and absolute paths makes identical lock content byte-for-byte stable.
     locked = [_lock_manifest(manifest) for manifest in sorted(manifests, key=lambda item: item.name)]
     if len({item.name for item in locked}) != len(locked):
         raise ValueError("skill lock cannot contain duplicate skill names")

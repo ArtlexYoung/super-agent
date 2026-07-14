@@ -168,7 +168,7 @@ def _join_context(parts: list[str]) -> str:
 
 
 def _estimate_tokens(text: str) -> int:
-    # 固定字符比率避免引入模型 tokenizer，并让不同机器得到相同报告。
+    # A fixed character ratio avoids model tokenizers and keeps reports reproducible across machines.
     return math.ceil(len(text) / 4) if text else 0
 
 
