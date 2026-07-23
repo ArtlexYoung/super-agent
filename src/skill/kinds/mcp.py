@@ -95,7 +95,7 @@ class _McpStdioSession:
                 {
                     "protocolVersion": MCP_PROTOCOL_VERSION,
                     "capabilities": {},
-                    "clientInfo": {"name": "super-agent", "version": "0.0.20"},
+                    "clientInfo": {"name": "super-agent", "version": "0.0.21"},
                 },
             )
             self.send_notification("notifications/initialized", {})
@@ -175,16 +175,19 @@ class _McpStdioSession:
 
 def create_mcp_server_from_skill_disclosure(disclosure: SkillDisclosure) -> McpServer:
     manifest = disclosure.read_manifest()
-    if manifest.kind != "mcp":
-        raise ValueError(f"skill is not an MCP kind: {manifest.name}")
-    configuration = disclosure.read_kind_configuration().content
+    if manifest.capability != "mcp":
+        raise ValueError(f"skill does not use the MCP capability: {manifest.name}")
+    configuration = disclosure.read_configuration().content
+    command = str(configuration.get("command", "")).strip()
+    if not command:
+        raise ValueError(f"MCP configuration.command cannot be empty: {manifest.name}")
     return McpServer(
         name=manifest.name,
         description=manifest.description,
         version=manifest.version,
         triggers=list(manifest.triggers),
         transport=str(configuration.get("transport", "stdio")),
-        command=str(configuration.get("command", "")),
+        command=command,
         args=[str(item) for item in configuration.get("args", [])],
         env=_read_env(configuration.get("env", {})),
         path=manifest.path,

@@ -43,7 +43,7 @@ class FreshnessSkillResultEvaluator:
         for skill in record.skills:
             store.record_skill_run(
                 SkillRunRecord(
-                    skill_key=f"{skill.manifest.kind}:{skill.manifest.name}",
+                    skill_key=f"{skill.manifest.capability}:{skill.manifest.name}",
                     function_group=skill.manifest.function_group,
                     input_text=record.prompt,
                     output_text=record.output,

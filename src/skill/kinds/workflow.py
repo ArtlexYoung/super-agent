@@ -115,9 +115,9 @@ def create_workflow(name: str) -> Workflow:
 
 def create_workflow_from_skill_disclosure(disclosure: SkillDisclosure) -> Workflow:
     manifest = disclosure.read_manifest()
-    if manifest.kind != "workflow":
-        raise ValueError(f"skill is not a workflow kind: {manifest.name}")
-    data = disclosure.read_kind_configuration().content
+    if manifest.capability != "workflow":
+        raise ValueError(f"skill does not use the workflow capability: {manifest.name}")
+    data = disclosure.read_configuration().content
     # manifest.name is public; mode selects built-in execution and instruction customizes it.
     mode = str(data.get("mode", manifest.name)).strip().lower()
     base_instruction = _workflow_instruction_for_mode(mode)

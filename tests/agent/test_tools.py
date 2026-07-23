@@ -25,7 +25,7 @@ class SkillToolsTests(unittest.TestCase):
                 ToolCall(
                     "call-2",
                     "read_skill_instructions",
-                    {"name": "research", "kind": "prompt"},
+                    {"name": "research", "capability": "prompt"},
                 )
             )
 
@@ -84,9 +84,9 @@ def _write_prompt_skill(root: Path, name: str) -> None:
     skill_dir.mkdir(parents=True)
     (skill_dir / "skill.toml").write_text(
         f"""
-schema_version = 1
+schema_version = 2
 name = "{name}"
-kind = "prompt"
+capability = "prompt"
 description = "Research helper"
 version = "0.1.0"
 triggers = ["never-match"]

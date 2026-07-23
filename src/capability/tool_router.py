@@ -46,7 +46,7 @@ class RuntimeToolRouter:
         )
 
     def get_tool_definitions(self) -> list[ToolDefinition]:
-        definitions = _runtime_tool_definitions()
+        definitions = _runtime_tool_definitions(self.context.skill_index)
         if self.context.memory is not None:
             definitions.extend(_memory_tool_definitions())
         if self.context.list_subagents is not None and self.context.run_subagent is not None:
@@ -87,7 +87,7 @@ class RuntimeToolRouter:
             "key": opened.index_entry.reference.key,
             "manifest": {
                 "name": manifest.name,
-                "kind": manifest.kind,
+                "capability": manifest.capability,
                 "description": manifest.description,
                 "version": manifest.version,
                 "triggers": manifest.triggers,
@@ -100,7 +100,10 @@ class RuntimeToolRouter:
     def _read_skill_instructions(self, arguments: dict[str, object]) -> dict[str, object]:
         opened = self._open_requested_skill(arguments)
         disclosed = opened.read_instructions()
-        if opened.index_entry.reference.kind in {"prompt", "mcp"}:
+        executor = self.context.skill_executors.get(
+            opened.index_entry.reference.capability
+        )
+        if executor is not None and executor.adds_model_context:
             self._remember_used_skill(
                 load_skill_for_model_context(
                     self.context.retriever,
@@ -117,7 +120,7 @@ class RuntimeToolRouter:
 
     def _read_skill_configuration(self, arguments: dict[str, object]) -> dict[str, object]:
         opened = self._open_requested_skill(arguments)
-        disclosed = opened.read_kind_configuration()
+        disclosed = opened.read_configuration()
         return {
             "key": opened.index_entry.reference.key,
             "configuration": disclosed.content,
@@ -264,38 +267,45 @@ class RuntimeToolRouter:
 
     def _open_requested_skill(self, arguments: dict[str, object]) -> SkillDisclosure:
         name = _required_string(arguments, "name")
-        kind = _optional_string(arguments, "kind")
-        return self.context.retriever.open_skill(name, expected_kind=kind)
+        capability = _optional_string(arguments, "capability")
+        return self.context.retriever.open_skill(
+            name,
+            expected_capability=capability,
+        )
 
     def _remember_used_skill(self, skill: Skill) -> None:
-        skill_key = f"{skill.manifest.kind}:{skill.manifest.name}"
+        skill_key = f"{skill.manifest.capability}:{skill.manifest.name}"
         existing_keys = {
-            f"{item.manifest.kind}:{item.manifest.name}"
+            f"{item.manifest.capability}:{item.manifest.name}"
             for item in self.used_skills
         }
         if skill_key not in existing_keys:
             self.used_skills.append(skill)
 
 
-def _runtime_tool_definitions() -> list[ToolDefinition]:
+def _runtime_tool_definitions(skill_index: SkillIndex) -> list[ToolDefinition]:
     return [
-        _tool_definition("list_skills", "List every available skill kind from the central index.", {}),
+        _tool_definition(
+            "list_skills",
+            "List every available skill capability from the central index.",
+            {},
+        ),
         _tool_definition(
             "read_skill_manifest",
             "Disclose one skill manifest through the central cache.",
-            _skill_reference_properties(),
+            _skill_reference_properties(skill_index),
             required=["name"],
         ),
         _tool_definition(
             "read_skill_instructions",
             "Disclose one skill's instructions through the central cache.",
-            _skill_reference_properties(),
+            _skill_reference_properties(skill_index),
             required=["name"],
         ),
         _tool_definition(
             "read_skill_configuration",
-            "Disclose one skill's kind configuration through the central cache.",
-            _skill_reference_properties(),
+            "Disclose one skill's capability configuration through the central cache.",
+            _skill_reference_properties(skill_index),
             required=["name"],
         ),
         _tool_definition(
@@ -323,10 +333,15 @@ def _runtime_tool_definitions() -> list[ToolDefinition]:
     ]
 
 
-def _skill_reference_properties() -> dict[str, dict[str, object]]:
+def _skill_reference_properties(
+    skill_index: SkillIndex,
+) -> dict[str, dict[str, object]]:
+    capabilities = sorted(
+        {entry.reference.capability for entry in skill_index.entries}
+    )
     return {
         "name": {"type": "string"},
-        "kind": {"type": "string", "enum": ["prompt", "mcp", "memory", "workflow"]},
+        "capability": {"type": "string", "enum": capabilities},
     }
 
 

@@ -316,12 +316,12 @@ final class ChatStore: ObservableObject {
             configuredNames: config.agent.skills,
             scannedChoices: scannedChoices
         )
-        // Group the shared skill tree by kind so runtime controls stay separate from prompt skills.
-        availableSkillChoices = allSkillChoices.filter { $0.kind == "prompt" }
-        availableMemoryChoices = allSkillChoices.filter { $0.kind == "memory" }
-        availableWorkflowChoices = allSkillChoices.filter { $0.kind == "workflow" }
+        // Group the shared Skill tree by Capability for focused configuration lists.
+        availableSkillChoices = allSkillChoices.filter { $0.capability == "prompt" }
+        availableMemoryChoices = allSkillChoices.filter { $0.capability == "memory" }
+        availableWorkflowChoices = allSkillChoices.filter { $0.capability == "workflow" }
         availableSkillNames = allSkillChoices.map(\.name)
-        let mcpNames = allSkillChoices.filter { $0.kind == "mcp" }.map(\.name)
+        let mcpNames = allSkillChoices.filter { $0.capability == "mcp" }.map(\.name)
         availableMCPNames = sortedUnique(extractDisabledNames(prefix: "mcp:") + mcpNames)
     }
 
@@ -462,7 +462,7 @@ final class ChatStore: ObservableObject {
     ) -> [SkillManifestChoice] {
         var choicesByName: [String: SkillManifestChoice] = [:]
         for choice in scannedChoices {
-            choicesByName["\(choice.kind):\(choice.name)"] = choice
+            choicesByName["\(choice.capability):\(choice.name)"] = choice
         }
         for name in configuredNames {
             let key = "prompt:\(name)"
@@ -470,7 +470,7 @@ final class ChatStore: ObservableObject {
                 choicesByName[key] = SkillManifestChoice(
                     key: key,
                     name: name,
-                    kind: "prompt",
+                    capability: "prompt",
                     agentCreated: false,
                     agentCanUpdate: false,
                     functionGroup: name

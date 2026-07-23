@@ -95,7 +95,10 @@ def _load_configured_memory(config_path: Path) -> MiniMemory:
     config = AgentConfig.load_from_file(config_path)
     disclosure = create_default_skill_retriever(config)
     disclosure.prepare_skill_index()
-    skill = disclosure.open_skill(config.agent.memory, expected_kind="memory")
+    skill = disclosure.open_skill(
+        config.agent.memory,
+        expected_capability="memory",
+    )
     return create_memory_from_skill_disclosure(skill, config.paths.memory)
 
 

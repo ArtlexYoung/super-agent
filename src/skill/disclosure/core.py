@@ -68,24 +68,36 @@ class ProgressiveDisclosureCore:
         self,
         prompt: str,
         enabled_names: list[str] | None = None,
-        allowed_kinds: set[str] | None = None,
+        allowed_capabilities: set[str] | None = None,
     ) -> list[SkillReference]:
         index = self._require_index()
-        kinds = None if allowed_kinds is None else {kind.lower() for kind in allowed_kinds}
+        capabilities = (
+            None
+            if allowed_capabilities is None
+            else {name.lower() for name in allowed_capabilities}
+        )
         requested = self._remove_disabled_skill_names(enabled_names or [])
         prompt_text = prompt.lower()
         for entry in index.entries:
-            if kinds is not None and entry.reference.kind not in kinds:
+            if capabilities is not None and entry.reference.capability not in capabilities:
                 continue
             if any(trigger and trigger in prompt_text for trigger in entry.triggers):
                 requested.append(entry.reference.key)
         resolved = index.resolve_skill_dependencies(requested)
-        if kinds is not None:
-            resolved = [entry for entry in resolved if entry.reference.kind in kinds]
+        if capabilities is not None:
+            resolved = [
+                entry
+                for entry in resolved
+                if entry.reference.capability in capabilities
+            ]
         return [entry.reference for entry in resolved]
 
-    def open_skill(self, name: str, expected_kind: str | None = None) -> "SkillDisclosure":
-        entry = self._require_index().require_skill(name, expected_kind)
+    def open_skill(
+        self,
+        name: str,
+        expected_capability: str | None = None,
+    ) -> "SkillDisclosure":
+        entry = self._require_index().require_skill(name, expected_capability)
         return SkillDisclosure(self._sources_by_key[entry.reference.key], entry, self.store)
 
     def read_disclosed_content(self, cache_path: str | Path) -> str:
@@ -100,7 +112,7 @@ class ProgressiveDisclosureCore:
         return self._index
 
     def _remove_disabled_skill_names(self, names: list[str]) -> list[str]:
-        # Ignore a bare name only when every matching kind is disabled, preserving enabled peers.
+        # Ignore a bare name only when every matching capability is disabled.
         index = self._require_index()
         disabled_keys = {reference.key for reference in self._disabled_references}
         disabled_names = {reference.name for reference in self._disabled_references}
@@ -141,13 +153,14 @@ class SkillDisclosure:
         return self.source.manifest
 
     def read_instructions(self) -> DisclosedText:
-        path = self.source.manifest.path / self.source.manifest.entry.instructions
-        if path.is_file():
-            content = path.read_text(encoding="utf-8").strip()
-        elif self.source.reference.kind in {"memory", "workflow"}:
+        instructions = self.source.manifest.entry.instructions
+        if instructions is None:
             content = ""
         else:
-            raise FileNotFoundError(f"skill instructions not found: {path}")
+            path = self.source.manifest.path / instructions
+            if not path.is_file():
+                raise FileNotFoundError(f"skill instructions not found: {path}")
+            content = path.read_text(encoding="utf-8").strip()
         self.store.write_text(
             self.source.reference,
             "instructions",
@@ -156,8 +169,8 @@ class SkillDisclosure:
         )
         return DisclosedText(content=content, cache_path=self.index_entry.instructions_cache_path)
 
-    def read_kind_configuration(self) -> DisclosedConfiguration:
-        content = dict(self.source.kind_configuration)
+    def read_configuration(self) -> DisclosedConfiguration:
+        content = dict(self.source.configuration)
         self.store.write_json(
             self.source.reference,
             "configuration",
@@ -177,7 +190,12 @@ def _build_index_entry(
 ) -> SkillIndexEntry:
     manifest = source.manifest
     runtime = stats.get(source.reference.key, {})
-    skill_root = cache_root / "skills" / _path_segment(source.reference.kind) / _path_segment(source.reference.name)
+    skill_root = (
+        cache_root
+        / "skills"
+        / _path_segment(source.reference.capability)
+        / _path_segment(source.reference.name)
+    )
     return SkillIndexEntry(
         reference=source.reference,
         description=manifest.description,

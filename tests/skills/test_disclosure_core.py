@@ -31,8 +31,8 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "ambiguous skill name default"):
                 core.open_skill("default")
 
-            manifest = core.open_skill("default", expected_kind="memory").read_manifest()
-            self.assertEqual("memory", manifest.kind)
+            manifest = core.open_skill("default", expected_capability="memory").read_manifest()
+            self.assertEqual("memory", manifest.capability)
 
     def test_validation_rejects_name_that_cannot_form_stable_key(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -61,7 +61,7 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
             selected = core.select_skill_references_for_prompt(
                 "research this topic",
                 enabled_names=[],
-                allowed_kinds={"prompt", "mcp"},
+                allowed_capabilities={"prompt", "mcp"},
             )
 
             self.assertEqual(["prompt:http", "prompt:research"], [item.key for item in selected])
@@ -80,7 +80,7 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
             selected = core.select_skill_references_for_prompt(
                 "filesystem",
                 enabled_names=["filesystem"],
-                allowed_kinds={"prompt", "mcp"},
+                allowed_capabilities={"prompt", "mcp"},
             )
 
             self.assertEqual([], selected)
@@ -100,7 +100,7 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
             selected = core.select_skill_references_for_prompt(
                 "unrelated",
                 enabled_names=["shared"],
-                allowed_kinds={"prompt", "mcp"},
+                allowed_capabilities={"prompt", "mcp"},
             )
 
             self.assertEqual(["prompt:shared"], [item.key for item in selected])
@@ -111,12 +111,12 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
             _write_prompt_skill(root, "echo", triggers=["echo"], instruction="Answer briefly.")
             core = _create_core(root)
             core.prepare_skill_index()
-            skill = core.open_skill("echo", expected_kind="prompt")
+            skill = core.open_skill("echo", expected_capability="prompt")
 
             manifest = skill.read_manifest()
             first = skill.read_instructions()
             second = skill.read_instructions()
-            configuration = skill.read_kind_configuration()
+            configuration = skill.read_configuration()
             history = core.read_disclosure_history()
 
             self.assertEqual("echo", manifest.name)
@@ -142,17 +142,19 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "outside disclosure cache"):
                 core.read_disclosed_content(outside)
 
-    def test_validation_reports_missing_kind_configuration(self) -> None:
+    def test_configuration_is_optional_for_every_capability(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             skill_dir = root / "skills" / "memory" / "broken"
             skill_dir.mkdir(parents=True)
             _write_manifest(skill_dir, "broken", "memory")
 
-            issues = _create_core(root).validate_skill_sources()
+            core = _create_core(root)
+            issues = core.validate_skill_sources()
+            core.prepare_skill_index()
 
-            self.assertEqual(1, len(issues))
-            self.assertIn("missing [memory]", issues[0].message)
+            self.assertEqual([], issues)
+            self.assertEqual({}, core.open_skill("broken", "memory").read_configuration().content)
 
     def test_validation_rejects_instruction_path_outside_skill_directory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -186,14 +188,14 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
             core.prepare_skill_index()
 
             server = create_mcp_server_from_skill_disclosure(
-                core.open_skill("filesystem", expected_kind="mcp")
+                core.open_skill("filesystem", expected_capability="mcp")
             )
             memory = create_memory_from_skill_disclosure(
-                core.open_skill("default", expected_kind="memory"),
+                core.open_skill("default", expected_capability="memory"),
                 root / "memory-data",
             )
             workflow = create_workflow_from_skill_disclosure(
-                core.open_skill("direct", expected_kind="workflow")
+                core.open_skill("direct", expected_capability="workflow")
             )
 
             self.assertEqual("example-mcp", server.command)
@@ -263,7 +265,7 @@ def _write_mcp_skill(root: Path, name: str) -> None:
     skill_dir = root / "skills" / "mcp" / name
     skill_dir.mkdir(parents=True)
     _write_manifest(skill_dir, name, "mcp", triggers=[name], include_entry=True, extra="""
-[mcp]
+[configuration]
 transport = "stdio"
 command = "example-mcp"
 args = []
@@ -275,7 +277,7 @@ def _write_memory_skill(root: Path, name: str) -> None:
     skill_dir = root / "skills" / "memory" / name
     skill_dir.mkdir(parents=True)
     _write_manifest(skill_dir, name, "memory", extra="""
-[memory]
+[configuration]
 default_scope = "agent"
 """)
 
@@ -284,7 +286,7 @@ def _write_workflow_skill(root: Path, name: str) -> None:
     skill_dir = root / "skills" / "workflow" / name
     skill_dir.mkdir(parents=True)
     _write_manifest(skill_dir, name, "workflow", extra="""
-[workflow]
+[configuration]
 mode = "direct"
 """)
 
@@ -292,7 +294,7 @@ mode = "direct"
 def _write_manifest(
     skill_dir: Path,
     name: str,
-    kind: str,
+    capability: str,
     *,
     triggers: list[str] | None = None,
     provides: list[str] | None = None,
@@ -301,9 +303,9 @@ def _write_manifest(
     extra: str = "",
 ) -> None:
     lines = [
-        "schema_version = 1",
+        "schema_version = 2",
         f'name = "{name}"',
-        f'kind = "{kind}"',
+        f'capability = "{capability}"',
         f'description = "{name} skill"',
         'version = "0.1.0"',
         f"triggers = {_toml_array(triggers or [])}",

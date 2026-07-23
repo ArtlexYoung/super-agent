@@ -70,14 +70,14 @@ class MiniMemoryTests(unittest.TestCase):
             skill_dir.mkdir(parents=True)
             (skill_dir / "skill.toml").write_text(
                 """
-schema_version = 1
+schema_version = 2
 name = "project"
-kind = "memory"
+capability = "memory"
 description = "Project memory"
 version = "0.1.0"
 triggers = []
 
-[memory]
+[configuration]
 default_scope = "project"
 recall_limit = 3
 include_in_prompt = true

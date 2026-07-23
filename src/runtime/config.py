@@ -10,7 +10,7 @@ from typing import Any
 class AgentSettings:
     name: str
     system: str
-    # This stores a skill name; its manifest with kind = "workflow" defines the behavior.
+    # This stores a skill name whose workflow Capability defines execution behavior.
     workflow: str
     # This stores a skill name; PathsSettings.memory still determines the data directory.
     memory: str
@@ -76,7 +76,11 @@ def _default_skill_roots(project_skills: Path, builtin_skills: Path) -> list[Pat
         "memory": project_skills / "memory" / "default" / "skill.toml",
         "workflow": project_skills / "workflow" / "direct" / "skill.toml",
     }
-    roots.extend(builtin_skills / skill_type for skill_type, path in defaults.items() if not path.is_file())
+    roots.extend(
+        builtin_skills / capability_name
+        for capability_name, path in defaults.items()
+        if not path.is_file()
+    )
     return roots
 
 

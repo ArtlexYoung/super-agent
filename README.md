@@ -16,7 +16,7 @@ The project is currently experimental in the `0.0.x` series. Its priority is a r
 
 - **CLI first**: initialize, run, inspect, and manage skills for local use, automation, and open-source distribution.
 - **Python core**: the CLI is only an entry point; the same runtime embeds into services, scripts, notebooks, CI, or desktop apps.
-- **Centralized progressive disclosure**: every skill enters one shared index before its manifest, instructions, or kind-specific configuration is loaded on demand.
+- **Centralized progressive disclosure**: every Skill enters one shared index before its manifest, instructions, or Capability configuration is loaded on demand.
 - **Code-composed multi-agent systems**: create each agent independently, then connect them naturally with `Agent.add_subagent(...)`.
 - **Traceable execution**: main agents, subagents, model steps, and tool calls all emit one run-event protocol.
 - **Lightweight dependencies**: the Python runtime uses only the standard library for straightforward installation, auditing, and extension.
@@ -109,16 +109,16 @@ skills = ["skills"]
 memory = ".super-agent/memory"
 ```
 
-`workflow` and `memory` select skills by name. `paths.skills` is the shared scan root for every skill kind; `paths.memory` is a runtime data directory, not a directory of memory capabilities.
+`workflow` and `memory` select Skills by name. `paths.skills` is the shared recursive scan root for every Capability; `paths.memory` is runtime data, not Skill content.
 
-`use_features` defaults to `["skill"]`. `disable_names` can disable a whole kind, a stable key, or every skill sharing a bare name:
+`use_features` defaults to `["skill"]`. `disable_names` can disable a whole Capability, a stable key, or every Skill sharing a bare name:
 
 ```toml
 [agent]
 disable_names = ["memory:default", "workflow:direct", "prompt:echo", "mcp"]
 ```
 
-Stable identities always use `kind:name`. A bare name such as `echo` matches every skill named `echo`.
+Stable identities always use `capability:name`. A bare name such as `echo` matches every Skill named `echo`.
 
 ### Model Providers
 
@@ -140,7 +140,7 @@ Secrets are read only from the environment variable named by `api_key_env`; they
 
 ## Unified Skill Model
 
-Every capability lives in one skill tree and is distinguished by `kind`:
+Every Skill declares the execution mechanism it needs through `capability`:
 
 - `prompt`: instructions disclosed to the model.
 - `mcp`: discoverable and callable MCP tools.
@@ -150,15 +150,15 @@ Every capability lives in one skill tree and is distinguished by `kind`:
 A minimal prompt skill:
 
 ```text
-skills/echo/
+skills/prompt/echo/
   skill.toml
   SKILL.md
 ```
 
 ```toml
-schema_version = 1
+schema_version = 2
 name = "echo"
-kind = "prompt"
+capability = "prompt"
 description = "Minimal example skill"
 version = "0.1.0"
 triggers = ["echo", "brief"]
@@ -173,7 +173,7 @@ requires = []
 instructions = "SKILL.md"
 ```
 
-`SKILL.md` contains the instructions disclosed to the model. The runtime reads it only when configuration, a trigger, or dependency resolution selects the skill.
+`SKILL.md` contains instructions disclosed to the model. `[entry]` is optional for configuration-only Skills. Arbitrary Capability names are discovered automatically; registering a matching Skill executor is enough to make a new model-facing Capability runnable.
 
 ### Composition and Dependencies
 
@@ -190,7 +190,7 @@ super-agent skills graph --config agent.toml --name report
 super-agent skills lock --config agent.toml --name report --output skill.lock
 ```
 
-`skill.lock` records kinds, versions, capability edges, and directory SHA-256 values without timestamps or absolute paths, making identical inputs byte-for-byte reproducible.
+`skill.lock` records Capability names, versions, dependency edges, and directory SHA-256 values without timestamps or absolute paths, making identical inputs byte-for-byte reproducible.
 
 ## Centralized Progressive Disclosure
 
@@ -199,9 +199,9 @@ super-agent skills lock --config agent.toml --name report --output skill.lock
 Each run discloses capabilities in four stages:
 
 1. `index`: writes summaries, freshness, and cache paths for all enabled skills without reading instruction bodies.
-2. `manifest`: writes a normalized manifest on demand and distinguishes same-named skills by `kind:name`.
+2. `manifest`: writes a normalized manifest on demand and distinguishes same-named Skills by `capability:name`.
 3. `instructions`: reads `SKILL.md` only for selected skills.
-4. `configuration`: reads kind-specific MCP, memory, or workflow configuration only when needed.
+4. `configuration`: reads the shared `[configuration]` table only when a Capability needs it.
 
 Default cache layout:
 
@@ -209,9 +209,9 @@ Default cache layout:
 .super-agent/memory/disclosure/
   index.json
   history.jsonl
-  skills/<kind>/<name>/manifest.json
-  skills/<kind>/<name>/instructions.md
-  skills/<kind>/<name>/configuration.json
+  skills/<capability>/<name>/manifest.json
+  skills/<capability>/<name>/instructions.md
+  skills/<capability>/<name>/configuration.json
 ```
 
 Unchanged content reuses the existing cache file and path based on SHA-256. Every disclosure appends to `history.jsonl`, and the model can call `read_disclosed_content` with a cache path already present in the index.
@@ -220,7 +220,7 @@ Core Python APIs:
 
 - `prepare_skill_index()`: prepares the central skill index.
 - `select_skill_references_for_prompt(...)`: selects skills through configuration, triggers, and dependencies.
-- `open_skill(...)`: opens a staged disclosure handle by name and optional kind.
+- `open_skill(...)`: opens a staged disclosure handle by name and optional Capability.
 - `read_disclosed_content(...)`: reads content from an existing disclosure cache path.
 - `read_disclosure_history()`: reads the complete disclosure-path history.
 
@@ -229,14 +229,14 @@ Core Python APIs:
 A workflow is itself a skill:
 
 ```toml
-schema_version = 1
+schema_version = 2
 name = "react"
-kind = "workflow"
+capability = "workflow"
 description = "Tool-using workflow"
 version = "0.1.0"
 triggers = []
 
-[workflow]
+[configuration]
 mode = "react"
 max_steps = 8
 instruction = "Finish as soon as the task is complete."
@@ -319,14 +319,14 @@ Each line has a `type` of either `event` or `result`.
 A memory skill defines policy, while user memory and usage habits remain in the runtime directory:
 
 ```toml
-schema_version = 1
+schema_version = 2
 name = "default"
-kind = "memory"
+capability = "memory"
 description = "Default memory behavior"
 version = "0.1.0"
 triggers = []
 
-[memory]
+[configuration]
 default_scope = "agent"
 recall_limit = 20
 include_in_prompt = true
@@ -425,12 +425,12 @@ Candidates, evaluation reports, and history are stored under `.super-agent/memor
 
 ## MCP Skills
 
-MCP is an ordinary skill with `kind = "mcp"`:
+MCP is an ordinary Skill with `capability = "mcp"`:
 
 ```toml
-schema_version = 1
+schema_version = 2
 name = "filesystem"
-kind = "mcp"
+capability = "mcp"
 description = "Example stdio MCP server"
 version = "0.1.0"
 triggers = ["filesystem", "files"]
@@ -438,12 +438,12 @@ triggers = ["filesystem", "files"]
 [entry]
 instructions = "SKILL.md"
 
-[mcp]
+[configuration]
 transport = "stdio"
 command = "npx"
 args = ["-y", "@modelcontextprotocol/server-filesystem"]
 
-[mcp.env]
+[configuration.env]
 ROOT_PATH = "/tmp"
 ```
 
@@ -504,7 +504,7 @@ Internal code imports definition modules directly without intermediate facades. 
 
 ## Schemas and Compatibility
 
-A skill manifest must explicitly set `schema_version = 1` and provide `name`, `kind`, `description`, `version`, and `triggers`. `prompt` and `mcp` also require `[entry]`; `memory` and `workflow` use their same-named configuration tables as behavior entry points.
+A Skill manifest must explicitly set `schema_version = 2` and provide `name`, `capability`, `description`, `version`, and `triggers`. `[entry]` optionally points to instructions, while one generic `[configuration]` table carries settings for any Capability. Schema v1 and legacy Capability-specific tables are rejected instead of converted implicitly.
 
 Run event v1 has exactly eight fields: `schema_version`, `run_id`, `sequence`, `event_type`, `created_at`, `agent_name`, `parent_run_id`, and `data`. Readers reject missing fields, unknown fields, invalid types, and unsupported schema versions instead of applying silent compatibility behavior.
 

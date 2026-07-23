@@ -78,9 +78,9 @@ skills = ["skills"]
             skill_dir.mkdir(parents=True)
             (skill_dir / "skill.toml").write_text(
                 """
-schema_version = 1
+schema_version = 2
 name = "echo"
-kind = "prompt"
+capability = "prompt"
 description = "Echo helper"
 version = "0.1.0"
 triggers = ["repeat", "echo"]
@@ -97,11 +97,11 @@ instructions = "SKILL.md"
                 Path(tmp) / "cache",
             )
             disclosure.prepare_skill_index()
-            loaded = disclosure.open_skill("echo", expected_kind="prompt")
+            loaded = disclosure.open_skill("echo", expected_capability="prompt")
             selected = disclosure.select_skill_references_for_prompt(
                 "please repeat this",
                 ["echo"],
-                allowed_kinds={"prompt", "mcp"},
+                allowed_capabilities={"prompt", "mcp"},
             )
 
             self.assertEqual("echo", loaded.read_manifest().name)
@@ -116,9 +116,9 @@ instructions = "SKILL.md"
             skill_dir.mkdir(parents=True)
             (skill_dir / "skill.toml").write_text(
                 """
-schema_version = 1
+schema_version = 2
 name = "echo"
-kind = "prompt"
+capability = "prompt"
 description = "Echo helper"
 version = "0.1.0"
 triggers = ["echo"]

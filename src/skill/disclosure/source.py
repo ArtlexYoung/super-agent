@@ -12,9 +12,6 @@ from skill.disclosure.models import (
 from skill.manifest import skill_manifest_from_dict
 
 
-SUPPORTED_SKILL_KINDS = {"prompt", "mcp", "memory", "workflow"}
-
-
 def read_skill_sources(skill_roots: list[Path], disabled_names: list[str]) -> SkillSourceScan:
     # Every consumer shares this parse result instead of rereading TOML in kinds or entry points.
     sources: list[SkillSource] = []
@@ -47,28 +44,24 @@ def read_skill_sources(skill_roots: list[Path], disabled_names: list[str]) -> Sk
 def _read_skill_source(path: Path) -> SkillSource:
     data = tomllib.loads(path.read_text(encoding="utf-8"))
     manifest = skill_manifest_from_dict(data, path)
-    if manifest.kind not in SUPPORTED_SKILL_KINDS:
-        raise ValueError(f"unsupported skill kind: {manifest.kind}")
-    _validate_instructions_path(manifest.path, manifest.entry.instructions)
-    configuration = _read_kind_configuration(data, manifest.kind, path)
+    if manifest.entry.instructions is not None:
+        _validate_instructions_path(manifest.path, manifest.entry.instructions)
+    configuration = _read_configuration(data, path)
     return SkillSource(
-        reference=SkillReference(kind=manifest.kind, name=manifest.name),
+        reference=SkillReference(capability=manifest.capability, name=manifest.name),
         manifest=manifest,
-        kind_configuration=configuration,
+        configuration=configuration,
         manifest_path=path,
     )
 
 
-def _read_kind_configuration(
+def _read_configuration(
     data: dict[str, object],
-    kind: str,
     path: Path,
 ) -> dict[str, object]:
-    if kind == "prompt":
-        return {}
-    value = data.get(kind)
+    value = data.get("configuration", {})
     if not isinstance(value, dict):
-        raise ValueError(f"{kind} skill manifest missing [{kind}]: {path}")
+        raise ValueError(f"skill configuration must be a TOML table: {path}")
     return dict(value)
 
 
@@ -83,7 +76,7 @@ def _list_manifest_paths(roots: list[Path]) -> list[Path]:
 
 def _skill_is_disabled(reference: SkillReference, disabled_names: list[str]) -> bool:
     values = {item.strip().lower() for item in disabled_names}
-    return reference.kind in values or reference.name in values or reference.key in values
+    return reference.capability in values or reference.name in values or reference.key in values
 
 
 def _validate_instructions_path(skill_root: Path, instructions: str) -> None:

@@ -87,7 +87,7 @@ class Agent:
 
     def add_skill_executor(self, skill_executor: SkillExecutor) -> None:
         executors = dict(self.capabilities.skill_executors)
-        executors[skill_executor.skill_type] = skill_executor
+        executors[skill_executor.capability_name] = skill_executor
         self._replace_capabilities(skill_executors=executors)
 
     def set_skill_result_evaluator(self, evaluator: SkillResultEvaluator) -> None:

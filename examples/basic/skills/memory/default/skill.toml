@@ -1,8 +1,8 @@
-schema_version = 1
+schema_version = 2
 name = "default"
-kind = "memory"
+capability = "memory"
 description = "Default memory behavior"
 version = "0.1.0"
 triggers = []
 
-[memory]
+[configuration]

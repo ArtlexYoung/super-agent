@@ -7,7 +7,7 @@ private struct SkillIndexDocument: Decodable {
 private struct SkillIndexEntry: Decodable {
     var key: String
     var name: String
-    var kind: String
+    var capability: String
     var agentCreated: Bool
     var agentCanUpdate: Bool
     var freshness: Double
@@ -73,7 +73,7 @@ enum SkillIndexClient {
             let choice = SkillManifestChoice(
                 key: entry.key,
                 name: entry.name,
-                kind: entry.kind,
+                capability: entry.capability,
                 agentCreated: entry.agentCreated,
                 agentCanUpdate: entry.agentCanUpdate,
                 freshness: entry.freshness,

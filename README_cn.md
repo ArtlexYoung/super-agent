@@ -16,7 +16,7 @@ Super Agent 是一个简单、轻量、配置化的 **skill-first agent runtime*
 
 - **CLI 优先**：初始化、运行、检查和管理 Skill，适合本地使用、自动化和开源传播。
 - **Python 内核**：CLI 只是入口；同一个 runtime 可以嵌入服务、脚本、Notebook、CI 或桌面应用。
-- **中心化渐进披露**：所有 Skill 先进入统一索引，命中后才读取 manifest、指令和类型配置。
+- **中心化渐进披露**：所有 Skill 先进入统一索引，命中后才读取 manifest、指令和 Capability 配置。
 - **代码式多 Agent**：每个 Agent 独立创建，再通过 `Agent.add_subagent(...)` 自然组合。
 - **可追踪执行**：主 Agent、子 Agent、模型步骤和工具调用都写入统一运行事件。
 - **轻依赖**：Python runtime 只使用标准库，便于安装、审计和二次开发。
@@ -109,16 +109,16 @@ skills = ["skills"]
 memory = ".super-agent/memory"
 ```
 
-`workflow` 和 `memory` 是 Skill 名称选择器。`paths.skills` 是所有 Skill 类型共享的扫描入口；`paths.memory` 是运行数据目录，不是记忆能力目录。
+`workflow` 和 `memory` 是 Skill 名称选择器。`paths.skills` 是所有 Capability 共用的递归扫描入口；`paths.memory` 保存运行数据，不保存 Skill 内容。
 
-`use_features` 默认是 `["skill"]`。`disable_names` 可以关闭整个类型、稳定键或所有同名 Skill：
+`use_features` 默认是 `["skill"]`。`disable_names` 可以关闭整个 Capability、稳定键或所有同名 Skill：
 
 ```toml
 [agent]
 disable_names = ["memory:default", "workflow:direct", "prompt:echo", "mcp"]
 ```
 
-稳定身份统一使用 `kind:name`。不带类型的 `echo` 会匹配所有名为 `echo` 的 Skill。
+稳定身份统一使用 `capability:name`。不带 Capability 的 `echo` 会匹配所有同名 Skill。
 
 ### 模型 Provider
 
@@ -140,7 +140,7 @@ api_key_env = "OPENAI_API_KEY"
 
 ## 统一 Skill 模型
 
-所有能力都位于同一棵 Skill 树中，并由 `kind` 区分：
+每个 Skill 通过 `capability` 声明它需要的执行机制：
 
 - `prompt`：给模型使用的指令。
 - `mcp`：可发现、可调用的 MCP 工具。
@@ -150,15 +150,15 @@ api_key_env = "OPENAI_API_KEY"
 一个最小 prompt Skill：
 
 ```text
-skills/echo/
+skills/prompt/echo/
   skill.toml
   SKILL.md
 ```
 
 ```toml
-schema_version = 1
+schema_version = 2
 name = "echo"
-kind = "prompt"
+capability = "prompt"
 description = "Minimal example skill"
 version = "0.1.0"
 triggers = ["echo", "brief"]
@@ -173,7 +173,7 @@ requires = []
 instructions = "SKILL.md"
 ```
 
-`SKILL.md` 保存真正披露给模型的说明。配置启用、触发词命中或依赖解析命中时，runtime 才会读取它。
+`SKILL.md` 保存真正披露给模型的说明。纯配置 Skill 可以省略 `[entry]`。中心 parser 会自动发现任意 Capability 名；注册同名 Skill executor 后，新的模型侧 Capability 就能直接执行。
 
 ### 组合与依赖
 
@@ -190,7 +190,7 @@ super-agent skills graph --config agent.toml --name report
 super-agent skills lock --config agent.toml --name report --output skill.lock
 ```
 
-`skill.lock` 记录 kind、版本、能力边和目录 SHA-256，不记录时间或绝对路径，因此相同输入会生成逐字节一致的文件。
+`skill.lock` 记录 Capability 名、版本、依赖边和目录 SHA-256，不记录时间或绝对路径，因此相同输入会生成逐字节一致的文件。
 
 ## 中心化渐进披露
 
@@ -199,9 +199,9 @@ super-agent skills lock --config agent.toml --name report --output skill.lock
 每次运行按四个阶段披露：
 
 1. `index`：写入所有未禁用 Skill 的摘要、保鲜度和缓存路径，不读取指令正文。
-2. `manifest`：按需写入规范化 manifest，并通过 `kind:name` 区分同名 Skill。
+2. `manifest`：按需写入规范化 manifest，并通过 `capability:name` 区分同名 Skill。
 3. `instructions`：只读取被选择 Skill 的 `SKILL.md`。
-4. `configuration`：只读取 MCP、memory 或 workflow 的类型配置。
+4. `configuration`：只在 Capability 需要时读取统一的 `[configuration]` 表。
 
 默认缓存结构：
 
@@ -209,9 +209,9 @@ super-agent skills lock --config agent.toml --name report --output skill.lock
 .super-agent/memory/disclosure/
   index.json
   history.jsonl
-  skills/<kind>/<name>/manifest.json
-  skills/<kind>/<name>/instructions.md
-  skills/<kind>/<name>/configuration.json
+  skills/<capability>/<name>/manifest.json
+  skills/<capability>/<name>/instructions.md
+  skills/<capability>/<name>/configuration.json
 ```
 
 内容 SHA-256 没有变化时会复用原缓存文件和路径。每次披露都会追加到 `history.jsonl`；模型也可以直接调用 `read_disclosed_content` 读取索引中已给出的缓存路径。
@@ -220,7 +220,7 @@ super-agent skills lock --config agent.toml --name report --output skill.lock
 
 - `prepare_skill_index()`：生成中心 Skill 索引。
 - `select_skill_references_for_prompt(...)`：按配置、触发词和依赖选择 Skill。
-- `open_skill(...)`：用名称和可选 kind 打开分阶段披露句柄。
+- `open_skill(...)`：用名称和可选 Capability 打开分阶段披露句柄。
 - `read_disclosed_content(...)`：读取已经披露的缓存内容。
 - `read_disclosure_history()`：读取完整披露路径历史。
 
@@ -229,14 +229,14 @@ super-agent skills lock --config agent.toml --name report --output skill.lock
 workflow 本身也是 Skill：
 
 ```toml
-schema_version = 1
+schema_version = 2
 name = "react"
-kind = "workflow"
+capability = "workflow"
 description = "Tool-using workflow"
 version = "0.1.0"
 triggers = []
 
-[workflow]
+[configuration]
 mode = "react"
 max_steps = 8
 instruction = "Finish as soon as the task is complete."
@@ -319,14 +319,14 @@ printf '%s' '{"prompt":"hello","messages":[]}' \
 memory Skill 定义策略，用户记忆与调用习惯保存在运行目录：
 
 ```toml
-schema_version = 1
+schema_version = 2
 name = "default"
-kind = "memory"
+capability = "memory"
 description = "Default memory behavior"
 version = "0.1.0"
 triggers = []
 
-[memory]
+[configuration]
 default_scope = "agent"
 recall_limit = 20
 include_in_prompt = true
@@ -425,12 +425,12 @@ super-agent skills rollback --config agent.toml --name research-note
 
 ## MCP Skill
 
-MCP 也是普通 Skill，使用 `kind = "mcp"`：
+MCP 也是普通 Skill，使用 `capability = "mcp"`：
 
 ```toml
-schema_version = 1
+schema_version = 2
 name = "filesystem"
-kind = "mcp"
+capability = "mcp"
 description = "Example stdio MCP server"
 version = "0.1.0"
 triggers = ["filesystem", "files"]
@@ -438,12 +438,12 @@ triggers = ["filesystem", "files"]
 [entry]
 instructions = "SKILL.md"
 
-[mcp]
+[configuration]
 transport = "stdio"
 command = "npx"
 args = ["-y", "@modelcontextprotocol/server-filesystem"]
 
-[mcp.env]
+[configuration.env]
 ROOT_PATH = "/tmp"
 ```
 
@@ -504,7 +504,7 @@ print(result.text)
 
 ## Schema 与兼容性
 
-Skill manifest 必须显式设置 `schema_version = 1`，并提供 `name`、`kind`、`description`、`version` 和 `triggers`。`prompt` 与 `mcp` 还必须提供 `[entry]`；`memory` 与 `workflow` 使用同名配置表作为行为入口。
+Skill manifest 必须显式设置 `schema_version = 2`，并提供 `name`、`capability`、`description`、`version` 和 `triggers`。`[entry]` 可选，用来指向说明文件；任意 Capability 的设置都统一写入 `[configuration]`。v1 与旧的 Capability 专用配置表会被直接拒绝，不做隐式转换。
 
 运行事件 v1 固定包含 `schema_version`、`run_id`、`sequence`、`event_type`、`created_at`、`agent_name`、`parent_run_id` 和 `data`。读取器拒绝缺失字段、未知字段、错误类型和不支持的 schema 版本，不做静默兼容。
 

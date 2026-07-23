@@ -18,8 +18,8 @@ class CliTests(unittest.TestCase):
             root = Path(tmp)
             self.assertEqual(0, code)
             self.assertTrue((root / "agent.toml").exists())
-            self.assertTrue((root / "skills" / "echo" / "skill.toml").exists())
-            self.assertTrue((root / "skills" / "echo" / "SKILL.md").exists())
+            self.assertTrue((root / "skills" / "prompt" / "echo" / "skill.toml").exists())
+            self.assertTrue((root / "skills" / "prompt" / "echo" / "SKILL.md").exists())
             self.assertTrue((root / "skills" / "mcp" / "filesystem" / "skill.toml").exists())
             self.assertTrue((root / "skills" / "mcp" / "filesystem" / "SKILL.md").exists())
             self.assertTrue((root / "skills" / "memory" / "default" / "skill.toml").exists())
@@ -57,9 +57,10 @@ class CliTests(unittest.TestCase):
 
             data = json.loads(output.getvalue())
             self.assertEqual(0, code)
+            self.assertEqual(2, data["schema_version"])
             self.assertEqual(
                 {"mcp", "memory", "prompt", "workflow"},
-                {item["kind"] for item in data["skills"]},
+                {item["capability"] for item in data["skills"]},
             )
             self.assertTrue(all("key" in item for item in data["skills"]))
 
@@ -180,11 +181,15 @@ class CliTests(unittest.TestCase):
             self.assertEqual(0, promote_code)
             self.assertIn(
                 "agent_created = true",
-                (root / "skills" / "agent-note" / "skill.toml").read_text(encoding="utf-8"),
+                (root / "skills" / "prompt" / "agent-note" / "skill.toml").read_text(
+                    encoding="utf-8"
+                ),
             )
             self.assertEqual(
                 "Mock response\n",
-                (root / "skills" / "agent-note" / "SKILL.md").read_text(encoding="utf-8"),
+                (root / "skills" / "prompt" / "agent-note" / "SKILL.md").read_text(
+                    encoding="utf-8"
+                ),
             )
 
     def test_skills_freshness_prints_runtime_stats(self) -> None:
@@ -280,9 +285,9 @@ class CliTests(unittest.TestCase):
             update_source.mkdir()
             (update_source / "skill.toml").write_text(
                 """
-schema_version = 1
+schema_version = 2
 name = "echo"
-kind = "prompt"
+capability = "prompt"
 description = "Updated echo"
 version = "0.2.0"
 triggers = ["echo"]
@@ -310,10 +315,11 @@ instructions = "SKILL.md"
             self.assertEqual(0, remove_code)
             self.assertEqual(0, install_code)
             self.assertEqual(0, update_code)
-            self.assertTrue((root / "skills" / "echo" / "skill.toml").exists())
+            installed = root / "skills" / "prompt" / "echo"
+            self.assertTrue((installed / "skill.toml").exists())
             self.assertEqual(
                 "Updated echo.",
-                (root / "skills" / "echo" / "SKILL.md").read_text(encoding="utf-8"),
+                (installed / "SKILL.md").read_text(encoding="utf-8"),
             )
 
     def test_run_reads_stdin_request_and_streams_jsonl_events(self) -> None:

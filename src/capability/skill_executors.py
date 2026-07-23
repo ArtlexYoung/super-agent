@@ -13,11 +13,11 @@ from skill.manifest import Skill
 class PromptSkillExecutor:
     name = "prompt-context"
     version = "1"
-    skill_type = "prompt"
+    capability_name = "prompt"
     adds_model_context = True
 
     def load_skill(self, request: SkillLoadRequest) -> SkillLoadResult:
-        opened = request.retriever.open_skill(request.reference.name, self.skill_type)
+        opened = request.retriever.open_skill(request.reference.name, self.capability_name)
         skill = Skill(
             manifest=opened.read_manifest(),
             instructions=opened.read_instructions().content,
@@ -28,11 +28,11 @@ class PromptSkillExecutor:
 class McpSkillExecutor:
     name = "mcp-stdio"
     version = "1"
-    skill_type = "mcp"
+    capability_name = "mcp"
     adds_model_context = True
 
     def load_skill(self, request: SkillLoadRequest) -> SkillLoadResult:
-        opened = request.retriever.open_skill(request.reference.name, self.skill_type)
+        opened = request.retriever.open_skill(request.reference.name, self.capability_name)
         server = create_mcp_server_from_skill_disclosure(opened)
         skill = Skill(manifest=opened.read_manifest(), instructions=server.build_skill_instructions())
         return SkillLoadResult(model_skill=skill, runtime_value=server)
@@ -41,11 +41,11 @@ class McpSkillExecutor:
 class MemorySkillExecutor:
     name = "event-memory"
     version = "1"
-    skill_type = "memory"
+    capability_name = "memory"
     adds_model_context = False
 
     def load_skill(self, request: SkillLoadRequest) -> SkillLoadResult:
-        opened = request.retriever.open_skill(request.reference.name, self.skill_type)
+        opened = request.retriever.open_skill(request.reference.name, self.capability_name)
         memory = create_memory_from_skill_disclosure(opened, request.state_root)
         return SkillLoadResult(runtime_value=memory)
 
@@ -53,11 +53,11 @@ class MemorySkillExecutor:
 class WorkflowSkillExecutor:
     name = "tool-loop"
     version = "1"
-    skill_type = "workflow"
+    capability_name = "workflow"
     adds_model_context = False
 
     def load_skill(self, request: SkillLoadRequest) -> SkillLoadResult:
-        opened = request.retriever.open_skill(request.reference.name, self.skill_type)
+        opened = request.retriever.open_skill(request.reference.name, self.capability_name)
         workflow = create_workflow_from_skill_disclosure(opened)
         return SkillLoadResult(runtime_value=workflow)
 
@@ -69,7 +69,7 @@ def create_builtin_skill_executors() -> dict[str, SkillExecutor]:
         MemorySkillExecutor(),
         WorkflowSkillExecutor(),
     ]
-    return {executor.skill_type: executor for executor in executors}
+    return {executor.capability_name: executor for executor in executors}
 
 
 def load_skill_for_model_context(
@@ -78,10 +78,12 @@ def load_skill_for_model_context(
     executors: dict[str, SkillExecutor],
     state_root: Path,
 ) -> Skill:
-    executor = executors.get(reference.kind)
+    executor = executors.get(reference.capability)
     if executor is None:
-        raise KeyError(f"skill executor not found for type: {reference.kind}")
+        raise KeyError(f"skill executor not found for capability: {reference.capability}")
     loaded = executor.load_skill(SkillLoadRequest(retriever, reference, state_root))
     if loaded.model_skill is None:
-        raise ValueError(f"skill type cannot enter model context: {reference.kind}")
+        raise ValueError(
+            f"skill capability cannot enter model context: {reference.capability}"
+        )
     return loaded.model_skill

@@ -8,19 +8,19 @@ from skill.manifest import SkillManifest
 
 @dataclass(frozen=True)
 class SkillReference:
-    kind: str
+    capability: str
     name: str
 
     @property
     def key(self) -> str:
-        return f"{self.kind}:{self.name}"
+        return f"{self.capability}:{self.name}"
 
 
 @dataclass(frozen=True)
 class SkillSource:
     reference: SkillReference
     manifest: SkillManifest
-    kind_configuration: dict[str, object]
+    configuration: dict[str, object]
     manifest_path: Path
 
 
@@ -68,22 +68,32 @@ class SkillIndex:
     def __post_init__(self) -> None:
         object.__setattr__(self, "_entries_by_key", {entry.reference.key: entry for entry in self.entries})
 
-    def find_skill(self, name: str, expected_kind: str | None = None) -> SkillIndexEntry | None:
+    def find_skill(
+        self,
+        name: str,
+        expected_capability: str | None = None,
+    ) -> SkillIndexEntry | None:
         clean_name = _clean_name(name)
-        if expected_kind is not None:
-            return self._entries_by_key.get(f"{expected_kind.strip().lower()}:{clean_name}")
+        if expected_capability is not None:
+            return self._entries_by_key.get(
+                f"{expected_capability.strip().lower()}:{clean_name}"
+            )
         if ":" in clean_name:
             return self._entries_by_key.get(clean_name)
         matches = [entry for entry in self.entries if entry.reference.name == clean_name]
         if len(matches) > 1:
-            raise ValueError(f"ambiguous skill name {clean_name}; use kind:name")
+            raise ValueError(f"ambiguous skill name {clean_name}; use capability:name")
         return matches[0] if matches else None
 
-    def require_skill(self, name: str, expected_kind: str | None = None) -> SkillIndexEntry:
-        entry = self.find_skill(name, expected_kind)
+    def require_skill(
+        self,
+        name: str,
+        expected_capability: str | None = None,
+    ) -> SkillIndexEntry:
+        entry = self.find_skill(name, expected_capability)
         if entry is None:
-            kind_text = "" if expected_kind is None else f"{expected_kind}:"
-            raise KeyError(f"skill not found: {kind_text}{name}")
+            capability_text = "" if expected_capability is None else f"{expected_capability}:"
+            raise KeyError(f"skill not found: {capability_text}{name}")
         return entry
 
     def resolve_skill_dependencies(self, names: list[str]) -> list[SkillIndexEntry]:
@@ -139,12 +149,12 @@ class SkillDisclosureEvent:
 
 def skill_index_to_dict(index: SkillIndex) -> dict[str, object]:
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "skills": [
             {
                 "key": entry.reference.key,
                 "name": entry.reference.name,
-                "kind": entry.reference.kind,
+                "capability": entry.reference.capability,
                 "description": entry.description,
                 "version": entry.version,
                 "triggers": list(entry.triggers),

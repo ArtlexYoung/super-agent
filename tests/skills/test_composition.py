@@ -81,7 +81,7 @@ class SkillCompositionTests(unittest.TestCase):
             disclosure, index = _prepare_disclosure(root)
             resolved = index.resolve_skill_dependencies(["research"])
             manifests = [
-                disclosure.open_skill(item.reference.name, item.reference.kind).read_manifest()
+                disclosure.open_skill(item.reference.name, item.reference.capability).read_manifest()
                 for item in resolved
             ]
             first_path = root / "first.lock"
@@ -152,9 +152,9 @@ def _write_skill(
     required = _toml_array(requires or [])
     (skill_dir / "skill.toml").write_text(
         f"""
-schema_version = 1
+schema_version = 2
 name = "{name}"
-kind = "prompt"
+capability = "prompt"
 description = "{name} skill"
 version = "0.1.0"
 provides = {provided}

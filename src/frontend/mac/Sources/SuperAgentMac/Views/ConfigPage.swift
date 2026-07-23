@@ -169,7 +169,7 @@ private struct MemoryDefaultView: View {
             HStack {
                 FieldTitleView(
                     title: "默认记忆行为",
-                    help: "对应 [agent].memory。运行时会选择同名 kind = \"memory\" 的 skill，并使用 [paths].memory 保存数据。"
+                    help: "对应 [agent].memory。运行时会选择 capability = \"memory\" 的同名 Skill，并使用 [paths].memory 保存数据。"
                 )
                 DefaultTagView(text: chatStore.config.agent.memory)
                 Button("恢复 default") {
@@ -242,8 +242,21 @@ private struct SkillManifestListView: View {
 
     private func skillIsOpenBinding(_ choice: SkillManifestChoice) -> Binding<Bool> {
         Binding(
-            get: { skillIsOpen(choice.name, kind: choice.kind, config: chatStore.config) },
-            set: { setSkillOpen(choice.name, kind: choice.kind, isOpen: $0, config: $chatStore.config) }
+            get: {
+                skillIsOpen(
+                    choice.name,
+                    capability: choice.capability,
+                    config: chatStore.config
+                )
+            },
+            set: {
+                setSkillOpen(
+                    choice.name,
+                    capability: choice.capability,
+                    isOpen: $0,
+                    config: $chatStore.config
+                )
+            }
         )
     }
 }
@@ -332,12 +345,18 @@ private struct MCPManifestListView: View {
             Toggle(
                 "允许 MCP 类型",
                 isOn: Binding(
-                    get: { skillKindIsEnabled("mcp", config: chatStore.config) },
-                    set: { setSkillKindEnabled("mcp", isEnabled: $0, config: $chatStore.config) }
+                    get: { skillCapabilityIsEnabled("mcp", config: chatStore.config) },
+                    set: {
+                        setSkillCapabilityEnabled(
+                            "mcp",
+                            isEnabled: $0,
+                            config: $chatStore.config
+                        )
+                    }
                 )
             )
             .toggleStyle(.checkbox)
-            .help("MCP 不再是独立 use_features。关闭会写入 disable_names = [\"mcp\"]，运行时仍从 [paths].skills 递归扫描 kind = \"mcp\" 的 skill。")
+            .help("MCP 不再是独立 use_features。关闭会写入 disable_names = [\"mcp\"]，运行时仍从 [paths].skills 递归扫描 capability = \"mcp\" 的 Skill。")
 
             if chatStore.availableMCPNames.isEmpty {
                 EmptyChoiceTextView("中心披露索引中没有可用的 MCP Skill。")

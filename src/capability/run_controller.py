@@ -35,7 +35,7 @@ class DefaultRunController:
                 references = retriever.select_skill_references_for_prompt(
                     request.prompt,
                     context.config.agent.skills,
-                    allowed_kinds={"prompt", "mcp"},
+                    allowed_capabilities=_model_context_capabilities(context),
                 )
                 disclosed_skills = [
                     _load_model_skill(context, retriever, reference)
@@ -139,12 +139,14 @@ def _load_model_skill(
     retriever: SkillRetrieverSession,
     reference: SkillReference,
 ) -> Skill:
-    executor = context.capabilities.require_skill_executor(reference.kind)
+    executor = context.capabilities.require_skill_executor(reference.capability)
     loaded = executor.load_skill(
         SkillLoadRequest(retriever, reference, context.config.paths.memory)
     )
     if loaded.model_skill is None:
-        raise ValueError(f"skill type cannot enter model context: {reference.kind}")
+        raise ValueError(
+            f"skill capability cannot enter model context: {reference.capability}"
+        )
     return loaded.model_skill
 
 
@@ -257,10 +259,18 @@ def _record_skill_results(
 
 def _merge_used_skills(first: list[Skill], second: list[Skill]) -> list[Skill]:
     merged = list(first)
-    keys = {f"{skill.manifest.kind}:{skill.manifest.name}" for skill in merged}
+    keys = {f"{skill.manifest.capability}:{skill.manifest.name}" for skill in merged}
     for skill in second:
-        key = f"{skill.manifest.kind}:{skill.manifest.name}"
+        key = f"{skill.manifest.capability}:{skill.manifest.name}"
         if key not in keys:
             merged.append(skill)
             keys.add(key)
     return merged
+
+
+def _model_context_capabilities(context: CapabilityRunContext) -> set[str]:
+    return {
+        capability_name
+        for capability_name, executor in context.capabilities.skill_executors.items()
+        if executor.adds_model_context
+    }

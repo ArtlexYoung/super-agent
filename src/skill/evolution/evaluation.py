@@ -159,7 +159,7 @@ def _read_candidate_instructions(candidate: SkillCandidate) -> str:
     entry = index.entries[0]
     instructions = disclosure.open_skill(
         entry.reference.name,
-        entry.reference.kind,
+        entry.reference.capability,
     ).read_instructions().content
     if not instructions:
         raise ValueError("candidate instructions cannot be empty")

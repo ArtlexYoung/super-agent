@@ -20,11 +20,15 @@ class SkillRetrieverSession(Protocol):
         self,
         prompt: str,
         enabled_names: list[str] | None = None,
-        allowed_kinds: set[str] | None = None,
+        allowed_capabilities: set[str] | None = None,
     ) -> list[SkillReference]:
         ...
 
-    def open_skill(self, name: str, expected_kind: str | None = None) -> SkillDisclosure:
+    def open_skill(
+        self,
+        name: str,
+        expected_capability: str | None = None,
+    ) -> SkillDisclosure:
         ...
 
     def read_disclosed_content(self, cache_path: str | Path) -> str:
@@ -59,7 +63,7 @@ class SkillLoadResult:
 class SkillExecutor(Protocol):
     name: str
     version: str
-    skill_type: str
+    capability_name: str
     adds_model_context: bool
 
     def load_skill(self, request: SkillLoadRequest) -> SkillLoadResult:
@@ -130,8 +134,8 @@ class AgentCapabilitySet:
     skill_updater: SkillUpdaterCapability
     run_recorder: RunRecorder
 
-    def require_skill_executor(self, skill_type: str) -> SkillExecutor:
-        executor = self.skill_executors.get(skill_type.strip().lower())
+    def require_skill_executor(self, capability_name: str) -> SkillExecutor:
+        executor = self.skill_executors.get(capability_name.strip().lower())
         if executor is None:
-            raise KeyError(f"skill executor not found for type: {skill_type}")
+            raise KeyError(f"skill executor not found for capability: {capability_name}")
         return executor

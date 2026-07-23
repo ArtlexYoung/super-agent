@@ -112,7 +112,11 @@ class SkillEvolutionManager:
             action="promotion_backup",
             previous_revision_id=previous_revision_id,
         )
-        target = self.skill_root / candidate.name if current is None else current.path
+        target = (
+            self.skill_root / "prompt" / candidate.name
+            if current is None
+            else current.path
+        )
         _replace_skill_directory(candidate.skill_path, target)
         promoted = self._read_active_manifest(candidate.name)
         if promoted is None:
@@ -227,7 +231,7 @@ class SkillEvolutionManager:
             return None
         return self.skill_disclosure.open_skill(
             entry.reference.name,
-            entry.reference.kind,
+            entry.reference.capability,
         ).read_manifest()
 
     def _snapshot_current_skill(

@@ -64,8 +64,8 @@ class SkillBenchmark:
             entry
             for entry in skill_index.entries
             if (
-                entry.reference.kind in self.skill_executors
-                and self.skill_executors[entry.reference.kind].adds_model_context
+                entry.reference.capability in self.skill_executors
+                and self.skill_executors[entry.reference.capability].adds_model_context
             )
         ]
         disclosure_index = _build_disclosure_index(skill_index, self.skill_disclosure.cache_root)
@@ -109,7 +109,11 @@ class SkillBenchmark:
         selected_references = self.skill_disclosure.select_skill_references_for_prompt(
             prompt,
             case.enabled_skills,
-            allowed_kinds={"prompt", "mcp"},
+            allowed_capabilities={
+                name
+                for name, executor in self.skill_executors.items()
+                if executor.adds_model_context
+            },
         )
         selected = [
             load_skill_for_model_context(

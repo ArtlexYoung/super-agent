@@ -47,7 +47,7 @@ class SkillPackageManagerTests(unittest.TestCase):
             self.assertEqual("demo", installed_zip.name)
             self.assertEqual(
                 "Use local demo.",
-                (zip_target / "demo" / "SKILL.md").read_text(encoding="utf-8"),
+                (zip_target / "prompt" / "demo" / "SKILL.md").read_text(encoding="utf-8"),
             )
 
     @unittest.skipIf(shutil.which("git") is None, "git is required")
@@ -95,7 +95,7 @@ class SkillPackageManagerTests(unittest.TestCase):
             manager.remove_skill("demo")
             self.assertFalse(current.exists())
 
-    def test_kind_name_selects_one_skill_when_names_are_shared(self) -> None:
+    def test_capability_name_selects_one_skill_when_names_are_shared(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             skill_root = root / "skills"
@@ -105,7 +105,7 @@ class SkillPackageManagerTests(unittest.TestCase):
                 "shared",
                 "0.2.0",
                 "Memory instructions.",
-                kind="memory",
+                capability="memory",
             )
             manager = _manager(skill_root)
 
@@ -113,22 +113,22 @@ class SkillPackageManagerTests(unittest.TestCase):
 
             with zipfile.ZipFile(package_path) as archive:
                 manifest = archive.read("shared/skill.toml").decode("utf-8")
-            self.assertIn('kind = "memory"', manifest)
+            self.assertIn('capability = "memory"', manifest)
 
-    def test_update_rejects_changing_skill_kind(self) -> None:
+    def test_update_rejects_changing_skill_capability(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             skill_root = root / "skills"
             current = skill_root / "memory" / "shared"
             source = root / "updated"
-            _write_skill(current, "shared", "0.1.0", "Memory instructions.", kind="memory")
+            _write_skill(current, "shared", "0.1.0", "Memory instructions.", capability="memory")
             _write_skill(source, "shared", "0.2.0", "Prompt instructions.")
 
-            with self.assertRaisesRegex(ValueError, "kind does not match target"):
+            with self.assertRaisesRegex(ValueError, "capability does not match target"):
                 _manager(skill_root).update_skill("memory:shared", str(source))
 
             self.assertIn(
-                'kind = "memory"',
+                'capability = "memory"',
                 (current / "skill.toml").read_text(encoding="utf-8"),
             )
 
@@ -177,21 +177,21 @@ def _write_skill(
     version: str,
     instructions: str,
     *,
-    kind: str = "prompt",
+    capability: str = "prompt",
 ) -> None:
     path.mkdir(parents=True, exist_ok=True)
     (path / "skill.toml").write_text(
         f"""
-schema_version = 1
+schema_version = 2
 name = "{name}"
-kind = "{kind}"
+capability = "{capability}"
 description = "Packaged skill"
 version = "{version}"
 triggers = ["{name}"]
 
 [entry]
 instructions = "SKILL.md"
-{"" if kind == "prompt" else f"\n[{kind}]\ndefault_scope = \"agent\""}
+{"" if capability == "prompt" else "\n[configuration]\ndefault_scope = \"agent\""}
 """.strip(),
         encoding="utf-8",
     )

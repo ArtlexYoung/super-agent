@@ -6,6 +6,7 @@ from pathlib import Path
 
 from agents.agent import Agent
 from capability.defaults import create_default_skill_retriever
+from capability.skill_executors import create_builtin_skill_executors
 from runtime.config import AgentConfig
 from skill.disclosure import ProgressiveDisclosureCore, SkillIndexEntry, skill_index_to_dict
 from skill.ecosystem.package import SkillPackageManager
@@ -90,7 +91,7 @@ def _list_skills(config_path: Path) -> int:
     index = _load_skill_disclosure(config_path).prepare_skill_index()
     for entry in index.entries:
         print(
-            f"{entry.reference.name}\t{entry.reference.kind}"
+            f"{entry.reference.name}\t{entry.reference.capability}"
             f"\tagent_created={str(entry.agent_created).lower()}"
             f"\tagent_can_update={str(entry.agent_can_update).lower()}"
             f"\tfreshness={entry.freshness:.2f}"
@@ -181,7 +182,7 @@ def _explain_skills(config_path: Path, prompt: str) -> int:
         for reference in disclosure.select_skill_references_for_prompt(
             prompt,
             config.agent.skills,
-            allowed_kinds={"prompt", "mcp"},
+            allowed_capabilities=_default_model_context_capabilities(),
         )
     }
     for entry in index.entries:
@@ -198,7 +199,7 @@ def _explain_index_entry(
     enabled_names: list[str],
     selected: bool,
 ) -> str:
-    if entry.reference.kind not in {"prompt", "mcp"}:
+    if entry.reference.capability not in _default_model_context_capabilities():
         return "runtime control skill"
     prompt_text = prompt.lower()
     trigger = next((value for value in entry.triggers if value and value in prompt_text), None)
@@ -224,7 +225,10 @@ def _write_skill_lock(args: argparse.Namespace) -> int:
     index = disclosure.prepare_skill_index()
     entries = index.resolve_skill_dependencies(args.name)
     manifests = [
-        disclosure.open_skill(entry.reference.name, entry.reference.kind).read_manifest()
+        disclosure.open_skill(
+            entry.reference.name,
+            entry.reference.capability,
+        ).read_manifest()
         for entry in entries
     ]
     output = Path(args.output)
@@ -269,7 +273,10 @@ def _resolve_skills(config_path: Path, names: list[str]) -> list[SkillManifest]:
     disclosure = _load_skill_disclosure(config_path)
     index = disclosure.prepare_skill_index()
     return [
-        disclosure.open_skill(entry.reference.name, entry.reference.kind).read_manifest()
+        disclosure.open_skill(
+            entry.reference.name,
+            entry.reference.capability,
+        ).read_manifest()
         for entry in index.resolve_skill_dependencies(names)
     ]
 
@@ -284,6 +291,14 @@ def _load_package_manager(config_path: Path) -> SkillPackageManager:
     if not config.paths.skills:
         raise ValueError("agent has no skill path configured")
     return SkillPackageManager(create_default_skill_retriever(config), config.paths.skills[0])
+
+
+def _default_model_context_capabilities() -> set[str]:
+    return {
+        name
+        for name, executor in create_builtin_skill_executors().items()
+        if executor.adds_model_context
+    }
 
 
 def _add_evolution_name_arguments(parser: argparse.ArgumentParser) -> None:

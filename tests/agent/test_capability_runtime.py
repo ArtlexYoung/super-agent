@@ -71,6 +71,21 @@ class CapabilityRuntimeTests(unittest.TestCase):
             self.assertEqual(1, executor.load_count)
             self.assertIn("Loaded by custom executor.", provider.last_messages[0]["content"])
 
+    def test_registered_custom_capability_is_discovered_and_executed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_prompt_skill(root, capability="transform")
+            provider = MockProvider("finished")
+            executor = _TransformSkillExecutor()
+            agent = Agent(AgentConfig.create_default(root), provider=provider)
+            agent.add_skill_executor(executor)
+
+            result = agent.run("please echo this")
+
+            self.assertEqual("finished", result.text)
+            self.assertEqual(1, executor.load_count)
+            self.assertIn("Loaded by custom executor.", provider.last_messages[0]["content"])
+
     def test_runtime_engine_does_not_import_concrete_capabilities(self) -> None:
         tree = ast.parse(Path("src/runtime/engine.py").read_text(encoding="utf-8"))
         imported_modules = {
@@ -112,7 +127,7 @@ class _FixedRunController:
 class _RecordingPromptExecutor:
     name = "recording-prompt"
     version = "1"
-    skill_type = "prompt"
+    capability_name = "prompt"
     adds_model_context = True
 
     def __init__(self) -> None:
@@ -120,7 +135,7 @@ class _RecordingPromptExecutor:
 
     def load_skill(self, request: SkillLoadRequest) -> SkillLoadResult:
         self.load_count += 1
-        opened = request.retriever.open_skill(request.reference.name, self.skill_type)
+        opened = request.retriever.open_skill(request.reference.name, self.capability_name)
         return SkillLoadResult(
             model_skill=Skill(
                 manifest=opened.read_manifest(),
@@ -129,14 +144,18 @@ class _RecordingPromptExecutor:
         )
 
 
-def _write_prompt_skill(root: Path) -> None:
+class _TransformSkillExecutor(_RecordingPromptExecutor):
+    capability_name = "transform"
+
+
+def _write_prompt_skill(root: Path, capability: str = "prompt") -> None:
     skill_root = root / "skills" / "echo"
     skill_root.mkdir(parents=True)
     (skill_root / "skill.toml").write_text(
-        """
-schema_version = 1
+        f"""
+schema_version = 2
 name = "echo"
-kind = "prompt"
+capability = "{capability}"
 description = "Echo helper"
 version = "0.1.0"
 triggers = ["echo"]

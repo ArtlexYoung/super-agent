@@ -9,13 +9,13 @@ from uuid import uuid4
 from skill.manifest import SkillManifest, calculate_skill_directory_sha256
 
 
-SKILL_LOCK_SCHEMA_VERSION = 1
+SKILL_LOCK_SCHEMA_VERSION = 2
 
 
 @dataclass(frozen=True)
 class LockedSkill:
     name: str
-    kind: str
+    capability: str
     version: str
     sha256: str
     provides: list[str]
@@ -24,16 +24,23 @@ class LockedSkill:
 
 def write_skill_lock_file(manifests: list[SkillManifest], path: Path) -> None:
     # Excluding timestamps and absolute paths makes identical lock content byte-for-byte stable.
-    locked = [_lock_manifest(manifest) for manifest in sorted(manifests, key=lambda item: item.name)]
-    if len({item.name for item in locked}) != len(locked):
-        raise ValueError("skill lock cannot contain duplicate skill names")
+    locked = [
+        _lock_manifest(manifest)
+        for manifest in sorted(
+            manifests,
+            key=lambda item: (item.capability, item.name),
+        )
+    ]
+    keys = {(item.capability, item.name) for item in locked}
+    if len(keys) != len(locked):
+        raise ValueError("skill lock cannot contain duplicate skill keys")
     lines = [f"schema_version = {SKILL_LOCK_SCHEMA_VERSION}", ""]
     for item in locked:
         lines.extend(
             [
                 "[[skills]]",
                 f"name = {json.dumps(item.name)}",
-                f"kind = {json.dumps(item.kind)}",
+                f"capability = {json.dumps(item.capability)}",
                 f"version = {json.dumps(item.version)}",
                 f"sha256 = {json.dumps(item.sha256)}",
                 f"provides = {_toml_string_array(item.provides)}",
@@ -47,7 +54,7 @@ def write_skill_lock_file(manifests: list[SkillManifest], path: Path) -> None:
 def _lock_manifest(manifest: SkillManifest) -> LockedSkill:
     return LockedSkill(
         name=manifest.name,
-        kind=manifest.kind,
+        capability=manifest.capability,
         version=manifest.version,
         sha256=calculate_skill_directory_sha256(manifest.path),
         provides=sorted(manifest.provides),

@@ -1,9 +1,9 @@
-schema_version = 1
+schema_version = 2
 name = "direct"
-kind = "workflow"
+capability = "workflow"
 description = "Built-in direct workflow"
-version = "0.0.20"
+version = "0.0.21"
 triggers = []
 
-[workflow]
+[configuration]
 mode = "direct"

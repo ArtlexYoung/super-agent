@@ -48,7 +48,7 @@ class McpSkillTests(unittest.TestCase):
             disclosure = _prepare_disclosure(root)
             selected = disclosure.select_skill_references_for_prompt(
                 "please inspect filesystem",
-                allowed_kinds={"prompt", "mcp"},
+                allowed_capabilities={"prompt", "mcp"},
             )
             skill = load_skill_for_model_context(
                 disclosure,
@@ -58,7 +58,7 @@ class McpSkillTests(unittest.TestCase):
             )
 
             self.assertEqual("filesystem", skill.manifest.name)
-            self.assertEqual("mcp", skill.manifest.kind)
+            self.assertEqual("mcp", skill.manifest.capability)
             self.assertIn("Protocol: mcp", skill.instructions)
             self.assertIn("Command: npx -y @mcp/server-filesystem", skill.instructions)
             self.assertEqual(["mcp:filesystem"], [item.key for item in selected])
@@ -86,22 +86,19 @@ class McpSkillTests(unittest.TestCase):
             self.assertIn("Environment variables: GITHUB_TOKEN", skill.instructions)
             self.assertNotIn("secret-token", skill.instructions)
 
-    def test_mcp_skill_requires_mcp_section(self) -> None:
+    def test_mcp_executor_requires_command_configuration(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             server_dir = root / "skills" / "mcp" / "bad"
             server_dir.mkdir(parents=True)
             (server_dir / "skill.toml").write_text(
                 """
-schema_version = 1
+schema_version = 2
 name = "bad"
-kind = "mcp"
+capability = "mcp"
 description = "Missing mcp table"
 version = "0.1.0"
 triggers = ["bad"]
-transport = "stdio"
-command = "npx"
-args = ["-y", "@mcp/server-bad"]
 
 [entry]
 instructions = "SKILL.md"
@@ -109,8 +106,12 @@ instructions = "SKILL.md"
                 encoding="utf-8",
             )
 
-            with self.assertRaises(ValueError):
-                _prepare_disclosure(root)
+            disclosure = _prepare_disclosure(root)
+
+            with self.assertRaisesRegex(ValueError, "configuration.command cannot be empty"):
+                create_mcp_server_from_skill_disclosure(
+                    disclosure.open_skill("bad", "mcp")
+                )
 
     def test_config_can_disable_whole_mcp_feature_by_name_list(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -165,12 +166,12 @@ def _write_mcp_server(
     env_text = ""
     if env:
         env_lines = "\n".join(f'{key} = "{value}"' for key, value in env.items())
-        env_text = f"\n[mcp.env]\n{env_lines}"
+        env_text = f"\n[configuration.env]\n{env_lines}"
     (server_dir / "skill.toml").write_text(
         f"""
-schema_version = 1
+schema_version = 2
 name = "{name}"
-kind = "mcp"
+capability = "mcp"
 description = "{description}"
 version = "0.1.0"
 triggers = ["{name}"]
@@ -178,7 +179,7 @@ triggers = ["{name}"]
 [entry]
 instructions = "SKILL.md"
 
-[mcp]
+[configuration]
 transport = "stdio"
 command = "{command}"
 args = [{args_text}]
@@ -194,9 +195,9 @@ def _write_skill(root: Path, name: str, description: str, instruction: str) -> N
     skill_dir.mkdir(parents=True)
     (skill_dir / "skill.toml").write_text(
         f"""
-schema_version = 1
+schema_version = 2
 name = "{name}"
-kind = "prompt"
+capability = "prompt"
 description = "{description}"
 version = "0.1.0"
 triggers = ["{name}"]

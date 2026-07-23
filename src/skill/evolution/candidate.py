@@ -47,7 +47,7 @@ def create_candidate(
     if current_entry is not None:
         current_disclosure = skill_disclosure.open_skill(
             current_entry.reference.name,
-            current_entry.reference.kind,
+            current_entry.reference.capability,
         )
         current = current_disclosure.read_manifest()
     if current is not None and not current.agent_can_update:
@@ -221,7 +221,7 @@ def _new_skill_manifest_text(name: str, goal: str, version: str) -> str:
         [
             f"schema_version = {SKILL_SCHEMA_VERSION}",
             f"name = {json.dumps(name)}",
-            'kind = "prompt"',
+            'capability = "prompt"',
             f"description = {json.dumps(goal, ensure_ascii=False)}",
             f"version = {json.dumps(version)}",
             "agent_created = true",

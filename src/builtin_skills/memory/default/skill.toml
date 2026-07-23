@@ -1,11 +1,11 @@
-schema_version = 1
+schema_version = 2
 name = "default"
-kind = "memory"
+capability = "memory"
 description = "Built-in event-based memory"
-version = "0.0.20"
+version = "0.0.21"
 triggers = []
 
-[memory]
+[configuration]
 default_scope = "agent"
 recall_limit = 20
 include_in_prompt = true

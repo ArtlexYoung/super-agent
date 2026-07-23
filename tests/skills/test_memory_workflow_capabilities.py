@@ -8,23 +8,23 @@ from provider.chat import MockProvider
 from skill.kinds.memory import MiniMemory
 
 
-class MemoryWorkflowKindTests(unittest.TestCase):
-    def test_agent_loads_memory_from_memory_kind_skill(self) -> None:
+class MemoryWorkflowCapabilityTests(unittest.TestCase):
+    def test_agent_loads_memory_from_memory_capability_skill(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_workflow_skill(root, "direct", "direct")
             _write_memory_skill(root, "default")
-            _write_memory_item(root, "Remember via skill kind.")
+            _write_memory_item(root, "Remember via Skill Capability.")
             provider = MockProvider("ok")
 
             result = Agent(AgentConfig.load_from_file(_write_config(root)), provider=provider).run(
-                "remember via skill kind"
+                "remember via Skill Capability"
             )
 
             self.assertEqual("ok", result.text)
-            self.assertIn("Remember via skill kind.", provider.last_messages[0]["content"])
+            self.assertIn("Remember via Skill Capability.", provider.last_messages[0]["content"])
 
-    def test_agent_can_disable_named_memory_kind_skill(self) -> None:
+    def test_agent_can_disable_named_memory_capability_skill(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_workflow_skill(root, "direct", "direct")
@@ -39,10 +39,10 @@ class MemoryWorkflowKindTests(unittest.TestCase):
 
             self.assertNotIn("Should stay hidden.", provider.last_messages[0]["content"])
 
-    def test_agent_loads_workflow_from_workflow_kind_skill(self) -> None:
+    def test_agent_loads_workflow_from_workflow_capability_skill(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            _write_workflow_skill(root, "careful", "plan", instruction="Workflow kind marker.")
+            _write_workflow_skill(root, "careful", "plan", instruction="Workflow Capability marker.")
             provider = MockProvider("ok")
 
             result = Agent(AgentConfig.load_from_file(_write_config(root, workflow="careful")), provider=provider).run(
@@ -50,7 +50,7 @@ class MemoryWorkflowKindTests(unittest.TestCase):
             )
 
             self.assertEqual("careful", result.workflow)
-            self.assertIn("Workflow kind marker.", provider.last_messages[0]["content"])
+            self.assertIn("Workflow Capability marker.", provider.last_messages[0]["content"])
 
 
 def _write_memory_skill(root: Path, name: str) -> None:
@@ -58,14 +58,14 @@ def _write_memory_skill(root: Path, name: str) -> None:
     skill_dir.mkdir(parents=True)
     (skill_dir / "skill.toml").write_text(
         f"""
-schema_version = 1
+schema_version = 2
 name = "{name}"
-kind = "memory"
+capability = "memory"
 description = "Default memory"
 version = "0.1.0"
 triggers = []
 
-[memory]
+[configuration]
 """.strip(),
         encoding="utf-8",
     )
@@ -77,14 +77,14 @@ def _write_workflow_skill(root: Path, name: str, mode: str, *, instruction: str 
     instruction_line = f'instruction = "{instruction}"' if instruction else ""
     (skill_dir / "skill.toml").write_text(
         f"""
-schema_version = 1
+schema_version = 2
 name = "{name}"
-kind = "workflow"
+capability = "workflow"
 description = "{name} workflow"
 version = "0.1.0"
 triggers = []
 
-[workflow]
+[configuration]
 mode = "{mode}"
 {instruction_line}
 """.strip(),

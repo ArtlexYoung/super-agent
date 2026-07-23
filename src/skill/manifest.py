@@ -8,12 +8,29 @@ from pathlib import Path
 from skill.evolution.freshness import DEFAULT_FRESHNESS
 
 
-SKILL_SCHEMA_VERSION = 1
+SKILL_SCHEMA_VERSION = 2
+SKILL_MANIFEST_FIELDS = {
+    "schema_version",
+    "name",
+    "capability",
+    "description",
+    "version",
+    "triggers",
+    "entry",
+    "configuration",
+    "agent_created",
+    "agent_can_update",
+    "freshness",
+    "function_group",
+    "freshness_updated_at",
+    "provides",
+    "requires",
+}
 
 
 @dataclass(frozen=True)
 class SkillEntry:
-    instructions: str
+    instructions: str | None = None
 
 
 @dataclass(frozen=True)
@@ -25,7 +42,7 @@ class SkillManifest:
     entry: SkillEntry
     path: Path
     schema_version: int = SKILL_SCHEMA_VERSION
-    kind: str = "prompt"
+    capability: str = "prompt"
     agent_created: bool = False
     agent_can_update: bool = False
     freshness: float = DEFAULT_FRESHNESS
@@ -36,9 +53,10 @@ class SkillManifest:
 
 def skill_manifest_from_dict(data: dict[str, object], path: Path) -> SkillManifest:
     schema_version = _read_schema_version(data)
+    _reject_unknown_manifest_fields(data)
     name = _read_skill_name(data, path)
-    kind = _read_required_string(data, "kind").strip().lower()
-    entry = _read_entry(data, kind)
+    capability = _read_capability_name(data)
+    entry = _read_entry(data)
     agent_created = _read_bool(data, "agent_created", False)
     return SkillManifest(
         name=name,
@@ -48,7 +66,7 @@ def skill_manifest_from_dict(data: dict[str, object], path: Path) -> SkillManife
         entry=entry,
         path=path.parent,
         schema_version=schema_version,
-        kind=kind,
+        capability=capability,
         agent_created=agent_created,
         agent_can_update=_read_bool(data, "agent_can_update", agent_created),
         freshness=_read_freshness(data),
@@ -72,16 +90,22 @@ def _read_bool(data: dict[str, object], name: str, default: bool) -> bool:
     return value
 
 
+def _reject_unknown_manifest_fields(data: dict[str, object]) -> None:
+    unknown = sorted(set(data) - SKILL_MANIFEST_FIELDS)
+    if unknown:
+        raise ValueError(f"unknown skill manifest fields: {', '.join(unknown)}")
+
+
 def _read_schema_version(data: dict[str, object]) -> int:
     if "schema_version" not in data:
-        raise ValueError("skill manifest missing schema_version; migrate by adding schema_version = 1")
+        raise ValueError("skill manifest missing schema_version; migrate by adding schema_version = 2")
     value = data["schema_version"]
     if isinstance(value, bool) or not isinstance(value, int):
         raise ValueError("skill schema_version must be an integer")
     if value != SKILL_SCHEMA_VERSION:
         raise ValueError(
             f"unsupported skill schema_version: {value}; "
-            "migrate the manifest before setting schema_version = 1"
+            "migrate the manifest before setting schema_version = 2"
         )
     return value
 
@@ -112,16 +136,23 @@ def _read_capabilities(
     return capabilities
 
 
-def _read_entry(data: dict[str, object], kind: str) -> SkillEntry:
+def _read_entry(data: dict[str, object]) -> SkillEntry:
     value = data.get("entry")
-    if value is None and kind in {"memory", "workflow"}:
-        return SkillEntry(instructions="SKILL.md")
+    if value is None:
+        return SkillEntry()
     if not isinstance(value, dict):
-        raise ValueError(f"skill kind {kind} requires an [entry] table")
+        raise ValueError("skill entry must be a TOML table")
     instructions = value.get("instructions")
     if not isinstance(instructions, str) or not instructions.strip():
         raise ValueError("skill entry.instructions must be a non-empty string")
-    return SkillEntry(instructions=instructions)
+    return SkillEntry(instructions=instructions.strip())
+
+
+def _read_capability_name(data: dict[str, object]) -> str:
+    capability = _read_required_string(data, "capability").strip().lower()
+    if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", capability):
+        raise ValueError("skill capability must use lowercase letters, numbers, '-' or '_'")
+    return capability
 
 
 def _read_required_string(data: dict[str, object], name: str) -> str:
@@ -160,14 +191,13 @@ def skill_manifest_to_dict(manifest: SkillManifest) -> dict[str, object]:
             f"migrate skill schema_version {manifest.schema_version} to "
             f"skill schema_version {SKILL_SCHEMA_VERSION}"
         )
-    return {
+    data: dict[str, object] = {
         "schema_version": manifest.schema_version,
         "name": manifest.name,
-        "kind": manifest.kind,
+        "capability": manifest.capability,
         "description": manifest.description,
         "version": manifest.version,
         "triggers": list(manifest.triggers),
-        "entry": {"instructions": manifest.entry.instructions},
         "agent_created": manifest.agent_created,
         "agent_can_update": manifest.agent_can_update,
         "freshness": manifest.freshness,
@@ -176,6 +206,9 @@ def skill_manifest_to_dict(manifest: SkillManifest) -> dict[str, object]:
         "provides": list(manifest.provides),
         "requires": list(manifest.requires),
     }
+    if manifest.entry.instructions is not None:
+        data["entry"] = {"instructions": manifest.entry.instructions}
+    return data
 
 
 def calculate_skill_directory_sha256(path: Path) -> str:

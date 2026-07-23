@@ -75,7 +75,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def _run_init_command(root: Path) -> int:
     root.mkdir(parents=True, exist_ok=True)
-    skill_dir = root / "skills" / "echo"
+    skill_dir = root / "skills" / "prompt" / "echo"
     mcp_skill_dir = root / "skills" / "mcp" / "filesystem"
     memory_skill_dir = root / "skills" / "memory" / "default"
     workflow_skill_dir = root / "skills" / "workflow" / "direct"
@@ -208,9 +208,9 @@ memory = ".super-agent/memory"
 
 def _default_skill_manifest() -> str:
     return """
-schema_version = 1
+schema_version = 2
 name = "echo"
-kind = "prompt"
+capability = "prompt"
 description = "Minimal example skill"
 version = "0.1.0"
 agent_created = false
@@ -228,9 +228,9 @@ instructions = "SKILL.md"
 
 def _default_mcp_skill_manifest() -> str:
     return """
-schema_version = 1
+schema_version = 2
 name = "filesystem"
-kind = "mcp"
+capability = "mcp"
 description = "Example stdio MCP server"
 version = "0.1.0"
 triggers = ["filesystem", "files"]
@@ -238,7 +238,7 @@ triggers = ["filesystem", "files"]
 [entry]
 instructions = "SKILL.md"
 
-[mcp]
+[configuration]
 transport = "stdio"
 command = "npx"
 args = ["-y", "@modelcontextprotocol/server-filesystem"]
@@ -247,14 +247,14 @@ args = ["-y", "@modelcontextprotocol/server-filesystem"]
 
 def _default_memory_skill_manifest() -> str:
     return """
-schema_version = 1
+schema_version = 2
 name = "default"
-kind = "memory"
+capability = "memory"
 description = "Default memory behavior"
 version = "0.1.0"
 triggers = []
 
-[memory]
+[configuration]
 default_scope = "agent"
 recall_limit = 20
 include_in_prompt = true
@@ -264,14 +264,14 @@ include_usage_habits = true
 
 def _default_workflow_skill_manifest() -> str:
     return """
-schema_version = 1
+schema_version = 2
 name = "direct"
-kind = "workflow"
+capability = "workflow"
 description = "Direct workflow"
 version = "0.1.0"
 triggers = []
 
-[workflow]
+[configuration]
 mode = "direct"
 """.lstrip()
 

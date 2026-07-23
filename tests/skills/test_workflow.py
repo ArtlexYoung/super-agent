@@ -22,7 +22,7 @@ class ExecutableWorkflowTests(unittest.TestCase):
                             ToolCall(
                                 "read-1",
                                 "read_skill_instructions",
-                                {"name": "research", "kind": "prompt"},
+                                {"name": "research", "capability": "prompt"},
                             )
                         ],
                         "tool_calls",
@@ -64,14 +64,14 @@ def _write_config(root: Path, *, mode: str, max_steps: int) -> Path:
     workflow_dir.mkdir(parents=True)
     (workflow_dir / "skill.toml").write_text(
         f"""
-schema_version = 1
+schema_version = 2
 name = "{mode}"
-kind = "workflow"
+capability = "workflow"
 description = "Executable {mode} workflow"
 version = "0.1.0"
 triggers = []
 
-[workflow]
+[configuration]
 mode = "{mode}"
 max_steps = {max_steps}
 """.strip(),
@@ -105,9 +105,9 @@ def _write_prompt_skill(root: Path, name: str) -> None:
     skill_dir.mkdir(parents=True)
     (skill_dir / "skill.toml").write_text(
         f"""
-schema_version = 1
+schema_version = 2
 name = "{name}"
-kind = "prompt"
+capability = "prompt"
 description = "Research helper"
 version = "0.1.0"
 triggers = ["never-match"]

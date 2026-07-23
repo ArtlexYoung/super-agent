@@ -252,56 +252,68 @@ func setFeatureEnabled(_ name: String, isEnabled: Bool, config: Binding<AgentTom
     }
 }
 
-func skillIsOpen(_ name: String, kind: String, config: AgentTomlConfig) -> Bool {
+func skillIsOpen(_ name: String, capability: String, config: AgentTomlConfig) -> Bool {
     featureIsEnabled("skill", config: config)
         && config.agent.skills.contains(name)
-        && skillKindIsEnabled(kind, config: config)
-        && !config.agent.disableNames.contains("\(kind):\(name)")
+        && skillCapabilityIsEnabled(capability, config: config)
+        && !config.agent.disableNames.contains("\(capability):\(name)")
         && !config.agent.disableNames.contains(name)
 }
 
-func setSkillOpen(_ name: String, kind: String, isOpen: Bool, config: Binding<AgentTomlConfig>) {
+func setSkillOpen(
+    _ name: String,
+    capability: String,
+    isOpen: Bool,
+    config: Binding<AgentTomlConfig>
+) {
     if isOpen {
         setFeatureEnabled("skill", isEnabled: true, config: config)
-        setSkillKindEnabled(kind, isEnabled: true, config: config)
+        setSkillCapabilityEnabled(capability, isEnabled: true, config: config)
         addUnique(name, to: &config.wrappedValue.agent.skills)
-        removeValues(["\(kind):\(name)", name], from: &config.wrappedValue.agent.disableNames)
+        removeValues(
+            ["\(capability):\(name)", name],
+            from: &config.wrappedValue.agent.disableNames
+        )
     } else {
         removeValues([name], from: &config.wrappedValue.agent.skills)
-        addUnique("\(kind):\(name)", to: &config.wrappedValue.agent.disableNames)
+        addUnique("\(capability):\(name)", to: &config.wrappedValue.agent.disableNames)
     }
 }
 
 func memoryIsOpen(_ name: String, config: AgentTomlConfig) -> Bool {
-    skillKindIsEnabled("memory", config: config)
+    skillCapabilityIsEnabled("memory", config: config)
         && !config.agent.disableNames.contains("memory:\(name)")
         && !config.agent.disableNames.contains(name)
 }
 
 func setMemoryOpen(_ name: String, isOpen: Bool, config: Binding<AgentTomlConfig>) {
     if isOpen {
-        setSkillKindEnabled("memory", isEnabled: true, config: config)
+        setSkillCapabilityEnabled("memory", isEnabled: true, config: config)
         removeValues(["memory:\(name)", name], from: &config.wrappedValue.agent.disableNames)
     } else {
         addUnique("memory:\(name)", to: &config.wrappedValue.agent.disableNames)
     }
 }
 
-func skillKindIsEnabled(_ kind: String, config: AgentTomlConfig) -> Bool {
-    !config.agent.disableNames.contains(kind)
+func skillCapabilityIsEnabled(_ capability: String, config: AgentTomlConfig) -> Bool {
+    !config.agent.disableNames.contains(capability)
 }
 
-func setSkillKindEnabled(_ kind: String, isEnabled: Bool, config: Binding<AgentTomlConfig>) {
+func setSkillCapabilityEnabled(
+    _ capability: String,
+    isEnabled: Bool,
+    config: Binding<AgentTomlConfig>
+) {
     if isEnabled {
-        removeValues([kind], from: &config.wrappedValue.agent.disableNames)
+        removeValues([capability], from: &config.wrappedValue.agent.disableNames)
     } else {
-        addUnique(kind, to: &config.wrappedValue.agent.disableNames)
+        addUnique(capability, to: &config.wrappedValue.agent.disableNames)
     }
 }
 
 func mcpIsOpen(_ name: String, config: AgentTomlConfig) -> Bool {
     featureIsEnabled("skill", config: config)
-        && skillKindIsEnabled("mcp", config: config)
+        && skillCapabilityIsEnabled("mcp", config: config)
         && config.agent.skills.contains(name)
         && !config.agent.disableNames.contains("mcp:\(name)")
         && !config.agent.disableNames.contains(name)
@@ -310,7 +322,7 @@ func mcpIsOpen(_ name: String, config: AgentTomlConfig) -> Bool {
 func setMCPOpen(_ name: String, isOpen: Bool, config: Binding<AgentTomlConfig>) {
     if isOpen {
         setFeatureEnabled("skill", isEnabled: true, config: config)
-        setSkillKindEnabled("mcp", isEnabled: true, config: config)
+        setSkillCapabilityEnabled("mcp", isEnabled: true, config: config)
         addUnique(name, to: &config.wrappedValue.agent.skills)
         removeValues(["mcp:\(name)", name], from: &config.wrappedValue.agent.disableNames)
     } else {

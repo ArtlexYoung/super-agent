@@ -222,9 +222,9 @@ def _write_skill(
     skill_dir.mkdir(parents=True)
     (skill_dir / "skill.toml").write_text(
         f"""
-schema_version = 1
+schema_version = 2
 name = "{name}"
-kind = "prompt"
+capability = "prompt"
 description = "{name} helper"
 version = "0.1.0"
 agent_created = true

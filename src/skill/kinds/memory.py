@@ -205,9 +205,9 @@ class MiniMemory:
 
 def create_memory_from_skill_disclosure(disclosure: SkillDisclosure, root: Path) -> MiniMemory:
     manifest = disclosure.read_manifest()
-    if manifest.kind != "memory":
-        raise ValueError(f"skill is not a memory kind: {manifest.name}")
-    policy = _read_memory_policy(disclosure.read_kind_configuration().content)
+    if manifest.capability != "memory":
+        raise ValueError(f"skill does not use the memory capability: {manifest.name}")
+    policy = _read_memory_policy(disclosure.read_configuration().content)
     return MiniMemory(root, policy)
 
 

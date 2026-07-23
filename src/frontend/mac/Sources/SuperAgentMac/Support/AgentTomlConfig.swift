@@ -66,7 +66,7 @@ struct ModelProfile: Identifiable, Codable, Equatable {
 struct SkillManifestChoice: Identifiable, Equatable, Sendable {
     var key: String
     var name: String
-    var kind: String
+    var capability: String
     var agentCreated: Bool
     var agentCanUpdate: Bool
     var freshness: Double
@@ -82,7 +82,7 @@ struct SkillManifestChoice: Identifiable, Equatable, Sendable {
     init(
         key: String,
         name: String,
-        kind: String,
+        capability: String,
         agentCreated: Bool,
         agentCanUpdate: Bool,
         freshness: Double = 70,
@@ -95,7 +95,7 @@ struct SkillManifestChoice: Identifiable, Equatable, Sendable {
     ) {
         self.key = key
         self.name = name
-        self.kind = kind
+        self.capability = capability
         self.agentCreated = agentCreated
         self.agentCanUpdate = agentCanUpdate
         self.freshness = freshness
