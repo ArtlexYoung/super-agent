@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import os
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 
 @dataclass(frozen=True)
@@ -56,6 +57,31 @@ class AgentConfig:
         )
 
     @classmethod
+    def load_automatically(
+        cls,
+        base_directory: str | Path | None = None,
+        environment: Mapping[str, str] | None = None,
+    ) -> "AgentConfig":
+        base = (
+            Path.cwd()
+            if base_directory is None
+            else Path(base_directory).expanduser().absolute()
+        )
+        env = os.environ if environment is None else environment
+        configured_path = _optional_string(env.get("SUPER_AGENT_CONFIG"))
+        if configured_path is not None:
+            path = Path(configured_path).expanduser()
+            if not path.is_absolute():
+                path = base / path
+            if not path.is_file():
+                raise FileNotFoundError(f"SUPER_AGENT_CONFIG file not found: {path}")
+            return cls.load_from_file(path)
+        project_config = base / "agent.toml"
+        if project_config.is_file():
+            return cls.load_from_file(project_config)
+        return cls.create_default(base)
+
+    @classmethod
     def create_default(cls, base_directory: str | Path | None = None) -> "AgentConfig":
         base = Path.cwd() if base_directory is None else Path(base_directory).expanduser().absolute()
         builtin_skills = Path(__file__).resolve().parent.parent / "builtin_skills"
@@ -99,8 +125,8 @@ def _read_agent_settings(data: dict[str, Any]) -> AgentSettings:
 
 def _read_model_settings(data: dict[str, Any]) -> ModelSettings:
     return ModelSettings(
-        provider=str(data.get("provider", "mock")),
-        model=str(data.get("model", "mock")),
+        provider=str(data.get("provider", "auto")),
+        model=str(data.get("model", "")),
         base_url=_optional_string(data.get("base_url")),
         api_key_env=_optional_string(data.get("api_key_env")),
     )

@@ -124,19 +124,29 @@ Stable identities always use `capability:name`. A bare name such as `echo` match
 
 Current providers:
 
+- `auto`: resolves a usable configuration without network probing.
 - `mock`: local development and tests without network requests.
 - `openai-compatible`: calls `<base_url>/chat/completions`.
 - `anthropic-compatible`: calls `<base_url>/v1/messages`.
 
 ```toml
 [model]
-provider = "openai-compatible"
+provider = "auto"
 model = "gpt-4.1-mini"
 base_url = "https://api.openai.com/v1"
 api_key_env = "OPENAI_API_KEY"
 ```
 
-Secrets are read only from the environment variable named by `api_key_env`; they are never stored in the configuration file.
+Leave `provider = "auto"` and `model` empty for automatic resolution. The order is `SUPER_AGENT_PROVIDER`, local `OLLAMA_HOST`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, then the deterministic `mock` provider. A project `agent.toml` is loaded automatically by `Agent()` when it exists; `SUPER_AGENT_CONFIG` takes precedence. Explicit TOML values win over discovery. Secrets are read only from the environment variable named by `api_key_env`; they are never stored in the configuration file.
+
+Inspect the result without making a model request:
+
+```bash
+super-agent models list
+super-agent models resolve
+```
+
+The commands show provider, model, source, endpoint, and whether the required environment variable is present, but never print secret values.
 
 ## Unified Skill Model
 
@@ -493,6 +503,8 @@ print(result.text)
 Common entry points:
 
 - `Agent.load_from_config_file(...)`, `Agent.run(...)`, and `Agent.add_subagent(...)`.
+- `Agent()` and `AgentConfig.load_automatically(...)` for project-aware zero-configuration startup.
+- `resolve_model_settings(...)` and `discover_model_candidates(...)` for deterministic model selection.
 - `Agent.list_subagents()` and `Agent.check_subagent_links()`.
 - `Agent.create_skill_evolution_manager()`.
 - `ProgressiveDisclosureCore.prepare_skill_index()` and `open_skill(...)`.

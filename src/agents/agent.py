@@ -15,6 +15,7 @@ from capability.contracts import (
 )
 from capability.defaults import create_default_capability_set
 from provider.chat import ChatProvider, Message, create_chat_provider
+from provider.discovery import ModelResolution, resolve_model_settings
 from runtime.config import AgentConfig
 from runtime.engine import AgentRuntime
 from runtime.events import RunContext
@@ -41,7 +42,14 @@ class Agent:
         provider: ChatProvider | None = None,
         capabilities: AgentCapabilitySet | None = None,
     ) -> None:
-        self.config = config or AgentConfig.create_default()
+        unresolved_config = config or AgentConfig.load_automatically()
+        self.model_resolution: ModelResolution = resolve_model_settings(
+            unresolved_config.model
+        )
+        self.config = replace(
+            unresolved_config,
+            model=self.model_resolution.settings,
+        )
         self.provider = provider or create_chat_provider(self.config.model)
         self.capabilities = capabilities or create_default_capability_set(self.config, self.provider)
         self.runtime = AgentRuntime(self.config, self.provider, self.capabilities)

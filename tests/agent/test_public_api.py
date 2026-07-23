@@ -11,6 +11,7 @@ class PublicApiTests(unittest.TestCase):
             "Agent",
             "BenchmarkCase",
             "BenchmarkReport",
+            "ModelResolution",
             "ProgressiveDisclosureCore",
             "RunEvent",
             "SkillBenchmark",
@@ -18,6 +19,9 @@ class PublicApiTests(unittest.TestCase):
             "SkillReference",
             "run_event_from_dict",
             "run_event_to_dict",
+            "discover_model_candidates",
+            "model_resolution_to_dict",
+            "resolve_model_settings",
             "skill_manifest_to_dict",
         }
 

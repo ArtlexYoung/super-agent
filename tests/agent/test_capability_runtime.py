@@ -1,4 +1,5 @@
 import ast
+import os
 import tempfile
 import unittest
 from contextlib import chdir
@@ -17,7 +18,11 @@ from skill.manifest import Skill
 
 class CapabilityRuntimeTests(unittest.TestCase):
     def test_agent_runs_without_configuration_in_an_empty_directory(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp, chdir(tmp):
+        with tempfile.TemporaryDirectory() as tmp, chdir(tmp), patch.dict(
+            os.environ,
+            {},
+            clear=True,
+        ):
             result = Agent().run("hello")
 
             self.assertEqual("Mock response", result.text)
@@ -25,7 +30,11 @@ class CapabilityRuntimeTests(unittest.TestCase):
             self.assertTrue(result.run_id)
 
     def test_cli_run_does_not_require_configuration(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp, chdir(tmp):
+        with tempfile.TemporaryDirectory() as tmp, chdir(tmp), patch.dict(
+            os.environ,
+            {},
+            clear=True,
+        ):
             output = StringIO()
 
             with patch("sys.stdout", output):
@@ -35,7 +44,11 @@ class CapabilityRuntimeTests(unittest.TestCase):
             self.assertEqual("Mock response", output.getvalue().strip())
 
     def test_bare_cli_starts_zero_configuration_chat(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp, chdir(tmp):
+        with tempfile.TemporaryDirectory() as tmp, chdir(tmp), patch.dict(
+            os.environ,
+            {},
+            clear=True,
+        ):
             output = StringIO()
 
             with patch("builtins.input", side_effect=["hello", "quit"]), patch(

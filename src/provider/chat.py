@@ -221,7 +221,7 @@ def _read_anthropic_text(data: dict[str, Any]) -> str:
 
 def _read_api_key_from_env(name: str | None) -> str:
     if not name:
-        raise ValueError("api_key_env is required for non-mock providers")
+        return ""
     value = os.getenv(name)
     if not value:
         raise ValueError(f"environment variable is empty: {name}")
@@ -230,15 +230,17 @@ def _read_api_key_from_env(name: str | None) -> str:
 
 def _send_json_post_request(url: str, payload: dict[str, object], api_key: str) -> dict[str, Any]:
     body = json.dumps(payload).encode("utf-8")
+    headers = {
+        "content-type": "application/json",
+        "anthropic-version": "2023-06-01",
+    }
+    if api_key:
+        headers["authorization"] = f"Bearer {api_key}"
+        headers["x-api-key"] = api_key
     request = urllib.request.Request(
         url,
         data=body,
-        headers={
-            "authorization": f"Bearer {api_key}",
-            "x-api-key": api_key,
-            "content-type": "application/json",
-            "anthropic-version": "2023-06-01",
-        },
+        headers=headers,
         method="POST",
     )
     with urllib.request.urlopen(request, timeout=60) as response:

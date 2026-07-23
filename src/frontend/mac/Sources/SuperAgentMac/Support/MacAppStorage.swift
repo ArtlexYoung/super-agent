@@ -71,7 +71,7 @@ enum MacAppStorage {
     private static func loadStoredConfig() throws -> StoredMacConfig {
         let url = try configURL()
         guard FileManager.default.fileExists(atPath: url.path) else {
-            let profile = ModelProfile(title: "mock", settings: AgentTomlConfig.defaultConfig.model)
+            let profile = ModelProfile(title: "auto", settings: AgentTomlConfig.defaultConfig.model)
             return StoredMacConfig(
                 config: .defaultConfig,
                 configFilePath: nil,

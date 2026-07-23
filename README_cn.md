@@ -124,19 +124,29 @@ disable_names = ["memory:default", "workflow:direct", "prompt:echo", "mcp"]
 
 当前支持：
 
+- `auto`：不探测网络，自动解析可用配置。
 - `mock`：本地开发和测试，不发起网络请求。
 - `openai-compatible`：调用 `<base_url>/chat/completions`。
 - `anthropic-compatible`：调用 `<base_url>/v1/messages`。
 
 ```toml
 [model]
-provider = "openai-compatible"
+provider = "auto"
 model = "gpt-4.1-mini"
 base_url = "https://api.openai.com/v1"
 api_key_env = "OPENAI_API_KEY"
 ```
 
-密钥只从 `api_key_env` 指定的环境变量读取，不写入配置文件。
+将 `provider = "auto"` 且 `model` 留空即可自动解析。优先级依次是 `SUPER_AGENT_PROVIDER`、本地 `OLLAMA_HOST`、`OPENAI_API_KEY`、`ANTHROPIC_API_KEY`，最后使用确定性的 `mock` provider。当前目录存在 `agent.toml` 时，`Agent()` 会自动读取；`SUPER_AGENT_CONFIG` 优先级更高。显式 TOML 值优先于自动发现。密钥只从 `api_key_env` 指定的环境变量读取，不写入配置文件。
+
+可以在真正调用模型前查看解析结果：
+
+```bash
+super-agent models list
+super-agent models resolve
+```
+
+命令只展示 provider、模型、来源、地址和环境变量是否就绪，不会输出密钥值。
 
 ## 统一 Skill 模型
 
@@ -493,6 +503,8 @@ print(result.text)
 常用入口：
 
 - `Agent.load_from_config_file(...)`、`Agent.run(...)`、`Agent.add_subagent(...)`。
+- `Agent()`、`AgentConfig.load_automatically(...)`：自动读取项目配置并零配置启动。
+- `resolve_model_settings(...)`、`discover_model_candidates(...)`：执行确定性的模型解析。
 - `Agent.list_subagents()`、`Agent.check_subagent_links()`。
 - `Agent.create_skill_evolution_manager()`。
 - `ProgressiveDisclosureCore.prepare_skill_index()`、`open_skill(...)`。

@@ -1,6 +1,8 @@
 import tempfile
 import unittest
 import json
+import os
+from contextlib import chdir
 from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
@@ -11,6 +13,37 @@ from runtime.models import RunResult, SubAgentResult
 
 
 class CliTests(unittest.TestCase):
+    def test_models_list_reports_discovered_models_without_secret_values(self) -> None:
+        output = StringIO()
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "secret-value"}, clear=True), patch(
+            "sys.stdout",
+            output,
+        ):
+            code = main(["models", "list", "--output", "json"])
+
+        data = json.loads(output.getvalue())
+        self.assertEqual(0, code)
+        self.assertEqual("openai-compatible", data["models"][0]["provider"])
+        self.assertEqual("OPENAI_API_KEY", data["models"][0]["api_key_env"])
+        self.assertNotIn("secret-value", output.getvalue())
+
+    def test_models_resolve_uses_project_config_automatically(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, chdir(tmp), patch.dict(
+            os.environ,
+            {},
+            clear=True,
+        ):
+            main(["init", "--path", tmp])
+            output = StringIO()
+
+            with patch("sys.stdout", output):
+                code = main(["models", "resolve", "--output", "json"])
+
+            data = json.loads(output.getvalue())
+            self.assertEqual(0, code)
+            self.assertEqual("mock", data["model"]["provider"])
+            self.assertEqual(str((Path(tmp) / "agent.toml").resolve()), data["config_path"])
+
     def test_init_creates_config_and_example_skill(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             code = main(["init", "--path", tmp])

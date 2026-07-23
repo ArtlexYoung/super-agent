@@ -17,8 +17,8 @@ struct AgentTomlConfig: Codable, Equatable {
             maxAgentChainDepth: nil
         ),
         model: AgentTomlModelSection(
-            provider: "mock",
-            model: "mock",
+            provider: "auto",
+            model: "",
             baseURL: "",
             apiKeyEnv: ""
         ),
@@ -29,7 +29,7 @@ struct AgentTomlConfig: Codable, Equatable {
     )
 
     var modelSummary: String {
-        "\(model.provider) / \(model.model)"
+        model.model.isEmpty ? model.provider : "\(model.provider) / \(model.model)"
     }
 }
 

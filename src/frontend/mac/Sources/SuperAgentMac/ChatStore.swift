@@ -53,7 +53,10 @@ final class ChatStore: ObservableObject {
             requestedID: state?.selectedConversationID,
             conversations: initialConversations
         )
-        let fallbackProfile = ModelProfile(title: initialConfig.model.model, settings: initialConfig.model)
+        let fallbackProfile = ModelProfile(
+            title: modelProfileTitle(initialConfig.model),
+            settings: initialConfig.model
+        )
         let loadedProfiles = state?.modelProfiles ?? []
         let initialProfiles = loadedProfiles.isEmpty ? [fallbackProfile] : loadedProfiles
         let selectedProfileID = makeInitialSelectedModelProfileID(
@@ -279,7 +282,7 @@ final class ChatStore: ObservableObject {
     func deleteModelProfile(_ id: UUID) {
         modelProfiles.removeAll { $0.id == id }
         if modelProfiles.isEmpty {
-            let profile = ModelProfile(title: "mock", settings: AgentTomlConfig.defaultConfig.model)
+            let profile = ModelProfile(title: "auto", settings: AgentTomlConfig.defaultConfig.model)
             modelProfiles = [profile]
         }
         if selectedModelProfileID == id || selectedModelProfileID == nil {
@@ -564,4 +567,10 @@ private func applySelectedModelProfile(
         nextConfig.model = profile.settings
     }
     return nextConfig
+}
+
+private func modelProfileTitle(_ model: AgentTomlModelSection) -> String {
+    model.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        ? model.provider
+        : model.model
 }

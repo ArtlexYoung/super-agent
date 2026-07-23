@@ -20,6 +20,12 @@ from skill.benchmark import (
 )
 from runtime.config import AgentConfig, AgentSettings, ModelSettings, PathsSettings
 from provider.chat import ChatProvider, MockProvider, ModelResponse, ToolCall
+from provider.discovery import (
+    ModelResolution,
+    discover_model_candidates,
+    model_resolution_to_dict,
+    resolve_model_settings,
+)
 from runtime.engine import AgentRuntime
 from runtime.events import RunContext, RunEvent, RunTraceStore, run_event_from_dict, run_event_to_dict
 from capability.tool_router import RuntimeToolRouter
@@ -61,6 +67,7 @@ __all__ = [
     "MockProvider",
     "ModelSettings",
     "ModelResponse",
+    "ModelResolution",
     "PathsSettings",
     "ProgressiveDisclosureCore",
     "RunContext",
@@ -90,6 +97,9 @@ __all__ = [
     "benchmark_report_to_dict",
     "create_default_capability_set",
     "create_default_skill_retriever",
+    "discover_model_candidates",
+    "model_resolution_to_dict",
+    "resolve_model_settings",
     "run_event_from_dict",
     "run_event_to_dict",
     "skill_manifest_to_dict",

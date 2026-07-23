@@ -1,6 +1,6 @@
 import SwiftUI
 
-private let providerOptions = ["mock", "openai-compatible", "anthropic-compatible"]
+private let providerOptions = ["auto", "mock", "openai-compatible", "anthropic-compatible"]
 private let modelOptions = ["mock", "gpt-4.1-mini", "gpt-4.1", "claude-sonnet-4", "claude-opus-4"]
 private let baseURLOptions = ["", "https://api.openai.com/v1", "https://api.anthropic.com"]
 private let apiKeyEnvOptions = ["", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"]
@@ -466,7 +466,7 @@ private struct ModelProfileRowView: View {
 
                 SettingStringPicker(
                     title: "服务类型",
-                    help: "对应 [model].provider。mock 是本地回复；openai-compatible 请求 /chat/completions；anthropic-compatible 请求 /v1/messages。",
+                    help: "对应 [model].provider。auto 按环境自动解析；mock 是本地回复；openai-compatible 请求 /chat/completions；anthropic-compatible 请求 /v1/messages。",
                     selection: providerBinding,
                     options: providerOptions
                 )
