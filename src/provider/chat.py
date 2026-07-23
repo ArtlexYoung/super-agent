@@ -6,7 +6,7 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from core.config import ModelSettings
+from runtime.config import ModelSettings
 
 
 Message = dict[str, Any]

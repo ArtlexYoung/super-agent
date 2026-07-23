@@ -21,7 +21,7 @@ from skill.evolution.freshness import SkillFreshnessStore
 from skill.manifest import SkillManifest, skill_manifest_to_dict
 
 if TYPE_CHECKING:
-    from core.run import RunContext
+    from runtime.events import RunContext
 
 
 class ProgressiveDisclosureCore:

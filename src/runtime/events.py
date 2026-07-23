@@ -1,3 +1,5 @@
+"""Ordered, append-only events for one agent run."""
+
 from __future__ import annotations
 
 import json

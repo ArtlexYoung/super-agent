@@ -1,0 +1,258 @@
+from __future__ import annotations
+
+from dataclasses import asdict, dataclass, replace
+from typing import TYPE_CHECKING, cast
+
+from capability.contracts import (
+    AgentCapabilitySet,
+    RunController,
+    RunRecorder,
+    SkillExecutor,
+    SkillResultEvaluator,
+    SkillRetrieverCapability,
+    SkillRetrieverSession,
+    SkillUpdaterCapability,
+)
+from capability.defaults import create_default_capability_set
+from provider.chat import ChatProvider, Message, create_chat_provider
+from runtime.config import AgentConfig
+from runtime.engine import AgentRuntime
+from runtime.events import RunContext
+from runtime.models import AgentRunRequest, RunResult, SubAgentResult, SubagentCallbacks
+
+if TYPE_CHECKING:
+    from skill.evolution.manager import SkillEvolutionManager
+
+
+@dataclass(frozen=True)
+class SubAgent:
+    name: str
+    agent: "Agent"
+    description: str
+    triggers: list[str]
+    created_by_agent: bool = False
+
+
+class Agent:
+    def __init__(
+        self,
+        config: AgentConfig | None = None,
+        *,
+        provider: ChatProvider | None = None,
+        capabilities: AgentCapabilitySet | None = None,
+    ) -> None:
+        self.config = config or AgentConfig.create_default()
+        self.provider = provider or create_chat_provider(self.config.model)
+        self.capabilities = capabilities or create_default_capability_set(self.config, self.provider)
+        self.runtime = AgentRuntime(self.config, self.provider, self.capabilities)
+        self._subagents: list[SubAgent] = []
+
+    @classmethod
+    def load_from_config_file(cls, path: str) -> "Agent":
+        return cls(AgentConfig.load_from_file(path))
+
+    def add_subagent(
+        self,
+        agent: "Agent",
+        *,
+        name: str | None = None,
+        description: str = "",
+        triggers: list[str] | None = None,
+        created_by_agent: bool = False,
+    ) -> str:
+        subagent_name = self._make_next_subagent_name() if name is None else name.strip()
+        if not subagent_name:
+            raise ValueError("subagent name cannot be empty")
+        if any(item.name == subagent_name for item in self._subagents):
+            raise ValueError(f"subagent name already exists: {subagent_name}")
+        self._subagents.append(
+            SubAgent(
+                name=subagent_name,
+                agent=agent,
+                description=description,
+                triggers=[item.lower() for item in triggers or []],
+                created_by_agent=created_by_agent,
+            )
+        )
+        return subagent_name
+
+    def list_subagents(self) -> list[SubAgent]:
+        return list(self._subagents)
+
+    def set_run_controller(self, run_controller: RunController) -> None:
+        self._replace_capabilities(run_controller=run_controller)
+
+    def set_skill_retriever(self, skill_retriever: SkillRetrieverCapability) -> None:
+        self._replace_capabilities(skill_retriever=skill_retriever)
+
+    def add_skill_executor(self, skill_executor: SkillExecutor) -> None:
+        executors = dict(self.capabilities.skill_executors)
+        executors[skill_executor.skill_type] = skill_executor
+        self._replace_capabilities(skill_executors=executors)
+
+    def set_skill_result_evaluator(self, evaluator: SkillResultEvaluator) -> None:
+        self._replace_capabilities(skill_result_evaluator=evaluator)
+
+    def set_skill_updater(self, skill_updater: SkillUpdaterCapability) -> None:
+        self._replace_capabilities(skill_updater=skill_updater)
+
+    def set_run_recorder(self, run_recorder: RunRecorder) -> None:
+        self._replace_capabilities(run_recorder=run_recorder)
+
+    def create_skill_retriever(self, run_context: RunContext | None = None) -> SkillRetrieverSession:
+        return self.capabilities.skill_retriever.create_skill_retriever(self.config, run_context)
+
+    def create_skill_evolution_manager(self) -> "SkillEvolutionManager":
+        return cast("SkillEvolutionManager", self.runtime.create_skill_updater())
+
+    def check_subagent_links(self) -> list[str]:
+        warnings: list[str] = []
+        root_chain = [self.config.agent.name]
+        for chain in _find_cycle_chains(self, root_chain, set()):
+            warnings.append(f"Agent chain has cycle: {' -> '.join(chain)}")
+        max_depth = self.config.agent.max_agent_chain_depth
+        if max_depth is not None:
+            longest_chain = _find_longest_agent_chain(self, root_chain, set())
+            if len(longest_chain) > max_depth:
+                warnings.append(
+                    "Agent chain depth is "
+                    f"{len(longest_chain)} layers, configured max_agent_chain_depth is {max_depth}: "
+                    + " -> ".join(longest_chain)
+                )
+        return warnings
+
+    def run(
+        self,
+        prompt: str,
+        *,
+        include_subagents: bool = True,
+        check_subagent_links_before_run: bool = True,
+        run_context: RunContext | None = None,
+        messages: list[Message] | None = None,
+    ) -> RunResult:
+        warnings = self.check_subagent_links() if include_subagents and check_subagent_links_before_run else []
+        request = AgentRunRequest(
+            prompt=prompt,
+            messages=list(messages or []),
+            include_subagents=include_subagents,
+            warning_messages=warnings,
+            subagents=SubagentCallbacks(
+                list_subagents=self._list_subagents_for_model,
+                run_matching_subagents=self._run_subagents_that_match_prompt,
+                run_named_subagent=self._run_named_subagent_for_model,
+            ),
+        )
+        return self.runtime.run_agent(request, run_context)
+
+    def _replace_capabilities(self, **changes: object) -> None:
+        self.capabilities = replace(self.capabilities, **changes)
+        self.runtime = AgentRuntime(self.config, self.provider, self.capabilities)
+
+    def _make_next_subagent_name(self) -> str:
+        index = 1
+        existing = {item.name for item in self._subagents}
+        while True:
+            candidate = f"subagent{index:02d}"
+            if candidate not in existing:
+                return candidate
+            index += 1
+
+    def _run_subagents_that_match_prompt(
+        self,
+        prompt: str,
+        run_context: RunContext,
+    ) -> list[SubAgentResult]:
+        prompt_text = prompt.lower()
+        return [
+            self._run_subagent(subagent, prompt, run_context)
+            for subagent in self._subagents
+            if _prompt_matches_subagent_triggers(subagent, prompt_text)
+        ]
+
+    def _list_subagents_for_model(self) -> list[dict[str, object]]:
+        return [
+            {
+                "name": subagent.name,
+                "description": subagent.description,
+                "triggers": subagent.triggers,
+                "created_by_agent": subagent.created_by_agent,
+                "agent_name": subagent.agent.config.agent.name,
+            }
+            for subagent in self._subagents
+        ]
+
+    def _run_named_subagent_for_model(
+        self,
+        name: str,
+        prompt: str,
+        run_context: RunContext,
+    ) -> dict[str, object]:
+        subagent = next((item for item in self._subagents if item.name == name), None)
+        if subagent is None:
+            raise KeyError(f"subagent not found: {name}")
+        return asdict(self._run_subagent(subagent, prompt, run_context))
+
+    def _run_subagent(
+        self,
+        subagent: SubAgent,
+        prompt: str,
+        run_context: RunContext,
+    ) -> SubAgentResult:
+        run_context.record_event(
+            "subagent.started",
+            {"name": subagent.name, "agent_name": subagent.agent.config.agent.name, "prompt": prompt},
+        )
+        child_context = subagent.agent.runtime.start_run_context(
+            prompt,
+            parent_run_id=run_context.run_id,
+        )
+        result = subagent.agent.run(
+            prompt,
+            include_subagents=True,
+            check_subagent_links_before_run=False,
+            run_context=child_context,
+        )
+        subagent_result = SubAgentResult(
+            name=subagent.name,
+            description=subagent.description,
+            text=result.text,
+            prompt=prompt,
+            created_by_agent=subagent.created_by_agent,
+            subagent_results=result.subagent_results,
+            run_id=result.run_id,
+        )
+        run_context.record_event(
+            "subagent.completed",
+            {"name": subagent.name, "run_id": result.run_id},
+        )
+        return subagent_result
+
+
+def _prompt_matches_subagent_triggers(subagent: SubAgent, prompt: str) -> bool:
+    if not subagent.triggers:
+        return True
+    return any(trigger and trigger in prompt for trigger in subagent.triggers)
+
+
+def _find_cycle_chains(agent: Agent, chain: list[str], seen_ids: set[int]) -> list[list[str]]:
+    agent_id = id(agent)
+    if agent_id in seen_ids:
+        return [chain]
+    next_seen_ids = seen_ids | {agent_id}
+    cycles: list[list[str]] = []
+    for subagent in agent.list_subagents():
+        cycles.extend(_find_cycle_chains(subagent.agent, chain + [subagent.name], next_seen_ids))
+    return cycles
+
+
+def _find_longest_agent_chain(agent: Agent, chain: list[str], seen_ids: set[int]) -> list[str]:
+    agent_id = id(agent)
+    if agent_id in seen_ids:
+        return chain
+    longest = chain
+    next_seen_ids = seen_ids | {agent_id}
+    for subagent in agent.list_subagents():
+        child_chain = _find_longest_agent_chain(subagent.agent, chain + [subagent.name], next_seen_ids)
+        if len(child_chain) > len(longest):
+            longest = child_chain
+    return longest

@@ -4,38 +4,17 @@ import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from core.provider import ChatProvider, Message, ToolCall
-from core.run import RunContext
+from provider.chat import ChatProvider, Message, ToolCall
+from runtime.events import RunContext
+from runtime.models import RunResult
 from skill.disclosure import SkillDisclosure
 from skill.manifest import Skill
 
 if TYPE_CHECKING:
-    from core.tools import SkillTools
+    from capability.tool_router import RuntimeToolRouter
 
 
 DEFAULT_WORKFLOW_MAX_STEPS = 8
-
-
-@dataclass(frozen=True)
-class RunResult:
-    text: str
-    workflow: str
-    skills: list[str]
-    subagent_results: list["SubAgentResult"] | None = None
-    warning_messages: list[str] | None = None
-    run_id: str = ""
-    stop_reason: str = "completed"
-
-
-@dataclass(frozen=True)
-class SubAgentResult:
-    name: str
-    description: str
-    text: str
-    prompt: str = ""
-    created_by_agent: bool = False
-    subagent_results: list["SubAgentResult"] | None = None
-    run_id: str = ""
 
 
 @dataclass(frozen=True)
@@ -45,7 +24,7 @@ class WorkflowRunRequest:
     model: str
     skills: list[Skill]
     provider: ChatProvider
-    skill_tools: SkillTools
+    skill_tools: RuntimeToolRouter
     run_context: RunContext
     messages: list[Message] | None = None
 

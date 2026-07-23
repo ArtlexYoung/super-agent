@@ -27,11 +27,32 @@ Super Agent 是一个简单、轻量、配置化的 **skill-first agent runtime*
 
 ```bash
 python3 -m pip install -e .
+super-agent
+```
+
+直接运行命令就会进入交互对话，自动使用内置 workflow、memory 和本地 `mock` provider；首次运行不需要配置、项目文件或 API key。单次调用同样直接：
+
+```bash
+super-agent run "hello"
+```
+
+Python 入口也无需配置：
+
+```python
+from super_agent import Agent
+
+result = Agent().run("hello")
+print(result.text)
+```
+
+只有需要修改模型或 Skill 时才初始化项目：
+
+```bash
 super-agent init --path demo-agent
 super-agent run --config demo-agent/agent.toml "hello"
 ```
 
-默认项目使用 `mock` provider，不需要 API key。生成的目录包含 Agent 配置，以及 prompt、MCP、memory 和 workflow 示例 Skill。
+生成目录包含可编辑的 Agent 配置，以及 prompt、MCP、memory 和 workflow 示例 Skill。
 
 不安装命令也可以直接从源码运行：
 
@@ -39,6 +60,18 @@ super-agent run --config demo-agent/agent.toml "hello"
 PYTHONPATH=src python3 -m cli init --path demo-agent
 PYTHONPATH=src python3 -m cli run --config demo-agent/agent.toml "hello"
 ```
+
+## 架构
+
+Super Agent 明确划分五类职责：
+
+- **Provider 提供智能**：只负责统一的模型调用协议。
+- **Runtime 调度能力**：只依赖 Capability 契约，不持有具体 Skill 行为。
+- **Capability 执行机制**：负责检索、执行、评价、更新和记录。
+- **Skill 承载内容**：保存供 Capability 使用的内容与配置。
+- **Agent 组合一切**：通过 `set_run_controller(...)`、`set_skill_retriever(...)`、`add_skill_executor(...)` 等直白方法组合和替换能力。
+
+`Agent()` 会自动装配经过测试的默认能力。高级用户可以只替换一个 Capability，无需重写 Runtime，也不需要引入另一套配置系统。
 
 常用检查命令：
 
@@ -492,10 +525,14 @@ swift run SuperAgentMac
 
 ```text
 src/
-  cli.py         # CLI entry point
-  cli_commands/  # CLI commands grouped by domain
-  core/          # Agent, providers, tools, tracing, config, benchmark
-  skill/         # Shared Skill model and runtime
+  agents/        # 代码式 Agent 组合
+  capability/    # 可替换的执行机制
+  provider/      # 模型 Provider 适配
+  runtime/       # 仅依赖 Capability 的调度、配置、事件和结果
+  cli.py         # 零配置 CLI 入口
+  cli_commands/  # 按领域组织的高级命令
+  builtin_skills/ # 零配置 workflow 与 memory 内容
+  skill/         # 统一 Skill 内容模型
     disclosure/  # Central parser, index, cache, and history
     ecosystem/   # Dependency lock and package management
     evolution/   # Candidates, evaluation, freshness, and history
@@ -512,7 +549,8 @@ python3 -m compileall -q src tests
 
 ## 设计原则
 
-- 内核只负责装配、披露、执行和追踪，不持有业务 prompt。
+- Runtime 只调度配置的 Capability 契约，不导入具体实现。
+- Agent 通过代码式 API 组合 Provider、Runtime、Capability、Skill 和子 Agent。
 - Skill 是唯一能力扩展边界，不为 prompt、工具、记忆或 workflow 建立平行系统。
 - 配置描述单个 Agent；代码负责清晰、灵活的 Agent 关系。
 - 默认错误必须明确，不使用隐式 fallback 或兼容薄壳掩盖问题。

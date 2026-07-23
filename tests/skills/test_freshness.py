@@ -4,9 +4,9 @@ import unittest
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from core.agent import Agent
-from core.config import AgentConfig
-from core.provider import MockProvider
+from agents.agent import Agent
+from runtime.config import AgentConfig
+from provider.chat import MockProvider
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.evolution.freshness import SkillFreshnessStore, SkillRunRecord
 from support import write_workflow_skill

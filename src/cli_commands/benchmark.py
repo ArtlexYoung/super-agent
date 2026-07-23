@@ -4,9 +4,9 @@ import argparse
 import json
 from pathlib import Path
 
-from core.agent import create_progressive_disclosure_for_agent_config
-from core.benchmark import BenchmarkCase, SkillBenchmark, benchmark_report_to_dict
-from core.config import AgentConfig
+from capability.defaults import create_default_skill_retriever
+from skill.benchmark import BenchmarkCase, SkillBenchmark, benchmark_report_to_dict
+from runtime.config import AgentConfig
 
 
 def configure_benchmark_parser(parser: argparse.ArgumentParser) -> None:
@@ -17,7 +17,7 @@ def configure_benchmark_parser(parser: argparse.ArgumentParser) -> None:
 
 def run_benchmark_command(args: argparse.Namespace) -> int:
     config = AgentConfig.load_from_file(args.config)
-    benchmark = SkillBenchmark(create_progressive_disclosure_for_agent_config(config))
+    benchmark = SkillBenchmark(create_default_skill_retriever(config), config.paths.memory)
     report = benchmark.run_cases(_read_benchmark_cases(Path(args.cases)))
     text = json.dumps(benchmark_report_to_dict(report), ensure_ascii=False, indent=2, sort_keys=True)
     if args.output:

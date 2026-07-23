@@ -8,7 +8,8 @@ from pathlib import Path
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.kinds.mcp import McpServer
 from skill.kinds.memory import MiniMemory
-from skill.kinds.workflow import RunResult, SubAgentResult, create_workflow
+from runtime.models import RunResult, SubAgentResult
+from skill.kinds.workflow import create_workflow
 from skill.manifest import SkillManifest
 
 
@@ -29,6 +30,11 @@ class SkillKindArchitectureTests(unittest.TestCase):
             with self.assertRaises(ModuleNotFoundError):
                 importlib.import_module(module_name)
 
+    def test_old_core_and_runtime_agent_modules_are_removed(self) -> None:
+        for module_name in ["core.agent", "core.config", "core.provider", "runtime.agent"]:
+            with self.assertRaises(ModuleNotFoundError):
+                importlib.import_module(module_name)
+
     def test_kind_implementations_stay_inside_skill_package(self) -> None:
         for path in ["src/mcp.py", "src/memory.py", "src/workflow.py", "src/mcp", "src/memory", "src/workflow"]:
             self.assertFalse(Path(path).exists())
@@ -39,7 +45,7 @@ class SkillKindArchitectureTests(unittest.TestCase):
             path
             for path in python_sources
             if "tomllib.loads" in path.read_text(encoding="utf-8")
-            and path != Path("src/core/config.py")
+            and path != Path("src/runtime/config.py")
         ]
 
         self.assertEqual([Path("src/skill/disclosure/source.py")], direct_parsers)

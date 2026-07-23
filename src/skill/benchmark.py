@@ -5,7 +5,8 @@ import math
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from core.tools import read_skill_for_model_context
+from capability.contracts import SkillExecutor
+from capability.skill_executors import create_builtin_skill_executors, load_skill_for_model_context
 from skill.disclosure import (
     ProgressiveDisclosureCore,
     SkillIndex,
@@ -44,8 +45,15 @@ class BenchmarkReport:
     context_savings_ratio: float
 
 class SkillBenchmark:
-    def __init__(self, skill_disclosure: ProgressiveDisclosureCore) -> None:
+    def __init__(
+        self,
+        skill_disclosure: ProgressiveDisclosureCore,
+        state_root: Path | None = None,
+        skill_executors: dict[str, SkillExecutor] | None = None,
+    ) -> None:
         self.skill_disclosure = skill_disclosure
+        self.state_root = state_root or skill_disclosure.cache_root.parent
+        self.skill_executors = skill_executors or create_builtin_skill_executors()
 
     def run_cases(self, cases: list[BenchmarkCase]) -> BenchmarkReport:
         if not cases:
@@ -53,11 +61,24 @@ class SkillBenchmark:
         _reject_duplicate_case_names(cases)
         skill_index = self.skill_disclosure.prepare_skill_index()
         context_entries = [
-            entry for entry in skill_index.entries if entry.reference.kind in {"prompt", "mcp"}
+            entry
+            for entry in skill_index.entries
+            if (
+                entry.reference.kind in self.skill_executors
+                and self.skill_executors[entry.reference.kind].adds_model_context
+            )
         ]
         disclosure_index = _build_disclosure_index(skill_index, self.skill_disclosure.cache_root)
         eager_context = _join_context(
-            [disclosure_index, _build_eager_context(self.skill_disclosure, context_entries)]
+            [
+                disclosure_index,
+                _build_eager_context(
+                    self.skill_disclosure,
+                    context_entries,
+                    self.skill_executors,
+                    self.state_root,
+                ),
+            ]
         )
         results = [
             self._run_case(case, eager_context, disclosure_index)
@@ -91,7 +112,12 @@ class SkillBenchmark:
             allowed_kinds={"prompt", "mcp"},
         )
         selected = [
-            read_skill_for_model_context(self.skill_disclosure, reference)
+            load_skill_for_model_context(
+                self.skill_disclosure,
+                reference,
+                self.skill_executors,
+                self.state_root,
+            )
             for reference in selected_references
         ]
         progressive_context = _join_context(
@@ -139,9 +165,11 @@ def benchmark_report_to_dict(report: BenchmarkReport) -> dict[str, object]:
 def _build_eager_context(
     disclosure: ProgressiveDisclosureCore,
     entries: list[SkillIndexEntry],
+    skill_executors: dict[str, SkillExecutor],
+    state_root: Path,
 ) -> str:
     skills = [
-        read_skill_for_model_context(disclosure, entry.reference)
+        load_skill_for_model_context(disclosure, entry.reference, skill_executors, state_root)
         for entry in entries
     ]
     return _join_context([skill.instructions for skill in skills])

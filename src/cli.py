@@ -11,11 +11,10 @@ from typing import Any, Sequence
 from cli_commands.benchmark import configure_benchmark_parser, run_benchmark_command
 from cli_commands.memory import configure_memory_parser, run_memory_command
 from cli_commands.skills import configure_skills_parser, run_skills_command
-from core.agent import Agent
-from core.config import AgentConfig
-from core.run import RunEvent, RunTraceStore, run_event_to_dict
-from core.provider import Message
-from skill.kinds.workflow import RunResult
+from agents.agent import Agent
+from runtime.events import RunEvent, run_event_to_dict
+from provider.chat import Message
+from runtime.models import RunResult
 
 
 @dataclass(frozen=True)
@@ -27,11 +26,17 @@ class RuntimeRequest:
 def main(argv: Sequence[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
+    if args.command is None:
+        return _run_chat_command(None)
     if args.command == "init":
         return _run_init_command(Path(args.path))
     if args.command == "run":
         request = _read_runtime_request_from_stdin() if args.request_stdin else _read_runtime_request_from_args(args)
-        return _run_prompt_command(Path(args.config), request, args.output)
+        config_path = None if args.config is None else Path(args.config)
+        return _run_prompt_command(config_path, request, args.output)
+    if args.command == "chat":
+        config_path = None if args.config is None else Path(args.config)
+        return _run_chat_command(config_path)
     if args.command == "skills":
         return run_skills_command(args)
     if args.command == "memory":
@@ -51,9 +56,12 @@ def _build_parser() -> argparse.ArgumentParser:
 
     run_parser = subparsers.add_parser("run", help="run one prompt")
     run_parser.add_argument("prompt", nargs="*")
-    run_parser.add_argument("--config", default="agent.toml")
+    run_parser.add_argument("--config")
     run_parser.add_argument("--output", choices=["text", "json", "jsonl"], default="text")
     run_parser.add_argument("--request-stdin", action="store_true")
+
+    chat_parser = subparsers.add_parser("chat", help="start an interactive conversation")
+    chat_parser.add_argument("--config")
 
     skills_parser = subparsers.add_parser("skills", help="manage skills")
     configure_skills_parser(skills_parser)
@@ -86,12 +94,10 @@ def _run_init_command(root: Path) -> int:
     return 0
 
 
-def _run_prompt_command(config_path: Path, request: RuntimeRequest, output: str) -> int:
-    config = AgentConfig.load_from_file(config_path)
-    agent = Agent(config)
+def _run_prompt_command(config_path: Path | None, request: RuntimeRequest, output: str) -> int:
+    agent = _load_agent(config_path)
     if output == "jsonl":
-        context = RunTraceStore(config.paths.memory / "runs").start_run(
-            config.agent.name,
+        context = agent.runtime.start_run_context(
             request.prompt,
             event_listener=_print_run_event,
         )
@@ -106,6 +112,32 @@ def _run_prompt_command(config_path: Path, request: RuntimeRequest, output: str)
         print(f"Warning: {warning}")
     print(result.text)
     return 0
+
+
+def _run_chat_command(config_path: Path | None) -> int:
+    agent = _load_agent(config_path)
+    messages: list[Message] = []
+    while True:
+        try:
+            prompt = input("You: ").strip()
+        except EOFError:
+            return 0
+        if not prompt:
+            continue
+        if prompt.lower() in {"exit", "quit"}:
+            return 0
+        result = agent.run(prompt, messages=messages)
+        print(f"Agent: {result.text}")
+        messages.extend(
+            [
+                {"role": "user", "content": prompt},
+                {"role": "assistant", "content": result.text},
+            ]
+        )
+
+
+def _load_agent(config_path: Path | None) -> Agent:
+    return Agent() if config_path is None else Agent.load_from_config_file(str(config_path))
 
 
 def run_result_to_dict(result: RunResult) -> dict[str, Any]:

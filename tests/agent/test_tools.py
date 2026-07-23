@@ -2,9 +2,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from core.run import RunTraceStore
-from core.provider import ToolCall
-from core.tools import SkillTools
+from runtime.events import RunTraceStore
+from provider.chat import ToolCall
+from capability.skill_executors import create_builtin_skill_executors
+from capability.tool_router import RuntimeToolRouter, ToolRouterContext
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.kinds.memory import MiniMemory
 
@@ -17,7 +18,7 @@ class SkillToolsTests(unittest.TestCase):
             context = RunTraceStore(root / "runs").start_run("main", "question")
             disclosure = _create_disclosure(root, context)
             index = disclosure.prepare_skill_index()
-            tools = SkillTools(disclosure, index, context)
+            tools = _create_tool_router(root, disclosure, index, context)
 
             listed = tools.run_tool_call(ToolCall("call-1", "list_skills", {}))
             read = tools.run_tool_call(
@@ -42,7 +43,7 @@ class SkillToolsTests(unittest.TestCase):
             disclosure = _create_disclosure(root)
             index = disclosure.prepare_skill_index()
             context = RunTraceStore(root / "runs").start_run("main", "question")
-            tools = SkillTools(disclosure, index, context)
+            tools = _create_tool_router(root, disclosure, index, context)
 
             with self.assertRaisesRegex(KeyError, "unknown runtime tool"):
                 tools.run_tool_call(ToolCall("bad", "unknown", {}))
@@ -56,7 +57,7 @@ class SkillToolsTests(unittest.TestCase):
             index = disclosure.prepare_skill_index()
             context = RunTraceStore(root / "runs").start_run("main", "question")
             memory = MiniMemory(root / "memory")
-            tools = SkillTools(disclosure, index, context, memory=memory)
+            tools = _create_tool_router(root, disclosure, index, context, memory)
 
             definitions = {item["function"]["name"] for item in tools.get_tool_definitions()}
             added = tools.run_tool_call(
@@ -103,4 +104,23 @@ def _create_disclosure(root: Path, run_context=None) -> ProgressiveDisclosureCor
         [root / "skills"],
         root / "cache",
         run_context=run_context,
+    )
+
+
+def _create_tool_router(
+    root: Path,
+    disclosure: ProgressiveDisclosureCore,
+    index,
+    context,
+    memory: MiniMemory | None = None,
+) -> RuntimeToolRouter:
+    return RuntimeToolRouter(
+        ToolRouterContext(
+            retriever=disclosure,
+            skill_index=index,
+            run_context=context,
+            skill_executors=create_builtin_skill_executors(),
+            state_root=root / "memory",
+            memory=memory,
+        )
     )

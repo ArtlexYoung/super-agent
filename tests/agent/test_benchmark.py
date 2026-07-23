@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from core.benchmark import BenchmarkCase, SkillBenchmark, benchmark_report_to_dict
+from skill.benchmark import BenchmarkCase, SkillBenchmark, benchmark_report_to_dict
 from skill.disclosure import ProgressiveDisclosureCore
 
 

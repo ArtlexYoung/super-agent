@@ -2,10 +2,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from core.agent import Agent
-from core.config import AgentConfig
-from core.provider import MockProvider
-from core.provider import ModelResponse, ToolCall
+from agents.agent import Agent
+from runtime.config import AgentConfig
+from provider.chat import MockProvider
+from provider.chat import ModelResponse, ToolCall
 
 
 class ExecutableWorkflowTests(unittest.TestCase):

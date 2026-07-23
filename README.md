@@ -27,11 +27,32 @@ Python 3.11 or newer is required.
 
 ```bash
 python3 -m pip install -e .
+super-agent
+```
+
+The bare command opens an interactive chat with built-in workflow and memory skills. It uses the local `mock` provider, so the first run needs no configuration, project files, or API key. Run a single prompt just as directly:
+
+```bash
+super-agent run "hello"
+```
+
+Python has the same zero-configuration path:
+
+```python
+from super_agent import Agent
+
+result = Agent().run("hello")
+print(result.text)
+```
+
+Create a project only when you want to customize the model or skills:
+
+```bash
 super-agent init --path demo-agent
 super-agent run --config demo-agent/agent.toml "hello"
 ```
 
-The generated project uses the `mock` provider by default, so it needs no API key. It includes agent configuration and example prompt, MCP, memory, and workflow skills.
+The generated project includes editable agent configuration and example prompt, MCP, memory, and workflow skills.
 
 You can also run directly from the source tree without installing the command:
 
@@ -39,6 +60,18 @@ You can also run directly from the source tree without installing the command:
 PYTHONPATH=src python3 -m cli init --path demo-agent
 PYTHONPATH=src python3 -m cli run --config demo-agent/agent.toml "hello"
 ```
+
+## Architecture
+
+Super Agent keeps five responsibilities explicit:
+
+- **Provider provides intelligence** through one model-facing protocol.
+- **Runtime schedules capabilities** and owns no concrete skill behavior.
+- **Capability executes mechanisms** such as retrieval, execution, evaluation, updating, and recording.
+- **Skill carries content** and configuration consumed by those mechanisms.
+- **Agent composes everything** and exposes clear replacement methods such as `set_run_controller(...)`, `set_skill_retriever(...)`, and `add_skill_executor(...)`.
+
+`Agent()` assembles tested defaults automatically. Advanced users can replace one Capability without rebuilding the Runtime or introducing another configuration system.
 
 Useful inspection commands:
 
@@ -492,10 +525,14 @@ The app calls the Python runtime through its JSONL protocol and reads the centra
 
 ```text
 src/
-  cli.py         # CLI entry point
-  cli_commands/  # CLI commands grouped by domain
-  core/          # Agent, providers, tools, tracing, config, benchmark
-  skill/         # Shared skill model and runtime
+  agents/        # Code-first Agent composition
+  capability/    # Replaceable execution mechanisms
+  provider/      # Model provider adapters
+  runtime/       # Capability-only scheduling, configuration, events, and results
+  cli.py         # Zero-configuration CLI entry point
+  cli_commands/  # Advanced commands grouped by domain
+  builtin_skills/ # Zero-configuration workflow and memory content
+  skill/         # Shared Skill content model
     disclosure/  # Central parser, index, cache, and history
     ecosystem/   # Dependency lock and package management
     evolution/   # Candidates, evaluation, freshness, and history
@@ -512,7 +549,8 @@ python3 -m compileall -q src tests
 
 ## Design Principles
 
-- The core assembles, discloses, executes, and traces capabilities without owning business prompts.
+- Runtime schedules configured Capability contracts without importing concrete implementations.
+- Agent composes Provider, Runtime, Capability, Skill, and subagents through code-first APIs.
 - Skill is the only capability-extension boundary; prompts, tools, memory, and workflows do not get parallel systems.
 - Configuration describes one agent, while code expresses clear and flexible agent relationships.
 - Failures are explicit; implicit fallbacks and compatibility shells do not hide configuration errors.

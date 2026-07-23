@@ -11,7 +11,7 @@ from uuid import uuid4
 from skill.disclosure.models import SkillDisclosureEvent, SkillReference
 
 if TYPE_CHECKING:
-    from core.run import RunContext
+    from runtime.events import RunContext
 
 
 DISCLOSURE_EVENT_SCHEMA_VERSION = 1

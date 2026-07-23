@@ -55,6 +55,30 @@ class AgentConfig:
             source=source,
         )
 
+    @classmethod
+    def create_default(cls, base_directory: str | Path | None = None) -> "AgentConfig":
+        base = Path.cwd() if base_directory is None else Path(base_directory).expanduser().absolute()
+        builtin_skills = Path(__file__).resolve().parent.parent / "builtin_skills"
+        return cls(
+            agent=_read_agent_settings({}),
+            model=_read_model_settings({}),
+            paths=PathsSettings(
+                skills=_default_skill_roots(base / "skills", builtin_skills),
+                memory=base / ".super-agent" / "memory",
+            ),
+            source=base / "agent.toml",
+        )
+
+
+def _default_skill_roots(project_skills: Path, builtin_skills: Path) -> list[Path]:
+    roots = [project_skills]
+    defaults = {
+        "memory": project_skills / "memory" / "default" / "skill.toml",
+        "workflow": project_skills / "workflow" / "direct" / "skill.toml",
+    }
+    roots.extend(builtin_skills / skill_type for skill_type, path in defaults.items() if not path.is_file())
+    return roots
+
 
 def _read_agent_settings(data: dict[str, Any]) -> AgentSettings:
     return AgentSettings(

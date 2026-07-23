@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
-from core.provider import ChatProvider, Message
+from provider.chat import ChatProvider, Message
 from skill.disclosure import ProgressiveDisclosureCore, SkillDisclosure
 from skill.manifest import SKILL_SCHEMA_VERSION, SkillManifest, calculate_skill_directory_sha256
 

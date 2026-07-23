@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
-from core.provider import ChatProvider
+from provider.chat import ChatProvider
 from skill.evolution.candidate import (
     SkillCandidate,
     clean_record_id,

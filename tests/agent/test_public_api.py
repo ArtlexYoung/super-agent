@@ -1,8 +1,8 @@
 import unittest
 
 import super_agent
-from core.config import ModelSettings
-from core.provider import create_chat_provider
+from runtime.config import ModelSettings
+from provider.chat import create_chat_provider
 
 
 class PublicApiTests(unittest.TestCase):

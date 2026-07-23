@@ -4,10 +4,10 @@ import json
 import sys
 from pathlib import Path
 
-from core.agent import Agent
-from core.config import AgentConfig
-from core.provider import MockProvider
-from core.tools import read_skill_for_model_context
+from agents.agent import Agent
+from runtime.config import AgentConfig
+from provider.chat import MockProvider
+from capability.skill_executors import create_builtin_skill_executors, load_skill_for_model_context
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.kinds.mcp import create_mcp_server_from_skill_disclosure
 from skill.kinds.memory import MiniMemory
@@ -50,7 +50,12 @@ class McpSkillTests(unittest.TestCase):
                 "please inspect filesystem",
                 allowed_kinds={"prompt", "mcp"},
             )
-            skill = read_skill_for_model_context(disclosure, selected[0])
+            skill = load_skill_for_model_context(
+                disclosure,
+                selected[0],
+                create_builtin_skill_executors(),
+                root / "memory",
+            )
 
             self.assertEqual("filesystem", skill.manifest.name)
             self.assertEqual("mcp", skill.manifest.kind)
@@ -71,9 +76,11 @@ class McpSkillTests(unittest.TestCase):
             )
 
             disclosure = _prepare_disclosure(root)
-            skill = read_skill_for_model_context(
+            skill = load_skill_for_model_context(
                 disclosure,
                 disclosure.prepare_skill_index().require_skill("github", "mcp").reference,
+                create_builtin_skill_executors(),
+                root / "memory",
             )
 
             self.assertIn("Environment variables: GITHUB_TOKEN", skill.instructions)

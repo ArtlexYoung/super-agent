@@ -4,8 +4,9 @@ import argparse
 import json
 from pathlib import Path
 
-from core.agent import Agent, create_progressive_disclosure_for_agent_config
-from core.config import AgentConfig
+from agents.agent import Agent
+from capability.defaults import create_default_skill_retriever
+from runtime.config import AgentConfig
 from skill.disclosure import ProgressiveDisclosureCore, SkillIndexEntry, skill_index_to_dict
 from skill.ecosystem.package import SkillPackageManager
 from skill.evolution.evaluation import EvaluationCase
@@ -173,7 +174,7 @@ def _validate_skills(config_path: Path) -> int:
 
 def _explain_skills(config_path: Path, prompt: str) -> int:
     config = AgentConfig.load_from_file(config_path)
-    disclosure = create_progressive_disclosure_for_agent_config(config)
+    disclosure = create_default_skill_retriever(config)
     index = disclosure.prepare_skill_index()
     selected = {
         reference.key
@@ -275,14 +276,14 @@ def _resolve_skills(config_path: Path, names: list[str]) -> list[SkillManifest]:
 
 def _load_skill_disclosure(config_path: Path) -> ProgressiveDisclosureCore:
     config = AgentConfig.load_from_file(config_path)
-    return create_progressive_disclosure_for_agent_config(config)
+    return create_default_skill_retriever(config)
 
 
 def _load_package_manager(config_path: Path) -> SkillPackageManager:
     config = AgentConfig.load_from_file(config_path)
     if not config.paths.skills:
         raise ValueError("agent has no skill path configured")
-    return SkillPackageManager(create_progressive_disclosure_for_agent_config(config), config.paths.skills[0])
+    return SkillPackageManager(create_default_skill_retriever(config), config.paths.skills[0])
 
 
 def _add_evolution_name_arguments(parser: argparse.ArgumentParser) -> None:

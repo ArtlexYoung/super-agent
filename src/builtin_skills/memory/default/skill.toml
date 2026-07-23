@@ -1,0 +1,12 @@
+schema_version = 1
+name = "default"
+kind = "memory"
+description = "Built-in event-based memory"
+version = "0.0.20"
+triggers = []
+
+[memory]
+default_scope = "agent"
+recall_limit = 20
+include_in_prompt = true
+include_usage_habits = true

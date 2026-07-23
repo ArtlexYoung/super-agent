@@ -1,58 +1,67 @@
 from __future__ import annotations
 
-from dataclasses import asdict
-from typing import Callable
+from dataclasses import asdict, dataclass
+from pathlib import Path
+from typing import TYPE_CHECKING, Callable
 
-from core.provider import ToolCall, ToolDefinition
-from core.run import RunContext
+from capability.contracts import SkillExecutor, SkillLoadRequest, SkillRetrieverSession
+from capability.skill_executors import load_skill_for_model_context
+from provider.chat import ToolCall, ToolDefinition
+from runtime.events import RunContext
 from skill.disclosure import (
-    ProgressiveDisclosureCore,
     SkillDisclosure,
     SkillIndex,
-    SkillReference,
     skill_index_to_dict,
 )
-from skill.kinds.mcp import McpServer, create_mcp_server_from_skill_disclosure
+from skill.kinds.mcp import McpServer
 from skill.kinds.memory import MiniMemory
 from skill.manifest import Skill
 
+if TYPE_CHECKING:
+    from runtime.models import SubAgentResult
 
-class SkillTools:
+
+@dataclass(frozen=True)
+class ToolRouterContext:
+    retriever: SkillRetrieverSession
+    skill_index: SkillIndex
+    run_context: RunContext
+    skill_executors: dict[str, SkillExecutor]
+    state_root: Path
+    memory: MiniMemory | None = None
+    list_subagents: Callable[[], list[dict[str, object]]] | None = None
+    run_subagent: Callable[[str, str], dict[str, object]] | None = None
+
+
+class RuntimeToolRouter:
     def __init__(
         self,
-        disclosure: ProgressiveDisclosureCore,
-        skill_index: SkillIndex,
-        run_context: RunContext,
-        *,
-        memory: MiniMemory | None = None,
-        list_subagents_function: Callable[[], list[dict[str, object]]] | None = None,
-        run_subagent_function: Callable[[str, str], dict[str, object]] | None = None,
+        context: ToolRouterContext,
+        delegated_subagent_results: list[SubAgentResult] | None = None,
     ) -> None:
-        self.disclosure = disclosure
-        self.skill_index = skill_index
-        self.run_context = run_context
-        self.memory = memory
-        self.list_subagents_function = list_subagents_function
-        self.run_subagent_function = run_subagent_function
+        self.context = context
         self.used_skills: list[Skill] = []
+        self.delegated_subagent_results = (
+            [] if delegated_subagent_results is None else delegated_subagent_results
+        )
 
     def get_tool_definitions(self) -> list[ToolDefinition]:
         definitions = _runtime_tool_definitions()
-        if self.memory is not None:
+        if self.context.memory is not None:
             definitions.extend(_memory_tool_definitions())
-        if self.list_subagents_function is not None and self.run_subagent_function is not None:
+        if self.context.list_subagents is not None and self.context.run_subagent is not None:
             definitions.extend(_subagent_tool_definitions())
         return definitions
 
     def run_tool_call(self, call: ToolCall) -> dict[str, object]:
-        self.run_context.record_event(
+        self.context.run_context.record_event(
             "tool.requested",
             {"call_id": call.id, "name": call.name, "arguments": call.arguments},
         )
         try:
             result = self._run_named_tool(call.name, call.arguments)
         except Exception as error:
-            self.run_context.record_event(
+            self.context.run_context.record_event(
                 "tool.failed",
                 {
                     "call_id": call.id,
@@ -62,14 +71,14 @@ class SkillTools:
                 },
             )
             raise
-        self.run_context.record_event(
+        self.context.run_context.record_event(
             "tool.completed",
             {"call_id": call.id, "name": call.name, "result": result},
         )
         return result
 
     def _list_skills(self) -> dict[str, object]:
-        return skill_index_to_dict(self.skill_index)
+        return skill_index_to_dict(self.context.skill_index)
 
     def _read_skill_manifest(self, arguments: dict[str, object]) -> dict[str, object]:
         opened = self._open_requested_skill(arguments)
@@ -93,7 +102,12 @@ class SkillTools:
         disclosed = opened.read_instructions()
         if opened.index_entry.reference.kind in {"prompt", "mcp"}:
             self._remember_used_skill(
-                read_skill_for_model_context(self.disclosure, opened.index_entry.reference)
+                load_skill_for_model_context(
+                    self.context.retriever,
+                    opened.index_entry.reference,
+                    self.context.skill_executors,
+                    self.context.state_root,
+                )
             )
         return {
             "key": opened.index_entry.reference.key,
@@ -112,24 +126,26 @@ class SkillTools:
 
     def _read_disclosed_content(self, arguments: dict[str, object]) -> dict[str, object]:
         path = _required_string(arguments, "cache_path")
-        return {"cache_path": path, "content": self.disclosure.read_disclosed_content(path)}
+        return {"cache_path": path, "content": self.context.retriever.read_disclosed_content(path)}
 
     def list_subagents(self) -> dict[str, object]:
-        if self.list_subagents_function is None:
+        if self.context.list_subagents is None:
             raise RuntimeError("subagent tools require code-mounted subagents")
-        return {"subagents": self.list_subagents_function()}
+        return {"subagents": self.context.list_subagents()}
 
     def run_subagent(self, name: str, prompt: str) -> dict[str, object]:
-        if self.run_subagent_function is None:
+        if self.context.run_subagent is None:
             raise RuntimeError("subagent tools require code-mounted subagents")
-        return self.run_subagent_function(name, prompt)
+        return self.context.run_subagent(name, prompt)
 
     def _list_skill_tools(self, name: str) -> dict[str, object]:
         server = self._load_mcp_server(name)
         self._remember_used_skill(
-            read_skill_for_model_context(
-                self.disclosure,
-                self.skill_index.require_skill(name, "mcp").reference,
+            load_skill_for_model_context(
+                self.context.retriever,
+                self.context.skill_index.require_skill(name, "mcp").reference,
+                self.context.skill_executors,
+                self.context.state_root,
             )
         )
         return {"name": name, "tools": server.list_tools()}
@@ -142,9 +158,11 @@ class SkillTools:
     ) -> dict[str, object]:
         server = self._load_mcp_server(name)
         self._remember_used_skill(
-            read_skill_for_model_context(
-                self.disclosure,
-                self.skill_index.require_skill(name, "mcp").reference,
+            load_skill_for_model_context(
+                self.context.retriever,
+                self.context.skill_index.require_skill(name, "mcp").reference,
+                self.context.skill_executors,
+                self.context.state_root,
             )
         )
         return {"name": name, "tool": tool, "result": server.call_tool(tool, arguments)}
@@ -163,9 +181,9 @@ class SkillTools:
                 _object_argument(arguments, "arguments"),
             ),
         }
-        if self.memory is not None:
+        if self.context.memory is not None:
             handlers.update(self._memory_tool_handlers(arguments))
-        if self.list_subagents_function is not None and self.run_subagent_function is not None:
+        if self.context.list_subagents is not None and self.context.run_subagent is not None:
             handlers.update(
                 {
                     "list_subagents": self.list_subagents,
@@ -203,7 +221,7 @@ class SkillTools:
         item = memory.add_memory_item(
             _required_string(arguments, "text"),
             scope=scope,
-            source_run_id=self.run_context.run_id,
+            source_run_id=self.context.run_context.run_id,
         )
         return {"item": asdict(item)}
 
@@ -228,19 +246,26 @@ class SkillTools:
         return {"items": [asdict(item) for item in items]}
 
     def _require_memory(self) -> MiniMemory:
-        if self.memory is None:
+        if self.context.memory is None:
             raise RuntimeError("memory tools require a configured memory skill")
-        return self.memory
+        return self.context.memory
 
     def _load_mcp_server(self, name: str) -> McpServer:
-        return create_mcp_server_from_skill_disclosure(
-            self.disclosure.open_skill(name, expected_kind="mcp")
+        reference = self.context.skill_index.require_skill(name, "mcp").reference
+        executor = self.context.skill_executors.get("mcp")
+        if executor is None:
+            raise KeyError("skill executor not found for type: mcp")
+        loaded = executor.load_skill(
+            SkillLoadRequest(self.context.retriever, reference, self.context.state_root)
         )
+        if not isinstance(loaded.runtime_value, McpServer):
+            raise TypeError("mcp skill executor did not return an MCP server")
+        return loaded.runtime_value
 
     def _open_requested_skill(self, arguments: dict[str, object]) -> SkillDisclosure:
         name = _required_string(arguments, "name")
         kind = _optional_string(arguments, "kind")
-        return self.disclosure.open_skill(name, expected_kind=kind)
+        return self.context.retriever.open_skill(name, expected_kind=kind)
 
     def _remember_used_skill(self, skill: Skill) -> None:
         skill_key = f"{skill.manifest.kind}:{skill.manifest.name}"
@@ -296,21 +321,6 @@ def _runtime_tool_definitions() -> list[ToolDefinition]:
             required=["name", "tool", "arguments"],
         ),
     ]
-
-
-def read_skill_for_model_context(
-    disclosure: ProgressiveDisclosureCore,
-    reference: SkillReference,
-) -> Skill:
-    opened = disclosure.open_skill(reference.name, expected_kind=reference.kind)
-    manifest = opened.read_manifest()
-    if reference.kind == "mcp":
-        instructions = create_mcp_server_from_skill_disclosure(opened).build_skill_instructions()
-    elif reference.kind == "prompt":
-        instructions = opened.read_instructions().content
-    else:
-        raise ValueError(f"skill kind cannot enter model context: {reference.key}")
-    return Skill(manifest=manifest, instructions=instructions)
 
 
 def _skill_reference_properties() -> dict[str, dict[str, object]]:
