@@ -2,11 +2,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from runtime.events import RunTraceStore
+from capability.defaults import create_default_capability_set
 from provider.chat import ToolCall
-from capability.contracts import RunEvaluationTracker
-from capability.skill_executors import create_builtin_skill_executors
+from provider.chat import MockProvider
 from capability.tool_router import RuntimeToolRouter, ToolRouterContext
+from runtime.config import AgentConfig
+from runtime.events import RunTraceStore
+from runtime.session import RuntimeSession
+from runtime.state import RuntimeStatePaths
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.kinds.memory import MiniMemory
 
@@ -56,7 +59,7 @@ class SkillToolsTests(unittest.TestCase):
                 )
             )
 
-            targets = tools.context.evaluation_tracker.list_evaluation_targets()
+            targets = tools.context.session.list_evaluation_targets()
             self.assertEqual(["prompt:research"], [target.key for target in targets])
 
     def test_unknown_builtin_tool_fails_with_trace_event(self) -> None:
@@ -136,14 +139,19 @@ def _create_tool_router(
     context,
     memory: MiniMemory | None = None,
 ) -> RuntimeToolRouter:
+    config = AgentConfig.create_default(root)
+    provider = MockProvider()
+    session = RuntimeSession(
+        config=config,
+        provider=provider,
+        capabilities=create_default_capability_set(config, provider),
+        run_context=context,
+        state_paths=RuntimeStatePaths.from_root(root / "memory"),
+    )
+    session.set_skill_disclosure(disclosure, index)
     return RuntimeToolRouter(
         ToolRouterContext(
-            retriever=disclosure,
-            skill_index=index,
-            run_context=context,
-            skill_executors=create_builtin_skill_executors(),
-            evaluation_tracker=RunEvaluationTracker(),
-            state_root=root / "memory",
+            session=session,
             memory=memory,
         )
     )

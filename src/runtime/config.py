@@ -162,6 +162,4 @@ def _optional_positive_int(value: Any) -> int | None:
 
 
 def _normalize_feature_names(value: Any) -> list[str]:
-    names = [str(item).lower() for item in value]
-    aliases = {"skills": "skill"}
-    return [aliases.get(name, name) for name in names]
+    return [str(item).lower() for item in value]

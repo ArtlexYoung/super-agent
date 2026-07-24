@@ -9,6 +9,8 @@ from pathlib import Path
 from uuid import uuid4
 
 from provider.chat import ChatProvider
+from runtime.config import AgentConfig
+from runtime.state import RuntimeStatePaths
 from skill.evolution.candidate import (
     SkillCandidate,
     clean_record_id,
@@ -47,11 +49,10 @@ class SkillEvolutionManager:
     def __init__(
         self,
         *,
+        config: AgentConfig,
         skill_disclosure: ProgressiveDisclosureCore,
-        skill_root: Path,
-        state_root: Path,
+        state_paths: RuntimeStatePaths,
         provider: ChatProvider,
-        model: str,
         minimum_score: float = 0.8,
     ) -> None:
         if minimum_score < 0 or minimum_score > 1:
@@ -60,18 +61,21 @@ class SkillEvolutionManager:
             skill_disclosure.skill_roots,
             skill_disclosure.cache_root,
             disabled_names=skill_disclosure.disabled_names,
-            freshness_root=skill_disclosure.freshness_root,
+            freshness_store=skill_disclosure.freshness_store,
         )
-        self.skill_root = skill_root
-        self.state_root = state_root
+        if not config.paths.skills:
+            raise ValueError("agent has no skill path configured")
+        self.skill_root = config.paths.skills[0]
+        self.evolution_root = state_paths.evolution
+        self.evaluation_root = state_paths.evaluations
         self.provider = provider
-        self.model = model
+        self.model = config.model.model
         self.minimum_score = minimum_score
 
     def create_skill_candidate(self, name: str, goal: str) -> SkillCandidate:
         return create_candidate(
             skill_disclosure=self.skill_disclosure,
-            candidate_root=self.state_root / "candidates",
+            candidate_root=self.evolution_root / "candidates",
             provider=self.provider,
             model=self.model,
             name=name,
@@ -85,7 +89,12 @@ class SkillEvolutionManager:
     ) -> EvaluationReport:
         candidate = self._read_candidate(candidate_id)
         report_id = create_report_id()
-        report_path = self.state_root / "evaluations" / candidate.candidate_id / f"{report_id}.json"
+        report_path = (
+            self.evolution_root
+            / "evaluations"
+            / candidate.candidate_id
+            / f"{report_id}.json"
+        )
         report = evaluate_candidate(
             SkillCandidateEvaluationRequest(
                 candidate=candidate,
@@ -93,7 +102,7 @@ class SkillEvolutionManager:
                 cases=cases,
                 minimum_score=self.minimum_score,
                 report_path=report_path,
-                evaluation_records_root=self.state_root.parent,
+                evaluation_root=self.evaluation_root,
             ),
             self.provider,
         )
@@ -105,7 +114,7 @@ class SkillEvolutionManager:
         report = self._read_latest_report(candidate.candidate_id)
         if not report.passed:
             raise ValueError(f"skill candidate did not pass evaluation: {candidate.candidate_id}")
-        promotion_path = self.state_root / "promotions" / f"{candidate.candidate_id}.json"
+        promotion_path = self.evolution_root / "promotions" / f"{candidate.candidate_id}.json"
         if promotion_path.exists():
             raise ValueError(f"skill candidate was already promoted: {candidate.candidate_id}")
         current = self._verify_candidate_parent(candidate)
@@ -167,7 +176,7 @@ class SkillEvolutionManager:
             candidate_id="",
             rollback_revision_id=revision.previous_revision_id,
         )
-        rollback_path = self.state_root / "rollbacks" / f"rollback-{uuid4().hex}.json"
+        rollback_path = self.evolution_root / "rollbacks" / f"rollback-{uuid4().hex}.json"
         _write_json_exclusive(
             rollback_path,
             {
@@ -200,7 +209,7 @@ class SkillEvolutionManager:
 
     def list_skill_history(self, name: str) -> list[SkillHistoryRevision]:
         skill_name = clean_skill_name(name)
-        history_root = self.state_root / "history" / skill_name
+        history_root = self.evolution_root / "history" / skill_name
         if not history_root.is_dir():
             return []
         revisions = [
@@ -210,7 +219,7 @@ class SkillEvolutionManager:
         return sorted(revisions, key=lambda item: (item.created_at, item.revision_id))
 
     def _read_candidate(self, candidate_id: str) -> SkillCandidate:
-        candidate = load_candidate(self.state_root / "candidates", candidate_id)
+        candidate = load_candidate(self.evolution_root / "candidates", candidate_id)
         verify_candidate_files(candidate)
         return candidate
 
@@ -249,7 +258,7 @@ class SkillEvolutionManager:
             return None
         # Create history once; promotion and rollback read revisions without overwriting them.
         revision_id = f"revision-{uuid4().hex}"
-        final_path = self.state_root / "history" / manifest.name / revision_id
+        final_path = self.evolution_root / "history" / manifest.name / revision_id
         staging_path = final_path.parent / f".{revision_id}.tmp"
         skill_path = staging_path / "skill"
         shutil.copytree(manifest.path, skill_path)
@@ -271,7 +280,7 @@ class SkillEvolutionManager:
 
     def _read_history_revision(self, name: str, revision_id: str) -> SkillHistoryRevision:
         clean_record_id(revision_id)
-        metadata_path = self.state_root / "history" / name / revision_id / "revision.json"
+        metadata_path = self.evolution_root / "history" / name / revision_id / "revision.json"
         if not metadata_path.is_file():
             raise KeyError(f"skill history revision not found: {revision_id}")
         data = json.loads(metadata_path.read_text(encoding="utf-8"))
@@ -288,14 +297,18 @@ class SkillEvolutionManager:
         )
 
     def _read_latest_report(self, candidate_id: str) -> EvaluationReport:
-        root = self.state_root / "evaluations" / candidate_id
-        reports = [_read_report(path) for path in root.glob("report-*.json")] if root.is_dir() else []
+        root = self.evolution_root / "evaluations" / candidate_id
+        reports = (
+            [_read_report(path) for path in root.glob("report-*.json")]
+            if root.is_dir()
+            else []
+        )
         if not reports:
             raise ValueError(f"skill candidate has not been evaluated: {candidate_id}")
         return max(reports, key=lambda item: (item.created_at, item.report_id))
 
     def _read_active_state(self, name: str) -> dict[str, object]:
-        path = self.state_root / "active" / f"{name}.json"
+        path = self.evolution_root / "active" / f"{name}.json"
         if not path.is_file():
             return {}
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -308,7 +321,7 @@ class SkillEvolutionManager:
         candidate_id: str,
         rollback_revision_id: str,
     ) -> None:
-        path = self.state_root / "active" / f"{name}.json"
+        path = self.evolution_root / "active" / f"{name}.json"
         _write_json_atomically(
             path,
             {

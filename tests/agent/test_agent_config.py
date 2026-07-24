@@ -72,6 +72,22 @@ skills = ["skills"]
 
             self.assertEqual(["skill"], config.agent.use_features)
 
+    def test_feature_names_are_lowercased_without_legacy_aliases(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config_path = root / "agent.toml"
+            config_path.write_text(
+                """
+[agent]
+use_features = ["SKILLS", "MCP"]
+""".strip(),
+                encoding="utf-8",
+            )
+
+            config = AgentConfig.load_from_file(config_path)
+
+            self.assertEqual(["skills", "mcp"], config.agent.use_features)
+
     def test_disclosure_core_reads_manifest_instruction_and_selection(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             skill_dir = Path(tmp) / "skills" / "echo"

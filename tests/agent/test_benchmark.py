@@ -2,6 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from runtime.state import RuntimeStatePaths
 from skill.benchmark import BenchmarkCase, SkillBenchmark, benchmark_report_to_dict
 from skill.disclosure import ProgressiveDisclosureCore
 
@@ -13,7 +14,7 @@ class SkillBenchmarkTests(unittest.TestCase):
             _write_skill(root, "alpha", "Alpha rules. " * 8)
             _write_skill(root, "beta", "Beta rules. " * 8)
 
-            report = SkillBenchmark(_create_disclosure(root)).run_cases(
+            report = _create_benchmark(root).run_cases(
                 [BenchmarkCase(name="alpha only", prompt="use alpha")]
             )
 
@@ -26,7 +27,7 @@ class SkillBenchmarkTests(unittest.TestCase):
             root = Path(tmp)
             for index in range(6):
                 _write_skill(root, f"skill{index}", (f"Instruction {index}. " * 250).strip())
-            benchmark = SkillBenchmark(_create_disclosure(root))
+            benchmark = _create_benchmark(root)
 
             report = benchmark.run_cases(
                 [BenchmarkCase(name="one match", prompt="use skill0", enabled_skills=[])]
@@ -43,7 +44,7 @@ class SkillBenchmarkTests(unittest.TestCase):
             root = Path(tmp)
             _write_skill(root, "echo", "Answer briefly.")
 
-            report = SkillBenchmark(_create_disclosure(root)).run_cases(
+            report = _create_benchmark(root).run_cases(
                 [BenchmarkCase(name="echo", prompt="echo this")]
             )
             data = benchmark_report_to_dict(report)
@@ -76,3 +77,10 @@ instructions = "SKILL.md"
 
 def _create_disclosure(root: Path) -> ProgressiveDisclosureCore:
     return ProgressiveDisclosureCore([root], root / ".disclosure-cache")
+
+
+def _create_benchmark(root: Path) -> SkillBenchmark:
+    return SkillBenchmark(
+        _create_disclosure(root),
+        RuntimeStatePaths.from_root(root / ".runtime-state"),
+    )

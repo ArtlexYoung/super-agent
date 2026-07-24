@@ -5,8 +5,9 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
-from capability.defaults import create_default_skill_retriever
+from capability.defaults import create_default_skill_disclosure
 from runtime.config import AgentConfig
+from runtime.state import RuntimeStatePaths
 from skill.kinds.memory import MemoryItem, MiniMemory, create_memory_from_skill_disclosure
 
 
@@ -93,13 +94,16 @@ def _consolidate_memory(config_path: Path) -> int:
 
 def _load_configured_memory(config_path: Path) -> MiniMemory:
     config = AgentConfig.load_from_file(config_path)
-    disclosure = create_default_skill_retriever(config)
+    disclosure = create_default_skill_disclosure(config)
     disclosure.prepare_skill_index()
     skill = disclosure.open_skill(
         config.agent.memory,
         expected_capability="memory",
     )
-    return create_memory_from_skill_disclosure(skill, config.paths.memory)
+    return create_memory_from_skill_disclosure(
+        skill,
+        RuntimeStatePaths.from_root(config.paths.memory).root,
+    )
 
 
 def _print_memory_items(items: list[MemoryItem]) -> None:

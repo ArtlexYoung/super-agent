@@ -7,16 +7,16 @@ from time import perf_counter
 from uuid import uuid4
 
 from provider.chat import ChatProvider, Message
-from skill.disclosure import ProgressiveDisclosureCore
-from skill.evolution.candidate import SkillCandidate
-from skill.evolution.records import (
+from runtime.evaluation import (
     EvaluationRecordStore,
     EvaluationResult,
     EvaluationSource,
     create_evaluation_record,
-    create_skill_evaluation_target,
     estimate_evaluation_token_usage,
 )
+from skill.disclosure import ProgressiveDisclosureCore
+from skill.evaluation import create_skill_evaluation_target
+from skill.evolution.candidate import SkillCandidate
 from skill.manifest import Skill, SkillManifest
 
 
@@ -65,7 +65,7 @@ class SkillCandidateEvaluationRequest:
     cases: list[EvaluationCase]
     minimum_score: float
     report_path: Path
-    evaluation_records_root: Path
+    evaluation_root: Path
 
 
 def evaluate_candidate(
@@ -80,7 +80,7 @@ def evaluate_candidate(
         _validate_evaluation_case(case)
     skill = _read_candidate_skill(request.candidate)
     target = create_skill_evaluation_target(skill)
-    store = EvaluationRecordStore(request.evaluation_records_root)
+    store = EvaluationRecordStore(request.evaluation_root)
     results: list[EvaluationCaseResult] = []
     for case in request.cases:
         started_at = perf_counter()

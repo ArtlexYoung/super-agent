@@ -1,4 +1,4 @@
-"""Deterministic Skill freshness derived from shared evaluation records."""
+"""Deterministic Skill freshness derived from runtime evaluation records."""
 
 from __future__ import annotations
 
@@ -8,21 +8,22 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from skill.evolution.records import EvaluationRecord, EvaluationRecordStore
+from runtime.evaluation import EvaluationRecord, EvaluationRecordStore
+from skill.manifest import DEFAULT_SKILL_FRESHNESS
 
 
 STATS_FILE = "skill_stats.json"
-DEFAULT_FRESHNESS = 70.0
 FOLLOWUP_WINDOW_MINUTES = 10
 
 
 class SkillFreshnessStore:
-    def __init__(self, root: Path) -> None:
-        self.root = root
-        self.stats_path = root / STATS_FILE
+    def __init__(self, evaluation_root: Path, cache_root: Path) -> None:
+        self.evaluation_root = evaluation_root
+        self.cache_root = cache_root
+        self.stats_path = cache_root / STATS_FILE
 
     def read_skill_stats(self) -> dict[str, dict[str, Any]]:
-        records = EvaluationRecordStore(self.root).read_evaluation_records(
+        records = EvaluationRecordStore(self.evaluation_root).read_evaluation_records(
             target_type="skill",
             source_type="agent_run",
         )
@@ -31,7 +32,7 @@ class SkillFreshnessStore:
         return data["skills"]
 
     def _write_store_data(self, data: dict[str, Any]) -> None:
-        self.root.mkdir(parents=True, exist_ok=True)
+        self.cache_root.mkdir(parents=True, exist_ok=True)
         text = json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True)
         self.stats_path.write_text(text, encoding="utf-8")
 
@@ -130,7 +131,7 @@ def _update_freshness(stats: dict[str, Any], now: datetime) -> None:
         + 0.10 * scores["replacement"]
     )
     confidence = scores["confidence"] / 100
-    freshness = confidence * base + (1 - confidence) * DEFAULT_FRESHNESS
+    freshness = confidence * base + (1 - confidence) * DEFAULT_SKILL_FRESHNESS
     stats["freshness"] = round(_clamp(freshness, 0, 100), 2)
     stats["freshness_updated_at"] = _format_datetime(now)
 
@@ -215,7 +216,7 @@ def _new_skill_stats(skill_name: str, function_group: str) -> dict[str, Any]:
     return {
         "skill": skill_name,
         "function_group": function_group,
-        "freshness": DEFAULT_FRESHNESS,
+        "freshness": DEFAULT_SKILL_FRESHNESS,
         "freshness_updated_at": "",
         "call_count": 0,
         "success_count": 0,

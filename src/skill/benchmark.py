@@ -3,10 +3,10 @@ from __future__ import annotations
 import json
 import math
 from dataclasses import dataclass, field
-from pathlib import Path
 
 from capability.contracts import SkillExecutor
 from capability.skill_executors import create_builtin_skill_executors, load_skill_for_model_context
+from runtime.state import RuntimeStatePaths
 from skill.disclosure import (
     ProgressiveDisclosureCore,
     SkillIndex,
@@ -48,11 +48,11 @@ class SkillBenchmark:
     def __init__(
         self,
         skill_disclosure: ProgressiveDisclosureCore,
-        state_root: Path | None = None,
+        state_paths: RuntimeStatePaths,
         skill_executors: dict[str, SkillExecutor] | None = None,
     ) -> None:
         self.skill_disclosure = skill_disclosure
-        self.state_root = state_root or skill_disclosure.cache_root.parent
+        self.state_paths = state_paths
         self.skill_executors = skill_executors or create_builtin_skill_executors()
 
     def run_cases(self, cases: list[BenchmarkCase]) -> BenchmarkReport:
@@ -76,7 +76,7 @@ class SkillBenchmark:
                     self.skill_disclosure,
                     context_entries,
                     self.skill_executors,
-                    self.state_root,
+                    self.state_paths,
                 ),
             ]
         )
@@ -120,7 +120,7 @@ class SkillBenchmark:
                 self.skill_disclosure,
                 reference,
                 self.skill_executors,
-                self.state_root,
+                state_paths=self.state_paths,
             )
             for reference in selected_references
         ]
@@ -170,10 +170,15 @@ def _build_eager_context(
     disclosure: ProgressiveDisclosureCore,
     entries: list[SkillIndexEntry],
     skill_executors: dict[str, SkillExecutor],
-    state_root: Path,
+    state_paths: RuntimeStatePaths,
 ) -> str:
     skills = [
-        load_skill_for_model_context(disclosure, entry.reference, skill_executors, state_root)
+        load_skill_for_model_context(
+            disclosure,
+            entry.reference,
+            skill_executors,
+            state_paths=state_paths,
+        )
         for entry in entries
     ]
     return _join_context([skill.instructions for skill in skills])

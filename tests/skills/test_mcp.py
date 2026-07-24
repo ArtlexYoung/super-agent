@@ -6,6 +6,7 @@ from pathlib import Path
 
 from agents.agent import Agent
 from runtime.config import AgentConfig
+from runtime.state import RuntimeStatePaths
 from provider.chat import MockProvider
 from capability.skill_executors import create_builtin_skill_executors, load_skill_for_model_context
 from skill.disclosure import ProgressiveDisclosureCore
@@ -54,7 +55,7 @@ class McpSkillTests(unittest.TestCase):
                 disclosure,
                 selected[0],
                 create_builtin_skill_executors(),
-                root / "memory",
+                state_paths=RuntimeStatePaths.from_root(root / "memory"),
             )
 
             self.assertEqual("filesystem", skill.manifest.name)
@@ -80,7 +81,7 @@ class McpSkillTests(unittest.TestCase):
                 disclosure,
                 disclosure.prepare_skill_index().require_skill("github", "mcp").reference,
                 create_builtin_skill_executors(),
-                root / "memory",
+                state_paths=RuntimeStatePaths.from_root(root / "memory"),
             )
 
             self.assertIn("Environment variables: GITHUB_TOKEN", skill.instructions)

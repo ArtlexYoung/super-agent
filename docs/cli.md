@@ -1,0 +1,102 @@
+# CLI Reference
+
+## Conversation
+
+```bash
+super-agent
+super-agent chat --config agent.toml
+super-agent run "hello"
+super-agent run --config agent.toml --output json "hello"
+```
+
+`run --output` accepts `text`, `json`, or `jsonl`. Use `--request-stdin` with JSON input for desktop and service integrations.
+
+## Project Initialization
+
+```bash
+super-agent init --path my-agent
+```
+
+Initialization writes files only when they are missing.
+
+## Model Discovery
+
+```bash
+super-agent models list
+super-agent models list --output json
+super-agent models resolve
+super-agent models resolve --config agent.toml --output json
+```
+
+## Skill Inspection
+
+```bash
+super-agent skills list --config agent.toml
+super-agent skills index --config agent.toml --output json
+super-agent skills validate --config agent.toml
+super-agent skills explain --config agent.toml --prompt "research this"
+super-agent skills freshness --config agent.toml
+```
+
+## Skill Composition
+
+```bash
+super-agent skills graph --config agent.toml --name research
+super-agent skills lock --config agent.toml --name research --output skill.lock
+```
+
+Repeat `--name` to resolve more than one requested Skill.
+
+## Skill Evolution
+
+```bash
+super-agent skills propose --config agent.toml --name concise --goal "make it clearer"
+super-agent skills evaluate --config agent.toml --candidate-id <id> --cases cases.json
+super-agent skills promote --config agent.toml --candidate-id <id>
+super-agent skills evolve --config agent.toml --name concise --goal "make it clearer" --cases cases.json
+super-agent skills rollback --config agent.toml --name concise
+```
+
+## Skill Packages
+
+```bash
+super-agent skills pack --config agent.toml --name research --output research.zip
+super-agent skills install --config agent.toml --source ./research.zip
+super-agent skills update --config agent.toml --name research --source ./new-research
+super-agent skills remove --config agent.toml --name research
+```
+
+Install and update accept `--expected-sha256`.
+
+## Memory
+
+```bash
+super-agent memory habits --config agent.toml
+super-agent memory list --config agent.toml --scope agent
+super-agent memory add --config agent.toml --text "Remember this" --scope agent
+super-agent memory recall --config agent.toml --query "this" --scope agent --limit 5
+super-agent memory forget --config agent.toml --item-id <id>
+super-agent memory consolidate --config agent.toml
+```
+
+## Run Inspection
+
+```bash
+super-agent runs status --config agent.toml
+super-agent runs status --config agent.toml --limit 10 --output json
+super-agent runs explain --config agent.toml --run-id <run-id>
+super-agent runs export --config agent.toml --run-id <run-id> --output run.json
+```
+
+When `--run-id` is omitted, explain and export use the latest run.
+
+## Progressive Disclosure Benchmark
+
+```bash
+super-agent benchmark \
+  --config examples/basic/agent.toml \
+  --cases examples/basic/benchmark-cases.json \
+  --output report.json
+```
+
+The benchmark does not call a model. It compares eager and progressive context using the deterministic approximation `ceil(character count / 4)`.

@@ -23,7 +23,10 @@ class PublicApiTests(unittest.TestCase):
             "RunEvaluationRequest",
             "RunSnapshot",
             "RunSnapshotStore",
+            "RuntimeSession",
+            "RuntimeStatePaths",
             "SkillBenchmark",
+            "SkillDisclosureCapability",
             "SkillManifest",
             "SkillReference",
             "SkillSelectionDecision",
@@ -33,6 +36,7 @@ class PublicApiTests(unittest.TestCase):
             "run_snapshot_to_dict",
             "discover_model_candidates",
             "create_evaluation_record",
+            "create_default_skill_disclosure",
             "evaluation_record_from_dict",
             "evaluation_record_to_dict",
             "model_resolution_to_dict",
@@ -43,6 +47,14 @@ class PublicApiTests(unittest.TestCase):
         self.assertTrue(expected_names <= set(super_agent.__all__))
         for name in expected_names:
             self.assertIsNotNone(getattr(super_agent, name))
+
+        removed_names = {
+            "SkillRetrieverCapability",
+            "create_default_skill_retriever",
+        }
+        self.assertFalse(removed_names & set(super_agent.__all__))
+        for name in removed_names:
+            self.assertFalse(hasattr(super_agent, name))
 
     def test_removed_provider_aliases_fail_clearly(self) -> None:
         for provider in ["openai", "anthropic"]:

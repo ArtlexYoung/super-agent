@@ -2,8 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from skill.disclosure import ProgressiveDisclosureCore
-from skill.evolution.records import (
+from runtime.evaluation import (
     EvaluationRecordStore,
     EvaluationResult,
     EvaluationSource,
@@ -11,6 +10,8 @@ from skill.evolution.records import (
     EvaluationTokenUsage,
     create_evaluation_record,
 )
+from skill.disclosure import ProgressiveDisclosureCore
+from skill.freshness import SkillFreshnessStore
 
 
 class ProgressiveDisclosureCoreTests(unittest.TestCase):
@@ -231,7 +232,7 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_prompt_skill(root, "research", triggers=["research"])
-            EvaluationRecordStore(root / "memory").append_evaluation_records(
+            EvaluationRecordStore(root / "memory" / "evaluations").append_evaluation_records(
                 [
                     create_evaluation_record(
                         target=EvaluationTarget(
@@ -269,7 +270,10 @@ def _create_core(root: Path) -> ProgressiveDisclosureCore:
     return ProgressiveDisclosureCore(
         [root / "skills"],
         root / "cache",
-        freshness_root=root / "memory",
+        freshness_store=SkillFreshnessStore(
+            root / "memory" / "evaluations",
+            root / "memory" / "derived",
+        ),
     )
 
 

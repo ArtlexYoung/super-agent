@@ -31,9 +31,26 @@ class SkillKindArchitectureTests(unittest.TestCase):
                 importlib.import_module(module_name)
 
     def test_old_core_and_runtime_agent_modules_are_removed(self) -> None:
-        for module_name in ["core.agent", "core.config", "core.provider", "runtime.agent"]:
+        for module_name in [
+            "core.agent",
+            "core.config",
+            "core.provider",
+            "runtime.agent",
+            "skill.evolution.records",
+            "skill.evolution.freshness",
+        ]:
             with self.assertRaises(ModuleNotFoundError):
                 importlib.import_module(module_name)
+
+    def test_runtime_engine_owns_evaluation_without_importing_skill_evolution(self) -> None:
+        engine_source = Path("src/runtime/engine.py").read_text(encoding="utf-8")
+        contracts_source = Path("src/capability/contracts.py").read_text(encoding="utf-8")
+
+        self.assertNotIn("skill.evolution", engine_source)
+        self.assertNotIn("skill.evolution", contracts_source)
+        self.assertTrue(Path("src/runtime/evaluation.py").is_file())
+        self.assertTrue(Path("src/runtime/session.py").is_file())
+        self.assertTrue(Path("src/runtime/state.py").is_file())
 
     def test_kind_implementations_stay_inside_skill_package(self) -> None:
         for path in ["src/mcp.py", "src/memory.py", "src/workflow.py", "src/mcp", "src/memory", "src/workflow"]:

@@ -5,10 +5,8 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from skill.evolution.freshness import DEFAULT_FRESHNESS
-
-
 SKILL_SCHEMA_VERSION = 2
+DEFAULT_SKILL_FRESHNESS = 70.0
 SKILL_MANIFEST_FIELDS = {
     "schema_version",
     "name",
@@ -45,7 +43,7 @@ class SkillManifest:
     capability: str = "prompt"
     agent_created: bool = False
     agent_can_update: bool = False
-    freshness: float = DEFAULT_FRESHNESS
+    freshness: float = DEFAULT_SKILL_FRESHNESS
     function_group: str = ""
     freshness_updated_at: str = ""
     provides: list[str] = field(default_factory=list)
@@ -111,7 +109,7 @@ def _read_schema_version(data: dict[str, object]) -> int:
 
 
 def _read_freshness(data: dict[str, object]) -> float:
-    value = data.get("freshness", DEFAULT_FRESHNESS)
+    value = data.get("freshness", DEFAULT_SKILL_FRESHNESS)
     if isinstance(value, bool) or not isinstance(value, int | float):
         raise ValueError("freshness must be a TOML number")
     number = float(value)

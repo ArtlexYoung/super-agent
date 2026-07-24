@@ -3,12 +3,12 @@ from __future__ import annotations
 from typing import cast
 
 from capability.contracts import (
-    CapabilityRunContext,
     SkillLoadRequest,
     SkillLoadResult,
 )
 from capability.tool_router import RuntimeToolRouter, ToolRouterContext
 from runtime.models import AgentRunRequest, RunResult, SubAgentResult
+from runtime.session import RuntimeSession
 from skill.disclosure import SkillIndex, SkillReference
 from skill.kinds.memory import MiniMemory
 from skill.kinds.workflow import Workflow, WorkflowRunRequest
@@ -19,45 +19,45 @@ class DefaultRunController:
     name = "adaptive"
     version = "1"
 
-    def run_agent(self, request: AgentRunRequest, context: CapabilityRunContext) -> RunResult:
-        retriever = context.skill_retriever
-        skill_index = context.skill_index
-        memory = _load_optional_memory(context)
-        workflow = _load_workflow(context)
+    def run_agent(self, request: AgentRunRequest, session: RuntimeSession) -> RunResult:
+        disclosure = session.require_skill_disclosure()
+        skill_index = session.require_skill_index()
+        memory = _load_optional_memory(session)
+        workflow = _load_workflow(session)
         disclosed_skills: list[Skill] = []
         if workflow.mode not in {"react", "loop"}:
-            references = retriever.select_skill_references_for_prompt(
+            references = disclosure.select_skill_references_for_prompt(
                 request.prompt,
-                context.config.agent.skills,
-                allowed_capabilities=_model_context_capabilities(context),
+                session.config.agent.skills,
+                allowed_capabilities=_model_context_capabilities(session),
             )
             disclosed_skills = [
-                _load_model_skill(context, reference)
+                _load_model_skill(session, reference)
                 for reference in references
             ]
-        tool_router = _create_tool_router(request, context, memory)
-        context.run_context.record_event(
+        tool_router = _create_tool_router(request, session, memory)
+        session.run_context.record_event(
             "skills.disclosed",
             {
                 "names": [skill.manifest.name for skill in disclosed_skills],
                 "index_path": str(skill_index.index_path),
             },
         )
-        subagent_results = _run_matching_subagents(request, context, workflow)
-        system = _build_system_prompt(request, context, skill_index, memory, subagent_results)
+        subagent_results = _run_matching_subagents(request, session, workflow)
+        system = _build_system_prompt(request, session, skill_index, memory, subagent_results)
         result = workflow.run(
             WorkflowRunRequest(
                 prompt=request.prompt,
                 system=system,
-                model=context.config.model.model,
+                model=session.config.model.model,
                 skills=disclosed_skills,
-                provider=context.provider,
+                provider=session.provider,
                 skill_tools=tool_router,
-                run_context=context.run_context,
+                run_context=session.run_context,
                 messages=request.messages,
             )
         )
-        context.run_context.record_event(
+        session.run_context.record_event(
             "model.completed",
             {"text": result.text, "workflow": result.workflow, "skills": result.skills},
         )
@@ -69,42 +69,50 @@ class DefaultRunController:
             skills=result.skills,
             subagent_results=subagent_results + tool_router.delegated_subagent_results,
             warning_messages=request.warning_messages,
-            run_id=context.run_context.run_id,
+            run_id=session.run_context.run_id,
             stop_reason=result.stop_reason,
         )
 
 
 def _load_optional_memory(
-    context: CapabilityRunContext,
+    session: RuntimeSession,
 ) -> MiniMemory | None:
     try:
-        entry = context.skill_index.require_skill(context.config.agent.memory, "memory")
+        entry = session.require_skill_index().require_skill(
+            session.config.agent.memory,
+            "memory",
+        )
     except KeyError:
         return None
-    loaded = _load_skill_with_executor(context, entry.reference)
+    loaded = _load_skill_with_executor(session, entry.reference)
     if not isinstance(loaded.runtime_value, MiniMemory):
         raise TypeError("memory skill executor did not return memory runtime")
     return loaded.runtime_value
 
 
 def _load_workflow(
-    context: CapabilityRunContext,
+    session: RuntimeSession,
 ) -> Workflow:
     try:
-        entry = context.skill_index.require_skill(context.config.agent.workflow, "workflow")
+        entry = session.require_skill_index().require_skill(
+            session.config.agent.workflow,
+            "workflow",
+        )
     except KeyError:
-        raise KeyError(f"workflow skill not found: {context.config.agent.workflow}") from None
-    loaded = _load_skill_with_executor(context, entry.reference)
+        raise KeyError(
+            f"workflow skill not found: {session.config.agent.workflow}"
+        ) from None
+    loaded = _load_skill_with_executor(session, entry.reference)
     if not isinstance(loaded.runtime_value, Workflow):
         raise TypeError("workflow skill executor did not return workflow runtime")
     return loaded.runtime_value
 
 
 def _load_model_skill(
-    context: CapabilityRunContext,
+    session: RuntimeSession,
     reference: SkillReference,
 ) -> Skill:
-    loaded = _load_skill_with_executor(context, reference)
+    loaded = _load_skill_with_executor(session, reference)
     if loaded.model_skill is None:
         raise ValueError(
             f"skill capability cannot enter model context: {reference.capability}"
@@ -113,46 +121,44 @@ def _load_model_skill(
 
 
 def _load_skill_with_executor(
-    context: CapabilityRunContext,
+    session: RuntimeSession,
     reference: SkillReference,
 ) -> SkillLoadResult:
-    entry = context.skill_index.require_skill(reference.name, reference.capability)
-    executor = context.capabilities.require_skill_executor(reference.capability)
-    context.evaluation_tracker.record_skill_used(entry)
-    context.evaluation_tracker.record_capability_used(
+    entry = session.require_skill_index().require_skill(
+        reference.name,
+        reference.capability,
+    )
+    executor = session.capabilities.require_skill_executor(reference.capability)
+    session.record_skill_used(entry)
+    session.record_capability_used(
         f"skill_executor:{reference.capability}",
         executor,
     )
     return executor.load_skill(
         SkillLoadRequest(
-            context.skill_retriever,
+            session.require_skill_disclosure(),
             reference,
-            context.config.paths.memory,
+            session.state_paths,
         )
     )
 
 
 def _create_tool_router(
     request: AgentRunRequest,
-    context: CapabilityRunContext,
+    session: RuntimeSession,
     memory: MiniMemory | None,
 ) -> RuntimeToolRouter:
     has_subagents = request.include_subagents and bool(request.subagents.list_subagents())
     collected_results: list[SubAgentResult] = []
     return RuntimeToolRouter(
         ToolRouterContext(
-            retriever=context.skill_retriever,
-            skill_index=context.skill_index,
-            run_context=context.run_context,
-            skill_executors=context.capabilities.skill_executors,
-            evaluation_tracker=context.evaluation_tracker,
-            state_root=context.config.paths.memory,
+            session=session,
             memory=memory,
             list_subagents=request.subagents.list_subagents if has_subagents else None,
             run_subagent=(
                 lambda name, prompt: _run_named_subagent(
                     request,
-                    context,
+                    session,
                     collected_results,
                     name,
                     prompt,
@@ -167,12 +173,12 @@ def _create_tool_router(
 
 def _run_named_subagent(
     request: AgentRunRequest,
-    context: CapabilityRunContext,
+    session: RuntimeSession,
     collected_results: list[SubAgentResult],
     name: str,
     prompt: str,
 ) -> dict[str, object]:
-    result = request.subagents.run_named_subagent(name, prompt, context.run_context)
+    result = request.subagents.run_named_subagent(name, prompt, session.run_context)
     collected_results.append(_subagent_result_from_dict(result))
     return result
 
@@ -196,22 +202,22 @@ def _subagent_result_from_dict(value: dict[str, object]) -> SubAgentResult:
 
 def _run_matching_subagents(
     request: AgentRunRequest,
-    context: CapabilityRunContext,
+    session: RuntimeSession,
     workflow: Workflow,
 ) -> list[SubAgentResult]:
     if not request.include_subagents or workflow.mode in {"react", "loop"}:
         return []
-    return request.subagents.run_matching_subagents(request.prompt, context.run_context)
+    return request.subagents.run_matching_subagents(request.prompt, session.run_context)
 
 
 def _build_system_prompt(
     request: AgentRunRequest,
-    context: CapabilityRunContext,
+    session: RuntimeSession,
     skill_index: SkillIndex,
     memory: MiniMemory | None,
     subagent_results: list[SubAgentResult],
 ) -> str:
-    system = context.config.agent.system
+    system = session.config.agent.system
     if memory is not None:
         instruction = memory.build_prompt_instruction(request.prompt)
         if instruction:
@@ -226,9 +232,9 @@ def _build_system_prompt(
     return f"{system}\n\n{disclosure}" if disclosure else system
 
 
-def _model_context_capabilities(context: CapabilityRunContext) -> set[str]:
+def _model_context_capabilities(session: RuntimeSession) -> set[str]:
     return {
         capability_name
-        for capability_name, executor in context.capabilities.skill_executors.items()
+        for capability_name, executor in session.capabilities.skill_executors.items()
         if executor.adds_model_context
     }

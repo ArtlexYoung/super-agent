@@ -6,6 +6,7 @@ from pathlib import Path
 
 from runtime.config import AgentConfig
 from runtime.snapshots import RunSnapshot, RunSnapshotStore, run_snapshot_to_dict
+from runtime.state import RuntimeStatePaths
 
 
 def configure_runs_parser(parser: argparse.ArgumentParser) -> None:
@@ -107,7 +108,7 @@ def _load_run_snapshot_store(config_path: str | None) -> RunSnapshotStore:
         if config_path is None
         else AgentConfig.load_from_file(config_path)
     )
-    return RunSnapshotStore(config.paths.memory / "runs")
+    return RunSnapshotStore(RuntimeStatePaths.from_root(config.paths.memory).runs)
 
 
 def _resolve_run_id(store: RunSnapshotStore, requested: str | None) -> str | None:

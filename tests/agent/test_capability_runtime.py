@@ -8,11 +8,12 @@ from pathlib import Path
 from unittest.mock import patch
 
 from agents.agent import Agent
-from capability.contracts import CapabilityRunContext, SkillLoadRequest, SkillLoadResult
+from capability.contracts import SkillLoadRequest, SkillLoadResult
 from cli import main
 from provider.chat import MockProvider
 from runtime.config import AgentConfig
 from runtime.models import AgentRunRequest, RunResult
+from runtime.session import RuntimeSession
 from skill.manifest import Skill
 
 
@@ -95,6 +96,10 @@ class CapabilityRuntimeTests(unittest.TestCase):
             self.assertEqual(1, len(evaluator.requests))
             self.assertEqual(result.run_id, evaluator.requests[0].source.run_id)
             self.assertTrue(evaluator.requests[0].result.success)
+            self.assertEqual(
+                Path(tmp).absolute() / ".super-agent" / "memory" / "evaluations",
+                evaluator.requests[0].state_paths.evaluations,
+            )
 
     def test_registered_custom_capability_is_discovered_and_executed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -121,6 +126,9 @@ class CapabilityRuntimeTests(unittest.TestCase):
 
         self.assertIn("capability.contracts", imported_modules)
         self.assertFalse(
+            any(module.startswith("skill.evolution") for module in imported_modules)
+        )
+        self.assertFalse(
             imported_modules
             & {
                 "capability.defaults",
@@ -138,14 +146,14 @@ class _FixedRunController:
     def run_agent(
         self,
         request: AgentRunRequest,
-        context: CapabilityRunContext,
+        session: RuntimeSession,
     ) -> RunResult:
         return RunResult(
             text="custom controller",
             workflow="custom",
             skills=[],
             warning_messages=request.warning_messages,
-            run_id=context.run_context.run_id,
+            run_id=session.run_context.run_id,
         )
 
 
@@ -160,7 +168,10 @@ class _RecordingPromptExecutor:
 
     def load_skill(self, request: SkillLoadRequest) -> SkillLoadResult:
         self.load_count += 1
-        opened = request.retriever.open_skill(request.reference.name, self.capability_name)
+        opened = request.disclosure.open_skill(
+            request.reference.name,
+            self.capability_name,
+        )
         return SkillLoadResult(
             model_skill=Skill(
                 manifest=opened.read_manifest(),

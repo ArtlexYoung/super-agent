@@ -8,9 +8,8 @@ from capability.contracts import (
     RunController,
     RunResultEvaluator,
     RunRecorder,
+    SkillDisclosureCapability,
     SkillExecutor,
-    SkillRetrieverCapability,
-    SkillRetrieverSession,
     SkillUpdaterCapability,
 )
 from capability.defaults import create_default_capability_set
@@ -90,8 +89,11 @@ class Agent:
     def set_run_controller(self, run_controller: RunController) -> None:
         self._replace_capabilities(run_controller=run_controller)
 
-    def set_skill_retriever(self, skill_retriever: SkillRetrieverCapability) -> None:
-        self._replace_capabilities(skill_retriever=skill_retriever)
+    def set_skill_disclosure(
+        self,
+        skill_disclosure: SkillDisclosureCapability,
+    ) -> None:
+        self._replace_capabilities(skill_disclosure=skill_disclosure)
 
     def add_skill_executor(self, skill_executor: SkillExecutor) -> None:
         executors = dict(self.capabilities.skill_executors)
@@ -106,9 +108,6 @@ class Agent:
 
     def set_run_recorder(self, run_recorder: RunRecorder) -> None:
         self._replace_capabilities(run_recorder=run_recorder)
-
-    def create_skill_retriever(self, run_context: RunContext | None = None) -> SkillRetrieverSession:
-        return self.capabilities.skill_retriever.create_skill_retriever(self.config, run_context)
 
     def create_skill_evolution_manager(self) -> "SkillEvolutionManager":
         return cast("SkillEvolutionManager", self.runtime.create_skill_updater())

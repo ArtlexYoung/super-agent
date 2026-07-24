@@ -18,7 +18,7 @@ from skill.disclosure.models import (
 )
 from skill.disclosure.source import read_skill_sources
 from skill.disclosure.store import SkillDisclosureStore
-from skill.evolution.freshness import SkillFreshnessStore
+from skill.freshness import SkillFreshnessStore
 from skill.manifest import (
     SkillManifest,
     calculate_skill_directory_sha256,
@@ -36,13 +36,13 @@ class ProgressiveDisclosureCore:
         cache_root: Path,
         *,
         disabled_names: list[str] | None = None,
-        freshness_root: Path | None = None,
+        freshness_store: SkillFreshnessStore | None = None,
         run_context: "RunContext | None" = None,
     ) -> None:
         self.skill_roots = [path.expanduser() for path in skill_roots]
         self.cache_root = cache_root
         self.disabled_names = list(disabled_names or [])
-        self.freshness_root = freshness_root
+        self.freshness_store = freshness_store
         self.store = SkillDisclosureStore(cache_root, run_context=run_context)
         self._index: SkillIndex | None = None
         self._sources_by_key: dict[str, SkillSource] = {}
@@ -57,7 +57,7 @@ class ProgressiveDisclosureCore:
         if scan.issues:
             messages = "; ".join(f"{issue.path}: {issue.message}" for issue in scan.issues)
             raise ValueError(f"invalid skill sources: {messages}")
-        stats = _read_freshness_stats(self.freshness_root)
+        stats = _read_freshness_stats(self.freshness_store)
         entries = [_build_index_entry(source, self.cache_root, stats) for source in scan.sources]
         self._index = SkillIndex(
             entries,
@@ -271,17 +271,23 @@ def _build_index_entry(
         agent_can_update=manifest.agent_can_update,
         freshness=float(runtime.get("freshness", manifest.freshness)),
         function_group=str(runtime.get("function_group", manifest.function_group)),
-        freshness_updated_at=str(runtime.get("freshness_updated_at", manifest.freshness_updated_at)),
+        freshness_updated_at=str(
+            runtime.get("freshness_updated_at", manifest.freshness_updated_at)
+        ),
         call_count=int(runtime.get("call_count", 0)),
         success_count=int(runtime.get("success_count", 0)),
-        same_function_successful_followups=int(runtime.get("same_function_successful_followups", 0)),
+        same_function_successful_followups=int(
+            runtime.get("same_function_successful_followups", 0)
+        ),
     )
 
 
-def _read_freshness_stats(root: Path | None) -> dict[str, dict[str, object]]:
-    if root is None:
+def _read_freshness_stats(
+    store: SkillFreshnessStore | None,
+) -> dict[str, dict[str, object]]:
+    if store is None:
         return {}
-    return SkillFreshnessStore(root).read_skill_stats()
+    return store.read_skill_stats()
 
 
 def _path_segment(value: str) -> str:

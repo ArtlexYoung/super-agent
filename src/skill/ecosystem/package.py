@@ -25,7 +25,7 @@ class SkillPackageManager:
             skill_disclosure.skill_roots,
             skill_disclosure.cache_root,
             disabled_names=skill_disclosure.disabled_names,
-            freshness_root=skill_disclosure.freshness_root,
+            freshness_store=skill_disclosure.freshness_store,
         )
         self.skill_root = skill_root.expanduser()
 

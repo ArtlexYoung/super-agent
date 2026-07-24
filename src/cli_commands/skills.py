@@ -5,13 +5,14 @@ import json
 from pathlib import Path
 
 from agents.agent import Agent
-from capability.defaults import create_default_skill_retriever
+from capability.defaults import create_default_skill_disclosure
 from capability.skill_executors import create_builtin_skill_executors
 from runtime.config import AgentConfig
+from runtime.state import RuntimeStatePaths
 from skill.disclosure import ProgressiveDisclosureCore, skill_index_to_dict
 from skill.ecosystem.package import SkillPackageManager
 from skill.evolution.evaluation import EvaluationCase
-from skill.evolution.freshness import SkillFreshnessStore
+from skill.freshness import SkillFreshnessStore
 from skill.ecosystem.lock import write_skill_lock_file
 from skill.manifest import SkillManifest
 
@@ -147,7 +148,11 @@ def _rollback_skill(args: argparse.Namespace) -> int:
 
 def _show_skill_freshness(config_path: Path) -> int:
     config = AgentConfig.load_from_file(config_path)
-    stats = SkillFreshnessStore(config.paths.memory).read_skill_stats()
+    state_paths = RuntimeStatePaths.from_root(config.paths.memory)
+    stats = SkillFreshnessStore(
+        state_paths.evaluations,
+        state_paths.derived,
+    ).read_skill_stats()
     if not stats:
         print("No skill freshness stats yet.")
         return 0
@@ -175,7 +180,7 @@ def _validate_skills(config_path: Path) -> int:
 
 def _explain_skills(config_path: Path, prompt: str) -> int:
     config = AgentConfig.load_from_file(config_path)
-    disclosure = create_default_skill_retriever(config)
+    disclosure = create_default_skill_disclosure(config)
     disclosure.prepare_skill_index()
     decisions = disclosure.explain_skill_selection_for_prompt(
         prompt,
@@ -267,14 +272,17 @@ def _resolve_skills(config_path: Path, names: list[str]) -> list[SkillManifest]:
 
 def _load_skill_disclosure(config_path: Path) -> ProgressiveDisclosureCore:
     config = AgentConfig.load_from_file(config_path)
-    return create_default_skill_retriever(config)
+    return create_default_skill_disclosure(config)
 
 
 def _load_package_manager(config_path: Path) -> SkillPackageManager:
     config = AgentConfig.load_from_file(config_path)
     if not config.paths.skills:
         raise ValueError("agent has no skill path configured")
-    return SkillPackageManager(create_default_skill_retriever(config), config.paths.skills[0])
+    return SkillPackageManager(
+        create_default_skill_disclosure(config),
+        config.paths.skills[0],
+    )
 
 
 def _default_model_context_capabilities() -> set[str]:

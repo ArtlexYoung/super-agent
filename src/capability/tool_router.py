@@ -4,15 +4,10 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
 
-from capability.contracts import (
-    RunEvaluationTracker,
-    SkillExecutor,
-    SkillLoadRequest,
-    SkillRetrieverSession,
-)
+from capability.contracts import SkillLoadRequest
 from capability.skill_executors import load_skill_for_model_context
 from provider.chat import ToolCall, ToolDefinition
-from runtime.events import RunContext
+from runtime.session import RuntimeSession
 from skill.disclosure import (
     SkillDisclosure,
     SkillIndex,
@@ -29,12 +24,7 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class ToolRouterContext:
-    retriever: SkillRetrieverSession
-    skill_index: SkillIndex
-    run_context: RunContext
-    skill_executors: dict[str, SkillExecutor]
-    evaluation_tracker: RunEvaluationTracker
-    state_root: Path
+    session: RuntimeSession
     memory: MiniMemory | None = None
     list_subagents: Callable[[], list[dict[str, object]]] | None = None
     run_subagent: Callable[[str, str], dict[str, object]] | None = None
@@ -53,7 +43,7 @@ class RuntimeToolRouter:
         )
 
     def get_tool_definitions(self) -> list[ToolDefinition]:
-        definitions = _runtime_tool_definitions(self.context.skill_index)
+        definitions = _runtime_tool_definitions(self.context.session.require_skill_index())
         if self.context.memory is not None:
             definitions.extend(_memory_tool_definitions())
         if self.context.list_subagents is not None and self.context.run_subagent is not None:
@@ -61,14 +51,14 @@ class RuntimeToolRouter:
         return definitions
 
     def run_tool_call(self, call: ToolCall) -> dict[str, object]:
-        self.context.run_context.record_event(
+        self.context.session.run_context.record_event(
             "tool.requested",
             {"call_id": call.id, "name": call.name, "arguments": call.arguments},
         )
         try:
             result = self._run_named_tool(call.name, call.arguments)
         except Exception as error:
-            self.context.run_context.record_event(
+            self.context.session.run_context.record_event(
                 "tool.failed",
                 {
                     "call_id": call.id,
@@ -78,14 +68,14 @@ class RuntimeToolRouter:
                 },
             )
             raise
-        self.context.run_context.record_event(
+        self.context.session.run_context.record_event(
             "tool.completed",
             {"call_id": call.id, "name": call.name, "result": result},
         )
         return result
 
     def _list_skills(self) -> dict[str, object]:
-        return skill_index_to_dict(self.context.skill_index)
+        return skill_index_to_dict(self.context.session.require_skill_index())
 
     def _read_skill_manifest(self, arguments: dict[str, object]) -> dict[str, object]:
         opened = self._open_requested_skill(arguments)
@@ -107,17 +97,17 @@ class RuntimeToolRouter:
     def _read_skill_instructions(self, arguments: dict[str, object]) -> dict[str, object]:
         opened = self._open_requested_skill(arguments)
         disclosed = opened.read_instructions()
-        executor = self.context.skill_executors.get(
+        executor = self.context.session.capabilities.skill_executors.get(
             opened.index_entry.reference.capability
         )
         if executor is not None and executor.adds_model_context:
             self._record_skill_executor_used(opened.index_entry.reference)
             self._remember_used_skill(
                 load_skill_for_model_context(
-                    self.context.retriever,
+                    self.context.session.require_skill_disclosure(),
                     opened.index_entry.reference,
-                    self.context.skill_executors,
-                    self.context.state_root,
+                    self.context.session.capabilities.skill_executors,
+                    state_paths=self.context.session.state_paths,
                 )
             )
         return {
@@ -137,28 +127,31 @@ class RuntimeToolRouter:
 
     def _read_disclosed_content(self, arguments: dict[str, object]) -> dict[str, object]:
         path = _required_string(arguments, "cache_path")
-        content = self.context.retriever.read_disclosed_content(path)
+        content = self.context.session.require_skill_disclosure().read_disclosed_content(path)
         self._record_skill_used_for_cache_path(path)
         return {"cache_path": path, "content": content}
 
     def list_subagents(self) -> dict[str, object]:
         if self.context.list_subagents is None:
-            raise RuntimeError("subagent tools require code-mounted subagents")
+            raise RuntimeError("subagent tools require subagents added in code")
         return {"subagents": self.context.list_subagents()}
 
     def run_subagent(self, name: str, prompt: str) -> dict[str, object]:
         if self.context.run_subagent is None:
-            raise RuntimeError("subagent tools require code-mounted subagents")
+            raise RuntimeError("subagent tools require subagents added in code")
         return self.context.run_subagent(name, prompt)
 
     def _list_skill_tools(self, name: str) -> dict[str, object]:
         server = self._load_mcp_server(name)
         self._remember_used_skill(
             load_skill_for_model_context(
-                self.context.retriever,
-                self.context.skill_index.require_skill(name, "mcp").reference,
-                self.context.skill_executors,
-                self.context.state_root,
+                self.context.session.require_skill_disclosure(),
+                self.context.session.require_skill_index().require_skill(
+                    name,
+                    "mcp",
+                ).reference,
+                self.context.session.capabilities.skill_executors,
+                state_paths=self.context.session.state_paths,
             )
         )
         return {"name": name, "tools": server.list_tools()}
@@ -172,10 +165,13 @@ class RuntimeToolRouter:
         server = self._load_mcp_server(name)
         self._remember_used_skill(
             load_skill_for_model_context(
-                self.context.retriever,
-                self.context.skill_index.require_skill(name, "mcp").reference,
-                self.context.skill_executors,
-                self.context.state_root,
+                self.context.session.require_skill_disclosure(),
+                self.context.session.require_skill_index().require_skill(
+                    name,
+                    "mcp",
+                ).reference,
+                self.context.session.capabilities.skill_executors,
+                state_paths=self.context.session.state_paths,
             )
         )
         return {"name": name, "tool": tool, "result": server.call_tool(tool, arguments)}
@@ -234,7 +230,7 @@ class RuntimeToolRouter:
         item = memory.add_memory_item(
             _required_string(arguments, "text"),
             scope=scope,
-            source_run_id=self.context.run_context.run_id,
+            source_run_id=self.context.session.run_context.run_id,
         )
         return {"item": asdict(item)}
 
@@ -264,13 +260,20 @@ class RuntimeToolRouter:
         return self.context.memory
 
     def _load_mcp_server(self, name: str) -> McpServer:
-        reference = self.context.skill_index.require_skill(name, "mcp").reference
-        executor = self.context.skill_executors.get("mcp")
+        reference = self.context.session.require_skill_index().require_skill(
+            name,
+            "mcp",
+        ).reference
+        executor = self.context.session.capabilities.skill_executors.get("mcp")
         if executor is None:
             raise KeyError("skill executor not found for type: mcp")
         self._record_skill_executor_used(reference)
         loaded = executor.load_skill(
-            SkillLoadRequest(self.context.retriever, reference, self.context.state_root)
+            SkillLoadRequest(
+                self.context.session.require_skill_disclosure(),
+                reference,
+                self.context.session.state_paths,
+            )
         )
         if not isinstance(loaded.runtime_value, McpServer):
             raise TypeError("mcp skill executor did not return an MCP server")
@@ -279,39 +282,41 @@ class RuntimeToolRouter:
     def _open_requested_skill(self, arguments: dict[str, object]) -> SkillDisclosure:
         name = _required_string(arguments, "name")
         capability = _optional_string(arguments, "capability")
-        opened = self.context.retriever.open_skill(
+        opened = self.context.session.require_skill_disclosure().open_skill(
             name,
             expected_capability=capability,
         )
-        self.context.evaluation_tracker.record_skill_used(opened.index_entry)
+        self.context.session.record_skill_used(opened.index_entry)
         return opened
 
     def _record_skill_executor_used(self, reference: SkillReference) -> None:
-        entry = self.context.skill_index.require_skill(
+        entry = self.context.session.require_skill_index().require_skill(
             reference.name,
             reference.capability,
         )
-        executor = self.context.skill_executors.get(reference.capability)
+        executor = self.context.session.capabilities.skill_executors.get(
+            reference.capability
+        )
         if executor is None:
             raise KeyError(
                 f"skill executor not found for capability: {reference.capability}"
             )
-        self.context.evaluation_tracker.record_skill_used(entry)
-        self.context.evaluation_tracker.record_capability_used(
+        self.context.session.record_skill_used(entry)
+        self.context.session.record_capability_used(
             f"skill_executor:{reference.capability}",
             executor,
         )
 
     def _record_skill_used_for_cache_path(self, cache_path: str) -> None:
         requested = Path(cache_path).expanduser().resolve()
-        for entry in self.context.skill_index.entries:
+        for entry in self.context.session.require_skill_index().entries:
             disclosed_paths = {
                 entry.manifest_cache_path.resolve(),
                 entry.instructions_cache_path.resolve(),
                 entry.configuration_cache_path.resolve(),
             }
             if requested in disclosed_paths:
-                self.context.evaluation_tracker.record_skill_used(entry)
+                self.context.session.record_skill_used(entry)
                 return
 
     def _remember_used_skill(self, skill: Skill) -> None:
@@ -428,12 +433,12 @@ def _subagent_tool_definitions() -> list[ToolDefinition]:
     return [
         _tool_definition(
             "list_subagents",
-            "List subagents mounted on the current agent in code.",
+            "List subagents added to the current Agent in code.",
             {},
         ),
         _tool_definition(
             "run_subagent",
-            "Run one mounted subagent and return its traced result.",
+            "Run one subagent added in code and return its traced result.",
             {
                 "name": {"type": "string"},
                 "prompt": {"type": "string"},

@@ -5,11 +5,9 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from agents.agent import Agent
-from runtime.config import AgentConfig
 from provider.chat import MockProvider
-from skill.disclosure import ProgressiveDisclosureCore
-from skill.evolution.freshness import SkillFreshnessStore
-from skill.evolution.records import (
+from runtime.config import AgentConfig
+from runtime.evaluation import (
     EvaluationRecordStore,
     EvaluationResult,
     EvaluationSource,
@@ -19,6 +17,8 @@ from skill.evolution.records import (
     evaluation_record_from_dict,
     evaluation_record_to_dict,
 )
+from skill.disclosure import ProgressiveDisclosureCore
+from skill.freshness import SkillFreshnessStore
 from support import write_memory_skill, write_workflow_skill
 
 
@@ -70,15 +70,18 @@ instructions = "SKILL.md"
                     case_name="research case",
                 ),
                 run_record.result,
-                called_at,
+                created_at=called_at,
             )
 
-            EvaluationRecordStore(root).append_evaluation_records(
+            EvaluationRecordStore(root / "evaluations").append_evaluation_records(
                 [run_record, candidate_record]
             )
 
-            stats = SkillFreshnessStore(root).read_skill_stats()["prompt:research"]
-            records = EvaluationRecordStore(root).read_evaluation_records()
+            stats = SkillFreshnessStore(
+                root / "evaluations",
+                root / "derived",
+            ).read_skill_stats()["prompt:research"]
+            records = EvaluationRecordStore(root / "evaluations").read_evaluation_records()
             self.assertEqual(1, stats["call_count"])
             self.assertEqual(1, stats["success_count"])
             self.assertEqual("prompt:research", records[0].target.key)
@@ -88,19 +91,20 @@ instructions = "SKILL.md"
     def test_same_function_successful_followup_reduces_previous_skill_freshness(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            records = EvaluationRecordStore(root)
+            records = EvaluationRecordStore(root / "evaluations")
             first_time = datetime(2026, 7, 7, 12, tzinfo=UTC)
             second_time = first_time + timedelta(minutes=5)
 
             records.append_evaluation_records(
                 [_skill_evaluation_record("prompt:old-search", "search", first_time)]
             )
-            before = SkillFreshnessStore(root).read_skill_stats()["prompt:old-search"]["freshness"]
+            freshness = SkillFreshnessStore(root / "evaluations", root / "derived")
+            before = freshness.read_skill_stats()["prompt:old-search"]["freshness"]
             records.append_evaluation_records(
                 [_skill_evaluation_record("prompt:new-search", "search", second_time, run_id="run-2")]
             )
 
-            old_stats = SkillFreshnessStore(root).read_skill_stats()["prompt:old-search"]
+            old_stats = freshness.read_skill_stats()["prompt:old-search"]
             self.assertEqual(1, old_stats["same_function_followups"])
             self.assertEqual(1, old_stats["same_function_successful_followups"])
             self.assertLess(old_stats["freshness"], before)
@@ -144,11 +148,13 @@ instructions = "SKILL.md"
             result = agent.run("echo hello")
 
             memory_root = root / ".super-agent" / "memory"
-            stats_path = memory_root / "skill_stats.json"
+            stats_path = memory_root / "derived" / "skill_stats.json"
             stats = json.loads(stats_path.read_text(encoding="utf-8"))
             self.assertEqual(1, stats["skills"]["prompt:echo"]["call_count"])
             self.assertGreater(stats["skills"]["prompt:echo"]["freshness"], 70)
-            records = EvaluationRecordStore(memory_root).read_evaluation_records()
+            records = EvaluationRecordStore(
+                memory_root / "evaluations"
+            ).read_evaluation_records()
             skill_keys = {
                 record.target.key for record in records if record.target.target_type == "skill"
             }
@@ -169,7 +175,7 @@ instructions = "SKILL.md"
                     "skill_executor:memory:event-memory",
                     "skill_executor:prompt:prompt-context",
                     "skill_executor:workflow:tool-loop",
-                    "skill_retriever:progressive",
+                    "skill_disclosure:progressive",
                 }
                 <= capability_keys
             )
@@ -190,7 +196,7 @@ instructions = "SKILL.md"
                 agent.run("echo hello")
 
             records = EvaluationRecordStore(
-                root / ".super-agent" / "memory"
+                root / ".super-agent" / "memory" / "evaluations"
             ).read_evaluation_records(source_type="agent_run")
             self.assertTrue(records)
             self.assertTrue(all(not record.result.success for record in records))

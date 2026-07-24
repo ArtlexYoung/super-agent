@@ -1,4 +1,4 @@
-"""Strict evaluation records shared by Skill and Capability targets."""
+"""Strict, target-neutral evaluation records owned by the runtime."""
 
 from __future__ import annotations
 
@@ -10,13 +10,10 @@ import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 from uuid import uuid4
 
-if TYPE_CHECKING:
-    from skill.disclosure import SkillIndexEntry
-    from skill.manifest import Skill
-
+from runtime.state import RuntimeStatePaths
 
 EVALUATION_RECORD_SCHEMA_VERSION = 1
 EVALUATION_RECORDS_FILE = "evaluation_records.jsonl"
@@ -143,10 +140,40 @@ class EvaluationRecordStore:
         ]
 
 
+class EvaluationTargetTracker:
+    """Collect every Skill and Capability that affected one runtime session."""
+
+    def __init__(self) -> None:
+        self._targets: dict[tuple[str, str], EvaluationTarget] = {}
+        self._recorded_capability_instances: set[tuple[str, int]] = set()
+
+    def record_target(self, target: EvaluationTarget) -> None:
+        self._targets[(target.target_type, target.key)] = target
+
+    def record_capability(self, slot: str, capability: object) -> None:
+        marker = (slot.strip().lower(), id(capability))
+        if marker in self._recorded_capability_instances:
+            return
+        self.record_target(create_capability_evaluation_target(slot, capability))
+        self._recorded_capability_instances.add(marker)
+
+    def list_targets(self) -> list[EvaluationTarget]:
+        return list(self._targets.values())
+
+
+@dataclass(frozen=True)
+class RunEvaluationRequest:
+    targets: list[EvaluationTarget]
+    source: EvaluationSource
+    result: EvaluationResult
+    state_paths: RuntimeStatePaths
+
+
 def create_evaluation_record(
     target: EvaluationTarget,
     source: EvaluationSource,
     result: EvaluationResult,
+    *,
     created_at: datetime | None = None,
 ) -> EvaluationRecord:
     record = EvaluationRecord(
@@ -159,31 +186,6 @@ def create_evaluation_record(
     )
     evaluation_record_to_dict(record)
     return record
-
-
-def create_skill_evaluation_target(skill: Skill) -> EvaluationTarget:
-    from skill.manifest import calculate_skill_directory_sha256
-
-    manifest = skill.manifest
-    return EvaluationTarget(
-        target_type="skill",
-        key=f"{manifest.capability}:{manifest.name}",
-        name=manifest.name,
-        version=manifest.version,
-        content_sha256=calculate_skill_directory_sha256(manifest.path),
-        function_group=manifest.function_group,
-    )
-
-
-def create_indexed_skill_evaluation_target(entry: SkillIndexEntry) -> EvaluationTarget:
-    return EvaluationTarget(
-        target_type="skill",
-        key=entry.reference.key,
-        name=entry.reference.name,
-        version=entry.version,
-        content_sha256=entry.content_sha256,
-        function_group=entry.function_group,
-    )
 
 
 def create_capability_evaluation_target(slot: str, capability: object) -> EvaluationTarget:

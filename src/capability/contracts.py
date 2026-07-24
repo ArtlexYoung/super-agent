@@ -1,31 +1,27 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Callable, Protocol
+from typing import TYPE_CHECKING, Callable, Protocol
 
 from provider.chat import ChatProvider
 from runtime.config import AgentConfig
+from runtime.evaluation import RunEvaluationRequest
 from runtime.events import RunContext, RunEvent
 from runtime.models import AgentRunRequest, RunResult
+from runtime.state import RuntimeStatePaths
 from skill.disclosure import (
     SkillDisclosure,
     SkillIndex,
-    SkillIndexEntry,
     SkillReference,
     SkillSelectionDecision,
 )
-from skill.evolution.records import (
-    EvaluationResult,
-    EvaluationSource,
-    EvaluationTarget,
-    create_capability_evaluation_target,
-    create_indexed_skill_evaluation_target,
-)
 from skill.manifest import Skill
 
+if TYPE_CHECKING:
+    from runtime.session import RuntimeSession
 
-class SkillRetrieverSession(Protocol):
+
+class SkillDisclosureSession(Protocol):
     def prepare_skill_index(self) -> SkillIndex:
         ...
 
@@ -52,27 +48,26 @@ class SkillRetrieverSession(Protocol):
     ) -> SkillDisclosure:
         ...
 
-    def read_disclosed_content(self, cache_path: str | Path) -> str:
+    def read_disclosed_content(self, cache_path: str) -> str:
         ...
 
 
-class SkillRetrieverCapability(Protocol):
+class SkillDisclosureCapability(Protocol):
     name: str
     version: str
 
-    def create_skill_retriever(
+    def create_skill_disclosure(
         self,
-        config: AgentConfig,
-        run_context: RunContext | None = None,
-    ) -> SkillRetrieverSession:
+        session: "RuntimeSession",
+    ) -> SkillDisclosureSession:
         ...
 
 
 @dataclass(frozen=True)
 class SkillLoadRequest:
-    retriever: SkillRetrieverSession
+    disclosure: SkillDisclosureSession
     reference: SkillReference
-    state_root: Path
+    state_paths: RuntimeStatePaths
 
 
 @dataclass(frozen=True)
@@ -91,35 +86,6 @@ class SkillExecutor(Protocol):
         ...
 
 
-class RunEvaluationTracker:
-    def __init__(self) -> None:
-        self._targets: dict[tuple[str, str], EvaluationTarget] = {}
-        self._recorded_capability_instances: set[tuple[str, int]] = set()
-
-    def record_skill_used(self, entry: SkillIndexEntry) -> None:
-        target = create_indexed_skill_evaluation_target(entry)
-        self._targets[(target.target_type, target.key)] = target
-
-    def record_capability_used(self, slot: str, capability: object) -> None:
-        marker = (slot.strip().lower(), id(capability))
-        if marker in self._recorded_capability_instances:
-            return
-        target = create_capability_evaluation_target(slot, capability)
-        self._targets[(target.target_type, target.key)] = target
-        self._recorded_capability_instances.add(marker)
-
-    def list_evaluation_targets(self) -> list[EvaluationTarget]:
-        return list(self._targets.values())
-
-
-@dataclass(frozen=True)
-class RunEvaluationRequest:
-    targets: list[EvaluationTarget]
-    source: EvaluationSource
-    result: EvaluationResult
-    state_root: Path
-
-
 class RunResultEvaluator(Protocol):
     name: str
     version: str
@@ -132,7 +98,12 @@ class SkillUpdaterCapability(Protocol):
     name: str
     version: str
 
-    def create_skill_updater(self, config: AgentConfig, provider: ChatProvider) -> object:
+    def create_skill_updater(
+        self,
+        config: AgentConfig,
+        provider: ChatProvider,
+        state_paths: RuntimeStatePaths,
+    ) -> object:
         ...
 
 
@@ -144,35 +115,26 @@ class RunRecorder(Protocol):
         self,
         config: AgentConfig,
         prompt: str,
+        *,
+        state_paths: RuntimeStatePaths,
         parent_run_id: str | None = None,
         event_listener: Callable[[RunEvent], None] | None = None,
     ) -> RunContext:
         ...
 
 
-@dataclass(frozen=True)
-class CapabilityRunContext:
-    config: AgentConfig
-    provider: ChatProvider
-    run_context: RunContext
-    capabilities: "AgentCapabilitySet"
-    skill_retriever: SkillRetrieverSession
-    skill_index: SkillIndex
-    evaluation_tracker: RunEvaluationTracker
-
-
 class RunController(Protocol):
     name: str
     version: str
 
-    def run_agent(self, request: AgentRunRequest, context: CapabilityRunContext) -> RunResult:
+    def run_agent(self, request: AgentRunRequest, session: "RuntimeSession") -> RunResult:
         ...
 
 
 @dataclass(frozen=True)
 class AgentCapabilitySet:
     run_controller: RunController
-    skill_retriever: SkillRetrieverCapability
+    skill_disclosure: SkillDisclosureCapability
     skill_executors: dict[str, SkillExecutor]
     run_result_evaluator: RunResultEvaluator
     skill_updater: SkillUpdaterCapability
