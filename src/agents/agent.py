@@ -6,9 +6,9 @@ from typing import TYPE_CHECKING, cast
 from capability.contracts import (
     AgentCapabilitySet,
     RunController,
+    RunResultEvaluator,
     RunRecorder,
     SkillExecutor,
-    SkillResultEvaluator,
     SkillRetrieverCapability,
     SkillRetrieverSession,
     SkillUpdaterCapability,
@@ -98,8 +98,8 @@ class Agent:
         executors[skill_executor.capability_name] = skill_executor
         self._replace_capabilities(skill_executors=executors)
 
-    def set_skill_result_evaluator(self, evaluator: SkillResultEvaluator) -> None:
-        self._replace_capabilities(skill_result_evaluator=evaluator)
+    def set_run_result_evaluator(self, evaluator: RunResultEvaluator) -> None:
+        self._replace_capabilities(run_result_evaluator=evaluator)
 
     def set_skill_updater(self, skill_updater: SkillUpdaterCapability) -> None:
         self._replace_capabilities(skill_updater=skill_updater)

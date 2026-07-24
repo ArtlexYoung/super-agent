@@ -69,7 +69,7 @@ Super Agent 明确划分五类职责：
 - **Runtime 调度能力**：只依赖 Capability 契约，不持有具体 Skill 行为。
 - **Capability 执行机制**：负责检索、执行、评价、更新和记录。
 - **Skill 承载内容**：保存供 Capability 使用的内容与配置。
-- **Agent 组合一切**：通过 `set_run_controller(...)`、`set_skill_retriever(...)`、`add_skill_executor(...)` 等直白方法组合和替换能力。
+- **Agent 组合一切**：通过 `set_run_controller(...)`、`set_skill_retriever(...)`、`set_run_result_evaluator(...)`、`add_skill_executor(...)` 等直白方法组合和替换能力。
 
 `Agent()` 会自动装配经过测试的默认能力。高级用户可以只替换一个 Capability，无需重写 Runtime，也不需要引入另一套配置系统。
 
@@ -308,13 +308,16 @@ print(result.text)
 每次 `Agent.run(...)` 都生成独立 `run_id`，事件按顺序写入：
 
 ```text
-.super-agent/memory/runs/<run-id>/
-  events.jsonl
-  snapshot.json
-  runtime.lock.json
+.super-agent/memory/
+  evaluation_records.jsonl
+  skill_stats.json
+  runs/<run-id>/
+    events.jsonl
+    snapshot.json
+    runtime.lock.json
 ```
 
-子 Agent 使用自己的 `run_id`，并通过 `parent_run_id` 指向父运行。事件覆盖 Skill 披露、模型步骤、工具调用、记忆更新和运行结果，因此调用方可以还原完整执行树。`snapshot.json` 记录运行中、已完成或失败状态；`runtime.lock.json` 记录解析后的 Agent 与模型设置、Provider adapter、Capability 实现版本，以及每个已启用 Skill 目录的 SHA-256。锁文件只保存 API key 环境变量名，不保存密钥值。
+子 Agent 使用自己的 `run_id`，并通过 `parent_run_id` 指向父运行。事件覆盖 Skill 披露、模型步骤、工具调用、记忆更新和运行结果，因此调用方可以还原完整执行树。`snapshot.json` 记录运行中、已完成或失败状态；`runtime.lock.json` 记录解析后的 Agent 与模型设置、Provider adapter、Capability 实现版本，以及每个已启用 Skill 目录的 SHA-256。锁文件只保存 API key 环境变量名，不保存密钥值。共享评价流会记录每次运行实际使用的 Skill 与 Capability 目标。
 
 Runtime 每次运行只准备一次渐进式 Skill 索引。执行控制器与运行锁使用同一份内存索引，因此检查结果不会描述一套与实际执行不同的 Skill 树。说明文件仍按渐进方式加载；披露时会重新校验目录哈希，运行中途修改源文件会明确失败。
 
@@ -374,12 +377,14 @@ super-agent memory consolidate --config agent.toml
 
 ## Skill 保鲜度
 
-保鲜度不调用大模型打分。runtime 将 Skill 调用写入 `skill_events.jsonl`，并把聚合结果写入 `skill_stats.json`。评分综合以下可解释信号：
+保鲜度不调用大模型打分。在线运行与候选 case 都把严格记录追加到同一个 `evaluation_records.jsonl`。每条记录明确分离 `target`（Skill 或 Capability）、`source`（`agent_run` 或 `candidate_evaluation`）和 `result`（成功、分数、token、耗时、错误及检查项）。`skill_stats.json` 只是派生缓存；保鲜度只消费线上 Skill 记录，候选评价不会污染在线分数。
+
+评分综合以下可解释信号：
 
 - `quality`：近期成功率 EWMA。
 - `recency`：距上次调用的时间，按 7 天半衰期衰减。
 - `frequency`：调用次数和调用频率。
-- `efficiency`：粗略输入/输出 token 成本。
+- `efficiency`：粗略输入/输出 token 成本与实际运行耗时。
 - `reliability`：成功率和空输出率。
 - `replacement`：调用后是否很快改用同 `function_group` 的其他 Skill 且后者成功。
 - `confidence`：样本少时回归默认值，减轻冷启动误判。
@@ -443,7 +448,7 @@ super-agent skills evolve --config agent.toml --name research-note --goal "make 
 super-agent skills rollback --config agent.toml --name research-note
 ```
 
-候选、评价报告和历史默认写入 `.super-agent/memory/evolution/`。
+候选、评价报告和历史默认写入 `.super-agent/memory/evolution/`。每个独立 case 还会写入 `.super-agent/memory/evaluation_records.jsonl`，因此在线运行和进化共用一种证据格式。
 
 ## MCP Skill
 
@@ -523,6 +528,7 @@ print(result.text)
 - `MiniMemory.add_memory_item(...)`、`recall_memory(...)`、`forget_memory(...)`、`consolidate_memory()`。
 - `SkillBenchmark.run_cases(...)`。
 - `RunSnapshotStore.list_run_snapshots(...)`、`explain_run(...)`、`export_run(...)`。
+- `EvaluationRecordStore.read_evaluation_records(...)`、`create_evaluation_record(...)`。
 - `run_event_to_dict(...)`、`run_event_from_dict(...)`、`skill_manifest_to_dict(...)`。
 
 项目内部直接导入定义模块，不通过中间 facade；`src/super_agent.py` 是唯一公共聚合入口。
@@ -534,6 +540,8 @@ Skill manifest 必须显式设置 `schema_version = 2`，并提供 `name`、`cap
 运行事件 v1 固定包含 `schema_version`、`run_id`、`sequence`、`event_type`、`created_at`、`agent_name`、`parent_run_id` 和 `data`。读取器拒绝缺失字段、未知字段、错误类型和不支持的 schema 版本，不做静默兼容。
 
 运行快照 v1 使用严格字段，记录生命周期状态、相对运行锁路径和 SHA-256。运行锁 v1 固定一次运行实际使用的 Agent、模型、Capability 和 Skill 组合；可变的记忆数据不进入锁文件。
+
+评价记录 v1 的顶层字段严格固定为 `schema_version`、`record_id`、`created_at`、`target`、`source` 和 `result`，嵌套对象同样使用严格字段。读取器会拒绝未知目标/来源类型、错误 SHA-256、非法分数或 token 数、缺失来源身份、未知字段和不支持的版本。
 
 `0.0.x` 阶段的 Python API 仍可能调整。持久化格式发生不兼容变化时会要求显式迁移，不会把旧数据猜测成新格式。当前 provider 名称只接受 `mock`、`openai-compatible` 和 `anthropic-compatible`。
 
@@ -562,7 +570,7 @@ src/
   skill/         # 统一 Skill 内容模型
     disclosure/  # Central parser, index, cache, and history
     ecosystem/   # Dependency lock and package management
-    evolution/   # Candidates, evaluation, freshness, and history
+    evolution/   # Shared records, candidates, evaluation, freshness, and history
     kinds/       # MCP, memory, and workflow implementations
   frontend/mac/  # SwiftUI desktop app
 ```

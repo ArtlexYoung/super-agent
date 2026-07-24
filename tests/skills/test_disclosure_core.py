@@ -3,7 +3,14 @@ import unittest
 from pathlib import Path
 
 from skill.disclosure import ProgressiveDisclosureCore
-from skill.evolution.freshness import SkillFreshnessStore, SkillRunRecord
+from skill.evolution.records import (
+    EvaluationRecordStore,
+    EvaluationResult,
+    EvaluationSource,
+    EvaluationTarget,
+    EvaluationTokenUsage,
+    create_evaluation_record,
+)
 
 
 class ProgressiveDisclosureCoreTests(unittest.TestCase):
@@ -224,14 +231,31 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_prompt_skill(root, "research", triggers=["research"])
-            SkillFreshnessStore(root / "memory").record_skill_run(
-                SkillRunRecord(
-                    skill_key="prompt:research",
-                    function_group="research",
-                    input_text="research this",
-                    output_text="useful result",
-                    success=True,
-                )
+            EvaluationRecordStore(root / "memory").append_evaluation_records(
+                [
+                    create_evaluation_record(
+                        target=EvaluationTarget(
+                            target_type="skill",
+                            key="prompt:research",
+                            name="research",
+                            version="0.1.0",
+                            content_sha256="a" * 64,
+                            function_group="research",
+                        ),
+                        source=EvaluationSource(
+                            source_type="agent_run",
+                            run_id="run-1",
+                        ),
+                        result=EvaluationResult(
+                            success=True,
+                            score=1.0,
+                            token_usage=EvaluationTokenUsage(10, 10),
+                            latency_ms=10,
+                            error_type="",
+                            checks=["pass:run_completed"],
+                        ),
+                    )
+                ]
             )
 
             entry = _create_core(root).prepare_skill_index().require_skill("research", "prompt")

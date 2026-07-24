@@ -5,6 +5,7 @@ from pathlib import Path
 from agents.agent import Agent
 from runtime.config import AgentConfig
 from provider.chat import MockProvider
+from skill.evolution.records import EvaluationRecordStore
 from super_agent import EvaluationCase
 from support import write_workflow_skill
 
@@ -51,6 +52,15 @@ class SkillEvolutionTests(unittest.TestCase):
 
             self.assertFalse(report.passed)
             self.assertEqual(0.0, report.score)
+            records = EvaluationRecordStore(
+                root / ".super-agent" / "memory"
+            ).read_evaluation_records(source_type="candidate_evaluation")
+            self.assertEqual(1, len(records))
+            self.assertEqual("prompt:writer", records[0].target.key)
+            self.assertEqual("0.1.1", records[0].target.version)
+            self.assertEqual(candidate.candidate_id, records[0].source.candidate_id)
+            self.assertEqual("required text", records[0].source.case_name)
+            self.assertEqual(0.0, records[0].result.score)
             with self.assertRaises(ValueError):
                 manager.promote_skill_candidate(candidate.candidate_id)
             self.assertEqual(

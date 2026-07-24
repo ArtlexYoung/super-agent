@@ -84,6 +84,18 @@ class CapabilityRuntimeTests(unittest.TestCase):
             self.assertEqual(1, executor.load_count)
             self.assertIn("Loaded by custom executor.", provider.last_messages[0]["content"])
 
+    def test_agent_can_replace_the_run_result_evaluator(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            evaluator = _RecordingRunResultEvaluator()
+            agent = Agent(AgentConfig.create_default(tmp))
+            agent.set_run_result_evaluator(evaluator)
+
+            result = agent.run("hello")
+
+            self.assertEqual(1, len(evaluator.requests))
+            self.assertEqual(result.run_id, evaluator.requests[0].source.run_id)
+            self.assertTrue(evaluator.requests[0].result.success)
+
     def test_registered_custom_capability_is_discovered_and_executed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -159,6 +171,17 @@ class _RecordingPromptExecutor:
 
 class _TransformSkillExecutor(_RecordingPromptExecutor):
     capability_name = "transform"
+
+
+class _RecordingRunResultEvaluator:
+    name = "recording"
+    version = "1"
+
+    def __init__(self) -> None:
+        self.requests = []
+
+    def record_run_evaluation(self, request) -> None:
+        self.requests.append(request)
 
 
 def _write_prompt_skill(root: Path, capability: str = "prompt") -> None:

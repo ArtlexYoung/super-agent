@@ -22,6 +22,7 @@ from skill.evolution.evaluation import (
     EvaluationCaseResult,
     EvaluationReport,
     EvolutionResult,
+    SkillCandidateEvaluationRequest,
     create_report_id,
     evaluate_candidate,
 )
@@ -86,12 +87,15 @@ class SkillEvolutionManager:
         report_id = create_report_id()
         report_path = self.state_root / "evaluations" / candidate.candidate_id / f"{report_id}.json"
         report = evaluate_candidate(
-            candidate=candidate,
-            provider=self.provider,
-            model=self.model,
-            cases=cases,
-            minimum_score=self.minimum_score,
-            report_path=report_path,
+            SkillCandidateEvaluationRequest(
+                candidate=candidate,
+                model=self.model,
+                cases=cases,
+                minimum_score=self.minimum_score,
+                report_path=report_path,
+                evaluation_records_root=self.state_root.parent,
+            ),
+            self.provider,
         )
         _write_json_exclusive(report_path, _report_to_dict(report))
         return report

@@ -2,15 +2,16 @@ from __future__ import annotations
 
 from typing import Callable
 
-from capability.contracts import AgentCapabilitySet, SkillResultRecord
+from capability.contracts import AgentCapabilitySet, RunEvaluationRequest
 from capability.run_controller import DefaultRunController
 from capability.skill_executors import create_builtin_skill_executors
 from provider.chat import ChatProvider
 from runtime.config import AgentConfig
 from runtime.events import RunContext, RunEvent, RunTraceStore
 from skill.disclosure import ProgressiveDisclosureCore
-from skill.evolution.freshness import SkillFreshnessStore, SkillRunRecord
+from skill.evolution.freshness import SkillFreshnessStore
 from skill.evolution.manager import SkillEvolutionManager
+from skill.evolution.records import EvaluationRecordStore, create_evaluation_record
 
 
 class ProgressiveSkillRetrieverCapability:
@@ -32,24 +33,17 @@ class ProgressiveSkillRetrieverCapability:
         )
 
 
-class FreshnessSkillResultEvaluator:
-    name = "freshness-v1"
+class JsonlRunResultEvaluator:
+    name = "evaluation-records"
     version = "1"
 
-    def record_skill_results(self, record: SkillResultRecord) -> None:
-        if not record.skills:
-            return
-        store = SkillFreshnessStore(record.state_root)
-        for skill in record.skills:
-            store.record_skill_run(
-                SkillRunRecord(
-                    skill_key=f"{skill.manifest.capability}:{skill.manifest.name}",
-                    function_group=skill.manifest.function_group,
-                    input_text=record.prompt,
-                    output_text=record.output,
-                    success=record.success,
-                )
-            )
+    def record_run_evaluation(self, request: RunEvaluationRequest) -> None:
+        records = [
+            create_evaluation_record(target, request.source, request.result)
+            for target in request.targets
+        ]
+        EvaluationRecordStore(request.state_root).append_evaluation_records(records)
+        SkillFreshnessStore(request.state_root).read_skill_stats()
 
 
 class EvaluatedSkillUpdaterCapability:
@@ -102,7 +96,7 @@ def create_default_capability_set(
         run_controller=DefaultRunController(),
         skill_retriever=ProgressiveSkillRetrieverCapability(),
         skill_executors=create_builtin_skill_executors(),
-        skill_result_evaluator=FreshnessSkillResultEvaluator(),
+        run_result_evaluator=JsonlRunResultEvaluator(),
         skill_updater=EvaluatedSkillUpdaterCapability(),
         run_recorder=JsonlRunRecorder(),
     )

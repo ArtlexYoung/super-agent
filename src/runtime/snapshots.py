@@ -349,7 +349,7 @@ def _capability_versions(capabilities: AgentCapabilitySet) -> list[dict[str, str
     values = [
         _capability_version("run_controller", capabilities.run_controller),
         _capability_version("skill_retriever", capabilities.skill_retriever),
-        _capability_version("skill_result_evaluator", capabilities.skill_result_evaluator),
+        _capability_version("run_result_evaluator", capabilities.run_result_evaluator),
         _capability_version("skill_updater", capabilities.skill_updater),
         _capability_version("run_recorder", capabilities.run_recorder),
     ]

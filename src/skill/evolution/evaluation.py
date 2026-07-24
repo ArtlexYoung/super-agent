@@ -3,11 +3,21 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from time import perf_counter
 from uuid import uuid4
 
 from provider.chat import ChatProvider, Message
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.evolution.candidate import SkillCandidate
+from skill.evolution.records import (
+    EvaluationRecordStore,
+    EvaluationResult,
+    EvaluationSource,
+    create_evaluation_record,
+    create_skill_evaluation_target,
+    estimate_evaluation_token_usage,
+)
+from skill.manifest import Skill, SkillManifest
 
 
 @dataclass(frozen=True)
@@ -48,34 +58,90 @@ class EvolutionResult:
     promoted_manifest: SkillManifest | None = None
 
 
+@dataclass(frozen=True)
+class SkillCandidateEvaluationRequest:
+    candidate: SkillCandidate
+    model: str
+    cases: list[EvaluationCase]
+    minimum_score: float
+    report_path: Path
+    evaluation_records_root: Path
+
+
 def evaluate_candidate(
-    *,
-    candidate: SkillCandidate,
+    request: SkillCandidateEvaluationRequest,
     provider: ChatProvider,
-    model: str,
-    cases: list[EvaluationCase],
-    minimum_score: float,
-    report_path: Path,
 ) -> EvaluationReport:
-    if not cases:
+    if not request.cases:
         raise ValueError("skill candidate evaluation requires at least one case")
-    if minimum_score < 0 or minimum_score > 1:
+    if request.minimum_score < 0 or request.minimum_score > 1:
         raise ValueError("minimum evaluation score must be between 0 and 1")
-    instructions = _read_candidate_instructions(candidate)
-    results = [
-        _run_evaluation_case(provider, model, instructions, case)
-        for case in cases
-    ]
+    for case in request.cases:
+        _validate_evaluation_case(case)
+    skill = _read_candidate_skill(request.candidate)
+    target = create_skill_evaluation_target(skill)
+    store = EvaluationRecordStore(request.evaluation_records_root)
+    results: list[EvaluationCaseResult] = []
+    for case in request.cases:
+        started_at = perf_counter()
+        try:
+            case_result = _run_evaluation_case(
+                provider,
+                request.model,
+                skill.instructions,
+                case,
+            )
+        except Exception as error:
+            store.append_evaluation_records(
+                [
+                    create_evaluation_record(
+                        target,
+                        _candidate_evaluation_source(request.candidate, case),
+                        EvaluationResult(
+                            success=False,
+                            score=0.0,
+                            token_usage=estimate_evaluation_token_usage(
+                                _evaluation_input_text(skill.instructions, case),
+                                "",
+                            ),
+                            latency_ms=_elapsed_milliseconds(started_at),
+                            error_type=type(error).__name__,
+                            checks=["fail:provider_call"],
+                        ),
+                    )
+                ]
+            )
+            raise
+        results.append(case_result)
+        store.append_evaluation_records(
+            [
+                create_evaluation_record(
+                    target,
+                    _candidate_evaluation_source(request.candidate, case),
+                    EvaluationResult(
+                        success=case_result.passed,
+                        score=case_result.score,
+                        token_usage=estimate_evaluation_token_usage(
+                            _evaluation_input_text(skill.instructions, case),
+                            case_result.output,
+                        ),
+                        latency_ms=_elapsed_milliseconds(started_at),
+                        error_type="",
+                        checks=case_result.checks,
+                    ),
+                )
+            ]
+        )
     score = round(sum(item.score for item in results) / len(results), 4)
     return EvaluationReport(
-        report_id=report_path.stem,
-        candidate_id=candidate.candidate_id,
+        report_id=request.report_path.stem,
+        candidate_id=request.candidate.candidate_id,
         score=score,
-        passed=score >= minimum_score,
-        minimum_score=minimum_score,
+        passed=score >= request.minimum_score,
+        minimum_score=request.minimum_score,
         created_at=_utc_now_text(),
         case_results=results,
-        path=report_path,
+        path=request.report_path,
     )
 
 
@@ -91,10 +157,6 @@ def _run_evaluation_case(
 ) -> EvaluationCaseResult:
     name = case.name.strip()
     prompt = case.prompt.strip()
-    if not name:
-        raise ValueError("evaluation case name cannot be empty")
-    if not prompt:
-        raise ValueError(f"evaluation case prompt cannot be empty: {name}")
     output = provider.send_chat_messages(
         _build_evaluation_messages(instructions, case.evaluator_instruction, prompt),
         model,
@@ -150,20 +212,52 @@ def _score_output(
     return round(passed_count / len(checks), 4), descriptions
 
 
-def _read_candidate_instructions(candidate: SkillCandidate) -> str:
+def _read_candidate_skill(candidate: SkillCandidate) -> Skill:
     disclosure = ProgressiveDisclosureCore(
         [candidate.skill_path],
         candidate.skill_path.parent / ".evaluation-disclosure-cache",
     )
     index = disclosure.prepare_skill_index()
     entry = index.entries[0]
-    instructions = disclosure.open_skill(
+    opened = disclosure.open_skill(
         entry.reference.name,
         entry.reference.capability,
-    ).read_instructions().content
+    )
+    instructions = opened.read_instructions().content
     if not instructions:
         raise ValueError("candidate instructions cannot be empty")
-    return instructions
+    return Skill(manifest=opened.read_manifest(), instructions=instructions)
+
+
+def _validate_evaluation_case(case: EvaluationCase) -> None:
+    name = case.name.strip()
+    if not name:
+        raise ValueError("evaluation case name cannot be empty")
+    if not case.prompt.strip():
+        raise ValueError(f"evaluation case prompt cannot be empty: {name}")
+
+
+def _candidate_evaluation_source(
+    candidate: SkillCandidate,
+    case: EvaluationCase,
+) -> EvaluationSource:
+    return EvaluationSource(
+        source_type="candidate_evaluation",
+        candidate_id=candidate.candidate_id,
+        case_name=case.name.strip(),
+    )
+
+
+def _evaluation_input_text(instructions: str, case: EvaluationCase) -> str:
+    return "\n\n".join(
+        value
+        for value in [instructions, case.evaluator_instruction.strip(), case.prompt.strip()]
+        if value
+    )
+
+
+def _elapsed_milliseconds(started_at: float) -> int:
+    return max(0, round((perf_counter() - started_at) * 1000))
 
 
 def _utc_now_text() -> str:

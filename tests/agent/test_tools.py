@@ -4,6 +4,7 @@ from pathlib import Path
 
 from runtime.events import RunTraceStore
 from provider.chat import ToolCall
+from capability.contracts import RunEvaluationTracker
 from capability.skill_executors import create_builtin_skill_executors
 from capability.tool_router import RuntimeToolRouter, ToolRouterContext
 from skill.disclosure import ProgressiveDisclosureCore
@@ -36,6 +37,27 @@ class SkillToolsTests(unittest.TestCase):
             self.assertIn("tool.requested", event_types)
             self.assertIn("tool.completed", event_types)
             self.assertIn("skill.disclosed", event_types)
+
+    def test_reading_a_cached_path_records_the_skill_as_used(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_prompt_skill(root, "research")
+            context = RunTraceStore(root / "runs").start_run("main", "question")
+            disclosure = _create_disclosure(root, context)
+            index = disclosure.prepare_skill_index()
+            cached = disclosure.open_skill("research", "prompt").read_instructions()
+            tools = _create_tool_router(root, disclosure, index, context)
+
+            tools.run_tool_call(
+                ToolCall(
+                    "call-1",
+                    "read_disclosed_content",
+                    {"cache_path": str(cached.cache_path)},
+                )
+            )
+
+            targets = tools.context.evaluation_tracker.list_evaluation_targets()
+            self.assertEqual(["prompt:research"], [target.key for target in targets])
 
     def test_unknown_builtin_tool_fails_with_trace_event(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -120,6 +142,7 @@ def _create_tool_router(
             skill_index=index,
             run_context=context,
             skill_executors=create_builtin_skill_executors(),
+            evaluation_tracker=RunEvaluationTracker(),
             state_root=root / "memory",
             memory=memory,
         )

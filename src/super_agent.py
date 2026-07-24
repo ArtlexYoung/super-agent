@@ -4,9 +4,10 @@ from agents.agent import Agent
 from capability.contracts import (
     AgentCapabilitySet,
     RunController,
+    RunEvaluationRequest,
+    RunResultEvaluator,
     RunRecorder,
     SkillExecutor,
-    SkillResultEvaluator,
     SkillRetrieverCapability,
     SkillUpdaterCapability,
 )
@@ -49,6 +50,17 @@ from skill.ecosystem.package import SkillPackageManager
 from skill.evolution.candidate import SkillCandidate
 from skill.evolution.evaluation import EvaluationCase, EvaluationReport, EvolutionResult
 from skill.evolution.manager import SkillEvolutionManager
+from skill.evolution.records import (
+    EvaluationRecord,
+    EvaluationRecordStore,
+    EvaluationResult,
+    EvaluationSource,
+    EvaluationTarget,
+    EvaluationTokenUsage,
+    create_evaluation_record,
+    evaluation_record_from_dict,
+    evaluation_record_to_dict,
+)
 from skill.kinds.memory import MemoryItem, MemoryPolicy, MemoryUsageHabits, MiniMemory
 from runtime.models import RunResult, SubAgentResult
 from skill.manifest import Skill, SkillManifest, skill_manifest_to_dict
@@ -64,7 +76,13 @@ __all__ = [
     "BenchmarkReport",
     "ChatProvider",
     "EvaluationCase",
+    "EvaluationRecord",
+    "EvaluationRecordStore",
     "EvaluationReport",
+    "EvaluationResult",
+    "EvaluationSource",
+    "EvaluationTarget",
+    "EvaluationTokenUsage",
     "EvolutionResult",
     "LockedSkill",
     "MemoryItem",
@@ -79,12 +97,14 @@ __all__ = [
     "ProgressiveDisclosureCore",
     "RunContext",
     "RunController",
+    "RunEvaluationRequest",
     "RunEvent",
     "RunResult",
     "RunSnapshot",
     "RunSnapshotStore",
     "RunTraceStore",
     "RunRecorder",
+    "RunResultEvaluator",
     "Skill",
     "SkillBenchmark",
     "SkillCandidate",
@@ -99,7 +119,6 @@ __all__ = [
     "SkillPackageManager",
     "SkillReference",
     "SkillSelectionDecision",
-    "SkillResultEvaluator",
     "SkillRetrieverCapability",
     "SkillUpdaterCapability",
     "SubAgentResult",
@@ -108,6 +127,9 @@ __all__ = [
     "create_default_capability_set",
     "create_default_skill_retriever",
     "discover_model_candidates",
+    "create_evaluation_record",
+    "evaluation_record_from_dict",
+    "evaluation_record_to_dict",
     "model_resolution_to_dict",
     "resolve_model_settings",
     "run_event_from_dict",

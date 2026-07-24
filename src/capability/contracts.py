@@ -11,8 +11,16 @@ from runtime.models import AgentRunRequest, RunResult
 from skill.disclosure import (
     SkillDisclosure,
     SkillIndex,
+    SkillIndexEntry,
     SkillReference,
     SkillSelectionDecision,
+)
+from skill.evolution.records import (
+    EvaluationResult,
+    EvaluationSource,
+    EvaluationTarget,
+    create_capability_evaluation_target,
+    create_indexed_skill_evaluation_target,
 )
 from skill.manifest import Skill
 
@@ -83,20 +91,40 @@ class SkillExecutor(Protocol):
         ...
 
 
+class RunEvaluationTracker:
+    def __init__(self) -> None:
+        self._targets: dict[tuple[str, str], EvaluationTarget] = {}
+        self._recorded_capability_instances: set[tuple[str, int]] = set()
+
+    def record_skill_used(self, entry: SkillIndexEntry) -> None:
+        target = create_indexed_skill_evaluation_target(entry)
+        self._targets[(target.target_type, target.key)] = target
+
+    def record_capability_used(self, slot: str, capability: object) -> None:
+        marker = (slot.strip().lower(), id(capability))
+        if marker in self._recorded_capability_instances:
+            return
+        target = create_capability_evaluation_target(slot, capability)
+        self._targets[(target.target_type, target.key)] = target
+        self._recorded_capability_instances.add(marker)
+
+    def list_evaluation_targets(self) -> list[EvaluationTarget]:
+        return list(self._targets.values())
+
+
 @dataclass(frozen=True)
-class SkillResultRecord:
-    skills: list[Skill]
-    prompt: str
-    output: str
-    success: bool
+class RunEvaluationRequest:
+    targets: list[EvaluationTarget]
+    source: EvaluationSource
+    result: EvaluationResult
     state_root: Path
 
 
-class SkillResultEvaluator(Protocol):
+class RunResultEvaluator(Protocol):
     name: str
     version: str
 
-    def record_skill_results(self, record: SkillResultRecord) -> None:
+    def record_run_evaluation(self, request: RunEvaluationRequest) -> None:
         ...
 
 
@@ -130,6 +158,7 @@ class CapabilityRunContext:
     capabilities: "AgentCapabilitySet"
     skill_retriever: SkillRetrieverSession
     skill_index: SkillIndex
+    evaluation_tracker: RunEvaluationTracker
 
 
 class RunController(Protocol):
@@ -145,7 +174,7 @@ class AgentCapabilitySet:
     run_controller: RunController
     skill_retriever: SkillRetrieverCapability
     skill_executors: dict[str, SkillExecutor]
-    skill_result_evaluator: SkillResultEvaluator
+    run_result_evaluator: RunResultEvaluator
     skill_updater: SkillUpdaterCapability
     run_recorder: RunRecorder
 

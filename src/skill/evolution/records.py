@@ -1,0 +1,522 @@
+"""Strict evaluation records shared by Skill and Capability targets."""
+
+from __future__ import annotations
+
+import hashlib
+import inspect
+import json
+import math
+import re
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+from uuid import uuid4
+
+if TYPE_CHECKING:
+    from skill.disclosure import SkillIndexEntry
+    from skill.manifest import Skill
+
+
+EVALUATION_RECORD_SCHEMA_VERSION = 1
+EVALUATION_RECORDS_FILE = "evaluation_records.jsonl"
+EVALUATION_TARGET_TYPES = frozenset({"skill", "capability"})
+EVALUATION_SOURCE_TYPES = frozenset({"agent_run", "candidate_evaluation"})
+EVALUATION_RECORD_FIELDS = {
+    "schema_version",
+    "record_id",
+    "created_at",
+    "target",
+    "source",
+    "result",
+}
+EVALUATION_TARGET_FIELDS = {
+    "target_type",
+    "key",
+    "name",
+    "version",
+    "content_sha256",
+    "function_group",
+}
+EVALUATION_SOURCE_FIELDS = {
+    "source_type",
+    "run_id",
+    "candidate_id",
+    "case_name",
+}
+EVALUATION_RESULT_FIELDS = {
+    "success",
+    "score",
+    "token_usage",
+    "latency_ms",
+    "error_type",
+    "checks",
+}
+EVALUATION_TOKEN_USAGE_FIELDS = {"input_tokens", "output_tokens"}
+
+
+@dataclass(frozen=True)
+class EvaluationTarget:
+    target_type: str
+    key: str
+    name: str
+    version: str
+    content_sha256: str
+    function_group: str
+
+
+@dataclass(frozen=True)
+class EvaluationSource:
+    source_type: str
+    run_id: str = ""
+    candidate_id: str = ""
+    case_name: str = ""
+
+
+@dataclass(frozen=True)
+class EvaluationTokenUsage:
+    input_tokens: int
+    output_tokens: int
+
+
+@dataclass(frozen=True)
+class EvaluationResult:
+    success: bool
+    score: float
+    token_usage: EvaluationTokenUsage
+    latency_ms: int | None
+    error_type: str
+    checks: list[str]
+
+
+@dataclass(frozen=True)
+class EvaluationRecord:
+    schema_version: int
+    record_id: str
+    created_at: str
+    target: EvaluationTarget
+    source: EvaluationSource
+    result: EvaluationResult
+
+
+class EvaluationRecordStore:
+    def __init__(self, root: Path) -> None:
+        self.root = root
+        self.records_path = root / EVALUATION_RECORDS_FILE
+
+    def append_evaluation_records(self, records: list[EvaluationRecord]) -> None:
+        serialized = [
+            json.dumps(evaluation_record_to_dict(record), ensure_ascii=False, sort_keys=True)
+            for record in records
+        ]
+        if not serialized:
+            return
+        self.root.mkdir(parents=True, exist_ok=True)
+        with self.records_path.open("a", encoding="utf-8") as file:
+            file.write("\n".join(serialized) + "\n")
+
+    def read_evaluation_records(
+        self,
+        target_type: str | None = None,
+        target_key: str | None = None,
+        source_type: str | None = None,
+    ) -> list[EvaluationRecord]:
+        _validate_optional_filter(target_type, EVALUATION_TARGET_TYPES, "target_type")
+        _validate_optional_filter(source_type, EVALUATION_SOURCE_TYPES, "source_type")
+        if target_key is not None and (
+            not isinstance(target_key, str) or not target_key.strip()
+        ):
+            raise ValueError("evaluation target_key filter cannot be empty")
+        if not self.records_path.is_file():
+            return []
+        records = [
+            evaluation_record_from_dict(json.loads(line))
+            for line in self.records_path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        return [
+            record
+            for record in records
+            if (target_type is None or record.target.target_type == target_type)
+            and (target_key is None or record.target.key == target_key)
+            and (source_type is None or record.source.source_type == source_type)
+        ]
+
+
+def create_evaluation_record(
+    target: EvaluationTarget,
+    source: EvaluationSource,
+    result: EvaluationResult,
+    created_at: datetime | None = None,
+) -> EvaluationRecord:
+    record = EvaluationRecord(
+        schema_version=EVALUATION_RECORD_SCHEMA_VERSION,
+        record_id=f"evaluation-{uuid4().hex}",
+        created_at=_format_datetime(created_at or datetime.now(UTC)),
+        target=target,
+        source=source,
+        result=result,
+    )
+    evaluation_record_to_dict(record)
+    return record
+
+
+def create_skill_evaluation_target(skill: Skill) -> EvaluationTarget:
+    from skill.manifest import calculate_skill_directory_sha256
+
+    manifest = skill.manifest
+    return EvaluationTarget(
+        target_type="skill",
+        key=f"{manifest.capability}:{manifest.name}",
+        name=manifest.name,
+        version=manifest.version,
+        content_sha256=calculate_skill_directory_sha256(manifest.path),
+        function_group=manifest.function_group,
+    )
+
+
+def create_indexed_skill_evaluation_target(entry: SkillIndexEntry) -> EvaluationTarget:
+    return EvaluationTarget(
+        target_type="skill",
+        key=entry.reference.key,
+        name=entry.reference.name,
+        version=entry.version,
+        content_sha256=entry.content_sha256,
+        function_group=entry.function_group,
+    )
+
+
+def create_capability_evaluation_target(slot: str, capability: object) -> EvaluationTarget:
+    clean_slot = slot.strip().lower()
+    if not clean_slot:
+        raise ValueError("capability evaluation slot cannot be empty")
+    name = _required_capability_attribute(capability, "name")
+    version = _required_capability_attribute(capability, "version")
+    return EvaluationTarget(
+        target_type="capability",
+        key=f"{clean_slot}:{name}",
+        name=name,
+        version=version,
+        content_sha256=_calculate_capability_sha256(capability),
+        function_group=clean_slot,
+    )
+
+
+def estimate_evaluation_token_usage(
+    input_text: str,
+    output_text: str,
+) -> EvaluationTokenUsage:
+    return EvaluationTokenUsage(
+        input_tokens=_estimate_tokens(input_text),
+        output_tokens=_estimate_tokens(output_text),
+    )
+
+
+def evaluation_record_to_dict(record: EvaluationRecord) -> dict[str, object]:
+    _validate_evaluation_record(record)
+    return {
+        "schema_version": record.schema_version,
+        "record_id": record.record_id,
+        "created_at": record.created_at,
+        "target": {
+            "target_type": record.target.target_type,
+            "key": record.target.key,
+            "name": record.target.name,
+            "version": record.target.version,
+            "content_sha256": record.target.content_sha256,
+            "function_group": record.target.function_group,
+        },
+        "source": {
+            "source_type": record.source.source_type,
+            "run_id": record.source.run_id,
+            "candidate_id": record.source.candidate_id,
+            "case_name": record.source.case_name,
+        },
+        "result": {
+            "success": record.result.success,
+            "score": record.result.score,
+            "token_usage": {
+                "input_tokens": record.result.token_usage.input_tokens,
+                "output_tokens": record.result.token_usage.output_tokens,
+            },
+            "latency_ms": record.result.latency_ms,
+            "error_type": record.result.error_type,
+            "checks": list(record.result.checks),
+        },
+    }
+
+
+def evaluation_record_from_dict(value: object) -> EvaluationRecord:
+    data = _require_exact_object(value, EVALUATION_RECORD_FIELDS, "evaluation record")
+    schema_version = _required_integer(data, "schema_version")
+    if schema_version != EVALUATION_RECORD_SCHEMA_VERSION:
+        raise ValueError(
+            f"migrate evaluation record schema_version {schema_version} to "
+            f"evaluation record schema_version {EVALUATION_RECORD_SCHEMA_VERSION}"
+        )
+    target = _target_from_dict(data["target"])
+    source = _source_from_dict(data["source"])
+    result = _result_from_dict(data["result"])
+    record = EvaluationRecord(
+        schema_version=schema_version,
+        record_id=_required_string(data, "record_id"),
+        created_at=_required_string(data, "created_at"),
+        target=target,
+        source=source,
+        result=result,
+    )
+    _validate_evaluation_record(record)
+    return record
+
+
+def _target_from_dict(value: object) -> EvaluationTarget:
+    data = _require_exact_object(value, EVALUATION_TARGET_FIELDS, "evaluation target")
+    return EvaluationTarget(
+        target_type=_required_string(data, "target_type"),
+        key=_required_string(data, "key"),
+        name=_required_string(data, "name"),
+        version=_required_string(data, "version"),
+        content_sha256=_required_string(data, "content_sha256"),
+        function_group=_required_string(data, "function_group"),
+    )
+
+
+def _source_from_dict(value: object) -> EvaluationSource:
+    data = _require_exact_object(value, EVALUATION_SOURCE_FIELDS, "evaluation source")
+    return EvaluationSource(
+        source_type=_required_string(data, "source_type"),
+        run_id=_string_value(data, "run_id"),
+        candidate_id=_string_value(data, "candidate_id"),
+        case_name=_string_value(data, "case_name"),
+    )
+
+
+def _result_from_dict(value: object) -> EvaluationResult:
+    data = _require_exact_object(value, EVALUATION_RESULT_FIELDS, "evaluation result")
+    token_data = _require_exact_object(
+        data["token_usage"],
+        EVALUATION_TOKEN_USAGE_FIELDS,
+        "evaluation token usage",
+    )
+    success = data["success"]
+    if not isinstance(success, bool):
+        raise ValueError("evaluation result success must be a boolean")
+    latency = data["latency_ms"]
+    if latency is not None:
+        latency = _non_negative_integer(latency, "evaluation result latency_ms")
+    checks = data["checks"]
+    if not isinstance(checks, list) or not all(isinstance(item, str) for item in checks):
+        raise ValueError("evaluation result checks must be a string array")
+    return EvaluationResult(
+        success=success,
+        score=_score_value(data["score"]),
+        token_usage=EvaluationTokenUsage(
+            input_tokens=_non_negative_integer(
+                token_data["input_tokens"],
+                "evaluation token usage input_tokens",
+            ),
+            output_tokens=_non_negative_integer(
+                token_data["output_tokens"],
+                "evaluation token usage output_tokens",
+            ),
+        ),
+        latency_ms=latency,
+        error_type=_string_value(data, "error_type"),
+        checks=list(checks),
+    )
+
+
+def _validate_evaluation_record(record: EvaluationRecord) -> None:
+    if (
+        isinstance(record.schema_version, bool)
+        or not isinstance(record.schema_version, int)
+        or record.schema_version != EVALUATION_RECORD_SCHEMA_VERSION
+    ):
+        raise ValueError(
+            f"migrate evaluation record schema_version {record.schema_version} to "
+            f"evaluation record schema_version {EVALUATION_RECORD_SCHEMA_VERSION}"
+        )
+    if not isinstance(record.record_id, str) or not record.record_id.strip():
+        raise ValueError("evaluation record_id cannot be empty")
+    if not isinstance(record.created_at, str):
+        raise ValueError("evaluation created_at must be a string")
+    _parse_datetime(record.created_at)
+    if not isinstance(record.target, EvaluationTarget):
+        raise ValueError("evaluation target must be EvaluationTarget")
+    if not isinstance(record.source, EvaluationSource):
+        raise ValueError("evaluation source must be EvaluationSource")
+    if not isinstance(record.result, EvaluationResult):
+        raise ValueError("evaluation result must be EvaluationResult")
+    _validate_target(record.target)
+    _validate_source(record.source)
+    _validate_result(record.result)
+
+
+def _validate_target(target: EvaluationTarget) -> None:
+    if not isinstance(target.target_type, str):
+        raise ValueError("evaluation target target_type must be a string")
+    if target.target_type not in EVALUATION_TARGET_TYPES:
+        raise ValueError(f"unknown evaluation target_type: {target.target_type}")
+    for name, value in {
+        "key": target.key,
+        "name": target.name,
+        "version": target.version,
+        "function_group": target.function_group,
+    }.items():
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"evaluation target {name} cannot be empty")
+    if not isinstance(target.content_sha256, str) or not re.fullmatch(
+        r"[0-9a-f]{64}",
+        target.content_sha256,
+    ):
+        raise ValueError("evaluation target content_sha256 must be lowercase SHA-256")
+
+
+def _validate_source(source: EvaluationSource) -> None:
+    for name, value in {
+        "source_type": source.source_type,
+        "run_id": source.run_id,
+        "candidate_id": source.candidate_id,
+        "case_name": source.case_name,
+    }.items():
+        if not isinstance(value, str):
+            raise ValueError(f"evaluation source {name} must be a string")
+    if source.source_type not in EVALUATION_SOURCE_TYPES:
+        raise ValueError(f"unknown evaluation source_type: {source.source_type}")
+    if source.source_type == "agent_run":
+        if not source.run_id.strip():
+            raise ValueError("agent_run evaluation source requires run_id")
+        if source.candidate_id or source.case_name:
+            raise ValueError("agent_run evaluation source cannot contain candidate fields")
+        return
+    if not source.candidate_id.strip() or not source.case_name.strip():
+        raise ValueError("candidate_evaluation source requires candidate_id and case_name")
+    if source.run_id:
+        raise ValueError("candidate_evaluation source cannot contain run_id")
+
+
+def _validate_result(result: EvaluationResult) -> None:
+    if not isinstance(result.success, bool):
+        raise ValueError("evaluation result success must be a boolean")
+    _score_value(result.score)
+    if not isinstance(result.token_usage, EvaluationTokenUsage):
+        raise ValueError("evaluation token_usage must be EvaluationTokenUsage")
+    _non_negative_integer(result.token_usage.input_tokens, "evaluation input_tokens")
+    _non_negative_integer(result.token_usage.output_tokens, "evaluation output_tokens")
+    if result.latency_ms is not None:
+        _non_negative_integer(result.latency_ms, "evaluation latency_ms")
+    if not isinstance(result.error_type, str):
+        raise ValueError("evaluation error_type must be a string")
+    if not isinstance(result.checks, list) or not all(
+        isinstance(item, str) for item in result.checks
+    ):
+        raise ValueError("evaluation checks must be a string array")
+
+
+def _calculate_capability_sha256(capability: object) -> str:
+    capability_type = type(capability)
+    identity = (
+        f"{capability_type.__module__}.{capability_type.__qualname__}\n"
+        f"{_required_capability_attribute(capability, 'name')}\n"
+        f"{_required_capability_attribute(capability, 'version')}\n"
+    )
+    digest = hashlib.sha256(identity.encode("utf-8"))
+    try:
+        source_path = inspect.getsourcefile(capability_type)
+    except TypeError:
+        source_path = None
+    if source_path is not None and Path(source_path).is_file():
+        try:
+            digest.update(Path(source_path).read_bytes())
+            return digest.hexdigest()
+        except OSError:
+            pass
+    try:
+        digest.update(inspect.getsource(capability_type).encode("utf-8"))
+    except (OSError, TypeError):
+        pass
+    return digest.hexdigest()
+
+
+def _required_capability_attribute(capability: object, name: str) -> str:
+    value = getattr(capability, name, None)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"capability {name} must be a non-empty string")
+    return value.strip()
+
+
+def _require_exact_object(value: object, fields: set[str], label: str) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise ValueError(f"{label} must be a JSON object")
+    missing = fields - set(value)
+    extra = set(value) - fields
+    if missing or extra:
+        raise ValueError(
+            f"{label} schema fields do not match v1: "
+            f"missing={sorted(missing)}, extra={sorted(extra)}"
+        )
+    return value
+
+
+def _required_string(data: dict[str, Any], name: str) -> str:
+    value = _string_value(data, name)
+    if not value.strip():
+        raise ValueError(f"evaluation {name} cannot be empty")
+    return value
+
+
+def _string_value(data: dict[str, Any], name: str) -> str:
+    value = data[name]
+    if not isinstance(value, str):
+        raise ValueError(f"evaluation {name} must be a string")
+    return value
+
+
+def _required_integer(data: dict[str, Any], name: str) -> int:
+    value = data[name]
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"evaluation {name} must be an integer")
+    return value
+
+
+def _non_negative_integer(value: object, label: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(f"{label} must be a non-negative integer")
+    return value
+
+
+def _score_value(value: object) -> float:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise ValueError("evaluation result score must be a number")
+    score = float(value)
+    if not math.isfinite(score) or score < 0 or score > 1:
+        raise ValueError("evaluation result score must be between 0 and 1")
+    return score
+
+
+def _validate_optional_filter(
+    value: str | None,
+    allowed: frozenset[str],
+    name: str,
+) -> None:
+    if value is not None and (not isinstance(value, str) or value not in allowed):
+        raise ValueError(f"unknown evaluation {name}: {value}")
+
+
+def _estimate_tokens(text: str) -> int:
+    return 0 if not text else math.ceil(len(text) / 4)
+
+
+def _format_datetime(value: datetime) -> str:
+    normalized = value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+    return normalized.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _parse_datetime(value: str) -> datetime:
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as error:
+        raise ValueError(f"invalid evaluation created_at: {value}") from error
+    if parsed.tzinfo is None:
+        raise ValueError("evaluation created_at must include a timezone")
+    return parsed

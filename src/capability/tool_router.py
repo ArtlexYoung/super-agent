@@ -4,13 +4,19 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
 
-from capability.contracts import SkillExecutor, SkillLoadRequest, SkillRetrieverSession
+from capability.contracts import (
+    RunEvaluationTracker,
+    SkillExecutor,
+    SkillLoadRequest,
+    SkillRetrieverSession,
+)
 from capability.skill_executors import load_skill_for_model_context
 from provider.chat import ToolCall, ToolDefinition
 from runtime.events import RunContext
 from skill.disclosure import (
     SkillDisclosure,
     SkillIndex,
+    SkillReference,
     skill_index_to_dict,
 )
 from skill.kinds.mcp import McpServer
@@ -27,6 +33,7 @@ class ToolRouterContext:
     skill_index: SkillIndex
     run_context: RunContext
     skill_executors: dict[str, SkillExecutor]
+    evaluation_tracker: RunEvaluationTracker
     state_root: Path
     memory: MiniMemory | None = None
     list_subagents: Callable[[], list[dict[str, object]]] | None = None
@@ -104,6 +111,7 @@ class RuntimeToolRouter:
             opened.index_entry.reference.capability
         )
         if executor is not None and executor.adds_model_context:
+            self._record_skill_executor_used(opened.index_entry.reference)
             self._remember_used_skill(
                 load_skill_for_model_context(
                     self.context.retriever,
@@ -129,7 +137,9 @@ class RuntimeToolRouter:
 
     def _read_disclosed_content(self, arguments: dict[str, object]) -> dict[str, object]:
         path = _required_string(arguments, "cache_path")
-        return {"cache_path": path, "content": self.context.retriever.read_disclosed_content(path)}
+        content = self.context.retriever.read_disclosed_content(path)
+        self._record_skill_used_for_cache_path(path)
+        return {"cache_path": path, "content": content}
 
     def list_subagents(self) -> dict[str, object]:
         if self.context.list_subagents is None:
@@ -258,6 +268,7 @@ class RuntimeToolRouter:
         executor = self.context.skill_executors.get("mcp")
         if executor is None:
             raise KeyError("skill executor not found for type: mcp")
+        self._record_skill_executor_used(reference)
         loaded = executor.load_skill(
             SkillLoadRequest(self.context.retriever, reference, self.context.state_root)
         )
@@ -268,10 +279,40 @@ class RuntimeToolRouter:
     def _open_requested_skill(self, arguments: dict[str, object]) -> SkillDisclosure:
         name = _required_string(arguments, "name")
         capability = _optional_string(arguments, "capability")
-        return self.context.retriever.open_skill(
+        opened = self.context.retriever.open_skill(
             name,
             expected_capability=capability,
         )
+        self.context.evaluation_tracker.record_skill_used(opened.index_entry)
+        return opened
+
+    def _record_skill_executor_used(self, reference: SkillReference) -> None:
+        entry = self.context.skill_index.require_skill(
+            reference.name,
+            reference.capability,
+        )
+        executor = self.context.skill_executors.get(reference.capability)
+        if executor is None:
+            raise KeyError(
+                f"skill executor not found for capability: {reference.capability}"
+            )
+        self.context.evaluation_tracker.record_skill_used(entry)
+        self.context.evaluation_tracker.record_capability_used(
+            f"skill_executor:{reference.capability}",
+            executor,
+        )
+
+    def _record_skill_used_for_cache_path(self, cache_path: str) -> None:
+        requested = Path(cache_path).expanduser().resolve()
+        for entry in self.context.skill_index.entries:
+            disclosed_paths = {
+                entry.manifest_cache_path.resolve(),
+                entry.instructions_cache_path.resolve(),
+                entry.configuration_cache_path.resolve(),
+            }
+            if requested in disclosed_paths:
+                self.context.evaluation_tracker.record_skill_used(entry)
+                return
 
     def _remember_used_skill(self, skill: Skill) -> None:
         skill_key = f"{skill.manifest.capability}:{skill.manifest.name}"

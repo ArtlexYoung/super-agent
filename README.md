@@ -69,7 +69,7 @@ Super Agent keeps five responsibilities explicit:
 - **Runtime schedules capabilities** and owns no concrete skill behavior.
 - **Capability executes mechanisms** such as retrieval, execution, evaluation, updating, and recording.
 - **Skill carries content** and configuration consumed by those mechanisms.
-- **Agent composes everything** and exposes clear replacement methods such as `set_run_controller(...)`, `set_skill_retriever(...)`, and `add_skill_executor(...)`.
+- **Agent composes everything** and exposes clear replacement methods such as `set_run_controller(...)`, `set_skill_retriever(...)`, `set_run_result_evaluator(...)`, and `add_skill_executor(...)`.
 
 `Agent()` assembles tested defaults automatically. Advanced users can replace one Capability without rebuilding the Runtime or introducing another configuration system.
 
@@ -308,13 +308,16 @@ Call `main.check_subagent_links()` directly to inspect these warnings in code.
 Every `Agent.run(...)` creates a unique `run_id` and writes ordered events to:
 
 ```text
-.super-agent/memory/runs/<run-id>/
-  events.jsonl
-  snapshot.json
-  runtime.lock.json
+.super-agent/memory/
+  evaluation_records.jsonl
+  skill_stats.json
+  runs/<run-id>/
+    events.jsonl
+    snapshot.json
+    runtime.lock.json
 ```
 
-Each subagent has its own `run_id` and points to its parent through `parent_run_id`. Events cover skill disclosure, model steps, tool calls, memory updates, and results, allowing consumers to reconstruct the complete execution tree. `snapshot.json` tracks running, completed, or failed state. `runtime.lock.json` records the resolved Agent and model settings, the Provider adapter, Capability implementation versions, and SHA-256 of every enabled Skill directory. It stores an API-key environment variable name but never the secret value.
+Each subagent has its own `run_id` and points to its parent through `parent_run_id`. Events cover skill disclosure, model steps, tool calls, memory updates, and results, allowing consumers to reconstruct the complete execution tree. `snapshot.json` tracks running, completed, or failed state. `runtime.lock.json` records the resolved Agent and model settings, the Provider adapter, Capability implementation versions, and SHA-256 of every enabled Skill directory. It stores an API-key environment variable name but never the secret value. The shared evaluation stream records the Skill and Capability targets actually used by each run.
 
 The Runtime prepares the progressive Skill index once per run. The execution controller and runtime lock consume that same in-memory index, so inspection cannot describe a different Skill tree from the one that was executed. Instructions remain progressively loaded; their directory hash is checked against the lock when disclosed, and a mid-run source change fails explicitly.
 
@@ -374,12 +377,14 @@ super-agent memory consolidate --config agent.toml
 
 ## Skill Freshness
 
-Freshness scoring does not call a model. The runtime appends skill-use events to `skill_events.jsonl` and writes aggregates to `skill_stats.json`. The score combines explainable signals:
+Freshness scoring does not call a model. Online runs and candidate cases append the same strict records to `evaluation_records.jsonl`. Each record separates `target` (Skill or Capability), `source` (`agent_run` or `candidate_evaluation`), and `result` (success, score, token usage, latency, error, and checks). `skill_stats.json` is only a derived cache; freshness consumes online Skill records and never lets candidate evaluation alter live scores.
+
+The score combines explainable signals:
 
 - `quality`: an EWMA of recent success.
 - `recency`: time since last use with a seven-day half-life.
 - `frequency`: call count and call rate.
-- `efficiency`: approximate input/output token cost.
+- `efficiency`: approximate input/output token cost and measured runtime latency.
 - `reliability`: success and empty-output rates.
 - `replacement`: whether another successful skill in the same `function_group` is used shortly afterward.
 - `confidence`: regression toward the default when samples are sparse, reducing cold-start errors.
@@ -443,7 +448,7 @@ super-agent skills evolve --config agent.toml --name research-note --goal "make 
 super-agent skills rollback --config agent.toml --name research-note
 ```
 
-Candidates, evaluation reports, and history are stored under `.super-agent/memory/evolution/` by default.
+Candidates, evaluation reports, and history are stored under `.super-agent/memory/evolution/` by default. Each individual case also enters `.super-agent/memory/evaluation_records.jsonl`, so online runs and evolution use one evidence format.
 
 ## MCP Skills
 
@@ -523,6 +528,7 @@ Common entry points:
 - `MiniMemory.add_memory_item(...)`, `recall_memory(...)`, `forget_memory(...)`, and `consolidate_memory()`.
 - `SkillBenchmark.run_cases(...)`.
 - `RunSnapshotStore.list_run_snapshots(...)`, `explain_run(...)`, and `export_run(...)`.
+- `EvaluationRecordStore.read_evaluation_records(...)` and `create_evaluation_record(...)`.
 - `run_event_to_dict(...)`, `run_event_from_dict(...)`, and `skill_manifest_to_dict(...)`.
 
 Internal code imports definition modules directly without intermediate facades. `src/super_agent.py` is the only public aggregate entry point.
@@ -534,6 +540,8 @@ A Skill manifest must explicitly set `schema_version = 2` and provide `name`, `c
 Run event v1 has exactly eight fields: `schema_version`, `run_id`, `sequence`, `event_type`, `created_at`, `agent_name`, `parent_run_id`, and `data`. Readers reject missing fields, unknown fields, invalid types, and unsupported schema versions instead of applying silent compatibility behavior.
 
 Run snapshot v1 is strict and stores lifecycle state plus the relative runtime-lock path and SHA-256. Runtime lock v1 fixes the effective Agent, model, Capability, and Skill composition for one run; mutable memory data remains outside the lock.
+
+Evaluation record v1 has an exact top-level field set: `schema_version`, `record_id`, `created_at`, `target`, `source`, and `result`. Nested objects are strict as well. Readers reject unknown target/source types, malformed SHA-256 values, invalid scores or token counts, missing source identity, unknown fields, and unsupported versions.
 
 Python APIs may still change during the `0.0.x` series. Incompatible persisted-format changes require explicit migration and are never guessed into a new representation. Current provider names are limited to `mock`, `openai-compatible`, and `anthropic-compatible`.
 
@@ -562,7 +570,7 @@ src/
   skill/         # Shared Skill content model
     disclosure/  # Central parser, index, cache, and history
     ecosystem/   # Dependency lock and package management
-    evolution/   # Candidates, evaluation, freshness, and history
+    evolution/   # Shared records, candidates, evaluation, freshness, and history
     kinds/       # MCP, memory, and workflow implementations
   frontend/mac/  # SwiftUI desktop app
 ```
