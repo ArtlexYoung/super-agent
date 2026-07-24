@@ -8,7 +8,12 @@ from provider.chat import ChatProvider
 from runtime.config import AgentConfig
 from runtime.events import RunContext, RunEvent
 from runtime.models import AgentRunRequest, RunResult
-from skill.disclosure import SkillDisclosure, SkillIndex, SkillReference
+from skill.disclosure import (
+    SkillDisclosure,
+    SkillIndex,
+    SkillReference,
+    SkillSelectionDecision,
+)
 from skill.manifest import Skill
 
 
@@ -22,6 +27,14 @@ class SkillRetrieverSession(Protocol):
         enabled_names: list[str] | None = None,
         allowed_capabilities: set[str] | None = None,
     ) -> list[SkillReference]:
+        ...
+
+    def explain_skill_selection_for_prompt(
+        self,
+        prompt: str,
+        enabled_names: list[str] | None = None,
+        allowed_capabilities: set[str] | None = None,
+    ) -> list[SkillSelectionDecision]:
         ...
 
     def open_skill(
@@ -115,6 +128,8 @@ class CapabilityRunContext:
     provider: ChatProvider
     run_context: RunContext
     capabilities: "AgentCapabilitySet"
+    skill_retriever: SkillRetrieverSession
+    skill_index: SkillIndex
 
 
 class RunController(Protocol):

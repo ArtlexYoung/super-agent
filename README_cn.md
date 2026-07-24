@@ -82,6 +82,8 @@ super-agent skills validate --config demo-agent/agent.toml
 super-agent skills explain --config demo-agent/agent.toml --prompt "hello"
 super-agent skills freshness --config demo-agent/agent.toml
 super-agent memory habits --config demo-agent/agent.toml
+super-agent runs status --config demo-agent/agent.toml
+super-agent runs explain --config demo-agent/agent.toml
 ```
 
 ## Agent 配置
@@ -306,14 +308,24 @@ print(result.text)
 每次 `Agent.run(...)` 都生成独立 `run_id`，事件按顺序写入：
 
 ```text
-.super-agent/memory/runs/<run-id>/events.jsonl
+.super-agent/memory/runs/<run-id>/
+  events.jsonl
+  snapshot.json
+  runtime.lock.json
 ```
 
-子 Agent 使用自己的 `run_id`，并通过 `parent_run_id` 指向父运行。事件覆盖 Skill 披露、模型步骤、工具调用、记忆更新和运行结果，因此调用方可以还原完整执行树。
+子 Agent 使用自己的 `run_id`，并通过 `parent_run_id` 指向父运行。事件覆盖 Skill 披露、模型步骤、工具调用、记忆更新和运行结果，因此调用方可以还原完整执行树。`snapshot.json` 记录运行中、已完成或失败状态；`runtime.lock.json` 记录解析后的 Agent 与模型设置、Provider adapter、Capability 实现版本，以及每个已启用 Skill 目录的 SHA-256。锁文件只保存 API key 环境变量名，不保存密钥值。
+
+Runtime 每次运行只准备一次渐进式 Skill 索引。执行控制器与运行锁使用同一份内存索引，因此检查结果不会描述一套与实际执行不同的 Skill 树。说明文件仍按渐进方式加载；披露时会重新校验目录哈希，运行中途修改源文件会明确失败。
 
 ```bash
 super-agent run --output json --config agent.toml "hello"
+super-agent runs status --config agent.toml
+super-agent runs explain --config agent.toml --run-id <run-id>
+super-agent runs export --config agent.toml --run-id <run-id> --output run.json
 ```
+
+`runs explain` 和 `runs export` 会先验证运行锁哈希。省略 `--run-id` 时自动选择最近一次运行；`runs status` 默认列出最近 20 次。
 
 桌面端或其他进程可以使用 JSONL 协议：
 
@@ -510,6 +522,7 @@ print(result.text)
 - `ProgressiveDisclosureCore.prepare_skill_index()`、`open_skill(...)`。
 - `MiniMemory.add_memory_item(...)`、`recall_memory(...)`、`forget_memory(...)`、`consolidate_memory()`。
 - `SkillBenchmark.run_cases(...)`。
+- `RunSnapshotStore.list_run_snapshots(...)`、`explain_run(...)`、`export_run(...)`。
 - `run_event_to_dict(...)`、`run_event_from_dict(...)`、`skill_manifest_to_dict(...)`。
 
 项目内部直接导入定义模块，不通过中间 facade；`src/super_agent.py` 是唯一公共聚合入口。
@@ -519,6 +532,8 @@ print(result.text)
 Skill manifest 必须显式设置 `schema_version = 2`，并提供 `name`、`capability`、`description`、`version` 和 `triggers`。`[entry]` 可选，用来指向说明文件；任意 Capability 的设置都统一写入 `[configuration]`。v1 与旧的 Capability 专用配置表会被直接拒绝，不做隐式转换。
 
 运行事件 v1 固定包含 `schema_version`、`run_id`、`sequence`、`event_type`、`created_at`、`agent_name`、`parent_run_id` 和 `data`。读取器拒绝缺失字段、未知字段、错误类型和不支持的 schema 版本，不做静默兼容。
+
+运行快照 v1 使用严格字段，记录生命周期状态、相对运行锁路径和 SHA-256。运行锁 v1 固定一次运行实际使用的 Agent、模型、Capability 和 Skill 组合；可变的记忆数据不进入锁文件。
 
 `0.0.x` 阶段的 Python API 仍可能调整。持久化格式发生不兼容变化时会要求显式迁移，不会把旧数据猜测成新格式。当前 provider 名称只接受 `mock`、`openai-compatible` 和 `anthropic-compatible`。
 

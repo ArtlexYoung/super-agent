@@ -28,6 +28,12 @@ from provider.discovery import (
 )
 from runtime.engine import AgentRuntime
 from runtime.events import RunContext, RunEvent, RunTraceStore, run_event_from_dict, run_event_to_dict
+from runtime.snapshots import (
+    RunSnapshot,
+    RunSnapshotStore,
+    run_snapshot_from_dict,
+    run_snapshot_to_dict,
+)
 from capability.tool_router import RuntimeToolRouter
 from skill.disclosure import (
     ProgressiveDisclosureCore,
@@ -36,6 +42,7 @@ from skill.disclosure import (
     SkillIndex,
     SkillIndexEntry,
     SkillReference,
+    SkillSelectionDecision,
 )
 from skill.ecosystem.lock import LockedSkill
 from skill.ecosystem.package import SkillPackageManager
@@ -74,6 +81,8 @@ __all__ = [
     "RunController",
     "RunEvent",
     "RunResult",
+    "RunSnapshot",
+    "RunSnapshotStore",
     "RunTraceStore",
     "RunRecorder",
     "Skill",
@@ -89,6 +98,7 @@ __all__ = [
     "SkillManifest",
     "SkillPackageManager",
     "SkillReference",
+    "SkillSelectionDecision",
     "SkillResultEvaluator",
     "SkillRetrieverCapability",
     "SkillUpdaterCapability",
@@ -102,5 +112,7 @@ __all__ = [
     "resolve_model_settings",
     "run_event_from_dict",
     "run_event_to_dict",
+    "run_snapshot_from_dict",
+    "run_snapshot_to_dict",
     "skill_manifest_to_dict",
 ]

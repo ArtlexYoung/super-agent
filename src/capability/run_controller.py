@@ -21,11 +21,8 @@ class DefaultRunController:
     version = "1"
 
     def run_agent(self, request: AgentRunRequest, context: CapabilityRunContext) -> RunResult:
-        retriever = context.capabilities.skill_retriever.create_skill_retriever(
-            context.config,
-            context.run_context,
-        )
-        skill_index = retriever.prepare_skill_index()
+        retriever = context.skill_retriever
+        skill_index = context.skill_index
         memory = _load_optional_memory(context, retriever, skill_index)
         workflow = _load_workflow(context, retriever, skill_index)
         disclosed_skills: list[Skill] = []
@@ -71,14 +68,6 @@ class DefaultRunController:
             _record_skill_results(context, used_skills, request.prompt, result.text, True)
             if memory is not None:
                 memory.usage_habits.record_agent_run(result.workflow, result.skills)
-            context.run_context.record_event(
-                "run.completed",
-                {
-                    "workflow": result.workflow,
-                    "skills": result.skills,
-                    "stop_reason": result.stop_reason,
-                },
-            )
             return RunResult(
                 text=result.text,
                 workflow=result.workflow,

@@ -82,6 +82,8 @@ super-agent skills validate --config demo-agent/agent.toml
 super-agent skills explain --config demo-agent/agent.toml --prompt "hello"
 super-agent skills freshness --config demo-agent/agent.toml
 super-agent memory habits --config demo-agent/agent.toml
+super-agent runs status --config demo-agent/agent.toml
+super-agent runs explain --config demo-agent/agent.toml
 ```
 
 ## Agent Configuration
@@ -306,14 +308,24 @@ Call `main.check_subagent_links()` directly to inspect these warnings in code.
 Every `Agent.run(...)` creates a unique `run_id` and writes ordered events to:
 
 ```text
-.super-agent/memory/runs/<run-id>/events.jsonl
+.super-agent/memory/runs/<run-id>/
+  events.jsonl
+  snapshot.json
+  runtime.lock.json
 ```
 
-Each subagent has its own `run_id` and points to its parent through `parent_run_id`. Events cover skill disclosure, model steps, tool calls, memory updates, and results, allowing consumers to reconstruct the complete execution tree.
+Each subagent has its own `run_id` and points to its parent through `parent_run_id`. Events cover skill disclosure, model steps, tool calls, memory updates, and results, allowing consumers to reconstruct the complete execution tree. `snapshot.json` tracks running, completed, or failed state. `runtime.lock.json` records the resolved Agent and model settings, the Provider adapter, Capability implementation versions, and SHA-256 of every enabled Skill directory. It stores an API-key environment variable name but never the secret value.
+
+The Runtime prepares the progressive Skill index once per run. The execution controller and runtime lock consume that same in-memory index, so inspection cannot describe a different Skill tree from the one that was executed. Instructions remain progressively loaded; their directory hash is checked against the lock when disclosed, and a mid-run source change fails explicitly.
 
 ```bash
 super-agent run --output json --config agent.toml "hello"
+super-agent runs status --config agent.toml
+super-agent runs explain --config agent.toml --run-id <run-id>
+super-agent runs export --config agent.toml --run-id <run-id> --output run.json
 ```
+
+`runs explain` and `runs export` verify the runtime-lock hash before reading it. Omitting `--run-id` selects the latest run; `runs status` lists the latest 20 by default.
 
 Desktop apps and other processes can use the JSONL protocol:
 
@@ -510,6 +522,7 @@ Common entry points:
 - `ProgressiveDisclosureCore.prepare_skill_index()` and `open_skill(...)`.
 - `MiniMemory.add_memory_item(...)`, `recall_memory(...)`, `forget_memory(...)`, and `consolidate_memory()`.
 - `SkillBenchmark.run_cases(...)`.
+- `RunSnapshotStore.list_run_snapshots(...)`, `explain_run(...)`, and `export_run(...)`.
 - `run_event_to_dict(...)`, `run_event_from_dict(...)`, and `skill_manifest_to_dict(...)`.
 
 Internal code imports definition modules directly without intermediate facades. `src/super_agent.py` is the only public aggregate entry point.
@@ -519,6 +532,8 @@ Internal code imports definition modules directly without intermediate facades. 
 A Skill manifest must explicitly set `schema_version = 2` and provide `name`, `capability`, `description`, `version`, and `triggers`. `[entry]` optionally points to instructions, while one generic `[configuration]` table carries settings for any Capability. Schema v1 and legacy Capability-specific tables are rejected instead of converted implicitly.
 
 Run event v1 has exactly eight fields: `schema_version`, `run_id`, `sequence`, `event_type`, `created_at`, `agent_name`, `parent_run_id`, and `data`. Readers reject missing fields, unknown fields, invalid types, and unsupported schema versions instead of applying silent compatibility behavior.
+
+Run snapshot v1 is strict and stores lifecycle state plus the relative runtime-lock path and SHA-256. Runtime lock v1 fixes the effective Agent, model, Capability, and Skill composition for one run; mutable memory data remains outside the lock.
 
 Python APIs may still change during the `0.0.x` series. Incompatible persisted-format changes require explicit migration and are never guessed into a new representation. Current provider names are limited to `mock`, `openai-compatible`, and `anthropic-compatible`.
 

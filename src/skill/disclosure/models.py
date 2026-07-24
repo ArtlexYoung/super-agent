@@ -48,6 +48,7 @@ class SkillIndexEntry:
     manifest_cache_path: Path
     instructions_cache_path: Path
     configuration_cache_path: Path
+    content_sha256: str
     agent_created: bool = False
     agent_can_update: bool = False
     freshness: float = 70.0
@@ -56,6 +57,13 @@ class SkillIndexEntry:
     call_count: int = 0
     success_count: int = 0
     same_function_successful_followups: int = 0
+
+
+@dataclass(frozen=True)
+class SkillSelectionDecision:
+    reference: SkillReference
+    selected: bool
+    reason: str
 
 
 @dataclass(frozen=True)
@@ -163,6 +171,7 @@ def skill_index_to_dict(index: SkillIndex) -> dict[str, object]:
                 "manifest_cache_path": str(entry.manifest_cache_path),
                 "instructions_cache_path": str(entry.instructions_cache_path),
                 "configuration_cache_path": str(entry.configuration_cache_path),
+                "content_sha256": entry.content_sha256,
                 "agent_created": entry.agent_created,
                 "agent_can_update": entry.agent_can_update,
                 "freshness": entry.freshness,

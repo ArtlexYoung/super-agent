@@ -11,6 +11,7 @@ from typing import Any, Sequence
 from cli_commands.benchmark import configure_benchmark_parser, run_benchmark_command
 from cli_commands.memory import configure_memory_parser, run_memory_command
 from cli_commands.models import configure_models_parser, run_models_command
+from cli_commands.runs import configure_runs_parser, run_runs_command
 from cli_commands.skills import configure_skills_parser, run_skills_command
 from agents.agent import Agent
 from runtime.events import RunEvent, run_event_to_dict
@@ -44,6 +45,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return run_memory_command(args)
     if args.command == "models":
         return run_models_command(args)
+    if args.command == "runs":
+        return run_runs_command(args)
     if args.command == "benchmark":
         return run_benchmark_command(args)
     parser.print_help()
@@ -73,6 +76,8 @@ def _build_parser() -> argparse.ArgumentParser:
     configure_memory_parser(memory_parser)
     models_parser = subparsers.add_parser("models", help="discover and resolve model configuration")
     configure_models_parser(models_parser)
+    runs_parser = subparsers.add_parser("runs", help="inspect and export run snapshots")
+    configure_runs_parser(runs_parser)
     benchmark_parser = subparsers.add_parser("benchmark", help="measure progressive context savings")
     configure_benchmark_parser(benchmark_parser)
     return parser

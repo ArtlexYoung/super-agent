@@ -11,6 +11,7 @@ from skill.disclosure.models import (
     SkillIndex,
     SkillIndexEntry,
     SkillReference,
+    SkillSelectionDecision,
     SkillSource,
     SkillValidationIssue,
     skill_index_to_dict,
@@ -18,7 +19,11 @@ from skill.disclosure.models import (
 from skill.disclosure.source import read_skill_sources
 from skill.disclosure.store import SkillDisclosureStore
 from skill.evolution.freshness import SkillFreshnessStore
-from skill.manifest import SkillManifest, skill_manifest_to_dict
+from skill.manifest import (
+    SkillManifest,
+    calculate_skill_directory_sha256,
+    skill_manifest_to_dict,
+)
 
 if TYPE_CHECKING:
     from runtime.events import RunContext
@@ -70,6 +75,35 @@ class ProgressiveDisclosureCore:
         enabled_names: list[str] | None = None,
         allowed_capabilities: set[str] | None = None,
     ) -> list[SkillReference]:
+        decisions = self.explain_skill_selection_for_prompt(
+            prompt,
+            enabled_names,
+            allowed_capabilities,
+        )
+        selected = [decision.reference for decision in decisions if decision.selected]
+        if self.store.run_context is not None:
+            self.store.run_context.record_event(
+                "skills.selected",
+                {
+                    "selected_keys": [reference.key for reference in selected],
+                    "decisions": [
+                        {
+                            "skill_key": decision.reference.key,
+                            "selected": decision.selected,
+                            "reason": decision.reason,
+                        }
+                        for decision in decisions
+                    ],
+                },
+            )
+        return selected
+
+    def explain_skill_selection_for_prompt(
+        self,
+        prompt: str,
+        enabled_names: list[str] | None = None,
+        allowed_capabilities: set[str] | None = None,
+    ) -> list[SkillSelectionDecision]:
         index = self._require_index()
         capabilities = (
             None
@@ -90,7 +124,22 @@ class ProgressiveDisclosureCore:
                 for entry in resolved
                 if entry.reference.capability in capabilities
             ]
-        return [entry.reference for entry in resolved]
+        selected_keys = {entry.reference.key for entry in resolved}
+        configured_names = {name.strip().lower() for name in enabled_names or []}
+        return [
+            SkillSelectionDecision(
+                reference=entry.reference,
+                selected=entry.reference.key in selected_keys,
+                reason=_explain_selection(
+                    entry,
+                    prompt_text,
+                    configured_names,
+                    selected_keys,
+                    capabilities,
+                ),
+            )
+            for entry in index.entries
+        ]
 
     def open_skill(
         self,
@@ -144,6 +193,7 @@ class SkillDisclosure:
         self.store = store
 
     def read_manifest(self) -> SkillManifest:
+        self._verify_source_content()
         self.store.write_json(
             self.source.reference,
             "manifest",
@@ -161,6 +211,7 @@ class SkillDisclosure:
             if not path.is_file():
                 raise FileNotFoundError(f"skill instructions not found: {path}")
             content = path.read_text(encoding="utf-8").strip()
+        self._verify_source_content()
         self.store.write_text(
             self.source.reference,
             "instructions",
@@ -170,6 +221,7 @@ class SkillDisclosure:
         return DisclosedText(content=content, cache_path=self.index_entry.instructions_cache_path)
 
     def read_configuration(self) -> DisclosedConfiguration:
+        self._verify_source_content()
         content = dict(self.source.configuration)
         self.store.write_json(
             self.source.reference,
@@ -181,6 +233,14 @@ class SkillDisclosure:
             content=content,
             cache_path=self.index_entry.configuration_cache_path,
         )
+
+    def _verify_source_content(self) -> None:
+        current_sha256 = calculate_skill_directory_sha256(self.source.manifest.path)
+        if current_sha256 != self.index_entry.content_sha256:
+            raise RuntimeError(
+                "skill content changed after the index was prepared: "
+                f"{self.source.reference.key}"
+            )
 
 
 def _build_index_entry(
@@ -206,6 +266,7 @@ def _build_index_entry(
         manifest_cache_path=skill_root / "manifest.json",
         instructions_cache_path=skill_root / "instructions.md",
         configuration_cache_path=skill_root / "configuration.json",
+        content_sha256=calculate_skill_directory_sha256(manifest.path),
         agent_created=manifest.agent_created,
         agent_can_update=manifest.agent_can_update,
         freshness=float(runtime.get("freshness", manifest.freshness)),
@@ -225,3 +286,22 @@ def _read_freshness_stats(root: Path | None) -> dict[str, dict[str, object]]:
 
 def _path_segment(value: str) -> str:
     return quote(value, safe="._-")
+
+
+def _explain_selection(
+    entry: SkillIndexEntry,
+    prompt: str,
+    configured_names: set[str],
+    selected_keys: set[str],
+    allowed_capabilities: set[str] | None,
+) -> str:
+    if allowed_capabilities is not None and entry.reference.capability not in allowed_capabilities:
+        return "not eligible for model context"
+    trigger = next((value for value in entry.triggers if value and value in prompt), None)
+    if trigger is not None:
+        return f"matched trigger: {trigger}"
+    if entry.reference.name in configured_names or entry.reference.key in configured_names:
+        return "enabled by agent config"
+    if entry.reference.key in selected_keys:
+        return "selected as dependency"
+    return "no trigger or configuration matched"

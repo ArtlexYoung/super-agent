@@ -8,7 +8,7 @@ from agents.agent import Agent
 from capability.defaults import create_default_skill_retriever
 from capability.skill_executors import create_builtin_skill_executors
 from runtime.config import AgentConfig
-from skill.disclosure import ProgressiveDisclosureCore, SkillIndexEntry, skill_index_to_dict
+from skill.disclosure import ProgressiveDisclosureCore, skill_index_to_dict
 from skill.ecosystem.package import SkillPackageManager
 from skill.evolution.evaluation import EvaluationCase
 from skill.evolution.freshness import SkillFreshnessStore
@@ -176,38 +176,22 @@ def _validate_skills(config_path: Path) -> int:
 def _explain_skills(config_path: Path, prompt: str) -> int:
     config = AgentConfig.load_from_file(config_path)
     disclosure = create_default_skill_retriever(config)
-    index = disclosure.prepare_skill_index()
-    selected = {
-        reference.key
-        for reference in disclosure.select_skill_references_for_prompt(
-            prompt,
-            config.agent.skills,
-            allowed_capabilities=_default_model_context_capabilities(),
-        )
-    }
-    for entry in index.entries:
-        is_selected = entry.reference.key in selected
-        state = "selected" if is_selected else "skipped"
-        reason = _explain_index_entry(entry, prompt, config.agent.skills, is_selected)
-        print(f"{entry.reference.name}\t{state}\t{reason}")
+    disclosure.prepare_skill_index()
+    decisions = disclosure.explain_skill_selection_for_prompt(
+        prompt,
+        config.agent.skills,
+        allowed_capabilities=_default_model_context_capabilities(),
+    )
+    for decision in decisions:
+        state = _selection_state(decision.selected, decision.reason)
+        print(f"{decision.reference.name}\t{state}\t{decision.reason}")
     return 0
 
 
-def _explain_index_entry(
-    entry: SkillIndexEntry,
-    prompt: str,
-    enabled_names: list[str],
-    selected: bool,
-) -> str:
-    if entry.reference.capability not in _default_model_context_capabilities():
-        return "runtime control skill"
-    prompt_text = prompt.lower()
-    trigger = next((value for value in entry.triggers if value and value in prompt_text), None)
-    if trigger is not None:
-        return f"matched trigger: {trigger}"
-    if entry.reference.name in {name.lower() for name in enabled_names}:
-        return "enabled by agent config"
-    return "selected as dependency" if selected else "no trigger matched"
+def _selection_state(selected: bool, reason: str) -> str:
+    if reason == "not eligible for model context":
+        return "not_applicable"
+    return "selected" if selected else "skipped"
 
 
 def _show_skill_graph(args: argparse.Namespace) -> int:

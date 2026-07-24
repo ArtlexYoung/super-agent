@@ -142,6 +142,24 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "outside disclosure cache"):
                 core.read_disclosed_content(outside)
 
+    def test_disclosure_rejects_skill_changed_after_index_was_prepared(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_prompt_skill(root, "echo", instruction="Original instructions.")
+            core = _create_core(root)
+            core.prepare_skill_index()
+            opened = core.open_skill("echo", "prompt")
+            (root / "skills" / "echo" / "SKILL.md").write_text(
+                "Changed instructions.",
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "skill content changed after the index was prepared: prompt:echo",
+            ):
+                opened.read_instructions()
+
     def test_configuration_is_optional_for_every_capability(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
