@@ -4,6 +4,18 @@
 
 Each `Agent.run(...)` creates one `RuntimeSession` with one `RunIdentity` and one `RuntimeStore`. The Runtime prepares the Skill index once, records a lock from that same index, executes the selected workflow, records every used target, and appends the final evaluation.
 
+## Runtime Conversations
+
+Conversations are event-backed Runtime views, not client-owned message arrays. Create a conversation and reuse its ID:
+
+```python
+conversation = agent.create_conversation(user_id="alice")
+agent.run("first turn", user_id="alice", conversation_id=conversation.conversation_id)
+agent.run("second turn", user_id="alice", conversation_id=conversation.conversation_id)
+```
+
+Runtime loads prior messages, appends the current user message, and stores the assistant result with its `run_id` and nested subagent results. `Agent` exposes explicit create, list, read, rename, clear, and delete methods. A `conversation_id` cannot be combined with an explicit `messages` list because that would create two competing history sources.
+
 ## Workflow Skills
 
 A workflow is an ordinary Skill:
@@ -72,7 +84,7 @@ Explain and export rebuild the run view and verify the runtime-lock hash before 
 Desktop apps and other processes can send a JSON request and receive JSONL events:
 
 ```bash
-printf '%s' '{"prompt":"hello","messages":[]}' \
+printf '%s' '{"prompt":"hello","user_id":"alice","conversation_id":"project-a"}' \
   | super-agent run --config agent.toml --request-stdin --output jsonl
 ```
 
@@ -124,4 +136,4 @@ Warnings do not block execution. Omitting the maximum allows unlimited nesting.
   users/<user-hash>/agents/<agent-hash>/evolution/
 ```
 
-`StorageEvent` is the backend-neutral source of truth for run traces, evaluations, memory, usage habits, and disclosure history. `RuntimeStore` supplies their explicit domain operations. Cache and evolution directories are scoped local artifacts; they are never alternate stores for the same event data.
+`StorageEvent` is the backend-neutral source of truth for conversations, run traces, evaluations, memory, usage habits, and disclosure history. `RuntimeStore` supplies their explicit domain operations. Every operation is scoped by `user_id` and Agent name. Cache and evolution directories are scoped local artifacts; they are never alternate stores for the same event data.

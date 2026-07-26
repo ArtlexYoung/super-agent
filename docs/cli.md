@@ -5,11 +5,26 @@
 ```bash
 super-agent
 super-agent chat --config agent.toml
+super-agent chat --config agent.toml --user-id alice --conversation-id <id>
 super-agent run "hello"
 super-agent run --config agent.toml --output json "hello"
+super-agent run --user-id alice --conversation-id <id> "continue"
 ```
 
 `run --output` accepts `text`, `json`, or `jsonl`. Use `--request-stdin` with JSON input for desktop and service integrations.
+
+## Conversation Management
+
+```bash
+super-agent conversations list --config agent.toml --user-id alice
+super-agent conversations create --config agent.toml --user-id alice --title "Project"
+super-agent conversations show --config agent.toml --user-id alice --conversation-id <id>
+super-agent conversations rename --config agent.toml --user-id alice --conversation-id <id> --title "New title"
+super-agent conversations clear --config agent.toml --user-id alice --conversation-id <id>
+super-agent conversations delete --config agent.toml --user-id alice --conversation-id <id>
+```
+
+Conversation history is loaded by Runtime. Do not combine `conversation_id` with an explicit `messages` array in the stdin protocol.
 
 ## Project Initialization
 
@@ -100,3 +115,5 @@ super-agent benchmark \
 ```
 
 The benchmark does not call a model. It compares eager and progressive context using the deterministic approximation `ceil(character count / 4)`.
+
+All commands that read or write Runtime state accept `--user-id`; the default is `local`. This includes run, chat, conversations, memory, run inspection, Skill inspection/evolution, and benchmarks.

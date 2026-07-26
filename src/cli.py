@@ -9,12 +9,17 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from cli_commands.benchmark import configure_benchmark_parser, run_benchmark_command
+from cli_commands.conversations import (
+    configure_conversations_parser,
+    run_conversations_command,
+)
 from cli_commands.memory import configure_memory_parser, run_memory_command
 from cli_commands.models import configure_models_parser, run_models_command
 from cli_commands.runs import configure_runs_parser, run_runs_command
 from cli_commands.skills import configure_skills_parser, run_skills_command
 from agents.agent import Agent
 from provider.chat import Message
+from runtime.identity import LOCAL_USER_ID
 from runtime.models import RunEvent, RunResult
 
 
@@ -22,13 +27,15 @@ from runtime.models import RunEvent, RunResult
 class RuntimeRequest:
     prompt: str
     messages: list[Message]
+    user_id: str = LOCAL_USER_ID
+    conversation_id: str | None = None
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
     if args.command is None:
-        return _run_chat_command(None)
+        return _run_chat_command(None, LOCAL_USER_ID, None)
     if args.command == "init":
         return _run_init_command(Path(args.path))
     if args.command == "run":
@@ -37,7 +44,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_prompt_command(config_path, request, args.output)
     if args.command == "chat":
         config_path = None if args.config is None else Path(args.config)
-        return _run_chat_command(config_path)
+        return _run_chat_command(config_path, args.user_id, args.conversation_id)
+    if args.command == "conversations":
+        return run_conversations_command(args)
     if args.command == "skills":
         return run_skills_command(args)
     if args.command == "memory":
@@ -64,9 +73,19 @@ def _build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--config")
     run_parser.add_argument("--output", choices=["text", "json", "jsonl"], default="text")
     run_parser.add_argument("--request-stdin", action="store_true")
+    run_parser.add_argument("--user-id", default=LOCAL_USER_ID)
+    run_parser.add_argument("--conversation-id")
 
     chat_parser = subparsers.add_parser("chat", help="start an interactive conversation")
     chat_parser.add_argument("--config")
+    chat_parser.add_argument("--user-id", default=LOCAL_USER_ID)
+    chat_parser.add_argument("--conversation-id")
+
+    conversations_parser = subparsers.add_parser(
+        "conversations",
+        help="manage stored conversations",
+    )
+    configure_conversations_parser(conversations_parser)
 
     skills_parser = subparsers.add_parser("skills", help="manage skills")
     configure_skills_parser(skills_parser)
@@ -109,11 +128,18 @@ def _run_prompt_command(config_path: Path | None, request: RuntimeRequest, outpu
         result = agent.run(
             request.prompt,
             messages=request.messages,
+            user_id=request.user_id,
+            conversation_id=request.conversation_id,
             event_listener=_print_run_event,
         )
         print(json.dumps({"type": "result", "result": run_result_to_dict(result)}, ensure_ascii=False))
         return 0
-    result = agent.run(request.prompt, messages=request.messages)
+    result = agent.run(
+        request.prompt,
+        messages=request.messages,
+        user_id=request.user_id,
+        conversation_id=request.conversation_id,
+    )
     if output == "json":
         print(json.dumps(run_result_to_dict(result), ensure_ascii=False))
         return 0
@@ -123,9 +149,17 @@ def _run_prompt_command(config_path: Path | None, request: RuntimeRequest, outpu
     return 0
 
 
-def _run_chat_command(config_path: Path | None) -> int:
+def _run_chat_command(
+    config_path: Path | None,
+    user_id: str,
+    conversation_id: str | None,
+) -> int:
     agent = _load_agent(config_path)
-    messages: list[Message] = []
+    conversation = (
+        agent.create_conversation(user_id=user_id)
+        if conversation_id is None
+        else agent.read_conversation(conversation_id, user_id=user_id)
+    )
     while True:
         try:
             prompt = input("You: ").strip()
@@ -135,14 +169,12 @@ def _run_chat_command(config_path: Path | None) -> int:
             continue
         if prompt.lower() in {"exit", "quit"}:
             return 0
-        result = agent.run(prompt, messages=messages)
-        print(f"Agent: {result.text}")
-        messages.extend(
-            [
-                {"role": "user", "content": prompt},
-                {"role": "assistant", "content": result.text},
-            ]
+        result = agent.run(
+            prompt,
+            user_id=user_id,
+            conversation_id=conversation.conversation_id,
         )
+        print(f"Agent: {result.text}")
 
 
 def _load_agent(config_path: Path | None) -> Agent:
@@ -161,7 +193,12 @@ def _read_runtime_request_from_args(args: argparse.Namespace) -> RuntimeRequest:
     prompt = " ".join(args.prompt).strip()
     if not prompt:
         raise ValueError("run prompt cannot be empty")
-    return RuntimeRequest(prompt=prompt, messages=[])
+    return RuntimeRequest(
+        prompt=prompt,
+        messages=[],
+        user_id=args.user_id,
+        conversation_id=args.conversation_id,
+    )
 
 
 def _read_runtime_request_from_stdin() -> RuntimeRequest:
@@ -171,7 +208,31 @@ def _read_runtime_request_from_stdin() -> RuntimeRequest:
     prompt = str(data.get("prompt", "")).strip()
     if not prompt:
         raise ValueError("runtime request prompt cannot be empty")
-    return RuntimeRequest(prompt=prompt, messages=_read_runtime_messages(data.get("messages", [])))
+    return RuntimeRequest(
+        prompt=prompt,
+        messages=_read_runtime_messages(data.get("messages", [])),
+        user_id=_read_runtime_user_id(data.get("user_id", LOCAL_USER_ID)),
+        conversation_id=_read_optional_runtime_id(
+            data.get("conversation_id"),
+            "conversation_id",
+        ),
+    )
+
+
+def _read_runtime_user_id(value: object) -> str:
+    user_id = str(value).strip()
+    if not user_id:
+        raise ValueError("runtime request user_id cannot be empty")
+    return user_id
+
+
+def _read_optional_runtime_id(value: object, name: str) -> str | None:
+    if value is None:
+        return None
+    identifier = str(value).strip()
+    if not identifier:
+        raise ValueError(f"runtime request {name} cannot be empty")
+    return identifier
 
 
 def _read_runtime_messages(value: object) -> list[Message]:

@@ -11,6 +11,8 @@ class PublicApiTests(unittest.TestCase):
             "Agent",
             "BenchmarkCase",
             "BenchmarkReport",
+            "Conversation",
+            "ConversationMessage",
             "EvaluationRecord",
             "EvaluationResult",
             "EvaluationSource",
@@ -31,6 +33,10 @@ class PublicApiTests(unittest.TestCase):
             "SkillManifest",
             "SkillReference",
             "SkillSelectionDecision",
+            "StorageBackend",
+            "StorageEvent",
+            "StorageEventQuery",
+            "StorageSettings",
             "discover_model_candidates",
             "create_evaluation_record",
             "create_default_skill_disclosure",
@@ -70,7 +76,3 @@ class PublicApiTests(unittest.TestCase):
             )
             with self.assertRaisesRegex(ValueError, f"unknown provider: {provider}"):
                 create_chat_provider(settings)
-            "StorageBackend",
-            "StorageEvent",
-            "StorageEventQuery",
-            "StorageSettings",

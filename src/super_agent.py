@@ -47,7 +47,14 @@ from runtime.evaluation import (
     evaluation_record_to_dict,
 )
 from runtime.identity import LOCAL_USER_ID, RunIdentity
-from runtime.models import RunEvent, RunResult, RunSnapshot, SubAgentResult
+from runtime.models import (
+    Conversation,
+    ConversationMessage,
+    RunEvent,
+    RunResult,
+    RunSnapshot,
+    SubAgentResult,
+)
 from runtime.session import RuntimeSession
 from runtime.storage import JsonlStorage, StorageBackend, StorageEvent, StorageEventQuery
 from runtime.store import RuntimeStore
@@ -79,6 +86,8 @@ __all__ = [
     "BenchmarkCaseResult",
     "BenchmarkReport",
     "ChatProvider",
+    "Conversation",
+    "ConversationMessage",
     "EvaluationCase",
     "EvaluationRecord",
     "EvaluationReport",

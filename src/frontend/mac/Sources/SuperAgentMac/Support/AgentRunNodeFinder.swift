@@ -1,6 +1,6 @@
 import Foundation
 
-func findAgentRunNode(_ id: UUID, in nodes: [AgentRunNode]) -> AgentRunNode? {
+func findAgentRunNode(_ id: String, in nodes: [AgentRunNode]) -> AgentRunNode? {
     for node in nodes {
         if node.id == id {
             return node

@@ -7,6 +7,27 @@ from provider.chat import Message
 
 
 @dataclass(frozen=True)
+class ConversationMessage:
+    message_id: str
+    role: str
+    content: str
+    created_at: str
+    run_id: str
+    run_result: dict[str, object] | None = None
+
+
+@dataclass(frozen=True)
+class Conversation:
+    conversation_id: str
+    user_id: str
+    agent_name: str
+    title: str
+    created_at: str
+    updated_at: str
+    messages: list[ConversationMessage]
+
+
+@dataclass(frozen=True)
 class RunEvent:
     run_id: str
     sequence: int

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import asdict, replace
 from time import perf_counter
 from typing import Callable
 
@@ -50,6 +51,7 @@ class AgentRuntime:
             parent_run_id=parent_run_id,
             event_listener=event_listener,
         )
+        request = self._prepare_conversation_request(request, session)
         session.store.start_run(session.identity, request.prompt)
         evaluation_attempted = False
         started_at = perf_counter()
@@ -68,6 +70,7 @@ class AgentRuntime:
                 used_skills=result.skills,
                 stop_reason=result.stop_reason,
             )
+            self._record_conversation_result(session, result)
             return result
         except Exception as error:
             if not evaluation_attempted:
@@ -79,6 +82,48 @@ class AgentRuntime:
                 )
             session.store.fail_run(session.identity, error)
             raise
+
+    def _prepare_conversation_request(
+        self,
+        request: AgentRunRequest,
+        session: RuntimeSession,
+    ) -> AgentRunRequest:
+        conversation_id = session.identity.conversation_id
+        if conversation_id is None or session.identity.parent_run_id is not None:
+            return request
+        if request.messages:
+            raise ValueError("conversation_id cannot be combined with explicit messages")
+        conversation = session.store.ensure_conversation(
+            conversation_id,
+            request.prompt[:48],
+        )
+        messages = [
+            {"role": message.role, "content": message.content}
+            for message in conversation.messages
+        ]
+        session.store.append_conversation_message(
+            conversation_id,
+            "user",
+            request.prompt,
+            run_id=session.run_id,
+        )
+        return replace(request, messages=messages)
+
+    @staticmethod
+    def _record_conversation_result(
+        session: RuntimeSession,
+        result: RunResult,
+    ) -> None:
+        conversation_id = session.identity.conversation_id
+        if conversation_id is None or session.identity.parent_run_id is not None:
+            return
+        session.store.append_conversation_message(
+            conversation_id,
+            "assistant",
+            result.text,
+            run_id=session.run_id,
+            run_result=asdict(result),
+        )
 
     def create_skill_updater(self, user_id: str = LOCAL_USER_ID) -> object:
         store = RuntimeStore(

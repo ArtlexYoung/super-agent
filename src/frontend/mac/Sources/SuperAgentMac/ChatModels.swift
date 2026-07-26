@@ -1,19 +1,24 @@
 import Foundation
 
-enum ChatMessageRole: String, Codable, CaseIterable, Identifiable {
+enum ChatMessageRole: String, CaseIterable, Identifiable {
     case user = "用户"
     case assistant = "助手"
 
     var id: String { rawValue }
 }
 
-struct ChatMessage: Identifiable, Codable, Equatable {
-    let id: UUID
+struct ChatMessage: Identifiable, Equatable {
+    let id: String
     let role: ChatMessageRole
     var text: String
     let createdAt: Date
 
-    init(id: UUID = UUID(), role: ChatMessageRole, text: String, createdAt: Date = Date()) {
+    init(
+        id: String = UUID().uuidString,
+        role: ChatMessageRole,
+        text: String,
+        createdAt: Date = Date()
+    ) {
         self.id = id
         self.role = role
         self.text = text
@@ -21,15 +26,15 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     }
 }
 
-struct ChatConversation: Identifiable, Codable, Equatable {
-    let id: UUID
+struct ChatConversation: Identifiable, Equatable {
+    let id: String
     var title: String
     var messages: [ChatMessage]
     var agentRuns: [AgentRunNode]
     var updatedAt: Date
 
     init(
-        id: UUID = UUID(),
+        id: String,
         title: String = "新对话",
         messages: [ChatMessage] = [],
         agentRuns: [AgentRunNode] = [],
@@ -42,26 +47,10 @@ struct ChatConversation: Identifiable, Codable, Equatable {
         self.updatedAt = updatedAt
     }
 
-    private enum CodingKeys: String, CodingKey {
-        case id
-        case title
-        case messages
-        case agentRuns
-        case updatedAt
-    }
-
-    init(from decoder: Decoder) throws {
-        let values = try decoder.container(keyedBy: CodingKeys.self)
-        id = try values.decode(UUID.self, forKey: .id)
-        title = try values.decode(String.self, forKey: .title)
-        messages = try values.decode([ChatMessage].self, forKey: .messages)
-        agentRuns = try values.decodeIfPresent([AgentRunNode].self, forKey: .agentRuns) ?? []
-        updatedAt = try values.decode(Date.self, forKey: .updatedAt)
-    }
 }
 
-struct AgentRunNode: Identifiable, Codable, Equatable {
-    let id: UUID
+struct AgentRunNode: Identifiable, Equatable {
+    let id: String
     var runID: String?
     var agentName: String
     var title: String
@@ -73,7 +62,7 @@ struct AgentRunNode: Identifiable, Codable, Equatable {
     var children: [AgentRunNode]
 
     init(
-        id: UUID = UUID(),
+        id: String = UUID().uuidString,
         runID: String? = nil,
         agentName: String,
         title: String,

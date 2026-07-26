@@ -5,13 +5,11 @@ import UniformTypeIdentifiers
 
 @MainActor
 final class ChatStore: ObservableObject {
-    @Published private(set) var conversations: [ChatConversation] {
+    @Published private(set) var conversations: [ChatConversation]
+    @Published private(set) var selectedConversationID: String? {
         didSet { saveAppStateIfReady() }
     }
-    @Published private(set) var selectedConversationID: UUID? {
-        didSet { saveAppStateIfReady() }
-    }
-    @Published private(set) var selectedAgentRunNodeID: UUID?
+    @Published private(set) var selectedAgentRunNodeID: String?
     @Published var config: AgentTomlConfig {
         didSet {
             configTomlText = AgentTomlFile.makeTomlText(from: config)
@@ -39,6 +37,8 @@ final class ChatStore: ObservableObject {
     @Published private(set) var availableMCPNames: [String]
 
     private var isReadyToSaveState = false
+    private var pendingRenameTask: Task<Void, Never>?
+    private let runtimeUserID = "local"
 
     init() {
         let state: StoredMacAppState?
@@ -48,11 +48,6 @@ final class ChatStore: ObservableObject {
             state = nil
         }
         let initialConfig = state?.config ?? .defaultConfig
-        let initialConversations = makeInitialConversations(from: state?.conversations)
-        let selectedID = makeInitialSelectedConversationID(
-            requestedID: state?.selectedConversationID,
-            conversations: initialConversations
-        )
         let fallbackProfile = ModelProfile(
             title: modelProfileTitle(initialConfig.model),
             settings: initialConfig.model
@@ -69,8 +64,8 @@ final class ChatStore: ObservableObject {
             config: initialConfig
         )
 
-        conversations = initialConversations
-        selectedConversationID = selectedID
+        conversations = []
+        selectedConversationID = state?.selectedConversationID
         selectedAgentRunNodeID = nil
         config = activeConfig
         configTomlText = AgentTomlFile.makeTomlText(from: activeConfig)
@@ -88,6 +83,7 @@ final class ChatStore: ObservableObject {
         availableMCPNames = []
         refreshConfigChoices()
         isReadyToSaveState = true
+        reloadConversations()
     }
 
     var selectedConversation: ChatConversation? {
@@ -112,13 +108,24 @@ final class ChatStore: ObservableObject {
     }
 
     func createNewConversation() {
-        let conversation = ChatConversation()
-        conversations.insert(conversation, at: 0)
-        selectedConversationID = conversation.id
-        warningMessage = nil
+        let configText = makeRuntimeConfigText()
+        Task {
+            do {
+                let stored = try await AgentRuntimeClient.createConversation(
+                    configText: configText,
+                    userID: runtimeUserID
+                )
+                replaceConversation(with: stored)
+                selectedConversationID = stored.conversationId
+                selectedAgentRunNodeID = nil
+                warningMessage = nil
+            } catch {
+                warningMessage = error.localizedDescription
+            }
+        }
     }
 
-    func selectConversation(_ id: UUID) {
+    func selectConversation(_ id: String) {
         selectedConversationID = id
         selectedAgentRunNodeID = nil
         warningMessage = nil
@@ -130,6 +137,28 @@ final class ChatStore: ObservableObject {
             return
         }
         updateSelectedConversation { $0.title = cleanTitle }
+        guard let conversationID = selectedConversationID else {
+            return
+        }
+        pendingRenameTask?.cancel()
+        let configText = makeRuntimeConfigText()
+        pendingRenameTask = Task {
+            do {
+                try await Task.sleep(nanoseconds: 350_000_000)
+                let stored = try await AgentRuntimeClient.renameConversation(
+                    configText: configText,
+                    userID: runtimeUserID,
+                    conversationID: conversationID,
+                    title: cleanTitle
+                )
+                replaceConversation(with: stored)
+                warningMessage = nil
+            } catch is CancellationError {
+                return
+            } catch {
+                warningMessage = error.localizedDescription
+            }
+        }
     }
 
     func deleteSelectedConversation() {
@@ -139,29 +168,82 @@ final class ChatStore: ObservableObject {
         deleteConversation(selectedConversationID)
     }
 
-    func deleteConversation(_ id: UUID) {
-        conversations.removeAll { $0.id == id }
-        if conversations.isEmpty {
-            createNewConversation()
-            return
+    func deleteConversation(_ id: String) {
+        pendingRenameTask?.cancel()
+        let configText = makeRuntimeConfigText()
+        Task {
+            do {
+                try await AgentRuntimeClient.deleteConversation(
+                    configText: configText,
+                    userID: runtimeUserID,
+                    conversationID: id
+                )
+                conversations.removeAll { $0.id == id }
+                if conversations.isEmpty {
+                    let stored = try await AgentRuntimeClient.createConversation(
+                        configText: configText,
+                        userID: runtimeUserID
+                    )
+                    conversations = [makeChatConversation(from: stored)]
+                }
+                if selectedConversationID == id {
+                    selectedConversationID = conversations.first?.id
+                    selectedAgentRunNodeID = nil
+                }
+                warningMessage = nil
+            } catch {
+                warningMessage = error.localizedDescription
+            }
         }
-        if selectedConversationID == id {
-            selectedConversationID = conversations.first?.id
-            selectedAgentRunNodeID = nil
-        }
-        warningMessage = nil
     }
 
     func clearSelectedConversationMessages() {
-        updateSelectedConversation {
-            $0.messages.removeAll()
-            $0.agentRuns.removeAll()
+        guard let conversationID = selectedConversationID else {
+            return
         }
-        selectedAgentRunNodeID = nil
+        let configText = makeRuntimeConfigText()
+        Task {
+            do {
+                let stored = try await AgentRuntimeClient.clearConversation(
+                    configText: configText,
+                    userID: runtimeUserID,
+                    conversationID: conversationID
+                )
+                replaceConversation(with: stored)
+                selectedAgentRunNodeID = nil
+                warningMessage = nil
+            } catch {
+                warningMessage = error.localizedDescription
+            }
+        }
     }
 
-    func selectAgentRunNode(_ id: UUID?) {
+    func selectAgentRunNode(_ id: String?) {
         selectedAgentRunNodeID = id
+    }
+
+    func reloadConversations() {
+        let configText = makeRuntimeConfigText()
+        Task {
+            do {
+                var stored = try await AgentRuntimeClient.listConversations(
+                    configText: configText,
+                    userID: runtimeUserID
+                )
+                if stored.isEmpty {
+                    stored = [
+                        try await AgentRuntimeClient.createConversation(
+                            configText: configText,
+                            userID: runtimeUserID
+                        )
+                    ]
+                }
+                applyRuntimeConversations(stored)
+                warningMessage = nil
+            } catch {
+                warningMessage = error.localizedDescription
+            }
+        }
     }
 
     func sendDraftMessage() {
@@ -173,33 +255,52 @@ final class ChatStore: ObservableObject {
         guard !isSendingMessage else {
             return
         }
+        guard let conversationID = selectedConversationID else {
+            warningMessage = "对话仍在加载，请稍后再试。"
+            return
+        }
         warningMessage = nil
         statusMessage = nil
         draftMessage = ""
-        appendMessageToSelectedConversation(ChatMessage(role: .user, text: text))
-        let messages = makeProviderMessagesForSelectedConversation()
+        let pendingMessageID = "pending-\(UUID().uuidString)"
+        appendMessageToSelectedConversation(
+            ChatMessage(id: pendingMessageID, role: .user, text: text)
+        )
         let configSnapshot = config
         let runtimeConfigText = makeRuntimeConfigText()
         isSendingMessage = true
         Task {
+            defer { isSendingMessage = false }
             do {
                 let result = try await AgentRuntimeClient.run(
                     configText: runtimeConfigText,
                     prompt: text,
-                    messages: messages
+                    userID: runtimeUserID,
+                    conversationID: conversationID
                 )
-                appendMessageToSelectedConversation(ChatMessage(role: .assistant, text: result.text))
-                appendAgentRunToSelectedConversation(prompt: text, result: result)
+                let stored = try await AgentRuntimeClient.readConversation(
+                    configText: runtimeConfigText,
+                    userID: runtimeUserID,
+                    conversationID: conversationID
+                )
+                replaceConversation(with: stored)
                 warningMessage = result.warningMessages?.joined(separator: "\n")
                 statusMessage = "运行完成：\(result.workflow) / \(configSnapshot.modelSummary)"
             } catch {
                 let detail = error.localizedDescription
                 warningMessage = detail
-                let failureText = "调用失败：\(detail)"
-                appendMessageToSelectedConversation(ChatMessage(role: .assistant, text: failureText))
-                appendFailedAgentRunToSelectedConversation(prompt: text, response: failureText)
+                if let stored = try? await AgentRuntimeClient.readConversation(
+                    configText: runtimeConfigText,
+                    userID: runtimeUserID,
+                    conversationID: conversationID
+                ) {
+                    replaceConversation(with: stored)
+                } else {
+                    updateSelectedConversation {
+                        $0.messages.removeAll { $0.id == pendingMessageID }
+                    }
+                }
             }
-            isSendingMessage = false
         }
     }
 
@@ -238,6 +339,7 @@ final class ChatStore: ObservableObject {
             config = try AgentTomlFile.parse(configTomlText)
             syncSelectedModelProfileFromConfig(title: config.model.model)
             refreshConfigChoices()
+            reloadConversations()
             statusMessage = "已把 TOML 文本应用到可视化表单。"
             warningMessage = nil
         } catch {
@@ -255,6 +357,7 @@ final class ChatStore: ObservableObject {
         configFilePath = nil
         syncSelectedModelProfileFromConfig(title: config.model.model)
         refreshConfigChoices()
+        reloadConversations()
         statusMessage = "已恢复默认 agent.toml 配置。"
     }
 
@@ -334,6 +437,7 @@ final class ChatStore: ObservableObject {
             configFilePath = url.path
             syncSelectedModelProfileFromConfig(title: config.model.model)
             refreshConfigChoices()
+            reloadConversations()
             statusMessage = "已加载 \(url.lastPathComponent)。"
             warningMessage = nil
         } catch {
@@ -362,51 +466,21 @@ final class ChatStore: ObservableObject {
         }
     }
 
-    private func appendAgentRunToSelectedConversation(prompt: String, result: AgentRuntimeResult) {
-        let run = makeAgentRunNode(agentName: config.agent.name, prompt: prompt, result: result)
-        updateSelectedConversation { conversation in
-            conversation.agentRuns.append(run)
+    private func applyRuntimeConversations(_ stored: [RuntimeConversation]) {
+        conversations = stored.map(makeChatConversation)
+        if let selectedConversationID,
+           conversations.contains(where: { $0.id == selectedConversationID }) {
+            return
         }
+        selectedConversationID = conversations.first?.id
+        selectedAgentRunNodeID = nil
     }
 
-    private func appendFailedAgentRunToSelectedConversation(prompt: String, response: String) {
-        let run = AgentRunNode(
-            agentName: config.agent.name,
-            title: String(prompt.prefix(24)),
-            prompt: prompt,
-            response: response
-        )
-        updateSelectedConversation { conversation in
-            conversation.agentRuns.append(run)
-        }
-    }
-
-    private func makeAgentRunNode(
-        agentName: String,
-        prompt: String,
-        result: AgentRuntimeResult
-    ) -> AgentRunNode {
-        AgentRunNode(
-            runID: result.runId,
-            agentName: agentName,
-            title: String(prompt.prefix(24)),
-            prompt: prompt,
-            response: result.text,
-            createdByAgent: false,
-            children: (result.subagentResults ?? []).map(makeSubagentRunNode)
-        )
-    }
-
-    private func makeSubagentRunNode(_ result: AgentRuntimeSubagentResult) -> AgentRunNode {
-        AgentRunNode(
-            runID: result.runId,
-            agentName: result.name,
-            title: result.description.isEmpty ? result.name : result.description,
-            prompt: result.prompt,
-            response: result.text,
-            createdByAgent: result.createdByAgent,
-            children: (result.subagentResults ?? []).map(makeSubagentRunNode)
-        )
+    private func replaceConversation(with stored: RuntimeConversation) {
+        let conversation = makeChatConversation(from: stored)
+        conversations.removeAll { $0.id == conversation.id }
+        conversations.insert(conversation, at: 0)
+        selectedAgentRunNodeID = nil
     }
 
     private func updateSelectedConversation(_ change: (inout ChatConversation) -> Void) {
@@ -416,15 +490,6 @@ final class ChatStore: ObservableObject {
         }
         change(&conversations[index])
         conversations[index].updatedAt = Date()
-    }
-
-    private func makeProviderMessagesForSelectedConversation() -> [ProviderChatMessage] {
-        var messages: [ProviderChatMessage] = []
-        for message in selectedConversation?.messages ?? [] {
-            let role = message.role == .user ? "user" : "assistant"
-            messages.append(ProviderChatMessage(role: role, content: message.text))
-        }
-        return messages
     }
 
     private func makeRuntimeConfigText() -> String {
@@ -514,7 +579,6 @@ final class ChatStore: ObservableObject {
             return
         }
         let state = StoredMacAppState(
-            conversations: conversations,
             selectedConversationID: selectedConversationID,
             config: config,
             configFilePath: configFilePath,
@@ -527,50 +591,4 @@ final class ChatStore: ObservableObject {
             statusMessage = "保存本地状态失败：\(error.localizedDescription)"
         }
     }
-}
-
-private func makeInitialConversations(from loadedConversations: [ChatConversation]?) -> [ChatConversation] {
-    let conversations = loadedConversations ?? []
-    return conversations.isEmpty ? [ChatConversation(title: "欢迎对话")] : conversations
-}
-
-private func makeInitialSelectedConversationID(
-    requestedID: UUID?,
-    conversations: [ChatConversation]
-) -> UUID? {
-    let fallbackID = conversations.first?.id
-    guard let requestedID else {
-        return fallbackID
-    }
-    return conversations.contains { $0.id == requestedID } ? requestedID : fallbackID
-}
-
-private func makeInitialSelectedModelProfileID(
-    requestedID: UUID?,
-    profiles: [ModelProfile]
-) -> UUID? {
-    let fallbackID = profiles.first?.id
-    guard let requestedID else {
-        return fallbackID
-    }
-    return profiles.contains { $0.id == requestedID } ? requestedID : fallbackID
-}
-
-private func applySelectedModelProfile(
-    selectedID: UUID?,
-    profiles: [ModelProfile],
-    config: AgentTomlConfig
-) -> AgentTomlConfig {
-    var nextConfig = config
-    if let selectedID,
-       let profile = profiles.first(where: { $0.id == selectedID }) {
-        nextConfig.model = profile.settings
-    }
-    return nextConfig
-}
-
-private func modelProfileTitle(_ model: AgentTomlModelSection) -> String {
-    model.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        ? model.provider
-        : model.model
 }

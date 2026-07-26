@@ -7,18 +7,24 @@ from pathlib import Path
 from capability.defaults import create_default_skill_disclosure
 from skill.benchmark import BenchmarkCase, SkillBenchmark, benchmark_report_to_dict
 from runtime.config import AgentConfig
+from runtime.identity import LOCAL_USER_ID
+from runtime.storage import create_storage_backend
+from runtime.store import RuntimeStore
 
 
 def configure_benchmark_parser(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--config", default="agent.toml")
     parser.add_argument("--cases", required=True)
     parser.add_argument("--output")
+    parser.add_argument("--user-id", default=LOCAL_USER_ID)
 
 
 def run_benchmark_command(args: argparse.Namespace) -> int:
     config = AgentConfig.load_from_file(args.config)
+    backend = create_storage_backend(config.storage.backend, str(config.storage.path))
+    store = RuntimeStore(backend, config.storage.path, args.user_id, config.agent.name)
     benchmark = SkillBenchmark(
-        create_default_skill_disclosure(config),
+        create_default_skill_disclosure(config, store=store),
     )
     report = benchmark.run_cases(_read_benchmark_cases(Path(args.cases)))
     text = json.dumps(benchmark_report_to_dict(report), ensure_ascii=False, indent=2, sort_keys=True)

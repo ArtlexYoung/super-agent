@@ -5,7 +5,7 @@
 ## 功能
 
 - 最左侧导航：在“对话”和“配置”两个页面间切换。
-- 对话页：管理多轮对话，新建、选择、重命名、删除、清空，并自动持久化到本机 Application Support。
+- 对话页：通过 Python Runtime 管理多轮对话，支持新建、选择、重命名、删除和清空。
 - 配置页：用中文表单可视化编辑 `agent.toml`，覆盖 `[agent]`、`[model]`、`[paths]`，也能直接编辑 TOML 原文。
 - 模型列表：模型页支持多个模型配置，模型名称、服务地址、密钥环境变量都可以输入，并自动保存到桌面端 `config.json`。
 - 自动选项：打开配置后通过 `super-agent skills index --output json` 获取中心索引，普通技能和 MCP 会分成独立列表，勾选就是打开。
@@ -14,7 +14,7 @@
 - 配置提示：每个配置项都有 `？` 图标，鼠标悬浮即可查看详细说明。
 - 统一运行时：桌面端通过 JSONL 协议调用 `super-agent run`，provider、Skill、workflow 和子 agent 都只由 Python runtime 执行。
 - 真实运行树：主 agent 与子 agent 节点保存 runtime 返回的 `run_id`，可沿树查看每个节点的输入和输出。
-- 会话存储：桌面端会把每个会话按会话 ID 保存成独立 JSON，并在最外层维护 `index.json`。
+- 会话存储：Runtime JSONL 是唯一事实来源；桌面端 Application Support 只保存当前选择、TOML 设置和模型列表，不再复制会话内容。
 - 模型配置统一来自 TOML：`provider`、`model`、`base_url`、`api_key_env` 都写在 `[model]`。
 
 示例模型配置：

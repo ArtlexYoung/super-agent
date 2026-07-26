@@ -12,9 +12,17 @@ from uuid import uuid4
 
 from runtime.evaluation import EvaluationRecord, evaluation_record_from_dict, evaluation_record_to_dict
 from runtime.identity import RunIdentity
-from runtime.models import RunEvent, RunSnapshot
+from runtime.models import Conversation, ConversationMessage, RunEvent, RunSnapshot
 from runtime.storage import StorageBackend, StorageEvent, StorageEventQuery
 from runtime.storage.jsonl import JsonlStorage
+from runtime.views import (
+    conversation_from_events,
+    latest_selection_decisions,
+    optional_string,
+    replay_memory,
+    run_event_from_storage,
+    run_snapshot_from_events,
+)
 
 
 class RuntimeStore:
@@ -44,6 +52,119 @@ class RuntimeStore:
         )
         self.cache_root = self.private_root / "cache"
         self.disclosure_history_path = self.cache_root / "history.json"
+
+    def create_conversation(
+        self,
+        title: str = "",
+        *,
+        conversation_id: str | None = None,
+    ) -> Conversation:
+        selected_id = str(uuid4()) if conversation_id is None else _required_text(
+            conversation_id,
+            "conversation_id",
+        )
+        if self._read_storage_events("conversation", selected_id):
+            raise ValueError(f"conversation already exists: {selected_id}")
+        self._append_scoped_event(
+            "conversation",
+            selected_id,
+            "conversation.created",
+            {"title": _optional_title(title)},
+        )
+        return self.read_conversation(selected_id)
+
+    def ensure_conversation(self, conversation_id: str, title: str = "") -> Conversation:
+        selected_id = _required_text(conversation_id, "conversation_id")
+        try:
+            conversation = self.read_conversation(selected_id)
+        except KeyError:
+            return self.create_conversation(title, conversation_id=selected_id)
+        suggested_title = _optional_title(title)
+        if not conversation.title and suggested_title:
+            return self.rename_conversation(selected_id, suggested_title)
+        return conversation
+
+    def read_conversation(self, conversation_id: str) -> Conversation:
+        selected_id = _required_text(conversation_id, "conversation_id")
+        events = self._read_storage_events("conversation", selected_id)
+        if not events:
+            raise KeyError(f"conversation not found: {selected_id}")
+        return conversation_from_events(self.user_id, events)
+
+    def list_conversations(self) -> list[Conversation]:
+        grouped: dict[str, list[StorageEvent]] = {}
+        for event in self._read_storage_events("conversation"):
+            grouped.setdefault(event.stream_id, []).append(event)
+        return sorted(
+            (conversation_from_events(self.user_id, events) for events in grouped.values()),
+            key=lambda item: (item.updated_at, item.conversation_id),
+            reverse=True,
+        )
+
+    def rename_conversation(self, conversation_id: str, title: str) -> Conversation:
+        conversation = self.read_conversation(conversation_id)
+        clean_title = _required_text(title, "conversation title")
+        if conversation.title != clean_title:
+            self._append_scoped_event(
+                "conversation",
+                conversation.conversation_id,
+                "conversation.renamed",
+                {"title": clean_title},
+            )
+        return self.read_conversation(conversation.conversation_id)
+
+    def clear_conversation(self, conversation_id: str) -> Conversation:
+        conversation = self.read_conversation(conversation_id)
+        self._append_scoped_event(
+            "conversation",
+            conversation.conversation_id,
+            "conversation.cleared",
+            {},
+        )
+        return self.read_conversation(conversation.conversation_id)
+
+    def delete_conversation(self, conversation_id: str) -> None:
+        conversation = self.read_conversation(conversation_id)
+        self.backend.delete_events(
+            StorageEventQuery(
+                user_id=self.user_id,
+                agent_name=self.agent_name,
+                stream_type="conversation",
+                stream_id=conversation.conversation_id,
+            )
+        )
+
+    def append_conversation_message(
+        self,
+        conversation_id: str,
+        role: str,
+        content: str,
+        *,
+        run_id: str = "",
+        run_result: dict[str, object] | None = None,
+    ) -> ConversationMessage:
+        conversation = self.read_conversation(conversation_id)
+        clean_role = _required_text(role, "conversation message role").lower()
+        if clean_role not in {"user", "assistant"}:
+            raise ValueError(f"unknown conversation message role: {clean_role}")
+        message_id = str(uuid4())
+        self.backend.append_event(
+            user_id=self.user_id,
+            agent_name=self.agent_name,
+            stream_type="conversation",
+            stream_id=conversation.conversation_id,
+            event_type="conversation.message_added",
+            data={
+                "message_id": message_id,
+                "role": clean_role,
+                "content": _required_text(content, "conversation message content"),
+                "run_id": run_id.strip(),
+                "run_result": None if run_result is None else dict(run_result),
+            },
+            event_id=message_id,
+        )
+        messages = self.read_conversation(conversation.conversation_id).messages
+        return next(message for message in reversed(messages) if message.message_id == message_id)
 
     def start_run(self, identity: RunIdentity, prompt: str) -> RunEvent:
         self._require_identity_scope(identity)
@@ -75,7 +196,7 @@ class RuntimeStore:
             data=dict(data or {}),
         )
         events = self._read_storage_events("run", identity.run_id)
-        event = _run_event_from_storage(stored, len(events), identity.parent_run_id)
+        event = run_event_from_storage(stored, len(events), identity.parent_run_id)
         if self.event_listener is not None:
             self.event_listener(event)
         return event
@@ -123,28 +244,39 @@ class RuntimeStore:
         events = self._read_storage_events("run", run_id)
         if not events:
             raise KeyError(f"run not found: {run_id}")
-        return _run_snapshot_from_events(self.user_id, events)
+        return run_snapshot_from_events(self.user_id, events)
 
-    def list_runs(self, limit: int | None = None) -> list[RunSnapshot]:
+    def list_runs(
+        self,
+        limit: int | None = None,
+        *,
+        conversation_id: str | None = None,
+    ) -> list[RunSnapshot]:
         if limit is not None and limit <= 0:
             raise ValueError("run limit must be greater than zero")
         grouped: dict[str, list[StorageEvent]] = {}
         for event in self._read_storage_events("run"):
             grouped.setdefault(event.stream_id, []).append(event)
         snapshots = sorted(
-            (_run_snapshot_from_events(self.user_id, events) for events in grouped.values()),
+            (run_snapshot_from_events(self.user_id, events) for events in grouped.values()),
             key=lambda item: (item.started_at, item.run_id),
             reverse=True,
         )
+        if conversation_id is not None:
+            snapshots = [
+                snapshot
+                for snapshot in snapshots
+                if snapshot.conversation_id == conversation_id
+            ]
         return snapshots if limit is None else snapshots[:limit]
 
     def read_run_events(self, run_id: str) -> list[RunEvent]:
         events = self._read_storage_events("run", run_id)
         if not events:
             raise KeyError(f"run not found: {run_id}")
-        parent_run_id = _optional_string(events[0].data.get("parent_run_id"))
+        parent_run_id = optional_string(events[0].data.get("parent_run_id"))
         return [
-            _run_event_from_storage(event, sequence, parent_run_id)
+            run_event_from_storage(event, sequence, parent_run_id)
             for sequence, event in enumerate(events, 1)
         ]
 
@@ -174,7 +306,7 @@ class RuntimeStore:
             "schema_version": 1,
             "snapshot": asdict(snapshot),
             "runtime_lock": self.read_runtime_lock(run_id),
-            "selection_decisions": _latest_selection_decisions(events),
+            "selection_decisions": latest_selection_decisions(events),
             "disclosure_path": [
                 asdict(event) for event in events if event.event_type == "skill.disclosed"
             ],
@@ -294,12 +426,12 @@ class RuntimeStore:
         self._append_scoped_event("memory", "memory", "memory.added", {"item": item})
 
     def list_memory_items(self, scope: str | None = None) -> list[dict[str, str]]:
-        active = _replay_memory(self._read_storage_events("memory", "memory"))
+        active = replay_memory(self._read_storage_events("memory", "memory"))
         items = [item for item in active.values() if scope is None or item["scope"] == scope]
         return sorted(items, key=lambda item: (item["created_at"], item["item_id"]), reverse=True)
 
     def forget_memory_items(self, item_ids: list[str]) -> None:
-        active = _replay_memory(self._read_storage_events("memory", "memory"))
+        active = replay_memory(self._read_storage_events("memory", "memory"))
         missing = sorted(set(item_ids) - set(active))
         if missing:
             raise KeyError(f"active memory items not found: {', '.join(missing)}")
@@ -315,7 +447,7 @@ class RuntimeStore:
         source_item_ids: list[str],
         replacement: dict[str, str],
     ) -> None:
-        active = _replay_memory(self._read_storage_events("memory", "memory"))
+        active = replay_memory(self._read_storage_events("memory", "memory"))
         missing = sorted(set(source_item_ids) - set(active))
         if missing:
             raise KeyError(f"memory consolidation sources not found: {', '.join(missing)}")
@@ -425,106 +557,21 @@ def create_local_runtime_store(
     return RuntimeStore(JsonlStorage(root), root, user_id, agent_name)
 
 
-def _run_event_from_storage(
-    event: StorageEvent,
-    sequence: int,
-    parent_run_id: str | None,
-) -> RunEvent:
-    return RunEvent(
-        run_id=event.stream_id,
-        sequence=sequence,
-        event_type=event.event_type,
-        created_at=event.created_at,
-        agent_name=event.agent_name,
-        parent_run_id=parent_run_id,
-        data=dict(event.data),
-    )
-
-
-def _run_snapshot_from_events(user_id: str, events: list[StorageEvent]) -> RunSnapshot:
-    ordered = sorted(events, key=lambda event: event.position)
-    started = ordered[0]
-    if started.event_type != "run.started":
-        raise ValueError(f"run stream does not start with run.started: {started.stream_id}")
-    terminal = next(
-        (event for event in reversed(ordered) if event.event_type in {"run.completed", "run.failed"}),
-        None,
-    )
-    lock = next((event for event in reversed(ordered) if event.event_type == "runtime.locked"), None)
-    status = "running" if terminal is None else terminal.event_type.removeprefix("run.")
-    data = {} if terminal is None else terminal.data
-    error = None
-    if status == "failed":
-        error = {"error_type": str(data.get("error_type", "")), "message": str(data.get("message", ""))}
-    return RunSnapshot(
-        run_id=started.stream_id,
-        user_id=user_id,
-        conversation_id=_optional_string(started.data.get("conversation_id")),
-        agent_name=started.agent_name,
-        parent_run_id=_optional_string(started.data.get("parent_run_id")),
-        status=status,
-        prompt=str(started.data.get("prompt", "")),
-        started_at=started.created_at,
-        finished_at=None if terminal is None else terminal.created_at,
-        event_count=len(ordered),
-        last_event_type=ordered[-1].event_type,
-        runtime_lock_sha256=(
-            None if lock is None else str(lock.data.get("runtime_lock_sha256", ""))
-        ),
-        workflow=_optional_string(data.get("workflow")),
-        used_skills=_string_list(data.get("used_skills", [])),
-        stop_reason=_optional_string(data.get("stop_reason")),
-        error=error,
-    )
-
-
-def _replay_memory(events: list[StorageEvent]) -> dict[str, dict[str, str]]:
-    active: dict[str, dict[str, str]] = {}
-    for event in events:
-        if event.event_type == "memory.added":
-            item = _memory_item(event.data.get("item"))
-            active[item["item_id"]] = item
-        elif event.event_type == "memory.forgotten":
-            for item_id in _string_list(event.data.get("item_ids", [])):
-                active.pop(item_id, None)
-        elif event.event_type == "memory.consolidated":
-            for item_id in _string_list(event.data.get("source_item_ids", [])):
-                active.pop(item_id, None)
-            item = _memory_item(event.data.get("item"))
-            active[item["item_id"]] = item
-    return active
-
-
-def _memory_item(value: object) -> dict[str, str]:
-    if not isinstance(value, dict):
-        raise ValueError("stored memory item must be an object")
-    names = ("item_id", "text", "scope", "source_run_id", "created_at")
-    if any(not isinstance(value.get(name), str) for name in names):
-        raise ValueError("stored memory item fields must be strings")
-    return {name: str(value[name]) for name in names}
-
-
-def _latest_selection_decisions(events: list[RunEvent]) -> list[object]:
-    for event in reversed(events):
-        if event.event_type == "skills.selected":
-            decisions = event.data.get("decisions", [])
-            return list(decisions) if isinstance(decisions, list) else []
-    return []
-
-
 def _increment_count(counts: object, name: str) -> None:
     if isinstance(counts, dict) and name:
         counts[name] = int(counts.get(name, 0)) + 1
 
 
-def _string_list(value: object) -> list[str]:
-    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
-        raise ValueError("stored value must be a string array")
-    return list(value)
+def _required_text(value: object, name: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{name} cannot be empty")
+    return value.strip()
 
 
-def _optional_string(value: object) -> str | None:
-    return value if isinstance(value, str) and value else None
+def _optional_title(value: object) -> str:
+    if not isinstance(value, str):
+        raise TypeError("conversation title must be a string")
+    return value.strip()
 
 
 def _json_text(value: object) -> str:

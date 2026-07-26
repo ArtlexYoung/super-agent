@@ -93,7 +93,7 @@ backend = "jsonl"
 path = ".super-agent"
 ```
 
-`jsonl` is the available backend in `v0.0.26`. It keeps the base package dependency-free and stores one canonical event stream per user. SQLite, MySQL, and PostgreSQL names are reserved for the backends introduced in later `0.0.x` releases; selecting one before its release fails clearly.
+`jsonl` is the available backend in `v0.0.27`. It keeps the base package dependency-free and stores one canonical event stream per user. SQLite, MySQL, and PostgreSQL names are reserved for the backends introduced in later `0.0.x` releases; selecting one before its release fails clearly.
 
 `path` is resolved from the configuration file directory. The default JSONL layout is:
 
@@ -104,7 +104,7 @@ path = ".super-agent"
   users/<user-hash>/agents/<agent-hash>/evolution/
 ```
 
-Run snapshots, evaluations, memory, usage habits, and disclosure history are semantic views over the canonical event stream. Cache files and evolution workspaces are local artifacts owned by the same user and Agent scope.
+Conversations, run snapshots, evaluations, memory, usage habits, and disclosure history are semantic views over the canonical event stream. Cache files and evolution workspaces are local artifacts owned by the same user and Agent scope.
 
 ## Disable Examples
 

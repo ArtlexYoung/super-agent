@@ -45,6 +45,15 @@ result = Agent().run("解释什么是渐进式 Skill 披露")
 print(result.text)
 ```
 
+只有需要持久化多轮上下文时，才需要显式创建会话：
+
+```python
+agent = Agent()
+conversation = agent.create_conversation()
+agent.run("记住我的项目使用 Python", conversation_id=conversation.conversation_id)
+result = agent.run("项目使用什么语言？", conversation_id=conversation.conversation_id)
+```
+
 ## 使用真实模型
 
 模型配置会被自动发现。例如：
@@ -178,7 +187,14 @@ backend = "jsonl"
 path = ".super-agent"
 ```
 
-JSONL 会在 `.super-agent/users/<user-hash>/events.jsonl` 下为每个用户保存一条可读的标准事件流。运行、评价、记忆、使用习惯和披露历史在事件流内按用户与 Agent 隔离。`RuntimeStore` 从这些事件派生运行快照和保鲜度，渐进披露缓存只是可重新生成的本地视图。
+JSONL 会在 `.super-agent/users/<user-hash>/events.jsonl` 下为每个用户保存一条可读的标准事件流。会话、运行、评价、记忆、使用习惯、Skill 保鲜度、进化证据和披露历史都按用户与 Agent 隔离。`RuntimeStore` 从事件派生领域视图；渐进披露缓存和进化工作区只是按用户隔离、可重新生成的本地产物。
+
+所有会读写状态的 Python 与 CLI 操作都接受用户身份；不填写时仍使用零配置的 `local` 用户：
+
+```bash
+super-agent run --user-id alice --conversation-id project-a "继续任务"
+super-agent conversations list --user-id alice
+```
 
 运行锁也作为运行事件保存，用于固定实际使用的 Provider、存储后端、Capability 版本、Skill 版本和 Skill 目录哈希，但不会保存密钥内容。
 

@@ -25,6 +25,8 @@ Status: implemented.
 
 ## v0.0.27: Conversations and User Isolation
 
+Status: implemented.
+
 - Make conversations a first-class Runtime operation.
 - Require one `RunIdentity` across main Agents and subagents.
 - Isolate conversations, memory, Skill usage, freshness, and evolution by user.

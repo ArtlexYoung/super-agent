@@ -125,4 +125,4 @@ super-agent skills rollback --config agent.toml --name concise
 
 ## Current Boundary
 
-`v0.0.26` centralizes runtime state behind `RuntimeStore` and one backend-neutral event contract. Candidate generation is still instruction-oriented and assumes a prompt-style `SKILL.md`. `v0.0.30` will make the candidate unit the complete Skill directory so prompt, memory, workflow, and MCP Skills evolve through the same lifecycle.
+`v0.0.27` additionally isolates evaluation evidence, freshness, and evolution workspaces by user. Candidate generation is still instruction-oriented and assumes a prompt-style `SKILL.md`. `v0.0.30` will make the candidate unit the complete Skill directory so prompt, memory, workflow, and MCP Skills evolve through the same lifecycle.

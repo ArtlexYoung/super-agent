@@ -45,6 +45,15 @@ result = Agent().run("Explain progressive Skill disclosure")
 print(result.text)
 ```
 
+Persist a multi-turn conversation only when you need one:
+
+```python
+agent = Agent()
+conversation = agent.create_conversation()
+agent.run("Remember that my project uses Python", conversation_id=conversation.conversation_id)
+result = agent.run("Which language does it use?", conversation_id=conversation.conversation_id)
+```
+
 ## Use a Real Model
 
 Model settings are discovered automatically. For example:
@@ -178,7 +187,14 @@ backend = "jsonl"
 path = ".super-agent"
 ```
 
-JSONL stores one readable canonical event stream per user under `.super-agent/users/<user-hash>/events.jsonl`. Runs, evaluations, memory, usage habits, and disclosure history are isolated by user and Agent inside that stream. `RuntimeStore` derives run snapshots and freshness from those events; the progressive-disclosure cache remains a rebuildable local view.
+JSONL stores one readable canonical event stream per user under `.super-agent/users/<user-hash>/events.jsonl`. Conversations, runs, evaluations, memory, usage habits, Skill freshness, evolution evidence, and disclosure history are isolated by user and Agent inside that stream. `RuntimeStore` derives domain views from those events; the progressive-disclosure cache and evolution workspace remain rebuildable, user-scoped local artifacts.
+
+Every state-sensitive Python and CLI operation accepts a user identity. Omitting it uses the zero-configuration `local` user:
+
+```bash
+super-agent run --user-id alice --conversation-id project-a "Continue the task"
+super-agent conversations list --user-id alice
+```
 
 The runtime lock is stored as a run event. It captures the effective Provider, storage backend, Capability versions, Skill versions, and Skill directory hashes without storing secret values.
 

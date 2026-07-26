@@ -1,10 +1,5 @@
 import Foundation
 
-struct ProviderChatMessage: Codable, Equatable, Sendable {
-    var role: String
-    var content: String
-}
-
 struct AgentRuntimeSubagentResult: Decodable, Sendable {
     var name: String
     var description: String
@@ -25,9 +20,40 @@ struct AgentRuntimeResult: Decodable, Sendable {
     var stopReason: String
 }
 
+struct RuntimeConversationMessage: Decodable, Sendable {
+    var messageId: String
+    var role: String
+    var content: String
+    var createdAt: Date
+    var runId: String
+    var runResult: AgentRuntimeResult?
+}
+
+struct RuntimeConversation: Decodable, Sendable {
+    var conversationId: String
+    var userId: String
+    var agentName: String
+    var title: String
+    var createdAt: Date
+    var updatedAt: Date
+    var messages: [RuntimeConversationMessage]
+}
+
+private struct RuntimeConversationList: Decodable {
+    var schemaVersion: Int
+    var conversations: [RuntimeConversation]
+}
+
 private struct AgentRuntimeRequest: Encodable {
     var prompt: String
-    var messages: [ProviderChatMessage]
+    var userID: String
+    var conversationID: String
+
+    private enum CodingKeys: String, CodingKey {
+        case prompt
+        case userID = "user_id"
+        case conversationID = "conversation_id"
+    }
 }
 
 private struct AgentRuntimeOutputLine: Decodable {
@@ -50,43 +76,155 @@ enum AgentRuntimeClientError: LocalizedError {
 }
 
 enum AgentRuntimeClient {
+    private static let processLock = NSLock()
+
     static func run(
         configText: String,
         prompt: String,
-        messages: [ProviderChatMessage]
+        userID: String,
+        conversationID: String
     ) async throws -> AgentRuntimeResult {
         try await Task.detached(priority: .userInitiated) {
-            try runProcess(configText: configText, prompt: prompt, messages: messages)
+            let request = AgentRuntimeRequest(
+                prompt: prompt,
+                userID: userID,
+                conversationID: conversationID
+            )
+            let data = try runProcess(
+                configText: configText,
+                arguments: ["run", "--request-stdin", "--output", "jsonl"],
+                input: try JSONEncoder().encode(request)
+            )
+            return try readRunResult(from: data)
+        }.value
+    }
+
+    static func listConversations(
+        configText: String,
+        userID: String
+    ) async throws -> [RuntimeConversation] {
+        try await Task.detached(priority: .userInitiated) {
+            let data = try runProcess(
+                configText: configText,
+                arguments: ["conversations", "list", "--user-id", userID]
+            )
+            return try decodeJSON(RuntimeConversationList.self, from: data).conversations
+        }.value
+    }
+
+    static func readConversation(
+        configText: String,
+        userID: String,
+        conversationID: String
+    ) async throws -> RuntimeConversation {
+        try await readConversationCommand(
+            configText: configText,
+            arguments: [
+                "conversations", "show",
+                "--user-id", userID,
+                "--conversation-id", conversationID,
+            ]
+        )
+    }
+
+    static func createConversation(
+        configText: String,
+        userID: String,
+        title: String = ""
+    ) async throws -> RuntimeConversation {
+        try await readConversationCommand(
+            configText: configText,
+            arguments: [
+                "conversations", "create",
+                "--user-id", userID,
+                "--title", title,
+            ]
+        )
+    }
+
+    static func renameConversation(
+        configText: String,
+        userID: String,
+        conversationID: String,
+        title: String
+    ) async throws -> RuntimeConversation {
+        try await readConversationCommand(
+            configText: configText,
+            arguments: [
+                "conversations", "rename",
+                "--user-id", userID,
+                "--conversation-id", conversationID,
+                "--title", title,
+            ]
+        )
+    }
+
+    static func clearConversation(
+        configText: String,
+        userID: String,
+        conversationID: String
+    ) async throws -> RuntimeConversation {
+        try await readConversationCommand(
+            configText: configText,
+            arguments: [
+                "conversations", "clear",
+                "--user-id", userID,
+                "--conversation-id", conversationID,
+            ]
+        )
+    }
+
+    static func deleteConversation(
+        configText: String,
+        userID: String,
+        conversationID: String
+    ) async throws {
+        try await Task.detached(priority: .userInitiated) {
+            _ = try runProcess(
+                configText: configText,
+                arguments: [
+                    "conversations", "delete",
+                    "--user-id", userID,
+                    "--conversation-id", conversationID,
+                ]
+            )
+        }.value
+    }
+
+    private static func readConversationCommand(
+        configText: String,
+        arguments: [String]
+    ) async throws -> RuntimeConversation {
+        try await Task.detached(priority: .userInitiated) {
+            let data = try runProcess(configText: configText, arguments: arguments)
+            return try decodeJSON(RuntimeConversation.self, from: data)
         }.value
     }
 
     private static func runProcess(
         configText: String,
-        prompt: String,
-        messages: [ProviderChatMessage]
-    ) throws -> AgentRuntimeResult {
+        arguments: [String],
+        input: Data = Data()
+    ) throws -> Data {
+        processLock.lock()
+        defer { processLock.unlock() }
         let temporaryDirectory = FileManager.default.temporaryDirectory
             .appendingPathComponent("super-agent-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: temporaryDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(
+            at: temporaryDirectory,
+            withIntermediateDirectories: true
+        )
         defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
 
         let configURL = temporaryDirectory.appendingPathComponent("agent.toml")
         try configText.write(to: configURL, atomically: true, encoding: .utf8)
-        let request = AgentRuntimeRequest(prompt: prompt, messages: messages)
-        let requestData = try JSONEncoder().encode(request)
 
         let process = Process()
         let standardInput = Pipe()
         let standardOutput = Pipe()
         let standardError = Pipe()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = [
-            runtimeCommand(),
-            "run",
-            "--config", configURL.path,
-            "--request-stdin",
-            "--output", "jsonl",
-        ]
+        process.arguments = [runtimeCommand()] + arguments + ["--config", configURL.path]
         process.standardInput = standardInput
         process.standardOutput = standardOutput
         process.standardError = standardError
@@ -96,7 +234,7 @@ enum AgentRuntimeClient {
         } catch {
             throw AgentRuntimeClientError.commandFailed(error.localizedDescription)
         }
-        standardInput.fileHandleForWriting.write(requestData)
+        standardInput.fileHandleForWriting.write(input)
         try standardInput.fileHandleForWriting.close()
         let outputData = standardOutput.fileHandleForReading.readDataToEndOfFile()
         let errorData = standardError.fileHandleForReading.readDataToEndOfFile()
@@ -104,24 +242,60 @@ enum AgentRuntimeClient {
 
         let errorText = String(data: errorData, encoding: .utf8) ?? ""
         guard process.terminationStatus == 0 else {
-            throw AgentRuntimeClientError.commandFailed(errorText.trimmingCharacters(in: .whitespacesAndNewlines))
+            throw AgentRuntimeClientError.commandFailed(
+                errorText.trimmingCharacters(in: .whitespacesAndNewlines)
+            )
         }
-        return try readResult(from: outputData)
+        return outputData
     }
 
-    private static func readResult(from data: Data) throws -> AgentRuntimeResult {
+    private static func readRunResult(from data: Data) throws -> AgentRuntimeResult {
         guard let text = String(data: data, encoding: .utf8) else {
             throw AgentRuntimeClientError.invalidOutput("输出不是 UTF-8")
         }
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
         for line in text.split(whereSeparator: { $0.isNewline }).reversed() {
-            let output = try decoder.decode(AgentRuntimeOutputLine.self, from: Data(line.utf8))
+            let output = try decodeJSON(AgentRuntimeOutputLine.self, from: Data(line.utf8))
             if output.type == "result", let result = output.result {
                 return result
             }
         }
         throw AgentRuntimeClientError.invalidOutput("缺少 result 记录")
+    }
+
+    private static func decodeJSON<Value: Decodable>(
+        _ type: Value.Type,
+        from data: Data
+    ) throws -> Value {
+        do {
+            let decoder = JSONDecoder()
+            decoder.keyDecodingStrategy = .convertFromSnakeCase
+            decoder.dateDecodingStrategy = .custom { decoder in
+                let container = try decoder.singleValueContainer()
+                let text = try container.decode(String.self)
+                guard let date = parseISO8601Date(text) else {
+                    throw DecodingError.dataCorruptedError(
+                        in: container,
+                        debugDescription: "Invalid ISO 8601 date: \(text)"
+                    )
+                }
+                return date
+            }
+            return try decoder.decode(type, from: data)
+        } catch let error as AgentRuntimeClientError {
+            throw error
+        } catch {
+            throw AgentRuntimeClientError.invalidOutput(error.localizedDescription)
+        }
+    }
+
+    private static func parseISO8601Date(_ text: String) -> Date? {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = formatter.date(from: text) {
+            return date
+        }
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.date(from: text)
     }
 
     private static func runtimeCommand() -> String {

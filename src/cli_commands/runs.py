@@ -6,6 +6,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 from runtime.config import AgentConfig
+from runtime.identity import LOCAL_USER_ID
 from runtime.models import RunSnapshot
 from runtime.storage import create_storage_backend
 from runtime.store import RuntimeStore
@@ -18,7 +19,9 @@ def configure_runs_parser(parser: argparse.ArgumentParser) -> None:
         help="show recent run snapshot status",
     )
     _add_config_argument(status_parser)
+    _add_user_argument(status_parser)
     status_parser.add_argument("--run-id")
+    status_parser.add_argument("--conversation-id")
     status_parser.add_argument("--limit", type=_positive_integer, default=20)
     status_parser.add_argument("--output", choices=["text", "json"], default="text")
 
@@ -27,6 +30,7 @@ def configure_runs_parser(parser: argparse.ArgumentParser) -> None:
         help="explain one run from its lock and ordered events",
     )
     _add_config_argument(explain_parser)
+    _add_user_argument(explain_parser)
     explain_parser.add_argument("--run-id")
     explain_parser.add_argument("--output", choices=["text", "json"], default="text")
 
@@ -35,6 +39,7 @@ def configure_runs_parser(parser: argparse.ArgumentParser) -> None:
         help="export one run snapshot, lock, and event stream",
     )
     _add_config_argument(export_parser)
+    _add_user_argument(export_parser)
     export_parser.add_argument("--run-id")
     export_parser.add_argument("--output")
 
@@ -51,11 +56,11 @@ def run_runs_command(args: argparse.Namespace) -> int:
 
 
 def _show_run_status(args: argparse.Namespace) -> int:
-    store = _load_run_snapshot_store(args.config)
+    store = _load_run_snapshot_store(args.config, args.user_id)
     snapshots = (
         [store.read_run(args.run_id)]
         if args.run_id
-        else store.list_runs(args.limit)
+        else store.list_runs(args.limit, conversation_id=args.conversation_id)
     )
     if args.output == "json":
         print(
@@ -79,7 +84,7 @@ def _show_run_status(args: argparse.Namespace) -> int:
 
 
 def _explain_run(args: argparse.Namespace) -> int:
-    store = _load_run_snapshot_store(args.config)
+    store = _load_run_snapshot_store(args.config, args.user_id)
     run_id = _resolve_run_id(store, args.run_id)
     if run_id is None:
         print("No run snapshots yet.")
@@ -93,7 +98,7 @@ def _explain_run(args: argparse.Namespace) -> int:
 
 
 def _export_run(args: argparse.Namespace) -> int:
-    store = _load_run_snapshot_store(args.config)
+    store = _load_run_snapshot_store(args.config, args.user_id)
     run_id = _resolve_run_id(store, args.run_id)
     if run_id is None:
         print("No run snapshots yet.")
@@ -104,7 +109,7 @@ def _export_run(args: argparse.Namespace) -> int:
     return 0
 
 
-def _load_run_snapshot_store(config_path: str | None) -> RuntimeStore:
+def _load_run_snapshot_store(config_path: str | None, user_id: str) -> RuntimeStore:
     config = (
         AgentConfig.load_automatically()
         if config_path is None
@@ -114,7 +119,7 @@ def _load_run_snapshot_store(config_path: str | None) -> RuntimeStore:
     return RuntimeStore(
         backend,
         config.storage.path,
-        "local",
+        user_id,
         config.agent.name,
     )
 
@@ -179,6 +184,10 @@ def _required_object(data: dict[str, object], name: str) -> dict[str, object]:
 
 def _add_config_argument(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--config")
+
+
+def _add_user_argument(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--user-id", default=LOCAL_USER_ID)
 
 
 def _positive_integer(value: str) -> int:

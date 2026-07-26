@@ -17,7 +17,14 @@ from provider.discovery import ModelResolution, resolve_model_settings
 from runtime.config import AgentConfig
 from runtime.engine import AgentRuntime
 from runtime.identity import LOCAL_USER_ID
-from runtime.models import AgentRunRequest, RunEvent, RunResult, SubAgentResult, SubagentCallbacks
+from runtime.models import (
+    AgentRunRequest,
+    Conversation,
+    RunEvent,
+    RunResult,
+    SubAgentResult,
+    SubagentCallbacks,
+)
 from runtime.session import RuntimeSession
 from runtime.storage import StorageBackend, create_storage_backend
 
@@ -117,8 +124,65 @@ class Agent:
     def set_skill_updater(self, skill_updater: SkillUpdaterCapability) -> None:
         self._replace_capabilities(skill_updater=skill_updater)
 
-    def create_skill_evolution_manager(self) -> "SkillEvolutionManager":
-        return cast("SkillEvolutionManager", self.runtime.create_skill_updater())
+    def create_skill_evolution_manager(
+        self,
+        user_id: str = LOCAL_USER_ID,
+    ) -> "SkillEvolutionManager":
+        return cast(
+            "SkillEvolutionManager",
+            self.runtime.create_skill_updater(user_id),
+        )
+
+    def create_conversation(
+        self,
+        title: str = "",
+        *,
+        user_id: str = LOCAL_USER_ID,
+        conversation_id: str | None = None,
+    ) -> Conversation:
+        return self.runtime.create_store(user_id).create_conversation(
+            title,
+            conversation_id=conversation_id,
+        )
+
+    def list_conversations(self, user_id: str = LOCAL_USER_ID) -> list[Conversation]:
+        return self.runtime.create_store(user_id).list_conversations()
+
+    def read_conversation(
+        self,
+        conversation_id: str,
+        *,
+        user_id: str = LOCAL_USER_ID,
+    ) -> Conversation:
+        return self.runtime.create_store(user_id).read_conversation(conversation_id)
+
+    def rename_conversation(
+        self,
+        conversation_id: str,
+        title: str,
+        *,
+        user_id: str = LOCAL_USER_ID,
+    ) -> Conversation:
+        return self.runtime.create_store(user_id).rename_conversation(
+            conversation_id,
+            title,
+        )
+
+    def clear_conversation(
+        self,
+        conversation_id: str,
+        *,
+        user_id: str = LOCAL_USER_ID,
+    ) -> Conversation:
+        return self.runtime.create_store(user_id).clear_conversation(conversation_id)
+
+    def delete_conversation(
+        self,
+        conversation_id: str,
+        *,
+        user_id: str = LOCAL_USER_ID,
+    ) -> None:
+        self.runtime.create_store(user_id).delete_conversation(conversation_id)
 
     def check_subagent_links(self) -> list[str]:
         warnings: list[str] = []

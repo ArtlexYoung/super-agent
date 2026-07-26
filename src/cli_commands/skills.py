@@ -8,6 +8,7 @@ from agents.agent import Agent
 from capability.defaults import create_default_skill_disclosure
 from capability.skill_executors import create_builtin_skill_executors
 from runtime.config import AgentConfig
+from runtime.identity import LOCAL_USER_ID
 from runtime.storage import create_storage_backend
 from runtime.store import RuntimeStore
 from skill.disclosure import ProgressiveDisclosureCore, skill_index_to_dict
@@ -62,20 +63,39 @@ def configure_skills_parser(parser: argparse.ArgumentParser) -> None:
     remove_parser = subparsers.add_parser("remove", help="remove one installed skill")
     remove_parser.add_argument("--config", default="agent.toml")
     remove_parser.add_argument("--name", required=True)
+    for command_parser in (
+        list_parser,
+        index_parser,
+        propose_parser,
+        evaluate_parser,
+        promote_parser,
+        evolve_parser,
+        rollback_parser,
+        freshness_parser,
+        validate_parser,
+        explain_parser,
+        graph_parser,
+        lock_parser,
+        pack_parser,
+        install_parser,
+        update_parser,
+        remove_parser,
+    ):
+        command_parser.add_argument("--user-id", default=LOCAL_USER_ID)
 
 
 def run_skills_command(args: argparse.Namespace) -> int:
     handlers = {
-        "list": lambda: _list_skills(Path(args.config)),
-        "index": lambda: _print_skill_index(Path(args.config)),
+        "list": lambda: _list_skills(Path(args.config), args.user_id),
+        "index": lambda: _print_skill_index(Path(args.config), args.user_id),
         "propose": lambda: _propose_skill(args),
         "evaluate": lambda: _evaluate_skill(args),
         "promote": lambda: _promote_skill(args),
         "evolve": lambda: _evolve_skill(args),
         "rollback": lambda: _rollback_skill(args),
-        "freshness": lambda: _show_skill_freshness(Path(args.config)),
-        "validate": lambda: _validate_skills(Path(args.config)),
-        "explain": lambda: _explain_skills(Path(args.config), args.prompt),
+        "freshness": lambda: _show_skill_freshness(Path(args.config), args.user_id),
+        "validate": lambda: _validate_skills(Path(args.config), args.user_id),
+        "explain": lambda: _explain_skills(Path(args.config), args.user_id, args.prompt),
         "graph": lambda: _show_skill_graph(args),
         "lock": lambda: _write_skill_lock(args),
         "pack": lambda: _pack_skill(args),
@@ -89,8 +109,8 @@ def run_skills_command(args: argparse.Namespace) -> int:
     return handler()
 
 
-def _list_skills(config_path: Path) -> int:
-    index = _load_skill_disclosure(config_path).prepare_skill_index()
+def _list_skills(config_path: Path, user_id: str) -> int:
+    index = _load_skill_disclosure(config_path, user_id).prepare_skill_index()
     for entry in index.entries:
         print(
             f"{entry.reference.name}\t{entry.reference.capability}"
@@ -105,21 +125,21 @@ def _list_skills(config_path: Path) -> int:
     return 0
 
 
-def _print_skill_index(config_path: Path) -> int:
-    index = _load_skill_disclosure(config_path).prepare_skill_index()
+def _print_skill_index(config_path: Path, user_id: str) -> int:
+    index = _load_skill_disclosure(config_path, user_id).prepare_skill_index()
     print(json.dumps(skill_index_to_dict(index), ensure_ascii=False, indent=2, sort_keys=True))
     return 0
 
 
 def _propose_skill(args: argparse.Namespace) -> int:
-    manager = Agent.load_from_config_file(args.config).create_skill_evolution_manager()
+    manager = Agent.load_from_config_file(args.config).create_skill_evolution_manager(args.user_id)
     candidate = manager.create_skill_candidate(args.name, args.goal)
     print(f"Proposed candidate: {candidate.candidate_id}")
     return 0
 
 
 def _evaluate_skill(args: argparse.Namespace) -> int:
-    manager = Agent.load_from_config_file(args.config).create_skill_evolution_manager()
+    manager = Agent.load_from_config_file(args.config).create_skill_evolution_manager(args.user_id)
     report = manager.evaluate_skill_candidate(args.candidate_id, _read_evaluation_cases(Path(args.cases)))
     state = "passed" if report.passed else "rejected"
     print(f"Evaluation {report.report_id}: {state} score={report.score:.4f}")
@@ -127,29 +147,29 @@ def _evaluate_skill(args: argparse.Namespace) -> int:
 
 
 def _promote_skill(args: argparse.Namespace) -> int:
-    manager = Agent.load_from_config_file(args.config).create_skill_evolution_manager()
+    manager = Agent.load_from_config_file(args.config).create_skill_evolution_manager(args.user_id)
     manifest = manager.promote_skill_candidate(args.candidate_id)
     print(f"Promoted skill: {manifest.name}@{manifest.version}")
     return 0
 
 
 def _evolve_skill(args: argparse.Namespace) -> int:
-    manager = Agent.load_from_config_file(args.config).create_skill_evolution_manager()
+    manager = Agent.load_from_config_file(args.config).create_skill_evolution_manager(args.user_id)
     result = manager.evolve_skill(args.name, args.goal, _read_evaluation_cases(Path(args.cases)))
     print(f"Evolution {result.status}: {result.candidate.candidate_id} score={result.report.score:.4f}")
     return 0 if result.status == "promoted" else 1
 
 
 def _rollback_skill(args: argparse.Namespace) -> int:
-    manager = Agent.load_from_config_file(args.config).create_skill_evolution_manager()
+    manager = Agent.load_from_config_file(args.config).create_skill_evolution_manager(args.user_id)
     manifest = manager.rollback_skill(args.name)
     print(f"Rolled back skill: {manifest.name}@{manifest.version}")
     return 0
 
 
-def _show_skill_freshness(config_path: Path) -> int:
+def _show_skill_freshness(config_path: Path, user_id: str) -> int:
     config = AgentConfig.load_from_file(config_path)
-    store = _load_runtime_store(config)
+    store = _load_runtime_store(config, user_id)
     stats = calculate_skill_freshness(
         store.read_evaluation_records(
             target_type="skill",
@@ -170,8 +190,8 @@ def _show_skill_freshness(config_path: Path) -> int:
     return 0
 
 
-def _validate_skills(config_path: Path) -> int:
-    disclosure = _load_skill_disclosure(config_path)
+def _validate_skills(config_path: Path, user_id: str) -> int:
+    disclosure = _load_skill_disclosure(config_path, user_id)
     issues = disclosure.validate_skill_sources()
     if issues:
         for issue in issues:
@@ -181,9 +201,12 @@ def _validate_skills(config_path: Path) -> int:
     return 0
 
 
-def _explain_skills(config_path: Path, prompt: str) -> int:
+def _explain_skills(config_path: Path, user_id: str, prompt: str) -> int:
     config = AgentConfig.load_from_file(config_path)
-    disclosure = create_default_skill_disclosure(config)
+    disclosure = create_default_skill_disclosure(
+        config,
+        store=_load_runtime_store(config, user_id),
+    )
     disclosure.prepare_skill_index()
     decisions = disclosure.explain_skill_selection_for_prompt(
         prompt,
@@ -203,7 +226,7 @@ def _selection_state(selected: bool, reason: str) -> str:
 
 
 def _show_skill_graph(args: argparse.Namespace) -> int:
-    manifests = _resolve_skills(Path(args.config), args.name)
+    manifests = _resolve_skills(Path(args.config), args.user_id, args.name)
     for manifest in manifests:
         print(
             f"{manifest.name}\tprovides={','.join(manifest.provides)}"
@@ -213,7 +236,7 @@ def _show_skill_graph(args: argparse.Namespace) -> int:
 
 
 def _write_skill_lock(args: argparse.Namespace) -> int:
-    disclosure = _load_skill_disclosure(Path(args.config))
+    disclosure = _load_skill_disclosure(Path(args.config), args.user_id)
     index = disclosure.prepare_skill_index()
     entries = index.resolve_skill_dependencies(args.name)
     manifests = [
@@ -230,13 +253,16 @@ def _write_skill_lock(args: argparse.Namespace) -> int:
 
 
 def _pack_skill(args: argparse.Namespace) -> int:
-    package_path = _load_package_manager(Path(args.config)).pack_skill(args.name, Path(args.output))
+    package_path = _load_package_manager(Path(args.config), args.user_id).pack_skill(
+        args.name,
+        Path(args.output),
+    )
     print(f"Packed skill: {package_path}")
     return 0
 
 
 def _install_skill(args: argparse.Namespace) -> int:
-    manifest = _load_package_manager(Path(args.config)).install_skill(
+    manifest = _load_package_manager(Path(args.config), args.user_id).install_skill(
         args.source,
         expected_sha256=args.expected_sha256,
     )
@@ -245,7 +271,7 @@ def _install_skill(args: argparse.Namespace) -> int:
 
 
 def _update_skill(args: argparse.Namespace) -> int:
-    manifest = _load_package_manager(Path(args.config)).update_skill(
+    manifest = _load_package_manager(Path(args.config), args.user_id).update_skill(
         args.name,
         args.source,
         expected_sha256=args.expected_sha256,
@@ -255,14 +281,18 @@ def _update_skill(args: argparse.Namespace) -> int:
 
 
 def _remove_skill(args: argparse.Namespace) -> int:
-    manager = _load_package_manager(Path(args.config))
+    manager = _load_package_manager(Path(args.config), args.user_id)
     manager.remove_skill(args.name)
     print(f"Removed skill: {args.name}")
     return 0
 
 
-def _resolve_skills(config_path: Path, names: list[str]) -> list[SkillManifest]:
-    disclosure = _load_skill_disclosure(config_path)
+def _resolve_skills(
+    config_path: Path,
+    user_id: str,
+    names: list[str],
+) -> list[SkillManifest]:
+    disclosure = _load_skill_disclosure(config_path, user_id)
     index = disclosure.prepare_skill_index()
     return [
         disclosure.open_skill(
@@ -273,27 +303,36 @@ def _resolve_skills(config_path: Path, names: list[str]) -> list[SkillManifest]:
     ]
 
 
-def _load_skill_disclosure(config_path: Path) -> ProgressiveDisclosureCore:
+def _load_skill_disclosure(
+    config_path: Path,
+    user_id: str,
+) -> ProgressiveDisclosureCore:
     config = AgentConfig.load_from_file(config_path)
-    return create_default_skill_disclosure(config)
+    return create_default_skill_disclosure(
+        config,
+        store=_load_runtime_store(config, user_id),
+    )
 
 
-def _load_runtime_store(config: AgentConfig) -> RuntimeStore:
+def _load_runtime_store(config: AgentConfig, user_id: str) -> RuntimeStore:
     backend = create_storage_backend(config.storage.backend, str(config.storage.path))
     return RuntimeStore(
         backend,
         config.storage.path,
-        "local",
+        user_id,
         config.agent.name,
     )
 
 
-def _load_package_manager(config_path: Path) -> SkillPackageManager:
+def _load_package_manager(config_path: Path, user_id: str) -> SkillPackageManager:
     config = AgentConfig.load_from_file(config_path)
     if not config.paths.skills:
         raise ValueError("agent has no skill path configured")
     return SkillPackageManager(
-        create_default_skill_disclosure(config),
+        create_default_skill_disclosure(
+            config,
+            store=_load_runtime_store(config, user_id),
+        ),
         config.paths.skills[0],
     )
 

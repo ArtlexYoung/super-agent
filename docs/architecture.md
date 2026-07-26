@@ -102,7 +102,7 @@ RuntimeSession -> RuntimeStore -> StorageBackend
                                   +-> other backends in later releases
 ```
 
-Runs, evaluations, memory, habits, and disclosure history use one canonical event schema. A backend only appends, queries, and deletes `StorageEvent` records; it does not implement domain behavior. Run snapshots and freshness are derived views, not parallel sources of truth.
+Conversations, runs, evaluations, memory, habits, and disclosure history use one canonical event schema. A backend only appends, queries, and deletes `StorageEvent` records; it does not implement domain behavior. Conversation state, run snapshots, and freshness are derived views, not parallel sources of truth.
 
 ## Core Invariants
 

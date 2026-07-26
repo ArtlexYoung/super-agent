@@ -86,6 +86,25 @@ print(result.text)
 print(result.run_id)
 ```
 
+For stored multi-turn history:
+
+```python
+conversation = agent.create_conversation()
+agent.run("first turn", conversation_id=conversation.conversation_id)
+result = agent.run("second turn", conversation_id=conversation.conversation_id)
+```
+
+Pass `user_id` to isolate conversations and every other Runtime state view:
+
+```python
+conversation = agent.create_conversation(user_id="alice")
+agent.run(
+    "private turn",
+    user_id="alice",
+    conversation_id=conversation.conversation_id,
+)
+```
+
 Load an explicit project:
 
 ```python

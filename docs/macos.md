@@ -4,7 +4,7 @@ The SwiftUI app in `src/frontend/mac` is a desktop client for the same Python ru
 
 ## Features
 
-- Conversation list and persisted conversation JSON.
+- Runtime-backed conversation list and multi-turn history.
 - Visual Chinese TOML configuration.
 - Editable model list with provider, model, URL, and key-variable settings.
 - Skill, MCP, memory, and workflow selection.
@@ -12,7 +12,7 @@ The SwiftUI app in `src/frontend/mac` is a desktop client for the same Python ru
 - Main Agent and subagent execution tree.
 - Conversation output from the runtime JSONL protocol.
 
-The app reads the central Skill index through the CLI. It does not maintain a second Skill manifest parser.
+The app reads the central Skill index and conversations through the CLI. It does not maintain a second Skill manifest parser or conversation store.
 
 ## Run During Development
 
@@ -43,7 +43,7 @@ It loads Skill state using:
 super-agent skills index --config agent.toml --output json
 ```
 
-Conversation records are stored separately from Python runtime state. Python run IDs are preserved so the UI can link a conversation node to its trace and subagent children.
+It manages conversations using `super-agent conversations` and sends `user_id` plus `conversation_id` in every run request. Runtime JSONL is the only conversation source of truth. The app stores only UI selection, TOML settings, and model profiles in Application Support. Assistant message records include the complete `run_result`, allowing the UI to rebuild the main Agent and subagent execution tree after restart.
 
 ## Package a Local Release
 
