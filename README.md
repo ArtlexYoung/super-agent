@@ -16,6 +16,7 @@ The project is currently experimental (`0.0.x`). It favors a small, inspectable 
 - **One Skill format**: prompt, MCP, memory, and workflow content share the same manifest and discovery path.
 - **Progressive disclosure**: the model sees a compact index first and opens only the Skills it needs.
 - **One runtime lifecycle**: discovery, disclosure, execution, observation, evaluation, and evolution share one session.
+- **Automatic evolution signals**: Runtime turns real failures, quality, freshness, replacement, cost, and latency into deduplicated recommendations.
 - **Code-composed Agents**: create Agents independently and attach them with `Agent.add_subagent(...)`.
 - **Standard-library runtime**: the Python core has no third-party runtime dependencies.
 
@@ -171,6 +172,16 @@ super-agent capabilities evolve \
 
 Freshness does not call a model. It is derived from runtime evaluation records using quality, recency, frequency, token cost, latency, reliability, replacement behavior, and sample confidence.
 
+After each evaluated run, Runtime also reviews updateable Skills and locally installed Capabilities. This deterministic step does not call a model and needs no new configuration. It records an evolution recommendation only when the current evidence crosses a quality or efficiency threshold, and the same unchanged evidence cannot create a repeated recommendation.
+
+```bash
+super-agent evolution list --config agent.toml
+super-agent evolution show --config agent.toml --schedule-id <id> --output json
+super-agent evolution create-candidate --config agent.toml --schedule-id <id>
+```
+
+Creating a candidate invokes the configured model and stores its exact added, modified, and deleted files. The candidate must still pass the existing isolated evaluation before promotion; scheduling never edits or activates the live target by itself.
+
 ## Multi-Agent Composition
 
 Agent relationships live in readable Python code rather than TOML:
@@ -200,7 +211,7 @@ backend = "jsonl"
 path = ".super-agent"
 ```
 
-JSONL stores one readable canonical event stream per user under `.super-agent/users/<user-hash>/events.jsonl`. Conversations, runs, evaluations, memory, usage habits, Skill freshness, evolution evidence, and disclosure history are isolated by user and Agent inside that stream. `RuntimeStore` derives domain views from those events; the progressive-disclosure cache and evolution workspace remain rebuildable, user-scoped local artifacts.
+JSONL stores one readable canonical event stream per user under `.super-agent/users/<user-hash>/events.jsonl`. Conversations, runs, evaluations, memory, usage habits, Skill freshness, evolution recommendations, and disclosure history are isolated by user and Agent inside that stream. `RuntimeStore` derives domain views from those events; the progressive-disclosure cache and evolution workspace remain rebuildable, user-scoped local artifacts.
 
 SQLite is the optional standard-library backend for concurrent local use. It keeps the same Runtime semantics and still adds no package dependency:
 

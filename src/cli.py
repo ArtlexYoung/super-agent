@@ -17,6 +17,10 @@ from cli_commands.conversations import (
     configure_conversations_parser,
     run_conversations_command,
 )
+from cli_commands.evolution import (
+    configure_evolution_parser,
+    run_evolution_command,
+)
 from cli_commands.memory import configure_memory_parser, run_memory_command
 from cli_commands.models import configure_models_parser, run_models_command
 from cli_commands.runs import configure_runs_parser, run_runs_command
@@ -66,6 +70,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return run_storage_command(args)
     if args.command == "capabilities":
         return run_capabilities_command(args)
+    if args.command == "evolution":
+        return run_evolution_command(args)
     parser.print_help()
     return 1
 
@@ -114,6 +120,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="manage local executable capabilities",
     )
     configure_capabilities_parser(capabilities_parser)
+    evolution_parser = subparsers.add_parser(
+        "evolution",
+        help="manage autonomous evolution recommendations",
+    )
+    configure_evolution_parser(evolution_parser)
     return parser
 
 

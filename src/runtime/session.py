@@ -7,7 +7,12 @@ from typing import TYPE_CHECKING
 
 from provider.chat import ChatProvider
 from runtime.config import AgentConfig
-from runtime.evaluation import EvaluationTarget, EvaluationTargetTracker
+from runtime.evolution.scheduler import EvolutionScheduleTarget
+from runtime.evaluation import (
+    EvaluationTarget,
+    EvaluationTargetTracker,
+    create_capability_evaluation_target_from_descriptor,
+)
 from runtime.identity import RunIdentity
 from runtime.models import RunEvent
 from runtime.store import RuntimeStore
@@ -29,6 +34,11 @@ class RuntimeSession:
     skill_index: SkillIndex | None = None
     _evaluation_targets: EvaluationTargetTracker = field(
         default_factory=EvaluationTargetTracker,
+        init=False,
+        repr=False,
+    )
+    _evolution_schedule_targets: dict[tuple[str, str], EvolutionScheduleTarget] = field(
+        default_factory=dict,
         init=False,
         repr=False,
     )
@@ -65,15 +75,43 @@ class RuntimeSession:
         return self.skill_index
 
     def record_skill_used(self, entry: SkillIndexEntry) -> None:
-        self._evaluation_targets.record_target(
-            create_indexed_skill_evaluation_target(entry)
+        target = create_indexed_skill_evaluation_target(entry)
+        self._evaluation_targets.record_target(target)
+        self._record_evolution_schedule_target(
+            EvolutionScheduleTarget(
+                target=target,
+                agent_created=entry.agent_created,
+                agent_can_update=entry.agent_can_update,
+                supports_evolution=bool(self.config.paths.skills),
+                freshness=entry.freshness,
+            )
         )
 
     def record_capability_used(self, slot: str, capability: object) -> None:
         registration = self.capabilities.registry.require_capability(slot)
         if registration.implementation is not capability:
             raise ValueError(f"runtime used an unregistered capability object: {slot}")
-        self._evaluation_targets.record_capability(registration.descriptor)
+        descriptor = registration.descriptor
+        self._evaluation_targets.record_capability(descriptor)
+        target = create_capability_evaluation_target_from_descriptor(descriptor)
+        self._record_evolution_schedule_target(
+            EvolutionScheduleTarget(
+                target=target,
+                agent_created=descriptor.agent_created,
+                agent_can_update=descriptor.agent_can_update,
+                supports_evolution=descriptor.source == "local",
+            )
+        )
 
     def list_evaluation_targets(self) -> list[EvaluationTarget]:
         return self._evaluation_targets.list_targets()
+
+    def list_evolution_schedule_targets(self) -> list[EvolutionScheduleTarget]:
+        return list(self._evolution_schedule_targets.values())
+
+    def _record_evolution_schedule_target(
+        self,
+        target: EvolutionScheduleTarget,
+    ) -> None:
+        identity = target.target.target_type, target.target.key
+        self._evolution_schedule_targets[identity] = target

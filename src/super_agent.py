@@ -66,6 +66,16 @@ from runtime.evaluation import (
     evaluation_record_to_dict,
 )
 from runtime.identity import LOCAL_USER_ID, RunIdentity
+from runtime.evolution import (
+    AutonomousEvolutionScheduler,
+    EvaluationEvidenceSummary,
+    EvolutionCandidateDifference,
+    EvolutionScheduleMetrics,
+    EvolutionScheduleState,
+    EvolutionScheduleTarget,
+    evolution_schedule_to_dict,
+    summarize_evaluation_evidence,
+)
 from runtime.models import (
     Conversation,
     ConversationMessage,
@@ -113,6 +123,7 @@ __all__ = [
     "AgentConfig",
     "AgentRuntime",
     "AgentSettings",
+    "AutonomousEvolutionScheduler",
     "BenchmarkCase",
     "BenchmarkCaseResult",
     "BenchmarkReport",
@@ -130,6 +141,7 @@ __all__ = [
     "Conversation",
     "ConversationMessage",
     "EvaluationCase",
+    "EvaluationEvidenceSummary",
     "EvaluationRecord",
     "EvaluationReport",
     "EvaluationResult",
@@ -137,6 +149,10 @@ __all__ = [
     "EvaluationTarget",
     "EvaluationTokenUsage",
     "EvolutionResult",
+    "EvolutionCandidateDifference",
+    "EvolutionScheduleMetrics",
+    "EvolutionScheduleState",
+    "EvolutionScheduleTarget",
     "JsonlStorage",
     "InstalledCapability",
     "LOCAL_USER_ID",
@@ -198,7 +214,9 @@ __all__ = [
     "create_evaluation_record",
     "evaluation_record_from_dict",
     "evaluation_record_to_dict",
+    "evolution_schedule_to_dict",
     "model_resolution_to_dict",
     "resolve_model_settings",
     "skill_manifest_to_dict",
+    "summarize_evaluation_evidence",
 ]

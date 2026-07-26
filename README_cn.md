@@ -16,6 +16,7 @@ Super Agent 是一个**简单、轻量、自进化、Skill 优先的 Agent 运�
 - **统一 Skill 格式**：prompt、MCP、memory 和 workflow 共用 manifest 与发现路径。
 - **渐进式披露**：模型先看到轻量索引，只打开任务真正需要的 Skill。
 - **统一运行生命周期**：发现、披露、执行、观察、评价和进化共用一个会话。
+- **自动进化信号**：Runtime 根据真实失败、质量、保鲜度、替代行为、成本和延迟生成去重后的进化建议。
 - **代码式多 Agent**：每个 Agent 独立创建，再通过 `Agent.add_subagent(...)` 组合。
 - **标准库运行时**：Python 核心没有第三方运行依赖。
 
@@ -171,6 +172,16 @@ super-agent capabilities evolve \
 
 保鲜度计算不调用大模型，而是根据质量、距离上次调用时间、使用频率、token 成本、延迟、可靠性、同功能替代行为和样本置信度确定性派生。
 
+每次运行完成评价后，Runtime 还会自动检查允许更新的 Skill 和本地安装的 Capability。这个确定性步骤不调用大模型，也不增加任何配置项。只有当前证据达到质量或效率阈值时才会记录进化建议，同一份未变化的证据不会反复生成建议。
+
+```bash
+super-agent evolution list --config agent.toml
+super-agent evolution show --config agent.toml --schedule-id <id> --output json
+super-agent evolution create-candidate --config agent.toml --schedule-id <id>
+```
+
+创建候选时才会调用已配置的模型，并记录候选实际新增、修改和删除的文件。候选仍然必须通过原有的隔离评价才能晋升；自动调度本身不会修改或激活正在使用的目标。
+
 ## 多 Agent 组合
 
 Agent 关系使用容易阅读的 Python 代码，而不是写死在 TOML 中：
@@ -200,7 +211,7 @@ backend = "jsonl"
 path = ".super-agent"
 ```
 
-JSONL 会在 `.super-agent/users/<user-hash>/events.jsonl` 下为每个用户保存一条可读的标准事件流。会话、运行、评价、记忆、使用习惯、Skill 保鲜度、进化证据和披露历史都按用户与 Agent 隔离。`RuntimeStore` 从事件派生领域视图；渐进披露缓存和进化工作区只是按用户隔离、可重新生成的本地产物。
+JSONL 会在 `.super-agent/users/<user-hash>/events.jsonl` 下为每个用户保存一条可读的标准事件流。会话、运行、评价、记忆、使用习惯、Skill 保鲜度、进化建议和披露历史都按用户与 Agent 隔离。`RuntimeStore` 从事件派生领域视图；渐进披露缓存和进化工作区只是按用户隔离、可重新生成的本地产物。
 
 需要更强的本地并发时，可以选择 Python 标准库自带的 SQLite，Runtime 语义完全相同，也不会增加第三方依赖：
 

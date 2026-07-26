@@ -150,6 +150,7 @@ super-agent skills index --config my-agent/agent.toml --output json
 super-agent runs status --config my-agent/agent.toml
 super-agent runs explain --config my-agent/agent.toml
 super-agent skills freshness --config my-agent/agent.toml
+super-agent evolution list --config my-agent/agent.toml
 ```
 
 Continue with [Skills](skills.md), [Architecture](architecture.md), or the [CLI reference](cli.md).

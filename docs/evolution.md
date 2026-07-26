@@ -40,6 +40,43 @@ Candidate evaluation records never affect live freshness because freshness consu
 super-agent skills freshness --config agent.toml
 ```
 
+## Autonomous Evolution Scheduling
+
+After a run evaluation is stored, Runtime deterministically reviews only the Skills and Capabilities that affected that run. No model call or additional configuration is required. A target is eligible only when `agent_can_update` is true and Runtime has a real directory evolution mechanism; Capability targets must be locally installed packages.
+
+The default signals are:
+
+- Any failed run.
+- Average score below `0.75` after at least three samples.
+- Skill freshness below `45` after at least two samples.
+- Successful same-function replacement rate of at least `50%` after two follow-ups.
+- Average estimated token usage of at least `12,000`.
+- Average latency of at least `10,000 ms`.
+
+Runtime stores the exact target version and hash, aggregate metrics, reason codes, source evaluation IDs, and a SHA-256 of the evidence snapshot. The schedule ID is deterministic for the Agent, target, and evidence, so checking unchanged evidence again is idempotent. New evidence may create a new recommendation.
+
+```bash
+super-agent evolution list --config agent.toml --user-id alice
+super-agent evolution show --config agent.toml --user-id alice --schedule-id <id> --output json
+super-agent evolution create-candidate --config agent.toml --user-id alice --schedule-id <id>
+super-agent evolution dismiss --config agent.toml --user-id alice --schedule-id <id> --reason "not useful"
+```
+
+Candidate creation invokes the configured Provider, verifies that the scheduled parent version is still active, and records the parent and candidate hashes plus added, modified, and deleted paths. It does not evaluate or promote the candidate. Existing Skill or Capability evaluation commands complete that evidence gate.
+
+The same operations are available through explicit Python methods:
+
+```python
+agent = Agent.load_from_config_file("agent.toml")
+schedules = agent.list_evolution_schedules(user_id="alice")
+candidate_schedule = agent.create_evolution_candidate_from_schedule(
+    schedules[0].schedule_id,
+    user_id="alice",
+)
+```
+
+Scheduling events, evidence, and candidate workspaces remain isolated by user and Agent. A scheduling failure is recorded in the run trace and never replaces the main task result.
+
 ## Self-Updating Memory
 
 A memory Skill defines policy while runtime data remains append-only:

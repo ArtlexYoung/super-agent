@@ -9,6 +9,7 @@ class PublicApiTests(unittest.TestCase):
     def test_experimental_contract_is_available_from_public_facade(self) -> None:
         expected_names = {
             "Agent",
+            "AutonomousEvolutionScheduler",
             "BenchmarkCase",
             "BenchmarkReport",
             "CapabilityCandidate",
@@ -22,10 +23,15 @@ class PublicApiTests(unittest.TestCase):
             "Conversation",
             "ConversationMessage",
             "EvaluationRecord",
+            "EvaluationEvidenceSummary",
             "EvaluationResult",
             "EvaluationSource",
             "EvaluationTarget",
             "EvaluationTokenUsage",
+            "EvolutionCandidateDifference",
+            "EvolutionScheduleMetrics",
+            "EvolutionScheduleState",
+            "EvolutionScheduleTarget",
             "JsonlStorage",
             "InstalledCapability",
             "LOCAL_USER_ID",
@@ -58,9 +64,11 @@ class PublicApiTests(unittest.TestCase):
             "create_storage_backend",
             "evaluation_record_from_dict",
             "evaluation_record_to_dict",
+            "evolution_schedule_to_dict",
             "model_resolution_to_dict",
             "resolve_model_settings",
             "skill_manifest_to_dict",
+            "summarize_evaluation_evidence",
         }
 
         self.assertTrue(expected_names <= set(super_agent.__all__))

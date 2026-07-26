@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, replace
 from typing import TYPE_CHECKING, Callable, cast
 
+from agents.evolution import create_evolution_candidate_from_schedule
 from capability.contracts import (
     AgentCapabilitySet,
     RunController,
@@ -22,6 +23,10 @@ from provider.chat import ChatProvider, Message, create_chat_provider
 from provider.discovery import ModelResolution, resolve_model_settings
 from runtime.config import AgentConfig
 from runtime.engine import AgentRuntime
+from runtime.evolution.scheduler import (
+    AutonomousEvolutionScheduler,
+    EvolutionScheduleState,
+)
 from runtime.identity import LOCAL_USER_ID
 from runtime.models import (
     AgentRunRequest,
@@ -248,6 +253,52 @@ class Agent:
             timeout_seconds=timeout_seconds,
         )
 
+    def list_evolution_schedules(
+        self,
+        user_id: str = LOCAL_USER_ID,
+        *,
+        decision: str | None = None,
+    ) -> list[EvolutionScheduleState]:
+        return self._create_evolution_scheduler(user_id).list_evolution_schedules(
+            decision
+        )
+
+    def read_evolution_schedule(
+        self,
+        schedule_id: str,
+        *,
+        user_id: str = LOCAL_USER_ID,
+    ) -> EvolutionScheduleState:
+        return self._create_evolution_scheduler(user_id).read_evolution_schedule(
+            schedule_id
+        )
+
+    def create_evolution_candidate_from_schedule(
+        self,
+        schedule_id: str,
+        *,
+        user_id: str = LOCAL_USER_ID,
+    ) -> EvolutionScheduleState:
+        scheduler = self._create_evolution_scheduler(user_id)
+        return create_evolution_candidate_from_schedule(
+            self,
+            scheduler,
+            schedule_id,
+            user_id=user_id,
+        )
+
+    def dismiss_evolution_schedule(
+        self,
+        schedule_id: str,
+        reason: str,
+        *,
+        user_id: str = LOCAL_USER_ID,
+    ) -> EvolutionScheduleState:
+        return self._create_evolution_scheduler(user_id).dismiss_evolution_schedule(
+            schedule_id,
+            reason,
+        )
+
     def create_conversation(
         self,
         title: str = "",
@@ -374,6 +425,12 @@ class Agent:
 
     def _create_capability_package_manager(self) -> CapabilityPackageManager:
         return CapabilityPackageManager(self.config.storage.path / "capabilities")
+
+    def _create_evolution_scheduler(
+        self,
+        user_id: str,
+    ) -> AutonomousEvolutionScheduler:
+        return AutonomousEvolutionScheduler(self.runtime.create_store(user_id))
 
     def _activate_persisted_capabilities(
         self,

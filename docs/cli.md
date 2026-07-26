@@ -101,6 +101,18 @@ super-agent capabilities evolve --slot run_controller --name careful --goal "red
 
 Use `--config agent.toml` when package storage should follow a specific Agent configuration. Installed versions are validated and automatically restored by later default Agent instances using the same storage path. Evolution commands also accept `--user-id`; candidates and evidence are isolated by user and Agent.
 
+## Autonomous Evolution Recommendations
+
+```bash
+super-agent evolution list --config agent.toml --user-id alice
+super-agent evolution list --config agent.toml --user-id alice --decision candidate_recommended --output json
+super-agent evolution show --config agent.toml --user-id alice --schedule-id <id> --output json
+super-agent evolution create-candidate --config agent.toml --user-id alice --schedule-id <id>
+super-agent evolution dismiss --config agent.toml --user-id alice --schedule-id <id> --reason "not useful"
+```
+
+`list` and `show` do not call a model. `create-candidate` invokes the configured Provider, creates an isolated complete-directory candidate, and records its file difference. Evaluation and promotion remain explicit evidence-gated operations under `skills` or `capabilities`.
+
 ## Memory
 
 ```bash
@@ -158,4 +170,4 @@ super-agent storage copy \
 
 `--to-path` defaults to `.super-agent-copy`; remote event storage does not use it. Database URLs are read from the selected environment variable and are never accepted as command arguments.
 
-All commands that read or write Runtime state accept `--user-id`; the default is `local`. This includes run, chat, conversations, memory, run inspection, Skill inspection/evolution, and benchmarks.
+All commands that read or write Runtime state accept `--user-id`; the default is `local`. This includes run, chat, conversations, memory, run inspection, Skill inspection/evolution, autonomous evolution recommendations, and benchmarks.

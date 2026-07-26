@@ -22,6 +22,41 @@ class DisclosedDirectoryFile:
     content: str | None
 
 
+@dataclass(frozen=True)
+class DirectoryDifference:
+    added_files: list[str]
+    modified_files: list[str]
+    deleted_files: list[str]
+
+
+def compare_directory_versions(
+    parent: Path | None,
+    candidate: Path,
+) -> DirectoryDifference:
+    parent_files = (
+        {}
+        if parent is None
+        else {
+            item.relative_path: item.sha256
+            for item in read_directory_files(parent, "parent")
+        }
+    )
+    candidate_files = {
+        item.relative_path: item.sha256
+        for item in read_directory_files(candidate, "candidate")
+    }
+    shared = set(parent_files).intersection(candidate_files)
+    return DirectoryDifference(
+        added_files=sorted(set(candidate_files) - set(parent_files)),
+        modified_files=sorted(
+            path
+            for path in shared
+            if parent_files[path] != candidate_files[path]
+        ),
+        deleted_files=sorted(set(parent_files) - set(candidate_files)),
+    )
+
+
 def read_directory_files(root: Path, target_label: str) -> list[DisclosedDirectoryFile]:
     label = target_label.strip() or "candidate"
     _reject_directory_symlinks(root, label)

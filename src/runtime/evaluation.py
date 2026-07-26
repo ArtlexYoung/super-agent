@@ -172,14 +172,7 @@ def evaluation_record_to_dict(record: EvaluationRecord) -> dict[str, object]:
         "schema_version": record.schema_version,
         "record_id": record.record_id,
         "created_at": record.created_at,
-        "target": {
-            "target_type": record.target.target_type,
-            "key": record.target.key,
-            "name": record.target.name,
-            "version": record.target.version,
-            "content_sha256": record.target.content_sha256,
-            "function_group": record.target.function_group,
-        },
+        "target": evaluation_target_to_dict(record.target),
         "source": {
             "source_type": record.source.source_type,
             "run_id": record.source.run_id,
@@ -208,7 +201,7 @@ def evaluation_record_from_dict(value: object) -> EvaluationRecord:
             f"migrate evaluation record schema_version {schema_version} to "
             f"evaluation record schema_version {EVALUATION_RECORD_SCHEMA_VERSION}"
         )
-    target = _target_from_dict(data["target"])
+    target = evaluation_target_from_dict(data["target"])
     source = _source_from_dict(data["source"])
     result = _result_from_dict(data["result"])
     record = EvaluationRecord(
@@ -223,9 +216,21 @@ def evaluation_record_from_dict(value: object) -> EvaluationRecord:
     return record
 
 
-def _target_from_dict(value: object) -> EvaluationTarget:
+def evaluation_target_to_dict(target: EvaluationTarget) -> dict[str, object]:
+    _validate_target(target)
+    return {
+        "target_type": target.target_type,
+        "key": target.key,
+        "name": target.name,
+        "version": target.version,
+        "content_sha256": target.content_sha256,
+        "function_group": target.function_group,
+    }
+
+
+def evaluation_target_from_dict(value: object) -> EvaluationTarget:
     data = _require_exact_object(value, EVALUATION_TARGET_FIELDS, "evaluation target")
-    return EvaluationTarget(
+    target = EvaluationTarget(
         target_type=_required_string(data, "target_type"),
         key=_required_string(data, "key"),
         name=_required_string(data, "name"),
@@ -233,6 +238,8 @@ def _target_from_dict(value: object) -> EvaluationTarget:
         content_sha256=_required_string(data, "content_sha256"),
         function_group=_required_string(data, "function_group"),
     )
+    _validate_target(target)
+    return target
 
 
 def _source_from_dict(value: object) -> EvaluationSource:

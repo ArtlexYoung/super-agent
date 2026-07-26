@@ -79,6 +79,8 @@ Status: implemented.
 
 ## v0.0.33: Autonomous Evolution Scheduling
 
+Status: implemented.
+
 - Propose evolution from failures, scores, freshness, replacement rate, token cost, and latency.
 - Require no new configuration for the default behavior.
 - Store the reason, evidence, candidate difference, and decision.

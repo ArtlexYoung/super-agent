@@ -3,105 +3,54 @@
 from __future__ import annotations
 
 import math
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Any
 
 from runtime.evaluation import EvaluationRecord
+from runtime.evolution.evidence import (
+    EvaluationEvidenceSummary,
+    summarize_evaluation_evidence,
+)
 from skill.manifest import DEFAULT_SKILL_FRESHNESS
-
-
-FOLLOWUP_WINDOW_MINUTES = 10
 
 
 def calculate_skill_freshness(
     records: list[EvaluationRecord],
     current_time: datetime | None = None,
 ) -> dict[str, dict[str, Any]]:
-    data = _build_store_data(records, current_time or datetime.now(UTC))
-    return data["skills"]
+    now = current_time or datetime.now(UTC)
+    stats_by_skill: dict[str, dict[str, Any]] = {}
+    for summary in summarize_evaluation_evidence(records, combine_versions=True):
+        if summary.target.target_type != "skill":
+            continue
+        stats = _stats_from_evidence(summary)
+        _update_freshness(stats, now)
+        stats_by_skill[summary.target.key] = stats
+    return stats_by_skill
 
 
-def _build_store_data(
-    records: list[EvaluationRecord],
-    current_time: datetime,
-) -> dict[str, Any]:
-    data = _default_store_data()
-    ordered = sorted(
-        records,
-        key=lambda record: (_parse_datetime(record.created_at), record.record_id),
-    )
-    for record in ordered:
-        event = _event_from_evaluation_record(record)
-        _record_same_function_followup(data, event)
-        skill_stats = _get_or_create_skill_stats(data, event)
-        _apply_skill_run(skill_stats, event)
-        data["last_skill_by_function_group"][event["function_group"]] = {
-            "skill": event["skill"],
-            "called_at": event["called_at"],
-            "run_id": event["run_id"],
-        }
-    for stats in data["skills"].values():
-        _update_freshness(stats, current_time)
-    return data
-
-
-def _event_from_evaluation_record(record: EvaluationRecord) -> dict[str, Any]:
-    result = record.result
+def _stats_from_evidence(summary: EvaluationEvidenceSummary) -> dict[str, Any]:
     return {
-        "skill": record.target.key,
-        "function_group": record.target.function_group,
-        "called_at": record.created_at,
-        "run_id": record.source.run_id,
-        "input_tokens": result.token_usage.input_tokens,
-        "output_tokens": result.token_usage.output_tokens,
-        "latency_ms": result.latency_ms,
-        "success": result.success,
-        "score": result.score,
-        "error_type": result.error_type,
-        "empty_output": result.token_usage.output_tokens == 0,
+        "skill": summary.target.key,
+        "function_group": summary.target.function_group,
+        "freshness": DEFAULT_SKILL_FRESHNESS,
+        "freshness_updated_at": "",
+        "call_count": summary.sample_count,
+        "success_count": summary.success_count,
+        "error_count": summary.error_count,
+        "empty_output_count": summary.empty_output_count,
+        "success_ewma": summary.score_ewma,
+        "total_input_tokens": summary.total_input_tokens,
+        "total_output_tokens": summary.total_output_tokens,
+        "total_latency_ms": summary.total_latency_ms,
+        "latency_sample_count": summary.latency_sample_count,
+        "same_function_followups": summary.same_function_followups,
+        "same_function_successful_followups": (
+            summary.same_function_successful_followups
+        ),
+        "first_used_at": summary.first_evaluated_at,
+        "last_used_at": summary.last_evaluated_at,
     }
-
-
-def _record_same_function_followup(data: dict[str, Any], event: dict[str, Any]) -> None:
-    previous = data["last_skill_by_function_group"].get(event["function_group"])
-    if not _is_valid_followup(previous, event):
-        return
-    previous_stats = data["skills"].get(previous["skill"])
-    if not isinstance(previous_stats, dict):
-        return
-    previous_stats["same_function_followups"] = int(previous_stats["same_function_followups"]) + 1
-    if bool(event["success"]):
-        previous_stats["same_function_successful_followups"] = (
-            int(previous_stats["same_function_successful_followups"]) + 1
-        )
-
-
-def _apply_skill_run(stats: dict[str, Any], event: dict[str, Any]) -> None:
-    if int(stats["call_count"]) == 0:
-        stats["first_used_at"] = event["called_at"]
-    stats["call_count"] = int(stats["call_count"]) + 1
-    stats["success_count"] = int(stats["success_count"]) + int(bool(event["success"]))
-    stats["error_count"] = int(stats["error_count"]) + int(bool(event["error_type"]))
-    stats["empty_output_count"] = int(stats["empty_output_count"]) + int(
-        bool(event["empty_output"])
-    )
-    stats["total_input_tokens"] = int(stats["total_input_tokens"]) + int(
-        event["input_tokens"]
-    )
-    stats["total_output_tokens"] = int(stats["total_output_tokens"]) + int(
-        event["output_tokens"]
-    )
-    if event["latency_ms"] is not None:
-        stats["total_latency_ms"] = int(stats["total_latency_ms"]) + int(
-            event["latency_ms"]
-        )
-        stats["latency_sample_count"] = int(stats["latency_sample_count"]) + 1
-    stats["last_used_at"] = event["called_at"]
-    stats["success_ewma"] = _update_ewma(
-        float(stats["success_ewma"]),
-        _event_reward(event),
-        int(stats["call_count"]),
-    )
 
 
 def _update_freshness(stats: dict[str, Any], now: datetime) -> None:
@@ -158,72 +107,6 @@ def _reliability_score(stats: dict[str, Any]) -> float:
     empty_rate = int(stats["empty_output_count"]) / call_count
     error_rate = int(stats["error_count"]) / call_count
     return _clamp((success_rate - 0.3 * empty_rate - 0.5 * error_rate) * 100, 0, 100)
-
-
-def _event_reward(event: dict[str, Any]) -> float:
-    if not bool(event["success"]):
-        return 0.0
-    reward = float(event["score"])
-    if bool(event["empty_output"]):
-        reward = min(reward, 0.2)
-    total_tokens = int(event["input_tokens"]) + int(event["output_tokens"])
-    if total_tokens > 12000:
-        reward *= 0.7
-    return _clamp(reward, 0, 1)
-
-
-def _update_ewma(previous: float, value: float, call_count: int) -> float:
-    if call_count <= 1:
-        return value
-    return 0.75 * previous + 0.25 * value
-
-
-def _is_valid_followup(previous: object, event: dict[str, Any]) -> bool:
-    if not isinstance(previous, dict):
-        return False
-    if previous.get("skill") == event["skill"] or previous.get("run_id") == event["run_id"]:
-        return False
-    previous_time = _parse_datetime(str(previous.get("called_at", "")))
-    event_time = _parse_datetime(event["called_at"])
-    elapsed = event_time - previous_time
-    return timedelta(0) <= elapsed <= timedelta(minutes=FOLLOWUP_WINDOW_MINUTES)
-
-
-def _get_or_create_skill_stats(data: dict[str, Any], event: dict[str, Any]) -> dict[str, Any]:
-    skills = data["skills"]
-    if event["skill"] not in skills:
-        skills[event["skill"]] = _new_skill_stats(event["skill"], event["function_group"])
-    return skills[event["skill"]]
-
-
-def _new_skill_stats(skill_name: str, function_group: str) -> dict[str, Any]:
-    return {
-        "skill": skill_name,
-        "function_group": function_group,
-        "freshness": DEFAULT_SKILL_FRESHNESS,
-        "freshness_updated_at": "",
-        "call_count": 0,
-        "success_count": 0,
-        "error_count": 0,
-        "empty_output_count": 0,
-        "success_ewma": 0.0,
-        "total_input_tokens": 0,
-        "total_output_tokens": 0,
-        "total_latency_ms": 0,
-        "latency_sample_count": 0,
-        "same_function_followups": 0,
-        "same_function_successful_followups": 0,
-        "first_used_at": "",
-        "last_used_at": "",
-    }
-
-
-def _default_store_data() -> dict[str, Any]:
-    return {
-        "schema_version": 1,
-        "skills": {},
-        "last_skill_by_function_group": {},
-    }
 
 
 def _parse_datetime(value: str) -> datetime:

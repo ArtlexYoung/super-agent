@@ -387,6 +387,34 @@ class RuntimeStore:
         )
         return self._read_storage_events("evolution", selected_id)
 
+    def append_evolution_schedule_event(
+        self,
+        schedule_id: str,
+        event_type: str,
+        data: dict[str, object],
+        *,
+        event_id: str | None = None,
+    ) -> StorageEvent:
+        return self.backend.append_event(
+            user_id=self.user_id,
+            agent_name=self.agent_name,
+            stream_type="evolution_schedule",
+            stream_id=_required_text(schedule_id, "evolution schedule_id"),
+            event_type=_required_text(event_type, "evolution schedule event_type"),
+            data=dict(data),
+            event_id=event_id,
+        )
+
+    def read_evolution_schedule_events(
+        self,
+        schedule_id: str | None = None,
+    ) -> list[StorageEvent]:
+        selected_id = None if schedule_id is None else _required_text(
+            schedule_id,
+            "evolution schedule_id",
+        )
+        return self._read_storage_events("evolution_schedule", selected_id)
+
     def write_disclosure_text(
         self,
         identity: RunIdentity | None,

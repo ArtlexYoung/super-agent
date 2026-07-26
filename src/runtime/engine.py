@@ -16,6 +16,7 @@ from runtime.evaluation import (
     RunEvaluationRequest,
     estimate_evaluation_token_usage,
 )
+from runtime.evolution.scheduler import AutonomousEvolutionScheduler
 from runtime.identity import LOCAL_USER_ID, RunIdentity
 from runtime.models import AgentRunRequest, RunEvent, RunResult
 from runtime.session import RuntimeSession
@@ -218,6 +219,25 @@ class AgentRuntime:
             ),
             session,
         )
+        self._try_schedule_evolution(session)
+
+    @staticmethod
+    def _try_schedule_evolution(session: RuntimeSession) -> None:
+        try:
+            AutonomousEvolutionScheduler(session.store).review_evolution_targets(
+                session.list_evolution_schedule_targets()
+            )
+        except Exception as error:
+            try:
+                session.record_event(
+                    "evolution.scheduling_failed",
+                    {
+                        "error_type": type(error).__name__,
+                        "message": str(error),
+                    },
+                )
+            except Exception:
+                return
 
     def _try_record_failed_run_evaluation(
         self,

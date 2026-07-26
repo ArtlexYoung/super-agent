@@ -36,6 +36,7 @@ discover -> disclose -> execute -> observe -> evaluate -> evolve
 - The one Skill index prepared for that run.
 - The central progressive-disclosure session.
 - The Skill and Capability evaluation targets actually used.
+- The update ownership and evolution support for those used targets.
 
 This prevents a controller, tool router, evaluator, and runtime lock from describing different Skill trees.
 
@@ -92,7 +93,9 @@ Agent -> Runtime -> Capability contracts
   +-> concrete default Capabilities
 ```
 
-Generic evaluation records belong to `runtime.evaluation`, not to Skill evolution. Skill-specific code converts a Skill into a target-neutral evaluation identity.
+Generic evaluation records belong to `runtime.evaluation`, not to Skill evolution. Skill-specific code converts a Skill into a target-neutral evaluation identity. `runtime.evolution.evidence` is the one aggregation path used by freshness and autonomous scheduling; neither feature maintains a parallel usage store.
+
+`AutonomousEvolutionScheduler` consumes that evidence after standard run evaluation. It writes target-neutral recommendation events through `RuntimeStore`, while Agent coordination maps an accepted recommendation to the existing Skill or Capability candidate manager. Scheduling cannot call promotion or bypass candidate evaluation.
 
 ## Runtime State
 
@@ -106,7 +109,7 @@ RuntimeSession -> RuntimeStore -> StorageBackend
                                   +-> PostgreSQL (optional driver)
 ```
 
-Conversations, runs, evaluations, memory, habits, and disclosure history use one canonical event schema. A backend only appends, queries, and deletes `StorageEvent` records; it does not implement domain behavior. Conversation state, run snapshots, and freshness are derived views, not parallel sources of truth.
+Conversations, runs, evaluations, evolution recommendations, memory, habits, and disclosure history use one canonical event schema. A backend only appends, queries, and deletes `StorageEvent` records; it does not implement domain behavior. Conversation state, run snapshots, freshness, and recommendation state are derived views, not parallel sources of truth.
 
 ## Core Invariants
 
@@ -119,5 +122,6 @@ Conversations, runs, evaluations, memory, habits, and disclosure history use one
 - Every executable Capability comes from the central registry and is locked by exact hash.
 - Canonical evaluation records are append-only.
 - Freshness data is rebuildable and never the source of truth.
+- Evolution recommendations are deterministic and idempotent for unchanged evidence.
 - Evolution cannot bypass candidate validation and evaluation.
 - Internal compatibility shells are intentionally absent during `0.0.x`.
