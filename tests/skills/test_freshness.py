@@ -1,4 +1,3 @@
-import json
 import tempfile
 import unittest
 from datetime import UTC, datetime, timedelta
@@ -8,7 +7,6 @@ from agents.agent import Agent
 from provider.chat import MockProvider
 from runtime.config import AgentConfig
 from runtime.evaluation import (
-    EvaluationRecordStore,
     EvaluationResult,
     EvaluationSource,
     EvaluationTarget,
@@ -17,8 +15,9 @@ from runtime.evaluation import (
     evaluation_record_from_dict,
     evaluation_record_to_dict,
 )
+from runtime.store import create_local_runtime_store
 from skill.disclosure import ProgressiveDisclosureCore
-from skill.freshness import SkillFreshnessStore
+from skill.freshness import calculate_skill_freshness
 from support import write_memory_skill, write_workflow_skill
 
 
@@ -45,7 +44,10 @@ instructions = "SKILL.md"
                 encoding="utf-8",
             )
 
-            disclosure = ProgressiveDisclosureCore([skill_dir.parent], Path(tmp) / "cache")
+            disclosure = ProgressiveDisclosureCore(
+                [skill_dir.parent],
+                create_local_runtime_store(Path(tmp) / "state"),
+            )
             disclosure.prepare_skill_index()
             manifest = disclosure.open_skill("research", "prompt").read_manifest()
 
@@ -73,15 +75,14 @@ instructions = "SKILL.md"
                 created_at=called_at,
             )
 
-            EvaluationRecordStore(root / "evaluations").append_evaluation_records(
-                [run_record, candidate_record]
-            )
+            store = create_local_runtime_store(root)
+            store.append_evaluation_records([run_record, candidate_record])
 
-            stats = SkillFreshnessStore(
-                root / "evaluations",
-                root / "derived",
-            ).read_skill_stats()["prompt:research"]
-            records = EvaluationRecordStore(root / "evaluations").read_evaluation_records()
+            records = store.read_evaluation_records()
+            stats = calculate_skill_freshness(
+                store.read_evaluation_records(source_type="agent_run"),
+                called_at,
+            )["prompt:research"]
             self.assertEqual(1, stats["call_count"])
             self.assertEqual(1, stats["success_count"])
             self.assertEqual("prompt:research", records[0].target.key)
@@ -91,20 +92,25 @@ instructions = "SKILL.md"
     def test_same_function_successful_followup_reduces_previous_skill_freshness(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            records = EvaluationRecordStore(root / "evaluations")
+            store = create_local_runtime_store(root)
             first_time = datetime(2026, 7, 7, 12, tzinfo=UTC)
             second_time = first_time + timedelta(minutes=5)
 
-            records.append_evaluation_records(
+            store.append_evaluation_records(
                 [_skill_evaluation_record("prompt:old-search", "search", first_time)]
             )
-            freshness = SkillFreshnessStore(root / "evaluations", root / "derived")
-            before = freshness.read_skill_stats()["prompt:old-search"]["freshness"]
-            records.append_evaluation_records(
+            before = calculate_skill_freshness(
+                store.read_evaluation_records(source_type="agent_run"),
+                first_time,
+            )["prompt:old-search"]["freshness"]
+            store.append_evaluation_records(
                 [_skill_evaluation_record("prompt:new-search", "search", second_time, run_id="run-2")]
             )
 
-            old_stats = freshness.read_skill_stats()["prompt:old-search"]
+            old_stats = calculate_skill_freshness(
+                store.read_evaluation_records(source_type="agent_run"),
+                second_time,
+            )["prompt:old-search"]
             self.assertEqual(1, old_stats["same_function_followups"])
             self.assertEqual(1, old_stats["same_function_successful_followups"])
             self.assertLess(old_stats["freshness"], before)
@@ -117,7 +123,7 @@ instructions = "SKILL.md"
                 "search",
                 datetime(2026, 7, 7, 12, tzinfo=UTC),
             )
-            store = EvaluationRecordStore(root)
+            store = create_local_runtime_store(root)
 
             store.append_evaluation_records([record])
 
@@ -147,14 +153,16 @@ instructions = "SKILL.md"
 
             result = agent.run("echo hello")
 
-            memory_root = root / ".super-agent" / "memory"
-            stats_path = memory_root / "derived" / "skill_stats.json"
-            stats = json.loads(stats_path.read_text(encoding="utf-8"))
-            self.assertEqual(1, stats["skills"]["prompt:echo"]["call_count"])
-            self.assertGreater(stats["skills"]["prompt:echo"]["freshness"], 70)
-            records = EvaluationRecordStore(
-                memory_root / "evaluations"
-            ).read_evaluation_records()
+            store = agent.runtime.create_store()
+            records = store.read_evaluation_records()
+            stats = calculate_skill_freshness(
+                store.read_evaluation_records(
+                    target_type="skill",
+                    source_type="agent_run",
+                )
+            )
+            self.assertEqual(1, stats["prompt:echo"]["call_count"])
+            self.assertGreater(stats["prompt:echo"]["freshness"], 70)
             skill_keys = {
                 record.target.key for record in records if record.target.target_type == "skill"
             }
@@ -170,8 +178,7 @@ instructions = "SKILL.md"
             self.assertTrue(
                 {
                     "run_controller:adaptive",
-                    "run_recorder:jsonl",
-                    "run_result_evaluator:evaluation-records",
+                    "run_result_evaluator:runtime-evaluation",
                     "skill_executor:memory:event-memory",
                     "skill_executor:prompt:prompt-context",
                     "skill_executor:workflow:tool-loop",
@@ -195,9 +202,9 @@ instructions = "SKILL.md"
             with self.assertRaisesRegex(RuntimeError, "provider unavailable"):
                 agent.run("echo hello")
 
-            records = EvaluationRecordStore(
-                root / ".super-agent" / "memory" / "evaluations"
-            ).read_evaluation_records(source_type="agent_run")
+            records = agent.runtime.create_store().read_evaluation_records(
+                source_type="agent_run"
+            )
             self.assertTrue(records)
             self.assertTrue(all(not record.result.success for record in records))
             self.assertTrue(
@@ -278,7 +285,10 @@ model = "unit-test"
 
 [paths]
 skills = ["skills"]
-memory = ".super-agent/memory"
+
+[storage]
+backend = "jsonl"
+path = ".super-agent"
 """.strip(),
         encoding="utf-8",
     )

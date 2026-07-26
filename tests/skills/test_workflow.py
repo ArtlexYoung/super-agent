@@ -93,7 +93,10 @@ model = "unit-test"
 
 [paths]
 skills = ["skills"]
-memory = ".super-agent/memory"
+
+[storage]
+backend = "jsonl"
+path = ".super-agent"
 """.strip(),
         encoding="utf-8",
     )

@@ -1,3 +1,5 @@
+"""The single lifecycle owner for an Agent run."""
+
 from __future__ import annotations
 
 from time import perf_counter
@@ -12,11 +14,12 @@ from runtime.evaluation import (
     RunEvaluationRequest,
     estimate_evaluation_token_usage,
 )
-from runtime.events import RunContext, RunEvent
-from runtime.models import AgentRunRequest, RunResult
+from runtime.identity import LOCAL_USER_ID, RunIdentity
+from runtime.models import AgentRunRequest, RunEvent, RunResult
 from runtime.session import RuntimeSession
-from runtime.snapshots import RunSnapshotSession, RunSnapshotStore
-from runtime.state import RuntimeStatePaths
+from runtime.storage import StorageBackend
+from runtime.store import RuntimeStore
+from skill.disclosure import SkillIndex
 
 
 class AgentRuntime:
@@ -25,45 +28,46 @@ class AgentRuntime:
         config: AgentConfig,
         provider: ChatProvider,
         capabilities: AgentCapabilitySet,
+        storage: StorageBackend,
     ) -> None:
         self.config = config
         self.provider = provider
         self.capabilities = capabilities
+        self.storage = storage
 
     def run_agent(
         self,
         request: AgentRunRequest,
-        run_context: RunContext | None = None,
+        *,
+        user_id: str = LOCAL_USER_ID,
+        conversation_id: str | None = None,
+        parent_run_id: str | None = None,
+        event_listener: Callable[[RunEvent], None] | None = None,
     ) -> RunResult:
-        session = self._create_runtime_session(request.prompt, run_context)
-        snapshot: RunSnapshotSession | None = None
+        session = self._create_runtime_session(
+            user_id=user_id,
+            conversation_id=conversation_id,
+            parent_run_id=parent_run_id,
+            event_listener=event_listener,
+        )
+        session.store.start_run(session.identity, request.prompt)
         evaluation_attempted = False
         started_at = perf_counter()
         try:
-            snapshot = RunSnapshotStore(session.state_paths.runs).start_run(
-                session.run_context,
-                prompt=request.prompt,
-            )
-            self._prepare_skill_disclosure(session, snapshot)
+            self._prepare_skill_disclosure(session)
             result = self._run_with_controller(request, session)
             evaluation_attempted = True
             self._record_run_evaluation(
                 session,
-                EvaluationSource(
-                    source_type="agent_run",
-                    run_id=session.run_context.run_id,
-                ),
+                EvaluationSource(source_type="agent_run", run_id=session.run_id),
                 _create_run_evaluation_result(request.prompt, result.text, started_at),
             )
-            session.run_context.record_event(
-                "run.completed",
-                {
-                    "workflow": result.workflow,
-                    "skills": result.skills,
-                    "stop_reason": result.stop_reason,
-                },
+            session.store.finish_run(
+                session.identity,
+                workflow=result.workflow,
+                used_skills=result.skills,
+                stop_reason=result.stop_reason,
             )
-            snapshot.record_run_completed(result)
             return result
         except Exception as error:
             if not evaluation_attempted:
@@ -71,57 +75,76 @@ class AgentRuntime:
                     session,
                     request.prompt,
                     started_at,
-                    error=error,
+                    error,
                 )
-            session.run_context.record_event(
-                "run.failed",
-                {"error_type": type(error).__name__, "message": str(error)},
-            )
-            if snapshot is not None:
-                try:
-                    snapshot.record_run_failed(error)
-                except Exception as snapshot_error:
-                    session.run_context.record_event(
-                        "runtime.snapshot.failed",
-                        {
-                            "error_type": type(snapshot_error).__name__,
-                            "message": str(snapshot_error),
-                        },
-                    )
+            session.store.fail_run(session.identity, error)
             raise
+
+    def create_skill_updater(self, user_id: str = LOCAL_USER_ID) -> object:
+        store = RuntimeStore(
+            self.storage,
+            self.config.storage.path,
+            user_id,
+            self.config.agent.name,
+        )
+        return self.capabilities.skill_updater.create_skill_updater(
+            self.config,
+            self.provider,
+            store,
+        )
+
+    def create_store(self, user_id: str = LOCAL_USER_ID) -> RuntimeStore:
+        return RuntimeStore(
+            self.storage,
+            self.config.storage.path,
+            user_id,
+            self.config.agent.name,
+        )
 
     def _create_runtime_session(
         self,
-        prompt: str,
-        run_context: RunContext | None,
+        *,
+        user_id: str,
+        conversation_id: str | None,
+        parent_run_id: str | None,
+        event_listener: Callable[[RunEvent], None] | None,
     ) -> RuntimeSession:
-        state_paths = RuntimeStatePaths.from_root(self.config.paths.memory)
-        context = run_context or self.start_run_context(prompt)
-        session = RuntimeSession(
+        identity = RunIdentity.create(
+            user_id,
+            self.config.agent.name,
+            conversation_id=conversation_id,
+            parent_run_id=parent_run_id,
+        )
+        store = RuntimeStore(
+            self.storage,
+            self.config.storage.path,
+            identity.user_id,
+            identity.agent_name,
+            event_listener,
+        )
+        return RuntimeSession(
             config=self.config,
             provider=self.provider,
             capabilities=self.capabilities,
-            run_context=context,
-            state_paths=state_paths,
+            identity=identity,
+            store=store,
         )
-        session.record_capability_used("run_recorder", self.capabilities.run_recorder)
-        return session
 
-    def _prepare_skill_disclosure(
-        self,
-        session: RuntimeSession,
-        snapshot: RunSnapshotSession,
-    ) -> None:
+    def _prepare_skill_disclosure(self, session: RuntimeSession) -> None:
         capability = self.capabilities.skill_disclosure
         session.record_capability_used("skill_disclosure", capability)
         disclosure = capability.create_skill_disclosure(session)
         skill_index = disclosure.prepare_skill_index()
         session.set_skill_disclosure(disclosure, skill_index)
-        snapshot.record_skill_index(
-            skill_index,
-            self.config,
-            self.capabilities,
-            self.provider,
+        session.store.save_runtime_lock(
+            session.identity,
+            _runtime_lock_to_dict(
+                self.config,
+                self.capabilities,
+                skill_index,
+                self.provider,
+                self.storage,
+            ),
         )
 
     def _run_with_controller(
@@ -138,17 +161,15 @@ class AgentRuntime:
         source: EvaluationSource,
         result: EvaluationResult,
     ) -> None:
-        session.record_capability_used(
-            "run_result_evaluator",
-            self.capabilities.run_result_evaluator,
-        )
-        self.capabilities.run_result_evaluator.record_run_evaluation(
+        evaluator = self.capabilities.run_result_evaluator
+        session.record_capability_used("run_result_evaluator", evaluator)
+        evaluator.record_run_evaluation(
             RunEvaluationRequest(
                 targets=session.list_evaluation_targets(),
                 source=source,
                 result=result,
-                state_paths=session.state_paths,
-            )
+            ),
+            session,
         )
 
     def _try_record_failed_run_evaluation(
@@ -156,16 +177,12 @@ class AgentRuntime:
         session: RuntimeSession,
         prompt: str,
         started_at: float,
-        *,
         error: Exception,
     ) -> None:
         try:
             self._record_run_evaluation(
                 session,
-                EvaluationSource(
-                    source_type="agent_run",
-                    run_id=session.run_context.run_id,
-                ),
+                EvaluationSource(source_type="agent_run", run_id=session.run_id),
                 _create_run_evaluation_result(
                     prompt,
                     "",
@@ -174,34 +191,13 @@ class AgentRuntime:
                 ),
             )
         except Exception as evaluation_error:
-            session.run_context.record_event(
+            session.record_event(
                 "evaluation.failed",
                 {
                     "error_type": type(evaluation_error).__name__,
                     "message": str(evaluation_error),
                 },
             )
-
-    def start_run_context(
-        self,
-        prompt: str,
-        parent_run_id: str | None = None,
-        event_listener: Callable[[RunEvent], None] | None = None,
-    ) -> RunContext:
-        return self.capabilities.run_recorder.start_agent_run(
-            self.config,
-            prompt,
-            state_paths=RuntimeStatePaths.from_root(self.config.paths.memory),
-            parent_run_id=parent_run_id,
-            event_listener=event_listener,
-        )
-
-    def create_skill_updater(self) -> object:
-        return self.capabilities.skill_updater.create_skill_updater(
-            self.config,
-            self.provider,
-            RuntimeStatePaths.from_root(self.config.paths.memory),
-        )
 
 
 def _create_run_evaluation_result(
@@ -220,3 +216,68 @@ def _create_run_evaluation_result(
         error_type="" if error is None else type(error).__name__,
         checks=["pass:run_completed" if success else "fail:run_completed"],
     )
+
+
+def _runtime_lock_to_dict(
+    config: AgentConfig,
+    capabilities: AgentCapabilitySet,
+    skill_index: SkillIndex,
+    provider: ChatProvider,
+    storage: StorageBackend,
+) -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "agent": {
+            "name": config.agent.name,
+            "system": config.agent.system,
+            "workflow": config.agent.workflow,
+            "memory": config.agent.memory,
+            "skills": list(config.agent.skills),
+            "max_agent_chain_depth": config.agent.max_agent_chain_depth,
+            "use_features": list(config.agent.use_features),
+            "disable_names": list(config.agent.disable_names),
+        },
+        "model": {
+            "provider": config.model.provider,
+            "model": config.model.model,
+            "base_url": config.model.base_url,
+            "api_key_env": config.model.api_key_env,
+            "adapter": f"{type(provider).__module__}.{type(provider).__qualname__}",
+        },
+        "storage": {"backend": storage.name},
+        "capabilities": _capability_versions(capabilities),
+        "skills": [
+            {
+                "key": entry.reference.key,
+                "name": entry.reference.name,
+                "capability": entry.reference.capability,
+                "version": entry.version,
+                "content_sha256": entry.content_sha256,
+                "provides": list(entry.provides),
+                "requires": list(entry.requires),
+            }
+            for entry in skill_index.entries
+        ],
+    }
+
+
+def _capability_versions(capabilities: AgentCapabilitySet) -> list[dict[str, str]]:
+    values = [
+        _capability_version("run_controller", capabilities.run_controller),
+        _capability_version("skill_disclosure", capabilities.skill_disclosure),
+        _capability_version("run_result_evaluator", capabilities.run_result_evaluator),
+        _capability_version("skill_updater", capabilities.skill_updater),
+    ]
+    values.extend(
+        _capability_version(f"skill_executor:{name}", executor)
+        for name, executor in sorted(capabilities.skill_executors.items())
+    )
+    return values
+
+
+def _capability_version(slot: str, capability: object) -> dict[str, str]:
+    return {
+        "slot": slot,
+        "name": str(getattr(capability, "name")),
+        "version": str(getattr(capability, "version")),
+    }

@@ -6,7 +6,7 @@ from pathlib import Path
 
 from agents.agent import Agent
 from runtime.config import AgentConfig
-from runtime.state import RuntimeStatePaths
+from runtime.store import create_local_runtime_store
 from provider.chat import MockProvider
 from capability.skill_executors import create_builtin_skill_executors, load_skill_for_model_context
 from skill.disclosure import ProgressiveDisclosureCore
@@ -55,7 +55,7 @@ class McpSkillTests(unittest.TestCase):
                 disclosure,
                 selected[0],
                 create_builtin_skill_executors(),
-                state_paths=RuntimeStatePaths.from_root(root / "memory"),
+                disclosure.store,
             )
 
             self.assertEqual("filesystem", skill.manifest.name)
@@ -81,7 +81,7 @@ class McpSkillTests(unittest.TestCase):
                 disclosure,
                 disclosure.prepare_skill_index().require_skill("github", "mcp").reference,
                 create_builtin_skill_executors(),
-                state_paths=RuntimeStatePaths.from_root(root / "memory"),
+                disclosure.store,
             )
 
             self.assertIn("Environment variables: GITHUB_TOKEN", skill.instructions)
@@ -134,8 +134,10 @@ instructions = "SKILL.md"
             write_memory_skill(root)
             _write_skill(root, "echo", "Echo helper", "Use echo skill.")
             _write_mcp_server(root, "github", "GitHub MCP", "npx", ["-y", "@mcp/server-github"])
-            memory_dir = root / ".super-agent" / "memory"
-            MiniMemory(memory_dir).add_memory_item("Keep answers short.")
+            memory = MiniMemory(
+                create_local_runtime_store(root / ".super-agent", agent_name="demo")
+            )
+            memory.add_memory_item("Keep answers short.")
             config_path = _write_agent_config(
                 root,
                 skills=["echo", "github"],
@@ -150,7 +152,7 @@ instructions = "SKILL.md"
             self.assertNotIn("Keep answers short.", system_prompt)
             self.assertNotIn("Use echo skill.", system_prompt)
             self.assertNotIn("GitHub MCP", system_prompt)
-            self.assertFalse((memory_dir / "habits.json").exists())
+            self.assertEqual(0, memory.usage_habits.read_usage_habits()["total_runs"])
 
 
 def _write_mcp_server(
@@ -239,7 +241,10 @@ model = "unit-test"
 
 [paths]
 skills = ["skills"]
-memory = ".super-agent/memory"
+
+[storage]
+backend = "jsonl"
+path = ".super-agent"
 """.strip(),
         encoding="utf-8",
     )
@@ -295,6 +300,9 @@ for line in sys.stdin:
 
 
 def _prepare_disclosure(root: Path) -> ProgressiveDisclosureCore:
-    disclosure = ProgressiveDisclosureCore([root / "skills"], root / "cache")
+    disclosure = ProgressiveDisclosureCore(
+        [root / "skills"],
+        create_local_runtime_store(root / "state"),
+    )
     disclosure.prepare_skill_index()
     return disclosure

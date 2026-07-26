@@ -92,15 +92,15 @@ super-agent skills lock --config agent.toml --name research --output skill.lock
 Default cache layout:
 
 ```text
-.super-agent/memory/disclosure/
+.super-agent/users/<user-hash>/agents/<agent-hash>/cache/
   index.json
-  history.jsonl
+  history.json
   skills/<capability>/<name>/manifest.json
   skills/<capability>/<name>/instructions.md
   skills/<capability>/<name>/configuration.json
 ```
 
-The model may call `read_disclosed_content` with a cache path already present in the index. Cache paths stay stable, content SHA-256 determines cache hits, and every disclosure appends a history event.
+The model may call `read_disclosed_content` with a cache path already present in the index. Cache paths stay stable, content SHA-256 determines cache hits, and every disclosure appends a canonical storage event. `history.json` is a rebuildable model-readable view of those events.
 
 Core methods:
 

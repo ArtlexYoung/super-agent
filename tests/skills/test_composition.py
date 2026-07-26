@@ -6,6 +6,7 @@ from pathlib import Path
 
 from agents.agent import Agent
 from runtime.config import AgentConfig
+from runtime.store import create_local_runtime_store
 from provider.chat import MockProvider
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.ecosystem.lock import write_skill_lock_file
@@ -122,7 +123,10 @@ model = "unit-test"
 
 [paths]
 skills = ["skills"]
-memory = ".super-agent/memory"
+
+[storage]
+backend = "jsonl"
+path = ".super-agent"
 """.strip(),
                 encoding="utf-8",
             )
@@ -131,9 +135,7 @@ memory = ".super-agent/memory"
             result = agent.run("build an unrelated output")
 
             self.assertEqual({"report", "research", "transport"}, set(result.skills))
-            index = json.loads(
-                (root / ".super-agent" / "memory" / "disclosure" / "index.json").read_text()
-            )
+            index = json.loads(agent.runtime.create_store().cache_root.joinpath("index.json").read_text())
             indexed = {item["name"]: item for item in index["skills"]}
             self.assertEqual(["facts"], indexed["research"]["provides"])
             self.assertEqual(["http"], indexed["research"]["requires"])
@@ -175,5 +177,8 @@ def _toml_array(values: list[str]) -> str:
 
 
 def _prepare_disclosure(root: Path):
-    disclosure = ProgressiveDisclosureCore([root], root / ".disclosure-cache")
+    disclosure = ProgressiveDisclosureCore(
+        [root],
+        create_local_runtime_store(root / ".runtime-state"),
+    )
     return disclosure, disclosure.prepare_skill_index()

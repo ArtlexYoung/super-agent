@@ -1,19 +1,19 @@
-from __future__ import annotations
+"""Built-in capability mechanisms selected by a zero-configuration Agent."""
 
-from typing import Callable
+from __future__ import annotations
 
 from capability.contracts import AgentCapabilitySet
 from capability.run_controller import DefaultRunController
 from capability.skill_executors import create_builtin_skill_executors
 from provider.chat import ChatProvider
 from runtime.config import AgentConfig
-from runtime.evaluation import EvaluationRecordStore, RunEvaluationRequest, create_evaluation_record
-from runtime.events import RunContext, RunEvent, RunTraceStore
+from runtime.evaluation import RunEvaluationRequest, create_evaluation_record
+from runtime.identity import LOCAL_USER_ID, RunIdentity
 from runtime.session import RuntimeSession
-from runtime.state import RuntimeStatePaths
+from runtime.storage import StorageBackend, create_storage_backend
+from runtime.store import RuntimeStore
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.evolution.manager import SkillEvolutionManager
-from skill.freshness import SkillFreshnessStore
 
 
 class ProgressiveSkillDisclosureCapability:
@@ -26,25 +26,26 @@ class ProgressiveSkillDisclosureCapability:
     ) -> ProgressiveDisclosureCore:
         return _create_progressive_skill_disclosure(
             session.config,
-            session.state_paths,
-            session.run_context,
+            session.store,
+            session.identity,
         )
 
 
-class JsonlRunResultEvaluator:
-    name = "evaluation-records"
+class RuntimeRunResultEvaluator:
+    name = "runtime-evaluation"
     version = "1"
 
-    def record_run_evaluation(self, request: RunEvaluationRequest) -> None:
-        records = [
-            create_evaluation_record(target, request.source, request.result)
-            for target in request.targets
-        ]
-        EvaluationRecordStore(request.state_paths.evaluations).append_evaluation_records(records)
-        SkillFreshnessStore(
-            request.state_paths.evaluations,
-            request.state_paths.derived,
-        ).read_skill_stats()
+    def record_run_evaluation(
+        self,
+        request: RunEvaluationRequest,
+        session: RuntimeSession,
+    ) -> None:
+        session.store.append_evaluation_records(
+            [
+                create_evaluation_record(target, request.source, request.result)
+                for target in request.targets
+            ]
+        )
 
 
 class EvaluatedSkillUpdaterCapability:
@@ -55,37 +56,15 @@ class EvaluatedSkillUpdaterCapability:
         self,
         config: AgentConfig,
         provider: ChatProvider,
-        state_paths: RuntimeStatePaths,
+        store: RuntimeStore,
     ) -> SkillEvolutionManager:
         if not config.paths.skills:
             raise ValueError("agent has no skill path configured")
         return SkillEvolutionManager(
             config=config,
-            skill_disclosure=_create_progressive_skill_disclosure(config, state_paths),
-            state_paths=state_paths,
+            skill_disclosure=_create_progressive_skill_disclosure(config, store),
+            store=store,
             provider=provider,
-        )
-
-
-class JsonlRunRecorder:
-    name = "jsonl"
-    version = "1"
-
-    def start_agent_run(
-        self,
-        config: AgentConfig,
-        prompt: str,
-        *,
-        state_paths: RuntimeStatePaths,
-        parent_run_id: str | None = None,
-        event_listener: Callable[[RunEvent], None] | None = None,
-    ) -> RunContext:
-        store = RunTraceStore(state_paths.runs)
-        return store.start_run(
-            config.agent.name,
-            prompt,
-            parent_run_id=parent_run_id,
-            event_listener=event_listener,
         )
 
 
@@ -98,38 +77,44 @@ def create_default_capability_set(
         run_controller=DefaultRunController(),
         skill_disclosure=ProgressiveSkillDisclosureCapability(),
         skill_executors=create_builtin_skill_executors(),
-        run_result_evaluator=JsonlRunResultEvaluator(),
+        run_result_evaluator=RuntimeRunResultEvaluator(),
         skill_updater=EvaluatedSkillUpdaterCapability(),
-        run_recorder=JsonlRunRecorder(),
     )
 
 
 def create_default_skill_disclosure(
     config: AgentConfig,
-    run_context: RunContext | None = None,
+    *,
+    store: RuntimeStore | None = None,
+    storage: StorageBackend | None = None,
+    user_id: str = LOCAL_USER_ID,
 ) -> ProgressiveDisclosureCore:
-    return _create_progressive_skill_disclosure(
-        config,
-        RuntimeStatePaths.from_root(config.paths.memory),
-        run_context,
-    )
+    selected_store = store
+    if selected_store is None:
+        selected_storage = storage or create_storage_backend(
+            config.storage.backend,
+            str(config.storage.path),
+        )
+        selected_store = RuntimeStore(
+            selected_storage,
+            config.storage.path,
+            user_id,
+            config.agent.name,
+        )
+    return _create_progressive_skill_disclosure(config, selected_store)
 
 
 def _create_progressive_skill_disclosure(
     config: AgentConfig,
-    state_paths: RuntimeStatePaths,
-    run_context: RunContext | None = None,
+    store: RuntimeStore,
+    identity: RunIdentity | None = None,
 ) -> ProgressiveDisclosureCore:
     roots = config.paths.skills if _skill_feature_is_enabled(config) else []
     return ProgressiveDisclosureCore(
         roots,
-        state_paths.disclosure,
+        store,
         disabled_names=config.agent.disable_names,
-        freshness_store=SkillFreshnessStore(
-            state_paths.evaluations,
-            state_paths.derived,
-        ),
-        run_context=run_context,
+        identity=identity,
     )
 
 

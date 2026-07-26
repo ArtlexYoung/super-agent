@@ -1,36 +1,44 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
 
 from agents.agent import Agent
-from runtime.config import AgentConfig
 from provider.chat import MockProvider
-from runtime.events import RunTraceStore, run_event_from_dict, run_event_to_dict
+from runtime.config import AgentConfig
+from runtime.identity import RunIdentity
+from runtime.storage import JsonlStorage, StorageEventQuery
+from runtime.store import RuntimeStore, create_local_runtime_store
 from support import write_workflow_skill
 
 
-class RunTraceTests(unittest.TestCase):
-    def test_run_context_records_ordered_events(self) -> None:
+class RuntimeStoreTests(unittest.TestCase):
+    def test_runtime_store_records_ordered_run_events(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            store = RunTraceStore(Path(tmp))
+            store = create_local_runtime_store(Path(tmp), agent_name="main")
+            identity = RunIdentity.create("local", "main")
 
-            context = store.start_run("main", "hello")
-            context.record_event("skills.selected", {"names": ["echo"]})
+            store.start_run(identity, "hello")
+            store.append_run_event(identity, "skills.selected", {"names": ["echo"]})
 
-            events = store.read_run_events(context.run_id)
+            events = store.read_run_events(identity.run_id)
             self.assertEqual([1, 2], [event.sequence for event in events])
             self.assertEqual(["run.started", "skills.selected"], [event.event_type for event in events])
-            self.assertEqual(1, events[0].schema_version)
             self.assertEqual("hello", events[0].data["prompt"])
 
-    def test_child_run_keeps_parent_run_id(self) -> None:
+    def test_child_run_keeps_parent_run_id_across_agent_stores(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            store = RunTraceStore(Path(tmp))
-            parent = store.start_run("main", "parent")
+            root = Path(tmp)
+            backend = JsonlStorage(root)
+            parent_store = RuntimeStore(backend, root, "local", "main")
+            parent = RunIdentity.create("local", "main")
+            parent_store.start_run(parent, "parent")
+            child_store = RuntimeStore(backend, root, "local", "worker")
+            child = RunIdentity.create("local", "worker", parent_run_id=parent.run_id)
 
-            child = store.start_run("worker", "child", parent_run_id=parent.run_id)
+            child_store.start_run(child, "child")
 
-            event = store.read_run_events(child.run_id)[0]
+            event = child_store.read_run_events(child.run_id)[0]
             self.assertEqual(parent.run_id, child.parent_run_id)
             self.assertEqual(parent.run_id, event.parent_run_id)
 
@@ -41,7 +49,7 @@ class RunTraceTests(unittest.TestCase):
 
             result = agent.run("hello")
 
-            events = RunTraceStore(root / ".super-agent" / "memory" / "runs").read_run_events(result.run_id)
+            events = agent.runtime.create_store().read_run_events(result.run_id)
             self.assertEqual("completed", result.stop_reason)
             event_types = [event.event_type for event in events]
             self.assertEqual("run.started", event_types[0])
@@ -64,16 +72,17 @@ class RunTraceTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "provider failed"):
                 agent.run("hello")
 
-            run_ids = RunTraceStore(root / ".super-agent" / "memory" / "runs").list_run_ids()
-            events = RunTraceStore(root / ".super-agent" / "memory" / "runs").read_run_events(run_ids[0])
+            runs = agent.runtime.create_store().list_runs()
+            events = agent.runtime.create_store().read_run_events(runs[0].run_id)
             self.assertEqual("run.failed", events[-1].event_type)
             self.assertEqual("RuntimeError", events[-1].data["error_type"])
 
-    def test_public_module_exports_runtime_api(self) -> None:
+    def test_public_module_exports_central_storage_api(self) -> None:
         import super_agent
 
         self.assertIs(Agent, super_agent.Agent)
-        self.assertIs(RunTraceStore, super_agent.RunTraceStore)
+        self.assertIs(RuntimeStore, super_agent.RuntimeStore)
+        self.assertIs(JsonlStorage, super_agent.JsonlStorage)
 
     def test_agent_includes_conversation_messages_before_latest_prompt(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -94,38 +103,43 @@ class RunTraceTests(unittest.TestCase):
             )
             self.assertEqual("latest question", provider.last_messages[-1]["content"])
 
-    def test_run_event_serializer_round_trips_exact_schema_v1(self) -> None:
+    def test_jsonl_storage_round_trips_canonical_event_schema(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            event = RunTraceStore(Path(tmp)).start_run("main", "hello").record_event(
-                "custom.event", {"value": 1}
+            storage = JsonlStorage(tmp)
+            stored = storage.append_event(
+                user_id="user-1",
+                agent_name="main",
+                stream_type="custom",
+                stream_id="stream-1",
+                event_type="custom.event",
+                data={"value": 1},
             )
 
-            data = run_event_to_dict(event)
-            restored = run_event_from_dict(data)
+            loaded = storage.read_events(StorageEventQuery(user_id="user-1"))
 
-            self.assertEqual(
-                {
-                    "schema_version",
-                    "run_id",
-                    "sequence",
-                    "event_type",
-                    "created_at",
-                    "agent_name",
-                    "parent_run_id",
-                    "data",
-                },
-                set(data),
-            )
-            self.assertEqual(event, restored)
+            self.assertEqual([stored], loaded)
+            payload = json.loads(next(Path(tmp).rglob("events.jsonl")).read_text().strip())
+            self.assertEqual(1, payload["schema_version"])
+            self.assertEqual(set(stored.__dataclass_fields__) | {"schema_version"}, set(payload))
 
-    def test_run_event_rejects_schema_that_requires_migration(self) -> None:
+    def test_jsonl_storage_rejects_schema_that_requires_migration(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            event = RunTraceStore(Path(tmp)).start_run("main", "hello").record_event("custom.event")
-            data = run_event_to_dict(event)
-            data["schema_version"] = 2
+            storage = JsonlStorage(tmp)
+            storage.append_event(
+                user_id="user-1",
+                agent_name="main",
+                stream_type="custom",
+                stream_id="stream-1",
+                event_type="custom.event",
+                data={},
+            )
+            path = next(Path(tmp).rglob("events.jsonl"))
+            payload = json.loads(path.read_text().strip())
+            payload["schema_version"] = 2
+            path.write_text(json.dumps(payload) + "\n", encoding="utf-8")
 
-            with self.assertRaisesRegex(ValueError, "migrate.*run event schema_version 1"):
-                run_event_from_dict(data)
+            with self.assertRaisesRegex(ValueError, "unsupported storage event"):
+                storage.read_events(StorageEventQuery(user_id="user-1"))
 
 
 class _FailingProvider:
@@ -151,7 +165,10 @@ model = "unit-test"
 
 [paths]
 skills = ["skills"]
-memory = ".super-agent/memory"
+
+[storage]
+backend = "jsonl"
+path = ".super-agent"
 """.strip(),
         encoding="utf-8",
     )

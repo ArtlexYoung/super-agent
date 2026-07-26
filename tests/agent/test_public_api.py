@@ -12,28 +12,25 @@ class PublicApiTests(unittest.TestCase):
             "BenchmarkCase",
             "BenchmarkReport",
             "EvaluationRecord",
-            "EvaluationRecordStore",
             "EvaluationResult",
             "EvaluationSource",
             "EvaluationTarget",
             "EvaluationTokenUsage",
+            "JsonlStorage",
+            "LOCAL_USER_ID",
             "ModelResolution",
             "ProgressiveDisclosureCore",
             "RunEvent",
             "RunEvaluationRequest",
+            "RunIdentity",
             "RunSnapshot",
-            "RunSnapshotStore",
             "RuntimeSession",
-            "RuntimeStatePaths",
+            "RuntimeStore",
             "SkillBenchmark",
             "SkillDisclosureCapability",
             "SkillManifest",
             "SkillReference",
             "SkillSelectionDecision",
-            "run_event_from_dict",
-            "run_event_to_dict",
-            "run_snapshot_from_dict",
-            "run_snapshot_to_dict",
             "discover_model_candidates",
             "create_evaluation_record",
             "create_default_skill_disclosure",
@@ -49,8 +46,15 @@ class PublicApiTests(unittest.TestCase):
             self.assertIsNotNone(getattr(super_agent, name))
 
         removed_names = {
+            "EvaluationRecordStore",
+            "RunSnapshotStore",
+            "RuntimeStatePaths",
             "SkillRetrieverCapability",
             "create_default_skill_retriever",
+            "run_event_from_dict",
+            "run_event_to_dict",
+            "run_snapshot_from_dict",
+            "run_snapshot_to_dict",
         }
         self.assertFalse(removed_names & set(super_agent.__all__))
         for name in removed_names:
@@ -66,3 +70,7 @@ class PublicApiTests(unittest.TestCase):
             )
             with self.assertRaisesRegex(ValueError, f"unknown provider: {provider}"):
                 create_chat_provider(settings)
+            "StorageBackend",
+            "StorageEvent",
+            "StorageEventQuery",
+            "StorageSettings",

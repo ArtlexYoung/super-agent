@@ -50,7 +50,9 @@ class SkillKindArchitectureTests(unittest.TestCase):
         self.assertNotIn("skill.evolution", contracts_source)
         self.assertTrue(Path("src/runtime/evaluation.py").is_file())
         self.assertTrue(Path("src/runtime/session.py").is_file())
-        self.assertTrue(Path("src/runtime/state.py").is_file())
+        self.assertTrue(Path("src/runtime/store.py").is_file())
+        self.assertTrue(Path("src/runtime/storage/contracts.py").is_file())
+        self.assertFalse(Path("src/runtime/state.py").exists())
 
     def test_kind_implementations_stay_inside_skill_package(self) -> None:
         for path in ["src/mcp.py", "src/memory.py", "src/workflow.py", "src/mcp", "src/memory", "src/workflow"]:

@@ -4,7 +4,37 @@ from dataclasses import dataclass
 from typing import Callable
 
 from provider.chat import Message
-from runtime.events import RunContext
+
+
+@dataclass(frozen=True)
+class RunEvent:
+    run_id: str
+    sequence: int
+    event_type: str
+    created_at: str
+    agent_name: str
+    parent_run_id: str | None
+    data: dict[str, object]
+
+
+@dataclass(frozen=True)
+class RunSnapshot:
+    run_id: str
+    user_id: str
+    conversation_id: str | None
+    agent_name: str
+    parent_run_id: str | None
+    status: str
+    prompt: str
+    started_at: str
+    finished_at: str | None
+    event_count: int
+    last_event_type: str
+    runtime_lock_sha256: str | None
+    workflow: str | None
+    used_skills: list[str]
+    stop_reason: str | None
+    error: dict[str, str] | None
 
 
 @dataclass(frozen=True)
@@ -32,8 +62,8 @@ class SubAgentResult:
 @dataclass(frozen=True)
 class SubagentCallbacks:
     list_subagents: Callable[[], list[dict[str, object]]]
-    run_matching_subagents: Callable[[str, RunContext], list[SubAgentResult]]
-    run_named_subagent: Callable[[str, str, RunContext], dict[str, object]]
+    run_matching_subagents: Callable[[str, object], list[SubAgentResult]]
+    run_named_subagent: Callable[[str, str, object], dict[str, object]]
 
 
 @dataclass(frozen=True)

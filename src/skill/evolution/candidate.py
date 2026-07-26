@@ -9,6 +9,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from provider.chat import ChatProvider, Message
+from runtime.store import RuntimeStore
 from skill.disclosure import ProgressiveDisclosureCore, SkillDisclosure
 from skill.manifest import SKILL_SCHEMA_VERSION, SkillManifest, calculate_skill_directory_sha256
 
@@ -74,7 +75,7 @@ def create_candidate(
         instructions=proposed_instructions,
         version=proposed_version,
     )
-    _validate_candidate_skill(skill_path)
+    _validate_candidate_skill(skill_path, skill_disclosure.store)
     candidate = SkillCandidate(
         candidate_id=candidate_id,
         name=skill_name,
@@ -252,10 +253,10 @@ def _set_manifest_version(path: Path, version: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
-def _validate_candidate_skill(skill_path: Path) -> None:
+def _validate_candidate_skill(skill_path: Path, store: RuntimeStore) -> None:
     disclosure = ProgressiveDisclosureCore(
         [skill_path],
-        skill_path.parent / ".candidate-validation-cache",
+        store,
     )
     index = disclosure.prepare_skill_index()
     if len(index.entries) != 1:

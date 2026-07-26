@@ -7,9 +7,9 @@ from provider.chat import ToolCall
 from provider.chat import MockProvider
 from capability.tool_router import RuntimeToolRouter, ToolRouterContext
 from runtime.config import AgentConfig
-from runtime.events import RunTraceStore
+from runtime.identity import RunIdentity
 from runtime.session import RuntimeSession
-from runtime.state import RuntimeStatePaths
+from runtime.store import create_local_runtime_store
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.kinds.memory import MiniMemory
 
@@ -19,10 +19,10 @@ class SkillToolsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_prompt_skill(root, "research")
-            context = RunTraceStore(root / "runs").start_run("main", "question")
-            disclosure = _create_disclosure(root, context)
+            session = _create_session(root)
+            disclosure = _create_disclosure(root, session)
             index = disclosure.prepare_skill_index()
-            tools = _create_tool_router(root, disclosure, index, context)
+            tools = _create_tool_router(disclosure, index, session)
 
             listed = tools.run_tool_call(ToolCall("call-1", "list_skills", {}))
             read = tools.run_tool_call(
@@ -36,7 +36,7 @@ class SkillToolsTests(unittest.TestCase):
             self.assertEqual("research", listed["skills"][0]["name"])
             self.assertEqual("Research carefully.", read["instructions"])
             self.assertEqual(["research"], [skill.manifest.name for skill in tools.used_skills])
-            event_types = [event.event_type for event in context.store.read_run_events(context.run_id)]
+            event_types = [event.event_type for event in session.store.read_run_events(session.run_id)]
             self.assertIn("tool.requested", event_types)
             self.assertIn("tool.completed", event_types)
             self.assertIn("skill.disclosed", event_types)
@@ -45,11 +45,11 @@ class SkillToolsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_prompt_skill(root, "research")
-            context = RunTraceStore(root / "runs").start_run("main", "question")
-            disclosure = _create_disclosure(root, context)
+            session = _create_session(root)
+            disclosure = _create_disclosure(root, session)
             index = disclosure.prepare_skill_index()
             cached = disclosure.open_skill("research", "prompt").read_instructions()
-            tools = _create_tool_router(root, disclosure, index, context)
+            tools = _create_tool_router(disclosure, index, session)
 
             tools.run_tool_call(
                 ToolCall(
@@ -65,24 +65,24 @@ class SkillToolsTests(unittest.TestCase):
     def test_unknown_builtin_tool_fails_with_trace_event(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            disclosure = _create_disclosure(root)
+            session = _create_session(root)
+            disclosure = _create_disclosure(root, session)
             index = disclosure.prepare_skill_index()
-            context = RunTraceStore(root / "runs").start_run("main", "question")
-            tools = _create_tool_router(root, disclosure, index, context)
+            tools = _create_tool_router(disclosure, index, session)
 
             with self.assertRaisesRegex(KeyError, "unknown runtime tool"):
                 tools.run_tool_call(ToolCall("bad", "unknown", {}))
 
-            self.assertEqual("tool.failed", context.store.read_run_events(context.run_id)[-1].event_type)
+            self.assertEqual("tool.failed", session.store.read_run_events(session.run_id)[-1].event_type)
 
     def test_model_can_add_recall_and_forget_memory_with_runtime_tools(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            disclosure = _create_disclosure(root)
+            session = _create_session(root)
+            disclosure = _create_disclosure(root, session)
             index = disclosure.prepare_skill_index()
-            context = RunTraceStore(root / "runs").start_run("main", "question")
-            memory = MiniMemory(root / "memory")
-            tools = _create_tool_router(root, disclosure, index, context, memory)
+            memory = MiniMemory(session.store, session.identity)
+            tools = _create_tool_router(disclosure, index, session, memory)
 
             definitions = {item["function"]["name"] for item in tools.get_tool_definitions()}
             added = tools.run_tool_call(
@@ -101,7 +101,7 @@ class SkillToolsTests(unittest.TestCase):
             )
             self.assertEqual("Remember Python.", recalled["items"][0]["text"])
             self.assertEqual([], memory.list_memory_items())
-            self.assertEqual(context.run_id, added["item"]["source_run_id"])
+            self.assertEqual(session.run_id, added["item"]["source_run_id"])
 
 
 def _write_prompt_skill(root: Path, name: str) -> None:
@@ -124,34 +124,39 @@ instructions = "SKILL.md"
     (skill_dir / "SKILL.md").write_text("Research carefully.", encoding="utf-8")
 
 
-def _create_disclosure(root: Path, run_context=None) -> ProgressiveDisclosureCore:
+def _create_disclosure(root: Path, session: RuntimeSession) -> ProgressiveDisclosureCore:
     return ProgressiveDisclosureCore(
         [root / "skills"],
-        root / "cache",
-        run_context=run_context,
+        session.store,
+        identity=session.identity,
     )
 
 
 def _create_tool_router(
-    root: Path,
     disclosure: ProgressiveDisclosureCore,
     index,
-    context,
+    session: RuntimeSession,
     memory: MiniMemory | None = None,
 ) -> RuntimeToolRouter:
-    config = AgentConfig.create_default(root)
-    provider = MockProvider()
-    session = RuntimeSession(
-        config=config,
-        provider=provider,
-        capabilities=create_default_capability_set(config, provider),
-        run_context=context,
-        state_paths=RuntimeStatePaths.from_root(root / "memory"),
-    )
     session.set_skill_disclosure(disclosure, index)
     return RuntimeToolRouter(
         ToolRouterContext(
             session=session,
             memory=memory,
         )
+    )
+
+
+def _create_session(root: Path) -> RuntimeSession:
+    config = AgentConfig.create_default(root)
+    provider = MockProvider()
+    identity = RunIdentity.create("local", config.agent.name)
+    store = create_local_runtime_store(root / "state", agent_name=config.agent.name)
+    store.start_run(identity, "question")
+    return RuntimeSession(
+        config=config,
+        provider=provider,
+        capabilities=create_default_capability_set(config, provider),
+        identity=identity,
+        store=store,
     )

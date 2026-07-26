@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import argparse
 import json
+from dataclasses import asdict
 from pathlib import Path
 
 from runtime.config import AgentConfig
-from runtime.snapshots import RunSnapshot, RunSnapshotStore, run_snapshot_to_dict
-from runtime.state import RuntimeStatePaths
+from runtime.models import RunSnapshot
+from runtime.storage import create_storage_backend
+from runtime.store import RuntimeStore
 
 
 def configure_runs_parser(parser: argparse.ArgumentParser) -> None:
@@ -51,16 +53,16 @@ def run_runs_command(args: argparse.Namespace) -> int:
 def _show_run_status(args: argparse.Namespace) -> int:
     store = _load_run_snapshot_store(args.config)
     snapshots = (
-        [store.read_run_snapshot(args.run_id)]
+        [store.read_run(args.run_id)]
         if args.run_id
-        else store.list_run_snapshots()[: args.limit]
+        else store.list_runs(args.limit)
     )
     if args.output == "json":
         print(
             json.dumps(
                 {
                     "schema_version": 1,
-                    "runs": [run_snapshot_to_dict(item) for item in snapshots],
+                    "runs": [asdict(item) for item in snapshots],
                 },
                 ensure_ascii=False,
                 indent=2,
@@ -102,19 +104,25 @@ def _export_run(args: argparse.Namespace) -> int:
     return 0
 
 
-def _load_run_snapshot_store(config_path: str | None) -> RunSnapshotStore:
+def _load_run_snapshot_store(config_path: str | None) -> RuntimeStore:
     config = (
         AgentConfig.load_automatically()
         if config_path is None
         else AgentConfig.load_from_file(config_path)
     )
-    return RunSnapshotStore(RuntimeStatePaths.from_root(config.paths.memory).runs)
+    backend = create_storage_backend(config.storage.backend, str(config.storage.path))
+    return RuntimeStore(
+        backend,
+        config.storage.path,
+        "local",
+        config.agent.name,
+    )
 
 
-def _resolve_run_id(store: RunSnapshotStore, requested: str | None) -> str | None:
+def _resolve_run_id(store: RuntimeStore, requested: str | None) -> str | None:
     if requested:
-        return store.read_run_snapshot(requested).run_id
-    snapshots = store.list_run_snapshots()
+        return store.read_run(requested).run_id
+    snapshots = store.list_runs(1)
     return snapshots[0].run_id if snapshots else None
 
 

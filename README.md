@@ -120,7 +120,7 @@ Every run follows one central lifecycle:
 discover -> disclose -> execute -> observe -> evaluate -> evolve
 ```
 
-`RuntimeSession` is the single context for a run. It holds the resolved state paths, run trace, one Skill index, progressive disclosure session, and every Skill or Capability that affected the result. Capabilities consume this session instead of creating their own stores or rescanning the Skill tree.
+`RuntimeSession` is the single context for a run. It holds one `RunIdentity`, one centralized `RuntimeStore`, one Skill index, the progressive-disclosure session, and every Skill or Capability that affected the result. Capabilities consume this session instead of creating their own stores or rescanning the Skill tree.
 
 ## Self-Evolution
 
@@ -145,7 +145,7 @@ super-agent skills evolve \
   --cases evaluation-cases.json
 ```
 
-Candidates are isolated from active Skills. Promotion requires a passing evaluation and an unchanged parent version; every promoted revision can be rolled back. `v0.0.25` supports this complete loop for instruction-based Skills. Unified evolution for every Skill type is planned for `v0.0.26`.
+Candidates are isolated from active Skills. Promotion requires a passing evaluation and an unchanged parent version; every promoted revision can be rolled back. The current loop is complete for instruction-based Skills; unified evolution for every Skill type is planned for `v0.0.30`.
 
 Freshness does not call a model. It is derived from runtime evaluation records using quality, recency, frequency, token cost, latency, reliability, replacement behavior, and sample confidence.
 
@@ -170,18 +170,17 @@ If `name` is omitted, names are generated as `subagent01`, `subagent02`, and so 
 
 ## Runtime State
 
-All runtime-owned files have explicit locations under the configured memory root:
+All mutable runtime state uses one storage backend and one semantic API. The default needs no dependency or configuration:
 
-```text
-.super-agent/memory/
-  runs/          ordered events, snapshots, and runtime locks
-  disclosure/    central Skill index, cache, and disclosure history
-  evaluations/   canonical Skill and Capability evaluation records
-  derived/       rebuildable freshness statistics
-  evolution/     candidates, reports, revisions, and rollbacks
+```toml
+[storage]
+backend = "jsonl"
+path = ".super-agent"
 ```
 
-The runtime lock captures the effective Provider, Capability versions, Skill versions, and Skill directory hashes for each run without storing secret values.
+JSONL stores one readable canonical event stream per user under `.super-agent/users/<user-hash>/events.jsonl`. Runs, evaluations, memory, usage habits, and disclosure history are isolated by user and Agent inside that stream. `RuntimeStore` derives run snapshots and freshness from those events; the progressive-disclosure cache remains a rebuildable local view.
+
+The runtime lock is stored as a run event. It captures the effective Provider, storage backend, Capability versions, Skill versions, and Skill directory hashes without storing secret values.
 
 ## Documentation
 

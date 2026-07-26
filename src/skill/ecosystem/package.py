@@ -13,6 +13,7 @@ from urllib.parse import unquote
 from uuid import uuid4
 
 from skill.disclosure import ProgressiveDisclosureCore
+from runtime.store import create_local_runtime_store
 from skill.manifest import SkillManifest, calculate_skill_directory_sha256
 
 
@@ -23,9 +24,8 @@ class SkillPackageManager:
     def __init__(self, skill_disclosure: ProgressiveDisclosureCore, skill_root: Path) -> None:
         self.skill_disclosure = ProgressiveDisclosureCore(
             skill_disclosure.skill_roots,
-            skill_disclosure.cache_root,
+            skill_disclosure.store,
             disabled_names=skill_disclosure.disabled_names,
-            freshness_store=skill_disclosure.freshness_store,
         )
         self.skill_root = skill_root.expanduser()
 
@@ -206,7 +206,10 @@ def _locate_skill_directory(root: Path) -> Path:
 
 def _validate_staged_skill(path: Path, expected_sha256: str) -> SkillManifest:
     _reject_symlinks(path)
-    disclosure = ProgressiveDisclosureCore([path], path.parent / ".package-validation-cache")
+    disclosure = ProgressiveDisclosureCore(
+        [path],
+        create_local_runtime_store(path.parent / ".package-validation"),
+    )
     index = disclosure.prepare_skill_index()
     if len(index.entries) != 1:
         raise ValueError("skill package must contain exactly one valid skill")

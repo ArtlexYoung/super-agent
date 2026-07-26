@@ -4,6 +4,7 @@ from pathlib import Path
 
 from agents.agent import Agent
 from runtime.config import AgentConfig
+from runtime.store import create_local_runtime_store
 from provider.chat import MockProvider
 from skill.disclosure import ProgressiveDisclosureCore
 from support import write_workflow_skill
@@ -32,7 +33,10 @@ model = "unit-test"
 
 [paths]
 skills = ["skills"]
-memory = ".super-agent/memory"
+
+[storage]
+backend = "jsonl"
+path = ".super-agent"
 """.strip(),
                 encoding="utf-8",
             )
@@ -48,6 +52,8 @@ memory = ".super-agent/memory"
             self.assertEqual(["mcp:github"], config.agent.disable_names)
             self.assertEqual("mock", config.model.provider)
             self.assertEqual([root / "skills"], config.paths.skills)
+            self.assertEqual("jsonl", config.storage.backend)
+            self.assertEqual(root / ".super-agent", config.storage.path)
 
     def test_default_features_only_enable_unified_skill_tree(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -88,6 +94,21 @@ use_features = ["SKILLS", "MCP"]
 
             self.assertEqual(["skills", "mcp"], config.agent.use_features)
 
+    def test_removed_memory_path_is_rejected_instead_of_ignored(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            config_path = Path(tmp) / "agent.toml"
+            config_path.write_text(
+                """
+[paths]
+skills = ["skills"]
+memory = ".super-agent/memory"
+""".strip(),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "unknown paths settings: memory"):
+                AgentConfig.load_from_file(config_path)
+
     def test_disclosure_core_reads_manifest_instruction_and_selection(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             skill_dir = Path(tmp) / "skills" / "echo"
@@ -110,7 +131,7 @@ instructions = "SKILL.md"
 
             disclosure = ProgressiveDisclosureCore(
                 [Path(tmp) / "skills"],
-                Path(tmp) / "cache",
+                create_local_runtime_store(Path(tmp) / "state"),
             )
             disclosure.prepare_skill_index()
             loaded = disclosure.open_skill("echo", expected_capability="prompt")

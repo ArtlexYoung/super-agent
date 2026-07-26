@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable, Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from provider.chat import ChatProvider
 from runtime.config import AgentConfig
 from runtime.evaluation import RunEvaluationRequest
-from runtime.events import RunContext, RunEvent
 from runtime.models import AgentRunRequest, RunResult
-from runtime.state import RuntimeStatePaths
+from runtime.identity import RunIdentity
+from runtime.store import RuntimeStore
 from skill.disclosure import (
     SkillDisclosure,
     SkillIndex,
@@ -67,7 +67,8 @@ class SkillDisclosureCapability(Protocol):
 class SkillLoadRequest:
     disclosure: SkillDisclosureSession
     reference: SkillReference
-    state_paths: RuntimeStatePaths
+    store: RuntimeStore
+    identity: RunIdentity | None = None
 
 
 @dataclass(frozen=True)
@@ -90,7 +91,11 @@ class RunResultEvaluator(Protocol):
     name: str
     version: str
 
-    def record_run_evaluation(self, request: RunEvaluationRequest) -> None:
+    def record_run_evaluation(
+        self,
+        request: RunEvaluationRequest,
+        session: "RuntimeSession",
+    ) -> None:
         ...
 
 
@@ -102,24 +107,8 @@ class SkillUpdaterCapability(Protocol):
         self,
         config: AgentConfig,
         provider: ChatProvider,
-        state_paths: RuntimeStatePaths,
+        store: RuntimeStore,
     ) -> object:
-        ...
-
-
-class RunRecorder(Protocol):
-    name: str
-    version: str
-
-    def start_agent_run(
-        self,
-        config: AgentConfig,
-        prompt: str,
-        *,
-        state_paths: RuntimeStatePaths,
-        parent_run_id: str | None = None,
-        event_listener: Callable[[RunEvent], None] | None = None,
-    ) -> RunContext:
         ...
 
 
@@ -138,7 +127,6 @@ class AgentCapabilitySet:
     skill_executors: dict[str, SkillExecutor]
     run_result_evaluator: RunResultEvaluator
     skill_updater: SkillUpdaterCapability
-    run_recorder: RunRecorder
 
     def require_skill_executor(self, capability_name: str) -> SkillExecutor:
         executor = self.skill_executors.get(capability_name.strip().lower())

@@ -8,12 +8,12 @@ from uuid import uuid4
 
 from provider.chat import ChatProvider, Message
 from runtime.evaluation import (
-    EvaluationRecordStore,
     EvaluationResult,
     EvaluationSource,
     create_evaluation_record,
     estimate_evaluation_token_usage,
 )
+from runtime.store import RuntimeStore
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.evaluation import create_skill_evaluation_target
 from skill.evolution.candidate import SkillCandidate
@@ -65,7 +65,7 @@ class SkillCandidateEvaluationRequest:
     cases: list[EvaluationCase]
     minimum_score: float
     report_path: Path
-    evaluation_root: Path
+    store: RuntimeStore
 
 
 def evaluate_candidate(
@@ -78,9 +78,8 @@ def evaluate_candidate(
         raise ValueError("minimum evaluation score must be between 0 and 1")
     for case in request.cases:
         _validate_evaluation_case(case)
-    skill = _read_candidate_skill(request.candidate)
+    skill = _read_candidate_skill(request.candidate, request.store)
     target = create_skill_evaluation_target(skill)
-    store = EvaluationRecordStore(request.evaluation_root)
     results: list[EvaluationCaseResult] = []
     for case in request.cases:
         started_at = perf_counter()
@@ -92,7 +91,7 @@ def evaluate_candidate(
                 case,
             )
         except Exception as error:
-            store.append_evaluation_records(
+            request.store.append_evaluation_records(
                 [
                     create_evaluation_record(
                         target,
@@ -113,7 +112,7 @@ def evaluate_candidate(
             )
             raise
         results.append(case_result)
-        store.append_evaluation_records(
+        request.store.append_evaluation_records(
             [
                 create_evaluation_record(
                     target,
@@ -212,10 +211,10 @@ def _score_output(
     return round(passed_count / len(checks), 4), descriptions
 
 
-def _read_candidate_skill(candidate: SkillCandidate) -> Skill:
+def _read_candidate_skill(candidate: SkillCandidate, store: RuntimeStore) -> Skill:
     disclosure = ProgressiveDisclosureCore(
         [candidate.skill_path],
-        candidate.skill_path.parent / ".evaluation-disclosure-cache",
+        store,
     )
     index = disclosure.prepare_skill_index()
     entry = index.entries[0]

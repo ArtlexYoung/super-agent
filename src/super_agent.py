@@ -5,7 +5,6 @@ from capability.contracts import (
     AgentCapabilitySet,
     RunController,
     RunResultEvaluator,
-    RunRecorder,
     SkillDisclosureCapability,
     SkillExecutor,
     SkillUpdaterCapability,
@@ -21,7 +20,13 @@ from skill.benchmark import (
     SkillBenchmark,
     benchmark_report_to_dict,
 )
-from runtime.config import AgentConfig, AgentSettings, ModelSettings, PathsSettings
+from runtime.config import (
+    AgentConfig,
+    AgentSettings,
+    ModelSettings,
+    PathsSettings,
+    StorageSettings,
+)
 from provider.chat import ChatProvider, MockProvider, ModelResponse, ToolCall
 from provider.discovery import (
     ModelResolution,
@@ -32,7 +37,6 @@ from provider.discovery import (
 from runtime.engine import AgentRuntime
 from runtime.evaluation import (
     EvaluationRecord,
-    EvaluationRecordStore,
     EvaluationResult,
     EvaluationSource,
     EvaluationTarget,
@@ -42,21 +46,11 @@ from runtime.evaluation import (
     evaluation_record_from_dict,
     evaluation_record_to_dict,
 )
-from runtime.events import (
-    RunContext,
-    RunEvent,
-    RunTraceStore,
-    run_event_from_dict,
-    run_event_to_dict,
-)
+from runtime.identity import LOCAL_USER_ID, RunIdentity
+from runtime.models import RunEvent, RunResult, RunSnapshot, SubAgentResult
 from runtime.session import RuntimeSession
-from runtime.snapshots import (
-    RunSnapshot,
-    RunSnapshotStore,
-    run_snapshot_from_dict,
-    run_snapshot_to_dict,
-)
-from runtime.state import RuntimeStatePaths
+from runtime.storage import JsonlStorage, StorageBackend, StorageEvent, StorageEventQuery
+from runtime.store import RuntimeStore
 from capability.tool_router import RuntimeToolRouter
 from skill.disclosure import (
     ProgressiveDisclosureCore,
@@ -73,7 +67,6 @@ from skill.evolution.candidate import SkillCandidate
 from skill.evolution.evaluation import EvaluationCase, EvaluationReport, EvolutionResult
 from skill.evolution.manager import SkillEvolutionManager
 from skill.kinds.memory import MemoryItem, MemoryPolicy, MemoryUsageHabits, MiniMemory
-from runtime.models import RunResult, SubAgentResult
 from skill.manifest import Skill, SkillManifest, skill_manifest_to_dict
 
 __all__ = [
@@ -88,13 +81,14 @@ __all__ = [
     "ChatProvider",
     "EvaluationCase",
     "EvaluationRecord",
-    "EvaluationRecordStore",
     "EvaluationReport",
     "EvaluationResult",
     "EvaluationSource",
     "EvaluationTarget",
     "EvaluationTokenUsage",
     "EvolutionResult",
+    "JsonlStorage",
+    "LOCAL_USER_ID",
     "LockedSkill",
     "MemoryItem",
     "MemoryPolicy",
@@ -106,17 +100,14 @@ __all__ = [
     "ModelResolution",
     "PathsSettings",
     "ProgressiveDisclosureCore",
-    "RunContext",
     "RunController",
     "RunEvaluationRequest",
     "RunEvent",
     "RunResult",
+    "RunIdentity",
     "RuntimeSession",
-    "RuntimeStatePaths",
+    "RuntimeStore",
     "RunSnapshot",
-    "RunSnapshotStore",
-    "RunTraceStore",
-    "RunRecorder",
     "RunResultEvaluator",
     "Skill",
     "SkillBenchmark",
@@ -134,6 +125,10 @@ __all__ = [
     "SkillReference",
     "SkillSelectionDecision",
     "SkillUpdaterCapability",
+    "StorageBackend",
+    "StorageEvent",
+    "StorageEventQuery",
+    "StorageSettings",
     "SubAgentResult",
     "ToolCall",
     "benchmark_report_to_dict",
@@ -145,9 +140,5 @@ __all__ = [
     "evaluation_record_to_dict",
     "model_resolution_to_dict",
     "resolve_model_settings",
-    "run_event_from_dict",
-    "run_event_to_dict",
-    "run_snapshot_from_dict",
-    "run_snapshot_to_dict",
     "skill_manifest_to_dict",
 ]

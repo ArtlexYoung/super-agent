@@ -430,7 +430,7 @@ final class ChatStore: ObservableObject {
     private func makeRuntimeConfigText() -> String {
         var runtimeConfig = config
         runtimeConfig.paths.skills = config.paths.skills.map { resolveConfigPath($0).path }
-        runtimeConfig.paths.memory = resolveConfigPath(config.paths.memory).path
+        runtimeConfig.storage.path = resolveConfigPath(config.storage.path).path
         return AgentTomlFile.makeTomlText(from: runtimeConfig)
     }
 

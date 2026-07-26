@@ -1,40 +1,24 @@
-"""Deterministic Skill freshness derived from runtime evaluation records."""
+"""Deterministic Skill freshness derived from central evaluation records."""
 
 from __future__ import annotations
 
-import json
 import math
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 from typing import Any
 
-from runtime.evaluation import EvaluationRecord, EvaluationRecordStore
+from runtime.evaluation import EvaluationRecord
 from skill.manifest import DEFAULT_SKILL_FRESHNESS
 
 
-STATS_FILE = "skill_stats.json"
 FOLLOWUP_WINDOW_MINUTES = 10
 
 
-class SkillFreshnessStore:
-    def __init__(self, evaluation_root: Path, cache_root: Path) -> None:
-        self.evaluation_root = evaluation_root
-        self.cache_root = cache_root
-        self.stats_path = cache_root / STATS_FILE
-
-    def read_skill_stats(self) -> dict[str, dict[str, Any]]:
-        records = EvaluationRecordStore(self.evaluation_root).read_evaluation_records(
-            target_type="skill",
-            source_type="agent_run",
-        )
-        data = _build_store_data(records, datetime.now(UTC))
-        self._write_store_data(data)
-        return data["skills"]
-
-    def _write_store_data(self, data: dict[str, Any]) -> None:
-        self.cache_root.mkdir(parents=True, exist_ok=True)
-        text = json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True)
-        self.stats_path.write_text(text, encoding="utf-8")
+def calculate_skill_freshness(
+    records: list[EvaluationRecord],
+    current_time: datetime | None = None,
+) -> dict[str, dict[str, Any]]:
+    data = _build_store_data(records, current_time or datetime.now(UTC))
+    return data["skills"]
 
 
 def _build_store_data(

@@ -14,9 +14,8 @@ from cli_commands.models import configure_models_parser, run_models_command
 from cli_commands.runs import configure_runs_parser, run_runs_command
 from cli_commands.skills import configure_skills_parser, run_skills_command
 from agents.agent import Agent
-from runtime.events import RunEvent, run_event_to_dict
 from provider.chat import Message
-from runtime.models import RunResult
+from runtime.models import RunEvent, RunResult
 
 
 @dataclass(frozen=True)
@@ -107,11 +106,11 @@ def _run_init_command(root: Path) -> int:
 def _run_prompt_command(config_path: Path | None, request: RuntimeRequest, output: str) -> int:
     agent = _load_agent(config_path)
     if output == "jsonl":
-        context = agent.runtime.start_run_context(
+        result = agent.run(
             request.prompt,
+            messages=request.messages,
             event_listener=_print_run_event,
         )
-        result = agent.run(request.prompt, run_context=context, messages=request.messages)
         print(json.dumps({"type": "result", "result": run_result_to_dict(result)}, ensure_ascii=False))
         return 0
     result = agent.run(request.prompt, messages=request.messages)
@@ -155,7 +154,7 @@ def run_result_to_dict(result: RunResult) -> dict[str, Any]:
 
 
 def _print_run_event(event: RunEvent) -> None:
-    print(json.dumps({"type": "event", "event": run_event_to_dict(event)}, ensure_ascii=False), flush=True)
+    print(json.dumps({"type": "event", "event": asdict(event)}, ensure_ascii=False), flush=True)
 
 
 def _read_runtime_request_from_args(args: argparse.Namespace) -> RuntimeRequest:
@@ -212,7 +211,10 @@ model = "mock"
 
 [paths]
 skills = ["skills"]
-memory = ".super-agent/memory"
+
+[storage]
+backend = "jsonl"
+path = ".super-agent"
 """.lstrip()
 
 

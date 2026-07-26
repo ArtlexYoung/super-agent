@@ -30,6 +30,7 @@ enum AgentTomlFile {
         let agentValues = sections["agent"] ?? [:]
         let modelValues = sections["model"] ?? [:]
         let pathValues = sections["paths"] ?? [:]
+        let storageValues = sections["storage"] ?? [:]
 
         return AgentTomlConfig(
             agent: AgentTomlAgentSection(
@@ -49,8 +50,12 @@ enum AgentTomlFile {
                 apiKeyEnv: try readString(modelValues["api_key_env"]) ?? fallback.model.apiKeyEnv
             ),
             paths: AgentTomlPathsSection(
-                skills: try readStringArray(pathValues["skills"]) ?? fallback.paths.skills,
-                memory: try readString(pathValues["memory"]) ?? fallback.paths.memory
+                skills: try readStringArray(pathValues["skills"]) ?? fallback.paths.skills
+            ),
+            storage: AgentTomlStorageSection(
+                backend: try readString(storageValues["backend"]) ?? fallback.storage.backend,
+                path: try readString(storageValues["path"]) ?? fallback.storage.path,
+                urlEnv: try readString(storageValues["url_env"]) ?? fallback.storage.urlEnv
             )
         )
     }
@@ -81,7 +86,13 @@ enum AgentTomlFile {
         lines.append("")
         lines.append("[paths]")
         lines.append("skills = \(quoteArray(config.paths.skills))")
-        lines.append("memory = \(quote(config.paths.memory))")
+        lines.append("")
+        lines.append("[storage]")
+        lines.append("backend = \(quote(config.storage.backend))")
+        lines.append("path = \(quote(config.storage.path))")
+        if !config.storage.urlEnv.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            lines.append("url_env = \(quote(config.storage.urlEnv))")
+        }
         lines.append("")
         return lines.joined(separator: "\n")
     }

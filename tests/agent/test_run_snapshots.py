@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -5,16 +6,10 @@ from pathlib import Path
 from agents.agent import Agent
 from provider.chat import MockProvider
 from runtime.config import AgentConfig
-from runtime.snapshots import (
-    RUNTIME_LOCK_FILE,
-    RunSnapshotStore,
-    run_snapshot_from_dict,
-    run_snapshot_to_dict,
-)
 
 
 class RunSnapshotTests(unittest.TestCase):
-    def test_completed_run_records_snapshot_lock_and_central_selection(self) -> None:
+    def test_completed_run_replays_snapshot_lock_and_selection(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_prompt_skill(root)
@@ -25,13 +20,12 @@ class RunSnapshotTests(unittest.TestCase):
 
             result = agent.run("echo this")
 
-            store = _snapshot_store(root)
-            snapshot = store.read_run_snapshot(result.run_id)
+            store = agent.runtime.create_store()
+            snapshot = store.read_run(result.run_id)
             explanation = store.explain_run(result.run_id)
             runtime_lock = explanation["runtime_lock"]
             self.assertEqual("completed", snapshot.status)
             self.assertEqual("run.completed", snapshot.last_event_type)
-            self.assertEqual("runtime.lock.json", snapshot.runtime_lock_path)
             self.assertEqual(64, len(snapshot.runtime_lock_sha256 or ""))
             self.assertIsInstance(runtime_lock, dict)
             self.assertEqual("mock", runtime_lock["model"]["provider"])
@@ -60,10 +54,9 @@ class RunSnapshotTests(unittest.TestCase):
                 and item["data"]["stage"] == "index"
             ]
             self.assertEqual(1, len(index_events))
-            self.assertIn("runtime.snapshot.started", event_types)
             self.assertIn("runtime.locked", event_types)
 
-    def test_failed_run_updates_snapshot_without_hiding_original_error(self) -> None:
+    def test_failed_run_replays_snapshot_without_hiding_original_error(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             agent = Agent(
@@ -74,40 +67,50 @@ class RunSnapshotTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "provider failed"):
                 agent.run("hello")
 
-            snapshots = _snapshot_store(root).list_run_snapshots()
+            snapshots = agent.runtime.create_store().list_runs()
             self.assertEqual(1, len(snapshots))
             self.assertEqual("failed", snapshots[0].status)
             self.assertEqual("run.failed", snapshots[0].last_event_type)
             self.assertEqual("RuntimeError", snapshots[0].error["error_type"])
             self.assertEqual("provider failed", snapshots[0].error["message"])
 
-    def test_runtime_lock_hash_detects_modified_lock_content(self) -> None:
+    def test_runtime_lock_hash_detects_modified_event_content(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            result = Agent(
+            agent = Agent(
                 AgentConfig.create_default(root),
                 provider=MockProvider(),
-            ).run("hello")
-            store = _snapshot_store(root)
-            lock_path = store.root / result.run_id / RUNTIME_LOCK_FILE
-            lock_path.write_text("{}\n", encoding="utf-8")
+            )
+            result = agent.run("hello")
+            path = next((root / ".super-agent").rglob("events.jsonl"))
+            rows = [json.loads(line) for line in path.read_text().splitlines()]
+            lock = next(row for row in rows if row["event_type"] == "runtime.locked")
+            lock["data"]["runtime_lock"]["model"]["provider"] = "modified"
+            path.write_text(
+                "".join(json.dumps(row, sort_keys=True) + "\n" for row in rows),
+                encoding="utf-8",
+            )
 
             with self.assertRaisesRegex(ValueError, "runtime lock hash does not match"):
-                store.explain_run(result.run_id)
+                agent.runtime.create_store().read_runtime_lock(result.run_id)
 
-    def test_run_snapshot_reader_rejects_unknown_schema_fields(self) -> None:
+    def test_run_snapshot_is_derived_from_the_canonical_event_stream(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            result = Agent(
+            agent = Agent(
                 AgentConfig.create_default(root),
                 provider=MockProvider(),
-            ).run("hello")
-            snapshot = _snapshot_store(root).read_run_snapshot(result.run_id)
-            data = run_snapshot_to_dict(snapshot)
-            data["unknown"] = True
+            )
 
-            with self.assertRaisesRegex(ValueError, "fields do not match"):
-                run_snapshot_from_dict(data)
+            result = agent.run("hello")
+            store = agent.runtime.create_store()
+            snapshot = store.read_run(result.run_id)
+            events = store.read_run_events(result.run_id)
+
+            self.assertEqual(len(events), snapshot.event_count)
+            self.assertEqual(events[0].created_at, snapshot.started_at)
+            self.assertEqual(events[-1].created_at, snapshot.finished_at)
+            self.assertEqual(events[-1].event_type, snapshot.last_event_type)
 
 
 class _FailingProvider:
@@ -117,10 +120,6 @@ class _FailingProvider:
         model: str,
     ) -> str:
         raise RuntimeError("provider failed")
-
-
-def _snapshot_store(root: Path) -> RunSnapshotStore:
-    return RunSnapshotStore(root / ".super-agent" / "memory" / "runs")
 
 
 def _write_prompt_skill(root: Path) -> None:

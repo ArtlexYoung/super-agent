@@ -5,13 +5,13 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from provider.chat import ChatProvider, Message, ToolCall
-from runtime.events import RunContext
 from runtime.models import RunResult
 from skill.disclosure import SkillDisclosure
 from skill.manifest import Skill
 
 if TYPE_CHECKING:
     from capability.tool_router import RuntimeToolRouter
+    from runtime.session import RuntimeSession
 
 
 DEFAULT_WORKFLOW_MAX_STEPS = 8
@@ -25,7 +25,7 @@ class WorkflowRunRequest:
     skills: list[Skill]
     provider: ChatProvider
     skill_tools: RuntimeToolRouter
-    run_context: RunContext
+    session: RuntimeSession
     messages: list[Message] | None = None
 
 
@@ -77,7 +77,7 @@ class Workflow:
                 request.skill_tools.get_tool_definitions(),
             )
             last_text = response.text or last_text
-            request.run_context.record_event(
+            request.session.record_event(
                 "model.step.completed",
                 {
                     "step": step,

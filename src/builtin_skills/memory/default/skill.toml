@@ -2,7 +2,7 @@ schema_version = 2
 name = "default"
 capability = "memory"
 description = "Built-in event-based memory"
-version = "0.0.25"
+version = "0.0.26"
 triggers = []
 
 [configuration]

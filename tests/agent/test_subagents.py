@@ -4,7 +4,6 @@ from pathlib import Path
 
 from agents.agent import Agent
 from runtime.config import AgentConfig
-from runtime.events import RunTraceStore
 from provider.chat import MockProvider, ModelResponse, ToolCall
 from support import write_workflow_skill
 
@@ -188,13 +187,9 @@ class SubAgentTests(unittest.TestCase):
             child = result.subagent_results[0]
             self.assertEqual("write the implementation", child.prompt)
             self.assertTrue(child.run_id)
-            child_events = RunTraceStore(root / ".super-agent" / "memory" / "coder" / "runs").read_run_events(
-                child.run_id
-            )
+            child_events = coder.runtime.create_store().read_run_events(child.run_id)
             self.assertEqual(result.run_id, child_events[0].parent_run_id)
-            parent_events = RunTraceStore(root / ".super-agent" / "memory" / "main" / "runs").read_run_events(
-                result.run_id
-            )
+            parent_events = main.runtime.create_store().read_run_events(result.run_id)
             self.assertIn("subagent.completed", [event.event_type for event in parent_events])
             self.assertIn("coder-result", str(main_provider.last_messages))
 
@@ -209,7 +204,6 @@ def _agent(
 ) -> Agent:
     config_path = root / f"{name}.toml"
     write_workflow_skill(root, name=workflow, mode=workflow)
-    memory_path = f".super-agent/memory/{name}"
     max_depth_line = "" if max_agent_chain_depth is None else f"max_agent_chain_depth = {max_agent_chain_depth}"
     config_path.write_text(
         f"""
@@ -227,7 +221,10 @@ model = "unit-test"
 
 [paths]
 skills = ["skills"]
-memory = "{memory_path}"
+
+[storage]
+backend = "jsonl"
+path = ".super-agent"
 """.strip(),
         encoding="utf-8",
     )

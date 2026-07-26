@@ -4,10 +4,10 @@ Super Agent treats runtime evidence as the basis for self-improvement.
 
 ## Canonical Evaluation Records
 
-Online runs and candidate evaluations use one strict record format stored at:
+Online runs and candidate evaluations use one strict record format. Records are `evaluation.recorded` entries in the selected storage backend; with default JSONL they share the user's canonical event stream:
 
 ```text
-.super-agent/memory/evaluations/evaluation_records.jsonl
+.super-agent/users/<user-hash>/events.jsonl
 ```
 
 Each record separates:
@@ -22,11 +22,7 @@ Evaluation record readers reject unknown fields, unsupported target or source ty
 
 ## Skill Freshness
 
-Freshness is a deterministic derived view. It never calls a model and can be rebuilt from canonical evaluation records.
-
-```text
-.super-agent/memory/derived/skill_stats.json
-```
+Freshness is a deterministic derived view. It never calls a model and is rebuilt from canonical evaluation records when the Skill index is prepared.
 
 Signals include:
 
@@ -129,4 +125,4 @@ super-agent skills rollback --config agent.toml --name concise
 
 ## Current Boundary
 
-`v0.0.25` centralizes the Runtime session, evaluation records, state paths, and freshness derivation. Candidate generation is still instruction-oriented and assumes a prompt-style `SKILL.md`. `v0.0.26` will make the candidate unit the complete Skill directory so prompt, memory, workflow, and MCP Skills evolve through the same lifecycle.
+`v0.0.26` centralizes runtime state behind `RuntimeStore` and one backend-neutral event contract. Candidate generation is still instruction-oriented and assumes a prompt-style `SKILL.md`. `v0.0.30` will make the candidate unit the complete Skill directory so prompt, memory, workflow, and MCP Skills evolve through the same lifecycle.

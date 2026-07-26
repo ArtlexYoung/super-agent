@@ -4,6 +4,7 @@ struct AgentTomlConfig: Codable, Equatable {
     var agent: AgentTomlAgentSection
     var model: AgentTomlModelSection
     var paths: AgentTomlPathsSection
+    var storage: AgentTomlStorageSection
 
     static let defaultConfig = AgentTomlConfig(
         agent: AgentTomlAgentSection(
@@ -23,8 +24,12 @@ struct AgentTomlConfig: Codable, Equatable {
             apiKeyEnv: ""
         ),
         paths: AgentTomlPathsSection(
-            skills: ["skills"],
-            memory: ".super-agent/memory"
+            skills: ["skills"]
+        ),
+        storage: AgentTomlStorageSection(
+            backend: "jsonl",
+            path: ".super-agent",
+            urlEnv: ""
         )
     )
 
@@ -110,5 +115,10 @@ struct SkillManifestChoice: Identifiable, Equatable, Sendable {
 
 struct AgentTomlPathsSection: Codable, Equatable {
     var skills: [String]
-    var memory: String
+}
+
+struct AgentTomlStorageSection: Codable, Equatable {
+    var backend: String
+    var path: String
+    var urlEnv: String
 }

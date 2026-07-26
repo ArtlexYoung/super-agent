@@ -97,8 +97,8 @@ class CapabilityRuntimeTests(unittest.TestCase):
             self.assertEqual(result.run_id, evaluator.requests[0].source.run_id)
             self.assertTrue(evaluator.requests[0].result.success)
             self.assertEqual(
-                Path(tmp).absolute() / ".super-agent" / "memory" / "evaluations",
-                evaluator.requests[0].state_paths.evaluations,
+                Path(tmp).absolute() / ".super-agent",
+                evaluator.sessions[0].store.local_root,
             )
 
     def test_registered_custom_capability_is_discovered_and_executed(self) -> None:
@@ -153,7 +153,7 @@ class _FixedRunController:
             workflow="custom",
             skills=[],
             warning_messages=request.warning_messages,
-            run_id=session.run_context.run_id,
+            run_id=session.run_id,
         )
 
 
@@ -190,9 +190,11 @@ class _RecordingRunResultEvaluator:
 
     def __init__(self) -> None:
         self.requests = []
+        self.sessions = []
 
-    def record_run_evaluation(self, request) -> None:
+    def record_run_evaluation(self, request, session) -> None:
         self.requests.append(request)
+        self.sessions.append(session)
 
 
 def _write_prompt_skill(root: Path, capability: str = "prompt") -> None:

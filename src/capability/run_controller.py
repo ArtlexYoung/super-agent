@@ -36,7 +36,7 @@ class DefaultRunController:
                 for reference in references
             ]
         tool_router = _create_tool_router(request, session, memory)
-        session.run_context.record_event(
+        session.record_event(
             "skills.disclosed",
             {
                 "names": [skill.manifest.name for skill in disclosed_skills],
@@ -53,11 +53,11 @@ class DefaultRunController:
                 skills=disclosed_skills,
                 provider=session.provider,
                 skill_tools=tool_router,
-                run_context=session.run_context,
+                session=session,
                 messages=request.messages,
             )
         )
-        session.run_context.record_event(
+        session.record_event(
             "model.completed",
             {"text": result.text, "workflow": result.workflow, "skills": result.skills},
         )
@@ -69,7 +69,7 @@ class DefaultRunController:
             skills=result.skills,
             subagent_results=subagent_results + tool_router.delegated_subagent_results,
             warning_messages=request.warning_messages,
-            run_id=session.run_context.run_id,
+            run_id=session.run_id,
             stop_reason=result.stop_reason,
         )
 
@@ -138,7 +138,8 @@ def _load_skill_with_executor(
         SkillLoadRequest(
             session.require_skill_disclosure(),
             reference,
-            session.state_paths,
+            session.store,
+            session.identity,
         )
     )
 
@@ -178,7 +179,7 @@ def _run_named_subagent(
     name: str,
     prompt: str,
 ) -> dict[str, object]:
-    result = request.subagents.run_named_subagent(name, prompt, session.run_context)
+    result = request.subagents.run_named_subagent(name, prompt, session)
     collected_results.append(_subagent_result_from_dict(result))
     return result
 
@@ -207,7 +208,7 @@ def _run_matching_subagents(
 ) -> list[SubAgentResult]:
     if not request.include_subagents or workflow.mode in {"react", "loop"}:
         return []
-    return request.subagents.run_matching_subagents(request.prompt, session.run_context)
+    return request.subagents.run_matching_subagents(request.prompt, session)
 
 
 def _build_system_prompt(

@@ -6,7 +6,8 @@ from capability.contracts import (
     SkillLoadRequest,
     SkillLoadResult,
 )
-from runtime.state import RuntimeStatePaths
+from runtime.identity import RunIdentity
+from runtime.store import RuntimeStore
 from skill.disclosure import SkillReference
 from skill.kinds.mcp import create_mcp_server_from_skill_disclosure
 from skill.kinds.memory import create_memory_from_skill_disclosure
@@ -62,7 +63,11 @@ class MemorySkillExecutor:
             request.reference.name,
             self.capability_name,
         )
-        memory = create_memory_from_skill_disclosure(opened, request.state_paths.root)
+        memory = create_memory_from_skill_disclosure(
+            opened,
+            request.store,
+            request.identity,
+        )
         return SkillLoadResult(runtime_value=memory)
 
 
@@ -95,14 +100,14 @@ def load_skill_for_model_context(
     disclosure: SkillDisclosureSession,
     reference: SkillReference,
     executors: dict[str, SkillExecutor],
-    *,
-    state_paths: RuntimeStatePaths,
+    store: RuntimeStore,
+    identity: RunIdentity | None = None,
 ) -> Skill:
     executor = executors.get(reference.capability)
     if executor is None:
         raise KeyError(f"skill executor not found for capability: {reference.capability}")
     loaded = executor.load_skill(
-        SkillLoadRequest(disclosure, reference, state_paths)
+        SkillLoadRequest(disclosure, reference, store, identity)
     )
     if loaded.model_skill is None:
         raise ValueError(

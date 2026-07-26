@@ -120,7 +120,7 @@ Agent      组合所有部分
 discover -> disclose -> execute -> observe -> evaluate -> evolve
 ```
 
-`RuntimeSession` 是一次运行唯一的共享上下文，集中保存状态路径、运行追踪、唯一 Skill 索引、渐进披露会话，以及真正影响结果的 Skill 和 Capability。Capability 只消费该会话，不再分别创建存储或重复扫描 Skill 目录。
+`RuntimeSession` 是一次运行唯一的共享上下文，集中保存一个 `RunIdentity`、一个中心化 `RuntimeStore`、唯一 Skill 索引、渐进披露会话，以及真正影响结果的 Skill 和 Capability。Capability 只消费该会话，不再分别创建存储或重复扫描 Skill 目录。
 
 ## 自进化
 
@@ -145,7 +145,7 @@ super-agent skills evolve \
   --cases evaluation-cases.json
 ```
 
-候选不会直接覆盖正在使用的 Skill。只有评价通过且父版本没有变化时才能晋升，每个已晋升版本都可以回滚。`v0.0.25` 已完整支持指令型 Skill 的闭环；所有 Skill 类型的统一进化计划在 `v0.0.26` 完成。
+候选不会直接覆盖正在使用的 Skill。只有评价通过且父版本没有变化时才能晋升，每个已晋升版本都可以回滚。当前已完整支持指令型 Skill 的闭环；所有 Skill 类型的统一进化计划在 `v0.0.30` 完成。
 
 保鲜度计算不调用大模型，而是根据质量、距离上次调用时间、使用频率、token 成本、延迟、可靠性、同功能替代行为和样本置信度确定性派生。
 
@@ -170,18 +170,17 @@ result = main.run("实现并审查这个功能")
 
 ## 运行状态
 
-Runtime 拥有的文件都位于配置的 memory 根目录下，并具有明确路径：
+所有可变运行状态共用一个存储后端和一套语义 API。默认配置不需要额外依赖，也不需要手动填写：
 
-```text
-.super-agent/memory/
-  runs/          有序事件、运行快照和运行锁
-  disclosure/    中心 Skill 索引、披露缓存和披露历史
-  evaluations/   Skill 与 Capability 的标准评价记录
-  derived/       可以重新生成的保鲜度统计
-  evolution/     候选、评价报告、历史版本和回滚记录
+```toml
+[storage]
+backend = "jsonl"
+path = ".super-agent"
 ```
 
-每次运行的锁文件会固定实际使用的 Provider、Capability 版本、Skill 版本和 Skill 目录哈希，但不会保存密钥内容。
+JSONL 会在 `.super-agent/users/<user-hash>/events.jsonl` 下为每个用户保存一条可读的标准事件流。运行、评价、记忆、使用习惯和披露历史在事件流内按用户与 Agent 隔离。`RuntimeStore` 从这些事件派生运行快照和保鲜度，渐进披露缓存只是可重新生成的本地视图。
+
+运行锁也作为运行事件保存，用于固定实际使用的 Provider、存储后端、Capability 版本、Skill 版本和 Skill 目录哈希，但不会保存密钥内容。
 
 ## 详细文档
 

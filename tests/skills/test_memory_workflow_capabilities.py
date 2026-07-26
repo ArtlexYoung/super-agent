@@ -4,6 +4,7 @@ from pathlib import Path
 
 from agents.agent import Agent
 from runtime.config import AgentConfig
+from runtime.store import create_local_runtime_store
 from provider.chat import MockProvider
 from skill.kinds.memory import MiniMemory
 
@@ -93,7 +94,9 @@ mode = "{mode}"
 
 
 def _write_memory_item(root: Path, text: str) -> None:
-    MiniMemory(root / ".super-agent" / "memory").add_memory_item(text)
+    MiniMemory(
+        create_local_runtime_store(root / ".super-agent", agent_name="demo")
+    ).add_memory_item(text)
 
 
 def _write_config(
@@ -122,7 +125,10 @@ model = "unit-test"
 
 [paths]
 skills = ["skills"]
-memory = ".super-agent/memory"
+
+[storage]
+backend = "jsonl"
+path = ".super-agent"
 """.strip(),
         encoding="utf-8",
     )

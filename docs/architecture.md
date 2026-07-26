@@ -32,7 +32,7 @@ discover -> disclose -> execute -> observe -> evaluate -> evolve
 
 - The resolved Agent configuration and Provider.
 - The Capability set selected by the Agent.
-- The run event context and explicit state paths.
+- The run identity and centralized Runtime store.
 - The one Skill index prepared for that run.
 - The central progressive-disclosure session.
 - The Skill and Capability evaluation targets actually used.
@@ -48,7 +48,6 @@ A Capability is executable mechanism code. Built-in slots include:
 - Skill executors selected by `capability` name.
 - Run result evaluator.
 - Skill updater.
-- Run recorder.
 
 Capabilities receive explicit requests or the shared `RuntimeSession`. They do not infer sibling directories from a path and do not own a second runtime lifecycle.
 
@@ -76,7 +75,6 @@ agent.set_run_controller(controller)
 agent.set_skill_disclosure(disclosure_capability)
 agent.set_run_result_evaluator(evaluator)
 agent.set_skill_updater(updater)
-agent.set_run_recorder(recorder)
 agent.add_skill_executor(executor)
 agent.add_subagent(other_agent)
 ```
@@ -96,22 +94,21 @@ Generic evaluation records belong to `runtime.evaluation`, not to Skill evolutio
 
 ## Runtime State
 
-`RuntimeStatePaths` is created once from the configured memory root:
+`RuntimeStore` is the only semantic state API. It operates over a replaceable `StorageBackend`:
 
 ```text
-root/
-  runs/
-  disclosure/
-  evaluations/
-  derived/
-  evolution/
+RuntimeSession -> RuntimeStore -> StorageBackend
+                                  +-> JSONL (default)
+                                  +-> other backends in later releases
 ```
 
-No lifecycle component infers one state directory from a sibling path.
+Runs, evaluations, memory, habits, and disclosure history use one canonical event schema. A backend only appends, queries, and deletes `StorageEvent` records; it does not implement domain behavior. Run snapshots and freshness are derived views, not parallel sources of truth.
 
 ## Core Invariants
 
 - One `RuntimeSession` exists for one Agent run.
+- One `RunIdentity` scopes user, Agent, conversation, run, and parent run.
+- One `RuntimeStore` owns all mutable runtime semantics.
 - One central Skill index is prepared per run.
 - Every disclosure uses the same cache and history store.
 - Every used Skill and Capability becomes an evaluation target automatically.

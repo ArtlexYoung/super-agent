@@ -5,6 +5,7 @@ from pathlib import Path
 
 from agents.agent import Agent
 from runtime.config import AgentConfig
+from runtime.store import create_local_runtime_store
 from provider.chat import MockProvider
 from skill.disclosure import ProgressiveDisclosureCore
 from support import write_workflow_skill
@@ -17,7 +18,7 @@ class ProgressiveDisclosureTests(unittest.TestCase):
             _write_skill(root, "echo", "Echo helper", "Always answer briefly.")
             disclosure = ProgressiveDisclosureCore(
                 [root / "skills"],
-                root / ".super-agent" / "memory" / "disclosure",
+                create_local_runtime_store(root / ".super-agent"),
             )
 
             index = disclosure.prepare_skill_index()
@@ -47,14 +48,15 @@ class ProgressiveDisclosureTests(unittest.TestCase):
             config_path = _write_config(root)
             provider = MockProvider("ok")
 
-            result = Agent(AgentConfig.load_from_file(config_path), provider=provider).run("echo hello")
+            agent = Agent(AgentConfig.load_from_file(config_path), provider=provider)
+            result = agent.run("echo hello")
 
             content = provider.last_messages[0]["content"]
             self.assertEqual(["echo"], result.skills)
             self.assertIn("Progressive skill disclosure", content)
-            self.assertIn("history.jsonl", content)
+            self.assertIn("history.json", content)
             self.assertIn("skills/prompt/echo/manifest.json", content)
-            self.assertTrue((root / ".super-agent" / "memory" / "disclosure" / "index.json").exists())
+            self.assertTrue(agent.runtime.create_store().cache_root.joinpath("index.json").exists())
 
 
 def _write_skill(root: Path, name: str, description: str, instruction: str) -> None:
@@ -94,7 +96,10 @@ model = "unit-test"
 
 [paths]
 skills = ["skills"]
-memory = ".super-agent/memory"
+
+[storage]
+backend = "jsonl"
+path = ".super-agent"
 """.strip(),
         encoding="utf-8",
     )

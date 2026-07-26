@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 
 from capability.contracts import SkillExecutor
 from capability.skill_executors import create_builtin_skill_executors, load_skill_for_model_context
-from runtime.state import RuntimeStatePaths
+from runtime.store import RuntimeStore
 from skill.disclosure import (
     ProgressiveDisclosureCore,
     SkillIndex,
@@ -48,11 +48,9 @@ class SkillBenchmark:
     def __init__(
         self,
         skill_disclosure: ProgressiveDisclosureCore,
-        state_paths: RuntimeStatePaths,
         skill_executors: dict[str, SkillExecutor] | None = None,
     ) -> None:
         self.skill_disclosure = skill_disclosure
-        self.state_paths = state_paths
         self.skill_executors = skill_executors or create_builtin_skill_executors()
 
     def run_cases(self, cases: list[BenchmarkCase]) -> BenchmarkReport:
@@ -76,7 +74,7 @@ class SkillBenchmark:
                     self.skill_disclosure,
                     context_entries,
                     self.skill_executors,
-                    self.state_paths,
+                    self.skill_disclosure.store,
                 ),
             ]
         )
@@ -120,7 +118,7 @@ class SkillBenchmark:
                 self.skill_disclosure,
                 reference,
                 self.skill_executors,
-                state_paths=self.state_paths,
+                self.skill_disclosure.store,
             )
             for reference in selected_references
         ]
@@ -170,14 +168,14 @@ def _build_eager_context(
     disclosure: ProgressiveDisclosureCore,
     entries: list[SkillIndexEntry],
     skill_executors: dict[str, SkillExecutor],
-    state_paths: RuntimeStatePaths,
+    store: RuntimeStore,
 ) -> str:
     skills = [
         load_skill_for_model_context(
             disclosure,
             entry.reference,
             skill_executors,
-            state_paths=state_paths,
+            store,
         )
         for entry in entries
     ]

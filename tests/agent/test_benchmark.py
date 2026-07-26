@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from runtime.state import RuntimeStatePaths
+from runtime.store import create_local_runtime_store
 from skill.benchmark import BenchmarkCase, SkillBenchmark, benchmark_report_to_dict
 from skill.disclosure import ProgressiveDisclosureCore
 
@@ -76,11 +76,11 @@ instructions = "SKILL.md"
 
 
 def _create_disclosure(root: Path) -> ProgressiveDisclosureCore:
-    return ProgressiveDisclosureCore([root], root / ".disclosure-cache")
+    return ProgressiveDisclosureCore(
+        [root],
+        create_local_runtime_store(root / ".runtime-state"),
+    )
 
 
 def _create_benchmark(root: Path) -> SkillBenchmark:
-    return SkillBenchmark(
-        _create_disclosure(root),
-        RuntimeStatePaths.from_root(root / ".runtime-state"),
-    )
+    return SkillBenchmark(_create_disclosure(root))

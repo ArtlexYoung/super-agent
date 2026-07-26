@@ -10,7 +10,7 @@ from uuid import uuid4
 
 from provider.chat import ChatProvider
 from runtime.config import AgentConfig
-from runtime.state import RuntimeStatePaths
+from runtime.store import RuntimeStore
 from skill.evolution.candidate import (
     SkillCandidate,
     clean_record_id,
@@ -51,7 +51,7 @@ class SkillEvolutionManager:
         *,
         config: AgentConfig,
         skill_disclosure: ProgressiveDisclosureCore,
-        state_paths: RuntimeStatePaths,
+        store: RuntimeStore,
         provider: ChatProvider,
         minimum_score: float = 0.8,
     ) -> None:
@@ -59,15 +59,14 @@ class SkillEvolutionManager:
             raise ValueError("minimum evaluation score must be between 0 and 1")
         self.skill_disclosure = ProgressiveDisclosureCore(
             skill_disclosure.skill_roots,
-            skill_disclosure.cache_root,
+            store,
             disabled_names=skill_disclosure.disabled_names,
-            freshness_store=skill_disclosure.freshness_store,
         )
         if not config.paths.skills:
             raise ValueError("agent has no skill path configured")
         self.skill_root = config.paths.skills[0]
-        self.evolution_root = state_paths.evolution
-        self.evaluation_root = state_paths.evaluations
+        self.evolution_root = store.private_root / "evolution"
+        self.store = store
         self.provider = provider
         self.model = config.model.model
         self.minimum_score = minimum_score
@@ -102,7 +101,7 @@ class SkillEvolutionManager:
                 cases=cases,
                 minimum_score=self.minimum_score,
                 report_path=report_path,
-                evaluation_root=self.evaluation_root,
+                store=self.store,
             ),
             self.provider,
         )

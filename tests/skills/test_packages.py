@@ -5,6 +5,7 @@ import unittest
 import zipfile
 from pathlib import Path
 
+from runtime.store import create_local_runtime_store
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.ecosystem.package import SkillPackageManager
 
@@ -166,7 +167,7 @@ class SkillPackageManagerTests(unittest.TestCase):
 def _manager(skill_root: Path) -> SkillPackageManager:
     disclosure = ProgressiveDisclosureCore(
         [skill_root],
-        skill_root.parent / ".package-disclosure-cache",
+        create_local_runtime_store(skill_root.parent / ".package-runtime"),
     )
     return SkillPackageManager(disclosure, skill_root)
 

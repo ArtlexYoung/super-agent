@@ -51,14 +51,14 @@ class RuntimeToolRouter:
         return definitions
 
     def run_tool_call(self, call: ToolCall) -> dict[str, object]:
-        self.context.session.run_context.record_event(
+        self.context.session.record_event(
             "tool.requested",
             {"call_id": call.id, "name": call.name, "arguments": call.arguments},
         )
         try:
             result = self._run_named_tool(call.name, call.arguments)
         except Exception as error:
-            self.context.session.run_context.record_event(
+            self.context.session.record_event(
                 "tool.failed",
                 {
                     "call_id": call.id,
@@ -68,7 +68,7 @@ class RuntimeToolRouter:
                 },
             )
             raise
-        self.context.session.run_context.record_event(
+        self.context.session.record_event(
             "tool.completed",
             {"call_id": call.id, "name": call.name, "result": result},
         )
@@ -107,7 +107,8 @@ class RuntimeToolRouter:
                     self.context.session.require_skill_disclosure(),
                     opened.index_entry.reference,
                     self.context.session.capabilities.skill_executors,
-                    state_paths=self.context.session.state_paths,
+                    self.context.session.store,
+                    self.context.session.identity,
                 )
             )
         return {
@@ -151,7 +152,8 @@ class RuntimeToolRouter:
                     "mcp",
                 ).reference,
                 self.context.session.capabilities.skill_executors,
-                state_paths=self.context.session.state_paths,
+                self.context.session.store,
+                self.context.session.identity,
             )
         )
         return {"name": name, "tools": server.list_tools()}
@@ -171,7 +173,8 @@ class RuntimeToolRouter:
                     "mcp",
                 ).reference,
                 self.context.session.capabilities.skill_executors,
-                state_paths=self.context.session.state_paths,
+                self.context.session.store,
+                self.context.session.identity,
             )
         )
         return {"name": name, "tool": tool, "result": server.call_tool(tool, arguments)}
@@ -230,7 +233,7 @@ class RuntimeToolRouter:
         item = memory.add_memory_item(
             _required_string(arguments, "text"),
             scope=scope,
-            source_run_id=self.context.session.run_context.run_id,
+            source_run_id=self.context.session.run_id,
         )
         return {"item": asdict(item)}
 
@@ -272,7 +275,8 @@ class RuntimeToolRouter:
             SkillLoadRequest(
                 self.context.session.require_skill_disclosure(),
                 reference,
-                self.context.session.state_paths,
+                self.context.session.store,
+                self.context.session.identity,
             )
         )
         if not isinstance(loaded.runtime_value, McpServer):

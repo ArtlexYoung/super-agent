@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import inspect
-import json
 import math
 import re
 from dataclasses import dataclass
@@ -13,10 +12,8 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from runtime.state import RuntimeStatePaths
 
 EVALUATION_RECORD_SCHEMA_VERSION = 1
-EVALUATION_RECORDS_FILE = "evaluation_records.jsonl"
 EVALUATION_TARGET_TYPES = frozenset({"skill", "capability"})
 EVALUATION_SOURCE_TYPES = frozenset({"agent_run", "candidate_evaluation"})
 EVALUATION_RECORD_FIELDS = {
@@ -96,50 +93,6 @@ class EvaluationRecord:
     result: EvaluationResult
 
 
-class EvaluationRecordStore:
-    def __init__(self, root: Path) -> None:
-        self.root = root
-        self.records_path = root / EVALUATION_RECORDS_FILE
-
-    def append_evaluation_records(self, records: list[EvaluationRecord]) -> None:
-        serialized = [
-            json.dumps(evaluation_record_to_dict(record), ensure_ascii=False, sort_keys=True)
-            for record in records
-        ]
-        if not serialized:
-            return
-        self.root.mkdir(parents=True, exist_ok=True)
-        with self.records_path.open("a", encoding="utf-8") as file:
-            file.write("\n".join(serialized) + "\n")
-
-    def read_evaluation_records(
-        self,
-        target_type: str | None = None,
-        target_key: str | None = None,
-        source_type: str | None = None,
-    ) -> list[EvaluationRecord]:
-        _validate_optional_filter(target_type, EVALUATION_TARGET_TYPES, "target_type")
-        _validate_optional_filter(source_type, EVALUATION_SOURCE_TYPES, "source_type")
-        if target_key is not None and (
-            not isinstance(target_key, str) or not target_key.strip()
-        ):
-            raise ValueError("evaluation target_key filter cannot be empty")
-        if not self.records_path.is_file():
-            return []
-        records = [
-            evaluation_record_from_dict(json.loads(line))
-            for line in self.records_path.read_text(encoding="utf-8").splitlines()
-            if line.strip()
-        ]
-        return [
-            record
-            for record in records
-            if (target_type is None or record.target.target_type == target_type)
-            and (target_key is None or record.target.key == target_key)
-            and (source_type is None or record.source.source_type == source_type)
-        ]
-
-
 class EvaluationTargetTracker:
     """Collect every Skill and Capability that affected one runtime session."""
 
@@ -166,7 +119,6 @@ class RunEvaluationRequest:
     targets: list[EvaluationTarget]
     source: EvaluationSource
     result: EvaluationResult
-    state_paths: RuntimeStatePaths
 
 
 def create_evaluation_record(
@@ -494,15 +446,6 @@ def _score_value(value: object) -> float:
     if not math.isfinite(score) or score < 0 or score > 1:
         raise ValueError("evaluation result score must be between 0 and 1")
     return score
-
-
-def _validate_optional_filter(
-    value: str | None,
-    allowed: frozenset[str],
-    name: str,
-) -> None:
-    if value is not None and (not isinstance(value, str) or value not in allowed):
-        raise ValueError(f"unknown evaluation {name}: {value}")
 
 
 def _estimate_tokens(text: str) -> int:

@@ -1,10 +1,11 @@
-import json
 import tempfile
 import unittest
 from pathlib import Path
 
 from agents.agent import Agent
 from runtime.config import AgentConfig
+from runtime.storage import StorageEventQuery
+from runtime.store import create_local_runtime_store
 from provider.chat import MockProvider
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.kinds.memory import MiniMemory, create_memory_from_skill_disclosure
@@ -14,7 +15,7 @@ from support import write_memory_skill, write_workflow_skill
 class MiniMemoryTests(unittest.TestCase):
     def test_memory_adds_structured_item_and_builds_prompt(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            memory = MiniMemory(Path(tmp))
+            memory = _memory(Path(tmp))
 
             item = memory.add_memory_item("Prefer short answers.", source_run_id="run-1")
 
@@ -25,7 +26,7 @@ class MiniMemoryTests(unittest.TestCase):
 
     def test_recall_filters_scope_and_ranks_lexical_matches(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            memory = MiniMemory(Path(tmp))
+            memory = _memory(Path(tmp))
             memory.add_memory_item("Python package release checklist.", scope="project")
             memory.add_memory_item("Garden watering schedule.", scope="project")
             memory.add_memory_item("Python preference for this user.", scope="agent")
@@ -39,19 +40,28 @@ class MiniMemoryTests(unittest.TestCase):
     def test_memory_writes_events_and_forgetting_removes_active_item(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            memory = MiniMemory(root)
+            memory = _memory(root)
             item = memory.add_memory_item("Temporary fact.")
 
             memory.forget_memory(item.item_id)
 
             self.assertEqual([], memory.list_memory_items())
-            events = [json.loads(line) for line in (root / "memory_events.jsonl").read_text().splitlines()]
-            self.assertEqual(["memory.added", "memory.forgotten"], [event["event_type"] for event in events])
-            self.assertEqual(item.item_id, events[1]["item_id"])
+            events = memory.store.backend.read_events(
+                StorageEventQuery(
+                    user_id=memory.store.user_id,
+                    agent_name=memory.store.agent_name,
+                    stream_type="memory",
+                )
+            )
+            self.assertEqual(
+                ["memory.added", "memory.forgotten"],
+                [event.event_type for event in events],
+            )
+            self.assertEqual(item.item_id, events[1].data["item_ids"][0])
 
     def test_consolidation_deterministically_merges_duplicate_items(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            memory = MiniMemory(Path(tmp))
+            memory = _memory(Path(tmp))
             memory.add_memory_item("Prefer concise answers.", source_run_id="run-1")
             memory.add_memory_item(" prefer   concise answers. ", source_run_id="run-2")
             memory.add_memory_item("Keep source links.", source_run_id="run-3")
@@ -85,11 +95,12 @@ include_usage_habits = false
 """.strip(),
                 encoding="utf-8",
             )
-            disclosure = ProgressiveDisclosureCore([root / "skills"], root / "cache")
+            store = create_local_runtime_store(root / "state")
+            disclosure = ProgressiveDisclosureCore([root / "skills"], store)
             disclosure.prepare_skill_index()
             memory = create_memory_from_skill_disclosure(
                 disclosure.open_skill("project", "memory"),
-                root / "data",
+                store,
             )
 
             self.assertEqual("project", memory.policy.default_scope)
@@ -101,7 +112,9 @@ include_usage_habits = false
             root = Path(tmp)
             write_workflow_skill(root)
             write_memory_skill(root)
-            MiniMemory(root / ".super-agent" / "memory").add_memory_item("User likes concise answers.")
+            MiniMemory(
+                create_local_runtime_store(root / ".super-agent", agent_name="demo")
+            ).add_memory_item("User likes concise answers.")
             agent = _make_agent(root, MockProvider("ok"))
 
             agent.run("Give a concise answer")
@@ -111,7 +124,7 @@ include_usage_habits = false
 
     def test_memory_self_updates_usage_habits(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            memory = MiniMemory(Path(tmp))
+            memory = _memory(Path(tmp))
 
             memory.usage_habits.record_agent_run(workflow="direct", skills=["echo"])
             memory.usage_habits.record_agent_run(workflow="direct", skills=["echo"])
@@ -131,7 +144,7 @@ include_usage_habits = false
 
             agent.run("first")
             agent.run("second")
-            memory = MiniMemory(root / ".super-agent" / "memory")
+            memory = MiniMemory(agent.runtime.create_store())
 
             self.assertEqual(2, memory.usage_habits.read_usage_habits()["total_runs"])
             self.assertIn("workflow direct used 1 times", agent.provider.last_messages[0]["content"])
@@ -154,8 +167,15 @@ model = "unit-test"
 
 [paths]
 skills = ["skills"]
-memory = ".super-agent/memory"
+
+[storage]
+backend = "jsonl"
+path = ".super-agent"
 """.strip(),
         encoding="utf-8",
     )
     return Agent(AgentConfig.load_from_file(config_path), provider=provider)
+
+
+def _memory(root: Path) -> MiniMemory:
+    return MiniMemory(create_local_runtime_store(root))

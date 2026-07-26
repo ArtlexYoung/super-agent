@@ -2,7 +2,7 @@
 
 ## One Runtime Session
 
-Each `Agent.run(...)` creates one `RuntimeSession`. The Runtime prepares the Skill index once, records a lock from that same index, executes the selected workflow, records every used target, and appends the final evaluation.
+Each `Agent.run(...)` creates one `RuntimeSession` with one `RunIdentity` and one `RuntimeStore`. The Runtime prepares the Skill index once, records a lock from that same index, executes the selected workflow, records every used target, and appends the final evaluation.
 
 ## Workflow Skills
 
@@ -44,16 +44,13 @@ Every tool request, completion, and failure is written to the run event stream.
 
 ## Run Tracing
 
-Each run receives a unique `run_id` and writes:
+Each run receives a unique `run_id`. With the default JSONL backend, all runtime state for one user is appended to one canonical stream:
 
 ```text
-.super-agent/memory/runs/<run-id>/
-  events.jsonl
-  snapshot.json
-  runtime.lock.json
+.super-agent/users/<user-hash>/events.jsonl
 ```
 
-`events.jsonl` is ordered and append-only. `snapshot.json` records running, completed, or failed status. `runtime.lock.json` fixes:
+Events are ordered and append-only. `RuntimeStore.read_run(...)` replays run events into a `RunSnapshot`; no parallel snapshot file can drift from the trace. The `runtime.locked` event fixes:
 
 - Effective Agent configuration.
 - Resolved model and Provider adapter.
@@ -68,7 +65,7 @@ super-agent runs explain --config agent.toml --run-id <run-id>
 super-agent runs export --config agent.toml --run-id <run-id> --output run.json
 ```
 
-Explain and export verify the runtime-lock hash before returning its content.
+Explain and export rebuild the run view and verify the runtime-lock hash before returning its content.
 
 ## Streaming Protocol
 
@@ -121,14 +118,10 @@ Warnings do not block execution. Omitting the maximum allows unlimited nesting.
 ## Runtime-Owned State
 
 ```text
-.super-agent/memory/
-  runs/
-  disclosure/
-  evaluations/
-  derived/
-  evolution/
-  memory_events.jsonl
-  habits.json
+.super-agent/
+  users/<user-hash>/events.jsonl
+  users/<user-hash>/agents/<agent-hash>/cache/
+  users/<user-hash>/agents/<agent-hash>/evolution/
 ```
 
-The first five paths come from one `RuntimeStatePaths` object. Memory event and habit files are managed by the selected memory Skill runtime.
+`StorageEvent` is the backend-neutral source of truth for run traces, evaluations, memory, usage habits, and disclosure history. `RuntimeStore` supplies their explicit domain operations. Cache and evolution directories are scoped local artifacts; they are never alternate stores for the same event data.

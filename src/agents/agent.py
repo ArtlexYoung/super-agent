@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, replace
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Callable, cast
 
 from capability.contracts import (
     AgentCapabilitySet,
     RunController,
     RunResultEvaluator,
-    RunRecorder,
     SkillDisclosureCapability,
     SkillExecutor,
     SkillUpdaterCapability,
@@ -17,8 +16,10 @@ from provider.chat import ChatProvider, Message, create_chat_provider
 from provider.discovery import ModelResolution, resolve_model_settings
 from runtime.config import AgentConfig
 from runtime.engine import AgentRuntime
-from runtime.events import RunContext
-from runtime.models import AgentRunRequest, RunResult, SubAgentResult, SubagentCallbacks
+from runtime.identity import LOCAL_USER_ID
+from runtime.models import AgentRunRequest, RunEvent, RunResult, SubAgentResult, SubagentCallbacks
+from runtime.session import RuntimeSession
+from runtime.storage import StorageBackend, create_storage_backend
 
 if TYPE_CHECKING:
     from skill.evolution.manager import SkillEvolutionManager
@@ -40,6 +41,7 @@ class Agent:
         *,
         provider: ChatProvider | None = None,
         capabilities: AgentCapabilitySet | None = None,
+        storage: StorageBackend | None = None,
     ) -> None:
         unresolved_config = config or AgentConfig.load_automatically()
         self.model_resolution: ModelResolution = resolve_model_settings(
@@ -51,7 +53,16 @@ class Agent:
         )
         self.provider = provider or create_chat_provider(self.config.model)
         self.capabilities = capabilities or create_default_capability_set(self.config, self.provider)
-        self.runtime = AgentRuntime(self.config, self.provider, self.capabilities)
+        self.storage = storage or create_storage_backend(
+            self.config.storage.backend,
+            str(self.config.storage.path),
+        )
+        self.runtime = AgentRuntime(
+            self.config,
+            self.provider,
+            self.capabilities,
+            self.storage,
+        )
         self._subagents: list[SubAgent] = []
 
     @classmethod
@@ -106,9 +117,6 @@ class Agent:
     def set_skill_updater(self, skill_updater: SkillUpdaterCapability) -> None:
         self._replace_capabilities(skill_updater=skill_updater)
 
-    def set_run_recorder(self, run_recorder: RunRecorder) -> None:
-        self._replace_capabilities(run_recorder=run_recorder)
-
     def create_skill_evolution_manager(self) -> "SkillEvolutionManager":
         return cast("SkillEvolutionManager", self.runtime.create_skill_updater())
 
@@ -134,8 +142,10 @@ class Agent:
         *,
         include_subagents: bool = True,
         check_subagent_links_before_run: bool = True,
-        run_context: RunContext | None = None,
         messages: list[Message] | None = None,
+        user_id: str = LOCAL_USER_ID,
+        conversation_id: str | None = None,
+        event_listener: Callable[[RunEvent], None] | None = None,
     ) -> RunResult:
         warnings = self.check_subagent_links() if include_subagents and check_subagent_links_before_run else []
         request = AgentRunRequest(
@@ -149,11 +159,21 @@ class Agent:
                 run_named_subagent=self._run_named_subagent_for_model,
             ),
         )
-        return self.runtime.run_agent(request, run_context)
+        return self.runtime.run_agent(
+            request,
+            user_id=user_id,
+            conversation_id=conversation_id,
+            event_listener=event_listener,
+        )
 
     def _replace_capabilities(self, **changes: object) -> None:
         self.capabilities = replace(self.capabilities, **changes)
-        self.runtime = AgentRuntime(self.config, self.provider, self.capabilities)
+        self.runtime = AgentRuntime(
+            self.config,
+            self.provider,
+            self.capabilities,
+            self.storage,
+        )
 
     def _make_next_subagent_name(self) -> str:
         index = 1
@@ -167,11 +187,11 @@ class Agent:
     def _run_subagents_that_match_prompt(
         self,
         prompt: str,
-        run_context: RunContext,
+        session: RuntimeSession,
     ) -> list[SubAgentResult]:
         prompt_text = prompt.lower()
         return [
-            self._run_subagent(subagent, prompt, run_context)
+            self._run_subagent(subagent, prompt, session)
             for subagent in self._subagents
             if _prompt_matches_subagent_triggers(subagent, prompt_text)
         ]
@@ -192,32 +212,26 @@ class Agent:
         self,
         name: str,
         prompt: str,
-        run_context: RunContext,
+        session: RuntimeSession,
     ) -> dict[str, object]:
         subagent = next((item for item in self._subagents if item.name == name), None)
         if subagent is None:
             raise KeyError(f"subagent not found: {name}")
-        return asdict(self._run_subagent(subagent, prompt, run_context))
+        return asdict(self._run_subagent(subagent, prompt, session))
 
     def _run_subagent(
         self,
         subagent: SubAgent,
         prompt: str,
-        run_context: RunContext,
+        parent_session: RuntimeSession,
     ) -> SubAgentResult:
-        run_context.record_event(
+        parent_session.record_event(
             "subagent.started",
             {"name": subagent.name, "agent_name": subagent.agent.config.agent.name, "prompt": prompt},
         )
-        child_context = subagent.agent.runtime.start_run_context(
+        result = subagent.agent._run_as_subagent(
             prompt,
-            parent_run_id=run_context.run_id,
-        )
-        result = subagent.agent.run(
-            prompt,
-            include_subagents=True,
-            check_subagent_links_before_run=False,
-            run_context=child_context,
+            parent_session,
         )
         subagent_result = SubAgentResult(
             name=subagent.name,
@@ -228,11 +242,34 @@ class Agent:
             subagent_results=result.subagent_results,
             run_id=result.run_id,
         )
-        run_context.record_event(
+        parent_session.record_event(
             "subagent.completed",
             {"name": subagent.name, "run_id": result.run_id},
         )
         return subagent_result
+
+    def _run_as_subagent(
+        self,
+        prompt: str,
+        parent_session: RuntimeSession,
+    ) -> RunResult:
+        request = AgentRunRequest(
+            prompt=prompt,
+            messages=[],
+            include_subagents=True,
+            warning_messages=[],
+            subagents=SubagentCallbacks(
+                list_subagents=self._list_subagents_for_model,
+                run_matching_subagents=self._run_subagents_that_match_prompt,
+                run_named_subagent=self._run_named_subagent_for_model,
+            ),
+        )
+        return self.runtime.run_agent(
+            request,
+            user_id=parent_session.identity.user_id,
+            conversation_id=parent_session.identity.conversation_id,
+            parent_run_id=parent_session.run_id,
+        )
 
 
 def _prompt_matches_subagent_triggers(subagent: SubAgent, prompt: str) -> bool:

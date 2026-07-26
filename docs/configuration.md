@@ -18,7 +18,10 @@ model = ""
 
 [paths]
 skills = ["skills"]
-memory = ".super-agent/memory"
+
+[storage]
+backend = "jsonl"
+path = ".super-agent"
 ```
 
 ## Agent Settings
@@ -80,15 +83,28 @@ Use `super-agent models resolve` to see the selected settings and their source.
 
 `paths.skills` is a list of recursively scanned Skill roots. Relative paths resolve from the configuration file directory.
 
-`paths.memory` is the runtime state root. `RuntimeStatePaths` derives these explicit child locations:
+## Storage
+
+Storage configuration is optional. The defaults are equivalent to:
+
+```toml
+[storage]
+backend = "jsonl"
+path = ".super-agent"
+```
+
+`jsonl` is the available backend in `v0.0.26`. It keeps the base package dependency-free and stores one canonical event stream per user. SQLite, MySQL, and PostgreSQL names are reserved for the backends introduced in later `0.0.x` releases; selecting one before its release fails clearly.
+
+`path` is resolved from the configuration file directory. The default JSONL layout is:
 
 ```text
-runs/
-disclosure/
-evaluations/
-derived/
-evolution/
+.super-agent/
+  users/<user-hash>/events.jsonl
+  users/<user-hash>/agents/<agent-hash>/cache/
+  users/<user-hash>/agents/<agent-hash>/evolution/
 ```
+
+Run snapshots, evaluations, memory, usage habits, and disclosure history are semantic views over the canonical event stream. Cache files and evolution workspaces are local artifacts owned by the same user and Agent scope.
 
 ## Disable Examples
 
@@ -105,4 +121,4 @@ disable_names = [
 
 ## Strict Parsing
 
-Configuration and Skill readers reject invalid types and unsupported schema versions. The `0.0.x` series does not silently convert old configuration names or retain compatibility aliases.
+Configuration and Skill readers reject unsupported fields and schema versions. The `0.0.x` series does not silently convert old configuration names or retain compatibility aliases. In particular, the removed `paths.memory` setting is rejected; use `[storage].path`.

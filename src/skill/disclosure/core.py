@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
 from urllib.parse import quote
+
+from runtime.identity import RunIdentity
+from runtime.store import RuntimeStore
 
 from skill.disclosure.models import (
     DisclosedConfiguration,
@@ -17,33 +19,27 @@ from skill.disclosure.models import (
     skill_index_to_dict,
 )
 from skill.disclosure.source import read_skill_sources
-from skill.disclosure.store import SkillDisclosureStore
-from skill.freshness import SkillFreshnessStore
+from skill.freshness import calculate_skill_freshness
 from skill.manifest import (
     SkillManifest,
     calculate_skill_directory_sha256,
     skill_manifest_to_dict,
 )
 
-if TYPE_CHECKING:
-    from runtime.events import RunContext
-
-
 class ProgressiveDisclosureCore:
     def __init__(
         self,
         skill_roots: list[Path],
-        cache_root: Path,
+        store: RuntimeStore,
         *,
         disabled_names: list[str] | None = None,
-        freshness_store: SkillFreshnessStore | None = None,
-        run_context: "RunContext | None" = None,
+        identity: RunIdentity | None = None,
     ) -> None:
         self.skill_roots = [path.expanduser() for path in skill_roots]
-        self.cache_root = cache_root
+        self.store = store
+        self.cache_root = store.cache_root
         self.disabled_names = list(disabled_names or [])
-        self.freshness_store = freshness_store
-        self.store = SkillDisclosureStore(cache_root, run_context=run_context)
+        self.identity = identity
         self._index: SkillIndex | None = None
         self._sources_by_key: dict[str, SkillSource] = {}
         self._disabled_references: list[SkillReference] = []
@@ -57,16 +53,27 @@ class ProgressiveDisclosureCore:
         if scan.issues:
             messages = "; ".join(f"{issue.path}: {issue.message}" for issue in scan.issues)
             raise ValueError(f"invalid skill sources: {messages}")
-        stats = _read_freshness_stats(self.freshness_store)
+        stats = calculate_skill_freshness(
+            self.store.read_evaluation_records(
+                target_type="skill",
+                source_type="agent_run",
+            )
+        )
         entries = [_build_index_entry(source, self.cache_root, stats) for source in scan.sources]
         self._index = SkillIndex(
             entries,
             index_path=self.cache_root / "index.json",
-            history_path=self.store.history_path,
+            history_path=self.store.disclosure_history_path,
         )
         self._sources_by_key = {source.reference.key: source for source in scan.sources}
         self._disabled_references = scan.disabled_references
-        self.store.write_json(None, "index", self.cache_root / "index.json", skill_index_to_dict(self._index))
+        self.store.write_disclosure_json(
+            self.identity,
+            "*",
+            "index",
+            self.cache_root / "index.json",
+            skill_index_to_dict(self._index),
+        )
         return self._index
 
     def select_skill_references_for_prompt(
@@ -81,8 +88,9 @@ class ProgressiveDisclosureCore:
             allowed_capabilities,
         )
         selected = [decision.reference for decision in decisions if decision.selected]
-        if self.store.run_context is not None:
-            self.store.run_context.record_event(
+        if self.identity is not None:
+            self.store.append_run_event(
+                self.identity,
                 "skills.selected",
                 {
                     "selected_keys": [reference.key for reference in selected],
@@ -147,13 +155,31 @@ class ProgressiveDisclosureCore:
         expected_capability: str | None = None,
     ) -> "SkillDisclosure":
         entry = self._require_index().require_skill(name, expected_capability)
-        return SkillDisclosure(self._sources_by_key[entry.reference.key], entry, self.store)
+        return SkillDisclosure(
+            self._sources_by_key[entry.reference.key],
+            entry,
+            self.store,
+            self.identity,
+        )
 
     def read_disclosed_content(self, cache_path: str | Path) -> str:
-        return self.store.read_content(cache_path)
+        return self.store.read_disclosure_content(cache_path)
 
     def read_disclosure_history(self) -> list[SkillDisclosureEvent]:
-        return self.store.read_history()
+        return [
+            SkillDisclosureEvent(
+                schema_version=int(item["schema_version"]),
+                sequence=int(item["sequence"]),
+                created_at=str(item["created_at"]),
+                run_id=str(item["run_id"]),
+                skill_key=str(item["skill_key"]),
+                stage=str(item["stage"]),
+                cache_path=Path(str(item["cache_path"])),
+                content_sha256=str(item["content_sha256"]),
+                cache_hit=bool(item["cache_hit"]),
+            )
+            for item in self.store.read_disclosure_history()
+        ]
 
     def _require_index(self) -> SkillIndex:
         if self._index is None:
@@ -186,16 +212,19 @@ class SkillDisclosure:
         self,
         source: SkillSource,
         index_entry: SkillIndexEntry,
-        store: SkillDisclosureStore,
+        store: RuntimeStore,
+        identity: RunIdentity | None,
     ) -> None:
         self.source = source
         self.index_entry = index_entry
         self.store = store
+        self.identity = identity
 
     def read_manifest(self) -> SkillManifest:
         self._verify_source_content()
-        self.store.write_json(
-            self.source.reference,
+        self.store.write_disclosure_json(
+            self.identity,
+            self.source.reference.key,
             "manifest",
             self.index_entry.manifest_cache_path,
             skill_manifest_to_dict(self.source.manifest),
@@ -212,8 +241,9 @@ class SkillDisclosure:
                 raise FileNotFoundError(f"skill instructions not found: {path}")
             content = path.read_text(encoding="utf-8").strip()
         self._verify_source_content()
-        self.store.write_text(
-            self.source.reference,
+        self.store.write_disclosure_text(
+            self.identity,
+            self.source.reference.key,
             "instructions",
             self.index_entry.instructions_cache_path,
             content,
@@ -223,8 +253,9 @@ class SkillDisclosure:
     def read_configuration(self) -> DisclosedConfiguration:
         self._verify_source_content()
         content = dict(self.source.configuration)
-        self.store.write_json(
-            self.source.reference,
+        self.store.write_disclosure_json(
+            self.identity,
+            self.source.reference.key,
             "configuration",
             self.index_entry.configuration_cache_path,
             content,
@@ -280,14 +311,6 @@ def _build_index_entry(
             runtime.get("same_function_successful_followups", 0)
         ),
     )
-
-
-def _read_freshness_stats(
-    store: SkillFreshnessStore | None,
-) -> dict[str, dict[str, object]]:
-    if store is None:
-        return {}
-    return store.read_skill_stats()
 
 
 def _path_segment(value: str) -> str:

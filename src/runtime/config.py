@@ -13,7 +13,7 @@ class AgentSettings:
     system: str
     # This stores a skill name whose workflow Capability defines execution behavior.
     workflow: str
-    # This stores a skill name; PathsSettings.memory still determines the data directory.
+    # This stores the name of the memory Skill selected for the Agent.
     memory: str
     skills: list[str]
     max_agent_chain_depth: int | None
@@ -33,8 +33,13 @@ class ModelSettings:
 class PathsSettings:
     # The shared skill tree root recursively scanned for prompt, MCP, memory, and workflow skills.
     skills: list[Path]
-    # Runtime data root for memory events, habits, run traces, and evaluation history.
-    memory: Path
+
+
+@dataclass(frozen=True)
+class StorageSettings:
+    backend: str
+    path: Path
+    url_env: str | None
 
 
 @dataclass(frozen=True)
@@ -42,6 +47,7 @@ class AgentConfig:
     agent: AgentSettings
     model: ModelSettings
     paths: PathsSettings
+    storage: StorageSettings
     source: Path
 
     @classmethod
@@ -53,6 +59,7 @@ class AgentConfig:
             agent=_read_agent_settings(data.get("agent", {})),
             model=_read_model_settings(data.get("model", {})),
             paths=_read_paths_settings(data.get("paths", {}), base_dir),
+            storage=_read_storage_settings(data.get("storage", {}), base_dir),
             source=source,
         )
 
@@ -90,8 +97,8 @@ class AgentConfig:
             model=_read_model_settings({}),
             paths=PathsSettings(
                 skills=_default_skill_roots(base / "skills", builtin_skills),
-                memory=base / ".super-agent" / "memory",
             ),
+            storage=_read_storage_settings({}, base),
             source=base / "agent.toml",
         )
 
@@ -133,11 +140,27 @@ def _read_model_settings(data: dict[str, Any]) -> ModelSettings:
 
 
 def _read_paths_settings(data: dict[str, Any], base_dir: Path) -> PathsSettings:
+    unknown = set(data) - {"skills"}
+    if unknown:
+        raise ValueError(f"unknown paths settings: {', '.join(sorted(unknown))}")
     skill_paths = data.get("skills", ["skills"])
-    memory_path = Path(str(data.get("memory", ".super-agent/memory")))
     return PathsSettings(
         skills=[_resolve_path(base_dir, Path(str(item))) for item in skill_paths],
-        memory=_resolve_path(base_dir, memory_path),
+    )
+
+
+def _read_storage_settings(data: dict[str, Any], base_dir: Path) -> StorageSettings:
+    unknown = set(data) - {"backend", "path", "url_env"}
+    if unknown:
+        raise ValueError(f"unknown storage settings: {', '.join(sorted(unknown))}")
+    backend = str(data.get("backend", "jsonl")).strip().lower()
+    if backend not in {"jsonl", "sqlite", "mysql", "postgresql"}:
+        raise ValueError(f"unknown storage backend: {backend}")
+    path = _resolve_path(base_dir, Path(str(data.get("path", ".super-agent"))))
+    return StorageSettings(
+        backend=backend,
+        path=path,
+        url_env=_optional_string(data.get("url_env")),
     )
 
 

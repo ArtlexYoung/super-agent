@@ -8,8 +8,9 @@ from typing import TYPE_CHECKING
 from provider.chat import ChatProvider
 from runtime.config import AgentConfig
 from runtime.evaluation import EvaluationTarget, EvaluationTargetTracker
-from runtime.events import RunContext
-from runtime.state import RuntimeStatePaths
+from runtime.identity import RunIdentity
+from runtime.models import RunEvent
+from runtime.store import RuntimeStore
 from skill.disclosure import SkillIndex, SkillIndexEntry
 from skill.evaluation import create_indexed_skill_evaluation_target
 
@@ -22,8 +23,8 @@ class RuntimeSession:
     config: AgentConfig
     provider: ChatProvider
     capabilities: "AgentCapabilitySet"
-    run_context: RunContext
-    state_paths: RuntimeStatePaths
+    identity: RunIdentity
+    store: RuntimeStore
     skill_disclosure: "SkillDisclosureSession | None" = None
     skill_index: SkillIndex | None = None
     _evaluation_targets: EvaluationTargetTracker = field(
@@ -31,6 +32,17 @@ class RuntimeSession:
         init=False,
         repr=False,
     )
+
+    @property
+    def run_id(self) -> str:
+        return self.identity.run_id
+
+    def record_event(
+        self,
+        event_type: str,
+        data: dict[str, object] | None = None,
+    ) -> RunEvent:
+        return self.store.append_run_event(self.identity, event_type, data)
 
     def set_skill_disclosure(
         self,

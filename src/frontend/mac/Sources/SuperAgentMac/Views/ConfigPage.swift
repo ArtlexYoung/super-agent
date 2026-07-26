@@ -169,7 +169,7 @@ private struct MemoryDefaultView: View {
             HStack {
                 FieldTitleView(
                     title: "默认记忆行为",
-                    help: "对应 [agent].memory。运行时会选择 capability = \"memory\" 的同名 Skill，并使用 [paths].memory 保存数据。"
+                    help: "对应 [agent].memory。运行时会选择 capability = \"memory\" 的同名 Skill，数据统一交给 [storage] 保存。"
                 )
                 DefaultTagView(text: chatStore.config.agent.memory)
                 Button("恢复 default") {
@@ -540,19 +540,30 @@ private struct PathsConfigEditorView: View {
     @EnvironmentObject private var chatStore: ChatStore
 
     var body: some View {
-        ConfigSectionBox(title: "路径设置") {
+        ConfigSectionBox(title: "路径与存储") {
             DirectoryListView(
                 title: "技能目录",
                 help: "对应 [paths].skills。runtime 会在这些目录下递归查找 prompt、MCP、memory、workflow 等 skill。",
                 items: $chatStore.config.paths.skills,
                 defaultName: "skills"
             )
+            Picker("存储后端", selection: $chatStore.config.storage.backend) {
+                Text("JSONL（默认）").tag("jsonl")
+                Text("SQLite").tag("sqlite")
+                Text("MySQL").tag("mysql")
+                Text("PostgreSQL").tag("postgresql")
+            }
+            .help("对应 [storage].backend。JSONL 无需额外依赖；其他后端按版本提供。")
             DirectoryPathView(
-                title: "记忆目录",
-                help: "对应 [paths].memory。保存 memory_events.jsonl、habits.json、运行追踪和渐进式披露缓存。",
-                path: $chatStore.config.paths.memory,
-                defaultName: ".super-agent/memory"
+                title: "本地存储目录",
+                help: "对应 [storage].path。JSONL 事件、披露缓存和进化工作区都在这里按用户与 Agent 隔离。",
+                path: $chatStore.config.storage.path,
+                defaultName: ".super-agent"
             )
+            if ["mysql", "postgresql"].contains(chatStore.config.storage.backend) {
+                TextField("连接地址环境变量", text: $chatStore.config.storage.urlEnv)
+                    .help("对应 [storage].url_env，只保存环境变量名，不保存数据库密码。")
+            }
         }
     }
 }

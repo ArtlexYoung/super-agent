@@ -3,15 +3,14 @@ import unittest
 from pathlib import Path
 
 from runtime.evaluation import (
-    EvaluationRecordStore,
     EvaluationResult,
     EvaluationSource,
     EvaluationTarget,
     EvaluationTokenUsage,
     create_evaluation_record,
 )
+from runtime.store import create_local_runtime_store
 from skill.disclosure import ProgressiveDisclosureCore
-from skill.freshness import SkillFreshnessStore
 
 
 class ProgressiveDisclosureCoreTests(unittest.TestCase):
@@ -20,13 +19,14 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
             root = Path(tmp)
             _write_all_skill_kinds(root)
 
-            index = _create_core(root).prepare_skill_index()
+            core = _create_core(root)
+            index = core.prepare_skill_index()
 
             self.assertEqual(
                 ["mcp:filesystem", "memory:default", "prompt:echo", "workflow:direct"],
                 [entry.reference.key for entry in index.entries],
             )
-            self.assertTrue((root / "cache" / "index.json").is_file())
+            self.assertTrue(core.cache_root.joinpath("index.json").is_file())
 
     def test_same_name_in_different_kinds_requires_explicit_kind(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -80,7 +80,7 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
             _write_mcp_skill(root, "filesystem")
             core = ProgressiveDisclosureCore(
                 [root / "skills"],
-                root / "cache",
+                create_local_runtime_store(root / "state"),
                 disabled_names=["mcp"],
             )
             core.prepare_skill_index()
@@ -100,7 +100,7 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
             _write_mcp_skill(root, "shared")
             core = ProgressiveDisclosureCore(
                 [root / "skills"],
-                root / "cache",
+                create_local_runtime_store(root / "state"),
                 disabled_names=["mcp:shared"],
             )
             core.prepare_skill_index()
@@ -218,7 +218,7 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
             )
             memory = create_memory_from_skill_disclosure(
                 core.open_skill("default", expected_capability="memory"),
-                root / "memory-data",
+                core.store,
             )
             workflow = create_workflow_from_skill_disclosure(
                 core.open_skill("direct", expected_capability="workflow")
@@ -232,7 +232,8 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_prompt_skill(root, "research", triggers=["research"])
-            EvaluationRecordStore(root / "memory" / "evaluations").append_evaluation_records(
+            store = create_local_runtime_store(root / "state")
+            store.append_evaluation_records(
                 [
                     create_evaluation_record(
                         target=EvaluationTarget(
@@ -259,7 +260,10 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
                 ]
             )
 
-            entry = _create_core(root).prepare_skill_index().require_skill("research", "prompt")
+            entry = ProgressiveDisclosureCore(
+                [root / "skills"],
+                store,
+            ).prepare_skill_index().require_skill("research", "prompt")
 
             self.assertEqual(1, entry.call_count)
             self.assertEqual(1, entry.success_count)
@@ -269,11 +273,7 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
 def _create_core(root: Path) -> ProgressiveDisclosureCore:
     return ProgressiveDisclosureCore(
         [root / "skills"],
-        root / "cache",
-        freshness_store=SkillFreshnessStore(
-            root / "memory" / "evaluations",
-            root / "memory" / "derived",
-        ),
+        create_local_runtime_store(root / "state"),
     )
 
 

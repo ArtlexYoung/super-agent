@@ -95,7 +95,7 @@ class _McpStdioSession:
                 {
                     "protocolVersion": MCP_PROTOCOL_VERSION,
                     "capabilities": {},
-                    "clientInfo": {"name": "super-agent", "version": "0.0.25"},
+                    "clientInfo": {"name": "super-agent", "version": "0.0.26"},
                 },
             )
             self.send_notification("notifications/initialized", {})

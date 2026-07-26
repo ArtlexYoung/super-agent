@@ -8,11 +8,12 @@ from agents.agent import Agent
 from capability.defaults import create_default_skill_disclosure
 from capability.skill_executors import create_builtin_skill_executors
 from runtime.config import AgentConfig
-from runtime.state import RuntimeStatePaths
+from runtime.storage import create_storage_backend
+from runtime.store import RuntimeStore
 from skill.disclosure import ProgressiveDisclosureCore, skill_index_to_dict
 from skill.ecosystem.package import SkillPackageManager
 from skill.evolution.evaluation import EvaluationCase
-from skill.freshness import SkillFreshnessStore
+from skill.freshness import calculate_skill_freshness
 from skill.ecosystem.lock import write_skill_lock_file
 from skill.manifest import SkillManifest
 
@@ -148,11 +149,13 @@ def _rollback_skill(args: argparse.Namespace) -> int:
 
 def _show_skill_freshness(config_path: Path) -> int:
     config = AgentConfig.load_from_file(config_path)
-    state_paths = RuntimeStatePaths.from_root(config.paths.memory)
-    stats = SkillFreshnessStore(
-        state_paths.evaluations,
-        state_paths.derived,
-    ).read_skill_stats()
+    store = _load_runtime_store(config)
+    stats = calculate_skill_freshness(
+        store.read_evaluation_records(
+            target_type="skill",
+            source_type="agent_run",
+        )
+    )
     if not stats:
         print("No skill freshness stats yet.")
         return 0
@@ -273,6 +276,16 @@ def _resolve_skills(config_path: Path, names: list[str]) -> list[SkillManifest]:
 def _load_skill_disclosure(config_path: Path) -> ProgressiveDisclosureCore:
     config = AgentConfig.load_from_file(config_path)
     return create_default_skill_disclosure(config)
+
+
+def _load_runtime_store(config: AgentConfig) -> RuntimeStore:
+    backend = create_storage_backend(config.storage.backend, str(config.storage.path))
+    return RuntimeStore(
+        backend,
+        config.storage.path,
+        "local",
+        config.agent.name,
+    )
 
 
 def _load_package_manager(config_path: Path) -> SkillPackageManager:
