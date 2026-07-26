@@ -54,6 +54,13 @@ from provider.discovery import (
     resolve_model_settings,
 )
 from runtime.engine import AgentRuntime
+from runtime.benchmark import (
+    RuntimeBenchmark,
+    RuntimeBenchmarkPhase,
+    RuntimeBenchmarkReport,
+    RuntimeLifecycleBenchmark,
+    runtime_benchmark_report_to_dict,
+)
 from runtime.evaluation import (
     EvaluationRecord,
     EvaluationResult,
@@ -99,6 +106,12 @@ from runtime.storage import (
     create_storage_backend,
 )
 from runtime.store import RuntimeStore
+from runtime.storage.verification import (
+    StorageIsolationReport,
+    StorageIsolationResult,
+    storage_isolation_report_to_dict,
+    verify_multiuser_isolation_across_storage_backends,
+)
 from capability.tool_router import RuntimeToolRouter
 from skill.disclosure import (
     ProgressiveDisclosureCore,
@@ -175,6 +188,10 @@ __all__ = [
     "RunResult",
     "RunIdentity",
     "RuntimeSession",
+    "RuntimeBenchmark",
+    "RuntimeBenchmarkPhase",
+    "RuntimeBenchmarkReport",
+    "RuntimeLifecycleBenchmark",
     "RuntimeStore",
     "RunSnapshot",
     "RunResultEvaluator",
@@ -200,6 +217,8 @@ __all__ = [
     "StorageCopyUserResult",
     "StorageEvent",
     "StorageEventQuery",
+    "StorageIsolationReport",
+    "StorageIsolationResult",
     "StorageSettings",
     "SubAgentResult",
     "ToolCall",
@@ -217,6 +236,9 @@ __all__ = [
     "evolution_schedule_to_dict",
     "model_resolution_to_dict",
     "resolve_model_settings",
+    "runtime_benchmark_report_to_dict",
     "skill_manifest_to_dict",
+    "storage_isolation_report_to_dict",
     "summarize_evaluation_evidence",
+    "verify_multiuser_isolation_across_storage_backends",
 ]

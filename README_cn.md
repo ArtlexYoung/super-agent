@@ -134,6 +134,21 @@ discover -> disclose -> execute -> observe -> evaluate -> evolve
 
 所有可执行机制都通过唯一的 `CapabilityRegistry` 注册。Runtime 会锁定名称、版本、实现类、精确内容哈希、依赖、权限和更新归属。内置 Capability 不需要设置；本地 Capability 包可以安装、更新和回滚，并在使用同一 Agent 配置时自动恢复激活，不需要增加 TOML 配置。
 
+## 验证完整闭环
+
+使用一条本地命令验证项目的核心主张：
+
+```bash
+super-agent benchmark \
+  --config examples/basic/agent.toml \
+  --cases examples/basic/benchmark-cases.json \
+  --output report.json
+```
+
+基准会比较 `no_skill`、`eager_skill` 和 `progressive_skill` 三种上下文模式，然后在隔离工作区真实执行发现、披露、运行、评价、候选创建、晋升和回滚。它还会对 JSONL 与 SQLite 执行完全相同的对话、记忆、Skill 使用、用户和 Agent 隔离检查；准备了专用测试数据库时，也会验证 MySQL 与 PostgreSQL。
+
+该命令不会调用配置中的远程模型，也不会修改配置中的 Skill 目录。上下文 token 使用确定性的 `ceil(字符数 / 4)` 近似值，生命周期使用内部确定性 Provider。报告包含稳定的输入 SHA-256，耗时则只代表当前机器。详见 [v0.0.34 实验说明](docs/experiments/v0.0.34.md)及其[生成的 JSON 报告](docs/experiments/v0.0.34.json)。
+
 ## 自进化
 
 Agent 自己创建的 Skill 可以声明允许更新：
@@ -267,6 +282,7 @@ super-agent storage copy \
 - [Skill 与渐进式披露](docs/skills.md)
 - [Runtime、Workflow、追踪与多 Agent](docs/runtime.md)
 - [评价、保鲜度、记忆与进化](docs/evolution.md)
+- [可复现的 v0.0.34 实验](docs/experiments/v0.0.34.md)
 - [CLI 命令](docs/cli.md)
 - [配置说明](docs/configuration.md)
 - [macOS 应用](docs/macos.md)

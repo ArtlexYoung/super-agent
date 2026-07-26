@@ -153,4 +153,13 @@ super-agent skills freshness --config my-agent/agent.toml
 super-agent evolution list --config my-agent/agent.toml
 ```
 
+Verify the complete Skill-first lifecycle without calling your configured model or changing your Skills:
+
+```bash
+super-agent benchmark \
+  --config my-agent/agent.toml \
+  --cases examples/basic/benchmark-cases.json \
+  --output report.json
+```
+
 Continue with [Skills](skills.md), [Architecture](architecture.md), or the [CLI reference](cli.md).

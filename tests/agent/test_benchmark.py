@@ -21,6 +21,10 @@ class SkillBenchmarkTests(unittest.TestCase):
             case = report.case_results[0]
             self.assertEqual(["alpha"], case.selected_skills)
             self.assertGreater(case.eager_context_tokens, case.progressive_context_tokens)
+            self.assertGreater(
+                case.progressive_context_tokens,
+                case.no_skill_context_tokens,
+            )
 
     def test_progressive_disclosure_uses_less_context_than_eager_loading(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -39,7 +43,7 @@ class SkillBenchmarkTests(unittest.TestCase):
             self.assertGreater(case.saved_context_tokens, 0)
             self.assertGreater(report.context_savings_ratio, 0.5)
 
-    def test_benchmark_report_serializes_stable_schema_v1(self) -> None:
+    def test_benchmark_report_serializes_stable_schema_v2(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_skill(root, "echo", "Answer briefly.")
@@ -49,10 +53,28 @@ class SkillBenchmarkTests(unittest.TestCase):
             )
             data = benchmark_report_to_dict(report)
 
-            self.assertEqual(1, data["schema_version"])
+            self.assertEqual(2, data["schema_version"])
             self.assertEqual("echo", data["cases"][0]["name"])
-            self.assertIn("context_savings_ratio", data)
+            self.assertEqual(64, len(data["input_sha256"]))
+            self.assertEqual(
+                report.total_no_skill_context_tokens,
+                data["totals"]["context_tokens"]["no_skill"],
+            )
+            self.assertIn("progressive_vs_eager", data["totals"])
             self.assertNotIn("path", str(data))
+
+    def test_benchmark_input_hash_is_stable_across_storage_roots(self) -> None:
+        with tempfile.TemporaryDirectory() as first_tmp, tempfile.TemporaryDirectory() as second_tmp:
+            first_root = Path(first_tmp)
+            second_root = Path(second_tmp)
+            _write_skill(first_root, "echo", "Answer briefly.")
+            _write_skill(second_root, "echo", "Answer briefly.")
+            cases = [BenchmarkCase(name="echo", prompt="echo this")]
+
+            first = _create_benchmark(first_root).run_cases(cases)
+            second = _create_benchmark(second_root).run_cases(cases)
+
+            self.assertEqual(first.input_sha256, second.input_sha256)
 
 
 def _write_skill(root: Path, name: str, instructions: str) -> None:

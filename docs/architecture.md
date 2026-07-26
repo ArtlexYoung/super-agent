@@ -97,6 +97,8 @@ Generic evaluation records belong to `runtime.evaluation`, not to Skill evolutio
 
 `AutonomousEvolutionScheduler` consumes that evidence after standard run evaluation. It writes target-neutral recommendation events through `RuntimeStore`, while Agent coordination maps an accepted recommendation to the existing Skill or Capability candidate manager. Scheduling cannot call promotion or bypass candidate evaluation.
 
+`RuntimeBenchmark` is an orchestration client of these same public mechanisms, not a second execution path. Its disposable lifecycle uses `Agent`, `ProgressiveDisclosureCore`, `RuntimeStore`, `SkillEvolutionManager`, and the central evolution state machine directly. Storage isolation similarly runs one domain-level probe over the shared `StorageBackend` contract rather than maintaining backend-specific benchmark logic.
+
 ## Runtime State
 
 `RuntimeStore` is the only semantic state API. It operates over a replaceable `StorageBackend`:
@@ -124,4 +126,5 @@ Conversations, runs, evaluations, evolution recommendations, memory, habits, and
 - Freshness data is rebuildable and never the source of truth.
 - Evolution recommendations are deterministic and idempotent for unchanged evidence.
 - Evolution cannot bypass candidate validation and evaluation.
+- The end-to-end benchmark cannot call the configured remote Provider or mutate the configured Skill tree.
 - Internal compatibility shells are intentionally absent during `0.0.x`.

@@ -111,7 +111,10 @@ def _build_parser() -> argparse.ArgumentParser:
     configure_models_parser(models_parser)
     runs_parser = subparsers.add_parser("runs", help="inspect and export run snapshots")
     configure_runs_parser(runs_parser)
-    benchmark_parser = subparsers.add_parser("benchmark", help="measure progressive context savings")
+    benchmark_parser = subparsers.add_parser(
+        "benchmark",
+        help="prove the Skill-first runtime lifecycle",
+    )
     configure_benchmark_parser(benchmark_parser)
     storage_parser = subparsers.add_parser("storage", help="manage runtime storage")
     configure_storage_parser(storage_parser)

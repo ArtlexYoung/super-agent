@@ -88,6 +88,8 @@ Status: implemented.
 
 ## v0.0.34: End-to-End Proof
 
+Status: implemented.
+
 - Verify the same multiuser behavior on every storage backend.
 - Benchmark discovery, disclosure, execution, evaluation, evolution, and rollback.
 - Compare no-Skill, eager-context, and progressive-Skill approaches.

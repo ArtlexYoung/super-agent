@@ -44,6 +44,8 @@ class PublicApiTests(unittest.TestCase):
             "RunIdentity",
             "RunSnapshot",
             "RuntimeSession",
+            "RuntimeBenchmark",
+            "RuntimeBenchmarkReport",
             "RuntimeStore",
             "SkillBenchmark",
             "SkillDisclosureCapability",
@@ -56,6 +58,7 @@ class PublicApiTests(unittest.TestCase):
             "StorageCopyUserResult",
             "StorageEvent",
             "StorageEventQuery",
+            "StorageIsolationReport",
             "StorageSettings",
             "discover_model_candidates",
             "create_evaluation_record",
@@ -67,8 +70,11 @@ class PublicApiTests(unittest.TestCase):
             "evolution_schedule_to_dict",
             "model_resolution_to_dict",
             "resolve_model_settings",
+            "runtime_benchmark_report_to_dict",
             "skill_manifest_to_dict",
+            "storage_isolation_report_to_dict",
             "summarize_evaluation_evidence",
+            "verify_multiuser_isolation_across_storage_backends",
         }
 
         self.assertTrue(expected_names <= set(super_agent.__all__))

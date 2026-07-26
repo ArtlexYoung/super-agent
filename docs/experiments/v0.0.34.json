@@ -1,0 +1,204 @@
+{
+  "context_comparison": {
+    "cases": [
+      {
+        "context_tokens": {
+          "eager_skill": 188,
+          "no_skill": 15,
+          "progressive_skill": 147
+        },
+        "name": "echo skill",
+        "progressive_vs_eager": {
+          "context_savings_ratio": 0.2181,
+          "saved_context_tokens": 41
+        },
+        "selected_skills": [
+          "echo"
+        ],
+        "skill_overhead_tokens": {
+          "eager_skill": 173,
+          "progressive_skill": 132
+        }
+      },
+      {
+        "context_tokens": {
+          "eager_skill": 191,
+          "no_skill": 18,
+          "progressive_skill": 183
+        },
+        "name": "filesystem skill",
+        "progressive_vs_eager": {
+          "context_savings_ratio": 0.0419,
+          "saved_context_tokens": 8
+        },
+        "selected_skills": [
+          "filesystem"
+        ],
+        "skill_overhead_tokens": {
+          "eager_skill": 173,
+          "progressive_skill": 165
+        }
+      }
+    ],
+    "input_sha256": "379b4317e29012bde0f8451ac511cd26f5007bd5343afabb95c93ece258ab3ad",
+    "schema_version": 2,
+    "skill_count": 2,
+    "totals": {
+      "context_tokens": {
+        "eager_skill": 379,
+        "no_skill": 33,
+        "progressive_skill": 330
+      },
+      "progressive_vs_eager": {
+        "context_savings_ratio": 0.1293,
+        "saved_context_tokens": 49
+      },
+      "skill_overhead_tokens": {
+        "eager_skill": 346,
+        "progressive_skill": 297
+      }
+    }
+  },
+  "environment": {
+    "machine": "arm64",
+    "platform": "darwin",
+    "python_implementation": "CPython",
+    "python_version": "3.14.0"
+  },
+  "input_sha256": "7028fb2db7a4e3bba593a009168b47bccabaa8df5e4fcab5812b12101c75f7ab",
+  "lifecycle": {
+    "checks": [
+      "skill_discovered_and_disclosed",
+      "skill_executed",
+      "run_completed",
+      "runtime_evaluation_recorded",
+      "candidate_evaluation_passed",
+      "candidate_promoted",
+      "rollback_restored_parent"
+    ],
+    "phases": [
+      {
+        "duration_ms": 5.964,
+        "evidence": {
+          "discovered_skill_count": 3,
+          "measurement_scope": "index_scan_and_cache",
+          "proof_skill_found": true
+        },
+        "name": "discovery"
+      },
+      {
+        "duration_ms": 6.069,
+        "evidence": {
+          "measurement_scope": "selection_and_content_load",
+          "selected_skills": [
+            "proof"
+          ]
+        },
+        "name": "disclosure"
+      },
+      {
+        "duration_ms": 42.712,
+        "evidence": {
+          "event_types": [
+            "run.started",
+            "skill.disclosed",
+            "runtime.locked",
+            "skills.selected",
+            "skills.disclosed",
+            "model.completed",
+            "run.completed"
+          ],
+          "measurement_scope": "complete_agent_run",
+          "status": "completed"
+        },
+        "name": "execution"
+      },
+      {
+        "duration_ms": 50.409,
+        "evidence": {
+          "candidate_passed": true,
+          "candidate_score": 1.0,
+          "measurement_scope": "candidate_evaluation",
+          "runtime_evaluation_record_count": 9
+        },
+        "name": "evaluation"
+      },
+      {
+        "duration_ms": 119.762,
+        "evidence": {
+          "candidate_version": "0.1.1",
+          "measurement_scope": "candidate_creation_and_promotion",
+          "parent_version": "0.1.0",
+          "promoted_version": "0.1.1"
+        },
+        "name": "evolution"
+      },
+      {
+        "duration_ms": 38.139,
+        "evidence": {
+          "measurement_scope": "restore_previous_revision",
+          "restored_version": "0.1.0"
+        },
+        "name": "rollback"
+      }
+    ],
+    "status": "passed"
+  },
+  "schema_version": 1,
+  "storage_isolation": {
+    "all_available_backends_passed": true,
+    "all_backends_verified": false,
+    "backends": [
+      {
+        "backend": "jsonl",
+        "checks": [
+          "conversation_user_isolation",
+          "memory_user_isolation",
+          "skill_usage_user_isolation",
+          "agent_scope_isolation",
+          "temporary_state_cleanup"
+        ],
+        "duration_ms": 7.789,
+        "error_type": "",
+        "status": "passed",
+        "stored_event_count": 9,
+        "unavailable_reason": ""
+      },
+      {
+        "backend": "sqlite",
+        "checks": [
+          "conversation_user_isolation",
+          "memory_user_isolation",
+          "skill_usage_user_isolation",
+          "agent_scope_isolation",
+          "temporary_state_cleanup"
+        ],
+        "duration_ms": 45.35,
+        "error_type": "",
+        "status": "passed",
+        "stored_event_count": 9,
+        "unavailable_reason": ""
+      },
+      {
+        "backend": "mysql",
+        "checks": [],
+        "duration_ms": 0.023,
+        "error_type": "",
+        "status": "unavailable",
+        "stored_event_count": 0,
+        "unavailable_reason": "environment variable SUPER_AGENT_TEST_MYSQL_URL is not configured"
+      },
+      {
+        "backend": "postgresql",
+        "checks": [],
+        "duration_ms": 0.007,
+        "error_type": "",
+        "status": "unavailable",
+        "stored_event_count": 0,
+        "unavailable_reason": "environment variable SUPER_AGENT_TEST_POSTGRESQL_URL is not configured"
+      }
+    ],
+    "schema_version": 1,
+    "verified_backend_count": 2
+  }
+}

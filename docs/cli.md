@@ -135,7 +135,7 @@ super-agent runs export --config agent.toml --run-id <run-id> --output run.json
 
 When `--run-id` is omitted, explain and export use the latest run.
 
-## Progressive Disclosure Benchmark
+## End-to-End Runtime Benchmark
 
 ```bash
 super-agent benchmark \
@@ -144,7 +144,13 @@ super-agent benchmark \
   --output report.json
 ```
 
-The benchmark does not call a model. It compares eager and progressive context using the deterministic approximation `ceil(character count / 4)`.
+The benchmark never calls the configured remote model or changes the configured Skill tree. It produces one schema-versioned report with:
+
+- Full-input context estimates for `no_skill`, `eager_skill`, and `progressive_skill` modes using `ceil(character count / 4)`. Eager and progressive modes receive the same compact Runtime index; eager loads every model-context Skill while progressive loads only selected Skills.
+- Timed discovery, disclosure, execution, candidate evaluation, evolution/promotion, and rollback in a disposable workspace with a deterministic Provider.
+- The same multiuser and multi-Agent isolation checks against JSONL, SQLite, MySQL, and PostgreSQL.
+
+JSONL and SQLite always run. MySQL and PostgreSQL use only `SUPER_AGENT_TEST_MYSQL_URL` and `SUPER_AGENT_TEST_POSTGRESQL_URL`; a missing driver or environment is reported as `unavailable`, not as a passing check. The command returns nonzero when an available backend fails. The input SHA-256 is reproducible for unchanged cases, system prompt, Skill contents, lifecycle fixture, and backend selection. Durations are machine-specific.
 
 ## Storage Copy
 
@@ -170,4 +176,4 @@ super-agent storage copy \
 
 `--to-path` defaults to `.super-agent-copy`; remote event storage does not use it. Database URLs are read from the selected environment variable and are never accepted as command arguments.
 
-All commands that read or write Runtime state accept `--user-id`; the default is `local`. This includes run, chat, conversations, memory, run inspection, Skill inspection/evolution, autonomous evolution recommendations, and benchmarks.
+All commands that read or write user Runtime state accept `--user-id`; the default is `local`. This includes run, chat, conversations, memory, run inspection, Skill inspection/evolution, and autonomous evolution recommendations. The benchmark is isolated and does not read or write a user's Runtime state.

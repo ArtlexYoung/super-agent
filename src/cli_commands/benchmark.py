@@ -4,34 +4,27 @@ import argparse
 import json
 from pathlib import Path
 
-from capability.defaults import create_default_skill_disclosure
-from skill.benchmark import BenchmarkCase, SkillBenchmark, benchmark_report_to_dict
 from runtime.config import AgentConfig
-from runtime.identity import LOCAL_USER_ID
-from runtime.storage import create_storage_backend
-from runtime.store import RuntimeStore
+from runtime.benchmark import RuntimeBenchmark, runtime_benchmark_report_to_dict
+from skill.benchmark import BenchmarkCase
 
 
 def configure_benchmark_parser(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--config", default="agent.toml")
     parser.add_argument("--cases", required=True)
     parser.add_argument("--output")
-    parser.add_argument("--user-id", default=LOCAL_USER_ID)
 
 
 def run_benchmark_command(args: argparse.Namespace) -> int:
     config = AgentConfig.load_from_file(args.config)
-    backend = create_storage_backend(
-        config.storage.backend,
-        str(config.storage.path),
-        config.storage.url_env,
-    )
-    store = RuntimeStore(backend, config.storage.path, args.user_id, config.agent.name)
-    benchmark = SkillBenchmark(
-        create_default_skill_disclosure(config, store=store),
-    )
+    benchmark = RuntimeBenchmark(config)
     report = benchmark.run_cases(_read_benchmark_cases(Path(args.cases)))
-    text = json.dumps(benchmark_report_to_dict(report), ensure_ascii=False, indent=2, sort_keys=True)
+    text = json.dumps(
+        runtime_benchmark_report_to_dict(report),
+        ensure_ascii=False,
+        indent=2,
+        sort_keys=True,
+    )
     if args.output:
         output = Path(args.output)
         output.parent.mkdir(parents=True, exist_ok=True)
@@ -39,7 +32,7 @@ def run_benchmark_command(args: argparse.Namespace) -> int:
         print(f"Wrote benchmark report: {output}")
     else:
         print(text)
-    return 0
+    return 0 if report.storage_isolation.all_available_backends_passed else 1
 
 
 def _read_benchmark_cases(path: Path) -> list[BenchmarkCase]:

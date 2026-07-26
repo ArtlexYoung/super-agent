@@ -134,6 +134,21 @@ discover -> disclose -> execute -> observe -> evaluate -> evolve
 
 Every executable mechanism is registered through one `CapabilityRegistry`. Runtime locks its name, version, implementation class, exact content hash, dependencies, permissions, and update ownership. Built-ins require no setup; local Capability packages can be installed, updated, rolled back, and automatically restored for the same Agent without adding TOML configuration.
 
+## Verify the Complete Loop
+
+One local command exercises the claim behind the project:
+
+```bash
+super-agent benchmark \
+  --config examples/basic/agent.toml \
+  --cases examples/basic/benchmark-cases.json \
+  --output report.json
+```
+
+The benchmark compares `no_skill`, `eager_skill`, and `progressive_skill` context, then runs discovery, disclosure, execution, evaluation, candidate creation, promotion, and rollback in an isolated workspace. It also applies the same conversation, memory, Skill-usage, user, and Agent isolation checks to JSONL and SQLite. MySQL and PostgreSQL are checked when their dedicated test database environments are available.
+
+It never calls the configured remote model or edits the configured Skill tree. Context tokens use the deterministic approximation `ceil(character count / 4)`; lifecycle quality uses an internal deterministic Provider. The report includes a stable input SHA-256, while timing remains machine-specific. See the [v0.0.34 experiment](docs/experiments/v0.0.34.md) and its [generated JSON report](docs/experiments/v0.0.34.json).
+
 ## Self-Evolution
 
 Agent-created Skills can opt into updates:
@@ -267,6 +282,7 @@ The runtime lock is stored as a run event. It captures the effective Provider, s
 - [Skills and Progressive Disclosure](docs/skills.md)
 - [Runtime, Workflows, Tracing, and Multi-Agent](docs/runtime.md)
 - [Evaluation, Freshness, Memory, and Evolution](docs/evolution.md)
+- [Reproducible v0.0.34 Experiment](docs/experiments/v0.0.34.md)
 - [CLI Reference](docs/cli.md)
 - [Configuration](docs/configuration.md)
 - [macOS App](docs/macos.md)
