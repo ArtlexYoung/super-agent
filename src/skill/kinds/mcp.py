@@ -95,7 +95,7 @@ class _McpStdioSession:
                 {
                     "protocolVersion": MCP_PROTOCOL_VERSION,
                     "capabilities": {},
-                    "clientInfo": {"name": "super-agent", "version": "0.0.29"},
+                    "clientInfo": {"name": "super-agent", "version": "0.0.30"},
                 },
             )
             self.send_notification("notifications/initialized", {})
@@ -178,7 +178,8 @@ def create_mcp_server_from_skill_disclosure(disclosure: SkillDisclosure) -> McpS
     if manifest.capability != "mcp":
         raise ValueError(f"skill does not use the MCP capability: {manifest.name}")
     configuration = disclosure.read_configuration().content
-    command = str(configuration.get("command", "")).strip()
+    transport = _read_transport(configuration.get("transport", "stdio"))
+    command = _read_command(configuration.get("command"), manifest.name)
     if not command:
         raise ValueError(f"MCP configuration.command cannot be empty: {manifest.name}")
     return McpServer(
@@ -186,15 +187,40 @@ def create_mcp_server_from_skill_disclosure(disclosure: SkillDisclosure) -> McpS
         description=manifest.description,
         version=manifest.version,
         triggers=list(manifest.triggers),
-        transport=str(configuration.get("transport", "stdio")),
+        transport=transport,
         command=command,
-        args=[str(item) for item in configuration.get("args", [])],
+        args=_read_args(configuration.get("args", [])),
         env=_read_env(configuration.get("env", {})),
         path=manifest.path,
     )
 
 
+def _read_transport(value: Any) -> str:
+    if not isinstance(value, str) or value.strip() != "stdio":
+        raise ValueError("MCP configuration.transport must be 'stdio'")
+    return "stdio"
+
+
+def _read_command(value: Any, name: str) -> str:
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        raise ValueError(f"MCP configuration.command must be a string: {name}")
+    return value.strip()
+
+
+def _read_args(value: Any) -> list[str]:
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise ValueError("MCP configuration.args must be a string array")
+    return list(value)
+
+
 def _read_env(value: Any) -> dict[str, str]:
     if not isinstance(value, dict):
-        return {}
-    return {str(key): str(item) for key, item in value.items()}
+        raise ValueError("MCP configuration.env must be a table of strings")
+    if not all(
+        isinstance(key, str) and bool(key.strip()) and isinstance(item, str)
+        for key, item in value.items()
+    ):
+        raise ValueError("MCP configuration.env must be a table of strings")
+    return dict(value)

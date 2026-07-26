@@ -13,10 +13,11 @@ from runtime.config import AgentConfig
 from runtime.store import RuntimeStore
 from skill.evolution.candidate import (
     SkillCandidate,
+    SkillCandidateRequest,
     clean_record_id,
-    clean_skill_name,
     create_candidate,
     load_candidate,
+    split_skill_reference,
     verify_candidate_files,
 )
 from skill.evolution.evaluation import (
@@ -35,6 +36,7 @@ from skill.manifest import SkillManifest, calculate_skill_directory_sha256
 @dataclass(frozen=True)
 class SkillHistoryRevision:
     revision_id: str
+    capability: str
     skill_name: str
     version: str
     action: str
@@ -43,6 +45,10 @@ class SkillHistoryRevision:
     sha256: str
     skill_path: Path
     metadata_path: Path
+
+    @property
+    def key(self) -> str:
+        return f"{self.capability}:{self.skill_name}"
 
 
 class SkillEvolutionManager:
@@ -71,14 +77,23 @@ class SkillEvolutionManager:
         self.model = config.model.model
         self.minimum_score = minimum_score
 
-    def create_skill_candidate(self, name: str, goal: str) -> SkillCandidate:
+    def create_skill_candidate(
+        self,
+        name: str,
+        goal: str,
+        *,
+        capability: str | None = None,
+    ) -> SkillCandidate:
         return create_candidate(
-            skill_disclosure=self.skill_disclosure,
-            candidate_root=self.evolution_root / "candidates",
-            provider=self.provider,
-            model=self.model,
-            name=name,
-            goal=goal,
+            SkillCandidateRequest(
+                skill_disclosure=self.skill_disclosure,
+                candidate_root=self.evolution_root / "candidates",
+                provider=self.provider,
+                model=self.model,
+                name=name,
+                goal=goal,
+                capability=capability,
+            )
         )
 
     def evaluate_skill_candidate(
@@ -117,7 +132,7 @@ class SkillEvolutionManager:
         if promotion_path.exists():
             raise ValueError(f"skill candidate was already promoted: {candidate.candidate_id}")
         current = self._verify_candidate_parent(candidate)
-        active_state = self._read_active_state(candidate.name)
+        active_state = self._read_active_state(candidate.capability, candidate.name)
         previous_revision_id = str(active_state.get("rollback_revision_id", ""))
         rollback_revision = self._snapshot_current_skill(
             current,
@@ -125,19 +140,21 @@ class SkillEvolutionManager:
             previous_revision_id=previous_revision_id,
         )
         target = (
-            self.skill_root / "prompt" / candidate.name
+            self.skill_root / candidate.capability / candidate.name
             if current is None
             else current.path
         )
         _replace_skill_directory(candidate.skill_path, target)
-        promoted = self._read_active_manifest(candidate.name)
+        promoted = self._read_active_manifest(candidate.name, candidate.capability)
         if promoted is None:
             raise RuntimeError(f"promoted skill not found after replacement: {candidate.name}")
         _write_json_exclusive(
             promotion_path,
             {
-                "schema_version": 1,
+                "schema_version": 2,
                 "candidate_id": candidate.candidate_id,
+                "skill_key": candidate.key,
+                "capability": candidate.capability,
                 "skill_name": candidate.name,
                 "version": promoted.version,
                 "report_id": report.report_id,
@@ -145,32 +162,44 @@ class SkillEvolutionManager:
             },
         )
         self._write_active_state(
+            candidate.capability,
             candidate.name,
             candidate_id=candidate.candidate_id,
             rollback_revision_id="" if rollback_revision is None else rollback_revision.revision_id,
         )
         return promoted
 
-    def rollback_skill(self, name: str) -> SkillManifest:
-        skill_name = clean_skill_name(name)
-        active_state = self._read_active_state(skill_name)
+    def rollback_skill(
+        self,
+        name: str,
+        *,
+        capability: str | None = None,
+    ) -> SkillManifest:
+        skill_name, requested_capability = split_skill_reference(name, capability)
+        current = self._read_active_manifest(skill_name, requested_capability)
+        if current is None:
+            raise KeyError(f"active skill not found: {name}")
+        skill_capability = current.capability
+        active_state = self._read_active_state(skill_capability, skill_name)
         revision_id = str(active_state.get("rollback_revision_id", ""))
         if not revision_id:
             raise ValueError(f"skill has no previous evolution revision: {skill_name}")
-        revision = self._read_history_revision(skill_name, revision_id)
-        current = self._read_active_manifest(skill_name)
-        if current is None:
-            raise KeyError(f"active skill not found: {skill_name}")
+        revision = self._read_history_revision(
+            skill_capability,
+            skill_name,
+            revision_id,
+        )
         self._snapshot_current_skill(
             current,
             action="rollback_backup",
             previous_revision_id=revision_id,
         )
         _replace_skill_directory(revision.skill_path, current.path)
-        restored = self._read_active_manifest(skill_name)
+        restored = self._read_active_manifest(skill_name, skill_capability)
         if restored is None:
             raise RuntimeError(f"restored skill not found after rollback: {skill_name}")
         self._write_active_state(
+            skill_capability,
             skill_name,
             candidate_id="",
             rollback_revision_id=revision.previous_revision_id,
@@ -179,7 +208,9 @@ class SkillEvolutionManager:
         _write_json_exclusive(
             rollback_path,
             {
-                "schema_version": 1,
+                "schema_version": 2,
+                "skill_key": f"{skill_capability}:{skill_name}",
+                "capability": skill_capability,
                 "skill_name": skill_name,
                 "restored_revision_id": revision.revision_id,
                 "restored_version": restored.version,
@@ -193,8 +224,10 @@ class SkillEvolutionManager:
         name: str,
         goal: str,
         cases: list[EvaluationCase],
+        *,
+        capability: str | None = None,
     ) -> EvolutionResult:
-        candidate = self.create_skill_candidate(name, goal)
+        candidate = self.create_skill_candidate(name, goal, capability=capability)
         report = self.evaluate_skill_candidate(candidate.candidate_id, cases)
         if not report.passed:
             return EvolutionResult(candidate=candidate, report=report, status="rejected")
@@ -206,13 +239,18 @@ class SkillEvolutionManager:
             promoted_manifest=manifest,
         )
 
-    def list_skill_history(self, name: str) -> list[SkillHistoryRevision]:
-        skill_name = clean_skill_name(name)
-        history_root = self.evolution_root / "history" / skill_name
+    def list_skill_history(
+        self,
+        name: str,
+        *,
+        capability: str | None = None,
+    ) -> list[SkillHistoryRevision]:
+        skill_name, skill_capability = self._resolve_skill_reference(name, capability)
+        history_root = self.evolution_root / "history" / skill_capability / skill_name
         if not history_root.is_dir():
             return []
         revisions = [
-            self._read_history_revision(skill_name, path.parent.name)
+            self._read_history_revision(skill_capability, skill_name, path.parent.name)
             for path in history_root.glob("*/revision.json")
         ]
         return sorted(revisions, key=lambda item: (item.created_at, item.revision_id))
@@ -223,28 +261,43 @@ class SkillEvolutionManager:
         return candidate
 
     def _verify_candidate_parent(self, candidate: SkillCandidate) -> SkillManifest | None:
-        current = self._read_active_manifest(candidate.name)
+        current = self._read_active_manifest(candidate.name, candidate.capability)
         if not candidate.parent_sha256:
             if current is not None:
-                raise ValueError(f"skill was created after candidate proposal: {candidate.name}")
+                raise ValueError(f"skill was created after candidate proposal: {candidate.key}")
             return None
         if current is None:
-            raise ValueError(f"candidate parent skill no longer exists: {candidate.name}")
+            raise ValueError(f"candidate parent skill no longer exists: {candidate.key}")
         if not current.agent_can_update:
-            raise PermissionError(f"skill does not allow agent evolution: {candidate.name}")
+            raise PermissionError(f"skill does not allow agent evolution: {candidate.key}")
         if calculate_skill_directory_sha256(current.path) != candidate.parent_sha256:
-            raise ValueError(f"active skill changed after candidate proposal: {candidate.name}")
+            raise ValueError(f"active skill changed after candidate proposal: {candidate.key}")
         return current
 
-    def _read_active_manifest(self, name: str) -> SkillManifest | None:
+    def _read_active_manifest(
+        self,
+        name: str,
+        capability: str | None,
+    ) -> SkillManifest | None:
         index = self.skill_disclosure.prepare_skill_index()
-        entry = index.find_skill(name)
+        entry = index.find_skill(name, capability)
         if entry is None:
             return None
         return self.skill_disclosure.open_skill(
             entry.reference.name,
             entry.reference.capability,
         ).read_manifest()
+
+    def _resolve_skill_reference(
+        self,
+        name: str,
+        capability: str | None,
+    ) -> tuple[str, str]:
+        skill_name, requested_capability = split_skill_reference(name, capability)
+        current = self._read_active_manifest(skill_name, requested_capability)
+        if current is not None:
+            return skill_name, current.capability
+        return skill_name, requested_capability or "prompt"
 
     def _snapshot_current_skill(
         self,
@@ -257,12 +310,19 @@ class SkillEvolutionManager:
             return None
         # Create history once; promotion and rollback read revisions without overwriting them.
         revision_id = f"revision-{uuid4().hex}"
-        final_path = self.evolution_root / "history" / manifest.name / revision_id
+        final_path = (
+            self.evolution_root
+            / "history"
+            / manifest.capability
+            / manifest.name
+            / revision_id
+        )
         staging_path = final_path.parent / f".{revision_id}.tmp"
         skill_path = staging_path / "skill"
         shutil.copytree(manifest.path, skill_path)
         revision = SkillHistoryRevision(
             revision_id=revision_id,
+            capability=manifest.capability,
             skill_name=manifest.name,
             version=manifest.version,
             action=action,
@@ -277,14 +337,51 @@ class SkillEvolutionManager:
         os.replace(staging_path, final_path)
         return revision
 
-    def _read_history_revision(self, name: str, revision_id: str) -> SkillHistoryRevision:
+    def _read_history_revision(
+        self,
+        capability: str,
+        name: str,
+        revision_id: str,
+    ) -> SkillHistoryRevision:
         clean_record_id(revision_id)
-        metadata_path = self.evolution_root / "history" / name / revision_id / "revision.json"
+        metadata_path = (
+            self.evolution_root
+            / "history"
+            / capability
+            / name
+            / revision_id
+            / "revision.json"
+        )
         if not metadata_path.is_file():
             raise KeyError(f"skill history revision not found: {revision_id}")
         data = json.loads(metadata_path.read_text(encoding="utf-8"))
+        expected_fields = {
+            "schema_version",
+            "revision_id",
+            "skill_key",
+            "capability",
+            "skill_name",
+            "version",
+            "action",
+            "created_at",
+            "previous_revision_id",
+            "sha256",
+        }
+        if not isinstance(data, dict) or data.get("schema_version") != 2:
+            raise ValueError(f"invalid skill history revision: {revision_id}")
+        if set(data) != expected_fields:
+            raise ValueError(f"skill history revision fields do not match schema: {revision_id}")
+        identity_matches = (
+            data["skill_key"] == f"{capability}:{name}"
+            and data["capability"] == capability
+            and data["skill_name"] == name
+            and data["revision_id"] == revision_id
+        )
+        if not identity_matches:
+            raise ValueError(f"skill history revision identity does not match path: {revision_id}")
         return SkillHistoryRevision(
             revision_id=str(data["revision_id"]),
+            capability=str(data["capability"]),
             skill_name=str(data["skill_name"]),
             version=str(data["version"]),
             action=str(data["action"]),
@@ -306,25 +403,49 @@ class SkillEvolutionManager:
             raise ValueError(f"skill candidate has not been evaluated: {candidate_id}")
         return max(reports, key=lambda item: (item.created_at, item.report_id))
 
-    def _read_active_state(self, name: str) -> dict[str, object]:
-        path = self.evolution_root / "active" / f"{name}.json"
+    def _read_active_state(self, capability: str, name: str) -> dict[str, object]:
+        path = self.evolution_root / "active" / capability / f"{name}.json"
         if not path.is_file():
             return {}
         data = json.loads(path.read_text(encoding="utf-8"))
-        return data if isinstance(data, dict) else {}
+        expected_fields = {
+            "schema_version",
+            "skill_key",
+            "capability",
+            "skill_name",
+            "candidate_id",
+            "rollback_revision_id",
+            "updated_at",
+        }
+        if not isinstance(data, dict) or data.get("schema_version") != 2:
+            raise ValueError(f"invalid active Skill evolution state: {capability}:{name}")
+        identity_matches = (
+            data.get("skill_key") == f"{capability}:{name}"
+            and data.get("capability") == capability
+            and data.get("skill_name") == name
+        )
+        if set(data) != expected_fields or not identity_matches:
+            raise ValueError(
+                "active Skill evolution state identity does not match path: "
+                f"{capability}:{name}"
+            )
+        return data
 
     def _write_active_state(
         self,
+        capability: str,
         name: str,
         *,
         candidate_id: str,
         rollback_revision_id: str,
     ) -> None:
-        path = self.evolution_root / "active" / f"{name}.json"
+        path = self.evolution_root / "active" / capability / f"{name}.json"
         _write_json_atomically(
             path,
             {
-                "schema_version": 1,
+                "schema_version": 2,
+                "skill_key": f"{capability}:{name}",
+                "capability": capability,
                 "skill_name": name,
                 "candidate_id": candidate_id,
                 "rollback_revision_id": rollback_revision_id,
@@ -408,8 +529,10 @@ def _read_report(path: Path) -> EvaluationReport:
 
 def _revision_to_dict(revision: SkillHistoryRevision) -> dict[str, object]:
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "revision_id": revision.revision_id,
+        "skill_key": revision.key,
+        "capability": revision.capability,
         "skill_name": revision.skill_name,
         "version": revision.version,
         "action": revision.action,

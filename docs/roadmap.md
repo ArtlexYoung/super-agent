@@ -52,6 +52,8 @@ Status: implemented.
 
 ## v0.0.30: Evolution for Every Skill Type
 
+Status: implemented.
+
 - Treat the complete Skill directory as the candidate unit.
 - Remove prompt-only and mandatory `SKILL.md` assumptions.
 - Use one candidate, evaluation, promotion, history, and rollback flow for prompt, memory, workflow, and MCP Skills.

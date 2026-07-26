@@ -114,6 +114,24 @@ instructions = "SKILL.md"
                     disclosure.open_skill("bad", "mcp")
                 )
 
+    def test_mcp_configuration_rejects_invalid_types_without_starting_server(self) -> None:
+        invalid_configurations = {
+            "transport": ('transport = "http"\ncommand = "echo"', "transport"),
+            "command": ("command = 1", "command must be a string"),
+            "args": ('command = "echo"\nargs = "bad"', "args must be a string array"),
+            "env": ('command = "echo"\nenv = ["bad"]', "env must be a table"),
+        }
+        for name, (configuration, message) in invalid_configurations.items():
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                _write_raw_mcp_configuration(root, name, configuration)
+                disclosure = _prepare_disclosure(root)
+
+                with self.assertRaisesRegex(ValueError, message):
+                    create_mcp_server_from_skill_disclosure(
+                        disclosure.open_skill(name, "mcp")
+                    )
+
     def test_config_can_disable_whole_mcp_feature_by_name_list(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -191,6 +209,25 @@ args = [{args_text}]
         encoding="utf-8",
     )
     (server_dir / "SKILL.md").write_text("Use this MCP skill when needed.", encoding="utf-8")
+
+
+def _write_raw_mcp_configuration(root: Path, name: str, configuration: str) -> None:
+    server_dir = root / "skills" / "mcp" / name
+    server_dir.mkdir(parents=True)
+    (server_dir / "skill.toml").write_text(
+        f"""
+schema_version = 2
+name = "{name}"
+capability = "mcp"
+description = "Invalid MCP configuration"
+version = "0.1.0"
+triggers = ["{name}"]
+
+[configuration]
+{configuration}
+""".strip(),
+        encoding="utf-8",
+    )
 
 
 def _write_skill(root: Path, name: str, description: str, instruction: str) -> None:

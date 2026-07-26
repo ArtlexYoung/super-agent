@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 from urllib.parse import quote
 
@@ -8,6 +9,8 @@ from runtime.store import RuntimeStore
 
 from skill.disclosure.models import (
     DisclosedConfiguration,
+    DisclosedSkillFile,
+    DisclosedSkillFiles,
     DisclosedText,
     SkillDisclosureEvent,
     SkillIndex,
@@ -265,6 +268,32 @@ class SkillDisclosure:
             cache_path=self.index_entry.configuration_cache_path,
         )
 
+    def read_skill_files(self) -> DisclosedSkillFiles:
+        self._verify_source_content()
+        files = _read_skill_directory_files(self.source.manifest.path)
+        self.store.write_disclosure_json(
+            self.identity,
+            self.source.reference.key,
+            "files",
+            self.index_entry.files_cache_path,
+            {
+                "schema_version": 1,
+                "files": [
+                    {
+                        "path": item.relative_path,
+                        "size": item.size,
+                        "sha256": item.sha256,
+                        "content": item.content,
+                    }
+                    for item in files
+                ],
+            },
+        )
+        return DisclosedSkillFiles(
+            files=files,
+            cache_path=self.index_entry.files_cache_path,
+        )
+
     def _verify_source_content(self) -> None:
         current_sha256 = calculate_skill_directory_sha256(self.source.manifest.path)
         if current_sha256 != self.index_entry.content_sha256:
@@ -297,6 +326,7 @@ def _build_index_entry(
         manifest_cache_path=skill_root / "manifest.json",
         instructions_cache_path=skill_root / "instructions.md",
         configuration_cache_path=skill_root / "configuration.json",
+        files_cache_path=skill_root / "files.json",
         content_sha256=calculate_skill_directory_sha256(manifest.path),
         agent_created=manifest.agent_created,
         agent_can_update=manifest.agent_can_update,
@@ -311,6 +341,29 @@ def _build_index_entry(
             runtime.get("same_function_successful_followups", 0)
         ),
     )
+
+
+def _read_skill_directory_files(skill_root: Path) -> list[DisclosedSkillFile]:
+    files: list[DisclosedSkillFile] = []
+    for path in sorted(skill_root.rglob("*")):
+        if path.is_symlink():
+            raise ValueError(f"skill files cannot contain symlinks: {path}")
+        if not path.is_file():
+            continue
+        data = path.read_bytes()
+        try:
+            content = data.decode("utf-8")
+        except UnicodeDecodeError:
+            content = None
+        files.append(
+            DisclosedSkillFile(
+                relative_path=path.relative_to(skill_root).as_posix(),
+                size=len(data),
+                sha256=hashlib.sha256(data).hexdigest(),
+                content=content,
+            )
+        )
+    return files
 
 
 def _path_segment(value: str) -> str:

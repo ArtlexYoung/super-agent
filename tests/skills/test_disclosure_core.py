@@ -139,6 +139,28 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
             self.assertTrue(history[3].cache_hit)
             self.assertEqual(first.content, core.read_disclosed_content(first.cache_path))
 
+    def test_selected_skill_discloses_complete_directory_through_one_cache(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_prompt_skill(root, "echo", instruction="Answer briefly.")
+            skill_root = root / "skills" / "echo"
+            (skill_root / "resources").mkdir()
+            (skill_root / "resources" / "example.txt").write_text(
+                "example content",
+                encoding="utf-8",
+            )
+            (skill_root / "resources" / "image.bin").write_bytes(b"\xff\x00")
+            core = _create_core(root)
+            index = core.prepare_skill_index()
+
+            disclosed = core.open_skill("echo", "prompt").read_skill_files()
+
+            files = {item.relative_path: item for item in disclosed.files}
+            self.assertEqual("example content", files["resources/example.txt"].content)
+            self.assertIsNone(files["resources/image.bin"].content)
+            self.assertEqual(index.entries[0].files_cache_path, disclosed.cache_path)
+            self.assertEqual("files", core.read_disclosure_history()[-1].stage)
+
     def test_read_disclosed_content_rejects_path_outside_cache(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

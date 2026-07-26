@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from dataclasses import replace
@@ -138,7 +139,30 @@ class ConversationRuntimeTests(unittest.TestCase):
 
     def test_skill_evolution_workspaces_are_isolated_by_user(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            agent = Agent(AgentConfig.create_default(tmp), provider=MockProvider("instructions"))
+            response = json.dumps(
+                {
+                    "write_files": {
+                        "skill.toml": "\n".join(
+                            [
+                                "schema_version = 2",
+                                'name = "private-note"',
+                                'capability = "prompt"',
+                                'description = "Private notes"',
+                                'version = "0.1.0"',
+                                "agent_created = true",
+                                "agent_can_update = true",
+                                'triggers = ["private notes"]',
+                                "",
+                                "[entry]",
+                                'instructions = "SKILL.md"',
+                            ]
+                        ),
+                        "SKILL.md": "Write private notes.",
+                    },
+                    "delete_files": [],
+                }
+            )
+            agent = Agent(AgentConfig.create_default(tmp), provider=MockProvider(response))
             alpha = agent.create_skill_evolution_manager("alpha")
             beta = agent.create_skill_evolution_manager("beta")
 

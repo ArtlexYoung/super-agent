@@ -48,6 +48,7 @@ class SkillIndexEntry:
     manifest_cache_path: Path
     instructions_cache_path: Path
     configuration_cache_path: Path
+    files_cache_path: Path
     content_sha256: str
     agent_created: bool = False
     agent_can_update: bool = False
@@ -143,6 +144,20 @@ class DisclosedConfiguration:
 
 
 @dataclass(frozen=True)
+class DisclosedSkillFile:
+    relative_path: str
+    size: int
+    sha256: str
+    content: str | None
+
+
+@dataclass(frozen=True)
+class DisclosedSkillFiles:
+    files: list[DisclosedSkillFile]
+    cache_path: Path
+
+
+@dataclass(frozen=True)
 class SkillDisclosureEvent:
     schema_version: int
     sequence: int
@@ -157,7 +172,7 @@ class SkillDisclosureEvent:
 
 def skill_index_to_dict(index: SkillIndex) -> dict[str, object]:
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "skills": [
             {
                 "key": entry.reference.key,
@@ -171,6 +186,7 @@ def skill_index_to_dict(index: SkillIndex) -> dict[str, object]:
                 "manifest_cache_path": str(entry.manifest_cache_path),
                 "instructions_cache_path": str(entry.instructions_cache_path),
                 "configuration_cache_path": str(entry.configuration_cache_path),
+                "files_cache_path": str(entry.files_cache_path),
                 "content_sha256": entry.content_sha256,
                 "agent_created": entry.agent_created,
                 "agent_can_update": entry.agent_can_update,

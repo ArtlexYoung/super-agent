@@ -86,7 +86,11 @@ create candidate -> validate -> evaluate -> promote -> rollback
 ```
 
 - Candidate files are isolated from the active Skill.
+- The candidate unit is the complete Skill directory, including resources.
+- The model returns strict JSON with complete UTF-8 file writes and explicit deletions.
 - The candidate records its parent version and directory hash.
+- Runtime forces the next patch version and rejects path traversal, symlinks, identity changes, and empty changes.
+- Prompt, memory, workflow, MCP, and custom Skills share this lifecycle; built-in kinds use explicit validators.
 - Evaluation calls the configured real Provider with deterministic assertions.
 - Promotion requires a passing score and an unchanged active parent.
 - Promotion is atomic and stores an immutable previous revision.
@@ -98,7 +102,7 @@ Python example:
 from super_agent import Agent, EvaluationCase
 
 manager = Agent.load_from_config_file("agent.toml").create_skill_evolution_manager()
-candidate = manager.create_skill_candidate("concise", "make answers clearer")
+candidate = manager.create_skill_candidate("prompt:concise", "make answers clearer")
 report = manager.evaluate_skill_candidate(
     candidate.candidate_id,
     [
@@ -117,12 +121,12 @@ if report.passed:
 CLI example:
 
 ```bash
-super-agent skills propose --config agent.toml --name concise --goal "make it clearer"
+super-agent skills propose --config agent.toml --name prompt:concise --goal "make it clearer"
 super-agent skills evaluate --config agent.toml --candidate-id <id> --cases cases.json
 super-agent skills promote --config agent.toml --candidate-id <id>
-super-agent skills rollback --config agent.toml --name concise
+super-agent skills rollback --config agent.toml --name prompt:concise
 ```
 
-## Current Boundary
+For a new Skill, omit `--capability` to create a prompt Skill or pass a Capability explicitly, such as `--capability memory`. Existing bare names resolve automatically only when unique.
 
-`v0.0.27` additionally isolates evaluation evidence, freshness, and evolution workspaces by user. Candidate generation is still instruction-oriented and assumes a prompt-style `SKILL.md`. `v0.0.30` will make the candidate unit the complete Skill directory so prompt, memory, workflow, and MCP Skills evolve through the same lifecycle.
+Evolution workspaces and evaluation evidence remain isolated by user and Agent. Custom Capability Skills use generic manifest validation until their Capability supplies a dedicated validator.

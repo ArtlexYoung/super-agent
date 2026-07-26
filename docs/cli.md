@@ -65,12 +65,14 @@ Repeat `--name` to resolve more than one requested Skill.
 ## Skill Evolution
 
 ```bash
-super-agent skills propose --config agent.toml --name concise --goal "make it clearer"
+super-agent skills propose --config agent.toml --name prompt:concise --goal "make it clearer"
 super-agent skills evaluate --config agent.toml --candidate-id <id> --cases cases.json
 super-agent skills promote --config agent.toml --candidate-id <id>
-super-agent skills evolve --config agent.toml --name concise --goal "make it clearer" --cases cases.json
-super-agent skills rollback --config agent.toml --name concise
+super-agent skills evolve --config agent.toml --name memory:default --goal "improve recall" --cases cases.json
+super-agent skills rollback --config agent.toml --name memory:default
 ```
+
+Bare names are accepted when unique. Use `capability:name` or `--capability <name>` when creating a non-prompt Skill or when multiple Capabilities contain the same name.
 
 ## Skill Packages
 

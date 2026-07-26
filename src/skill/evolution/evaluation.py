@@ -14,9 +14,10 @@ from runtime.evaluation import (
     estimate_evaluation_token_usage,
 )
 from runtime.store import RuntimeStore
-from skill.disclosure import ProgressiveDisclosureCore
+from skill.disclosure import DisclosedSkillFile, ProgressiveDisclosureCore
 from skill.evaluation import create_skill_evaluation_target
 from skill.evolution.candidate import SkillCandidate
+from skill.evolution.validators import validate_skill_candidate_directory
 from skill.manifest import Skill, SkillManifest
 
 
@@ -212,6 +213,12 @@ def _score_output(
 
 
 def _read_candidate_skill(candidate: SkillCandidate, store: RuntimeStore) -> Skill:
+    validate_skill_candidate_directory(
+        candidate.skill_path,
+        store,
+        candidate.capability,
+        candidate.name,
+    )
     disclosure = ProgressiveDisclosureCore(
         [candidate.skill_path],
         store,
@@ -222,10 +229,31 @@ def _read_candidate_skill(candidate: SkillCandidate, store: RuntimeStore) -> Ski
         entry.reference.name,
         entry.reference.capability,
     )
-    instructions = opened.read_instructions().content
-    if not instructions:
-        raise ValueError("candidate instructions cannot be empty")
-    return Skill(manifest=opened.read_manifest(), instructions=instructions)
+    manifest = opened.read_manifest()
+    files = opened.read_skill_files().files
+    return Skill(
+        manifest=manifest,
+        instructions=_build_candidate_evaluation_context(manifest, files),
+    )
+
+
+def _build_candidate_evaluation_context(
+    manifest: SkillManifest,
+    files: list[DisclosedSkillFile],
+) -> str:
+    sections = [
+        f"Candidate Skill: {manifest.capability}:{manifest.name}",
+        f"Description: {manifest.description}",
+        "Complete candidate directory:",
+    ]
+    for file in files:
+        if file.content is None:
+            sections.append(
+                f"BINARY {file.relative_path} size={file.size} sha256={file.sha256}"
+            )
+        else:
+            sections.append(f"FILE {file.relative_path}:\n{file.content}")
+    return "\n\n".join(sections)
 
 
 def _validate_evaluation_case(case: EvaluationCase) -> None:

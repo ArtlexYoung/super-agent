@@ -82,12 +82,13 @@ super-agent skills lock --config agent.toml --name research --output skill.lock
 
 ## Progressive Disclosure
 
-`ProgressiveDisclosureCore` is the only Skill read path. It exposes four stages:
+`ProgressiveDisclosureCore` is the only Skill read path. It exposes five stages:
 
 1. `index`: summaries, identities, freshness, hashes, and cache paths.
 2. `manifest`: normalized metadata for one selected Skill.
 3. `instructions`: instruction text for one selected Skill.
 4. `configuration`: the generic Capability configuration table.
+5. `files`: the complete directory inventory and UTF-8 contents; binary files expose only size and SHA-256.
 
 Default cache layout:
 
@@ -98,6 +99,7 @@ Default cache layout:
   skills/<capability>/<name>/manifest.json
   skills/<capability>/<name>/instructions.md
   skills/<capability>/<name>/configuration.json
+  skills/<capability>/<name>/files.json
 ```
 
 The model may call `read_disclosed_content` with a cache path already present in the index. Cache paths stay stable, content SHA-256 determines cache hits, and every disclosure appends a canonical storage event. `history.json` is a rebuildable model-readable view of those events.
@@ -108,6 +110,7 @@ Core methods:
 - `select_skill_references_for_prompt(...)`
 - `explain_skill_selection_for_prompt(...)`
 - `open_skill(...)`
+- `SkillDisclosure.read_skill_files()`
 - `read_disclosed_content(...)`
 - `read_disclosure_history()`
 

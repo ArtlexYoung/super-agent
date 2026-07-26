@@ -39,6 +39,7 @@ def configure_skills_parser(parser: argparse.ArgumentParser) -> None:
     rollback_parser = subparsers.add_parser("rollback", help="restore the previous skill revision")
     rollback_parser.add_argument("--config", default="agent.toml")
     rollback_parser.add_argument("--name", required=True)
+    rollback_parser.add_argument("--capability")
     freshness_parser = subparsers.add_parser("freshness", help="show runtime skill freshness stats")
     freshness_parser.add_argument("--config", default="agent.toml")
     validate_parser = subparsers.add_parser("validate", help="validate every skill manifest")
@@ -133,7 +134,11 @@ def _print_skill_index(config_path: Path, user_id: str) -> int:
 
 def _propose_skill(args: argparse.Namespace) -> int:
     manager = Agent.load_from_config_file(args.config).create_skill_evolution_manager(args.user_id)
-    candidate = manager.create_skill_candidate(args.name, args.goal)
+    candidate = manager.create_skill_candidate(
+        args.name,
+        args.goal,
+        capability=args.capability,
+    )
     print(f"Proposed candidate: {candidate.candidate_id}")
     return 0
 
@@ -149,21 +154,26 @@ def _evaluate_skill(args: argparse.Namespace) -> int:
 def _promote_skill(args: argparse.Namespace) -> int:
     manager = Agent.load_from_config_file(args.config).create_skill_evolution_manager(args.user_id)
     manifest = manager.promote_skill_candidate(args.candidate_id)
-    print(f"Promoted skill: {manifest.name}@{manifest.version}")
+    print(f"Promoted skill: {manifest.capability}:{manifest.name}@{manifest.version}")
     return 0
 
 
 def _evolve_skill(args: argparse.Namespace) -> int:
     manager = Agent.load_from_config_file(args.config).create_skill_evolution_manager(args.user_id)
-    result = manager.evolve_skill(args.name, args.goal, _read_evaluation_cases(Path(args.cases)))
+    result = manager.evolve_skill(
+        args.name,
+        args.goal,
+        _read_evaluation_cases(Path(args.cases)),
+        capability=args.capability,
+    )
     print(f"Evolution {result.status}: {result.candidate.candidate_id} score={result.report.score:.4f}")
     return 0 if result.status == "promoted" else 1
 
 
 def _rollback_skill(args: argparse.Namespace) -> int:
     manager = Agent.load_from_config_file(args.config).create_skill_evolution_manager(args.user_id)
-    manifest = manager.rollback_skill(args.name)
-    print(f"Rolled back skill: {manifest.name}@{manifest.version}")
+    manifest = manager.rollback_skill(args.name, capability=args.capability)
+    print(f"Rolled back skill: {manifest.capability}:{manifest.name}@{manifest.version}")
     return 0
 
 
@@ -353,6 +363,7 @@ def _add_evolution_name_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--config", default="agent.toml")
     parser.add_argument("--name", required=True)
     parser.add_argument("--goal", required=True)
+    parser.add_argument("--capability")
 
 
 def _add_evolution_candidate_arguments(parser: argparse.ArgumentParser) -> None:

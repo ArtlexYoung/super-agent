@@ -154,7 +154,7 @@ super-agent skills evolve \
   --cases evaluation-cases.json
 ```
 
-Candidates are isolated from active Skills. Promotion requires a passing evaluation and an unchanged parent version; every promoted revision can be rolled back. The current loop is complete for instruction-based Skills; unified evolution for every Skill type is planned for `v0.0.30`.
+The complete Skill directory is the candidate unit, so prompt, memory, workflow, MCP, and custom Skills use the same lifecycle. The model returns explicit full-file writes and deletions; Runtime validates paths, identity, permissions, and Capability-specific configuration before evaluation. Candidates stay isolated from active Skills. Promotion requires a passing evaluation and an unchanged parent version, and every promoted revision can be rolled back.
 
 Freshness does not call a model. It is derived from runtime evaluation records using quality, recency, frequency, token cost, latency, reliability, replacement behavior, and sample confidence.
 

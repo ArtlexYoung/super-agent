@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 from cli import main
 from cli import run_result_to_dict
+from provider.chat import MockProvider
 from runtime.models import RunResult, SubAgentResult
 
 
@@ -90,7 +91,7 @@ class CliTests(unittest.TestCase):
 
             data = json.loads(output.getvalue())
             self.assertEqual(0, code)
-            self.assertEqual(2, data["schema_version"])
+            self.assertEqual(3, data["schema_version"])
             self.assertEqual(
                 {"mcp", "memory", "prompt", "workflow"},
                 {item["capability"] for item in data["skills"]},
@@ -157,6 +158,27 @@ class CliTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             config = str(Path(tmp) / "agent.toml")
             main(["init", "--path", tmp])
+            candidate_response = json.dumps(
+                {
+                    "write_files": {
+                        "skill.toml": """
+schema_version = 2
+name = "agent-note"
+capability = "prompt"
+description = "Compact note writer"
+version = "0.1.0"
+agent_created = true
+agent_can_update = true
+triggers = ["note"]
+
+[entry]
+instructions = "SKILL.md"
+""".strip(),
+                        "SKILL.md": "Answer compactly.\n",
+                    },
+                    "delete_files": [],
+                }
+            )
             cases_path = Path(tmp) / "evaluation-cases.json"
             cases_path.write_text(
                 json.dumps(
@@ -164,49 +186,53 @@ class CliTests(unittest.TestCase):
                         {
                             "name": "mock output",
                             "prompt": "write a note",
-                            "expected_output_contains": ["Mock response"],
+                            "expected_output_contains": ["write_files"],
                         }
                     ]
                 ),
                 encoding="utf-8",
             )
             propose_output = StringIO()
-            with patch("sys.stdout", propose_output):
-                propose_code = main(
+            with patch(
+                "agents.agent.create_chat_provider",
+                return_value=MockProvider(candidate_response),
+            ):
+                with patch("sys.stdout", propose_output):
+                    propose_code = main(
+                        [
+                            "skills",
+                            "propose",
+                            "--config",
+                            config,
+                            "--name",
+                            "agent-note",
+                            "--goal",
+                            "write compact notes",
+                        ]
+                    )
+                candidate_id = propose_output.getvalue().strip().split(": ", 1)[1]
+                evaluate_code = main(
                     [
                         "skills",
-                        "propose",
+                        "evaluate",
                         "--config",
                         config,
-                        "--name",
-                        "agent-note",
-                        "--goal",
-                        "write compact notes",
+                        "--candidate-id",
+                        candidate_id,
+                        "--cases",
+                        str(cases_path),
                     ]
                 )
-            candidate_id = propose_output.getvalue().strip().split(": ", 1)[1]
-            evaluate_code = main(
-                [
-                    "skills",
-                    "evaluate",
-                    "--config",
-                    config,
-                    "--candidate-id",
-                    candidate_id,
-                    "--cases",
-                    str(cases_path),
-                ]
-            )
-            promote_code = main(
-                [
-                    "skills",
-                    "promote",
-                    "--config",
-                    config,
-                    "--candidate-id",
-                    candidate_id,
-                ]
-            )
+                promote_code = main(
+                    [
+                        "skills",
+                        "promote",
+                        "--config",
+                        config,
+                        "--candidate-id",
+                        candidate_id,
+                    ]
+                )
 
             root = Path(tmp)
             self.assertEqual(0, propose_code)
@@ -219,7 +245,7 @@ class CliTests(unittest.TestCase):
                 ),
             )
             self.assertEqual(
-                "Mock response\n",
+                "Answer compactly.\n",
                 (root / "skills" / "prompt" / "agent-note" / "SKILL.md").read_text(
                     encoding="utf-8"
                 ),

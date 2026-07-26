@@ -1,6 +1,8 @@
 from skill.disclosure.core import ProgressiveDisclosureCore, SkillDisclosure
 from skill.disclosure.models import (
     DisclosedConfiguration,
+    DisclosedSkillFile,
+    DisclosedSkillFiles,
     DisclosedText,
     SkillDisclosureEvent,
     SkillIndex,
@@ -14,6 +16,8 @@ from skill.disclosure.models import (
 
 __all__ = [
     "DisclosedConfiguration",
+    "DisclosedSkillFile",
+    "DisclosedSkillFiles",
     "DisclosedText",
     "ProgressiveDisclosureCore",
     "SkillDisclosure",

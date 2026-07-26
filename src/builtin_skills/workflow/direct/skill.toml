@@ -2,7 +2,7 @@ schema_version = 2
 name = "direct"
 capability = "workflow"
 description = "Built-in direct workflow"
-version = "0.0.29"
+version = "0.0.30"
 triggers = []
 
 [configuration]
