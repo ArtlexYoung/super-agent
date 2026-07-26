@@ -1,11 +1,15 @@
 [project]
 name = "super-agent"
-version = "0.0.28"
+version = "0.0.29"
 description = "A simple, lightweight, self-evolving, skill-first agent runtime."
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [{ name = "Super Agent contributors" }]
 dependencies = []
+
+[project.optional-dependencies]
+mysql = ["PyMySQL>=1.1,<2"]
+postgresql = ["psycopg[binary]>=3.2,<4"]
 
 [project.scripts]
 super-agent = "cli:main"

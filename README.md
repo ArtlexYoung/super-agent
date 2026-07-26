@@ -199,6 +199,21 @@ path = ".super-agent"
 
 The database is stored at `.super-agent/events.sqlite3` in WAL mode. JSONL remains the default because it is directly readable and requires no database file.
 
+For shared deployments, install only the database driver you use. Connection URLs stay in environment variables and are never written to TOML:
+
+```bash
+python3 -m pip install 'super-agent[postgresql]'
+export SUPER_AGENT_POSTGRESQL_URL='postgresql://user:password@host/super_agent'
+```
+
+```toml
+[storage]
+backend = "postgresql"
+path = ".super-agent"
+```
+
+MySQL works the same way with `super-agent[mysql]` and `SUPER_AGENT_MYSQL_URL`. Set `url_env` only when you want a different environment-variable name. With a remote backend, `path` still owns local disclosure caches and evolution workspaces; canonical events live in the database.
+
 Every state-sensitive Python and CLI operation accepts a user identity. Omitting it uses the zero-configuration `local` user:
 
 ```bash
@@ -206,7 +221,7 @@ super-agent run --user-id alice --conversation-id project-a "Continue the task"
 super-agent conversations list --user-id alice
 ```
 
-Copy selected users between local backends without changing domain data:
+Copy selected users between any configured backends without changing domain data:
 
 ```bash
 super-agent storage copy \
@@ -215,6 +230,8 @@ super-agent storage copy \
   --to-path .super-agent-sqlite \
   --user-id alice
 ```
+
+For a remote destination, use `--to-backend mysql` or `postgresql` and optionally pass `--to-url-env CUSTOM_DATABASE_URL`.
 
 The runtime lock is stored as a run event. It captures the effective Provider, storage backend, Capability versions, Skill versions, and Skill directory hashes without storing secret values.
 

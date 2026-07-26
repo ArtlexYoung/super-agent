@@ -93,7 +93,32 @@ backend = "jsonl"
 path = ".super-agent"
 ```
 
-`jsonl` and `sqlite` are available in `v0.0.28`. Both use only the Python standard library. JSONL remains the default and stores one canonical event stream per user. SQLite stores the same events transactionally in WAL mode and is better suited to concurrent local processes. MySQL and PostgreSQL are introduced in `v0.0.29`; selecting either before that release fails clearly.
+Four backends share the exact same `StorageEvent` contract:
+
+| Backend | Intended use | Installation | Default connection variable |
+| --- | --- | --- | --- |
+| `jsonl` | Readable, zero-configuration local state | Base package | None |
+| `sqlite` | Concurrent local processes with WAL transactions | Base package | None |
+| `mysql` | Shared service deployment | `super-agent[mysql]` | `SUPER_AGENT_MYSQL_URL` |
+| `postgresql` | Shared service deployment | `super-agent[postgresql]` | `SUPER_AGENT_POSTGRESQL_URL` |
+
+Remote drivers are imported only when their backend is selected. Install one with:
+
+```bash
+python3 -m pip install 'super-agent[postgresql]'
+export SUPER_AGENT_POSTGRESQL_URL='postgresql://user:password@host/super_agent'
+```
+
+The default variable name requires no extra TOML. To use a different name, configure only the name, never the secret value:
+
+```toml
+[storage]
+backend = "postgresql"
+path = ".super-agent"
+url_env = "MY_DATABASE_URL"
+```
+
+MySQL URLs use `mysql://` or `mysql+pymysql://`. Supported query options are `charset`, `connect_timeout`, `read_timeout`, `write_timeout`, `unix_socket`, `ssl_ca`, `ssl_cert`, `ssl_key`, `ssl_verify_cert`, and `ssl_verify_identity`. PostgreSQL URLs are passed directly to psycopg and may use its standard connection options.
 
 `path` is resolved from the configuration file directory. The default JSONL layout is:
 
@@ -112,6 +137,12 @@ For SQLite, `path` is still the shared local state directory rather than a datab
   users/<user-hash>/agents/<agent-hash>/cache/
   users/<user-hash>/agents/<agent-hash>/evolution/
 ```
+
+For MySQL and PostgreSQL, canonical events live in `super_agent_storage_events`. The `path` setting remains the local root for user- and Agent-scoped disclosure caches and evolution workspaces; it is not a database path.
+
+On first connection, Runtime creates `super_agent_storage_schema`, `super_agent_storage_events`, and their indexes. The database user therefore needs schema creation permission initially and `SELECT`, `INSERT`, and `DELETE` afterward. Schema version `1` is recorded centrally. Unknown versions fail before event access; the `0.0.x` series never performs an implicit migration. Full identifiers remain in text columns, while SHA-256 helper columns provide fixed-size indexes without narrowing the storage contract.
+
+The shared storage contract suite runs against a disposable remote database when `SUPER_AGENT_TEST_MYSQL_URL` or `SUPER_AGENT_TEST_POSTGRESQL_URL` is present and its matching driver is installed. These test variables are intentionally separate from normal runtime connection variables.
 
 Conversations, run snapshots, evaluations, memory, usage habits, and disclosure history are semantic views over the canonical event stream. Cache files and evolution workspaces are local artifacts owned by the same user and Agent scope.
 

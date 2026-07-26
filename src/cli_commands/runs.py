@@ -115,7 +115,11 @@ def _load_run_snapshot_store(config_path: str | None, user_id: str) -> RuntimeSt
         if config_path is None
         else AgentConfig.load_from_file(config_path)
     )
-    backend = create_storage_backend(config.storage.backend, str(config.storage.path))
+    backend = create_storage_backend(
+        config.storage.backend,
+        str(config.storage.path),
+        config.storage.url_env,
+    )
     return RuntimeStore(
         backend,
         config.storage.path,

@@ -37,6 +37,7 @@ skills = ["skills"]
 [storage]
 backend = "jsonl"
 path = ".super-agent"
+url_env = "CUSTOM_DATABASE_URL"
 """.strip(),
                 encoding="utf-8",
             )
@@ -54,6 +55,7 @@ path = ".super-agent"
             self.assertEqual([root / "skills"], config.paths.skills)
             self.assertEqual("jsonl", config.storage.backend)
             self.assertEqual(root / ".super-agent", config.storage.path)
+            self.assertEqual("CUSTOM_DATABASE_URL", config.storage.url_env)
 
     def test_default_features_only_enable_unified_skill_tree(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

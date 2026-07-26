@@ -96,7 +96,11 @@ def _consolidate_memory(config_path: Path, user_id: str) -> int:
 
 def _load_configured_memory(config_path: Path, user_id: str) -> MiniMemory:
     config = AgentConfig.load_from_file(config_path)
-    storage = create_storage_backend(config.storage.backend, str(config.storage.path))
+    storage = create_storage_backend(
+        config.storage.backend,
+        str(config.storage.path),
+        config.storage.url_env,
+    )
     store = RuntimeStore(
         storage,
         config.storage.path,

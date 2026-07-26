@@ -100,7 +100,8 @@ Generic evaluation records belong to `runtime.evaluation`, not to Skill evolutio
 RuntimeSession -> RuntimeStore -> StorageBackend
                                   +-> JSONL (default)
                                   +-> SQLite (standard library)
-                                  +-> other backends in later releases
+                                  +-> MySQL (optional driver)
+                                  +-> PostgreSQL (optional driver)
 ```
 
 Conversations, runs, evaluations, memory, habits, and disclosure history use one canonical event schema. A backend only appends, queries, and deletes `StorageEvent` records; it does not implement domain behavior. Conversation state, run snapshots, and freshness are derived views, not parallel sources of truth.

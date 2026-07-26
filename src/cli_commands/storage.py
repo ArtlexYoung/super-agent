@@ -18,8 +18,13 @@ def configure_storage_parser(parser: argparse.ArgumentParser) -> None:
         help="copy selected user event streams to another backend",
     )
     copy_parser.add_argument("--config")
-    copy_parser.add_argument("--to-backend", choices=["jsonl", "sqlite"], required=True)
-    copy_parser.add_argument("--to-path", required=True)
+    copy_parser.add_argument(
+        "--to-backend",
+        choices=["jsonl", "sqlite", "mysql", "postgresql"],
+        required=True,
+    )
+    copy_parser.add_argument("--to-path", default=".super-agent-copy")
+    copy_parser.add_argument("--to-url-env")
     copy_parser.add_argument("--user-id", action="append")
     copy_parser.add_argument("--output", choices=["text", "json"], default="text")
 
@@ -35,9 +40,14 @@ def run_storage_command(args: argparse.Namespace) -> int:
     source = create_storage_backend(
         config.storage.backend,
         str(config.storage.path),
+        config.storage.url_env,
     )
     destination_path = _resolve_destination_path(args.to_path, config.source.parent)
-    destination = create_storage_backend(args.to_backend, str(destination_path))
+    destination = create_storage_backend(
+        args.to_backend,
+        str(destination_path),
+        args.to_url_env,
+    )
     report = copy_storage_events(
         source,
         destination,

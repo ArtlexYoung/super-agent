@@ -126,6 +126,18 @@ super-agent storage copy \
   --user-id local
 ```
 
-The source backend and path come from the resolved Agent configuration. Repeat `--user-id` to copy more users. Existing identical event IDs are skipped, while conflicting content fails clearly. Relative destination paths resolve from the source configuration directory.
+The source backend, path, and connection environment name come from the resolved Agent configuration. Repeat `--user-id` to copy more users. Existing identical event IDs are skipped, while conflicting content fails clearly. Relative destination paths resolve from the source configuration directory.
+
+Remote destinations use the same command:
+
+```bash
+super-agent storage copy \
+  --config agent.toml \
+  --to-backend postgresql \
+  --to-url-env ARCHIVE_DATABASE_URL \
+  --user-id alice
+```
+
+`--to-path` defaults to `.super-agent-copy`; remote event storage does not use it. Database URLs are read from the selected environment variable and are never accepted as command arguments.
 
 All commands that read or write Runtime state accept `--user-id`; the default is `local`. This includes run, chat, conversations, memory, run inspection, Skill inspection/evolution, and benchmarks.

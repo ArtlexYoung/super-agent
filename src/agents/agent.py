@@ -63,6 +63,7 @@ class Agent:
         self.storage = storage or create_storage_backend(
             self.config.storage.backend,
             str(self.config.storage.path),
+            self.config.storage.url_env,
         )
         self.runtime = AgentRuntime(
             self.config,

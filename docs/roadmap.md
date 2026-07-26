@@ -43,6 +43,8 @@ Status: implemented.
 
 ## v0.0.29: Optional SQL Storage
 
+Status: implemented.
+
 - Add MySQL and PostgreSQL backends as optional extras.
 - Load database drivers only when their backend is selected.
 - Run one shared storage contract suite against every available backend.

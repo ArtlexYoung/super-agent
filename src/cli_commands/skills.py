@@ -315,7 +315,11 @@ def _load_skill_disclosure(
 
 
 def _load_runtime_store(config: AgentConfig, user_id: str) -> RuntimeStore:
-    backend = create_storage_backend(config.storage.backend, str(config.storage.path))
+    backend = create_storage_backend(
+        config.storage.backend,
+        str(config.storage.path),
+        config.storage.url_env,
+    )
     return RuntimeStore(
         backend,
         config.storage.path,

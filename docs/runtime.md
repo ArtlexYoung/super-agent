@@ -137,4 +137,4 @@ Warnings do not block execution. Omitting the maximum allows unlimited nesting.
   users/<user-hash>/agents/<agent-hash>/evolution/
 ```
 
-`StorageEvent` is the backend-neutral source of truth for conversations, run traces, evaluations, memory, usage habits, and disclosure history. `RuntimeStore` supplies their explicit domain operations. Every operation is scoped by `user_id` and Agent name. Cache and evolution directories are scoped local artifacts; they are never alternate stores for the same event data.
+`StorageEvent` is the backend-neutral source of truth for conversations, run traces, evaluations, memory, usage habits, and disclosure history. MySQL and PostgreSQL store that event stream remotely while keeping cache and evolution directories under the configured local `path`. `RuntimeStore` supplies explicit domain operations, and every operation is scoped by `user_id` and Agent name. Local artifacts are never alternate stores for the same event data.

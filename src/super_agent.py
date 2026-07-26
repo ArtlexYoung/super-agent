@@ -58,6 +58,8 @@ from runtime.models import (
 from runtime.session import RuntimeSession
 from runtime.storage import (
     JsonlStorage,
+    MySqlStorage,
+    PostgreSqlStorage,
     SqliteStorage,
     StorageBackend,
     StorageCopyReport,
@@ -65,6 +67,7 @@ from runtime.storage import (
     StorageEvent,
     StorageEventQuery,
     copy_storage_events,
+    create_storage_backend,
 )
 from runtime.store import RuntimeStore
 from capability.tool_router import RuntimeToolRouter
@@ -116,8 +119,10 @@ __all__ = [
     "ModelSettings",
     "ModelResponse",
     "ModelResolution",
+    "MySqlStorage",
     "PathsSettings",
     "ProgressiveDisclosureCore",
+    "PostgreSqlStorage",
     "RunController",
     "RunEvaluationRequest",
     "RunEvent",
@@ -156,6 +161,7 @@ __all__ = [
     "create_default_capability_set",
     "create_default_skill_disclosure",
     "copy_storage_events",
+    "create_storage_backend",
     "discover_model_candidates",
     "create_evaluation_record",
     "evaluation_record_from_dict",

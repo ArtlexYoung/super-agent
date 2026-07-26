@@ -21,7 +21,11 @@ def configure_benchmark_parser(parser: argparse.ArgumentParser) -> None:
 
 def run_benchmark_command(args: argparse.Namespace) -> int:
     config = AgentConfig.load_from_file(args.config)
-    backend = create_storage_backend(config.storage.backend, str(config.storage.path))
+    backend = create_storage_backend(
+        config.storage.backend,
+        str(config.storage.path),
+        config.storage.url_env,
+    )
     store = RuntimeStore(backend, config.storage.path, args.user_id, config.agent.name)
     benchmark = SkillBenchmark(
         create_default_skill_disclosure(config, store=store),

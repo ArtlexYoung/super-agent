@@ -62,6 +62,23 @@ path = ".super-agent"
 
 SQLite uses the Python standard library, enables WAL mode, and writes `.super-agent/events.sqlite3`.
 
+## Optional Shared SQL Storage
+
+Install only the backend used by a shared deployment:
+
+```bash
+python3 -m pip install 'super-agent[mysql]'
+export SUPER_AGENT_MYSQL_URL='mysql://user:password@host/super_agent'
+```
+
+```toml
+[storage]
+backend = "mysql"
+path = ".super-agent"
+```
+
+PostgreSQL uses `super-agent[postgresql]` and `SUPER_AGENT_POSTGRESQL_URL`. No connection value is stored in the configuration file.
+
 ## Create an Editable Project
 
 ```bash

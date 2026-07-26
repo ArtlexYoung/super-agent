@@ -553,16 +553,16 @@ private struct PathsConfigEditorView: View {
                 Text("MySQL").tag("mysql")
                 Text("PostgreSQL").tag("postgresql")
             }
-            .help("对应 [storage].backend。JSONL 是默认可读事件流；SQLite 使用 Python 标准库并支持 WAL 并发。")
+            .help("对应 [storage].backend。JSONL 默认且零依赖；SQLite 适合本地并发；MySQL 与 PostgreSQL 适合共享部署并按需加载驱动。")
             DirectoryPathView(
                 title: "本地存储目录",
-                help: "对应 [storage].path。JSONL 事件或 SQLite 数据库、披露缓存和进化工作区都在这里按用户与 Agent 隔离。",
+                help: "对应 [storage].path。JSONL 事件、SQLite 数据库、披露缓存和进化工作区都在这里隔离；远程后端只把标准事件放入数据库。",
                 path: $chatStore.config.storage.path,
                 defaultName: ".super-agent"
             )
             if ["mysql", "postgresql"].contains(chatStore.config.storage.backend) {
                 TextField("连接地址环境变量", text: $chatStore.config.storage.urlEnv)
-                    .help("对应 [storage].url_env，只保存环境变量名，不保存数据库密码。")
+                    .help("对应 [storage].url_env，只保存环境变量名，不保存连接地址或密码。留空时 MySQL 使用 SUPER_AGENT_MYSQL_URL，PostgreSQL 使用 SUPER_AGENT_POSTGRESQL_URL。")
             }
         }
     }

@@ -199,6 +199,21 @@ path = ".super-agent"
 
 数据库保存在 `.super-agent/events.sqlite3`，并启用 WAL。JSONL 仍是默认后端，因为它可以直接阅读，也不需要数据库文件。
 
+多进程或服务部署只需安装实际使用的数据库驱动。连接地址只放在环境变量中，不会写入 TOML：
+
+```bash
+python3 -m pip install 'super-agent[postgresql]'
+export SUPER_AGENT_POSTGRESQL_URL='postgresql://user:password@host/super_agent'
+```
+
+```toml
+[storage]
+backend = "postgresql"
+path = ".super-agent"
+```
+
+MySQL 的用法相同，对应 `super-agent[mysql]` 和 `SUPER_AGENT_MYSQL_URL`。只有需要更换环境变量名时才填写 `url_env`。使用远程后端时，标准事件保存在数据库中，`path` 仍用于本地渐进披露缓存和进化工作区。
+
 所有会读写状态的 Python 与 CLI 操作都接受用户身份；不填写时仍使用零配置的 `local` 用户：
 
 ```bash
@@ -206,7 +221,7 @@ super-agent run --user-id alice --conversation-id project-a "继续任务"
 super-agent conversations list --user-id alice
 ```
 
-可以按用户把事件复制到另一个本地后端，不改变领域数据：
+可以按用户在任意已配置后端之间复制事件，不改变领域数据：
 
 ```bash
 super-agent storage copy \
@@ -215,6 +230,8 @@ super-agent storage copy \
   --to-path .super-agent-sqlite \
   --user-id alice
 ```
+
+远程目标使用 `--to-backend mysql` 或 `postgresql`，需要自定义连接环境变量名时再添加 `--to-url-env CUSTOM_DATABASE_URL`。
 
 运行锁也作为运行事件保存，用于固定实际使用的 Provider、存储后端、Capability 版本、Skill 版本和 Skill 目录哈希，但不会保存密钥内容。
 

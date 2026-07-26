@@ -94,6 +94,7 @@ def create_default_skill_disclosure(
         selected_storage = storage or create_storage_backend(
             config.storage.backend,
             str(config.storage.path),
+            config.storage.url_env,
         )
         selected_store = RuntimeStore(
             selected_storage,

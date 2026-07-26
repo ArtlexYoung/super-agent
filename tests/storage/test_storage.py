@@ -1,3 +1,5 @@
+import importlib.util
+import os
 import sqlite3
 import tempfile
 import unittest
@@ -7,6 +9,8 @@ from pathlib import Path
 
 from runtime.storage import (
     JsonlStorage,
+    MySqlStorage,
+    PostgreSqlStorage,
     SqliteStorage,
     StorageBackend,
     StorageEvent,
@@ -18,20 +22,24 @@ from runtime.storage import (
 class StorageContractTests:
     storage_type: type[JsonlStorage] | type[SqliteStorage]
 
+    def setUp(self) -> None:
+        self.user_a = "user-a"
+        self.user_b = "user-b"
+
     def create_storage(self, root: str | Path) -> StorageBackend:
         return self.storage_type(root)
 
     def test_queries_isolate_users_agents_streams_and_event_types(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             storage = self.create_storage(tmp)
-            _append(storage, "user-a", "run.started")
-            _append(storage, "user-a", "run.started", scope=("worker", "run", "run-2"))
-            _append(storage, "user-a", "memory.added", scope=("main", "memory", "memory"))
-            _append(storage, "user-b", "run.started", scope=("main", "run", "run-3"))
+            _append(storage, self.user_a, "run.started")
+            _append(storage, self.user_a, "run.started", scope=("worker", "run", "run-2"))
+            _append(storage, self.user_a, "memory.added", scope=("main", "memory", "memory"))
+            _append(storage, self.user_b, "run.started", scope=("main", "run", "run-3"))
 
             events = storage.read_events(
                 StorageEventQuery(
-                    user_id="user-a",
+                    user_id=self.user_a,
                     agent_name="main",
                     stream_type="run",
                     event_type="run.started",
@@ -43,20 +51,20 @@ class StorageContractTests:
     def test_delete_removes_only_the_exact_query_scope(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             storage = self.create_storage(tmp)
-            _append(storage, "user-a", "run.started")
-            _append(storage, "user-a", "run.started", scope=("main", "run", "run-2"))
-            _append(storage, "user-a", "memory.added", scope=("main", "memory", "memory"))
+            _append(storage, self.user_a, "run.started")
+            _append(storage, self.user_a, "run.started", scope=("main", "run", "run-2"))
+            _append(storage, self.user_a, "memory.added", scope=("main", "memory", "memory"))
 
             deleted = storage.delete_events(
                 StorageEventQuery(
-                    user_id="user-a",
+                    user_id=self.user_a,
                     agent_name="main",
                     stream_type="run",
                     stream_id="run-1",
                 )
             )
 
-            remaining = storage.read_events(StorageEventQuery(user_id="user-a"))
+            remaining = storage.read_events(StorageEventQuery(user_id=self.user_a))
             self.assertEqual(1, deleted)
             self.assertEqual({"run-2", "memory"}, {event.stream_id for event in remaining})
 
@@ -64,15 +72,15 @@ class StorageContractTests:
         with tempfile.TemporaryDirectory() as tmp:
             storage = self.create_storage(tmp)
 
-            first = _append(storage, "user-a", "run.started", event_id="stable-event")
-            second = _append(storage, "user-a", "run.started", event_id="stable-event")
-            other_user = _append(storage, "user-b", "run.started", event_id="stable-event")
+            first = _append(storage, self.user_a, "run.started", event_id="stable-event")
+            second = _append(storage, self.user_a, "run.started", event_id="stable-event")
+            other_user = _append(storage, self.user_b, "run.started", event_id="stable-event")
 
             self.assertEqual(first, second)
-            self.assertEqual("user-b", other_user.user_id)
+            self.assertEqual(self.user_b, other_user.user_id)
             self.assertEqual(
                 1,
-                len(storage.read_events(StorageEventQuery(user_id="user-a"))),
+                len(storage.read_events(StorageEventQuery(user_id=self.user_a))),
             )
 
     def test_threaded_appends_keep_unique_ordered_positions(self) -> None:
@@ -84,15 +92,18 @@ class StorageContractTests:
                     executor.map(
                         lambda index: _append(
                             storage,
-                            "user-a",
+                            self.user_a,
                             f"custom.{index}",
                         ),
                         range(40),
                     )
                 )
 
-            events = storage.read_events(StorageEventQuery(user_id="user-a"))
-            self.assertEqual(sorted(event.position for event in events), [event.position for event in events])
+            events = storage.read_events(StorageEventQuery(user_id=self.user_a))
+            self.assertEqual(
+                sorted(event.position for event in events),
+                [event.position for event in events],
+            )
             self.assertEqual(40, len({event.event_id for event in events}))
 
     def test_nested_json_data_and_timestamps_round_trip_exactly(self) -> None:
@@ -101,7 +112,7 @@ class StorageContractTests:
             data = {"nested": {"items": [1, True, None, "你好"]}}
 
             stored = storage.append_event(
-                user_id="user-a",
+                user_id=self.user_a,
                 agent_name="main",
                 stream_type="run",
                 stream_id="run-1",
@@ -109,11 +120,38 @@ class StorageContractTests:
                 data=data,
                 created_at="2026-07-26T10:00:00Z",
             )
-            loaded = storage.read_events(StorageEventQuery(user_id="user-a"))[0]
+            loaded = storage.read_events(StorageEventQuery(user_id=self.user_a))[0]
 
             self.assertEqual(data, loaded.data)
             self.assertEqual("2026-07-26T10:00:00Z", stored.created_at)
             self.assertEqual(stored, loaded)
+
+    def test_long_identifiers_are_not_truncated(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            storage = self.create_storage(tmp)
+            long_agent_name = "agent-" + "a" * 2_000
+            long_stream_id = "stream-" + "s" * 2_000
+            long_event_id = "event-" + "e" * 2_000
+
+            stored = storage.append_event(
+                user_id=self.user_a,
+                agent_name=long_agent_name,
+                stream_type="run",
+                stream_id=long_stream_id,
+                event_type="custom.long-identifier",
+                data={},
+                event_id=long_event_id,
+            )
+            loaded = storage.read_events(
+                StorageEventQuery(
+                    user_id=self.user_a,
+                    agent_name=long_agent_name,
+                    stream_id=long_stream_id,
+                )
+            )
+
+            self.assertEqual(long_event_id, stored.event_id)
+            self.assertEqual([stored], loaded)
 
 
 class JsonlStorageContractTests(StorageContractTests, unittest.TestCase):
@@ -199,6 +237,40 @@ class SqliteStorageContractTests(StorageContractTests, unittest.TestCase):
             self.assertEqual([stored], events)
 
 
+class RemoteStorageContractTests(StorageContractTests):
+    def setUp(self) -> None:
+        from uuid import uuid4
+
+        suffix = uuid4().hex
+        self.user_a = f"super-agent-contract-{suffix}-a"
+        self.user_b = f"super-agent-contract-{suffix}-b"
+
+
+@unittest.skipUnless(
+    importlib.util.find_spec("pymysql") is not None
+    and bool(os.environ.get("SUPER_AGENT_TEST_MYSQL_URL")),
+    "PyMySQL and SUPER_AGENT_TEST_MYSQL_URL are required",
+)
+class MySqlStorageContractTests(RemoteStorageContractTests, unittest.TestCase):
+    def create_storage(self, root: str | Path) -> StorageBackend:
+        del root
+        storage = MySqlStorage("SUPER_AGENT_TEST_MYSQL_URL")
+        self.addCleanup(_delete_test_users, storage, [self.user_a, self.user_b])
+        return storage
+
+@unittest.skipUnless(
+    importlib.util.find_spec("psycopg") is not None
+    and bool(os.environ.get("SUPER_AGENT_TEST_POSTGRESQL_URL")),
+    "psycopg and SUPER_AGENT_TEST_POSTGRESQL_URL are required",
+)
+class PostgreSqlStorageContractTests(RemoteStorageContractTests, unittest.TestCase):
+    def create_storage(self, root: str | Path) -> StorageBackend:
+        del root
+        storage = PostgreSqlStorage("SUPER_AGENT_TEST_POSTGRESQL_URL")
+        self.addCleanup(_delete_test_users, storage, [self.user_a, self.user_b])
+        return storage
+
+
 class StorageCopyTests(unittest.TestCase):
     def test_copy_is_user_scoped_bidirectional_and_idempotent(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -252,6 +324,11 @@ def _append(
         data={},
         event_id=event_id,
     )
+
+
+def _delete_test_users(storage: StorageBackend, user_ids: list[str]) -> None:
+    for user_id in user_ids:
+        storage.delete_events(StorageEventQuery(user_id=user_id))
 
 
 def _event_value(event: StorageEvent) -> tuple[object, ...]:
