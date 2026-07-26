@@ -13,7 +13,7 @@ The project is currently experimental (`0.0.x`). It favors a small, inspectable 
 ## Why Super Agent
 
 - **Zero-configuration start**: `Agent()` and the CLI run immediately with a local mock model.
-- **One Skill format**: prompt, MCP, memory, and workflow content share the same manifest and discovery path.
+- **One Skill format**: prompt, MCP, memory, workflow, and executable mechanisms share one manifest and lifecycle.
 - **Progressive disclosure**: the model sees a compact index first and opens only the Skills it needs.
 - **One runtime lifecycle**: discovery, disclosure, execution, observation, evaluation, and evolution share one session.
 - **Automatic evolution signals**: Runtime turns real failures, quality, freshness, replacement, cost, and latency into deduplicated recommendations.
@@ -132,22 +132,11 @@ discover -> disclose -> execute -> observe -> evaluate -> evolve
 
 `RuntimeSession` is the single context for a run. It holds one `RunIdentity`, one centralized `RuntimeStore`, one Skill index, the progressive-disclosure session, and every Skill or Capability that affected the result. Capabilities consume this session instead of creating their own stores or rescanning the Skill tree.
 
-Every executable mechanism is registered through one `CapabilityRegistry`. Runtime locks its name, version, implementation class, exact content hash, dependencies, permissions, and update ownership. Built-ins require no setup; local Capability packages can be installed, updated, rolled back, and automatically restored for the same Agent without adding TOML configuration.
+Every executable mechanism is registered through one `CapabilityRegistry`. Built-ins require no setup. A mechanism that must be installed or evolved is a standard `capability` Skill, so it uses the same index, package command, candidate, evaluation, promotion, and rollback as every other Skill.
 
-## Verify the Complete Loop
+## Reproducible Proof
 
-One local command exercises the claim behind the project:
-
-```bash
-super-agent benchmark \
-  --config examples/basic/agent.toml \
-  --cases examples/basic/benchmark-cases.json \
-  --output report.json
-```
-
-The benchmark compares `no_skill`, `eager_skill`, and `progressive_skill` context, then runs discovery, disclosure, execution, evaluation, candidate creation, promotion, and rollback in an isolated workspace. It also applies the same conversation, memory, Skill-usage, user, and Agent isolation checks to JSONL and SQLite. MySQL and PostgreSQL are checked when their dedicated test database environments are available.
-
-It never calls the configured remote model or edits the configured Skill tree. Context tokens use the deterministic approximation `ceil(character count / 4)`; lifecycle quality uses an internal deterministic Provider. The report includes a stable input SHA-256, while timing remains machine-specific. See the [v0.0.34 experiment](docs/experiments/v0.0.34.md) and its [generated JSON report](docs/experiments/v0.0.34.json).
+The [v0.0.34 experiment](docs/experiments/v0.0.34.md) and its [generated JSON report](docs/experiments/v0.0.34.json) compare no-Skill, eager, and progressive context and exercise the complete lifecycle plus storage isolation. The proof orchestration was removed from the shipped Runtime after publication, keeping benchmark code out of the user-facing core.
 
 ## Self-Evolution
 
@@ -172,22 +161,21 @@ super-agent skills evolve \
   --cases evaluation-cases.json
 ```
 
-The complete Skill directory is the candidate unit, so prompt, memory, workflow, MCP, and custom Skills use the same lifecycle. The model returns explicit full-file writes and deletions; Runtime validates paths, identity, permissions, and Capability-specific configuration before evaluation. Candidates stay isolated from active Skills. Promotion requires a passing evaluation and an unchanged parent version, and every promoted revision can be rolled back.
+The complete Skill directory is the candidate unit, so prompt, memory, workflow, MCP, executable Capability, and custom Skills use the same lifecycle. The model returns explicit full-file writes and deletions; Runtime validates paths, identity, permissions, and type-specific configuration before evaluation. Candidates stay isolated from active Skills. Promotion requires a passing evaluation and an unchanged parent version, and every promoted revision can be rolled back.
 
-Executable Capability code uses the same central lifecycle. A candidate package must implement `evaluate_capability(input_data)`. Runtime executes immutable JSON cases in a separate Python process, records score, latency, errors, and output checks in the same evaluation store, then atomically updates both the installed package and Agent registry:
+Executable mechanisms use `capability` Skills and the ordinary Skill command:
 
 ```bash
-super-agent capabilities evolve \
+super-agent skills evolve \
   --config agent.toml \
-  --slot run_controller \
-  --name careful \
+  --name capability:careful \
   --goal "reduce failed runs" \
-  --cases capability-cases.json
+  --cases evaluation-cases.json
 ```
 
 Freshness does not call a model. It is derived from runtime evaluation records using quality, recency, frequency, token cost, latency, reliability, replacement behavior, and sample confidence.
 
-After each evaluated run, Runtime also reviews updateable Skills and locally installed Capabilities. This deterministic step does not call a model and needs no new configuration. It records an evolution recommendation only when the current evidence crosses a quality or efficiency threshold, and the same unchanged evidence cannot create a repeated recommendation.
+After each evaluated run, Runtime reviews every updateable Skill, including Skill-backed executable mechanisms. This deterministic step does not call a model and needs no new configuration. It records an evolution recommendation only when the current evidence crosses a quality or efficiency threshold, and the same unchanged evidence cannot create a repeated recommendation.
 
 ```bash
 super-agent evolution list --config agent.toml

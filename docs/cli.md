@@ -85,21 +85,16 @@ super-agent skills remove --config agent.toml --name research
 
 Install and update accept `--expected-sha256`.
 
-## Capability Packages
+Executable mechanisms are standard `capability` Skills:
 
 ```bash
-super-agent capabilities list --output json
-super-agent capabilities install --source ./careful-controller
-super-agent capabilities update --slot run_controller --name careful --source ./careful-v2
-super-agent capabilities rollback --slot run_controller --name careful
-super-agent capabilities remove --slot run_controller --name careful
-super-agent capabilities propose --slot run_controller --name careful --goal "reduce failures"
-super-agent capabilities evaluate --candidate-id <id> --cases capability-cases.json
-super-agent capabilities promote --candidate-id <id>
-super-agent capabilities evolve --slot run_controller --name careful --goal "reduce failures" --cases capability-cases.json
+super-agent skills install --config agent.toml --source ./careful-controller
+super-agent skills evolve --config agent.toml --name capability:careful \
+  --goal "reduce failures" --cases cases.json
+super-agent skills rollback --config agent.toml --name capability:careful
 ```
 
-Use `--config agent.toml` when package storage should follow a specific Agent configuration. Installed versions are validated and automatically restored by later default Agent instances using the same storage path. Evolution commands also accept `--user-id`; candidates and evidence are isolated by user and Agent.
+There is no separate Capability package or command namespace.
 
 ## Autonomous Evolution Recommendations
 
@@ -111,7 +106,7 @@ super-agent evolution create-candidate --config agent.toml --user-id alice --sch
 super-agent evolution dismiss --config agent.toml --user-id alice --schedule-id <id> --reason "not useful"
 ```
 
-`list` and `show` do not call a model. `create-candidate` invokes the configured Provider, creates an isolated complete-directory candidate, and records its file difference. Evaluation and promotion remain explicit evidence-gated operations under `skills` or `capabilities`.
+`list` and `show` do not call a model. `create-candidate` invokes the configured Provider, creates an isolated complete-directory candidate, and records its file difference. Evaluation and promotion remain explicit evidence-gated operations under `skills`.
 
 ## Memory
 
@@ -134,23 +129,6 @@ super-agent runs export --config agent.toml --run-id <run-id> --output run.json
 ```
 
 When `--run-id` is omitted, explain and export use the latest run.
-
-## End-to-End Runtime Benchmark
-
-```bash
-super-agent benchmark \
-  --config examples/basic/agent.toml \
-  --cases examples/basic/benchmark-cases.json \
-  --output report.json
-```
-
-The benchmark never calls the configured remote model or changes the configured Skill tree. It produces one schema-versioned report with:
-
-- Full-input context estimates for `no_skill`, `eager_skill`, and `progressive_skill` modes using `ceil(character count / 4)`. Eager and progressive modes receive the same compact Runtime index; eager loads every model-context Skill while progressive loads only selected Skills.
-- Timed discovery, disclosure, execution, candidate evaluation, evolution/promotion, and rollback in a disposable workspace with a deterministic Provider.
-- The same multiuser and multi-Agent isolation checks against JSONL, SQLite, MySQL, and PostgreSQL.
-
-JSONL and SQLite always run. MySQL and PostgreSQL use only `SUPER_AGENT_TEST_MYSQL_URL` and `SUPER_AGENT_TEST_POSTGRESQL_URL`; a missing driver or environment is reported as `unavailable`, not as a passing check. The command returns nonzero when an available backend fails. The input SHA-256 is reproducible for unchanged cases, system prompt, Skill contents, lifecycle fixture, and backend selection. Durations are machine-specific.
 
 ## Storage Copy
 
@@ -176,4 +154,4 @@ super-agent storage copy \
 
 `--to-path` defaults to `.super-agent-copy`; remote event storage does not use it. Database URLs are read from the selected environment variable and are never accepted as command arguments.
 
-All commands that read or write user Runtime state accept `--user-id`; the default is `local`. This includes run, chat, conversations, memory, run inspection, Skill inspection/evolution, and autonomous evolution recommendations. The benchmark is isolated and does not read or write a user's Runtime state.
+All commands that read or write user Runtime state accept `--user-id`; the default is `local`. This includes run, chat, conversations, memory, run inspection, Skill inspection/evolution, and autonomous evolution recommendations.

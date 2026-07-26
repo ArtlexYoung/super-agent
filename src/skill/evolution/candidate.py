@@ -23,8 +23,8 @@ from skill.disclosure import (
     SkillDisclosure,
     SkillIndexEntry,
 )
-from skill.evolution.validators import validate_skill_candidate_directory
 from skill.manifest import SkillManifest, calculate_skill_directory_sha256
+from skill.validation import validate_skill_directory
 
 
 @dataclass(frozen=True)
@@ -269,11 +269,11 @@ def _write_candidate_skill_directory(
     if not manifest_path.is_file():
         raise ValueError("candidate must contain skill.toml")
     _set_manifest_version(manifest_path, request.version)
-    return validate_skill_candidate_directory(
+    return validate_skill_directory(
         skill_path,
         request.store,
-        request.capability,
-        request.name,
+        expected_capability=request.capability,
+        expected_name=request.name,
     )
 
 

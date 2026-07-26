@@ -15,6 +15,7 @@ from uuid import uuid4
 from skill.disclosure import ProgressiveDisclosureCore
 from runtime.store import create_local_runtime_store
 from skill.manifest import SkillManifest, calculate_skill_directory_sha256
+from skill.validation import validate_skill_directory, validate_skill_replacement
 
 
 FIXED_ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
@@ -81,6 +82,7 @@ class SkillPackageManager:
                     "updated skill capability does not match target: "
                     f"{proposed.capability} != {current.capability}"
                 )
+            validate_skill_replacement(current.path, staged, self.skill_disclosure.store)
             _replace_skill_directory(staged, current.path)
         return self._read_skill_manifest(skill_name, current.capability)
 
@@ -206,18 +208,10 @@ def _locate_skill_directory(root: Path) -> Path:
 
 def _validate_staged_skill(path: Path, expected_sha256: str) -> SkillManifest:
     _reject_symlinks(path)
-    disclosure = ProgressiveDisclosureCore(
-        [path],
+    manifest = validate_skill_directory(
+        path,
         create_local_runtime_store(path.parent / ".package-validation"),
     )
-    index = disclosure.prepare_skill_index()
-    if len(index.entries) != 1:
-        raise ValueError("skill package must contain exactly one valid skill")
-    entry = index.entries[0]
-    manifest = disclosure.open_skill(
-        entry.reference.name,
-        entry.reference.capability,
-    ).read_manifest()
     clean_name = _clean_skill_name(manifest.name)
     if clean_name != manifest.name:
         raise ValueError(f"packaged skill name must be normalized: {manifest.name}")

@@ -95,4 +95,13 @@ Status: implemented.
 - Compare no-Skill, eager-context, and progressive-Skill approaches.
 - Publish a reproducible local experiment report.
 
+## v0.0.35: One Skill Lifecycle
+
+Status: implemented.
+
+- Represent installable executable mechanisms as `capability` Skills.
+- Remove independent Capability packaging, candidates, evaluation, and rollback.
+- Attribute a Skill-backed Capability's runtime evidence to its source Skill.
+- Remove completed benchmark orchestration from the shipped Runtime API.
+
 The project will not move to `0.1.x` merely because more features exist. That change should follow a reproducible demonstration that the central Skill-first lifecycle is useful and maintainable.

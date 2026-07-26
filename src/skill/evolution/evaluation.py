@@ -17,8 +17,8 @@ from runtime.store import RuntimeStore
 from skill.disclosure import DisclosedSkillFile, ProgressiveDisclosureCore
 from skill.evaluation import create_skill_evaluation_target
 from skill.evolution.candidate import SkillCandidate
-from skill.evolution.validators import validate_skill_candidate_directory
 from skill.manifest import Skill, SkillManifest
+from skill.validation import validate_skill_directory
 
 
 @dataclass(frozen=True)
@@ -216,11 +216,11 @@ def _score_output(
 
 
 def _read_candidate_skill(candidate: SkillCandidate, store: RuntimeStore) -> Skill:
-    validate_skill_candidate_directory(
+    validate_skill_directory(
         candidate.skill_path,
         store,
-        candidate.capability,
-        candidate.name,
+        expected_capability=candidate.capability,
+        expected_name=candidate.name,
     )
     disclosure = ProgressiveDisclosureCore(
         [candidate.skill_path],

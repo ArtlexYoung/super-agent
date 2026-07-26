@@ -23,6 +23,7 @@ from runtime.session import RuntimeSession
 from runtime.storage import StorageBackend
 from runtime.store import RuntimeStore
 from skill.disclosure import SkillIndex
+from skill.manifest import SkillManifest
 
 
 class AgentRuntime:
@@ -127,7 +128,11 @@ class AgentRuntime:
             run_result=asdict(result),
         )
 
-    def create_skill_updater(self, user_id: str = LOCAL_USER_ID) -> object:
+    def create_skill_updater(
+        self,
+        user_id: str = LOCAL_USER_ID,
+        on_skill_changed: Callable[[SkillManifest], None] | None = None,
+    ) -> object:
         store = RuntimeStore(
             self.storage,
             self.config.storage.path,
@@ -138,6 +143,7 @@ class AgentRuntime:
             self.config,
             self.provider,
             store,
+            on_skill_changed,
         )
 
     def create_store(self, user_id: str = LOCAL_USER_ID) -> RuntimeStore:

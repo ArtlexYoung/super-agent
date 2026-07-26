@@ -52,7 +52,7 @@ A Capability is executable mechanism code. Built-in slots include:
 
 Capabilities receive explicit requests or the shared `RuntimeSession`. They do not infer sibling directories from a path and do not own a second runtime lifecycle.
 
-One `CapabilityRegistry` is the only executable mechanism registry. Each descriptor fixes the slot, name, version, implementation class, content SHA-256, dependencies, permissions, and update ownership. Runtime locks those descriptors and evaluation reuses them instead of recalculating a parallel identity. Capability candidates use the same Runtime evolution state machine as Skills, but execute in a separate process until promotion.
+One `CapabilityRegistry` is the only executable mechanism registry. Each descriptor fixes the slot, name, version, implementation class, content SHA-256, dependencies, permissions, and update ownership. Built-ins come from code. Installable and evolvable mechanisms use `capability` Skills and therefore have no separate package, candidate, evaluation, promotion, or rollback format.
 
 ## Skill
 
@@ -65,7 +65,7 @@ A Skill is passive, versioned content. Its manifest declares:
 - Dependencies and provided functions.
 - Agent creation and update permissions.
 
-Prompt, MCP, memory, and workflow are built-in Capability names rather than separate storage systems.
+Prompt, MCP, memory, workflow, and executable Capability implementations are Skill types rather than separate storage systems.
 
 ## Agent
 
@@ -95,9 +95,7 @@ Agent -> Runtime -> Capability contracts
 
 Generic evaluation records belong to `runtime.evaluation`, not to Skill evolution. Skill-specific code converts a Skill into a target-neutral evaluation identity. `runtime.evolution.evidence` is the one aggregation path used by freshness and autonomous scheduling; neither feature maintains a parallel usage store.
 
-`AutonomousEvolutionScheduler` consumes that evidence after standard run evaluation. It writes target-neutral recommendation events through `RuntimeStore`, while Agent coordination maps an accepted recommendation to the existing Skill or Capability candidate manager. Scheduling cannot call promotion or bypass candidate evaluation.
-
-`RuntimeBenchmark` is an orchestration client of these same public mechanisms, not a second execution path. Its disposable lifecycle uses `Agent`, `ProgressiveDisclosureCore`, `RuntimeStore`, `SkillEvolutionManager`, and the central evolution state machine directly. Storage isolation similarly runs one domain-level probe over the shared `StorageBackend` contract rather than maintaining backend-specific benchmark logic.
+`AutonomousEvolutionScheduler` consumes that evidence after standard run evaluation. It writes target-neutral recommendation events through `RuntimeStore`, while Agent coordination maps an accepted recommendation to the one Skill candidate manager. Scheduling cannot call promotion or bypass candidate evaluation.
 
 ## Runtime State
 
@@ -126,5 +124,4 @@ Conversations, runs, evaluations, evolution recommendations, memory, habits, and
 - Freshness data is rebuildable and never the source of truth.
 - Evolution recommendations are deterministic and idempotent for unchanged evidence.
 - Evolution cannot bypass candidate validation and evaluation.
-- The end-to-end benchmark cannot call the configured remote Provider or mutate the configured Skill tree.
 - Internal compatibility shells are intentionally absent during `0.0.x`.

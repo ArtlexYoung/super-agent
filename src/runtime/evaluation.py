@@ -147,8 +147,8 @@ def create_capability_evaluation_target_from_descriptor(
     descriptor: CapabilityDescriptor,
 ) -> EvaluationTarget:
     return EvaluationTarget(
-        target_type="capability",
-        key=descriptor.key,
+        target_type="skill" if descriptor.skill_key else "capability",
+        key=descriptor.skill_key or descriptor.key,
         name=descriptor.name,
         version=descriptor.version,
         content_sha256=descriptor.content_sha256,

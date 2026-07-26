@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-CAPABILITY_DESCRIPTOR_SCHEMA_VERSION = 1
+CAPABILITY_DESCRIPTOR_SCHEMA_VERSION = 2
 CAPABILITY_SLOT_PATTERN = re.compile(r"[a-z0-9][a-z0-9_.:-]{0,127}")
 CAPABILITY_NAME_PATTERN = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}")
 CAPABILITY_VALUE_PATTERN = re.compile(r"[a-z0-9][a-z0-9_.:-]{0,127}")
@@ -27,6 +27,7 @@ class CapabilityDescriptor:
     agent_created: bool = False
     agent_can_update: bool = False
     source: str = "code"
+    skill_key: str = ""
     schema_version: int = CAPABILITY_DESCRIPTOR_SCHEMA_VERSION
 
     @property
@@ -47,6 +48,7 @@ class CapabilityDescriptor:
             "agent_created": self.agent_created,
             "agent_can_update": self.agent_can_update,
             "source": self.source,
+            "skill_key": self.skill_key,
         }
 
 
@@ -108,11 +110,21 @@ def create_capability_descriptor(
     *,
     source: str = "code",
     content_sha256: str | None = None,
+    agent_created: bool | None = None,
+    agent_can_update: bool | None = None,
+    skill_key: str = "",
 ) -> CapabilityDescriptor:
     clean_slot = clean_capability_slot(slot)
     name = _required_implementation_text(implementation, "name")
     version = _required_implementation_text(implementation, "version")
-    agent_created = _optional_implementation_bool(implementation, "agent_created", False)
+    implementation_agent_created = _optional_implementation_bool(
+        implementation,
+        "agent_created",
+        False,
+    )
+    selected_agent_created = (
+        implementation_agent_created if agent_created is None else agent_created
+    )
     return CapabilityDescriptor(
         slot=clean_slot,
         name=name,
@@ -125,13 +137,18 @@ def create_capability_descriptor(
         ),
         dependencies=_implementation_values(implementation, "dependencies", ()),
         permissions=_implementation_values(implementation, "permissions", ("execute",)),
-        agent_created=agent_created,
-        agent_can_update=_optional_implementation_bool(
-            implementation,
-            "agent_can_update",
-            agent_created,
+        agent_created=selected_agent_created,
+        agent_can_update=(
+            _optional_implementation_bool(
+                implementation,
+                "agent_can_update",
+                selected_agent_created,
+            )
+            if agent_can_update is None
+            else agent_can_update
         ),
         source=_clean_descriptor_value(source, "source"),
+        skill_key=_clean_skill_key(skill_key),
     )
 
 
@@ -209,6 +226,8 @@ def _validate_descriptor(
         raise TypeError("capability descriptor agent_can_update must be a boolean")
     if descriptor.source != _clean_descriptor_value(descriptor.source, "source"):
         raise ValueError("capability source must be normalized")
+    if descriptor.skill_key != _clean_skill_key(descriptor.skill_key):
+        raise ValueError("capability skill_key must be normalized")
     _validate_capability_interface(expected_slot, implementation)
 
 
@@ -317,3 +336,12 @@ def _clean_descriptor_value(value: str, name: str) -> str:
     if CAPABILITY_VALUE_PATTERN.fullmatch(cleaned) is None:
         raise ValueError(f"capability {name} contains an invalid value: {value}")
     return cleaned
+
+
+def _clean_skill_key(value: str) -> str:
+    key = value.strip().lower()
+    if not key:
+        return ""
+    if re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}:[a-z0-9][a-z0-9_-]{0,63}", key) is None:
+        raise ValueError("capability skill_key must use capability:name")
+    return key

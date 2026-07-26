@@ -4,6 +4,7 @@ import json
 import os
 import shutil
 from pathlib import Path
+from typing import Callable
 from uuid import uuid4
 
 from provider.chat import ChatProvider
@@ -40,9 +41,9 @@ from skill.evolution.artifacts import (
     write_json_atomically,
     write_json_exclusive,
 )
-from skill.evolution.validators import validate_skill_candidate_directory
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.manifest import SkillManifest, calculate_skill_directory_sha256
+from skill.validation import validate_skill_directory, validate_skill_replacement
 
 
 class SkillEvolutionManager:
@@ -54,6 +55,7 @@ class SkillEvolutionManager:
         store: RuntimeStore,
         provider: ChatProvider,
         minimum_score: float = 0.8,
+        on_skill_changed: Callable[[SkillManifest], None] | None = None,
     ) -> None:
         if minimum_score < 0 or minimum_score > 1:
             raise ValueError("minimum evaluation score must be between 0 and 1")
@@ -71,6 +73,7 @@ class SkillEvolutionManager:
         self.provider = provider
         self.model = config.model.model
         self.minimum_score = minimum_score
+        self.on_skill_changed = on_skill_changed
 
     def create_skill_candidate(
         self,
@@ -91,11 +94,11 @@ class SkillEvolutionManager:
             )
         )
         try:
-            manifest = validate_skill_candidate_directory(
+            manifest = validate_skill_directory(
                 candidate.skill_path,
                 self.store,
-                candidate.capability,
-                candidate.name,
+                expected_capability=candidate.capability,
+                expected_name=candidate.name,
             )
             parent = self._candidate_parent_target(candidate)
             self.lifecycle.record_candidate_created(
@@ -155,6 +158,8 @@ class SkillEvolutionManager:
         if promotion_path.exists():
             raise ValueError(f"skill candidate was already promoted: {candidate.candidate_id}")
         current = self._read_active_manifest(candidate.name, candidate.capability)
+        if current is not None:
+            validate_skill_replacement(current.path, candidate.skill_path, self.store)
         current_target = (
             None if current is None else _skill_evolution_target(current)
         )
@@ -178,6 +183,15 @@ class SkillEvolutionManager:
         promoted = self._read_active_manifest(candidate.name, candidate.capability)
         if promoted is None:
             raise RuntimeError(f"promoted skill not found after replacement: {candidate.name}")
+        try:
+            self._notify_skill_changed(promoted)
+        except Exception:
+            if rollback_revision is None:
+                shutil.rmtree(target)
+            else:
+                _replace_skill_directory(rollback_revision.skill_path, target)
+                self._notify_skill_changed(current)
+            raise
         write_json_exclusive(
             promotion_path,
             {
@@ -225,7 +239,7 @@ class SkillEvolutionManager:
             revision_id,
         )
         previous_target = _skill_evolution_target(current)
-        self._snapshot_current_skill(
+        current_revision = self._snapshot_current_skill(
             current,
             action="rollback_backup",
             previous_revision_id=revision_id,
@@ -234,6 +248,13 @@ class SkillEvolutionManager:
         restored = self._read_active_manifest(skill_name, skill_capability)
         if restored is None:
             raise RuntimeError(f"restored skill not found after rollback: {skill_name}")
+        try:
+            self._notify_skill_changed(restored)
+        except Exception:
+            if current_revision is not None:
+                _replace_skill_directory(current_revision.skill_path, current.path)
+                self._notify_skill_changed(current)
+            raise
         self._write_active_state(
             skill_capability,
             skill_name,
@@ -299,6 +320,10 @@ class SkillEvolutionManager:
         candidate = load_candidate(self.evolution_root / "candidates", candidate_id)
         verify_candidate_files(candidate)
         return candidate
+
+    def _notify_skill_changed(self, manifest: SkillManifest | None) -> None:
+        if manifest is not None and self.on_skill_changed is not None:
+            self.on_skill_changed(manifest)
 
     def _candidate_parent_target(
         self,

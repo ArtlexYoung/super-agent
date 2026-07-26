@@ -13,7 +13,7 @@ Super Agent 是一个**简单、轻量、自进化、Skill 优先的 Agent 运�
 ## 为什么使用 Super Agent
 
 - **零配置启动**：`Agent()` 和 CLI 可以直接运行，默认使用本地 mock 模型。
-- **统一 Skill 格式**：prompt、MCP、memory 和 workflow 共用 manifest 与发现路径。
+- **统一 Skill 格式**：prompt、MCP、memory、workflow 和可执行机制共用 manifest 与生命周期。
 - **渐进式披露**：模型先看到轻量索引，只打开任务真正需要的 Skill。
 - **统一运行生命周期**：发现、披露、执行、观察、评价和进化共用一个会话。
 - **自动进化信号**：Runtime 根据真实失败、质量、保鲜度、替代行为、成本和延迟生成去重后的进化建议。
@@ -132,22 +132,11 @@ discover -> disclose -> execute -> observe -> evaluate -> evolve
 
 `RuntimeSession` 是一次运行唯一的共享上下文，集中保存一个 `RunIdentity`、一个中心化 `RuntimeStore`、唯一 Skill 索引、渐进披露会话，以及真正影响结果的 Skill 和 Capability。Capability 只消费该会话，不再分别创建存储或重复扫描 Skill 目录。
 
-所有可执行机制都通过唯一的 `CapabilityRegistry` 注册。Runtime 会锁定名称、版本、实现类、精确内容哈希、依赖、权限和更新归属。内置 Capability 不需要设置；本地 Capability 包可以安装、更新和回滚，并在使用同一 Agent 配置时自动恢复激活，不需要增加 TOML 配置。
+所有可执行机制都通过唯一的 `CapabilityRegistry` 注册。内置 Capability 不需要配置；需要安装或进化的机制使用标准 `capability` Skill，因此与其他 Skill 共用索引、包管理、候选、评价、晋升和回滚。
 
-## 验证完整闭环
+## 可复现证明
 
-使用一条本地命令验证项目的核心主张：
-
-```bash
-super-agent benchmark \
-  --config examples/basic/agent.toml \
-  --cases examples/basic/benchmark-cases.json \
-  --output report.json
-```
-
-基准会比较 `no_skill`、`eager_skill` 和 `progressive_skill` 三种上下文模式，然后在隔离工作区真实执行发现、披露、运行、评价、候选创建、晋升和回滚。它还会对 JSONL 与 SQLite 执行完全相同的对话、记忆、Skill 使用、用户和 Agent 隔离检查；准备了专用测试数据库时，也会验证 MySQL 与 PostgreSQL。
-
-该命令不会调用配置中的远程模型，也不会修改配置中的 Skill 目录。上下文 token 使用确定性的 `ceil(字符数 / 4)` 近似值，生命周期使用内部确定性 Provider。报告包含稳定的输入 SHA-256，耗时则只代表当前机器。详见 [v0.0.34 实验说明](docs/experiments/v0.0.34.md)及其[生成的 JSON 报告](docs/experiments/v0.0.34.json)。
+[v0.0.34 实验说明](docs/experiments/v0.0.34.md)及其[生成的 JSON 报告](docs/experiments/v0.0.34.json)比较了无 Skill、全量加载与渐进披露三种上下文，并验证完整生命周期和存储隔离。报告发布后，实验编排代码已从发行 Runtime 删除，避免证明代码长期膨胀用户内核。
 
 ## 自进化
 
@@ -172,22 +161,21 @@ super-agent skills evolve \
   --cases evaluation-cases.json
 ```
 
-候选以完整 Skill 目录为单位，因此 prompt、memory、workflow、MCP 和自定义 Skill 共用同一套生命周期。模型只返回明确的完整文件写入与删除操作；Runtime 会在评价前校验路径、身份、权限和 Capability 专属配置。候选不会直接覆盖正在使用的 Skill，只有评价通过且父版本没有变化时才能晋升，每个已晋升版本都可以回滚。
+候选以完整 Skill 目录为单位，因此 prompt、memory、workflow、MCP、可执行 Capability 和自定义 Skill 共用同一套生命周期。模型只返回明确的完整文件写入与删除操作；Runtime 会在评价前校验路径、身份、权限和类型专属配置。候选不会直接覆盖正在使用的 Skill，只有评价通过且父版本没有变化时才能晋升，每个已晋升版本都可以回滚。
 
-可执行的 Capability 代码也使用同一个中心生命周期。候选包必须实现 `evaluate_capability(input_data)`。Runtime 会在独立 Python 进程中运行不可变 JSON case，把分数、延迟、异常和输出检查写入同一个评价存储，然后原子更新已安装包与 Agent 注册表：
+可执行机制使用 `capability` Skill 和普通 Skill 命令：
 
 ```bash
-super-agent capabilities evolve \
+super-agent skills evolve \
   --config agent.toml \
-  --slot run_controller \
-  --name careful \
+  --name capability:careful \
   --goal "减少运行失败" \
-  --cases capability-cases.json
+  --cases evaluation-cases.json
 ```
 
 保鲜度计算不调用大模型，而是根据质量、距离上次调用时间、使用频率、token 成本、延迟、可靠性、同功能替代行为和样本置信度确定性派生。
 
-每次运行完成评价后，Runtime 还会自动检查允许更新的 Skill 和本地安装的 Capability。这个确定性步骤不调用大模型，也不增加任何配置项。只有当前证据达到质量或效率阈值时才会记录进化建议，同一份未变化的证据不会反复生成建议。
+每次运行完成评价后，Runtime 会自动检查所有允许更新的 Skill，包括由 Skill 承载的可执行机制。这个确定性步骤不调用大模型，也不增加任何配置项。只有当前证据达到质量或效率阈值时才会记录进化建议，同一份未变化的证据不会反复生成建议。
 
 ```bash
 super-agent evolution list --config agent.toml

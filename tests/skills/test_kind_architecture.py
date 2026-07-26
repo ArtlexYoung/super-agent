@@ -42,6 +42,16 @@ class SkillKindArchitectureTests(unittest.TestCase):
             with self.assertRaises(ModuleNotFoundError):
                 importlib.import_module(module_name)
 
+    def test_independent_capability_lifecycle_is_removed(self) -> None:
+        for path in [
+            "src/capability/package.py",
+            "src/capability/evolution/manager.py",
+            "src/runtime/benchmark.py",
+            "src/cli_commands/capabilities.py",
+            "src/cli_commands/benchmark.py",
+        ]:
+            self.assertFalse(Path(path).exists())
+
     def test_runtime_engine_owns_evaluation_without_importing_skill_evolution(self) -> None:
         engine_source = Path("src/runtime/engine.py").read_text(encoding="utf-8")
         contracts_source = Path("src/capability/contracts.py").read_text(encoding="utf-8")

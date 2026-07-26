@@ -167,27 +167,14 @@ super-agent skills rollback --config agent.toml --name prompt:concise
 
 For a new Skill, omit `--capability` to create a prompt Skill or pass a Capability explicitly, such as `--capability memory`. Existing bare names resolve automatically only when unique.
 
-Evolution workspaces and evaluation evidence remain isolated by user and Agent. Custom Capability Skills use generic manifest validation until their Capability supplies a dedicated validator.
-
-Capability evolution cases use a small immutable JSON format:
-
-```json
-[
-  {
-    "name": "double value",
-    "input": {"value": 3},
-    "expected_output": 6
-  }
-]
-```
+Evolution workspaces and evaluation evidence remain isolated by user and Agent. Executable mechanisms are `capability` Skills and use the same cases and commands:
 
 ```bash
-super-agent capabilities evolve \
+super-agent skills evolve \
   --config agent.toml \
-  --slot run_controller \
-  --name adaptive \
+  --name capability:adaptive \
   --goal "improve successful completion" \
-  --cases capability-cases.json
+  --cases cases.json
 ```
 
-The candidate package remains outside the main Agent registry until its subprocess evaluation passes. Promotion verifies the original parent version and SHA-256 again, then updates package state and the Agent registry together. Activation failures automatically restore the previous package and registry.
+The complete Skill directory remains outside the active path until evaluation passes. Promotion verifies the original parent version and SHA-256, then remounts the Capability in the current Agent. Activation failures restore the previous Skill revision and registry.

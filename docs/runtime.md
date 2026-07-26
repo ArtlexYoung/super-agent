@@ -139,8 +139,8 @@ Warnings do not block execution. Omitting the maximum allows unlimited nesting.
 
 `StorageEvent` is the backend-neutral source of truth for conversations, run traces, evaluations, evolution recommendations, memory, usage habits, and disclosure history. MySQL and PostgreSQL store that event stream remotely while keeping cache, evolution, and installed Capability directories under the configured local `path`. `RuntimeStore` supplies explicit domain operations, and every operation is scoped by `user_id` and Agent name. Local artifacts are never alternate stores for the same event data.
 
-## End-to-End Runtime Proof
+## Runtime Proof History
 
-`RuntimeBenchmark` runs the framework's central claims as one disposable experiment. Context comparison reads the configured Skill tree through the normal progressive-disclosure core but stores cache artifacts in a temporary root. The lifecycle fixture then uses the normal Agent, Runtime, evaluator, Skill updater, evolution state machine, promotion, and rollback implementations with a deterministic local Provider.
+The reproducible `v0.0.34` experiment is archived under `docs/experiments/`. Its benchmark orchestration was removed from the shipped Runtime after the result was recorded, so proof code does not become a second public execution framework.
 
-`verify_multiuser_isolation_across_storage_backends(...)` writes the same domain operations through each `StorageBackend`: two users reuse one conversation ID, each stores private memory and Skill habits, and a subagent stores separate memory under one user. Every temporary event is deleted and cleanup is verified. Remote checks require the dedicated test database environments, so the proof never falls back to a production storage URL from Agent configuration.
+Storage contract tests still apply the same domain operations to every backend. Remote checks require dedicated test database environments and never fall back to an Agent's production connection URL.

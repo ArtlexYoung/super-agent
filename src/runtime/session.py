@@ -99,7 +99,7 @@ class RuntimeSession:
                 target=target,
                 agent_created=descriptor.agent_created,
                 agent_can_update=descriptor.agent_can_update,
-                supports_evolution=descriptor.source == "local",
+                supports_evolution=descriptor.source == "skill",
             )
         )
 

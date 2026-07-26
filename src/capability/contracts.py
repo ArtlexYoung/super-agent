@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, Callable, Protocol, cast
 
 from capability.registry import CapabilityRegistry
 
@@ -17,7 +17,7 @@ from skill.disclosure import (
     SkillReference,
     SkillSelectionDecision,
 )
-from skill.manifest import Skill
+from skill.manifest import Skill, SkillManifest
 
 if TYPE_CHECKING:
     from runtime.session import RuntimeSession
@@ -110,6 +110,7 @@ class SkillUpdaterCapability(Protocol):
         config: AgentConfig,
         provider: ChatProvider,
         store: RuntimeStore,
+        on_skill_changed: Callable[[SkillManifest], None] | None = None,
     ) -> object:
         ...
 

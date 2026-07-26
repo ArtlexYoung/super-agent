@@ -12,13 +12,16 @@ from capability.contracts import (
     SkillExecutor,
     SkillUpdaterCapability,
 )
-from capability.defaults import create_default_capability_set
-from capability.package import CapabilityPackageManager, InstalledCapability
+from capability.defaults import (
+    create_default_capability_set,
+    create_default_skill_disclosure,
+)
 from capability.registry import (
     CapabilityDescriptor,
     CapabilityRegistry,
     copy_capability_registry,
 )
+from capability.skill_loader import load_capability_skill
 from provider.chat import ChatProvider, Message, create_chat_provider
 from provider.discovery import ModelResolution, resolve_model_settings
 from runtime.config import AgentConfig
@@ -40,8 +43,8 @@ from runtime.session import RuntimeSession
 from runtime.storage import StorageBackend, create_storage_backend
 
 if TYPE_CHECKING:
-    from capability.evolution.manager import CapabilityEvolutionManager
     from skill.evolution.manager import SkillEvolutionManager
+    from skill.manifest import SkillManifest
 
 
 @dataclass(frozen=True)
@@ -71,20 +74,20 @@ class Agent:
             model=self.model_resolution.settings,
         )
         self.provider = provider or create_chat_provider(self.config.model)
-        selected_capabilities = capabilities or create_default_capability_set(
-            self.config,
-            self.provider,
-        )
-        self.capabilities = (
-            selected_capabilities
-            if capabilities is not None
-            else self._activate_persisted_capabilities(selected_capabilities)
-        )
         self.storage = storage or create_storage_backend(
             self.config.storage.backend,
             str(self.config.storage.path),
             self.config.storage.url_env,
         )
+        selected_capabilities = capabilities or create_default_capability_set(
+            self.config,
+            self.provider,
+        )
+        self.capabilities = selected_capabilities
+        if capabilities is None:
+            self.capabilities = self._load_capability_skills(
+                selected_capabilities,
+            )
         self.runtime = AgentRuntime(
             self.config,
             self.provider,
@@ -146,111 +149,16 @@ class Agent:
     def set_skill_updater(self, skill_updater: SkillUpdaterCapability) -> None:
         self._replace_capability("skill_updater", skill_updater)
 
-    def install_capability(self, source: str) -> InstalledCapability:
-        manager = self._create_capability_package_manager()
-        installed = manager.install_capability(source)
-        try:
-            self._activate_installed_capability(installed)
-        except Exception:
-            manager.remove_capability(installed.manifest.slot, installed.manifest.name)
-            raise
-        return installed
-
-    def update_capability(
-        self,
-        slot: str,
-        name: str,
-        source: str,
-    ) -> InstalledCapability:
-        manager = self._create_capability_package_manager()
-        installed = manager.update_capability(
-            slot,
-            name,
-            source,
-        )
-        try:
-            self._activate_installed_capability(installed)
-        except Exception:
-            manager.rollback_capability(slot, name)
-            raise
-        return installed
-
-    def rollback_capability(self, slot: str, name: str) -> InstalledCapability:
-        manager = self._create_capability_package_manager()
-        previous = manager.load_capability(slot, name)
-        previous_registry = copy_capability_registry(self.capabilities.registry)
-        restored = manager.rollback_capability(slot, name)
-        try:
-            self._activate_installed_capability(restored)
-        except Exception:
-            manager.update_capability(slot, name, str(previous.manifest.path))
-            self._set_capability_registry(previous_registry)
-            raise
-        return restored
-
-    def remove_capability(self, slot: str, name: str) -> None:
-        manager = self._create_capability_package_manager()
-        installed = manager.load_capability(slot, name)
-        manager.remove_capability(slot, name)
-        registration = self.capabilities.registry.find_capability(slot)
-        if (
-            registration is None
-            or registration.descriptor.name != installed.manifest.name
-            or registration.descriptor.source != "local"
-        ):
-            return
-        defaults = create_default_capability_set(self.config, self.provider)
-        fallback = defaults.registry.find_capability(slot)
-        registry = copy_capability_registry(self.capabilities.registry)
-        registry.remove_capability(slot)
-        if fallback is not None:
-            registry.register_capability(
-                slot,
-                fallback.implementation,
-                fallback.descriptor,
-            )
-        self._set_capability_registry(registry)
-
-    def load_installed_capability(self, slot: str, name: str) -> InstalledCapability:
-        installed = self._create_capability_package_manager().load_capability(slot, name)
-        self._activate_installed_capability(installed)
-        return installed
-
-    def list_installed_capabilities(self) -> list[InstalledCapability]:
-        return self._create_capability_package_manager().list_capabilities()
-
     def create_skill_evolution_manager(
         self,
         user_id: str = LOCAL_USER_ID,
     ) -> "SkillEvolutionManager":
         return cast(
             "SkillEvolutionManager",
-            self.runtime.create_skill_updater(user_id),
-        )
-
-    def create_capability_evolution_manager(
-        self,
-        user_id: str = LOCAL_USER_ID,
-        *,
-        minimum_score: float = 0.8,
-        timeout_seconds: float = 5.0,
-    ) -> "CapabilityEvolutionManager":
-        from capability.evolution.manager import (
-            CapabilityEvolutionManager,
-            CapabilityEvolutionRuntimeAccess,
-        )
-
-        return CapabilityEvolutionManager(
-            CapabilityEvolutionRuntimeAccess(
-                config=self.config,
-                package_manager=self._create_capability_package_manager(),
-                provider=self.provider,
-                store=self.runtime.create_store(user_id),
-                read_capability_registry=lambda: self.capabilities.registry,
-                replace_capability_registry=self._set_capability_registry,
+            self.runtime.create_skill_updater(
+                user_id,
+                lambda manifest: self._activate_changed_skill(manifest, user_id),
             ),
-            minimum_score=minimum_score,
-            timeout_seconds=timeout_seconds,
         )
 
     def list_evolution_schedules(
@@ -416,36 +324,77 @@ class Agent:
         )
         self._set_capability_registry(registry)
 
-    def _activate_installed_capability(self, installed: InstalledCapability) -> None:
-        self._replace_capability(
-            installed.manifest.slot,
-            installed.implementation,
-            installed.descriptor,
-        )
-
-    def _create_capability_package_manager(self) -> CapabilityPackageManager:
-        return CapabilityPackageManager(self.config.storage.path / "capabilities")
-
     def _create_evolution_scheduler(
         self,
         user_id: str,
     ) -> AutonomousEvolutionScheduler:
         return AutonomousEvolutionScheduler(self.runtime.create_store(user_id))
 
-    def _activate_persisted_capabilities(
+    def _load_capability_skills(
         self,
         capabilities: AgentCapabilitySet,
     ) -> AgentCapabilitySet:
         registry = copy_capability_registry(capabilities.registry)
-        for installed in self._create_capability_package_manager().list_capabilities():
+        disclosure = create_default_skill_disclosure(
+            self.config,
+            storage=self.storage,
+        )
+        index = disclosure.prepare_skill_index()
+        loaded_slots: set[str] = set()
+        for entry in index.entries:
+            if entry.reference.capability != "capability":
+                continue
+            opened = disclosure.open_skill(entry.reference.name, "capability")
+            loaded = load_capability_skill(opened)
+            slot = loaded.descriptor.slot
+            if slot in loaded_slots:
+                raise ValueError(f"multiple capability Skills use slot: {slot}")
+            loaded_slots.add(slot)
             registry.register_capability(
-                installed.manifest.slot,
-                installed.implementation,
-                installed.descriptor,
+                slot,
+                loaded.implementation,
+                loaded.descriptor,
                 replace=True,
             )
         registry.validate_dependencies()
         return AgentCapabilitySet(registry)
+
+    def _activate_changed_skill(
+        self,
+        manifest: "SkillManifest",
+        user_id: str,
+    ) -> None:
+        if manifest.capability != "capability":
+            return
+        disclosure = create_default_skill_disclosure(
+            self.config,
+            store=self.runtime.create_store(user_id),
+        )
+        disclosure.prepare_skill_index()
+        loaded = load_capability_skill(
+            disclosure.open_skill(manifest.name, manifest.capability)
+        )
+        registry = copy_capability_registry(self.capabilities.registry)
+        previous = next(
+            (
+                item
+                for item in registry.list_capabilities()
+                if item.descriptor.skill_key == loaded.descriptor.skill_key
+            ),
+            None,
+        )
+        if previous is not None and previous.descriptor.slot != loaded.descriptor.slot:
+            raise ValueError(
+                "updated capability Skill cannot change slot: "
+                f"{previous.descriptor.slot} -> {loaded.descriptor.slot}"
+            )
+        registry.register_capability(
+            loaded.descriptor.slot,
+            loaded.implementation,
+            loaded.descriptor,
+            replace=True,
+        )
+        self._set_capability_registry(registry)
 
     def _set_capability_registry(self, registry: CapabilityRegistry) -> None:
         registry.validate_dependencies()

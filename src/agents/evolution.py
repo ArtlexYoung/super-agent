@@ -1,11 +1,10 @@
-"""Coordinate scheduled Skill and Capability candidates for one Agent."""
+"""Create scheduled candidates through the single Skill evolution lifecycle."""
 
 from __future__ import annotations
 
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from capability.evolution.candidate import CapabilityCandidate
 from runtime.evolution.files import compare_directory_versions
 from runtime.evolution.scheduler import (
     AutonomousEvolutionScheduler,
@@ -28,16 +27,12 @@ def create_evolution_candidate_from_schedule(
     schedule = scheduler.read_evolution_schedule(schedule_id)
     if schedule.decision != "candidate_recommended":
         raise ValueError(f"evolution schedule was already decided: {schedule_id}")
-    if schedule.target.target_type == "skill":
-        candidate, parent_path = _create_skill_candidate(agent, schedule, user_id)
-        candidate_path = candidate.skill_path
-    elif schedule.target.target_type == "capability":
-        candidate, parent_path = _create_capability_candidate(agent, schedule, user_id)
-        candidate_path = candidate.package_path
-    else:
+    if schedule.target.target_type != "skill":
         raise ValueError(
             f"unsupported scheduled target type: {schedule.target.target_type}"
         )
+    candidate, parent_path = _create_skill_candidate(agent, schedule, user_id)
+    candidate_path = candidate.skill_path
     difference = compare_directory_versions(parent_path, candidate_path)
     return scheduler.record_evolution_candidate_created(
         schedule.schedule_id,
@@ -73,34 +68,6 @@ def _create_skill_candidate(
         schedule.goal,
     )
     return candidate, parent_path
-
-
-def _create_capability_candidate(
-    agent: "Agent",
-    schedule: EvolutionScheduleState,
-    user_id: str,
-) -> tuple[CapabilityCandidate, Path]:
-    slot = schedule.target.function_group
-    registration = agent.capabilities.registry.require_capability(slot)
-    descriptor = registration.descriptor
-    if descriptor.key != schedule.target.key or descriptor.source != "local":
-        raise ValueError(f"scheduled Capability is no longer active: {schedule.target.key}")
-    _require_unchanged_scheduled_target(
-        descriptor.version,
-        descriptor.content_sha256,
-        schedule,
-    )
-    manager = agent.create_capability_evolution_manager(user_id)
-    installed = manager.runtime_access.package_manager.load_capability(
-        descriptor.slot,
-        descriptor.name,
-    )
-    candidate = manager.create_capability_candidate(
-        descriptor.slot,
-        descriptor.name,
-        schedule.goal,
-    )
-    return candidate, installed.manifest.path
 
 
 def _require_unchanged_scheduled_target(

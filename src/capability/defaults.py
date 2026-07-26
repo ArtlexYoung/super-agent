@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Callable
+
 from capability.contracts import AgentCapabilitySet
 from capability.registry import CapabilityRegistry, create_capability_descriptor
 from capability.run_controller import DefaultRunController
@@ -15,6 +17,7 @@ from runtime.storage import StorageBackend, create_storage_backend
 from runtime.store import RuntimeStore
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.evolution.manager import SkillEvolutionManager
+from skill.manifest import SkillManifest
 
 
 class ProgressiveSkillDisclosureCapability:
@@ -58,6 +61,7 @@ class EvaluatedSkillUpdaterCapability:
         config: AgentConfig,
         provider: ChatProvider,
         store: RuntimeStore,
+        on_skill_changed: Callable[[SkillManifest], None] | None = None,
     ) -> SkillEvolutionManager:
         if not config.paths.skills:
             raise ValueError("agent has no skill path configured")
@@ -66,6 +70,7 @@ class EvaluatedSkillUpdaterCapability:
             skill_disclosure=_create_progressive_skill_disclosure(config, store),
             store=store,
             provider=provider,
+            on_skill_changed=on_skill_changed,
         )
 
 
