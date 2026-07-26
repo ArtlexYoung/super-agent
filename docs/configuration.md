@@ -12,10 +12,6 @@ workflow = "direct"
 memory = "default"
 skills = []
 
-[model]
-provider = "auto"
-model = ""
-
 [paths]
 skills = ["skills"]
 
@@ -37,26 +33,45 @@ path = ".super-agent"
 
 Subagent relationships are never declared in TOML. Use `Agent.add_subagent(...)` in Python.
 
-## Model Settings
+## Model Skills
 
 Supported provider names:
 
-- `auto`
 - `mock`
 - `openai-compatible`
 - `anthropic-compatible`
 
-Explicit example:
+Persistent model configuration is an ordinary Skill, not an `agent.toml` table:
 
 ```toml
-[model]
+schema_version = 2
+name = "fast"
+capability = "model"
+description = "Low-latency model for summaries"
+version = "0.1.0"
+triggers = ["fast", "summary"]
+agent_can_update = true
+
+[configuration]
 provider = "openai-compatible"
 model = "gpt-4.1-mini"
-base_url = "https://api.openai.com/v1"
 api_key_env = "OPENAI_API_KEY"
+supports = ["text", "tools", "json"]
+purposes = ["summary"]
+strengths = ["low-latency"]
+default = true
+quality_score = 0.8
+expected_latency_ms = 500
+input_cost_per_million = 0.4
+output_cost_per_million = 1.6
+agent_can_update_connection = false
 ```
 
-Local OpenAI-compatible servers may omit `api_key_env` when `base_url` is localhost.
+Place it at a path such as `skills/model/fast/skill.toml`. `provider` and `model` are required. All other configuration fields are optional. Local OpenAI-compatible servers may omit `api_key_env` when `base_url` is localhost. Remote OpenAI and Anthropic defaults infer `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` respectively.
+
+Exactly zero or one model Skill may set `default = true`. If none is marked, the first profile in stable Skill-key order is selected. If any enabled model Skill exists, model Skills are the complete profile set and environment discovery is not mixed into it.
+
+`agent_can_update` controls whether the Skill may evolve. Connection fields remain user-owned unless `agent_can_update_connection = true`; an Agent cannot grant itself that permission. Descriptions, triggers, supports, purposes, strengths, and numeric routing traits remain evolvable under ordinary Skill permissions.
 
 ## Environment Discovery
 
@@ -77,7 +92,7 @@ OPENAI_API_KEY
 ANTHROPIC_API_KEY
 ```
 
-Use `super-agent models resolve` to see the selected settings and their source.
+Environment profiles are ephemeral and used only when no enabled model Skill exists. Selection order is `SUPER_AGENT_PROVIDER`, `OLLAMA_HOST`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, then the built-in mock. Use `super-agent models list` and `super-agent models resolve` to inspect available profiles and the selected default. These commands print environment-variable names but never secret values.
 
 ## Paths
 
@@ -161,4 +176,4 @@ disable_names = [
 
 ## Strict Parsing
 
-Configuration and Skill readers reject unsupported fields and schema versions. The `0.0.x` series does not silently convert old configuration names or retain compatibility aliases. In particular, the removed `paths.memory` setting is rejected; use `[storage].path`.
+Configuration and Skill readers reject unsupported fields and schema versions. The `0.0.x` series does not silently convert old configuration names or retain compatibility aliases. The removed `[model]` table is rejected; use a `model` Skill. The removed `paths.memory` setting is also rejected; use `[storage].path`.

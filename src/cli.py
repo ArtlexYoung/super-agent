@@ -98,7 +98,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     memory_parser = subparsers.add_parser("memory", help="inspect memory")
     configure_memory_parser(memory_parser)
-    models_parser = subparsers.add_parser("models", help="discover and resolve model configuration")
+    models_parser = subparsers.add_parser("models", help="inspect model Skills and defaults")
     configure_models_parser(models_parser)
     runs_parser = subparsers.add_parser("runs", help="inspect and export run snapshots")
     configure_runs_parser(runs_parser)
@@ -276,10 +276,6 @@ memory = "default"
 skills = ["echo"]
 use_features = ["skill"]
 disable_names = []
-
-[model]
-provider = "mock"
-model = "mock"
 
 [paths]
 skills = ["skills"]

@@ -4,46 +4,69 @@ import argparse
 import json
 from pathlib import Path
 
-from provider.discovery import (
-    ModelResolution,
-    discover_model_candidates,
-    model_resolution_to_dict,
-    resolve_model_settings,
-)
+from capability.defaults import create_default_skill_disclosure
 from runtime.config import AgentConfig
+from skill.kinds.model import (
+    ModelProfile,
+    model_profile_to_dict,
+    read_model_profiles,
+    select_default_model_profile,
+)
 
 
 def configure_models_parser(parser: argparse.ArgumentParser) -> None:
     subparsers = parser.add_subparsers(dest="models_command")
     list_parser = subparsers.add_parser(
         "list",
-        help="list model configurations discovered from the environment",
+        help="list model Skills or zero-configuration environment profiles",
     )
+    list_parser.add_argument("--config")
     list_parser.add_argument("--output", choices=["text", "json"], default="text")
     resolve_parser = subparsers.add_parser(
         "resolve",
-        help="show the model configuration selected for this project",
+        help="show the default model profile selected for this project",
     )
     resolve_parser.add_argument("--config")
     resolve_parser.add_argument("--output", choices=["text", "json"], default="text")
 
 
 def run_models_command(args: argparse.Namespace) -> int:
+    config = _load_config(getattr(args, "config", None))
+    profiles = _read_configured_model_profiles(config)
+    output = getattr(args, "output", "text")
     if args.models_command == "list":
-        return _list_discovered_models(args.output)
+        return _print_model_profiles(config, profiles, output)
     if args.models_command in {None, "resolve"}:
-        return _show_resolved_model(getattr(args, "config", None), getattr(args, "output", "text"))
+        return _print_selected_model(config, profiles, output)
     raise ValueError(f"unknown models command: {args.models_command}")
 
 
-def _list_discovered_models(output: str) -> int:
-    candidates = discover_model_candidates()
+def _load_config(path: str | None) -> AgentConfig:
+    return (
+        AgentConfig.load_automatically()
+        if path is None
+        else AgentConfig.load_from_file(Path(path))
+    )
+
+
+def _read_configured_model_profiles(config: AgentConfig) -> list[ModelProfile]:
+    disclosure = create_default_skill_disclosure(config)
+    index = disclosure.prepare_skill_index()
+    return read_model_profiles(disclosure, index)
+
+
+def _print_model_profiles(
+    config: AgentConfig,
+    profiles: list[ModelProfile],
+    output: str,
+) -> int:
     if output == "json":
         print(
             json.dumps(
                 {
-                    "schema_version": 1,
-                    "models": [model_resolution_to_dict(item) for item in candidates],
+                    "schema_version": 2,
+                    "config_path": str(config.source),
+                    "models": [model_profile_to_dict(profile) for profile in profiles],
                 },
                 ensure_ascii=False,
                 indent=2,
@@ -51,40 +74,37 @@ def _list_discovered_models(output: str) -> int:
             )
         )
         return 0
-    for candidate in candidates:
-        _print_model_resolution(candidate)
+    for profile in profiles:
+        _print_model_profile(profile)
     return 0
 
 
-def _show_resolved_model(config_path: str | None, output: str) -> int:
-    config = (
-        AgentConfig.load_automatically()
-        if config_path is None
-        else AgentConfig.load_from_file(Path(config_path))
-    )
-    resolution = resolve_model_settings(config.model)
+def _print_selected_model(
+    config: AgentConfig,
+    profiles: list[ModelProfile],
+    output: str,
+) -> int:
+    selected = select_default_model_profile(profiles)
     data = {
-        "schema_version": 1,
+        "schema_version": 2,
         "config_path": str(config.source),
-        "model": model_resolution_to_dict(resolution),
+        "model": model_profile_to_dict(selected),
     }
     if output == "json":
         print(json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True))
         return 0
-    _print_model_resolution(resolution, prefix="selected")
+    _print_model_profile(selected, prefix="selected")
     print(f"config\t{config.source}")
     return 0
 
 
-def _print_model_resolution(
-    resolution: ModelResolution,
-    prefix: str = "candidate",
-) -> None:
-    settings = resolution.settings
+def _print_model_profile(profile: ModelProfile, prefix: str = "profile") -> None:
+    data = model_profile_to_dict(profile)
     print(
-        f"{prefix}\t{settings.provider}\t{settings.model}"
-        f"\tready={str(resolution.ready).lower()}"
-        f"\tsource={resolution.source}"
-        f"\tbase_url={settings.base_url or ''}"
-        f"\tapi_key_env={settings.api_key_env or ''}"
+        f"{prefix}\t{profile.key}\t{data['provider']}\t{profile.model}"
+        f"\tready={str(data['ready']).lower()}"
+        f"\tdefault={str(profile.default).lower()}"
+        f"\tsource={profile.source}"
+        f"\tbase_url={data['base_url'] or ''}"
+        f"\tapi_key_env={data['api_key_env'] or ''}"
     )

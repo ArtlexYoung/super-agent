@@ -19,7 +19,7 @@ class CapabilityRegistryTests(unittest.TestCase):
 
             self.assertIsNotNone(runtime_lock)
             assert runtime_lock is not None
-            self.assertEqual(2, runtime_lock["schema_version"])
+            self.assertEqual(3, runtime_lock["schema_version"])
             locked = runtime_lock["capabilities"]
             self.assertEqual(
                 [

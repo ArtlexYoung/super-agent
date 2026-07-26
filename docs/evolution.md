@@ -127,7 +127,7 @@ create candidate -> validate -> evaluate -> promote -> rollback
 - The model returns strict JSON with complete UTF-8 file writes and explicit deletions.
 - The candidate records its parent version and directory hash.
 - Runtime forces the next patch version and rejects path traversal, symlinks, identity changes, and empty changes.
-- Prompt, memory, workflow, MCP, custom Skills, and executable Capability code share one Runtime state machine and event stream.
+- Prompt, memory, workflow, MCP, model, custom Skills, and executable Capability code share one Runtime state machine and event stream.
 - Skill evaluation calls the configured Provider with deterministic assertions.
 - Capability evaluation calls `evaluate_capability(input_data)` in a separate Python process and checks exact JSON output.
 - Promotion requires a passing score and an unchanged active parent.
@@ -178,3 +178,5 @@ super-agent skills evolve \
 ```
 
 The complete Skill directory remains outside the active path until evaluation passes. Promotion verifies the original parent version and SHA-256, then remounts the Capability in the current Agent. Activation failures restore the previous Skill revision and registry.
+
+Model Skills use the same flow. Their descriptions and routing traits can evolve normally. Runtime rejects changes to `provider`, `model`, `base_url`, `api_key_env`, or the ownership flag unless the active Skill already declares `agent_can_update_connection = true`. Promoting or rolling back a model Skill refreshes the selected profile in the current Agent.

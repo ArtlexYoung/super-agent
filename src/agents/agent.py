@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING, Callable, cast
 
 from agents.evolution import create_evolution_candidate_from_schedule
@@ -22,8 +22,8 @@ from capability.registry import (
     copy_capability_registry,
 )
 from capability.skill_loader import load_capability_skill
-from provider.chat import ChatProvider, Message, create_chat_provider
-from provider.discovery import ModelResolution, resolve_model_settings
+from provider.chat import ChatProvider, Message
+from provider.pool import ProviderPool
 from runtime.config import AgentConfig
 from runtime.engine import AgentRuntime
 from runtime.evolution.scheduler import (
@@ -41,6 +41,12 @@ from runtime.models import (
 )
 from runtime.session import RuntimeSession
 from runtime.storage import StorageBackend, create_storage_backend
+from skill.disclosure import ProgressiveDisclosureCore, SkillIndex
+from skill.kinds.model import (
+    ModelProfile,
+    read_model_profiles,
+    select_default_model_profile,
+)
 
 if TYPE_CHECKING:
     from skill.evolution.manager import SkillEvolutionManager
@@ -65,32 +71,39 @@ class Agent:
         capabilities: AgentCapabilitySet | None = None,
         storage: StorageBackend | None = None,
     ) -> None:
-        unresolved_config = config or AgentConfig.load_automatically()
-        self.model_resolution: ModelResolution = resolve_model_settings(
-            unresolved_config.model
-        )
-        self.config = replace(
-            unresolved_config,
-            model=self.model_resolution.settings,
-        )
-        self.provider = provider or create_chat_provider(self.config.model)
+        self.config = config or AgentConfig.load_automatically()
         self.storage = storage or create_storage_backend(
             self.config.storage.backend,
             str(self.config.storage.path),
             self.config.storage.url_env,
         )
-        selected_capabilities = capabilities or create_default_capability_set(
+        bootstrap_disclosure = create_default_skill_disclosure(
             self.config,
-            self.provider,
+            storage=self.storage,
         )
+        bootstrap_index = bootstrap_disclosure.prepare_skill_index()
+        self.model_profiles = read_model_profiles(
+            bootstrap_disclosure,
+            bootstrap_index,
+        )
+        self.model_profile: ModelProfile = select_default_model_profile(
+            self.model_profiles
+        )
+        self.provider_pool = ProviderPool()
+        if provider is not None:
+            self.provider_pool.add_chat_provider(self.model_profile.key, provider)
+        selected_capabilities = capabilities or create_default_capability_set()
         self.capabilities = selected_capabilities
         if capabilities is None:
             self.capabilities = self._load_capability_skills(
                 selected_capabilities,
+                bootstrap_disclosure,
+                bootstrap_index,
             )
         self.runtime = AgentRuntime(
             self.config,
-            self.provider,
+            self.model_profile,
+            self.provider_pool,
             self.capabilities,
             self.storage,
         )
@@ -333,13 +346,10 @@ class Agent:
     def _load_capability_skills(
         self,
         capabilities: AgentCapabilitySet,
+        disclosure: ProgressiveDisclosureCore,
+        index: SkillIndex,
     ) -> AgentCapabilitySet:
         registry = copy_capability_registry(capabilities.registry)
-        disclosure = create_default_skill_disclosure(
-            self.config,
-            storage=self.storage,
-        )
-        index = disclosure.prepare_skill_index()
         loaded_slots: set[str] = set()
         for entry in index.entries:
             if entry.reference.capability != "capability":
@@ -364,6 +374,9 @@ class Agent:
         manifest: "SkillManifest",
         user_id: str,
     ) -> None:
+        if manifest.capability == "model":
+            self._reload_model_profiles(user_id)
+            return
         if manifest.capability != "capability":
             return
         disclosure = create_default_skill_disclosure(
@@ -401,10 +414,21 @@ class Agent:
         self.capabilities = AgentCapabilitySet(registry)
         self.runtime = AgentRuntime(
             self.config,
-            self.provider,
+            self.model_profile,
+            self.provider_pool,
             self.capabilities,
             self.storage,
         )
+
+    def _reload_model_profiles(self, user_id: str) -> None:
+        disclosure = create_default_skill_disclosure(
+            self.config,
+            store=self.runtime.create_store(user_id),
+        )
+        index = disclosure.prepare_skill_index()
+        self.model_profiles = read_model_profiles(disclosure, index)
+        self.model_profile = select_default_model_profile(self.model_profiles)
+        self._set_capability_registry(self.capabilities.registry)
 
     def _make_next_subagent_name(self) -> str:
         index = 1

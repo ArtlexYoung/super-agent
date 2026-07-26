@@ -11,7 +11,7 @@ skills/<capability>/<name>/
   additional resources...
 ```
 
-Only `skill.toml` is required. Configuration-only Skills, such as many memory and workflow definitions, can omit `SKILL.md`.
+Only `skill.toml` is required. Configuration-only Skills, such as model, memory, and workflow definitions, can omit `SKILL.md`.
 
 ## Manifest
 
@@ -44,6 +44,8 @@ Schema v2 rejects unknown top-level fields and old Capability-specific configura
 - `mcp`: stdio MCP server configuration and model-facing tool guidance.
 - `memory`: memory policy and runtime memory construction.
 - `workflow`: direct, plan, react, or loop execution behavior.
+- `model`: model description, connection ownership, and routing traits.
+- `capability`: installable executable Runtime mechanism.
 
 Custom Capability names are discovered automatically. Register a matching Skill executor in code:
 
@@ -62,6 +64,8 @@ prompt:default
 memory:default
 workflow:direct
 mcp:filesystem
+model:fast
+capability:adaptive
 ```
 
 ## Selection and Dependencies

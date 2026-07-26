@@ -44,6 +44,7 @@ from skill.evolution.artifacts import (
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.manifest import SkillManifest, calculate_skill_directory_sha256
 from skill.validation import validate_skill_directory, validate_skill_replacement
+from skill.kinds.model import ModelProfile
 
 
 class SkillEvolutionManager:
@@ -53,6 +54,7 @@ class SkillEvolutionManager:
         config: AgentConfig,
         skill_disclosure: ProgressiveDisclosureCore,
         store: RuntimeStore,
+        model_profile: ModelProfile,
         provider: ChatProvider,
         minimum_score: float = 0.8,
         on_skill_changed: Callable[[SkillManifest], None] | None = None,
@@ -70,8 +72,8 @@ class SkillEvolutionManager:
         self.evolution_root = store.private_root / "evolution"
         self.store = store
         self.lifecycle = EvolutionLifecycle(store)
+        self.model_profile = model_profile
         self.provider = provider
-        self.model = config.model.model
         self.minimum_score = minimum_score
         self.on_skill_changed = on_skill_changed
 
@@ -87,7 +89,7 @@ class SkillEvolutionManager:
                 skill_disclosure=self.skill_disclosure,
                 candidate_root=self.evolution_root / "candidates",
                 provider=self.provider,
-                model=self.model,
+                model=self.model_profile.model,
                 name=name,
                 goal=goal,
                 capability=capability,
@@ -134,7 +136,7 @@ class SkillEvolutionManager:
         report = evaluate_candidate(
             SkillCandidateEvaluationRequest(
                 candidate=candidate,
-                model=self.model,
+                model=self.model_profile.model,
                 cases=cases,
                 minimum_score=self.minimum_score,
                 report_path=report_path,

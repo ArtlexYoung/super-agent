@@ -18,6 +18,7 @@ from runtime.store import RuntimeStore
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.evolution.manager import SkillEvolutionManager
 from skill.manifest import SkillManifest
+from skill.kinds.model import ModelProfile
 
 
 class ProgressiveSkillDisclosureCapability:
@@ -59,6 +60,7 @@ class EvaluatedSkillUpdaterCapability:
     def create_skill_updater(
         self,
         config: AgentConfig,
+        model_profile: ModelProfile,
         provider: ChatProvider,
         store: RuntimeStore,
         on_skill_changed: Callable[[SkillManifest], None] | None = None,
@@ -69,16 +71,13 @@ class EvaluatedSkillUpdaterCapability:
             config=config,
             skill_disclosure=_create_progressive_skill_disclosure(config, store),
             store=store,
+            model_profile=model_profile,
             provider=provider,
             on_skill_changed=on_skill_changed,
         )
 
 
-def create_default_capability_set(
-    config: AgentConfig,
-    provider: ChatProvider,
-) -> AgentCapabilitySet:
-    del config, provider
+def create_default_capability_set() -> AgentCapabilitySet:
     registry = CapabilityRegistry()
     _register_builtin_capability(registry, "run_controller", DefaultRunController())
     _register_builtin_capability(

@@ -272,10 +272,6 @@ skills = {skills_text}
 {use_features_line}
 {disable_names_line}
 
-[model]
-provider = "mock"
-model = "unit-test"
-
 [paths]
 skills = ["skills"]
 

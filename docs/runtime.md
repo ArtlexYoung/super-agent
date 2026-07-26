@@ -65,7 +65,7 @@ Each run receives a unique `run_id`. With the default JSONL backend, all runtime
 Events are ordered and append-only. `RuntimeStore.read_run(...)` replays run events into a `RunSnapshot`; no parallel snapshot file can drift from the trace. The `runtime.locked` event fixes:
 
 - Effective Agent configuration.
-- Resolved model and Provider adapter.
+- Selected model profile, Skill hash when persistent, and Provider adapter.
 - Capability names and versions.
 - Skill versions, dependencies, and directory hashes.
 

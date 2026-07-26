@@ -6,14 +6,14 @@
 
 Super Agent is a **simple, lightweight, self-evolving, skill-first Agent runtime**.
 
-It explores one idea: prompts, tools, memory, workflows, and other Agent behavior can all be declared as Skills, progressively disclosed, executed by Capabilities, evaluated from real runs, and improved over time.
+It explores one idea: prompts, tools, memory, workflows, models, and other Agent behavior can all be declared as Skills, progressively disclosed, executed by Capabilities, evaluated from real runs, and improved over time.
 
 The project is currently experimental (`0.0.x`). It favors a small, inspectable runtime and explicit breaking changes over premature API compatibility.
 
 ## Why Super Agent
 
 - **Zero-configuration start**: `Agent()` and the CLI run immediately with a local mock model.
-- **One Skill format**: prompt, MCP, memory, workflow, and executable mechanisms share one manifest and lifecycle.
+- **One Skill format**: prompt, MCP, memory, workflow, models, and executable mechanisms share one manifest and lifecycle.
 - **Progressive disclosure**: the model sees a compact index first and opens only the Skills it needs.
 - **One runtime lifecycle**: discovery, disclosure, execution, observation, evaluation, and evolution share one session.
 - **Automatic evolution signals**: Runtime turns real failures, quality, freshness, replacement, cost, and latency into deduplicated recommendations.
@@ -57,7 +57,7 @@ result = agent.run("Which language does it use?", conversation_id=conversation.c
 
 ## Use a Real Model
 
-Model settings are discovered automatically. For example:
+The zero-configuration path discovers model credentials from the environment:
 
 ```bash
 export OPENAI_API_KEY="..."
@@ -65,7 +65,33 @@ super-agent models resolve
 super-agent run "Summarize this project"
 ```
 
-`ANTHROPIC_API_KEY` and `OLLAMA_HOST` are also discovered. Explicit TOML configuration is optional and always takes priority. See [Configuration](docs/configuration.md).
+`ANTHROPIC_API_KEY` and `OLLAMA_HOST` are also discovered. The runtime creates an ephemeral mock profile only when it finds no configured model.
+
+Create a model Skill when the model needs a persistent name, description, default status, or routing traits:
+
+```text
+skills/model/fast/skill.toml
+```
+
+```toml
+schema_version = 2
+name = "fast"
+capability = "model"
+description = "Low-latency model for summaries and simple questions"
+version = "0.1.0"
+triggers = ["fast", "summary"]
+agent_can_update = true
+
+[configuration]
+provider = "openai-compatible"
+model = "gpt-4.1-mini"
+api_key_env = "OPENAI_API_KEY"
+supports = ["text", "tools", "json"]
+purposes = ["summary"]
+default = true
+```
+
+Model Skills use the same central index, validation, evidence, candidate, promotion, and rollback path as every other Skill. See [Configuration](docs/configuration.md).
 
 ## Create a Project
 
@@ -110,7 +136,7 @@ Run a prompt that matches the Skill:
 super-agent run --config agent.toml "Give me a concise explanation"
 ```
 
-Stable Skill identities use `capability:name`, such as `prompt:concise`, `memory:default`, or `workflow:direct`. Configuration-only Skills do not need `SKILL.md`.
+Stable Skill identities use `capability:name`, such as `prompt:concise`, `memory:default`, `workflow:direct`, or `model:fast`. Configuration-only Skills do not need `SKILL.md`.
 
 ## How It Works
 
@@ -161,7 +187,9 @@ super-agent skills evolve \
   --cases evaluation-cases.json
 ```
 
-The complete Skill directory is the candidate unit, so prompt, memory, workflow, MCP, executable Capability, and custom Skills use the same lifecycle. The model returns explicit full-file writes and deletions; Runtime validates paths, identity, permissions, and type-specific configuration before evaluation. Candidates stay isolated from active Skills. Promotion requires a passing evaluation and an unchanged parent version, and every promoted revision can be rolled back.
+The complete Skill directory is the candidate unit, so prompt, memory, workflow, MCP, model, executable Capability, and custom Skills use the same lifecycle. The model returns explicit full-file writes and deletions; Runtime validates paths, identity, permissions, and type-specific configuration before evaluation. Candidates stay isolated from active Skills. Promotion requires a passing evaluation and an unchanged parent version, and every promoted revision can be rolled back.
+
+For model Skills, connection fields remain user-owned by default. Agent evolution may improve descriptions, triggers, strengths, purposes, and routing traits, but may change `provider`, `model`, `base_url`, or `api_key_env` only when the user sets `agent_can_update_connection = true`.
 
 Executable mechanisms use `capability` Skills and the ordinary Skill command:
 
@@ -260,7 +288,7 @@ super-agent storage copy \
 
 For a remote destination, use `--to-backend mysql` or `postgresql` and optionally pass `--to-url-env CUSTOM_DATABASE_URL`.
 
-The runtime lock is stored as a run event. It captures the effective Provider, storage backend, Capability versions, Skill versions, and Skill directory hashes without storing secret values.
+The runtime lock is stored as a run event. It captures the selected model profile and Provider adapter, storage backend, Capability versions, Skill versions, and Skill directory hashes without storing secret values.
 
 ## Documentation
 

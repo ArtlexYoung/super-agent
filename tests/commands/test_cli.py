@@ -194,7 +194,7 @@ instructions = "SKILL.md"
             )
             propose_output = StringIO()
             with patch(
-                "agents.agent.create_chat_provider",
+                "provider.pool.create_chat_provider",
                 return_value=MockProvider(candidate_response),
             ):
                 with patch("sys.stdout", propose_output):

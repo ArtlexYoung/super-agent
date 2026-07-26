@@ -6,14 +6,14 @@
 
 Super Agent 是一个**简单、轻量、自进化、Skill 优先的 Agent 运行时**。
 
-它用于验证一个核心想法：prompt、工具、记忆、workflow 和其他 Agent 行为，都可以声明为 Skill，按需渐进披露，由 Capability 执行，根据真实运行进行评价，并持续进化。
+它用于验证一个核心想法：prompt、工具、记忆、workflow、模型和其他 Agent 行为，都可以声明为 Skill，按需渐进披露，由 Capability 执行，根据真实运行进行评价，并持续进化。
 
 项目目前处于实验性的 `0.0.x` 阶段。相比过早承诺 API 兼容，当前更重视运行时足够小、容易审计，以及每次破坏性调整都清晰明确。
 
 ## 为什么使用 Super Agent
 
 - **零配置启动**：`Agent()` 和 CLI 可以直接运行，默认使用本地 mock 模型。
-- **统一 Skill 格式**：prompt、MCP、memory、workflow 和可执行机制共用 manifest 与生命周期。
+- **统一 Skill 格式**：prompt、MCP、memory、workflow、模型和可执行机制共用 manifest 与生命周期。
 - **渐进式披露**：模型先看到轻量索引，只打开任务真正需要的 Skill。
 - **统一运行生命周期**：发现、披露、执行、观察、评价和进化共用一个会话。
 - **自动进化信号**：Runtime 根据真实失败、质量、保鲜度、替代行为、成本和延迟生成去重后的进化建议。
@@ -57,7 +57,7 @@ result = agent.run("项目使用什么语言？", conversation_id=conversation.c
 
 ## 使用真实模型
 
-模型配置会被自动发现。例如：
+零配置模式会自动从环境中发现模型凭据：
 
 ```bash
 export OPENAI_API_KEY="..."
@@ -65,7 +65,33 @@ super-agent models resolve
 super-agent run "总结这个项目"
 ```
 
-系统也会发现 `ANTHROPIC_API_KEY` 和 `OLLAMA_HOST`。显式 TOML 配置是可选的，并且始终拥有最高优先级。详见 [配置说明](docs/configuration.md)。
+系统也会发现 `ANTHROPIC_API_KEY` 和 `OLLAMA_HOST`。只有找不到任何可用模型时，Runtime 才会创建一个临时 mock profile。
+
+当模型需要持久化名称、说明、默认状态或路由特征时，创建一个 model Skill：
+
+```text
+skills/model/fast/skill.toml
+```
+
+```toml
+schema_version = 2
+name = "fast"
+capability = "model"
+description = "适合摘要和简单问题的低延迟模型"
+version = "0.1.0"
+triggers = ["快速", "摘要"]
+agent_can_update = true
+
+[configuration]
+provider = "openai-compatible"
+model = "gpt-4.1-mini"
+api_key_env = "OPENAI_API_KEY"
+supports = ["text", "tools", "json"]
+purposes = ["summary"]
+default = true
+```
+
+model Skill 与其他 Skill 共用中心索引、校验、证据、候选、晋升和回滚流程。详见 [配置说明](docs/configuration.md)。
 
 ## 初始化项目
 
@@ -110,7 +136,7 @@ instructions = "SKILL.md"
 super-agent run --config agent.toml "请简短解释这个概念"
 ```
 
-Skill 的稳定身份统一使用 `capability:name`，例如 `prompt:concise`、`memory:default` 和 `workflow:direct`。纯配置 Skill 不需要 `SKILL.md`。
+Skill 的稳定身份统一使用 `capability:name`，例如 `prompt:concise`、`memory:default`、`workflow:direct` 和 `model:fast`。纯配置 Skill 不需要 `SKILL.md`。
 
 ## 工作原理
 
@@ -161,7 +187,9 @@ super-agent skills evolve \
   --cases evaluation-cases.json
 ```
 
-候选以完整 Skill 目录为单位，因此 prompt、memory、workflow、MCP、可执行 Capability 和自定义 Skill 共用同一套生命周期。模型只返回明确的完整文件写入与删除操作；Runtime 会在评价前校验路径、身份、权限和类型专属配置。候选不会直接覆盖正在使用的 Skill，只有评价通过且父版本没有变化时才能晋升，每个已晋升版本都可以回滚。
+候选以完整 Skill 目录为单位，因此 prompt、memory、workflow、MCP、model、可执行 Capability 和自定义 Skill 共用同一套生命周期。模型只返回明确的完整文件写入与删除操作；Runtime 会在评价前校验路径、身份、权限和类型专属配置。候选不会直接覆盖正在使用的 Skill，只有评价通过且父版本没有变化时才能晋升，每个已晋升版本都可以回滚。
+
+model Skill 的连接字段默认归用户所有。Agent 可以改进说明、触发词、优势、用途和路由特征，但只有用户设置 `agent_can_update_connection = true` 后，Agent 才能修改 `provider`、`model`、`base_url` 或 `api_key_env`。
 
 可执行机制使用 `capability` Skill 和普通 Skill 命令：
 
@@ -260,7 +288,7 @@ super-agent storage copy \
 
 远程目标使用 `--to-backend mysql` 或 `postgresql`，需要自定义连接环境变量名时再添加 `--to-url-env CUSTOM_DATABASE_URL`。
 
-运行锁也作为运行事件保存，用于固定实际使用的 Provider、存储后端、Capability 版本、Skill 版本和 Skill 目录哈希，但不会保存密钥内容。
+运行锁也作为运行事件保存，用于固定选中的模型 profile、Provider 适配器、存储后端、Capability 版本、Skill 版本和 Skill 目录哈希，但不会保存密钥内容。
 
 ## 详细文档
 

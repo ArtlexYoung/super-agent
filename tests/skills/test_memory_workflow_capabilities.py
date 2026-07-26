@@ -119,10 +119,6 @@ skills = []
 use_features = ["skill"]
 disable_names = {disable_names_text}
 
-[model]
-provider = "mock"
-model = "unit-test"
-
 [paths]
 skills = ["skills"]
 

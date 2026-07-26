@@ -8,6 +8,10 @@ from runtime.store import RuntimeStore
 from skill.disclosure import ProgressiveDisclosureCore, SkillDisclosure
 from skill.kinds.mcp import create_mcp_server_from_skill_disclosure
 from skill.kinds.memory import create_memory_from_skill_disclosure
+from skill.kinds.model import (
+    create_model_profile_from_skill_disclosure,
+    model_connection_fields,
+)
 from skill.kinds.workflow import create_workflow_from_skill_disclosure
 from skill.manifest import SkillManifest
 
@@ -52,6 +56,8 @@ def validate_skill_replacement(
     if current_manifest.name != proposed_manifest.name:
         raise ValueError("updated skill cannot change name")
     if proposed_manifest.capability != "capability":
+        if proposed_manifest.capability == "model":
+            _validate_model_replacement(current, proposed)
         return
     from capability.skill_loader import load_capability_skill
 
@@ -85,6 +91,8 @@ def _validate_skill_capability(
         create_workflow_from_skill_disclosure(disclosure)
     elif capability == "mcp":
         create_mcp_server_from_skill_disclosure(disclosure)
+    elif capability == "model":
+        create_model_profile_from_skill_disclosure(disclosure)
     elif capability == "capability":
         from capability.skill_loader import load_capability_skill
 
@@ -97,3 +105,22 @@ def _validate_prompt_skill(disclosure: SkillDisclosure) -> None:
         raise ValueError(f"prompt Skill requires entry.instructions: {manifest.name}")
     if not disclosure.read_instructions().content:
         raise ValueError(f"prompt Skill instructions cannot be empty: {manifest.name}")
+
+
+def _validate_model_replacement(
+    current: SkillDisclosure,
+    proposed: SkillDisclosure,
+) -> None:
+    current_profile = create_model_profile_from_skill_disclosure(current)
+    proposed_profile = create_model_profile_from_skill_disclosure(proposed)
+    if (
+        current_profile.agent_can_update_connection
+        != proposed_profile.agent_can_update_connection
+    ):
+        raise PermissionError("model Skill cannot change connection update ownership")
+    if (
+        not current_profile.agent_can_update_connection
+        and model_connection_fields(current_profile)
+        != model_connection_fields(proposed_profile)
+    ):
+        raise PermissionError("model Skill does not allow Agent connection updates")

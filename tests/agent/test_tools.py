@@ -12,6 +12,7 @@ from runtime.session import RuntimeSession
 from runtime.store import create_local_runtime_store
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.kinds.memory import MiniMemory
+from skill.kinds.model import discover_environment_model_profiles
 
 
 class SkillToolsTests(unittest.TestCase):
@@ -155,8 +156,9 @@ def _create_session(root: Path) -> RuntimeSession:
     store.start_run(identity, "question")
     return RuntimeSession(
         config=config,
+        model_profile=discover_environment_model_profiles({})[0],
         provider=provider,
-        capabilities=create_default_capability_set(config, provider),
+        capabilities=create_default_capability_set(),
         identity=identity,
         store=store,
     )

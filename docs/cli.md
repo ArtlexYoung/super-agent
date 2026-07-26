@@ -34,14 +34,17 @@ super-agent init --path my-agent
 
 Initialization writes files only when they are missing.
 
-## Model Discovery
+## Model Profiles
 
 ```bash
 super-agent models list
 super-agent models list --output json
+super-agent models list --config agent.toml --output json
 super-agent models resolve
 super-agent models resolve --config agent.toml --output json
 ```
+
+The commands list model Skills when the project contains them. Otherwise they list ephemeral environment profiles or the built-in mock. Output includes connection environment-variable names and readiness, never secret values.
 
 ## Skill Inspection
 

@@ -1,1 +1,1 @@
-"""MCP, memory, and workflow skill implementations."""
+"""MCP, memory, model, and workflow Skill implementations."""

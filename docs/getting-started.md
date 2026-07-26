@@ -26,18 +26,17 @@ super-agent run "hello"
 super-agent
 ```
 
-The first command runs one prompt. The second starts an interactive conversation. When no model configuration is discovered, the runtime uses its local deterministic mock provider, so both commands work without an API key.
+The first command runs one prompt. The second starts an interactive conversation. When no model Skill or environment profile is available, the runtime uses its local deterministic mock provider, so both commands work without an API key.
 
 ## Use a Real Model
 
-The automatic resolution order is:
+With no model Skill, the automatic resolution order is:
 
-1. Explicit `[model]` settings in `agent.toml`.
-2. `SUPER_AGENT_PROVIDER` and related environment variables.
-3. `OLLAMA_HOST`.
-4. `OPENAI_API_KEY`.
-5. `ANTHROPIC_API_KEY`.
-6. The built-in mock provider.
+1. `SUPER_AGENT_PROVIDER` and related environment variables.
+2. `OLLAMA_HOST`.
+3. `OPENAI_API_KEY`.
+4. `ANTHROPIC_API_KEY`.
+5. The built-in mock provider.
 
 Example:
 
@@ -49,6 +48,8 @@ super-agent run "Explain this repository"
 ```
 
 The CLI reports environment-variable names but never prints secret values.
+
+For a persistent, described model profile, add `skills/model/<name>/skill.toml` using the example in [Configuration](configuration.md). Model Skills take priority over ephemeral environment profiles.
 
 ## Optional SQLite Storage
 

@@ -18,6 +18,7 @@ from runtime.models import RunEvent
 from runtime.store import RuntimeStore
 from skill.disclosure import SkillIndex, SkillIndexEntry
 from skill.evaluation import create_indexed_skill_evaluation_target
+from skill.kinds.model import ModelProfile
 
 if TYPE_CHECKING:
     from capability.contracts import AgentCapabilitySet, SkillDisclosureSession
@@ -26,6 +27,7 @@ if TYPE_CHECKING:
 @dataclass
 class RuntimeSession:
     config: AgentConfig
+    model_profile: ModelProfile
     provider: ChatProvider
     capabilities: "AgentCapabilitySet"
     identity: RunIdentity

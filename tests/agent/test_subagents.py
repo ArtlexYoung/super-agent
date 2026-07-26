@@ -215,10 +215,6 @@ memory = "default"
 skills = []
 {max_depth_line}
 
-[model]
-provider = "mock"
-model = "unit-test"
-
 [paths]
 skills = ["skills"]
 

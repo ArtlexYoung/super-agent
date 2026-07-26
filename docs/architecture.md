@@ -18,7 +18,7 @@ A Provider normalizes model calls. The runtime currently includes:
 - An OpenAI-compatible chat-completions adapter.
 - An Anthropic-compatible messages adapter.
 
-Providers do not discover Skills, manage memory, or decide how an Agent is composed.
+`ProviderConnection` contains protocol connection settings. `ProviderPool` lazily creates adapters and reuses one adapter for profiles with the same connection. Providers do not discover Skills, own model descriptions, manage memory, route tasks, or decide how an Agent is composed.
 
 ## Runtime
 
@@ -30,7 +30,7 @@ discover -> disclose -> execute -> observe -> evaluate -> evolve
 
 `AgentRuntime` creates one `RuntimeSession`. The session holds:
 
-- The resolved Agent configuration and Provider.
+- The resolved Agent configuration, selected `ModelProfile`, and Provider adapter.
 - The Capability set selected by the Agent.
 - The run identity and centralized Runtime store.
 - The one Skill index prepared for that run.
@@ -65,11 +65,11 @@ A Skill is passive, versioned content. Its manifest declares:
 - Dependencies and provided functions.
 - Agent creation and update permissions.
 
-Prompt, MCP, memory, workflow, and executable Capability implementations are Skill types rather than separate storage systems.
+Prompt, MCP, memory, workflow, model profiles, and executable Capability implementations are Skill types rather than separate storage systems. A model Skill carries model identity, description, supported features, purposes, routing traits, and user-owned connection settings. It uses the same progressive-disclosure and evolution lifecycle as every other Skill.
 
 ## Agent
 
-An Agent combines one Provider, one Capability set, Skill roots, and optional subagents. Configuration describes one Agent; Python code describes relationships between Agents.
+An Agent combines model profiles, a Provider pool, one Capability set, Skill roots, and optional subagents. Configuration describes one Agent; Python code describes relationships between Agents.
 
 Clear replacement methods include:
 
@@ -117,6 +117,7 @@ Conversations, runs, evaluations, evolution recommendations, memory, habits, and
 - One `RunIdentity` scopes user, Agent, conversation, run, and parent run.
 - One `RuntimeStore` owns all mutable runtime semantics.
 - One central Skill index is prepared per run.
+- One selected model profile and its Provider adapter are explicit in every session and runtime lock.
 - Every disclosure uses the same cache and history store.
 - Every used Skill and Capability becomes an evaluation target automatically.
 - Every executable Capability comes from the central registry and is locked by exact hash.

@@ -49,7 +49,7 @@ class DefaultRunController:
             WorkflowRunRequest(
                 prompt=request.prompt,
                 system=system,
-                model=session.config.model.model,
+                model=session.model_profile.model,
                 skills=disclosed_skills,
                 provider=session.provider,
                 skill_tools=tool_router,

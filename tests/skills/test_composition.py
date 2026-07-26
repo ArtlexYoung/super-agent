@@ -117,10 +117,6 @@ workflow = "direct"
 memory = "default"
 skills = ["report"]
 
-[model]
-provider = "mock"
-model = "unit-test"
-
 [paths]
 skills = ["skills"]
 

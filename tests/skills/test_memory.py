@@ -115,12 +115,13 @@ include_usage_habits = false
             MiniMemory(
                 create_local_runtime_store(root / ".super-agent", agent_name="demo")
             ).add_memory_item("User likes concise answers.")
-            agent = _make_agent(root, MockProvider("ok"))
+            provider = MockProvider("ok")
+            agent = _make_agent(root, provider)
 
             agent.run("Give a concise answer")
 
-            self.assertIn("Memory", agent.provider.last_messages[0]["content"])
-            self.assertIn("User likes concise answers.", agent.provider.last_messages[0]["content"])
+            self.assertIn("Memory", provider.last_messages[0]["content"])
+            self.assertIn("User likes concise answers.", provider.last_messages[0]["content"])
 
     def test_memory_self_updates_usage_habits(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -140,14 +141,15 @@ include_usage_habits = false
             root = Path(tmp)
             write_workflow_skill(root)
             write_memory_skill(root)
-            agent = _make_agent(root, MockProvider("ok"))
+            provider = MockProvider("ok")
+            agent = _make_agent(root, provider)
 
             agent.run("first")
             agent.run("second")
             memory = MiniMemory(agent.runtime.create_store())
 
             self.assertEqual(2, memory.usage_habits.read_usage_habits()["total_runs"])
-            self.assertIn("workflow direct used 1 times", agent.provider.last_messages[0]["content"])
+            self.assertIn("workflow direct used 1 times", provider.last_messages[0]["content"])
 
 
 def _make_agent(root: Path, provider: MockProvider) -> Agent:
@@ -160,10 +162,6 @@ system = "Base system."
 workflow = "direct"
 memory = "default"
 skills = []
-
-[model]
-provider = "mock"
-model = "unit-test"
 
 [paths]
 skills = ["skills"]

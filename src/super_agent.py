@@ -29,17 +29,17 @@ from skill.benchmark import (
 from runtime.config import (
     AgentConfig,
     AgentSettings,
-    ModelSettings,
     PathsSettings,
     StorageSettings,
 )
-from provider.chat import ChatProvider, MockProvider, ModelResponse, ToolCall
-from provider.discovery import (
-    ModelResolution,
-    discover_model_candidates,
-    model_resolution_to_dict,
-    resolve_model_settings,
+from provider.chat import (
+    ChatProvider,
+    MockProvider,
+    ModelResponse,
+    ProviderConnection,
+    ToolCall,
 )
+from provider.pool import ProviderPool
 from runtime.engine import AgentRuntime
 from runtime.evaluation import (
     EvaluationRecord,
@@ -108,6 +108,13 @@ from skill.evolution.candidate import SkillCandidate
 from skill.evolution.evaluation import EvaluationCase, EvaluationReport, EvolutionResult
 from skill.evolution.manager import SkillEvolutionManager
 from skill.kinds.memory import MemoryItem, MemoryPolicy, MemoryUsageHabits, MiniMemory
+from skill.kinds.model import (
+    ModelProfile,
+    ModelRoutingTraits,
+    discover_environment_model_profiles,
+    model_profile_to_dict,
+    select_default_model_profile,
+)
 from skill.manifest import Skill, SkillManifest, skill_manifest_to_dict
 
 __all__ = [
@@ -146,13 +153,15 @@ __all__ = [
     "MemoryUsageHabits",
     "MiniMemory",
     "MockProvider",
-    "ModelSettings",
     "ModelResponse",
-    "ModelResolution",
+    "ModelProfile",
+    "ModelRoutingTraits",
     "MySqlStorage",
     "PathsSettings",
     "ProgressiveDisclosureCore",
     "PostgreSqlStorage",
+    "ProviderConnection",
+    "ProviderPool",
     "RunController",
     "RunEvaluationRequest",
     "RunEvent",
@@ -196,13 +205,13 @@ __all__ = [
     "create_default_skill_disclosure",
     "copy_storage_events",
     "create_storage_backend",
-    "discover_model_candidates",
+    "discover_environment_model_profiles",
     "create_evaluation_record",
     "evaluation_record_from_dict",
     "evaluation_record_to_dict",
     "evolution_schedule_to_dict",
-    "model_resolution_to_dict",
-    "resolve_model_settings",
+    "model_profile_to_dict",
+    "select_default_model_profile",
     "skill_manifest_to_dict",
     "storage_isolation_report_to_dict",
     "summarize_evaluation_evidence",

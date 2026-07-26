@@ -7,10 +7,6 @@ skills = ["echo"]
 use_features = ["skill"]
 disable_names = []
 
-[model]
-provider = "mock"
-model = "mock"
-
 [paths]
 skills = ["skills"]
 

@@ -9,6 +9,7 @@ from typing import Callable
 from capability.contracts import AgentCapabilitySet
 from capability.registry import CapabilityRegistry
 from provider.chat import ChatProvider
+from provider.pool import ProviderPool
 from runtime.config import AgentConfig
 from runtime.evaluation import (
     EvaluationResult,
@@ -24,18 +25,21 @@ from runtime.storage import StorageBackend
 from runtime.store import RuntimeStore
 from skill.disclosure import SkillIndex
 from skill.manifest import SkillManifest
+from skill.kinds.model import ModelProfile, model_profile_to_dict
 
 
 class AgentRuntime:
     def __init__(
         self,
         config: AgentConfig,
-        provider: ChatProvider,
+        model_profile: ModelProfile,
+        provider_pool: ProviderPool,
         capabilities: AgentCapabilitySet,
         storage: StorageBackend,
     ) -> None:
         self.config = config
-        self.provider = provider
+        self.model_profile = model_profile
+        self.provider_pool = provider_pool
         self.capabilities = capabilities
         self.storage = storage
 
@@ -141,7 +145,11 @@ class AgentRuntime:
         )
         return self.capabilities.skill_updater.create_skill_updater(
             self.config,
-            self.provider,
+            self.model_profile,
+            self.provider_pool.get_chat_provider(
+                self.model_profile.key,
+                self.model_profile.connection,
+            ),
             store,
             on_skill_changed,
         )
@@ -177,7 +185,11 @@ class AgentRuntime:
         )
         return RuntimeSession(
             config=self.config,
-            provider=self.provider,
+            model_profile=self.model_profile,
+            provider=self.provider_pool.get_chat_provider(
+                self.model_profile.key,
+                self.model_profile.connection,
+            ),
             capabilities=self.capabilities,
             identity=identity,
             store=store,
@@ -189,14 +201,18 @@ class AgentRuntime:
         disclosure = capability.create_skill_disclosure(session)
         skill_index = disclosure.prepare_skill_index()
         session.set_skill_disclosure(disclosure, skill_index)
+        model_entry = skill_index.find_skill(self.model_profile.key)
+        if model_entry is not None and model_entry.reference.capability == "model":
+            session.record_skill_used(model_entry)
         self.capabilities.registry.validate_dependencies()
         session.store.save_runtime_lock(
             session.identity,
             _runtime_lock_to_dict(
                 self.config,
+                self.model_profile,
                 self.capabilities,
                 skill_index,
-                self.provider,
+                session.provider,
                 self.storage,
             ),
         )
@@ -293,13 +309,14 @@ def _create_run_evaluation_result(
 
 def _runtime_lock_to_dict(
     config: AgentConfig,
+    model_profile: ModelProfile,
     capabilities: AgentCapabilitySet,
     skill_index: SkillIndex,
     provider: ChatProvider,
     storage: StorageBackend,
 ) -> dict[str, object]:
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "agent": {
             "name": config.agent.name,
             "system": config.agent.system,
@@ -311,10 +328,7 @@ def _runtime_lock_to_dict(
             "disable_names": list(config.agent.disable_names),
         },
         "model": {
-            "provider": config.model.provider,
-            "model": config.model.model,
-            "base_url": config.model.base_url,
-            "api_key_env": config.model.api_key_env,
+            **model_profile_to_dict(model_profile),
             "adapter": f"{type(provider).__module__}.{type(provider).__qualname__}",
         },
         "storage": {"backend": storage.name},

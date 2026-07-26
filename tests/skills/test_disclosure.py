@@ -90,10 +90,6 @@ workflow = "direct"
 memory = "default"
 skills = ["echo"]
 
-[model]
-provider = "mock"
-model = "unit-test"
-
 [paths]
 skills = ["skills"]
 

@@ -22,14 +22,6 @@ class AgentSettings:
 
 
 @dataclass(frozen=True)
-class ModelSettings:
-    provider: str
-    model: str
-    base_url: str | None
-    api_key_env: str | None
-
-
-@dataclass(frozen=True)
 class PathsSettings:
     # The shared skill tree root recursively scanned for prompt, MCP, memory, and workflow skills.
     skills: list[Path]
@@ -45,7 +37,6 @@ class StorageSettings:
 @dataclass(frozen=True)
 class AgentConfig:
     agent: AgentSettings
-    model: ModelSettings
     paths: PathsSettings
     storage: StorageSettings
     source: Path
@@ -54,10 +45,14 @@ class AgentConfig:
     def load_from_file(cls, path: str | Path) -> "AgentConfig":
         source = Path(path).expanduser().absolute()
         data = tomllib.loads(source.read_text(encoding="utf-8"))
+        unknown = set(data) - {"agent", "paths", "storage"}
+        if unknown:
+            raise ValueError(
+                "unknown agent configuration tables: " + ", ".join(sorted(unknown))
+            )
         base_dir = source.parent
         return cls(
             agent=_read_agent_settings(data.get("agent", {})),
-            model=_read_model_settings(data.get("model", {})),
             paths=_read_paths_settings(data.get("paths", {}), base_dir),
             storage=_read_storage_settings(data.get("storage", {}), base_dir),
             source=source,
@@ -94,7 +89,6 @@ class AgentConfig:
         builtin_skills = Path(__file__).resolve().parent.parent / "builtin_skills"
         return cls(
             agent=_read_agent_settings({}),
-            model=_read_model_settings({}),
             paths=PathsSettings(
                 skills=_default_skill_roots(base / "skills", builtin_skills),
             ),
@@ -127,15 +121,6 @@ def _read_agent_settings(data: dict[str, Any]) -> AgentSettings:
         max_agent_chain_depth=_optional_positive_int(data.get("max_agent_chain_depth")),
         use_features=_normalize_feature_names(data.get("use_features", ["skill"])),
         disable_names=[str(item).lower() for item in data.get("disable_names", [])],
-    )
-
-
-def _read_model_settings(data: dict[str, Any]) -> ModelSettings:
-    return ModelSettings(
-        provider=str(data.get("provider", "auto")),
-        model=str(data.get("model", "")),
-        base_url=_optional_string(data.get("base_url")),
-        api_key_env=_optional_string(data.get("api_key_env")),
     )
 
 

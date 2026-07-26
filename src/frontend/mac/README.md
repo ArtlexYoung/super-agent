@@ -1,5 +1,7 @@
 # Super Agent Mac
 
+> 注意：Python Runtime 从 `v0.0.36` 开始使用 model Skill，并拒绝旧 `[model]` 表。当前模型配置页面仍是旧格式，将在 `v0.0.39` 迁移；迁移前请使用环境变量自动发现或直接编辑 model Skill。
+
 一个轻量 SwiftUI macOS 前端，用于管理对话、编辑 `agent.toml`，并通过 Super Agent Python runtime 运行对话。
 
 ## 功能

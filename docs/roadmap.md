@@ -104,4 +104,41 @@ Status: implemented.
 - Attribute a Skill-backed Capability's runtime evidence to its source Skill.
 - Remove completed benchmark orchestration from the shipped Runtime API.
 
+## v0.0.36: Model Skills and Provider Pool
+
+Status: implemented.
+
+- Replace the fixed `[model]` table with standard `model` Skills.
+- Keep zero-configuration environment profiles and a local mock fallback.
+- Make Provider adapters lazy, reusable connection mechanisms through one pool.
+- Protect user-owned model connection fields during Skill evolution.
+- Put the selected model profile in each Runtime session and lock, and attribute persistent model Skill use to ordinary evaluation evidence.
+
+## v0.0.37: Per-Call Model Routing
+
+Status: planned.
+
+- Describe each model request with a clear `ModelTask` contract.
+- Select a compatible configured model for each call instead of once per Agent.
+- Route normal runs, tool loops, candidate creation, and evaluation through one policy.
+- Record deterministic reasons and fallback decisions in the run trace.
+
+## v0.0.38: Evidence-Learned Routing
+
+Status: planned.
+
+- Isolate routing evidence by user, Agent, model Skill, and task purpose.
+- Learn quality, latency, reliability, and cost with bounded UCB exploration.
+- Feed model use into the ordinary Skill freshness and evolution lifecycle.
+- Preserve deterministic cold-start behavior and explicit user connection ownership.
+
+## v0.0.39: Model UI and Routing Proof
+
+Status: planned.
+
+- Replace the macOS app's legacy model editor with model Skill management.
+- Show selected profiles, routing reasons, model evidence, and Skill freshness.
+- Publish a reproducible multi-model routing and isolation experiment.
+- Build and package the versioned macOS release.
+
 The project will not move to `0.1.x` merely because more features exist. That change should follow a reproducible demonstration that the central Skill-first lifecycle is useful and maintainable.

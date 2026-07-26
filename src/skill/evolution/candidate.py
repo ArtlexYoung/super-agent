@@ -293,7 +293,10 @@ def _build_candidate_messages(
                 "two fields: write_files maps relative paths to complete UTF-8 file contents; "
                 "delete_files is an array of relative file paths. Do not use Markdown fences. "
                 "Keep name and capability unchanged. Runtime sets version automatically. New "
-                "Skills must set agent_created and agent_can_update to true."
+                "Skills must set agent_created and agent_can_update to true. For model Skills, "
+                "preserve provider, model, base_url, api_key_env, and "
+                "agent_can_update_connection unless the current Skill explicitly allows "
+                "Agent connection updates."
             ),
         },
         {

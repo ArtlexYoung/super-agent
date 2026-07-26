@@ -11,7 +11,7 @@ from support import write_workflow_skill
 
 
 class ConfigSkillAgentTests(unittest.TestCase):
-    def test_config_loads_agent_model_and_paths(self) -> None:
+    def test_config_loads_agent_paths_and_storage(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             config_path = root / "agent.toml"
@@ -26,10 +26,6 @@ skills = ["echo"]
 max_agent_chain_depth = 4
 use_features = ["skill"]
 disable_names = ["mcp:github"]
-
-[model]
-provider = "mock"
-model = "unit-test"
 
 [paths]
 skills = ["skills"]
@@ -51,7 +47,6 @@ url_env = "CUSTOM_DATABASE_URL"
             self.assertEqual(4, config.agent.max_agent_chain_depth)
             self.assertEqual(["skill"], config.agent.use_features)
             self.assertEqual(["mcp:github"], config.agent.disable_names)
-            self.assertEqual("mock", config.model.provider)
             self.assertEqual([root / "skills"], config.paths.skills)
             self.assertEqual("jsonl", config.storage.backend)
             self.assertEqual(root / ".super-agent", config.storage.path)
@@ -65,10 +60,6 @@ url_env = "CUSTOM_DATABASE_URL"
                 """
 [agent]
 name = "demo"
-
-[model]
-provider = "mock"
-model = "unit-test"
 
 [paths]
 skills = ["skills"]
@@ -109,6 +100,21 @@ memory = ".super-agent/memory"
             )
 
             with self.assertRaisesRegex(ValueError, "unknown paths settings: memory"):
+                AgentConfig.load_from_file(config_path)
+
+    def test_removed_model_table_is_rejected_instead_of_ignored(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            config_path = Path(tmp) / "agent.toml"
+            config_path.write_text(
+                """
+[model]
+provider = "mock"
+model = "mock"
+""".strip(),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "unknown agent configuration tables: model"):
                 AgentConfig.load_from_file(config_path)
 
     def test_disclosure_core_reads_manifest_instruction_and_selection(self) -> None:
@@ -177,10 +183,6 @@ system = "Base system."
 workflow = "direct"
 memory = "default"
 skills = ["echo"]
-
-[model]
-provider = "mock"
-model = "unit-test"
 
 [paths]
 skills = ["skills"]

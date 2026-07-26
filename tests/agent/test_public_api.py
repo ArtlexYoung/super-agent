@@ -1,8 +1,7 @@
 import unittest
 
 import super_agent
-from runtime.config import ModelSettings
-from provider.chat import create_chat_provider
+from provider.chat import ProviderConnection, create_chat_provider
 
 
 class PublicApiTests(unittest.TestCase):
@@ -28,9 +27,12 @@ class PublicApiTests(unittest.TestCase):
             "EvolutionScheduleTarget",
             "JsonlStorage",
             "LOCAL_USER_ID",
-            "ModelResolution",
+            "ModelProfile",
+            "ModelRoutingTraits",
             "MySqlStorage",
             "PostgreSqlStorage",
+            "ProviderConnection",
+            "ProviderPool",
             "ProgressiveDisclosureCore",
             "RunEvent",
             "RunEvaluationRequest",
@@ -51,7 +53,7 @@ class PublicApiTests(unittest.TestCase):
             "StorageEventQuery",
             "StorageIsolationReport",
             "StorageSettings",
-            "discover_model_candidates",
+            "discover_environment_model_profiles",
             "create_evaluation_record",
             "create_default_skill_disclosure",
             "copy_storage_events",
@@ -59,8 +61,8 @@ class PublicApiTests(unittest.TestCase):
             "evaluation_record_from_dict",
             "evaluation_record_to_dict",
             "evolution_schedule_to_dict",
-            "model_resolution_to_dict",
-            "resolve_model_settings",
+            "model_profile_to_dict",
+            "select_default_model_profile",
             "skill_manifest_to_dict",
             "storage_isolation_report_to_dict",
             "summarize_evaluation_evidence",
@@ -88,6 +90,11 @@ class PublicApiTests(unittest.TestCase):
             "RuntimeBenchmark",
             "RuntimeBenchmarkReport",
             "runtime_benchmark_report_to_dict",
+            "ModelSettings",
+            "ModelResolution",
+            "discover_model_candidates",
+            "model_resolution_to_dict",
+            "resolve_model_settings",
         }
         self.assertFalse(removed_names & set(super_agent.__all__))
         for name in removed_names:
@@ -95,11 +102,10 @@ class PublicApiTests(unittest.TestCase):
 
     def test_removed_provider_aliases_fail_clearly(self) -> None:
         for provider in ["openai", "anthropic"]:
-            settings = ModelSettings(
+            connection = ProviderConnection(
                 provider=provider,
-                model="test",
                 base_url="",
                 api_key_env=None,
             )
             with self.assertRaisesRegex(ValueError, f"unknown provider: {provider}"):
-                create_chat_provider(settings)
+                create_chat_provider(connection)

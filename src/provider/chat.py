@@ -4,13 +4,22 @@ import json
 import os
 import urllib.request
 from dataclasses import dataclass
-from typing import Any, Protocol
-
-from runtime.config import ModelSettings
+from typing import Any, Mapping, Protocol
 
 
 Message = dict[str, Any]
 ToolDefinition = dict[str, Any]
+
+MOCK_PROVIDER = "mock"
+OPENAI_COMPATIBLE_PROVIDER = "openai-compatible"
+ANTHROPIC_COMPATIBLE_PROVIDER = "anthropic-compatible"
+
+
+@dataclass(frozen=True)
+class ProviderConnection:
+    provider: str
+    base_url: str | None = None
+    api_key_env: str | None = None
 
 
 @dataclass(frozen=True)
@@ -138,16 +147,42 @@ class AnthropicCompatibleProvider:
         return _send_json_post_request(url, payload, self.api_key)
 
 
-def create_chat_provider(settings: ModelSettings) -> ChatProvider:
-    provider = settings.provider.lower()
-    if provider == "mock":
+def create_chat_provider(
+    connection: ProviderConnection,
+    environment: Mapping[str, str] | None = None,
+) -> ChatProvider:
+    settings = normalize_provider_connection(connection)
+    provider = settings.provider
+    if provider == MOCK_PROVIDER:
         return MockProvider()
-    if provider not in {"openai-compatible", "anthropic-compatible"}:
-        raise ValueError(f"unknown provider: {settings.provider}")
-    api_key = _read_api_key_from_env(settings.api_key_env)
-    if provider == "openai-compatible":
-        return OpenAICompatibleProvider(settings.base_url or "https://api.openai.com/v1", api_key)
-    return AnthropicCompatibleProvider(settings.base_url or "https://api.anthropic.com", api_key)
+    env = os.environ if environment is None else environment
+    api_key = _read_api_key_from_environment(settings.api_key_env, env)
+    if provider == OPENAI_COMPATIBLE_PROVIDER:
+        return OpenAICompatibleProvider(settings.base_url or "", api_key)
+    return AnthropicCompatibleProvider(settings.base_url or "", api_key)
+
+
+def normalize_provider_connection(
+    connection: ProviderConnection,
+) -> ProviderConnection:
+    provider = connection.provider.strip().lower()
+    if provider not in {
+        MOCK_PROVIDER,
+        OPENAI_COMPATIBLE_PROVIDER,
+        ANTHROPIC_COMPATIBLE_PROVIDER,
+    }:
+        raise ValueError(f"unknown provider: {connection.provider}")
+    if provider == MOCK_PROVIDER:
+        return ProviderConnection(provider=provider)
+    base_url = _optional_text(connection.base_url) or _default_base_url(provider)
+    api_key_env = _optional_text(connection.api_key_env)
+    if api_key_env is None and not _is_local_url(base_url):
+        api_key_env = (
+            "OPENAI_API_KEY"
+            if provider == OPENAI_COMPATIBLE_PROVIDER
+            else "ANTHROPIC_API_KEY"
+        )
+    return ProviderConnection(provider, base_url, api_key_env)
 
 
 def _read_openai_tool_call(data: dict[str, Any]) -> ToolCall:
@@ -219,13 +254,36 @@ def _read_anthropic_text(data: dict[str, Any]) -> str:
     return "".join(str(block.get("text", "")) for block in blocks if block.get("type") == "text")
 
 
-def _read_api_key_from_env(name: str | None) -> str:
+def _read_api_key_from_environment(
+    name: str | None,
+    environment: Mapping[str, str],
+) -> str:
     if not name:
         return ""
-    value = os.getenv(name)
+    value = environment.get(name)
     if not value:
         raise ValueError(f"environment variable is empty: {name}")
     return value
+
+
+def _default_base_url(provider: str) -> str:
+    if provider == OPENAI_COMPATIBLE_PROVIDER:
+        return "https://api.openai.com/v1"
+    return "https://api.anthropic.com"
+
+
+def _is_local_url(value: str) -> bool:
+    from urllib.parse import urlparse
+
+    hostname = urlparse(value).hostname or ""
+    return hostname in {"localhost", "127.0.0.1", "::1"}
+
+
+def _optional_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    text = value.strip()
+    return text or None
 
 
 def _send_json_post_request(url: str, payload: dict[str, object], api_key: str) -> dict[str, Any]:

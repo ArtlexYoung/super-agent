@@ -18,6 +18,7 @@ from skill.disclosure import (
     SkillSelectionDecision,
 )
 from skill.manifest import Skill, SkillManifest
+from skill.kinds.model import ModelProfile
 
 if TYPE_CHECKING:
     from runtime.session import RuntimeSession
@@ -108,6 +109,7 @@ class SkillUpdaterCapability(Protocol):
     def create_skill_updater(
         self,
         config: AgentConfig,
+        model_profile: ModelProfile,
         provider: ChatProvider,
         store: RuntimeStore,
         on_skill_changed: Callable[[SkillManifest], None] | None = None,
