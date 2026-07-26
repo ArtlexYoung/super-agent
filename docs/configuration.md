@@ -93,13 +93,22 @@ backend = "jsonl"
 path = ".super-agent"
 ```
 
-`jsonl` is the available backend in `v0.0.27`. It keeps the base package dependency-free and stores one canonical event stream per user. SQLite, MySQL, and PostgreSQL names are reserved for the backends introduced in later `0.0.x` releases; selecting one before its release fails clearly.
+`jsonl` and `sqlite` are available in `v0.0.28`. Both use only the Python standard library. JSONL remains the default and stores one canonical event stream per user. SQLite stores the same events transactionally in WAL mode and is better suited to concurrent local processes. MySQL and PostgreSQL are introduced in `v0.0.29`; selecting either before that release fails clearly.
 
 `path` is resolved from the configuration file directory. The default JSONL layout is:
 
 ```text
 .super-agent/
   users/<user-hash>/events.jsonl
+  users/<user-hash>/agents/<agent-hash>/cache/
+  users/<user-hash>/agents/<agent-hash>/evolution/
+```
+
+For SQLite, `path` is still the shared local state directory rather than a database filename:
+
+```text
+.super-agent/
+  events.sqlite3
   users/<user-hash>/agents/<agent-hash>/cache/
   users/<user-hash>/agents/<agent-hash>/evolution/
 ```

@@ -99,6 +99,7 @@ Generic evaluation records belong to `runtime.evaluation`, not to Skill evolutio
 ```text
 RuntimeSession -> RuntimeStore -> StorageBackend
                                   +-> JSONL (default)
+                                  +-> SQLite (standard library)
                                   +-> other backends in later releases
 ```
 

@@ -189,11 +189,31 @@ path = ".super-agent"
 
 JSONL stores one readable canonical event stream per user under `.super-agent/users/<user-hash>/events.jsonl`. Conversations, runs, evaluations, memory, usage habits, Skill freshness, evolution evidence, and disclosure history are isolated by user and Agent inside that stream. `RuntimeStore` derives domain views from those events; the progressive-disclosure cache and evolution workspace remain rebuildable, user-scoped local artifacts.
 
+SQLite is the optional standard-library backend for concurrent local use. It keeps the same Runtime semantics and still adds no package dependency:
+
+```toml
+[storage]
+backend = "sqlite"
+path = ".super-agent"
+```
+
+The database is stored at `.super-agent/events.sqlite3` in WAL mode. JSONL remains the default because it is directly readable and requires no database file.
+
 Every state-sensitive Python and CLI operation accepts a user identity. Omitting it uses the zero-configuration `local` user:
 
 ```bash
 super-agent run --user-id alice --conversation-id project-a "Continue the task"
 super-agent conversations list --user-id alice
+```
+
+Copy selected users between local backends without changing domain data:
+
+```bash
+super-agent storage copy \
+  --config agent.toml \
+  --to-backend sqlite \
+  --to-path .super-agent-sqlite \
+  --user-id alice
 ```
 
 The runtime lock is stored as a run event. It captures the effective Provider, storage backend, Capability versions, Skill versions, and Skill directory hashes without storing secret values.

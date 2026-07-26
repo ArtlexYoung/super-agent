@@ -553,10 +553,10 @@ private struct PathsConfigEditorView: View {
                 Text("MySQL").tag("mysql")
                 Text("PostgreSQL").tag("postgresql")
             }
-            .help("对应 [storage].backend。JSONL 无需额外依赖；其他后端按版本提供。")
+            .help("对应 [storage].backend。JSONL 是默认可读事件流；SQLite 使用 Python 标准库并支持 WAL 并发。")
             DirectoryPathView(
                 title: "本地存储目录",
-                help: "对应 [storage].path。JSONL 事件、披露缓存和进化工作区都在这里按用户与 Agent 隔离。",
+                help: "对应 [storage].path。JSONL 事件或 SQLite 数据库、披露缓存和进化工作区都在这里按用户与 Agent 隔离。",
                 path: $chatStore.config.storage.path,
                 defaultName: ".super-agent"
             )

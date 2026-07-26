@@ -56,7 +56,16 @@ from runtime.models import (
     SubAgentResult,
 )
 from runtime.session import RuntimeSession
-from runtime.storage import JsonlStorage, StorageBackend, StorageEvent, StorageEventQuery
+from runtime.storage import (
+    JsonlStorage,
+    SqliteStorage,
+    StorageBackend,
+    StorageCopyReport,
+    StorageCopyUserResult,
+    StorageEvent,
+    StorageEventQuery,
+    copy_storage_events,
+)
 from runtime.store import RuntimeStore
 from capability.tool_router import RuntimeToolRouter
 from skill.disclosure import (
@@ -134,7 +143,10 @@ __all__ = [
     "SkillReference",
     "SkillSelectionDecision",
     "SkillUpdaterCapability",
+    "SqliteStorage",
     "StorageBackend",
+    "StorageCopyReport",
+    "StorageCopyUserResult",
     "StorageEvent",
     "StorageEventQuery",
     "StorageSettings",
@@ -143,6 +155,7 @@ __all__ = [
     "benchmark_report_to_dict",
     "create_default_capability_set",
     "create_default_skill_disclosure",
+    "copy_storage_events",
     "discover_model_candidates",
     "create_evaluation_record",
     "evaluation_record_from_dict",

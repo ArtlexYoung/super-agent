@@ -189,11 +189,31 @@ path = ".super-agent"
 
 JSONL 会在 `.super-agent/users/<user-hash>/events.jsonl` 下为每个用户保存一条可读的标准事件流。会话、运行、评价、记忆、使用习惯、Skill 保鲜度、进化证据和披露历史都按用户与 Agent 隔离。`RuntimeStore` 从事件派生领域视图；渐进披露缓存和进化工作区只是按用户隔离、可重新生成的本地产物。
 
+需要更强的本地并发时，可以选择 Python 标准库自带的 SQLite，Runtime 语义完全相同，也不会增加第三方依赖：
+
+```toml
+[storage]
+backend = "sqlite"
+path = ".super-agent"
+```
+
+数据库保存在 `.super-agent/events.sqlite3`，并启用 WAL。JSONL 仍是默认后端，因为它可以直接阅读，也不需要数据库文件。
+
 所有会读写状态的 Python 与 CLI 操作都接受用户身份；不填写时仍使用零配置的 `local` 用户：
 
 ```bash
 super-agent run --user-id alice --conversation-id project-a "继续任务"
 super-agent conversations list --user-id alice
+```
+
+可以按用户把事件复制到另一个本地后端，不改变领域数据：
+
+```bash
+super-agent storage copy \
+  --config agent.toml \
+  --to-backend sqlite \
+  --to-path .super-agent-sqlite \
+  --user-id alice
 ```
 
 运行锁也作为运行事件保存，用于固定实际使用的 Provider、存储后端、Capability 版本、Skill 版本和 Skill 目录哈希，但不会保存密钥内容。

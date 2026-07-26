@@ -131,7 +131,8 @@ Warnings do not block execution. Omitting the maximum allows unlimited nesting.
 
 ```text
 .super-agent/
-  users/<user-hash>/events.jsonl
+  events.sqlite3                  # SQLite backend only
+  users/<user-hash>/events.jsonl  # JSONL backend only
   users/<user-hash>/agents/<agent-hash>/cache/
   users/<user-hash>/agents/<agent-hash>/evolution/
 ```

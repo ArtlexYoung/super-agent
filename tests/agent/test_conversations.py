@@ -149,6 +149,32 @@ class ConversationRuntimeTests(unittest.TestCase):
             with self.assertRaisesRegex(KeyError, "skill candidate not found"):
                 beta.evaluate_skill_candidate(candidate.candidate_id, [])
 
+    def test_sqlite_backend_replays_conversations_across_agent_instances(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            config = AgentConfig.create_default(tmp)
+            config = replace(
+                config,
+                storage=replace(config.storage, backend="sqlite"),
+            )
+            first = Agent(config, provider=MockProvider("sqlite answer"))
+            conversation = first.create_conversation(user_id="alice")
+            first.run(
+                "persist in sqlite",
+                user_id="alice",
+                conversation_id=conversation.conversation_id,
+            )
+
+            loaded = Agent(config, provider=MockProvider()).read_conversation(
+                conversation.conversation_id,
+                user_id="alice",
+            )
+
+            self.assertEqual(
+                ["persist in sqlite", "sqlite answer"],
+                [message.content for message in loaded.messages],
+            )
+            self.assertTrue((config.storage.path / "events.sqlite3").is_file())
+
 
 class _SequenceProvider(MockProvider):
     def __init__(self, responses: list[str]) -> None:

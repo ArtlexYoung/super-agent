@@ -43,7 +43,7 @@ It loads Skill state using:
 super-agent skills index --config agent.toml --output json
 ```
 
-It manages conversations using `super-agent conversations` and sends `user_id` plus `conversation_id` in every run request. Runtime JSONL is the only conversation source of truth. The app stores only UI selection, TOML settings, and model profiles in Application Support. Assistant message records include the complete `run_result`, allowing the UI to rebuild the main Agent and subagent execution tree after restart.
+It manages conversations using `super-agent conversations` and sends `user_id` plus `conversation_id` in every run request. The selected Runtime storage backend is the only conversation source of truth. The app stores only UI selection, TOML settings, and model profiles in Application Support. Assistant message records include the complete `run_result`, allowing the UI to rebuild the main Agent and subagent execution tree after restart.
 
 ## Package a Local Release
 

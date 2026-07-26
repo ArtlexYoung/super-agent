@@ -116,4 +116,16 @@ super-agent benchmark \
 
 The benchmark does not call a model. It compares eager and progressive context using the deterministic approximation `ceil(character count / 4)`.
 
+## Storage Copy
+
+```bash
+super-agent storage copy \
+  --config agent.toml \
+  --to-backend sqlite \
+  --to-path .super-agent-sqlite \
+  --user-id local
+```
+
+The source backend and path come from the resolved Agent configuration. Repeat `--user-id` to copy more users. Existing identical event IDs are skipped, while conflicting content fails clearly. Relative destination paths resolve from the source configuration directory.
+
 All commands that read or write Runtime state accept `--user-id`; the default is `local`. This includes run, chat, conversations, memory, run inspection, Skill inspection/evolution, and benchmarks.

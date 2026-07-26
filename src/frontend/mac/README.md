@@ -14,7 +14,8 @@
 - 配置提示：每个配置项都有 `？` 图标，鼠标悬浮即可查看详细说明。
 - 统一运行时：桌面端通过 JSONL 协议调用 `super-agent run`，provider、Skill、workflow 和子 agent 都只由 Python runtime 执行。
 - 真实运行树：主 agent 与子 agent 节点保存 runtime 返回的 `run_id`，可沿树查看每个节点的输入和输出。
-- 会话存储：Runtime JSONL 是唯一事实来源；桌面端 Application Support 只保存当前选择、TOML 设置和模型列表，不再复制会话内容。
+- 会话存储：所选 Runtime 存储后端是唯一事实来源；桌面端 Application Support 只保存当前选择、TOML 设置和模型列表，不再复制会话内容。
+- 存储选择：默认使用可读 JSONL，也可选择 Python 标准库 SQLite；SQLite 数据库启用 WAL，不增加第三方依赖。
 - 模型配置统一来自 TOML：`provider`、`model`、`base_url`、`api_key_env` 都写在 `[model]`。
 
 示例模型配置：

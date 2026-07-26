@@ -17,6 +17,7 @@ from cli_commands.memory import configure_memory_parser, run_memory_command
 from cli_commands.models import configure_models_parser, run_models_command
 from cli_commands.runs import configure_runs_parser, run_runs_command
 from cli_commands.skills import configure_skills_parser, run_skills_command
+from cli_commands.storage import configure_storage_parser, run_storage_command
 from agents.agent import Agent
 from provider.chat import Message
 from runtime.identity import LOCAL_USER_ID
@@ -57,6 +58,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return run_runs_command(args)
     if args.command == "benchmark":
         return run_benchmark_command(args)
+    if args.command == "storage":
+        return run_storage_command(args)
     parser.print_help()
     return 1
 
@@ -98,6 +101,8 @@ def _build_parser() -> argparse.ArgumentParser:
     configure_runs_parser(runs_parser)
     benchmark_parser = subparsers.add_parser("benchmark", help="measure progressive context savings")
     configure_benchmark_parser(benchmark_parser)
+    storage_parser = subparsers.add_parser("storage", help="manage runtime storage")
+    configure_storage_parser(storage_parser)
     return parser
 
 

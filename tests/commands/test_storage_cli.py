@@ -1,0 +1,120 @@
+import json
+import tempfile
+import unittest
+from io import StringIO
+from pathlib import Path
+from unittest.mock import patch
+
+from cli import main
+
+
+class StorageCliTests(unittest.TestCase):
+    def test_copy_moves_only_selected_user_to_sqlite(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = root / "agent.toml"
+            with patch("sys.stdout", StringIO()):
+                self.assertEqual(0, main(["init", "--path", tmp]))
+                self.assertEqual(
+                    0,
+                    main(
+                        [
+                            "run",
+                            "--config",
+                            str(config),
+                            "--user-id",
+                            "alpha",
+                            "--conversation-id",
+                            "project",
+                            "echo alpha",
+                        ]
+                    ),
+                )
+                self.assertEqual(
+                    0,
+                    main(["run", "--config", str(config), "--user-id", "beta", "echo beta"]),
+                )
+
+            first = self._run_json(
+                [
+                    "storage",
+                    "copy",
+                    "--config",
+                    str(config),
+                    "--to-backend",
+                    "sqlite",
+                    "--to-path",
+                    "sqlite-state",
+                    "--user-id",
+                    "alpha",
+                    "--output",
+                    "json",
+                ]
+            )
+            second = self._run_json(
+                [
+                    "storage",
+                    "copy",
+                    "--config",
+                    str(config),
+                    "--to-backend",
+                    "sqlite",
+                    "--to-path",
+                    "sqlite-state",
+                    "--user-id",
+                    "alpha",
+                    "--output",
+                    "json",
+                ]
+            )
+            sqlite_config = self._write_sqlite_config(root, config)
+            alpha = self._run_json(
+                [
+                    "conversations",
+                    "list",
+                    "--config",
+                    str(sqlite_config),
+                    "--user-id",
+                    "alpha",
+                ]
+            )
+            beta = self._run_json(
+                [
+                    "runs",
+                    "status",
+                    "--config",
+                    str(sqlite_config),
+                    "--user-id",
+                    "beta",
+                    "--output",
+                    "json",
+                ]
+            )
+
+            self.assertGreater(first["users"][0]["events_copied"], 0)
+            self.assertEqual(0, second["users"][0]["events_copied"])
+            self.assertEqual(
+                second["users"][0]["events_read"],
+                second["users"][0]["events_already_present"],
+            )
+            self.assertEqual("project", alpha["conversations"][0]["conversation_id"])
+            self.assertEqual([], beta["runs"])
+            self.assertTrue((root / "sqlite-state" / "events.sqlite3").is_file())
+
+    @staticmethod
+    def _write_sqlite_config(root: Path, source: Path) -> Path:
+        path = root / "sqlite-agent.toml"
+        text = source.read_text(encoding="utf-8")
+        text = text.replace('backend = "jsonl"', 'backend = "sqlite"')
+        text = text.replace('path = ".super-agent"', 'path = "sqlite-state"')
+        path.write_text(text, encoding="utf-8")
+        return path
+
+    @staticmethod
+    def _run_json(arguments: list[str]) -> dict[str, object]:
+        output = StringIO()
+        with patch("sys.stdout", output):
+            code = main(arguments)
+        if code != 0:
+            raise AssertionError(f"command failed with exit code {code}: {arguments}")
+        return json.loads(output.getvalue())

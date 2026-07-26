@@ -50,6 +50,18 @@ super-agent run "Explain this repository"
 
 The CLI reports environment-variable names but never prints secret values.
 
+## Optional SQLite Storage
+
+JSONL is the zero-configuration default. For concurrent local processes, change only the backend name:
+
+```toml
+[storage]
+backend = "sqlite"
+path = ".super-agent"
+```
+
+SQLite uses the Python standard library, enables WAL mode, and writes `.super-agent/events.sqlite3`.
+
 ## Create an Editable Project
 
 ```bash

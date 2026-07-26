@@ -7,11 +7,11 @@ import json
 import os
 import threading
 from dataclasses import asdict
-from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
 from runtime.storage.contracts import StorageEvent, StorageEventQuery
+from runtime.storage.values import clean_storage_text, positive_storage_integer, utc_now_text
 
 
 JSONL_SCHEMA_VERSION = 1
@@ -46,12 +46,12 @@ class JsonlStorage:
             event = StorageEvent(
                 event_id=requested_id,
                 position=existing[-1].position + 1 if existing else 1,
-                user_id=_clean_value(user_id, "user_id"),
-                agent_name=_clean_value(agent_name, "agent_name"),
-                stream_type=_clean_value(stream_type, "stream_type"),
-                stream_id=_clean_value(stream_id, "stream_id"),
-                event_type=_clean_value(event_type, "event_type"),
-                created_at=created_at or _utc_now_text(),
+                user_id=clean_storage_text(user_id, "user_id"),
+                agent_name=clean_storage_text(agent_name, "agent_name"),
+                stream_type=clean_storage_text(stream_type, "stream_type"),
+                stream_id=clean_storage_text(stream_id, "stream_id"),
+                event_type=clean_storage_text(event_type, "event_type"),
+                created_at=created_at or utc_now_text(),
                 data=dict(data),
             )
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -83,7 +83,7 @@ class JsonlStorage:
             return deleted
 
     def _events_path(self, user_id: str) -> Path:
-        digest = hashlib.sha256(_clean_value(user_id, "user_id").encode("utf-8")).hexdigest()
+        digest = hashlib.sha256(clean_storage_text(user_id, "user_id").encode("utf-8")).hexdigest()
         return self.root / "users" / digest[:20] / "events.jsonl"
 
     @staticmethod
@@ -117,14 +117,14 @@ def _event_from_json(line: str, path: Path, line_number: int) -> StorageEvent:
     if set(value) != expected or not isinstance(value.get("data"), dict):
         raise ValueError(f"storage event fields do not match schema at {path}:{line_number}")
     return StorageEvent(
-        event_id=_clean_value(value["event_id"], "event_id"),
-        position=_positive_integer(value["position"], "position"),
-        user_id=_clean_value(value["user_id"], "user_id"),
-        agent_name=_clean_value(value["agent_name"], "agent_name"),
-        stream_type=_clean_value(value["stream_type"], "stream_type"),
-        stream_id=_clean_value(value["stream_id"], "stream_id"),
-        event_type=_clean_value(value["event_type"], "event_type"),
-        created_at=_clean_value(value["created_at"], "created_at"),
+        event_id=clean_storage_text(value["event_id"], "event_id"),
+        position=positive_storage_integer(value["position"], "position"),
+        user_id=clean_storage_text(value["user_id"], "user_id"),
+        agent_name=clean_storage_text(value["agent_name"], "agent_name"),
+        stream_type=clean_storage_text(value["stream_type"], "stream_type"),
+        stream_id=clean_storage_text(value["stream_id"], "stream_id"),
+        event_type=clean_storage_text(value["event_type"], "event_type"),
+        created_at=clean_storage_text(value["created_at"], "created_at"),
         data=dict(value["data"]),
     )
 
@@ -151,19 +151,3 @@ def _write_events_atomically(path: Path, events: list[StorageEvent]) -> None:
     finally:
         if temporary.exists():
             temporary.unlink()
-
-
-def _clean_value(value: object, name: str) -> str:
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"storage event {name} cannot be empty")
-    return value.strip()
-
-
-def _positive_integer(value: object, name: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-        raise ValueError(f"storage event {name} must be a positive integer")
-    return value
-
-
-def _utc_now_text() -> str:
-    return datetime.now(UTC).isoformat().replace("+00:00", "Z")

@@ -34,6 +34,8 @@ Status: implemented.
 
 ## v0.0.28: SQLite Storage
 
+Status: implemented.
+
 - Add a standard-library SQLite backend.
 - Preserve the exact `StorageBackend` contract and Runtime semantics.
 - Add transactions, WAL mode, concurrency tests, and storage copy commands.
