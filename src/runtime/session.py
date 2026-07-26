@@ -70,7 +70,10 @@ class RuntimeSession:
         )
 
     def record_capability_used(self, slot: str, capability: object) -> None:
-        self._evaluation_targets.record_capability(slot, capability)
+        registration = self.capabilities.registry.require_capability(slot)
+        if registration.implementation is not capability:
+            raise ValueError(f"runtime used an unregistered capability object: {slot}")
+        self._evaluation_targets.record_capability(registration.descriptor)
 
     def list_evaluation_targets(self) -> list[EvaluationTarget]:
         return self._evaluation_targets.list_targets()

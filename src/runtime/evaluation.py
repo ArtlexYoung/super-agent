@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-import hashlib
-import inspect
 import math
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
 from uuid import uuid4
+
+from capability.registry import CapabilityDescriptor, create_capability_descriptor
 
 
 EVALUATION_RECORD_SCHEMA_VERSION = 1
@@ -98,17 +97,16 @@ class EvaluationTargetTracker:
 
     def __init__(self) -> None:
         self._targets: dict[tuple[str, str], EvaluationTarget] = {}
-        self._recorded_capability_instances: set[tuple[str, int]] = set()
+        self._recorded_capability_keys: set[str] = set()
 
     def record_target(self, target: EvaluationTarget) -> None:
         self._targets[(target.target_type, target.key)] = target
 
-    def record_capability(self, slot: str, capability: object) -> None:
-        marker = (slot.strip().lower(), id(capability))
-        if marker in self._recorded_capability_instances:
+    def record_capability(self, descriptor: CapabilityDescriptor) -> None:
+        if descriptor.key in self._recorded_capability_keys:
             return
-        self.record_target(create_capability_evaluation_target(slot, capability))
-        self._recorded_capability_instances.add(marker)
+        self.record_target(create_capability_evaluation_target_from_descriptor(descriptor))
+        self._recorded_capability_keys.add(descriptor.key)
 
     def list_targets(self) -> list[EvaluationTarget]:
         return list(self._targets.values())
@@ -141,18 +139,20 @@ def create_evaluation_record(
 
 
 def create_capability_evaluation_target(slot: str, capability: object) -> EvaluationTarget:
-    clean_slot = slot.strip().lower()
-    if not clean_slot:
-        raise ValueError("capability evaluation slot cannot be empty")
-    name = _required_capability_attribute(capability, "name")
-    version = _required_capability_attribute(capability, "version")
+    descriptor = create_capability_descriptor(slot, capability)
+    return create_capability_evaluation_target_from_descriptor(descriptor)
+
+
+def create_capability_evaluation_target_from_descriptor(
+    descriptor: CapabilityDescriptor,
+) -> EvaluationTarget:
     return EvaluationTarget(
         target_type="capability",
-        key=f"{clean_slot}:{name}",
-        name=name,
-        version=version,
-        content_sha256=_calculate_capability_sha256(capability),
-        function_group=clean_slot,
+        key=descriptor.key,
+        name=descriptor.name,
+        version=descriptor.version,
+        content_sha256=descriptor.content_sha256,
+        function_group=descriptor.slot,
     )
 
 
@@ -365,38 +365,6 @@ def _validate_result(result: EvaluationResult) -> None:
         isinstance(item, str) for item in result.checks
     ):
         raise ValueError("evaluation checks must be a string array")
-
-
-def _calculate_capability_sha256(capability: object) -> str:
-    capability_type = type(capability)
-    identity = (
-        f"{capability_type.__module__}.{capability_type.__qualname__}\n"
-        f"{_required_capability_attribute(capability, 'name')}\n"
-        f"{_required_capability_attribute(capability, 'version')}\n"
-    )
-    digest = hashlib.sha256(identity.encode("utf-8"))
-    try:
-        source_path = inspect.getsourcefile(capability_type)
-    except TypeError:
-        source_path = None
-    if source_path is not None and Path(source_path).is_file():
-        try:
-            digest.update(Path(source_path).read_bytes())
-            return digest.hexdigest()
-        except OSError:
-            pass
-    try:
-        digest.update(inspect.getsource(capability_type).encode("utf-8"))
-    except (OSError, TypeError):
-        pass
-    return digest.hexdigest()
-
-
-def _required_capability_attribute(capability: object, name: str) -> str:
-    value = getattr(capability, name, None)
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"capability {name} must be a non-empty string")
-    return value.strip()
 
 
 def _require_exact_object(value: object, fields: set[str], label: str) -> dict[str, Any]:

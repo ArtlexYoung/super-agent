@@ -64,6 +64,7 @@ class SkillKindArchitectureTests(unittest.TestCase):
             path
             for path in python_sources
             if "tomllib.loads" in path.read_text(encoding="utf-8")
+            and '"skill.toml"' in path.read_text(encoding="utf-8")
             and path != Path("src/runtime/config.py")
         ]
 

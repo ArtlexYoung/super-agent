@@ -12,6 +12,12 @@ from capability.contracts import (
     SkillUpdaterCapability,
 )
 from capability.defaults import create_default_capability_set
+from capability.package import CapabilityPackageManager, InstalledCapability
+from capability.registry import (
+    CapabilityDescriptor,
+    CapabilityRegistry,
+    copy_capability_registry,
+)
 from provider.chat import ChatProvider, Message, create_chat_provider
 from provider.discovery import ModelResolution, resolve_model_settings
 from runtime.config import AgentConfig
@@ -106,24 +112,90 @@ class Agent:
         return list(self._subagents)
 
     def set_run_controller(self, run_controller: RunController) -> None:
-        self._replace_capabilities(run_controller=run_controller)
+        self._replace_capability("run_controller", run_controller)
 
     def set_skill_disclosure(
         self,
         skill_disclosure: SkillDisclosureCapability,
     ) -> None:
-        self._replace_capabilities(skill_disclosure=skill_disclosure)
+        self._replace_capability("skill_disclosure", skill_disclosure)
 
     def add_skill_executor(self, skill_executor: SkillExecutor) -> None:
-        executors = dict(self.capabilities.skill_executors)
-        executors[skill_executor.capability_name] = skill_executor
-        self._replace_capabilities(skill_executors=executors)
+        self._replace_capability(
+            f"skill_executor:{skill_executor.capability_name}",
+            skill_executor,
+        )
 
     def set_run_result_evaluator(self, evaluator: RunResultEvaluator) -> None:
-        self._replace_capabilities(run_result_evaluator=evaluator)
+        self._replace_capability("run_result_evaluator", evaluator)
 
     def set_skill_updater(self, skill_updater: SkillUpdaterCapability) -> None:
-        self._replace_capabilities(skill_updater=skill_updater)
+        self._replace_capability("skill_updater", skill_updater)
+
+    def install_capability(self, source: str) -> InstalledCapability:
+        manager = self._create_capability_package_manager()
+        installed = manager.install_capability(source)
+        try:
+            self._activate_installed_capability(installed)
+        except Exception:
+            manager.remove_capability(installed.manifest.slot, installed.manifest.name)
+            raise
+        return installed
+
+    def update_capability(
+        self,
+        slot: str,
+        name: str,
+        source: str,
+    ) -> InstalledCapability:
+        manager = self._create_capability_package_manager()
+        installed = manager.update_capability(
+            slot,
+            name,
+            source,
+        )
+        try:
+            self._activate_installed_capability(installed)
+        except Exception:
+            manager.rollback_capability(slot, name)
+            raise
+        return installed
+
+    def rollback_capability(self, slot: str, name: str) -> InstalledCapability:
+        installed = self._create_capability_package_manager().rollback_capability(slot, name)
+        self._activate_installed_capability(installed)
+        return installed
+
+    def remove_capability(self, slot: str, name: str) -> None:
+        manager = self._create_capability_package_manager()
+        installed = manager.load_capability(slot, name)
+        manager.remove_capability(slot, name)
+        registration = self.capabilities.registry.find_capability(slot)
+        if (
+            registration is None
+            or registration.descriptor.name != installed.manifest.name
+            or registration.descriptor.source != "local"
+        ):
+            return
+        defaults = create_default_capability_set(self.config, self.provider)
+        fallback = defaults.registry.find_capability(slot)
+        registry = copy_capability_registry(self.capabilities.registry)
+        registry.remove_capability(slot)
+        if fallback is not None:
+            registry.register_capability(
+                slot,
+                fallback.implementation,
+                fallback.descriptor,
+            )
+        self._set_capability_registry(registry)
+
+    def load_installed_capability(self, slot: str, name: str) -> InstalledCapability:
+        installed = self._create_capability_package_manager().load_capability(slot, name)
+        self._activate_installed_capability(installed)
+        return installed
+
+    def list_installed_capabilities(self) -> list[InstalledCapability]:
+        return self._create_capability_package_manager().list_capabilities()
 
     def create_skill_evolution_manager(
         self,
@@ -231,8 +303,33 @@ class Agent:
             event_listener=event_listener,
         )
 
-    def _replace_capabilities(self, **changes: object) -> None:
-        self.capabilities = replace(self.capabilities, **changes)
+    def _replace_capability(
+        self,
+        slot: str,
+        implementation: object,
+        descriptor: CapabilityDescriptor | None = None,
+    ) -> None:
+        registry = copy_capability_registry(self.capabilities.registry)
+        registry.register_capability(
+            slot,
+            implementation,
+            descriptor,
+            replace=True,
+        )
+        self._set_capability_registry(registry)
+
+    def _activate_installed_capability(self, installed: InstalledCapability) -> None:
+        self._replace_capability(
+            installed.manifest.slot,
+            installed.implementation,
+            installed.descriptor,
+        )
+
+    def _create_capability_package_manager(self) -> CapabilityPackageManager:
+        return CapabilityPackageManager(self.config.storage.path / "capabilities")
+
+    def _set_capability_registry(self, registry: CapabilityRegistry) -> None:
+        self.capabilities = AgentCapabilitySet(registry)
         self.runtime = AgentRuntime(
             self.config,
             self.provider,

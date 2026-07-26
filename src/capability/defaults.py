@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from capability.contracts import AgentCapabilitySet
+from capability.registry import CapabilityRegistry, create_capability_descriptor
 from capability.run_controller import DefaultRunController
 from capability.skill_executors import create_builtin_skill_executors
 from provider.chat import ChatProvider
@@ -73,13 +74,39 @@ def create_default_capability_set(
     provider: ChatProvider,
 ) -> AgentCapabilitySet:
     del config, provider
-    return AgentCapabilitySet(
-        run_controller=DefaultRunController(),
-        skill_disclosure=ProgressiveSkillDisclosureCapability(),
-        skill_executors=create_builtin_skill_executors(),
-        run_result_evaluator=RuntimeRunResultEvaluator(),
-        skill_updater=EvaluatedSkillUpdaterCapability(),
+    registry = CapabilityRegistry()
+    _register_builtin_capability(registry, "run_controller", DefaultRunController())
+    _register_builtin_capability(
+        registry,
+        "skill_disclosure",
+        ProgressiveSkillDisclosureCapability(),
     )
+    for capability_name, executor in create_builtin_skill_executors().items():
+        _register_builtin_capability(
+            registry,
+            f"skill_executor:{capability_name}",
+            executor,
+        )
+    _register_builtin_capability(
+        registry,
+        "run_result_evaluator",
+        RuntimeRunResultEvaluator(),
+    )
+    _register_builtin_capability(
+        registry,
+        "skill_updater",
+        EvaluatedSkillUpdaterCapability(),
+    )
+    return AgentCapabilitySet(registry)
+
+
+def _register_builtin_capability(
+    registry: CapabilityRegistry,
+    slot: str,
+    implementation: object,
+) -> None:
+    descriptor = create_capability_descriptor(slot, implementation, source="builtin")
+    registry.register_capability(slot, implementation, descriptor)
 
 
 def create_default_skill_disclosure(

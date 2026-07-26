@@ -131,6 +131,8 @@ discover -> disclose -> execute -> observe -> evaluate -> evolve
 
 `RuntimeSession` is the single context for a run. It holds one `RunIdentity`, one centralized `RuntimeStore`, one Skill index, the progressive-disclosure session, and every Skill or Capability that affected the result. Capabilities consume this session instead of creating their own stores or rescanning the Skill tree.
 
+Every executable mechanism is registered through one `CapabilityRegistry`. Runtime locks its name, version, implementation class, exact content hash, dependencies, permissions, and update ownership. Built-ins require no setup; local Capability packages can be installed, updated, rolled back, and selected explicitly in Python without adding Agent TOML configuration.
+
 ## Self-Evolution
 
 Agent-created Skills can opt into updates:
@@ -239,6 +241,7 @@ The runtime lock is stored as a run event. It captures the effective Provider, s
 
 - [Getting Started](docs/getting-started.md)
 - [Architecture](docs/architecture.md)
+- [Capabilities](docs/capabilities.md)
 - [Skills and Progressive Disclosure](docs/skills.md)
 - [Runtime, Workflows, Tracing, and Multi-Agent](docs/runtime.md)
 - [Evaluation, Freshness, Memory, and Evolution](docs/evolution.md)

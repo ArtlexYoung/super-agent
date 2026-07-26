@@ -13,6 +13,17 @@ from capability.defaults import (
     create_default_capability_set,
     create_default_skill_disclosure,
 )
+from capability.package import (
+    CapabilityPackageManager,
+    CapabilityPackageManifest,
+    InstalledCapability,
+)
+from capability.registry import (
+    CapabilityDescriptor,
+    CapabilityRegistry,
+    calculate_capability_implementation_sha256,
+    create_capability_descriptor,
+)
 from skill.benchmark import (
     BenchmarkCase,
     BenchmarkCaseResult,
@@ -97,6 +108,10 @@ __all__ = [
     "BenchmarkCase",
     "BenchmarkCaseResult",
     "BenchmarkReport",
+    "CapabilityDescriptor",
+    "CapabilityPackageManager",
+    "CapabilityPackageManifest",
+    "CapabilityRegistry",
     "ChatProvider",
     "Conversation",
     "ConversationMessage",
@@ -109,6 +124,7 @@ __all__ = [
     "EvaluationTokenUsage",
     "EvolutionResult",
     "JsonlStorage",
+    "InstalledCapability",
     "LOCAL_USER_ID",
     "LockedSkill",
     "MemoryItem",
@@ -158,6 +174,8 @@ __all__ = [
     "SubAgentResult",
     "ToolCall",
     "benchmark_report_to_dict",
+    "calculate_capability_implementation_sha256",
+    "create_capability_descriptor",
     "create_default_capability_set",
     "create_default_skill_disclosure",
     "copy_storage_events",

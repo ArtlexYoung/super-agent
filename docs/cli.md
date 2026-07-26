@@ -85,6 +85,18 @@ super-agent skills remove --config agent.toml --name research
 
 Install and update accept `--expected-sha256`.
 
+## Capability Packages
+
+```bash
+super-agent capabilities list --output json
+super-agent capabilities install --source ./careful-controller
+super-agent capabilities update --slot run_controller --name careful --source ./careful-v2
+super-agent capabilities rollback --slot run_controller --name careful
+super-agent capabilities remove --slot run_controller --name careful
+```
+
+Use `--config agent.toml` only when package storage should follow a specific Agent configuration. Commands manage local versions; executable selection remains explicit Python code through `Agent.load_installed_capability(...)`.
+
 ## Memory
 
 ```bash

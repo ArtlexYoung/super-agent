@@ -61,6 +61,8 @@ Status: implemented.
 
 ## v0.0.31: Capability Registry and Version Lock
 
+Status: implemented.
+
 - Define Capability descriptors, versions, hashes, dependencies, and permissions.
 - Register executable mechanisms through one Runtime registry.
 - Lock exact Capability implementations in every run.

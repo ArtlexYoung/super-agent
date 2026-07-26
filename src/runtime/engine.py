@@ -7,6 +7,7 @@ from time import perf_counter
 from typing import Callable
 
 from capability.contracts import AgentCapabilitySet
+from capability.registry import CapabilityRegistry
 from provider.chat import ChatProvider
 from runtime.config import AgentConfig
 from runtime.evaluation import (
@@ -181,6 +182,7 @@ class AgentRuntime:
         disclosure = capability.create_skill_disclosure(session)
         skill_index = disclosure.prepare_skill_index()
         session.set_skill_disclosure(disclosure, skill_index)
+        self.capabilities.registry.validate_dependencies()
         session.store.save_runtime_lock(
             session.identity,
             _runtime_lock_to_dict(
@@ -271,7 +273,7 @@ def _runtime_lock_to_dict(
     storage: StorageBackend,
 ) -> dict[str, object]:
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "agent": {
             "name": config.agent.name,
             "system": config.agent.system,
@@ -290,7 +292,7 @@ def _runtime_lock_to_dict(
             "adapter": f"{type(provider).__module__}.{type(provider).__qualname__}",
         },
         "storage": {"backend": storage.name},
-        "capabilities": _capability_versions(capabilities),
+        "capabilities": _capability_lock_entries(capabilities.registry),
         "skills": [
             {
                 "key": entry.reference.key,
@@ -306,23 +308,6 @@ def _runtime_lock_to_dict(
     }
 
 
-def _capability_versions(capabilities: AgentCapabilitySet) -> list[dict[str, str]]:
-    values = [
-        _capability_version("run_controller", capabilities.run_controller),
-        _capability_version("skill_disclosure", capabilities.skill_disclosure),
-        _capability_version("run_result_evaluator", capabilities.run_result_evaluator),
-        _capability_version("skill_updater", capabilities.skill_updater),
-    ]
-    values.extend(
-        _capability_version(f"skill_executor:{name}", executor)
-        for name, executor in sorted(capabilities.skill_executors.items())
-    )
-    return values
-
-
-def _capability_version(slot: str, capability: object) -> dict[str, str]:
-    return {
-        "slot": slot,
-        "name": str(getattr(capability, "name")),
-        "version": str(getattr(capability, "version")),
-    }
+def _capability_lock_entries(registry: CapabilityRegistry) -> list[dict[str, object]]:
+    registry.validate_dependencies()
+    return [item.descriptor.to_dict() for item in registry.list_capabilities()]

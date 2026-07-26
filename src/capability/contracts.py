@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, cast
+
+from capability.registry import CapabilityRegistry
 
 from provider.chat import ChatProvider
 from runtime.config import AgentConfig
@@ -120,13 +122,42 @@ class RunController(Protocol):
         ...
 
 
-@dataclass(frozen=True)
 class AgentCapabilitySet:
-    run_controller: RunController
-    skill_disclosure: SkillDisclosureCapability
-    skill_executors: dict[str, SkillExecutor]
-    run_result_evaluator: RunResultEvaluator
-    skill_updater: SkillUpdaterCapability
+    def __init__(self, registry: CapabilityRegistry) -> None:
+        registry.validate_dependencies()
+        self.registry = registry
+
+    @property
+    def run_controller(self) -> RunController:
+        registration = self.registry.require_capability("run_controller")
+        return cast(RunController, registration.implementation)
+
+    @property
+    def skill_disclosure(self) -> SkillDisclosureCapability:
+        registration = self.registry.require_capability("skill_disclosure")
+        return cast(SkillDisclosureCapability, registration.implementation)
+
+    @property
+    def skill_executors(self) -> dict[str, SkillExecutor]:
+        prefix = "skill_executor:"
+        return {
+            item.descriptor.slot.removeprefix(prefix): cast(
+                SkillExecutor,
+                item.implementation,
+            )
+            for item in self.registry.list_capabilities()
+            if item.descriptor.slot.startswith(prefix)
+        }
+
+    @property
+    def run_result_evaluator(self) -> RunResultEvaluator:
+        registration = self.registry.require_capability("run_result_evaluator")
+        return cast(RunResultEvaluator, registration.implementation)
+
+    @property
+    def skill_updater(self) -> SkillUpdaterCapability:
+        registration = self.registry.require_capability("skill_updater")
+        return cast(SkillUpdaterCapability, registration.implementation)
 
     def require_skill_executor(self, capability_name: str) -> SkillExecutor:
         executor = self.skill_executors.get(capability_name.strip().lower())

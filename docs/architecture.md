@@ -51,6 +51,8 @@ A Capability is executable mechanism code. Built-in slots include:
 
 Capabilities receive explicit requests or the shared `RuntimeSession`. They do not infer sibling directories from a path and do not own a second runtime lifecycle.
 
+One `CapabilityRegistry` is the only executable mechanism registry. Each descriptor fixes the slot, name, version, implementation class, content SHA-256, dependencies, permissions, and update ownership. Runtime locks those descriptors and evaluation reuses them instead of recalculating a parallel identity.
+
 ## Skill
 
 A Skill is passive, versioned content. Its manifest declares:
@@ -114,6 +116,7 @@ Conversations, runs, evaluations, memory, habits, and disclosure history use one
 - One central Skill index is prepared per run.
 - Every disclosure uses the same cache and history store.
 - Every used Skill and Capability becomes an evaluation target automatically.
+- Every executable Capability comes from the central registry and is locked by exact hash.
 - Canonical evaluation records are append-only.
 - Freshness data is rebuildable and never the source of truth.
 - Evolution cannot bypass candidate validation and evaluation.

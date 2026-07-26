@@ -9,6 +9,10 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from cli_commands.benchmark import configure_benchmark_parser, run_benchmark_command
+from cli_commands.capabilities import (
+    configure_capabilities_parser,
+    run_capabilities_command,
+)
 from cli_commands.conversations import (
     configure_conversations_parser,
     run_conversations_command,
@@ -60,6 +64,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return run_benchmark_command(args)
     if args.command == "storage":
         return run_storage_command(args)
+    if args.command == "capabilities":
+        return run_capabilities_command(args)
     parser.print_help()
     return 1
 
@@ -103,6 +109,11 @@ def _build_parser() -> argparse.ArgumentParser:
     configure_benchmark_parser(benchmark_parser)
     storage_parser = subparsers.add_parser("storage", help="manage runtime storage")
     configure_storage_parser(storage_parser)
+    capabilities_parser = subparsers.add_parser(
+        "capabilities",
+        help="manage local executable capabilities",
+    )
+    configure_capabilities_parser(capabilities_parser)
     return parser
 
 

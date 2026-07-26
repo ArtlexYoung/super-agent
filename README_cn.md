@@ -131,6 +131,8 @@ discover -> disclose -> execute -> observe -> evaluate -> evolve
 
 `RuntimeSession` 是一次运行唯一的共享上下文，集中保存一个 `RunIdentity`、一个中心化 `RuntimeStore`、唯一 Skill 索引、渐进披露会话，以及真正影响结果的 Skill 和 Capability。Capability 只消费该会话，不再分别创建存储或重复扫描 Skill 目录。
 
+所有可执行机制都通过唯一的 `CapabilityRegistry` 注册。Runtime 会锁定名称、版本、实现类、精确内容哈希、依赖、权限和更新归属。内置 Capability 不需要设置；本地 Capability 包可以安装、更新和回滚，再由 Python 代码显式选择，不需要增加 Agent TOML 配置。
+
 ## 自进化
 
 Agent 自己创建的 Skill 可以声明允许更新：
@@ -239,6 +241,7 @@ super-agent storage copy \
 
 - [快速开始](docs/getting-started.md)
 - [架构](docs/architecture.md)
+- [Capability](docs/capabilities.md)
 - [Skill 与渐进式披露](docs/skills.md)
 - [Runtime、Workflow、追踪与多 Agent](docs/runtime.md)
 - [评价、保鲜度、记忆与进化](docs/evolution.md)
