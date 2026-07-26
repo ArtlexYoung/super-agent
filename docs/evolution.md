@@ -79,19 +79,20 @@ agent_can_update = true
 
 Human-created Skills are immutable by default. When `agent_can_update` is omitted, it defaults to the value of `agent_created`.
 
-## Evolution Lifecycle
+## Central Evolution Lifecycle
 
 ```text
 create candidate -> validate -> evaluate -> promote -> rollback
 ```
 
-- Candidate files are isolated from the active Skill.
-- The candidate unit is the complete Skill directory, including resources.
+- Candidate files are isolated from active Skills and Capabilities.
+- The candidate unit is a complete Skill or Capability directory, including resources.
 - The model returns strict JSON with complete UTF-8 file writes and explicit deletions.
 - The candidate records its parent version and directory hash.
 - Runtime forces the next patch version and rejects path traversal, symlinks, identity changes, and empty changes.
-- Prompt, memory, workflow, MCP, and custom Skills share this lifecycle; built-in kinds use explicit validators.
-- Evaluation calls the configured real Provider with deterministic assertions.
+- Prompt, memory, workflow, MCP, custom Skills, and executable Capability code share one Runtime state machine and event stream.
+- Skill evaluation calls the configured Provider with deterministic assertions.
+- Capability evaluation calls `evaluate_capability(input_data)` in a separate Python process and checks exact JSON output.
 - Promotion requires a passing score and an unchanged active parent.
 - Promotion is atomic and stores an immutable previous revision.
 - Rollback restores the previous revision and records the action.
@@ -130,3 +131,26 @@ super-agent skills rollback --config agent.toml --name prompt:concise
 For a new Skill, omit `--capability` to create a prompt Skill or pass a Capability explicitly, such as `--capability memory`. Existing bare names resolve automatically only when unique.
 
 Evolution workspaces and evaluation evidence remain isolated by user and Agent. Custom Capability Skills use generic manifest validation until their Capability supplies a dedicated validator.
+
+Capability evolution cases use a small immutable JSON format:
+
+```json
+[
+  {
+    "name": "double value",
+    "input": {"value": 3},
+    "expected_output": 6
+  }
+]
+```
+
+```bash
+super-agent capabilities evolve \
+  --config agent.toml \
+  --slot run_controller \
+  --name adaptive \
+  --goal "improve successful completion" \
+  --cases capability-cases.json
+```
+
+The candidate package remains outside the main Agent registry until its subprocess evaluation passes. Promotion verifies the original parent version and SHA-256 again, then updates package state and the Agent registry together. Activation failures automatically restore the previous package and registry.

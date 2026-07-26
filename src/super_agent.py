@@ -13,6 +13,14 @@ from capability.defaults import (
     create_default_capability_set,
     create_default_skill_disclosure,
 )
+from capability.evolution import (
+    CapabilityCandidate,
+    CapabilityEvaluationCase,
+    CapabilityEvaluationCaseResult,
+    CapabilityEvaluationReport,
+    CapabilityEvolutionManager,
+    CapabilityEvolutionResult,
+)
 from capability.package import (
     CapabilityPackageManager,
     CapabilityPackageManifest,
@@ -109,6 +117,12 @@ __all__ = [
     "BenchmarkCaseResult",
     "BenchmarkReport",
     "CapabilityDescriptor",
+    "CapabilityCandidate",
+    "CapabilityEvaluationCase",
+    "CapabilityEvaluationCaseResult",
+    "CapabilityEvaluationReport",
+    "CapabilityEvolutionManager",
+    "CapabilityEvolutionResult",
     "CapabilityPackageManager",
     "CapabilityPackageManifest",
     "CapabilityRegistry",

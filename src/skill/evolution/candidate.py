@@ -7,11 +7,16 @@ import re
 import shutil
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from uuid import uuid4
 
 from provider.chat import ChatProvider, Message
 from runtime.store import RuntimeStore
+from runtime.evolution import (
+    DirectoryFileChanges,
+    apply_directory_file_changes,
+    read_directory_file_changes,
+)
 from skill.disclosure import (
     DisclosedSkillFile,
     ProgressiveDisclosureCore,
@@ -53,16 +58,10 @@ class SkillCandidateRequest:
 
 
 @dataclass(frozen=True)
-class _SkillFileChanges:
-    write_files: dict[str, str]
-    delete_files: list[str]
-
-
-@dataclass(frozen=True)
 class _CandidateDirectoryRequest:
     skill_path: Path
     current: SkillManifest | None
-    changes: _SkillFileChanges
+    changes: DirectoryFileChanges
     version: str
     store: RuntimeStore
     capability: str
@@ -108,9 +107,11 @@ def create_candidate(request: SkillCandidateRequest) -> SkillCandidate:
         ),
         request.model,
     )
-    changes = _read_skill_file_changes(response)
+    changes = read_directory_file_changes(response, "Skill")
     if current is not None and calculate_skill_directory_sha256(current.path) != parent_sha256:
-        raise ValueError(f"active skill changed during candidate proposal: {capability}:{skill_name}")
+        raise ValueError(
+            f"active skill changed during candidate proposal: {capability}:{skill_name}"
+        )
 
     candidate_id = f"{capability}-{skill_name}-{uuid4().hex[:12]}"
     candidate_dir = request.candidate_root / candidate_id
@@ -196,14 +197,6 @@ def verify_candidate_files(candidate: SkillCandidate) -> None:
         raise ValueError(f"skill candidate files changed after proposal: {candidate.candidate_id}")
 
 
-def resolve_skill_file(skill_path: Path, relative_path: str) -> Path:
-    root = skill_path.resolve()
-    path = (skill_path / relative_path).resolve()
-    if path != root and root not in path.parents:
-        raise ValueError(f"skill file must stay inside its directory: {relative_path}")
-    return path
-
-
 def split_skill_reference(
     name: str,
     capability: str | None = None,
@@ -271,8 +264,7 @@ def _write_candidate_skill_directory(
         skill_path.mkdir(parents=True)
     else:
         shutil.copytree(request.current.path, skill_path)
-    _reject_skill_symlinks(skill_path)
-    _apply_skill_file_changes(skill_path, request.changes)
+    apply_directory_file_changes(skill_path, request.changes, "Skill")
     manifest_path = skill_path / "skill.toml"
     if not manifest_path.is_file():
         raise ValueError("candidate must contain skill.toml")
@@ -283,78 +275,6 @@ def _write_candidate_skill_directory(
         request.capability,
         request.name,
     )
-
-
-def _read_skill_file_changes(response: str) -> _SkillFileChanges:
-    try:
-        data = json.loads(response.strip())
-    except json.JSONDecodeError as error:
-        raise ValueError("model returned invalid Skill file-change JSON") from error
-    if not isinstance(data, dict) or set(data) != {"write_files", "delete_files"}:
-        raise ValueError("Skill file changes require write_files and delete_files")
-    raw_writes = data["write_files"]
-    raw_deletes = data["delete_files"]
-    if not isinstance(raw_writes, dict) or not all(
-        isinstance(path, str) and isinstance(content, str)
-        for path, content in raw_writes.items()
-    ):
-        raise ValueError("Skill write_files must map relative paths to complete text")
-    if not isinstance(raw_deletes, list) or not all(
-        isinstance(path, str) for path in raw_deletes
-    ):
-        raise ValueError("Skill delete_files must be an array of relative paths")
-    writes = {_clean_relative_file_path(path): content for path, content in raw_writes.items()}
-    deletes = [_clean_relative_file_path(path) for path in raw_deletes]
-    if len(writes) != len(raw_writes) or len(deletes) != len(set(deletes)):
-        raise ValueError("Skill file changes contain duplicate normalized paths")
-    overlap = set(writes).intersection(deletes)
-    if overlap:
-        raise ValueError(f"Skill files cannot be written and deleted together: {sorted(overlap)[0]}")
-    if not writes and not deletes:
-        raise ValueError("model returned no Skill file changes")
-    return _SkillFileChanges(write_files=writes, delete_files=deletes)
-
-
-def _clean_relative_file_path(value: str) -> str:
-    if not value.strip() or "\\" in value:
-        raise ValueError(f"invalid Skill relative file path: {value}")
-    path = PurePosixPath(value)
-    if path.is_absolute() or not path.parts or any(part in {".", ".."} for part in path.parts):
-        raise ValueError(f"invalid Skill relative file path: {value}")
-    return path.as_posix()
-
-
-def _apply_skill_file_changes(skill_path: Path, changes: _SkillFileChanges) -> None:
-    for relative_path in changes.delete_files:
-        path = resolve_skill_file(skill_path, relative_path)
-        if not path.is_file() or path.is_symlink():
-            raise ValueError(f"candidate delete path is not a regular file: {relative_path}")
-        path.unlink()
-    for relative_path, content in changes.write_files.items():
-        path = resolve_skill_file(skill_path, relative_path)
-        if path.exists() and not path.is_file():
-            raise ValueError(f"candidate write path is not a file: {relative_path}")
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content, encoding="utf-8")
-    _remove_empty_skill_directories(skill_path)
-    _reject_skill_symlinks(skill_path)
-
-
-def _remove_empty_skill_directories(skill_path: Path) -> None:
-    directories = sorted(
-        (path for path in skill_path.rglob("*") if path.is_dir()),
-        key=lambda path: len(path.parts),
-        reverse=True,
-    )
-    for path in directories:
-        if not any(path.iterdir()):
-            path.rmdir()
-
-
-def _reject_skill_symlinks(skill_path: Path) -> None:
-    link = next((path for path in skill_path.rglob("*") if path.is_symlink()), None)
-    if link is not None:
-        raise ValueError(f"skill files cannot contain symlinks: {link}")
 
 
 def _build_candidate_messages(

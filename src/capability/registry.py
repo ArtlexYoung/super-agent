@@ -11,6 +11,7 @@ from pathlib import Path
 
 CAPABILITY_DESCRIPTOR_SCHEMA_VERSION = 1
 CAPABILITY_SLOT_PATTERN = re.compile(r"[a-z0-9][a-z0-9_.:-]{0,127}")
+CAPABILITY_NAME_PATTERN = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}")
 CAPABILITY_VALUE_PATTERN = re.compile(r"[a-z0-9][a-z0-9_.:-]{0,127}")
 
 
@@ -172,6 +173,13 @@ def clean_capability_slot(value: str) -> str:
     if CAPABILITY_SLOT_PATTERN.fullmatch(slot) is None:
         raise ValueError("capability slot must use lowercase letters, numbers, '.', ':', '-' or '_'")
     return slot
+
+
+def clean_capability_name(value: str) -> str:
+    name = value.strip().lower()
+    if CAPABILITY_NAME_PATTERN.fullmatch(name) is None:
+        raise ValueError("capability name must use lowercase letters, numbers, '-' or '_'")
+    return name
 
 
 def _validate_descriptor(

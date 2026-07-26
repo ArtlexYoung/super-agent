@@ -35,6 +35,7 @@ from runtime.session import RuntimeSession
 from runtime.storage import StorageBackend, create_storage_backend
 
 if TYPE_CHECKING:
+    from capability.evolution.manager import CapabilityEvolutionManager
     from skill.evolution.manager import SkillEvolutionManager
 
 
@@ -65,7 +66,15 @@ class Agent:
             model=self.model_resolution.settings,
         )
         self.provider = provider or create_chat_provider(self.config.model)
-        self.capabilities = capabilities or create_default_capability_set(self.config, self.provider)
+        selected_capabilities = capabilities or create_default_capability_set(
+            self.config,
+            self.provider,
+        )
+        self.capabilities = (
+            selected_capabilities
+            if capabilities is not None
+            else self._activate_persisted_capabilities(selected_capabilities)
+        )
         self.storage = storage or create_storage_backend(
             self.config.storage.backend,
             str(self.config.storage.path),
@@ -162,9 +171,17 @@ class Agent:
         return installed
 
     def rollback_capability(self, slot: str, name: str) -> InstalledCapability:
-        installed = self._create_capability_package_manager().rollback_capability(slot, name)
-        self._activate_installed_capability(installed)
-        return installed
+        manager = self._create_capability_package_manager()
+        previous = manager.load_capability(slot, name)
+        previous_registry = copy_capability_registry(self.capabilities.registry)
+        restored = manager.rollback_capability(slot, name)
+        try:
+            self._activate_installed_capability(restored)
+        except Exception:
+            manager.update_capability(slot, name, str(previous.manifest.path))
+            self._set_capability_registry(previous_registry)
+            raise
+        return restored
 
     def remove_capability(self, slot: str, name: str) -> None:
         manager = self._create_capability_package_manager()
@@ -204,6 +221,31 @@ class Agent:
         return cast(
             "SkillEvolutionManager",
             self.runtime.create_skill_updater(user_id),
+        )
+
+    def create_capability_evolution_manager(
+        self,
+        user_id: str = LOCAL_USER_ID,
+        *,
+        minimum_score: float = 0.8,
+        timeout_seconds: float = 5.0,
+    ) -> "CapabilityEvolutionManager":
+        from capability.evolution.manager import (
+            CapabilityEvolutionManager,
+            CapabilityEvolutionRuntimeAccess,
+        )
+
+        return CapabilityEvolutionManager(
+            CapabilityEvolutionRuntimeAccess(
+                config=self.config,
+                package_manager=self._create_capability_package_manager(),
+                provider=self.provider,
+                store=self.runtime.create_store(user_id),
+                read_capability_registry=lambda: self.capabilities.registry,
+                replace_capability_registry=self._set_capability_registry,
+            ),
+            minimum_score=minimum_score,
+            timeout_seconds=timeout_seconds,
         )
 
     def create_conversation(
@@ -268,7 +310,8 @@ class Agent:
             if len(longest_chain) > max_depth:
                 warnings.append(
                     "Agent chain depth is "
-                    f"{len(longest_chain)} layers, configured max_agent_chain_depth is {max_depth}: "
+                    f"{len(longest_chain)} layers, configured "
+                    f"max_agent_chain_depth is {max_depth}: "
                     + " -> ".join(longest_chain)
                 )
         return warnings
@@ -284,7 +327,11 @@ class Agent:
         conversation_id: str | None = None,
         event_listener: Callable[[RunEvent], None] | None = None,
     ) -> RunResult:
-        warnings = self.check_subagent_links() if include_subagents and check_subagent_links_before_run else []
+        warnings = (
+            self.check_subagent_links()
+            if include_subagents and check_subagent_links_before_run
+            else []
+        )
         request = AgentRunRequest(
             prompt=prompt,
             messages=list(messages or []),
@@ -328,7 +375,23 @@ class Agent:
     def _create_capability_package_manager(self) -> CapabilityPackageManager:
         return CapabilityPackageManager(self.config.storage.path / "capabilities")
 
+    def _activate_persisted_capabilities(
+        self,
+        capabilities: AgentCapabilitySet,
+    ) -> AgentCapabilitySet:
+        registry = copy_capability_registry(capabilities.registry)
+        for installed in self._create_capability_package_manager().list_capabilities():
+            registry.register_capability(
+                installed.manifest.slot,
+                installed.implementation,
+                installed.descriptor,
+                replace=True,
+            )
+        registry.validate_dependencies()
+        return AgentCapabilitySet(registry)
+
     def _set_capability_registry(self, registry: CapabilityRegistry) -> None:
+        registry.validate_dependencies()
         self.capabilities = AgentCapabilitySet(registry)
         self.runtime = AgentRuntime(
             self.config,
@@ -389,7 +452,11 @@ class Agent:
     ) -> SubAgentResult:
         parent_session.record_event(
             "subagent.started",
-            {"name": subagent.name, "agent_name": subagent.agent.config.agent.name, "prompt": prompt},
+            {
+                "name": subagent.name,
+                "agent_name": subagent.agent.config.agent.name,
+                "prompt": prompt,
+            },
         )
         result = subagent.agent._run_as_subagent(
             prompt,
@@ -458,7 +525,11 @@ def _find_longest_agent_chain(agent: Agent, chain: list[str], seen_ids: set[int]
     longest = chain
     next_seen_ids = seen_ids | {agent_id}
     for subagent in agent.list_subagents():
-        child_chain = _find_longest_agent_chain(subagent.agent, chain + [subagent.name], next_seen_ids)
+        child_chain = _find_longest_agent_chain(
+            subagent.agent,
+            chain + [subagent.name],
+            next_seen_ids,
+        )
         if len(child_chain) > len(longest):
             longest = child_chain
     return longest

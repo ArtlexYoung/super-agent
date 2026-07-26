@@ -208,7 +208,10 @@ def _score_output(
     if not checks:
         checks.append((bool(output.strip()), "non_empty_output"))
     passed_count = sum(1 for passed, _ in checks if passed)
-    descriptions = [f"{'pass' if passed else 'fail'}:{description}" for passed, description in checks]
+    descriptions = [
+        f"{'pass' if passed else 'fail'}:{description}"
+        for passed, description in checks
+    ]
     return round(passed_count / len(checks), 4), descriptions
 
 

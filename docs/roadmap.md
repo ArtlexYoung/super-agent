@@ -70,6 +70,8 @@ Status: implemented.
 
 ## v0.0.32: Capability Self-Evolution
 
+Status: implemented.
+
 - Apply the central evolution lifecycle to Capability code.
 - Validate candidates in isolation before activation.
 - Evaluate real behavior, promote atomically, and roll back failures.

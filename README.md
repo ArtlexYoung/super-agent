@@ -131,7 +131,7 @@ discover -> disclose -> execute -> observe -> evaluate -> evolve
 
 `RuntimeSession` is the single context for a run. It holds one `RunIdentity`, one centralized `RuntimeStore`, one Skill index, the progressive-disclosure session, and every Skill or Capability that affected the result. Capabilities consume this session instead of creating their own stores or rescanning the Skill tree.
 
-Every executable mechanism is registered through one `CapabilityRegistry`. Runtime locks its name, version, implementation class, exact content hash, dependencies, permissions, and update ownership. Built-ins require no setup; local Capability packages can be installed, updated, rolled back, and selected explicitly in Python without adding Agent TOML configuration.
+Every executable mechanism is registered through one `CapabilityRegistry`. Runtime locks its name, version, implementation class, exact content hash, dependencies, permissions, and update ownership. Built-ins require no setup; local Capability packages can be installed, updated, rolled back, and automatically restored for the same Agent without adding TOML configuration.
 
 ## Self-Evolution
 
@@ -157,6 +157,17 @@ super-agent skills evolve \
 ```
 
 The complete Skill directory is the candidate unit, so prompt, memory, workflow, MCP, and custom Skills use the same lifecycle. The model returns explicit full-file writes and deletions; Runtime validates paths, identity, permissions, and Capability-specific configuration before evaluation. Candidates stay isolated from active Skills. Promotion requires a passing evaluation and an unchanged parent version, and every promoted revision can be rolled back.
+
+Executable Capability code uses the same central lifecycle. A candidate package must implement `evaluate_capability(input_data)`. Runtime executes immutable JSON cases in a separate Python process, records score, latency, errors, and output checks in the same evaluation store, then atomically updates both the installed package and Agent registry:
+
+```bash
+super-agent capabilities evolve \
+  --config agent.toml \
+  --slot run_controller \
+  --name careful \
+  --goal "reduce failed runs" \
+  --cases capability-cases.json
+```
 
 Freshness does not call a model. It is derived from runtime evaluation records using quality, recency, frequency, token cost, latency, reliability, replacement behavior, and sample confidence.
 

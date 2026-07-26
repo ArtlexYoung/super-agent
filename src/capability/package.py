@@ -18,6 +18,7 @@ from uuid import uuid4
 from capability.registry import (
     CapabilityDescriptor,
     CapabilityRegistry,
+    clean_capability_name,
     clean_capability_slot,
 )
 
@@ -72,7 +73,7 @@ class CapabilityPackageManager:
     def install_capability(self, source: str) -> InstalledCapability:
         with tempfile.TemporaryDirectory(prefix="super-agent-capability-install-") as tmp:
             staged = _stage_capability_source(source, Path(tmp))
-            prepared = _load_capability_directory(staged)
+            prepared = validate_capability_directory(staged)
             package_root = _capability_package_root(
                 self.root,
                 prepared.manifest.slot,
@@ -80,6 +81,13 @@ class CapabilityPackageManager:
             )
             if package_root.exists():
                 raise FileExistsError(f"capability is already installed: {prepared.descriptor.key}")
+            active_in_slot = sorted(package_root.parent.glob("*/active.json"))
+            if active_in_slot:
+                active = _read_capability_state(active_in_slot[0])
+                raise FileExistsError(
+                    "capability slot already has a local package: "
+                    f"{active['slot']}:{active['name']}"
+                )
             version_path = package_root / "versions" / prepared.manifest.version
             try:
                 _copy_capability_directory(staged, version_path)
@@ -105,16 +113,24 @@ class CapabilityPackageManager:
         package_root, state = self._read_installed_state(slot, name)
         with tempfile.TemporaryDirectory(prefix="super-agent-capability-update-") as tmp:
             staged = _stage_capability_source(source, Path(tmp))
-            prepared = _load_capability_directory(staged)
+            prepared = validate_capability_directory(staged)
             _require_same_capability_identity(prepared.manifest, state)
             current_version = str(state["active_version"])
             if _version_tuple(prepared.manifest.version) <= _version_tuple(current_version):
                 raise ValueError("updated capability version must be greater than the active version")
             version_path = package_root / "versions" / prepared.manifest.version
-            if version_path.exists():
-                raise FileExistsError(f"capability version is already installed: {prepared.manifest.version}")
+            copied_version = False
             try:
-                _copy_capability_directory(staged, version_path)
+                if version_path.exists():
+                    existing = validate_capability_directory(version_path)
+                    if existing.descriptor.content_sha256 != prepared.descriptor.content_sha256:
+                        raise FileExistsError(
+                            "capability version is already installed with different content: "
+                            f"{prepared.manifest.version}"
+                        )
+                else:
+                    _copy_capability_directory(staged, version_path)
+                    copied_version = True
                 previous_versions = _read_previous_versions(state) + [current_version]
                 _write_capability_state(
                     package_root,
@@ -124,7 +140,7 @@ class CapabilityPackageManager:
                     previous_versions,
                 )
             except Exception:
-                if version_path.exists():
+                if copied_version and version_path.exists():
                     shutil.rmtree(version_path)
                 raise
         return self.load_capability(prepared.manifest.slot, prepared.manifest.name)
@@ -160,7 +176,7 @@ class CapabilityPackageManager:
     def load_capability(self, slot: str, name: str) -> InstalledCapability:
         package_root, state = self._read_installed_state(slot, name)
         active_path = package_root / "versions" / str(state["active_version"])
-        loaded = _load_capability_directory(active_path)
+        loaded = validate_capability_directory(active_path)
         _require_same_capability_identity(loaded.manifest, state)
         return loaded
 
@@ -181,7 +197,7 @@ class CapabilityPackageManager:
         name: str,
     ) -> tuple[Path, dict[str, object]]:
         clean_slot = clean_capability_slot(slot)
-        clean_name = _clean_capability_name(name)
+        clean_name = clean_capability_name(name)
         package_root = _capability_package_root(self.root, clean_slot, clean_name)
         state_path = package_root / "active.json"
         if not state_path.is_file():
@@ -204,10 +220,10 @@ def _stage_capability_source(source: str, temporary_root: Path) -> Path:
     return staged
 
 
-def _load_capability_directory(path: Path) -> InstalledCapability:
+def validate_capability_directory(path: Path) -> InstalledCapability:
     _reject_capability_symlinks(path)
-    manifest = _read_capability_manifest(path)
-    content_sha256 = _calculate_capability_directory_sha256(path)
+    manifest = read_capability_package_manifest(path)
+    content_sha256 = calculate_capability_directory_sha256(path)
     implementation = _load_capability_implementation(manifest, content_sha256)
     implementation_name = f"{type(implementation).__module__}.{type(implementation).__qualname__}"
     if getattr(implementation, "name", None) != manifest.name:
@@ -235,7 +251,7 @@ def _load_capability_directory(path: Path) -> InstalledCapability:
     return InstalledCapability(manifest, descriptor, implementation)
 
 
-def _read_capability_manifest(path: Path) -> CapabilityPackageManifest:
+def read_capability_package_manifest(path: Path) -> CapabilityPackageManifest:
     manifest_path = path / "capability.toml"
     if not manifest_path.is_file():
         raise FileNotFoundError(f"capability package missing capability.toml: {path}")
@@ -249,7 +265,7 @@ def _read_capability_manifest(path: Path) -> CapabilityPackageManifest:
         raise ValueError("capability.toml fields do not match schema v1")
     if data["schema_version"] != CAPABILITY_PACKAGE_SCHEMA_VERSION:
         raise ValueError(f"unsupported capability package schema: {data['schema_version']}")
-    name = _clean_capability_name(_required_string(data, "name"))
+    name = clean_capability_name(_required_string(data, "name"))
     version = _clean_capability_version(_required_string(data, "version"))
     entry_file = _clean_entry_file(_required_string(data, "entry_file"))
     entry_class = _clean_entry_class(_required_string(data, "entry_class"))
@@ -347,7 +363,7 @@ def _read_capability_state(path: Path) -> dict[str, object]:
     if data["schema_version"] != CAPABILITY_STATE_SCHEMA_VERSION:
         raise ValueError(f"unsupported capability active state schema: {path}")
     clean_capability_slot(str(data["slot"]))
-    _clean_capability_name(str(data["name"]))
+    clean_capability_name(str(data["name"]))
     _clean_capability_version(str(data["active_version"]))
     _read_previous_versions(data)
     return data
@@ -374,9 +390,13 @@ def _require_same_capability_identity(
         )
 
 
-def _calculate_capability_directory_sha256(path: Path) -> str:
+def calculate_capability_directory_sha256(path: Path) -> str:
     digest = hashlib.sha256()
-    for file_path in sorted(item for item in path.rglob("*") if item.is_file()):
+    for file_path in sorted(
+        item
+        for item in path.rglob("*")
+        if item.is_file() and not _is_generated_capability_file(item, path)
+    ):
         if file_path.is_symlink():
             raise ValueError(f"capability package cannot contain symlinks: {file_path}")
         digest.update(file_path.relative_to(path).as_posix().encode("utf-8"))
@@ -386,6 +406,15 @@ def _calculate_capability_directory_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _is_generated_capability_file(path: Path, root: Path) -> bool:
+    relative = path.relative_to(root)
+    return (
+        ".git" in relative.parts
+        or "__pycache__" in relative.parts
+        or path.suffix == ".pyc"
+    )
+
+
 def _capability_package_root(root: Path, slot: str, name: str) -> Path:
     return root / quote(slot, safe="._-") / name
 
@@ -393,13 +422,6 @@ def _capability_package_root(root: Path, slot: str, name: str) -> Path:
 def _reject_capability_symlinks(path: Path) -> None:
     if path.is_symlink() or any(item.is_symlink() for item in path.rglob("*")):
         raise ValueError(f"capability package cannot contain symlinks: {path}")
-
-
-def _clean_capability_name(value: str) -> str:
-    name = value.strip().lower()
-    if re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", name) is None:
-        raise ValueError("capability name must use lowercase letters, numbers, '-' or '_'")
-    return name
 
 
 def _clean_capability_version(value: str) -> str:

@@ -4,16 +4,20 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 from dataclasses import asdict
 from pathlib import Path
 from typing import Callable
 from uuid import uuid4
 
-from runtime.evaluation import EvaluationRecord, evaluation_record_from_dict, evaluation_record_to_dict
+from runtime.evaluation import (
+    EvaluationRecord,
+    evaluation_record_from_dict,
+    evaluation_record_to_dict,
+)
 from runtime.identity import RunIdentity
 from runtime.models import Conversation, ConversationMessage, RunEvent, RunSnapshot
 from runtime.storage import StorageBackend, StorageEvent, StorageEventQuery
+from runtime.storage.files import create_scope_digest, write_bytes_atomically
 from runtime.storage.jsonl import JsonlStorage
 from runtime.views import (
     conversation_from_events,
@@ -46,9 +50,9 @@ class RuntimeStore:
         self.private_root = (
             self.local_root
             / "users"
-            / _scope_digest(self.user_id)
+            / create_scope_digest(self.user_id)
             / "agents"
-            / _scope_digest(self.agent_name)
+            / create_scope_digest(self.agent_name)
         )
         self.cache_root = self.private_root / "cache"
         self.disclosure_history_path = self.cache_root / "history.json"
@@ -321,9 +325,12 @@ class RuntimeStore:
             "runtime_lock": explanation["runtime_lock"],
             "events": explanation["events"],
         }
-        _write_bytes_atomically(
+        write_bytes_atomically(
             path,
-            (json.dumps(document, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode("utf-8"),
+            (
+                json.dumps(document, ensure_ascii=False, indent=2, sort_keys=True)
+                + "\n"
+            ).encode("utf-8"),
         )
         return path
 
@@ -360,6 +367,26 @@ class RuntimeStore:
             and (source_type is None or record.source.source_type == source_type)
         ]
 
+    def append_evolution_event(
+        self,
+        evolution_id: str,
+        event_type: str,
+        data: dict[str, object],
+    ) -> StorageEvent:
+        return self._append_scoped_event(
+            "evolution",
+            _required_text(evolution_id, "evolution_id"),
+            _required_text(event_type, "evolution event_type"),
+            dict(data),
+        )
+
+    def read_evolution_events(self, evolution_id: str | None = None) -> list[StorageEvent]:
+        selected_id = None if evolution_id is None else _required_text(
+            evolution_id,
+            "evolution_id",
+        )
+        return self._read_storage_events("evolution", selected_id)
+
     def write_disclosure_text(
         self,
         identity: RunIdentity | None,
@@ -389,7 +416,10 @@ class RuntimeStore:
             skill_key,
             stage,
             path,
-            (json.dumps(content, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode("utf-8"),
+            (
+                json.dumps(content, ensure_ascii=False, indent=2, sort_keys=True)
+                + "\n"
+            ).encode("utf-8"),
         )
 
     def read_disclosure_content(self, path: str | Path) -> str:
@@ -488,7 +518,7 @@ class RuntimeStore:
         digest = hashlib.sha256(content).hexdigest()
         cache_hit = path.is_file() and hashlib.sha256(path.read_bytes()).hexdigest() == digest
         if not cache_hit:
-            _write_bytes_atomically(path, content)
+            write_bytes_atomically(path, content)
         data: dict[str, object] = {
             "skill_key": skill_key,
             "stage": stage,
@@ -500,7 +530,7 @@ class RuntimeStore:
             self._append_scoped_event("disclosure", "management", "skill.disclosed", data)
         else:
             self.append_run_event(identity, "skill.disclosed", data)
-        _write_bytes_atomically(
+        write_bytes_atomically(
             self.disclosure_history_path,
             (
                 json.dumps(
@@ -576,18 +606,3 @@ def _optional_title(value: object) -> str:
 
 def _json_text(value: object) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
-
-
-def _scope_digest(value: str) -> str:
-    return hashlib.sha256(value.encode("utf-8")).hexdigest()[:20]
-
-
-def _write_bytes_atomically(path: Path, data: bytes) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.parent / f".{path.name}.{uuid4().hex}.tmp"
-    try:
-        temporary.write_bytes(data)
-        os.replace(temporary, path)
-    finally:
-        if temporary.exists():
-            temporary.unlink()

@@ -131,7 +131,7 @@ discover -> disclose -> execute -> observe -> evaluate -> evolve
 
 `RuntimeSession` 是一次运行唯一的共享上下文，集中保存一个 `RunIdentity`、一个中心化 `RuntimeStore`、唯一 Skill 索引、渐进披露会话，以及真正影响结果的 Skill 和 Capability。Capability 只消费该会话，不再分别创建存储或重复扫描 Skill 目录。
 
-所有可执行机制都通过唯一的 `CapabilityRegistry` 注册。Runtime 会锁定名称、版本、实现类、精确内容哈希、依赖、权限和更新归属。内置 Capability 不需要设置；本地 Capability 包可以安装、更新和回滚，再由 Python 代码显式选择，不需要增加 Agent TOML 配置。
+所有可执行机制都通过唯一的 `CapabilityRegistry` 注册。Runtime 会锁定名称、版本、实现类、精确内容哈希、依赖、权限和更新归属。内置 Capability 不需要设置；本地 Capability 包可以安装、更新和回滚，并在使用同一 Agent 配置时自动恢复激活，不需要增加 TOML 配置。
 
 ## 自进化
 
@@ -157,6 +157,17 @@ super-agent skills evolve \
 ```
 
 候选以完整 Skill 目录为单位，因此 prompt、memory、workflow、MCP 和自定义 Skill 共用同一套生命周期。模型只返回明确的完整文件写入与删除操作；Runtime 会在评价前校验路径、身份、权限和 Capability 专属配置。候选不会直接覆盖正在使用的 Skill，只有评价通过且父版本没有变化时才能晋升，每个已晋升版本都可以回滚。
+
+可执行的 Capability 代码也使用同一个中心生命周期。候选包必须实现 `evaluate_capability(input_data)`。Runtime 会在独立 Python 进程中运行不可变 JSON case，把分数、延迟、异常和输出检查写入同一个评价存储，然后原子更新已安装包与 Agent 注册表：
+
+```bash
+super-agent capabilities evolve \
+  --config agent.toml \
+  --slot run_controller \
+  --name careful \
+  --goal "减少运行失败" \
+  --cases capability-cases.json
+```
 
 保鲜度计算不调用大模型，而是根据质量、距离上次调用时间、使用频率、token 成本、延迟、可靠性、同功能替代行为和样本置信度确定性派生。
 

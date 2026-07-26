@@ -156,6 +156,33 @@ class CapabilityPackageTests(unittest.TestCase):
 
             self.assertEqual([], agent.list_installed_capabilities())
 
+    def test_only_one_local_package_can_occupy_a_capability_slot(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            first = _write_run_controller_package(root / "first", "0.1.0", "first")
+            second = _write_run_controller_package(root / "second", "0.1.0", "second")
+            second_manifest = second / "capability.toml"
+            second_manifest.write_text(
+                second_manifest.read_text(encoding="utf-8").replace(
+                    'name = "fixed"',
+                    'name = "other"',
+                ),
+                encoding="utf-8",
+            )
+            second_code = second / "capability.py"
+            second_code.write_text(
+                second_code.read_text(encoding="utf-8").replace(
+                    'name = "fixed"',
+                    'name = "other"',
+                ),
+                encoding="utf-8",
+            )
+            agent = Agent(AgentConfig.create_default(root))
+            agent.install_capability(str(first))
+
+            with self.assertRaisesRegex(FileExistsError, "slot already has"):
+                agent.install_capability(str(second))
+
 
 def _write_run_controller_package(
     path: Path,

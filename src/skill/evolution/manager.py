@@ -3,13 +3,16 @@ from __future__ import annotations
 import json
 import os
 import shutil
-from dataclasses import asdict, dataclass
-from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
 from provider.chat import ChatProvider
 from runtime.config import AgentConfig
+from runtime.evolution import (
+    EvolutionCandidateProposal,
+    EvolutionLifecycle,
+    EvolutionTarget,
+)
 from runtime.store import RuntimeStore
 from skill.evolution.candidate import (
     SkillCandidate,
@@ -22,33 +25,24 @@ from skill.evolution.candidate import (
 )
 from skill.evolution.evaluation import (
     EvaluationCase,
-    EvaluationCaseResult,
     EvaluationReport,
     EvolutionResult,
     SkillCandidateEvaluationRequest,
     create_report_id,
     evaluate_candidate,
 )
+from skill.evolution.artifacts import (
+    SkillHistoryRevision,
+    read_skill_evaluation_report,
+    skill_evaluation_report_to_dict,
+    skill_history_revision_to_dict,
+    utc_now_text,
+    write_json_atomically,
+    write_json_exclusive,
+)
+from skill.evolution.validators import validate_skill_candidate_directory
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.manifest import SkillManifest, calculate_skill_directory_sha256
-
-
-@dataclass(frozen=True)
-class SkillHistoryRevision:
-    revision_id: str
-    capability: str
-    skill_name: str
-    version: str
-    action: str
-    created_at: str
-    previous_revision_id: str
-    sha256: str
-    skill_path: Path
-    metadata_path: Path
-
-    @property
-    def key(self) -> str:
-        return f"{self.capability}:{self.skill_name}"
 
 
 class SkillEvolutionManager:
@@ -73,6 +67,7 @@ class SkillEvolutionManager:
         self.skill_root = config.paths.skills[0]
         self.evolution_root = store.private_root / "evolution"
         self.store = store
+        self.lifecycle = EvolutionLifecycle(store)
         self.provider = provider
         self.model = config.model.model
         self.minimum_score = minimum_score
@@ -84,7 +79,7 @@ class SkillEvolutionManager:
         *,
         capability: str | None = None,
     ) -> SkillCandidate:
-        return create_candidate(
+        candidate = create_candidate(
             SkillCandidateRequest(
                 skill_disclosure=self.skill_disclosure,
                 candidate_root=self.evolution_root / "candidates",
@@ -95,6 +90,30 @@ class SkillEvolutionManager:
                 capability=capability,
             )
         )
+        try:
+            manifest = validate_skill_candidate_directory(
+                candidate.skill_path,
+                self.store,
+                candidate.capability,
+                candidate.name,
+            )
+            parent = self._candidate_parent_target(candidate)
+            self.lifecycle.record_candidate_created(
+                EvolutionCandidateProposal(
+                    candidate_id=candidate.candidate_id,
+                    target=_skill_evolution_target(
+                        manifest,
+                        candidate.candidate_sha256,
+                    ),
+                    parent=parent,
+                    goal=candidate.goal,
+                )
+            )
+        except Exception:
+            if candidate.metadata_path.parent.exists():
+                shutil.rmtree(candidate.metadata_path.parent)
+            raise
+        return candidate
 
     def evaluate_skill_candidate(
         self,
@@ -120,18 +139,29 @@ class SkillEvolutionManager:
             ),
             self.provider,
         )
-        _write_json_exclusive(report_path, _report_to_dict(report))
+        write_json_exclusive(report_path, skill_evaluation_report_to_dict(report))
+        self.lifecycle.record_candidate_evaluated(
+            candidate.candidate_id,
+            report.score,
+            report.passed,
+            report.report_id,
+        )
         return report
 
     def promote_skill_candidate(self, candidate_id: str) -> SkillManifest:
         candidate = self._read_candidate(candidate_id)
         report = self._read_latest_report(candidate.candidate_id)
-        if not report.passed:
-            raise ValueError(f"skill candidate did not pass evaluation: {candidate.candidate_id}")
         promotion_path = self.evolution_root / "promotions" / f"{candidate.candidate_id}.json"
         if promotion_path.exists():
             raise ValueError(f"skill candidate was already promoted: {candidate.candidate_id}")
-        current = self._verify_candidate_parent(candidate)
+        current = self._read_active_manifest(candidate.name, candidate.capability)
+        current_target = (
+            None if current is None else _skill_evolution_target(current)
+        )
+        self.lifecycle.require_candidate_can_promote(
+            candidate.candidate_id,
+            current_target,
+        )
         active_state = self._read_active_state(candidate.capability, candidate.name)
         previous_revision_id = str(active_state.get("rollback_revision_id", ""))
         rollback_revision = self._snapshot_current_skill(
@@ -148,7 +178,7 @@ class SkillEvolutionManager:
         promoted = self._read_active_manifest(candidate.name, candidate.capability)
         if promoted is None:
             raise RuntimeError(f"promoted skill not found after replacement: {candidate.name}")
-        _write_json_exclusive(
+        write_json_exclusive(
             promotion_path,
             {
                 "schema_version": 2,
@@ -158,7 +188,7 @@ class SkillEvolutionManager:
                 "skill_name": candidate.name,
                 "version": promoted.version,
                 "report_id": report.report_id,
-                "promoted_at": _utc_now_text(),
+                "promoted_at": utc_now_text(),
             },
         )
         self._write_active_state(
@@ -166,6 +196,11 @@ class SkillEvolutionManager:
             candidate.name,
             candidate_id=candidate.candidate_id,
             rollback_revision_id="" if rollback_revision is None else rollback_revision.revision_id,
+        )
+        self.lifecycle.record_candidate_promoted(
+            candidate.candidate_id,
+            _skill_evolution_target(promoted),
+            current_target,
         )
         return promoted
 
@@ -189,6 +224,7 @@ class SkillEvolutionManager:
             skill_name,
             revision_id,
         )
+        previous_target = _skill_evolution_target(current)
         self._snapshot_current_skill(
             current,
             action="rollback_backup",
@@ -205,7 +241,7 @@ class SkillEvolutionManager:
             rollback_revision_id=revision.previous_revision_id,
         )
         rollback_path = self.evolution_root / "rollbacks" / f"rollback-{uuid4().hex}.json"
-        _write_json_exclusive(
+        write_json_exclusive(
             rollback_path,
             {
                 "schema_version": 2,
@@ -214,8 +250,12 @@ class SkillEvolutionManager:
                 "skill_name": skill_name,
                 "restored_revision_id": revision.revision_id,
                 "restored_version": restored.version,
-                "rolled_back_at": _utc_now_text(),
+                "rolled_back_at": utc_now_text(),
             },
+        )
+        self.lifecycle.record_target_rolled_back(
+            previous_target,
+            _skill_evolution_target(restored),
         )
         return restored
 
@@ -260,7 +300,10 @@ class SkillEvolutionManager:
         verify_candidate_files(candidate)
         return candidate
 
-    def _verify_candidate_parent(self, candidate: SkillCandidate) -> SkillManifest | None:
+    def _candidate_parent_target(
+        self,
+        candidate: SkillCandidate,
+    ) -> EvolutionTarget | None:
         current = self._read_active_manifest(candidate.name, candidate.capability)
         if not candidate.parent_sha256:
             if current is not None:
@@ -272,7 +315,7 @@ class SkillEvolutionManager:
             raise PermissionError(f"skill does not allow agent evolution: {candidate.key}")
         if calculate_skill_directory_sha256(current.path) != candidate.parent_sha256:
             raise ValueError(f"active skill changed after candidate proposal: {candidate.key}")
-        return current
+        return _skill_evolution_target(current, candidate.parent_sha256)
 
     def _read_active_manifest(
         self,
@@ -326,13 +369,16 @@ class SkillEvolutionManager:
             skill_name=manifest.name,
             version=manifest.version,
             action=action,
-            created_at=_utc_now_text(),
+            created_at=utc_now_text(),
             previous_revision_id=previous_revision_id,
             sha256=calculate_skill_directory_sha256(skill_path),
             skill_path=final_path / "skill",
             metadata_path=final_path / "revision.json",
         )
-        _write_json_exclusive(staging_path / "revision.json", _revision_to_dict(revision))
+        write_json_exclusive(
+            staging_path / "revision.json",
+            skill_history_revision_to_dict(revision),
+        )
         final_path.parent.mkdir(parents=True, exist_ok=True)
         os.replace(staging_path, final_path)
         return revision
@@ -395,7 +441,7 @@ class SkillEvolutionManager:
     def _read_latest_report(self, candidate_id: str) -> EvaluationReport:
         root = self.evolution_root / "evaluations" / candidate_id
         reports = (
-            [_read_report(path) for path in root.glob("report-*.json")]
+            [read_skill_evaluation_report(path) for path in root.glob("report-*.json")]
             if root.is_dir()
             else []
         )
@@ -440,7 +486,7 @@ class SkillEvolutionManager:
         rollback_revision_id: str,
     ) -> None:
         path = self.evolution_root / "active" / capability / f"{name}.json"
-        _write_json_atomically(
+        write_json_atomically(
             path,
             {
                 "schema_version": 2,
@@ -449,9 +495,28 @@ class SkillEvolutionManager:
                 "skill_name": name,
                 "candidate_id": candidate_id,
                 "rollback_revision_id": rollback_revision_id,
-                "updated_at": _utc_now_text(),
+                "updated_at": utc_now_text(),
             },
         )
+
+
+def _skill_evolution_target(
+    manifest: SkillManifest,
+    content_sha256: str | None = None,
+) -> EvolutionTarget:
+    return EvolutionTarget(
+        target_type="skill",
+        key=f"{manifest.capability}:{manifest.name}",
+        name=manifest.name,
+        version=manifest.version,
+        content_sha256=(
+            content_sha256
+            if content_sha256 is not None
+            else calculate_skill_directory_sha256(manifest.path)
+        ),
+        agent_created=manifest.agent_created,
+        agent_can_update=manifest.agent_can_update,
+    )
 
 
 def _replace_skill_directory(source: Path, target: Path) -> None:
@@ -475,72 +540,3 @@ def _replace_skill_directory(source: Path, target: Path) -> None:
             shutil.rmtree(staging)
     if backup.exists():
         shutil.rmtree(backup)
-
-
-def _write_json_exclusive(path: Path, data: dict[str, object]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("x", encoding="utf-8") as file:
-        json.dump(data, file, ensure_ascii=False, indent=2, sort_keys=True)
-        file.write("\n")
-
-
-def _write_json_atomically(path: Path, data: dict[str, object]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.parent / f".{path.name}.{uuid4().hex}.tmp"
-    try:
-        temporary.write_text(
-            json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
-        )
-        os.replace(temporary, path)
-    finally:
-        if temporary.exists():
-            temporary.unlink()
-
-
-def _report_to_dict(report: EvaluationReport) -> dict[str, object]:
-    return {
-        "schema_version": 1,
-        "report_id": report.report_id,
-        "candidate_id": report.candidate_id,
-        "score": report.score,
-        "passed": report.passed,
-        "minimum_score": report.minimum_score,
-        "created_at": report.created_at,
-        "case_results": [asdict(item) for item in report.case_results],
-    }
-
-
-def _read_report(path: Path) -> EvaluationReport:
-    data = json.loads(path.read_text(encoding="utf-8"))
-    raw_results = data.get("case_results", [])
-    results = [EvaluationCaseResult(**item) for item in raw_results if isinstance(item, dict)]
-    return EvaluationReport(
-        report_id=str(data["report_id"]),
-        candidate_id=str(data["candidate_id"]),
-        score=float(data["score"]),
-        passed=bool(data["passed"]),
-        minimum_score=float(data["minimum_score"]),
-        created_at=str(data["created_at"]),
-        case_results=results,
-        path=path,
-    )
-
-
-def _revision_to_dict(revision: SkillHistoryRevision) -> dict[str, object]:
-    return {
-        "schema_version": 2,
-        "revision_id": revision.revision_id,
-        "skill_key": revision.key,
-        "capability": revision.capability,
-        "skill_name": revision.skill_name,
-        "version": revision.version,
-        "action": revision.action,
-        "created_at": revision.created_at,
-        "previous_revision_id": revision.previous_revision_id,
-        "sha256": revision.sha256,
-    }
-
-
-def _utc_now_text() -> str:
-    return datetime.now(UTC).isoformat().replace("+00:00", "Z")

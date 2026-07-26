@@ -93,9 +93,13 @@ super-agent capabilities install --source ./careful-controller
 super-agent capabilities update --slot run_controller --name careful --source ./careful-v2
 super-agent capabilities rollback --slot run_controller --name careful
 super-agent capabilities remove --slot run_controller --name careful
+super-agent capabilities propose --slot run_controller --name careful --goal "reduce failures"
+super-agent capabilities evaluate --candidate-id <id> --cases capability-cases.json
+super-agent capabilities promote --candidate-id <id>
+super-agent capabilities evolve --slot run_controller --name careful --goal "reduce failures" --cases capability-cases.json
 ```
 
-Use `--config agent.toml` only when package storage should follow a specific Agent configuration. Commands manage local versions; executable selection remains explicit Python code through `Agent.load_installed_capability(...)`.
+Use `--config agent.toml` when package storage should follow a specific Agent configuration. Installed versions are validated and automatically restored by later default Agent instances using the same storage path. Evolution commands also accept `--user-id`; candidates and evidence are isolated by user and Agent.
 
 ## Memory
 
