@@ -77,7 +77,7 @@ super-agent runs explain --config agent.toml --run-id <run-id>
 super-agent runs export --config agent.toml --run-id <run-id> --output run.json
 ```
 
-Explain and export rebuild the run view and verify the runtime-lock hash before returning its content. `runs explain` additionally projects scheduling reasons, ordered model calls, latency, estimated token and cost metrics, learned routing evidence, relevant Skill freshness, and related automatic Skill evolutions. Its `--output json` schema is the same source used by the macOS task tree. A child Agent run can be located by `run_id` across Agent scopes only within the requested user and selected backend.
+Explain and export rebuild the run view and verify the runtime-lock hash before returning its content. `runs explain` additionally projects scheduling reasons, ordered model calls, latency, estimated token and cost metrics, learned routing evidence, relevant Skill freshness, and related automatic Skill evolutions. Its `--output json` schema is the same source used by the Web task tree. A child Agent run can be located by `run_id` across Agent scopes only within the requested user and selected backend.
 
 ## Evidence-Learned Model Routing
 

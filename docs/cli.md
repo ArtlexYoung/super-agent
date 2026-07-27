@@ -21,7 +21,7 @@ super-agent serve --config agent.toml --user-id alice
 super-agent serve --host 127.0.0.1 --port 9000 --allow-origin http://localhost:5173
 ```
 
-The default endpoint is `http://127.0.0.1:8765/ag-ui`; `GET /health` provides a dependency-free health check. The server fixes one Runtime user identity at startup and does not trust `forwardedProps` for authorization. It has no built-in authentication, so non-local bindings must be protected by an authenticated reverse proxy. See [AG-UI Bridge](ag-ui.md).
+Open `http://127.0.0.1:8765/` for the built-in Web client. The live protocol endpoint is `POST /ag-ui`, the management routes are under `/api`, and `GET /health` provides a dependency-free health check. The server fixes one Runtime user identity at startup and does not trust `forwardedProps` for authorization. It has no built-in authentication, so non-local bindings must be protected by an authenticated reverse proxy. See [Web Client](web.md) and [AG-UI Bridge](ag-ui.md).
 
 ## Conversation Management
 

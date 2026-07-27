@@ -22,7 +22,8 @@ The project is currently experimental (`0.0.x`). It favors a small, inspectable 
 - **Secure defaults**: internal memory and owned Skill evolution stay automatic; external execution and unknown network actions require approval.
 - **Automatic evolution loop**: Runtime turns real evidence into candidates, evaluates and promotes them, then monitors and rolls back regressions.
 - **Memory that remembers and forgets**: recall also organizes duplicate, outdated, and low-value memory through validated, traceable events.
-- **AG-UI ready**: one dependency-free HTTP/SSE bridge streams the same canonical Runtime events to web clients.
+- **Built-in Web client**: one command serves Chinese conversation, configuration, memory, Skill, model, and run views over the same Runtime state.
+- **AG-UI ready**: the dependency-free HTTP/SSE bridge streams canonical Runtime events without creating a second execution path.
 - **Code-composed Agents**: create Agents independently and attach them with `Agent.add_subagent(...)`.
 - **Standard-library runtime**: the Python core has no third-party runtime dependencies.
 
@@ -61,13 +62,13 @@ agent.run("Remember that my project uses Python", conversation_id=conversation.c
 result = agent.run("Which language does it use?", conversation_id=conversation.conversation_id)
 ```
 
-Expose the same Agent to an AG-UI client:
+Open the built-in Web client:
 
 ```bash
 super-agent serve
 ```
 
-The local endpoint is `http://127.0.0.1:8765/ag-ui`. It accepts the official `RunAgentInput` shape and streams official AG-UI lifecycle, text, tool, step, and custom events. See [AG-UI Bridge](docs/ag-ui.md).
+Visit `http://127.0.0.1:8765/`. The same server exposes the live AG-UI endpoint at `/ag-ui`; the Web client uses Runtime-backed conversations and configuration rather than browser-owned copies. See [Web Client](docs/web.md) and [AG-UI Bridge](docs/ag-ui.md).
 
 ## Use a Real Model
 
@@ -107,7 +108,7 @@ default = true
 
 Model Skills use the same central index, validation, evidence, candidate, promotion, and rollback path as every other Skill. See [Configuration](docs/configuration.md).
 
-The macOS app provides a Chinese visual editor for this model Skill format. It writes model metadata to the project Skill directory and stores actual API keys only in macOS Keychain.
+The Web client provides a Chinese visual editor for model Skills. It writes model metadata to the project Skill directory and stores only the environment-variable name for a credential, never the credential value.
 
 ## Create a Project
 
@@ -189,7 +190,7 @@ super-agent runs feedback --run-id <run-id> --score 0.25 --reason "Missed the co
 
 Within a stored conversation, deterministic correction and repeated-request signals also lower the previous task's quality. Explicit feedback always overrides an implicit signal and no model call is needed to classify either one.
 
-Inspect the same central evidence from the CLI or the task tree in the macOS app:
+Inspect the same central evidence from the CLI or the task tree in the Web client:
 
 ```bash
 super-agent runs explain --config agent.toml --run-id <run-id>
@@ -360,8 +361,8 @@ The runtime lock is stored as a run event. It captures the selected model profil
 - [Reproducible v0.0.34 Experiment](docs/experiments/v0.0.34.md)
 - [CLI Reference](docs/cli.md)
 - [Configuration](docs/configuration.md)
+- [Web Client](docs/web.md)
 - [AG-UI Bridge](docs/ag-ui.md)
-- [macOS App](docs/macos.md)
 - [Roadmap](docs/roadmap.md)
 
 ## Development
@@ -372,11 +373,13 @@ Run the Python test suite:
 PYTHONPATH=src python3 -m unittest discover -s tests -v
 ```
 
-Check Python imports and the Swift frontend:
+Check Python imports and build the optional Web client:
 
 ```bash
 PYTHONPATH=src python3 -m compileall -q src
-swift build --package-path src/frontend/mac
+cd web
+pnpm lint
+pnpm build
 ```
 
 The public Python API is exported from `super_agent`. Internal modules intentionally have no compatibility facades during the `0.0.x` series.

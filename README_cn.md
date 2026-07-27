@@ -22,7 +22,8 @@ Super Agent 是一个**简单、轻量、自进化、Skill 优先的 Agent 运�
 - **默认安全**：内部记忆和自有 Skill 进化保持自动化；外部执行和未知网络动作需要批准。
 - **自动进化闭环**：Runtime 根据真实证据创建候选，自动评价和晋升，并持续监控和回滚退化版本。
 - **能记也能忘的记忆**：回忆时同步整理重复、过时和低价值记忆，所有变化都使用可验证、可追溯的事件。
-- **原生 AG-UI 接入**：零 Python 依赖的 HTTP/SSE 桥接层将同一份 Runtime 标准事件流发送给 Web 客户端。
+- **内置 Web 客户端**：一条命令即可使用中文对话、配置、记忆、Skill、模型和运行视图，所有数据仍来自同一个 Runtime。
+- **原生 AG-UI 接入**：零 Python 依赖的 HTTP/SSE 桥接层直接发送 Runtime 标准事件，不建立第二条执行路径。
 - **代码式多 Agent**：每个 Agent 独立创建，再通过 `Agent.add_subagent(...)` 组合。
 - **标准库运行时**：Python 核心没有第三方运行依赖。
 
@@ -61,13 +62,13 @@ agent.run("记住我的项目使用 Python", conversation_id=conversation.conver
 result = agent.run("项目使用什么语言？", conversation_id=conversation.conversation_id)
 ```
 
-将同一个 Agent 暴露给 AG-UI 客户端：
+打开内置 Web 客户端：
 
 ```bash
 super-agent serve
 ```
 
-默认本地端点为 `http://127.0.0.1:8765/ag-ui`。它接收官方 `RunAgentInput` 结构，并流式返回 AG-UI 的运行、文本、工具、步骤和自定义事件。详见 [AG-UI 桥接](docs/ag-ui.md)。
+浏览器访问 `http://127.0.0.1:8765/`。同一服务的 `/ag-ui` 是实时事件端点；Web 客户端直接使用 Runtime 持久化的会话和配置，不在浏览器维护另一份状态。详见 [Web 客户端](docs/web.md)和 [AG-UI 桥接](docs/ag-ui.md)。
 
 ## 使用真实模型
 
@@ -107,7 +108,7 @@ default = true
 
 model Skill 与其他 Skill 共用中心索引、校验、证据、候选、晋升和回滚流程。详见 [配置说明](docs/configuration.md)。
 
-macOS 应用提供中文可视化 model Skill 编辑器。模型元数据会写入项目 Skill 目录，真实 API Key 只保存在 macOS 钥匙串中。
+Web 客户端提供中文可视化 model Skill 编辑器。模型元数据写入项目 Skill 目录，凭据只配置环境变量名，真实 API Key 不会写入浏览器状态、TOML 或运行记录。
 
 ## 初始化项目
 
@@ -189,7 +190,7 @@ super-agent runs feedback --run-id <run-id> --score 0.25 --reason "遗漏了结�
 
 在持久化会话中，明确纠正或重复同一请求也会确定性地降低上一轮质量。显式反馈始终覆盖隐式信号，两种反馈分类都不调用大模型。
 
-可以通过 CLI 或 macOS 任务树查看同一份中心证据：
+可以通过 CLI 或 Web 客户端的任务树查看同一份中心证据：
 
 ```bash
 super-agent runs explain --config agent.toml --run-id <run-id>
@@ -338,8 +339,8 @@ super-agent storage copy \
 - [可复现的 v0.0.34 实验](docs/experiments/v0.0.34.md)
 - [CLI 命令](docs/cli.md)
 - [配置说明](docs/configuration.md)
+- [Web 客户端](docs/web.md)
 - [AG-UI 桥接](docs/ag-ui.md)
-- [macOS 应用](docs/macos.md)
 - [后续路线](docs/roadmap.md)
 
 ## 开发验证
@@ -350,11 +351,13 @@ super-agent storage copy \
 PYTHONPATH=src python3 -m unittest discover -s tests -v
 ```
 
-检查 Python 导入和 Swift 前端：
+检查 Python 导入并构建可选 Web 客户端：
 
 ```bash
 PYTHONPATH=src python3 -m compileall -q src
-swift build --package-path src/frontend/mac
+cd web
+pnpm lint
+pnpm build
 ```
 
 公开 Python API 统一从 `super_agent` 导入。`0.0.x` 阶段内部模块不会保留兼容薄壳。

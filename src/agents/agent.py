@@ -372,9 +372,9 @@ class Agent:
         user_id: str,
     ) -> None:
         if manifest.capability == "model":
-            self._reload_model_profiles(user_id)
+            self.reload_model_profiles(user_id)
 
-    def _reload_model_profiles(self, user_id: str) -> None:
+    def reload_model_profiles(self, user_id: str = LOCAL_USER_ID) -> None:
         disclosure = create_progressive_skill_disclosure(
             self.config,
             store=self.runtime.create_store(user_id),
@@ -393,6 +393,17 @@ class Agent:
                 skill_change_listener=self._activate_changed_skill,
             ),
         )
+
+    def reload_configuration(
+        self,
+        config: AgentConfig,
+        user_id: str = LOCAL_USER_ID,
+    ) -> None:
+        if config.storage != self.config.storage:
+            raise ValueError("changing storage requires restarting the Agent")
+        self.config = config
+        self.safety_policy = SafetyPolicy.from_name(config.agent.safety)
+        self.reload_model_profiles(user_id)
 
     def _make_next_subagent_name(self) -> str:
         index = 1

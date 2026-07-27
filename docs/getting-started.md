@@ -6,7 +6,7 @@ Super Agent is designed to run before you create any configuration.
 
 - Python 3.11 or newer.
 - No third-party Python runtime dependencies.
-- Swift 5.9 and macOS 13 or newer only when building the desktop app.
+- Node.js 20 or newer and pnpm only when developing the optional Web client.
 
 ## Install From the Repository
 
@@ -49,7 +49,15 @@ super-agent run "Explain this repository"
 
 The CLI reports environment-variable names but never prints secret values.
 
-For a persistent, described model profile, add `skills/model/<name>/skill.toml` using the example in [Configuration](configuration.md). Model Skills take priority over ephemeral environment profiles. The macOS app can create and edit these Skills visually while keeping real API keys in Keychain.
+For a persistent, described model profile, add `skills/model/<name>/skill.toml` using the example in [Configuration](configuration.md). Model Skills take priority over ephemeral environment profiles. The Web client can create and edit these Skills visually; it stores only credential environment-variable names.
+
+## Open the Web Client
+
+```bash
+super-agent serve
+```
+
+Open `http://127.0.0.1:8765/`. The same standard-library server hosts the production React build, the Runtime management API, and the AG-UI stream. No Node.js process is needed to use the packaged client.
 
 ## Optional SQLite Storage
 

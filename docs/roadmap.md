@@ -252,7 +252,7 @@ Status: implemented.
 
 ## v0.0.52: React Web Client
 
-Status: planned.
+Status: implemented.
 
 - Replace the macOS-specific client with a Vite, React, TypeScript, and shadcn/ui app.
 - Provide conversations, streamed chat, configuration, Skill state, memory, and run trees.

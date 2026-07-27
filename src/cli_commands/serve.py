@@ -38,7 +38,9 @@ def run_serve_command(args: argparse.Namespace) -> int:
         allowed_origins=origins,
     )
     host, port = server.server_address[:2]
-    print(f"Super Agent AG-UI server listening at http://{host}:{port}/ag-ui")
+    base_url = f"http://{host}:{port}"
+    print(f"Super Agent Web UI: {base_url}/")
+    print(f"Super Agent AG-UI endpoint: {base_url}/ag-ui")
     if args.host not in {"127.0.0.1", "::1", "localhost"}:
         print("Warning: this server has no authentication; protect non-local bindings.")
     try:

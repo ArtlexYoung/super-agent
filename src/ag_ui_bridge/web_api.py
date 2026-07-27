@@ -1,0 +1,273 @@
+"""Small JSON management API backed by the same Agent and Runtime state."""
+
+from __future__ import annotations
+
+from dataclasses import asdict, dataclass, replace
+from http import HTTPStatus
+from urllib.parse import unquote
+
+from agents.agent import Agent
+from ag_ui_bridge.configuration import (
+    AgentConfigurationInput,
+    agent_configuration_to_dict,
+    update_agent_configuration,
+)
+from capability.defaults import create_progressive_skill_disclosure
+from runtime.config import AgentConfig
+from runtime.insights import explain_run_with_insight
+from runtime.safety import ActionEffect, ActionRequest
+from skill.disclosure import skill_index_to_dict
+from skill.kinds.model import model_profile_to_dict, read_model_profiles
+from skill.kinds.model_management import ModelSkillManager, model_skill_input_from_dict
+
+
+@dataclass(frozen=True)
+class WebAPIResponse:
+    status: HTTPStatus
+    body: object
+
+
+class WebAPI:
+    def __init__(self, agent: Agent, user_id: str) -> None:
+        self.agent = agent
+        self.user_id = user_id
+
+    def handle(self, method: str, path: str, body: object | None = None) -> WebAPIResponse:
+        if method == "GET" and path == "/api/bootstrap":
+            return _ok(self._read_bootstrap())
+        parts = [unquote(part) for part in path.split("/") if part]
+        if parts[:2] == ["api", "conversations"]:
+            return self._handle_conversations(method, parts[2:], body)
+        if method == "GET" and parts[:2] == ["api", "runs"] and len(parts) == 3:
+            return _ok(self._read_run(parts[2]))
+        if method == "DELETE" and parts[:2] == ["api", "memory"] and len(parts) == 3:
+            self._forget_memory(parts[2])
+            return _ok(self._read_bootstrap())
+        if method == "PUT" and path == "/api/config":
+            self._update_configuration(body)
+            return _ok(self._read_bootstrap())
+        if method == "POST" and path == "/api/models":
+            self._save_model(body)
+            return _ok(self._read_bootstrap(), HTTPStatus.CREATED)
+        if method == "DELETE" and parts[:2] == ["api", "models"] and len(parts) == 3:
+            self._remove_model(parts[2])
+            return _ok(self._read_bootstrap())
+        return WebAPIResponse(HTTPStatus.NOT_FOUND, {"error": "route not found"})
+
+    def _handle_conversations(
+        self,
+        method: str,
+        parts: list[str],
+        body: object | None,
+    ) -> WebAPIResponse:
+        if method == "POST" and not parts:
+            title = _optional_body_text(body, "title")
+            conversation = self.agent.create_conversation(title, user_id=self.user_id)
+            return _ok(asdict(conversation), HTTPStatus.CREATED)
+        if len(parts) == 1 and method == "GET":
+            conversation = self.agent.read_conversation(
+                parts[0],
+                user_id=self.user_id,
+            )
+            return _ok(asdict(conversation))
+        if len(parts) == 1 and method == "PATCH":
+            title = _required_body_text(body, "title")
+            conversation = self.agent.rename_conversation(
+                parts[0],
+                title,
+                user_id=self.user_id,
+            )
+            return _ok(asdict(conversation))
+        if len(parts) == 1 and method == "DELETE":
+            self.agent.delete_conversation(parts[0], user_id=self.user_id)
+            return _ok({"conversation_id": parts[0], "deleted": True})
+        if len(parts) == 2 and parts[1] == "clear" and method == "POST":
+            return _ok(asdict(self.agent.clear_conversation(parts[0], user_id=self.user_id)))
+        return WebAPIResponse(HTTPStatus.NOT_FOUND, {"error": "route not found"})
+
+    def _read_bootstrap(self) -> dict[str, object]:
+        store = self.agent.runtime.create_store(self.user_id)
+        config = self.agent.config
+        all_skills_config = replace(
+            config,
+            agent=replace(config.agent, disable_names=[]),
+        )
+        disclosure = create_progressive_skill_disclosure(
+            all_skills_config,
+            store=store,
+        )
+        index = disclosure.prepare_skill_index()
+        models = read_model_profiles(disclosure, index)
+        return {
+            "schema_version": 1,
+            "agent": agent_configuration_to_dict(config),
+            "storage": {
+                "backend": config.storage.backend,
+                "path": str(config.storage.path),
+            },
+            "configuration_path": str(config.source),
+            "skills": _web_skill_list(skill_index_to_dict(index), config),
+            "models": [model_profile_to_dict(profile) for profile in models],
+            "conversations": [
+                asdict(item) for item in self.agent.list_conversations(self.user_id)
+            ],
+            "runs": [asdict(item) for item in store.list_runs(50)],
+            "memory": store.list_memory_items(),
+            "subagents": _subagent_tree(
+                self.agent,
+                self.user_id,
+                set(),
+                [config.agent.name],
+            ),
+        }
+
+    def _read_run(self, run_id: str) -> dict[str, object]:
+        agent = _find_agent_for_run(self.agent, self.user_id, run_id, set())
+        return explain_run_with_insight(agent.runtime.create_store(self.user_id), run_id)
+
+    def _forget_memory(self, item_id: str) -> None:
+        store = self.agent.runtime.create_store(self.user_id)
+        self.agent.runtime.execute_management_action(
+            self.user_id,
+            ActionRequest.create(
+                "user:web-memory",
+                f"memory:active:{item_id}",
+                (ActionEffect.DELETE,),
+            ),
+            lambda: store.forget_memory_items([item_id], "forgotten from web interface"),
+        )
+
+    def _update_configuration(self, body: object | None) -> None:
+        request = AgentConfigurationInput.from_dict(body)
+        updated = self.agent.runtime.execute_management_action(
+            self.user_id,
+            ActionRequest.create(
+                "user:web-configuration",
+                "config:agent",
+                (ActionEffect.UPDATE,),
+            ),
+            lambda: update_agent_configuration(self.agent.config, request),
+        )
+        self.agent.reload_configuration(updated, self.user_id)
+
+    def _save_model(self, body: object | None) -> None:
+        manager = _model_manager(self.agent, self.user_id)
+        manager.save_model_skill(model_skill_input_from_dict(body))
+        self.agent.reload_model_profiles(self.user_id)
+
+    def _remove_model(self, name: str) -> None:
+        _model_manager(self.agent, self.user_id).remove_model_skill(name)
+        self.agent.reload_model_profiles(self.user_id)
+
+
+def _ok(body: object, status: HTTPStatus = HTTPStatus.OK) -> WebAPIResponse:
+    return WebAPIResponse(status, body)
+
+
+def _web_skill_list(
+    value: dict[str, object],
+    config: AgentConfig,
+) -> list[dict[str, object]]:
+    disabled = set(config.agent.disable_names)
+    selected = set(config.agent.skills)
+    skills = value.get("skills", [])
+    return [
+        {
+            key: field
+            for key, field in item.items()
+            if key not in {
+                "manifest_cache_path",
+                "instructions_cache_path",
+                "configuration_cache_path",
+                "files_cache_path",
+            }
+        }
+        | {
+            "enabled": item["key"] not in disabled and item["name"] not in disabled,
+            "selected": item["key"] in selected or item["name"] in selected,
+        }
+        for item in skills
+        if isinstance(item, dict)
+    ]
+
+
+def _model_manager(agent: Agent, user_id: str) -> ModelSkillManager:
+    return ModelSkillManager(
+        agent.config,
+        agent.runtime.create_store(user_id),
+        agent.safety_policy,
+    )
+
+
+def _find_agent_for_run(
+    agent: Agent,
+    user_id: str,
+    run_id: str,
+    seen: set[int],
+) -> Agent:
+    if id(agent) in seen:
+        raise KeyError(f"run not found: {run_id}")
+    seen.add(id(agent))
+    try:
+        agent.runtime.create_store(user_id).read_run(run_id)
+        return agent
+    except KeyError:
+        pass
+    for subagent in agent.list_subagents():
+        try:
+            return _find_agent_for_run(subagent.agent, user_id, run_id, seen)
+        except KeyError:
+            continue
+    raise KeyError(f"run not found: {run_id}")
+
+
+def _subagent_tree(
+    agent: Agent,
+    user_id: str,
+    seen: set[int],
+    path: list[str],
+) -> list[dict[str, object]]:
+    if id(agent) in seen:
+        return []
+    next_seen = seen | {id(agent)}
+    nodes: list[dict[str, object]] = []
+    for subagent in agent.list_subagents():
+        child_path = [*path, subagent.name]
+        child_store = subagent.agent.runtime.create_store(user_id)
+        nodes.append(
+            {
+                "name": subagent.name,
+                "description": subagent.description,
+                "agent_name": subagent.agent.config.agent.name,
+                "created_by_agent": subagent.created_by_agent,
+                "path": child_path,
+                "runs": [asdict(item) for item in child_store.list_runs(50)],
+                "children": _subagent_tree(
+                    subagent.agent,
+                    user_id,
+                    next_seen,
+                    child_path,
+                ),
+            }
+        )
+    return nodes
+
+
+def _required_body_text(body: object | None, name: str) -> str:
+    if not isinstance(body, dict):
+        raise ValueError("request body must be a JSON object")
+    value = body.get(name)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"request {name} must be a non-empty string")
+    return value.strip()
+
+
+def _optional_body_text(body: object | None, name: str) -> str:
+    if body is None:
+        return ""
+    if not isinstance(body, dict):
+        raise ValueError("request body must be a JSON object")
+    value = body.get(name, "")
+    if not isinstance(value, str):
+        raise ValueError(f"request {name} must be a string")
+    return value.strip()

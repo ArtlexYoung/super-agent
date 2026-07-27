@@ -17,7 +17,9 @@ super-agent serve
 
 The default routes are:
 
+- `GET http://127.0.0.1:8765/` for the built React client
 - `POST http://127.0.0.1:8765/ag-ui`
+- `/api/*` for same-origin Runtime management operations
 - `GET http://127.0.0.1:8765/health`
 
 `POST /ag-ui` requires `Content-Type: application/json` and the official AG-UI input fields. Super Agent currently consumes text user messages; `threadId` becomes the persisted conversation ID and `runId` becomes the canonical Runtime run ID.
@@ -73,4 +75,4 @@ server.serve_forever()
 
 The default server listens only on `127.0.0.1`, accepts request bodies up to 1 MiB, and allows browser calls only from the configured origin list. `--user-id` fixes one Runtime user scope when the server starts; client-controlled `forwardedProps` never selects another user.
 
-The bridge has no authentication or TLS. Keep the default local binding for desktop development. Protect any non-local binding with an authenticated reverse proxy and an explicit `--allow-origin`. Runtime Safety still authorizes every model-triggered action before its handler runs; AG-UI only observes the resulting canonical events.
+The server has no authentication or TLS. Keep the default local binding for local use. Protect any non-local binding with an authenticated reverse proxy and an explicit `--allow-origin`. Runtime Safety still authorizes every model-triggered action before its handler runs; AG-UI only observes the resulting canonical events.
