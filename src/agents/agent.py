@@ -85,7 +85,7 @@ class Agent:
         self._load_capability_skills(bootstrap_disclosure, bootstrap_index)
         self.runtime = AgentRuntime(
             self.config,
-            self.model_profile,
+            self.model_profiles,
             self.provider_pool,
             self.capability_registry,
             self.storage,
@@ -126,6 +126,14 @@ class Agent:
 
     def add_skill_executor(self, skill_executor: object) -> None:
         self.capability_registry.add_skill_executor(skill_executor, replace=True)
+
+    def add_model_provider(self, model_name: str, provider: ChatProvider) -> None:
+        key = model_name.strip().lower()
+        if not key.startswith("model:"):
+            key = f"model:{key}"
+        if key not in {profile.key for profile in self.model_profiles}:
+            raise KeyError(f"model profile not found: {key}")
+        self.provider_pool.add_chat_provider(key, provider)
 
     def read_task_trace(
         self,
@@ -284,7 +292,6 @@ class Agent:
             warning_messages=warnings,
             subagents=SubagentCallbacks(
                 list_subagents=self._list_subagents_for_model,
-                run_matching_subagents=self._run_subagents_that_match_prompt,
                 run_named_subagent=self._run_named_subagent_for_model,
             ),
         )
@@ -371,7 +378,7 @@ class Agent:
         self.model_profile = select_default_model_profile(self.model_profiles)
         self.runtime = AgentRuntime(
             self.config,
-            self.model_profile,
+            self.model_profiles,
             self.provider_pool,
             self.capability_registry,
             self.storage,
@@ -385,18 +392,6 @@ class Agent:
             if candidate not in existing:
                 return candidate
             index += 1
-
-    def _run_subagents_that_match_prompt(
-        self,
-        prompt: str,
-        session: RuntimeSession,
-    ) -> list[SubAgentResult]:
-        prompt_text = prompt.lower()
-        return [
-            self._run_subagent(subagent, prompt, session)
-            for subagent in self._subagents
-            if _prompt_matches_subagent_triggers(subagent, prompt_text)
-        ]
 
     def _list_subagents_for_model(self) -> list[dict[str, object]]:
         return [
@@ -466,7 +461,6 @@ class Agent:
             warning_messages=[],
             subagents=SubagentCallbacks(
                 list_subagents=self._list_subagents_for_model,
-                run_matching_subagents=self._run_subagents_that_match_prompt,
                 run_named_subagent=self._run_named_subagent_for_model,
             ),
         )
@@ -476,12 +470,6 @@ class Agent:
             conversation_id=parent_session.identity.conversation_id,
             parent_run_id=parent_session.run_id,
         )
-
-
-def _prompt_matches_subagent_triggers(subagent: SubAgent, prompt: str) -> bool:
-    if not subagent.triggers:
-        return True
-    return any(trigger and trigger in prompt for trigger in subagent.triggers)
 
 
 def _find_cycle_chains(agent: Agent, chain: list[str], seen_ids: set[int]) -> list[list[str]]:

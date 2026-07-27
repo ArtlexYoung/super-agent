@@ -15,6 +15,7 @@ The project is currently experimental (`0.0.x`). It favors a small, inspectable 
 - **Zero-configuration start**: `Agent()` and the CLI run immediately with a local mock model.
 - **One Skill format**: prompt, MCP, memory, workflow, models, and executable mechanisms share one manifest and lifecycle.
 - **Progressive disclosure**: the model sees a compact index first and opens only the Skills it needs.
+- **Automatic task scheduling**: Runtime selects compatible models, Skills, and subagents and falls back deterministically when a model call fails.
 - **One runtime lifecycle**: discovery, disclosure, execution, observation, evaluation, and evolution share one session.
 - **Automatic evolution signals**: Runtime turns real failures, quality, freshness, replacement, cost, and latency into deduplicated recommendations.
 - **Code-composed Agents**: create Agents independently and attach them with `Agent.add_subagent(...)`.
@@ -156,7 +157,7 @@ Every run follows one central lifecycle:
 discover -> disclose -> execute -> observe -> evaluate -> evolve
 ```
 
-`Agent.run(...)` creates one internal `TaskRequest` and sends it through `AgentRuntime.run_task(...)`. `RuntimeSession` holds one identity, store, Skill index, progressive-disclosure session, and evidence tracker for that task. Workflow Skills contain only instructions and stopping rules; Runtime owns the model and tool loop.
+`Agent.run(...)` creates one internal `TaskRequest` and sends it through `AgentRuntime.run_task(...)`. `TaskScheduler` selects an ordered model fallback list, progressively matched Skills, and matching subagents. Every reason is stored in `task.scheduled`; each model attempt is stored in `model.call.selected` or `model.call.failed`. Workflow Skills contain only instructions and stopping rules; Runtime owns the model and tool loop.
 
 `CapabilityRegistry` contains only executable Skill handlers. Replace one explicitly with `agent.add_skill_executor(...)`. A handler that must be installed or evolved is a standard `capability` Skill, so it uses the same disclosure, evaluation, promotion, and rollback path as every other Skill. Runtime lifecycle mechanisms are intentionally not replaceable parallel controllers.
 

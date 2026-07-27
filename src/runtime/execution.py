@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import json
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from typing import cast
 
 from capability.skill_executors import SkillLoadRequest, SkillLoadResult
-from provider.chat import Message, ToolCall
+from provider.chat import ChatProvider, Message, ModelResponse, ToolCall, ToolDefinition
+from provider.pool import ProviderPool
+from runtime.scheduler import ModelChoice, TaskSchedule
 from runtime.session import RuntimeSession
 from runtime.tasks import SubAgentResult, TaskRequest, TaskResult
 from runtime.tools import RuntimeTools, RuntimeToolsContext
@@ -17,10 +19,24 @@ from skill.kinds.workflow import WorkflowPolicy
 from skill.manifest import Skill
 
 
-def execute_task(request: TaskRequest, session: RuntimeSession) -> TaskResult:
+@dataclass(frozen=True)
+class _ExecutionContext:
+    session: RuntimeSession
+    workflow: WorkflowPolicy
+    schedule: TaskSchedule
+    provider_pool: ProviderPool
+    tools: RuntimeTools
+
+
+def execute_task(
+    request: TaskRequest,
+    session: RuntimeSession,
+    workflow: WorkflowPolicy,
+    schedule: TaskSchedule,
+    provider_pool: ProviderPool,
+) -> TaskResult:
     memory = _load_optional_memory(session)
-    workflow = _load_workflow_policy(session)
-    disclosed_skills = _select_model_context_skills(request, session, workflow)
+    disclosed_skills = _load_scheduled_skills(session, schedule)
     tools = _create_runtime_tools(request, session, memory)
     session.record_event(
         "skills.disclosed",
@@ -29,14 +45,12 @@ def execute_task(request: TaskRequest, session: RuntimeSession) -> TaskResult:
             "index_path": str(session.require_skill_index().index_path),
         },
     )
-    subagent_results = _run_matching_subagents(request, session, workflow)
+    subagent_results = _run_scheduled_subagents(request, session, schedule)
     system = _build_system_prompt(request, session, memory, subagent_results)
     model_result = _run_model_steps(
         request,
-        session,
-        workflow,
+        _ExecutionContext(session, workflow, schedule, provider_pool, tools),
         disclosed_skills,
-        tools,
         system,
     )
     result = replace(
@@ -71,7 +85,7 @@ def _load_optional_memory(session: RuntimeSession) -> MiniMemory | None:
     return loaded.runtime_value
 
 
-def _load_workflow_policy(session: RuntimeSession) -> WorkflowPolicy:
+def load_workflow_policy(session: RuntimeSession) -> WorkflowPolicy:
     try:
         entry = session.require_skill_index().require_skill(
             session.config.agent.workflow,
@@ -108,24 +122,12 @@ def _load_skill(session: RuntimeSession, reference: SkillReference) -> SkillLoad
     return loaded
 
 
-def _select_model_context_skills(
-    request: TaskRequest,
+def _load_scheduled_skills(
     session: RuntimeSession,
-    workflow: WorkflowPolicy,
+    schedule: TaskSchedule,
 ) -> list[Skill]:
-    if workflow.uses_tools:
-        return []
-    references = session.require_skill_disclosure().select_skill_references_for_prompt(
-        request.prompt,
-        session.config.agent.skills,
-        allowed_capabilities={
-            name
-            for name, executor in session.capability_registry.list_skill_executors().items()
-            if executor.adds_model_context  # type: ignore[attr-defined]
-        },
-    )
     skills: list[Skill] = []
-    for reference in references:
+    for reference in schedule.skill_references:
         loaded = _load_skill(session, reference)
         if loaded.model_skill is None:
             raise ValueError(
@@ -159,14 +161,17 @@ def _create_runtime_tools(
     )
 
 
-def _run_matching_subagents(
+def _run_scheduled_subagents(
     request: TaskRequest,
     session: RuntimeSession,
-    workflow: WorkflowPolicy,
+    schedule: TaskSchedule,
 ) -> list[SubAgentResult]:
-    if not request.include_subagents or workflow.uses_tools:
-        return []
-    return request.subagents.run_matching_subagents(request.prompt, session)
+    return [
+        _subagent_result_from_dict(
+            request.subagents.run_named_subagent(name, request.prompt, session)
+        )
+        for name in schedule.subagent_names
+    ]
 
 
 def _build_system_prompt(
@@ -194,22 +199,32 @@ def _build_system_prompt(
 
 def _run_model_steps(
     request: TaskRequest,
-    session: RuntimeSession,
-    workflow: WorkflowPolicy,
+    context: _ExecutionContext,
     skills: list[Skill],
-    tools: RuntimeTools,
     system: str,
 ) -> TaskResult:
+    session = context.session
+    workflow = context.workflow
+    tools = context.tools
+    schedule = context.schedule
+    provider_pool = context.provider_pool
     messages = _build_model_messages(request, workflow, skills, system)
     if not workflow.uses_tools:
-        text = session.provider.send_chat_messages(messages, session.model_profile.model)
+        text = _send_chat_with_fallback(
+            messages,
+            session,
+            schedule.model_choices,
+            provider_pool,
+        )
         return TaskResult(text, workflow.name, _used_skill_names(skills, tools))
     last_text = ""
     for step in range(1, workflow.max_steps + 1):
-        response = session.provider.send_chat_messages_with_tools(
+        response = _send_chat_with_tools_with_fallback(
             messages,
-            session.model_profile.model,
             tools.get_tool_definitions(),
+            session,
+            schedule.model_choices,
+            provider_pool,
         )
         last_text = response.text or last_text
         session.record_event(
@@ -237,6 +252,98 @@ def _run_model_steps(
         workflow.name,
         _used_skill_names(skills, tools),
         stop_reason="max_steps",
+    )
+
+
+def _send_chat_with_fallback(
+    messages: list[Message],
+    session: RuntimeSession,
+    choices: tuple[ModelChoice, ...],
+    provider_pool: ProviderPool,
+) -> str:
+    for attempt, choice in enumerate(choices, start=1):
+        provider = _select_model_for_call(session, choice, provider_pool, attempt)
+        try:
+            return provider.send_chat_messages(messages, choice.profile.model)
+        except Exception as error:
+            _record_model_call_failure(
+                session,
+                choice,
+                attempt,
+                error,
+                attempt < len(choices),
+            )
+            if attempt == len(choices):
+                raise
+    raise RuntimeError("task schedule contains no model choices")
+
+
+def _send_chat_with_tools_with_fallback(
+    messages: list[Message],
+    tools: list[ToolDefinition],
+    session: RuntimeSession,
+    choices: tuple[ModelChoice, ...],
+    provider_pool: ProviderPool,
+) -> ModelResponse:
+    for attempt, choice in enumerate(choices, start=1):
+        provider = _select_model_for_call(session, choice, provider_pool, attempt)
+        try:
+            return provider.send_chat_messages_with_tools(
+                messages,
+                choice.profile.model,
+                tools,
+            )
+        except Exception as error:
+            _record_model_call_failure(
+                session,
+                choice,
+                attempt,
+                error,
+                attempt < len(choices),
+            )
+            if attempt == len(choices):
+                raise
+    raise RuntimeError("task schedule contains no model choices")
+
+
+def _select_model_for_call(
+    session: RuntimeSession,
+    choice: ModelChoice,
+    provider_pool: ProviderPool,
+    attempt: int,
+) -> ChatProvider:
+    profile = choice.profile
+    provider = provider_pool.get_chat_provider(profile.key, profile.connection)
+    session.select_model(profile, provider)
+    session.record_event(
+        "model.call.selected",
+        {
+            "attempt": attempt,
+            "profile": profile.key,
+            "model": profile.model,
+            "score": choice.score,
+            "reasons": list(choice.reasons),
+        },
+    )
+    return provider
+
+
+def _record_model_call_failure(
+    session: RuntimeSession,
+    choice: ModelChoice,
+    attempt: int,
+    error: Exception,
+    will_fallback: bool,
+) -> None:
+    session.record_event(
+        "model.call.failed",
+        {
+            "attempt": attempt,
+            "profile": choice.profile.key,
+            "error_type": type(error).__name__,
+            "message": str(error),
+            "will_fallback": will_fallback,
+        },
     )
 
 

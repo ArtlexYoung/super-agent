@@ -23,7 +23,6 @@ class SubAgentResult:
 @dataclass(frozen=True)
 class SubagentCallbacks:
     list_subagents: Callable[[], list[dict[str, object]]]
-    run_matching_subagents: Callable[[str, object], list[SubAgentResult]]
     run_named_subagent: Callable[[str, str, object], dict[str, object]]
 
 
@@ -54,4 +53,3 @@ class TaskTrace:
     task_id: str
     parent_task_id: str | None
     events: list[RunEvent]
-

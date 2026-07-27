@@ -18,15 +18,20 @@ from runtime.evaluation import (
     estimate_evaluation_token_usage,
 )
 from runtime.evolution.scheduler import AutonomousEvolutionScheduler
-from runtime.execution import execute_task
+from runtime.execution import execute_task, load_workflow_policy
 from runtime.identity import LOCAL_USER_ID, RunIdentity
 from runtime.models import Conversation, RunEvent
+from runtime.scheduler import TaskSchedule, TaskScheduler
 from runtime.session import RuntimeSession
 from runtime.storage import StorageBackend
 from runtime.store import RuntimeStore
 from runtime.tasks import TaskRequest, TaskResult, TaskTrace
 from skill.disclosure import SkillIndex
-from skill.kinds.model import ModelProfile, model_profile_to_dict
+from skill.kinds.model import (
+    ModelProfile,
+    model_profile_to_dict,
+    select_default_model_profile,
+)
 from skill.manifest import SkillManifest
 
 
@@ -34,14 +39,19 @@ class AgentRuntime:
     def __init__(
         self,
         config: AgentConfig,
-        model_profile: ModelProfile,
+        model_profiles: list[ModelProfile],
         provider_pool: ProviderPool,
         capability_registry: CapabilityRegistry,
         storage: StorageBackend,
     ) -> None:
         self.config = config
-        self.model_profile = model_profile
+        self.model_profiles = list(model_profiles)
+        self.default_model_profile = select_default_model_profile(self.model_profiles)
         self.provider_pool = provider_pool
+        self.task_scheduler = TaskScheduler(
+            self.model_profiles,
+            self.provider_pool.environment,
+        )
         self.capability_registry = capability_registry
         self.storage = storage
 
@@ -73,7 +83,17 @@ class AgentRuntime:
         started_at = perf_counter()
         try:
             self._prepare_task_context(session)
-            result = execute_task(request, session)
+            workflow = load_workflow_policy(session)
+            schedule = self.task_scheduler.schedule_task(request, session, workflow)
+            self._select_primary_model(session, schedule)
+            self._lock_task_context(session, schedule)
+            result = execute_task(
+                request,
+                session,
+                workflow,
+                schedule,
+                self.provider_pool,
+            )
             evaluation_attempted = True
             self._record_task_evaluation(
                 session,
@@ -132,10 +152,10 @@ class AgentRuntime:
                 store=store,
             ),
             store=store,
-            model_profile=self.model_profile,
+            model_profile=self.default_model_profile,
             provider=self.provider_pool.get_chat_provider(
-                self.model_profile.key,
-                self.model_profile.connection,
+                self.default_model_profile.key,
+                self.default_model_profile.connection,
             ),
             on_skill_changed=on_skill_changed,
         )
@@ -155,10 +175,10 @@ class AgentRuntime:
         )
         return RuntimeSession(
             config=self.config,
-            model_profile=self.model_profile,
+            model_profile=self.default_model_profile,
             provider=self.provider_pool.get_chat_provider(
-                self.model_profile.key,
-                self.model_profile.connection,
+                self.default_model_profile.key,
+                self.default_model_profile.connection,
             ),
             capability_registry=self.capability_registry,
             identity=identity,
@@ -179,19 +199,34 @@ class AgentRuntime:
         )
         skill_index = disclosure.prepare_skill_index()
         session.set_skill_disclosure(disclosure, skill_index)
-        model_entry = skill_index.find_skill(self.model_profile.key)
-        if model_entry is not None and model_entry.reference.capability == "model":
-            session.record_skill_used(model_entry)
         self.capability_registry.validate_dependencies()
+
+    def _select_primary_model(
+        self,
+        session: RuntimeSession,
+        schedule: TaskSchedule,
+    ) -> None:
+        profile = schedule.selected_model
+        session.select_model(
+            profile,
+            self.provider_pool.get_chat_provider(profile.key, profile.connection),
+        )
+
+    def _lock_task_context(
+        self,
+        session: RuntimeSession,
+        schedule: TaskSchedule,
+    ) -> None:
         session.store.save_runtime_lock(
             session.identity,
             _runtime_lock_to_dict(
                 self.config,
-                self.model_profile,
+                session.model_profile,
                 self.capability_registry,
-                skill_index,
+                session.require_skill_index(),
                 session.provider,
                 self.storage,
+                schedule,
             ),
         )
 
@@ -314,10 +349,11 @@ def _runtime_lock_to_dict(
     skill_index: SkillIndex,
     provider: ChatProvider,
     storage: StorageBackend,
+    schedule: TaskSchedule,
 ) -> dict[str, object]:
     registry.validate_dependencies()
     return {
-        "schema_version": 4,
+        "schema_version": 5,
         "agent": {
             "name": config.agent.name,
             "system": config.agent.system,
@@ -332,6 +368,7 @@ def _runtime_lock_to_dict(
             **model_profile_to_dict(model_profile),
             "adapter": f"{type(provider).__module__}.{type(provider).__qualname__}",
         },
+        "task_schedule": schedule.to_dict(),
         "storage": {"backend": storage.name},
         "capabilities": [
             item.descriptor.to_dict() for item in registry.list_capabilities()

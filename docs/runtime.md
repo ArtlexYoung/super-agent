@@ -2,7 +2,7 @@
 
 ## One Runtime Session
 
-Each `Agent.run(...)` creates one internal `TaskRequest` and one `RuntimeSession` with a `RunIdentity` and `RuntimeStore`. `AgentRuntime.run_task(...)` prepares the Skill index once, records a lock, interprets the selected workflow policy, records every used target, and appends the final evaluation. `Agent.read_task_trace(...)` returns the ordered events for one completed or failed task.
+Each `Agent.run(...)` creates one internal `TaskRequest` and one `RuntimeSession` with a `RunIdentity` and `RuntimeStore`. `AgentRuntime.run_task(...)` prepares the Skill index once, asks `TaskScheduler` for models, Skills, and subagents, records a lock, interprets the workflow policy, and appends the final evaluation. `Agent.read_task_trace(...)` returns the ordered events for one completed or failed task.
 
 ## Runtime Conversations
 
@@ -65,7 +65,7 @@ Each run receives a unique `run_id`. With the default JSONL backend, all runtime
 Events are ordered and append-only. `RuntimeStore.read_run(...)` replays run events into a `RunSnapshot`; no parallel snapshot file can drift from the trace. The `runtime.locked` event fixes:
 
 - Effective Agent configuration.
-- Selected model profile, Skill hash when persistent, and Provider adapter.
+- Primary model profile, ordered fallback candidates, selection reasons, Skill hashes, and Provider adapter.
 - Capability names and versions.
 - Skill versions, dependencies, and directory hashes.
 

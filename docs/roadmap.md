@@ -126,7 +126,7 @@ Status: implemented.
 
 ## v0.0.38: Automatic Task Scheduling
 
-Status: planned.
+Status: implemented.
 
 - Select a compatible configured model for every task and model step.
 - Select matching Skills and subagents through one central scheduler.

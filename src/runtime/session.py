@@ -72,6 +72,15 @@ class RuntimeSession:
             raise RuntimeError("skill index has not been prepared")
         return self.skill_index
 
+    def select_model(self, profile: ModelProfile, provider: ChatProvider) -> None:
+        self.model_profile = profile
+        self.provider = provider
+        if self.skill_index is None:
+            return
+        entry = self.skill_index.find_skill(profile.key)
+        if entry is not None and entry.reference.capability == "model":
+            self.record_skill_used(entry)
+
     def record_skill_used(self, entry: SkillIndexEntry) -> None:
         target = create_indexed_skill_evaluation_target(entry)
         self._evaluation_targets.record_target(target)

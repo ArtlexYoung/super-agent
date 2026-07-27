@@ -47,6 +47,13 @@ class SubAgentTests(unittest.TestCase):
             self.assertEqual("coder-result", result.subagent_results[0].text)
             self.assertIn("Subagent results", main_provider.last_messages[0]["content"])
             self.assertIn("coder-result", main_provider.last_messages[0]["content"])
+            schedule = next(
+                event.data
+                for event in main.read_task_trace(result.run_id).events
+                if event.event_type == "task.scheduled"
+            )
+            self.assertEqual(["coder"], schedule["subagents"])
+            self.assertEqual(["coder: matched trigger code"], schedule["subagent_reasons"])
 
     def test_main_agent_skips_unmatched_subagents_by_default(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
