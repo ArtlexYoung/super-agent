@@ -100,13 +100,6 @@ class RuntimeSession:
             raise ValueError(
                 "runtime used an unregistered Skill executor: " + capability_name
             )
-        descriptor = registration.descriptor
-        if not descriptor.skill_key:
-            return
-        entry = self.require_skill_index().find_skill(descriptor.skill_key)
-        if entry is None:
-            raise KeyError(f"Capability source Skill not found: {descriptor.skill_key}")
-        self.record_skill_used(entry)
 
     def list_used_skill_revisions(self) -> list[SkillRevision]:
         return list(self._used_skill_revisions.values())

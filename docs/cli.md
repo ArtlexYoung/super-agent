@@ -90,16 +90,9 @@ super-agent skills remove --config agent.toml --name research
 
 Install and update accept `--expected-sha256`.
 
-Executable mechanisms are standard `capability` Skills:
-
-```bash
-super-agent skills install --config agent.toml --source ./careful-controller
-super-agent skills evolve --config agent.toml --name capability:careful \
-  --goal "reduce failures" --cases cases.json
-super-agent skills rollback --config agent.toml --name capability:careful
-```
-
-There is no separate Capability package or command namespace.
+Skill packages are declarative and never install executable Capability code. Register
+custom executors in Python with `Agent.add_skill_executor(...)`; the CLI intentionally
+has no command that loads Python from a Skill package.
 
 ## Automatic Evolution Inspection
 

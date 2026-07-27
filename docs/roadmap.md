@@ -220,4 +220,11 @@ Proof: [experiment description](experiments/v0.0.46.md) and [machine-readable re
 - Apply the same action executor to conversations, model Skills, Skill packages, and evolution.
 - Block risky actions before their handlers run and emit an approval-ready action ID.
 
+## v0.0.49: Isolated Skill Content
+
+- Remove dynamic Python loading from Skill directories without a compatibility path.
+- Reserve executable Capabilities for explicit `Agent.add_skill_executor(...)` code.
+- Treat Skill, memory, tool, and subagent content as untrusted model context.
+- Remove unenforced Capability permission and ownership metadata.
+
 The project will not move to `0.1.x` merely because more features exist. That change should follow a reproducible demonstration that the central Skill-first lifecycle is useful and maintainable.

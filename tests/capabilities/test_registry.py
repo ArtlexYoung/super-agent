@@ -15,7 +15,7 @@ class CapabilityRegistryTests(unittest.TestCase):
             result = agent.run("hello")
             runtime_lock = agent.runtime.create_store().read_runtime_lock(result.run_id)
 
-            self.assertEqual(5, runtime_lock["schema_version"])
+            self.assertEqual(6, runtime_lock["schema_version"])
             locked = runtime_lock["capabilities"]
             self.assertEqual(
                 [

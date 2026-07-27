@@ -96,7 +96,9 @@ def _reject_unknown_manifest_fields(data: dict[str, object]) -> None:
 
 def _read_schema_version(data: dict[str, object]) -> int:
     if "schema_version" not in data:
-        raise ValueError("skill manifest missing schema_version; migrate by adding schema_version = 2")
+        raise ValueError(
+            "skill manifest missing schema_version; migrate by adding schema_version = 2"
+        )
     value = data["schema_version"]
     if isinstance(value, bool) or not isinstance(value, int):
         raise ValueError("skill schema_version must be an integer")
@@ -150,6 +152,10 @@ def _read_capability_name(data: dict[str, object]) -> str:
     capability = _read_required_string(data, "capability").strip().lower()
     if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", capability):
         raise ValueError("skill capability must use lowercase letters, numbers, '-' or '_'")
+    if capability == "capability":
+        raise ValueError(
+            "executable Capability code must be registered with Agent.add_skill_executor"
+        )
     return capability
 
 

@@ -188,7 +188,12 @@ super-agent runs explain --config agent.toml --run-id <run-id> --output json
 
 The projection includes scheduler reasons, the task plan and completed steps, every step's model and subagent route, model attempts, latency, estimated tokens and cost, learned routing evidence, relevant Skill freshness, and automatic evolution decisions. A child Agent `run_id` can be inspected through the parent project because the lookup remains restricted to the same user and storage backend.
 
-`CapabilityRegistry` contains only executable Skill handlers. Replace one explicitly with `agent.add_skill_executor(...)`. Every handler returns one `SkillContribution` containing any model context, prompt context, tools, task policy, and completion recorder it provides. Runtime therefore does not know concrete Memory, MCP, or Workflow classes. A handler that must be installed or evolved is a standard `capability` Skill and uses the same disclosure, evaluation, promotion, and rollback path as every other Skill.
+`CapabilityRegistry` contains only executable Skill handlers registered by application
+code. Replace one explicitly with `agent.add_skill_executor(...)`. Every handler returns
+one `SkillContribution` containing any model context, prompt context, tools, task policy,
+and completion recorder it provides. Runtime therefore does not know concrete Memory,
+MCP, or Workflow classes. Skill directories are untrusted declarative content and are
+never imported or executed as Python.
 
 Every tool declares `read`, `create`, `update`, `delete`, `execute`, `network`, or
 `delegate` effects. Runtime checks them through one safety policy before calling the
@@ -224,23 +229,27 @@ super-agent skills evolve \
   --cases evaluation-cases.json
 ```
 
-The complete Skill directory is the candidate unit, so prompt, memory, workflow, MCP, model, executable Capability, and custom Skills use the same lifecycle. The model returns explicit full-file writes and deletions; Runtime validates paths, identity, permissions, and type-specific configuration before evaluation. Candidates stay isolated from active Skills. Promotion requires a passing evaluation and an unchanged parent version, and every promoted revision can be rolled back.
+The complete Skill directory is the candidate unit, so prompt, memory, workflow, MCP,
+model, and custom declarative Skills use the same lifecycle. The model returns explicit
+full-file writes and deletions; Runtime validates paths, identity, action policy, and
+type-specific configuration before evaluation. Candidates stay isolated from active
+Skills. Promotion requires a passing evaluation and an unchanged parent version, and
+every promoted revision can be rolled back.
 
 For model Skills, connection fields remain user-owned by default. Agent evolution may improve descriptions, triggers, strengths, purposes, and routing traits, but may change `provider`, `model`, `base_url`, or `api_key_env` only when the user sets `agent_can_update_connection = true`.
 
-Executable mechanisms use `capability` Skills and the ordinary Skill command:
-
-```bash
-super-agent skills evolve \
-  --config agent.toml \
-  --name capability:careful \
-  --goal "reduce failed runs" \
-  --cases evaluation-cases.json
-```
+Executable Capability code is trusted application code and must be registered explicitly
+with `Agent.add_skill_executor(...)`. Runtime rejects `capability = "capability"` Skills;
+agents may evolve the declarative Skills consumed by registered code, but cannot promote
+downloaded or generated Python into the Runtime process.
 
 Freshness does not call a model. It is derived from runtime evaluation records using quality, recency, frequency, token cost, latency, reliability, replacement behavior, and sample confidence.
 
-After each evaluated run, Runtime reviews every updateable Agent-owned Skill, including Skill-backed executable mechanisms. The deterministic evolution scheduler creates at most one recommendation for an unchanged evidence snapshot. The automatic evolution service then uses the same adaptive model-call path to create a complete-directory candidate, evaluates it against up to three prompts from the triggering runs, and promotes it only when the existing evidence gate passes.
+After each evaluated run, Runtime reviews every updateable Agent-owned Skill. The
+deterministic evolution scheduler creates at most one recommendation for an unchanged
+evidence snapshot. The automatic evolution service then uses the same adaptive model-call
+path to create a complete-directory candidate, evaluates it against up to three prompts
+from the triggering runs, and promotes it only when the existing evidence gate passes.
 
 ```bash
 super-agent evolution list --config agent.toml

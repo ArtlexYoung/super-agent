@@ -188,7 +188,7 @@ super-agent runs explain --config agent.toml --run-id <run-id> --output json
 
 洞察投影包含调度原因、任务计划及完成步骤、每一步的模型与子 Agent 路由、模型尝试、延迟、估算 token 与成本、学习后的路由证据、相关 Skill 保鲜度和自动进化决策。子 Agent 的 `run_id` 也可以从主项目查看，但查询仍严格限制在同一用户和同一存储后端内。
 
-`CapabilityRegistry` 只保存真正执行 Skill 的处理器，可以通过 `agent.add_skill_executor(...)` 明确替换。每个处理器统一返回一个 `SkillContribution`，其中可以包含模型上下文、提示上下文、工具、任务策略和完成记录器，因此 Runtime 不再了解 Memory、MCP 或 Workflow 的具体类。需要安装或进化的处理器使用标准 `capability` Skill，与其他 Skill 共用披露、评价、晋升和回滚。
+`CapabilityRegistry` 只保存由应用代码明确注册的 Skill 处理器，可以通过 `agent.add_skill_executor(...)` 替换。每个处理器统一返回 `SkillContribution`，因此 Runtime 不需要了解 Memory、MCP 或 Workflow 的具体类。Skill 目录始终是不可信的声明式内容，Runtime 不会从中导入或执行 Python。
 
 ## 可复现证明
 
@@ -219,23 +219,15 @@ super-agent skills evolve \
   --cases evaluation-cases.json
 ```
 
-候选以完整 Skill 目录为单位，因此 prompt、memory、workflow、MCP、model、可执行 Capability 和自定义 Skill 共用同一套生命周期。模型只返回明确的完整文件写入与删除操作；Runtime 会在评价前校验路径、身份、权限和类型专属配置。候选不会直接覆盖正在使用的 Skill，只有评价通过且父版本没有变化时才能晋升，每个已晋升版本都可以回滚。
+候选以完整 Skill 目录为单位，因此 prompt、memory、workflow、MCP、model 和自定义声明式 Skill 共用同一套生命周期。模型只返回明确的完整文件写入与删除操作；Runtime 会在评价前校验路径、身份、动作策略和类型专属配置。候选不会直接覆盖正在使用的 Skill，只有评价通过且父版本没有变化时才能晋升，每个已晋升版本都可以回滚。
 
 model Skill 的连接字段默认归用户所有。Agent 可以改进说明、触发词、优势、用途和路由特征，但只有用户设置 `agent_can_update_connection = true` 后，Agent 才能修改 `provider`、`model`、`base_url` 或 `api_key_env`。
 
-可执行机制使用 `capability` Skill 和普通 Skill 命令：
-
-```bash
-super-agent skills evolve \
-  --config agent.toml \
-  --name capability:careful \
-  --goal "减少运行失败" \
-  --cases evaluation-cases.json
-```
+可执行 Capability 是受信任的应用代码，必须通过 `Agent.add_skill_executor(...)` 明确注册。Runtime 会拒绝 `capability = "capability"` 的 Skill；Agent 可以进化注册代码使用的声明式 Skill，但不能把下载或生成的 Python 自动提升到 Runtime 进程。
 
 保鲜度计算不调用大模型，而是根据质量、距离上次调用时间、使用频率、token 成本、延迟、可靠性、同功能替代行为和样本置信度确定性派生。
 
-每次运行完成评价后，Runtime 会自动检查所有允许更新且由 Agent 创建的 Skill，包括由 Skill 承载的可执行机制。确定性进化调度器对同一份未变化的证据最多生成一次建议；自动进化服务随后通过同一个自适应模型调用路径生成完整目录候选，使用触发运行中的最多三个真实 prompt 进行评价，只有通过现有证据门槛后才会晋升。
+每次运行完成评价后，Runtime 会自动检查所有允许更新且由 Agent 创建的 Skill。确定性进化调度器对同一份未变化的证据最多生成一次建议；自动进化服务随后通过同一个自适应模型调用路径生成完整目录候选，使用触发运行中的最多三个真实 prompt 进行评价，只有通过现有证据门槛后才会晋升。
 
 ```bash
 super-agent evolution list --config agent.toml

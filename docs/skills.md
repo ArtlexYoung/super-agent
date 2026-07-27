@@ -65,7 +65,7 @@ memory:default
 workflow:direct
 mcp:filesystem
 model:fast
-capability:adaptive
+search:adaptive
 ```
 
 ## Selection and Dependencies

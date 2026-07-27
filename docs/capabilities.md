@@ -2,6 +2,10 @@
 
 A Capability is code that executes one Skill mechanism. Runtime itself owns task lifecycle, progressive disclosure, tracing, evaluation, and evolution recommendations.
 
+Capability code is trusted application code. Runtime never imports, compiles, or executes
+Python from a Skill directory. Register custom code explicitly so the trust decision is
+visible in the Agent composition:
+
 Built-in executors handle prompt, MCP, memory, and workflow Skills. Replace or add one explicitly:
 
 ```python
@@ -13,7 +17,8 @@ An executor declares `name`, `version`, `capability_name`, `adds_model_context`,
 `load_skill` returns one `SkillContribution`. It can contribute model context, prompt context, tools, a task policy, and a completion recorder without exposing a private runtime object:
 
 ```python
-from capability.skill_contributions import CapabilityTool, SkillContribution
+from capability.skill_contributions import CapabilityAction, CapabilityTool, SkillContribution
+from runtime.safety import ActionEffect
 from skill.manifest import Skill
 
 
@@ -37,6 +42,10 @@ class SearchExecutor:
                     {"query": {"type": "string"}},
                     self.run_search,
                     ("query",),
+                    CapabilityAction(
+                        (ActionEffect.NETWORK,),
+                        "search:index",
+                    ),
                 ),
             ),
         )
@@ -50,32 +59,10 @@ class SearchExecutor:
 
 `create_tools` contributes capability-wide tools that are available before one specific Skill is loaded. Return an empty tuple when the capability has none. Tool calls are always traced by Runtime.
 
-## Capability Skills
+Every contributed tool declares its effects and resource. Runtime checks that declaration
+before calling the handler. Registered code cannot delegate authorization to Skill text.
 
-Package an evolvable executor as a standard Skill:
-
-```text
-skills/capability/careful/
-  skill.toml
-  executor.py
-```
-
-```toml
-schema_version = 2
-name = "careful"
-capability = "capability"
-description = "Prompt executor with additional checks"
-version = "0.1.0"
-triggers = []
-agent_created = true
-agent_can_update = true
-
-[configuration]
-slot = "skill_executor:prompt"
-entry_file = "executor.py"
-entry_class = "CarefulPromptExecutor"
-```
-
-The zero-argument class must identify the same Skill name and version and execute the capability named by the slot. Two Capability Skills cannot replace the same executor.
-
-Capability Skills use ordinary Skill install, evolve, and rollback commands. Runtime locks the exact implementation hash and attributes execution evidence to both the handler and its source Skill.
+Skills may evolve the content and configuration consumed by a registered Capability.
+Executable Capability changes remain ordinary reviewed application-code changes. The
+reserved `capability = "capability"` manifest value is rejected so a downloaded or
+Agent-generated Skill cannot turn a Python file into trusted code.

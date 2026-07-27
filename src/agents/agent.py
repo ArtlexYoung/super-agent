@@ -7,7 +7,6 @@ from capability.defaults import (
     create_default_capability_registry,
     create_progressive_skill_disclosure,
 )
-from capability.skill_loader import load_capability_skill
 from provider.chat import ChatProvider, Message
 from provider.pool import ProviderPool
 from runtime.config import AgentConfig
@@ -27,7 +26,6 @@ from runtime.tasks import (
 )
 from runtime.session import RuntimeSession
 from runtime.storage import StorageBackend, create_storage_backend
-from skill.disclosure import ProgressiveDisclosureCore, SkillIndex
 from skill.kinds.model import (
     ModelProfile,
     read_model_profiles,
@@ -85,7 +83,6 @@ class Agent:
         )
         for executor in skill_executors or []:
             self.capability_registry.add_skill_executor(executor, replace=True)
-        self._load_capability_skills(bootstrap_disclosure, bootstrap_index)
         self.runtime = AgentRuntime(
             self.config,
             self.model_profiles,
@@ -361,28 +358,6 @@ class Agent:
         manager = self.create_skill_evolution_manager(user_id)
         return AutomaticEvolutionService(manager.store, manager)
 
-    def _load_capability_skills(
-        self,
-        disclosure: ProgressiveDisclosureCore,
-        index: SkillIndex,
-    ) -> None:
-        loaded_slots: set[str] = set()
-        for entry in index.entries:
-            if entry.reference.capability != "capability":
-                continue
-            opened = disclosure.open_skill(entry.reference.name, "capability")
-            loaded = load_capability_skill(opened)
-            slot = loaded.descriptor.slot
-            if slot in loaded_slots:
-                raise ValueError(f"multiple capability Skills use slot: {slot}")
-            loaded_slots.add(slot)
-            self.capability_registry.add_skill_executor(
-                loaded.implementation,
-                loaded.descriptor,
-                replace=True,
-            )
-        self.capability_registry.validate_dependencies()
-
     def _activate_changed_skill(
         self,
         manifest: "SkillManifest",
@@ -390,36 +365,6 @@ class Agent:
     ) -> None:
         if manifest.capability == "model":
             self._reload_model_profiles(user_id)
-            return
-        if manifest.capability != "capability":
-            return
-        disclosure = create_progressive_skill_disclosure(
-            self.config,
-            store=self.runtime.create_store(user_id),
-        )
-        disclosure.prepare_skill_index()
-        loaded = load_capability_skill(
-            disclosure.open_skill(manifest.name, manifest.capability)
-        )
-        previous = next(
-            (
-                item
-                for item in self.capability_registry.list_capabilities()
-                if item.descriptor.skill_key == loaded.descriptor.skill_key
-            ),
-            None,
-        )
-        if previous is not None and previous.descriptor.slot != loaded.descriptor.slot:
-            raise ValueError(
-                "updated capability Skill cannot change slot: "
-                f"{previous.descriptor.slot} -> {loaded.descriptor.slot}"
-            )
-        self.capability_registry.add_skill_executor(
-            loaded.implementation,
-            loaded.descriptor,
-            replace=True,
-        )
-        self.capability_registry.validate_dependencies()
 
     def _reload_model_profiles(self, user_id: str) -> None:
         disclosure = create_progressive_skill_disclosure(

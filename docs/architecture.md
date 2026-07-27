@@ -48,15 +48,21 @@ These lifecycle stages cannot be replaced by parallel controllers. Workflow Skil
 
 ## Executable Capabilities
 
-`CapabilityRegistry` stores only Skill executors. Each descriptor locks the executor name, version, class, SHA-256, dependencies, permissions, update ownership, and optional source Skill.
+`CapabilityRegistry` stores only explicitly registered Skill executors. Each descriptor
+locks the executor name, version, class, SHA-256, and dependencies. Authorization lives
+only in Runtime action effects and safety policy.
 
 Every executor returns one `SkillContribution`. A contribution may contain model context, prompt context, tools, a task policy, and a completion recorder. Runtime consumes these fields uniformly and never imports concrete memory, MCP, or workflow implementations. Capability-owned tools use one `CapabilityTool` contract and enter the same traced tool registry.
 
-Built-ins require no configuration. Installable and evolvable handlers are `capability` Skills and therefore use the ordinary Skill lifecycle. Code composition uses the explicit `Agent.add_skill_executor(...)` method.
+Built-ins require no configuration. Custom code composition uses the explicit
+`Agent.add_skill_executor(...)` method. Runtime rejects executable Capability Skills and
+never imports Python from a Skill directory.
 
 ## Skills and Providers
 
-Every Skill has the stable identity `capability:name`. Prompt, MCP, memory, workflow, model, and executable Capability definitions share one index, progressive-disclosure cache, evidence stream, and evolution format.
+Every Skill has the stable identity `capability:name`. Prompt, MCP, memory, workflow,
+model, and custom declarative Skills share one index, progressive-disclosure cache,
+evidence stream, and evolution format.
 
 Planner and model routing revisions are not privileged evolution targets. When used, both become ordinary `SkillRevision` values, receive the task's evaluation record, and enter the same recommendation, complete-directory candidate, evaluation, promotion, monitoring, and rollback state machine. Model connection fields remain user-owned unless the active model Skill explicitly grants update permission.
 

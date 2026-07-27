@@ -157,6 +157,7 @@ class CapabilityRuntimeTests(unittest.TestCase):
         self.assertFalse(Path("src/runtime/execution.py").exists())
         self.assertFalse(Path("src/runtime/model_router.py").exists())
         self.assertFalse(Path("src/runtime/scheduler.py").exists())
+        self.assertFalse(Path("src/capability/skill_loader.py").exists())
         tree = ast.parse(Path("src/runtime/engine.py").read_text(encoding="utf-8"))
         method_names = {
             node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)

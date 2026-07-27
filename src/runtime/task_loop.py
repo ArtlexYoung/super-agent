@@ -504,21 +504,28 @@ def _build_system_prompt(
     subagent_results: list[SubAgentResult],
 ) -> str:
     parts = [session.config.agent.system]
+    untrusted_parts: list[str] = []
     for contribution in contributions:
         if contribution.build_prompt_context is None:
             continue
         prompt_context = contribution.build_prompt_context(request.prompt)
         if prompt_context:
-            parts.append(prompt_context)
+            untrusted_parts.append(prompt_context)
     if subagent_results:
         lines = ["Subagent results:"]
         for item in subagent_results:
             detail = f" ({item.description})" if item.description else ""
             lines.append(f"- {item.name}{detail}: {item.text}")
-        parts.append("\n".join(lines))
+        untrusted_parts.append("\n".join(lines))
     disclosure = session.require_skill_index().build_prompt_with_cache_paths()
     if disclosure:
-        parts.append(disclosure)
+        untrusted_parts.append(disclosure)
+    if untrusted_parts:
+        parts.append(
+            "<untrusted_runtime_context>\n"
+            + "\n\n".join(untrusted_parts)
+            + "\n</untrusted_runtime_context>"
+        )
     return "\n\n".join(part for part in parts if part.strip())
 
 

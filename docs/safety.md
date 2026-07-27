@@ -39,3 +39,11 @@ safety = "standard"
 `standard` is the zero-configuration default. Explicit CLI management commands use a
 `user:` actor and therefore count as user-authorized actions. A Skill cannot choose its
 actor, effect, resource, or safety preset.
+
+## Skill isolation
+
+Skill manifests, instructions, configuration, resources, memory, tool output, and
+subagent output are untrusted data. Runtime adds this boundary to every model request and
+does not interpret Skill files as Python or shell code. The reserved executable
+`capability` Skill type is rejected. MCP remains an explicit external execution boundary
+and therefore requires approval under `standard` policy.

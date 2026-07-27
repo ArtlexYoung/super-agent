@@ -55,18 +55,8 @@ def validate_skill_replacement(
         raise ValueError("updated skill cannot change capability")
     if current_manifest.name != proposed_manifest.name:
         raise ValueError("updated skill cannot change name")
-    if proposed_manifest.capability != "capability":
-        if proposed_manifest.capability == "model":
-            _validate_model_replacement(current, proposed)
-        return
-    from capability.skill_loader import load_capability_skill
-
-    current_slot = load_capability_skill(current).descriptor.slot
-    proposed_slot = load_capability_skill(proposed).descriptor.slot
-    if current_slot != proposed_slot:
-        raise ValueError(
-            f"updated capability Skill cannot change slot: {current_slot} -> {proposed_slot}"
-        )
+    if proposed_manifest.capability == "model":
+        _validate_model_replacement(current, proposed)
 
 
 def _open_only_skill(path: Path, store: RuntimeStore) -> SkillDisclosure:
@@ -93,10 +83,6 @@ def _validate_skill_capability(
         create_mcp_server_from_skill_disclosure(disclosure)
     elif capability == "model":
         create_model_profile_from_skill_disclosure(disclosure)
-    elif capability == "capability":
-        from capability.skill_loader import load_capability_skill
-
-        load_capability_skill(disclosure)
 
 
 def _validate_prompt_skill(disclosure: SkillDisclosure) -> None:

@@ -8,7 +8,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-CAPABILITY_DESCRIPTOR_SCHEMA_VERSION = 3
+CAPABILITY_DESCRIPTOR_SCHEMA_VERSION = 4
 SKILL_EXECUTOR_SLOT_PREFIX = "skill_executor:"
 _NAME_PATTERN = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}")
 
@@ -21,11 +21,6 @@ class CapabilityDescriptor:
     implementation: str
     content_sha256: str
     dependencies: tuple[str, ...] = ()
-    permissions: tuple[str, ...] = ("execute",)
-    agent_created: bool = False
-    agent_can_update: bool = False
-    source: str = "code"
-    skill_key: str = ""
     schema_version: int = CAPABILITY_DESCRIPTOR_SCHEMA_VERSION
 
     @property
@@ -42,11 +37,6 @@ class CapabilityDescriptor:
             "implementation": self.implementation,
             "content_sha256": self.content_sha256,
             "dependencies": list(self.dependencies),
-            "permissions": list(self.permissions),
-            "agent_created": self.agent_created,
-            "agent_can_update": self.agent_can_update,
-            "source": self.source,
-            "skill_key": self.skill_key,
         }
 
 
@@ -123,7 +113,10 @@ class CapabilityRegistry:
         def visit(slot: str, chain: list[str]) -> None:
             if slot in visiting:
                 start = chain.index(slot)
-                raise ValueError("capability dependency cycle: " + " -> ".join(chain[start:] + [slot]))
+                raise ValueError(
+                    "capability dependency cycle: "
+                    + " -> ".join(chain[start:] + [slot])
+                )
             if slot in visited:
                 return
             visiting.add(slot)
@@ -139,31 +132,15 @@ class CapabilityRegistry:
 def create_capability_descriptor(
     slot: str,
     implementation: object,
-    *,
-    source: str = "code",
-    content_sha256: str | None = None,
-    agent_created: bool | None = None,
-    agent_can_update: bool | None = None,
-    skill_key: str = "",
 ) -> CapabilityDescriptor:
     clean_slot = _skill_executor_slot(slot.removeprefix(SKILL_EXECUTOR_SLOT_PREFIX))
-    created = _optional_bool(implementation, "agent_created", False) if agent_created is None else agent_created
     return CapabilityDescriptor(
         slot=clean_slot,
         name=_required_text(implementation, "name"),
         version=_required_text(implementation, "version"),
         implementation=f"{type(implementation).__module__}.{type(implementation).__qualname__}",
-        content_sha256=content_sha256 or calculate_capability_implementation_sha256(implementation),
+        content_sha256=calculate_capability_implementation_sha256(implementation),
         dependencies=_text_tuple(implementation, "dependencies", ()),
-        permissions=_text_tuple(implementation, "permissions", ("execute",)),
-        agent_created=created,
-        agent_can_update=(
-            _optional_bool(implementation, "agent_can_update", created)
-            if agent_can_update is None
-            else agent_can_update
-        ),
-        source=_clean_text(source, "source"),
-        skill_key=skill_key.strip().lower(),
     )
 
 
@@ -218,15 +195,14 @@ def _clean_text(value: object, label: str) -> str:
     return value.strip().lower()
 
 
-def _optional_bool(value: object, name: str, default: bool) -> bool:
+def _text_tuple(
+    value: object,
+    name: str,
+    default: tuple[str, ...],
+) -> tuple[str, ...]:
     selected = getattr(value, name, default)
-    if not isinstance(selected, bool):
-        raise TypeError(f"capability {name} must be a boolean")
-    return selected
-
-
-def _text_tuple(value: object, name: str, default: tuple[str, ...]) -> tuple[str, ...]:
-    selected = getattr(value, name, default)
-    if not isinstance(selected, tuple) or not all(isinstance(item, str) and item for item in selected):
+    if not isinstance(selected, tuple) or not all(
+        isinstance(item, str) and item for item in selected
+    ):
         raise TypeError(f"capability {name} must be a tuple of non-empty strings")
     return tuple(item.strip().lower() for item in selected)

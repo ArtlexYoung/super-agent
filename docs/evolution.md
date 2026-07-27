@@ -170,16 +170,10 @@ super-agent skills rollback --config agent.toml --name prompt:concise
 
 For a new Skill, omit `--capability` to create a prompt Skill or pass a Capability explicitly, such as `--capability memory`. Existing bare names resolve automatically only when unique.
 
-Evolution workspaces and evaluation evidence remain isolated by user and Agent. Executable mechanisms are `capability` Skills and use the same cases and commands:
-
-```bash
-super-agent skills evolve \
-  --config agent.toml \
-  --name capability:adaptive \
-  --goal "improve successful completion" \
-  --cases cases.json
-```
-
-The complete Skill directory remains outside the active path until evaluation passes. Promotion verifies the original parent version and SHA-256, then remounts the Capability in the current Agent. Activation failures restore the previous Skill revision and registry.
+Evolution workspaces and evaluation evidence remain isolated by user and Agent. The
+complete Skill directory remains outside the active path until evaluation passes.
+Promotion verifies the original parent version and SHA-256 before replacing declarative
+content. Runtime never activates executable code from a Skill candidate; Capability code
+must be registered explicitly in application code.
 
 Model Skills use the same flow. Their descriptions and routing traits can evolve normally. Runtime rejects changes to `provider`, `model`, `base_url`, `api_key_env`, or the ownership flag unless the active Skill already declares `agent_can_update_connection = true`. Promoting or rolling back a model Skill refreshes the selected profile in the current Agent.
