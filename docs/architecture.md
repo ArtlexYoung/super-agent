@@ -28,7 +28,9 @@ Model calls, tool calls, and subagent work are observable steps of the same task
 
 `runtime.insights` projects UI-facing task, model, routing, freshness, and evolution views from canonical events and evaluation records. CLI and macOS consume this projection instead of implementing their own evidence logic.
 
-`AdaptiveTaskLoop` is the only task-step owner. Pure decision functions first filter model profiles by connection readiness and required features, then score purpose, prompt traits, default status, declared quality, latency, cost, and user-scoped evidence. The loop executes the resulting fallback order without another planning call. Skill selection uses the same progressive-disclosure core, while subagent selection uses the descriptions and triggers supplied by `Agent.add_subagent(...)`.
+`AdaptiveTaskLoop` is the only task-step owner. Pure decision functions first filter model profiles by connection readiness and required features, then score purpose, prompt traits, default status, declared quality, latency, cost, and user-scoped evidence. Skill selection uses the same progressive-disclosure core, while subagent selection uses the descriptions and triggers supplied by `Agent.add_subagent(...)`.
+
+The progressively disclosed `planner:default` Skill contributes only its planning instruction and deterministic planning thresholds. Simple tasks stay on the direct path. For a planned task, the loop requests one strict plan, validates every field, and then owns every resulting step. Each step receives a fresh model fallback order from its purpose and required features, may run one named subagent, and receives prior step results. Planner is data and policy, not a second controller or execution loop.
 
 Task history is the ordered event stream emitted by actual schedule, model, tool, and subagent steps. Runtime does not maintain a second execution context or mutable history. The former scheduler, model-router, and execution modules are intentionally absent.
 
@@ -76,7 +78,8 @@ RuntimeSession -> RuntimeStore -> StorageBackend
 - Runtime is the only task lifecycle and model-loop owner.
 - Every Skill executor is registered once and locked by exact hash.
 - Runtime consumes only `SkillContribution`, never a Skill-kind-specific runtime object.
-- One `AdaptiveTaskLoop` owns scheduling, model fallback, and tool iteration.
+- One `AdaptiveTaskLoop` owns direct execution, planning, step scheduling, model fallback, and tool iteration.
+- Project Skills override same-key built-in fallback Skills inside one disclosure source scan.
 - Every used Skill revision, including an executor's `capability` Skill, is evaluated automatically.
 - Workflow is Skill data, not a second execution engine.
 - Evolution cannot bypass validation, evaluation, promotion, or rollback.

@@ -35,6 +35,7 @@ class RunSnapshotTests(unittest.TestCase):
                     "skill_executor:mcp",
                     "skill_executor:memory",
                     "skill_executor:prompt",
+                    "skill_executor:planner",
                     "skill_executor:workflow",
                 },
                 {item["slot"] for item in runtime_lock["capabilities"]},

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from capability.registry import CapabilityRegistry
 from capability.skill_executors import create_builtin_skill_executors
 from runtime.config import AgentConfig
@@ -48,6 +50,11 @@ def create_progressive_skill_disclosure(
     return ProgressiveDisclosureCore(
         roots,
         selected_store,
+        fallback_skill_roots=[_builtin_planner_skill_root()],
         disabled_names=config.agent.disable_names,
         identity=identity,
     )
+
+
+def _builtin_planner_skill_root() -> Path:
+    return Path(__file__).resolve().parent.parent / "builtin_skills" / "planner"

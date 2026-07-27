@@ -189,11 +189,12 @@ Status: implemented.
 
 ## v0.0.45: Zero-Configuration Planning
 
-Status: planned.
+Status: implemented.
 
 - Add a default Planner Skill that can decompose tasks without mandatory configuration.
 - Route every planned step to a model and optional subagent from declared traits and evidence.
 - Preserve a direct fast path when a task needs no planning or tools.
+- Keep Planner inside the central progressive-disclosure, evaluation, and trace path.
 
 ## v0.0.46: Self-Evolving Planning Proof
 

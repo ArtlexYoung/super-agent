@@ -242,6 +242,10 @@ def _print_run_explanation(explanation: dict[str, object]) -> None:
                 f"\tcache_hit={str(data.get('cache_hit', False)).lower()}"
             )
     _print_schedule_insight(explanation.get("schedule"))
+    _print_task_plan_insight(
+        explanation.get("task_plan"),
+        explanation.get("task_steps"),
+    )
     _print_model_call_insight(explanation.get("model_calls"))
     _print_routing_insight(explanation.get("routing_evidence"))
     _print_freshness_insight(explanation.get("skill_freshness"))
@@ -261,6 +265,25 @@ def _print_schedule_insight(value: object) -> None:
             f"scheduled-model\t{model.get('key', '')}"
             f"\tscore={model.get('score', '')}"
             f"\treasons={'; '.join(_string_items(model.get('reasons')))}"
+        )
+
+
+def _print_task_plan_insight(plan_value: object, steps_value: object) -> None:
+    if not isinstance(plan_value, dict) or not plan_value:
+        return
+    print(
+        f"plan\tplanner={plan_value.get('planner', '')}"
+        f"\treasons={'; '.join(_string_items(plan_value.get('reasons')))}"
+    )
+    for step in _object_items(steps_value):
+        models = _object_items(step.get("models"))
+        model_key = "" if not models else str(models[0].get("key", ""))
+        print(
+            f"planned-step\t{step.get('step', '')}"
+            f"\tpurpose={step.get('purpose', '')}"
+            f"\tmodel={model_key}"
+            f"\tsubagents={','.join(_string_items(step.get('subagents')))}"
+            f"\tstatus={step.get('status', '')}"
         )
 
 

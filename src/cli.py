@@ -119,10 +119,12 @@ def _run_init_command(root: Path) -> int:
     mcp_skill_dir = root / "skills" / "mcp" / "filesystem"
     memory_skill_dir = root / "skills" / "memory" / "default"
     workflow_skill_dir = root / "skills" / "workflow" / "direct"
+    planner_skill_dir = root / "skills" / "planner" / "default"
     skill_dir.mkdir(parents=True, exist_ok=True)
     mcp_skill_dir.mkdir(parents=True, exist_ok=True)
     memory_skill_dir.mkdir(parents=True, exist_ok=True)
     workflow_skill_dir.mkdir(parents=True, exist_ok=True)
+    planner_skill_dir.mkdir(parents=True, exist_ok=True)
     _write_file_if_missing(root / "agent.toml", _default_agent_config())
     _write_file_if_missing(skill_dir / "skill.toml", _default_skill_manifest())
     _write_file_if_missing(skill_dir / "SKILL.md", "Answer briefly and clearly.\n")
@@ -130,6 +132,8 @@ def _run_init_command(root: Path) -> int:
     _write_file_if_missing(mcp_skill_dir / "SKILL.md", "Use this skill when filesystem MCP access is needed.\n")
     _write_file_if_missing(memory_skill_dir / "skill.toml", _default_memory_skill_manifest())
     _write_file_if_missing(workflow_skill_dir / "skill.toml", _default_workflow_skill_manifest())
+    _write_file_if_missing(planner_skill_dir / "skill.toml", _default_planner_skill_manifest())
+    _write_file_if_missing(planner_skill_dir / "SKILL.md", _default_planner_instructions())
     print(f"Initialized super-agent project at {root}")
     return 0
 
@@ -355,6 +359,36 @@ triggers = []
 [configuration]
 mode = "direct"
 """.lstrip()
+
+
+def _default_planner_skill_manifest() -> str:
+    return """
+schema_version = 2
+name = "default"
+capability = "planner"
+description = "Default automatic task planner"
+version = "0.1.0"
+agent_created = true
+agent_can_update = true
+function_group = "task-planning"
+triggers = []
+
+[entry]
+instructions = "SKILL.md"
+
+[configuration]
+max_steps = 6
+minimum_prompt_characters = 320
+planning_terms = ["step by step", "first, then", "逐步", "分步骤", "分阶段"]
+""".lstrip()
+
+
+def _default_planner_instructions() -> str:
+    return """Decompose the task into the fewest independently executable steps.
+Return only JSON with a `steps` array. Each step must contain exactly
+`instruction`, `purpose`, `required_features`, and `subagent`. The final step
+must synthesize the completed work into the user-facing answer.
+"""
 
 
 if __name__ == "__main__":

@@ -18,6 +18,7 @@ from skill.disclosure.models import (
     SkillReference,
     SkillSelectionDecision,
     SkillSource,
+    SkillSourceScan,
     SkillValidationIssue,
     skill_index_to_dict,
 )
@@ -35,10 +36,14 @@ class ProgressiveDisclosureCore:
         skill_roots: list[Path],
         store: RuntimeStore,
         *,
+        fallback_skill_roots: list[Path] | None = None,
         disabled_names: list[str] | None = None,
         identity: RunIdentity | None = None,
     ) -> None:
         self.skill_roots = [path.expanduser() for path in skill_roots]
+        self.fallback_skill_roots = [
+            path.expanduser() for path in fallback_skill_roots or []
+        ]
         self.store = store
         self.cache_root = store.cache_root
         self.disabled_names = list(disabled_names or [])
@@ -48,11 +53,11 @@ class ProgressiveDisclosureCore:
         self._disabled_references: list[SkillReference] = []
 
     def validate_skill_sources(self) -> list[SkillValidationIssue]:
-        return read_skill_sources(self.skill_roots, self.disabled_names).issues
+        return self._read_skill_sources().issues
 
     def prepare_skill_index(self) -> SkillIndex:
         # One core instance owns one snapshot; later selection and disclosure never rescan roots.
-        scan = read_skill_sources(self.skill_roots, self.disabled_names)
+        scan = self._read_skill_sources()
         if scan.issues:
             messages = "; ".join(f"{issue.path}: {issue.message}" for issue in scan.issues)
             raise ValueError(f"invalid skill sources: {messages}")
@@ -185,6 +190,13 @@ class ProgressiveDisclosureCore:
         if self._index is None:
             raise RuntimeError("prepare_skill_index must be called before using skills")
         return self._index
+
+    def _read_skill_sources(self) -> SkillSourceScan:
+        return read_skill_sources(
+            self.skill_roots,
+            self.disabled_names,
+            self.fallback_skill_roots,
+        )
 
     def _remove_disabled_skill_names(self, names: list[str]) -> list[str]:
         # Ignore a bare name only when every matching capability is disabled.

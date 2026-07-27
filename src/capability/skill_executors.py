@@ -16,6 +16,7 @@ from runtime.store import RuntimeStore
 from skill.disclosure import ProgressiveDisclosureCore, SkillReference
 from skill.kinds.mcp import McpServer, create_mcp_server_from_skill_disclosure
 from skill.kinds.memory import MiniMemory, create_memory_from_skill_disclosure
+from skill.kinds.planner import create_planning_policy_from_skill
 from skill.kinds.workflow import create_workflow_policy_from_skill
 from skill.manifest import Skill
 
@@ -145,12 +146,32 @@ class WorkflowSkillExecutor:
         return ()
 
 
+class PlannerSkillExecutor:
+    name = "task-planner"
+    version = "1"
+    capability_name = "planner"
+    adds_model_context = False
+
+    def load_skill(self, request: SkillLoadRequest) -> SkillContribution:
+        opened = request.disclosure.open_skill(
+            request.reference.name,
+            self.capability_name,
+        )
+        return SkillContribution(
+            planning_policy=create_planning_policy_from_skill(opened),
+        )
+
+    def create_tools(self, request: CapabilityToolsRequest) -> tuple[CapabilityTool, ...]:
+        return ()
+
+
 def create_builtin_skill_executors() -> dict[str, object]:
     executors = [
         PromptSkillExecutor(),
         McpSkillExecutor(),
         MemorySkillExecutor(),
         WorkflowSkillExecutor(),
+        PlannerSkillExecutor(),
     ]
     return {executor.capability_name: executor for executor in executors}
 

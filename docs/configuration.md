@@ -33,6 +33,18 @@ path = ".super-agent"
 
 Subagent relationships are never declared in TOML. Use `Agent.add_subagent(...)` in Python.
 
+## Planner Skill
+
+Planning requires no Agent setting. Runtime progressively discloses the built-in `planner:default` Skill as a fallback. A simple task stays on the direct path; a `plan` workflow, a structured or explicitly multi-step prompt, a long prompt, or extra required features enables planning.
+
+`super-agent init` creates an editable, Agent-updateable Planner Skill at `skills/planner/default`. A project Skill with the same `planner:default` key replaces the built-in fallback without adding its path to `agent.toml`. Its optional configuration fields are:
+
+- `max_steps`: maximum accepted plan length; defaults to `6`.
+- `minimum_prompt_characters`: deterministic long-prompt threshold; defaults to `320`.
+- `planning_terms`: text fragments that explicitly request decomposition.
+
+`SKILL.md` tells the selected model how to produce the plan. Runtime accepts only one JSON object with a non-empty `steps` array. Every step must contain exactly `instruction`, `purpose`, `required_features`, and `subagent`; unknown subagents and plans above `max_steps` are rejected before step execution.
+
 ## Model Skills
 
 Supported provider names:

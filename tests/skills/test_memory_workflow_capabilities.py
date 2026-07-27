@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -44,14 +45,45 @@ class MemoryWorkflowCapabilityTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_workflow_skill(root, "careful", "plan", instruction="Workflow Capability marker.")
-            provider = MockProvider("ok")
+            provider = _SequenceProvider([json.dumps(_one_step_plan()), "ok"])
 
             result = Agent(AgentConfig.load_from_file(_write_config(root, workflow="careful")), provider=provider).run(
                 "hello"
             )
 
             self.assertEqual("careful", result.workflow)
-            self.assertIn("Workflow Capability marker.", provider.last_messages[0]["content"])
+            self.assertEqual(2, len(provider.requests))
+            self.assertIn(
+                "Workflow Capability marker.",
+                provider.requests[1][0]["content"],
+            )
+
+
+class _SequenceProvider(MockProvider):
+    def __init__(self, responses: list[str]) -> None:
+        super().__init__()
+        self.responses = list(responses)
+        self.requests: list[list[dict[str, object]]] = []
+
+    def send_chat_messages(self, messages, model):
+        self.last_messages = messages
+        self.requests.append(messages)
+        if not self.responses:
+            raise AssertionError("unexpected model call")
+        return self.responses.pop(0)
+
+
+def _one_step_plan() -> dict[str, object]:
+    return {
+        "steps": [
+            {
+                "instruction": "Answer the request",
+                "purpose": "answer",
+                "required_features": ["text"],
+                "subagent": None,
+            }
+        ]
+    }
 
 
 def _write_memory_skill(root: Path, name: str) -> None:

@@ -38,7 +38,7 @@ def create_workflow_policy_from_skill(
 def _instruction_for_mode(mode: str) -> str | None:
     return {
         "direct": "",
-        "plan": "Before answering, produce a compact plan and then execute it.",
+        "plan": "Execute the current planned step and return its useful result.",
         "react": "Use runtime tools to inspect and execute skills. Finish by returning text without a tool call.",
         "loop": "Use runtime tools iteratively until the goal is complete. Finish by returning text without a tool call.",
     }.get(mode)

@@ -93,7 +93,7 @@ class CliTests(unittest.TestCase):
             self.assertEqual(0, code)
             self.assertEqual(3, data["schema_version"])
             self.assertEqual(
-                {"mcp", "memory", "prompt", "workflow"},
+            {"mcp", "memory", "planner", "prompt", "workflow"},
                 {item["capability"] for item in data["skills"]},
             )
             self.assertTrue(all("key" in item for item in data["skills"]))
@@ -295,7 +295,7 @@ instructions = "SKILL.md"
                 explanation_code = main(["skills", "explain", "--config", config, "--prompt", "echo hello"])
 
             self.assertEqual(0, validation_code)
-            self.assertIn("4 valid skills", validation_output.getvalue())
+            self.assertIn("5 valid skills", validation_output.getvalue())
             self.assertEqual(0, explanation_code)
             self.assertIn("echo\tselected\tmatched trigger: echo", explanation_output.getvalue())
 

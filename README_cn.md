@@ -15,6 +15,7 @@ Super Agent 是一个**简单、轻量、自进化、Skill 优先的 Agent 运�
 - **零配置启动**：`Agent()` 和 CLI 可以直接运行，默认使用本地 mock 模型。
 - **统一 Skill 格式**：prompt、MCP、memory、workflow、模型和可执行机制共用 manifest 与生命周期。
 - **渐进式披露**：模型先看到轻量索引，只打开任务真正需要的 Skill。
+- **自动规划**：复杂任务由渐进披露的 Planner Skill 拆解，简单任务仍只进行一次直接模型调用。
 - **自动任务调度**：Runtime 自动选择兼容的模型、Skill 和子 Agent，并从用户隔离的质量、可靠性、延迟和成本证据中持续学习。
 - **统一运行生命周期**：发现、披露、执行、观察、评价和进化共用一个会话。
 - **自动进化闭环**：Runtime 根据真实证据创建候选，自动评价和晋升，并持续监控和回滚退化版本。
@@ -105,7 +106,7 @@ super-agent init --path my-agent
 super-agent run --config my-agent/agent.toml "你好"
 ```
 
-生成的项目包含一个 Agent 配置，以及 prompt、MCP、memory 和 workflow 示例 Skill。
+生成的项目包含一个 Agent 配置，以及 prompt、MCP、memory、workflow 和 Planner 示例 Skill。
 
 ## 创建 Skill
 
@@ -161,6 +162,8 @@ discover -> disclose -> execute -> observe -> evaluate -> evolve
 
 `Agent.run(...)` 会创建唯一的内部 `TaskRequest`，并交给 `AgentRuntime.run_task(...)`。一个中心自适应任务循环选择有序模型回退列表、渐进匹配的 Skill 和命中的子 Agent，然后连续推进模型与工具步骤。完整原因记录在 `task.scheduled`；每次模型尝试都会记录选择、完成或失败、延迟、估算 token 和成本。Workflow Skill 只保存指令与结束规则。
 
+内置 `planner:default` Skill 让自动规划保持零配置。简单任务直接执行，不增加规划模型调用；复杂提示、结构化多步骤请求、额外能力要求和 `plan` workflow 会让所选模型返回严格任务计划。每个计划步骤都会重新选择模型，也可以指定一个已经挂载的子 Agent。在项目中创建同名 `planner:default`，即可通过同一个中心 Skill 索引覆盖内置后备版本。
+
 模型路由在冷启动时保持确定性，只有同一任务用途积累证据后才进行有界探索。证据按用户、Agent、model Skill 和任务用途隔离。需要时可以直接记录质量分数：
 
 ```python
@@ -181,7 +184,7 @@ super-agent runs explain --config agent.toml --run-id <run-id>
 super-agent runs explain --config agent.toml --run-id <run-id> --output json
 ```
 
-洞察投影包含调度原因、每次模型尝试、延迟、估算 token 与成本、学习后的路由证据、相关 Skill 保鲜度和自动进化决策。子 Agent 的 `run_id` 也可以从主项目查看，但查询仍严格限制在同一用户和同一存储后端内。
+洞察投影包含调度原因、任务计划及完成步骤、每一步的模型与子 Agent 路由、模型尝试、延迟、估算 token 与成本、学习后的路由证据、相关 Skill 保鲜度和自动进化决策。子 Agent 的 `run_id` 也可以从主项目查看，但查询仍严格限制在同一用户和同一存储后端内。
 
 `CapabilityRegistry` 只保存真正执行 Skill 的处理器，可以通过 `agent.add_skill_executor(...)` 明确替换。每个处理器统一返回一个 `SkillContribution`，其中可以包含模型上下文、提示上下文、工具、任务策略和完成记录器，因此 Runtime 不再了解 Memory、MCP 或 Workflow 的具体类。需要安装或进化的处理器使用标准 `capability` Skill，与其他 Skill 共用披露、评价、晋升和回滚。
 

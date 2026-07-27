@@ -15,6 +15,7 @@ The project is currently experimental (`0.0.x`). It favors a small, inspectable 
 - **Zero-configuration start**: `Agent()` and the CLI run immediately with a local mock model.
 - **One Skill format**: prompt, MCP, memory, workflow, models, and executable mechanisms share one manifest and lifecycle.
 - **Progressive disclosure**: the model sees a compact index first and opens only the Skills it needs.
+- **Automatic planning**: complex tasks are decomposed by a progressively disclosed Planner Skill, while simple tasks keep one direct model call.
 - **Automatic task scheduling**: Runtime selects compatible models, Skills, and subagents, then learns from user-scoped quality, reliability, latency, and cost evidence.
 - **One runtime lifecycle**: discovery, disclosure, execution, observation, evaluation, and evolution share one session.
 - **Automatic evolution loop**: Runtime turns real evidence into candidates, evaluates and promotes them, then monitors and rolls back regressions.
@@ -105,7 +106,7 @@ super-agent init --path my-agent
 super-agent run --config my-agent/agent.toml "hello"
 ```
 
-The generated project contains one Agent configuration and example prompt, MCP, memory, and workflow Skills.
+The generated project contains one Agent configuration and example prompt, MCP, memory, workflow, and Planner Skills.
 
 ## Create a Skill
 
@@ -161,6 +162,8 @@ discover -> disclose -> execute -> observe -> evaluate -> evolve
 
 `Agent.run(...)` creates one internal `TaskRequest` and sends it through `AgentRuntime.run_task(...)`. One adaptive task loop selects an ordered model fallback list, progressively matched Skills, and matching subagents, then advances the model and tool steps. Every reason is stored in `task.scheduled`; each model attempt records selection, completion or failure, latency, estimated tokens, and cost. Workflow Skills contain only instructions and stopping rules.
 
+The built-in `planner:default` Skill keeps planning optional and zero-configuration. Simple tasks use the direct path without a planning model call. Complex prompts, structured multi-step requests, extra feature requirements, and `plan` workflows ask the selected model for a strict task plan. Each planned step then gets its own model routing decision and may name one attached subagent. A project-created `planner:default` replaces the built-in fallback through the same central Skill index.
+
 Routing starts deterministically and uses bounded exploration only after evidence exists for the effective task purpose. Evidence is isolated by user, Agent, model Skill, and purpose. Record an explicit quality score when useful:
 
 ```python
@@ -181,7 +184,7 @@ super-agent runs explain --config agent.toml --run-id <run-id>
 super-agent runs explain --config agent.toml --run-id <run-id> --output json
 ```
 
-The projection includes scheduler reasons, every model attempt, latency, estimated tokens and cost, learned routing evidence, relevant Skill freshness, and automatic evolution decisions. A child Agent `run_id` can be inspected through the parent project because the lookup remains restricted to the same user and storage backend.
+The projection includes scheduler reasons, the task plan and completed steps, every step's model and subagent route, model attempts, latency, estimated tokens and cost, learned routing evidence, relevant Skill freshness, and automatic evolution decisions. A child Agent `run_id` can be inspected through the parent project because the lookup remains restricted to the same user and storage backend.
 
 `CapabilityRegistry` contains only executable Skill handlers. Replace one explicitly with `agent.add_skill_executor(...)`. Every handler returns one `SkillContribution` containing any model context, prompt context, tools, task policy, and completion recorder it provides. Runtime therefore does not know concrete Memory, MCP, or Workflow classes. A handler that must be installed or evolved is a standard `capability` Skill and uses the same disclosure, evaluation, promotion, and rollback path as every other Skill.
 

@@ -17,21 +17,38 @@ def explain_run_with_insight(store: RuntimeStore, run_id: str) -> dict[str, obje
     explanation = store.explain_run(run_id)
     events = store.read_run_events(run_id)
     schedule = _latest_event_data(events, "task.scheduled")
-    purpose = str(schedule.get("purpose", "answer"))
+    purposes = _model_purposes_for_run(events)
     explanation.update(
         {
-            "schema_version": 2,
+            "schema_version": 3,
             "schedule": schedule,
+            "task_plan": _latest_event_data(events, "task.plan.created"),
+            "task_steps": project_planned_task_steps(events),
             "model_calls": project_model_call_attempts(events),
             "routing_evidence": [
                 item.to_dict()
-                for item in list_model_routing_stats(store, purpose)
+                for item in list_model_routing_stats(store)
+                if item.purpose in purposes
             ],
             "skill_freshness": _skill_freshness_for_run(store, run_id),
             "evolution": _evolution_for_run(store, run_id),
         }
     )
     return explanation
+
+
+def project_planned_task_steps(events: list[RunEvent]) -> list[dict[str, object]]:
+    steps: dict[int, dict[str, object]] = {}
+    for event in events:
+        if event.event_type not in {"task.step.scheduled", "task.step.completed"}:
+            continue
+        step_number = _positive_step_number(event.data.get("step"))
+        projected = steps.setdefault(step_number, {"step": step_number})
+        projected.update(event.data)
+        projected["status"] = (
+            "completed" if event.event_type.endswith("completed") else "scheduled"
+        )
+    return [steps[number] for number in sorted(steps)]
 
 
 def project_model_call_attempts(events: list[RunEvent]) -> list[dict[str, object]]:
@@ -139,7 +156,22 @@ def _latest_event_data(
     return {}
 
 
+def _model_purposes_for_run(events: list[RunEvent]) -> set[str]:
+    purposes = {
+        str(event.data.get("purpose", "answer")).strip().lower()
+        for event in events
+        if event.event_type in {"model.call.completed", "model.call.failed"}
+    }
+    return purposes or {"answer"}
+
+
 def _positive_attempt(value: object) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
         raise ValueError("model call attempt must be a positive integer")
+    return value
+
+
+def _positive_step_number(value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError("planned task step must be a positive integer")
     return value

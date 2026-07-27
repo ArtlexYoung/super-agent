@@ -102,6 +102,7 @@ def _default_skill_roots(project_skills: Path, builtin_skills: Path) -> list[Pat
     defaults = {
         "memory": project_skills / "memory" / "default" / "skill.toml",
         "workflow": project_skills / "workflow" / "direct" / "skill.toml",
+        "planner": project_skills / "planner" / "default" / "skill.toml",
     }
     roots.extend(
         builtin_skills / capability_name

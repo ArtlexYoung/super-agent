@@ -27,6 +27,15 @@ class TaskPolicy:
 
 
 @dataclass(frozen=True)
+class PlanningPolicy:
+    name: str
+    instruction: str
+    max_steps: int
+    minimum_prompt_characters: int
+    planning_terms: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class CapabilityTool:
     name: str
     description: str
@@ -56,6 +65,7 @@ class SkillContribution:
     build_prompt_context: Callable[[str], str] | None = None
     tools: tuple[CapabilityTool, ...] = ()
     task_policy: TaskPolicy | None = None
+    planning_policy: PlanningPolicy | None = None
     record_task_completed: Callable[[str, list[str]], None] | None = None
 
 

@@ -161,7 +161,12 @@ instructions = "SKILL.md"
             self.assertGreater(stats["prompt:echo"]["freshness"], 70)
             skill_keys = {record.revision.key for record in records}
             self.assertEqual(
-                {"memory:default", "prompt:echo", "workflow:direct"},
+                {
+                    "memory:default",
+                    "planner:default",
+                    "prompt:echo",
+                    "workflow:direct",
+                },
                 skill_keys,
             )
             self.assertTrue(all(record.source.run_id == result.run_id for record in records))

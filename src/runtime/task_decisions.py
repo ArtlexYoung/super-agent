@@ -8,6 +8,7 @@ from typing import Mapping
 
 from capability.skill_contributions import TaskPolicy
 from runtime.routing import ModelRoutingStats, list_model_routing_stats
+from runtime.planning import PlannedTaskStep
 from runtime.session import RuntimeSession
 from runtime.tasks import TaskRequest
 from skill.disclosure import SkillReference
@@ -38,6 +39,9 @@ class TaskSchedule:
     skill_references: tuple[SkillReference, ...]
     subagent_names: tuple[str, ...]
     subagent_reasons: tuple[str, ...]
+    execution_mode: str
+    planner: str | None
+    planning_reasons: tuple[str, ...]
 
     @property
     def selected_model(self) -> ModelProfile:
@@ -52,6 +56,9 @@ class TaskSchedule:
             "skills": [reference.key for reference in self.skill_references],
             "subagents": list(self.subagent_names),
             "subagent_reasons": list(self.subagent_reasons),
+            "execution_mode": self.execution_mode,
+            "planner": self.planner,
+            "planning_reasons": list(self.planning_reasons),
         }
 
 
@@ -89,6 +96,54 @@ def create_task_schedule(
         skill_references=tuple(skill_references),
         subagent_names=tuple(subagent_names),
         subagent_reasons=tuple(subagent_reasons),
+        execution_mode="direct",
+        planner=None,
+        planning_reasons=(),
+    )
+
+
+def create_planned_step_schedule(
+    step: PlannedTaskStep,
+    request: TaskRequest,
+    session: RuntimeSession,
+    *,
+    workflow: TaskPolicy,
+    model_profiles: list[ModelProfile],
+    environment: Mapping[str, str],
+) -> TaskSchedule:
+    evidence = {
+        item.profile_key: item
+        for item in list_model_routing_stats(session.store, step.purpose)
+    }
+    required_features = tuple(
+        sorted(set(request.required_features) | set(step.required_features) | {"text"})
+    )
+    model_choices = rank_model_choices(
+        model_profiles,
+        environment,
+        purpose=step.purpose,
+        required_features=required_features,
+        prompt=step.instruction,
+        evidence=evidence,
+    )
+    step_request = replace(request, prompt=step.instruction)
+    subagent_names = () if step.subagent is None else (step.subagent,)
+    subagent_reasons = (
+        ()
+        if step.subagent is None
+        else (f"{step.subagent}: selected by Planner Skill",)
+    )
+    return TaskSchedule(
+        purpose=step.purpose,
+        required_features=required_features,
+        workflow=workflow.name,
+        model_choices=model_choices,
+        skill_references=tuple(_choose_skills(step_request, session, workflow)),
+        subagent_names=subagent_names,
+        subagent_reasons=subagent_reasons,
+        execution_mode="planned_step",
+        planner=None,
+        planning_reasons=(),
     )
 
 

@@ -42,6 +42,27 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
             manifest = core.open_skill("default", expected_capability="memory").read_manifest()
             self.assertEqual("memory", manifest.capability)
 
+    def test_primary_skill_source_overrides_fallback_with_the_same_key(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            primary = root / "primary" / "planner" / "default"
+            fallback = root / "fallback" / "planner" / "default"
+            primary.mkdir(parents=True)
+            fallback.mkdir(parents=True)
+            _write_manifest(primary, "default", "planner")
+            _write_manifest(fallback, "default", "planner")
+            core = ProgressiveDisclosureCore(
+                [root / "primary"],
+                create_local_runtime_store(root / "state"),
+                fallback_skill_roots=[root / "fallback"],
+            )
+
+            index = core.prepare_skill_index()
+            manifest = core.open_skill("default", "planner").read_manifest()
+
+            self.assertEqual(["planner:default"], [entry.reference.key for entry in index.entries])
+            self.assertEqual(primary, manifest.path)
+
     def test_validation_rejects_name_that_cannot_form_stable_key(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

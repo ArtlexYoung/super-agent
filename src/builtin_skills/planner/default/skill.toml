@@ -1,0 +1,28 @@
+schema_version = 2
+name = "default"
+capability = "planner"
+description = "Built-in zero-configuration task planner"
+version = "0.0.45"
+triggers = []
+function_group = "task-planning"
+
+[entry]
+instructions = "SKILL.md"
+
+[configuration]
+max_steps = 6
+minimum_prompt_characters = 320
+planning_terms = [
+  "step by step",
+  "first, then",
+  "first and then",
+  "then finally",
+  "in stages",
+  "multiple steps",
+  "逐步",
+  "分步骤",
+  "先完成",
+  "然后再",
+  "最后再",
+  "分阶段",
+]

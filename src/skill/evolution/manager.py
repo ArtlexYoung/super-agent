@@ -79,6 +79,7 @@ class SkillEvolutionManager:
         self.skill_disclosure = ProgressiveDisclosureCore(
             skill_disclosure.skill_roots,
             store,
+            fallback_skill_roots=skill_disclosure.fallback_skill_roots,
             disabled_names=skill_disclosure.disabled_names,
         )
         if not config.paths.skills:

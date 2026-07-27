@@ -2,31 +2,40 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, replace
-from time import perf_counter
-from typing import Callable, Protocol, cast
-from uuid import uuid4
+from typing import Callable, cast
 
-from capability.skill_contributions import SkillContribution, TaskPolicy
-from capability.skill_executors import SkillLoadRequest
-from provider.chat import (
-    ChatProvider,
-    Message,
-    ModelResponse,
-    ToolCall,
-    ToolDefinition,
+from capability.skill_contributions import (
+    PlanningPolicy,
+    SkillContribution,
+    TaskPolicy,
 )
+from capability.skill_executors import SkillLoadRequest
+from provider.chat import Message, ModelResponse
 from provider.pool import ProviderPool
-from runtime.evaluation import estimate_evaluation_token_usage
-from runtime.routing import list_model_routing_stats
+from runtime.model_calls import (
+    AdaptiveModelCalls,
+    ModelCallContext,
+    TextModel,
+    assistant_tool_call_message,
+    build_model_messages,
+    tool_result_message,
+)
+from runtime.planning import (
+    PlannedTaskStep,
+    TaskPlanningDecision,
+    build_planned_step_prompt,
+    build_task_planning_messages,
+    create_planned_step_policy,
+    decide_task_planning,
+    read_task_plan,
+)
 from runtime.session import RuntimeSession
 from runtime.store import RuntimeStore
 from runtime.task_decisions import (
-    ModelChoice,
     TaskSchedule,
+    create_planned_step_schedule,
     create_task_schedule,
-    rank_model_choices,
 )
 from runtime.tasks import SubAgentResult, TaskRequest, TaskResult
 from runtime.tools import RuntimeTools, RuntimeToolsContext
@@ -35,29 +44,32 @@ from skill.kinds.model import ModelProfile
 from skill.manifest import Skill
 
 
-EventWriter = Callable[[str, dict[str, object]], object]
-ModelSelector = Callable[[ModelProfile, ChatProvider], None]
 ScheduleListener = Callable[[TaskSchedule], None]
 
 
-class TextModel(Protocol):
-    def send_messages(self, messages: list[Message]) -> str:
-        ...
+@dataclass(frozen=True)
+class _LoadedPlanner:
+    policy: PlanningPolicy
+    contribution: SkillContribution
+    skill_key: str
 
 
 @dataclass(frozen=True)
-class _ModelCallContext:
-    purpose: str
-    record_event: EventWriter
-    select_model: ModelSelector | None = None
+class _TaskExecutionContext:
+    request: TaskRequest
+    session: RuntimeSession
+    workflow: TaskPolicy
+    background_contributions: list[SkillContribution]
 
 
-@dataclass(frozen=True)
-class _ModelCallEvidence:
-    choice: ModelChoice
-    attempt: int
-    purpose: str
-    input_tokens: int
+@dataclass
+class _PlannedTaskProgress:
+    completed_results: list[str]
+    skills: list[Skill]
+    tools: list[RuntimeTools]
+    subagent_results: list[SubAgentResult]
+    contributions: list[SkillContribution]
+    stop_reason: str = "completed"
 
 
 class AdaptiveTaskLoop:
@@ -72,6 +84,7 @@ class AdaptiveTaskLoop:
             raise ValueError("adaptive task loop requires at least one model profile")
         self.model_profiles = list(model_profiles)
         self.provider_pool = provider_pool
+        self.model_calls = AdaptiveModelCalls(self.model_profiles, provider_pool)
 
     def run_task(
         self,
@@ -80,20 +93,47 @@ class AdaptiveTaskLoop:
         before_model_calls: ScheduleListener,
     ) -> TaskResult:
         workflow = _load_workflow_policy(session)
+        planner = _load_default_planner(session)
+        planning = decide_task_planning(
+            None if planner is None else planner.policy,
+            request.prompt,
+            workflow_mode=workflow.mode,
+            required_features=request.required_features,
+        )
+        schedule_request = (
+            replace(request, purpose="planning") if planning.should_plan else request
+        )
         schedule = create_task_schedule(
-            request,
+            schedule_request,
             session,
             workflow,
             model_profiles=self.model_profiles,
             environment=self.provider_pool.environment,
         )
+        schedule = _apply_planning_to_schedule(schedule, planner, planning)
         session.record_event("task.scheduled", schedule.to_dict())
         self._select_primary_model(session, schedule)
         before_model_calls(schedule)
 
         background = _load_background_contributions(session)
+        if planner is not None:
+            background.append(planner.contribution)
+        context = _TaskExecutionContext(request, session, workflow, background)
+        if planning.should_plan:
+            if planner is None:
+                raise RuntimeError("task requires planning but no Planner Skill is available")
+            return self._run_planned_task(context, schedule, planner, planning)
+        return self._run_direct_task(context, schedule)
+
+    def _run_direct_task(
+        self,
+        context: _TaskExecutionContext,
+        schedule: TaskSchedule,
+    ) -> TaskResult:
+        request = context.request
+        session = context.session
         scheduled = _load_scheduled_skill_contributions(session, schedule)
-        contributions = background + scheduled
+        contributions = context.background_contributions + scheduled
         skills = [
             contribution.model_context
             for contribution in scheduled
@@ -103,18 +143,18 @@ class AdaptiveTaskLoop:
         _record_disclosed_skills(session, skills)
         subagent_results = _run_scheduled_subagents(request, session, schedule)
         system = _build_system_prompt(request, session, contributions, subagent_results)
-        messages = _build_model_messages(request, workflow, skills, system)
+        messages = build_model_messages(request, context.workflow, skills, system)
         text, stop_reason = self._run_model_loop(
             session,
-            workflow,
+            context.workflow,
             schedule,
             tools,
             messages,
         )
         result = TaskResult(
             text=text,
-            workflow=workflow.name,
-            skills=_used_skill_names(skills, tools),
+            workflow=context.workflow.name,
+            skills=_used_skill_names(skills, [tools]),
             subagent_results=subagent_results + tools.delegated_subagent_results,
             warning_messages=request.warning_messages,
             run_id=session.run_id,
@@ -123,17 +163,140 @@ class AdaptiveTaskLoop:
         _record_task_completed(session, result, contributions)
         return result
 
+    def _run_planned_task(
+        self,
+        context: _TaskExecutionContext,
+        schedule: TaskSchedule,
+        planner: _LoadedPlanner,
+        planning: TaskPlanningDecision,
+    ) -> TaskResult:
+        request = context.request
+        session = context.session
+        subagents = (
+            request.subagents.list_subagents() if request.include_subagents else []
+        )
+        response = self.model_calls.call_model(
+            build_task_planning_messages(
+                planner.policy,
+                request,
+                subagents=subagents,
+                model_profiles=self.model_profiles,
+            ),
+            schedule.model_choices,
+            ModelCallContext("planning", session.record_event, session.select_model),
+        )
+        plan = read_task_plan(
+            response.text,
+            planner.policy,
+            {str(item.get("name", "")) for item in subagents},
+        )
+        session.record_event(
+            "task.plan.created",
+            {
+                "planner": planner.skill_key,
+                "reasons": list(planning.reasons),
+                **plan.to_dict(),
+            },
+        )
+        progress = _PlannedTaskProgress(
+            completed_results=[],
+            skills=[],
+            tools=[],
+            subagent_results=[],
+            contributions=list(context.background_contributions),
+        )
+        for step_number, step in enumerate(plan.steps, start=1):
+            text, progress.stop_reason = self._run_planned_step(
+                context,
+                step,
+                step_number,
+                progress,
+            )
+            progress.completed_results.append(text)
+        result = TaskResult(
+            text=progress.completed_results[-1],
+            workflow=context.workflow.name,
+            skills=_used_skill_names(progress.skills, progress.tools),
+            subagent_results=progress.subagent_results,
+            warning_messages=request.warning_messages,
+            run_id=session.run_id,
+            stop_reason=progress.stop_reason,
+        )
+        _record_task_completed(session, result, progress.contributions)
+        return result
+
+    def _run_planned_step(
+        self,
+        context: _TaskExecutionContext,
+        step: PlannedTaskStep,
+        step_number: int,
+        progress: _PlannedTaskProgress,
+    ) -> tuple[str, str]:
+        request = context.request
+        session = context.session
+        step_policy = create_planned_step_policy(context.workflow, step)
+        schedule = create_planned_step_schedule(
+            step,
+            request,
+            session,
+            workflow=step_policy,
+            model_profiles=self.model_profiles,
+            environment=self.provider_pool.environment,
+        )
+        session.record_event(
+            "task.step.scheduled",
+            {"step": step_number, "instruction": step.instruction, **schedule.to_dict()},
+        )
+        contributions = _load_scheduled_skill_contributions(session, schedule)
+        combined = context.background_contributions + contributions
+        skills = [
+            contribution.model_context
+            for contribution in contributions
+            if contribution.model_context is not None
+        ]
+        step_subagents = _run_planned_step_subagent(request, session, step)
+        tools = _create_runtime_tools(request, session, combined)
+        step_prompt = build_planned_step_prompt(
+            request.prompt,
+            step,
+            progress.completed_results,
+        )
+        step_request = replace(
+            request,
+            prompt=step_prompt,
+            required_features=step.required_features,
+        )
+        system = _build_system_prompt(
+            step_request,
+            session,
+            combined,
+            step_subagents,
+        )
+        messages = build_model_messages(step_request, step_policy, skills, system)
+        text, stop_reason = self._run_model_loop(
+            session,
+            step_policy,
+            schedule,
+            tools,
+            messages,
+        )
+        session.record_event(
+            "task.step.completed",
+            {"step": step_number, "text": text, "stop_reason": stop_reason},
+        )
+        progress.skills.extend(skills)
+        progress.tools.append(tools)
+        progress.subagent_results.extend(step_subagents)
+        progress.subagent_results.extend(tools.delegated_subagent_results)
+        progress.contributions.extend(contributions)
+        return text, stop_reason
+
     def create_text_model(
         self,
         store: RuntimeStore,
         purpose: str,
     ) -> TextModel:
-        return _AdaptiveTextModel(
-            task_loop=self,
-            store=store,
-            purpose=purpose.strip().lower(),
-            operation_id=f"model-operation-{uuid4().hex}",
-        )
+        return self.model_calls.create_text_model(store, purpose)
 
     def _run_model_loop(
         self,
@@ -143,17 +306,21 @@ class AdaptiveTaskLoop:
         tools: RuntimeTools,
         messages: list[Message],
     ) -> tuple[str, str]:
-        context = _ModelCallContext(
+        context = ModelCallContext(
             purpose=schedule.purpose,
             record_event=session.record_event,
             select_model=session.select_model,
         )
         if not workflow.uses_tools:
-            response = self._call_model(messages, schedule.model_choices, context)
+            response = self.model_calls.call_model(
+                messages,
+                schedule.model_choices,
+                context,
+            )
             return response.text, "completed"
         last_text = ""
         for step in range(1, workflow.max_steps + 1):
-            response = self._call_model(
+            response = self.model_calls.call_model(
                 messages,
                 schedule.model_choices,
                 context,
@@ -163,87 +330,12 @@ class AdaptiveTaskLoop:
             _record_model_step(session, step, response)
             if not response.tool_calls:
                 return response.text, response.stop_reason or "model_finished"
-            messages.append(_assistant_tool_call_message(response.text, response.tool_calls))
+            messages.append(
+                assistant_tool_call_message(response.text, response.tool_calls)
+            )
             for call in response.tool_calls:
-                messages.append(_tool_result_message(call, tools.run_tool_call(call)))
+                messages.append(tool_result_message(call, tools.run_tool_call(call)))
         return last_text, "max_steps"
-
-    def _call_model(
-        self,
-        messages: list[Message],
-        choices: tuple[ModelChoice, ...],
-        context: _ModelCallContext,
-        *,
-        tools: list[ToolDefinition] | None = None,
-    ) -> ModelResponse:
-        for attempt, choice in enumerate(choices, start=1):
-            provider = self._prepare_model_attempt(choice, attempt, context)
-            evidence = _create_call_evidence(choice, attempt, context, messages, tools)
-            started_at = perf_counter()
-            try:
-                response = _send_provider_request(
-                    provider,
-                    choice.profile.model,
-                    messages,
-                    tools,
-                )
-            except Exception as error:
-                _record_model_failure(
-                    context,
-                    evidence,
-                    error,
-                    attempt < len(choices),
-                    started_at,
-                )
-                if attempt == len(choices):
-                    raise
-                continue
-            _record_model_completion(context, evidence, response, started_at)
-            return response
-        raise RuntimeError("task schedule contains no model choices")
-
-    def _choose_models(
-        self,
-        store: RuntimeStore,
-        purpose: str,
-        prompt: str,
-        required_features: tuple[str, ...] = ("text",),
-    ) -> tuple[ModelChoice, ...]:
-        evidence = {
-            item.profile_key: item
-            for item in list_model_routing_stats(store, purpose)
-        }
-        return rank_model_choices(
-            self.model_profiles,
-            self.provider_pool.environment,
-            purpose=purpose,
-            required_features=required_features,
-            prompt=prompt,
-            evidence=evidence,
-        )
-
-    def _prepare_model_attempt(
-        self,
-        choice: ModelChoice,
-        attempt: int,
-        context: _ModelCallContext,
-    ) -> ChatProvider:
-        profile = choice.profile
-        provider = self.provider_pool.get_chat_provider(profile.key, profile.connection)
-        if context.select_model is not None:
-            context.select_model(profile, provider)
-        context.record_event(
-            "model.call.selected",
-            {
-                "attempt": attempt,
-                "profile": profile.key,
-                "model": profile.model,
-                "purpose": context.purpose,
-                "score": choice.score,
-                "reasons": list(choice.reasons),
-            },
-        )
-        return provider
 
     def _select_primary_model(
         self,
@@ -255,35 +347,6 @@ class AdaptiveTaskLoop:
             profile,
             self.provider_pool.get_chat_provider(profile.key, profile.connection),
         )
-
-
-@dataclass(frozen=True)
-class _AdaptiveTextModel:
-    task_loop: AdaptiveTaskLoop
-    store: RuntimeStore
-    purpose: str
-    operation_id: str
-
-    def send_messages(self, messages: list[Message]) -> str:
-        prompt = next(
-            (
-                str(message.get("content", ""))
-                for message in reversed(messages)
-                if message.get("role") == "user"
-            ),
-            "",
-        )
-        choices = self.task_loop._choose_models(self.store, self.purpose, prompt)
-        response = self.task_loop._call_model(
-            messages,
-            choices,
-            _ModelCallContext(self.purpose, self._record_event),
-        )
-        return response.text
-
-    def _record_event(self, event_type: str, data: dict[str, object]) -> object:
-        return self.store.append_model_call_event(self.operation_id, event_type, data)
-
 
 def _load_workflow_policy(session: RuntimeSession) -> TaskPolicy:
     try:
@@ -299,6 +362,36 @@ def _load_workflow_policy(session: RuntimeSession) -> TaskPolicy:
     if contribution.task_policy is None:
         raise TypeError("workflow skill executor did not contribute a task policy")
     return contribution.task_policy
+
+
+def _load_default_planner(session: RuntimeSession) -> _LoadedPlanner | None:
+    entry = session.require_skill_index().find_skill("planner:default")
+    if entry is None:
+        return None
+    contribution = _load_skill(session, entry.reference)
+    if contribution.planning_policy is None:
+        raise TypeError("planner skill executor did not contribute a planning policy")
+    return _LoadedPlanner(
+        policy=contribution.planning_policy,
+        contribution=contribution,
+        skill_key=entry.reference.key,
+    )
+
+
+def _apply_planning_to_schedule(
+    schedule: TaskSchedule,
+    planner: _LoadedPlanner | None,
+    planning: TaskPlanningDecision,
+) -> TaskSchedule:
+    return replace(
+        schedule,
+        skill_references=() if planning.should_plan else schedule.skill_references,
+        subagent_names=() if planning.should_plan else schedule.subagent_names,
+        subagent_reasons=() if planning.should_plan else schedule.subagent_reasons,
+        execution_mode="planned" if planning.should_plan else "direct",
+        planner=None if planner is None else planner.skill_key,
+        planning_reasons=planning.reasons,
+    )
 
 
 def _load_background_contributions(
@@ -386,6 +479,24 @@ def _run_scheduled_subagents(
     ]
 
 
+def _run_planned_step_subagent(
+    request: TaskRequest,
+    session: RuntimeSession,
+    step: PlannedTaskStep,
+) -> list[SubAgentResult]:
+    if step.subagent is None:
+        return []
+    return [
+        _subagent_result_from_dict(
+            request.subagents.run_named_subagent(
+                step.subagent,
+                step.instruction,
+                session,
+            )
+        )
+    ]
+
+
 def _build_system_prompt(
     request: TaskRequest,
     session: RuntimeSession,
@@ -409,110 +520,6 @@ def _build_system_prompt(
     if disclosure:
         parts.append(disclosure)
     return "\n\n".join(part for part in parts if part.strip())
-
-
-def _build_model_messages(
-    request: TaskRequest,
-    workflow: TaskPolicy,
-    skills: list[Skill],
-    system: str,
-) -> list[Message]:
-    system_parts = [system]
-    if workflow.instruction:
-        system_parts.append(f"Workflow:\n{workflow.instruction}")
-    system_parts.extend(
-        f"Skill: {skill.manifest.name}\n{skill.instructions}" for skill in skills
-    )
-    messages: list[Message] = [
-        {"role": "system", "content": "\n\n".join(system_parts)}
-    ]
-    messages.extend(
-        {"role": str(item.get("role", "")), "content": str(item.get("content", ""))}
-        for item in request.messages
-        if item.get("role") in {"user", "assistant"}
-    )
-    if messages[-1].get("role") != "user" or messages[-1].get("content") != request.prompt:
-        messages.append({"role": "user", "content": request.prompt})
-    return messages
-
-
-def _send_provider_request(
-    provider: ChatProvider,
-    model: str,
-    messages: list[Message],
-    tools: list[ToolDefinition] | None,
-) -> ModelResponse:
-    if tools is None:
-        return ModelResponse(provider.send_chat_messages(messages, model), [], "completed")
-    return provider.send_chat_messages_with_tools(messages, model, tools)
-
-
-def _create_call_evidence(
-    choice: ModelChoice,
-    attempt: int,
-    context: _ModelCallContext,
-    messages: list[Message],
-    tools: list[ToolDefinition] | None,
-) -> _ModelCallEvidence:
-    input_text = json.dumps(
-        {"messages": messages, "tools": tools or []},
-        ensure_ascii=False,
-        sort_keys=True,
-    )
-    token_usage = estimate_evaluation_token_usage(input_text, "")
-    return _ModelCallEvidence(choice, attempt, context.purpose, token_usage.input_tokens)
-
-
-def _record_model_completion(
-    context: _ModelCallContext,
-    evidence: _ModelCallEvidence,
-    response: ModelResponse,
-    started_at: float,
-) -> None:
-    output = response.text if not response.tool_calls else _model_response_text(response)
-    context.record_event(
-        "model.call.completed",
-        _model_call_metrics(evidence, output, started_at),
-    )
-
-
-def _record_model_failure(
-    context: _ModelCallContext,
-    evidence: _ModelCallEvidence,
-    error: Exception,
-    will_fallback: bool,
-    started_at: float,
-) -> None:
-    context.record_event(
-        "model.call.failed",
-        {
-            **_model_call_metrics(evidence, "", started_at),
-            "error_type": type(error).__name__,
-            "message": str(error),
-            "will_fallback": will_fallback,
-        },
-    )
-
-
-def _model_call_metrics(
-    evidence: _ModelCallEvidence,
-    output: str,
-    started_at: float,
-) -> dict[str, object]:
-    profile = evidence.choice.profile
-    output_tokens = estimate_evaluation_token_usage("", output).output_tokens
-    input_cost = evidence.input_tokens * (profile.routing.input_cost_per_million or 0.0)
-    output_cost = output_tokens * (profile.routing.output_cost_per_million or 0.0)
-    return {
-        "attempt": evidence.attempt,
-        "profile": profile.key,
-        "model": profile.model,
-        "purpose": evidence.purpose,
-        "latency_ms": max(0, round((perf_counter() - started_at) * 1000)),
-        "input_tokens": evidence.input_tokens,
-        "output_tokens": output_tokens,
-        "estimated_cost": (input_cost + output_cost) / 1_000_000,
-    }
 
 
 def _record_disclosed_skills(
@@ -563,53 +570,16 @@ def _record_task_completed(
             contribution.record_task_completed(result.workflow, result.skills)
 
 
-def _assistant_tool_call_message(text: str, calls: list[ToolCall]) -> Message:
-    return {
-        "role": "assistant",
-        "content": text,
-        "tool_calls": [
-            {
-                "id": call.id,
-                "type": "function",
-                "function": {
-                    "name": call.name,
-                    "arguments": json.dumps(call.arguments, ensure_ascii=False),
-                },
-            }
-            for call in calls
-        ],
-    }
-
-
-def _tool_result_message(call: ToolCall, result: dict[str, object]) -> Message:
-    return {
-        "role": "tool",
-        "tool_call_id": call.id,
-        "name": call.name,
-        "content": json.dumps(result, ensure_ascii=False),
-    }
-
-
-def _used_skill_names(skills: list[Skill], tools: RuntimeTools) -> list[str]:
-    names = [skill.manifest.name for skill in skills]
-    for name in tools.used_skill_names:
-        if name not in names:
-            names.append(name)
+def _used_skill_names(
+    skills: list[Skill],
+    tools: list[RuntimeTools],
+) -> list[str]:
+    names = list(dict.fromkeys(skill.manifest.name for skill in skills))
+    for runtime_tools in tools:
+        for name in runtime_tools.used_skill_names:
+            if name not in names:
+                names.append(name)
     return names
-
-
-def _model_response_text(response: ModelResponse) -> str:
-    return json.dumps(
-        {
-            "text": response.text,
-            "tool_calls": [
-                {"name": call.name, "arguments": call.arguments}
-                for call in response.tool_calls
-            ],
-        },
-        ensure_ascii=False,
-        sort_keys=True,
-    )
 
 
 def _subagent_result_from_dict(value: dict[str, object]) -> SubAgentResult:
