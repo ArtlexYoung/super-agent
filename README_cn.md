@@ -234,7 +234,7 @@ super-agent skills evolve \
 
 ```bash
 super-agent evolution list --config agent.toml
-super-agent evolution show --config agent.toml --schedule-id <id> --output json
+super-agent evolution show --config agent.toml --evolution-id <id> --output json
 ```
 
 `evolution` 命令只用于查看自动状态。晋升后的版本会继续接受真实运行监控：任何失败都会触发回滚；三个健康样本会将其标记为稳定；三个样本后的平均分低于 `0.75` 同样会触发回滚。自动化异常只记录在任务追踪中，不会替换主任务结果。

@@ -2,15 +2,13 @@
 
 from __future__ import annotations
 
-from runtime.evolution.lifecycle import EvolutionLifecycle
-from runtime.evolution.schedule_state import (
-    EvolutionScheduleState,
-    evolution_schedule_to_dict,
-    replay_evolution_schedule,
+from runtime.evolution.state import (
+    SkillEvolutionState,
+    list_skill_evolutions,
+    skill_evolution_to_dict,
 )
 from runtime.models import RunEvent
 from runtime.routing import list_model_routing_stats
-from runtime.storage import StorageEvent
 from runtime.store import RuntimeStore
 from skill.freshness import calculate_skill_freshness
 
@@ -90,52 +88,27 @@ def _evolution_for_run(store: RuntimeStore, run_id: str) -> list[dict[str, objec
     if not run_records:
         return []
     record_ids = {record.record_id for record in run_records}
-    target_revisions = {
-        (
-            record.target.target_type,
-            record.target.key,
-            record.target.version,
-            record.target.content_sha256,
-        )
-        for record in run_records
-    }
-    grouped: dict[str, list[StorageEvent]] = {}
-    for event in store.read_evolution_schedule_events():
-        grouped.setdefault(event.stream_id, []).append(event)
-    schedules = [
-        replay_evolution_schedule(schedule_id, events)
-        for schedule_id, events in grouped.items()
-    ]
-    lifecycle = EvolutionLifecycle(store)
+    revision_identities = {record.revision.identity for record in run_records}
     return [
-        evolution_schedule_to_dict(schedule)
-        for schedule in sorted(schedules, key=lambda item: item.updated_at, reverse=True)
-        if _evolution_schedule_matches_run(
-            lifecycle,
-            schedule,
+        skill_evolution_to_dict(evolution)
+        for evolution in list_skill_evolutions(store)
+        if _skill_evolution_matches_run(
+            evolution,
             record_ids,
-            target_revisions,
+            revision_identities,
         )
     ]
 
 
-def _evolution_schedule_matches_run(
-    lifecycle: EvolutionLifecycle,
-    schedule: EvolutionScheduleState,
+def _skill_evolution_matches_run(
+    evolution: SkillEvolutionState,
     record_ids: set[str],
-    target_revisions: set[tuple[str, str, str, str]],
+    revision_identities: set[tuple[str, str, str]],
 ) -> bool:
-    if record_ids.intersection(schedule.evidence_record_ids):
+    if record_ids.intersection(evolution.evidence_record_ids):
         return True
-    if not schedule.candidate_id:
-        return False
-    target = lifecycle.read_candidate(schedule.candidate_id).target
-    return (
-        target.target_type,
-        target.key,
-        target.version,
-        target.content_sha256,
-    ) in target_revisions
+    candidate = evolution.candidate_revision
+    return candidate is not None and candidate.identity in revision_identities
 
 
 def _skill_freshness_for_run(
@@ -145,16 +118,13 @@ def _skill_freshness_for_run(
     run_records = [
         record
         for record in store.read_evaluation_records(source_type="agent_run")
-        if record.source.run_id == run_id and record.target.target_type == "skill"
+        if record.source.run_id == run_id
     ]
-    run_skill_keys = {record.target.key for record in run_records}
+    run_skill_keys = {record.revision.key for record in run_records}
     if not run_skill_keys:
         return []
     current = calculate_skill_freshness(
-        store.read_evaluation_records(
-            target_type="skill",
-            source_type="agent_run",
-        )
+        store.read_evaluation_records(source_type="agent_run")
     )
     return [current[key] for key in sorted(run_skill_keys) if key in current]
 

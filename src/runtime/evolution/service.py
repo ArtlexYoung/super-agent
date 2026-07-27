@@ -1,20 +1,21 @@
-"""One automatic service for Skill recommendation, evaluation, and recovery."""
+"""One automatic service for Skill revision recommendation and recovery."""
 
 from __future__ import annotations
 
 from runtime.evaluation import EvaluationRecord
 from runtime.evolution.evidence import summarize_evaluation_evidence
-from runtime.evolution.files import compare_directory_versions
-from runtime.evolution.schedule_state import (
-    EvolutionScheduleState,
-    EvolutionScheduleTarget,
-    create_evolution_candidate_difference,
+from runtime.evolution.recommendations import recommend_skill_revisions
+from runtime.evolution.state import (
+    SkillEvolutionState,
+    list_skill_evolutions,
+    read_skill_evolution,
+    record_skill_evolution_failure,
+    record_skill_evolution_monitoring,
 )
-from runtime.evolution.scheduler import AutonomousEvolutionScheduler
-from runtime.evolution.models import EvolutionTarget
 from runtime.store import RuntimeStore
 from skill.evolution.evaluation import EvaluationCase
 from skill.evolution.manager import SkillEvolutionManager
+from skill.revision import SkillRevision
 
 
 MONITORING_MINIMUM_SAMPLES = 3
@@ -23,7 +24,7 @@ MAX_AUTOMATIC_EVALUATION_CASES = 3
 
 
 class AutomaticEvolutionService:
-    """Advance eligible Agent-owned Skills through one evidence-driven loop."""
+    """Advance eligible Agent-owned Skill revisions through one state machine."""
 
     def __init__(
         self,
@@ -32,135 +33,104 @@ class AutomaticEvolutionService:
     ) -> None:
         self.store = store
         self.manager = manager
-        self.scheduler = AutonomousEvolutionScheduler(store)
 
     def review_and_evolve(
         self,
-        targets: list[EvolutionScheduleTarget],
-    ) -> list[EvolutionScheduleState]:
-        target_by_identity = {
-            _schedule_target_identity(target): target for target in targets
+        revisions: list[SkillRevision],
+    ) -> list[SkillEvolutionState]:
+        revision_by_identity = {revision.identity: revision for revision in revisions}
+        changed = self._monitor_promoted_revisions(revision_by_identity)
+        rolled_back = {
+            state.candidate_revision.identity
+            for state in changed
+            if state.status == "rolled_back" and state.candidate_revision is not None
         }
-        changed = self._monitor_promoted_skills(target_by_identity)
-        rolled_back_identities = {
-            _candidate_target_identity(
-                self.manager.lifecycle.read_candidate(schedule.candidate_id).target
-            )
-            for schedule in changed
-            if schedule.decision == "rolled_back"
-        }
-        active_targets = [
-            target
-            for identity, target in target_by_identity.items()
-            if identity not in rolled_back_identities
+        active = [
+            revision
+            for identity, revision in revision_by_identity.items()
+            if identity not in rolled_back
         ]
-        changed.extend(self.scheduler.review_evolution_targets(active_targets))
+        changed.extend(recommend_skill_revisions(self.store, active))
         pending = [
-            schedule
-            for schedule in self.scheduler.list_evolution_schedules()
-            if schedule.decision in {"candidate_recommended", "candidate_created"}
-            and _schedule_identity(schedule) in target_by_identity
+            state
+            for state in list_skill_evolutions(self.store)
+            if state.status in {"candidate_recommended", "candidate_created"}
+            and _state_source_identity(state) in revision_by_identity
         ]
-        for schedule in reversed(pending):
-            changed.append(self._advance_schedule(schedule))
+        for state in reversed(pending):
+            changed.append(self._advance_evolution(state))
         return changed
 
-    def list_evolution_schedules(
+    def list_skill_evolutions(
         self,
-        decision: str | None = None,
-    ) -> list[EvolutionScheduleState]:
-        return self.scheduler.list_evolution_schedules(decision)
+        status: str | None = None,
+    ) -> list[SkillEvolutionState]:
+        return list_skill_evolutions(self.store, status)
 
-    def read_evolution_schedule(self, schedule_id: str) -> EvolutionScheduleState:
-        return self.scheduler.read_evolution_schedule(schedule_id)
+    def read_skill_evolution(self, evolution_id: str) -> SkillEvolutionState:
+        return read_skill_evolution(self.store, evolution_id)
 
-    def _advance_schedule(
+    def _advance_evolution(
         self,
-        schedule: EvolutionScheduleState,
-    ) -> EvolutionScheduleState:
+        state: SkillEvolutionState,
+    ) -> SkillEvolutionState:
         try:
-            current = schedule
-            if current.decision == "candidate_recommended":
+            current = state
+            if current.status == "candidate_recommended":
                 current = self._create_candidate(current)
-            state = self.manager.lifecycle.read_candidate(current.candidate_id)
-            if state.status == "proposed":
-                report = self.manager.evaluate_skill_candidate(
+            if current.status == "candidate_created":
+                self.manager.evaluate_skill_candidate(
                     current.candidate_id,
                     self._build_evaluation_cases(current),
                 )
-                if not report.passed:
-                    return self.scheduler.record_automatic_evolution_completed(
-                        current.schedule_id,
-                        report.report_id,
-                        report.score,
-                        promoted=False,
-                    )
-                state = self.manager.lifecycle.read_candidate(current.candidate_id)
-            if state.status == "rejected":
-                return self.scheduler.record_automatic_evolution_completed(
-                    current.schedule_id,
-                    state.evidence_id,
-                    state.score or 0.0,
-                    promoted=False,
-                )
-            if state.status == "evaluated":
+                current = read_skill_evolution(self.store, current.evolution_id)
+            if current.status == "rejected":
+                return current
+            if current.status == "evaluated":
                 self.manager.promote_skill_candidate(current.candidate_id)
-                state = self.manager.lifecycle.read_candidate(current.candidate_id)
-            if state.status != "promoted":
-                raise RuntimeError(f"unexpected candidate state: {state.status}")
-            return self.scheduler.record_automatic_evolution_completed(
-                current.schedule_id,
-                state.evidence_id,
-                state.score or 0.0,
-                promoted=True,
-            )
+                current = read_skill_evolution(self.store, current.evolution_id)
+            if current.status != "promoted":
+                raise RuntimeError(f"unexpected Skill evolution status: {current.status}")
+            return current
         except Exception as error:
-            latest = self.scheduler.read_evolution_schedule(schedule.schedule_id)
-            if latest.decision in {"candidate_recommended", "candidate_created"}:
-                return self.scheduler.record_automatic_evolution_failed(
-                    schedule.schedule_id,
+            latest = read_skill_evolution(self.store, state.evolution_id)
+            if latest.status in {"candidate_recommended", "candidate_created"}:
+                return record_skill_evolution_failure(
+                    self.store,
+                    state.evolution_id,
                     error,
                 )
             raise
 
     def _create_candidate(
         self,
-        schedule: EvolutionScheduleState,
-    ) -> EvolutionScheduleState:
+        state: SkillEvolutionState,
+    ) -> SkillEvolutionState:
+        source = state.source_revision
+        if source is None:
+            raise ValueError("automatic Skill evolution requires a source revision")
         entry = self.manager.skill_disclosure.prepare_skill_index().require_skill(
-            schedule.target.key
+            source.key
         )
-        if (
-            entry.version != schedule.target.version
-            or entry.content_sha256 != schedule.target.content_sha256
+        if (entry.version, entry.content_sha256) != (
+            source.version,
+            source.content_sha256,
         ):
             raise ValueError(
-                f"scheduled target changed after recommendation: {schedule.target.key}"
+                f"Skill revision changed after recommendation: {source.key}"
             )
-        parent_path = self.manager.skill_disclosure.open_skill(
-            entry.reference.name,
-            entry.reference.capability,
-        ).read_manifest().path
-        candidate = self.manager.create_skill_candidate(
-            schedule.target.key,
-            schedule.goal,
+        self.manager.create_skill_candidate(
+            source.key,
+            state.goal,
+            evolution_id=state.evolution_id,
         )
-        difference = compare_directory_versions(parent_path, candidate.skill_path)
-        return self.scheduler.record_evolution_candidate_created(
-            schedule.schedule_id,
-            candidate.candidate_id,
-            create_evolution_candidate_difference(
-                candidate.parent_sha256,
-                candidate.candidate_sha256,
-                difference,
-            ),
-        )
+        return read_skill_evolution(self.store, state.evolution_id)
 
     def _build_evaluation_cases(
         self,
-        schedule: EvolutionScheduleState,
+        state: SkillEvolutionState,
     ) -> list[EvaluationCase]:
-        selected_ids = set(schedule.evidence_record_ids)
+        selected_ids = set(state.evidence_record_ids)
         records = [
             record
             for record in self.store.read_evaluation_records(source_type="agent_run")
@@ -186,24 +156,21 @@ class AutomaticEvolutionService:
                 )
             if len(cases) == MAX_AUTOMATIC_EVALUATION_CASES:
                 break
-        return cases or [
-            EvaluationCase(
-                name="evolution-goal",
-                prompt=schedule.goal,
-            )
-        ]
+        return cases or [EvaluationCase(name="evolution-goal", prompt=state.goal)]
 
-    def _monitor_promoted_skills(
+    def _monitor_promoted_revisions(
         self,
-        targets: dict[tuple[str, str, str, str], EvolutionScheduleTarget],
-    ) -> list[EvolutionScheduleState]:
-        changed: list[EvolutionScheduleState] = []
-        for schedule in self.scheduler.list_evolution_schedules("promoted"):
-            candidate = self.manager.lifecycle.read_candidate(schedule.candidate_id)
-            target = targets.get(_candidate_target_identity(candidate.target))
-            if target is None:
+        revisions: dict[tuple[str, str, str], SkillRevision],
+    ) -> list[SkillEvolutionState]:
+        changed: list[SkillEvolutionState] = []
+        for state in list_skill_evolutions(self.store, "promoted"):
+            candidate = state.candidate_revision
+            if candidate is None:
                 continue
-            records = self._read_current_target_records(target)
+            revision = revisions.get(candidate.identity)
+            if revision is None:
+                continue
+            records = self._read_revision_records(revision)
             if not records:
                 continue
             summary = summarize_evaluation_evidence(records)[0]
@@ -211,61 +178,40 @@ class AutomaticEvolutionService:
                 summary.sample_count >= MONITORING_MINIMUM_SAMPLES
                 and summary.average_score < MONITORING_MINIMUM_SCORE
             ):
-                self.manager.rollback_skill(target.target.key)
-                changed.append(
-                    self.scheduler.record_evolution_monitoring_decision(
-                        schedule.schedule_id,
-                        "rolled_back",
-                        _monitoring_detail(summary.sample_count, summary.average_score),
-                    )
-                )
+                self.manager.rollback_skill(revision.key)
+                changed.append(read_skill_evolution(self.store, state.evolution_id))
             elif summary.sample_count >= MONITORING_MINIMUM_SAMPLES:
                 changed.append(
-                    self.scheduler.record_evolution_monitoring_decision(
-                        schedule.schedule_id,
+                    record_skill_evolution_monitoring(
+                        self.store,
+                        state.evolution_id,
                         "stable",
-                        _monitoring_detail(summary.sample_count, summary.average_score),
+                        _monitoring_detail(
+                            summary.sample_count,
+                            summary.average_score,
+                        ),
                     )
                 )
         return changed
 
-    def _read_current_target_records(
+    def _read_revision_records(
         self,
-        target: EvolutionScheduleTarget,
+        revision: SkillRevision,
     ) -> list[EvaluationRecord]:
         return [
             record
             for record in self.store.read_evaluation_records(
-                target_type=target.target.target_type,
-                target_key=target.target.key,
+                skill_key=revision.key,
                 source_type="agent_run",
             )
-            if record.target.version == target.target.version
-            and record.target.content_sha256 == target.target.content_sha256
+            if record.revision.identity == revision.identity
         ]
 
 
-def _schedule_target_identity(
-    target: EvolutionScheduleTarget,
-) -> tuple[str, str, str, str]:
-    value = target.target
-    return value.target_type, value.key, value.version, value.content_sha256
-
-
-def _schedule_identity(schedule: EvolutionScheduleState) -> tuple[str, str, str, str]:
-    target = schedule.target
-    return target.target_type, target.key, target.version, target.content_sha256
-
-
-def _candidate_target_identity(
-    target: EvolutionTarget,
-) -> tuple[str, str, str, str]:
-    return (
-        target.target_type,
-        target.key,
-        target.version,
-        target.content_sha256,
-    )
+def _state_source_identity(
+    state: SkillEvolutionState,
+) -> tuple[str, str, str] | None:
+    return None if state.source_revision is None else state.source_revision.identity
 
 
 def _monitoring_detail(sample_count: int, average_score: float) -> str:

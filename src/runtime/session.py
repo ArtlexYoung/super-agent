@@ -7,18 +7,12 @@ from dataclasses import dataclass, field
 from capability.registry import CapabilityRegistry
 from provider.chat import ChatProvider
 from runtime.config import AgentConfig
-from runtime.evolution.schedule_state import EvolutionScheduleTarget
-from runtime.evaluation import (
-    EvaluationTarget,
-    EvaluationTargetTracker,
-    create_capability_evaluation_target_from_descriptor,
-)
 from runtime.identity import RunIdentity
 from runtime.models import RunEvent
 from runtime.store import RuntimeStore
 from skill.disclosure import ProgressiveDisclosureCore, SkillIndex, SkillIndexEntry
-from skill.evaluation import create_indexed_skill_evaluation_target
 from skill.kinds.model import ModelProfile
+from skill.revision import SkillRevision, create_indexed_skill_revision
 
 @dataclass
 class RuntimeSession:
@@ -30,12 +24,7 @@ class RuntimeSession:
     store: RuntimeStore
     skill_disclosure: ProgressiveDisclosureCore | None = None
     skill_index: SkillIndex | None = None
-    _evaluation_targets: EvaluationTargetTracker = field(
-        default_factory=EvaluationTargetTracker,
-        init=False,
-        repr=False,
-    )
-    _evolution_schedule_targets: dict[tuple[str, str], EvolutionScheduleTarget] = field(
+    _used_skill_revisions: dict[tuple[str, str, str], SkillRevision] = field(
         default_factory=dict,
         init=False,
         repr=False,
@@ -82,17 +71,11 @@ class RuntimeSession:
             self.record_skill_used(entry)
 
     def record_skill_used(self, entry: SkillIndexEntry) -> None:
-        target = create_indexed_skill_evaluation_target(entry)
-        self._evaluation_targets.record_target(target)
-        self._record_evolution_schedule_target(
-            EvolutionScheduleTarget(
-                target=target,
-                agent_created=entry.agent_created,
-                agent_can_update=entry.agent_can_update,
-                supports_evolution=bool(self.config.paths.skills),
-                freshness=entry.freshness,
-            )
+        revision = create_indexed_skill_revision(
+            entry,
+            evolution_supported=bool(self.config.paths.skills),
         )
+        self._used_skill_revisions[revision.identity] = revision
 
     def record_skill_executor_used(
         self,
@@ -105,26 +88,12 @@ class RuntimeSession:
                 "runtime used an unregistered Skill executor: " + capability_name
             )
         descriptor = registration.descriptor
-        self._evaluation_targets.record_capability(descriptor)
-        target = create_capability_evaluation_target_from_descriptor(descriptor)
-        self._record_evolution_schedule_target(
-            EvolutionScheduleTarget(
-                target=target,
-                agent_created=descriptor.agent_created,
-                agent_can_update=descriptor.agent_can_update,
-                supports_evolution=descriptor.source == "skill",
-            )
-        )
+        if not descriptor.skill_key:
+            return
+        entry = self.require_skill_index().find_skill(descriptor.skill_key)
+        if entry is None:
+            raise KeyError(f"Capability source Skill not found: {descriptor.skill_key}")
+        self.record_skill_used(entry)
 
-    def list_evaluation_targets(self) -> list[EvaluationTarget]:
-        return self._evaluation_targets.list_targets()
-
-    def list_evolution_schedule_targets(self) -> list[EvolutionScheduleTarget]:
-        return list(self._evolution_schedule_targets.values())
-
-    def _record_evolution_schedule_target(
-        self,
-        target: EvolutionScheduleTarget,
-    ) -> None:
-        identity = target.target.target_type, target.target.key
-        self._evolution_schedule_targets[identity] = target
+    def list_used_skill_revisions(self) -> list[SkillRevision]:
+        return list(self._used_skill_revisions.values())

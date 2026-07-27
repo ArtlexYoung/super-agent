@@ -5,12 +5,12 @@ from pathlib import Path
 from runtime.evaluation import (
     EvaluationResult,
     EvaluationSource,
-    EvaluationTarget,
     EvaluationTokenUsage,
     create_evaluation_record,
 )
 from runtime.store import create_local_runtime_store
 from skill.disclosure import ProgressiveDisclosureCore
+from skill.revision import SkillRevision
 
 
 class ProgressiveDisclosureCoreTests(unittest.TestCase):
@@ -258,13 +258,17 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
             store.append_evaluation_records(
                 [
                     create_evaluation_record(
-                        target=EvaluationTarget(
-                            target_type="skill",
+                        revision=SkillRevision(
                             key="prompt:research",
+                            capability="prompt",
                             name="research",
                             version="0.1.0",
                             content_sha256="a" * 64,
                             function_group="research",
+                            agent_created=True,
+                            agent_can_update=True,
+                            evolution_supported=True,
+                            freshness=70.0,
                         ),
                         source=EvaluationSource(
                             source_type="agent_run",

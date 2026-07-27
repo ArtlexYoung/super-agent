@@ -300,14 +300,12 @@ def _print_freshness_insight(value: object) -> None:
 
 
 def _print_evolution_insight(value: object) -> None:
-    for schedule in _object_items(value):
-        target = schedule.get("target", {})
-        target_key = target.get("key", "") if isinstance(target, dict) else ""
+    for evolution in _object_items(value):
         print(
-            f"evolution\t{target_key}"
-            f"\tdecision={schedule.get('decision', '')}"
-            f"\tscore={schedule.get('evaluation_score', '')}"
-            f"\treasons={'; '.join(_string_items(schedule.get('reasons')))}"
+            f"evolution\t{evolution.get('skill_key', '')}"
+            f"\tstatus={evolution.get('status', '')}"
+            f"\tscore={evolution.get('evaluation_score', '')}"
+            f"\treasons={'; '.join(_string_items(evolution.get('reasons')))}"
         )
 
 

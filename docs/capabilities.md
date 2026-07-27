@@ -1,6 +1,6 @@
 # Capabilities
 
-A Capability is code that executes one Skill mechanism. Runtime itself owns task lifecycle, progressive disclosure, tracing, evaluation, and evolution scheduling.
+A Capability is code that executes one Skill mechanism. Runtime itself owns task lifecycle, progressive disclosure, tracing, evaluation, and evolution recommendations.
 
 Built-in executors handle prompt, MCP, memory, and workflow Skills. Replace or add one explicitly:
 

@@ -350,8 +350,8 @@ class AgentRuntime:
     ) -> None:
         session.store.append_evaluation_records(
             [
-                create_evaluation_record(target, source, result)
-                for target in session.list_evaluation_targets()
+                create_evaluation_record(revision, source, result)
+                for revision in session.list_used_skill_revisions()
             ]
         )
         self._try_run_automatic_evolution(session)
@@ -362,7 +362,7 @@ class AgentRuntime:
             if not isinstance(manager, SkillEvolutionManager):
                 raise TypeError("skill updater must be SkillEvolutionManager")
             AutomaticEvolutionService(session.store, manager).review_and_evolve(
-                session.list_evolution_schedule_targets()
+                session.list_used_skill_revisions()
             )
         except Exception as error:
             try:

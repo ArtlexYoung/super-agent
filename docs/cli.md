@@ -105,8 +105,8 @@ There is no separate Capability package or command namespace.
 
 ```bash
 super-agent evolution list --config agent.toml --user-id alice
-super-agent evolution list --config agent.toml --user-id alice --decision candidate_recommended --output json
-super-agent evolution show --config agent.toml --user-id alice --schedule-id <id> --output json
+super-agent evolution list --config agent.toml --user-id alice --status candidate_recommended --output json
+super-agent evolution show --config agent.toml --user-id alice --evolution-id <id> --output json
 ```
 
 `list` and `show` are read-only and never call a model. Runtime owns recommendation, candidate creation, evaluation, promotion, monitoring, and rollback after normal task evaluation. Manual experiments remain available under `skills`.

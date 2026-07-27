@@ -7,11 +7,8 @@ import json
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
-from runtime.evaluation import (
-    EvaluationRecord,
-    EvaluationTarget,
-    evaluation_record_to_dict,
-)
+from runtime.evaluation import EvaluationRecord, evaluation_record_to_dict
+from skill.revision import SkillRevision
 
 
 FOLLOWUP_WINDOW_MINUTES = 10
@@ -19,7 +16,7 @@ FOLLOWUP_WINDOW_MINUTES = 10
 
 @dataclass(frozen=True)
 class EvaluationEvidenceSummary:
-    target: EvaluationTarget
+    revision: SkillRevision
     evidence_sha256: str
     record_ids: tuple[str, ...]
     sample_count: int
@@ -44,7 +41,7 @@ class EvaluationEvidenceSummary:
 
 @dataclass
 class _EvidenceAccumulator:
-    target: EvaluationTarget
+    revision: SkillRevision
     record_ids: list[str] = field(default_factory=list)
     record_sha256s: list[str] = field(default_factory=list)
     success_count: int = 0
@@ -74,12 +71,12 @@ def summarize_evaluation_evidence(
     accumulators: dict[tuple[str, ...], _EvidenceAccumulator] = {}
     last_by_function_group: dict[str, tuple[tuple[str, ...], EvaluationRecord]] = {}
     for record in ordered:
-        key = _evidence_key(record.target, combine_versions)
-        accumulator = accumulators.setdefault(key, _EvidenceAccumulator(record.target))
-        accumulator.target = record.target
+        key = _evidence_key(record.revision, combine_versions)
+        accumulator = accumulators.setdefault(key, _EvidenceAccumulator(record.revision))
+        accumulator.revision = record.revision
         _record_replacement_followup(accumulators, last_by_function_group, record)
         _apply_record(accumulator, record)
-        last_by_function_group[record.target.function_group] = (key, record)
+        last_by_function_group[record.revision.function_group] = (key, record)
     return [
         _create_summary(accumulator)
         for _, accumulator in sorted(
@@ -121,7 +118,7 @@ def _record_replacement_followup(
     last_by_function_group: dict[str, tuple[tuple[str, ...], EvaluationRecord]],
     record: EvaluationRecord,
 ) -> None:
-    previous = last_by_function_group.get(record.target.function_group)
+    previous = last_by_function_group.get(record.revision.function_group)
     if previous is None:
         return
     previous_key, previous_record = previous
@@ -137,7 +134,7 @@ def _is_replacement_followup(
     previous: EvaluationRecord,
     current: EvaluationRecord,
 ) -> bool:
-    if previous.target.key == current.target.key:
+    if previous.revision.key == current.revision.key:
         return False
     if previous.source.run_id == current.source.run_id:
         return False
@@ -153,9 +150,9 @@ def _create_summary(
     followups = accumulator.same_function_followups
     successful_followups = accumulator.same_function_successful_followups
     return EvaluationEvidenceSummary(
-        target=accumulator.target,
+        revision=accumulator.revision,
         evidence_sha256=_evidence_sha256(
-            accumulator.target,
+            accumulator.revision,
             accumulator.record_sha256s,
         ),
         record_ids=tuple(accumulator.record_ids),
@@ -192,16 +189,15 @@ def _create_summary(
 
 
 def _evidence_key(
-    target: EvaluationTarget,
+    revision: SkillRevision,
     combine_versions: bool,
 ) -> tuple[str, ...]:
     if combine_versions:
-        return target.target_type, target.key
+        return (revision.key,)
     return (
-        target.target_type,
-        target.key,
-        target.version,
-        target.content_sha256,
+        revision.key,
+        revision.version,
+        revision.content_sha256,
     )
 
 
@@ -233,13 +229,12 @@ def _evaluation_record_sha256(record: EvaluationRecord) -> str:
     return hashlib.sha256(content).hexdigest()
 
 
-def _evidence_sha256(target: EvaluationTarget, record_sha256s: list[str]) -> str:
+def _evidence_sha256(revision: SkillRevision, record_sha256s: list[str]) -> str:
     digest = hashlib.sha256()
     for value in (
-        target.target_type,
-        target.key,
-        target.version,
-        target.content_sha256,
+        revision.key,
+        revision.version,
+        revision.content_sha256,
         *record_sha256s,
     ):
         digest.update(value.encode("utf-8"))

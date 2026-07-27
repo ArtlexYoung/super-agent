@@ -322,7 +322,7 @@ class RuntimeStore:
             self.backend.append_event(
                 user_id=self.user_id,
                 agent_name=self.agent_name,
-                stream_type="evaluation",
+                stream_type="skill_evaluation",
                 stream_id=record.record_id,
                 event_type="evaluation.recorded",
                 data=evaluation_record_to_dict(record),
@@ -333,34 +333,37 @@ class RuntimeStore:
     def read_evaluation_records(
         self,
         *,
-        target_type: str | None = None,
-        target_key: str | None = None,
+        skill_key: str | None = None,
         source_type: str | None = None,
     ) -> list[EvaluationRecord]:
         records = [
             evaluation_record_from_dict(event.data)
-            for event in self._read_storage_events("evaluation")
+            for event in self._read_storage_events("skill_evaluation")
             if event.event_type == "evaluation.recorded"
         ]
         return [
             record
             for record in records
-            if (target_type is None or record.target.target_type == target_type)
-            and (target_key is None or record.target.key == target_key)
+            if (skill_key is None or record.revision.key == skill_key)
             and (source_type is None or record.source.source_type == source_type)
         ]
 
-    def append_evolution_event(
+    def append_skill_evolution_event(
         self,
         evolution_id: str,
         event_type: str,
         data: dict[str, object],
+        *,
+        event_id: str | None = None,
     ) -> StorageEvent:
-        return self._append_scoped_event(
-            "evolution",
-            _required_text(evolution_id, "evolution_id"),
-            _required_text(event_type, "evolution event_type"),
-            dict(data),
+        return self.backend.append_event(
+            user_id=self.user_id,
+            agent_name=self.agent_name,
+            stream_type="skill_evolution",
+            stream_id=_required_text(evolution_id, "Skill evolution_id"),
+            event_type=_required_text(event_type, "Skill evolution event_type"),
+            data=dict(data),
+            event_id=event_id,
         )
 
     def append_model_call_event(
@@ -376,40 +379,15 @@ class RuntimeStore:
             dict(data),
         )
 
-    def read_evolution_events(self, evolution_id: str | None = None) -> list[StorageEvent]:
+    def read_skill_evolution_events(
+        self,
+        evolution_id: str | None = None,
+    ) -> list[StorageEvent]:
         selected_id = None if evolution_id is None else _required_text(
             evolution_id,
-            "evolution_id",
+            "Skill evolution_id",
         )
-        return self._read_storage_events("evolution", selected_id)
-
-    def append_evolution_schedule_event(
-        self,
-        schedule_id: str,
-        event_type: str,
-        data: dict[str, object],
-        *,
-        event_id: str | None = None,
-    ) -> StorageEvent:
-        return self.backend.append_event(
-            user_id=self.user_id,
-            agent_name=self.agent_name,
-            stream_type="evolution_schedule",
-            stream_id=_required_text(schedule_id, "evolution schedule_id"),
-            event_type=_required_text(event_type, "evolution schedule event_type"),
-            data=dict(data),
-            event_id=event_id,
-        )
-
-    def read_evolution_schedule_events(
-        self,
-        schedule_id: str | None = None,
-    ) -> list[StorageEvent]:
-        selected_id = None if schedule_id is None else _required_text(
-            schedule_id,
-            "evolution schedule_id",
-        )
-        return self._read_storage_events("evolution_schedule", selected_id)
+        return self._read_storage_events("skill_evolution", selected_id)
 
     def write_disclosure_text(
         self,

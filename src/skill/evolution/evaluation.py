@@ -16,9 +16,9 @@ from runtime.evaluation import (
 from runtime.store import RuntimeStore
 from runtime.task_loop import TextModel
 from skill.disclosure import DisclosedSkillFile, ProgressiveDisclosureCore
-from skill.evaluation import create_skill_evaluation_target
 from skill.evolution.candidate import SkillCandidate
 from skill.manifest import Skill, SkillManifest
+from skill.revision import create_manifest_skill_revision
 from skill.validation import validate_skill_directory
 
 
@@ -80,7 +80,10 @@ def evaluate_candidate(
     for case in request.cases:
         _validate_evaluation_case(case)
     skill = _read_candidate_skill(request.candidate, request.store)
-    target = create_skill_evaluation_target(skill)
+    revision = create_manifest_skill_revision(
+        skill.manifest,
+        evolution_supported=True,
+    )
     results: list[EvaluationCaseResult] = []
     for case in request.cases:
         started_at = perf_counter()
@@ -94,7 +97,7 @@ def evaluate_candidate(
             request.store.append_evaluation_records(
                 [
                     create_evaluation_record(
-                        target,
+                        revision,
                         _candidate_evaluation_source(request.candidate, case),
                         EvaluationResult(
                             success=False,
@@ -115,7 +118,7 @@ def evaluate_candidate(
         request.store.append_evaluation_records(
             [
                 create_evaluation_record(
-                    target,
+                    revision,
                     _candidate_evaluation_source(request.candidate, case),
                     EvaluationResult(
                         success=case_result.passed,

@@ -101,8 +101,8 @@ class SkillEvolutionTests(unittest.TestCase):
                 source_type="candidate_evaluation"
             )
             self.assertEqual(1, len(records))
-            self.assertEqual("prompt:writer", records[0].target.key)
-            self.assertEqual("0.1.1", records[0].target.version)
+            self.assertEqual("prompt:writer", records[0].revision.key)
+            self.assertEqual("0.1.1", records[0].revision.version)
             self.assertEqual(candidate.candidate_id, records[0].source.candidate_id)
             self.assertEqual(0.0, records[0].result.score)
             with self.assertRaises(ValueError):
@@ -349,7 +349,7 @@ class SkillEvolutionTests(unittest.TestCase):
                 record = manager.store.read_evaluation_records(
                     source_type="candidate_evaluation"
                 )[0]
-                self.assertEqual(f"{capability}:adaptive", record.target.key)
+                self.assertEqual(f"{capability}:adaptive", record.revision.key)
 
                 restored = manager.rollback_skill(f"{capability}:adaptive")
 

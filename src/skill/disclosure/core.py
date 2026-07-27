@@ -57,10 +57,7 @@ class ProgressiveDisclosureCore:
             messages = "; ".join(f"{issue.path}: {issue.message}" for issue in scan.issues)
             raise ValueError(f"invalid skill sources: {messages}")
         stats = calculate_skill_freshness(
-            self.store.read_evaluation_records(
-                target_type="skill",
-                source_type="agent_run",
-            )
+            self.store.read_evaluation_records(source_type="agent_run")
         )
         entries = [_build_index_entry(source, self.cache_root, stats) for source in scan.sources]
         self._index = SkillIndex(

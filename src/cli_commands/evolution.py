@@ -1,4 +1,4 @@
-"""Inspect Runtime-owned automatic Skill evolution."""
+"""Inspect Runtime-owned Skill revision evolution."""
 
 from __future__ import annotations
 
@@ -6,16 +6,14 @@ import argparse
 import json
 
 from agents.agent import Agent
-from runtime.evolution.schedule_state import (
-    EvolutionScheduleState,
-    evolution_schedule_to_dict,
-)
+from runtime.evolution.state import SkillEvolutionState, skill_evolution_to_dict
 from runtime.identity import LOCAL_USER_ID
 
 
-EVOLUTION_DECISIONS = (
+EVOLUTION_STATUSES = (
     "candidate_recommended",
     "candidate_created",
+    "evaluated",
     "promoted",
     "rejected",
     "failed",
@@ -26,14 +24,13 @@ EVOLUTION_DECISIONS = (
 
 def configure_evolution_parser(parser: argparse.ArgumentParser) -> None:
     subparsers = parser.add_subparsers(dest="evolution_command")
-
-    list_parser = subparsers.add_parser("list", help="list evolution recommendations")
+    list_parser = subparsers.add_parser("list", help="list Skill evolutions")
     _add_common_arguments(list_parser)
-    list_parser.add_argument("--decision", choices=EVOLUTION_DECISIONS)
+    list_parser.add_argument("--status", choices=EVOLUTION_STATUSES)
     _add_output_argument(list_parser)
-
-    show_parser = subparsers.add_parser("show", help="show one evolution recommendation")
-    _add_schedule_arguments(show_parser)
+    show_parser = subparsers.add_parser("show", help="show one Skill evolution")
+    _add_common_arguments(show_parser)
+    show_parser.add_argument("--evolution-id", required=True)
     _add_output_argument(show_parser)
 
 
@@ -43,32 +40,31 @@ def run_evolution_command(args: argparse.Namespace) -> int:
     user_id = getattr(args, "user_id", LOCAL_USER_ID)
     output = getattr(args, "output", "text")
     if command in {None, "list"}:
-        schedules = agent.list_evolution_schedules(
+        evolutions = agent.list_skill_evolutions(
             user_id,
-            decision=getattr(args, "decision", None),
+            status=getattr(args, "status", None),
         )
-        _print_schedule_list(schedules, output)
+        _print_evolution_list(evolutions, output)
         return 0
-    if command == "show":
-        schedule = agent.read_evolution_schedule(args.schedule_id, user_id=user_id)
-    else:
+    if command != "show":
         raise ValueError(f"unknown evolution command: {command}")
-    _print_schedule(schedule, output)
+    evolution = agent.read_skill_evolution(args.evolution_id, user_id=user_id)
+    _print_evolution(evolution, output)
     return 0
 
 
-def _print_schedule_list(
-    schedules: list[EvolutionScheduleState],
+def _print_evolution_list(
+    evolutions: list[SkillEvolutionState],
     output: str,
 ) -> None:
     if output == "json":
         print(
             json.dumps(
                 {
-                    "schema_version": 2,
-                    "schedules": [
-                        evolution_schedule_to_dict(schedule)
-                        for schedule in schedules
+                    "schema_version": 3,
+                    "evolutions": [
+                        skill_evolution_to_dict(evolution)
+                        for evolution in evolutions
                     ],
                 },
                 ensure_ascii=False,
@@ -77,19 +73,19 @@ def _print_schedule_list(
             )
         )
         return
-    for schedule in schedules:
-        reasons = ",".join(schedule.reason_codes)
+    for evolution in evolutions:
+        reasons = ",".join(evolution.reason_codes)
         print(
-            f"{schedule.schedule_id}\t{schedule.target.key}\t"
-            f"{schedule.decision}\t{reasons}"
+            f"{evolution.evolution_id}\t{evolution.skill_key}\t"
+            f"{evolution.status}\t{reasons}"
         )
 
 
-def _print_schedule(schedule: EvolutionScheduleState, output: str) -> None:
+def _print_evolution(evolution: SkillEvolutionState, output: str) -> None:
     if output == "json":
         print(
             json.dumps(
-                evolution_schedule_to_dict(schedule),
+                skill_evolution_to_dict(evolution),
                 ensure_ascii=False,
                 indent=2,
                 sort_keys=True,
@@ -97,8 +93,8 @@ def _print_schedule(schedule: EvolutionScheduleState, output: str) -> None:
         )
         return
     print(
-        f"{schedule.schedule_id}\t{schedule.target.key}\t"
-        f"{schedule.decision}\t{schedule.candidate_id}"
+        f"{evolution.evolution_id}\t{evolution.skill_key}\t"
+        f"{evolution.status}\t{evolution.candidate_id}"
     )
 
 
@@ -109,11 +105,6 @@ def _load_agent(config_path: str | None) -> Agent:
 def _add_common_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--config")
     parser.add_argument("--user-id", default=LOCAL_USER_ID)
-
-
-def _add_schedule_arguments(parser: argparse.ArgumentParser) -> None:
-    _add_common_arguments(parser)
-    parser.add_argument("--schedule-id", required=True)
 
 
 def _add_output_argument(parser: argparse.ArgumentParser) -> None:

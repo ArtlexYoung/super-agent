@@ -234,7 +234,7 @@ After each evaluated run, Runtime reviews every updateable Agent-owned Skill, in
 
 ```bash
 super-agent evolution list --config agent.toml
-super-agent evolution show --config agent.toml --schedule-id <id> --output json
+super-agent evolution show --config agent.toml --evolution-id <id> --output json
 ```
 
 The `evolution` commands only inspect automatic state. A promoted version is monitored using later real runs: any failure triggers rollback, three healthy samples mark it stable, and an average score below `0.75` after three samples also triggers rollback. Automation errors are recorded in the task trace and never replace the main task result.

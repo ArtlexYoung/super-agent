@@ -9,10 +9,16 @@ from typing import Callable
 from uuid import uuid4
 
 from runtime.config import AgentConfig
-from runtime.evolution import (
-    EvolutionCandidateProposal,
-    EvolutionLifecycle,
-    EvolutionTarget,
+from runtime.evolution.files import compare_directory_versions
+from runtime.evolution.state import (
+    create_skill_candidate_difference,
+    find_candidate_skill_evolution,
+    record_skill_candidate_evaluation,
+    record_skill_candidate_promoted,
+    record_skill_evolution_candidate,
+    record_skill_evolution_monitoring,
+    require_skill_candidate_can_promote,
+    start_manual_skill_evolution,
 )
 from runtime.store import RuntimeStore
 from runtime.task_loop import TextModel
@@ -44,6 +50,10 @@ from skill.evolution.artifacts import (
 )
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.manifest import SkillManifest, calculate_skill_directory_sha256
+from skill.revision import (
+    SkillRevision,
+    create_manifest_skill_revision,
+)
 from skill.validation import validate_skill_directory, validate_skill_replacement
 
 
@@ -76,7 +86,6 @@ class SkillEvolutionManager:
         self.skill_root = config.paths.skills[0]
         self.evolution_root = store.private_root / "evolution"
         self.store = store
-        self.lifecycle = EvolutionLifecycle(store)
         self.models = models
         self.minimum_score = minimum_score
         self.on_skill_changed = on_skill_changed
@@ -87,6 +96,7 @@ class SkillEvolutionManager:
         goal: str,
         *,
         capability: str | None = None,
+        evolution_id: str | None = None,
     ) -> SkillCandidate:
         candidate = create_candidate(
             SkillCandidateRequest(
@@ -105,18 +115,37 @@ class SkillEvolutionManager:
                 expected_capability=candidate.capability,
                 expected_name=candidate.name,
             )
-            parent = self._candidate_parent_target(candidate)
-            self.lifecycle.record_candidate_created(
-                EvolutionCandidateProposal(
-                    candidate_id=candidate.candidate_id,
-                    target=_skill_evolution_target(
-                        manifest,
-                        candidate.candidate_sha256,
-                    ),
-                    parent=parent,
-                    goal=candidate.goal,
-                )
+            parent = self._candidate_parent_revision(candidate)
+            candidate_revision = create_manifest_skill_revision(
+                manifest,
+                evolution_supported=True,
+                content_sha256=candidate.candidate_sha256,
             )
+            if evolution_id is None:
+                start_manual_skill_evolution(
+                    self.store,
+                    candidate.candidate_id,
+                    parent,
+                    candidate_revision,
+                    candidate.goal,
+                )
+            else:
+                if parent is None:
+                    raise ValueError("automatic evolution requires an existing Skill revision")
+                current = self._read_active_manifest(candidate.name, candidate.capability)
+                if current is None:
+                    raise ValueError(f"automatic evolution source not found: {candidate.key}")
+                record_skill_evolution_candidate(
+                    self.store,
+                    evolution_id,
+                    candidate.candidate_id,
+                    candidate_revision,
+                    create_skill_candidate_difference(
+                        candidate.parent_sha256,
+                        candidate.candidate_sha256,
+                        compare_directory_versions(current.path, candidate.skill_path),
+                    ),
+                )
         except Exception:
             if candidate.metadata_path.parent.exists():
                 shutil.rmtree(candidate.metadata_path.parent)
@@ -147,11 +176,12 @@ class SkillEvolutionManager:
             ),
         )
         write_json_exclusive(report_path, skill_evaluation_report_to_dict(report))
-        self.lifecycle.record_candidate_evaluated(
+        record_skill_candidate_evaluation(
+            self.store,
             candidate.candidate_id,
+            report.report_id,
             report.score,
             report.passed,
-            report.report_id,
         )
         return report
 
@@ -164,12 +194,15 @@ class SkillEvolutionManager:
         current = self._read_active_manifest(candidate.name, candidate.capability)
         if current is not None:
             validate_skill_replacement(current.path, candidate.skill_path, self.store)
-        current_target = (
-            None if current is None else _skill_evolution_target(current)
+        current_revision = (
+            None
+            if current is None
+            else create_manifest_skill_revision(current, evolution_supported=True)
         )
-        self.lifecycle.require_candidate_can_promote(
+        require_skill_candidate_can_promote(
+            self.store,
             candidate.candidate_id,
-            current_target,
+            current_revision,
         )
         active_state = self._read_active_state(candidate.capability, candidate.name)
         previous_revision_id = str(active_state.get("rollback_revision_id", ""))
@@ -215,10 +248,11 @@ class SkillEvolutionManager:
             candidate_id=candidate.candidate_id,
             rollback_revision_id="" if rollback_revision is None else rollback_revision.revision_id,
         )
-        self.lifecycle.record_candidate_promoted(
+        record_skill_candidate_promoted(
+            self.store,
             candidate.candidate_id,
-            _skill_evolution_target(promoted),
-            current_target,
+            create_manifest_skill_revision(promoted, evolution_supported=True),
+            current_revision,
         )
         return promoted
 
@@ -234,6 +268,7 @@ class SkillEvolutionManager:
             raise KeyError(f"active skill not found: {name}")
         skill_capability = current.capability
         active_state = self._read_active_state(skill_capability, skill_name)
+        candidate_id = str(active_state.get("candidate_id", ""))
         revision_id = str(active_state.get("rollback_revision_id", ""))
         if not revision_id:
             raise ValueError(f"skill has no previous evolution revision: {skill_name}")
@@ -242,7 +277,6 @@ class SkillEvolutionManager:
             skill_name,
             revision_id,
         )
-        previous_target = _skill_evolution_target(current)
         current_revision = self._snapshot_current_skill(
             current,
             action="rollback_backup",
@@ -278,9 +312,12 @@ class SkillEvolutionManager:
                 "rolled_back_at": utc_now_text(),
             },
         )
-        self.lifecycle.record_target_rolled_back(
-            previous_target,
-            _skill_evolution_target(restored),
+        evolution = find_candidate_skill_evolution(self.store, candidate_id)
+        record_skill_evolution_monitoring(
+            self.store,
+            evolution.evolution_id,
+            "rolled_back",
+            f"restored {restored.version} from {revision.revision_id}",
         )
         return restored
 
@@ -329,10 +366,10 @@ class SkillEvolutionManager:
         if manifest is not None and self.on_skill_changed is not None:
             self.on_skill_changed(manifest)
 
-    def _candidate_parent_target(
+    def _candidate_parent_revision(
         self,
         candidate: SkillCandidate,
-    ) -> EvolutionTarget | None:
+    ) -> SkillRevision | None:
         current = self._read_active_manifest(candidate.name, candidate.capability)
         if not candidate.parent_sha256:
             if current is not None:
@@ -344,7 +381,11 @@ class SkillEvolutionManager:
             raise PermissionError(f"skill does not allow agent evolution: {candidate.key}")
         if calculate_skill_directory_sha256(current.path) != candidate.parent_sha256:
             raise ValueError(f"active skill changed after candidate proposal: {candidate.key}")
-        return _skill_evolution_target(current, candidate.parent_sha256)
+        return create_manifest_skill_revision(
+            current,
+            evolution_supported=True,
+            content_sha256=candidate.parent_sha256,
+        )
 
     def _read_active_manifest(
         self,
@@ -527,25 +568,6 @@ class SkillEvolutionManager:
                 "updated_at": utc_now_text(),
             },
         )
-
-
-def _skill_evolution_target(
-    manifest: SkillManifest,
-    content_sha256: str | None = None,
-) -> EvolutionTarget:
-    return EvolutionTarget(
-        target_type="skill",
-        key=f"{manifest.capability}:{manifest.name}",
-        name=manifest.name,
-        version=manifest.version,
-        content_sha256=(
-            content_sha256
-            if content_sha256 is not None
-            else calculate_skill_directory_sha256(manifest.path)
-        ),
-        agent_created=manifest.agent_created,
-        agent_can_update=manifest.agent_can_update,
-    )
 
 
 def _replace_skill_directory(source: Path, target: Path) -> None:

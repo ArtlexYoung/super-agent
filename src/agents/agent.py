@@ -12,7 +12,7 @@ from provider.chat import ChatProvider, Message
 from provider.pool import ProviderPool
 from runtime.config import AgentConfig
 from runtime.engine import AgentRuntime, RuntimeResources
-from runtime.evolution.schedule_state import EvolutionScheduleState
+from runtime.evolution.state import SkillEvolutionState
 from runtime.evolution.service import AutomaticEvolutionService
 from runtime.identity import LOCAL_USER_ID
 from runtime.models import Conversation, RunEvent
@@ -182,24 +182,24 @@ class Agent:
             ),
         )
 
-    def list_evolution_schedules(
+    def list_skill_evolutions(
         self,
         user_id: str = LOCAL_USER_ID,
         *,
-        decision: str | None = None,
-    ) -> list[EvolutionScheduleState]:
-        return self._create_evolution_service(user_id).list_evolution_schedules(
-            decision
+        status: str | None = None,
+    ) -> list[SkillEvolutionState]:
+        return self._create_evolution_service(user_id).list_skill_evolutions(
+            status
         )
 
-    def read_evolution_schedule(
+    def read_skill_evolution(
         self,
-        schedule_id: str,
+        evolution_id: str,
         *,
         user_id: str = LOCAL_USER_ID,
-    ) -> EvolutionScheduleState:
-        return self._create_evolution_service(user_id).read_evolution_schedule(
-            schedule_id
+    ) -> SkillEvolutionState:
+        return self._create_evolution_service(user_id).read_skill_evolution(
+            evolution_id
         )
 
     def create_conversation(

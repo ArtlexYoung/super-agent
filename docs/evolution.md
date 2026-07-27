@@ -12,13 +12,13 @@ Online runs and candidate evaluations use one strict record format. Records are 
 
 Each record separates:
 
-- `target`: Skill or Capability identity, version, function group, and SHA-256.
+- `revision`: the exact Skill identity, capability, version, function group, and SHA-256.
 - `source`: online Agent run or candidate evaluation case.
 - `result`: success, score, token usage, latency, error type, and checks.
 
-The Runtime automatically tracks every Skill and Capability that affected a run through the shared `RuntimeSession`.
+The Runtime automatically tracks every Skill revision that affected a run through the shared `RuntimeSession`. Executable mechanisms are represented by their ordinary `capability` Skill revision, never by a second Capability-only identity.
 
-Evaluation record readers reject unknown fields, unsupported target or source types, invalid scores, negative token values, malformed hashes, and unsupported schema versions.
+Evaluation record readers reject unknown fields, unsupported source types, invalid scores, negative token values, malformed hashes, and unsupported schema versions.
 
 ## Skill Freshness
 
@@ -42,7 +42,7 @@ super-agent skills freshness --config agent.toml
 
 ## Automatic Evolution Loop
 
-After a run evaluation is stored, Runtime reviews only the Skills and Capabilities that affected that run. A target is eligible only when it is Agent-owned, `agent_can_update` is true, and Runtime has a real directory evolution mechanism. Capability targets must be locally installed packages. No additional configuration is required.
+After a run evaluation is stored, Runtime reviews the active Skill revisions. A revision is eligible only when it is Agent-owned, `agent_can_update` is true, and its Skill executor supports directory evolution. No additional configuration is required.
 
 The default signals are:
 
@@ -53,32 +53,32 @@ The default signals are:
 - Average estimated token usage of at least `12,000`.
 - Average latency of at least `10,000 ms`.
 
-Runtime stores the exact target version and hash, aggregate metrics, reason codes, source evaluation IDs, and a SHA-256 of the evidence snapshot. The schedule ID is deterministic for the Agent, target, and evidence, so checking unchanged evidence again is idempotent. New evidence may create a new recommendation.
+Runtime stores the exact source revision, aggregate metrics, reason codes, source evaluation IDs, and a SHA-256 of the evidence snapshot. The evolution ID is deterministic for the Agent, revision, and evidence, so checking unchanged evidence again is idempotent. New evidence may create a new recommendation.
 
 An eligible recommendation advances automatically through the central Skill lifecycle:
 
 1. The central adaptive model-call path creates an isolated complete-directory candidate and records every added, modified, and deleted path.
 2. Runtime evaluates the candidate against up to three prompts from the runs that triggered the recommendation. If none can be recovered, it uses the evolution goal as one fallback case.
-3. A passing candidate is promoted atomically. A rejected or failed candidate stays inactive and its final decision is recorded.
+3. A passing candidate is promoted atomically. A rejected or failed candidate stays inactive and its final status is recorded.
 4. Later real runs monitor the promoted version. Any failure rolls it back; three successful samples with an average score of at least `0.75` mark it stable; a lower average rolls it back.
 
 ```bash
 super-agent evolution list --config agent.toml --user-id alice
-super-agent evolution show --config agent.toml --user-id alice --schedule-id <id> --output json
+super-agent evolution show --config agent.toml --user-id alice --evolution-id <id> --output json
 ```
 
 These commands are read-only views over the automatic state. The same inspection is available in Python:
 
 ```python
 agent = Agent.load_from_config_file("agent.toml")
-schedules = agent.list_evolution_schedules(user_id="alice")
-schedule = agent.read_evolution_schedule(
-    schedules[0].schedule_id,
+evolutions = agent.list_skill_evolutions(user_id="alice")
+evolution = agent.read_skill_evolution(
+    evolutions[0].evolution_id,
     user_id="alice",
 )
 ```
 
-Scheduling events, model-call evidence, candidate workspaces, and monitoring decisions remain isolated by user and Agent. An automation failure is recorded as `evolution.automation_failed` in the run trace and never replaces the main task result.
+Evolution events, model-call evidence, candidate workspaces, and monitoring status remain isolated by user and Agent. An automation failure is recorded as `evolution.automation_failed` in the run trace and never replaces the main task result.
 
 ## Self-Updating Memory
 
@@ -126,13 +126,13 @@ create candidate -> validate -> evaluate -> promote -> rollback
 ```
 
 - Candidate files are isolated from active Skills and Capabilities.
-- The candidate unit is a complete Skill or Capability directory, including resources.
+- The candidate unit is a complete Skill directory, including resources.
 - The model returns strict JSON with complete UTF-8 file writes and explicit deletions.
 - The candidate records its parent version and directory hash.
 - Runtime forces the next patch version and rejects path traversal, symlinks, identity changes, and empty changes.
-- Prompt, memory, workflow, MCP, model, custom Skills, and executable Capability code share one Runtime state machine and event stream.
+- Prompt, memory, workflow, MCP, model, custom Skills, and executable `capability` Skills share one Runtime state machine and event stream.
 - Skill evaluation calls the configured Provider with deterministic assertions.
-- Capability evaluation calls `evaluate_capability(input_data)` in a separate Python process and checks exact JSON output.
+- Executable `capability` Skill evaluation calls `evaluate_capability(input_data)` in a separate Python process and checks exact JSON output.
 - Promotion requires a passing score and an unchanged active parent.
 - Promotion is atomic and stores an immutable previous revision.
 - Rollback restores the previous revision and records the action.

@@ -127,15 +127,12 @@ class ModelSkillTests(unittest.TestCase):
             result = agent.run("summarize this")
             store = agent.runtime.create_store()
             runtime_lock = store.read_runtime_lock(result.run_id)
-            records = store.read_evaluation_records(
-                target_type="skill",
-                source_type="agent_run",
-            )
+            records = store.read_evaluation_records(source_type="agent_run")
 
             self.assertIsNotNone(runtime_lock)
             assert runtime_lock is not None
             self.assertEqual("model:fast", runtime_lock["model"]["skill_key"])
-            self.assertIn("model:fast", {record.target.key for record in records})
+            self.assertIn("model:fast", {record.revision.key for record in records})
 
     def test_multiple_default_model_skills_are_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

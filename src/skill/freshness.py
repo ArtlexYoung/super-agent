@@ -21,18 +21,16 @@ def calculate_skill_freshness(
     now = current_time or datetime.now(UTC)
     stats_by_skill: dict[str, dict[str, Any]] = {}
     for summary in summarize_evaluation_evidence(records, combine_versions=True):
-        if summary.target.target_type != "skill":
-            continue
         stats = _stats_from_evidence(summary)
         _update_freshness(stats, now)
-        stats_by_skill[summary.target.key] = stats
+        stats_by_skill[summary.revision.key] = stats
     return stats_by_skill
 
 
 def _stats_from_evidence(summary: EvaluationEvidenceSummary) -> dict[str, Any]:
     return {
-        "skill": summary.target.key,
-        "function_group": summary.target.function_group,
+        "skill": summary.revision.key,
+        "function_group": summary.revision.function_group,
         "freshness": DEFAULT_SKILL_FRESHNESS,
         "freshness_updated_at": "",
         "call_count": summary.sample_count,

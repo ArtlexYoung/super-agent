@@ -77,7 +77,7 @@ RuntimeSession -> RuntimeStore -> StorageBackend
 - Every Skill executor is registered once and locked by exact hash.
 - Runtime consumes only `SkillContribution`, never a Skill-kind-specific runtime object.
 - One `AdaptiveTaskLoop` owns scheduling, model fallback, and tool iteration.
-- Every used Skill and executor becomes an evaluation target automatically.
+- Every used Skill revision, including an executor's `capability` Skill, is evaluated automatically.
 - Workflow is Skill data, not a second execution engine.
 - Evolution cannot bypass validation, evaluation, promotion, or rollback.
 - Internal compatibility shells are intentionally absent during `0.0.x`.

@@ -181,7 +181,7 @@ Status: implemented.
 
 ## v0.0.44: One Skill Revision State
 
-Status: planned.
+Status: implemented.
 
 - Replace duplicate evaluation, evolution target, and schedule identities with Skill revisions.
 - Keep evidence, candidate status, promotion, monitoring, and rollback in one state machine.

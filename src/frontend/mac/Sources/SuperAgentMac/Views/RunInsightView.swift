@@ -12,7 +12,7 @@ struct RunInsightView: View {
             ModelCallsInsightView(calls: insight.modelCalls)
             ModelRoutingEvidenceView(evidence: insight.routingEvidence)
             SkillFreshnessInsightView(skills: insight.skillFreshness)
-            EvolutionInsightView(schedules: insight.evolution)
+            EvolutionInsightView(evolutions: insight.evolution)
         }
     }
 }
@@ -185,39 +185,41 @@ private struct SkillFreshnessInsightView: View {
 }
 
 private struct EvolutionInsightView: View {
-    let schedules: [RuntimeEvolutionSchedule]
+    let evolutions: [RuntimeSkillEvolution]
 
     var body: some View {
         InsightSectionView(title: "自动进化", icon: "arrow.triangle.2.circlepath.circle") {
-            if schedules.isEmpty {
+            if evolutions.isEmpty {
                 InsightEmptyView(text: "本次运行没有触发 Skill 进化。")
             }
-            ForEach(schedules) { schedule in
+            ForEach(evolutions) { evolution in
                 VStack(alignment: .leading, spacing: 7) {
                     HStack {
-                        Text(schedule.target.key)
+                        Text(evolution.skillKey)
                             .font(.body.monospaced().weight(.semibold))
-                        Text("v\(schedule.target.version)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        if let revision = evolution.candidateRevision ?? evolution.sourceRevision {
+                            Text("v\(revision.version)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                         Spacer()
-                        DefaultTagView(text: evolutionDecisionText(schedule.decision))
+                        DefaultTagView(text: evolutionStatusText(evolution.status))
                     }
-                    Text(schedule.goal)
+                    Text(evolution.goal)
                         .font(.callout)
-                    InsightTextListView(title: "触发依据", values: schedule.reasons)
-                    if let score = schedule.evaluationScore {
+                    InsightTextListView(title: "触发依据", values: evolution.reasons)
+                    if let score = evolution.evaluationScore {
                         Text("候选评价：\(percent(score))")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
-                    if !schedule.candidateId.isEmpty {
-                        Text("候选：\(schedule.candidateId)")
+                    if !evolution.candidateId.isEmpty {
+                        Text("候选：\(evolution.candidateId)")
                             .font(.caption.monospaced())
                             .foregroundStyle(.secondary)
                     }
-                    if !schedule.detail.isEmpty {
-                        Text(schedule.detail)
+                    if !evolution.detail.isEmpty {
+                        Text(evolution.detail)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -298,17 +300,18 @@ private func statusText(_ status: String) -> String {
     status == "completed" ? "完成" : status == "failed" ? "失败" : "已选择"
 }
 
-private func evolutionDecisionText(_ decision: String) -> String {
+private func evolutionStatusText(_ status: String) -> String {
     let values = [
         "candidate_recommended": "建议候选",
         "candidate_created": "已建候选",
+        "evaluated": "评价通过",
         "promoted": "已晋升",
         "rejected": "已拒绝",
         "stable": "稳定",
         "rolled_back": "已回滚",
         "failed": "失败",
     ]
-    return values[decision] ?? decision
+    return values[status] ?? status
 }
 
 private func percent(_ value: Double) -> String {

@@ -61,8 +61,8 @@ class SkillToolsTests(unittest.TestCase):
                 )
             )
 
-            targets = tools.context.session.list_evaluation_targets()
-            self.assertEqual(["prompt:research"], [target.key for target in targets])
+            revisions = tools.context.session.list_used_skill_revisions()
+            self.assertEqual(["prompt:research"], [item.key for item in revisions])
 
     def test_unknown_builtin_tool_fails_with_trace_event(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -53,8 +53,8 @@ def main() -> int:
         "model_calls_are_observable": scheduling["completed_model_calls"] == 2,
         "routing_is_isolated_by_user": scheduling["beta_routing_records"] == 0,
         "routing_is_isolated_by_agent": scheduling["second_agent_routing_records"] == 0,
-        "task_evidence_promotes_candidate": evolution["promotion_decision"] == "promoted",
-        "regression_rolls_back_candidate": evolution["monitoring_decision"] == "rolled_back",
+        "task_evidence_promotes_candidate": evolution["promotion_status"] == "promoted",
+        "regression_rolls_back_candidate": evolution["monitoring_status"] == "rolled_back",
         "rollback_is_observable_on_regression_run": evolution[
             "rollback_is_observable_on_regression_run"
         ],
@@ -168,10 +168,10 @@ def run_automatic_evolution_proof(root: Path) -> dict[str, object]:
     )
     agent = Agent(AgentConfig.load_from_file(config_path), provider=provider)
     run_expected_failure(agent, "echo first task")
-    promoted = agent.list_evolution_schedules()[0]
+    promoted = agent.list_skill_evolutions()[0]
     promoted_text = read_echo_instructions(root)
     regression_run_id = run_expected_failure(agent, "echo regression task")
-    monitored = agent.read_evolution_schedule(promoted.schedule_id)
+    monitored = agent.read_skill_evolution(promoted.evolution_id)
     regression_insight = explain_run_with_insight(
         agent.runtime.create_store(),
         regression_run_id,
@@ -180,14 +180,14 @@ def run_automatic_evolution_proof(root: Path) -> dict[str, object]:
     return {
         "evidence_source": "agent_run",
         "reason_codes": list(promoted.reason_codes),
-        "promotion_decision": promoted.decision,
-        "monitoring_decision": monitored.decision,
+        "promotion_status": promoted.status,
+        "monitoring_status": monitored.status,
         "candidate_created": bool(promoted.candidate_id),
         "evaluation_score": promoted.evaluation_score,
         "promoted_candidate_instructions": promoted_text == CANDIDATE_INSTRUCTIONS,
         "restored_parent_instructions": restored_text == PARENT_INSTRUCTIONS,
         "rollback_is_observable_on_regression_run": any(
-            item["decision"] == "rolled_back"
+            item["status"] == "rolled_back"
             for item in regression_insight["evolution"]
         ),
         "skill_evolution_model_calls": routing_call_count(agent, "skill_evolution"),

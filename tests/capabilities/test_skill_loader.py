@@ -26,10 +26,8 @@ class CapabilitySkillTests(unittest.TestCase):
             self.assertIn("loaded from Skill", provider.last_messages[0]["content"])
             self.assertEqual("skill", registration.descriptor.source)
             self.assertEqual("capability:fixed", registration.descriptor.skill_key)
-            records = agent.runtime.create_store().read_evaluation_records(
-                target_type="skill"
-            )
-            self.assertIn("capability:fixed", {item.target.key for item in records})
+            records = agent.runtime.create_store().read_evaluation_records()
+            self.assertIn("capability:fixed", {item.revision.key for item in records})
 
     def test_capability_skill_uses_shared_evolution_and_rollback(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

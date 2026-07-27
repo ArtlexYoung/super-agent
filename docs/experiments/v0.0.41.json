@@ -15,9 +15,9 @@
     "candidate_created": true,
     "evaluation_score": 1.0,
     "evidence_source": "agent_run",
-    "monitoring_decision": "rolled_back",
+    "monitoring_status": "rolled_back",
     "promoted_candidate_instructions": true,
-    "promotion_decision": "promoted",
+    "promotion_status": "promoted",
     "reason_codes": [
       "failures"
     ],

@@ -1,3 +1,5 @@
+"""Tests for Skill evolution recommendations and automatic execution."""
+
 from __future__ import annotations
 
 import json
@@ -15,25 +17,24 @@ from runtime.evaluation import (
     EvaluationResult,
     EvaluationRecord,
     EvaluationSource,
-    EvaluationTarget,
     EvaluationTokenUsage,
     create_evaluation_record,
 )
 from runtime.evolution.files import compare_directory_versions
-from runtime.evolution.schedule_state import (
-    EvolutionScheduleTarget,
-    evolution_schedule_to_dict,
+from runtime.evolution.state import (
+    list_skill_evolutions,
+    skill_evolution_to_dict,
 )
-from runtime.evolution.scheduler import AutonomousEvolutionScheduler
+from runtime.evolution.recommendations import recommend_skill_revisions
 from runtime.evolution.evidence import summarize_evaluation_evidence
 from runtime.evolution.service import AutomaticEvolutionService
 from runtime.insights import explain_run_with_insight
 from runtime.store import create_local_runtime_store
-from skill.evaluation import create_indexed_skill_evaluation_target
+from skill.revision import SkillRevision, create_indexed_skill_revision
 from support import write_workflow_skill
 
 
-class AutonomousEvolutionSchedulerTests(unittest.TestCase):
+class SkillRevisionEvolutionTests(unittest.TestCase):
     def test_evidence_hash_covers_record_content_not_only_record_id(self) -> None:
         original = _record(_target(), score=0.9)
         changed = replace(
@@ -46,7 +47,7 @@ class AutonomousEvolutionSchedulerTests(unittest.TestCase):
 
         self.assertNotEqual(original_hash, changed_hash)
 
-    def test_scheduler_uses_each_runtime_evidence_signal(self) -> None:
+    def test_recommendations_use_each_runtime_evidence_signal(self) -> None:
         for reason_code in (
             "failures",
             "low_score",
@@ -56,72 +57,79 @@ class AutonomousEvolutionSchedulerTests(unittest.TestCase):
             "latency",
         ):
             with self.subTest(reason_code=reason_code), tempfile.TemporaryDirectory() as tmp:
-                records, target, freshness = _records_for_reason(reason_code)
+                records, revision, freshness = _records_for_reason(reason_code)
                 store = create_local_runtime_store(Path(tmp))
                 store.append_evaluation_records(records)
 
-                schedules = AutonomousEvolutionScheduler(store).review_evolution_targets(
-                    [_schedule_target(target, freshness=freshness)]
+                evolutions = recommend_skill_revisions(
+                    store,
+                    [_evolvable_revision(revision, freshness=freshness)],
                 )
 
-                self.assertEqual(1, len(schedules))
-                self.assertIn(reason_code, schedules[0].reason_codes)
-                self.assertEqual(target, schedules[0].target)
+                self.assertEqual(1, len(evolutions))
+                self.assertIn(reason_code, evolutions[0].reason_codes)
+                self.assertEqual(
+                    _evolvable_revision(revision, freshness=freshness),
+                    evolutions[0].source_revision,
+                )
 
-    def test_locked_and_non_evolvable_targets_are_not_scheduled(self) -> None:
+    def test_locked_and_non_evolvable_revisions_are_not_recommended(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            target = _target()
+            revision = _target()
             store = create_local_runtime_store(Path(tmp))
-            store.append_evaluation_records([_record(target, success=False)])
-            scheduler = AutonomousEvolutionScheduler(store)
+            store.append_evaluation_records([_record(revision, success=False)])
 
-            locked = scheduler.review_evolution_targets(
-                [_schedule_target(target, can_update=False)]
+            locked = recommend_skill_revisions(
+                store,
+                [_evolvable_revision(revision, can_update=False)],
             )
-            unsupported = scheduler.review_evolution_targets(
-                [_schedule_target(target, supports_evolution=False)]
+            unsupported = recommend_skill_revisions(
+                store,
+                [_evolvable_revision(revision, supports_evolution=False)],
             )
 
             self.assertEqual([], locked)
             self.assertEqual([], unsupported)
-            self.assertEqual([], scheduler.list_evolution_schedules())
+            self.assertEqual([], list_skill_evolutions(store))
 
-    def test_same_evidence_is_scheduled_once_and_new_evidence_creates_new_schedule(self) -> None:
+    def test_same_evidence_creates_one_evolution_and_new_evidence_creates_another(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            target = _target()
+            revision = _target()
             store = create_local_runtime_store(Path(tmp))
-            store.append_evaluation_records([_record(target, success=False, sequence=1)])
-            scheduler = AutonomousEvolutionScheduler(store)
-            schedule_target = _schedule_target(target)
+            store.append_evaluation_records([_record(revision, success=False, sequence=1)])
+            evolvable = _evolvable_revision(revision)
 
-            first = scheduler.review_evolution_targets([schedule_target])
-            duplicate = scheduler.review_evolution_targets([schedule_target])
-            store.append_evaluation_records([_record(target, success=False, sequence=2)])
-            second = scheduler.review_evolution_targets([schedule_target])
+            first = recommend_skill_revisions(store, [evolvable])
+            duplicate = recommend_skill_revisions(store, [evolvable])
+            store.append_evaluation_records([_record(revision, success=False, sequence=2)])
+            second = recommend_skill_revisions(store, [evolvable])
 
             self.assertEqual(1, len(first))
             self.assertEqual([], duplicate)
             self.assertEqual(1, len(second))
-            self.assertNotEqual(first[0].schedule_id, second[0].schedule_id)
-            self.assertEqual(2, len(scheduler.list_evolution_schedules()))
+            self.assertNotEqual(first[0].evolution_id, second[0].evolution_id)
+            self.assertEqual(2, len(list_skill_evolutions(store)))
 
-    def test_schedules_are_isolated_by_user(self) -> None:
+    def test_evolutions_are_isolated_by_user(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            target = _target()
+            revision = _target()
             alpha_store = create_local_runtime_store(root, user_id="alpha")
             beta_store = create_local_runtime_store(root, user_id="beta")
-            alpha_store.append_evaluation_records([_record(target, success=False)])
-            alpha = AutonomousEvolutionScheduler(alpha_store)
-            beta = AutonomousEvolutionScheduler(beta_store)
+            alpha_store.append_evaluation_records([_record(revision, success=False)])
 
-            created = alpha.review_evolution_targets([_schedule_target(target)])[0]
+            created = recommend_skill_revisions(
+                alpha_store,
+                [_evolvable_revision(revision)],
+            )[0]
 
-            self.assertEqual("candidate_recommended", created.decision)
-            self.assertEqual([], beta.list_evolution_schedules())
-            payload = evolution_schedule_to_dict(created)
-            self.assertEqual(created.schedule_id, payload["schedule_id"])
-            self.assertEqual("candidate_recommended", payload["decision"])
+            self.assertEqual("candidate_recommended", created.status)
+            self.assertEqual([], list_skill_evolutions(beta_store))
+            payload = skill_evolution_to_dict(created)
+            self.assertEqual(created.evolution_id, payload["evolution_id"])
+            self.assertEqual("candidate_recommended", payload["status"])
 
     def test_directory_comparison_reports_added_modified_and_deleted_files(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -166,11 +174,11 @@ class AutonomousEvolutionSchedulerTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "task failed"):
                 agent.run("echo this")
 
-            schedules = agent.list_evolution_schedules()
-            self.assertEqual(["prompt:echo"], [item.target.key for item in schedules])
-            self.assertIn("failures", schedules[0].reason_codes)
-            self.assertEqual("promoted", schedules[0].decision)
-            self.assertTrue(schedules[0].candidate_id)
+            evolutions = agent.list_skill_evolutions()
+            self.assertEqual(["prompt:echo"], [item.skill_key for item in evolutions])
+            self.assertIn("failures", evolutions[0].reason_codes)
+            self.assertEqual("promoted", evolutions[0].status)
+            self.assertTrue(evolutions[0].candidate_id)
             self.assertEqual(
                 "Improved instructions.\n",
                 (root / "skills" / "prompt" / "echo" / "SKILL.md").read_text(
@@ -191,12 +199,12 @@ class AutonomousEvolutionSchedulerTests(unittest.TestCase):
 
             store = agent.runtime.create_store()
             regression_run = store.list_runs(1)[0]
-            monitored = agent.list_evolution_schedules()[0]
+            monitored = agent.list_skill_evolutions()[0]
             regression_insight = explain_run_with_insight(store, regression_run.run_id)
-            self.assertEqual("rolled_back", monitored.decision)
+            self.assertEqual("rolled_back", monitored.status)
             self.assertEqual(
                 ["rolled_back"],
-                [item["decision"] for item in regression_insight["evolution"]],
+                [item["status"] for item in regression_insight["evolution"]],
             )
             self.assertEqual(
                 "Use echo instructions.\n",
@@ -215,7 +223,7 @@ class AutonomousEvolutionSchedulerTests(unittest.TestCase):
 
             with patch(
                 "runtime.engine.AutomaticEvolutionService.review_and_evolve",
-                side_effect=RuntimeError("schedule unavailable"),
+                side_effect=RuntimeError("recommendation unavailable"),
             ):
                 result = agent.run("echo this")
 
@@ -242,22 +250,17 @@ class AutonomousEvolutionSchedulerTests(unittest.TestCase):
                 "echo",
                 "prompt",
             )
-            target = create_indexed_skill_evaluation_target(entry)
+            revision = create_indexed_skill_revision(
+                entry,
+                evolution_supported=True,
+            )
             store = agent.runtime.create_store("alice")
-            store.append_evaluation_records([_record(target, success=False)])
+            store.append_evaluation_records([_record(revision, success=False)])
             updated = AutomaticEvolutionService(store, manager).review_and_evolve(
-                [
-                    EvolutionScheduleTarget(
-                        target=target,
-                        agent_created=True,
-                        agent_can_update=True,
-                        supports_evolution=True,
-                        freshness=70.0,
-                    )
-                ]
+                [revision]
             )
 
-            completed = next(item for item in updated if item.decision == "promoted")
+            completed = next(item for item in updated if item.status == "promoted")
             self.assertTrue(completed.candidate_id)
             self.assertIsNotNone(completed.candidate_difference)
             changed = completed.candidate_difference
@@ -268,47 +271,52 @@ class AutonomousEvolutionSchedulerTests(unittest.TestCase):
 
 def _records_for_reason(
     reason_code: str,
-) -> tuple[list[EvaluationRecord], EvaluationTarget, float]:
-    target = _target()
+) -> tuple[list[EvaluationRecord], SkillRevision, float]:
+    revision = _target()
     if reason_code == "failures":
-        return [_record(target, success=False)], target, 70.0
+        return [_record(revision, success=False)], revision, 70.0
     if reason_code == "low_score":
         return [
-            _record(target, score=0.5, sequence=index)
+            _record(revision, score=0.5, sequence=index)
             for index in range(1, 4)
-        ], target, 70.0
+        ], revision, 70.0
     if reason_code == "low_freshness":
-        return [_record(target, sequence=index) for index in range(1, 3)], target, 20.0
+        return [_record(revision, sequence=index) for index in range(1, 3)], revision, 20.0
     if reason_code == "token_cost":
-        return [_record(target, input_tokens=13_000)], target, 70.0
+        return [_record(revision, input_tokens=13_000)], revision, 70.0
     if reason_code == "latency":
-        return [_record(target, latency_ms=10_000)], target, 70.0
+        return [_record(revision, latency_ms=10_000)], revision, 70.0
     replacement = _target(key="prompt:new-search", hash_character="b")
     return [
-        _record(target, sequence=1),
+        _record(revision, sequence=1),
         _record(replacement, sequence=2),
-        _record(target, sequence=3),
+        _record(revision, sequence=3),
         _record(replacement, sequence=4),
-    ], target, 70.0
+    ], revision, 70.0
 
 
 def _target(
     *,
     key: str = "prompt:search",
     hash_character: str = "a",
-) -> EvaluationTarget:
-    return EvaluationTarget(
-        target_type="skill",
+) -> SkillRevision:
+    capability, name = key.split(":", 1)
+    return SkillRevision(
         key=key,
-        name=key.rsplit(":", 1)[-1],
+        capability=capability,
+        name=name,
         version="0.1.0",
         content_sha256=hash_character * 64,
         function_group="search",
+        agent_created=True,
+        agent_can_update=True,
+        evolution_supported=True,
+        freshness=70.0,
     )
 
 
 def _record(
-    target: EvaluationTarget,
+    revision: SkillRevision,
     *,
     success: bool = True,
     score: float = 1.0,
@@ -318,7 +326,7 @@ def _record(
     sequence: int = 1,
 ) -> EvaluationRecord:
     return create_evaluation_record(
-        target,
+        revision,
         EvaluationSource(source_type="agent_run", run_id=f"run-{sequence}"),
         EvaluationResult(
             success=success,
@@ -333,18 +341,17 @@ def _record(
     )
 
 
-def _schedule_target(
-    target: EvaluationTarget,
+def _evolvable_revision(
+    revision: SkillRevision,
     *,
     freshness: float = 70.0,
     can_update: bool = True,
     supports_evolution: bool = True,
-) -> EvolutionScheduleTarget:
-    return EvolutionScheduleTarget(
-        target=target,
-        agent_created=True,
+) -> SkillRevision:
+    return replace(
+        revision,
         agent_can_update=can_update,
-        supports_evolution=supports_evolution,
+        evolution_supported=supports_evolution,
         freshness=freshness,
     )
 

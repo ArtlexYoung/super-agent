@@ -7,7 +7,7 @@ struct RuntimeRunInsight: Decodable, Equatable, Sendable {
     var modelCalls: [RuntimeModelCall]
     var routingEvidence: [RuntimeModelRoutingEvidence]
     var skillFreshness: [RuntimeSkillFreshness]
-    var evolution: [RuntimeEvolutionSchedule]
+    var evolution: [RuntimeSkillEvolution]
 }
 
 struct RuntimeRunSnapshot: Decodable, Equatable, Sendable {
@@ -88,21 +88,23 @@ struct RuntimeSkillFreshness: Decodable, Equatable, Sendable, Identifiable {
     var id: String { skill }
 }
 
-struct RuntimeEvolutionSchedule: Decodable, Equatable, Sendable, Identifiable {
-    var scheduleId: String
-    var target: RuntimeEvolutionTarget
+struct RuntimeSkillEvolution: Decodable, Equatable, Sendable, Identifiable {
+    var evolutionId: String
+    var skillKey: String
+    var status: String
+    var sourceRevision: RuntimeSkillRevision?
+    var candidateRevision: RuntimeSkillRevision?
     var reasonCodes: [String]
     var reasons: [String]
     var goal: String
-    var decision: String
     var candidateId: String
     var evaluationScore: Double?
     var detail: String
 
-    var id: String { scheduleId }
+    var id: String { evolutionId }
 }
 
-struct RuntimeEvolutionTarget: Decodable, Equatable, Sendable {
+struct RuntimeSkillRevision: Decodable, Equatable, Sendable {
     var key: String
     var version: String
 }

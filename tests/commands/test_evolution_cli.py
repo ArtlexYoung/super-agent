@@ -14,12 +14,11 @@ from runtime.config import AgentConfig
 from runtime.evaluation import (
     EvaluationResult,
     EvaluationSource,
-    EvaluationTarget,
     EvaluationTokenUsage,
     create_evaluation_record,
 )
-from runtime.evolution.schedule_state import EvolutionScheduleTarget
-from runtime.evolution.scheduler import AutonomousEvolutionScheduler
+from runtime.evolution.recommendations import recommend_skill_revisions
+from skill.revision import SkillRevision
 
 
 class EvolutionCliTests(unittest.TestCase):
@@ -27,19 +26,23 @@ class EvolutionCliTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             config_path = _write_config(Path(tmp))
             agent = Agent(AgentConfig.load_from_file(config_path))
-            target = EvaluationTarget(
-                target_type="skill",
+            revision = SkillRevision(
                 key="prompt:writer",
+                capability="prompt",
                 name="writer",
                 version="0.1.0",
                 content_sha256="a" * 64,
                 function_group="writing",
+                agent_created=True,
+                agent_can_update=True,
+                evolution_supported=True,
+                freshness=40,
             )
             store = agent.runtime.create_store("alpha")
             store.append_evaluation_records(
                 [
                     create_evaluation_record(
-                        target,
+                        revision,
                         EvaluationSource(source_type="agent_run", run_id="run-1"),
                         EvaluationResult(
                             success=False,
@@ -53,17 +56,7 @@ class EvolutionCliTests(unittest.TestCase):
                     )
                 ]
             )
-            schedule = AutonomousEvolutionScheduler(store).review_evolution_targets(
-                [
-                    EvolutionScheduleTarget(
-                        target=target,
-                        agent_created=True,
-                        agent_can_update=True,
-                        supports_evolution=True,
-                        freshness=40,
-                    )
-                ]
-            )[0]
+            evolution = recommend_skill_revisions(store, [revision])[0]
 
             listed = _run_json_cli(
                 [
@@ -97,17 +90,20 @@ class EvolutionCliTests(unittest.TestCase):
                     str(config_path),
                     "--user-id",
                     "alpha",
-                    "--schedule-id",
-                    schedule.schedule_id,
+                    "--evolution-id",
+                    evolution.evolution_id,
                     "--output",
                     "json",
                 ]
             )
-            self.assertEqual(2, listed["schema_version"])
-            self.assertEqual(schedule.schedule_id, listed["schedules"][0]["schedule_id"])
-            self.assertEqual([], isolated["schedules"])
-            self.assertEqual(schedule.schedule_id, shown["schedule_id"])
-            self.assertEqual("candidate_recommended", shown["decision"])
+            self.assertEqual(3, listed["schema_version"])
+            self.assertEqual(
+                evolution.evolution_id,
+                listed["evolutions"][0]["evolution_id"],
+            )
+            self.assertEqual([], isolated["evolutions"])
+            self.assertEqual(evolution.evolution_id, shown["evolution_id"])
+            self.assertEqual("candidate_recommended", shown["status"])
 
 
 def _run_json_cli(arguments: list[str]) -> dict[str, object]:

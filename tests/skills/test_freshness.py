@@ -9,7 +9,6 @@ from runtime.config import AgentConfig
 from runtime.evaluation import (
     EvaluationResult,
     EvaluationSource,
-    EvaluationTarget,
     EvaluationTokenUsage,
     create_evaluation_record,
     evaluation_record_from_dict,
@@ -18,6 +17,7 @@ from runtime.evaluation import (
 from runtime.store import create_local_runtime_store
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.freshness import calculate_skill_freshness
+from skill.revision import SkillRevision
 from support import write_memory_skill, write_workflow_skill
 
 
@@ -65,7 +65,7 @@ instructions = "SKILL.md"
                 called_at,
             )
             candidate_record = create_evaluation_record(
-                run_record.target,
+                run_record.revision,
                 EvaluationSource(
                     source_type="candidate_evaluation",
                     candidate_id="candidate-1",
@@ -85,7 +85,7 @@ instructions = "SKILL.md"
             )["prompt:research"]
             self.assertEqual(1, stats["call_count"])
             self.assertEqual(1, stats["success_count"])
-            self.assertEqual("prompt:research", records[0].target.key)
+            self.assertEqual("prompt:research", records[0].revision.key)
             self.assertEqual(2, len(records))
             self.assertFalse((root / "skill_events.jsonl").exists())
 
@@ -128,8 +128,7 @@ instructions = "SKILL.md"
             store.append_evaluation_records([record])
 
             loaded = store.read_evaluation_records(
-                target_type="skill",
-                target_key="prompt:research",
+                skill_key="prompt:research",
                 source_type="agent_run",
             )
             self.assertEqual([record], loaded)
@@ -138,8 +137,8 @@ instructions = "SKILL.md"
             with self.assertRaisesRegex(ValueError, "schema fields"):
                 evaluation_record_from_dict(payload)
             payload = evaluation_record_to_dict(record)
-            payload["schema_version"] = 2
-            with self.assertRaisesRegex(ValueError, "migrate evaluation record"):
+            payload["schema_version"] = 1
+            with self.assertRaisesRegex(ValueError, "schema_version must be 2"):
                 evaluation_record_from_dict(payload)
 
     def test_agent_run_records_skill_freshness_stats(self) -> None:
@@ -156,35 +155,17 @@ instructions = "SKILL.md"
             store = agent.runtime.create_store()
             records = store.read_evaluation_records()
             stats = calculate_skill_freshness(
-                store.read_evaluation_records(
-                    target_type="skill",
-                    source_type="agent_run",
-                )
+                store.read_evaluation_records(source_type="agent_run")
             )
             self.assertEqual(1, stats["prompt:echo"]["call_count"])
             self.assertGreater(stats["prompt:echo"]["freshness"], 70)
-            skill_keys = {
-                record.target.key for record in records if record.target.target_type == "skill"
-            }
-            capability_keys = {
-                record.target.key
-                for record in records
-                if record.target.target_type == "capability"
-            }
+            skill_keys = {record.revision.key for record in records}
             self.assertEqual(
                 {"memory:default", "prompt:echo", "workflow:direct"},
                 skill_keys,
             )
-            self.assertEqual(
-                {
-                    "skill_executor:memory:event-memory",
-                    "skill_executor:prompt:prompt-context",
-                    "skill_executor:workflow:tool-loop",
-                },
-                capability_keys,
-            )
             self.assertTrue(all(record.source.run_id == result.run_id for record in records))
-            self.assertTrue(all(len(record.target.content_sha256) == 64 for record in records))
+            self.assertTrue(all(len(record.revision.content_sha256) == 64 for record in records))
 
     def test_failed_agent_run_records_failure_for_used_targets(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -217,13 +198,17 @@ def _skill_evaluation_record(
     run_id: str = "run-1",
 ):
     return create_evaluation_record(
-        target=EvaluationTarget(
-            target_type="skill",
+        revision=SkillRevision(
             key=skill_key,
+            capability=skill_key.split(":", 1)[0],
             name=skill_key.split(":", 1)[1],
             version="0.1.0",
             content_sha256="a" * 64,
             function_group=function_group,
+            agent_created=True,
+            agent_can_update=True,
+            evolution_supported=True,
+            freshness=70.0,
         ),
         source=EvaluationSource(source_type="agent_run", run_id=run_id),
         result=EvaluationResult(

@@ -181,10 +181,7 @@ def _show_skill_freshness(config_path: Path, user_id: str) -> int:
     config = AgentConfig.load_from_file(config_path)
     store = _load_runtime_store(config, user_id)
     stats = calculate_skill_freshness(
-        store.read_evaluation_records(
-            target_type="skill",
-            source_type="agent_run",
-        )
+        store.read_evaluation_records(source_type="agent_run")
     )
     if not stats:
         print("No skill freshness stats yet.")

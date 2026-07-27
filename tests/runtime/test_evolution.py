@@ -5,120 +5,144 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from runtime.evolution import (
-    EvolutionCandidateProposal,
-    EvolutionLifecycle,
-    EvolutionTarget,
-    apply_directory_file_changes,
-    read_directory_file_changes,
+from runtime.evolution import apply_directory_file_changes, read_directory_file_changes
+from runtime.evolution.state import (
+    record_skill_candidate_evaluation,
+    record_skill_candidate_promoted,
+    require_skill_candidate_can_promote,
+    start_manual_skill_evolution,
 )
 from runtime.store import create_local_runtime_store
+from skill.revision import SkillRevision
 
 
-class RuntimeEvolutionLifecycleTests(unittest.TestCase):
-    def test_lifecycle_records_passed_candidate_and_promotion(self) -> None:
+class SkillRevisionEvolutionStateTests(unittest.TestCase):
+    def test_candidate_evaluation_and_promotion_share_one_event_stream(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             store = create_local_runtime_store(Path(tmp))
-            lifecycle = EvolutionLifecycle(store)
-            parent = _target("skill", "prompt:writer", "0.1.0", "a", can_update=True)
-            candidate = _target("skill", "prompt:writer", "0.1.1", "b", can_update=True)
+            parent = _revision("prompt:writer", "0.1.0", "a", can_update=True)
+            candidate = _revision("prompt:writer", "0.1.1", "b", can_update=True)
 
-            lifecycle.record_candidate_created(
-                EvolutionCandidateProposal(
-                    candidate_id="candidate-1",
-                    target=candidate,
-                    parent=parent,
-                    goal="improve it",
-                )
-            )
-            evaluated = lifecycle.record_candidate_evaluated(
+            started = start_manual_skill_evolution(
+                store,
                 "candidate-1",
+                parent,
+                candidate,
+                "improve it",
+            )
+            evaluated = record_skill_candidate_evaluation(
+                store,
+                "candidate-1",
+                "report-1",
                 1.0,
                 True,
-                "report-1",
             )
-            lifecycle.require_candidate_can_promote("candidate-1", parent)
-            promoted = lifecycle.record_candidate_promoted(
+            promoted = record_skill_candidate_promoted(
+                store,
                 "candidate-1",
                 candidate,
                 parent,
             )
 
+            self.assertEqual("candidate_created", started.status)
             self.assertEqual("evaluated", evaluated.status)
             self.assertEqual("promoted", promoted.status)
             self.assertEqual(
-                ["evolution.candidate_created", "evolution.candidate_evaluated", "evolution.candidate_promoted"],
-                [event.event_type for event in store.read_evolution_events("candidate-1")],
+                [
+                    "skill_evolution.started",
+                    "skill_evolution.candidate_evaluated",
+                    "skill_evolution.candidate_promoted",
+                ],
+                [
+                    event.event_type
+                    for event in store.read_skill_evolution_events("candidate-1")
+                ],
             )
 
-    def test_lifecycle_rejects_locked_new_and_changed_targets(self) -> None:
+    def test_locked_and_non_owned_revisions_cannot_start_evolution(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            lifecycle = EvolutionLifecycle(create_local_runtime_store(Path(tmp)))
-            locked = _target("capability", "run_controller:fixed", "0.1.0", "a")
-            candidate = _target(
-                "capability",
-                "run_controller:fixed",
+            store = create_local_runtime_store(Path(tmp))
+            locked = _revision("capability:fixed", "0.1.0", "a")
+            candidate = _revision(
+                "capability:fixed",
                 "0.1.1",
                 "b",
                 can_update=True,
             )
-
-            with self.assertRaisesRegex(PermissionError, "does not allow"):
-                lifecycle.record_candidate_created(
-                    EvolutionCandidateProposal("candidate-locked", candidate, "change", locked)
+            with self.assertRaisesRegex(PermissionError, "does not allow evolution"):
+                start_manual_skill_evolution(
+                    store,
+                    "candidate-locked",
+                    locked,
+                    candidate,
+                    "change",
                 )
 
-            not_owned = _target("skill", "prompt:new", "0.1.0", "c")
+            not_owned = _revision("prompt:new", "0.1.0", "c")
             with self.assertRaisesRegex(PermissionError, "Agent-owned"):
-                lifecycle.record_candidate_created(
-                    EvolutionCandidateProposal("candidate-new", not_owned, "create")
+                start_manual_skill_evolution(
+                    store,
+                    "candidate-new",
+                    None,
+                    not_owned,
+                    "create",
                 )
 
-    def test_promotion_requires_passing_evaluation_and_unchanged_parent(self) -> None:
+    def test_promotion_requires_passed_evaluation_and_unchanged_revision(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            lifecycle = EvolutionLifecycle(create_local_runtime_store(Path(tmp)))
-            parent = _target("skill", "prompt:writer", "0.1.0", "a", can_update=True)
-            candidate = _target("skill", "prompt:writer", "0.1.1", "b", can_update=True)
-            lifecycle.record_candidate_created(
-                EvolutionCandidateProposal("candidate-2", candidate, "change", parent)
+            store = create_local_runtime_store(Path(tmp))
+            parent = _revision("prompt:writer", "0.1.0", "a", can_update=True)
+            candidate = _revision("prompt:writer", "0.1.1", "b", can_update=True)
+            start_manual_skill_evolution(
+                store,
+                "candidate-2",
+                parent,
+                candidate,
+                "change",
             )
-            lifecycle.record_candidate_evaluated("candidate-2", 0.2, False, "report-2")
-
-            with self.assertRaisesRegex(ValueError, "did not pass"):
-                lifecycle.require_candidate_can_promote("candidate-2", parent)
-
-            lifecycle.record_candidate_evaluated("candidate-2", 1.0, True, "report-3")
-            changed_parent = _target(
-                "skill",
-                "prompt:writer",
-                "0.1.0",
-                "c",
-                can_update=True,
+            record_skill_candidate_evaluation(
+                store,
+                "candidate-2",
+                "report-2",
+                0.2,
+                False,
             )
+            with self.assertRaisesRegex(ValueError, "cannot transition from rejected"):
+                require_skill_candidate_can_promote(store, "candidate-2", parent)
+
+            record_skill_candidate_evaluation(
+                store,
+                "candidate-2",
+                "report-3",
+                1.0,
+                True,
+            )
+            changed = _revision("prompt:writer", "0.1.0", "c", can_update=True)
             with self.assertRaisesRegex(ValueError, "parent changed"):
-                lifecycle.require_candidate_can_promote("candidate-2", changed_parent)
+                require_skill_candidate_can_promote(store, "candidate-2", changed)
 
-    def test_evolution_events_are_isolated_by_user(self) -> None:
+    def test_skill_evolution_events_are_isolated_by_user(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            alpha = EvolutionLifecycle(
-                create_local_runtime_store(root, user_id="alpha")
-            )
-            beta_store = create_local_runtime_store(root, user_id="beta")
-            target = _target(
-                "capability",
-                "run_controller:new",
+            alpha = create_local_runtime_store(root, user_id="alpha")
+            beta = create_local_runtime_store(root, user_id="beta")
+            candidate = _revision(
+                "capability:new",
                 "0.1.0",
                 "a",
                 created=True,
                 can_update=True,
             )
 
-            alpha.record_candidate_created(
-                EvolutionCandidateProposal("candidate-private", target, "create")
+            start_manual_skill_evolution(
+                alpha,
+                "candidate-private",
+                None,
+                candidate,
+                "create",
             )
 
-            self.assertEqual([], beta_store.read_evolution_events())
+            self.assertEqual([], beta.read_skill_evolution_events())
 
 
 class RuntimeEvolutionFileTests(unittest.TestCase):
@@ -145,26 +169,28 @@ class RuntimeEvolutionFileTests(unittest.TestCase):
         response = json.dumps(
             {"write_files": {"../outside.py": "bad"}, "delete_files": []}
         )
-
         with self.assertRaisesRegex(ValueError, "relative file path"):
             read_directory_file_changes(response, "Capability")
 
 
-def _target(
-    target_type: str,
+def _revision(
     key: str,
     version: str,
     hash_prefix: str,
     *,
-    created: bool = False,
+    created: bool = True,
     can_update: bool = False,
-) -> EvolutionTarget:
-    return EvolutionTarget(
-        target_type=target_type,
+) -> SkillRevision:
+    capability, name = key.split(":", 1)
+    return SkillRevision(
         key=key,
-        name=key.rsplit(":", 1)[-1],
+        capability=capability,
+        name=name,
         version=version,
         content_sha256=(hash_prefix * 64)[:64],
+        function_group=name,
         agent_created=created,
         agent_can_update=can_update,
+        evolution_supported=True,
+        freshness=70.0,
     )
