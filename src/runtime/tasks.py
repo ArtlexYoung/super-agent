@@ -33,7 +33,7 @@ class TaskRequest:
     include_subagents: bool
     warning_messages: list[str]
     subagents: SubagentCallbacks
-    purpose: str = "answer"
+    purpose: str = "auto"
     required_features: tuple[str, ...] = ("text",)
 
 

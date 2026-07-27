@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import math
+from dataclasses import dataclass, replace
 from typing import Mapping
 
+from runtime.routing import ModelRoutingStats, list_model_routing_stats
 from runtime.session import RuntimeSession
 from runtime.tasks import TaskRequest
 from skill.disclosure import SkillReference
@@ -70,11 +72,17 @@ class TaskScheduler:
         session: RuntimeSession,
         workflow: WorkflowPolicy,
     ) -> TaskSchedule:
+        purpose = self.resolve_purpose(request.purpose, request.prompt)
+        routing_evidence = {
+            item.profile_key: item
+            for item in list_model_routing_stats(session.store, purpose)
+        }
         required_features = _required_features(request, workflow)
         model_choices = self.choose_models(
-            request.purpose,
+            purpose,
             required_features,
             request.prompt,
+            routing_evidence,
         )
         skill_references = self._choose_skills(request, session, workflow)
         subagent_names, subagent_reasons = _choose_subagents(
@@ -82,7 +90,7 @@ class TaskScheduler:
             request.subagents.list_subagents() if request.include_subagents else [],
         )
         schedule = TaskSchedule(
-            purpose=request.purpose,
+            purpose=purpose,
             required_features=required_features,
             workflow=workflow.name,
             model_choices=tuple(model_choices),
@@ -98,6 +106,7 @@ class TaskScheduler:
         purpose: str,
         required_features: tuple[str, ...],
         prompt: str,
+        evidence: dict[str, ModelRoutingStats] | None = None,
     ) -> list[ModelChoice]:
         ready = [
             profile
@@ -111,7 +120,7 @@ class TaskScheduler:
             if set(required_features) <= set(profile.routing.supports)
         ]
         selected = compatible or candidates
-        choices = [
+        static_choices = [
             _score_model(
                 profile,
                 purpose.strip().lower(),
@@ -121,6 +130,7 @@ class TaskScheduler:
             )
             for profile in selected
         ]
+        choices = _apply_routing_evidence(static_choices, evidence or {})
         return sorted(
             choices,
             key=lambda choice: (
@@ -129,6 +139,20 @@ class TaskScheduler:
                 choice.profile.key,
             ),
         )
+
+    def resolve_purpose(self, requested: str, prompt: str) -> str:
+        clean = requested.strip().lower()
+        if clean and clean != "auto":
+            return clean
+        matched = sorted(
+            {
+                purpose
+                for profile in self.model_profiles
+                for purpose in profile.routing.purposes
+                if _text_matches_label(prompt.lower(), purpose)
+            }
+        )
+        return matched[0] if matched else "answer"
 
     @staticmethod
     def _choose_skills(
@@ -228,6 +252,50 @@ def _text_matches_label(text: str, label: str) -> bool:
         return True
     words = [word for word in normalized.split() if len(word) >= 5]
     return bool(words) and all(word[:5] in text for word in words)
+
+
+def _apply_routing_evidence(
+    choices: list[ModelChoice],
+    evidence: dict[str, ModelRoutingStats],
+) -> list[ModelChoice]:
+    total_calls = sum(item.call_count for item in evidence.values())
+    if total_calls == 0:
+        return choices
+    # Evidence enables exploration; a cold start keeps the static order reproducible.
+    updated: list[ModelChoice] = []
+    for choice in choices:
+        stats = evidence.get(choice.profile.key)
+        if stats is None:
+            updated.append(
+                replace(
+                    choice,
+                    score=choice.score + 8.0,
+                    reasons=choice.reasons + ("bounded exploration: untried model",),
+                )
+            )
+            continue
+        learned = (stats.average_quality - 0.5) * 16.0
+        learned += (stats.reliability - 0.5) * 12.0
+        learned -= min(5.0, stats.average_latency_ms / 2000.0)
+        learned -= min(5.0, stats.average_cost * 1000.0)
+        exploration = min(
+            8.0,
+            4.0 * math.sqrt(math.log(total_calls + 1) / stats.call_count),
+        )
+        reasons = choice.reasons + (
+            f"learned quality: {stats.average_quality:.3f}",
+            f"learned reliability: {stats.reliability:.3f}",
+            f"bounded exploration: {exploration:.3f}",
+            f"evidence calls: {stats.call_count}",
+        )
+        updated.append(
+            replace(
+                choice,
+                score=choice.score + learned + exploration,
+                reasons=reasons,
+            )
+        )
+    return updated
 
 
 def _choose_subagents(

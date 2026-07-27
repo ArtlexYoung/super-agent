@@ -21,6 +21,11 @@ from runtime.evolution.scheduler import AutonomousEvolutionScheduler
 from runtime.execution import execute_task, load_workflow_policy
 from runtime.identity import LOCAL_USER_ID, RunIdentity
 from runtime.models import Conversation, RunEvent
+from runtime.routing import (
+    ModelRoutingStats,
+    detect_implicit_conversation_feedback,
+    list_model_routing_stats,
+)
 from runtime.scheduler import TaskSchedule, TaskScheduler
 from runtime.session import RuntimeSession
 from runtime.storage import StorageBackend
@@ -137,6 +142,30 @@ class AgentRuntime:
         snapshot = store.read_run(task_id)
         return TaskTrace(task_id, snapshot.parent_run_id, store.read_run_events(task_id))
 
+    def record_task_feedback(
+        self,
+        task_id: str,
+        score: float,
+        reason: str = "",
+        *,
+        user_id: str = LOCAL_USER_ID,
+    ) -> RunEvent:
+        return self._record_task_feedback(
+            task_id,
+            score,
+            reason=reason,
+            user_id=user_id,
+            source="explicit",
+        )
+
+    def list_model_routing_stats(
+        self,
+        *,
+        user_id: str = LOCAL_USER_ID,
+        purpose: str | None = None,
+    ) -> list[ModelRoutingStats]:
+        return list_model_routing_stats(self.create_store(user_id), purpose)
+
     def create_skill_updater(
         self,
         user_id: str = LOCAL_USER_ID,
@@ -244,6 +273,19 @@ class AgentRuntime:
             conversation_id,
             request.prompt[:48],
         )
+        implicit_feedback = detect_implicit_conversation_feedback(
+            conversation,
+            request.prompt,
+        )
+        if implicit_feedback is not None:
+            task_id, score, reason = implicit_feedback
+            self._record_task_feedback(
+                task_id,
+                score,
+                reason=reason,
+                user_id=session.identity.user_id,
+                source="implicit",
+            )
         messages = [
             {"role": message.role, "content": message.content}
             for message in conversation.messages
@@ -255,6 +297,37 @@ class AgentRuntime:
             run_id=session.run_id,
         )
         return replace(request, messages=messages)
+
+    def _record_task_feedback(
+        self,
+        task_id: str,
+        score: float,
+        *,
+        reason: str,
+        user_id: str,
+        source: str,
+    ) -> RunEvent:
+        clean_score = _validate_feedback_score(score)
+        if not isinstance(reason, str):
+            raise TypeError("task feedback reason must be a string")
+        store = self.create_store(user_id)
+        snapshot = store.read_run(task_id)
+        identity = RunIdentity(
+            user_id=snapshot.user_id,
+            agent_name=snapshot.agent_name,
+            run_id=snapshot.run_id,
+            conversation_id=snapshot.conversation_id,
+            parent_run_id=snapshot.parent_run_id,
+        )
+        return store.append_run_event(
+            identity,
+            "task.feedback.recorded",
+            {
+                "score": clean_score,
+                "reason": reason.strip(),
+                "source": source,
+            },
+        )
 
     @staticmethod
     def _record_conversation_result(
@@ -340,6 +413,15 @@ def _create_task_evaluation(
         error_type="" if error is None else type(error).__name__,
         checks=["pass:task_completed" if success else "fail:task_completed"],
     )
+
+
+def _validate_feedback_score(value: float) -> float:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise TypeError("task feedback score must be a number")
+    score = float(value)
+    if not 0.0 <= score <= 1.0:
+        raise ValueError("task feedback score must be between 0 and 1")
+    return score
 
 
 def _runtime_lock_to_dict(

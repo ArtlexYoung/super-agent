@@ -19,6 +19,7 @@ from runtime.evolution.scheduler import (
 )
 from runtime.identity import LOCAL_USER_ID
 from runtime.models import Conversation, RunEvent
+from runtime.routing import ModelRoutingStats
 from runtime.tasks import (
     SubAgentResult,
     SubagentCallbacks,
@@ -142,6 +143,32 @@ class Agent:
         user_id: str = LOCAL_USER_ID,
     ) -> TaskTrace:
         return self.runtime.read_task_trace(task_id, user_id=user_id)
+
+    def record_task_feedback(
+        self,
+        task_id: str,
+        score: float,
+        reason: str = "",
+        *,
+        user_id: str = LOCAL_USER_ID,
+    ) -> RunEvent:
+        return self.runtime.record_task_feedback(
+            task_id,
+            score,
+            reason,
+            user_id=user_id,
+        )
+
+    def list_model_routing_stats(
+        self,
+        *,
+        user_id: str = LOCAL_USER_ID,
+        purpose: str | None = None,
+    ) -> list[ModelRoutingStats]:
+        return self.runtime.list_model_routing_stats(
+            user_id=user_id,
+            purpose=purpose,
+        )
 
     def create_skill_evolution_manager(
         self,

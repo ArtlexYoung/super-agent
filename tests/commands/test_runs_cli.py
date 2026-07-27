@@ -110,3 +110,48 @@ class RunsCliTests(unittest.TestCase):
 
             self.assertEqual(0, code)
             self.assertEqual([], json.loads(output.getvalue())["runs"])
+
+    def test_feedback_records_score_in_the_task_event_stream(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config_path = root / "agent.toml"
+            main(["init", "--path", tmp])
+            run_output = StringIO()
+            with patch("sys.stdout", run_output):
+                main(
+                    [
+                        "run",
+                        "--config",
+                        str(config_path),
+                        "--output",
+                        "json",
+                        "feedback target",
+                    ]
+                )
+            run_id = json.loads(run_output.getvalue())["run_id"]
+            feedback_output = StringIO()
+
+            with patch("sys.stdout", feedback_output):
+                code = main(
+                    [
+                        "runs",
+                        "feedback",
+                        "--config",
+                        str(config_path),
+                        "--run-id",
+                        run_id,
+                        "--score",
+                        "0.25",
+                        "--reason",
+                        "needed correction",
+                        "--output",
+                        "json",
+                    ]
+                )
+
+            event = json.loads(feedback_output.getvalue())
+            self.assertEqual(0, code)
+            self.assertEqual(run_id, event["run_id"])
+            self.assertEqual("task.feedback.recorded", event["event_type"])
+            self.assertEqual(0.25, event["data"]["score"])
+            self.assertEqual("explicit", event["data"]["source"])

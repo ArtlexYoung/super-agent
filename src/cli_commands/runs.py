@@ -5,6 +5,7 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
+from agents.agent import Agent
 from runtime.config import AgentConfig
 from runtime.identity import LOCAL_USER_ID
 from runtime.models import RunSnapshot
@@ -43,6 +44,21 @@ def configure_runs_parser(parser: argparse.ArgumentParser) -> None:
     export_parser.add_argument("--run-id")
     export_parser.add_argument("--output")
 
+    feedback_parser = subparsers.add_parser(
+        "feedback",
+        help="record a quality score for one completed task",
+    )
+    _add_config_argument(feedback_parser)
+    _add_user_argument(feedback_parser)
+    feedback_parser.add_argument("--run-id", required=True)
+    feedback_parser.add_argument("--score", required=True, type=_feedback_score)
+    feedback_parser.add_argument("--reason", default="")
+    feedback_parser.add_argument(
+        "--output",
+        choices=["text", "json"],
+        default="text",
+    )
+
 
 def run_runs_command(args: argparse.Namespace) -> int:
     command = args.runs_command or "status"
@@ -52,6 +68,8 @@ def run_runs_command(args: argparse.Namespace) -> int:
         return _explain_run(args)
     if command == "export":
         return _export_run(args)
+    if command == "feedback":
+        return _record_run_feedback(args)
     raise ValueError(f"unknown runs command: {command}")
 
 
@@ -106,6 +124,25 @@ def _export_run(args: argparse.Namespace) -> int:
     output = Path(args.output or f"run-{run_id}.json").expanduser()
     path = store.export_run(run_id, output)
     print(f"Exported run: {path}")
+    return 0
+
+
+def _record_run_feedback(args: argparse.Namespace) -> int:
+    config = (
+        AgentConfig.load_automatically()
+        if args.config is None
+        else AgentConfig.load_from_file(args.config)
+    )
+    event = Agent(config).record_task_feedback(
+        args.run_id,
+        args.score,
+        args.reason,
+        user_id=args.user_id,
+    )
+    if args.output == "json":
+        print(json.dumps(asdict(event), ensure_ascii=False, indent=2, sort_keys=True))
+    else:
+        print(f"Recorded feedback: {event.run_id} score={args.score:.3f}")
     return 0
 
 
@@ -199,3 +236,10 @@ def _positive_integer(value: str) -> int:
     if number <= 0:
         raise argparse.ArgumentTypeError("value must be greater than zero")
     return number
+
+
+def _feedback_score(value: str) -> float:
+    score = float(value)
+    if not 0.0 <= score <= 1.0:
+        raise argparse.ArgumentTypeError("score must be between 0 and 1")
+    return score

@@ -129,9 +129,10 @@ super-agent runs status --config agent.toml
 super-agent runs status --config agent.toml --limit 10 --output json
 super-agent runs explain --config agent.toml --run-id <run-id>
 super-agent runs export --config agent.toml --run-id <run-id> --output run.json
+super-agent runs feedback --config agent.toml --run-id <run-id> --score 0.8 --reason "Useful"
 ```
 
-When `--run-id` is omitted, explain and export use the latest run.
+When `--run-id` is omitted, explain and export use the latest run. Feedback scores are explicit model-routing quality evidence and must be between `0` and `1`.
 
 ## Storage Copy
 

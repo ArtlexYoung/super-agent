@@ -79,6 +79,20 @@ super-agent runs export --config agent.toml --run-id <run-id> --output run.json
 
 Explain and export rebuild the run view and verify the runtime-lock hash before returning its content.
 
+## Evidence-Learned Model Routing
+
+Model routing is deterministic when no evidence exists. Each real model attempt then records its profile, effective purpose, success or failure, latency, estimated input and output tokens, and estimated cost. Runtime projects those canonical run events into quality and reliability statistics scoped by user, Agent, model Skill, and task purpose.
+
+After evidence exists, the scheduler combines declared model traits with a bounded exploration bonus. A failed primary model is credited only with its failure; a successful fallback receives its own completion evidence.
+
+```python
+result = agent.run("Summarize this", user_id="alice")
+agent.record_task_feedback(result.run_id, 0.8, "Useful summary", user_id="alice")
+stats = agent.list_model_routing_stats(user_id="alice", purpose="summary")
+```
+
+Scores are between `0` and `1`. Runtime also detects a small deterministic set of correction and exact-retry signals in stored conversation follow-ups. Explicit feedback takes precedence over implicit feedback and all evidence projection stays local; it does not call a model.
+
 ## Streaming Protocol
 
 Desktop apps and other processes can send a JSON request and receive JSONL events:

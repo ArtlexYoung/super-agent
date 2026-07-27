@@ -15,7 +15,7 @@ Super Agent 是一个**简单、轻量、自进化、Skill 优先的 Agent 运�
 - **零配置启动**：`Agent()` 和 CLI 可以直接运行，默认使用本地 mock 模型。
 - **统一 Skill 格式**：prompt、MCP、memory、workflow、模型和可执行机制共用 manifest 与生命周期。
 - **渐进式披露**：模型先看到轻量索引，只打开任务真正需要的 Skill。
-- **自动任务调度**：Runtime 自动选择兼容的模型、Skill 和子 Agent，模型调用失败时按确定顺序回退。
+- **自动任务调度**：Runtime 自动选择兼容的模型、Skill 和子 Agent，并从用户隔离的质量、可靠性、延迟和成本证据中持续学习。
 - **统一运行生命周期**：发现、披露、执行、观察、评价和进化共用一个会话。
 - **自动进化信号**：Runtime 根据真实失败、质量、保鲜度、替代行为、成本和延迟生成去重后的进化建议。
 - **代码式多 Agent**：每个 Agent 独立创建，再通过 `Agent.add_subagent(...)` 组合。
@@ -157,7 +157,20 @@ Agent      组合所有部分
 discover -> disclose -> execute -> observe -> evaluate -> evolve
 ```
 
-`Agent.run(...)` 会创建唯一的内部 `TaskRequest`，并交给 `AgentRuntime.run_task(...)`。`TaskScheduler` 自动选择有序模型回退列表、渐进匹配的 Skill 和命中的子 Agent。完整原因记录在 `task.scheduled`，每次模型尝试记录为 `model.call.selected` 或 `model.call.failed`。Workflow Skill 只保存指令与结束规则，模型和工具循环统一由 Runtime 管理。
+`Agent.run(...)` 会创建唯一的内部 `TaskRequest`，并交给 `AgentRuntime.run_task(...)`。`TaskScheduler` 自动选择有序模型回退列表、渐进匹配的 Skill 和命中的子 Agent。完整原因记录在 `task.scheduled`；每次模型尝试都会记录选择、完成或失败、延迟、估算 token 和成本。Workflow Skill 只保存指令与结束规则，模型和工具循环统一由 Runtime 管理。
+
+模型路由在冷启动时保持确定性，只有同一任务用途积累证据后才进行有界探索。证据按用户、Agent、model Skill 和任务用途隔离。需要时可以直接记录质量分数：
+
+```python
+result = agent.run("总结报告", user_id="alice")
+agent.record_task_feedback(result.run_id, 0.25, "遗漏了结论", user_id="alice")
+```
+
+```bash
+super-agent runs feedback --run-id <run-id> --score 0.25 --reason "遗漏了结论"
+```
+
+在持久化会话中，明确纠正或重复同一请求也会确定性地降低上一轮质量。显式反馈始终覆盖隐式信号，两种反馈分类都不调用大模型。
 
 `CapabilityRegistry` 只保存真正执行 Skill 的处理器，可以通过 `agent.add_skill_executor(...)` 明确替换。需要安装或进化的处理器使用标准 `capability` Skill，与其他 Skill 共用披露、评价、晋升和回滚；Runtime 生命周期不再允许替换成另一套并行控制器。
 

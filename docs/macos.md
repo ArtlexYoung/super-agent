@@ -2,7 +2,7 @@
 
 The SwiftUI app in `src/frontend/mac` is a desktop client for the same Python runtime.
 
-The Python runtime now uses model Skills. The current desktop model editor still writes the removed `[model]` table and is intentionally pending migration in `v0.0.39`; use environment discovery or edit model Skills directly until that release.
+The Python runtime now uses model Skills. The current desktop model editor still writes the removed `[model]` table and is intentionally pending migration in `v0.0.41`; use environment discovery or edit model Skills directly until that release.
 
 ## Features
 

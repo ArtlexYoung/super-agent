@@ -15,7 +15,7 @@ The project is currently experimental (`0.0.x`). It favors a small, inspectable 
 - **Zero-configuration start**: `Agent()` and the CLI run immediately with a local mock model.
 - **One Skill format**: prompt, MCP, memory, workflow, models, and executable mechanisms share one manifest and lifecycle.
 - **Progressive disclosure**: the model sees a compact index first and opens only the Skills it needs.
-- **Automatic task scheduling**: Runtime selects compatible models, Skills, and subagents and falls back deterministically when a model call fails.
+- **Automatic task scheduling**: Runtime selects compatible models, Skills, and subagents, then learns from user-scoped quality, reliability, latency, and cost evidence.
 - **One runtime lifecycle**: discovery, disclosure, execution, observation, evaluation, and evolution share one session.
 - **Automatic evolution signals**: Runtime turns real failures, quality, freshness, replacement, cost, and latency into deduplicated recommendations.
 - **Code-composed Agents**: create Agents independently and attach them with `Agent.add_subagent(...)`.
@@ -157,7 +157,20 @@ Every run follows one central lifecycle:
 discover -> disclose -> execute -> observe -> evaluate -> evolve
 ```
 
-`Agent.run(...)` creates one internal `TaskRequest` and sends it through `AgentRuntime.run_task(...)`. `TaskScheduler` selects an ordered model fallback list, progressively matched Skills, and matching subagents. Every reason is stored in `task.scheduled`; each model attempt is stored in `model.call.selected` or `model.call.failed`. Workflow Skills contain only instructions and stopping rules; Runtime owns the model and tool loop.
+`Agent.run(...)` creates one internal `TaskRequest` and sends it through `AgentRuntime.run_task(...)`. `TaskScheduler` selects an ordered model fallback list, progressively matched Skills, and matching subagents. Every reason is stored in `task.scheduled`; each model attempt records selection, completion or failure, latency, estimated tokens, and cost. Workflow Skills contain only instructions and stopping rules; Runtime owns the model and tool loop.
+
+Routing starts deterministically and uses bounded exploration only after evidence exists for the effective task purpose. Evidence is isolated by user, Agent, model Skill, and purpose. Record an explicit quality score when useful:
+
+```python
+result = agent.run("Summarize the report", user_id="alice")
+agent.record_task_feedback(result.run_id, 0.25, "Missed the conclusion", user_id="alice")
+```
+
+```bash
+super-agent runs feedback --run-id <run-id> --score 0.25 --reason "Missed the conclusion"
+```
+
+Within a stored conversation, deterministic correction and repeated-request signals also lower the previous task's quality. Explicit feedback always overrides an implicit signal and no model call is needed to classify either one.
 
 `CapabilityRegistry` contains only executable Skill handlers. Replace one explicitly with `agent.add_skill_executor(...)`. A handler that must be installed or evolved is a standard `capability` Skill, so it uses the same disclosure, evaluation, promotion, and rollback path as every other Skill. Runtime lifecycle mechanisms are intentionally not replaceable parallel controllers.
 

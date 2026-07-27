@@ -135,7 +135,7 @@ Status: implemented.
 
 ## v0.0.39: Evidence-Learned Scheduling
 
-Status: planned.
+Status: implemented.
 
 - Isolate routing evidence by user, Agent, model Skill, and task purpose.
 - Learn quality, latency, reliability, and cost with bounded UCB exploration.
