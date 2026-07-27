@@ -104,11 +104,14 @@ def replay_memory(events: list[StorageEvent]) -> dict[str, dict[str, str]]:
         elif event.event_type == "memory.forgotten":
             for item_id in string_list(event.data.get("item_ids", [])):
                 active.pop(item_id, None)
-        elif event.event_type == "memory.consolidated":
+        elif event.event_type in {"memory.merged", "memory.superseded"}:
             for item_id in string_list(event.data.get("source_item_ids", [])):
                 active.pop(item_id, None)
             item = _memory_item(event.data.get("item"))
             active[item["item_id"]] = item
+        elif event.event_type == "memory.archived":
+            for item_id in string_list(event.data.get("item_ids", [])):
+                active.pop(item_id, None)
     return active
 
 

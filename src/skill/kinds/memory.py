@@ -2,19 +2,27 @@
 
 from __future__ import annotations
 
+import json
 import re
 from collections import Counter
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Callable
 from uuid import uuid4
 
+from provider.chat import Message
 from runtime.identity import RunIdentity
+from runtime.safety import ActionEffect, ActionRequest
 from runtime.store import RuntimeStore
 from skill.disclosure import SkillDisclosure
 
 
 DEFAULT_RECALL_LIMIT = 20
+MAX_ORGANIZATION_CANDIDATES = 20
+MEMORY_OPERATION_TYPES = {"merge", "supersede", "archive", "forget"}
+
+MemoryTextModel = Callable[[list[Message]], str]
+MemoryActionRunner = Callable[[ActionRequest, Callable[[], object]], object]
 
 
 @dataclass(frozen=True)
@@ -23,6 +31,7 @@ class MemoryPolicy:
     recall_limit: int = DEFAULT_RECALL_LIMIT
     include_in_prompt: bool = True
     include_usage_habits: bool = True
+    organize_on_recall: bool = True
 
 
 @dataclass(frozen=True)
@@ -32,6 +41,14 @@ class MemoryItem:
     scope: str
     source_run_id: str
     created_at: str
+
+
+@dataclass(frozen=True)
+class MemoryOperation:
+    operation: str
+    source_item_ids: tuple[str, ...]
+    text: str = ""
+    reason: str = ""
 
 
 class MemoryUsageHabits:
@@ -60,11 +77,16 @@ class MiniMemory:
         store: RuntimeStore,
         identity: RunIdentity | None = None,
         policy: MemoryPolicy | None = None,
+        *,
+        send_text_model_messages: MemoryTextModel | None = None,
+        execute_action: MemoryActionRunner | None = None,
     ) -> None:
         self.store = store
         self.identity = identity
         self.policy = policy or MemoryPolicy()
         self.usage_habits = MemoryUsageHabits(store)
+        self.send_text_model_messages = send_text_model_messages
+        self.execute_action = execute_action
 
     def add_memory_item(
         self,
@@ -79,7 +101,12 @@ class MiniMemory:
             source_run_id=source_run_id.strip(),
             created_at=_utc_now_text(),
         )
-        self.store.add_memory_item(asdict(item))
+        self._execute_memory_change(
+            "remember",
+            (ActionEffect.CREATE,),
+            [item.item_id],
+            lambda: self.store.add_memory_item(asdict(item)),
+        )
         return item
 
     def list_memory_items(self, scope: str | None = None) -> list[MemoryItem]:
@@ -100,19 +127,24 @@ class MiniMemory:
             raise ValueError("memory recall query cannot be empty")
         result_limit = self.policy.recall_limit if limit is None else _read_positive_limit(limit)
         query_terms = Counter(_tokenize(text))
-        ranked = [
-            (_lexical_score(text, query_terms, item.text), item)
-            for item in self.list_memory_items(_clean_scope(scope))
-        ]
-        ranked = [pair for pair in ranked if pair[0] > 0]
-        ranked.sort(
-            key=lambda pair: (pair[0], pair[1].created_at, pair[1].item_id),
-            reverse=True,
-        )
-        return [item for _, item in ranked[:result_limit]]
+        selected_scope = _clean_scope(scope)
+        candidates = self._rank_memory(text, query_terms, selected_scope)
+        if self.policy.organize_on_recall and candidates:
+            self._organize_memory_during_recall(
+                text,
+                candidates[:MAX_ORGANIZATION_CANDIDATES],
+            )
+            candidates = self._rank_memory(text, query_terms, selected_scope)
+        return candidates[:result_limit]
 
     def forget_memory(self, item_id: str) -> None:
-        self.store.forget_memory_items([_clean_item_id(item_id)])
+        clean_id = _clean_item_id(item_id)
+        self._execute_memory_change(
+            "forget",
+            (ActionEffect.DELETE,),
+            [clean_id],
+            lambda: self.store.forget_memory_items([clean_id], "explicit forget"),
+        )
 
     def consolidate_memory(self) -> list[MemoryItem]:
         groups: dict[tuple[str, str], list[MemoryItem]] = {}
@@ -133,12 +165,169 @@ class MiniMemory:
                 source_run_id="",
                 created_at=_utc_now_text(),
             )
-            self.store.replace_memory_items(
-                [source.item_id for source in sources],
-                asdict(item),
+            source_ids = [source.item_id for source in sources]
+            self._execute_memory_change(
+                "merge",
+                (ActionEffect.UPDATE, ActionEffect.DELETE),
+                source_ids,
+                lambda: self.store.merge_memory_items(
+                    source_ids,
+                    asdict(item),
+                    "deterministic duplicate merge",
+                ),
             )
             consolidated.append(item)
         return consolidated
+
+    def _rank_memory(
+        self,
+        query: str,
+        query_terms: Counter[str],
+        scope: str,
+    ) -> list[MemoryItem]:
+        ranked = [
+            (_lexical_score(query, query_terms, item.text), item)
+            for item in self.list_memory_items(scope)
+        ]
+        ranked = [pair for pair in ranked if pair[0] > 0]
+        ranked.sort(
+            key=lambda pair: (pair[0], pair[1].created_at, pair[1].item_id),
+            reverse=True,
+        )
+        return [item for _, item in ranked]
+
+    def _organize_memory_during_recall(
+        self,
+        query: str,
+        candidates: list[MemoryItem],
+    ) -> None:
+        self._merge_duplicate_candidates(candidates)
+        active_ids = {item.item_id for item in self.list_memory_items()}
+        remaining = [item for item in candidates if item.item_id in active_ids]
+        if self.send_text_model_messages is None or len(remaining) < 2:
+            return
+        self.store.record_memory_organization(
+            "memory.organization.started",
+            {"candidate_count": len(remaining)},
+        )
+        try:
+            response = self.send_text_model_messages(
+                _build_memory_organization_messages(query, remaining)
+            )
+            operations = _read_memory_operations(response, remaining)
+        except Exception as error:
+            self.store.record_memory_organization(
+                "memory.organization.failed",
+                {
+                    "error_type": type(error).__name__,
+                    "message": str(error),
+                },
+            )
+            return
+        self._apply_memory_operations(operations, remaining)
+        self.store.record_memory_organization(
+            "memory.organization.completed",
+            {
+                "operation_count": len(operations),
+                "operations": [operation.operation for operation in operations],
+            },
+        )
+
+    def _merge_duplicate_candidates(self, candidates: list[MemoryItem]) -> None:
+        groups: dict[tuple[str, str], list[MemoryItem]] = {}
+        for item in candidates:
+            groups.setdefault((item.scope, _normalize_memory_text(item.text)), []).append(item)
+        for sources in groups.values():
+            if len(sources) < 2:
+                continue
+            source_ids = [item.item_id for item in sources]
+            replacement = self._create_replacement_item(sources[0].text, sources[0].scope)
+            self._execute_memory_change(
+                "merge",
+                (ActionEffect.UPDATE, ActionEffect.DELETE),
+                source_ids,
+                lambda: self.store.merge_memory_items(
+                    source_ids,
+                    asdict(replacement),
+                    "duplicate found during recall",
+                ),
+            )
+
+    def _apply_memory_operations(
+        self,
+        operations: list[MemoryOperation],
+        candidates: list[MemoryItem],
+    ) -> None:
+        by_id = {item.item_id: item for item in candidates}
+        for operation in operations:
+            source_ids = list(operation.source_item_ids)
+            if operation.operation in {"merge", "supersede"}:
+                scope = by_id[source_ids[0]].scope
+                replacement = self._create_replacement_item(operation.text, scope)
+                write = (
+                    self.store.merge_memory_items
+                    if operation.operation == "merge"
+                    else self.store.supersede_memory_items
+                )
+                self._execute_memory_change(
+                    operation.operation,
+                    (ActionEffect.UPDATE, ActionEffect.DELETE),
+                    source_ids,
+                    lambda write=write, source_ids=source_ids,
+                    replacement=replacement, operation=operation: write(
+                        source_ids,
+                        asdict(replacement),
+                        operation.reason,
+                    ),
+                )
+            elif operation.operation == "archive":
+                self._execute_memory_change(
+                    "archive",
+                    (ActionEffect.UPDATE,),
+                    source_ids,
+                    lambda: self.store.archive_memory_items(
+                        source_ids,
+                        operation.reason,
+                    ),
+                )
+            else:
+                self._execute_memory_change(
+                    "forget",
+                    (ActionEffect.DELETE,),
+                    source_ids,
+                    lambda: self.store.forget_memory_items(
+                        source_ids,
+                        operation.reason,
+                    ),
+                )
+
+    def _create_replacement_item(self, text: str, scope: str) -> MemoryItem:
+        return MemoryItem(
+            item_id=f"memory-{uuid4().hex}",
+            text=_clean_memory_text(text),
+            scope=scope,
+            source_run_id="" if self.identity is None else self.identity.run_id,
+            created_at=_utc_now_text(),
+        )
+
+    def _execute_memory_change(
+        self,
+        operation: str,
+        effects: tuple[ActionEffect, ...],
+        item_ids: list[str],
+        change: Callable[[], object],
+    ) -> object:
+        if self.execute_action is None:
+            return change()
+        return self.execute_action(
+            ActionRequest.create(
+                "agent:memory",
+                "memory:active:" + ",".join(item_ids),
+                effects,
+                argument_names=("operation", "item_ids"),
+            ),
+            change,
+        )
 
     def build_prompt_instruction(self, query: str = "") -> str:
         sections: list[str] = []
@@ -164,12 +353,21 @@ def create_memory_from_skill_disclosure(
     disclosure: SkillDisclosure,
     store: RuntimeStore,
     identity: RunIdentity | None = None,
+    *,
+    send_text_model_messages: MemoryTextModel | None = None,
+    execute_action: MemoryActionRunner | None = None,
 ) -> MiniMemory:
     manifest = disclosure.read_manifest()
     if manifest.capability != "memory":
         raise ValueError(f"skill does not use the memory capability: {manifest.name}")
     policy = _read_memory_policy(disclosure.read_configuration().content)
-    return MiniMemory(store, identity, policy)
+    return MiniMemory(
+        store,
+        identity,
+        policy,
+        send_text_model_messages=send_text_model_messages,
+        execute_action=execute_action,
+    )
 
 
 def _read_memory_policy(value: dict[str, object]) -> MemoryPolicy:
@@ -178,7 +376,82 @@ def _read_memory_policy(value: dict[str, object]) -> MemoryPolicy:
         recall_limit=_read_positive_limit(value.get("recall_limit", DEFAULT_RECALL_LIMIT)),
         include_in_prompt=_read_bool(value, "include_in_prompt", True),
         include_usage_habits=_read_bool(value, "include_usage_habits", True),
+        organize_on_recall=_read_bool(value, "organize_on_recall", True),
     )
+
+
+def _build_memory_organization_messages(
+    query: str,
+    candidates: list[MemoryItem],
+) -> list[Message]:
+    schema = (
+        "Return only JSON with an operations array. Each operation has type, "
+        "source_item_ids, reason, and text. type is merge, supersede, archive, or "
+        "forget. merge needs at least two IDs. merge and supersede require replacement "
+        "text. Use no operation when memories remain useful and consistent."
+    )
+    payload = {
+        "query": query,
+        "candidates": [asdict(item) for item in candidates],
+    }
+    return [
+        {"role": "system", "content": schema},
+        {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
+    ]
+
+
+def _read_memory_operations(
+    response: str,
+    candidates: list[MemoryItem],
+) -> list[MemoryOperation]:
+    value = json.loads(response)
+    if not isinstance(value, dict) or set(value) != {"operations"}:
+        raise ValueError("memory organizer must return only an operations array")
+    raw_operations = value["operations"]
+    if not isinstance(raw_operations, list):
+        raise ValueError("memory organizer operations must be an array")
+    candidate_ids = {item.item_id for item in candidates}
+    candidate_scope = {item.item_id: item.scope for item in candidates}
+    used_ids: set[str] = set()
+    operations: list[MemoryOperation] = []
+    for raw in raw_operations:
+        operation = _read_memory_operation(raw)
+        source_ids = set(operation.source_item_ids)
+        if not source_ids <= candidate_ids:
+            raise ValueError("memory organizer referenced an unknown candidate")
+        if source_ids & used_ids:
+            raise ValueError("memory organizer reused a candidate in multiple operations")
+        if len({candidate_scope[item_id] for item_id in source_ids}) != 1:
+            raise ValueError("memory organizer cannot combine memory scopes")
+        used_ids.update(source_ids)
+        operations.append(operation)
+    return operations
+
+
+def _read_memory_operation(value: object) -> MemoryOperation:
+    if not isinstance(value, dict):
+        raise ValueError("memory organizer operation must be an object")
+    allowed = {"type", "source_item_ids", "text", "reason"}
+    if set(value) - allowed:
+        raise ValueError("memory organizer operation has unknown fields")
+    operation = str(value.get("type", "")).strip().lower()
+    if operation not in MEMORY_OPERATION_TYPES:
+        raise ValueError(f"unknown memory organization operation: {operation}")
+    raw_ids = value.get("source_item_ids")
+    if not isinstance(raw_ids, list) or not raw_ids:
+        raise ValueError("memory operation source_item_ids must be a non-empty array")
+    source_ids = tuple(_clean_item_id(str(item_id)) for item_id in raw_ids)
+    if len(source_ids) != len(set(source_ids)):
+        raise ValueError("memory operation source_item_ids cannot contain duplicates")
+    if operation == "merge" and len(source_ids) < 2:
+        raise ValueError("memory merge requires at least two source items")
+    text = str(value.get("text", "")).strip()
+    if operation in {"merge", "supersede"}:
+        text = _clean_memory_text(text)
+    elif text:
+        raise ValueError(f"memory {operation} operation cannot include replacement text")
+    reason = str(value.get("reason", "")).strip()
+    return MemoryOperation(operation, source_ids, text, reason)
 
 
 def _clean_memory_text(text: str) -> str:

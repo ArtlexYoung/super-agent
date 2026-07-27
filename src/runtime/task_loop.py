@@ -115,7 +115,13 @@ class AdaptiveTaskLoop:
         self._select_primary_model(session, schedule)
         before_model_calls(schedule)
 
-        background = _load_background_contributions(session)
+        background = _load_background_contributions(
+            session,
+            self.create_text_model(
+                session.store,
+                "memory_organization",
+            ).send_messages,
+        )
         if planner is not None:
             background.append(planner.contribution)
         context = _TaskExecutionContext(request, session, workflow, background)
@@ -396,11 +402,22 @@ def _apply_planning_to_schedule(
 
 def _load_background_contributions(
     session: RuntimeSession,
+    send_text_model_messages: Callable[[list[Message]], str],
 ) -> list[SkillContribution]:
     entry = session.require_skill_index().find_skill(
         f"memory:{session.config.agent.memory}"
     )
-    return [] if entry is None else [_load_skill(session, entry.reference)]
+    return (
+        []
+        if entry is None
+        else [
+            _load_skill(
+                session,
+                entry.reference,
+                send_text_model_messages=send_text_model_messages,
+            )
+        ]
+    )
 
 
 def _load_scheduled_skill_contributions(
@@ -421,6 +438,8 @@ def _load_scheduled_skill_contributions(
 def _load_skill(
     session: RuntimeSession,
     reference: SkillReference,
+    *,
+    send_text_model_messages: Callable[[list[Message]], str] | None = None,
 ) -> SkillContribution:
     entry = session.require_skill_index().require_skill(
         reference.name,
@@ -435,6 +454,8 @@ def _load_skill(
             reference,
             session.store,
             session.identity,
+            send_text_model_messages,
+            session.execute_action,
         )
     )
     if not isinstance(contribution, SkillContribution):

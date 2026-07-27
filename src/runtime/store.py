@@ -458,33 +458,72 @@ class RuntimeStore:
         items = [item for item in active.values() if scope is None or item["scope"] == scope]
         return sorted(items, key=lambda item: (item["created_at"], item["item_id"]), reverse=True)
 
-    def forget_memory_items(self, item_ids: list[str]) -> None:
-        active = replay_memory(self._read_storage_events("memory", "memory"))
-        missing = sorted(set(item_ids) - set(active))
-        if missing:
-            raise KeyError(f"active memory items not found: {', '.join(missing)}")
+    def forget_memory_items(self, item_ids: list[str], reason: str = "") -> None:
+        selected = self._require_active_memory_items(item_ids)
         self._append_scoped_event(
             "memory",
             "memory",
             "memory.forgotten",
-            {"item_ids": list(dict.fromkeys(item_ids))},
+            {"item_ids": selected, "reason": reason.strip()},
         )
 
-    def replace_memory_items(
+    def merge_memory_items(
         self,
         source_item_ids: list[str],
         replacement: dict[str, str],
+        reason: str = "",
     ) -> None:
-        active = replay_memory(self._read_storage_events("memory", "memory"))
-        missing = sorted(set(source_item_ids) - set(active))
-        if missing:
-            raise KeyError(f"memory consolidation sources not found: {', '.join(missing)}")
+        selected = self._require_active_memory_items(source_item_ids)
         self._append_scoped_event(
             "memory",
             "memory",
-            "memory.consolidated",
-            {"source_item_ids": source_item_ids, "item": replacement},
+            "memory.merged",
+            {
+                "source_item_ids": selected,
+                "item": replacement,
+                "reason": reason.strip(),
+            },
         )
+
+    def supersede_memory_items(
+        self,
+        source_item_ids: list[str],
+        replacement: dict[str, str],
+        reason: str = "",
+    ) -> None:
+        selected = self._require_active_memory_items(source_item_ids)
+        self._append_scoped_event(
+            "memory",
+            "memory",
+            "memory.superseded",
+            {
+                "source_item_ids": selected,
+                "item": replacement,
+                "reason": reason.strip(),
+            },
+        )
+
+    def archive_memory_items(self, item_ids: list[str], reason: str = "") -> None:
+        selected = self._require_active_memory_items(item_ids)
+        self._append_scoped_event(
+            "memory",
+            "memory",
+            "memory.archived",
+            {"item_ids": selected, "reason": reason.strip()},
+        )
+
+    def record_memory_organization(
+        self,
+        event_type: str,
+        data: dict[str, object],
+    ) -> None:
+        if event_type not in {
+            "memory.organization.started",
+            "memory.organization.completed",
+            "memory.organization.failed",
+        }:
+            raise ValueError(f"unknown memory organization event: {event_type}")
+        self._append_scoped_event("memory", "memory", event_type, data)
 
     def record_usage_habits(self, workflow: str, skills: list[str]) -> None:
         self._append_scoped_event(
@@ -496,6 +535,16 @@ class RuntimeStore:
 
     def read_usage_habits(self) -> dict[str, object]:
         return usage_habits_from_events(self._read_storage_events("habit", "usage"))
+
+    def _require_active_memory_items(self, item_ids: list[str]) -> list[str]:
+        selected = list(dict.fromkeys(item_ids))
+        if not selected:
+            raise ValueError("memory operation requires at least one item")
+        active = replay_memory(self._read_storage_events("memory", "memory"))
+        missing = sorted(set(selected) - set(active))
+        if missing:
+            raise KeyError(f"active memory items not found: {', '.join(missing)}")
+        return selected
 
     def _write_disclosure_bytes(
         self,

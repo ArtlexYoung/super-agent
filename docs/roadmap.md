@@ -208,12 +208,16 @@ Proof: [experiment description](experiments/v0.0.46.md) and [machine-readable re
 
 ## v0.0.47: Central Action Safety Contract
 
+Status: implemented.
+
 - Describe every model-triggered Runtime action with one validated effect and resource contract.
 - Route tool handlers through `RuntimeSession.execute_action(...)`.
 - Record decisions, completion, and failure without storing argument values.
 - Keep the first policy audit-only so existing behavior remains unchanged while coverage is measured.
 
 ## v0.0.48: Enforced Runtime Safety
+
+Status: implemented.
 
 - Enforce `standard`, `read_only`, `autonomous`, and migration-only `audit` presets.
 - Declare effects for disclosure, memory, MCP, subagent, and registered Capability tools.
@@ -222,9 +226,44 @@ Proof: [experiment description](experiments/v0.0.46.md) and [machine-readable re
 
 ## v0.0.49: Isolated Skill Content
 
+Status: implemented.
+
 - Remove dynamic Python loading from Skill directories without a compatibility path.
 - Reserve executable Capabilities for explicit `Agent.add_skill_executor(...)` code.
 - Treat Skill, memory, tool, and subagent content as untrusted model context.
 - Remove unenforced Capability permission and ownership metadata.
+
+## v0.0.50: Recall-Time Memory Organization
+
+Status: implemented.
+
+- Rank memory and merge exact duplicates before model-assisted organization.
+- Validate model-proposed merge, supersede, archive, and forget operations.
+- Execute every memory change through Runtime Safety.
+- Preserve immutable history while rebuilding only the active memory view.
+
+## v0.0.51: AG-UI Runtime Bridge
+
+Status: planned.
+
+- Map canonical Runtime events to official AG-UI event names and payloads.
+- Serve task runs and event streams through a standard-library HTTP and SSE bridge.
+- Keep the bridge optional and free of Python runtime dependencies.
+
+## v0.0.52: React Web Client
+
+Status: planned.
+
+- Replace the macOS-specific client with a Vite, React, TypeScript, and shadcn/ui app.
+- Provide conversations, streamed chat, configuration, Skill state, memory, and run trees.
+- Keep Runtime state authoritative and use AG-UI as the only live event protocol.
+
+## v0.0.53: Compact End-to-End Runtime
+
+Status: planned.
+
+- Remove repeated wrappers and split oversized Runtime modules by responsibility.
+- Prove Safety, memory organization, AG-UI streaming, and automatic evolution together.
+- Publish one concise architecture and verification path for the complete `0.0.x` loop.
 
 The project will not move to `0.1.x` merely because more features exist. That change should follow a reproducible demonstration that the central Skill-first lifecycle is useful and maintainable.

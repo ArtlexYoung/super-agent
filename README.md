@@ -21,6 +21,7 @@ The project is currently experimental (`0.0.x`). It favors a small, inspectable 
 - **One safety boundary**: Runtime records every declared action effect before a Capability can execute it.
 - **Secure defaults**: internal memory and owned Skill evolution stay automatic; external execution and unknown network actions require approval.
 - **Automatic evolution loop**: Runtime turns real evidence into candidates, evaluates and promotes them, then monitors and rolls back regressions.
+- **Memory that remembers and forgets**: recall also organizes duplicate, outdated, and low-value memory through validated, traceable events.
 - **Code-composed Agents**: create Agents independently and attach them with `Agent.add_subagent(...)`.
 - **Standard-library runtime**: the Python core has no third-party runtime dependencies.
 
@@ -244,6 +245,8 @@ agents may evolve the declarative Skills consumed by registered code, but cannot
 downloaded or generated Python into the Runtime process.
 
 Freshness does not call a model. It is derived from runtime evaluation records using quality, recency, frequency, token cost, latency, reliability, replacement behavior, and sample confidence.
+
+Memory organization happens during recall. Runtime first ranks candidates and merges exact duplicates deterministically, then asks the selected model for strict `merge`, `supersede`, `archive`, or `forget` operations. Every operation is validated against the recalled candidates and executed through the same Safety policy. Archived and forgotten items leave the active memory view without being physically deleted from the append-only event history. Set `organize_on_recall = false` in a memory Skill only when read-only retrieval is required.
 
 After each evaluated run, Runtime reviews every updateable Agent-owned Skill. The
 deterministic evolution scheduler creates at most one recommendation for an unchanged

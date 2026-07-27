@@ -1,9 +1,11 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
 
 from agents.agent import Agent
 from runtime.config import AgentConfig
+from runtime.safety import ActionRequest
 from runtime.storage import StorageEventQuery
 from runtime.store import create_local_runtime_store
 from provider.chat import MockProvider
@@ -73,6 +75,93 @@ class MiniMemoryTests(unittest.TestCase):
             self.assertEqual(2, len(memory.list_memory_items()))
             self.assertEqual([], memory.consolidate_memory())
 
+    def test_recall_uses_model_to_supersede_archive_and_forget_memory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            store = create_local_runtime_store(root)
+            seed = MiniMemory(store)
+            old = seed.add_memory_item("Python project uses version 3.11.", "project")
+            current = seed.add_memory_item("Python project now uses version 3.12.", "project")
+            temporary = seed.add_memory_item("Temporary Python migration note.", "project")
+            wrong = seed.add_memory_item("Wrong Python project fact.", "project")
+            action_requests: list[ActionRequest] = []
+
+            def organize(messages):
+                self.assertIn("source_item_ids", messages[0]["content"])
+                return json.dumps(
+                    {
+                        "operations": [
+                            {
+                                "type": "supersede",
+                                "source_item_ids": [old.item_id, current.item_id],
+                                "text": "Python project uses version 3.12.",
+                                "reason": "newer version wins",
+                            },
+                            {
+                                "type": "archive",
+                                "source_item_ids": [temporary.item_id],
+                                "reason": "migration finished",
+                            },
+                            {
+                                "type": "forget",
+                                "source_item_ids": [wrong.item_id],
+                                "reason": "known to be incorrect",
+                            },
+                        ]
+                    }
+                )
+
+            def execute(request, action):
+                action_requests.append(request)
+                return action()
+
+            memory = MiniMemory(
+                store,
+                send_text_model_messages=organize,
+                execute_action=execute,
+            )
+
+            recalled = memory.recall_memory("Python project", "project")
+
+            self.assertEqual(["Python project uses version 3.12."], [item.text for item in recalled])
+            self.assertTrue(action_requests)
+            self.assertTrue(all(request.actor == "agent:memory" for request in action_requests))
+            event_types = [
+                event.event_type
+                for event in store.backend.read_events(
+                    StorageEventQuery(
+                        user_id=store.user_id,
+                        agent_name=store.agent_name,
+                        stream_type="memory",
+                    )
+                )
+            ]
+            self.assertIn("memory.superseded", event_types)
+            self.assertIn("memory.archived", event_types)
+            self.assertIn("memory.forgotten", event_types)
+            self.assertEqual("memory.organization.completed", event_types[-1])
+
+    def test_invalid_model_organization_keeps_recall_available(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            memory = MiniMemory(
+                create_local_runtime_store(Path(tmp)),
+                send_text_model_messages=lambda messages: "not-json",
+            )
+            memory.add_memory_item("Python preference one.")
+            memory.add_memory_item("Python preference two.")
+
+            recalled = memory.recall_memory("Python")
+
+            self.assertEqual(2, len(recalled))
+            events = memory.store.backend.read_events(
+                StorageEventQuery(
+                    user_id=memory.store.user_id,
+                    agent_name=memory.store.agent_name,
+                    stream_type="memory",
+                )
+            )
+            self.assertEqual("memory.organization.failed", events[-1].event_type)
+
     def test_memory_policy_is_loaded_from_memory_skill_manifest(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -122,6 +211,46 @@ include_usage_habits = false
 
             self.assertIn("Memory", provider.last_messages[0]["content"])
             self.assertIn("User likes concise answers.", provider.last_messages[0]["content"])
+
+    def test_agent_organizes_memory_before_main_model_response(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_workflow_skill(root)
+            write_memory_skill(root)
+            seed = MiniMemory(
+                create_local_runtime_store(root / ".super-agent", agent_name="demo")
+            )
+            first = seed.add_memory_item("Python project uses 3.11.")
+            second = seed.add_memory_item("Python project now uses 3.12.")
+            provider = _SequenceProvider(
+                [
+                    json.dumps(
+                        {
+                            "operations": [
+                                {
+                                    "type": "supersede",
+                                    "source_item_ids": [first.item_id, second.item_id],
+                                    "text": "Python project uses 3.12.",
+                                    "reason": "newer project state",
+                                }
+                            ]
+                        }
+                    ),
+                    "final answer",
+                ]
+            )
+            agent = _make_agent(root, provider)
+
+            result = agent.run("Which Python version does the project use?")
+
+            self.assertEqual("final answer", result.text)
+            self.assertEqual(2, len(provider.requests))
+            active = MiniMemory(agent.runtime.create_store()).list_memory_items()
+            self.assertEqual(["Python project uses 3.12."], [item.text for item in active])
+            event_types = [
+                event.event_type for event in agent.read_task_trace(result.run_id).events
+            ]
+            self.assertIn("action.checked", event_types)
 
     def test_memory_self_updates_usage_habits(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -177,3 +306,17 @@ path = ".super-agent"
 
 def _memory(root: Path) -> MiniMemory:
     return MiniMemory(create_local_runtime_store(root))
+
+
+class _SequenceProvider(MockProvider):
+    def __init__(self, responses: list[str]) -> None:
+        super().__init__()
+        self.responses = list(responses)
+        self.requests: list[list[dict[str, object]]] = []
+
+    def send_chat_messages(self, messages, model):
+        self.requests.append(messages)
+        self.last_messages = messages
+        if not self.responses:
+            raise AssertionError("unexpected provider call")
+        return self.responses.pop(0)

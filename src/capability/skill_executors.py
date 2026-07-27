@@ -17,7 +17,12 @@ from runtime.safety import ActionEffect
 from runtime.store import RuntimeStore
 from skill.disclosure import ProgressiveDisclosureCore, SkillReference
 from skill.kinds.mcp import McpServer, create_mcp_server_from_skill_disclosure
-from skill.kinds.memory import MiniMemory, create_memory_from_skill_disclosure
+from skill.kinds.memory import (
+    MemoryActionRunner,
+    MemoryTextModel,
+    MiniMemory,
+    create_memory_from_skill_disclosure,
+)
 from skill.kinds.planner import create_planning_policy_from_skill
 from skill.kinds.workflow import create_workflow_policy_from_skill
 from skill.manifest import Skill
@@ -29,6 +34,8 @@ class SkillLoadRequest:
     reference: SkillReference
     store: RuntimeStore
     identity: RunIdentity | None = None
+    send_text_model_messages: MemoryTextModel | None = None
+    execute_action: MemoryActionRunner | None = None
 
 
 @dataclass(frozen=True)
@@ -118,7 +125,7 @@ class McpSkillExecutor:
 
 class MemorySkillExecutor:
     name = "event-memory"
-    version = "1"
+    version = "2"
     capability_name = "memory"
     adds_model_context = False
 
@@ -131,6 +138,8 @@ class MemorySkillExecutor:
             opened,
             request.store,
             request.identity,
+            send_text_model_messages=request.send_text_model_messages,
+            execute_action=request.execute_action,
         )
         run_id = "" if request.identity is None else request.identity.run_id
         return create_memory_skill_contribution(memory, run_id)
@@ -287,7 +296,7 @@ def _create_memory_tools(memory: MiniMemory, run_id: str) -> tuple[CapabilityToo
         ),
         CapabilityTool(
             "recall_memory",
-            "Recall memory items ranked by lexical relevance.",
+            "Recall relevant memory while organizing duplicates and stale items.",
             {
                 "query": {"type": "string"},
                 "scope": scope,
@@ -296,7 +305,7 @@ def _create_memory_tools(memory: MiniMemory, run_id: str) -> tuple[CapabilityToo
             lambda arguments: _recall_memory(memory, arguments),
             ("query",),
             CapabilityAction(
-                (ActionEffect.READ,),
+                (ActionEffect.READ, ActionEffect.UPDATE, ActionEffect.DELETE),
                 "memory:active",
                 "scope",
             ),

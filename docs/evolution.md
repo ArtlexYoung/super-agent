@@ -97,9 +97,10 @@ default_scope = "agent"
 recall_limit = 20
 include_in_prompt = true
 include_usage_habits = true
+organize_on_recall = true
 ```
 
-Memory supports add, recall, forget, and deterministic duplicate consolidation. Successful Agent runs update workflow and Skill usage habits for later prompts.
+Memory supports add, recall, forget, and deterministic duplicate consolidation. Recall ranks relevant candidates, merges exact duplicates without a model call, and can ask the selected model for validated `merge`, `supersede`, `archive`, and `forget` operations. Every change passes through Runtime Safety. Archived and forgotten items disappear from the active view while the original append-only events remain available for audit and future projections. Invalid organizer output is recorded and ignored so recall can continue. Successful Agent runs also update workflow and Skill usage habits for later prompts.
 
 ```bash
 super-agent memory habits --config agent.toml

@@ -49,7 +49,7 @@ React and loop workflows may expose:
 
 - Skill index and disclosure tools.
 - MCP Skill discovery and calls.
-- Memory list, add, recall, forget, and consolidate tools.
+- Memory list, add, recall-and-organize, forget, and consolidate tools.
 - Subagent list and run tools.
 
 Every tool request, completion, and failure is written to the run event stream.
