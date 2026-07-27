@@ -1,10 +1,5 @@
 import SwiftUI
 
-private let providerOptions = ["auto", "mock", "openai-compatible", "anthropic-compatible"]
-private let modelOptions = ["mock", "gpt-4.1-mini", "gpt-4.1", "claude-sonnet-4", "claude-opus-4"]
-private let baseURLOptions = ["", "https://api.openai.com/v1", "https://api.anthropic.com"]
-private let apiKeyEnvOptions = ["", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"]
-
 private enum ConfigPageTab: String, CaseIterable, Identifiable {
     case agent = "助手"
     case model = "模型"
@@ -58,7 +53,7 @@ private struct ConfigPageContentView: View {
                 case .agent:
                     AgentConfigEditorView()
                 case .model:
-                    ModelConfigEditorView()
+                    ModelSkillConfigEditorView()
                 case .paths:
                     PathsConfigEditorView()
                 case .toml:
@@ -81,8 +76,11 @@ private struct ConfigFileToolbarView: View {
                     Button("保存") { chatStore.saveTomlConfigFile() }
                     Button("另存为") { chatStore.saveTomlConfigFileAs() }
                     Button("恢复默认") { chatStore.resetConfigToDefault() }
-                    Button("重新扫描") { chatStore.refreshConfigChoices() }
-                    HelpHintView("打开或保存当前 agent.toml。重新扫描会递归读取技能目录，刷新普通技能和 MCP 列表。")
+                    Button("重新扫描") {
+                        chatStore.refreshConfigChoices()
+                        chatStore.refreshModelSkills()
+                    }
+                    HelpHintView("打开或保存当前 agent.toml。重新扫描会读取中心 Skill 索引，并刷新 prompt、MCP、memory、workflow 和模型列表。")
                 }
                 .buttonStyle(.bordered)
 
@@ -408,130 +406,6 @@ private struct MaxDepthEditorView: View {
         Binding(
             get: { chatStore.config.agent.maxAgentChainDepth ?? 5 },
             set: { chatStore.config.agent.maxAgentChainDepth = max(1, $0) }
-        )
-    }
-}
-
-private struct ModelConfigEditorView: View {
-    @EnvironmentObject private var chatStore: ChatStore
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("模型列表")
-                        .font(.headline)
-                    Text("配置会自动保存到桌面端 config.json，下次打开会恢复。")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                Button("新增模型") {
-                    chatStore.createModelProfile()
-                }
-            }
-
-            ForEach(chatStore.modelProfiles) { profile in
-                ModelProfileRowView(profile: profile)
-            }
-        }
-    }
-}
-
-private struct ModelProfileRowView: View {
-    @EnvironmentObject private var chatStore: ChatStore
-    let profile: ModelProfile
-
-    var body: some View {
-        GroupBox {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    TextField("配置名称", text: profileTitleBinding)
-                        .font(.headline)
-                    if chatStore.selectedModelProfileID == profile.id {
-                        DefaultTagView(text: "当前")
-                    }
-                    Button(chatStore.selectedModelProfileID == profile.id ? "使用中" : "使用") {
-                        chatStore.selectModelProfile(profile.id)
-                    }
-                    .disabled(chatStore.selectedModelProfileID == profile.id)
-                    Button {
-                        chatStore.deleteModelProfile(profile.id)
-                    } label: {
-                        Image(systemName: "trash")
-                    }
-                    .buttonStyle(.plain)
-                    .help("删除这个模型配置")
-                }
-
-                SettingStringPicker(
-                    title: "服务类型",
-                    help: "对应 [model].provider。auto 按环境自动解析；mock 是本地回复；openai-compatible 请求 /chat/completions；anthropic-compatible 请求 /v1/messages。",
-                    selection: providerBinding,
-                    options: providerOptions
-                )
-                SettingTextField(
-                    title: "模型名称",
-                    help: "对应 [model].model。可输入任意模型名，保存后下次打开会恢复。",
-                    text: modelBinding
-                )
-                SettingTextField(
-                    title: "服务地址",
-                    help: "对应 [model].base_url。可输入任意兼容服务地址；留空时使用 provider 的默认地址。",
-                    text: baseURLBinding
-                )
-                SettingTextField(
-                    title: "密钥变量",
-                    help: "对应 [model].api_key_env。这里输入环境变量名，不直接保存真实 API Key。",
-                    text: apiKeyEnvBinding
-                )
-            }
-            .padding(.top, 4)
-        }
-    }
-
-    private var profileTitleBinding: Binding<String> {
-        Binding(
-            get: { profile.title },
-            set: { value in
-                chatStore.updateModelProfile(profile.id) { $0.title = value }
-            }
-        )
-    }
-
-    private var providerBinding: Binding<String> {
-        Binding(
-            get: { profile.settings.provider },
-            set: { value in
-                chatStore.updateModelProfile(profile.id) { $0.settings.provider = value }
-            }
-        )
-    }
-
-    private var modelBinding: Binding<String> {
-        Binding(
-            get: { profile.settings.model },
-            set: { value in
-                chatStore.updateModelProfile(profile.id) { $0.settings.model = value }
-            }
-        )
-    }
-
-    private var baseURLBinding: Binding<String> {
-        Binding(
-            get: { profile.settings.baseURL },
-            set: { value in
-                chatStore.updateModelProfile(profile.id) { $0.settings.baseURL = value }
-            }
-        )
-    }
-
-    private var apiKeyEnvBinding: Binding<String> {
-        Binding(
-            get: { profile.settings.apiKeyEnv },
-            set: { value in
-                chatStore.updateModelProfile(profile.id) { $0.settings.apiKeyEnv = value }
-            }
         )
     }
 }

@@ -94,6 +94,17 @@ ANTHROPIC_API_KEY
 
 Environment profiles are ephemeral and used only when no enabled model Skill exists. Selection order is `SUPER_AGENT_PROVIDER`, `OLLAMA_HOST`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, then the built-in mock. Use `super-agent models list` and `super-agent models resolve` to inspect available profiles and the selected default. These commands print environment-variable names but never secret values.
 
+The macOS model page manages real model Skills through the same Runtime commands. Metadata is written under the first configured Skill root, and actual API keys stay in macOS Keychain. For automation, send model Skill metadata as JSON on stdin:
+
+```bash
+printf '%s' '{"name":"fast","description":"Fast answer model","provider":"openai-compatible","model":"gpt-4.1-mini","api_key_env":"OPENAI_API_KEY","supports":["text","tools"],"purposes":["answer"],"default":true}' \
+  | super-agent models save --config agent.toml --request-stdin
+
+super-agent models remove --config agent.toml --name fast
+```
+
+`models save` creates, updates, or atomically renames a model Skill. Include `previous_name` when renaming. It never accepts or stores a secret value; configure the named environment variable separately.
+
 ## Paths
 
 `paths.skills` is a list of recursively scanned Skill roots. Relative paths resolve from the configuration file directory.

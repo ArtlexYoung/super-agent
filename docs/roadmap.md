@@ -153,11 +153,13 @@ Status: implemented.
 
 ## v0.0.41: Task and Evolution Proof
 
-Status: planned.
+Status: implemented.
 
 - Show task trees, scheduler reasons, model evidence, and evolution state in macOS.
 - Publish a reproducible multi-model scheduling and isolation experiment.
 - Verify automatic evolution and rollback from real task evidence.
 - Build and package the versioned macOS release.
+
+Proof: [experiment description](experiments/v0.0.41.md) and [machine-readable result](experiments/v0.0.41.json).
 
 The project will not move to `0.1.x` merely because more features exist. That change should follow a reproducible demonstration that the central Skill-first lifecycle is useful and maintainable.

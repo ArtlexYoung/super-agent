@@ -9,7 +9,14 @@ final class ChatStore: ObservableObject {
     @Published private(set) var selectedConversationID: String? {
         didSet { saveAppStateIfReady() }
     }
-    @Published private(set) var selectedAgentRunNodeID: String?
+    @Published private(set) var selectedAgentRunNodeID: String? {
+        didSet {
+            if selectedAgentRunNodeID == nil {
+                selectedRunInsight = nil
+                isLoadingRunInsight = false
+            }
+        }
+    }
     @Published var config: AgentTomlConfig {
         didSet {
             configTomlText = AgentTomlFile.makeTomlText(from: config)
@@ -20,12 +27,10 @@ final class ChatStore: ObservableObject {
     @Published private(set) var configFilePath: String? {
         didSet { saveAppStateIfReady() }
     }
-    @Published private(set) var modelProfiles: [ModelProfile] {
-        didSet { saveAppStateIfReady() }
-    }
-    @Published private(set) var selectedModelProfileID: UUID? {
-        didSet { saveAppStateIfReady() }
-    }
+    @Published var modelSkillDrafts: [ModelSkillDraft]
+    @Published var selectedModelSkillID: UUID?
+    @Published private(set) var selectedRunInsight: RuntimeRunInsight?
+    @Published private(set) var isLoadingRunInsight: Bool
     @Published var draftMessage: String
     @Published var warningMessage: String?
     @Published var statusMessage: String?
@@ -38,7 +43,7 @@ final class ChatStore: ObservableObject {
 
     private var isReadyToSaveState = false
     private var pendingRenameTask: Task<Void, Never>?
-    private let runtimeUserID = "local"
+    let runtimeUserID = "local"
 
     init() {
         let state: StoredMacAppState?
@@ -48,30 +53,17 @@ final class ChatStore: ObservableObject {
             state = nil
         }
         let initialConfig = state?.config ?? .defaultConfig
-        let fallbackProfile = ModelProfile(
-            title: modelProfileTitle(initialConfig.model),
-            settings: initialConfig.model
-        )
-        let loadedProfiles = state?.modelProfiles ?? []
-        let initialProfiles = loadedProfiles.isEmpty ? [fallbackProfile] : loadedProfiles
-        let selectedProfileID = makeInitialSelectedModelProfileID(
-            requestedID: state?.selectedModelProfileID,
-            profiles: initialProfiles
-        )
-        let activeConfig = applySelectedModelProfile(
-            selectedID: selectedProfileID,
-            profiles: initialProfiles,
-            config: initialConfig
-        )
 
         conversations = []
         selectedConversationID = state?.selectedConversationID
         selectedAgentRunNodeID = nil
-        config = activeConfig
-        configTomlText = AgentTomlFile.makeTomlText(from: activeConfig)
+        config = initialConfig
+        configTomlText = AgentTomlFile.makeTomlText(from: initialConfig)
         configFilePath = state?.configFilePath
-        modelProfiles = initialProfiles
-        selectedModelProfileID = selectedProfileID
+        modelSkillDrafts = []
+        selectedModelSkillID = nil
+        selectedRunInsight = nil
+        isLoadingRunInsight = false
         draftMessage = ""
         warningMessage = nil
         statusMessage = nil
@@ -82,6 +74,7 @@ final class ChatStore: ObservableObject {
         availableWorkflowChoices = []
         availableMCPNames = []
         refreshConfigChoices()
+        refreshModelSkills()
         isReadyToSaveState = true
         reloadConversations()
     }
@@ -93,11 +86,18 @@ final class ChatStore: ObservableObject {
         return conversations.first { $0.id == selectedConversationID }
     }
 
-    var selectedModelProfile: ModelProfile? {
-        guard let selectedModelProfileID else {
-            return modelProfiles.first
+    var selectedModelSkillDraft: ModelSkillDraft? {
+        guard let selectedModelSkillID else {
+            return modelSkillDrafts.first
         }
-        return modelProfiles.first { $0.id == selectedModelProfileID }
+        return modelSkillDrafts.first { $0.id == selectedModelSkillID }
+    }
+
+    var selectedModelSummary: String {
+        let active = modelSkillDrafts.first { $0.isPersisted && $0.isDefault }
+            ?? modelSkillDrafts.first { $0.isPersisted }
+            ?? modelSkillDrafts.first
+        return active?.summary ?? "自动发现"
     }
 
     var selectedAgentRunNode: AgentRunNode? {
@@ -219,7 +219,38 @@ final class ChatStore: ObservableObject {
     }
 
     func selectAgentRunNode(_ id: String?) {
+        selectedRunInsight = nil
+        isLoadingRunInsight = false
         selectedAgentRunNodeID = id
+        guard let node = selectedAgentRunNode, let runID = node.runID else {
+            return
+        }
+        loadRunInsight(runID: runID, nodeID: node.id)
+    }
+
+    private func loadRunInsight(runID: String, nodeID: String) {
+        let configText = makeRuntimeConfigText()
+        isLoadingRunInsight = true
+        Task {
+            defer {
+                if selectedAgentRunNodeID == nodeID {
+                    isLoadingRunInsight = false
+                }
+            }
+            do {
+                let insight = try await AgentRuntimeClient.readRunInsight(
+                    configText: configText,
+                    userID: runtimeUserID,
+                    runID: runID
+                )
+                guard selectedAgentRunNodeID == nodeID else { return }
+                selectedRunInsight = insight
+                warningMessage = nil
+            } catch {
+                guard selectedAgentRunNodeID == nodeID else { return }
+                warningMessage = error.localizedDescription
+            }
+        }
     }
 
     func reloadConversations() {
@@ -266,7 +297,7 @@ final class ChatStore: ObservableObject {
         appendMessageToSelectedConversation(
             ChatMessage(id: pendingMessageID, role: .user, text: text)
         )
-        let configSnapshot = config
+        let modelSummary = selectedModelSummary
         let runtimeConfigText = makeRuntimeConfigText()
         isSendingMessage = true
         Task {
@@ -285,7 +316,7 @@ final class ChatStore: ObservableObject {
                 )
                 replaceConversation(with: stored)
                 warningMessage = result.warningMessages?.joined(separator: "\n")
-                statusMessage = "运行完成：\(result.workflow) / \(configSnapshot.modelSummary)"
+                statusMessage = "运行完成：\(result.workflow) / \(modelSummary)"
             } catch {
                 let detail = error.localizedDescription
                 warningMessage = detail
@@ -337,8 +368,8 @@ final class ChatStore: ObservableObject {
     func applyTomlTextToConfig() {
         do {
             config = try AgentTomlFile.parse(configTomlText)
-            syncSelectedModelProfileFromConfig(title: config.model.model)
             refreshConfigChoices()
+            refreshModelSkills()
             reloadConversations()
             statusMessage = "已把 TOML 文本应用到可视化表单。"
             warningMessage = nil
@@ -355,8 +386,8 @@ final class ChatStore: ObservableObject {
     func resetConfigToDefault() {
         config = .defaultConfig
         configFilePath = nil
-        syncSelectedModelProfileFromConfig(title: config.model.model)
         refreshConfigChoices()
+        refreshModelSkills()
         reloadConversations()
         statusMessage = "已恢复默认 agent.toml 配置。"
     }
@@ -365,42 +396,6 @@ final class ChatStore: ObservableObject {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(configTomlText, forType: .string)
         statusMessage = "已复制 TOML。"
-    }
-
-    func createModelProfile() {
-        let profile = ModelProfile(title: nextModelProfileTitle(), settings: config.model)
-        modelProfiles.append(profile)
-        selectModelProfile(profile.id)
-    }
-
-    func selectModelProfile(_ id: UUID) {
-        guard let profile = modelProfiles.first(where: { $0.id == id }) else {
-            return
-        }
-        selectedModelProfileID = id
-        config.model = profile.settings
-        statusMessage = "已切换模型配置：\(profile.title)。"
-    }
-
-    func deleteModelProfile(_ id: UUID) {
-        modelProfiles.removeAll { $0.id == id }
-        if modelProfiles.isEmpty {
-            let profile = ModelProfile(title: "auto", settings: AgentTomlConfig.defaultConfig.model)
-            modelProfiles = [profile]
-        }
-        if selectedModelProfileID == id || selectedModelProfileID == nil {
-            selectModelProfile(modelProfiles[0].id)
-        }
-    }
-
-    func updateModelProfile(_ id: UUID, change: (inout ModelProfile) -> Void) {
-        guard let index = modelProfiles.firstIndex(where: { $0.id == id }) else {
-            return
-        }
-        change(&modelProfiles[index])
-        if selectedModelProfileID == id {
-            config.model = modelProfiles[index].settings
-        }
     }
 
     func refreshConfigChoices() {
@@ -435,8 +430,8 @@ final class ChatStore: ObservableObject {
         do {
             config = try AgentTomlFile.read(from: url)
             configFilePath = url.path
-            syncSelectedModelProfileFromConfig(title: config.model.model)
             refreshConfigChoices()
+            refreshModelSkills()
             reloadConversations()
             statusMessage = "已加载 \(url.lastPathComponent)。"
             warningMessage = nil
@@ -450,6 +445,7 @@ final class ChatStore: ObservableObject {
             try AgentTomlFile.write(config, to: url)
             configFilePath = url.path
             refreshConfigChoices()
+            refreshModelSkills()
             statusMessage = "已保存 \(url.lastPathComponent)。"
             warningMessage = nil
         } catch {
@@ -492,7 +488,7 @@ final class ChatStore: ObservableObject {
         conversations[index].updatedAt = Date()
     }
 
-    private func makeRuntimeConfigText() -> String {
+    func makeRuntimeConfigText() -> String {
         var runtimeConfig = config
         runtimeConfig.paths.skills = config.paths.skills.map { resolveConfigPath($0).path }
         runtimeConfig.storage.path = resolveConfigPath(config.storage.path).path
@@ -511,7 +507,8 @@ final class ChatStore: ObservableObject {
         if let configFilePath {
             return URL(fileURLWithPath: configFilePath).deletingLastPathComponent()
         }
-        return URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        return (try? MacAppStorage.defaultProjectDirectoryURL())
+            ?? URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
     }
 
     private func extractDisabledNames(prefix: String) -> [String] {
@@ -548,32 +545,6 @@ final class ChatStore: ObservableObject {
         return choicesByName.values.sorted { $0.name < $1.name }
     }
 
-    private func syncSelectedModelProfileFromConfig(title: String) {
-        if let selectedModelProfileID,
-           let index = modelProfiles.firstIndex(where: { $0.id == selectedModelProfileID }) {
-            modelProfiles[index].settings = config.model
-            if modelProfiles[index].title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                modelProfiles[index].title = title
-            }
-            return
-        }
-        let profile = ModelProfile(title: title, settings: config.model)
-        modelProfiles.append(profile)
-        selectedModelProfileID = profile.id
-    }
-
-    private func nextModelProfileTitle() -> String {
-        var index = 1
-        let titles = Set(modelProfiles.map(\.title))
-        while true {
-            let title = "模型配置 \(index)"
-            if !titles.contains(title) {
-                return title
-            }
-            index += 1
-        }
-    }
-
     private func saveAppStateIfReady() {
         guard isReadyToSaveState else {
             return
@@ -581,9 +552,7 @@ final class ChatStore: ObservableObject {
         let state = StoredMacAppState(
             selectedConversationID: selectedConversationID,
             config: config,
-            configFilePath: configFilePath,
-            modelProfiles: modelProfiles,
-            selectedModelProfileID: selectedModelProfileID
+            configFilePath: configFilePath
         )
         do {
             try MacAppStorage.saveState(state)

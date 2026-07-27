@@ -1,11 +1,15 @@
 import json
 import tempfile
 import unittest
+from dataclasses import replace
 from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
+from agents.agent import Agent
 from cli import main
+from provider.chat import MockProvider
+from runtime.config import AgentConfig
 
 
 class RunsCliTests(unittest.TestCase):
@@ -80,6 +84,16 @@ class RunsCliTests(unittest.TestCase):
             self.assertEqual("completed", status["runs"][0]["status"])
             self.assertEqual(0, explanation_code)
             self.assertEqual(run_id, explanation["snapshot"]["run_id"])
+            self.assertEqual("answer", explanation["schedule"]["purpose"])
+            self.assertEqual("completed", explanation["model_calls"][0]["status"])
+            self.assertEqual(1, explanation["model_calls"][0]["call_id"])
+            self.assertEqual("model:mock", explanation["model_calls"][0]["profile"])
+            self.assertEqual([], explanation["evolution"])
+            self.assertEqual(1, explanation["routing_evidence"][0]["call_count"])
+            self.assertTrue(explanation["skill_freshness"])
+            self.assertTrue(
+                all(item["call_count"] >= 1 for item in explanation["skill_freshness"])
+            )
             decisions = {
                 item["skill_key"]: item
                 for item in explanation["selection_decisions"]
@@ -89,6 +103,43 @@ class RunsCliTests(unittest.TestCase):
             self.assertEqual(run_id, exported["snapshot"]["run_id"])
             self.assertTrue(exported["events"])
             self.assertTrue(exported["runtime_lock"]["skills"])
+
+    def test_text_explain_prints_task_and_evidence_insight(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            config_path = Path(tmp) / "agent.toml"
+            main(["init", "--path", tmp])
+            run_output = StringIO()
+            with patch("sys.stdout", run_output):
+                main(
+                    [
+                        "run",
+                        "--config",
+                        str(config_path),
+                        "--output",
+                        "json",
+                        "echo this",
+                    ]
+                )
+            run_id = json.loads(run_output.getvalue())["run_id"]
+            explanation_output = StringIO()
+
+            with patch("sys.stdout", explanation_output):
+                code = main(
+                    [
+                        "runs",
+                        "explain",
+                        "--config",
+                        str(config_path),
+                        "--run-id",
+                        run_id,
+                    ]
+                )
+
+            explanation = explanation_output.getvalue()
+            self.assertEqual(0, code)
+            self.assertIn("schedule\tpurpose=answer", explanation)
+            self.assertIn("model-call\t1\tprofile=model:mock", explanation)
+            self.assertIn("freshness\t", explanation)
 
     def test_status_without_runs_is_a_successful_empty_result(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -155,3 +206,39 @@ class RunsCliTests(unittest.TestCase):
             self.assertEqual("task.feedback.recorded", event["event_type"])
             self.assertEqual(0.25, event["data"]["score"])
             self.assertEqual("explicit", event["data"]["source"])
+
+    def test_explain_finds_subagent_run_in_the_same_user_scope(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config_path = root / "agent.toml"
+            main(["init", "--path", tmp])
+            config = AgentConfig.load_from_file(config_path)
+            parent = Agent(config, provider=MockProvider("parent result"))
+            child_config = replace(
+                config,
+                agent=replace(config.agent, name="worker"),
+            )
+            child = Agent(child_config, provider=MockProvider("child result"))
+            parent.add_subagent(child, name="worker")
+            result = parent.run("delegate this")
+            child_run_id = result.subagent_results[0].run_id
+            output = StringIO()
+
+            with patch("sys.stdout", output):
+                code = main(
+                    [
+                        "runs",
+                        "explain",
+                        "--config",
+                        str(config_path),
+                        "--run-id",
+                        child_run_id,
+                        "--output",
+                        "json",
+                    ]
+                )
+
+            explanation = json.loads(output.getvalue())
+            self.assertEqual(0, code)
+            self.assertEqual("worker", explanation["snapshot"]["agent_name"])
+            self.assertEqual(child_run_id, explanation["snapshot"]["run_id"])

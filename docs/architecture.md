@@ -27,6 +27,8 @@ Agent.run
 
 Model calls, tool calls, and subagent work are observable steps of the same task path. `RuntimeSession` is the only mutable context for a task. It carries one `RunIdentity`, `RuntimeStore`, Skill index, disclosure core, selected model, Capability registry, and evidence tracker.
 
+`runtime.insights` projects UI-facing task, model, routing, freshness, and evolution views from canonical events and evaluation records. CLI and macOS consume this projection instead of implementing their own evidence logic.
+
 `TaskScheduler` first filters model profiles by connection readiness and required features. It then scores purpose, prompt traits, default status, declared quality, latency, and cost. This produces a deterministic ordered fallback list without an extra model call. Skill selection uses the same progressive-disclosure core, while subagent selection uses the descriptions and triggers supplied by `Agent.add_subagent(...)`.
 
 ## Stable Runtime Kernel
@@ -74,3 +76,4 @@ RuntimeSession -> RuntimeStore -> StorageBackend
 - Workflow is Skill data, not a second execution engine.
 - Evolution cannot bypass validation, evaluation, promotion, or rollback.
 - Internal compatibility shells are intentionally absent during `0.0.x`.
+- Model editors persist standard model Skills; API-key values remain outside Skill and Agent configuration.

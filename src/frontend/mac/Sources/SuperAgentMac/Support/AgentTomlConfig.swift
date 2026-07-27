@@ -2,7 +2,6 @@ import Foundation
 
 struct AgentTomlConfig: Codable, Equatable {
     var agent: AgentTomlAgentSection
-    var model: AgentTomlModelSection
     var paths: AgentTomlPathsSection
     var storage: AgentTomlStorageSection
 
@@ -17,12 +16,6 @@ struct AgentTomlConfig: Codable, Equatable {
             disableNames: [],
             maxAgentChainDepth: nil
         ),
-        model: AgentTomlModelSection(
-            provider: "auto",
-            model: "",
-            baseURL: "",
-            apiKeyEnv: ""
-        ),
         paths: AgentTomlPathsSection(
             skills: ["skills"]
         ),
@@ -33,9 +26,6 @@ struct AgentTomlConfig: Codable, Equatable {
         )
     )
 
-    var modelSummary: String {
-        model.model.isEmpty ? model.provider : "\(model.provider) / \(model.model)"
-    }
 }
 
 struct AgentTomlAgentSection: Codable, Equatable {
@@ -47,25 +37,6 @@ struct AgentTomlAgentSection: Codable, Equatable {
     var useFeatures: [String]
     var disableNames: [String]
     var maxAgentChainDepth: Int?
-}
-
-struct AgentTomlModelSection: Codable, Equatable {
-    var provider: String
-    var model: String
-    var baseURL: String
-    var apiKeyEnv: String
-}
-
-struct ModelProfile: Identifiable, Codable, Equatable {
-    let id: UUID
-    var title: String
-    var settings: AgentTomlModelSection
-
-    init(id: UUID = UUID(), title: String, settings: AgentTomlModelSection) {
-        self.id = id
-        self.title = title
-        self.settings = settings
-    }
 }
 
 struct SkillManifestChoice: Identifiable, Equatable, Sendable {

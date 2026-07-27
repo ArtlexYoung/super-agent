@@ -94,6 +94,8 @@ default = true
 
 model Skill 与其他 Skill 共用中心索引、校验、证据、候选、晋升和回滚流程。详见 [配置说明](docs/configuration.md)。
 
+macOS 应用提供中文可视化 model Skill 编辑器。模型元数据会写入项目 Skill 目录，真实 API Key 只保存在 macOS 钥匙串中。
+
 ## 初始化项目
 
 只有需要编辑 Agent 配置或 Skill 时才需要初始化：
@@ -172,11 +174,22 @@ super-agent runs feedback --run-id <run-id> --score 0.25 --reason "遗漏了结�
 
 在持久化会话中，明确纠正或重复同一请求也会确定性地降低上一轮质量。显式反馈始终覆盖隐式信号，两种反馈分类都不调用大模型。
 
+可以通过 CLI 或 macOS 任务树查看同一份中心证据：
+
+```bash
+super-agent runs explain --config agent.toml --run-id <run-id>
+super-agent runs explain --config agent.toml --run-id <run-id> --output json
+```
+
+洞察投影包含调度原因、每次模型尝试、延迟、估算 token 与成本、学习后的路由证据、相关 Skill 保鲜度和自动进化决策。子 Agent 的 `run_id` 也可以从主项目查看，但查询仍严格限制在同一用户和同一存储后端内。
+
 `CapabilityRegistry` 只保存真正执行 Skill 的处理器，可以通过 `agent.add_skill_executor(...)` 明确替换。需要安装或进化的处理器使用标准 `capability` Skill，与其他 Skill 共用披露、评价、晋升和回滚；Runtime 生命周期不再允许替换成另一套并行控制器。
 
 ## 可复现证明
 
-[v0.0.34 实验说明](docs/experiments/v0.0.34.md)及其[生成的 JSON 报告](docs/experiments/v0.0.34.json)比较了无 Skill、全量加载与渐进披露三种上下文，并验证完整生命周期和存储隔离。报告发布后，实验编排代码已从发行 Runtime 删除，避免证明代码长期膨胀用户内核。
+[v0.0.41 任务与进化证明](docs/experiments/v0.0.41.md)及其[生成的 JSON 报告](docs/experiments/v0.0.41.json)使用两个 model Skill 运行正常任务路径，验证按用途调度模型、用户与 Agent 证据隔离、完整运行洞察、失败任务证据自动晋升候选，以及晋升后退化时自动回滚。整个证明确定性、本地运行、零依赖，也不需要 API Key。
+
+此前的 [v0.0.34 生命周期实验](docs/experiments/v0.0.34.md)比较无 Skill、全量加载和渐进披露上下文，并验证存储隔离。实验编排始终位于发行 Runtime 之外，避免证明代码变成第二套执行框架。
 
 ## 自进化
 
@@ -311,6 +324,7 @@ super-agent storage copy \
 - [Skill 与渐进式披露](docs/skills.md)
 - [Runtime、Workflow、追踪与多 Agent](docs/runtime.md)
 - [评价、保鲜度、记忆与进化](docs/evolution.md)
+- [可复现的 v0.0.41 任务与进化证明](docs/experiments/v0.0.41.md)
 - [可复现的 v0.0.34 实验](docs/experiments/v0.0.34.md)
 - [CLI 命令](docs/cli.md)
 - [配置说明](docs/configuration.md)

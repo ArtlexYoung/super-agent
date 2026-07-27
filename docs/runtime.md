@@ -77,7 +77,7 @@ super-agent runs explain --config agent.toml --run-id <run-id>
 super-agent runs export --config agent.toml --run-id <run-id> --output run.json
 ```
 
-Explain and export rebuild the run view and verify the runtime-lock hash before returning its content.
+Explain and export rebuild the run view and verify the runtime-lock hash before returning its content. `runs explain` additionally projects scheduler reasons, ordered model calls, latency, estimated token and cost metrics, learned routing evidence, relevant Skill freshness, and related automatic evolution schedules. Its `--output json` schema is the same source used by the macOS task tree. A child Agent run can be located by `run_id` across Agent scopes only within the requested user and selected backend.
 
 ## Evidence-Learned Model Routing
 
@@ -155,6 +155,8 @@ Warnings do not block execution. Omitting the maximum allows unlimited nesting.
 
 ## Runtime Proof History
 
-The reproducible `v0.0.34` experiment is archived under `docs/experiments/`. Its benchmark orchestration was removed from the shipped Runtime after the result was recorded, so proof code does not become a second public execution framework.
+The reproducible `v0.0.41` proof under `docs/experiments/` runs two model Skills through the normal scheduler, verifies user and Agent routing isolation, and drives automatic promotion plus regression rollback from real task evidence. Its generator is a standalone proof script, not an installed Runtime command.
+
+The archived `v0.0.34` experiment covers progressive context and storage semantics. Its old benchmark orchestration was removed from the shipped Runtime after the result was recorded, so proof code does not become a second public execution framework.
 
 Storage contract tests still apply the same domain operations to every backend. Remote checks require dedicated test database environments and never fall back to an Agent's production connection URL.

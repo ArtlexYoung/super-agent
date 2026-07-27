@@ -1,0 +1,54 @@
+{
+  "all_checks_passed": true,
+  "checks": {
+    "analysis_uses_deep_model": true,
+    "answer_uses_fast_model": true,
+    "model_calls_are_observable": true,
+    "regression_rolls_back_candidate": true,
+    "rollback_is_observable_on_regression_run": true,
+    "rollback_restores_parent": true,
+    "routing_is_isolated_by_agent": true,
+    "routing_is_isolated_by_user": true,
+    "task_evidence_promotes_candidate": true
+  },
+  "evolution": {
+    "candidate_created": true,
+    "evaluation_score": 1.0,
+    "evidence_source": "agent_run",
+    "monitoring_decision": "rolled_back",
+    "promoted_candidate_instructions": true,
+    "promotion_decision": "promoted",
+    "reason_codes": [
+      "failures"
+    ],
+    "restored_parent_instructions": true,
+    "rollback_is_observable_on_regression_run": true,
+    "skill_evaluation_model_calls": 1,
+    "skill_evolution_model_calls": 1
+  },
+  "input_sha256": "5139f6364098930ac52c8ff96d8f8c863bf92a2275795110b1066b30b7a95412",
+  "scheduling": {
+    "alpha_routing_records": 2,
+    "beta_routing_records": 0,
+    "completed_model_calls": 2,
+    "prompts": [
+      "give a concise answer",
+      "perform deep analysis"
+    ],
+    "routing_scopes": [
+      "analysis:model:deep:1",
+      "answer:model:fast:1"
+    ],
+    "scheduled_model_reason_counts": {
+      "analysis": 7,
+      "answer": 8
+    },
+    "second_agent_routing_records": 0,
+    "selected_models": {
+      "analysis": "model:deep",
+      "answer": "model:fast"
+    }
+  },
+  "schema_version": 1,
+  "version": "0.0.41"
+}

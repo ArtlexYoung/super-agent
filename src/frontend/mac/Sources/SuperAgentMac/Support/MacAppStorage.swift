@@ -4,16 +4,12 @@ struct StoredMacAppState: Codable {
     var selectedConversationID: String?
     var config: AgentTomlConfig
     var configFilePath: String?
-    var modelProfiles: [ModelProfile]
-    var selectedModelProfileID: UUID?
 }
 
 private struct StoredMacConfig: Codable {
     var selectedConversationID: String?
     var config: AgentTomlConfig
     var configFilePath: String?
-    var modelProfiles: [ModelProfile]
-    var selectedModelProfileID: UUID?
 }
 
 enum MacAppStorage {
@@ -26,9 +22,7 @@ enum MacAppStorage {
         return StoredMacAppState(
             selectedConversationID: stored.selectedConversationID,
             config: stored.config,
-            configFilePath: stored.configFilePath,
-            modelProfiles: stored.modelProfiles,
-            selectedModelProfileID: stored.selectedModelProfileID
+            configFilePath: stored.configFilePath
         )
     }
 
@@ -41,9 +35,7 @@ enum MacAppStorage {
         let storedConfig = StoredMacConfig(
             selectedConversationID: state.selectedConversationID,
             config: state.config,
-            configFilePath: state.configFilePath,
-            modelProfiles: state.modelProfiles,
-            selectedModelProfileID: state.selectedModelProfileID
+            configFilePath: state.configFilePath
         )
         let data = try JSONEncoder.storageEncoder.encode(storedConfig)
         try data.write(to: configURL(), options: .atomic)
@@ -68,6 +60,15 @@ enum MacAppStorage {
 
     private static func configURL() throws -> URL {
         try baseURL().appendingPathComponent("config.json")
+    }
+
+    static func defaultProjectDirectoryURL() throws -> URL {
+        let directory = try baseURL().appendingPathComponent("Project", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true
+        )
+        return directory
     }
 
 }

@@ -22,54 +22,24 @@ private struct SkillIndexEntry: Decodable {
 enum SkillIndexClient {
     static func readSkillChoices(configText: String) async throws -> [SkillManifestChoice] {
         try await Task.detached(priority: .userInitiated) {
-            try readSkillChoicesFromProcess(configText: configText)
+            let data = try AgentRuntimeClient.runRuntimeCommand(
+                configText: configText,
+                arguments: ["skills", "index", "--output", "json"]
+            )
+            let document = try AgentRuntimeClient.decodeRuntimeJSON(
+                SkillIndexDocument.self,
+                from: data
+            )
+            return makeSkillChoices(from: document.skills)
         }.value
     }
 
-    private static func readSkillChoicesFromProcess(configText: String) throws -> [SkillManifestChoice] {
-        let temporaryDirectory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("super-agent-index-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: temporaryDirectory, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
-
-        let configURL = temporaryDirectory.appendingPathComponent("agent.toml")
-        try configText.write(to: configURL, atomically: true, encoding: .utf8)
-
-        let process = Process()
-        let standardOutput = Pipe()
-        let standardError = Pipe()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = [
-            runtimeCommand(),
-            "skills",
-            "index",
-            "--config", configURL.path,
-            "--output", "json",
-        ]
-        process.standardOutput = standardOutput
-        process.standardError = standardError
-
-        do {
-            try process.run()
-        } catch {
-            throw AgentRuntimeClientError.commandFailed(error.localizedDescription)
-        }
-        let outputData = standardOutput.fileHandleForReading.readDataToEndOfFile()
-        let errorData = standardError.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-
-        guard process.terminationStatus == 0 else {
-            let text = String(data: errorData, encoding: .utf8) ?? ""
-            throw AgentRuntimeClientError.commandFailed(
-                text.trimmingCharacters(in: .whitespacesAndNewlines)
-            )
-        }
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-        let document = try decoder.decode(SkillIndexDocument.self, from: outputData)
+    private static func makeSkillChoices(
+        from entries: [SkillIndexEntry]
+    ) -> [SkillManifestChoice] {
         var choices: [SkillManifestChoice] = []
-        choices.reserveCapacity(document.skills.count)
-        for entry in document.skills {
+        choices.reserveCapacity(entries.count)
+        for entry in entries {
             let choice = SkillManifestChoice(
                 key: entry.key,
                 name: entry.name,
@@ -87,14 +57,5 @@ enum SkillIndexClient {
             choices.append(choice)
         }
         return choices
-    }
-
-    private static func runtimeCommand() -> String {
-        let configured = ProcessInfo.processInfo.environment["SUPER_AGENT_COMMAND"]?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        if let configured, !configured.isEmpty {
-            return configured
-        }
-        return "super-agent"
     }
 }

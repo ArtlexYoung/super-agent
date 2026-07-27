@@ -27,6 +27,7 @@ from runtime.evolution.schedule_state import (
 from runtime.evolution.scheduler import AutonomousEvolutionScheduler
 from runtime.evolution.evidence import summarize_evaluation_evidence
 from runtime.evolution.service import AutomaticEvolutionService
+from runtime.insights import explain_run_with_insight
 from runtime.store import create_local_runtime_store
 from skill.evaluation import create_indexed_skill_evaluation_target
 from support import write_workflow_skill
@@ -188,8 +189,15 @@ class AutonomousEvolutionSchedulerTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "promoted regression"):
                 agent.run("echo this again")
 
+            store = agent.runtime.create_store()
+            regression_run = store.list_runs(1)[0]
             monitored = agent.list_evolution_schedules()[0]
+            regression_insight = explain_run_with_insight(store, regression_run.run_id)
             self.assertEqual("rolled_back", monitored.decision)
+            self.assertEqual(
+                ["rolled_back"],
+                [item["decision"] for item in regression_insight["evolution"]],
+            )
             self.assertEqual(
                 "Use echo instructions.\n",
                 (root / "skills" / "prompt" / "echo" / "SKILL.md").read_text(

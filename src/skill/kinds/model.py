@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import Mapping
 
 from provider.chat import (
@@ -63,6 +63,7 @@ class ModelProfile:
     agent_created: bool = False
     agent_can_update: bool = False
     agent_can_update_connection: bool = False
+    triggers: list[str] = field(default_factory=list)
 
     @property
     def key(self) -> str:
@@ -123,6 +124,7 @@ def create_model_profile_from_skill_disclosure(
             "agent_can_update_connection",
             False,
         ),
+        triggers=list(manifest.triggers),
     )
 
 
@@ -244,6 +246,7 @@ def model_profile_to_dict(
         "supports": list(routing.supports),
         "purposes": list(routing.purposes),
         "strengths": list(routing.strengths),
+        "triggers": list(profile.triggers),
         "default": profile.default,
         "quality_score": routing.quality_score,
         "expected_latency_ms": routing.expected_latency_ms,

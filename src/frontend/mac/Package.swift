@@ -11,6 +11,9 @@ let package = Package(
         .executable(name: "SuperAgentMac", targets: ["SuperAgentMac"])
     ],
     targets: [
-        .executableTarget(name: "SuperAgentMac")
+        .executableTarget(
+            name: "SuperAgentMac",
+            linkerSettings: [.linkedFramework("Security")]
+        )
     ]
 )

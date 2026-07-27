@@ -352,6 +352,13 @@ private struct AgentRunDetailView: View {
             RunTextBlockView(title: "输入", text: node.prompt, isResponse: false)
             RunTextBlockView(title: "输出", text: node.response, isResponse: true)
 
+            if chatStore.isLoadingRunInsight {
+                ProgressView("正在读取运行洞察…")
+                    .controlSize(.small)
+            } else if let insight = chatStore.selectedRunInsight {
+                RunInsightView(insight: insight)
+            }
+
             if !node.children.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("子 agent")
@@ -429,7 +436,7 @@ private struct ChatHeaderView: View {
             .font(.title3.weight(.semibold))
             .textFieldStyle(.plain)
 
-            Text("模型：\(chatStore.config.modelSummary)")
+            Text("模型：\(chatStore.selectedModelSummary)")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 

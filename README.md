@@ -94,6 +94,8 @@ default = true
 
 Model Skills use the same central index, validation, evidence, candidate, promotion, and rollback path as every other Skill. See [Configuration](docs/configuration.md).
 
+The macOS app provides a Chinese visual editor for this model Skill format. It writes model metadata to the project Skill directory and stores actual API keys only in macOS Keychain.
+
 ## Create a Project
 
 Only initialize a project when you want editable configuration or Skills:
@@ -172,11 +174,22 @@ super-agent runs feedback --run-id <run-id> --score 0.25 --reason "Missed the co
 
 Within a stored conversation, deterministic correction and repeated-request signals also lower the previous task's quality. Explicit feedback always overrides an implicit signal and no model call is needed to classify either one.
 
+Inspect the same central evidence from the CLI or the task tree in the macOS app:
+
+```bash
+super-agent runs explain --config agent.toml --run-id <run-id>
+super-agent runs explain --config agent.toml --run-id <run-id> --output json
+```
+
+The projection includes scheduler reasons, every model attempt, latency, estimated tokens and cost, learned routing evidence, relevant Skill freshness, and automatic evolution decisions. A child Agent `run_id` can be inspected through the parent project because the lookup remains restricted to the same user and storage backend.
+
 `CapabilityRegistry` contains only executable Skill handlers. Replace one explicitly with `agent.add_skill_executor(...)`. A handler that must be installed or evolved is a standard `capability` Skill, so it uses the same disclosure, evaluation, promotion, and rollback path as every other Skill. Runtime lifecycle mechanisms are intentionally not replaceable parallel controllers.
 
 ## Reproducible Proof
 
-The [v0.0.34 experiment](docs/experiments/v0.0.34.md) and its [generated JSON report](docs/experiments/v0.0.34.json) compare no-Skill, eager, and progressive context and exercise the complete lifecycle plus storage isolation. The proof orchestration was removed from the shipped Runtime after publication, keeping benchmark code out of the user-facing core.
+The [v0.0.41 task and evolution proof](docs/experiments/v0.0.41.md) and its [generated JSON report](docs/experiments/v0.0.41.json) run the normal task path with two model Skills. They verify purpose-based model scheduling, user and Agent evidence isolation, complete run insight, automatic candidate promotion from failed task evidence, and rollback after a promoted regression. The proof is deterministic, local, dependency-free, and requires no API key.
+
+The earlier [v0.0.34 lifecycle experiment](docs/experiments/v0.0.34.md) compares no-Skill, eager, and progressive context and checks storage isolation. Benchmark orchestration remains outside the shipped Runtime so proof code does not become a second execution framework.
 
 ## Self-Evolution
 
@@ -311,6 +324,7 @@ The runtime lock is stored as a run event. It captures the selected model profil
 - [Skills and Progressive Disclosure](docs/skills.md)
 - [Runtime, Workflows, Tracing, and Multi-Agent](docs/runtime.md)
 - [Evaluation, Freshness, Memory, and Evolution](docs/evolution.md)
+- [Reproducible v0.0.41 Task and Evolution Proof](docs/experiments/v0.0.41.md)
 - [Reproducible v0.0.34 Experiment](docs/experiments/v0.0.34.md)
 - [CLI Reference](docs/cli.md)
 - [Configuration](docs/configuration.md)

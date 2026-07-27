@@ -2,19 +2,18 @@
 
 The SwiftUI app in `src/frontend/mac` is a desktop client for the same Python runtime.
 
-The Python runtime now uses model Skills. The current desktop model editor still writes the removed `[model]` table and is intentionally pending migration in `v0.0.41`; use environment discovery or edit model Skills directly until that release.
-
 ## Features
 
 - Runtime-backed conversation list and multi-turn history.
 - Visual Chinese TOML configuration.
-- Editable model list with provider, model, URL, and key-variable settings.
+- Editable model Skill list with connection, purpose, capability, quality, latency, cost, and evolution settings.
 - Skill, MCP, memory, and workflow selection.
 - Skill freshness display.
 - Main Agent and subagent execution tree.
+- Per-run scheduler reasons, model calls, routing evidence, Skill freshness, and automatic evolution decisions.
 - Conversation output from the runtime JSONL protocol.
 
-The app reads the central Skill index and conversations through the CLI. It does not maintain a second Skill manifest parser or conversation store.
+The app reads the central Skill index, model Skills, run insight, and conversations through the CLI. It does not maintain a second Skill parser, evidence calculator, or conversation store.
 
 ## Run During Development
 
@@ -45,7 +44,18 @@ It loads Skill state using:
 super-agent skills index --config agent.toml --output json
 ```
 
-It manages conversations using `super-agent conversations` and sends `user_id` plus `conversation_id` in every run request. The selected Runtime storage backend is the only conversation source of truth. The app stores only UI selection, TOML settings, and model profiles in Application Support. Assistant message records include the complete `run_result`, allowing the UI to rebuild the main Agent and subagent execution tree after restart.
+It manages model Skills and run insight using:
+
+```bash
+super-agent models list --config agent.toml --output json
+super-agent models save --config agent.toml --request-stdin --output json
+super-agent models remove --config agent.toml --name <name> --output json
+super-agent runs explain --config agent.toml --run-id <run-id> --output json
+```
+
+The model editor writes standard `model` Skills under the first configured Skill root. It stores actual API keys in macOS Keychain and passes them to Runtime only through the configured environment-variable names. Secrets never enter `agent.toml`, `skill.toml`, Application Support `config.json`, run events, or runtime locks.
+
+The app manages conversations using `super-agent conversations` and sends `user_id` plus `conversation_id` in every run request. The selected Runtime storage backend is the only conversation source of truth. Application Support stores only UI selection, visual Agent TOML settings, and the bound configuration path. When no file is bound, relative Skill and storage paths resolve under the app's Application Support project directory. Assistant records contain `run_result`, allowing the UI to rebuild the main Agent and subagent tree after restart.
 
 ## Package a Local Release
 

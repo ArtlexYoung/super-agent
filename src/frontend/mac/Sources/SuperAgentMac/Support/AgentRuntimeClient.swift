@@ -90,7 +90,7 @@ enum AgentRuntimeClient {
                 userID: userID,
                 conversationID: conversationID
             )
-            let data = try runProcess(
+            let data = try runRuntimeCommand(
                 configText: configText,
                 arguments: ["run", "--request-stdin", "--output", "jsonl"],
                 input: try JSONEncoder().encode(request)
@@ -104,11 +104,81 @@ enum AgentRuntimeClient {
         userID: String
     ) async throws -> [RuntimeConversation] {
         try await Task.detached(priority: .userInitiated) {
-            let data = try runProcess(
+            let data = try runRuntimeCommand(
                 configText: configText,
                 arguments: ["conversations", "list", "--user-id", userID]
             )
-            return try decodeJSON(RuntimeConversationList.self, from: data).conversations
+            return try decodeRuntimeJSON(RuntimeConversationList.self, from: data).conversations
+        }.value
+    }
+
+    static func readRunInsight(
+        configText: String,
+        userID: String,
+        runID: String
+    ) async throws -> RuntimeRunInsight {
+        try await Task.detached(priority: .userInitiated) {
+            let data = try runRuntimeCommand(
+                configText: configText,
+                arguments: [
+                    "runs", "explain",
+                    "--user-id", userID,
+                    "--run-id", runID,
+                    "--output", "json",
+                ]
+            )
+            return try decodeRuntimeJSON(RuntimeRunInsight.self, from: data)
+        }.value
+    }
+
+    static func listModelSkills(
+        configText: String
+    ) async throws -> [RuntimeModelSkillProfile] {
+        try await Task.detached(priority: .userInitiated) {
+            let data = try runRuntimeCommand(
+                configText: configText,
+                arguments: ["models", "list", "--output", "json"]
+            )
+            return try decodeRuntimeJSON(RuntimeModelSkillList.self, from: data).models
+        }.value
+    }
+
+    static func saveModelSkill(
+        configText: String,
+        userID: String,
+        request: ModelSkillSaveRequest
+    ) async throws -> RuntimeModelSkillProfile {
+        try await Task.detached(priority: .userInitiated) {
+            let encoder = JSONEncoder()
+            let data = try runRuntimeCommand(
+                configText: configText,
+                arguments: [
+                    "models", "save",
+                    "--user-id", userID,
+                    "--request-stdin",
+                    "--output", "json",
+                ],
+                input: try encoder.encode(request)
+            )
+            return try decodeRuntimeJSON(RuntimeModelSkillChange.self, from: data).model
+        }.value
+    }
+
+    static func removeModelSkill(
+        configText: String,
+        userID: String,
+        name: String
+    ) async throws {
+        try await Task.detached(priority: .userInitiated) {
+            _ = try runRuntimeCommand(
+                configText: configText,
+                arguments: [
+                    "models", "remove",
+                    "--user-id", userID,
+                    "--name", name,
+                    "--output", "json",
+                ]
+            )
         }.value
     }
 
@@ -180,7 +250,7 @@ enum AgentRuntimeClient {
         conversationID: String
     ) async throws {
         try await Task.detached(priority: .userInitiated) {
-            _ = try runProcess(
+            _ = try runRuntimeCommand(
                 configText: configText,
                 arguments: [
                     "conversations", "delete",
@@ -196,16 +266,17 @@ enum AgentRuntimeClient {
         arguments: [String]
     ) async throws -> RuntimeConversation {
         try await Task.detached(priority: .userInitiated) {
-            let data = try runProcess(configText: configText, arguments: arguments)
-            return try decodeJSON(RuntimeConversation.self, from: data)
+            let data = try runRuntimeCommand(configText: configText, arguments: arguments)
+            return try decodeRuntimeJSON(RuntimeConversation.self, from: data)
         }.value
     }
 
-    private static func runProcess(
+    static func runRuntimeCommand(
         configText: String,
         arguments: [String],
         input: Data = Data()
     ) throws -> Data {
+        // One process boundary owns temporary config resolution and secret injection.
         processLock.lock()
         defer { processLock.unlock() }
         let temporaryDirectory = FileManager.default.temporaryDirectory
@@ -225,6 +296,10 @@ enum AgentRuntimeClient {
         let standardError = Pipe()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = [runtimeCommand()] + arguments + ["--config", configURL.path]
+        process.environment = ProcessInfo.processInfo.environment.merging(
+            ModelCredentialStore.processEnvironment(),
+            uniquingKeysWith: { _, stored in stored }
+        )
         process.standardInput = standardInput
         process.standardOutput = standardOutput
         process.standardError = standardError
@@ -254,7 +329,7 @@ enum AgentRuntimeClient {
             throw AgentRuntimeClientError.invalidOutput("输出不是 UTF-8")
         }
         for line in text.split(whereSeparator: { $0.isNewline }).reversed() {
-            let output = try decodeJSON(AgentRuntimeOutputLine.self, from: Data(line.utf8))
+            let output = try decodeRuntimeJSON(AgentRuntimeOutputLine.self, from: Data(line.utf8))
             if output.type == "result", let result = output.result {
                 return result
             }
@@ -262,7 +337,7 @@ enum AgentRuntimeClient {
         throw AgentRuntimeClientError.invalidOutput("缺少 result 记录")
     }
 
-    private static func decodeJSON<Value: Decodable>(
+    static func decodeRuntimeJSON<Value: Decodable>(
         _ type: Value.Type,
         from data: Data
     ) throws -> Value {

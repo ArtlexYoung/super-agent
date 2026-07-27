@@ -8,8 +8,9 @@ from pathlib import Path
 from agents.agent import Agent
 from runtime.config import AgentConfig
 from runtime.identity import LOCAL_USER_ID
+from runtime.insights import explain_run_with_insight
 from runtime.models import RunSnapshot
-from runtime.storage import create_storage_backend
+from runtime.storage import StorageEventQuery, create_storage_backend
 from runtime.store import RuntimeStore
 
 
@@ -107,7 +108,8 @@ def _explain_run(args: argparse.Namespace) -> int:
     if run_id is None:
         print("No run snapshots yet.")
         return 1
-    explanation = store.explain_run(run_id)
+    store = _find_run_store(store, run_id)
+    explanation = explain_run_with_insight(store, run_id)
     if args.output == "json":
         print(json.dumps(explanation, ensure_ascii=False, indent=2, sort_keys=True))
         return 0
@@ -167,9 +169,34 @@ def _load_run_snapshot_store(config_path: str | None, user_id: str) -> RuntimeSt
 
 def _resolve_run_id(store: RuntimeStore, requested: str | None) -> str | None:
     if requested:
-        return store.read_run(requested).run_id
+        return requested.strip()
     snapshots = store.list_runs(1)
     return snapshots[0].run_id if snapshots else None
+
+
+def _find_run_store(store: RuntimeStore, run_id: str) -> RuntimeStore:
+    try:
+        store.read_run(run_id)
+        return store
+    except KeyError:
+        events = store.backend.read_events(
+            StorageEventQuery(
+                user_id=store.user_id,
+                stream_type="run",
+                stream_id=run_id,
+            )
+        )
+        if not events:
+            raise KeyError(f"run not found: {run_id}") from None
+        agent_names = {event.agent_name for event in events}
+        if len(agent_names) != 1:
+            raise ValueError(f"run belongs to multiple Agents: {run_id}")
+        return RuntimeStore(
+            store.backend,
+            store.local_root,
+            store.user_id,
+            agent_names.pop(),
+        )
 
 
 def _run_status_line(snapshot: RunSnapshot) -> str:
@@ -214,6 +241,86 @@ def _print_run_explanation(explanation: dict[str, object]) -> None:
                 f"disclosure\t{data.get('skill_key', '')}\t{data.get('stage', '')}"
                 f"\tcache_hit={str(data.get('cache_hit', False)).lower()}"
             )
+    _print_schedule_insight(explanation.get("schedule"))
+    _print_model_call_insight(explanation.get("model_calls"))
+    _print_routing_insight(explanation.get("routing_evidence"))
+    _print_freshness_insight(explanation.get("skill_freshness"))
+    _print_evolution_insight(explanation.get("evolution"))
+
+
+def _print_schedule_insight(value: object) -> None:
+    if not isinstance(value, dict):
+        return
+    print(
+        f"schedule\tpurpose={value.get('purpose', '')}"
+        f"\tworkflow={value.get('workflow', '')}"
+        f"\tfeatures={','.join(_string_items(value.get('required_features')))}"
+    )
+    for model in _object_items(value.get("models")):
+        print(
+            f"scheduled-model\t{model.get('key', '')}"
+            f"\tscore={model.get('score', '')}"
+            f"\treasons={'; '.join(_string_items(model.get('reasons')))}"
+        )
+
+
+def _print_model_call_insight(value: object) -> None:
+    for call in _object_items(value):
+        print(
+            f"model-call\t{call.get('call_id', '')}"
+            f"\tprofile={call.get('profile', '')}"
+            f"\tstatus={call.get('status', '')}"
+            f"\tlatency_ms={call.get('latency_ms', '')}"
+            f"\tinput_tokens={call.get('input_tokens', '')}"
+            f"\toutput_tokens={call.get('output_tokens', '')}"
+            f"\testimated_cost={call.get('estimated_cost', '')}"
+        )
+
+
+def _print_routing_insight(value: object) -> None:
+    for evidence in _object_items(value):
+        print(
+            f"routing\t{evidence.get('profile_key', '')}"
+            f"\tpurpose={evidence.get('purpose', '')}"
+            f"\tcalls={evidence.get('call_count', '')}"
+            f"\treliability={evidence.get('reliability', '')}"
+            f"\tquality={evidence.get('average_quality', '')}"
+        )
+
+
+def _print_freshness_insight(value: object) -> None:
+    for skill in _object_items(value):
+        print(
+            f"freshness\t{skill.get('skill', '')}"
+            f"\tvalue={skill.get('freshness', '')}"
+            f"\tcalls={skill.get('call_count', '')}"
+            f"\tsuccess={skill.get('success_count', '')}"
+            f"\treplacements={skill.get('same_function_successful_followups', '')}"
+        )
+
+
+def _print_evolution_insight(value: object) -> None:
+    for schedule in _object_items(value):
+        target = schedule.get("target", {})
+        target_key = target.get("key", "") if isinstance(target, dict) else ""
+        print(
+            f"evolution\t{target_key}"
+            f"\tdecision={schedule.get('decision', '')}"
+            f"\tscore={schedule.get('evaluation_score', '')}"
+            f"\treasons={'; '.join(_string_items(schedule.get('reasons')))}"
+        )
+
+
+def _object_items(value: object) -> list[dict[str, object]]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, dict)]
+
+
+def _string_items(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in value]
 
 
 def _required_object(data: dict[str, object], name: str) -> dict[str, object]:

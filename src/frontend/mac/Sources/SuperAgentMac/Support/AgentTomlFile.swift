@@ -3,6 +3,8 @@ import Foundation
 enum AgentTomlFileError: LocalizedError {
     case invalidLine(Int, String)
     case invalidValue(String)
+    case unsupportedSection(String)
+    case unsupportedField(String, String)
 
     var errorDescription: String? {
         switch self {
@@ -10,6 +12,10 @@ enum AgentTomlFileError: LocalizedError {
             return "TOML 第 \(lineNumber) 行无法解析：\(line)"
         case let .invalidValue(value):
             return "TOML 值无法解析：\(value)"
+        case let .unsupportedSection(section):
+            return "不支持 TOML 配置表：[\(section)]"
+        case let .unsupportedField(section, field):
+            return "不支持 [\(section)] 配置项：\(field)"
         }
     }
 }
@@ -26,9 +32,9 @@ enum AgentTomlFile {
 
     static func parse(_ text: String) throws -> AgentTomlConfig {
         let sections = try makeSectionMap(from: text)
+        try validateSupportedConfiguration(sections)
         let fallback = AgentTomlConfig.defaultConfig
         let agentValues = sections["agent"] ?? [:]
-        let modelValues = sections["model"] ?? [:]
         let pathValues = sections["paths"] ?? [:]
         let storageValues = sections["storage"] ?? [:]
 
@@ -42,12 +48,6 @@ enum AgentTomlFile {
                 useFeatures: try readStringArray(agentValues["use_features"]) ?? fallback.agent.useFeatures,
                 disableNames: try readStringArray(agentValues["disable_names"]) ?? fallback.agent.disableNames,
                 maxAgentChainDepth: try readOptionalInt(agentValues["max_agent_chain_depth"])
-            ),
-            model: AgentTomlModelSection(
-                provider: try readString(modelValues["provider"]) ?? fallback.model.provider,
-                model: try readString(modelValues["model"]) ?? fallback.model.model,
-                baseURL: try readString(modelValues["base_url"]) ?? fallback.model.baseURL,
-                apiKeyEnv: try readString(modelValues["api_key_env"]) ?? fallback.model.apiKeyEnv
             ),
             paths: AgentTomlPathsSection(
                 skills: try readStringArray(pathValues["skills"]) ?? fallback.paths.skills
@@ -72,16 +72,6 @@ enum AgentTomlFile {
         lines.append("disable_names = \(quoteArray(config.agent.disableNames))")
         if let maxDepth = config.agent.maxAgentChainDepth {
             lines.append("max_agent_chain_depth = \(maxDepth)")
-        }
-        lines.append("")
-        lines.append("[model]")
-        lines.append("provider = \(quote(config.model.provider))")
-        lines.append("model = \(quote(config.model.model))")
-        if !config.model.baseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            lines.append("base_url = \(quote(config.model.baseURL))")
-        }
-        if !config.model.apiKeyEnv.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            lines.append("api_key_env = \(quote(config.model.apiKeyEnv))")
         }
         lines.append("")
         lines.append("[paths]")
@@ -119,6 +109,27 @@ enum AgentTomlFile {
             sections[currentSection, default: [:]][String(key)] = String(value)
         }
         return sections
+    }
+
+    private static func validateSupportedConfiguration(
+        _ sections: [String: [String: String]]
+    ) throws {
+        let supportedFields = [
+            "agent": Set([
+                "name", "system", "workflow", "memory", "skills",
+                "use_features", "disable_names", "max_agent_chain_depth",
+            ]),
+            "paths": Set(["skills"]),
+            "storage": Set(["backend", "path", "url_env"]),
+        ]
+        for (section, values) in sections {
+            guard let fields = supportedFields[section] else {
+                throw AgentTomlFileError.unsupportedSection(section)
+            }
+            if let field = values.keys.sorted().first(where: { !fields.contains($0) }) {
+                throw AgentTomlFileError.unsupportedField(section, field)
+            }
+        }
     }
 
     private static func readString(_ rawValue: String?) throws -> String? {

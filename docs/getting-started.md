@@ -49,7 +49,7 @@ super-agent run "Explain this repository"
 
 The CLI reports environment-variable names but never prints secret values.
 
-For a persistent, described model profile, add `skills/model/<name>/skill.toml` using the example in [Configuration](configuration.md). Model Skills take priority over ephemeral environment profiles.
+For a persistent, described model profile, add `skills/model/<name>/skill.toml` using the example in [Configuration](configuration.md). Model Skills take priority over ephemeral environment profiles. The macOS app can create and edit these Skills visually while keeping real API keys in Keychain.
 
 ## Optional SQLite Storage
 
@@ -154,6 +154,8 @@ super-agent skills freshness --config my-agent/agent.toml
 super-agent evolution list --config my-agent/agent.toml
 ```
 
-The archived [v0.0.34 experiment](experiments/v0.0.34.md) records the complete Skill-first lifecycle proof without keeping benchmark orchestration in the installed Runtime.
+`runs explain` now includes the task schedule, model attempts, token and cost estimates, routing evidence, relevant Skill freshness, and automatic evolution state. Use `--output json` for integrations.
+
+The reproducible [v0.0.41 task and evolution proof](experiments/v0.0.41.md) verifies multi-model scheduling, user and Agent isolation, automatic promotion, and regression rollback through the normal Runtime path. The archived [v0.0.34 experiment](experiments/v0.0.34.md) covers progressive context and storage backends.
 
 Continue with [Skills](skills.md), [Architecture](architecture.md), or the [CLI reference](cli.md).
