@@ -79,7 +79,6 @@ def list_model_routing_stats(
         StorageEventQuery(
             user_id=store.user_id,
             agent_name=store.agent_name,
-            stream_type="run",
         )
     )
     implicit_feedback: dict[str, float] = {}

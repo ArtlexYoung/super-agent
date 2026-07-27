@@ -3,11 +3,11 @@ from __future__ import annotations
 import json
 import os
 import shutil
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 from uuid import uuid4
 
-from provider.chat import ChatProvider
 from runtime.config import AgentConfig
 from runtime.evolution import (
     EvolutionCandidateProposal,
@@ -15,6 +15,7 @@ from runtime.evolution import (
     EvolutionTarget,
 )
 from runtime.store import RuntimeStore
+from runtime.model_router import TextModel
 from skill.evolution.candidate import (
     SkillCandidate,
     SkillCandidateRequest,
@@ -44,7 +45,12 @@ from skill.evolution.artifacts import (
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.manifest import SkillManifest, calculate_skill_directory_sha256
 from skill.validation import validate_skill_directory, validate_skill_replacement
-from skill.kinds.model import ModelProfile
+
+
+@dataclass(frozen=True)
+class EvolutionModels:
+    candidate: TextModel
+    evaluation: TextModel
 
 
 class SkillEvolutionManager:
@@ -54,8 +60,7 @@ class SkillEvolutionManager:
         config: AgentConfig,
         skill_disclosure: ProgressiveDisclosureCore,
         store: RuntimeStore,
-        model_profile: ModelProfile,
-        provider: ChatProvider,
+        models: EvolutionModels,
         minimum_score: float = 0.8,
         on_skill_changed: Callable[[SkillManifest], None] | None = None,
     ) -> None:
@@ -72,8 +77,7 @@ class SkillEvolutionManager:
         self.evolution_root = store.private_root / "evolution"
         self.store = store
         self.lifecycle = EvolutionLifecycle(store)
-        self.model_profile = model_profile
-        self.provider = provider
+        self.models = models
         self.minimum_score = minimum_score
         self.on_skill_changed = on_skill_changed
 
@@ -88,8 +92,7 @@ class SkillEvolutionManager:
             SkillCandidateRequest(
                 skill_disclosure=self.skill_disclosure,
                 candidate_root=self.evolution_root / "candidates",
-                provider=self.provider,
-                model=self.model_profile.model,
+                text_model=self.models.candidate,
                 name=name,
                 goal=goal,
                 capability=capability,
@@ -136,13 +139,12 @@ class SkillEvolutionManager:
         report = evaluate_candidate(
             SkillCandidateEvaluationRequest(
                 candidate=candidate,
-                model=self.model_profile.model,
+                text_model=self.models.evaluation,
                 cases=cases,
                 minimum_score=self.minimum_score,
                 report_path=report_path,
                 store=self.store,
             ),
-            self.provider,
         )
         write_json_exclusive(report_path, skill_evaluation_report_to_dict(report))
         self.lifecycle.record_candidate_evaluated(

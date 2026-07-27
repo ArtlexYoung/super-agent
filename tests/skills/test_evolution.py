@@ -116,13 +116,13 @@ class SkillEvolutionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_prompt_skill(root, "writer", "Original instructions.")
-            manager = _make_manager(
-                root,
+            provider = SequenceProvider(
                 [
                     _file_changes({"SKILL.md": "Candidate instructions.\n"}),
                     "required output",
-                ],
+                ]
             )
+            manager = _make_agent(root, provider).create_skill_evolution_manager()
             candidate = manager.create_skill_candidate("writer", "improve output")
             report = manager.evaluate_skill_candidate(
                 candidate.candidate_id,
@@ -139,8 +139,8 @@ class SkillEvolutionTests(unittest.TestCase):
             promoted = manager.promote_skill_candidate(candidate.candidate_id)
 
             self.assertTrue(report.passed)
-            self.assertIn("Evaluation requirement", manager.provider.last_messages[0]["content"])
-            self.assertIn("FILE SKILL.md", manager.provider.last_messages[0]["content"])
+            self.assertIn("Evaluation requirement", provider.last_messages[0]["content"])
+            self.assertIn("FILE SKILL.md", provider.last_messages[0]["content"])
             self.assertEqual("writer", promoted.name)
             self.assertEqual("0.1.1", promoted.version)
             self.assertEqual(

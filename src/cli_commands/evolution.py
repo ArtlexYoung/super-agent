@@ -1,4 +1,4 @@
-"""Inspect and act on Runtime-generated evolution recommendations."""
+"""Inspect Runtime-owned automatic Skill evolution."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import argparse
 import json
 
 from agents.agent import Agent
-from runtime.evolution.scheduler import (
+from runtime.evolution.schedule_state import (
     EvolutionScheduleState,
     evolution_schedule_to_dict,
 )
@@ -16,7 +16,11 @@ from runtime.identity import LOCAL_USER_ID
 EVOLUTION_DECISIONS = (
     "candidate_recommended",
     "candidate_created",
-    "dismissed",
+    "promoted",
+    "rejected",
+    "failed",
+    "stable",
+    "rolled_back",
 )
 
 
@@ -31,21 +35,6 @@ def configure_evolution_parser(parser: argparse.ArgumentParser) -> None:
     show_parser = subparsers.add_parser("show", help="show one evolution recommendation")
     _add_schedule_arguments(show_parser)
     _add_output_argument(show_parser)
-
-    create_parser = subparsers.add_parser(
-        "create-candidate",
-        help="create a Skill or Capability candidate from a recommendation",
-    )
-    _add_schedule_arguments(create_parser)
-    _add_output_argument(create_parser)
-
-    dismiss_parser = subparsers.add_parser(
-        "dismiss",
-        help="dismiss an evolution recommendation",
-    )
-    _add_schedule_arguments(dismiss_parser)
-    dismiss_parser.add_argument("--reason", required=True)
-    _add_output_argument(dismiss_parser)
 
 
 def run_evolution_command(args: argparse.Namespace) -> int:
@@ -62,17 +51,6 @@ def run_evolution_command(args: argparse.Namespace) -> int:
         return 0
     if command == "show":
         schedule = agent.read_evolution_schedule(args.schedule_id, user_id=user_id)
-    elif command == "create-candidate":
-        schedule = agent.create_evolution_candidate_from_schedule(
-            args.schedule_id,
-            user_id=user_id,
-        )
-    elif command == "dismiss":
-        schedule = agent.dismiss_evolution_schedule(
-            args.schedule_id,
-            args.reason,
-            user_id=user_id,
-        )
     else:
         raise ValueError(f"unknown evolution command: {command}")
     _print_schedule(schedule, output)
@@ -87,7 +65,7 @@ def _print_schedule_list(
         print(
             json.dumps(
                 {
-                    "schema_version": 1,
+                    "schema_version": 2,
                     "schedules": [
                         evolution_schedule_to_dict(schedule)
                         for schedule in schedules

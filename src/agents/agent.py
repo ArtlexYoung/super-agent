@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING, Callable, cast
 
-from agents.evolution import create_evolution_candidate_from_schedule
 from capability.defaults import (
     create_default_capability_registry,
     create_progressive_skill_disclosure,
@@ -12,11 +11,9 @@ from capability.skill_loader import load_capability_skill
 from provider.chat import ChatProvider, Message
 from provider.pool import ProviderPool
 from runtime.config import AgentConfig
-from runtime.engine import AgentRuntime
-from runtime.evolution.scheduler import (
-    AutonomousEvolutionScheduler,
-    EvolutionScheduleState,
-)
+from runtime.engine import AgentRuntime, RuntimeResources
+from runtime.evolution.schedule_state import EvolutionScheduleState
+from runtime.evolution.service import AutomaticEvolutionService
 from runtime.identity import LOCAL_USER_ID
 from runtime.models import Conversation, RunEvent
 from runtime.routing import ModelRoutingStats
@@ -87,9 +84,12 @@ class Agent:
         self.runtime = AgentRuntime(
             self.config,
             self.model_profiles,
-            self.provider_pool,
-            self.capability_registry,
-            self.storage,
+            RuntimeResources(
+                provider_pool=self.provider_pool,
+                capability_registry=self.capability_registry,
+                storage=self.storage,
+                skill_change_listener=self._activate_changed_skill,
+            ),
         )
         self._subagents: list[SubAgent] = []
 
@@ -188,7 +188,7 @@ class Agent:
         *,
         decision: str | None = None,
     ) -> list[EvolutionScheduleState]:
-        return self._create_evolution_scheduler(user_id).list_evolution_schedules(
+        return self._create_evolution_service(user_id).list_evolution_schedules(
             decision
         )
 
@@ -198,34 +198,8 @@ class Agent:
         *,
         user_id: str = LOCAL_USER_ID,
     ) -> EvolutionScheduleState:
-        return self._create_evolution_scheduler(user_id).read_evolution_schedule(
+        return self._create_evolution_service(user_id).read_evolution_schedule(
             schedule_id
-        )
-
-    def create_evolution_candidate_from_schedule(
-        self,
-        schedule_id: str,
-        *,
-        user_id: str = LOCAL_USER_ID,
-    ) -> EvolutionScheduleState:
-        scheduler = self._create_evolution_scheduler(user_id)
-        return create_evolution_candidate_from_schedule(
-            self,
-            scheduler,
-            schedule_id,
-            user_id=user_id,
-        )
-
-    def dismiss_evolution_schedule(
-        self,
-        schedule_id: str,
-        reason: str,
-        *,
-        user_id: str = LOCAL_USER_ID,
-    ) -> EvolutionScheduleState:
-        return self._create_evolution_scheduler(user_id).dismiss_evolution_schedule(
-            schedule_id,
-            reason,
         )
 
     def create_conversation(
@@ -329,11 +303,12 @@ class Agent:
             event_listener=event_listener,
         )
 
-    def _create_evolution_scheduler(
+    def _create_evolution_service(
         self,
         user_id: str,
-    ) -> AutonomousEvolutionScheduler:
-        return AutonomousEvolutionScheduler(self.runtime.create_store(user_id))
+    ) -> AutomaticEvolutionService:
+        manager = self.create_skill_evolution_manager(user_id)
+        return AutomaticEvolutionService(manager.store, manager)
 
     def _load_capability_skills(
         self,
@@ -406,9 +381,12 @@ class Agent:
         self.runtime = AgentRuntime(
             self.config,
             self.model_profiles,
-            self.provider_pool,
-            self.capability_registry,
-            self.storage,
+            RuntimeResources(
+                provider_pool=self.provider_pool,
+                capability_registry=self.capability_registry,
+                storage=self.storage,
+                skill_change_listener=self._activate_changed_skill,
+            ),
         )
 
     def _make_next_subagent_name(self) -> str:

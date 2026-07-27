@@ -144,7 +144,7 @@ Status: implemented.
 
 ## v0.0.40: Automatic Evolution Loop
 
-Status: planned.
+Status: implemented.
 
 - Generate candidates automatically for eligible Agent-owned Skills.
 - Evaluate, promote, monitor, and roll back through the same task path.

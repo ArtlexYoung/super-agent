@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from capability.registry import CapabilityRegistry
 from provider.chat import ChatProvider
 from runtime.config import AgentConfig
-from runtime.evolution.scheduler import EvolutionScheduleTarget
+from runtime.evolution.schedule_state import EvolutionScheduleTarget
 from runtime.evaluation import (
     EvaluationTarget,
     EvaluationTargetTracker,

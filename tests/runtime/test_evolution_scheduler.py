@@ -20,12 +20,13 @@ from runtime.evaluation import (
     create_evaluation_record,
 )
 from runtime.evolution.files import compare_directory_versions
-from runtime.evolution.scheduler import (
-    AutonomousEvolutionScheduler,
+from runtime.evolution.schedule_state import (
     EvolutionScheduleTarget,
     evolution_schedule_to_dict,
 )
+from runtime.evolution.scheduler import AutonomousEvolutionScheduler
 from runtime.evolution.evidence import summarize_evaluation_evidence
+from runtime.evolution.service import AutomaticEvolutionService
 from runtime.store import create_local_runtime_store
 from skill.evaluation import create_indexed_skill_evaluation_target
 from support import write_workflow_skill
@@ -103,7 +104,7 @@ class AutonomousEvolutionSchedulerTests(unittest.TestCase):
             self.assertNotEqual(first[0].schedule_id, second[0].schedule_id)
             self.assertEqual(2, len(scheduler.list_evolution_schedules()))
 
-    def test_schedules_are_isolated_by_user_and_can_be_dismissed(self) -> None:
+    def test_schedules_are_isolated_by_user(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             target = _target()
@@ -114,15 +115,12 @@ class AutonomousEvolutionSchedulerTests(unittest.TestCase):
             beta = AutonomousEvolutionScheduler(beta_store)
 
             created = alpha.review_evolution_targets([_schedule_target(target)])[0]
-            dismissed = alpha.dismiss_evolution_schedule(created.schedule_id, "not useful")
 
-            self.assertEqual("dismissed", dismissed.decision)
+            self.assertEqual("candidate_recommended", created.decision)
             self.assertEqual([], beta.list_evolution_schedules())
-            with self.assertRaisesRegex(ValueError, "already decided"):
-                alpha.dismiss_evolution_schedule(created.schedule_id, "again")
-            payload = evolution_schedule_to_dict(dismissed)
+            payload = evolution_schedule_to_dict(created)
             self.assertEqual(created.schedule_id, payload["schedule_id"])
-            self.assertEqual("dismissed", payload["decision"])
+            self.assertEqual("candidate_recommended", payload["decision"])
 
     def test_directory_comparison_reports_added_modified_and_deleted_files(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -142,21 +140,62 @@ class AutonomousEvolutionSchedulerTests(unittest.TestCase):
             self.assertEqual(["modified.txt"], difference.modified_files)
             self.assertEqual(["deleted.txt"], difference.deleted_files)
 
-    def test_failed_agent_run_automatically_schedules_updateable_skill(self) -> None:
+    def test_failed_run_automatically_promotes_then_rolls_back_regression(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             config_path = _write_agent_project(root, agent_can_update=True)
+            candidate_response = json.dumps(
+                {
+                    "write_files": {"SKILL.md": "Improved instructions.\n"},
+                    "delete_files": [],
+                }
+            )
             agent = Agent(
                 AgentConfig.load_from_file(config_path),
-                provider=_FailingProvider(),
+                provider=_SequenceProvider(
+                    [
+                        RuntimeError("task failed"),
+                        candidate_response,
+                        "candidate evaluation output",
+                        RuntimeError("promoted regression"),
+                    ]
+                ),
             )
 
-            with self.assertRaisesRegex(RuntimeError, "provider unavailable"):
+            with self.assertRaisesRegex(RuntimeError, "task failed"):
                 agent.run("echo this")
 
             schedules = agent.list_evolution_schedules()
             self.assertEqual(["prompt:echo"], [item.target.key for item in schedules])
             self.assertIn("failures", schedules[0].reason_codes)
+            self.assertEqual("promoted", schedules[0].decision)
+            self.assertTrue(schedules[0].candidate_id)
+            self.assertEqual(
+                "Improved instructions.\n",
+                (root / "skills" / "prompt" / "echo" / "SKILL.md").read_text(
+                    encoding="utf-8"
+                ),
+            )
+            self.assertEqual(
+                1,
+                agent.list_model_routing_stats(purpose="skill_evolution")[0].call_count,
+            )
+            self.assertEqual(
+                1,
+                agent.list_model_routing_stats(purpose="skill_evaluation")[0].call_count,
+            )
+
+            with self.assertRaisesRegex(RuntimeError, "promoted regression"):
+                agent.run("echo this again")
+
+            monitored = agent.list_evolution_schedules()[0]
+            self.assertEqual("rolled_back", monitored.decision)
+            self.assertEqual(
+                "Use echo instructions.\n",
+                (root / "skills" / "prompt" / "echo" / "SKILL.md").read_text(
+                    encoding="utf-8"
+                ),
+            )
 
     def test_scheduling_error_does_not_replace_successful_run_result(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -167,16 +206,16 @@ class AutonomousEvolutionSchedulerTests(unittest.TestCase):
             )
 
             with patch(
-                "runtime.engine.AutonomousEvolutionScheduler.review_evolution_targets",
+                "runtime.engine.AutomaticEvolutionService.review_and_evolve",
                 side_effect=RuntimeError("schedule unavailable"),
             ):
                 result = agent.run("echo this")
 
             events = agent.runtime.create_store().read_run_events(result.run_id)
             self.assertEqual("completed", result.text)
-            self.assertIn("evolution.scheduling_failed", [item.event_type for item in events])
+            self.assertIn("evolution.automation_failed", [item.event_type for item in events])
 
-    def test_agent_creates_skill_candidate_from_schedule_and_records_difference(self) -> None:
+    def test_automatic_service_records_candidate_difference(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             config_path = _write_agent_project(root, agent_can_update=True)
@@ -188,7 +227,7 @@ class AutonomousEvolutionSchedulerTests(unittest.TestCase):
             )
             agent = Agent(
                 AgentConfig.load_from_file(config_path),
-                provider=MockProvider(response),
+                provider=_SequenceProvider([response, "evaluation output"]),
             )
             manager = agent.create_skill_evolution_manager("alice")
             entry = manager.skill_disclosure.prepare_skill_index().require_skill(
@@ -196,55 +235,27 @@ class AutonomousEvolutionSchedulerTests(unittest.TestCase):
                 "prompt",
             )
             target = create_indexed_skill_evaluation_target(entry)
-            schedule = _create_failed_schedule(
-                agent,
-                "alice",
-                target,
-                agent_created=True,
+            store = agent.runtime.create_store("alice")
+            store.append_evaluation_records([_record(target, success=False)])
+            updated = AutomaticEvolutionService(store, manager).review_and_evolve(
+                [
+                    EvolutionScheduleTarget(
+                        target=target,
+                        agent_created=True,
+                        agent_can_update=True,
+                        supports_evolution=True,
+                        freshness=70.0,
+                    )
+                ]
             )
 
-            updated = agent.create_evolution_candidate_from_schedule(
-                schedule.schedule_id,
-                user_id="alice",
-            )
-
-            self.assertEqual("candidate_created", updated.decision)
-            self.assertTrue(updated.candidate_id)
-            self.assertIsNotNone(updated.candidate_difference)
-            changed = updated.candidate_difference
+            completed = next(item for item in updated if item.decision == "promoted")
+            self.assertTrue(completed.candidate_id)
+            self.assertIsNotNone(completed.candidate_difference)
+            changed = completed.candidate_difference
             assert changed is not None
             self.assertIn("SKILL.md", changed.modified_files)
             self.assertIn("skill.toml", changed.modified_files)
-
-    def test_agent_rejects_schedule_after_target_files_change(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            config_path = _write_agent_project(root, agent_can_update=True)
-            agent = Agent(
-                AgentConfig.load_from_file(config_path),
-                provider=MockProvider("unused"),
-            )
-            manager = agent.create_skill_evolution_manager("alice")
-            entry = manager.skill_disclosure.prepare_skill_index().require_skill(
-                "echo",
-                "prompt",
-            )
-            schedule = _create_failed_schedule(
-                agent,
-                "alice",
-                create_indexed_skill_evaluation_target(entry),
-                agent_created=True,
-            )
-            (root / "skills" / "prompt" / "echo" / "SKILL.md").write_text(
-                "Changed after scheduling.\n",
-                encoding="utf-8",
-            )
-
-            with self.assertRaisesRegex(ValueError, "changed after recommendation"):
-                agent.create_evolution_candidate_from_schedule(
-                    schedule.schedule_id,
-                    user_id="alice",
-                )
 
 
 def _records_for_reason(
@@ -330,32 +341,18 @@ def _schedule_target(
     )
 
 
-def _create_failed_schedule(
-    agent: Agent,
-    user_id: str,
-    target: EvaluationTarget,
-    *,
-    agent_created: bool,
-):
-    store = agent.runtime.create_store(user_id)
-    store.append_evaluation_records([_record(target, success=False)])
-    scheduler = AutonomousEvolutionScheduler(store)
-    return scheduler.review_evolution_targets(
-        [
-            EvolutionScheduleTarget(
-                target=target,
-                agent_created=agent_created,
-                agent_can_update=True,
-                supports_evolution=True,
-                freshness=70.0 if target.target_type == "skill" else None,
-            )
-        ]
-    )[0]
+class _SequenceProvider(MockProvider):
+    def __init__(self, responses: list[str | Exception]) -> None:
+        super().__init__()
+        self.responses = list(responses)
 
-
-class _FailingProvider(MockProvider):
     def send_chat_messages(self, messages, model):
-        raise RuntimeError("provider unavailable")
+        if not self.responses:
+            raise AssertionError("unexpected provider call")
+        response = self.responses.pop(0)
+        if isinstance(response, Exception):
+            raise response
+        return response
 
 
 def _write_agent_project(root: Path, *, agent_can_update: bool = False) -> Path:

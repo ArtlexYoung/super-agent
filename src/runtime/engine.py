@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, replace
+from dataclasses import asdict, dataclass, replace
 from time import perf_counter
 from typing import Callable
 
@@ -17,9 +17,10 @@ from runtime.evaluation import (
     create_evaluation_record,
     estimate_evaluation_token_usage,
 )
-from runtime.evolution.scheduler import AutonomousEvolutionScheduler
+from runtime.evolution.service import AutomaticEvolutionService
 from runtime.execution import execute_task, load_workflow_policy
 from runtime.identity import LOCAL_USER_ID, RunIdentity
+from runtime.model_router import ModelRouter
 from runtime.models import Conversation, RunEvent
 from runtime.routing import (
     ModelRoutingStats,
@@ -38,6 +39,15 @@ from skill.kinds.model import (
     select_default_model_profile,
 )
 from skill.manifest import SkillManifest
+from skill.evolution.manager import EvolutionModels, SkillEvolutionManager
+
+
+@dataclass(frozen=True)
+class RuntimeResources:
+    provider_pool: ProviderPool
+    capability_registry: CapabilityRegistry
+    storage: StorageBackend
+    skill_change_listener: Callable[[SkillManifest, str], None] | None = None
 
 
 class AgentRuntime:
@@ -45,20 +55,20 @@ class AgentRuntime:
         self,
         config: AgentConfig,
         model_profiles: list[ModelProfile],
-        provider_pool: ProviderPool,
-        capability_registry: CapabilityRegistry,
-        storage: StorageBackend,
+        resources: RuntimeResources,
     ) -> None:
         self.config = config
         self.model_profiles = list(model_profiles)
         self.default_model_profile = select_default_model_profile(self.model_profiles)
-        self.provider_pool = provider_pool
+        self.provider_pool = resources.provider_pool
         self.task_scheduler = TaskScheduler(
             self.model_profiles,
             self.provider_pool.environment,
         )
-        self.capability_registry = capability_registry
-        self.storage = storage
+        self.model_router = ModelRouter(self.task_scheduler, self.provider_pool)
+        self.capability_registry = resources.capability_registry
+        self.storage = resources.storage
+        self.skill_change_listener = resources.skill_change_listener
 
     def run_task(
         self,
@@ -97,7 +107,7 @@ class AgentRuntime:
                 session,
                 workflow,
                 schedule,
-                self.provider_pool,
+                self.model_router,
             )
             evaluation_attempted = True
             self._record_task_evaluation(
@@ -171,9 +181,13 @@ class AgentRuntime:
         user_id: str = LOCAL_USER_ID,
         on_skill_changed: Callable[[SkillManifest], None] | None = None,
     ) -> object:
-        from skill.evolution.manager import SkillEvolutionManager
-
         store = self.create_store(user_id)
+        change_handler = on_skill_changed
+        if change_handler is None and self.skill_change_listener is not None:
+            change_handler = lambda manifest: self.skill_change_listener(
+                manifest,
+                user_id,
+            )
         return SkillEvolutionManager(
             config=self.config,
             skill_disclosure=create_progressive_skill_disclosure(
@@ -181,12 +195,17 @@ class AgentRuntime:
                 store=store,
             ),
             store=store,
-            model_profile=self.default_model_profile,
-            provider=self.provider_pool.get_chat_provider(
-                self.default_model_profile.key,
-                self.default_model_profile.connection,
+            models=EvolutionModels(
+                candidate=self.model_router.create_text_model(
+                    store,
+                    "skill_evolution",
+                ),
+                evaluation=self.model_router.create_text_model(
+                    store,
+                    "skill_evaluation",
+                ),
             ),
-            on_skill_changed=on_skill_changed,
+            on_skill_changed=change_handler,
         )
 
     def _create_runtime_session(
@@ -357,18 +376,20 @@ class AgentRuntime:
                 for target in session.list_evaluation_targets()
             ]
         )
-        self._try_schedule_evolution(session)
+        self._try_run_automatic_evolution(session)
 
-    @staticmethod
-    def _try_schedule_evolution(session: RuntimeSession) -> None:
+    def _try_run_automatic_evolution(self, session: RuntimeSession) -> None:
         try:
-            AutonomousEvolutionScheduler(session.store).review_evolution_targets(
+            manager = self.create_skill_updater(session.identity.user_id)
+            if not isinstance(manager, SkillEvolutionManager):
+                raise TypeError("skill updater must be SkillEvolutionManager")
+            AutomaticEvolutionService(session.store, manager).review_and_evolve(
                 session.list_evolution_schedule_targets()
             )
         except Exception as error:
             try:
                 session.record_event(
-                    "evolution.scheduling_failed",
+                    "evolution.automation_failed",
                     {"error_type": type(error).__name__, "message": str(error)},
                 )
             except Exception:

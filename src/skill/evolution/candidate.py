@@ -10,8 +10,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
-from provider.chat import ChatProvider, Message
+from provider.chat import Message
 from runtime.store import RuntimeStore
+from runtime.model_router import TextModel
 from runtime.evolution import (
     DirectoryFileChanges,
     apply_directory_file_changes,
@@ -50,8 +51,7 @@ class SkillCandidate:
 class SkillCandidateRequest:
     skill_disclosure: ProgressiveDisclosureCore
     candidate_root: Path
-    provider: ChatProvider
-    model: str
+    text_model: TextModel
     name: str
     goal: str
     capability: str | None = None
@@ -98,14 +98,13 @@ def create_candidate(request: SkillCandidateRequest) -> SkillCandidate:
     parent_version = "" if current is None else current.version
     proposed_version = "0.1.0" if current is None else increment_patch_version(current.version)
     parent_sha256 = "" if current is None else calculate_skill_directory_sha256(current.path)
-    response = request.provider.send_chat_messages(
+    response = request.text_model.send_messages(
         _build_candidate_messages(
             skill_name,
             capability,
             evolution_goal,
             current_files,
         ),
-        request.model,
     )
     changes = read_directory_file_changes(response, "Skill")
     if current is not None and calculate_skill_directory_sha256(current.path) != parent_sha256:

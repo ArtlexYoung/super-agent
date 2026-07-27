@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
+from dataclasses import asdict
+
 from runtime.models import Conversation, ConversationMessage, RunEvent, RunSnapshot
 from runtime.storage import StorageEvent
 
@@ -116,6 +120,84 @@ def latest_selection_decisions(events: list[RunEvent]) -> list[object]:
     return []
 
 
+def runtime_lock_from_events(
+    run_id: str,
+    events: list[StorageEvent],
+) -> dict[str, object] | None:
+    lock_event = next(
+        (
+            event
+            for event in reversed(events)
+            if event.event_type == "runtime.locked"
+        ),
+        None,
+    )
+    if lock_event is None:
+        return None
+    runtime_lock = lock_event.data.get("runtime_lock")
+    if not isinstance(runtime_lock, dict):
+        raise ValueError(f"runtime lock is invalid: {run_id}")
+    digest = str(lock_event.data.get("runtime_lock_sha256", ""))
+    content = json.dumps(
+        runtime_lock,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    if hashlib.sha256(content.encode("utf-8")).hexdigest() != digest:
+        raise ValueError(f"runtime lock hash does not match run: {run_id}")
+    return dict(runtime_lock)
+
+
+def explain_run_from_views(
+    snapshot: RunSnapshot,
+    events: list[RunEvent],
+    runtime_lock: dict[str, object] | None,
+) -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "snapshot": asdict(snapshot),
+        "runtime_lock": runtime_lock,
+        "selection_decisions": latest_selection_decisions(events),
+        "disclosure_path": [
+            asdict(event) for event in events if event.event_type == "skill.disclosed"
+        ],
+        "events": [asdict(event) for event in events],
+    }
+
+
+def disclosure_history_from_events(
+    events: list[StorageEvent],
+) -> list[dict[str, object]]:
+    disclosed = [event for event in events if event.event_type == "skill.disclosed"]
+    return [
+        {
+            "schema_version": 1,
+            "sequence": sequence,
+            "created_at": event.created_at,
+            "run_id": event.stream_id if event.stream_type == "run" else "",
+            "skill_key": str(event.data["skill_key"]),
+            "stage": str(event.data["stage"]),
+            "cache_path": str(event.data["cache_path"]),
+            "content_sha256": str(event.data["content_sha256"]),
+            "cache_hit": bool(event.data["cache_hit"]),
+        }
+        for sequence, event in enumerate(disclosed, 1)
+    ]
+
+
+def usage_habits_from_events(events: list[StorageEvent]) -> dict[str, object]:
+    data: dict[str, object] = {"total_runs": 0, "workflows": {}, "skills": {}}
+    for event in events:
+        if event.event_type != "agent.completed":
+            continue
+        data["total_runs"] = int(data["total_runs"]) + 1
+        _increment_count(data["workflows"], str(event.data.get("workflow", "")))
+        for skill in event.data.get("skills", []):
+            _increment_count(data["skills"], str(skill))
+    return data
+
+
 def string_list(value: object) -> list[str]:
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
         raise ValueError("stored value must be a string array")
@@ -124,6 +206,11 @@ def string_list(value: object) -> list[str]:
 
 def optional_string(value: object) -> str | None:
     return value if isinstance(value, str) and value else None
+
+
+def _increment_count(counts: object, name: str) -> None:
+    if isinstance(counts, dict) and name:
+        counts[name] = int(counts.get(name, 0)) + 1
 
 
 def _conversation_message_from_event(event: StorageEvent) -> ConversationMessage:

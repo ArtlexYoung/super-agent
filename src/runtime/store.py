@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import asdict
 from pathlib import Path
 from typing import Callable
 from uuid import uuid4
@@ -19,13 +18,17 @@ from runtime.models import Conversation, ConversationMessage, RunEvent, RunSnaps
 from runtime.storage import StorageBackend, StorageEvent, StorageEventQuery
 from runtime.storage.files import create_scope_digest, write_bytes_atomically
 from runtime.storage.jsonl import JsonlStorage
+from runtime.storage.values import encode_storage_data
 from runtime.views import (
     conversation_from_events,
-    latest_selection_decisions,
+    disclosure_history_from_events,
+    explain_run_from_views,
     optional_string,
     replay_memory,
     run_event_from_storage,
     run_snapshot_from_events,
+    runtime_lock_from_events,
+    usage_habits_from_events,
 )
 
 
@@ -210,7 +213,7 @@ class RuntimeStore:
         identity: RunIdentity,
         runtime_lock: dict[str, object],
     ) -> str:
-        content = _json_text(runtime_lock)
+        content = encode_storage_data(runtime_lock)
         digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
         self.append_run_event(
             identity,
@@ -285,37 +288,17 @@ class RuntimeStore:
         ]
 
     def read_runtime_lock(self, run_id: str) -> dict[str, object] | None:
-        lock_event = next(
-            (
-                event
-                for event in reversed(self._read_storage_events("run", run_id))
-                if event.event_type == "runtime.locked"
-            ),
-            None,
+        return runtime_lock_from_events(
+            run_id,
+            self._read_storage_events("run", run_id),
         )
-        if lock_event is None:
-            return None
-        runtime_lock = lock_event.data.get("runtime_lock")
-        if not isinstance(runtime_lock, dict):
-            raise ValueError(f"runtime lock is invalid: {run_id}")
-        digest = str(lock_event.data.get("runtime_lock_sha256", ""))
-        if hashlib.sha256(_json_text(runtime_lock).encode("utf-8")).hexdigest() != digest:
-            raise ValueError(f"runtime lock hash does not match run: {run_id}")
-        return dict(runtime_lock)
 
     def explain_run(self, run_id: str) -> dict[str, object]:
-        snapshot = self.read_run(run_id)
-        events = self.read_run_events(run_id)
-        return {
-            "schema_version": 1,
-            "snapshot": asdict(snapshot),
-            "runtime_lock": self.read_runtime_lock(run_id),
-            "selection_decisions": latest_selection_decisions(events),
-            "disclosure_path": [
-                asdict(event) for event in events if event.event_type == "skill.disclosed"
-            ],
-            "events": [asdict(event) for event in events],
-        }
+        return explain_run_from_views(
+            self.read_run(run_id),
+            self.read_run_events(run_id),
+            self.read_runtime_lock(run_id),
+        )
 
     def export_run(self, run_id: str, path: Path) -> Path:
         explanation = self.explain_run(run_id)
@@ -377,6 +360,19 @@ class RuntimeStore:
             "evolution",
             _required_text(evolution_id, "evolution_id"),
             _required_text(event_type, "evolution event_type"),
+            dict(data),
+        )
+
+    def append_model_call_event(
+        self,
+        operation_id: str,
+        event_type: str,
+        data: dict[str, object],
+    ) -> StorageEvent:
+        return self._append_scoped_event(
+            "model_call",
+            _required_text(operation_id, "model operation_id"),
+            _required_text(event_type, "model event_type"),
             dict(data),
         )
 
@@ -458,27 +454,11 @@ class RuntimeStore:
         return cache_path.read_text(encoding="utf-8")
 
     def read_disclosure_history(self) -> list[dict[str, object]]:
-        events = [
-            event
-            for event in self.backend.read_events(
+        return disclosure_history_from_events(
+            self.backend.read_events(
                 StorageEventQuery(user_id=self.user_id, agent_name=self.agent_name)
             )
-            if event.event_type == "skill.disclosed"
-        ]
-        return [
-            {
-                "schema_version": 1,
-                "sequence": sequence,
-                "created_at": event.created_at,
-                "run_id": event.stream_id if event.stream_type == "run" else "",
-                "skill_key": str(event.data["skill_key"]),
-                "stage": str(event.data["stage"]),
-                "cache_path": str(event.data["cache_path"]),
-                "content_sha256": str(event.data["content_sha256"]),
-                "cache_hit": bool(event.data["cache_hit"]),
-            }
-            for sequence, event in enumerate(events, 1)
-        ]
+        )
 
     def add_memory_item(self, item: dict[str, str]) -> None:
         self._append_scoped_event("memory", "memory", "memory.added", {"item": item})
@@ -525,15 +505,7 @@ class RuntimeStore:
         )
 
     def read_usage_habits(self) -> dict[str, object]:
-        data: dict[str, object] = {"total_runs": 0, "workflows": {}, "skills": {}}
-        for event in self._read_storage_events("habit", "usage"):
-            if event.event_type != "agent.completed":
-                continue
-            data["total_runs"] = int(data["total_runs"]) + 1
-            _increment_count(data["workflows"], str(event.data.get("workflow", "")))
-            for skill in event.data.get("skills", []):
-                _increment_count(data["skills"], str(skill))
-        return data
+        return usage_habits_from_events(self._read_storage_events("habit", "usage"))
 
     def _write_disclosure_bytes(
         self,
@@ -615,11 +587,6 @@ def create_local_runtime_store(
     return RuntimeStore(JsonlStorage(root), root, user_id, agent_name)
 
 
-def _increment_count(counts: object, name: str) -> None:
-    if isinstance(counts, dict) and name:
-        counts[name] = int(counts.get(name, 0)) + 1
-
-
 def _required_text(value: object, name: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{name} cannot be empty")
@@ -630,7 +597,3 @@ def _optional_title(value: object) -> str:
     if not isinstance(value, str):
         raise TypeError("conversation title must be a string")
     return value.strip()
-
-
-def _json_text(value: object) -> str:
-    return json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True)

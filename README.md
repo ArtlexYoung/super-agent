@@ -17,7 +17,7 @@ The project is currently experimental (`0.0.x`). It favors a small, inspectable 
 - **Progressive disclosure**: the model sees a compact index first and opens only the Skills it needs.
 - **Automatic task scheduling**: Runtime selects compatible models, Skills, and subagents, then learns from user-scoped quality, reliability, latency, and cost evidence.
 - **One runtime lifecycle**: discovery, disclosure, execution, observation, evaluation, and evolution share one session.
-- **Automatic evolution signals**: Runtime turns real failures, quality, freshness, replacement, cost, and latency into deduplicated recommendations.
+- **Automatic evolution loop**: Runtime turns real evidence into candidates, evaluates and promotes them, then monitors and rolls back regressions.
 - **Code-composed Agents**: create Agents independently and attach them with `Agent.add_subagent(...)`.
 - **Standard-library runtime**: the Python core has no third-party runtime dependencies.
 
@@ -217,15 +217,14 @@ super-agent skills evolve \
 
 Freshness does not call a model. It is derived from runtime evaluation records using quality, recency, frequency, token cost, latency, reliability, replacement behavior, and sample confidence.
 
-After each evaluated run, Runtime reviews every updateable Skill, including Skill-backed executable mechanisms. This deterministic step does not call a model and needs no new configuration. It records an evolution recommendation only when the current evidence crosses a quality or efficiency threshold, and the same unchanged evidence cannot create a repeated recommendation.
+After each evaluated run, Runtime reviews every updateable Agent-owned Skill, including Skill-backed executable mechanisms. The deterministic scheduler creates at most one recommendation for an unchanged evidence snapshot. The automatic evolution service then uses the central model router to create a complete-directory candidate, evaluates it against up to three prompts from the triggering runs, and promotes it only when the existing evidence gate passes.
 
 ```bash
 super-agent evolution list --config agent.toml
 super-agent evolution show --config agent.toml --schedule-id <id> --output json
-super-agent evolution create-candidate --config agent.toml --schedule-id <id>
 ```
 
-Creating a candidate invokes the configured model and stores its exact added, modified, and deleted files. The candidate must still pass the existing isolated evaluation before promotion; scheduling never edits or activates the live target by itself.
+The `evolution` commands only inspect automatic state. A promoted version is monitored using later real runs: any failure triggers rollback, three healthy samples mark it stable, and an average score below `0.75` after three samples also triggers rollback. Automation errors are recorded in the task trace and never replace the main task result.
 
 ## Multi-Agent Composition
 

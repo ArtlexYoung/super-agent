@@ -6,7 +6,7 @@ from pathlib import Path
 from time import perf_counter
 from uuid import uuid4
 
-from provider.chat import ChatProvider, Message
+from provider.chat import Message
 from runtime.evaluation import (
     EvaluationResult,
     EvaluationSource,
@@ -14,6 +14,7 @@ from runtime.evaluation import (
     estimate_evaluation_token_usage,
 )
 from runtime.store import RuntimeStore
+from runtime.model_router import TextModel
 from skill.disclosure import DisclosedSkillFile, ProgressiveDisclosureCore
 from skill.evaluation import create_skill_evaluation_target
 from skill.evolution.candidate import SkillCandidate
@@ -62,7 +63,7 @@ class EvolutionResult:
 @dataclass(frozen=True)
 class SkillCandidateEvaluationRequest:
     candidate: SkillCandidate
-    model: str
+    text_model: TextModel
     cases: list[EvaluationCase]
     minimum_score: float
     report_path: Path
@@ -71,7 +72,6 @@ class SkillCandidateEvaluationRequest:
 
 def evaluate_candidate(
     request: SkillCandidateEvaluationRequest,
-    provider: ChatProvider,
 ) -> EvaluationReport:
     if not request.cases:
         raise ValueError("skill candidate evaluation requires at least one case")
@@ -86,8 +86,7 @@ def evaluate_candidate(
         started_at = perf_counter()
         try:
             case_result = _run_evaluation_case(
-                provider,
-                request.model,
+                request.text_model,
                 skill.instructions,
                 case,
             )
@@ -150,16 +149,14 @@ def create_report_id() -> str:
 
 
 def _run_evaluation_case(
-    provider: ChatProvider,
-    model: str,
+    text_model: TextModel,
     instructions: str,
     case: EvaluationCase,
 ) -> EvaluationCaseResult:
     name = case.name.strip()
     prompt = case.prompt.strip()
-    output = provider.send_chat_messages(
+    output = text_model.send_messages(
         _build_evaluation_messages(instructions, case.evaluator_instruction, prompt),
-        model,
     )
     score, checks = _score_output(
         output,

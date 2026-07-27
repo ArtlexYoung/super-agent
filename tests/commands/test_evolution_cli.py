@@ -18,14 +18,12 @@ from runtime.evaluation import (
     EvaluationTokenUsage,
     create_evaluation_record,
 )
-from runtime.evolution.scheduler import (
-    AutonomousEvolutionScheduler,
-    EvolutionScheduleTarget,
-)
+from runtime.evolution.schedule_state import EvolutionScheduleTarget
+from runtime.evolution.scheduler import AutonomousEvolutionScheduler
 
 
 class EvolutionCliTests(unittest.TestCase):
-    def test_cli_lists_shows_and_dismisses_one_users_schedule(self) -> None:
+    def test_cli_lists_and_shows_one_users_automatic_evolution(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             config_path = _write_config(Path(tmp))
             agent = Agent(AgentConfig.load_from_file(config_path))
@@ -105,27 +103,11 @@ class EvolutionCliTests(unittest.TestCase):
                     "json",
                 ]
             )
-            dismissed = _run_json_cli(
-                [
-                    "evolution",
-                    "dismiss",
-                    "--config",
-                    str(config_path),
-                    "--user-id",
-                    "alpha",
-                    "--schedule-id",
-                    schedule.schedule_id,
-                    "--reason",
-                    "manual review",
-                    "--output",
-                    "json",
-                ]
-            )
-
+            self.assertEqual(2, listed["schema_version"])
             self.assertEqual(schedule.schedule_id, listed["schedules"][0]["schedule_id"])
             self.assertEqual([], isolated["schedules"])
             self.assertEqual(schedule.schedule_id, shown["schedule_id"])
-            self.assertEqual("dismissed", dismissed["decision"])
+            self.assertEqual("candidate_recommended", shown["decision"])
 
 
 def _run_json_cli(arguments: list[str]) -> dict[str, object]:

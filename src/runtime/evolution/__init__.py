@@ -14,8 +14,7 @@ from runtime.evolution.models import (
     EvolutionCandidateState,
     EvolutionTarget,
 )
-from runtime.evolution.scheduler import (
-    AutonomousEvolutionScheduler,
+from runtime.evolution.schedule_state import (
     EvolutionCandidateDifference,
     EvolutionScheduleMetrics,
     EvolutionScheduleState,
@@ -23,6 +22,7 @@ from runtime.evolution.scheduler import (
     create_evolution_candidate_difference,
     evolution_schedule_to_dict,
 )
+from runtime.evolution.scheduler import AutonomousEvolutionScheduler
 
 __all__ = [
     "AutonomousEvolutionScheduler",
