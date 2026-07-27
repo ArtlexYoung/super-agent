@@ -45,7 +45,7 @@ class ProgressiveDisclosureCore:
             path.expanduser() for path in fallback_skill_roots or []
         ]
         self.store = store
-        self.cache_root = store.cache_root
+        self.cache_root = store.disclosure.cache_root
         self.disabled_names = list(disabled_names or [])
         self.identity = identity
         self._index: SkillIndex | None = None
@@ -68,11 +68,11 @@ class ProgressiveDisclosureCore:
         self._index = SkillIndex(
             entries,
             index_path=self.cache_root / "index.json",
-            history_path=self.store.disclosure_history_path,
+            history_path=self.store.disclosure.history_path,
         )
         self._sources_by_key = {source.reference.key: source for source in scan.sources}
         self._disabled_references = scan.disabled_references
-        self.store.write_disclosure_json(
+        self.store.disclosure.write_json(
             self.identity,
             "*",
             "index",
@@ -168,7 +168,7 @@ class ProgressiveDisclosureCore:
         )
 
     def read_disclosed_content(self, cache_path: str | Path) -> str:
-        return self.store.read_disclosure_content(cache_path)
+        return self.store.disclosure.read_content(cache_path)
 
     def read_disclosure_history(self) -> list[SkillDisclosureEvent]:
         return [
@@ -183,7 +183,7 @@ class ProgressiveDisclosureCore:
                 content_sha256=str(item["content_sha256"]),
                 cache_hit=bool(item["cache_hit"]),
             )
-            for item in self.store.read_disclosure_history()
+            for item in self.store.disclosure.read_history()
         ]
 
     def _require_index(self) -> SkillIndex:
@@ -234,7 +234,7 @@ class SkillDisclosure:
 
     def read_manifest(self) -> SkillManifest:
         self._verify_source_content()
-        self.store.write_disclosure_json(
+        self.store.disclosure.write_json(
             self.identity,
             self.source.reference.key,
             "manifest",
@@ -253,7 +253,7 @@ class SkillDisclosure:
                 raise FileNotFoundError(f"skill instructions not found: {path}")
             content = path.read_text(encoding="utf-8").strip()
         self._verify_source_content()
-        self.store.write_disclosure_text(
+        self.store.disclosure.write_text(
             self.identity,
             self.source.reference.key,
             "instructions",
@@ -265,7 +265,7 @@ class SkillDisclosure:
     def read_configuration(self) -> DisclosedConfiguration:
         self._verify_source_content()
         content = dict(self.source.configuration)
-        self.store.write_disclosure_json(
+        self.store.disclosure.write_json(
             self.identity,
             self.source.reference.key,
             "configuration",
@@ -280,7 +280,7 @@ class SkillDisclosure:
     def read_skill_files(self) -> DisclosedSkillFiles:
         self._verify_source_content()
         files = _read_skill_directory_files(self.source.manifest.path)
-        self.store.write_disclosure_json(
+        self.store.disclosure.write_json(
             self.identity,
             self.source.reference.key,
             "files",

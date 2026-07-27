@@ -151,11 +151,24 @@ Warnings do not block execution. Omitting the maximum allows unlimited nesting.
   users/<user-hash>/agents/<agent-hash>/evolution/
 ```
 
-`StorageEvent` is the backend-neutral source of truth for conversations, run traces, evaluations, evolution recommendations, memory, usage habits, and disclosure history. MySQL and PostgreSQL store that event stream remotely while keeping cache, evolution, and installed Capability directories under the configured local `path`. `RuntimeStore` supplies explicit domain operations, and every operation is scoped by `user_id` and Agent name. Local artifacts are never alternate stores for the same event data.
+`StorageEvent` is the backend-neutral source of truth for conversations, run traces,
+evaluations, evolution recommendations, memory, usage habits, and disclosure history.
+MySQL and PostgreSQL store that event stream remotely while keeping cache and evolution
+workspaces under the configured local `path`. `RuntimeStore` owns the common scope and
+run operations, `store.disclosure` owns cache/history operations, and `store.memory` owns
+memory/habit operations. These are focused APIs over the same backend, not separate
+sources of truth. Local artifacts are never alternate stores for the same event data.
 
 ## Runtime Proof History
 
-The reproducible `v0.0.41` proof under `docs/experiments/` runs two model Skills through the normal scheduler, verifies user and Agent routing isolation, and drives automatic promotion plus regression rollback from real task evidence. Its generator is a standalone proof script, not an installed Runtime command.
+The reproducible `v0.0.53` proof starts the real AG-UI HTTP server and drives one failed
+task through recall-time memory organization, pre-handler Safety blocking, canonical SSE
+error delivery, evaluation, and automatic promotion of an Agent-owned Skill. Its report
+is deterministic, local, dependency-free, and generated outside the shipped Runtime.
+
+The `v0.0.46` proof covers planned model and subagent routing plus Planner/model Skill
+evolution. The earlier `v0.0.41` proof verifies user and Agent routing isolation,
+automatic promotion, and regression rollback from real task evidence.
 
 The archived `v0.0.34` experiment covers progressive context and storage semantics. Its old benchmark orchestration was removed from the shipped Runtime after the result was recorded, so proof code does not become a second public execution framework.
 

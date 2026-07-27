@@ -12,6 +12,7 @@ from uuid import uuid4
 
 from provider.chat import Message
 from runtime.identity import RunIdentity
+from runtime.memory_store import RuntimeMemoryStore
 from runtime.safety import ActionEffect, ActionRequest
 from runtime.store import RuntimeStore
 from skill.disclosure import SkillDisclosure
@@ -52,7 +53,7 @@ class MemoryOperation:
 
 
 class MemoryUsageHabits:
-    def __init__(self, store: RuntimeStore) -> None:
+    def __init__(self, store: RuntimeMemoryStore) -> None:
         self.store = store
 
     def record_agent_run(self, workflow: str, skills: list[str]) -> None:
@@ -84,7 +85,7 @@ class MiniMemory:
         self.store = store
         self.identity = identity
         self.policy = policy or MemoryPolicy()
-        self.usage_habits = MemoryUsageHabits(store)
+        self.usage_habits = MemoryUsageHabits(store.memory)
         self.send_text_model_messages = send_text_model_messages
         self.execute_action = execute_action
 
@@ -105,7 +106,7 @@ class MiniMemory:
             "remember",
             (ActionEffect.CREATE,),
             [item.item_id],
-            lambda: self.store.add_memory_item(asdict(item)),
+            lambda: self.store.memory.add_memory_item(asdict(item)),
         )
         return item
 
@@ -113,7 +114,7 @@ class MiniMemory:
         selected_scope = None if scope is None else _clean_scope(scope)
         return [
             MemoryItem(**item)
-            for item in self.store.list_memory_items(selected_scope)
+            for item in self.store.memory.list_memory_items(selected_scope)
         ]
 
     def recall_memory(
@@ -143,7 +144,10 @@ class MiniMemory:
             "forget",
             (ActionEffect.DELETE,),
             [clean_id],
-            lambda: self.store.forget_memory_items([clean_id], "explicit forget"),
+            lambda: self.store.memory.forget_memory_items(
+                [clean_id],
+                "explicit forget",
+            ),
         )
 
     def consolidate_memory(self) -> list[MemoryItem]:
@@ -170,7 +174,7 @@ class MiniMemory:
                 "merge",
                 (ActionEffect.UPDATE, ActionEffect.DELETE),
                 source_ids,
-                lambda: self.store.merge_memory_items(
+                lambda: self.store.memory.merge_memory_items(
                     source_ids,
                     asdict(item),
                     "deterministic duplicate merge",
@@ -206,7 +210,7 @@ class MiniMemory:
         remaining = [item for item in candidates if item.item_id in active_ids]
         if self.send_text_model_messages is None or len(remaining) < 2:
             return
-        self.store.record_memory_organization(
+        self.store.memory.record_memory_organization(
             "memory.organization.started",
             {"candidate_count": len(remaining)},
         )
@@ -216,7 +220,7 @@ class MiniMemory:
             )
             operations = _read_memory_operations(response, remaining)
         except Exception as error:
-            self.store.record_memory_organization(
+            self.store.memory.record_memory_organization(
                 "memory.organization.failed",
                 {
                     "error_type": type(error).__name__,
@@ -225,7 +229,7 @@ class MiniMemory:
             )
             return
         self._apply_memory_operations(operations, remaining)
-        self.store.record_memory_organization(
+        self.store.memory.record_memory_organization(
             "memory.organization.completed",
             {
                 "operation_count": len(operations),
@@ -246,7 +250,7 @@ class MiniMemory:
                 "merge",
                 (ActionEffect.UPDATE, ActionEffect.DELETE),
                 source_ids,
-                lambda: self.store.merge_memory_items(
+                lambda: self.store.memory.merge_memory_items(
                     source_ids,
                     asdict(replacement),
                     "duplicate found during recall",
@@ -265,9 +269,9 @@ class MiniMemory:
                 scope = by_id[source_ids[0]].scope
                 replacement = self._create_replacement_item(operation.text, scope)
                 write = (
-                    self.store.merge_memory_items
+                    self.store.memory.merge_memory_items
                     if operation.operation == "merge"
-                    else self.store.supersede_memory_items
+                    else self.store.memory.supersede_memory_items
                 )
                 self._execute_memory_change(
                     operation.operation,
@@ -285,7 +289,7 @@ class MiniMemory:
                     "archive",
                     (ActionEffect.UPDATE,),
                     source_ids,
-                    lambda: self.store.archive_memory_items(
+                    lambda: self.store.memory.archive_memory_items(
                         source_ids,
                         operation.reason,
                     ),
@@ -295,7 +299,7 @@ class MiniMemory:
                     "forget",
                     (ActionEffect.DELETE,),
                     source_ids,
-                    lambda: self.store.forget_memory_items(
+                    lambda: self.store.memory.forget_memory_items(
                         source_ids,
                         operation.reason,
                     ),

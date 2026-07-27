@@ -21,8 +21,8 @@ from runtime.evolution.state import (
     require_skill_candidate_can_promote,
     start_manual_skill_evolution,
 )
+from runtime.model_calls import TextModel
 from runtime.store import RuntimeStore
-from runtime.task_loop import TextModel
 from skill.evolution.candidate import (
     SkillCandidate,
     SkillCandidateRequest,

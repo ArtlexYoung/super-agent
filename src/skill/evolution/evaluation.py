@@ -13,8 +13,8 @@ from runtime.evaluation import (
     create_evaluation_record,
     estimate_evaluation_token_usage,
 )
+from runtime.model_calls import TextModel
 from runtime.store import RuntimeStore
-from runtime.task_loop import TextModel
 from skill.disclosure import DisclosedSkillFile, ProgressiveDisclosureCore
 from skill.evolution.candidate import SkillCandidate
 from skill.manifest import Skill, SkillManifest

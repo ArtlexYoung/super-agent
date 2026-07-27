@@ -13,7 +13,9 @@ from runtime.evaluation import (
     evaluation_record_from_dict,
     evaluation_record_to_dict,
 )
+from runtime.disclosure_store import RuntimeDisclosureStore
 from runtime.identity import RunIdentity
+from runtime.memory_store import RuntimeMemoryStore
 from runtime.models import Conversation, ConversationMessage, RunEvent, RunSnapshot
 from runtime.storage import StorageBackend, StorageEvent, StorageEventQuery
 from runtime.storage.files import create_scope_digest, write_bytes_atomically
@@ -21,14 +23,11 @@ from runtime.storage.jsonl import JsonlStorage
 from runtime.storage.values import encode_storage_data
 from runtime.views import (
     conversation_from_events,
-    disclosure_history_from_events,
     explain_run_from_views,
     optional_string,
-    replay_memory,
     run_event_from_storage,
     run_snapshot_from_events,
     runtime_lock_from_events,
-    usage_habits_from_events,
 )
 
 
@@ -57,8 +56,16 @@ class RuntimeStore:
             / "agents"
             / create_scope_digest(self.agent_name)
         )
-        self.cache_root = self.private_root / "cache"
-        self.disclosure_history_path = self.cache_root / "history.json"
+        self.disclosure = RuntimeDisclosureStore(
+            self.private_root / "cache",
+            append_scoped_event=self._append_scoped_event,
+            append_run_event=self.append_run_event,
+            read_all_events=self._read_all_storage_events,
+        )
+        self.memory = RuntimeMemoryStore(
+            self._append_scoped_event,
+            self._read_storage_events,
+        )
 
     def create_conversation(
         self,
@@ -401,187 +408,6 @@ class RuntimeStore:
         )
         return self._read_storage_events("skill_evolution", selected_id)
 
-    def write_disclosure_text(
-        self,
-        identity: RunIdentity | None,
-        skill_key: str,
-        stage: str,
-        path: Path,
-        content: str,
-    ) -> None:
-        self._write_disclosure_bytes(
-            identity,
-            skill_key,
-            stage,
-            path,
-            content.encode("utf-8"),
-        )
-
-    def write_disclosure_json(
-        self,
-        identity: RunIdentity | None,
-        skill_key: str,
-        stage: str,
-        path: Path,
-        content: dict[str, object],
-    ) -> None:
-        self._write_disclosure_bytes(
-            identity,
-            skill_key,
-            stage,
-            path,
-            (
-                json.dumps(content, ensure_ascii=False, indent=2, sort_keys=True)
-                + "\n"
-            ).encode("utf-8"),
-        )
-
-    def read_disclosure_content(self, path: str | Path) -> str:
-        cache_path = Path(path).expanduser().resolve()
-        root = self.cache_root.resolve()
-        if cache_path != root and root not in cache_path.parents:
-            raise ValueError(f"path outside disclosure cache: {path}")
-        return cache_path.read_text(encoding="utf-8")
-
-    def read_disclosure_history(self) -> list[dict[str, object]]:
-        return disclosure_history_from_events(
-            self.backend.read_events(
-                StorageEventQuery(user_id=self.user_id, agent_name=self.agent_name)
-            )
-        )
-
-    def add_memory_item(self, item: dict[str, str]) -> None:
-        self._append_scoped_event("memory", "memory", "memory.added", {"item": item})
-
-    def list_memory_items(self, scope: str | None = None) -> list[dict[str, str]]:
-        active = replay_memory(self._read_storage_events("memory", "memory"))
-        items = [item for item in active.values() if scope is None or item["scope"] == scope]
-        return sorted(items, key=lambda item: (item["created_at"], item["item_id"]), reverse=True)
-
-    def forget_memory_items(self, item_ids: list[str], reason: str = "") -> None:
-        selected = self._require_active_memory_items(item_ids)
-        self._append_scoped_event(
-            "memory",
-            "memory",
-            "memory.forgotten",
-            {"item_ids": selected, "reason": reason.strip()},
-        )
-
-    def merge_memory_items(
-        self,
-        source_item_ids: list[str],
-        replacement: dict[str, str],
-        reason: str = "",
-    ) -> None:
-        selected = self._require_active_memory_items(source_item_ids)
-        self._append_scoped_event(
-            "memory",
-            "memory",
-            "memory.merged",
-            {
-                "source_item_ids": selected,
-                "item": replacement,
-                "reason": reason.strip(),
-            },
-        )
-
-    def supersede_memory_items(
-        self,
-        source_item_ids: list[str],
-        replacement: dict[str, str],
-        reason: str = "",
-    ) -> None:
-        selected = self._require_active_memory_items(source_item_ids)
-        self._append_scoped_event(
-            "memory",
-            "memory",
-            "memory.superseded",
-            {
-                "source_item_ids": selected,
-                "item": replacement,
-                "reason": reason.strip(),
-            },
-        )
-
-    def archive_memory_items(self, item_ids: list[str], reason: str = "") -> None:
-        selected = self._require_active_memory_items(item_ids)
-        self._append_scoped_event(
-            "memory",
-            "memory",
-            "memory.archived",
-            {"item_ids": selected, "reason": reason.strip()},
-        )
-
-    def record_memory_organization(
-        self,
-        event_type: str,
-        data: dict[str, object],
-    ) -> None:
-        if event_type not in {
-            "memory.organization.started",
-            "memory.organization.completed",
-            "memory.organization.failed",
-        }:
-            raise ValueError(f"unknown memory organization event: {event_type}")
-        self._append_scoped_event("memory", "memory", event_type, data)
-
-    def record_usage_habits(self, workflow: str, skills: list[str]) -> None:
-        self._append_scoped_event(
-            "habit",
-            "usage",
-            "agent.completed",
-            {"workflow": workflow, "skills": list(skills)},
-        )
-
-    def read_usage_habits(self) -> dict[str, object]:
-        return usage_habits_from_events(self._read_storage_events("habit", "usage"))
-
-    def _require_active_memory_items(self, item_ids: list[str]) -> list[str]:
-        selected = list(dict.fromkeys(item_ids))
-        if not selected:
-            raise ValueError("memory operation requires at least one item")
-        active = replay_memory(self._read_storage_events("memory", "memory"))
-        missing = sorted(set(selected) - set(active))
-        if missing:
-            raise KeyError(f"active memory items not found: {', '.join(missing)}")
-        return selected
-
-    def _write_disclosure_bytes(
-        self,
-        identity: RunIdentity | None,
-        skill_key: str,
-        stage: str,
-        path: Path,
-        content: bytes,
-    ) -> None:
-        digest = hashlib.sha256(content).hexdigest()
-        cache_hit = path.is_file() and hashlib.sha256(path.read_bytes()).hexdigest() == digest
-        if not cache_hit:
-            write_bytes_atomically(path, content)
-        data: dict[str, object] = {
-            "skill_key": skill_key,
-            "stage": stage,
-            "cache_path": str(path),
-            "content_sha256": digest,
-            "cache_hit": cache_hit,
-        }
-        if identity is None:
-            self._append_scoped_event("disclosure", "management", "skill.disclosed", data)
-        else:
-            self.append_run_event(identity, "skill.disclosed", data)
-        write_bytes_atomically(
-            self.disclosure_history_path,
-            (
-                json.dumps(
-                    self.read_disclosure_history(),
-                    ensure_ascii=False,
-                    indent=2,
-                    sort_keys=True,
-                )
-                + "\n"
-            ).encode("utf-8"),
-        )
-
     def _append_scoped_event(
         self,
         stream_type: str,
@@ -610,6 +436,11 @@ class RuntimeStore:
                 stream_type=stream_type,
                 stream_id=stream_id,
             )
+        )
+
+    def _read_all_storage_events(self) -> list[StorageEvent]:
+        return self.backend.read_events(
+            StorageEventQuery(user_id=self.user_id, agent_name=self.agent_name)
         )
 
     def _require_identity_scope(self, identity: RunIdentity) -> None:

@@ -11,8 +11,8 @@ from pathlib import Path
 from uuid import uuid4
 
 from provider.chat import Message
+from runtime.model_calls import TextModel
 from runtime.store import RuntimeStore
-from runtime.task_loop import TextModel
 from runtime.evolution import (
     DirectoryFileChanges,
     apply_directory_file_changes,

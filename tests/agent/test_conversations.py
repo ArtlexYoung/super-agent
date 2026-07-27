@@ -91,7 +91,10 @@ class ConversationRuntimeTests(unittest.TestCase):
             self.assertEqual([], MiniMemory(beta_store).list_memory_items())
             self.assertTrue(alpha_store.read_evaluation_records())
             self.assertTrue(beta_store.read_evaluation_records())
-            self.assertNotEqual(alpha_store.cache_root, beta_store.cache_root)
+            self.assertNotEqual(
+                alpha_store.disclosure.cache_root,
+                beta_store.disclosure.cache_root,
+            )
 
     def test_subagent_inherits_identity_without_duplicating_main_conversation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

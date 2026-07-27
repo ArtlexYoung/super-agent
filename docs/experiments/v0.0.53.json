@@ -1,0 +1,136 @@
+{
+  "ag_ui": {
+    "content_type": "text/event-stream; charset=utf-8",
+    "custom_events": [
+      "run.started",
+      "task.started",
+      "skill.disclosed",
+      "skill.disclosed",
+      "skill.disclosed",
+      "skill.disclosed",
+      "skill.disclosed",
+      "skill.disclosed",
+      "skills.selected",
+      "task.scheduled",
+      "runtime.locked",
+      "skill.disclosed",
+      "skill.disclosed",
+      "skill.disclosed",
+      "skill.disclosed",
+      "skills.disclosed",
+      "action.checked",
+      "action.completed",
+      "model.call.selected",
+      "model.call.completed",
+      "model.step.completed",
+      "tool.requested",
+      "action.checked",
+      "action.blocked",
+      "tool.failed",
+      "run.failed"
+    ],
+    "event_types": [
+      "RUN_STARTED",
+      "CUSTOM",
+      "STEP_STARTED",
+      "CUSTOM",
+      "CUSTOM",
+      "CUSTOM",
+      "CUSTOM",
+      "CUSTOM",
+      "CUSTOM",
+      "CUSTOM",
+      "CUSTOM",
+      "CUSTOM",
+      "CUSTOM",
+      "CUSTOM",
+      "CUSTOM",
+      "CUSTOM",
+      "CUSTOM",
+      "CUSTOM",
+      "CUSTOM",
+      "CUSTOM",
+      "CUSTOM",
+      "CUSTOM",
+      "CUSTOM",
+      "TOOL_CALL_START",
+      "TOOL_CALL_ARGS",
+      "TOOL_CALL_END",
+      "CUSTOM",
+      "CUSTOM",
+      "CUSTOM",
+      "TOOL_CALL_RESULT",
+      "CUSTOM",
+      "CUSTOM",
+      "RUN_ERROR"
+    ],
+    "status": 200,
+    "terminal_event": {
+      "code": "ActionConfirmationRequired",
+      "type": "RUN_ERROR"
+    }
+  },
+  "all_checks_passed": true,
+  "checks": {
+    "ag_ui_streams_canonical_error": true,
+    "failed_owned_skill_is_promoted": true,
+    "one_provider_serves_each_runtime_purpose": true,
+    "recall_organizes_and_forgets_memory": true,
+    "safety_blocks_handler_before_execution": true
+  },
+  "evolution": {
+    "active_version": "0.1.1",
+    "candidate_version": "0.1.1",
+    "event_types": [
+      "skill_evolution.started",
+      "skill_evolution.candidate_created",
+      "skill_evolution.candidate_evaluated",
+      "skill_evolution.candidate_promoted"
+    ],
+    "instructions_improved": true,
+    "origin": "automatic",
+    "reason_codes": [
+      "failures"
+    ],
+    "skill_key": "external:protected",
+    "source_version": "0.1.0",
+    "status": "promoted"
+  },
+  "input_sha256": "2cbcbb024d3a7059af8d25809d85e2029ed8b89881106950250f11a238ee38e5",
+  "memory": {
+    "after": [
+      "Current project external service endpoint."
+    ],
+    "before": [
+      "Current project external service endpoint.",
+      "Legacy project external service endpoint."
+    ],
+    "forgotten_item_selected": true,
+    "organization_events": [
+      "memory.organization.started",
+      "memory.forgotten",
+      "memory.organization.completed"
+    ]
+  },
+  "provider_routes": [
+    "memory_organization",
+    "task",
+    "skill_evolution",
+    "skill_evaluation"
+  ],
+  "safety": {
+    "action_events": [
+      "action.checked",
+      "action.blocked"
+    ],
+    "decision": "require_confirmation",
+    "effects": [
+      "execute",
+      "network"
+    ],
+    "handler_calls": 0,
+    "resource": "external:proof-service"
+  },
+  "schema_version": 1,
+  "version": "0.0.53"
+}

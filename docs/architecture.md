@@ -28,7 +28,13 @@ Model calls, tool calls, and subagent work are observable steps of the same task
 
 `runtime.insights` projects UI-facing task, model, routing, freshness, and evolution views from canonical events and evaluation records. CLI and user interfaces consume this projection instead of implementing their own evidence logic. `ag_ui_bridge` maps the same live event stream to AG-UI without owning execution or state.
 
-`AdaptiveTaskLoop` is the only task-step owner. Pure decision functions first filter model profiles by connection readiness and required features, then score purpose, prompt traits, default status, declared quality, latency, cost, and user-scoped evidence. Skill selection uses the same progressive-disclosure core, while subagent selection uses the descriptions and triggers supplied by `Agent.add_subagent(...)`.
+`AdaptiveTaskLoop` is the only task-step owner. `runtime.task_preparation` loads passive
+policies and contributions, assembles tools, and builds prompt context, but never advances
+a task. Pure decision functions first filter model profiles by connection readiness and
+required features, then score purpose, prompt traits, default status, declared quality,
+latency, cost, and user-scoped evidence. Skill selection uses the same
+progressive-disclosure core, while subagent selection uses the descriptions and triggers
+supplied by `Agent.add_subagent(...)`.
 
 The progressively disclosed `planner:default` Skill contributes only its planning instruction and deterministic planning thresholds. Simple tasks stay on the direct path. For a planned task, the loop requests one strict plan, validates every field, and then owns every resulting step. Each step receives a fresh model fallback order from its purpose and required features, may run one named subagent, and receives prior step results. Planner is data and policy, not a second controller or execution loop.
 
@@ -71,14 +77,23 @@ Providers normalize protocol calls only. Model descriptions and routing traits l
 ## State and Isolation
 
 ```text
-RuntimeSession -> RuntimeStore -> StorageBackend
-                                  +-> JSONL (default)
-                                  +-> SQLite
-                                  +-> MySQL (optional)
-                                  +-> PostgreSQL (optional)
+RuntimeSession
+  -> RuntimeStore
+       -> RuntimeDisclosureStore -> scoped cache + disclosure events
+       -> RuntimeMemoryStore     -> memory and habit events
+       -> StorageBackend
+            +-> JSONL (default)
+            +-> SQLite
+            +-> MySQL (optional)
+            +-> PostgreSQL (optional)
 ```
 
 `RunIdentity` scopes user, Agent, conversation, task, and parent task. Conversations, traces, evaluations, disclosure history, memory, habits, and evolution decisions use one canonical event schema. Derived views can always be rebuilt from those events.
+
+The focused disclosure and memory stores are domain operation boundaries, not additional
+state backends. `RuntimeStore` creates both with the same user and Agent scope; disclosure
+history and every memory mutation still enter the one configured `StorageBackend`.
+Disclosure file reads and writes are restricted to that scope's cache root.
 
 ## Action Safety
 

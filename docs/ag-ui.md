@@ -76,3 +76,7 @@ server.serve_forever()
 The default server listens only on `127.0.0.1`, accepts request bodies up to 1 MiB, and allows browser calls only from the configured origin list. `--user-id` fixes one Runtime user scope when the server starts; client-controlled `forwardedProps` never selects another user.
 
 The server has no authentication or TLS. Keep the default local binding for local use. Protect any non-local binding with an authenticated reverse proxy and an explicit `--allow-origin`. Runtime Safety still authorizes every model-triggered action before its handler runs; AG-UI only observes the resulting canonical events.
+
+The [v0.0.53 end-to-end proof](experiments/v0.0.53.md) starts this server on an ephemeral
+port and verifies canonical Tool, Safety, failure, and `RUN_ERROR` events from one real
+HTTP/SSE request.

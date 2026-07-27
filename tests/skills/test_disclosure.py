@@ -56,7 +56,11 @@ class ProgressiveDisclosureTests(unittest.TestCase):
             self.assertIn("Progressive skill disclosure", content)
             self.assertIn("history.json", content)
             self.assertIn("skills/prompt/echo/manifest.json", content)
-            self.assertTrue(agent.runtime.create_store().cache_root.joinpath("index.json").exists())
+            self.assertTrue(
+                agent.runtime.create_store()
+                .disclosure.cache_root.joinpath("index.json")
+                .exists()
+            )
 
 
 def _write_skill(root: Path, name: str, description: str, instruction: str) -> None:

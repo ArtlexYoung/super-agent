@@ -193,6 +193,23 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "outside disclosure cache"):
                 core.read_disclosed_content(outside)
 
+    def test_disclosure_write_rejects_path_outside_cache(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            store = create_local_runtime_store(root / "state")
+            outside = root / "outside.txt"
+
+            with self.assertRaisesRegex(ValueError, "outside disclosure cache"):
+                store.disclosure.write_text(
+                    None,
+                    "prompt:outside",
+                    "instructions",
+                    outside,
+                    "must not be written",
+                )
+
+            self.assertFalse(outside.exists())
+
     def test_disclosure_rejects_skill_changed_after_index_was_prepared(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

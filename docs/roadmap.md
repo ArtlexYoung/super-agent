@@ -260,10 +260,14 @@ Status: implemented.
 
 ## v0.0.53: Compact End-to-End Runtime
 
-Status: planned.
+Status: implemented.
 
-- Remove repeated wrappers and split oversized Runtime modules by responsibility.
+- Give disclosure cache/history and memory/habits explicit domain stores without compatibility wrappers.
+- Separate task preparation from the single adaptive execution loop.
+- Split oversized Web configuration and style modules without changing behavior.
 - Prove Safety, memory organization, AG-UI streaming, and automatic evolution together.
 - Publish one concise architecture and verification path for the complete `0.0.x` loop.
+
+Proof: [experiment description](experiments/v0.0.53.md) and [machine-readable result](experiments/v0.0.53.json).
 
 The project will not move to `0.1.x` merely because more features exist. That change should follow a reproducible demonstration that the central Skill-first lifecycle is useful and maintainable.

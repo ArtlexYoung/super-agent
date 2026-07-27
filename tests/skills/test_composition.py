@@ -131,7 +131,11 @@ path = ".super-agent"
             result = agent.run("build an unrelated output")
 
             self.assertEqual({"report", "research", "transport"}, set(result.skills))
-            index = json.loads(agent.runtime.create_store().cache_root.joinpath("index.json").read_text())
+            index = json.loads(
+                agent.runtime.create_store()
+                .disclosure.cache_root.joinpath("index.json")
+                .read_text()
+            )
             indexed = {item["name"]: item for item in index["skills"]}
             self.assertEqual(["facts"], indexed["research"]["provides"])
             self.assertEqual(["http"], indexed["research"]["requires"])

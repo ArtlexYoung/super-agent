@@ -203,9 +203,9 @@ super-agent runs explain --config agent.toml --run-id <run-id> --output json
 
 ## 可复现证明
 
-[v0.0.46 规划与进化证明](docs/experiments/v0.0.46.md)及其[生成的 JSON 报告](docs/experiments/v0.0.46.json)使用 Planner 和 model Skill 运行正常任务路径，验证逐步模型与子 Agent 路由、普通评价归因，以及 Planner/model revision 通过同一个四阶段进化状态机自动晋升。整个证明确定性、本地运行、零依赖，也不需要 API Key。
+[v0.0.53 端到端 Runtime 证明](docs/experiments/v0.0.53.md)及其[生成的 JSON 报告](docs/experiments/v0.0.53.json)会启动真实 AG-UI HTTP 服务，并执行唯一的标准任务路径。这次运行会在回忆时整理并遗忘记忆，在 handler 执行前拦截外部 Tool，通过 `RUN_ERROR` 发送失败，并把发生失败的 Agent 自建 Skill 从 `0.1.0` 自动晋升到 `0.1.1`。整个证明确定性、本地运行、零依赖，也不需要 API Key。
 
-此前的 [v0.0.41 证明](docs/experiments/v0.0.41.md)验证用户与 Agent 证据隔离和自动回滚，[v0.0.34 生命周期实验](docs/experiments/v0.0.34.md)比较无 Skill、全量加载和渐进披露上下文。实验编排始终位于发行 Runtime 之外，避免证明代码变成第二套执行框架。
+[v0.0.46 证明](docs/experiments/v0.0.46.md)覆盖计划任务中的模型与子 Agent 路由，以及 Planner/model Skill 进化。此前的 [v0.0.41 证明](docs/experiments/v0.0.41.md)验证用户与 Agent 证据隔离和自动回滚，[v0.0.34 生命周期实验](docs/experiments/v0.0.34.md)比较无 Skill、全量加载和渐进披露上下文。实验编排始终位于发行 Runtime 之外，避免证明代码变成第二套执行框架。
 
 ## 自进化
 
@@ -278,7 +278,7 @@ backend = "jsonl"
 path = ".super-agent"
 ```
 
-JSONL 会在 `.super-agent/users/<user-hash>/events.jsonl` 下为每个用户保存一条可读的标准事件流。会话、运行、评价、记忆、使用习惯、Skill 保鲜度、进化建议和披露历史都按用户与 Agent 隔离。`RuntimeStore` 从事件派生领域视图；渐进披露缓存和进化工作区只是按用户隔离、可重新生成的本地产物。
+JSONL 会在 `.super-agent/users/<user-hash>/events.jsonl` 下为每个用户保存一条可读的标准事件流。会话、运行、评价、记忆、使用习惯、Skill 保鲜度、进化建议和披露历史都按用户与 Agent 隔离。`RuntimeStore` 负责公共作用域和运行操作；`store.disclosure` 负责披露缓存与历史，`store.memory` 负责同一后端上的记忆与习惯操作。渐进披露缓存和进化工作区只是按用户隔离、可重新生成的本地产物。
 
 需要更强的本地并发时，可以选择 Python 标准库自带的 SQLite，Runtime 语义完全相同，也不会增加第三方依赖：
 
@@ -334,6 +334,7 @@ super-agent storage copy \
 - [Skill 与渐进式披露](docs/skills.md)
 - [Runtime、Workflow、追踪与多 Agent](docs/runtime.md)
 - [评价、保鲜度、记忆与进化](docs/evolution.md)
+- [可复现的 v0.0.53 端到端 Runtime 证明](docs/experiments/v0.0.53.md)
 - [可复现的 v0.0.46 规划与进化证明](docs/experiments/v0.0.46.md)
 - [可复现的 v0.0.41 任务与进化证明](docs/experiments/v0.0.41.md)
 - [可复现的 v0.0.34 实验](docs/experiments/v0.0.34.md)

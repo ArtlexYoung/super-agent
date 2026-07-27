@@ -230,7 +230,7 @@ def _write_isolated_domain_state(store: RuntimeStore, marker: str) -> None:
         run_id=f"{marker}-run",
     )
     MiniMemory(store).add_memory_item(f"{marker}-only")
-    store.record_usage_habits("direct", [f"{marker}-skill"])
+    store.memory.record_usage_habits("direct", [f"{marker}-skill"])
 
 
 def _require_conversation_isolation(store: RuntimeStore, marker: str) -> str:
@@ -241,13 +241,13 @@ def _require_conversation_isolation(store: RuntimeStore, marker: str) -> str:
 
 
 def _require_memory_isolation(store: RuntimeStore, marker: str) -> str:
-    if [item["text"] for item in store.list_memory_items()] != [f"{marker}-only"]:
+    if [item["text"] for item in store.memory.list_memory_items()] != [f"{marker}-only"]:
         raise AssertionError("memory user isolation failed")
     return "memory_user_isolation"
 
 
 def _require_habit_isolation(store: RuntimeStore, skill_name: str) -> str:
-    habits = store.read_usage_habits()
+    habits = store.memory.read_usage_habits()
     if habits["skills"] != {skill_name: 1}:
         raise AssertionError("usage habit user isolation failed")
     return "skill_usage_user_isolation"
@@ -257,8 +257,10 @@ def _require_agent_isolation(
     main_store: RuntimeStore,
     subagent_store: RuntimeStore,
 ) -> str:
-    main_texts = [item["text"] for item in main_store.list_memory_items()]
-    subagent_texts = [item["text"] for item in subagent_store.list_memory_items()]
+    main_texts = [item["text"] for item in main_store.memory.list_memory_items()]
+    subagent_texts = [
+        item["text"] for item in subagent_store.memory.list_memory_items()
+    ]
     if "subagent-only" in main_texts or subagent_texts != ["subagent-only"]:
         raise AssertionError("Agent storage isolation failed")
     return "agent_scope_isolation"

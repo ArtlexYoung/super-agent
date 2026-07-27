@@ -112,7 +112,7 @@ class WebAPI:
                 asdict(item) for item in self.agent.list_conversations(self.user_id)
             ],
             "runs": [asdict(item) for item in store.list_runs(50)],
-            "memory": store.list_memory_items(),
+            "memory": store.memory.list_memory_items(),
             "subagents": _subagent_tree(
                 self.agent,
                 self.user_id,
@@ -134,7 +134,10 @@ class WebAPI:
                 f"memory:active:{item_id}",
                 (ActionEffect.DELETE,),
             ),
-            lambda: store.forget_memory_items([item_id], "forgotten from web interface"),
+            lambda: store.memory.forget_memory_items(
+                [item_id],
+                "forgotten from web interface",
+            ),
         )
 
     def _update_configuration(self, body: object | None) -> None:
