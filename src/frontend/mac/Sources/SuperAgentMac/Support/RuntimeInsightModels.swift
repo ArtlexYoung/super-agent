@@ -4,6 +4,8 @@ struct RuntimeRunInsight: Decodable, Equatable, Sendable {
     var schemaVersion: Int
     var snapshot: RuntimeRunSnapshot
     var schedule: RuntimeTaskSchedule
+    var taskPlan: RuntimeTaskPlan
+    var taskSteps: [RuntimePlannedTaskStep]
     var modelCalls: [RuntimeModelCall]
     var routingEvidence: [RuntimeModelRoutingEvidence]
     var skillFreshness: [RuntimeSkillFreshness]
@@ -27,6 +29,31 @@ struct RuntimeTaskSchedule: Decodable, Equatable, Sendable {
     var skills: [String]?
     var subagents: [String]?
     var subagentReasons: [String]?
+    var executionMode: String?
+    var planner: String?
+    var planningReasons: [String]?
+}
+
+struct RuntimeTaskPlan: Decodable, Equatable, Sendable {
+    var planner: String?
+    var reasons: [String]?
+}
+
+struct RuntimePlannedTaskStep: Decodable, Equatable, Sendable, Identifiable {
+    var step: Int
+    var instruction: String
+    var purpose: String
+    var requiredFeatures: [String]
+    var workflow: String
+    var models: [RuntimeScheduledModel]
+    var skills: [String]
+    var subagents: [String]
+    var subagentReasons: [String]
+    var status: String
+    var text: String?
+    var stopReason: String?
+
+    var id: Int { step }
 }
 
 struct RuntimeScheduledModel: Decodable, Equatable, Sendable, Identifiable {

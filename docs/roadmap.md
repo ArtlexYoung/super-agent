@@ -198,10 +198,12 @@ Status: implemented.
 
 ## v0.0.46: Self-Evolving Planning Proof
 
-Status: planned.
+Status: implemented.
 
 - Evaluate Planner and routing Skills from ordinary task evidence.
 - Improve eligible Planner and routing revisions through the same evolution loop.
 - Publish a reproducible zero-configuration scheduling and evolution proof.
+
+Proof: [experiment description](experiments/v0.0.46.md) and [machine-readable result](experiments/v0.0.46.json).
 
 The project will not move to `0.1.x` merely because more features exist. That change should follow a reproducible demonstration that the central Skill-first lifecycle is useful and maintainable.

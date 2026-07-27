@@ -9,6 +9,13 @@ struct RunInsightView: View {
             Text("运行洞察")
                 .font(.title3.weight(.semibold))
             TaskScheduleInsightView(schedule: insight.schedule)
+            if !insight.taskSteps.isEmpty {
+                TaskPlanInsightView(
+                    plan: insight.taskPlan,
+                    steps: insight.taskSteps,
+                    evolutions: insight.evolution
+                )
+            }
             ModelCallsInsightView(calls: insight.modelCalls)
             ModelRoutingEvidenceView(evidence: insight.routingEvidence)
             SkillFreshnessInsightView(skills: insight.skillFreshness)
@@ -23,6 +30,10 @@ private struct TaskScheduleInsightView: View {
     var body: some View {
         InsightSectionView(title: "任务调度", icon: "point.3.connected.trianglepath.dotted") {
             HStack(spacing: 16) {
+                InsightValueView(
+                    title: "执行方式",
+                    value: executionModeText(schedule.executionMode)
+                )
                 InsightValueView(title: "用途", value: schedule.purpose ?? "answer")
                 InsightValueView(title: "工作流", value: schedule.workflow ?? "-")
                 InsightValueView(
@@ -37,6 +48,7 @@ private struct TaskScheduleInsightView: View {
                 InsightTextListView(title: "选择的子 Agent", values: schedule.subagents ?? [])
                 InsightTextListView(title: "选择原因", values: schedule.subagentReasons ?? [])
             }
+            InsightTextListView(title: "规划原因", values: schedule.planningReasons ?? [])
             ForEach(schedule.models ?? []) { model in
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
@@ -56,6 +68,87 @@ private struct TaskScheduleInsightView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
         }
+    }
+}
+
+private struct TaskPlanInsightView: View {
+    let plan: RuntimeTaskPlan
+    let steps: [RuntimePlannedTaskStep]
+    let evolutions: [RuntimeSkillEvolution]
+
+    var body: some View {
+        InsightSectionView(title: "任务计划", icon: "list.number") {
+            HStack(spacing: 10) {
+                Text(plan.planner ?? "planner:default")
+                    .font(.body.monospaced().weight(.semibold))
+                if let evolution = evolution(for: plan.planner) {
+                    DefaultTagView(text: evolutionStatusText(evolution.status))
+                }
+                Spacer()
+                Text("\(steps.count) 步")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+            InsightTextListView(title: "触发原因", values: plan.reasons ?? [])
+            ForEach(steps) { step in
+                plannedStepView(step)
+            }
+        }
+    }
+
+    private func plannedStepView(_ step: RuntimePlannedTaskStep) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label("步骤 \(step.step)", systemImage: statusIcon(step.status))
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(statusColor(step.status))
+                Spacer()
+                Text(statusText(step.status))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(statusColor(step.status))
+            }
+            Text(step.instruction)
+                .font(.callout)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 16) {
+                InsightValueView(title: "用途", value: step.purpose)
+                InsightValueView(
+                    title: "模型",
+                    value: step.models.first?.key ?? "-"
+                )
+                InsightValueView(
+                    title: "子 Agent",
+                    value: step.subagents.first ?? "-"
+                )
+                InsightValueView(
+                    title: "所需能力",
+                    value: step.requiredFeatures.joined(separator: ", ")
+                )
+            }
+            if let modelKey = step.models.first?.key,
+               let evolution = evolution(for: modelKey) {
+                HStack(spacing: 6) {
+                    Text("模型进化")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    DefaultTagView(text: evolutionStatusText(evolution.status))
+                }
+            }
+            if let text = step.text, !text.isEmpty {
+                Text(text)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(5)
+            }
+        }
+        .padding(10)
+        .background(Color(nsColor: .textBackgroundColor).opacity(0.7))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private func evolution(for skillKey: String?) -> RuntimeSkillEvolution? {
+        guard let skillKey else { return nil }
+        return evolutions.first { $0.skillKey == skillKey }
     }
 }
 
@@ -312,6 +405,10 @@ private func evolutionStatusText(_ status: String) -> String {
         "failed": "失败",
     ]
     return values[status] ?? status
+}
+
+private func executionModeText(_ mode: String?) -> String {
+    mode == "planned" ? "自动规划" : "直接执行"
 }
 
 private func percent(_ value: Double) -> String {

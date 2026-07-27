@@ -190,9 +190,9 @@ The projection includes scheduler reasons, the task plan and completed steps, ev
 
 ## Reproducible Proof
 
-The [v0.0.41 task and evolution proof](docs/experiments/v0.0.41.md) and its [generated JSON report](docs/experiments/v0.0.41.json) run the normal task path with two model Skills. They verify purpose-based model scheduling, user and Agent evidence isolation, complete run insight, automatic candidate promotion from failed task evidence, and rollback after a promoted regression. The proof is deterministic, local, dependency-free, and requires no API key.
+The [v0.0.46 planning and evolution proof](docs/experiments/v0.0.46.md) and its [generated JSON report](docs/experiments/v0.0.46.json) run the normal task path with Planner and model Skills. They verify per-step model and subagent routing, ordinary evaluation attribution, and automatic promotion of both Planner and model revisions through the same four-stage evolution state machine. The proof is deterministic, local, dependency-free, and requires no API key.
 
-The earlier [v0.0.34 lifecycle experiment](docs/experiments/v0.0.34.md) compares no-Skill, eager, and progressive context and checks storage isolation. Benchmark orchestration remains outside the shipped Runtime so proof code does not become a second execution framework.
+The earlier [v0.0.41 proof](docs/experiments/v0.0.41.md) verifies user and Agent evidence isolation plus automatic rollback, while the [v0.0.34 lifecycle experiment](docs/experiments/v0.0.34.md) compares no-Skill, eager, and progressive context. Experiment orchestration remains outside the shipped Runtime so proof code does not become a second execution framework.
 
 ## Self-Evolution
 
@@ -327,6 +327,7 @@ The runtime lock is stored as a run event. It captures the selected model profil
 - [Skills and Progressive Disclosure](docs/skills.md)
 - [Runtime, Workflows, Tracing, and Multi-Agent](docs/runtime.md)
 - [Evaluation, Freshness, Memory, and Evolution](docs/evolution.md)
+- [Reproducible v0.0.46 Planning and Evolution Proof](docs/experiments/v0.0.46.md)
 - [Reproducible v0.0.41 Task and Evolution Proof](docs/experiments/v0.0.41.md)
 - [Reproducible v0.0.34 Experiment](docs/experiments/v0.0.34.md)
 - [CLI Reference](docs/cli.md)

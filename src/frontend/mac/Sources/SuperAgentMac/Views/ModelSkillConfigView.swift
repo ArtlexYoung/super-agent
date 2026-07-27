@@ -6,7 +6,17 @@ private let modelProviderOptions = [
     "anthropic-compatible",
 ]
 private let modelSupportOptions = ["text", "tools"]
-private let modelPurposeOptions = ["answer", "skill_evolution", "skill_evaluation"]
+private let modelPurposeOptions = [
+    "answer",
+    "planning",
+    "research",
+    "analysis",
+    "synthesis",
+    "summary",
+    "coding",
+    "skill_evolution",
+    "skill_evaluation",
+]
 
 struct ModelSkillConfigEditorView: View {
     @EnvironmentObject private var chatStore: ChatStore

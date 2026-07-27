@@ -190,9 +190,9 @@ super-agent runs explain --config agent.toml --run-id <run-id> --output json
 
 ## 可复现证明
 
-[v0.0.41 任务与进化证明](docs/experiments/v0.0.41.md)及其[生成的 JSON 报告](docs/experiments/v0.0.41.json)使用两个 model Skill 运行正常任务路径，验证按用途调度模型、用户与 Agent 证据隔离、完整运行洞察、失败任务证据自动晋升候选，以及晋升后退化时自动回滚。整个证明确定性、本地运行、零依赖，也不需要 API Key。
+[v0.0.46 规划与进化证明](docs/experiments/v0.0.46.md)及其[生成的 JSON 报告](docs/experiments/v0.0.46.json)使用 Planner 和 model Skill 运行正常任务路径，验证逐步模型与子 Agent 路由、普通评价归因，以及 Planner/model revision 通过同一个四阶段进化状态机自动晋升。整个证明确定性、本地运行、零依赖，也不需要 API Key。
 
-此前的 [v0.0.34 生命周期实验](docs/experiments/v0.0.34.md)比较无 Skill、全量加载和渐进披露上下文，并验证存储隔离。实验编排始终位于发行 Runtime 之外，避免证明代码变成第二套执行框架。
+此前的 [v0.0.41 证明](docs/experiments/v0.0.41.md)验证用户与 Agent 证据隔离和自动回滚，[v0.0.34 生命周期实验](docs/experiments/v0.0.34.md)比较无 Skill、全量加载和渐进披露上下文。实验编排始终位于发行 Runtime 之外，避免证明代码变成第二套执行框架。
 
 ## 自进化
 
@@ -327,6 +327,7 @@ super-agent storage copy \
 - [Skill 与渐进式披露](docs/skills.md)
 - [Runtime、Workflow、追踪与多 Agent](docs/runtime.md)
 - [评价、保鲜度、记忆与进化](docs/evolution.md)
+- [可复现的 v0.0.46 规划与进化证明](docs/experiments/v0.0.46.md)
 - [可复现的 v0.0.41 任务与进化证明](docs/experiments/v0.0.41.md)
 - [可复现的 v0.0.34 实验](docs/experiments/v0.0.34.md)
 - [CLI 命令](docs/cli.md)

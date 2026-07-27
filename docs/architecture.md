@@ -58,6 +58,8 @@ Built-ins require no configuration. Installable and evolvable handlers are `capa
 
 Every Skill has the stable identity `capability:name`. Prompt, MCP, memory, workflow, model, and executable Capability definitions share one index, progressive-disclosure cache, evidence stream, and evolution format.
 
+Planner and model routing revisions are not privileged evolution targets. When used, both become ordinary `SkillRevision` values, receive the task's evaluation record, and enter the same recommendation, complete-directory candidate, evaluation, promotion, monitoring, and rollback state machine. Model connection fields remain user-owned unless the active model Skill explicitly grants update permission.
+
 Providers normalize protocol calls only. Model descriptions and routing traits live in model Skills, while connection instances are created lazily by `ProviderPool`.
 
 ## State and Isolation
@@ -83,5 +85,6 @@ RuntimeSession -> RuntimeStore -> StorageBackend
 - Every used Skill revision, including an executor's `capability` Skill, is evaluated automatically.
 - Workflow is Skill data, not a second execution engine.
 - Evolution cannot bypass validation, evaluation, promotion, or rollback.
+- Planner and model Skills cannot bypass the shared Skill evolution state machine.
 - Internal compatibility shells are intentionally absent during `0.0.x`.
 - Model editors persist standard model Skills; API-key values remain outside Skill and Agent configuration.
