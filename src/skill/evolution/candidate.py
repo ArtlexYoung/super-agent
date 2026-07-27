@@ -12,7 +12,7 @@ from uuid import uuid4
 
 from provider.chat import Message
 from runtime.store import RuntimeStore
-from runtime.model_router import TextModel
+from runtime.task_loop import TextModel
 from runtime.evolution import (
     DirectoryFileChanges,
     apply_directory_file_changes,

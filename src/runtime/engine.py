@@ -18,19 +18,18 @@ from runtime.evaluation import (
     estimate_evaluation_token_usage,
 )
 from runtime.evolution.service import AutomaticEvolutionService
-from runtime.execution import execute_task, load_workflow_policy
 from runtime.identity import LOCAL_USER_ID, RunIdentity
-from runtime.model_router import ModelRouter
 from runtime.models import Conversation, RunEvent
 from runtime.routing import (
     ModelRoutingStats,
     detect_implicit_conversation_feedback,
     list_model_routing_stats,
 )
-from runtime.scheduler import TaskSchedule, TaskScheduler
 from runtime.session import RuntimeSession
 from runtime.storage import StorageBackend
 from runtime.store import RuntimeStore
+from runtime.task_decisions import TaskSchedule
+from runtime.task_loop import AdaptiveTaskLoop
 from runtime.tasks import TaskRequest, TaskResult, TaskTrace
 from skill.disclosure import SkillIndex
 from skill.kinds.model import (
@@ -61,11 +60,7 @@ class AgentRuntime:
         self.model_profiles = list(model_profiles)
         self.default_model_profile = select_default_model_profile(self.model_profiles)
         self.provider_pool = resources.provider_pool
-        self.task_scheduler = TaskScheduler(
-            self.model_profiles,
-            self.provider_pool.environment,
-        )
-        self.model_router = ModelRouter(self.task_scheduler, self.provider_pool)
+        self.task_loop = AdaptiveTaskLoop(self.model_profiles, self.provider_pool)
         self.capability_registry = resources.capability_registry
         self.storage = resources.storage
         self.skill_change_listener = resources.skill_change_listener
@@ -98,16 +93,10 @@ class AgentRuntime:
         started_at = perf_counter()
         try:
             self._prepare_task_context(session)
-            workflow = load_workflow_policy(session)
-            schedule = self.task_scheduler.schedule_task(request, session, workflow)
-            self._select_primary_model(session, schedule)
-            self._lock_task_context(session, schedule)
-            result = execute_task(
+            result = self.task_loop.run_task(
                 request,
                 session,
-                workflow,
-                schedule,
-                self.model_router,
+                lambda schedule: self._lock_task_context(session, schedule),
             )
             evaluation_attempted = True
             self._record_task_evaluation(
@@ -196,11 +185,11 @@ class AgentRuntime:
             ),
             store=store,
             models=EvolutionModels(
-                candidate=self.model_router.create_text_model(
+                candidate=self.task_loop.create_text_model(
                     store,
                     "skill_evolution",
                 ),
-                evaluation=self.model_router.create_text_model(
+                evaluation=self.task_loop.create_text_model(
                     store,
                     "skill_evaluation",
                 ),
@@ -248,17 +237,6 @@ class AgentRuntime:
         skill_index = disclosure.prepare_skill_index()
         session.set_skill_disclosure(disclosure, skill_index)
         self.capability_registry.validate_dependencies()
-
-    def _select_primary_model(
-        self,
-        session: RuntimeSession,
-        schedule: TaskSchedule,
-    ) -> None:
-        profile = schedule.selected_model
-        session.select_model(
-            profile,
-            self.provider_pool.get_chat_provider(profile.key, profile.connection),
-        )
 
     def _lock_task_context(
         self,

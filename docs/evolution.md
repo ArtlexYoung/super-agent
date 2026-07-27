@@ -57,7 +57,7 @@ Runtime stores the exact target version and hash, aggregate metrics, reason code
 
 An eligible recommendation advances automatically through the central Skill lifecycle:
 
-1. The central model router creates an isolated complete-directory candidate and records every added, modified, and deleted path.
+1. The central adaptive model-call path creates an isolated complete-directory candidate and records every added, modified, and deleted path.
 2. Runtime evaluates the candidate against up to three prompts from the runs that triggered the recommendation. If none can be recovered, it uses the evolution goal as one fallback case.
 3. A passing candidate is promoted atomically. A rejected or failed candidate stays inactive and its final decision is recorded.
 4. Later real runs monitor the promoted version. Any failure rolls it back; three successful samples with an average score of at least `0.75` mark it stable; a lower average rolls it back.

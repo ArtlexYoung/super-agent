@@ -159,7 +159,7 @@ Agent      组合所有部分
 discover -> disclose -> execute -> observe -> evaluate -> evolve
 ```
 
-`Agent.run(...)` 会创建唯一的内部 `TaskRequest`，并交给 `AgentRuntime.run_task(...)`。`TaskScheduler` 自动选择有序模型回退列表、渐进匹配的 Skill 和命中的子 Agent。完整原因记录在 `task.scheduled`；每次模型尝试都会记录选择、完成或失败、延迟、估算 token 和成本。Workflow Skill 只保存指令与结束规则，模型和工具循环统一由 Runtime 管理。
+`Agent.run(...)` 会创建唯一的内部 `TaskRequest`，并交给 `AgentRuntime.run_task(...)`。一个中心自适应任务循环选择有序模型回退列表、渐进匹配的 Skill 和命中的子 Agent，然后连续推进模型与工具步骤。完整原因记录在 `task.scheduled`；每次模型尝试都会记录选择、完成或失败、延迟、估算 token 和成本。Workflow Skill 只保存指令与结束规则。
 
 模型路由在冷启动时保持确定性，只有同一任务用途积累证据后才进行有界探索。证据按用户、Agent、model Skill 和任务用途隔离。需要时可以直接记录质量分数：
 
@@ -230,7 +230,7 @@ super-agent skills evolve \
 
 保鲜度计算不调用大模型，而是根据质量、距离上次调用时间、使用频率、token 成本、延迟、可靠性、同功能替代行为和样本置信度确定性派生。
 
-每次运行完成评价后，Runtime 会自动检查所有允许更新且由 Agent 创建的 Skill，包括由 Skill 承载的可执行机制。确定性调度器对同一份未变化的证据最多生成一次建议；自动进化服务随后通过中心模型路由器生成完整目录候选，使用触发运行中的最多三个真实 prompt 进行评价，只有通过现有证据门槛后才会晋升。
+每次运行完成评价后，Runtime 会自动检查所有允许更新且由 Agent 创建的 Skill，包括由 Skill 承载的可执行机制。确定性进化调度器对同一份未变化的证据最多生成一次建议；自动进化服务随后通过同一个自适应模型调用路径生成完整目录候选，使用触发运行中的最多三个真实 prompt 进行评价，只有通过现有证据门槛后才会晋升。
 
 ```bash
 super-agent evolution list --config agent.toml

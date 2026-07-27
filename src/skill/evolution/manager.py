@@ -15,7 +15,7 @@ from runtime.evolution import (
     EvolutionTarget,
 )
 from runtime.store import RuntimeStore
-from runtime.model_router import TextModel
+from runtime.task_loop import TextModel
 from skill.evolution.candidate import (
     SkillCandidate,
     SkillCandidateRequest,

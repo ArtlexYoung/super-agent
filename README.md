@@ -159,7 +159,7 @@ Every run follows one central lifecycle:
 discover -> disclose -> execute -> observe -> evaluate -> evolve
 ```
 
-`Agent.run(...)` creates one internal `TaskRequest` and sends it through `AgentRuntime.run_task(...)`. `TaskScheduler` selects an ordered model fallback list, progressively matched Skills, and matching subagents. Every reason is stored in `task.scheduled`; each model attempt records selection, completion or failure, latency, estimated tokens, and cost. Workflow Skills contain only instructions and stopping rules; Runtime owns the model and tool loop.
+`Agent.run(...)` creates one internal `TaskRequest` and sends it through `AgentRuntime.run_task(...)`. One adaptive task loop selects an ordered model fallback list, progressively matched Skills, and matching subagents, then advances the model and tool steps. Every reason is stored in `task.scheduled`; each model attempt records selection, completion or failure, latency, estimated tokens, and cost. Workflow Skills contain only instructions and stopping rules.
 
 Routing starts deterministically and uses bounded exploration only after evidence exists for the effective task purpose. Evidence is isolated by user, Agent, model Skill, and purpose. Record an explicit quality score when useful:
 
@@ -230,7 +230,7 @@ super-agent skills evolve \
 
 Freshness does not call a model. It is derived from runtime evaluation records using quality, recency, frequency, token cost, latency, reliability, replacement behavior, and sample confidence.
 
-After each evaluated run, Runtime reviews every updateable Agent-owned Skill, including Skill-backed executable mechanisms. The deterministic scheduler creates at most one recommendation for an unchanged evidence snapshot. The automatic evolution service then uses the central model router to create a complete-directory candidate, evaluates it against up to three prompts from the triggering runs, and promotes it only when the existing evidence gate passes.
+After each evaluated run, Runtime reviews every updateable Agent-owned Skill, including Skill-backed executable mechanisms. The deterministic evolution scheduler creates at most one recommendation for an unchanged evidence snapshot. The automatic evolution service then uses the same adaptive model-call path to create a complete-directory candidate, evaluates it against up to three prompts from the triggering runs, and promotes it only when the existing evidence gate passes.
 
 ```bash
 super-agent evolution list --config agent.toml

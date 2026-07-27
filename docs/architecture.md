@@ -18,8 +18,7 @@ Every public run enters the same kernel:
 Agent.run
   -> AgentRuntime.run_task(TaskRequest)
   -> disclose task context
-  -> TaskScheduler selects models, Skills, and subagents
-  -> execute model and Capability steps
+  -> AdaptiveTaskLoop selects and executes models, Skills, tools, and subagents
   -> append TaskTrace events
   -> evaluate used targets
   -> review evolution evidence
@@ -29,7 +28,9 @@ Model calls, tool calls, and subagent work are observable steps of the same task
 
 `runtime.insights` projects UI-facing task, model, routing, freshness, and evolution views from canonical events and evaluation records. CLI and macOS consume this projection instead of implementing their own evidence logic.
 
-`TaskScheduler` first filters model profiles by connection readiness and required features. It then scores purpose, prompt traits, default status, declared quality, latency, and cost. This produces a deterministic ordered fallback list without an extra model call. Skill selection uses the same progressive-disclosure core, while subagent selection uses the descriptions and triggers supplied by `Agent.add_subagent(...)`.
+`AdaptiveTaskLoop` is the only task-step owner. Pure decision functions first filter model profiles by connection readiness and required features, then score purpose, prompt traits, default status, declared quality, latency, cost, and user-scoped evidence. The loop executes the resulting fallback order without another planning call. Skill selection uses the same progressive-disclosure core, while subagent selection uses the descriptions and triggers supplied by `Agent.add_subagent(...)`.
+
+Task history is the ordered event stream emitted by actual schedule, model, tool, and subagent steps. Runtime does not maintain a second execution context or mutable history. The former scheduler, model-router, and execution modules are intentionally absent.
 
 ## Stable Runtime Kernel
 
@@ -75,6 +76,7 @@ RuntimeSession -> RuntimeStore -> StorageBackend
 - Runtime is the only task lifecycle and model-loop owner.
 - Every Skill executor is registered once and locked by exact hash.
 - Runtime consumes only `SkillContribution`, never a Skill-kind-specific runtime object.
+- One `AdaptiveTaskLoop` owns scheduling, model fallback, and tool iteration.
 - Every used Skill and executor becomes an evaluation target automatically.
 - Workflow is Skill data, not a second execution engine.
 - Evolution cannot bypass validation, evaluation, promotion, or rollback.

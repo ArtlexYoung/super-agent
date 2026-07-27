@@ -69,7 +69,7 @@ agent_can_update_connection = false
 
 Place it at a path such as `skills/model/fast/skill.toml`. `provider` and `model` are required. All other configuration fields are optional. Local OpenAI-compatible servers may omit `api_key_env` when `base_url` is localhost. Remote OpenAI and Anthropic defaults infer `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` respectively.
 
-Exactly zero or one model Skill may set `default = true`. The default is the deterministic cold-start preference, not a fixed Agent-wide model. For every task and model step, `TaskScheduler` filters profiles by required features and scores purpose, prompt traits, quality, latency, and cost. Failed calls automatically try the remaining compatible profiles in score order. If any enabled model Skill exists, model Skills are the complete profile set and environment discovery is not mixed into it.
+Exactly zero or one model Skill may set `default = true`. The default is the deterministic cold-start preference, not a fixed Agent-wide model. For every task and model step, the adaptive task loop filters profiles by required features and scores purpose, prompt traits, quality, latency, and cost. Failed calls automatically try the remaining compatible profiles in score order. If any enabled model Skill exists, model Skills are the complete profile set and environment discovery is not mixed into it.
 
 `agent_can_update` controls whether the Skill may evolve. Connection fields remain user-owned unless `agent_can_update_connection = true`; an Agent cannot grant itself that permission. Descriptions, triggers, supports, purposes, strengths, and numeric routing traits remain evolvable under ordinary Skill permissions.
 

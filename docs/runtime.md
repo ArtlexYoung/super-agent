@@ -2,7 +2,7 @@
 
 ## One Runtime Session
 
-Each `Agent.run(...)` creates one internal `TaskRequest` and one `RuntimeSession` with a `RunIdentity` and `RuntimeStore`. `AgentRuntime.run_task(...)` prepares the Skill index once, asks `TaskScheduler` for models, Skills, and subagents, records a lock, interprets the workflow policy, and appends the final evaluation. `Agent.read_task_trace(...)` returns the ordered events for one completed or failed task.
+Each `Agent.run(...)` creates one internal `TaskRequest` and one `RuntimeSession` with a `RunIdentity` and `RuntimeStore`. `AgentRuntime.run_task(...)` prepares the Skill index once, then one `AdaptiveTaskLoop` selects and executes models, Skills, tools, and subagents. Runtime records a lock before model calls and appends the final evaluation. `Agent.read_task_trace(...)` returns the ordered events emitted by the executed task steps.
 
 ## Runtime Conversations
 

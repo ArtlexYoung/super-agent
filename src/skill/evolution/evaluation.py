@@ -14,7 +14,7 @@ from runtime.evaluation import (
     estimate_evaluation_token_usage,
 )
 from runtime.store import RuntimeStore
-from runtime.model_router import TextModel
+from runtime.task_loop import TextModel
 from skill.disclosure import DisclosedSkillFile, ProgressiveDisclosureCore
 from skill.evaluation import create_skill_evaluation_target
 from skill.evolution.candidate import SkillCandidate

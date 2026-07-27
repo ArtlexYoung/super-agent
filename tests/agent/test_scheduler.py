@@ -9,7 +9,7 @@ from runtime.config import AgentConfig
 from support import write_workflow_skill
 
 
-class TaskSchedulerTests(unittest.TestCase):
+class AdaptiveTaskLoopTests(unittest.TestCase):
     def test_prompt_purpose_selects_the_matching_model_skill(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

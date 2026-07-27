@@ -173,7 +173,7 @@ Status: implemented.
 
 ## v0.0.43: One Adaptive Task Loop
 
-Status: planned.
+Status: implemented.
 
 - Collapse scheduling, model routing, execution, and tool iteration into one task loop.
 - Keep model filtering and evidence scoring as pure decisions inside that loop.

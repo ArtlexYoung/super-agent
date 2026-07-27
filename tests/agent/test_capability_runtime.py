@@ -135,13 +135,28 @@ class CapabilityRuntimeTests(unittest.TestCase):
             self.assertEqual(result.run_id, trace.task_id)
             self.assertIsNone(trace.parent_task_id)
             event_types = [event.event_type for event in trace.events]
-            self.assertIn("task.started", event_types)
-            self.assertIn("task.completed", event_types)
+            ordered_steps = [
+                event_types.index(name)
+                for name in (
+                    "task.started",
+                    "task.scheduled",
+                    "model.call.selected",
+                    "model.call.completed",
+                    "task.completed",
+                )
+            ]
+            self.assertEqual(sorted(ordered_steps), ordered_steps)
+            self.assertTrue(hasattr(agent.runtime, "task_loop"))
+            self.assertFalse(hasattr(agent.runtime, "task_scheduler"))
+            self.assertFalse(hasattr(agent.runtime, "model_router"))
 
     def test_removed_parallel_controllers_are_not_shipped(self) -> None:
         self.assertFalse(Path("src/capability/contracts.py").exists())
         self.assertFalse(Path("src/capability/run_controller.py").exists())
         self.assertFalse(Path("src/capability/tool_router.py").exists())
+        self.assertFalse(Path("src/runtime/execution.py").exists())
+        self.assertFalse(Path("src/runtime/model_router.py").exists())
+        self.assertFalse(Path("src/runtime/scheduler.py").exists())
         tree = ast.parse(Path("src/runtime/engine.py").read_text(encoding="utf-8"))
         method_names = {
             node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
@@ -151,8 +166,8 @@ class CapabilityRuntimeTests(unittest.TestCase):
 
     def test_runtime_does_not_import_concrete_skill_kinds(self) -> None:
         for path in (
-            Path("src/runtime/execution.py"),
-            Path("src/runtime/scheduler.py"),
+            Path("src/runtime/task_loop.py"),
+            Path("src/runtime/task_decisions.py"),
             Path("src/runtime/tools.py"),
         ):
             source = path.read_text(encoding="utf-8")

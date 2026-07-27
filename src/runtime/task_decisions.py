@@ -1,4 +1,4 @@
-"""Deterministic model, Skill, and subagent selection for one task."""
+"""Pure scheduling decisions used by the central adaptive task loop."""
 
 from __future__ import annotations
 
@@ -55,83 +55,78 @@ class TaskSchedule:
         }
 
 
-class TaskScheduler:
-    def __init__(
-        self,
-        model_profiles: list[ModelProfile],
-        environment: Mapping[str, str],
-    ) -> None:
-        if not model_profiles:
-            raise ValueError("task scheduler requires at least one model profile")
-        self.model_profiles = list(model_profiles)
-        self.environment = environment
+def create_task_schedule(
+    request: TaskRequest,
+    session: RuntimeSession,
+    workflow: TaskPolicy,
+    *,
+    model_profiles: list[ModelProfile],
+    environment: Mapping[str, str],
+) -> TaskSchedule:
+    """Resolve one immutable schedule without owning task execution state."""
+    purpose = resolve_task_purpose(model_profiles, request.purpose, request.prompt)
+    evidence = {
+        item.profile_key: item
+        for item in list_model_routing_stats(session.store, purpose)
+    }
+    required_features = _required_features(request, workflow)
+    model_choices = rank_model_choices(
+        model_profiles,
+        environment,
+        purpose=purpose,
+        required_features=required_features,
+        prompt=request.prompt,
+        evidence=evidence,
+    )
+    skill_references = _choose_skills(request, session, workflow)
+    subagents = request.subagents.list_subagents() if request.include_subagents else []
+    subagent_names, subagent_reasons = choose_subagents(request.prompt, subagents)
+    return TaskSchedule(
+        purpose=purpose,
+        required_features=required_features,
+        workflow=workflow.name,
+        model_choices=model_choices,
+        skill_references=tuple(skill_references),
+        subagent_names=tuple(subagent_names),
+        subagent_reasons=tuple(subagent_reasons),
+    )
 
-    def schedule_task(
-        self,
-        request: TaskRequest,
-        session: RuntimeSession,
-        workflow: TaskPolicy,
-    ) -> TaskSchedule:
-        purpose = self.resolve_purpose(request.purpose, request.prompt)
-        routing_evidence = {
-            item.profile_key: item
-            for item in list_model_routing_stats(session.store, purpose)
-        }
-        required_features = _required_features(request, workflow)
-        model_choices = self.choose_models(
-            purpose,
-            required_features,
-            request.prompt,
-            routing_evidence,
-        )
-        skill_references = self._choose_skills(request, session, workflow)
-        subagent_names, subagent_reasons = _choose_subagents(
-            request.prompt,
-            request.subagents.list_subagents() if request.include_subagents else [],
-        )
-        schedule = TaskSchedule(
-            purpose=purpose,
-            required_features=required_features,
-            workflow=workflow.name,
-            model_choices=tuple(model_choices),
-            skill_references=tuple(skill_references),
-            subagent_names=tuple(subagent_names),
-            subagent_reasons=tuple(subagent_reasons),
-        )
-        session.record_event("task.scheduled", schedule.to_dict())
-        return schedule
 
-    def choose_models(
-        self,
-        purpose: str,
-        required_features: tuple[str, ...],
-        prompt: str,
-        evidence: dict[str, ModelRoutingStats] | None = None,
-    ) -> list[ModelChoice]:
-        ready = [
-            profile
-            for profile in self.model_profiles
-            if model_profile_is_ready(profile, self.environment)
-        ]
-        candidates = ready or list(self.model_profiles)
-        compatible = [
-            profile
-            for profile in candidates
-            if set(required_features) <= set(profile.routing.supports)
-        ]
-        selected = compatible or candidates
-        static_choices = [
-            _score_model(
-                profile,
-                purpose.strip().lower(),
-                prompt.lower(),
-                compatible=bool(compatible),
-                ready=profile in ready,
-            )
-            for profile in selected
-        ]
-        choices = _apply_routing_evidence(static_choices, evidence or {})
-        return sorted(
+def rank_model_choices(
+    model_profiles: list[ModelProfile],
+    environment: Mapping[str, str],
+    *,
+    purpose: str,
+    required_features: tuple[str, ...],
+    prompt: str,
+    evidence: dict[str, ModelRoutingStats] | None = None,
+) -> tuple[ModelChoice, ...]:
+    """Filter and score models deterministically from declared and learned data."""
+    ready = [
+        profile
+        for profile in model_profiles
+        if model_profile_is_ready(profile, environment)
+    ]
+    candidates = ready or list(model_profiles)
+    compatible = [
+        profile
+        for profile in candidates
+        if set(required_features) <= set(profile.routing.supports)
+    ]
+    selected = compatible or candidates
+    static_choices = [
+        _score_model(
+            profile,
+            purpose.strip().lower(),
+            prompt.lower(),
+            compatible=bool(compatible),
+            ready=profile in ready,
+        )
+        for profile in selected
+    ]
+    choices = _apply_routing_evidence(static_choices, evidence or {})
+    return tuple(
+        sorted(
             choices,
             key=lambda choice: (
                 -choice.score,
@@ -139,37 +134,51 @@ class TaskScheduler:
                 choice.profile.key,
             ),
         )
+    )
 
-    def resolve_purpose(self, requested: str, prompt: str) -> str:
-        clean = requested.strip().lower()
-        if clean and clean != "auto":
-            return clean
-        matched = sorted(
-            {
-                purpose
-                for profile in self.model_profiles
-                for purpose in profile.routing.purposes
-                if _text_matches_label(prompt.lower(), purpose)
-            }
-        )
-        return matched[0] if matched else "answer"
 
-    @staticmethod
-    def _choose_skills(
-        request: TaskRequest,
-        session: RuntimeSession,
-        workflow: TaskPolicy,
-    ) -> list[SkillReference]:
-        model_context_capabilities = {
-            name
-            for name, executor in session.capability_registry.list_skill_executors().items()
-            if executor.adds_model_context  # type: ignore[attr-defined]
+def resolve_task_purpose(
+    model_profiles: list[ModelProfile],
+    requested: str,
+    prompt: str,
+) -> str:
+    clean = requested.strip().lower()
+    if clean and clean != "auto":
+        return clean
+    matched = sorted(
+        {
+            purpose
+            for profile in model_profiles
+            for purpose in profile.routing.purposes
+            if _text_matches_label(prompt.lower(), purpose)
         }
-        return session.require_skill_disclosure().select_skill_references_for_prompt(
-            request.prompt,
-            session.config.agent.skills,
-            allowed_capabilities=model_context_capabilities,
-        )
+    )
+    return matched[0] if matched else "answer"
+
+
+def choose_subagents(
+    prompt: str,
+    subagents: list[dict[str, object]],
+) -> tuple[list[str], list[str]]:
+    prompt_text = prompt.lower()
+    names: list[str] = []
+    reasons: list[str] = []
+    for subagent in subagents:
+        name = str(subagent.get("name", "")).strip()
+        triggers = [
+            str(item).strip().lower()
+            for item in subagent.get("triggers", [])
+            if str(item).strip()
+        ]
+        matched = [trigger for trigger in triggers if trigger in prompt_text]
+        if name and (not triggers or matched):
+            names.append(name)
+            reasons.append(
+                f"{name}: no trigger restriction"
+                if not triggers
+                else f"{name}: matched trigger {matched[0]}"
+            )
+    return names, reasons
 
 
 def _required_features(
@@ -181,6 +190,23 @@ def _required_features(
     if workflow.uses_tools:
         features.add("tools")
     return tuple(sorted(features))
+
+
+def _choose_skills(
+    request: TaskRequest,
+    session: RuntimeSession,
+    workflow: TaskPolicy,
+) -> list[SkillReference]:
+    model_context_capabilities = {
+        name
+        for name, executor in session.capability_registry.list_skill_executors().items()
+        if executor.adds_model_context  # type: ignore[attr-defined]
+    }
+    return session.require_skill_disclosure().select_skill_references_for_prompt(
+        request.prompt,
+        session.config.agent.skills,
+        allowed_capabilities=model_context_capabilities,
+    )
 
 
 def _score_model(
@@ -206,9 +232,7 @@ def _score_model(
         score += 30.0
         reasons.append(f"matches purpose: {purpose}")
     prompt_purposes = [
-        value
-        for value in routing.purposes
-        if _text_matches_label(prompt, value)
+        value for value in routing.purposes if _text_matches_label(prompt, value)
     ]
     if prompt_purposes:
         score += 25.0
@@ -259,7 +283,6 @@ def _apply_routing_evidence(
     total_calls = sum(item.call_count for item in evidence.values())
     if total_calls == 0:
         return choices
-    # Evidence enables exploration; a cold start keeps the static order reproducible.
     updated: list[ModelChoice] = []
     for choice in choices:
         stats = evidence.get(choice.profile.key)
@@ -280,42 +303,17 @@ def _apply_routing_evidence(
             8.0,
             4.0 * math.sqrt(math.log(total_calls + 1) / stats.call_count),
         )
-        reasons = choice.reasons + (
-            f"learned quality: {stats.average_quality:.3f}",
-            f"learned reliability: {stats.reliability:.3f}",
-            f"bounded exploration: {exploration:.3f}",
-            f"evidence calls: {stats.call_count}",
-        )
         updated.append(
             replace(
                 choice,
                 score=choice.score + learned + exploration,
-                reasons=reasons,
+                reasons=choice.reasons
+                + (
+                    f"learned quality: {stats.average_quality:.3f}",
+                    f"learned reliability: {stats.reliability:.3f}",
+                    f"bounded exploration: {exploration:.3f}",
+                    f"evidence calls: {stats.call_count}",
+                ),
             )
         )
     return updated
-
-
-def _choose_subagents(
-    prompt: str,
-    subagents: list[dict[str, object]],
-) -> tuple[list[str], list[str]]:
-    prompt_text = prompt.lower()
-    names: list[str] = []
-    reasons: list[str] = []
-    for subagent in subagents:
-        name = str(subagent.get("name", "")).strip()
-        triggers = [
-            str(item).strip().lower()
-            for item in subagent.get("triggers", [])
-            if str(item).strip()
-        ]
-        matched = [trigger for trigger in triggers if trigger in prompt_text]
-        if name and (not triggers or matched):
-            names.append(name)
-            reasons.append(
-                f"{name}: no trigger restriction"
-                if not triggers
-                else f"{name}: matched trigger {matched[0]}"
-            )
-    return names, reasons
