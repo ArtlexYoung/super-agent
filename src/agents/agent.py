@@ -17,6 +17,7 @@ from runtime.evolution.service import AutomaticEvolutionService
 from runtime.identity import LOCAL_USER_ID
 from runtime.models import Conversation, RunEvent
 from runtime.routing import ModelRoutingStats
+from runtime.safety import ActionEffect, ActionRequest, SafetyPolicy
 from runtime.tasks import (
     SubAgentResult,
     SubagentCallbacks,
@@ -55,6 +56,7 @@ class Agent:
         provider: ChatProvider | None = None,
         skill_executors: list[object] | None = None,
         storage: StorageBackend | None = None,
+        safety_policy: SafetyPolicy | None = None,
     ) -> None:
         self.config = config or AgentConfig.load_automatically()
         self.storage = storage or create_storage_backend(
@@ -78,6 +80,9 @@ class Agent:
         if provider is not None:
             self.provider_pool.add_chat_provider(self.model_profile.key, provider)
         self.capability_registry = create_default_capability_registry()
+        self.safety_policy = safety_policy or SafetyPolicy.from_name(
+            self.config.agent.safety
+        )
         for executor in skill_executors or []:
             self.capability_registry.add_skill_executor(executor, replace=True)
         self._load_capability_skills(bootstrap_disclosure, bootstrap_index)
@@ -88,6 +93,7 @@ class Agent:
                 provider_pool=self.provider_pool,
                 capability_registry=self.capability_registry,
                 storage=self.storage,
+                safety_policy=self.safety_policy,
                 skill_change_listener=self._activate_changed_skill,
             ),
         )
@@ -209,9 +215,20 @@ class Agent:
         user_id: str = LOCAL_USER_ID,
         conversation_id: str | None = None,
     ) -> Conversation:
-        return self.runtime.create_store(user_id).create_conversation(
-            title,
-            conversation_id=conversation_id,
+        return cast(
+            Conversation,
+            self.runtime.execute_management_action(
+                user_id,
+                ActionRequest.create(
+                    "user:conversation",
+                    "conversation:new",
+                    (ActionEffect.CREATE,),
+                ),
+                lambda: self.runtime.create_store(user_id).create_conversation(
+                    title,
+                    conversation_id=conversation_id,
+                ),
+            ),
         )
 
     def list_conversations(self, user_id: str = LOCAL_USER_ID) -> list[Conversation]:
@@ -232,9 +249,20 @@ class Agent:
         *,
         user_id: str = LOCAL_USER_ID,
     ) -> Conversation:
-        return self.runtime.create_store(user_id).rename_conversation(
-            conversation_id,
-            title,
+        return cast(
+            Conversation,
+            self.runtime.execute_management_action(
+                user_id,
+                ActionRequest.create(
+                    "user:conversation",
+                    f"conversation:{conversation_id}",
+                    (ActionEffect.UPDATE,),
+                ),
+                lambda: self.runtime.create_store(user_id).rename_conversation(
+                    conversation_id,
+                    title,
+                ),
+            ),
         )
 
     def clear_conversation(
@@ -243,7 +271,20 @@ class Agent:
         *,
         user_id: str = LOCAL_USER_ID,
     ) -> Conversation:
-        return self.runtime.create_store(user_id).clear_conversation(conversation_id)
+        return cast(
+            Conversation,
+            self.runtime.execute_management_action(
+                user_id,
+                ActionRequest.create(
+                    "user:conversation",
+                    f"conversation:{conversation_id}",
+                    (ActionEffect.DELETE,),
+                ),
+                lambda: self.runtime.create_store(user_id).clear_conversation(
+                    conversation_id
+                ),
+            ),
+        )
 
     def delete_conversation(
         self,
@@ -251,7 +292,17 @@ class Agent:
         *,
         user_id: str = LOCAL_USER_ID,
     ) -> None:
-        self.runtime.create_store(user_id).delete_conversation(conversation_id)
+        self.runtime.execute_management_action(
+            user_id,
+            ActionRequest.create(
+                "user:conversation",
+                f"conversation:{conversation_id}",
+                (ActionEffect.DELETE,),
+            ),
+            lambda: self.runtime.create_store(user_id).delete_conversation(
+                conversation_id
+            ),
+        )
 
     def check_subagent_links(self) -> list[str]:
         warnings: list[str] = []
@@ -385,6 +436,7 @@ class Agent:
                 provider_pool=self.provider_pool,
                 capability_registry=self.capability_registry,
                 storage=self.storage,
+                safety_policy=self.safety_policy,
                 skill_change_listener=self._activate_changed_skill,
             ),
         )

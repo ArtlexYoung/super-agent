@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Callable
 
 from capability.skill_contributions import (
+    CapabilityAction,
     CapabilityTool,
     SkillContribution,
     read_optional_tool_string,
@@ -18,6 +19,7 @@ from capability.skill_executors import (
 from provider.chat import ToolCall, ToolDefinition
 from runtime.session import RuntimeSession
 from runtime.safety import ActionRequest
+from runtime.safety import ActionEffect
 from skill.disclosure import SkillDisclosure, SkillIndex, SkillReference, skill_index_to_dict
 
 if TYPE_CHECKING:
@@ -79,8 +81,8 @@ class RuntimeTools:
                 ActionRequest(
                     action_id=call.id,
                     actor=f"tool:{call.name}",
-                    resource=tool.resource,
-                    effects=tool.effects,
+                    resource=tool.action.resolve_resource(call.arguments),
+                    effects=tool.action.effects,
                     argument_names=tuple(call.arguments),
                 ),
                 lambda: tool.handler(call.arguments),
@@ -241,6 +243,7 @@ def _create_disclosure_tools(
             "List every available skill capability from the central index.",
             {},
             runtime_tools._list_skills,
+            action=CapabilityAction((ActionEffect.READ,), "skill:index"),
         ),
         CapabilityTool(
             "read_skill_manifest",
@@ -248,6 +251,7 @@ def _create_disclosure_tools(
             reference,
             runtime_tools._read_skill_manifest,
             ("name",),
+            CapabilityAction((ActionEffect.READ,), "skill:manifest", "name"),
         ),
         CapabilityTool(
             "read_skill_instructions",
@@ -255,6 +259,7 @@ def _create_disclosure_tools(
             reference,
             runtime_tools._read_skill_instructions,
             ("name",),
+            CapabilityAction((ActionEffect.READ,), "skill:instructions", "name"),
         ),
         CapabilityTool(
             "read_skill_configuration",
@@ -262,6 +267,7 @@ def _create_disclosure_tools(
             reference,
             runtime_tools._read_skill_configuration,
             ("name",),
+            CapabilityAction((ActionEffect.READ,), "skill:configuration", "name"),
         ),
         CapabilityTool(
             "read_disclosed_content",
@@ -269,6 +275,7 @@ def _create_disclosure_tools(
             {"cache_path": {"type": "string"}},
             runtime_tools._read_disclosed_content,
             ("cache_path",),
+            CapabilityAction((ActionEffect.READ,), "skill:cache"),
         ),
     )
 
@@ -292,6 +299,7 @@ def _create_subagent_tools(runtime_tools: RuntimeTools) -> tuple[CapabilityTool,
             "List subagents added to the current Agent in code.",
             {},
             runtime_tools.list_subagents,
+            action=CapabilityAction((ActionEffect.READ,), "subagent:index"),
         ),
         CapabilityTool(
             "run_subagent",
@@ -302,5 +310,6 @@ def _create_subagent_tools(runtime_tools: RuntimeTools) -> tuple[CapabilityTool,
             },
             runtime_tools.run_subagent,
             ("name", "prompt"),
+            CapabilityAction((ActionEffect.DELEGATE,), "subagent", "name"),
         ),
     )

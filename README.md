@@ -19,6 +19,7 @@ The project is currently experimental (`0.0.x`). It favors a small, inspectable 
 - **Automatic task scheduling**: Runtime selects compatible models, Skills, and subagents, then learns from user-scoped quality, reliability, latency, and cost evidence.
 - **One runtime lifecycle**: discovery, disclosure, execution, observation, evaluation, and evolution share one session.
 - **One safety boundary**: Runtime records every declared action effect before a Capability can execute it.
+- **Secure defaults**: internal memory and owned Skill evolution stay automatic; external execution and unknown network actions require approval.
 - **Automatic evolution loop**: Runtime turns real evidence into candidates, evaluates and promotes them, then monitors and rolls back regressions.
 - **Code-composed Agents**: create Agents independently and attach them with `Agent.add_subagent(...)`.
 - **Standard-library runtime**: the Python core has no third-party runtime dependencies.
@@ -188,6 +189,11 @@ super-agent runs explain --config agent.toml --run-id <run-id> --output json
 The projection includes scheduler reasons, the task plan and completed steps, every step's model and subagent route, model attempts, latency, estimated tokens and cost, learned routing evidence, relevant Skill freshness, and automatic evolution decisions. A child Agent `run_id` can be inspected through the parent project because the lookup remains restricted to the same user and storage backend.
 
 `CapabilityRegistry` contains only executable Skill handlers. Replace one explicitly with `agent.add_skill_executor(...)`. Every handler returns one `SkillContribution` containing any model context, prompt context, tools, task policy, and completion recorder it provides. Runtime therefore does not know concrete Memory, MCP, or Workflow classes. A handler that must be installed or evolved is a standard `capability` Skill and uses the same disclosure, evaluation, promotion, and rollback path as every other Skill.
+
+Every tool declares `read`, `create`, `update`, `delete`, `execute`, `network`, or
+`delegate` effects. Runtime checks them through one safety policy before calling the
+handler. The default `standard` preset keeps internal operations automatic and blocks
+risky external actions until approved. See [Runtime Safety](docs/safety.md).
 
 ## Reproducible Proof
 

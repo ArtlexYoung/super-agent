@@ -37,14 +37,31 @@ class PlanningPolicy:
 
 
 @dataclass(frozen=True)
+class CapabilityAction:
+    effects: tuple[ActionEffect, ...]
+    resource: str
+    resource_argument: str | None = None
+
+    def resolve_resource(self, arguments: ToolArguments) -> str:
+        if self.resource_argument is None:
+            return self.resource
+        value = arguments.get(self.resource_argument)
+        if not isinstance(value, str) or not value.strip():
+            return self.resource
+        return f"{self.resource}:{value.strip()}"
+
+
+@dataclass(frozen=True)
 class CapabilityTool:
     name: str
     description: str
     properties: dict[str, object]
     handler: ToolHandler
     required: tuple[str, ...] = ()
-    effects: tuple[ActionEffect, ...] = (ActionEffect.READ,)
-    resource: str = "runtime"
+    action: CapabilityAction = CapabilityAction(
+        (ActionEffect.EXECUTE,),
+        "capability:registered",
+    )
 
     def to_provider_definition(self) -> ToolDefinition:
         return {

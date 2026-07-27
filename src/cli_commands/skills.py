@@ -11,6 +11,7 @@ from runtime.config import AgentConfig
 from runtime.identity import LOCAL_USER_ID
 from runtime.storage import create_storage_backend
 from runtime.store import RuntimeStore
+from runtime.safety import SafetyPolicy
 from skill.disclosure import ProgressiveDisclosureCore, skill_index_to_dict
 from skill.ecosystem.package import SkillPackageManager
 from skill.evolution.evaluation import EvaluationCase
@@ -345,6 +346,7 @@ def _load_package_manager(config_path: Path, user_id: str) -> SkillPackageManage
             store=_load_runtime_store(config, user_id),
         ),
         config.paths.skills[0],
+        SafetyPolicy.from_name(config.agent.safety),
     )
 
 

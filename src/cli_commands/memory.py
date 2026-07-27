@@ -4,10 +4,12 @@ import argparse
 import json
 from dataclasses import asdict
 from pathlib import Path
+from typing import Callable, TypeVar, cast
 
 from capability.defaults import create_progressive_skill_disclosure
 from runtime.config import AgentConfig
 from runtime.identity import LOCAL_USER_ID
+from runtime.safety import ActionEffect, ActionRequest, RuntimeActionExecutor, SafetyPolicy
 from runtime.storage import create_storage_backend
 from runtime.store import RuntimeStore
 from skill.kinds.memory import MemoryItem, MiniMemory, create_memory_from_skill_disclosure
@@ -54,42 +56,81 @@ def run_memory_command(args: argparse.Namespace) -> int:
 
 
 def _show_usage_habits(config_path: Path, user_id: str) -> int:
-    instruction = _load_configured_memory(config_path, user_id).usage_habits.build_prompt_instruction()
+    instruction = _run_memory_action(
+        config_path,
+        user_id,
+        (ActionEffect.READ,),
+        "memory:habits",
+        lambda memory: memory.usage_habits.build_prompt_instruction(),
+    )
     print(instruction or "No memory yet.")
     return 0
 
 
 def _list_memory_items(config_path: Path, user_id: str, scope: str | None) -> int:
-    memory = _load_configured_memory(config_path, user_id)
-    _print_memory_items(memory.list_memory_items(scope))
+    items = _run_memory_action(
+        config_path,
+        user_id,
+        (ActionEffect.READ,),
+        f"memory:active:{scope or 'all'}",
+        lambda memory: memory.list_memory_items(scope),
+    )
+    _print_memory_items(items)
     return 0
 
 
 def _add_memory_item(args: argparse.Namespace) -> int:
-    memory = _load_configured_memory(Path(args.config), args.user_id)
-    scope = args.scope or memory.policy.default_scope
-    item = memory.add_memory_item(args.text, scope=scope, source_run_id=args.source_run_id)
+    item = _run_memory_action(
+        Path(args.config),
+        args.user_id,
+        (ActionEffect.CREATE,),
+        f"memory:active:{args.scope or 'default'}",
+        lambda memory: memory.add_memory_item(
+            args.text,
+            scope=args.scope or memory.policy.default_scope,
+            source_run_id=args.source_run_id,
+        ),
+    )
     print(json.dumps(asdict(item), ensure_ascii=False))
     return 0
 
 
 def _recall_memory(args: argparse.Namespace) -> int:
-    memory = _load_configured_memory(Path(args.config), args.user_id)
-    scope = args.scope or memory.policy.default_scope
-    items = memory.recall_memory(args.query, scope=scope, limit=args.limit)
+    items = _run_memory_action(
+        Path(args.config),
+        args.user_id,
+        (ActionEffect.READ,),
+        f"memory:active:{args.scope or 'default'}",
+        lambda memory: memory.recall_memory(
+            args.query,
+            scope=args.scope or memory.policy.default_scope,
+            limit=args.limit,
+        ),
+    )
     _print_memory_items(items)
     return 0
 
 
 def _forget_memory(args: argparse.Namespace) -> int:
-    memory = _load_configured_memory(Path(args.config), args.user_id)
-    memory.forget_memory(args.item_id)
+    _run_memory_action(
+        Path(args.config),
+        args.user_id,
+        (ActionEffect.DELETE,),
+        f"memory:active:{args.item_id}",
+        lambda memory: memory.forget_memory(args.item_id),
+    )
     print(json.dumps({"item_id": args.item_id, "forgotten": True}, ensure_ascii=False))
     return 0
 
 
 def _consolidate_memory(config_path: Path, user_id: str) -> int:
-    items = _load_configured_memory(config_path, user_id).consolidate_memory()
+    items = _run_memory_action(
+        config_path,
+        user_id,
+        (ActionEffect.UPDATE, ActionEffect.DELETE),
+        "memory:active",
+        lambda memory: memory.consolidate_memory(),
+    )
     _print_memory_items(items)
     return 0
 
@@ -116,6 +157,30 @@ def _load_configured_memory(config_path: Path, user_id: str) -> MiniMemory:
     return create_memory_from_skill_disclosure(
         skill,
         store,
+    )
+
+
+MemoryResult = TypeVar("MemoryResult")
+
+
+def _run_memory_action(
+    config_path: Path,
+    user_id: str,
+    effects: tuple[ActionEffect, ...],
+    resource: str,
+    operation: Callable[[MiniMemory], MemoryResult],
+) -> MemoryResult:
+    config = AgentConfig.load_from_file(config_path)
+    memory = _load_configured_memory(config_path, user_id)
+    return cast(
+        MemoryResult,
+        RuntimeActionExecutor(
+            SafetyPolicy.from_name(config.agent.safety),
+            memory.store.append_management_action_event,
+        ).execute_action(
+            ActionRequest.create("user:memory", resource, effects),
+            lambda: operation(memory),
+        ),
     )
 
 

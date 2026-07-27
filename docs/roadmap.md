@@ -213,4 +213,11 @@ Proof: [experiment description](experiments/v0.0.46.md) and [machine-readable re
 - Record decisions, completion, and failure without storing argument values.
 - Keep the first policy audit-only so existing behavior remains unchanged while coverage is measured.
 
+## v0.0.48: Enforced Runtime Safety
+
+- Enforce `standard`, `read_only`, `autonomous`, and migration-only `audit` presets.
+- Declare effects for disclosure, memory, MCP, subagent, and registered Capability tools.
+- Apply the same action executor to conversations, model Skills, Skill packages, and evolution.
+- Block risky actions before their handlers run and emit an approval-ready action ID.
+
 The project will not move to `0.1.x` merely because more features exist. That change should follow a reproducible demonstration that the central Skill-first lifecycle is useful and maintainable.

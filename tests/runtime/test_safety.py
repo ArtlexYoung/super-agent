@@ -6,7 +6,14 @@ from capability.defaults import create_default_capability_registry
 from provider.chat import MockProvider
 from runtime.config import AgentConfig
 from runtime.identity import RunIdentity
-from runtime.safety import ActionEffect, ActionRequest, SafetyPolicy
+from runtime.safety import (
+    ActionConfirmationRequired,
+    ActionEffect,
+    ActionNotAllowedError,
+    ActionRequest,
+    RuntimeActionExecutor,
+    SafetyPolicy,
+)
 from runtime.session import RuntimeSession
 from runtime.store import create_local_runtime_store
 from skill.kinds.model import discover_environment_model_profiles
@@ -15,7 +22,10 @@ from skill.kinds.model import discover_environment_model_profiles
 class RuntimeSafetyTests(unittest.TestCase):
     def test_audit_policy_records_action_without_changing_behavior(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            session = _create_session(Path(tmp))
+            session = _create_session(
+                Path(tmp),
+                SafetyPolicy.from_name("audit"),
+            )
 
             result = session.execute_action(
                 ActionRequest(
@@ -49,7 +59,7 @@ class RuntimeSafetyTests(unittest.TestCase):
             )
 
     def test_policy_can_emit_enforced_allow_decision(self) -> None:
-        decision = SafetyPolicy(audit_only=False).check_action(
+        decision = SafetyPolicy().check_action(
             ActionRequest(
                 "one",
                 "tool:test",
@@ -58,11 +68,73 @@ class RuntimeSafetyTests(unittest.TestCase):
             )
         )
 
-        self.assertEqual("allow", decision.decision.value)
+        self.assertEqual("require_confirmation", decision.decision.value)
         self.assertTrue(decision.enforced)
 
+    def test_standard_policy_allows_internal_memory_but_blocks_mcp(self) -> None:
+        policy = SafetyPolicy()
 
-def _create_session(root: Path) -> RuntimeSession:
+        memory = policy.check_action(
+            ActionRequest.create(
+                "tool:add_memory_item",
+                "memory:active:agent",
+                (ActionEffect.CREATE,),
+            )
+        )
+        mcp = policy.check_action(
+            ActionRequest.create(
+                "tool:run_skill",
+                "mcp:github",
+                (ActionEffect.EXECUTE, ActionEffect.NETWORK),
+            )
+        )
+
+        self.assertEqual("allow", memory.decision.value)
+        self.assertEqual("require_confirmation", mcp.decision.value)
+
+    def test_read_only_policy_denies_mutations_before_execution(self) -> None:
+        events: list[tuple[str, dict[str, object]]] = []
+        called = False
+
+        def mutate() -> None:
+            nonlocal called
+            called = True
+
+        executor = RuntimeActionExecutor(
+            SafetyPolicy.from_name("read_only"),
+            lambda event_type, data: events.append((event_type, data)),
+        )
+        with self.assertRaises(ActionNotAllowedError):
+            executor.execute_action(
+                ActionRequest.create(
+                    "user:memory",
+                    "memory:active",
+                    (ActionEffect.CREATE,),
+                ),
+                mutate,
+            )
+
+        self.assertFalse(called)
+        self.assertEqual(["action.checked", "action.blocked"], [item[0] for item in events])
+
+    def test_standard_policy_exposes_confirmation_request(self) -> None:
+        executor = RuntimeActionExecutor(SafetyPolicy(), lambda *_: None)
+        request = ActionRequest.create(
+            "tool:run_skill",
+            "mcp:remote",
+            (ActionEffect.EXECUTE, ActionEffect.NETWORK),
+        )
+
+        with self.assertRaises(ActionConfirmationRequired) as raised:
+            executor.execute_action(request, lambda: None)
+
+        self.assertEqual(request, raised.exception.request)
+
+
+def _create_session(
+    root: Path,
+    safety_policy: SafetyPolicy | None = None,
+) -> RuntimeSession:
     config = AgentConfig.create_default(root)
     identity = RunIdentity.create("local", config.agent.name)
     store = create_local_runtime_store(root / "state", agent_name=config.agent.name)
@@ -74,4 +146,5 @@ def _create_session(root: Path) -> RuntimeSession:
         capability_registry=create_default_capability_registry(),
         identity=identity,
         store=store,
+        safety_policy=safety_policy or SafetyPolicy(),
     )

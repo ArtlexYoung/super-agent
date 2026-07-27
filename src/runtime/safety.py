@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Callable, TypeVar
+from uuid import uuid4
 
 
 class ActionEffect(StrEnum):
@@ -21,6 +22,13 @@ class ActionDecisionType(StrEnum):
     ALLOW = "allow"
     DENY = "deny"
     REQUIRE_CONFIRMATION = "require_confirmation"
+
+
+class SafetyPreset(StrEnum):
+    AUDIT = "audit"
+    STANDARD = "standard"
+    READ_ONLY = "read_only"
+    AUTONOMOUS = "autonomous"
 
 
 @dataclass(frozen=True)
@@ -55,6 +63,24 @@ class ActionRequest:
             "argument_names": list(self.argument_names),
         }
 
+    @classmethod
+    def create(
+        cls,
+        actor: str,
+        resource: str,
+        effects: tuple[ActionEffect, ...],
+        *,
+        action_id: str | None = None,
+        argument_names: tuple[str, ...] = (),
+    ) -> "ActionRequest":
+        return cls(
+            action_id or f"action-{uuid4().hex}",
+            actor,
+            resource,
+            effects,
+            argument_names,
+        )
+
 
 @dataclass(frozen=True)
 class ActionDecision:
@@ -72,29 +98,70 @@ class ActionDecision:
 
 @dataclass(frozen=True)
 class SafetyPolicy:
-    """Return observable decisions without changing behavior in audit mode."""
+    """Apply one small preset to every declared Runtime action."""
 
-    audit_only: bool = True
+    preset: SafetyPreset = SafetyPreset.STANDARD
+    approved_action_ids: frozenset[str] = frozenset()
+
+    @classmethod
+    def from_name(cls, name: str) -> "SafetyPolicy":
+        return cls(SafetyPreset(name.strip().lower()))
+
+    def approve_action(self, action_id: str) -> "SafetyPolicy":
+        clean_id = action_id.strip()
+        if not clean_id:
+            raise ValueError("approved action id cannot be empty")
+        return SafetyPolicy(
+            self.preset,
+            self.approved_action_ids | {clean_id},
+        )
 
     def check_action(self, request: ActionRequest) -> ActionDecision:
-        if self.audit_only:
+        if self.preset == SafetyPreset.AUDIT:
             return ActionDecision(
                 ActionDecisionType.ALLOW,
                 "audit-only policy records the declared action",
                 False,
             )
-        return ActionDecision(
-            ActionDecisionType.ALLOW,
-            "policy allows the declared action",
-            True,
-        )
+        if self.preset == SafetyPreset.READ_ONLY:
+            if set(request.effects) == {ActionEffect.READ}:
+                return _allow("read-only policy allows queries")
+            return _deny("read-only policy blocks state changes")
+        if request.action_id in self.approved_action_ids:
+            return _allow("the user approved this action")
+        if self.preset == SafetyPreset.AUTONOMOUS:
+            return _allow("autonomous policy allows declared actions")
+        if request.actor.startswith("user:"):
+            return _allow("the user explicitly requested this management action")
+        effects = set(request.effects)
+        if effects == {ActionEffect.READ}:
+            return _allow("standard policy allows declared reads")
+        if effects == {ActionEffect.DELEGATE}:
+            return _allow("standard policy allows registered subagent delegation")
+        if request.resource.startswith("capability:registered") and effects <= {
+            ActionEffect.READ,
+            ActionEffect.EXECUTE,
+        }:
+            return _allow("standard policy allows explicitly registered code")
+        if _is_internal_resource(request.resource) and effects <= _INTERNAL_EFFECTS:
+            return _allow("standard policy allows scoped internal state changes")
+        if effects & {ActionEffect.EXECUTE, ActionEffect.NETWORK, ActionEffect.DELETE}:
+            return _confirm("external execution, network access, or deletion needs approval")
+        return _confirm("the declared state change needs approval")
 
 
-class ActionNotAllowedError(PermissionError):
+class ActionSafetyError(PermissionError):
+    def __init__(self, request: ActionRequest, decision: ActionDecision) -> None:
+        super().__init__(decision.reason)
+        self.request = request
+        self.decision = decision
+
+
+class ActionNotAllowedError(ActionSafetyError):
     pass
 
 
-class ActionConfirmationRequired(PermissionError):
+class ActionConfirmationRequired(ActionSafetyError):
     pass
 
 
@@ -118,9 +185,11 @@ class RuntimeActionExecutor:
             {**request.to_event_data(), **decision.to_event_data()},
         )
         if decision.decision == ActionDecisionType.DENY:
-            raise ActionNotAllowedError(decision.reason)
+            self._record_blocked(request, decision)
+            raise ActionNotAllowedError(request, decision)
         if decision.decision == ActionDecisionType.REQUIRE_CONFIRMATION:
-            raise ActionConfirmationRequired(decision.reason)
+            self._record_blocked(request, decision)
+            raise ActionConfirmationRequired(request, decision)
         try:
             result = action()
         except Exception as error:
@@ -135,3 +204,44 @@ class RuntimeActionExecutor:
             raise
         self.record_event("action.completed", request.to_event_data())
         return result
+
+    def _record_blocked(
+        self,
+        request: ActionRequest,
+        decision: ActionDecision,
+    ) -> None:
+        self.record_event(
+            "action.blocked",
+            {**request.to_event_data(), **decision.to_event_data()},
+        )
+
+
+_INTERNAL_EFFECTS = {
+    ActionEffect.READ,
+    ActionEffect.CREATE,
+    ActionEffect.UPDATE,
+    ActionEffect.DELETE,
+    ActionEffect.DELEGATE,
+}
+_INTERNAL_RESOURCE_PREFIXES = (
+    "conversation:",
+    "memory:",
+    "skill:candidate:",
+    "skill:owned:",
+)
+
+
+def _is_internal_resource(resource: str) -> bool:
+    return resource.startswith(_INTERNAL_RESOURCE_PREFIXES)
+
+
+def _allow(reason: str) -> ActionDecision:
+    return ActionDecision(ActionDecisionType.ALLOW, reason, True)
+
+
+def _deny(reason: str) -> ActionDecision:
+    return ActionDecision(ActionDecisionType.DENY, reason, True)
+
+
+def _confirm(reason: str) -> ActionDecision:
+    return ActionDecision(ActionDecisionType.REQUIRE_CONFIRMATION, reason, True)

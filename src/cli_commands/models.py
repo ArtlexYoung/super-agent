@@ -8,6 +8,7 @@ from pathlib import Path
 from capability.defaults import create_progressive_skill_disclosure
 from runtime.config import AgentConfig
 from runtime.identity import LOCAL_USER_ID
+from runtime.safety import SafetyPolicy
 from runtime.storage import create_storage_backend
 from runtime.store import RuntimeStore
 from skill.kinds.model import (
@@ -175,7 +176,11 @@ def _create_model_skill_manager(
         config.storage.url_env,
     )
     store = RuntimeStore(backend, config.storage.path, user_id, config.agent.name)
-    return ModelSkillManager(config, store)
+    return ModelSkillManager(
+        config,
+        store,
+        SafetyPolicy.from_name(config.agent.safety),
+    )
 
 
 def _add_management_arguments(parser: argparse.ArgumentParser) -> None:

@@ -25,6 +25,7 @@ from runtime.routing import (
     detect_implicit_conversation_feedback,
     list_model_routing_stats,
 )
+from runtime.safety import ActionRequest, RuntimeActionExecutor, SafetyPolicy
 from runtime.session import RuntimeSession
 from runtime.storage import StorageBackend
 from runtime.store import RuntimeStore
@@ -46,6 +47,7 @@ class RuntimeResources:
     provider_pool: ProviderPool
     capability_registry: CapabilityRegistry
     storage: StorageBackend
+    safety_policy: SafetyPolicy
     skill_change_listener: Callable[[SkillManifest, str], None] | None = None
 
 
@@ -63,6 +65,7 @@ class AgentRuntime:
         self.task_loop = AdaptiveTaskLoop(self.model_profiles, self.provider_pool)
         self.capability_registry = resources.capability_registry
         self.storage = resources.storage
+        self.safety_policy = resources.safety_policy
         self.skill_change_listener = resources.skill_change_listener
 
     def run_task(
@@ -131,6 +134,21 @@ class AgentRuntime:
             self.config.agent.name,
         )
 
+    def execute_management_action(
+        self,
+        user_id: str,
+        request: ActionRequest,
+        action: Callable[[], object],
+    ) -> object:
+        store = self.create_store(user_id)
+        return RuntimeActionExecutor(
+            self.safety_policy,
+            store.append_management_action_event,
+        ).execute_action(
+            request,
+            action,
+        )
+
     def read_task_trace(
         self,
         task_id: str,
@@ -195,6 +213,7 @@ class AgentRuntime:
                 ),
             ),
             on_skill_changed=change_handler,
+            safety_policy=self.safety_policy,
         )
 
     def _create_runtime_session(
@@ -226,6 +245,7 @@ class AgentRuntime:
                 identity.agent_name,
                 event_listener,
             ),
+            safety_policy=self.safety_policy,
         )
 
     def _prepare_task_context(self, session: RuntimeSession) -> None:
@@ -444,6 +464,7 @@ def _runtime_lock_to_dict(
             "max_agent_chain_depth": config.agent.max_agent_chain_depth,
             "use_features": list(config.agent.use_features),
             "disable_names": list(config.agent.disable_names),
+            "safety": config.agent.safety,
         },
         "model": {
             **model_profile_to_dict(model_profile),

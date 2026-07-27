@@ -3,6 +3,11 @@ import unittest
 from pathlib import Path
 
 from capability.defaults import create_default_capability_registry
+from capability.skill_contributions import (
+    CapabilityAction,
+    CapabilityTool,
+    SkillContribution,
+)
 from capability.skill_executors import create_memory_skill_contribution
 from provider.chat import ToolCall
 from provider.chat import MockProvider
@@ -10,6 +15,7 @@ from runtime.tools import RuntimeTools, RuntimeToolsContext
 from runtime.config import AgentConfig
 from runtime.identity import RunIdentity
 from runtime.session import RuntimeSession
+from runtime.safety import ActionConfirmationRequired, ActionEffect
 from runtime.store import create_local_runtime_store
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.kinds.memory import MiniMemory
@@ -38,7 +44,10 @@ class SkillToolsTests(unittest.TestCase):
             self.assertEqual("research", listed["skills"][0]["name"])
             self.assertEqual("Research carefully.", read["instructions"])
             self.assertEqual(["research"], tools.used_skill_names)
-            event_types = [event.event_type for event in session.store.read_run_events(session.run_id)]
+            event_types = [
+                event.event_type
+                for event in session.store.read_run_events(session.run_id)
+            ]
             self.assertIn("tool.requested", event_types)
             self.assertIn("action.checked", event_types)
             self.assertIn("action.completed", event_types)
@@ -77,7 +86,10 @@ class SkillToolsTests(unittest.TestCase):
             with self.assertRaisesRegex(KeyError, "unknown runtime tool"):
                 tools.run_tool_call(ToolCall("bad", "unknown", {}))
 
-            self.assertEqual("tool.failed", session.store.read_run_events(session.run_id)[-1].event_type)
+            self.assertEqual(
+                "tool.failed",
+                session.store.read_run_events(session.run_id)[-1].event_type,
+            )
 
     def test_model_can_add_recall_and_forget_memory_with_runtime_tools(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -88,24 +100,85 @@ class SkillToolsTests(unittest.TestCase):
             memory = MiniMemory(session.store, session.identity)
             tools = _create_tool_router(disclosure, index, session, memory)
 
-            definitions = {item["function"]["name"] for item in tools.get_tool_definitions()}
+            definitions = {
+                item["function"]["name"] for item in tools.get_tool_definitions()
+            }
             added = tools.run_tool_call(
-                ToolCall("add", "add_memory_item", {"text": "Remember Python.", "scope": "agent"})
+                ToolCall(
+                    "add",
+                    "add_memory_item",
+                    {"text": "Remember Python.", "scope": "agent"},
+                )
             )
             recalled = tools.run_tool_call(
-                ToolCall("recall", "recall_memory", {"query": "Python", "scope": "agent"})
+                ToolCall(
+                    "recall",
+                    "recall_memory",
+                    {"query": "Python", "scope": "agent"},
+                )
             )
             tools.run_tool_call(
                 ToolCall("forget", "forget_memory", {"item_id": added["item"]["item_id"]})
             )
 
             self.assertTrue(
-                {"list_memory_items", "add_memory_item", "recall_memory", "forget_memory", "consolidate_memory"}
+                {
+                    "list_memory_items",
+                    "add_memory_item",
+                    "recall_memory",
+                    "forget_memory",
+                    "consolidate_memory",
+                }
                 <= definitions
             )
             self.assertEqual("Remember Python.", recalled["items"][0]["text"])
             self.assertEqual([], memory.list_memory_items())
             self.assertEqual(session.run_id, added["item"]["source_run_id"])
+
+    def test_standard_policy_blocks_external_tool_before_handler_runs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            session = _create_session(root)
+            disclosure = _create_disclosure(root, session)
+            index = disclosure.prepare_skill_index()
+            called = False
+
+            def run_external(arguments: dict[str, object]) -> dict[str, object]:
+                nonlocal called
+                called = True
+                return {"ok": True}
+
+            session.set_skill_disclosure(disclosure, index)
+            tools = RuntimeTools(
+                RuntimeToolsContext(session=session),
+                contributions=[
+                    SkillContribution(
+                        tools=(
+                            CapabilityTool(
+                                "run_external",
+                                "Run an external operation.",
+                                {},
+                                run_external,
+                                action=CapabilityAction(
+                                    (ActionEffect.EXECUTE, ActionEffect.NETWORK),
+                                    "mcp:untrusted",
+                                ),
+                            ),
+                        )
+                    )
+                ],
+            )
+
+            with self.assertRaises(ActionConfirmationRequired):
+                tools.run_tool_call(ToolCall("external", "run_external", {}))
+
+            self.assertFalse(called)
+            event_types = [
+                event.event_type
+                for event in session.store.read_run_events(session.run_id)
+            ]
+            self.assertIn("action.blocked", event_types)
+            self.assertNotIn("action.completed", event_types)
 
 
 def _write_prompt_skill(root: Path, name: str) -> None:

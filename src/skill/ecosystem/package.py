@@ -9,11 +9,13 @@ import subprocess
 import tempfile
 import zipfile
 from pathlib import Path, PurePosixPath
+from typing import cast
 from urllib.parse import unquote
 from uuid import uuid4
 
 from skill.disclosure import ProgressiveDisclosureCore
 from runtime.store import create_local_runtime_store
+from runtime.safety import ActionEffect, ActionRequest, RuntimeActionExecutor, SafetyPolicy
 from skill.manifest import SkillManifest, calculate_skill_directory_sha256
 from skill.validation import validate_skill_directory, validate_skill_replacement
 
@@ -22,7 +24,12 @@ FIXED_ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 
 
 class SkillPackageManager:
-    def __init__(self, skill_disclosure: ProgressiveDisclosureCore, skill_root: Path) -> None:
+    def __init__(
+        self,
+        skill_disclosure: ProgressiveDisclosureCore,
+        skill_root: Path,
+        safety_policy: SafetyPolicy | None = None,
+    ) -> None:
         self.skill_disclosure = ProgressiveDisclosureCore(
             skill_disclosure.skill_roots,
             skill_disclosure.store,
@@ -30,8 +37,25 @@ class SkillPackageManager:
             disabled_names=skill_disclosure.disabled_names,
         )
         self.skill_root = skill_root.expanduser()
+        self.actions = RuntimeActionExecutor(
+            safety_policy or SafetyPolicy(),
+            skill_disclosure.store.append_management_action_event,
+        )
 
     def pack_skill(self, name: str, output: Path) -> Path:
+        return cast(
+            Path,
+            self.actions.execute_action(
+                ActionRequest.create(
+                    "user:skill-package",
+                    f"file:{output.expanduser().absolute()}",
+                    (ActionEffect.READ, ActionEffect.CREATE),
+                ),
+                lambda: self._pack_skill(name, output),
+            ),
+        )
+
+    def _pack_skill(self, name: str, output: Path) -> Path:
         skill_name, expected_capability = _split_skill_reference(name)
         manifest = self._read_skill_manifest(skill_name, expected_capability)
         output_path = output.expanduser()
@@ -48,6 +72,22 @@ class SkillPackageManager:
         return output_path
 
     def install_skill(self, source: str, expected_sha256: str = "") -> SkillManifest:
+        effects = [ActionEffect.READ, ActionEffect.CREATE]
+        if source.strip().startswith("git+"):
+            effects.extend((ActionEffect.EXECUTE, ActionEffect.NETWORK))
+        return cast(
+            SkillManifest,
+            self.actions.execute_action(
+                ActionRequest.create(
+                    "user:skill-package",
+                    "skill:owned:install",
+                    tuple(effects),
+                ),
+                lambda: self._install_skill(source, expected_sha256),
+            ),
+        )
+
+    def _install_skill(self, source: str, expected_sha256: str) -> SkillManifest:
         with tempfile.TemporaryDirectory(prefix="super-agent-install-") as tmp:
             staged = _stage_skill_source(source, Path(tmp))
             manifest = _validate_staged_skill(staged, expected_sha256)
@@ -67,6 +107,27 @@ class SkillPackageManager:
         name: str,
         source: str,
         expected_sha256: str = "",
+    ) -> SkillManifest:
+        effects = [ActionEffect.READ, ActionEffect.UPDATE]
+        if source.strip().startswith("git+"):
+            effects.extend((ActionEffect.EXECUTE, ActionEffect.NETWORK))
+        return cast(
+            SkillManifest,
+            self.actions.execute_action(
+                ActionRequest.create(
+                    "user:skill-package",
+                    f"skill:owned:{name}",
+                    tuple(effects),
+                ),
+                lambda: self._update_skill(name, source, expected_sha256),
+            ),
+        )
+
+    def _update_skill(
+        self,
+        name: str,
+        source: str,
+        expected_sha256: str,
     ) -> SkillManifest:
         skill_name, expected_capability = _split_skill_reference(name)
         current = self._read_skill_manifest(skill_name, expected_capability)
@@ -88,6 +149,16 @@ class SkillPackageManager:
         return self._read_skill_manifest(skill_name, current.capability)
 
     def remove_skill(self, name: str) -> None:
+        self.actions.execute_action(
+            ActionRequest.create(
+                "user:skill-package",
+                f"skill:owned:{name}",
+                (ActionEffect.DELETE,),
+            ),
+            lambda: self._remove_skill(name),
+        )
+
+    def _remove_skill(self, name: str) -> None:
         skill_name, expected_capability = _split_skill_reference(name)
         manifest = self._read_skill_manifest(skill_name, expected_capability)
         _require_managed_skill_path(manifest.path, self.skill_root)

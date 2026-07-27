@@ -5,10 +5,11 @@ import os
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
+from typing import Callable, cast
 from uuid import uuid4
 
 from runtime.config import AgentConfig
+from runtime.safety import ActionEffect, ActionRequest, RuntimeActionExecutor, SafetyPolicy
 from runtime.evolution.files import compare_directory_versions
 from runtime.evolution.state import (
     create_skill_candidate_difference,
@@ -73,6 +74,7 @@ class SkillEvolutionManager:
         models: EvolutionModels,
         minimum_score: float = 0.8,
         on_skill_changed: Callable[[SkillManifest], None] | None = None,
+        safety_policy: SafetyPolicy | None = None,
     ) -> None:
         if minimum_score < 0 or minimum_score > 1:
             raise ValueError("minimum evaluation score must be between 0 and 1")
@@ -90,8 +92,37 @@ class SkillEvolutionManager:
         self.models = models
         self.minimum_score = minimum_score
         self.on_skill_changed = on_skill_changed
+        self.actions = RuntimeActionExecutor(
+            safety_policy or SafetyPolicy(),
+            store.append_management_action_event,
+        )
 
     def create_skill_candidate(
+        self,
+        name: str,
+        goal: str,
+        *,
+        capability: str | None = None,
+        evolution_id: str | None = None,
+    ) -> SkillCandidate:
+        return cast(
+            SkillCandidate,
+            self.actions.execute_action(
+                ActionRequest.create(
+                    "agent:evolution",
+                    f"skill:candidate:{capability or name}",
+                    (ActionEffect.CREATE,),
+                ),
+                lambda: self._create_skill_candidate(
+                    name,
+                    goal,
+                    capability=capability,
+                    evolution_id=evolution_id,
+                ),
+            ),
+        )
+
+    def _create_skill_candidate(
         self,
         name: str,
         goal: str,
@@ -158,6 +189,23 @@ class SkillEvolutionManager:
         candidate_id: str,
         cases: list[EvaluationCase],
     ) -> EvaluationReport:
+        return cast(
+            EvaluationReport,
+            self.actions.execute_action(
+                ActionRequest.create(
+                    "agent:evolution",
+                    f"skill:candidate:{candidate_id}",
+                    (ActionEffect.CREATE, ActionEffect.UPDATE),
+                ),
+                lambda: self._evaluate_skill_candidate(candidate_id, cases),
+            ),
+        )
+
+    def _evaluate_skill_candidate(
+        self,
+        candidate_id: str,
+        cases: list[EvaluationCase],
+    ) -> EvaluationReport:
         candidate = self._read_candidate(candidate_id)
         report_id = create_report_id()
         report_path = (
@@ -187,6 +235,19 @@ class SkillEvolutionManager:
         return report
 
     def promote_skill_candidate(self, candidate_id: str) -> SkillManifest:
+        return cast(
+            SkillManifest,
+            self.actions.execute_action(
+                ActionRequest.create(
+                    "agent:evolution",
+                    f"skill:owned:{candidate_id}",
+                    (ActionEffect.CREATE, ActionEffect.UPDATE),
+                ),
+                lambda: self._promote_skill_candidate(candidate_id),
+            ),
+        )
+
+    def _promote_skill_candidate(self, candidate_id: str) -> SkillManifest:
         candidate = self._read_candidate(candidate_id)
         report = self._read_latest_report(candidate.candidate_id)
         promotion_path = self.evolution_root / "promotions" / f"{candidate.candidate_id}.json"
@@ -258,6 +319,24 @@ class SkillEvolutionManager:
         return promoted
 
     def rollback_skill(
+        self,
+        name: str,
+        *,
+        capability: str | None = None,
+    ) -> SkillManifest:
+        return cast(
+            SkillManifest,
+            self.actions.execute_action(
+                ActionRequest.create(
+                    "agent:evolution",
+                    f"skill:owned:{capability or name}",
+                    (ActionEffect.UPDATE,),
+                ),
+                lambda: self._rollback_skill(name, capability=capability),
+            ),
+        )
+
+    def _rollback_skill(
         self,
         name: str,
         *,

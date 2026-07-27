@@ -74,6 +74,14 @@ RuntimeSession -> RuntimeStore -> StorageBackend
 
 `RunIdentity` scopes user, Agent, conversation, task, and parent task. Conversations, traces, evaluations, disclosure history, memory, habits, and evolution decisions use one canonical event schema. Derived views can always be rebuilt from those events.
 
+## Action Safety
+
+`RuntimeActionExecutor` is the only model-triggered side-effect boundary. A Capability
+declares effects and a resource; Runtime intersects that declaration with the Agent's
+safety preset before invoking the handler. Skill text is never an authority source.
+Management services reuse the same executor and write decisions to the same storage
+backend. See [Runtime Safety](safety.md).
+
 ## Invariants
 
 - One task uses one Runtime session, Skill index, disclosure cache, and store.
@@ -89,3 +97,4 @@ RuntimeSession -> RuntimeStore -> StorageBackend
 - Internal compatibility shells are intentionally absent during `0.0.x`.
 - Model editors persist standard model Skills; API-key values remain outside Skill and Agent configuration.
 - Model-triggered side effects use one Runtime action contract and one safety decision stream.
+- Unknown external actions cannot execute before an allow or explicit approval decision.

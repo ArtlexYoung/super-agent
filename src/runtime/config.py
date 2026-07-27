@@ -19,6 +19,7 @@ class AgentSettings:
     max_agent_chain_depth: int | None
     use_features: list[str]
     disable_names: list[str]
+    safety: str
 
 
 @dataclass(frozen=True)
@@ -122,6 +123,7 @@ def _read_agent_settings(data: dict[str, Any]) -> AgentSettings:
         max_agent_chain_depth=_optional_positive_int(data.get("max_agent_chain_depth")),
         use_features=_normalize_feature_names(data.get("use_features", ["skill"])),
         disable_names=[str(item).lower() for item in data.get("disable_names", [])],
+        safety=_read_safety_preset(data.get("safety", "standard")),
     )
 
 
@@ -172,3 +174,10 @@ def _optional_positive_int(value: Any) -> int | None:
 
 def _normalize_feature_names(value: Any) -> list[str]:
     return [str(item).lower() for item in value]
+
+
+def _read_safety_preset(value: Any) -> str:
+    preset = str(value).strip().lower()
+    if preset not in {"audit", "standard", "read_only", "autonomous"}:
+        raise ValueError(f"unknown safety preset: {preset}")
+    return preset

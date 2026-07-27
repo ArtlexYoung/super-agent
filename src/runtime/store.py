@@ -379,6 +379,18 @@ class RuntimeStore:
             dict(data),
         )
 
+    def append_management_action_event(
+        self,
+        event_type: str,
+        data: dict[str, object],
+    ) -> StorageEvent:
+        return self._append_scoped_event(
+            "action",
+            "management",
+            event_type,
+            data,
+        )
+
     def read_skill_evolution_events(
         self,
         evolution_id: str | None = None,

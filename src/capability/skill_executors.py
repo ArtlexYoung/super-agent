@@ -4,6 +4,7 @@ from dataclasses import asdict, dataclass
 from typing import Callable
 
 from capability.skill_contributions import (
+    CapabilityAction,
     CapabilityTool,
     SkillContribution,
     read_optional_positive_tool_integer,
@@ -12,6 +13,7 @@ from capability.skill_contributions import (
     read_tool_object,
 )
 from runtime.identity import RunIdentity
+from runtime.safety import ActionEffect
 from runtime.store import RuntimeStore
 from skill.disclosure import ProgressiveDisclosureCore, SkillReference
 from skill.kinds.mcp import McpServer, create_mcp_server_from_skill_disclosure
@@ -89,6 +91,11 @@ class McpSkillExecutor:
                 properties={"name": {"type": "string"}},
                 required=("name",),
                 handler=lambda arguments: _list_mcp_tools(load_server, arguments),
+                action=CapabilityAction(
+                    (ActionEffect.EXECUTE, ActionEffect.NETWORK),
+                    "mcp",
+                    "name",
+                ),
             ),
             CapabilityTool(
                 name="run_skill",
@@ -100,6 +107,11 @@ class McpSkillExecutor:
                 },
                 required=("name", "tool", "arguments"),
                 handler=lambda arguments: _run_mcp_tool(load_server, arguments),
+                action=CapabilityAction(
+                    (ActionEffect.EXECUTE, ActionEffect.NETWORK),
+                    "mcp",
+                    "name",
+                ),
             ),
         )
 
@@ -255,6 +267,11 @@ def _create_memory_tools(memory: MiniMemory, run_id: str) -> tuple[CapabilityToo
             "List active memory items, optionally within one scope.",
             {"scope": scope},
             lambda arguments: _list_memory_items(memory, arguments),
+            action=CapabilityAction(
+                (ActionEffect.READ,),
+                "memory:active",
+                "scope",
+            ),
         ),
         CapabilityTool(
             "add_memory_item",
@@ -262,6 +279,11 @@ def _create_memory_tools(memory: MiniMemory, run_id: str) -> tuple[CapabilityToo
             {"text": {"type": "string"}, "scope": scope},
             lambda arguments: _add_memory_item(memory, run_id, arguments),
             ("text",),
+            CapabilityAction(
+                (ActionEffect.CREATE,),
+                "memory:active",
+                "scope",
+            ),
         ),
         CapabilityTool(
             "recall_memory",
@@ -273,6 +295,11 @@ def _create_memory_tools(memory: MiniMemory, run_id: str) -> tuple[CapabilityToo
             },
             lambda arguments: _recall_memory(memory, arguments),
             ("query",),
+            CapabilityAction(
+                (ActionEffect.READ,),
+                "memory:active",
+                "scope",
+            ),
         ),
         CapabilityTool(
             "forget_memory",
@@ -280,6 +307,11 @@ def _create_memory_tools(memory: MiniMemory, run_id: str) -> tuple[CapabilityToo
             {"item_id": {"type": "string"}},
             lambda arguments: _forget_memory(memory, arguments),
             ("item_id",),
+            CapabilityAction(
+                (ActionEffect.DELETE,),
+                "memory:active",
+                "item_id",
+            ),
         ),
         CapabilityTool(
             "consolidate_memory",
@@ -288,6 +320,10 @@ def _create_memory_tools(memory: MiniMemory, run_id: str) -> tuple[CapabilityToo
             lambda arguments: {
                 "items": [asdict(item) for item in memory.consolidate_memory()]
             },
+            action=CapabilityAction(
+                (ActionEffect.UPDATE, ActionEffect.DELETE),
+                "memory:active",
+            ),
         ),
     )
 

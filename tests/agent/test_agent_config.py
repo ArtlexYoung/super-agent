@@ -26,6 +26,7 @@ skills = ["echo"]
 max_agent_chain_depth = 4
 use_features = ["skill"]
 disable_names = ["mcp:github"]
+safety = "read_only"
 
 [paths]
 skills = ["skills"]
@@ -47,6 +48,7 @@ url_env = "CUSTOM_DATABASE_URL"
             self.assertEqual(4, config.agent.max_agent_chain_depth)
             self.assertEqual(["skill"], config.agent.use_features)
             self.assertEqual(["mcp:github"], config.agent.disable_names)
+            self.assertEqual("read_only", config.agent.safety)
             self.assertEqual([root / "skills"], config.paths.skills)
             self.assertEqual("jsonl", config.storage.backend)
             self.assertEqual(root / ".super-agent", config.storage.path)
@@ -70,6 +72,15 @@ skills = ["skills"]
             config = AgentConfig.load_from_file(config_path)
 
             self.assertEqual(["skill"], config.agent.use_features)
+            self.assertEqual("standard", config.agent.safety)
+
+    def test_unknown_safety_preset_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "agent.toml"
+            path.write_text('[agent]\nsafety = "unsafe"\n', encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "unknown safety preset"):
+                AgentConfig.load_from_file(path)
 
     def test_feature_names_are_lowercased_without_legacy_aliases(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -8,9 +8,11 @@ import re
 import shutil
 from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import cast
 from uuid import uuid4
 
 from runtime.config import AgentConfig
+from runtime.safety import ActionEffect, ActionRequest, RuntimeActionExecutor, SafetyPolicy
 from runtime.store import RuntimeStore
 from skill.disclosure import ProgressiveDisclosureCore, SkillDisclosure
 from skill.kinds.model import ModelProfile, create_model_profile_from_skill_disclosure
@@ -49,14 +51,36 @@ class _ModelSkillDocument:
 class ModelSkillManager:
     """Manage model Skills in the first configured project Skill root."""
 
-    def __init__(self, config: AgentConfig, store: RuntimeStore) -> None:
+    def __init__(
+        self,
+        config: AgentConfig,
+        store: RuntimeStore,
+        safety_policy: SafetyPolicy | None = None,
+    ) -> None:
         if not config.paths.skills:
             raise ValueError("agent has no writable skill path configured")
         self.config = config
         self.store = store
         self.skill_root = config.paths.skills[0]
+        self.actions = RuntimeActionExecutor(
+            safety_policy or SafetyPolicy(),
+            store.append_management_action_event,
+        )
 
     def save_model_skill(self, request: ModelSkillInput) -> ModelProfile:
+        return cast(
+            ModelProfile,
+            self.actions.execute_action(
+                ActionRequest.create(
+                    "user:model-skill",
+                    f"skill:owned:model:{request.name}",
+                    (ActionEffect.CREATE, ActionEffect.UPDATE),
+                ),
+                lambda: self._save_model_skill(request),
+            ),
+        )
+
+    def _save_model_skill(self, request: ModelSkillInput) -> ModelProfile:
         clean_request = validate_model_skill_input(request)
         disclosure = self._create_disclosure()
         index = disclosure.prepare_skill_index()
@@ -88,10 +112,24 @@ class ModelSkillManager:
                     {clean_request.name, previous_name},
                 )
             )
-        _apply_model_skill_updates(updates, self.store, removed_path=source_path if source_path != target else None)
+        _apply_model_skill_updates(
+            updates,
+            self.store,
+            removed_path=source_path if source_path != target else None,
+        )
         return self._read_profile(clean_request.name)
 
     def remove_model_skill(self, name: str) -> None:
+        self.actions.execute_action(
+            ActionRequest.create(
+                "user:model-skill",
+                f"skill:owned:model:{name}",
+                (ActionEffect.DELETE,),
+            ),
+            lambda: self._remove_model_skill(name),
+        )
+
+    def _remove_model_skill(self, name: str) -> None:
         clean_name = _clean_skill_name(name)
         disclosure = self._create_disclosure()
         index = disclosure.prepare_skill_index()
