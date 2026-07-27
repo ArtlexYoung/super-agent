@@ -6,7 +6,8 @@ import json
 from dataclasses import dataclass, replace
 from typing import cast
 
-from capability.skill_executors import SkillLoadRequest, SkillLoadResult
+from capability.skill_contributions import SkillContribution, TaskPolicy
+from capability.skill_executors import SkillLoadRequest
 from provider.chat import Message, ToolCall
 from runtime.model_router import ModelCallContext, ModelRouter
 from runtime.scheduler import TaskSchedule
@@ -14,15 +15,13 @@ from runtime.session import RuntimeSession
 from runtime.tasks import SubAgentResult, TaskRequest, TaskResult
 from runtime.tools import RuntimeTools, RuntimeToolsContext
 from skill.disclosure import SkillReference
-from skill.kinds.memory import MiniMemory
-from skill.kinds.workflow import WorkflowPolicy
 from skill.manifest import Skill
 
 
 @dataclass(frozen=True)
 class _ExecutionContext:
     session: RuntimeSession
-    workflow: WorkflowPolicy
+    workflow: TaskPolicy
     schedule: TaskSchedule
     model_router: ModelRouter
     tools: RuntimeTools
@@ -31,13 +30,19 @@ class _ExecutionContext:
 def execute_task(
     request: TaskRequest,
     session: RuntimeSession,
-    workflow: WorkflowPolicy,
+    workflow: TaskPolicy,
     schedule: TaskSchedule,
     model_router: ModelRouter,
 ) -> TaskResult:
-    memory = _load_optional_memory(session)
-    disclosed_skills = _load_scheduled_skills(session, schedule)
-    tools = _create_runtime_tools(request, session, memory)
+    background_contributions = _load_background_contributions(session)
+    scheduled_contributions = _load_scheduled_skill_contributions(session, schedule)
+    contributions = background_contributions + scheduled_contributions
+    disclosed_skills = [
+        contribution.model_context
+        for contribution in scheduled_contributions
+        if contribution.model_context is not None
+    ]
+    tools = _create_runtime_tools(request, session, contributions)
     session.record_event(
         "skills.disclosed",
         {
@@ -46,7 +51,12 @@ def execute_task(
         },
     )
     subagent_results = _run_scheduled_subagents(request, session, schedule)
-    system = _build_system_prompt(request, session, memory, subagent_results)
+    system = _build_system_prompt(
+        request,
+        session,
+        contributions,
+        subagent_results,
+    )
     model_result = _run_model_steps(
         request,
         _ExecutionContext(session, workflow, schedule, model_router, tools),
@@ -68,24 +78,24 @@ def execute_task(
             "stop_reason": result.stop_reason,
         },
     )
-    if memory is not None:
-        memory.usage_habits.record_agent_run(result.workflow, result.skills)
+    for contribution in contributions:
+        if contribution.record_task_completed is not None:
+            contribution.record_task_completed(result.workflow, result.skills)
     return result
 
 
-def _load_optional_memory(session: RuntimeSession) -> MiniMemory | None:
+def _load_background_contributions(
+    session: RuntimeSession,
+) -> list[SkillContribution]:
     entry = session.require_skill_index().find_skill(
         f"memory:{session.config.agent.memory}"
     )
     if entry is None:
-        return None
-    loaded = _load_skill(session, entry.reference)
-    if not isinstance(loaded.runtime_value, MiniMemory):
-        raise TypeError("memory skill executor did not return memory runtime")
-    return loaded.runtime_value
+        return []
+    return [_load_skill(session, entry.reference)]
 
 
-def load_workflow_policy(session: RuntimeSession) -> WorkflowPolicy:
+def load_workflow_policy(session: RuntimeSession) -> TaskPolicy:
     try:
         entry = session.require_skill_index().require_skill(
             session.config.agent.workflow,
@@ -96,12 +106,12 @@ def load_workflow_policy(session: RuntimeSession) -> WorkflowPolicy:
             f"workflow skill not found: {session.config.agent.workflow}"
         ) from None
     loaded = _load_skill(session, entry.reference)
-    if not isinstance(loaded.runtime_value, WorkflowPolicy):
-        raise TypeError("workflow skill executor did not return a workflow policy")
-    return loaded.runtime_value
+    if loaded.task_policy is None:
+        raise TypeError("workflow skill executor did not contribute a task policy")
+    return loaded.task_policy
 
 
-def _load_skill(session: RuntimeSession, reference: SkillReference) -> SkillLoadResult:
+def _load_skill(session: RuntimeSession, reference: SkillReference) -> SkillContribution:
     entry = session.require_skill_index().require_skill(
         reference.name,
         reference.capability,
@@ -109,7 +119,7 @@ def _load_skill(session: RuntimeSession, reference: SkillReference) -> SkillLoad
     executor = session.capability_registry.require_skill_executor(reference.capability)
     session.record_skill_used(entry)
     session.record_skill_executor_used(reference.capability, executor)
-    loaded = executor.load_skill(  # type: ignore[attr-defined]
+    contribution = executor.load_skill(  # type: ignore[attr-defined]
         SkillLoadRequest(
             session.require_skill_disclosure(),
             reference,
@@ -117,30 +127,30 @@ def _load_skill(session: RuntimeSession, reference: SkillReference) -> SkillLoad
             session.identity,
         )
     )
-    if not isinstance(loaded, SkillLoadResult):
-        raise TypeError("skill executor must return SkillLoadResult")
-    return loaded
+    if not isinstance(contribution, SkillContribution):
+        raise TypeError("skill executor must return SkillContribution")
+    return contribution
 
 
-def _load_scheduled_skills(
+def _load_scheduled_skill_contributions(
     session: RuntimeSession,
     schedule: TaskSchedule,
-) -> list[Skill]:
-    skills: list[Skill] = []
+) -> list[SkillContribution]:
+    contributions: list[SkillContribution] = []
     for reference in schedule.skill_references:
-        loaded = _load_skill(session, reference)
-        if loaded.model_skill is None:
+        contribution = _load_skill(session, reference)
+        if contribution.model_context is None:
             raise ValueError(
                 f"skill capability cannot enter model context: {reference.capability}"
             )
-        skills.append(loaded.model_skill)
-    return skills
+        contributions.append(contribution)
+    return contributions
 
 
 def _create_runtime_tools(
     request: TaskRequest,
     session: RuntimeSession,
-    memory: MiniMemory | None,
+    contributions: list[SkillContribution],
 ) -> RuntimeTools:
     has_subagents = request.include_subagents and bool(request.subagents.list_subagents())
     collected_results: list[SubAgentResult] = []
@@ -153,10 +163,10 @@ def _create_runtime_tools(
     return RuntimeTools(
         RuntimeToolsContext(
             session=session,
-            memory=memory,
             list_subagents=request.subagents.list_subagents if has_subagents else None,
             run_subagent=run_subagent if has_subagents else None,
         ),
+        contributions=contributions,
         delegated_subagent_results=collected_results,
     )
 
@@ -177,14 +187,16 @@ def _run_scheduled_subagents(
 def _build_system_prompt(
     request: TaskRequest,
     session: RuntimeSession,
-    memory: MiniMemory | None,
+    contributions: list[SkillContribution],
     subagent_results: list[SubAgentResult],
 ) -> str:
     parts = [session.config.agent.system]
-    if memory is not None:
-        memory_instruction = memory.build_prompt_instruction(request.prompt)
-        if memory_instruction:
-            parts.append(memory_instruction)
+    for contribution in contributions:
+        if contribution.build_prompt_context is None:
+            continue
+        prompt_context = contribution.build_prompt_context(request.prompt)
+        if prompt_context:
+            parts.append(prompt_context)
     if subagent_results:
         lines = ["Subagent results:"]
         for item in subagent_results:
@@ -259,7 +271,7 @@ def _run_model_steps(
 
 def _build_model_messages(
     request: TaskRequest,
-    workflow: WorkflowPolicy,
+    workflow: TaskPolicy,
     skills: list[Skill],
     system: str,
 ) -> list[Message]:
@@ -311,9 +323,9 @@ def _tool_result_message(call: ToolCall, result: dict[str, object]) -> Message:
 
 def _used_skill_names(skills: list[Skill], tools: RuntimeTools) -> list[str]:
     names = [skill.manifest.name for skill in skills]
-    for skill in tools.used_skills:
-        if skill.manifest.name not in names:
-            names.append(skill.manifest.name)
+    for name in tools.used_skill_names:
+        if name not in names:
+            names.append(name)
     return names
 
 

@@ -2,36 +2,23 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
+from capability.skill_contributions import TaskPolicy
 from skill.disclosure import SkillDisclosure
 
 DEFAULT_WORKFLOW_MAX_STEPS = 8
 
 
-@dataclass(frozen=True)
-class WorkflowPolicy:
-    name: str
-    mode: str
-    instruction: str = ""
-    max_steps: int = DEFAULT_WORKFLOW_MAX_STEPS
-
-    @property
-    def uses_tools(self) -> bool:
-        return self.mode in {"react", "loop"}
-
-
-def create_workflow_policy(name: str) -> WorkflowPolicy:
+def create_workflow_policy(name: str) -> TaskPolicy:
     key = name.strip().lower()
     instruction = _instruction_for_mode(key)
     if instruction is None:
         raise ValueError(f"unknown workflow: {name}")
-    return WorkflowPolicy(key, key, instruction)
+    return TaskPolicy(key, key, instruction, DEFAULT_WORKFLOW_MAX_STEPS)
 
 
 def create_workflow_policy_from_skill(
     disclosure: SkillDisclosure,
-) -> WorkflowPolicy:
+) -> TaskPolicy:
     manifest = disclosure.read_manifest()
     if manifest.capability != "workflow":
         raise ValueError(f"skill does not use the workflow capability: {manifest.name}")
@@ -45,7 +32,7 @@ def create_workflow_policy_from_skill(
         part for part in [base_instruction, custom_instruction] if part
     )
     max_steps = _read_max_steps(data.get("max_steps", DEFAULT_WORKFLOW_MAX_STEPS))
-    return WorkflowPolicy(manifest.name, mode, instruction, max_steps)
+    return TaskPolicy(manifest.name, mode, instruction, max_steps)
 
 
 def _instruction_for_mode(mode: str) -> str | None:

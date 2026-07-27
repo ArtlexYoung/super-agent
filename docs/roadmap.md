@@ -162,4 +162,45 @@ Status: implemented.
 
 Proof: [experiment description](experiments/v0.0.41.md) and [machine-readable result](experiments/v0.0.41.json).
 
+## v0.0.42: Uniform Skill Contributions
+
+Status: implemented.
+
+- Replace opaque Skill runtime values with one `SkillContribution` contract.
+- Let every Capability contribute context, tools, policy, and completion behavior.
+- Remove concrete Memory, MCP, and Workflow imports from task execution.
+- Require custom executors to declare both Skill loading and capability-wide tools.
+
+## v0.0.43: One Adaptive Task Loop
+
+Status: planned.
+
+- Collapse scheduling, model routing, execution, and tool iteration into one task loop.
+- Keep model filtering and evidence scoring as pure decisions inside that loop.
+- Derive task history from executed steps instead of a parallel execution context.
+
+## v0.0.44: One Skill Revision State
+
+Status: planned.
+
+- Replace duplicate evaluation, evolution target, and schedule identities with Skill revisions.
+- Keep evidence, candidate status, promotion, monitoring, and rollback in one state machine.
+- Remove Capability-specific evolution identities because executable mechanisms are Skills.
+
+## v0.0.45: Zero-Configuration Planning
+
+Status: planned.
+
+- Add a default Planner Skill that can decompose tasks without mandatory configuration.
+- Route every planned step to a model and optional subagent from declared traits and evidence.
+- Preserve a direct fast path when a task needs no planning or tools.
+
+## v0.0.46: Self-Evolving Planning Proof
+
+Status: planned.
+
+- Evaluate Planner and routing Skills from ordinary task evidence.
+- Improve eligible Planner and routing revisions through the same evolution loop.
+- Publish a reproducible zero-configuration scheduling and evolution proof.
+
 The project will not move to `0.1.x` merely because more features exist. That change should follow a reproducible demonstration that the central Skill-first lifecycle is useful and maintainable.

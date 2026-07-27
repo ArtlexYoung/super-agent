@@ -8,7 +8,47 @@ Built-in executors handle prompt, MCP, memory, and workflow Skills. Replace or a
 agent.add_skill_executor(executor)
 ```
 
-An executor declares `name`, `version`, `capability_name`, `adds_model_context`, and `load_skill(request)`. There are no run-controller, disclosure, evaluator, or updater slots.
+An executor declares `name`, `version`, `capability_name`, `adds_model_context`, `load_skill(request)`, and `create_tools(request)`. There are no run-controller, disclosure, evaluator, or updater slots.
+
+`load_skill` returns one `SkillContribution`. It can contribute model context, prompt context, tools, a task policy, and a completion recorder without exposing a private runtime object:
+
+```python
+from capability.skill_contributions import CapabilityTool, SkillContribution
+from skill.manifest import Skill
+
+
+class SearchExecutor:
+    name = "search"
+    version = "1"
+    capability_name = "search"
+    adds_model_context = True
+
+    def load_skill(self, request):
+        opened = request.disclosure.open_skill(request.reference.name, "search")
+        return SkillContribution(
+            model_context=Skill(
+                opened.read_manifest(),
+                opened.read_instructions().content,
+            ),
+            tools=(
+                CapabilityTool(
+                    "search",
+                    "Search indexed content.",
+                    {"query": {"type": "string"}},
+                    self.run_search,
+                    ("query",),
+                ),
+            ),
+        )
+
+    def create_tools(self, request):
+        return ()
+
+    def run_search(self, arguments):
+        return {"matches": []}
+```
+
+`create_tools` contributes capability-wide tools that are available before one specific Skill is loaded. Return an empty tuple when the capability has none. Tool calls are always traced by Runtime.
 
 ## Capability Skills
 

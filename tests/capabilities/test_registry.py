@@ -72,3 +72,6 @@ class _Executor:
 
     def load_skill(self, request: object) -> object:
         return request
+
+    def create_tools(self, request: object) -> tuple[object, ...]:
+        return ()

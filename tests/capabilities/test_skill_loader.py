@@ -149,7 +149,7 @@ entry_class = "PromptExecutor"
 
 
 def _prompt_executor_source(name: str, version: str, instruction: str) -> str:
-    return f'''from capability.skill_executors import SkillLoadResult
+    return f'''from capability.skill_contributions import SkillContribution
 from skill.manifest import Skill
 
 
@@ -161,7 +161,10 @@ class PromptExecutor:
 
     def load_skill(self, request):
         opened = request.disclosure.open_skill(request.reference.name, "prompt")
-        return SkillLoadResult(
-            model_skill=Skill(opened.read_manifest(), {instruction!r})
+        return SkillContribution(
+            model_context=Skill(opened.read_manifest(), {instruction!r})
         )
+
+    def create_tools(self, request):
+        return ()
 '''

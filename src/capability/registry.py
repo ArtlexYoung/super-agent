@@ -197,6 +197,8 @@ def _validate_skill_executor(
         raise TypeError("skill executor adds_model_context must be a boolean")
     if not callable(getattr(executor, "load_skill", None)):
         raise TypeError("skill executor must define load_skill")
+    if not callable(getattr(executor, "create_tools", None)):
+        raise TypeError("skill executor must define create_tools")
 
 
 def _skill_executor_slot(value: str) -> str:

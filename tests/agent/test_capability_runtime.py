@@ -8,11 +8,13 @@ from pathlib import Path
 from unittest.mock import patch
 
 from agents.agent import Agent
-from capability.skill_executors import SkillLoadRequest, SkillLoadResult
+from capability.skill_contributions import CapabilityTool, SkillContribution
+from capability.skill_executors import CapabilityToolsRequest, SkillLoadRequest
 from cli import main
-from provider.chat import MockProvider
+from provider.chat import MockProvider, ModelResponse, ToolCall
 from runtime.config import AgentConfig
 from skill.manifest import Skill
+from support import write_workflow_skill
 
 
 class CapabilityRuntimeTests(unittest.TestCase):
@@ -92,6 +94,37 @@ class CapabilityRuntimeTests(unittest.TestCase):
             self.assertEqual("finished", result.text)
             self.assertEqual(1, executor.load_count)
 
+    def test_selected_skill_contributes_tools_without_runtime_changes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_prompt_skill(root, capability="transform")
+            write_workflow_skill(root, mode="react")
+            provider = MockProvider(
+                tool_responses=[
+                    ModelResponse(
+                        "",
+                        [ToolCall("tool-1", "uppercase_text", {"text": "hello"})],
+                        "tool_calls",
+                    ),
+                    ModelResponse("finished", [], "model_finished"),
+                ]
+            )
+            agent = Agent(
+                AgentConfig.create_default(root),
+                provider=provider,
+                skill_executors=[_TransformSkillExecutor()],
+            )
+
+            result = agent.run("please echo this")
+
+            tool_names = {
+                item["function"]["name"]
+                for item in provider.tool_requests[0][1]
+            }
+            self.assertEqual("finished", result.text)
+            self.assertIn("uppercase_text", tool_names)
+            self.assertIn("echo", result.skills)
+
     def test_task_trace_uses_one_runtime_task_path(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             agent = Agent(AgentConfig.create_default(tmp))
@@ -116,6 +149,17 @@ class CapabilityRuntimeTests(unittest.TestCase):
         self.assertIn("run_task", method_names)
         self.assertNotIn("run_agent", method_names)
 
+    def test_runtime_does_not_import_concrete_skill_kinds(self) -> None:
+        for path in (
+            Path("src/runtime/execution.py"),
+            Path("src/runtime/scheduler.py"),
+            Path("src/runtime/tools.py"),
+        ):
+            source = path.read_text(encoding="utf-8")
+            self.assertNotIn("skill.kinds.memory", source)
+            self.assertNotIn("skill.kinds.mcp", source)
+            self.assertNotIn("skill.kinds.workflow", source)
+
 
 class _RecordingPromptExecutor:
     name = "recording-prompt"
@@ -126,22 +170,40 @@ class _RecordingPromptExecutor:
     def __init__(self) -> None:
         self.load_count = 0
 
-    def load_skill(self, request: SkillLoadRequest) -> SkillLoadResult:
+    def load_skill(self, request: SkillLoadRequest) -> SkillContribution:
         self.load_count += 1
         opened = request.disclosure.open_skill(
             request.reference.name,
             self.capability_name,
         )
-        return SkillLoadResult(
-            model_skill=Skill(
+        return SkillContribution(
+            model_context=Skill(
                 manifest=opened.read_manifest(),
                 instructions="Loaded by custom executor.",
             )
         )
 
+    def create_tools(self, request: CapabilityToolsRequest) -> tuple[CapabilityTool, ...]:
+        return ()
+
 
 class _TransformSkillExecutor(_RecordingPromptExecutor):
     capability_name = "transform"
+
+    def load_skill(self, request: SkillLoadRequest) -> SkillContribution:
+        contribution = super().load_skill(request)
+        return SkillContribution(
+            model_context=contribution.model_context,
+            tools=(
+                CapabilityTool(
+                    "uppercase_text",
+                    "Convert text to uppercase.",
+                    {"text": {"type": "string"}},
+                    lambda arguments: {"text": str(arguments["text"]).upper()},
+                    ("text",),
+                ),
+            ),
+        )
 
 
 def _write_prompt_skill(root: Path, capability: str = "prompt") -> None:

@@ -6,12 +6,12 @@ import math
 from dataclasses import dataclass, replace
 from typing import Mapping
 
+from capability.skill_contributions import TaskPolicy
 from runtime.routing import ModelRoutingStats, list_model_routing_stats
 from runtime.session import RuntimeSession
 from runtime.tasks import TaskRequest
 from skill.disclosure import SkillReference
 from skill.kinds.model import ModelProfile, model_profile_is_ready
-from skill.kinds.workflow import WorkflowPolicy
 
 
 @dataclass(frozen=True)
@@ -70,7 +70,7 @@ class TaskScheduler:
         self,
         request: TaskRequest,
         session: RuntimeSession,
-        workflow: WorkflowPolicy,
+        workflow: TaskPolicy,
     ) -> TaskSchedule:
         purpose = self.resolve_purpose(request.purpose, request.prompt)
         routing_evidence = {
@@ -158,10 +158,8 @@ class TaskScheduler:
     def _choose_skills(
         request: TaskRequest,
         session: RuntimeSession,
-        workflow: WorkflowPolicy,
+        workflow: TaskPolicy,
     ) -> list[SkillReference]:
-        if workflow.uses_tools:
-            return []
         model_context_capabilities = {
             name
             for name, executor in session.capability_registry.list_skill_executors().items()
@@ -176,7 +174,7 @@ class TaskScheduler:
 
 def _required_features(
     request: TaskRequest,
-    workflow: WorkflowPolicy,
+    workflow: TaskPolicy,
 ) -> tuple[str, ...]:
     features = {item.strip().lower() for item in request.required_features if item.strip()}
     features.add("text")

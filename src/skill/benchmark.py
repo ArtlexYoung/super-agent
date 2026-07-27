@@ -7,7 +7,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from typing import Any
-from capability.skill_executors import create_builtin_skill_executors, load_skill_for_model_context
+from capability.skill_executors import create_builtin_skill_executors, load_skill_model_context
 from skill.disclosure import (
     ProgressiveDisclosureCore,
     SkillIndex,
@@ -137,7 +137,7 @@ class SkillBenchmark:
             },
         )
         selected = [
-            load_skill_for_model_context(
+            load_skill_model_context(
                 self.skill_disclosure,
                 reference,
                 self.skill_executors,
@@ -228,7 +228,7 @@ def _build_eager_context(
     skill_executors: dict[str, Any],
 ) -> str:
     skills = [
-        load_skill_for_model_context(
+        load_skill_model_context(
             disclosure,
             entry.reference,
             skill_executors,

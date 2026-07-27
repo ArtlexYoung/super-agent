@@ -3,6 +3,7 @@ import unittest
 from pathlib import Path
 
 from capability.defaults import create_default_capability_registry
+from capability.skill_executors import create_memory_skill_contribution
 from provider.chat import ToolCall
 from provider.chat import MockProvider
 from runtime.tools import RuntimeTools, RuntimeToolsContext
@@ -36,7 +37,7 @@ class SkillToolsTests(unittest.TestCase):
 
             self.assertEqual("research", listed["skills"][0]["name"])
             self.assertEqual("Research carefully.", read["instructions"])
-            self.assertEqual(["research"], [skill.manifest.name for skill in tools.used_skills])
+            self.assertEqual(["research"], tools.used_skill_names)
             event_types = [event.event_type for event in session.store.read_run_events(session.run_id)]
             self.assertIn("tool.requested", event_types)
             self.assertIn("tool.completed", event_types)
@@ -143,8 +144,12 @@ def _create_tool_router(
     return RuntimeTools(
         RuntimeToolsContext(
             session=session,
-            memory=memory,
-        )
+        ),
+        contributions=(
+            []
+            if memory is None
+            else [create_memory_skill_contribution(memory, session.run_id)]
+        ),
     )
 
 

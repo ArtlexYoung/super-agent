@@ -183,7 +183,7 @@ super-agent runs explain --config agent.toml --run-id <run-id> --output json
 
 The projection includes scheduler reasons, every model attempt, latency, estimated tokens and cost, learned routing evidence, relevant Skill freshness, and automatic evolution decisions. A child Agent `run_id` can be inspected through the parent project because the lookup remains restricted to the same user and storage backend.
 
-`CapabilityRegistry` contains only executable Skill handlers. Replace one explicitly with `agent.add_skill_executor(...)`. A handler that must be installed or evolved is a standard `capability` Skill, so it uses the same disclosure, evaluation, promotion, and rollback path as every other Skill. Runtime lifecycle mechanisms are intentionally not replaceable parallel controllers.
+`CapabilityRegistry` contains only executable Skill handlers. Replace one explicitly with `agent.add_skill_executor(...)`. Every handler returns one `SkillContribution` containing any model context, prompt context, tools, task policy, and completion recorder it provides. Runtime therefore does not know concrete Memory, MCP, or Workflow classes. A handler that must be installed or evolved is a standard `capability` Skill and uses the same disclosure, evaluation, promotion, and rollback path as every other Skill.
 
 ## Reproducible Proof
 

@@ -47,6 +47,8 @@ These lifecycle stages cannot be replaced by parallel controllers. Workflow Skil
 
 `CapabilityRegistry` stores only Skill executors. Each descriptor locks the executor name, version, class, SHA-256, dependencies, permissions, update ownership, and optional source Skill.
 
+Every executor returns one `SkillContribution`. A contribution may contain model context, prompt context, tools, a task policy, and a completion recorder. Runtime consumes these fields uniformly and never imports concrete memory, MCP, or workflow implementations. Capability-owned tools use one `CapabilityTool` contract and enter the same traced tool registry.
+
 Built-ins require no configuration. Installable and evolvable handlers are `capability` Skills and therefore use the ordinary Skill lifecycle. Code composition uses the explicit `Agent.add_skill_executor(...)` method.
 
 ## Skills and Providers
@@ -72,6 +74,7 @@ RuntimeSession -> RuntimeStore -> StorageBackend
 - One task uses one Runtime session, Skill index, disclosure cache, and store.
 - Runtime is the only task lifecycle and model-loop owner.
 - Every Skill executor is registered once and locked by exact hash.
+- Runtime consumes only `SkillContribution`, never a Skill-kind-specific runtime object.
 - Every used Skill and executor becomes an evaluation target automatically.
 - Workflow is Skill data, not a second execution engine.
 - Evolution cannot bypass validation, evaluation, promotion, or rollback.

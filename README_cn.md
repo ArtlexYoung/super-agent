@@ -183,7 +183,7 @@ super-agent runs explain --config agent.toml --run-id <run-id> --output json
 
 洞察投影包含调度原因、每次模型尝试、延迟、估算 token 与成本、学习后的路由证据、相关 Skill 保鲜度和自动进化决策。子 Agent 的 `run_id` 也可以从主项目查看，但查询仍严格限制在同一用户和同一存储后端内。
 
-`CapabilityRegistry` 只保存真正执行 Skill 的处理器，可以通过 `agent.add_skill_executor(...)` 明确替换。需要安装或进化的处理器使用标准 `capability` Skill，与其他 Skill 共用披露、评价、晋升和回滚；Runtime 生命周期不再允许替换成另一套并行控制器。
+`CapabilityRegistry` 只保存真正执行 Skill 的处理器，可以通过 `agent.add_skill_executor(...)` 明确替换。每个处理器统一返回一个 `SkillContribution`，其中可以包含模型上下文、提示上下文、工具、任务策略和完成记录器，因此 Runtime 不再了解 Memory、MCP 或 Workflow 的具体类。需要安装或进化的处理器使用标准 `capability` Skill，与其他 Skill 共用披露、评价、晋升和回滚。
 
 ## 可复现证明
 
