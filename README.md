@@ -18,6 +18,7 @@ The project is currently experimental (`0.0.x`). It favors a small, inspectable 
 - **Automatic planning**: complex tasks are decomposed by a progressively disclosed Planner Skill, while simple tasks keep one direct model call.
 - **Automatic task scheduling**: Runtime selects compatible models, Skills, and subagents, then learns from user-scoped quality, reliability, latency, and cost evidence.
 - **One runtime lifecycle**: discovery, disclosure, execution, observation, evaluation, and evolution share one session.
+- **One safety boundary**: Runtime records every declared action effect before a Capability can execute it.
 - **Automatic evolution loop**: Runtime turns real evidence into candidates, evaluates and promotes them, then monitors and rolls back regressions.
 - **Code-composed Agents**: create Agents independently and attach them with `Agent.add_subagent(...)`.
 - **Standard-library runtime**: the Python core has no third-party runtime dependencies.

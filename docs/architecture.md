@@ -88,3 +88,4 @@ RuntimeSession -> RuntimeStore -> StorageBackend
 - Planner and model Skills cannot bypass the shared Skill evolution state machine.
 - Internal compatibility shells are intentionally absent during `0.0.x`.
 - Model editors persist standard model Skills; API-key values remain outside Skill and Agent configuration.
+- Model-triggered side effects use one Runtime action contract and one safety decision stream.

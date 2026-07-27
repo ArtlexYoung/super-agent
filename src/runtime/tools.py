@@ -17,6 +17,7 @@ from capability.skill_executors import (
 )
 from provider.chat import ToolCall, ToolDefinition
 from runtime.session import RuntimeSession
+from runtime.safety import ActionRequest
 from skill.disclosure import SkillDisclosure, SkillIndex, SkillReference, skill_index_to_dict
 
 if TYPE_CHECKING:
@@ -74,7 +75,16 @@ class RuntimeTools:
             self._record_tool_failure(call, error)
             raise error
         try:
-            result = tool.handler(call.arguments)
+            result = self.context.session.execute_action(
+                ActionRequest(
+                    action_id=call.id,
+                    actor=f"tool:{call.name}",
+                    resource=tool.resource,
+                    effects=tool.effects,
+                    argument_names=tuple(call.arguments),
+                ),
+                lambda: tool.handler(call.arguments),
+            )
         except Exception as error:
             self._record_tool_failure(call, error)
             raise

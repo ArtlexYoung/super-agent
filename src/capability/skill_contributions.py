@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Callable
 
 from provider.chat import ToolDefinition
+from runtime.safety import ActionEffect
 from skill.manifest import Skill
 
 
@@ -42,6 +43,8 @@ class CapabilityTool:
     properties: dict[str, object]
     handler: ToolHandler
     required: tuple[str, ...] = ()
+    effects: tuple[ActionEffect, ...] = (ActionEffect.READ,)
+    resource: str = "runtime"
 
     def to_provider_definition(self) -> ToolDefinition:
         return {

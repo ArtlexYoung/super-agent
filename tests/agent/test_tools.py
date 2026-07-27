@@ -40,6 +40,8 @@ class SkillToolsTests(unittest.TestCase):
             self.assertEqual(["research"], tools.used_skill_names)
             event_types = [event.event_type for event in session.store.read_run_events(session.run_id)]
             self.assertIn("tool.requested", event_types)
+            self.assertIn("action.checked", event_types)
+            self.assertIn("action.completed", event_types)
             self.assertIn("tool.completed", event_types)
             self.assertIn("skill.disclosed", event_types)
 

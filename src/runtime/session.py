@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Callable
 
 from capability.registry import CapabilityRegistry
 from provider.chat import ChatProvider
 from runtime.config import AgentConfig
 from runtime.identity import RunIdentity
 from runtime.models import RunEvent
+from runtime.safety import ActionRequest, RuntimeActionExecutor, SafetyPolicy
 from runtime.store import RuntimeStore
 from skill.disclosure import ProgressiveDisclosureCore, SkillIndex, SkillIndexEntry
 from skill.kinds.model import ModelProfile
@@ -22,6 +24,7 @@ class RuntimeSession:
     capability_registry: CapabilityRegistry
     identity: RunIdentity
     store: RuntimeStore
+    safety_policy: SafetyPolicy = field(default_factory=SafetyPolicy)
     skill_disclosure: ProgressiveDisclosureCore | None = None
     skill_index: SkillIndex | None = None
     _used_skill_revisions: dict[tuple[str, str, str], SkillRevision] = field(
@@ -40,6 +43,16 @@ class RuntimeSession:
         data: dict[str, object] | None = None,
     ) -> RunEvent:
         return self.store.append_run_event(self.identity, event_type, data)
+
+    def execute_action(
+        self,
+        request: ActionRequest,
+        action: Callable[[], object],
+    ) -> object:
+        return RuntimeActionExecutor(
+            self.safety_policy,
+            self.record_event,
+        ).execute_action(request, action)
 
     def set_skill_disclosure(
         self,

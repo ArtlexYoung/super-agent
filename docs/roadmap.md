@@ -206,4 +206,11 @@ Status: implemented.
 
 Proof: [experiment description](experiments/v0.0.46.md) and [machine-readable result](experiments/v0.0.46.json).
 
+## v0.0.47: Central Action Safety Contract
+
+- Describe every model-triggered Runtime action with one validated effect and resource contract.
+- Route tool handlers through `RuntimeSession.execute_action(...)`.
+- Record decisions, completion, and failure without storing argument values.
+- Keep the first policy audit-only so existing behavior remains unchanged while coverage is measured.
+
 The project will not move to `0.1.x` merely because more features exist. That change should follow a reproducible demonstration that the central Skill-first lifecycle is useful and maintainable.
