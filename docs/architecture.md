@@ -26,7 +26,7 @@ Agent.run
 
 Model calls, tool calls, and subagent work are observable steps of the same task path. `RuntimeSession` is the only mutable context for a task. It carries one `RunIdentity`, `RuntimeStore`, Skill index, disclosure core, selected model, Capability registry, and evidence tracker.
 
-`runtime.insights` projects UI-facing task, model, routing, freshness, and evolution views from canonical events and evaluation records. CLI and macOS consume this projection instead of implementing their own evidence logic.
+`runtime.insights` projects UI-facing task, model, routing, freshness, and evolution views from canonical events and evaluation records. CLI and user interfaces consume this projection instead of implementing their own evidence logic. `ag_ui_bridge` maps the same live event stream to AG-UI without owning execution or state.
 
 `AdaptiveTaskLoop` is the only task-step owner. Pure decision functions first filter model profiles by connection readiness and required features, then score purpose, prompt traits, default status, declared quality, latency, cost, and user-scoped evidence. Skill selection uses the same progressive-disclosure core, while subagent selection uses the descriptions and triggers supplied by `Agent.add_subagent(...)`.
 
@@ -104,3 +104,4 @@ backend. See [Runtime Safety](safety.md).
 - Model editors persist standard model Skills; API-key values remain outside Skill and Agent configuration.
 - Model-triggered side effects use one Runtime action contract and one safety decision stream.
 - Unknown external actions cannot execute before an allow or explicit approval decision.
+- AG-UI is a transport projection over canonical events, never a second task engine or state store.

@@ -23,13 +23,18 @@ class RunIdentity:
         user_id: str,
         agent_name: str,
         *,
+        run_id: str | None = None,
         conversation_id: str | None = None,
         parent_run_id: str | None = None,
     ) -> "RunIdentity":
         return cls(
             user_id=_clean_identity_value(user_id, "user_id"),
             agent_name=_clean_identity_value(agent_name, "agent_name"),
-            run_id=f"run-{uuid4().hex}",
+            run_id=(
+                f"run-{uuid4().hex}"
+                if run_id is None
+                else _clean_identity_value(run_id, "run_id")
+            ),
             conversation_id=_clean_optional_identity_value(
                 conversation_id,
                 "conversation_id",

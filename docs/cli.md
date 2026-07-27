@@ -13,6 +13,16 @@ super-agent run --user-id alice --conversation-id <id> "continue"
 
 `run --output` accepts `text`, `json`, or `jsonl`. Use `--request-stdin` with JSON input for desktop and service integrations.
 
+## AG-UI Server
+
+```bash
+super-agent serve
+super-agent serve --config agent.toml --user-id alice
+super-agent serve --host 127.0.0.1 --port 9000 --allow-origin http://localhost:5173
+```
+
+The default endpoint is `http://127.0.0.1:8765/ag-ui`; `GET /health` provides a dependency-free health check. The server fixes one Runtime user identity at startup and does not trust `forwardedProps` for authorization. It has no built-in authentication, so non-local bindings must be protected by an authenticated reverse proxy. See [AG-UI Bridge](ag-ui.md).
+
 ## Conversation Management
 
 ```bash

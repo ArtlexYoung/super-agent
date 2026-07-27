@@ -22,6 +22,7 @@ Super Agent 是一个**简单、轻量、自进化、Skill 优先的 Agent 运�
 - **默认安全**：内部记忆和自有 Skill 进化保持自动化；外部执行和未知网络动作需要批准。
 - **自动进化闭环**：Runtime 根据真实证据创建候选，自动评价和晋升，并持续监控和回滚退化版本。
 - **能记也能忘的记忆**：回忆时同步整理重复、过时和低价值记忆，所有变化都使用可验证、可追溯的事件。
+- **原生 AG-UI 接入**：零 Python 依赖的 HTTP/SSE 桥接层将同一份 Runtime 标准事件流发送给 Web 客户端。
 - **代码式多 Agent**：每个 Agent 独立创建，再通过 `Agent.add_subagent(...)` 组合。
 - **标准库运行时**：Python 核心没有第三方运行依赖。
 
@@ -59,6 +60,14 @@ conversation = agent.create_conversation()
 agent.run("记住我的项目使用 Python", conversation_id=conversation.conversation_id)
 result = agent.run("项目使用什么语言？", conversation_id=conversation.conversation_id)
 ```
+
+将同一个 Agent 暴露给 AG-UI 客户端：
+
+```bash
+super-agent serve
+```
+
+默认本地端点为 `http://127.0.0.1:8765/ag-ui`。它接收官方 `RunAgentInput` 结构，并流式返回 AG-UI 的运行、文本、工具、步骤和自定义事件。详见 [AG-UI 桥接](docs/ag-ui.md)。
 
 ## 使用真实模型
 
@@ -329,6 +338,7 @@ super-agent storage copy \
 - [可复现的 v0.0.34 实验](docs/experiments/v0.0.34.md)
 - [CLI 命令](docs/cli.md)
 - [配置说明](docs/configuration.md)
+- [AG-UI 桥接](docs/ag-ui.md)
 - [macOS 应用](docs/macos.md)
 - [后续路线](docs/roadmap.md)
 

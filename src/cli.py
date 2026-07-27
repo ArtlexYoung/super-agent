@@ -19,9 +19,10 @@ from cli_commands.evolution import (
 from cli_commands.memory import configure_memory_parser, run_memory_command
 from cli_commands.models import configure_models_parser, run_models_command
 from cli_commands.runs import configure_runs_parser, run_runs_command
+from cli_commands.serve import configure_serve_parser, run_serve_command
 from cli_commands.skills import configure_skills_parser, run_skills_command
 from cli_commands.storage import configure_storage_parser, run_storage_command
-from agents.agent import Agent
+from agents.agent import Agent, AgentRunOptions
 from provider.chat import Message
 from runtime.identity import LOCAL_USER_ID
 from runtime.models import RunEvent
@@ -64,6 +65,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return run_storage_command(args)
     if args.command == "evolution":
         return run_evolution_command(args)
+    if args.command == "serve":
+        return run_serve_command(args)
     parser.print_help()
     return 1
 
@@ -110,6 +113,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="manage autonomous evolution recommendations",
     )
     configure_evolution_parser(evolution_parser)
+    serve_parser = subparsers.add_parser(
+        "serve",
+        help="serve the Agent over the AG-UI protocol",
+    )
+    configure_serve_parser(serve_parser)
     return parser
 
 
@@ -146,7 +154,7 @@ def _run_prompt_command(config_path: Path | None, request: RuntimeRequest, outpu
             messages=request.messages,
             user_id=request.user_id,
             conversation_id=request.conversation_id,
-            event_listener=_print_run_event,
+            run_options=AgentRunOptions(event_listener=_print_run_event),
         )
         print(json.dumps({"type": "result", "result": run_result_to_dict(result)}, ensure_ascii=False))
         return 0

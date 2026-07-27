@@ -1,6 +1,7 @@
 """Small public facade for the common Super Agent library workflow."""
 
-from agents.agent import Agent
+from agents.agent import Agent, AgentRunOptions
+from ag_ui_bridge import AGUIEventMapper, AGUIRunInput, create_ag_ui_server
 from provider.chat import (
     ChatProvider,
     MockProvider,
@@ -26,6 +27,9 @@ from skill.manifest import SkillManifest
 __all__ = [
     "Agent",
     "AgentConfig",
+    "AgentRunOptions",
+    "AGUIEventMapper",
+    "AGUIRunInput",
     "ChatProvider",
     "Conversation",
     "JsonlStorage",
@@ -43,4 +47,5 @@ __all__ = [
     "TaskResult",
     "TaskTrace",
     "ToolCall",
+    "create_ag_ui_server",
 ]

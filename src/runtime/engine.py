@@ -73,12 +73,14 @@ class AgentRuntime:
         request: TaskRequest,
         *,
         user_id: str = LOCAL_USER_ID,
+        run_id: str | None = None,
         conversation_id: str | None = None,
         parent_run_id: str | None = None,
         event_listener: Callable[[RunEvent], None] | None = None,
     ) -> TaskResult:
         session = self._create_runtime_session(
             user_id,
+            run_id,
             conversation_id,
             parent_run_id,
             event_listener,
@@ -219,6 +221,7 @@ class AgentRuntime:
     def _create_runtime_session(
         self,
         user_id: str,
+        run_id: str | None,
         conversation_id: str | None,
         parent_run_id: str | None,
         event_listener: Callable[[RunEvent], None] | None,
@@ -226,6 +229,7 @@ class AgentRuntime:
         identity = RunIdentity.create(
             user_id,
             self.config.agent.name,
+            run_id=run_id,
             conversation_id=conversation_id,
             parent_run_id=parent_run_id,
         )

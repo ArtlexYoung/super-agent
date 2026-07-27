@@ -22,6 +22,7 @@ The project is currently experimental (`0.0.x`). It favors a small, inspectable 
 - **Secure defaults**: internal memory and owned Skill evolution stay automatic; external execution and unknown network actions require approval.
 - **Automatic evolution loop**: Runtime turns real evidence into candidates, evaluates and promotes them, then monitors and rolls back regressions.
 - **Memory that remembers and forgets**: recall also organizes duplicate, outdated, and low-value memory through validated, traceable events.
+- **AG-UI ready**: one dependency-free HTTP/SSE bridge streams the same canonical Runtime events to web clients.
 - **Code-composed Agents**: create Agents independently and attach them with `Agent.add_subagent(...)`.
 - **Standard-library runtime**: the Python core has no third-party runtime dependencies.
 
@@ -59,6 +60,14 @@ conversation = agent.create_conversation()
 agent.run("Remember that my project uses Python", conversation_id=conversation.conversation_id)
 result = agent.run("Which language does it use?", conversation_id=conversation.conversation_id)
 ```
+
+Expose the same Agent to an AG-UI client:
+
+```bash
+super-agent serve
+```
+
+The local endpoint is `http://127.0.0.1:8765/ag-ui`. It accepts the official `RunAgentInput` shape and streams official AG-UI lifecycle, text, tool, step, and custom events. See [AG-UI Bridge](docs/ag-ui.md).
 
 ## Use a Real Model
 
@@ -351,6 +360,7 @@ The runtime lock is stored as a run event. It captures the selected model profil
 - [Reproducible v0.0.34 Experiment](docs/experiments/v0.0.34.md)
 - [CLI Reference](docs/cli.md)
 - [Configuration](docs/configuration.md)
+- [AG-UI Bridge](docs/ag-ui.md)
 - [macOS App](docs/macos.md)
 - [Roadmap](docs/roadmap.md)
 

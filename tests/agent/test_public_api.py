@@ -9,6 +9,9 @@ class PublicApiTests(unittest.TestCase):
         expected_names = {
             "Agent",
             "AgentConfig",
+            "AgentRunOptions",
+            "AGUIEventMapper",
+            "AGUIRunInput",
             "ChatProvider",
             "Conversation",
             "JsonlStorage",
@@ -26,6 +29,7 @@ class PublicApiTests(unittest.TestCase):
             "TaskResult",
             "TaskTrace",
             "ToolCall",
+            "create_ag_ui_server",
         }
 
         self.assertEqual(expected_names, set(super_agent.__all__))

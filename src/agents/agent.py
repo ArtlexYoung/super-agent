@@ -46,6 +46,14 @@ class SubAgent:
     created_by_agent: bool = False
 
 
+@dataclass(frozen=True)
+class AgentRunOptions:
+    include_subagents: bool = True
+    check_subagent_links_before_run: bool = True
+    run_id: str | None = None
+    event_listener: Callable[[RunEvent], None] | None = None
+
+
 class Agent:
     def __init__(
         self,
@@ -322,22 +330,21 @@ class Agent:
         self,
         prompt: str,
         *,
-        include_subagents: bool = True,
-        check_subagent_links_before_run: bool = True,
         messages: list[Message] | None = None,
         user_id: str = LOCAL_USER_ID,
         conversation_id: str | None = None,
-        event_listener: Callable[[RunEvent], None] | None = None,
+        run_options: AgentRunOptions | None = None,
     ) -> TaskResult:
+        options = run_options or AgentRunOptions()
         warnings = (
             self.check_subagent_links()
-            if include_subagents and check_subagent_links_before_run
+            if options.include_subagents and options.check_subagent_links_before_run
             else []
         )
         request = TaskRequest(
             prompt=prompt,
             messages=list(messages or []),
-            include_subagents=include_subagents,
+            include_subagents=options.include_subagents,
             warning_messages=warnings,
             subagents=SubagentCallbacks(
                 list_subagents=self._list_subagents_for_model,
@@ -347,8 +354,9 @@ class Agent:
         return self.runtime.run_task(
             request,
             user_id=user_id,
+            run_id=options.run_id,
             conversation_id=conversation_id,
-            event_listener=event_listener,
+            event_listener=options.event_listener,
         )
 
     def _create_evolution_service(

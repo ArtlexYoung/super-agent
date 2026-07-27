@@ -244,7 +244,7 @@ Status: implemented.
 
 ## v0.0.51: AG-UI Runtime Bridge
 
-Status: planned.
+Status: implemented.
 
 - Map canonical Runtime events to official AG-UI event names and payloads.
 - Serve task runs and event streams through a standard-library HTTP and SSE bridge.
