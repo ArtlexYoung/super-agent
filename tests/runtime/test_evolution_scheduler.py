@@ -17,7 +17,6 @@ from runtime.evaluation import (
     EvaluationSource,
     EvaluationTarget,
     EvaluationTokenUsage,
-    create_capability_evaluation_target_from_descriptor,
     create_evaluation_record,
 )
 from runtime.evolution.files import compare_directory_versions
@@ -217,49 +216,6 @@ class AutonomousEvolutionSchedulerTests(unittest.TestCase):
             self.assertIn("SKILL.md", changed.modified_files)
             self.assertIn("skill.toml", changed.modified_files)
 
-    def test_agent_creates_capability_candidate_from_schedule(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            config_path = _write_agent_project(root)
-            response = json.dumps(
-                {
-                    "write_files": {
-                        "capability.py": _capability_implementation("0.1.1", "improved")
-                    },
-                    "delete_files": [],
-                }
-            )
-            agent = Agent(
-                AgentConfig.load_from_file(config_path),
-                provider=MockProvider(response),
-            )
-            installed = agent.install_capability(
-                str(_write_capability_package(root / "source-capability"))
-            )
-            target = create_capability_evaluation_target_from_descriptor(
-                installed.descriptor
-            )
-            schedule = _create_failed_schedule(
-                agent,
-                "alice",
-                target,
-                agent_created=True,
-            )
-
-            updated = agent.create_evolution_candidate_from_schedule(
-                schedule.schedule_id,
-                user_id="alice",
-            )
-
-            self.assertEqual("candidate_created", updated.decision)
-            self.assertTrue(updated.candidate_id.startswith("capability-"))
-            changed = updated.candidate_difference
-            assert changed is not None
-            self.assertEqual(
-                ["capability.py", "capability.toml"],
-                changed.modified_files,
-            )
-
     def test_agent_rejects_schedule_after_target_files_change(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -445,50 +401,3 @@ path = ".super-agent"
         encoding="utf-8",
     )
     return config
-
-
-def _write_capability_package(path: Path) -> Path:
-    path.mkdir(parents=True)
-    (path / "capability.toml").write_text(
-        """
-schema_version = 1
-slot = "run_controller"
-name = "adaptive"
-description = "Agent-owned controller"
-version = "0.1.0"
-entry_file = "capability.py"
-entry_class = "Capability"
-dependencies = []
-permissions = ["execute"]
-agent_created = true
-agent_can_update = true
-""".strip(),
-        encoding="utf-8",
-    )
-    (path / "capability.py").write_text(
-        _capability_implementation("0.1.0", "original"),
-        encoding="utf-8",
-    )
-    return path
-
-
-def _capability_implementation(version: str, text: str) -> str:
-    return f'''from runtime.models import RunResult
-
-
-class Capability:
-    name = "adaptive"
-    version = "{version}"
-
-    def evaluate_capability(self, input_data):
-        return input_data
-
-    def run_agent(self, request, session):
-        return RunResult(
-            text="{text}",
-            workflow="direct",
-            skills=[],
-            warning_messages=request.warning_messages,
-            run_id=session.run_id,
-        )
-'''

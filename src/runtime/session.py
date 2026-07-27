@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
 
+from capability.registry import CapabilityRegistry
 from provider.chat import ChatProvider
 from runtime.config import AgentConfig
 from runtime.evolution.scheduler import EvolutionScheduleTarget
@@ -16,23 +16,19 @@ from runtime.evaluation import (
 from runtime.identity import RunIdentity
 from runtime.models import RunEvent
 from runtime.store import RuntimeStore
-from skill.disclosure import SkillIndex, SkillIndexEntry
+from skill.disclosure import ProgressiveDisclosureCore, SkillIndex, SkillIndexEntry
 from skill.evaluation import create_indexed_skill_evaluation_target
 from skill.kinds.model import ModelProfile
-
-if TYPE_CHECKING:
-    from capability.contracts import AgentCapabilitySet, SkillDisclosureSession
-
 
 @dataclass
 class RuntimeSession:
     config: AgentConfig
     model_profile: ModelProfile
     provider: ChatProvider
-    capabilities: "AgentCapabilitySet"
+    capability_registry: CapabilityRegistry
     identity: RunIdentity
     store: RuntimeStore
-    skill_disclosure: "SkillDisclosureSession | None" = None
+    skill_disclosure: ProgressiveDisclosureCore | None = None
     skill_index: SkillIndex | None = None
     _evaluation_targets: EvaluationTargetTracker = field(
         default_factory=EvaluationTargetTracker,
@@ -58,7 +54,7 @@ class RuntimeSession:
 
     def set_skill_disclosure(
         self,
-        disclosure: "SkillDisclosureSession",
+        disclosure: ProgressiveDisclosureCore,
         index: SkillIndex,
     ) -> None:
         if self.skill_disclosure is not None or self.skill_index is not None:
@@ -66,7 +62,7 @@ class RuntimeSession:
         self.skill_disclosure = disclosure
         self.skill_index = index
 
-    def require_skill_disclosure(self) -> "SkillDisclosureSession":
+    def require_skill_disclosure(self) -> ProgressiveDisclosureCore:
         if self.skill_disclosure is None:
             raise RuntimeError("skill disclosure has not been prepared")
         return self.skill_disclosure
@@ -89,10 +85,16 @@ class RuntimeSession:
             )
         )
 
-    def record_capability_used(self, slot: str, capability: object) -> None:
-        registration = self.capabilities.registry.require_capability(slot)
-        if registration.implementation is not capability:
-            raise ValueError(f"runtime used an unregistered capability object: {slot}")
+    def record_skill_executor_used(
+        self,
+        capability_name: str,
+        executor: object,
+    ) -> None:
+        registration = self.capability_registry.require_registration(capability_name)
+        if registration.implementation is not executor:
+            raise ValueError(
+                "runtime used an unregistered Skill executor: " + capability_name
+            )
         descriptor = registration.descriptor
         self._evaluation_targets.record_capability(descriptor)
         target = create_capability_evaluation_target_from_descriptor(descriptor)

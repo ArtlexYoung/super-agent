@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 from agents.agent import Agent
-from capability.defaults import create_default_skill_disclosure
+from capability.defaults import create_progressive_skill_disclosure
 from capability.skill_executors import create_builtin_skill_executors
 from runtime.config import AgentConfig
 from runtime.identity import LOCAL_USER_ID
@@ -213,7 +213,7 @@ def _validate_skills(config_path: Path, user_id: str) -> int:
 
 def _explain_skills(config_path: Path, user_id: str, prompt: str) -> int:
     config = AgentConfig.load_from_file(config_path)
-    disclosure = create_default_skill_disclosure(
+    disclosure = create_progressive_skill_disclosure(
         config,
         store=_load_runtime_store(config, user_id),
     )
@@ -318,7 +318,7 @@ def _load_skill_disclosure(
     user_id: str,
 ) -> ProgressiveDisclosureCore:
     config = AgentConfig.load_from_file(config_path)
-    return create_default_skill_disclosure(
+    return create_progressive_skill_disclosure(
         config,
         store=_load_runtime_store(config, user_id),
     )
@@ -343,7 +343,7 @@ def _load_package_manager(config_path: Path, user_id: str) -> SkillPackageManage
     if not config.paths.skills:
         raise ValueError("agent has no skill path configured")
     return SkillPackageManager(
-        create_default_skill_disclosure(
+        create_progressive_skill_disclosure(
             config,
             store=_load_runtime_store(config, user_id),
         ),

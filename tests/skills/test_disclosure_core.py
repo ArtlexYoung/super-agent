@@ -227,7 +227,7 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
     def test_kind_factories_only_accept_center_disclosure(self) -> None:
         from skill.kinds.mcp import create_mcp_server_from_skill_disclosure
         from skill.kinds.memory import create_memory_from_skill_disclosure
-        from skill.kinds.workflow import create_workflow_from_skill_disclosure
+        from skill.kinds.workflow import create_workflow_policy_from_skill
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -242,7 +242,7 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
                 core.open_skill("default", expected_capability="memory"),
                 core.store,
             )
-            workflow = create_workflow_from_skill_disclosure(
+            workflow = create_workflow_policy_from_skill(
                 core.open_skill("direct", expected_capability="workflow")
             )
 

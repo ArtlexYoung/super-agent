@@ -4,7 +4,7 @@ import argparse
 import json
 from pathlib import Path
 
-from capability.defaults import create_default_skill_disclosure
+from capability.defaults import create_progressive_skill_disclosure
 from runtime.config import AgentConfig
 from skill.kinds.model import (
     ModelProfile,
@@ -50,7 +50,7 @@ def _load_config(path: str | None) -> AgentConfig:
 
 
 def _read_configured_model_profiles(config: AgentConfig) -> list[ModelProfile]:
-    disclosure = create_default_skill_disclosure(config)
+    disclosure = create_progressive_skill_disclosure(config)
     index = disclosure.prepare_skill_index()
     return read_model_profiles(disclosure, index)
 

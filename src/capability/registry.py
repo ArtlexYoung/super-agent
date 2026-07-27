@@ -1,4 +1,4 @@
-"""Central registration and immutable descriptions for executable Capabilities."""
+"""Registry for executable Skill mechanisms selected by one Agent."""
 
 from __future__ import annotations
 
@@ -8,11 +8,9 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-
-CAPABILITY_DESCRIPTOR_SCHEMA_VERSION = 2
-CAPABILITY_SLOT_PATTERN = re.compile(r"[a-z0-9][a-z0-9_.:-]{0,127}")
-CAPABILITY_NAME_PATTERN = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}")
-CAPABILITY_VALUE_PATTERN = re.compile(r"[a-z0-9][a-z0-9_.:-]{0,127}")
+CAPABILITY_DESCRIPTOR_SCHEMA_VERSION = 3
+SKILL_EXECUTOR_SLOT_PREFIX = "skill_executor:"
+_NAME_PATTERN = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}")
 
 
 @dataclass(frozen=True)
@@ -59,49 +57,83 @@ class CapabilityRegistration:
 
 
 class CapabilityRegistry:
-    """Own every executable Capability selected by one Agent."""
+    """Store only executable Skill handlers; Runtime mechanisms stay in Runtime."""
 
     def __init__(self) -> None:
         self._registrations: dict[str, CapabilityRegistration] = {}
 
-    def register_capability(
+    def add_skill_executor(
         self,
-        slot: str,
-        implementation: object,
+        executor: object,
         descriptor: CapabilityDescriptor | None = None,
         *,
         replace: bool = False,
     ) -> CapabilityDescriptor:
-        clean_slot = clean_capability_slot(slot)
-        selected = descriptor or create_capability_descriptor(clean_slot, implementation)
-        _validate_descriptor(selected, clean_slot, implementation)
-        if clean_slot in self._registrations and not replace:
-            raise ValueError(f"capability slot is already registered: {clean_slot}")
-        self._registrations[clean_slot] = CapabilityRegistration(selected, implementation)
+        capability_name = _required_text(executor, "capability_name")
+        slot = f"{SKILL_EXECUTOR_SLOT_PREFIX}{capability_name}"
+        selected = descriptor or create_capability_descriptor(slot, executor)
+        _validate_skill_executor(selected, executor, slot)
+        if slot in self._registrations and not replace:
+            raise ValueError(f"skill executor already exists: {capability_name}")
+        self._registrations[slot] = CapabilityRegistration(selected, executor)
         return selected
 
-    def remove_capability(self, slot: str) -> CapabilityRegistration:
-        clean_slot = clean_capability_slot(slot)
-        registration = self._registrations.pop(clean_slot, None)
+    def remove_skill_executor(self, capability_name: str) -> CapabilityRegistration:
+        slot = _skill_executor_slot(capability_name)
+        registration = self._registrations.pop(slot, None)
         if registration is None:
-            raise KeyError(f"capability slot is not registered: {clean_slot}")
+            raise KeyError(f"skill executor not found: {capability_name}")
         return registration
 
-    def find_capability(self, slot: str) -> CapabilityRegistration | None:
-        return self._registrations.get(clean_capability_slot(slot))
+    def find_skill_executor(self, capability_name: str) -> object | None:
+        registration = self._registrations.get(_skill_executor_slot(capability_name))
+        return None if registration is None else registration.implementation
 
-    def require_capability(self, slot: str) -> CapabilityRegistration:
-        clean_slot = clean_capability_slot(slot)
-        registration = self._registrations.get(clean_slot)
+    def require_skill_executor(self, capability_name: str) -> object:
+        executor = self.find_skill_executor(capability_name)
+        if executor is None:
+            raise KeyError(f"skill executor not found for capability: {capability_name}")
+        return executor
+
+    def require_registration(self, capability_name: str) -> CapabilityRegistration:
+        slot = _skill_executor_slot(capability_name)
+        registration = self._registrations.get(slot)
         if registration is None:
-            raise KeyError(f"capability slot is not registered: {clean_slot}")
+            raise KeyError(f"skill executor not found for capability: {capability_name}")
         return registration
 
     def list_capabilities(self) -> list[CapabilityRegistration]:
         return [self._registrations[key] for key in sorted(self._registrations)]
 
+    def list_skill_executors(self) -> dict[str, object]:
+        return {
+            item.descriptor.slot.removeprefix(SKILL_EXECUTOR_SLOT_PREFIX): item.implementation
+            for item in self.list_capabilities()
+        }
+
     def validate_dependencies(self) -> None:
-        _validate_dependency_graph(self._registrations)
+        registrations = self._registrations
+        for slot, registration in registrations.items():
+            for dependency in registration.descriptor.dependencies:
+                if dependency not in registrations:
+                    raise KeyError(f"capability dependency not found: {slot} -> {dependency}")
+        visiting: set[str] = set()
+        visited: set[str] = set()
+
+        def visit(slot: str, chain: list[str]) -> None:
+            if slot in visiting:
+                start = chain.index(slot)
+                raise ValueError("capability dependency cycle: " + " -> ".join(chain[start:] + [slot]))
+            if slot in visited:
+                return
+            visiting.add(slot)
+            for dependency in registrations[slot].descriptor.dependencies:
+                visit(dependency, chain + [slot])
+            visiting.remove(slot)
+            visited.add(slot)
+
+        for slot in registrations:
+            visit(slot, [])
 
 
 def create_capability_descriptor(
@@ -114,234 +146,85 @@ def create_capability_descriptor(
     agent_can_update: bool | None = None,
     skill_key: str = "",
 ) -> CapabilityDescriptor:
-    clean_slot = clean_capability_slot(slot)
-    name = _required_implementation_text(implementation, "name")
-    version = _required_implementation_text(implementation, "version")
-    implementation_agent_created = _optional_implementation_bool(
-        implementation,
-        "agent_created",
-        False,
-    )
-    selected_agent_created = (
-        implementation_agent_created if agent_created is None else agent_created
-    )
+    clean_slot = _skill_executor_slot(slot.removeprefix(SKILL_EXECUTOR_SLOT_PREFIX))
+    created = _optional_bool(implementation, "agent_created", False) if agent_created is None else agent_created
     return CapabilityDescriptor(
         slot=clean_slot,
-        name=name,
-        version=version,
-        implementation=_implementation_name(implementation),
-        content_sha256=(
-            content_sha256
-            if content_sha256 is not None
-            else calculate_capability_implementation_sha256(implementation)
-        ),
-        dependencies=_implementation_values(implementation, "dependencies", ()),
-        permissions=_implementation_values(implementation, "permissions", ("execute",)),
-        agent_created=selected_agent_created,
+        name=_required_text(implementation, "name"),
+        version=_required_text(implementation, "version"),
+        implementation=f"{type(implementation).__module__}.{type(implementation).__qualname__}",
+        content_sha256=content_sha256 or calculate_capability_implementation_sha256(implementation),
+        dependencies=_text_tuple(implementation, "dependencies", ()),
+        permissions=_text_tuple(implementation, "permissions", ("execute",)),
+        agent_created=created,
         agent_can_update=(
-            _optional_implementation_bool(
-                implementation,
-                "agent_can_update",
-                selected_agent_created,
-            )
+            _optional_bool(implementation, "agent_can_update", created)
             if agent_can_update is None
             else agent_can_update
         ),
-        source=_clean_descriptor_value(source, "source"),
-        skill_key=_clean_skill_key(skill_key),
+        source=_clean_text(source, "source"),
+        skill_key=skill_key.strip().lower(),
     )
 
 
-def copy_capability_registry(registry: CapabilityRegistry) -> CapabilityRegistry:
-    copied = CapabilityRegistry()
-    for registration in registry.list_capabilities():
-        copied.register_capability(
-            registration.descriptor.slot,
-            registration.implementation,
-            registration.descriptor,
-        )
-    return copied
-
-
 def calculate_capability_implementation_sha256(implementation: object) -> str:
-    implementation_type = type(implementation)
     digest = hashlib.sha256()
-    digest.update(_implementation_name(implementation).encode("utf-8"))
-    digest.update(b"\0")
-    try:
-        source_path = inspect.getsourcefile(implementation_type)
-    except TypeError:
-        source_path = None
+    implementation_type = type(implementation)
+    digest.update(f"{implementation_type.__module__}.{implementation_type.__qualname__}".encode())
+    source_path = inspect.getsourcefile(implementation_type)
     if source_path is not None and Path(source_path).is_file():
+        digest.update(Path(source_path).read_bytes())
+    else:
         try:
-            digest.update(Path(source_path).read_bytes())
-            return digest.hexdigest()
-        except OSError:
+            digest.update(inspect.getsource(implementation_type).encode())
+        except (OSError, TypeError):
             pass
-    try:
-        digest.update(inspect.getsource(implementation_type).encode("utf-8"))
-    except (OSError, TypeError):
-        pass
     return digest.hexdigest()
 
 
-def clean_capability_slot(value: str) -> str:
-    slot = value.strip().lower()
-    if CAPABILITY_SLOT_PATTERN.fullmatch(slot) is None:
-        raise ValueError("capability slot must use lowercase letters, numbers, '.', ':', '-' or '_'")
-    return slot
-
-
-def clean_capability_name(value: str) -> str:
-    name = value.strip().lower()
-    if CAPABILITY_NAME_PATTERN.fullmatch(name) is None:
-        raise ValueError("capability name must use lowercase letters, numbers, '-' or '_'")
-    return name
-
-
-def _validate_descriptor(
+def _validate_skill_executor(
     descriptor: CapabilityDescriptor,
+    executor: object,
     expected_slot: str,
-    implementation: object,
 ) -> None:
-    if descriptor.schema_version != CAPABILITY_DESCRIPTOR_SCHEMA_VERSION:
-        raise ValueError(f"unsupported capability descriptor schema: {descriptor.schema_version}")
     if descriptor.slot != expected_slot:
-        raise ValueError(f"capability descriptor slot does not match registration: {descriptor.slot}")
-    if descriptor.name != _required_implementation_text(implementation, "name"):
+        raise ValueError(f"skill executor capability does not match slot: {descriptor.slot}")
+    if descriptor.name != _required_text(executor, "name"):
         raise ValueError("capability descriptor name does not match implementation")
-    if descriptor.version != _required_implementation_text(implementation, "version"):
+    if descriptor.version != _required_text(executor, "version"):
         raise ValueError("capability descriptor version does not match implementation")
-    if descriptor.implementation != _implementation_name(implementation):
-        raise ValueError("capability descriptor implementation does not match object")
-    if re.fullmatch(r"[0-9a-f]{64}", descriptor.content_sha256) is None:
-        raise ValueError("capability content_sha256 must contain 64 lowercase hexadecimal characters")
-    _validate_values(descriptor.dependencies, "dependencies")
-    _validate_values(descriptor.permissions, "permissions")
-    if "execute" not in descriptor.permissions:
-        raise ValueError("registered capability permissions must include execute")
-    if not isinstance(descriptor.agent_created, bool):
-        raise TypeError("capability descriptor agent_created must be a boolean")
-    if not isinstance(descriptor.agent_can_update, bool):
-        raise TypeError("capability descriptor agent_can_update must be a boolean")
-    if descriptor.source != _clean_descriptor_value(descriptor.source, "source"):
-        raise ValueError("capability source must be normalized")
-    if descriptor.skill_key != _clean_skill_key(descriptor.skill_key):
-        raise ValueError("capability skill_key must be normalized")
-    _validate_capability_interface(expected_slot, implementation)
-
-
-def _validate_capability_interface(slot: str, implementation: object) -> None:
-    method_by_slot = {
-        "run_controller": "run_agent",
-        "skill_disclosure": "create_skill_disclosure",
-        "run_result_evaluator": "record_run_evaluation",
-        "skill_updater": "create_skill_updater",
-    }
-    method = method_by_slot.get(slot)
-    if method is not None and not callable(getattr(implementation, method, None)):
-        raise TypeError(f"capability in slot {slot} must implement {method}")
-    if not slot.startswith("skill_executor:"):
-        return
-    capability_name = slot.partition(":")[2]
-    if getattr(implementation, "capability_name", None) != capability_name:
-        raise ValueError(
-            "skill executor capability_name does not match slot: "
-            f"{getattr(implementation, 'capability_name', None)} != {capability_name}"
-        )
-    if not isinstance(getattr(implementation, "adds_model_context", None), bool):
+    if not isinstance(getattr(executor, "adds_model_context", None), bool):
         raise TypeError("skill executor adds_model_context must be a boolean")
-    if not callable(getattr(implementation, "load_skill", None)):
-        raise TypeError("skill executor must implement load_skill")
+    if not callable(getattr(executor, "load_skill", None)):
+        raise TypeError("skill executor must define load_skill")
 
 
-def _validate_dependency_graph(
-    registrations: dict[str, CapabilityRegistration],
-) -> None:
-    states: dict[str, str] = {}
-    stack: list[str] = []
-    for slot in sorted(registrations):
-        _visit_capability_dependency(slot, registrations, states, stack)
+def _skill_executor_slot(value: str) -> str:
+    name = value.strip().lower()
+    if _NAME_PATTERN.fullmatch(name) is None:
+        raise ValueError(f"invalid skill executor capability name: {value}")
+    return f"{SKILL_EXECUTOR_SLOT_PREFIX}{name}"
 
 
-def _visit_capability_dependency(
-    slot: str,
-    registrations: dict[str, CapabilityRegistration],
-    states: dict[str, str],
-    stack: list[str],
-) -> None:
-    state = states.get(slot)
-    if state == "visited":
-        return
-    if state == "visiting":
-        cycle_start = stack.index(slot)
-        cycle = stack[cycle_start:] + [slot]
-        raise ValueError(f"capability dependency cycle: {' -> '.join(cycle)}")
-    registration = registrations.get(slot)
-    if registration is None:
-        parent = stack[-1] if stack else "registry"
-        raise KeyError(f"capability dependency is not registered: {parent} -> {slot}")
-    states[slot] = "visiting"
-    stack.append(slot)
-    for dependency in registration.descriptor.dependencies:
-        _visit_capability_dependency(dependency, registrations, states, stack)
-    stack.pop()
-    states[slot] = "visited"
+def _required_text(value: object, name: str) -> str:
+    return _clean_text(getattr(value, name, None), f"capability {name}")
 
 
-def _implementation_name(implementation: object) -> str:
-    implementation_type = type(implementation)
-    return f"{implementation_type.__module__}.{implementation_type.__qualname__}"
-
-
-def _required_implementation_text(implementation: object, name: str) -> str:
-    value = getattr(implementation, name, None)
+def _clean_text(value: object, label: str) -> str:
     if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"capability {name} must be a non-empty string")
-    return value.strip()
+        raise ValueError(f"{label} must be a non-empty string")
+    return value.strip().lower()
 
 
-def _optional_implementation_bool(implementation: object, name: str, default: bool) -> bool:
-    value = getattr(implementation, name, default)
-    if not isinstance(value, bool):
+def _optional_bool(value: object, name: str, default: bool) -> bool:
+    selected = getattr(value, name, default)
+    if not isinstance(selected, bool):
         raise TypeError(f"capability {name} must be a boolean")
-    return value
+    return selected
 
 
-def _implementation_values(
-    implementation: object,
-    name: str,
-    default: tuple[str, ...],
-) -> tuple[str, ...]:
-    value = getattr(implementation, name, default)
-    if not isinstance(value, (list, tuple)) or not all(isinstance(item, str) for item in value):
-        raise TypeError(f"capability {name} must be a string sequence")
-    values = tuple(_clean_descriptor_value(item, name) for item in value)
-    _validate_values(values, name)
-    return values
-
-
-def _validate_values(values: tuple[str, ...], name: str) -> None:
-    if len(values) != len(set(values)):
-        raise ValueError(f"capability {name} cannot contain duplicates")
-    for value in values:
-        if value != _clean_descriptor_value(value, name):
-            raise ValueError(f"capability {name} values must be normalized")
-        if name == "dependencies":
-            clean_capability_slot(value)
-
-
-def _clean_descriptor_value(value: str, name: str) -> str:
-    cleaned = value.strip().lower()
-    if CAPABILITY_VALUE_PATTERN.fullmatch(cleaned) is None:
-        raise ValueError(f"capability {name} contains an invalid value: {value}")
-    return cleaned
-
-
-def _clean_skill_key(value: str) -> str:
-    key = value.strip().lower()
-    if not key:
-        return ""
-    if re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}:[a-z0-9][a-z0-9_-]{0,63}", key) is None:
-        raise ValueError("capability skill_key must use capability:name")
-    return key
+def _text_tuple(value: object, name: str, default: tuple[str, ...]) -> tuple[str, ...]:
+    selected = getattr(value, name, default)
+    if not isinstance(selected, tuple) or not all(isinstance(item, str) and item for item in selected):
+        raise TypeError(f"capability {name} must be a tuple of non-empty strings")
+    return tuple(item.strip().lower() for item in selected)

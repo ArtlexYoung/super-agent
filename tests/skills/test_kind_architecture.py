@@ -8,8 +8,8 @@ from pathlib import Path
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.kinds.mcp import McpServer
 from skill.kinds.memory import MiniMemory
-from runtime.models import RunResult, SubAgentResult
-from skill.kinds.workflow import create_workflow
+from runtime.tasks import SubAgentResult, TaskResult
+from skill.kinds.workflow import create_workflow_policy
 from skill.manifest import SkillManifest
 
 
@@ -17,9 +17,9 @@ class SkillKindArchitectureTests(unittest.TestCase):
     def test_skill_kinds_are_loaded_from_unified_skill_package(self) -> None:
         self.assertEqual("McpServer", McpServer.__name__)
         self.assertEqual("MiniMemory", MiniMemory.__name__)
-        self.assertEqual("RunResult", RunResult.__name__)
+        self.assertEqual("TaskResult", TaskResult.__name__)
         self.assertEqual("SubAgentResult", SubAgentResult.__name__)
-        self.assertEqual("direct", create_workflow("direct").name)
+        self.assertEqual("direct", create_workflow_policy("direct").name)
         self.assertEqual("ProgressiveDisclosureCore", ProgressiveDisclosureCore.__name__)
         self.assertEqual("SkillManifest", SkillManifest.__name__)
         self.assertFalse(Path("src/skill/loader.py").exists())
@@ -54,10 +54,8 @@ class SkillKindArchitectureTests(unittest.TestCase):
 
     def test_runtime_engine_owns_evaluation_without_importing_skill_evolution(self) -> None:
         engine_source = Path("src/runtime/engine.py").read_text(encoding="utf-8")
-        contracts_source = Path("src/capability/contracts.py").read_text(encoding="utf-8")
-
-        self.assertNotIn("skill.evolution", engine_source)
-        self.assertNotIn("skill.evolution", contracts_source)
+        self.assertIn("def _record_task_evaluation", engine_source)
+        self.assertFalse(Path("src/capability/contracts.py").exists())
         self.assertTrue(Path("src/runtime/evaluation.py").is_file())
         self.assertTrue(Path("src/runtime/session.py").is_file())
         self.assertTrue(Path("src/runtime/store.py").is_file())

@@ -175,16 +175,13 @@ instructions = "SKILL.md"
                 {"memory:default", "prompt:echo", "workflow:direct"},
                 skill_keys,
             )
-            self.assertTrue(
+            self.assertEqual(
                 {
-                    "run_controller:adaptive",
-                    "run_result_evaluator:runtime-evaluation",
                     "skill_executor:memory:event-memory",
                     "skill_executor:prompt:prompt-context",
                     "skill_executor:workflow:tool-loop",
-                    "skill_disclosure:progressive",
-                }
-                <= capability_keys
+                },
+                capability_keys,
             )
             self.assertTrue(all(record.source.run_id == result.run_id for record in records))
             self.assertTrue(all(len(record.target.content_sha256) == 64 for record in records))

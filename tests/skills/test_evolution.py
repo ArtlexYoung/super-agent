@@ -6,7 +6,7 @@ from pathlib import Path
 from agents.agent import Agent
 from provider.chat import MockProvider
 from runtime.config import AgentConfig
-from super_agent import EvaluationCase
+from skill.evolution.evaluation import EvaluationCase
 from support import write_workflow_skill
 
 

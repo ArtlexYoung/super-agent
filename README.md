@@ -156,9 +156,9 @@ Every run follows one central lifecycle:
 discover -> disclose -> execute -> observe -> evaluate -> evolve
 ```
 
-`RuntimeSession` is the single context for a run. It holds one `RunIdentity`, one centralized `RuntimeStore`, one Skill index, the progressive-disclosure session, and every Skill or Capability that affected the result. Capabilities consume this session instead of creating their own stores or rescanning the Skill tree.
+`Agent.run(...)` creates one internal `TaskRequest` and sends it through `AgentRuntime.run_task(...)`. `RuntimeSession` holds one identity, store, Skill index, progressive-disclosure session, and evidence tracker for that task. Workflow Skills contain only instructions and stopping rules; Runtime owns the model and tool loop.
 
-Every executable mechanism is registered through one `CapabilityRegistry`. Built-ins require no setup. A mechanism that must be installed or evolved is a standard `capability` Skill, so it uses the same index, package command, candidate, evaluation, promotion, and rollback as every other Skill.
+`CapabilityRegistry` contains only executable Skill handlers. Replace one explicitly with `agent.add_skill_executor(...)`. A handler that must be installed or evolved is a standard `capability` Skill, so it uses the same disclosure, evaluation, promotion, and rollback path as every other Skill. Runtime lifecycle mechanisms are intentionally not replaceable parallel controllers.
 
 ## Reproducible Proof
 

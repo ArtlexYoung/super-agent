@@ -30,8 +30,13 @@ class RunSnapshotTests(unittest.TestCase):
             self.assertIsInstance(runtime_lock, dict)
             self.assertEqual("mock", runtime_lock["model"]["provider"])
             self.assertEqual("provider.chat.MockProvider", runtime_lock["model"]["adapter"])
-            self.assertIn(
-                "run_controller",
+            self.assertEqual(
+                {
+                    "skill_executor:mcp",
+                    "skill_executor:memory",
+                    "skill_executor:prompt",
+                    "skill_executor:workflow",
+                },
                 {item["slot"] for item in runtime_lock["capabilities"]},
             )
             self.assertIn(

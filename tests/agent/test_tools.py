@@ -2,10 +2,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from capability.defaults import create_default_capability_set
+from capability.defaults import create_default_capability_registry
 from provider.chat import ToolCall
 from provider.chat import MockProvider
-from capability.tool_router import RuntimeToolRouter, ToolRouterContext
+from runtime.tools import RuntimeTools, RuntimeToolsContext
 from runtime.config import AgentConfig
 from runtime.identity import RunIdentity
 from runtime.session import RuntimeSession
@@ -138,10 +138,10 @@ def _create_tool_router(
     index,
     session: RuntimeSession,
     memory: MiniMemory | None = None,
-) -> RuntimeToolRouter:
+) -> RuntimeTools:
     session.set_skill_disclosure(disclosure, index)
-    return RuntimeToolRouter(
-        ToolRouterContext(
+    return RuntimeTools(
+        RuntimeToolsContext(
             session=session,
             memory=memory,
         )
@@ -158,7 +158,7 @@ def _create_session(root: Path) -> RuntimeSession:
         config=config,
         model_profile=discover_environment_model_profiles({})[0],
         provider=provider,
-        capabilities=create_default_capability_set(),
+        capability_registry=create_default_capability_registry(),
         identity=identity,
         store=store,
     )

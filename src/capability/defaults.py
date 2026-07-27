@@ -1,124 +1,30 @@
-"""Built-in capability mechanisms selected by a zero-configuration Agent."""
+"""Built-in Skill executors and central progressive disclosure defaults."""
 
 from __future__ import annotations
 
-from typing import Callable
-
-from capability.contracts import AgentCapabilitySet
-from capability.registry import CapabilityRegistry, create_capability_descriptor
-from capability.run_controller import DefaultRunController
+from capability.registry import CapabilityRegistry
 from capability.skill_executors import create_builtin_skill_executors
-from provider.chat import ChatProvider
 from runtime.config import AgentConfig
-from runtime.evaluation import RunEvaluationRequest, create_evaluation_record
 from runtime.identity import LOCAL_USER_ID, RunIdentity
-from runtime.session import RuntimeSession
 from runtime.storage import StorageBackend, create_storage_backend
 from runtime.store import RuntimeStore
 from skill.disclosure import ProgressiveDisclosureCore
-from skill.evolution.manager import SkillEvolutionManager
-from skill.manifest import SkillManifest
-from skill.kinds.model import ModelProfile
 
 
-class ProgressiveSkillDisclosureCapability:
-    name = "progressive"
-    version = "1"
-
-    def create_skill_disclosure(
-        self,
-        session: RuntimeSession,
-    ) -> ProgressiveDisclosureCore:
-        return _create_progressive_skill_disclosure(
-            session.config,
-            session.store,
-            session.identity,
-        )
-
-
-class RuntimeRunResultEvaluator:
-    name = "runtime-evaluation"
-    version = "1"
-
-    def record_run_evaluation(
-        self,
-        request: RunEvaluationRequest,
-        session: RuntimeSession,
-    ) -> None:
-        session.store.append_evaluation_records(
-            [
-                create_evaluation_record(target, request.source, request.result)
-                for target in request.targets
-            ]
-        )
-
-
-class EvaluatedSkillUpdaterCapability:
-    name = "evaluate-before-activate"
-    version = "1"
-
-    def create_skill_updater(
-        self,
-        config: AgentConfig,
-        model_profile: ModelProfile,
-        provider: ChatProvider,
-        store: RuntimeStore,
-        on_skill_changed: Callable[[SkillManifest], None] | None = None,
-    ) -> SkillEvolutionManager:
-        if not config.paths.skills:
-            raise ValueError("agent has no skill path configured")
-        return SkillEvolutionManager(
-            config=config,
-            skill_disclosure=_create_progressive_skill_disclosure(config, store),
-            store=store,
-            model_profile=model_profile,
-            provider=provider,
-            on_skill_changed=on_skill_changed,
-        )
-
-
-def create_default_capability_set() -> AgentCapabilitySet:
+def create_default_capability_registry() -> CapabilityRegistry:
     registry = CapabilityRegistry()
-    _register_builtin_capability(registry, "run_controller", DefaultRunController())
-    _register_builtin_capability(
-        registry,
-        "skill_disclosure",
-        ProgressiveSkillDisclosureCapability(),
-    )
-    for capability_name, executor in create_builtin_skill_executors().items():
-        _register_builtin_capability(
-            registry,
-            f"skill_executor:{capability_name}",
-            executor,
-        )
-    _register_builtin_capability(
-        registry,
-        "run_result_evaluator",
-        RuntimeRunResultEvaluator(),
-    )
-    _register_builtin_capability(
-        registry,
-        "skill_updater",
-        EvaluatedSkillUpdaterCapability(),
-    )
-    return AgentCapabilitySet(registry)
+    for executor in create_builtin_skill_executors().values():
+        registry.add_skill_executor(executor)
+    return registry
 
 
-def _register_builtin_capability(
-    registry: CapabilityRegistry,
-    slot: str,
-    implementation: object,
-) -> None:
-    descriptor = create_capability_descriptor(slot, implementation, source="builtin")
-    registry.register_capability(slot, implementation, descriptor)
-
-
-def create_default_skill_disclosure(
+def create_progressive_skill_disclosure(
     config: AgentConfig,
     *,
     store: RuntimeStore | None = None,
     storage: StorageBackend | None = None,
     user_id: str = LOCAL_USER_ID,
+    identity: RunIdentity | None = None,
 ) -> ProgressiveDisclosureCore:
     selected_store = store
     if selected_store is None:
@@ -133,23 +39,15 @@ def create_default_skill_disclosure(
             user_id,
             config.agent.name,
         )
-    return _create_progressive_skill_disclosure(config, selected_store)
-
-
-def _create_progressive_skill_disclosure(
-    config: AgentConfig,
-    store: RuntimeStore,
-    identity: RunIdentity | None = None,
-) -> ProgressiveDisclosureCore:
-    roots = config.paths.skills if _skill_feature_is_enabled(config) else []
+    disabled = set(config.agent.disable_names)
+    roots = (
+        config.paths.skills
+        if "skill" in config.agent.use_features and "skill" not in disabled
+        else []
+    )
     return ProgressiveDisclosureCore(
         roots,
-        store,
+        selected_store,
         disabled_names=config.agent.disable_names,
         identity=identity,
     )
-
-
-def _skill_feature_is_enabled(config: AgentConfig) -> bool:
-    disabled = set(config.agent.disable_names)
-    return "skill" in config.agent.use_features and "skill" not in disabled

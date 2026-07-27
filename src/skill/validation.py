@@ -12,7 +12,7 @@ from skill.kinds.model import (
     create_model_profile_from_skill_disclosure,
     model_connection_fields,
 )
-from skill.kinds.workflow import create_workflow_from_skill_disclosure
+from skill.kinds.workflow import create_workflow_policy_from_skill
 from skill.manifest import SkillManifest
 
 
@@ -88,7 +88,7 @@ def _validate_skill_capability(
     elif capability == "memory":
         create_memory_from_skill_disclosure(disclosure, store)
     elif capability == "workflow":
-        create_workflow_from_skill_disclosure(disclosure)
+        create_workflow_policy_from_skill(disclosure)
     elif capability == "mcp":
         create_mcp_server_from_skill_disclosure(disclosure)
     elif capability == "model":

@@ -4,22 +4,9 @@ from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING, Callable, cast
 
 from agents.evolution import create_evolution_candidate_from_schedule
-from capability.contracts import (
-    AgentCapabilitySet,
-    RunController,
-    RunResultEvaluator,
-    SkillDisclosureCapability,
-    SkillExecutor,
-    SkillUpdaterCapability,
-)
 from capability.defaults import (
-    create_default_capability_set,
-    create_default_skill_disclosure,
-)
-from capability.registry import (
-    CapabilityDescriptor,
-    CapabilityRegistry,
-    copy_capability_registry,
+    create_default_capability_registry,
+    create_progressive_skill_disclosure,
 )
 from capability.skill_loader import load_capability_skill
 from provider.chat import ChatProvider, Message
@@ -31,13 +18,13 @@ from runtime.evolution.scheduler import (
     EvolutionScheduleState,
 )
 from runtime.identity import LOCAL_USER_ID
-from runtime.models import (
-    AgentRunRequest,
-    Conversation,
-    RunEvent,
-    RunResult,
+from runtime.models import Conversation, RunEvent
+from runtime.tasks import (
     SubAgentResult,
     SubagentCallbacks,
+    TaskRequest,
+    TaskResult,
+    TaskTrace,
 )
 from runtime.session import RuntimeSession
 from runtime.storage import StorageBackend, create_storage_backend
@@ -68,7 +55,7 @@ class Agent:
         config: AgentConfig | None = None,
         *,
         provider: ChatProvider | None = None,
-        capabilities: AgentCapabilitySet | None = None,
+        skill_executors: list[object] | None = None,
         storage: StorageBackend | None = None,
     ) -> None:
         self.config = config or AgentConfig.load_automatically()
@@ -77,7 +64,7 @@ class Agent:
             str(self.config.storage.path),
             self.config.storage.url_env,
         )
-        bootstrap_disclosure = create_default_skill_disclosure(
+        bootstrap_disclosure = create_progressive_skill_disclosure(
             self.config,
             storage=self.storage,
         )
@@ -92,19 +79,15 @@ class Agent:
         self.provider_pool = ProviderPool()
         if provider is not None:
             self.provider_pool.add_chat_provider(self.model_profile.key, provider)
-        selected_capabilities = capabilities or create_default_capability_set()
-        self.capabilities = selected_capabilities
-        if capabilities is None:
-            self.capabilities = self._load_capability_skills(
-                selected_capabilities,
-                bootstrap_disclosure,
-                bootstrap_index,
-            )
+        self.capability_registry = create_default_capability_registry()
+        for executor in skill_executors or []:
+            self.capability_registry.add_skill_executor(executor, replace=True)
+        self._load_capability_skills(bootstrap_disclosure, bootstrap_index)
         self.runtime = AgentRuntime(
             self.config,
             self.model_profile,
             self.provider_pool,
-            self.capabilities,
+            self.capability_registry,
             self.storage,
         )
         self._subagents: list[SubAgent] = []
@@ -141,26 +124,16 @@ class Agent:
     def list_subagents(self) -> list[SubAgent]:
         return list(self._subagents)
 
-    def set_run_controller(self, run_controller: RunController) -> None:
-        self._replace_capability("run_controller", run_controller)
+    def add_skill_executor(self, skill_executor: object) -> None:
+        self.capability_registry.add_skill_executor(skill_executor, replace=True)
 
-    def set_skill_disclosure(
+    def read_task_trace(
         self,
-        skill_disclosure: SkillDisclosureCapability,
-    ) -> None:
-        self._replace_capability("skill_disclosure", skill_disclosure)
-
-    def add_skill_executor(self, skill_executor: SkillExecutor) -> None:
-        self._replace_capability(
-            f"skill_executor:{skill_executor.capability_name}",
-            skill_executor,
-        )
-
-    def set_run_result_evaluator(self, evaluator: RunResultEvaluator) -> None:
-        self._replace_capability("run_result_evaluator", evaluator)
-
-    def set_skill_updater(self, skill_updater: SkillUpdaterCapability) -> None:
-        self._replace_capability("skill_updater", skill_updater)
+        task_id: str,
+        *,
+        user_id: str = LOCAL_USER_ID,
+    ) -> TaskTrace:
+        return self.runtime.read_task_trace(task_id, user_id=user_id)
 
     def create_skill_evolution_manager(
         self,
@@ -298,13 +271,13 @@ class Agent:
         user_id: str = LOCAL_USER_ID,
         conversation_id: str | None = None,
         event_listener: Callable[[RunEvent], None] | None = None,
-    ) -> RunResult:
+    ) -> TaskResult:
         warnings = (
             self.check_subagent_links()
             if include_subagents and check_subagent_links_before_run
             else []
         )
-        request = AgentRunRequest(
+        request = TaskRequest(
             prompt=prompt,
             messages=list(messages or []),
             include_subagents=include_subagents,
@@ -315,27 +288,12 @@ class Agent:
                 run_named_subagent=self._run_named_subagent_for_model,
             ),
         )
-        return self.runtime.run_agent(
+        return self.runtime.run_task(
             request,
             user_id=user_id,
             conversation_id=conversation_id,
             event_listener=event_listener,
         )
-
-    def _replace_capability(
-        self,
-        slot: str,
-        implementation: object,
-        descriptor: CapabilityDescriptor | None = None,
-    ) -> None:
-        registry = copy_capability_registry(self.capabilities.registry)
-        registry.register_capability(
-            slot,
-            implementation,
-            descriptor,
-            replace=True,
-        )
-        self._set_capability_registry(registry)
 
     def _create_evolution_scheduler(
         self,
@@ -345,11 +303,9 @@ class Agent:
 
     def _load_capability_skills(
         self,
-        capabilities: AgentCapabilitySet,
         disclosure: ProgressiveDisclosureCore,
         index: SkillIndex,
-    ) -> AgentCapabilitySet:
-        registry = copy_capability_registry(capabilities.registry)
+    ) -> None:
         loaded_slots: set[str] = set()
         for entry in index.entries:
             if entry.reference.capability != "capability":
@@ -360,14 +316,12 @@ class Agent:
             if slot in loaded_slots:
                 raise ValueError(f"multiple capability Skills use slot: {slot}")
             loaded_slots.add(slot)
-            registry.register_capability(
-                slot,
+            self.capability_registry.add_skill_executor(
                 loaded.implementation,
                 loaded.descriptor,
                 replace=True,
             )
-        registry.validate_dependencies()
-        return AgentCapabilitySet(registry)
+        self.capability_registry.validate_dependencies()
 
     def _activate_changed_skill(
         self,
@@ -379,7 +333,7 @@ class Agent:
             return
         if manifest.capability != "capability":
             return
-        disclosure = create_default_skill_disclosure(
+        disclosure = create_progressive_skill_disclosure(
             self.config,
             store=self.runtime.create_store(user_id),
         )
@@ -387,11 +341,10 @@ class Agent:
         loaded = load_capability_skill(
             disclosure.open_skill(manifest.name, manifest.capability)
         )
-        registry = copy_capability_registry(self.capabilities.registry)
         previous = next(
             (
                 item
-                for item in registry.list_capabilities()
+                for item in self.capability_registry.list_capabilities()
                 if item.descriptor.skill_key == loaded.descriptor.skill_key
             ),
             None,
@@ -401,34 +354,28 @@ class Agent:
                 "updated capability Skill cannot change slot: "
                 f"{previous.descriptor.slot} -> {loaded.descriptor.slot}"
             )
-        registry.register_capability(
-            loaded.descriptor.slot,
+        self.capability_registry.add_skill_executor(
             loaded.implementation,
             loaded.descriptor,
             replace=True,
         )
-        self._set_capability_registry(registry)
-
-    def _set_capability_registry(self, registry: CapabilityRegistry) -> None:
-        registry.validate_dependencies()
-        self.capabilities = AgentCapabilitySet(registry)
-        self.runtime = AgentRuntime(
-            self.config,
-            self.model_profile,
-            self.provider_pool,
-            self.capabilities,
-            self.storage,
-        )
+        self.capability_registry.validate_dependencies()
 
     def _reload_model_profiles(self, user_id: str) -> None:
-        disclosure = create_default_skill_disclosure(
+        disclosure = create_progressive_skill_disclosure(
             self.config,
             store=self.runtime.create_store(user_id),
         )
         index = disclosure.prepare_skill_index()
         self.model_profiles = read_model_profiles(disclosure, index)
         self.model_profile = select_default_model_profile(self.model_profiles)
-        self._set_capability_registry(self.capabilities.registry)
+        self.runtime = AgentRuntime(
+            self.config,
+            self.model_profile,
+            self.provider_pool,
+            self.capability_registry,
+            self.storage,
+        )
 
     def _make_next_subagent_name(self) -> str:
         index = 1
@@ -511,8 +458,8 @@ class Agent:
         self,
         prompt: str,
         parent_session: RuntimeSession,
-    ) -> RunResult:
-        request = AgentRunRequest(
+    ) -> TaskResult:
+        request = TaskRequest(
             prompt=prompt,
             messages=[],
             include_subagents=True,
@@ -523,7 +470,7 @@ class Agent:
                 run_named_subagent=self._run_named_subagent_for_model,
             ),
         )
-        return self.runtime.run_agent(
+        return self.runtime.run_task(
             request,
             user_id=parent_session.identity.user_id,
             conversation_id=parent_session.identity.conversation_id,

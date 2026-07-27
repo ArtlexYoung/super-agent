@@ -4,8 +4,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
 
-from capability.contracts import SkillLoadRequest
-from capability.skill_executors import load_skill_for_model_context
+from capability.skill_executors import SkillLoadRequest, load_skill_for_model_context
 from provider.chat import ToolCall, ToolDefinition
 from runtime.session import RuntimeSession
 from skill.disclosure import (
@@ -23,17 +22,17 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True)
-class ToolRouterContext:
+class RuntimeToolsContext:
     session: RuntimeSession
     memory: MiniMemory | None = None
     list_subagents: Callable[[], list[dict[str, object]]] | None = None
     run_subagent: Callable[[str, str], dict[str, object]] | None = None
 
 
-class RuntimeToolRouter:
+class RuntimeTools:
     def __init__(
         self,
-        context: ToolRouterContext,
+        context: RuntimeToolsContext,
         delegated_subagent_results: list[SubAgentResult] | None = None,
     ) -> None:
         self.context = context
@@ -97,16 +96,16 @@ class RuntimeToolRouter:
     def _read_skill_instructions(self, arguments: dict[str, object]) -> dict[str, object]:
         opened = self._open_requested_skill(arguments)
         disclosed = opened.read_instructions()
-        executor = self.context.session.capabilities.skill_executors.get(
+        executor = self.context.session.capability_registry.find_skill_executor(
             opened.index_entry.reference.capability
         )
-        if executor is not None and executor.adds_model_context:
+        if executor is not None and executor.adds_model_context:  # type: ignore[attr-defined]
             self._record_skill_executor_used(opened.index_entry.reference)
             self._remember_used_skill(
                 load_skill_for_model_context(
                     self.context.session.require_skill_disclosure(),
                     opened.index_entry.reference,
-                    self.context.session.capabilities.skill_executors,
+                    self.context.session.capability_registry.list_skill_executors(),
                     self.context.session.store,
                     self.context.session.identity,
                 )
@@ -151,7 +150,7 @@ class RuntimeToolRouter:
                     name,
                     "mcp",
                 ).reference,
-                self.context.session.capabilities.skill_executors,
+                self.context.session.capability_registry.list_skill_executors(),
                 self.context.session.store,
                 self.context.session.identity,
             )
@@ -172,7 +171,7 @@ class RuntimeToolRouter:
                     name,
                     "mcp",
                 ).reference,
-                self.context.session.capabilities.skill_executors,
+                self.context.session.capability_registry.list_skill_executors(),
                 self.context.session.store,
                 self.context.session.identity,
             )
@@ -267,11 +266,11 @@ class RuntimeToolRouter:
             name,
             "mcp",
         ).reference
-        executor = self.context.session.capabilities.skill_executors.get("mcp")
+        executor = self.context.session.capability_registry.find_skill_executor("mcp")
         if executor is None:
             raise KeyError("skill executor not found for type: mcp")
         self._record_skill_executor_used(reference)
-        loaded = executor.load_skill(
+        loaded = executor.load_skill(  # type: ignore[attr-defined]
             SkillLoadRequest(
                 self.context.session.require_skill_disclosure(),
                 reference,
@@ -298,7 +297,7 @@ class RuntimeToolRouter:
             reference.name,
             reference.capability,
         )
-        executor = self.context.session.capabilities.skill_executors.get(
+        executor = self.context.session.capability_registry.find_skill_executor(
             reference.capability
         )
         if executor is None:
@@ -306,10 +305,7 @@ class RuntimeToolRouter:
                 f"skill executor not found for capability: {reference.capability}"
             )
         self.context.session.record_skill_used(entry)
-        self.context.session.record_capability_used(
-            f"skill_executor:{reference.capability}",
-            executor,
-        )
+        self.context.session.record_skill_executor_used(reference.capability, executor)
 
     def _record_skill_used_for_cache_path(self, cache_path: str) -> None:
         requested = Path(cache_path).expanduser().resolve()

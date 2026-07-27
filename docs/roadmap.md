@@ -114,31 +114,50 @@ Status: implemented.
 - Protect user-owned model connection fields during Skill evolution.
 - Put the selected model profile in each Runtime session and lock, and attribute persistent model Skill use to ordinary evaluation evidence.
 
-## v0.0.37: Per-Call Model Routing
+## v0.0.37: One Task Kernel
+
+Status: implemented.
+
+- Replace Agent-run and controller contracts with one `TaskRequest` and `run_task` entry.
+- Make Runtime the only model/tool loop and lifecycle owner.
+- Reduce Capability registration to executable Skill handlers.
+- Turn workflow implementations into passive Skill policies.
+- Remove parallel controllers, replacement methods, compatibility aliases, and broad internal exports.
+
+## v0.0.38: Automatic Task Scheduling
 
 Status: planned.
 
-- Describe each model request with a clear `ModelTask` contract.
-- Select a compatible configured model for each call instead of once per Agent.
-- Route normal runs, tool loops, candidate creation, and evaluation through one policy.
-- Record deterministic reasons and fallback decisions in the run trace.
+- Select a compatible configured model for every task and model step.
+- Select matching Skills and subagents through one central scheduler.
+- Use deterministic fallback when a selected model or delegate fails.
+- Record the complete selection reason in the task trace.
 
-## v0.0.38: Evidence-Learned Routing
+## v0.0.39: Evidence-Learned Scheduling
 
 Status: planned.
 
 - Isolate routing evidence by user, Agent, model Skill, and task purpose.
 - Learn quality, latency, reliability, and cost with bounded UCB exploration.
-- Feed model use into the ordinary Skill freshness and evolution lifecycle.
-- Preserve deterministic cold-start behavior and explicit user connection ownership.
+- Improve task quality evidence with explicit feedback and implicit correction signals.
+- Preserve deterministic cold-start behavior and user ownership of model connections.
 
-## v0.0.39: Model UI and Routing Proof
+## v0.0.40: Automatic Evolution Loop
 
 Status: planned.
 
-- Replace the macOS app's legacy model editor with model Skill management.
-- Show selected profiles, routing reasons, model evidence, and Skill freshness.
-- Publish a reproducible multi-model routing and isolation experiment.
+- Generate candidates automatically for eligible Agent-owned Skills.
+- Evaluate, promote, monitor, and roll back through the same task path.
+- Keep evolution decisions deterministic and isolated by user and Agent.
+- Collapse recommendation and candidate coordination into one clear service.
+
+## v0.0.41: Task and Evolution Proof
+
+Status: planned.
+
+- Show task trees, scheduler reasons, model evidence, and evolution state in macOS.
+- Publish a reproducible multi-model scheduling and isolation experiment.
+- Verify automatic evolution and rollback from real task evidence.
 - Build and package the versioned macOS release.
 
 The project will not move to `0.1.x` merely because more features exist. That change should follow a reproducible demonstration that the central Skill-first lifecycle is useful and maintainable.

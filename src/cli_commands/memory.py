@@ -5,7 +5,7 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
-from capability.defaults import create_default_skill_disclosure
+from capability.defaults import create_progressive_skill_disclosure
 from runtime.config import AgentConfig
 from runtime.identity import LOCAL_USER_ID
 from runtime.storage import create_storage_backend
@@ -107,7 +107,7 @@ def _load_configured_memory(config_path: Path, user_id: str) -> MiniMemory:
         user_id,
         config.agent.name,
     )
-    disclosure = create_default_skill_disclosure(config, store=store)
+    disclosure = create_progressive_skill_disclosure(config, store=store)
     disclosure.prepare_skill_index()
     skill = disclosure.open_skill(
         config.agent.memory,

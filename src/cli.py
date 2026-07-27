@@ -24,7 +24,8 @@ from cli_commands.storage import configure_storage_parser, run_storage_command
 from agents.agent import Agent
 from provider.chat import Message
 from runtime.identity import LOCAL_USER_ID
-from runtime.models import RunEvent, RunResult
+from runtime.models import RunEvent
+from runtime.tasks import TaskResult
 
 
 @dataclass(frozen=True)
@@ -192,7 +193,7 @@ def _load_agent(config_path: Path | None) -> Agent:
     return Agent() if config_path is None else Agent.load_from_config_file(str(config_path))
 
 
-def run_result_to_dict(result: RunResult) -> dict[str, Any]:
+def run_result_to_dict(result: TaskResult) -> dict[str, Any]:
     return asdict(result)
 
 

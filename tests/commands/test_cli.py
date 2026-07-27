@@ -10,7 +10,7 @@ from unittest.mock import patch
 from cli import main
 from cli import run_result_to_dict
 from provider.chat import MockProvider
-from runtime.models import RunResult, SubAgentResult
+from runtime.tasks import SubAgentResult, TaskResult
 
 
 class CliTests(unittest.TestCase):
@@ -413,7 +413,7 @@ instructions = "SKILL.md"
             self.assertEqual(lines[0]["event"]["run_id"], lines[-1]["result"]["run_id"])
 
     def test_run_result_serialization_keeps_nested_subagents(self) -> None:
-        result = RunResult(
+        result = TaskResult(
             text="main",
             workflow="direct",
             skills=[],

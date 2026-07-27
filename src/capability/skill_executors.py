@@ -1,18 +1,28 @@
 from __future__ import annotations
 
-from capability.contracts import (
-    SkillDisclosureSession,
-    SkillExecutor,
-    SkillLoadRequest,
-    SkillLoadResult,
-)
+from dataclasses import dataclass
+
 from runtime.identity import RunIdentity
 from runtime.store import RuntimeStore
-from skill.disclosure import SkillReference
+from skill.disclosure import ProgressiveDisclosureCore, SkillReference
 from skill.kinds.mcp import create_mcp_server_from_skill_disclosure
 from skill.kinds.memory import create_memory_from_skill_disclosure
-from skill.kinds.workflow import create_workflow_from_skill_disclosure
+from skill.kinds.workflow import create_workflow_policy_from_skill
 from skill.manifest import Skill
+
+
+@dataclass(frozen=True)
+class SkillLoadRequest:
+    disclosure: ProgressiveDisclosureCore
+    reference: SkillReference
+    store: RuntimeStore
+    identity: RunIdentity | None = None
+
+
+@dataclass(frozen=True)
+class SkillLoadResult:
+    model_skill: Skill | None = None
+    runtime_value: object | None = None
 
 
 class PromptSkillExecutor:
@@ -82,12 +92,12 @@ class WorkflowSkillExecutor:
             request.reference.name,
             self.capability_name,
         )
-        workflow = create_workflow_from_skill_disclosure(opened)
+        workflow = create_workflow_policy_from_skill(opened)
         return SkillLoadResult(runtime_value=workflow)
 
 
-def create_builtin_skill_executors() -> dict[str, SkillExecutor]:
-    executors: list[SkillExecutor] = [
+def create_builtin_skill_executors() -> dict[str, object]:
+    executors = [
         PromptSkillExecutor(),
         McpSkillExecutor(),
         MemorySkillExecutor(),
@@ -97,16 +107,16 @@ def create_builtin_skill_executors() -> dict[str, SkillExecutor]:
 
 
 def load_skill_for_model_context(
-    disclosure: SkillDisclosureSession,
+    disclosure: ProgressiveDisclosureCore,
     reference: SkillReference,
-    executors: dict[str, SkillExecutor],
+    executors: dict[str, object],
     store: RuntimeStore,
     identity: RunIdentity | None = None,
 ) -> Skill:
     executor = executors.get(reference.capability)
     if executor is None:
         raise KeyError(f"skill executor not found for capability: {reference.capability}")
-    loaded = executor.load_skill(
+    loaded = executor.load_skill(  # type: ignore[attr-defined]
         SkillLoadRequest(disclosure, reference, store, identity)
     )
     if loaded.model_skill is None:

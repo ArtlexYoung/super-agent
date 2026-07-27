@@ -156,9 +156,9 @@ Agent      组合所有部分
 discover -> disclose -> execute -> observe -> evaluate -> evolve
 ```
 
-`RuntimeSession` 是一次运行唯一的共享上下文，集中保存一个 `RunIdentity`、一个中心化 `RuntimeStore`、唯一 Skill 索引、渐进披露会话，以及真正影响结果的 Skill 和 Capability。Capability 只消费该会话，不再分别创建存储或重复扫描 Skill 目录。
+`Agent.run(...)` 会创建唯一的内部 `TaskRequest`，并交给 `AgentRuntime.run_task(...)`。`RuntimeSession` 集中保存该任务的身份、存储、Skill 索引、渐进披露会话和证据追踪。Workflow Skill 只保存指令与结束规则，模型和工具循环统一由 Runtime 管理。
 
-所有可执行机制都通过唯一的 `CapabilityRegistry` 注册。内置 Capability 不需要配置；需要安装或进化的机制使用标准 `capability` Skill，因此与其他 Skill 共用索引、包管理、候选、评价、晋升和回滚。
+`CapabilityRegistry` 只保存真正执行 Skill 的处理器，可以通过 `agent.add_skill_executor(...)` 明确替换。需要安装或进化的处理器使用标准 `capability` Skill，与其他 Skill 共用披露、评价、晋升和回滚；Runtime 生命周期不再允许替换成另一套并行控制器。
 
 ## 可复现证明
 

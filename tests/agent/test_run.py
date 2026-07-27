@@ -81,7 +81,6 @@ class RuntimeStoreTests(unittest.TestCase):
         import super_agent
 
         self.assertIs(Agent, super_agent.Agent)
-        self.assertIs(RuntimeStore, super_agent.RuntimeStore)
         self.assertIs(JsonlStorage, super_agent.JsonlStorage)
 
     def test_agent_includes_conversation_messages_before_latest_prompt(self) -> None:

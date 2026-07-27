@@ -22,7 +22,7 @@ from skill.kinds.model import (
     select_default_model_profile,
 )
 from skill.validation import validate_skill_replacement
-from super_agent import EvaluationCase
+from skill.evolution.evaluation import EvaluationCase
 
 
 class ModelSkillTests(unittest.TestCase):

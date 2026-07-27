@@ -2,7 +2,7 @@
 
 ## One Runtime Session
 
-Each `Agent.run(...)` creates one `RuntimeSession` with one `RunIdentity` and one `RuntimeStore`. The Runtime prepares the Skill index once, records a lock from that same index, executes the selected workflow, records every used target, and appends the final evaluation.
+Each `Agent.run(...)` creates one internal `TaskRequest` and one `RuntimeSession` with a `RunIdentity` and `RuntimeStore`. `AgentRuntime.run_task(...)` prepares the Skill index once, records a lock, interprets the selected workflow policy, records every used target, and appends the final evaluation. `Agent.read_task_trace(...)` returns the ordered events for one completed or failed task.
 
 ## Runtime Conversations
 
@@ -41,7 +41,7 @@ Built-in modes:
 - `react`: the model chooses runtime tools until it finishes.
 - `loop`: like react, with an explicit maximum step count.
 
-The workflow defines execution termination. Agent nesting itself is not forcibly stopped.
+The workflow is passive Skill data. Runtime interprets its instruction and termination settings; Agent nesting itself is not forcibly stopped.
 
 ## Runtime Tools
 

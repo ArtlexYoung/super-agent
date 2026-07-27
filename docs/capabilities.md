@@ -1,66 +1,41 @@
 # Capabilities
 
-A Capability is executable mechanism code. Runtime mounts Capabilities; Skills carry every installable or evolvable implementation.
+A Capability is code that executes one Skill mechanism. Runtime itself owns task lifecycle, progressive disclosure, tracing, evaluation, and evolution scheduling.
 
-Built-in Capability slots include:
-
-- `run_controller`
-- `skill_disclosure`
-- `skill_executor:<skill-type>`
-- `run_result_evaluator`
-- `skill_updater`
-
-Code can replace a mechanism directly with explicit Agent methods:
+Built-in executors handle prompt, MCP, memory, and workflow Skills. Replace or add one explicitly:
 
 ```python
-agent.set_run_controller(controller)
-agent.set_skill_disclosure(disclosure)
-agent.set_run_result_evaluator(evaluator)
-agent.set_skill_updater(updater)
 agent.add_skill_executor(executor)
 ```
 
+An executor declares `name`, `version`, `capability_name`, `adds_model_context`, and `load_skill(request)`. There are no run-controller, disclosure, evaluator, or updater slots.
+
 ## Capability Skills
 
-Use a standard Skill directory when a mechanism must be packaged, selected, evaluated, or evolved:
+Package an evolvable executor as a standard Skill:
 
 ```text
 skills/capability/careful/
   skill.toml
-  controller.py
+  executor.py
 ```
 
 ```toml
 schema_version = 2
 name = "careful"
 capability = "capability"
-description = "Run controller for deliberate tasks"
+description = "Prompt executor with additional checks"
 version = "0.1.0"
 triggers = []
 agent_created = true
 agent_can_update = true
 
 [configuration]
-slot = "run_controller"
-entry_file = "controller.py"
-entry_class = "CarefulRunController"
+slot = "skill_executor:prompt"
+entry_file = "executor.py"
+entry_class = "CarefulPromptExecutor"
 ```
 
-The zero-argument entry class must expose the same `name` and `version` and implement the selected slot interface. The Agent scans the central Skill index once at startup, validates each Capability Skill, and mounts it over the built-in implementation. Two Skills cannot claim the same slot.
+The zero-argument class must identify the same Skill name and version and execute the capability named by the slot. Two Capability Skills cannot replace the same executor.
 
-Capability Skills use the ordinary commands:
-
-```bash
-super-agent skills install --config agent.toml --source ./careful
-super-agent skills evolve --config agent.toml --name capability:careful \
-  --goal "reduce failed runs" --cases evaluation-cases.json
-super-agent skills rollback --config agent.toml --name capability:careful
-```
-
-The complete directory is the candidate. Validation checks the Python entry, class identity, slot interface, version, and immutable Skill identity. Promotion and rollback immediately remount the implementation in the Agent that created the evolution manager. Runtime evaluation attributes its behavior to `capability:<name>`, so freshness and autonomous recommendations use the same Skill evidence.
-
-There is no Capability package directory, Capability candidate format, or Capability-specific CLI. The only lifecycle is:
-
-```text
-Skill package -> Skill candidate -> Skill evaluation -> Skill promotion -> Skill rollback
-```
+Capability Skills use ordinary Skill install, evolve, and rollback commands. Runtime locks the exact implementation hash and attributes execution evidence to both the handler and its source Skill.

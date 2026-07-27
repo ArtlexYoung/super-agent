@@ -8,12 +8,10 @@ from pathlib import Path
 from unittest.mock import patch
 
 from agents.agent import Agent
-from capability.contracts import SkillLoadRequest, SkillLoadResult
+from capability.skill_executors import SkillLoadRequest, SkillLoadResult
 from cli import main
 from provider.chat import MockProvider
 from runtime.config import AgentConfig
-from runtime.models import AgentRunRequest, RunResult
-from runtime.session import RuntimeSession
 from skill.manifest import Skill
 
 
@@ -37,7 +35,6 @@ class CapabilityRuntimeTests(unittest.TestCase):
             clear=True,
         ):
             output = StringIO()
-
             with patch("sys.stdout", output):
                 code = main(["run", "hello"])
 
@@ -51,24 +48,14 @@ class CapabilityRuntimeTests(unittest.TestCase):
             clear=True,
         ):
             output = StringIO()
-
             with patch("builtins.input", side_effect=["hello", "quit"]), patch(
-                "sys.stdout", output
+                "sys.stdout",
+                output,
             ):
                 code = main([])
 
             self.assertEqual(0, code)
             self.assertIn("Agent: Mock response", output.getvalue())
-
-    def test_agent_can_replace_the_run_controller(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            agent = Agent(AgentConfig.create_default(tmp))
-            agent.set_run_controller(_FixedRunController())
-
-            result = agent.run("hello")
-
-            self.assertEqual("custom controller", result.text)
-            self.assertEqual("custom", result.workflow)
 
     def test_agent_can_replace_one_skill_executor(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -83,78 +70,51 @@ class CapabilityRuntimeTests(unittest.TestCase):
 
             self.assertEqual("finished", result.text)
             self.assertEqual(1, executor.load_count)
-            self.assertIn("Loaded by custom executor.", provider.last_messages[0]["content"])
-
-    def test_agent_can_replace_the_run_result_evaluator(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            evaluator = _RecordingRunResultEvaluator()
-            agent = Agent(AgentConfig.create_default(tmp))
-            agent.set_run_result_evaluator(evaluator)
-
-            result = agent.run("hello")
-
-            self.assertEqual(1, len(evaluator.requests))
-            self.assertEqual(result.run_id, evaluator.requests[0].source.run_id)
-            self.assertTrue(evaluator.requests[0].result.success)
-            self.assertEqual(
-                Path(tmp).absolute() / ".super-agent",
-                evaluator.sessions[0].store.local_root,
+            self.assertIn(
+                "Loaded by custom executor.",
+                provider.last_messages[0]["content"],
             )
 
-    def test_registered_custom_capability_is_discovered_and_executed(self) -> None:
+    def test_registered_custom_skill_executor_is_used(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_prompt_skill(root, capability="transform")
             provider = MockProvider("finished")
             executor = _TransformSkillExecutor()
-            agent = Agent(AgentConfig.create_default(root), provider=provider)
-            agent.add_skill_executor(executor)
+            agent = Agent(
+                AgentConfig.create_default(root),
+                provider=provider,
+                skill_executors=[executor],
+            )
 
             result = agent.run("please echo this")
 
             self.assertEqual("finished", result.text)
             self.assertEqual(1, executor.load_count)
-            self.assertIn("Loaded by custom executor.", provider.last_messages[0]["content"])
 
-    def test_runtime_engine_does_not_import_concrete_capabilities(self) -> None:
+    def test_task_trace_uses_one_runtime_task_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            agent = Agent(AgentConfig.create_default(tmp))
+
+            result = agent.run("hello")
+            trace = agent.read_task_trace(result.run_id)
+
+            self.assertEqual(result.run_id, trace.task_id)
+            self.assertIsNone(trace.parent_task_id)
+            event_types = [event.event_type for event in trace.events]
+            self.assertIn("task.started", event_types)
+            self.assertIn("task.completed", event_types)
+
+    def test_removed_parallel_controllers_are_not_shipped(self) -> None:
+        self.assertFalse(Path("src/capability/contracts.py").exists())
+        self.assertFalse(Path("src/capability/run_controller.py").exists())
+        self.assertFalse(Path("src/capability/tool_router.py").exists())
         tree = ast.parse(Path("src/runtime/engine.py").read_text(encoding="utf-8"))
-        imported_modules = {
-            node.module
-            for node in ast.walk(tree)
-            if isinstance(node, ast.ImportFrom) and node.module is not None
+        method_names = {
+            node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
         }
-
-        self.assertIn("capability.contracts", imported_modules)
-        self.assertFalse(
-            any(module.startswith("skill.evolution") for module in imported_modules)
-        )
-        self.assertFalse(
-            imported_modules
-            & {
-                "capability.defaults",
-                "capability.run_controller",
-                "capability.skill_executors",
-                "capability.tool_router",
-            }
-        )
-
-
-class _FixedRunController:
-    name = "fixed"
-    version = "1"
-
-    def run_agent(
-        self,
-        request: AgentRunRequest,
-        session: RuntimeSession,
-    ) -> RunResult:
-        return RunResult(
-            text="custom controller",
-            workflow="custom",
-            skills=[],
-            warning_messages=request.warning_messages,
-            run_id=session.run_id,
-        )
+        self.assertIn("run_task", method_names)
+        self.assertNotIn("run_agent", method_names)
 
 
 class _RecordingPromptExecutor:
@@ -184,25 +144,11 @@ class _TransformSkillExecutor(_RecordingPromptExecutor):
     capability_name = "transform"
 
 
-class _RecordingRunResultEvaluator:
-    name = "recording"
-    version = "1"
-
-    def __init__(self) -> None:
-        self.requests = []
-        self.sessions = []
-
-    def record_run_evaluation(self, request, session) -> None:
-        self.requests.append(request)
-        self.sessions.append(session)
-
-
 def _write_prompt_skill(root: Path, capability: str = "prompt") -> None:
     skill_root = root / "skills" / "echo"
     skill_root.mkdir(parents=True)
     (skill_root / "skill.toml").write_text(
-        f"""
-schema_version = 2
+        f'''schema_version = 2
 name = "echo"
 capability = "{capability}"
 description = "Echo helper"
@@ -211,7 +157,10 @@ triggers = ["echo"]
 
 [entry]
 instructions = "SKILL.md"
-""".strip(),
+'''.strip(),
         encoding="utf-8",
     )
-    (skill_root / "SKILL.md").write_text("Original instructions.", encoding="utf-8")
+    (skill_root / "SKILL.md").write_text(
+        "Original instructions.",
+        encoding="utf-8",
+    )

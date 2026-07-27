@@ -6,7 +6,7 @@ import math
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from capability.contracts import SkillExecutor
+from typing import Any
 from capability.skill_executors import create_builtin_skill_executors, load_skill_for_model_context
 from skill.disclosure import (
     ProgressiveDisclosureCore,
@@ -57,7 +57,7 @@ class SkillBenchmark:
     def __init__(
         self,
         skill_disclosure: ProgressiveDisclosureCore,
-        skill_executors: dict[str, SkillExecutor] | None = None,
+        skill_executors: dict[str, Any] | None = None,
         *,
         base_system_prompt: str = "",
     ) -> None:
@@ -225,7 +225,7 @@ def benchmark_report_to_dict(report: BenchmarkReport) -> dict[str, object]:
 def _build_eager_context(
     disclosure: ProgressiveDisclosureCore,
     entries: list[SkillIndexEntry],
-    skill_executors: dict[str, SkillExecutor],
+    skill_executors: dict[str, Any],
 ) -> str:
     skills = [
         load_skill_for_model_context(
