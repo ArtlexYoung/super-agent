@@ -8,7 +8,7 @@ from typing import Callable, cast
 from capability.skill_contributions import PlanningPolicy, SkillContribution, TaskPolicy
 from capability.registry import SkillLoadRequest
 from provider.chat import Message
-from runtime.planning import PlannedTaskStep, TaskPlanningDecision
+from runtime.planning import TaskPlanningDecision, TaskStep
 from runtime.session import RuntimeSession
 from runtime.task_decisions import TaskSchedule
 from runtime.tasks import SubAgentResult, TaskRequest
@@ -63,9 +63,17 @@ def apply_planning_to_schedule(
         skill_references=() if planning.should_plan else schedule.skill_references,
         subagent_names=() if planning.should_plan else schedule.subagent_names,
         subagent_reasons=() if planning.should_plan else schedule.subagent_reasons,
-        execution_mode="planned" if planning.should_plan else "direct",
-        planner=None if planner is None else planner.skill_key,
-        planning_reasons=planning.reasons,
+        execution_mode="task_plan",
+        planner=(
+            planner.skill_key
+            if planning.should_plan and planner is not None
+            else None
+        ),
+        planning_reasons=(
+            planning.reasons
+            if planning.should_plan
+            else ("direct one-step plan",)
+        ),
     )
 
 
@@ -128,34 +136,20 @@ def create_runtime_tools(
     )
 
 
-def run_scheduled_subagents(
+def run_task_step_subagents(
     request: TaskRequest,
     session: RuntimeSession,
     schedule: TaskSchedule,
 ) -> list[SubAgentResult]:
     return [
         _subagent_result_from_dict(
-            request.subagents.run_named_subagent(name, request.prompt, session)
-        )
-        for name in schedule.subagent_names
-    ]
-
-
-def run_planned_step_subagent(
-    request: TaskRequest,
-    session: RuntimeSession,
-    step: PlannedTaskStep,
-) -> list[SubAgentResult]:
-    if step.subagent is None:
-        return []
-    return [
-        _subagent_result_from_dict(
             request.subagents.run_named_subagent(
-                step.subagent,
-                step.instruction,
+                name,
+                request.prompt,
                 session,
             )
         )
+        for name in schedule.subagent_names
     ]
 
 

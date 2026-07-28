@@ -175,7 +175,7 @@ discover -> disclose -> execute -> observe -> evaluate -> evolve
 
 `Agent.run(...)` 会创建唯一的内部 `TaskRequest`，并交给 `AgentRuntime.run_task(...)`。一个中心自适应任务循环选择有序模型回退列表、渐进匹配的 Skill 和命中的子 Agent，然后连续推进模型与工具步骤。完整原因记录在 `task.scheduled`；每次模型尝试都会记录选择、完成或失败、延迟、估算 token 和成本。Workflow Skill 只保存指令与结束规则。
 
-内置 `planner:default` Skill 让自动规划保持零配置。简单任务直接执行，不增加规划模型调用；复杂提示、结构化多步骤请求、额外能力要求和 `plan` workflow 会让所选模型返回严格任务计划。每个计划步骤都会重新选择模型，也可以指定一个已经挂载的子 Agent。在项目中创建同名 `planner:default`，即可通过同一个中心 Skill 索引覆盖内置后备版本。
+内置 `planner:default` Skill 让自动规划保持零配置。每个任务都有一个 `TaskPlan`；简单任务使用确定性的一步计划，不增加规划模型调用。复杂提示、结构化多步骤请求、额外能力要求和 `plan` workflow 会让所选模型返回严格计划。每个步骤都通过同一个模型、Skill、工具和子 Agent 循环执行。在项目中创建同名 `planner:default`，即可通过同一个中心 Skill 索引覆盖内置后备版本。
 
 模型路由在冷启动时保持确定性，只有同一任务用途积累证据后才进行有界探索。证据按用户、Agent、model Skill 和任务用途隔离。需要时可以直接记录质量分数：
 

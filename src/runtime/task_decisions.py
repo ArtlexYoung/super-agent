@@ -8,7 +8,7 @@ from typing import Mapping
 
 from capability.skill_contributions import TaskPolicy
 from runtime.routing import ModelRoutingStats, list_model_routing_stats
-from runtime.planning import PlannedTaskStep
+from runtime.planning import TaskStep
 from runtime.session import RuntimeSession
 from runtime.tasks import TaskRequest
 from skill.disclosure import SkillReference
@@ -96,14 +96,14 @@ def create_task_schedule(
         skill_references=tuple(skill_references),
         subagent_names=tuple(subagent_names),
         subagent_reasons=tuple(subagent_reasons),
-        execution_mode="direct",
+        execution_mode="task_plan",
         planner=None,
         planning_reasons=(),
     )
 
 
-def create_planned_step_schedule(
-    step: PlannedTaskStep,
+def create_task_step_schedule(
+    step: TaskStep,
     request: TaskRequest,
     session: RuntimeSession,
     *,
@@ -141,7 +141,7 @@ def create_planned_step_schedule(
         skill_references=tuple(_choose_skills(step_request, session, workflow)),
         subagent_names=subagent_names,
         subagent_reasons=subagent_reasons,
-        execution_mode="planned_step",
+        execution_mode="task_step",
         planner=None,
         planning_reasons=(),
     )

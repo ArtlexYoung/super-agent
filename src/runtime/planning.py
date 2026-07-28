@@ -28,7 +28,7 @@ class TaskPlanningDecision:
 
 
 @dataclass(frozen=True)
-class PlannedTaskStep:
+class TaskStep:
     instruction: str
     purpose: str
     required_features: tuple[str, ...]
@@ -45,15 +45,19 @@ class PlannedTaskStep:
 
 @dataclass(frozen=True)
 class TaskPlan:
-    steps: tuple[PlannedTaskStep, ...]
+    steps: tuple[TaskStep, ...]
+    origin: str
 
     def to_dict(self) -> dict[str, object]:
-        return {"steps": [step.to_dict() for step in self.steps]}
+        return {
+            "origin": self.origin,
+            "steps": [step.to_dict() for step in self.steps],
+        }
 
 
-def create_planned_step_policy(
+def create_task_step_policy(
     workflow: TaskPolicy,
-    step: PlannedTaskStep,
+    step: TaskStep,
 ) -> TaskPolicy:
     if "tools" not in step.required_features or workflow.uses_tools:
         return workflow
@@ -145,14 +149,34 @@ def read_task_plan(
         _read_task_plan_step(item, available_subagent_names)
         for item in raw_steps
     )
-    return TaskPlan(steps)
+    return TaskPlan(steps, "planner")
 
 
-def build_planned_step_prompt(
+def create_direct_task_plan(
+    prompt: str,
+    purpose: str,
+    required_features: tuple[str, ...],
+) -> TaskPlan:
+    return TaskPlan(
+        (
+            TaskStep(
+                instruction=prompt,
+                purpose=purpose,
+                required_features=required_features,
+                subagent=None,
+            ),
+        ),
+        "direct",
+    )
+
+
+def build_task_step_prompt(
     original_prompt: str,
-    step: PlannedTaskStep,
+    step: TaskStep,
     completed_results: list[str],
 ) -> str:
+    if not completed_results and step.instruction == original_prompt:
+        return original_prompt
     parts = [
         f"Original task:\n{original_prompt}",
         f"Current planned step:\n{step.instruction}",
@@ -170,7 +194,7 @@ def build_planned_step_prompt(
 def _read_task_plan_step(
     value: object,
     available_subagent_names: set[str],
-) -> PlannedTaskStep:
+) -> TaskStep:
     if not isinstance(value, dict) or set(value) != TASK_PLAN_STEP_FIELDS:
         raise ValueError(
             "planner step fields must be instruction, purpose, required_features, "
@@ -182,7 +206,7 @@ def _read_task_plan_step(
         raise ValueError("planner step purpose must be a simple lowercase label")
     features = _read_features(value["required_features"])
     subagent = _read_subagent(value["subagent"], available_subagent_names)
-    return PlannedTaskStep(instruction, purpose, features, subagent)
+    return TaskStep(instruction, purpose, features, subagent)
 
 
 def _read_features(value: object) -> tuple[str, ...]:

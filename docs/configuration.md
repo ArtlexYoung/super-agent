@@ -34,7 +34,7 @@ Subagent relationships are never declared in TOML. Use `Agent.add_subagent(...)`
 
 ## Planner Skill
 
-Planning requires no Agent setting. Runtime progressively discloses the built-in `planner:default` Skill as a fallback. A simple task stays on the direct path; a `plan` workflow, a structured or explicitly multi-step prompt, a long prompt, or extra required features enables planning.
+Planning requires no Agent setting. Runtime progressively discloses the built-in `planner:default` Skill as a fallback. A simple task receives a deterministic one-step plan; a `plan` workflow, a structured or explicitly multi-step prompt, a long prompt, or extra required features asks the model for a multi-step plan.
 
 `super-agent init` creates an editable, Agent-updateable Planner Skill at `skills/planner/default`. A project Skill with the same `planner:default` key replaces the built-in fallback without adding its path to `agent.toml`. Its optional configuration fields are:
 

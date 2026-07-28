@@ -17,11 +17,13 @@ from runtime.model_calls import (
     tool_result_message,
 )
 from runtime.planning import (
-    PlannedTaskStep,
+    TaskPlan,
     TaskPlanningDecision,
-    build_planned_step_prompt,
+    TaskStep,
+    build_task_step_prompt,
     build_task_planning_messages,
-    create_planned_step_policy,
+    create_direct_task_plan,
+    create_task_step_policy,
     decide_task_planning,
     read_task_plan,
 )
@@ -29,7 +31,7 @@ from runtime.session import RuntimeSession
 from runtime.store import RuntimeStore
 from runtime.task_decisions import (
     TaskSchedule,
-    create_planned_step_schedule,
+    create_task_step_schedule,
     create_task_schedule,
 )
 from runtime.task_preparation import (
@@ -41,8 +43,7 @@ from runtime.task_preparation import (
     load_default_planner,
     load_scheduled_skill_contributions,
     load_workflow_policy,
-    run_planned_step_subagent,
-    run_scheduled_subagents,
+    run_task_step_subagents,
 )
 from runtime.tasks import SubAgentResult, TaskRequest, TaskResult
 from runtime.tools import RuntimeTools
@@ -62,7 +63,7 @@ class _TaskExecutionContext:
 
 
 @dataclass
-class _PlannedTaskProgress:
+class _TaskProgress:
     completed_results: list[str]
     skills: list[Skill]
     tools: list[RuntimeTools]
@@ -127,54 +128,35 @@ class AdaptiveTaskLoop:
         if planning.should_plan:
             if planner is None:
                 raise RuntimeError("task requires planning but no Planner Skill is available")
-            return self._run_planned_task(context, schedule, planner, planning)
-        return self._run_direct_task(context, schedule)
-
-    def _run_direct_task(
-        self,
-        context: _TaskExecutionContext,
-        schedule: TaskSchedule,
-    ) -> TaskResult:
-        request = context.request
-        session = context.session
-        scheduled = load_scheduled_skill_contributions(session, schedule)
-        contributions = context.background_contributions + scheduled
-        skills = [
-            contribution.model_context
-            for contribution in scheduled
-            if contribution.model_context is not None
-        ]
-        tools = create_runtime_tools(request, session, contributions)
-        _record_disclosed_skills(session, skills)
-        subagent_results = run_scheduled_subagents(request, session, schedule)
-        system = build_system_prompt(request, session, contributions, subagent_results)
-        messages = build_model_messages(request, context.workflow, skills, system)
-        text, stop_reason = self._run_model_loop(
-            session,
-            context.workflow,
-            schedule,
-            tools,
-            messages,
+            plan = self._create_planner_task_plan(
+                context,
+                schedule,
+                planner,
+                planning,
+            )
+            return self._run_task_plan(context, plan)
+        plan = create_direct_task_plan(
+            request.prompt,
+            schedule.purpose,
+            schedule.required_features,
         )
-        result = TaskResult(
-            text=text,
-            workflow=context.workflow.name,
-            skills=_used_skill_names(skills, [tools]),
-            subagent_results=subagent_results + tools.delegated_subagent_results,
-            warning_messages=request.warning_messages,
-            run_id=session.run_id,
-            stop_reason=stop_reason,
+        session.record_event(
+            "task.plan.created",
+            {
+                "planner": None,
+                "reasons": ["direct one-step plan"],
+                **plan.to_dict(),
+            },
         )
-        _record_task_completed(session, result, contributions)
-        return result
+        return self._run_task_plan(context, plan, schedule)
 
-    def _run_planned_task(
+    def _create_planner_task_plan(
         self,
         context: _TaskExecutionContext,
         schedule: TaskSchedule,
         planner: LoadedPlanner,
         planning: TaskPlanningDecision,
-    ) -> TaskResult:
+    ) -> TaskPlan:
         request = context.request
         session = context.session
         subagents = (
@@ -203,7 +185,15 @@ class AdaptiveTaskLoop:
                 **plan.to_dict(),
             },
         )
-        progress = _PlannedTaskProgress(
+        return plan
+
+    def _run_task_plan(
+        self,
+        context: _TaskExecutionContext,
+        plan: TaskPlan,
+        direct_schedule: TaskSchedule | None = None,
+    ) -> TaskResult:
+        progress = _TaskProgress(
             completed_results=[],
             skills=[],
             tools=[],
@@ -211,36 +201,39 @@ class AdaptiveTaskLoop:
             contributions=list(context.background_contributions),
         )
         for step_number, step in enumerate(plan.steps, start=1):
-            text, progress.stop_reason = self._run_planned_step(
+            text, progress.stop_reason = self._run_task_step(
                 context,
                 step,
                 step_number,
                 progress,
+                direct_schedule,
             )
             progress.completed_results.append(text)
+            direct_schedule = None
         result = TaskResult(
             text=progress.completed_results[-1],
             workflow=context.workflow.name,
             skills=_used_skill_names(progress.skills, progress.tools),
             subagent_results=progress.subagent_results,
-            warning_messages=request.warning_messages,
-            run_id=session.run_id,
+            warning_messages=context.request.warning_messages,
+            run_id=context.session.run_id,
             stop_reason=progress.stop_reason,
         )
-        _record_task_completed(session, result, progress.contributions)
+        _record_task_completed(context.session, result, progress.contributions)
         return result
 
-    def _run_planned_step(
+    def _run_task_step(
         self,
         context: _TaskExecutionContext,
-        step: PlannedTaskStep,
+        step: TaskStep,
         step_number: int,
-        progress: _PlannedTaskProgress,
+        progress: _TaskProgress,
+        schedule: TaskSchedule | None,
     ) -> tuple[str, str]:
         request = context.request
         session = context.session
-        step_policy = create_planned_step_policy(context.workflow, step)
-        schedule = create_planned_step_schedule(
+        step_policy = create_task_step_policy(context.workflow, step)
+        selected_schedule = schedule or create_task_step_schedule(
             step,
             request,
             session,
@@ -250,22 +243,35 @@ class AdaptiveTaskLoop:
         )
         session.record_event(
             "task.step.scheduled",
-            {"step": step_number, "instruction": step.instruction, **schedule.to_dict()},
+            {
+                "step": step_number,
+                "instruction": step.instruction,
+                **selected_schedule.to_dict(),
+            },
         )
-        contributions = load_scheduled_skill_contributions(session, schedule)
+        contributions = load_scheduled_skill_contributions(
+            session,
+            selected_schedule,
+        )
         combined = context.background_contributions + contributions
         skills = [
             contribution.model_context
             for contribution in contributions
             if contribution.model_context is not None
         ]
-        step_subagents = run_planned_step_subagent(request, session, step)
+        delegation_request = replace(request, prompt=step.instruction)
+        step_subagents = run_task_step_subagents(
+            delegation_request,
+            session,
+            selected_schedule,
+        )
         tools = create_runtime_tools(request, session, combined)
-        step_prompt = build_planned_step_prompt(
+        step_prompt = build_task_step_prompt(
             request.prompt,
             step,
             progress.completed_results,
         )
+        _record_disclosed_skills(session, skills)
         step_request = replace(
             request,
             prompt=step_prompt,
@@ -281,7 +287,7 @@ class AdaptiveTaskLoop:
         text, stop_reason = self._run_model_loop(
             session,
             step_policy,
-            schedule,
+            selected_schedule,
             tools,
             messages,
         )

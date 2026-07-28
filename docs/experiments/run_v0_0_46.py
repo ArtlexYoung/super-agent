@@ -55,7 +55,7 @@ def main() -> int:
         model_evolution = run_model_evolution_proof(root / "model-evolution")
     checks = {
         "complex_task_uses_planner_skill": (
-            planning["execution_mode"] == "planned"
+            planning["execution_mode"] == "task_plan"
             and planning["planner"] == "planner:default"
         ),
         "each_step_routes_by_declared_purpose": planning["step_models"]

@@ -36,7 +36,7 @@ latency, cost, and user-scoped evidence. Skill selection uses the same
 progressive-disclosure core, while subagent selection uses the descriptions and triggers
 supplied by `Agent.add_subagent(...)`.
 
-The progressively disclosed `planner:default` Skill contributes only its planning instruction and deterministic planning thresholds. Simple tasks stay on the direct path. For a planned task, the loop requests one strict plan, validates every field, and then owns every resulting step. Each step receives a fresh model fallback order from its purpose and required features, may run one named subagent, and receives prior step results. Planner is data and policy, not a second controller or execution loop.
+The progressively disclosed `planner:default` Skill contributes only its planning instruction and deterministic planning thresholds. Every task becomes one `TaskPlan`. Simple tasks receive one deterministic step without a planning model call; complex tasks request and validate a strict model-generated plan. The same step loop owns both forms. Each generated step receives a fresh model fallback order from its purpose and required features, may run one named subagent, and receives prior step results. Planner is data and policy, not a second controller or execution loop.
 
 Task history is the ordered event stream emitted by actual schedule, model, tool, and subagent steps. Runtime does not maintain a second execution context or mutable history. The former scheduler, model-router, and execution modules are intentionally absent.
 
@@ -109,7 +109,7 @@ backend. See [Runtime Safety](safety.md).
 - Runtime is the only task lifecycle and model-loop owner.
 - Every Capability is registered once and locked by exact hash.
 - Runtime consumes only `SkillContribution`, never a Skill-kind-specific runtime object.
-- One `AdaptiveTaskLoop` owns direct execution, planning, step scheduling, model fallback, and tool iteration.
+- One `AdaptiveTaskLoop` owns plan creation, step scheduling, model fallback, and tool iteration.
 - Project Skills override same-key built-in fallback Skills inside one disclosure source scan.
 - Every used Skill revision is evaluated automatically.
 - Workflow is Skill data, not a second execution engine.

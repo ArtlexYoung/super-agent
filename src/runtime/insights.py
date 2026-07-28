@@ -20,10 +20,10 @@ def explain_run_with_insight(store: RuntimeStore, run_id: str) -> dict[str, obje
     purposes = _model_purposes_for_run(events)
     explanation.update(
         {
-            "schema_version": 3,
+            "schema_version": 4,
             "schedule": schedule,
             "task_plan": _latest_event_data(events, "task.plan.created"),
-            "task_steps": project_planned_task_steps(events),
+            "task_steps": project_task_steps(events),
             "model_calls": project_model_call_attempts(events),
             "routing_evidence": [
                 item.to_dict()
@@ -37,7 +37,7 @@ def explain_run_with_insight(store: RuntimeStore, run_id: str) -> dict[str, obje
     return explanation
 
 
-def project_planned_task_steps(events: list[RunEvent]) -> list[dict[str, object]]:
+def project_task_steps(events: list[RunEvent]) -> list[dict[str, object]]:
     steps: dict[int, dict[str, object]] = {}
     for event in events:
         if event.event_type not in {"task.step.scheduled", "task.step.completed"}:
@@ -173,5 +173,5 @@ def _positive_attempt(value: object) -> int:
 
 def _positive_step_number(value: object) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-        raise ValueError("planned task step must be a positive integer")
+        raise ValueError("task step must be a positive integer")
     return value

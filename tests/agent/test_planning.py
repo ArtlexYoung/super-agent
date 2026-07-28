@@ -10,7 +10,7 @@ from support import write_workflow_skill
 
 
 class ZeroConfigurationPlanningTests(unittest.TestCase):
-    def test_simple_task_uses_direct_path_without_planning_model_call(self) -> None:
+    def test_simple_task_uses_one_step_plan_without_planning_model_call(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_model_skill(root, "fast", default=True, purposes=["answer"])
@@ -25,9 +25,22 @@ class ZeroConfigurationPlanningTests(unittest.TestCase):
             schedule = next(
                 event.data for event in events if event.event_type == "task.scheduled"
             )
-            self.assertEqual("direct", schedule["execution_mode"])
-            self.assertFalse(
-                any(event.event_type == "task.plan.created" for event in events)
+            self.assertEqual("task_plan", schedule["execution_mode"])
+            plan = next(
+                event.data
+                for event in events
+                if event.event_type == "task.plan.created"
+            )
+            self.assertEqual("direct", plan["origin"])
+            self.assertIsNone(plan["planner"])
+            self.assertEqual(1, len(plan["steps"]))
+            self.assertEqual(
+                ["task.step.scheduled", "task.step.completed"],
+                [
+                    event.event_type
+                    for event in events
+                    if event.event_type.startswith("task.step.")
+                ],
             )
             records = agent.runtime.create_store().read_evaluation_records(
                 skill_key="planner:default"
@@ -98,7 +111,7 @@ class ZeroConfigurationPlanningTests(unittest.TestCase):
             schedule = next(
                 event.data for event in events if event.event_type == "task.scheduled"
             )
-            self.assertEqual("planned", schedule["execution_mode"])
+            self.assertEqual("task_plan", schedule["execution_mode"])
             self.assertEqual("planner:default", schedule["planner"])
             step_models = [
                 event.data["models"][0]["key"]
@@ -114,6 +127,7 @@ class ZeroConfigurationPlanningTests(unittest.TestCase):
                 result.run_id,
             )
             self.assertEqual("planner:default", insight["task_plan"]["planner"])
+            self.assertEqual("planner", insight["task_plan"]["origin"])
             self.assertEqual(
                 ["completed", "completed", "completed"],
                 [step["status"] for step in insight["task_steps"]],

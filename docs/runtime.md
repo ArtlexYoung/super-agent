@@ -4,6 +4,8 @@
 
 Each `Agent.run(...)` creates one internal `TaskRequest` and one `RuntimeSession` with a `RunIdentity` and `RuntimeStore`. `AgentRuntime.run_task(...)` prepares the Skill index once, then one `AdaptiveTaskLoop` selects and executes models, Skills, tools, and subagents. Runtime records a lock before model calls and appends the final evaluation. `agent.for_user(...).runs.read_trace(...)` returns the ordered events emitted by the executed task steps.
 
+Every request emits one `task.plan.created` event. Its `origin` is `direct` for the deterministic one-step fast path or `planner` for a validated model-generated plan. Both forms emit the same `task.step.scheduled` and `task.step.completed` events and use the same executor.
+
 ## Runtime Conversations
 
 Conversations are event-backed Runtime views, not client-owned message arrays. Create a conversation and reuse its ID:

@@ -2,7 +2,11 @@ import json
 import unittest
 
 from capability.skill_contributions import PlanningPolicy
-from runtime.planning import decide_task_planning, read_task_plan
+from runtime.planning import (
+    create_direct_task_plan,
+    decide_task_planning,
+    read_task_plan,
+)
 
 
 class TaskPlanningContractTests(unittest.TestCase):
@@ -31,6 +35,14 @@ class TaskPlanningContractTests(unittest.TestCase):
 
         self.assertTrue(explicit.should_plan)
         self.assertTrue(long_prompt.should_plan)
+
+    def test_direct_task_is_one_step_plan(self) -> None:
+        plan = create_direct_task_plan("Answer this", "answer", ("text",))
+
+        self.assertEqual("direct", plan.origin)
+        self.assertEqual(1, len(plan.steps))
+        self.assertEqual("Answer this", plan.steps[0].instruction)
+        self.assertEqual(("text",), plan.steps[0].required_features)
 
     def test_plan_parser_rejects_unknown_subagent_and_too_many_steps(self) -> None:
         step = {

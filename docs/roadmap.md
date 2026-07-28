@@ -288,7 +288,7 @@ Status: implemented.
 
 ## v0.0.56: One-Step Direct Plans
 
-Status: planned.
+Status: implemented.
 
 - Represent direct work as a one-step plan.
 - Execute direct and decomposed tasks through the same step loop.
