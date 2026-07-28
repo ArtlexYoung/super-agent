@@ -9,7 +9,6 @@ from uuid import uuid4
 
 from core.actions import ActionEffect, ActionRequest
 from core.identity import RunIdentity
-from core.provider.chat import Message
 from core.state.memory import (
     LONG_TERM_MEMORY,
     TEMPORARY_MEMORY,
@@ -17,11 +16,12 @@ from core.state.memory import (
 )
 from core.state.store import RuntimeStore
 from skill.disclosure import SkillDisclosure
-from skill.kinds.memory_models import MemoryItem, MemoryOperation, MemoryPolicy
-from skill.kinds.memory_organization import (
-    build_memory_organization_messages,
-    read_memory_operations,
+from skill.kinds.memory_models import (
+    MemoryItem,
+    MemoryPolicy,
+    MemoryTextModel,
 )
+from skill.kinds.memory_organization import MemoryOrganizer
 from skill.kinds.memory_support import (
     MemoryActionRunner,
     MemoryUsageHabits,
@@ -29,7 +29,6 @@ from skill.kinds.memory_support import (
     clean_memory_text,
     clean_optional_conversation_id,
     clean_scope,
-    group_memory_by_boundary,
     memory_boundary,
     memory_item_from_dict,
     normalize_memory_text,
@@ -43,7 +42,6 @@ from skill.kinds.memory_support import (
 
 MAX_ORGANIZATION_CANDIDATES = 20
 
-MemoryTextModel = Callable[[list[Message]], str]
 MemoryLocation = tuple[str, str | None]
 
 
@@ -65,6 +63,12 @@ class MiniMemory:
         self.usage_habits = MemoryUsageHabits(store.memory, execute_action)
         self.send_text_model_messages = send_text_model_messages
         self.execute_action = execute_action
+        self.organizer = MemoryOrganizer(
+            store,
+            self._execute_memory_change,
+            lambda: self._source_run_id(""),
+            send_text_model_messages,
+        )
 
     def add_temporary_memory(
         self,
@@ -133,11 +137,13 @@ class MiniMemory:
         selected_scope = clean_scope(scope)
         locations = self._resolve_memory_locations(memory_type, conversation_id)
         candidates = self._rank_memory(text, query_terms, selected_scope, locations)
-        if self.policy.organize_on_recall and candidates:
-            for group in group_memory_by_boundary(
-                candidates[:MAX_ORGANIZATION_CANDIDATES]
-            ):
-                self._organize_memory_during_recall(text, group)
+        if self.policy.organize_on_recall:
+            self._organize_memory_during_recall(
+                text,
+                query_terms,
+                selected_scope,
+                locations,
+            )
             candidates = self._rank_memory(text, query_terms, selected_scope, locations)
         return candidates[:result_limit]
 
@@ -194,10 +200,8 @@ class MiniMemory:
             sources = groups[key]
             if len(sources) < 2:
                 continue
-            replacement = self._create_replacement_item(sources[0].text, sources[0])
-            self._merge_memory_items(
+            replacement = self.organizer.merge_duplicate_items(
                 sources,
-                replacement,
                 "deterministic duplicate merge",
             )
             consolidated.append(replacement)
@@ -276,156 +280,72 @@ class MiniMemory:
     def _organize_memory_during_recall(
         self,
         query: str,
-        candidates: list[MemoryItem],
+        query_terms: Counter[str],
+        scope: str,
+        locations: list[MemoryLocation],
     ) -> None:
-        if not candidates:
+        temporary_locations = [
+            location for location in locations if location[0] == TEMPORARY_MEMORY
+        ]
+        for location in temporary_locations:
+            candidates = self._rank_memory(
+                query,
+                query_terms,
+                scope,
+                [location],
+            )[:MAX_ORGANIZATION_CANDIDATES]
+            self.organizer.organize_during_recall(
+                query,
+                candidates,
+                target_memory_type=TEMPORARY_MEMORY,
+            )
+        if not any(location[0] == LONG_TERM_MEMORY for location in locations):
             return
-        self._merge_duplicate_candidates(candidates)
-        location = (candidates[0].memory_type, candidates[0].conversation_id)
-        active_ids = {
-            item.item_id for item in self._list_memory_location(location, None)
-        }
-        remaining = [item for item in candidates if item.item_id in active_ids]
-        if self.send_text_model_messages is None or len(remaining) < 2:
-            return
-        boundary = remaining[0]
-        self._record_organization_event(
-            "memory.organization.started",
-            {"candidate_count": len(remaining)},
-            boundary,
+        long_term = self._rank_memory(
+            query,
+            query_terms,
+            scope,
+            [(LONG_TERM_MEMORY, None)],
+        )[:MAX_ORGANIZATION_CANDIDATES]
+        temporary_location = (
+            temporary_locations[0]
+            if temporary_locations
+            else self._current_temporary_location()
         )
-        try:
-            response = self.send_text_model_messages(
-                build_memory_organization_messages(query, remaining)
-            )
-            operations = read_memory_operations(response, remaining)
-        except Exception as error:
-            self._record_organization_event(
-                "memory.organization.failed",
-                {
-                    "error_type": type(error).__name__,
-                    "message": str(error),
-                },
-                boundary,
-            )
-            raise
-        self._apply_memory_operations(operations, remaining)
-        self._record_organization_event(
-            "memory.organization.completed",
-            {
-                "operation_count": len(operations),
-                "operations": [operation.operation for operation in operations],
-            },
-            boundary,
+        temporary_context = self._temporary_context_for_long_term_organization(
+            query,
+            query_terms,
+            scope,
+            temporary_location,
+        )
+        self.organizer.organize_during_recall(
+            query,
+            long_term,
+            target_memory_type=LONG_TERM_MEMORY,
+            temporary_context=temporary_context,
         )
 
-    def _merge_duplicate_candidates(self, candidates: list[MemoryItem]) -> None:
-        groups: dict[tuple[str, str | None, str, str], list[MemoryItem]] = {}
-        for item in candidates:
-            key = (*memory_boundary(item), normalize_memory_text(item.text))
-            groups.setdefault(key, []).append(item)
-        for sources in groups.values():
-            if len(sources) < 2:
-                continue
-            replacement = self._create_replacement_item(sources[0].text, sources[0])
-            self._merge_memory_items(
-                sources,
-                replacement,
-                "duplicate found during recall",
-            )
-
-    def _merge_memory_items(
+    def _temporary_context_for_long_term_organization(
         self,
-        sources: list[MemoryItem],
-        replacement: MemoryItem,
-        reason: str,
-    ) -> None:
-        source_ids = [item.item_id for item in sources]
-        self._execute_memory_change(
-            "merge",
-            (ActionEffect.UPDATE, ActionEffect.DELETE),
-            source_ids,
-            replacement,
-            lambda: self.store.memory.merge_memory_items(
-                source_ids,
-                asdict(replacement),
-                reason,
-            ),
-        )
+        query: str,
+        query_terms: Counter[str],
+        scope: str,
+        location: MemoryLocation | None,
+    ) -> list[MemoryItem]:
+        if location is None:
+            return []
+        return self._rank_memory(
+            query,
+            query_terms,
+            scope,
+            [location],
+        )[:MAX_ORGANIZATION_CANDIDATES]
 
-    def _apply_memory_operations(
-        self,
-        operations: list[MemoryOperation],
-        candidates: list[MemoryItem],
-    ) -> None:
-        by_id = {item.item_id: item for item in candidates}
-        for operation in operations:
-            source_ids = list(operation.source_item_ids)
-            source = by_id[source_ids[0]]
-            if operation.operation in {"merge", "supersede"}:
-                replacement = self._create_replacement_item(operation.text, source)
-                write = (
-                    self.store.memory.merge_memory_items
-                    if operation.operation == "merge"
-                    else self.store.memory.supersede_memory_items
-                )
-                self._execute_memory_change(
-                    operation.operation,
-                    (ActionEffect.UPDATE, ActionEffect.DELETE),
-                    source_ids,
-                    replacement,
-                    lambda write=write, source_ids=source_ids,
-                    replacement=replacement, operation=operation: write(
-                        source_ids,
-                        asdict(replacement),
-                        operation.reason,
-                    ),
-                )
-            elif operation.operation == "archive":
-                self._execute_memory_change(
-                    "archive",
-                    (ActionEffect.UPDATE,),
-                    source_ids,
-                    source,
-                    lambda source_ids=source_ids, operation=operation, source=source: (
-                        self.store.memory.archive_memory_items(
-                            source_ids,
-                            operation.reason,
-                            memory_type=source.memory_type,
-                            conversation_id=source.conversation_id,
-                        )
-                    ),
-                )
-            else:
-                self._execute_memory_change(
-                    "forget",
-                    (ActionEffect.DELETE,),
-                    source_ids,
-                    source,
-                    lambda source_ids=source_ids, operation=operation, source=source: (
-                        self.store.memory.forget_memory_items(
-                            source_ids,
-                            operation.reason,
-                            memory_type=source.memory_type,
-                            conversation_id=source.conversation_id,
-                        )
-                    ),
-                )
-
-    def _create_replacement_item(
-        self,
-        text: str,
-        source: MemoryItem,
-    ) -> MemoryItem:
-        return MemoryItem(
-            item_id=f"memory-{uuid4().hex}",
-            text=clean_memory_text(text),
-            scope=source.scope,
-            source_run_id=self._source_run_id(""),
-            created_at=utc_now_text(),
-            memory_type=source.memory_type,
-            conversation_id=source.conversation_id,
-        )
+    def _current_temporary_location(self) -> MemoryLocation | None:
+        conversation_id = self._available_conversation_id(None)
+        if conversation_id is None:
+            return None
+        return TEMPORARY_MEMORY, conversation_id
 
     def _execute_memory_change(
         self,
@@ -446,19 +366,6 @@ class MiniMemory:
                 argument_names=("operation", "item_ids", "memory_type"),
             ),
             change,
-        )
-
-    def _record_organization_event(
-        self,
-        event_type: str,
-        data: dict[str, object],
-        item: MemoryItem,
-    ) -> None:
-        self.store.memory.record_memory_organization(
-            event_type,
-            data,
-            memory_type=item.memory_type,
-            conversation_id=item.conversation_id,
         )
 
     def _items_for_prompt(

@@ -82,13 +82,6 @@ def memory_item_from_dict(item: dict[str, object]) -> MemoryItem:
     )
 
 
-def group_memory_by_boundary(items: list[MemoryItem]) -> list[list[MemoryItem]]:
-    groups: dict[tuple[str, str | None, str], list[MemoryItem]] = {}
-    for item in items:
-        groups.setdefault(memory_boundary(item), []).append(item)
-    return list(groups.values())
-
-
 def memory_boundary(item: MemoryItem) -> tuple[str, str | None, str]:
     return item.memory_type, item.conversation_id, item.scope
 

@@ -1,8 +1,8 @@
 schema_version = 3
 name = "default"
 type = "memory"
-description = "Built-in temporary and long-term memory behavior"
-version = "0.0.63"
+description = "Built-in temporary, long-term, and explicit promotion behavior"
+version = "0.0.64"
 triggers = []
 
 [configuration]

@@ -1,17 +1,21 @@
 import json
 import tempfile
 import unittest
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import asdict
 from pathlib import Path
+from threading import Barrier
 
 from core.agent import Agent
 from core.config import AgentConfig
 from core.actions import ActionRequest
 from core.identity import RunIdentity
-from core.storage import StorageEventQuery
-from core.state.store import create_local_runtime_store
+from core.storage import JsonlStorage, StorageEventQuery
+from core.state.store import RuntimeStore, create_local_runtime_store
 from core.provider.chat import MockProvider
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.kinds.memory import (
+    MemoryItem,
     MemoryTextModel,
     MiniMemory,
     create_memory_from_skill_disclosure,
@@ -211,6 +215,193 @@ class MiniMemoryTests(unittest.TestCase):
             self.assertEqual(1, len(recalled))
             self.assertEqual("temporary", recalled[0].memory_type)
             self.assertEqual("conversation-a", recalled[0].conversation_id)
+
+    def test_long_term_organization_can_promote_current_temporary_memory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            store, memory, source, payloads, action_requests = (
+                _create_memory_promotion_scenario(Path(tmp))
+            )
+
+            recalled = memory.recall_memory(
+                "concise answers",
+                memory_type="long_term",
+            )
+
+            self.assertEqual(1, len(payloads))
+            self.assertEqual([], payloads[0]["candidates"])
+            self.assertEqual(
+                [source.item_id],
+                payloads[0]["promotable_temporary_item_ids"],
+            )
+            self.assertEqual(
+                [source.item_id],
+                [item["item_id"] for item in payloads[0]["temporary_context"]],
+            )
+            self.assertEqual(
+                ["User habitually prefers concise answers."],
+                [item.text for item in recalled],
+            )
+            self.assertEqual("long_term", recalled[0].memory_type)
+            self.assertIsNone(recalled[0].conversation_id)
+            self.assertEqual(
+                [source.item_id],
+                [
+                    item.item_id
+                    for item in memory.list_memory_items(
+                        memory_type="temporary",
+                    )
+                ],
+            )
+            promotion_actions = [
+                request
+                for request in action_requests
+                if request.resource.startswith("memory:long_term:shared:")
+            ]
+            self.assertEqual(1, len(promotion_actions))
+            self.assertEqual(("create",), tuple(promotion_actions[0].effects))
+
+            events = store.backend.read_events(
+                StorageEventQuery(
+                    user_id=store.user_id,
+                    agent_name=store.agent_name,
+                    stream_type="memory",
+                    stream_id="long_term",
+                )
+            )
+            promoted = next(
+                event for event in events if event.event_type == "memory.promoted"
+            )
+            self.assertEqual([source.item_id], promoted.data["source_item_ids"])
+            self.assertEqual(
+                "conversation-a",
+                promoted.data["source_conversation_id"],
+            )
+
+    def test_promotion_history_prevents_repromoting_a_temporary_source(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            _, memory, source, payloads, _ = _create_memory_promotion_scenario(
+                Path(tmp)
+            )
+            recalled = memory.recall_memory(
+                "concise answers",
+                memory_type="long_term",
+            )
+            memory.forget_memory(recalled[0].item_id)
+            memory.recall_memory(
+                "concise answers",
+                memory_type="long_term",
+            )
+            self.assertEqual(1, len(payloads))
+            self.assertEqual(
+                [],
+                memory.list_memory_items(memory_type="long_term"),
+            )
+            self.assertEqual(
+                [source.item_id],
+                [
+                    item.item_id
+                    for item in memory.list_memory_items(
+                        memory_type="temporary",
+                    )
+                ],
+            )
+
+    def test_concurrent_identical_promotions_append_one_long_term_event(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            backend = _PromotionBarrierStorage(root)
+            store = RuntimeStore(backend, root, "local", "super-agent")
+            source = MiniMemory(store).add_temporary_memory(
+                "The user repeatedly asks for concise answers.",
+                conversation_id="conversation-a",
+            )
+            replacement = MemoryItem(
+                item_id=f"memory-{'a' * 32}",
+                text="User habitually prefers concise answers.",
+                scope=source.scope,
+                source_run_id="run-promotion",
+                created_at="2026-07-28T00:00:00Z",
+                memory_type="long_term",
+                conversation_id=None,
+            )
+
+            def promote() -> None:
+                store.memory.promote_temporary_memory_items_to_long_term(
+                    [source.item_id],
+                    "conversation-a",
+                    asdict(replacement),
+                    "stable response-style preference",
+                )
+
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                futures = [executor.submit(promote) for _ in range(2)]
+                for future in futures:
+                    future.result(timeout=10)
+
+            promotion_events = backend.read_events(
+                StorageEventQuery(
+                    user_id=store.user_id,
+                    agent_name=store.agent_name,
+                    stream_type="memory",
+                    stream_id="long_term",
+                    event_type="memory.promoted",
+                )
+            )
+            self.assertEqual(1, len(promotion_events))
+            self.assertEqual(
+                [replacement],
+                MiniMemory(store).list_memory_items(memory_type="long_term"),
+            )
+            self.assertEqual(
+                [source],
+                MiniMemory(store).list_memory_items(
+                    memory_type="temporary",
+                    conversation_id="conversation-a",
+                ),
+            )
+
+    def test_temporary_organization_cannot_promote_memory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            store = create_local_runtime_store(Path(tmp))
+            seed = MiniMemory(store)
+            first = seed.add_temporary_memory(
+                "Concise answer preference one.",
+                conversation_id="conversation-a",
+            )
+            seed.add_temporary_memory(
+                "Concise answer preference two.",
+                conversation_id="conversation-a",
+            )
+
+            def organize(messages):
+                return json.dumps(
+                    {
+                        "operations": [
+                            {
+                                "type": "promote",
+                                "source_item_ids": [first.item_id],
+                                "text": "User prefers concise answers.",
+                                "reason": "invalid temporary-side promotion",
+                            }
+                        ]
+                    }
+                )
+
+            memory = _runtime_memory(store, "conversation-a", organize)
+
+            with self.assertRaisesRegex(
+                ValueError,
+                "unknown temporary context|only long-term organization",
+            ):
+                memory.recall_memory(
+                    "concise preference",
+                    memory_type="temporary",
+                )
+
+            self.assertEqual(
+                [],
+                memory.list_memory_items(memory_type="long_term"),
+            )
 
     def test_recall_filters_scope_and_ranks_lexical_matches(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -528,10 +719,63 @@ def _memory(root: Path) -> MiniMemory:
     return MiniMemory(create_local_runtime_store(root))
 
 
+def _create_memory_promotion_scenario(
+    root: Path,
+) -> tuple[
+    RuntimeStore,
+    MiniMemory,
+    MemoryItem,
+    list[dict[str, object]],
+    list[ActionRequest],
+]:
+    store = create_local_runtime_store(root)
+    seed = MiniMemory(store)
+    source = seed.add_temporary_memory(
+        "The user repeatedly asks for concise answers.",
+        conversation_id="conversation-a",
+    )
+    seed.add_temporary_memory(
+        "The user asks for detailed answers in this other task.",
+        conversation_id="conversation-b",
+    )
+    payloads: list[dict[str, object]] = []
+    action_requests: list[ActionRequest] = []
+
+    def organize(messages):
+        payload = json.loads(messages[1]["content"])
+        payloads.append(payload)
+        source_id = payload["promotable_temporary_item_ids"][0]
+        return json.dumps(
+            {
+                "operations": [
+                    {
+                        "type": "promote",
+                        "source_item_ids": [source_id],
+                        "text": "User habitually prefers concise answers.",
+                        "reason": "stable response-style preference",
+                    }
+                ]
+            }
+        )
+
+    def execute(request, action):
+        action_requests.append(request)
+        return action()
+
+    memory = _runtime_memory(
+        store,
+        "conversation-a",
+        organize,
+        execute=execute,
+    )
+    return store, memory, source, payloads, action_requests
+
+
 def _runtime_memory(
     store,
     conversation_id: str,
     organize: MemoryTextModel | None = None,
+    execute=None,
 ) -> MiniMemory:
     identity = RunIdentity.create(
         store.user_id,
@@ -542,7 +786,7 @@ def _runtime_memory(
         store,
         identity,
         send_text_model_messages=organize,
-        execute_action=lambda request, action: action(),
+        execute_action=execute or (lambda request, action: action()),
     )
 
 
@@ -558,3 +802,22 @@ class _SequenceProvider(MockProvider):
         if not self.responses:
             raise AssertionError("unexpected provider call")
         return self.responses.pop(0)
+
+
+class _PromotionBarrierStorage:
+    name = "jsonl"
+
+    def __init__(self, root: Path) -> None:
+        self._storage = JsonlStorage(root)
+        self._promotion_barrier = Barrier(2)
+
+    def append_event(self, **arguments):
+        if arguments.get("event_type") == "memory.promoted":
+            self._promotion_barrier.wait(timeout=5)
+        return self._storage.append_event(**arguments)
+
+    def read_events(self, query):
+        return self._storage.read_events(query)
+
+    def delete_events(self, query):
+        return self._storage.delete_events(query)

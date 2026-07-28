@@ -64,14 +64,14 @@ export function MemoryConfiguration(props: MemoryConfigurationProps) {
           <h2>活动记忆</h2>
           <p>{props.memory.length} 条当前可管理内容</p>
         </div>
-        <HelpTooltip label="临时记忆与会话严格绑定，长期记忆跨会话使用；回忆整理不会跨越这两类边界。" />
+        <HelpTooltip label="临时记忆与会话严格绑定。整理长期记忆时可以查看当前会话的临时内容，并通过显式操作提升其中的抽象信息。" />
       </div>
       <div className="flex flex-col gap-10">
         <MemoryGroup
           memoryType="temporary"
           title="临时记忆"
           description={`${temporary.length} 条，仅用于各自所属的当前会话`}
-          help="用于任务细节和当前上下文。其他会话无法读取、整理或遗忘这些内容，因此不会污染长期记忆。"
+          help="用于任务细节和当前上下文。其他会话无法访问；长期整理器可以读取当前会话内容并显式提升抽象信息，原临时条目仍会保留。"
           items={temporary}
           conversations={conversations}
           busy={props.busy}
@@ -81,7 +81,7 @@ export function MemoryConfiguration(props: MemoryConfigurationProps) {
           memoryType="long_term"
           title="长期记忆"
           description={`${longTerm.length} 条，可在后续会话中回忆`}
-          help="只应保存抽象、关键、重要、稳定或习惯性的内容。回忆时可显式合并、替换、归档或遗忘。"
+          help="只应保存抽象、关键、重要、稳定或习惯性的内容。整理时可查看当前会话的临时记忆，并显式提升、合并、替换、归档或遗忘。"
           items={longTerm}
           conversations={conversations}
           busy={props.busy}

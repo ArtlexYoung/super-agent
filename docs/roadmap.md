@@ -51,7 +51,18 @@ Status: implemented.
 - Show both types and temporary conversation ownership in CLI, Web, events, and tests.
 - Reject untyped memory streams instead of adding migration guesses or hidden fallback.
 
-## v0.0.64: Request Identity Adapter
+## v0.0.64: Explicit Memory Promotion
+
+Status: implemented.
+
+- Let long-term organization inspect relevant temporary memory from the current
+  conversation without exposing another conversation.
+- Add a validated `promote` operation that creates an abstract long-term item while
+  preserving the temporary source.
+- Record source item IDs and the source conversation in the append-only long-term event.
+- Prevent repeat promotion and keep every other organization operation inside one boundary.
+
+## v0.0.65: Request Identity Adapter
 
 Status: planned.
 
@@ -61,7 +72,7 @@ Status: planned.
 - Add cross-user attack tests for every management and AG-UI route.
 - Preserve the local single-user server with no added dependency or required setup.
 
-## v0.0.65: Explicit Approval Continuation
+## v0.0.66: Explicit Approval Continuation
 
 Status: planned.
 
@@ -71,7 +82,7 @@ Status: planned.
 - Record request, decision, resumption, completion, and expiry in the canonical trace.
 - Keep unattended execution opt-in through code-only action rules.
 
-## v0.0.66: Storage at Service Scale
+## v0.0.67: Storage at Service Scale
 
 Status: planned.
 
@@ -81,7 +92,7 @@ Status: planned.
 - Publish deterministic copy, integrity, and recovery checks.
 - Keep JSONL clean and dependency-free as the default path.
 
-## v0.0.67: Model and Task Learning Proof
+## v0.0.68: Model and Task Learning Proof
 
 Status: planned.
 
@@ -92,7 +103,7 @@ Status: planned.
 - Measure routing quality separately for each user, Agent, and task purpose.
 - Expose compact evidence explanations through CLI, Web, and AG-UI custom events.
 
-## v0.0.68: Skill Evolution Proof
+## v0.0.69: Skill Evolution Proof
 
 Status: planned.
 

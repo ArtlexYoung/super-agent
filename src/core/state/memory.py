@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Iterable
-from typing import Callable
+from typing import Callable, Protocol
 
 from core.state.views import usage_habits_from_events
 from core.storage import StorageEvent
@@ -20,10 +21,20 @@ MEMORY_ORGANIZATION_EVENTS = frozenset(
     }
 )
 
-AppendScopedEvent = Callable[
-    [str, str, str, dict[str, object]],
-    StorageEvent,
-]
+
+class AppendScopedEvent(Protocol):
+    def __call__(
+        self,
+        stream_type: str,
+        stream_id: str,
+        event_type: str,
+        data: dict[str, object],
+        *,
+        event_id: str | None = None,
+    ) -> StorageEvent:
+        ...
+
+
 ReadScopedEvents = Callable[[str, str | None], list[StorageEvent]]
 
 
@@ -34,9 +45,11 @@ class RuntimeMemoryStore:
         self,
         append_scoped_event: AppendScopedEvent,
         read_scoped_events: ReadScopedEvents,
+        event_namespace: str,
     ) -> None:
         self._append_scoped_event = append_scoped_event
         self._read_scoped_events = read_scoped_events
+        self._event_namespace = event_namespace
         self._known_streams_checked = False
 
     def add_memory_item(self, item: dict[str, object]) -> None:
@@ -122,6 +135,87 @@ class RuntimeMemoryStore:
             replacement,
             reason,
         )
+
+    def promote_temporary_memory_items_to_long_term(
+        self,
+        source_item_ids: list[str],
+        source_conversation_id: str,
+        replacement: dict[str, object],
+        reason: str = "",
+    ) -> None:
+        self._require_known_memory_streams()
+        conversation_id = _required_conversation_id(source_conversation_id)
+        source_stream = memory_stream_id(TEMPORARY_MEMORY, conversation_id)
+        selected = sorted(
+            self._require_active_memory_items(source_item_ids, source_stream)
+        )
+        source_items = _replay_memory(
+            self._read_scoped_events("memory", source_stream),
+            source_stream,
+        )
+        validated = _validate_memory_item(replacement)
+        if _memory_stream_id_for_item(validated) != LONG_TERM_MEMORY:
+            raise ValueError("promoted memory must be long-term memory")
+        if {source_items[item_id]["scope"] for item_id in selected} != {
+            validated["scope"]
+        }:
+            raise ValueError("promoted memory must preserve the temporary memory scope")
+        already_promoted = self.find_already_promoted_temporary_item_ids(
+            selected,
+            conversation_id,
+        )
+        if already_promoted:
+            names = ", ".join(sorted(already_promoted))
+            raise ValueError(f"temporary memory was already promoted: {names}")
+        event_data = {
+            "source_item_ids": selected,
+            "source_conversation_id": conversation_id,
+            "item": validated,
+            "reason": reason.strip(),
+        }
+        event_id = _promotion_event_id(
+            self._event_namespace,
+            conversation_id,
+            selected,
+        )
+        event = self._append_scoped_event(
+            "memory",
+            LONG_TERM_MEMORY,
+            "memory.promoted",
+            event_data,
+            event_id=event_id,
+        )
+        if (
+            event.event_id != event_id
+            or event.agent_name != self._event_namespace
+            or event.stream_id != LONG_TERM_MEMORY
+            or event.event_type != "memory.promoted"
+            or event.data != event_data
+        ):
+            raise ValueError(
+                "conflicting long-term promotion for temporary memory sources"
+            )
+
+    def find_already_promoted_temporary_item_ids(
+        self,
+        item_ids: list[str],
+        conversation_id: str,
+    ) -> set[str]:
+        self._require_known_memory_streams()
+        selected = set(item_ids)
+        if not selected:
+            return set()
+        source_conversation_id = _required_conversation_id(conversation_id)
+        promoted: set[str] = set()
+        for event in self._read_scoped_events("memory", LONG_TERM_MEMORY):
+            if event.event_type != "memory.promoted":
+                continue
+            source_ids, recorded_conversation_id, _ = _validate_memory_promotion(
+                event.data
+            )
+            if recorded_conversation_id == source_conversation_id:
+                promoted.update(selected.intersection(source_ids))
+        return promoted
 
     def archive_memory_items(
         self,
@@ -259,6 +353,10 @@ def _replay_memory(
             item = _validate_memory_item(event.data.get("item"))
             _require_item_stream(item, stream_id)
             active[str(item["item_id"])] = item
+        elif event.event_type == "memory.promoted":
+            _, _, item = _validate_memory_promotion(event.data)
+            _require_item_stream(item, stream_id)
+            active[str(item["item_id"])] = item
         elif event.event_type == "memory.forgotten":
             _remove_memory_items(active, event.data.get("item_ids", []))
         elif event.event_type in {"memory.merged", "memory.superseded"}:
@@ -297,6 +395,35 @@ def _validate_memory_item(value: object) -> dict[str, object]:
         raise ValueError("stored memory_type must use its canonical value")
     _memory_stream_id_for_item(item)
     return item
+
+
+def _validate_memory_promotion(
+    value: object,
+) -> tuple[list[str], str, dict[str, object]]:
+    if not isinstance(value, dict):
+        raise ValueError("stored memory promotion must be an object")
+    expected_fields = {
+        "source_item_ids",
+        "source_conversation_id",
+        "item",
+        "reason",
+    }
+    if set(value) != expected_fields:
+        raise ValueError("stored memory promotion fields do not match schema")
+    source_ids = _string_list(value["source_item_ids"])
+    if not source_ids:
+        raise ValueError("stored memory promotion requires source item IDs")
+    conversation_id = _required_conversation_id(
+        value.get("source_conversation_id")
+        if isinstance(value.get("source_conversation_id"), str)
+        else None
+    )
+    if not isinstance(value.get("reason"), str):
+        raise ValueError("stored memory promotion reason must be a string")
+    item = _validate_memory_item(value.get("item"))
+    if _memory_stream_id_for_item(item) != LONG_TERM_MEMORY:
+        raise ValueError("stored promoted memory must be long-term memory")
+    return source_ids, conversation_id, item
 
 
 def _validate_memory_stream_id(stream_id: str) -> None:
@@ -347,3 +474,14 @@ def _sort_memory_items(
         key=lambda item: (str(item["created_at"]), str(item["item_id"])),
         reverse=True,
     )
+
+
+def _promotion_event_id(
+    namespace: str,
+    conversation_id: str,
+    source_item_ids: list[str],
+) -> str:
+    value = "\0".join(
+        [namespace, conversation_id, *sorted(source_item_ids)]
+    ).encode("utf-8")
+    return f"memory-promotion-{hashlib.sha256(value).hexdigest()}"

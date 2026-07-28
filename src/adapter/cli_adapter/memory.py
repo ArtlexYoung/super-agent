@@ -140,7 +140,12 @@ def _recall_memory(args: argparse.Namespace) -> int:
     items = _run_memory_action(
         Path(args.config),
         args.user_id,
-        (ActionEffect.READ, ActionEffect.UPDATE, ActionEffect.DELETE),
+        (
+            ActionEffect.READ,
+            ActionEffect.CREATE,
+            ActionEffect.UPDATE,
+            ActionEffect.DELETE,
+        ),
         _memory_resource(memory_type, args.conversation_id),
         lambda memory: memory.recall_memory(
             args.query,

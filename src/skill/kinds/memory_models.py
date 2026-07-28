@@ -3,6 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Callable
+
+from core.provider.chat import Message
+
+
+MemoryTextModel = Callable[[list[Message]], str]
 
 
 @dataclass(frozen=True)

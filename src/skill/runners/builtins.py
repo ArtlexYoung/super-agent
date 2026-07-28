@@ -70,7 +70,7 @@ class McpSkillRunner:
 
 class MemorySkillRunner:
     name = "event-memory"
-    version = "3"
+    version = "4"
     skill_type = "memory"
     adds_model_context = False
 
@@ -169,7 +169,7 @@ def _create_memory_tools(memory: MiniMemory) -> tuple[SkillTool, ...]:
         ),
         SkillTool(
             "add_temporary_memory",
-            "Store a detail only for the current conversation. It never enters long-term memory.",
+            "Store a detail for this conversation; long-term organization may later promote an abstraction.",
             {"text": {"type": "string"}, "scope": scope},
             lambda arguments: _add_temporary_memory(memory, arguments),
             action=SkillAction(
@@ -193,7 +193,7 @@ def _create_memory_tools(memory: MiniMemory) -> tuple[SkillTool, ...]:
         ),
         SkillTool(
             "recall_memory",
-            "Recall relevant allowed memory while organizing duplicates and stale items within each boundary.",
+            "Recall allowed memory; long-term organization can inspect and explicitly promote current temporary memory.",
             {
                 "query": {"type": "string"},
                 "scope": scope,
@@ -202,7 +202,12 @@ def _create_memory_tools(memory: MiniMemory) -> tuple[SkillTool, ...]:
             },
             lambda arguments: _recall_memory(memory, arguments),
             action=SkillAction(
-                (ActionEffect.READ, ActionEffect.UPDATE, ActionEffect.DELETE),
+                (
+                    ActionEffect.READ,
+                    ActionEffect.CREATE,
+                    ActionEffect.UPDATE,
+                    ActionEffect.DELETE,
+                ),
                 "memory:active",
                 "scope",
             ),

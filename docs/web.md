@@ -38,6 +38,8 @@ by their actual `type`, including custom types.
 Memory management separates temporary and long-term items. Temporary rows show their
 conversation identity; long-term rows remain available across conversations. Forgetting
 either type is an explicit management action and does not erase the append-only history.
+Long-term organization may explicitly promote an abstraction from current-conversation
+temporary memory; the original temporary row remains in that conversation.
 
 The browser stores no raw Provider secret. Model configuration records an environment
 variable name such as `OPENAI_API_KEY`; only the server process resolves its value.

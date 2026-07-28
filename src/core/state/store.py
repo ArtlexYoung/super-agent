@@ -63,6 +63,7 @@ class RuntimeStore:
         self.memory = RuntimeMemoryStore(
             self._append_scoped_event,
             self._read_storage_events,
+            self.agent_name,
         )
 
     def create_conversation(
@@ -412,6 +413,8 @@ class RuntimeStore:
         stream_id: str,
         event_type: str,
         data: dict[str, object],
+        *,
+        event_id: str | None = None,
     ) -> StorageEvent:
         return self.backend.append_event(
             user_id=self.user_id,
@@ -420,6 +423,7 @@ class RuntimeStore:
             stream_id=stream_id,
             event_type=event_type,
             data=data,
+            event_id=event_id,
         )
 
     def _read_storage_events(

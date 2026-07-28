@@ -120,15 +120,19 @@ Each item has one explicit `memory_type`:
   stable, or habitual knowledge that remains useful in later conversations.
 
 The model receives two unambiguous write tools: `add_temporary_memory` and
-`add_long_term_memory`. There is no generic model-side write default and no automatic
-promotion from temporary to long-term memory. Python callers use the methods with the
-same names; the CLI defaults manual additions to `long-term` for convenience.
+`add_long_term_memory`. There is no generic model-side write default. Python callers use
+the methods with the same names; the CLI defaults manual additions to `long-term` for
+convenience.
 
-Recall ranks relevant items and organizes each type and conversation independently. It
-merges exact duplicates deterministically, then can ask the selected model for validated
-merge, supersede, archive, and forget operations. Replacement items must preserve the
-source type, conversation, and scope. Every mutation uses the same explicit action
-boundary as other Runtime changes.
+Recall first organizes temporary candidates inside the current conversation. Long-term
+organization can then inspect the relevant temporary items as read-only context and return
+a validated `promote` operation. Promotion creates an abstract long-term item while leaving
+its temporary sources unchanged. The long-term event records the source item IDs and source
+conversation, and previously promoted source IDs cannot be promoted again.
+
+Other merge, supersede, archive, and forget operations remain inside one type, conversation,
+and scope. Replacement items preserve that boundary. Every mutation uses the same explicit
+action boundary as other Runtime changes.
 
 Archived and forgotten items disappear from the active view while canonical events remain
 append-only. Invalid or failed model organization is an explicit recall failure; Runtime
