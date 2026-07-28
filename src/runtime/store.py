@@ -14,7 +14,7 @@ from runtime.evaluation import (
     evaluation_record_to_dict,
 )
 from runtime.disclosure_store import RuntimeDisclosureStore
-from runtime.identity import RunIdentity
+from runtime.identity import RunIdentity, validate_agent_name, validate_user_id
 from runtime.memory_store import RuntimeMemoryStore
 from runtime.models import Conversation, ConversationMessage, RunEvent, RunSnapshot
 from runtime.storage import StorageBackend, StorageEvent, StorageEventQuery
@@ -44,11 +44,9 @@ class RuntimeStore:
     ) -> None:
         self.backend = backend
         self.local_root = local_root.expanduser().absolute()
-        self.user_id = user_id.strip()
-        self.agent_name = agent_name.strip()
+        self.user_id = validate_user_id(user_id)
+        self.agent_name = validate_agent_name(agent_name)
         self.event_listener = event_listener
-        if not self.user_id or not self.agent_name:
-            raise ValueError("runtime store user_id and agent_name cannot be empty")
         self.private_root = (
             self.local_root
             / "users"

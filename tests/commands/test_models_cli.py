@@ -74,8 +74,36 @@ class ModelsCliTests(unittest.TestCase):
             self.assertEqual("OPENAI_API_KEY", saved["model"]["api_key_env"])
             self.assertNotIn("secret-value", text)
 
+    def test_model_commands_read_only_the_selected_user_overlay(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config_path = root / "agent.toml"
+            main(["init", "--path", tmp])
 
-def _save_model(config_path: Path, request: dict[str, object]) -> dict[str, object]:
+            _save_model(
+                config_path,
+                _model_request("alice-only", default=True),
+                user_id="alice",
+            )
+            alice_names = {
+                item["name"]
+                for item in _list_models(config_path, user_id="alice")["models"]
+            }
+            bob_names = {
+                item["name"]
+                for item in _list_models(config_path, user_id="bob")["models"]
+            }
+
+            self.assertIn("alice-only", alice_names)
+            self.assertNotIn("alice-only", bob_names)
+
+
+def _save_model(
+    config_path: Path,
+    request: dict[str, object],
+    *,
+    user_id: str = "local",
+) -> dict[str, object]:
     output = StringIO()
     with patch("sys.stdin", StringIO(json.dumps(request))), redirect_stdout(output):
         code = main(
@@ -84,6 +112,8 @@ def _save_model(config_path: Path, request: dict[str, object]) -> dict[str, obje
                 "save",
                 "--config",
                 str(config_path),
+                "--user-id",
+                user_id,
                 "--request-stdin",
                 "--output",
                 "json",
@@ -94,7 +124,11 @@ def _save_model(config_path: Path, request: dict[str, object]) -> dict[str, obje
     return json.loads(output.getvalue())
 
 
-def _list_models(config_path: Path) -> dict[str, object]:
+def _list_models(
+    config_path: Path,
+    *,
+    user_id: str = "local",
+) -> dict[str, object]:
     output = StringIO()
     with redirect_stdout(output):
         code = main(
@@ -103,6 +137,8 @@ def _list_models(config_path: Path) -> dict[str, object]:
                 "list",
                 "--config",
                 str(config_path),
+                "--user-id",
+                user_id,
                 "--output",
                 "json",
             ]

@@ -8,13 +8,15 @@ from pathlib import Path
 from time import perf_counter
 from uuid import uuid4
 
+from runtime.evolution.state import list_skill_evolutions, start_manual_skill_evolution
 from runtime.storage.contracts import StorageBackend, StorageEventQuery
 from runtime.store import RuntimeStore
 from skill.kinds.memory import MiniMemory
+from skill.revision import SkillRevision
 
 
 STORAGE_BACKEND_NAMES = ("jsonl", "sqlite", "mysql", "postgresql")
-STORAGE_ISOLATION_SCHEMA_VERSION = 1
+STORAGE_ISOLATION_SCHEMA_VERSION = 2
 DEFAULT_REMOTE_URL_ENVIRONMENTS = {
     "mysql": "SUPER_AGENT_TEST_MYSQL_URL",
     "postgresql": "SUPER_AGENT_TEST_POSTGRESQL_URL",
@@ -50,7 +52,7 @@ def verify_multiuser_isolation_across_storage_backends(
     remote_url_environments: dict[str, str] | None = None,
     backend_names: list[str] | None = None,
 ) -> StorageIsolationReport:
-    """Verify conversations, memory, habits, users, and Agents stay isolated."""
+    """Verify all mutable Runtime domains stay isolated by user and Agent."""
     selected_names = list(
         STORAGE_BACKEND_NAMES if backend_names is None else backend_names
     )
@@ -209,6 +211,11 @@ def _run_multiuser_isolation_checks(
                 _require_memory_isolation(store_b, "bob"),
                 _require_habit_isolation(store_a, "alice-skill"),
                 _require_habit_isolation(store_b, "bob-skill"),
+                _require_evolution_isolation(store_a, "alice-skill"),
+                _require_evolution_isolation(store_b, "bob-skill"),
+                _require_disclosure_isolation(store_a, "alice-skill"),
+                _require_disclosure_isolation(store_b, "bob-skill"),
+                _require_private_roots_differ(store_a, store_b),
                 _require_agent_isolation(store_a, subagent_store),
             ]
         )
@@ -231,6 +238,20 @@ def _write_isolated_domain_state(store: RuntimeStore, marker: str) -> None:
     )
     MiniMemory(store).add_memory_item(f"{marker}-only")
     store.memory.record_usage_habits("direct", [f"{marker}-skill"])
+    start_manual_skill_evolution(
+        store,
+        f"candidate-{marker}",
+        None,
+        _verification_skill_revision(f"{marker}-skill", marker),
+        f"improve {marker}",
+    )
+    store.disclosure.write_text(
+        None,
+        f"prompt:{marker}-skill",
+        "instructions",
+        store.disclosure.cache_root / "proof.txt",
+        f"{marker}-only",
+    )
 
 
 def _require_conversation_isolation(store: RuntimeStore, marker: str) -> str:
@@ -253,6 +274,30 @@ def _require_habit_isolation(store: RuntimeStore, skill_name: str) -> str:
     return "skill_usage_user_isolation"
 
 
+def _require_evolution_isolation(store: RuntimeStore, skill_name: str) -> str:
+    states = list_skill_evolutions(store)
+    if [state.skill_key for state in states] != [f"prompt:{skill_name}"]:
+        raise AssertionError("Skill evolution user isolation failed")
+    return "skill_evolution_user_isolation"
+
+
+def _require_disclosure_isolation(store: RuntimeStore, skill_name: str) -> str:
+    path = store.disclosure.cache_root / "proof.txt"
+    marker = skill_name.removesuffix("-skill")
+    if store.disclosure.read_content(path) != f"{marker}-only":
+        raise AssertionError("Skill disclosure cache user isolation failed")
+    history = store.disclosure.read_history()
+    if [item["skill_key"] for item in history] != [f"prompt:{skill_name}"]:
+        raise AssertionError("Skill disclosure history user isolation failed")
+    return "skill_disclosure_user_isolation"
+
+
+def _require_private_roots_differ(first: RuntimeStore, second: RuntimeStore) -> str:
+    if first.private_root == second.private_root:
+        raise AssertionError("Runtime private roots are not isolated")
+    return "private_artifact_user_isolation"
+
+
 def _require_agent_isolation(
     main_store: RuntimeStore,
     subagent_store: RuntimeStore,
@@ -264,6 +309,22 @@ def _require_agent_isolation(
     if "subagent-only" in main_texts or subagent_texts != ["subagent-only"]:
         raise AssertionError("Agent storage isolation failed")
     return "agent_scope_isolation"
+
+
+def _verification_skill_revision(name: str, marker: str) -> SkillRevision:
+    digest_character = "a" if marker == "alice" else "b"
+    return SkillRevision(
+        key=f"prompt:{name}",
+        capability="prompt",
+        name=name,
+        version="0.1.0",
+        content_sha256=digest_character * 64,
+        function_group=name,
+        agent_created=True,
+        agent_can_update=True,
+        evolution_supported=True,
+        freshness=70.0,
+    )
 
 
 def _delete_verification_events(

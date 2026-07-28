@@ -319,6 +319,18 @@ super-agent run --user-id alice --conversation-id project-a "继续任务"
 super-agent conversations list --user-id alice
 ```
 
+每次运行会一起解析该用户的 Skill 索引、模型列表、路由证据、Provider 缓存和密钥。多用户服务可以通过代码提供密钥，无需把值写入 TOML 或运行状态：
+
+```python
+secrets = {
+    ("alice", "OPENAI_API_KEY"): "...",
+    ("bob", "OPENAI_API_KEY"): "...",
+}
+agent = Agent(secret_lookup=lambda user_id, name: secrets.get((user_id, name)))
+```
+
+回调只会收到校验后的用户 ID 和请求的环境变量名，其视图不可枚举，带用户凭据的 Provider 实例不会跨用户复用，密钥值也不会进入事件或运行锁。由应用代码显式注册的 Provider 仍归应用管理。不传 `secret_lookup` 时仍直接使用进程环境，保持原有零配置体验。
+
 可以按用户在任意已配置后端之间复制事件，不改变领域数据：
 
 ```bash

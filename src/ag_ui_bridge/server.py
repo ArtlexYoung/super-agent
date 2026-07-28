@@ -14,7 +14,7 @@ from urllib.parse import unquote, urlsplit
 from agents.agent import Agent, AgentRunOptions
 from ag_ui_bridge.protocol import AGUIEventMapper, AGUIRunInput, encode_sse_event
 from ag_ui_bridge.web_api import WebAPI, WebAPIResponse
-from runtime.identity import LOCAL_USER_ID
+from runtime.identity import LOCAL_USER_ID, validate_user_id
 from runtime.models import RunEvent
 from runtime.safety import ActionSafetyError
 
@@ -40,7 +40,7 @@ class AGUIHTTPServer(ThreadingHTTPServer):
         static_root: str | Path | None = DEFAULT_STATIC_ROOT,
     ) -> None:
         self.agent = agent
-        self.user_id = user_id
+        self.user_id = validate_user_id(user_id)
         self.allowed_origins = frozenset(allowed_origins)
         self.web_api = WebAPI(agent, user_id)
         self.web_api_lock = RLock()

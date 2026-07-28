@@ -105,6 +105,8 @@ ANTHROPIC_API_KEY
 
 Environment profiles are ephemeral and used only when no enabled model Skill exists. Selection order is `SUPER_AGENT_PROVIDER`, `OLLAMA_HOST`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, then the built-in mock. Use `super-agent models list` and `super-agent models resolve` to inspect available profiles and the selected default. These commands print environment-variable names but never secret values.
 
+In a multiuser Python service, pass `secret_lookup` to `Agent`. Runtime calls it as `secret_lookup(user_id, variable_name)` for discovery, readiness checks, and Provider creation. The returned environment view cannot be enumerated, and each user gets a separate Provider pool for credential-backed connections. Providers explicitly registered by application code remain application-owned. Omitting the callback preserves process-environment lookup for the zero-configuration local path.
+
 The Web model page manages real model Skills through the same Runtime operations. Metadata is written to the current user's Skill overlay under the storage path; configured project roots stay read-only baselines. The browser sends only an environment-variable name such as `OPENAI_API_KEY`; actual key values remain in the server process environment. For automation, send model Skill metadata as JSON on stdin:
 
 ```bash
@@ -164,6 +166,7 @@ MySQL URLs use `mysql://` or `mysql+pymysql://`. Supported query options are `ch
   users/<user-hash>/events.jsonl
   users/<user-hash>/agents/<agent-hash>/cache/
   users/<user-hash>/agents/<agent-hash>/evolution/
+  users/<user-hash>/agents/<agent-hash>/skills/
 ```
 
 For SQLite, `path` is still the shared local state directory rather than a database filename:

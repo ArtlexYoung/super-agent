@@ -167,7 +167,8 @@ class CapabilityRuntimeTests(unittest.TestCase):
                 )
             ]
             self.assertEqual(sorted(ordered_steps), ordered_steps)
-            self.assertTrue(hasattr(agent.runtime, "task_loop"))
+            self.assertFalse(hasattr(agent.runtime, "task_loop"))
+            self.assertTrue(hasattr(agent.runtime, "_create_user_model_runtime"))
             self.assertFalse(hasattr(agent.runtime, "task_scheduler"))
             self.assertFalse(hasattr(agent.runtime, "model_router"))
 

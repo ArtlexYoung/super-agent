@@ -95,12 +95,18 @@ RuntimeSession
             +-> PostgreSQL (optional)
 ```
 
-`RunIdentity` scopes user, Agent, conversation, task, and parent task. Conversations, traces, evaluations, disclosure history, memory, habits, and evolution decisions use one canonical event schema. Derived views can always be rebuilt from those events.
+`RunIdentity` scopes user, Agent, conversation, task, and parent task through one central validator. Conversations, traces, evaluations, disclosure history, memory, habits, and evolution decisions use one canonical event schema. Derived views can always be rebuilt from those events.
 
 The focused disclosure and memory stores are domain operation boundaries, not additional
 state backends. `RuntimeStore` creates both with the same user and Agent scope; disclosure
 history and every memory mutation still enter the one configured `StorageBackend`.
 Disclosure file reads and writes are restricted to that scope's cache root.
+
+Model state follows the same boundary. Runtime resolves model Skills after creating the
+user Store, then creates a run-scoped `AdaptiveTaskLoop` and user Provider pool. A
+`UserSecretResolver` supplies a non-enumerable environment view keyed by validated user
+ID and variable name. A user model overlay or Provider credential therefore cannot alter
+another user's model schedule or cached connection.
 
 ## Action Safety
 
@@ -121,14 +127,15 @@ Passive Skill files cannot supply or weaken that contract.
 - Runtime is the only task lifecycle and model-loop owner.
 - Every Capability is registered once and locked by exact hash.
 - Runtime consumes only `SkillContribution`, never a Skill-kind-specific runtime object.
-- One `AdaptiveTaskLoop` owns plan creation, step scheduling, model fallback, and tool iteration.
-- Project Skills override same-key built-in fallback Skills inside one disclosure source scan.
+- One run-scoped `AdaptiveTaskLoop` owns plan creation, step scheduling, model fallback, and tool iteration.
+- User Skills override project Skills, which override same-key built-in fallbacks in one disclosure source scan.
 - Every used Skill revision is evaluated automatically.
 - Workflow is Skill data, not a second execution engine.
 - Evolution cannot bypass validation, evaluation, promotion, or rollback.
 - Planner and model Skills cannot bypass the shared Skill evolution state machine.
 - Internal compatibility shells are intentionally absent during `0.0.x`.
 - Model editors persist standard model Skills; API-key values remain outside Skill and Agent configuration.
+- Model profiles, Provider caches, and optional secret lookups are resolved per user.
 - Model-triggered side effects use one Runtime action contract and one safety decision stream.
 - Unknown external actions cannot execute before an allow or explicit approval decision.
 - AG-UI is a transport projection over canonical events, never a second task engine or state store.

@@ -320,7 +320,7 @@ Status: implemented.
 
 ## v0.0.60: Multiuser Isolation
 
-Status: planned.
+Status: implemented.
 
 - Centralize identity validation and user-scoped secret lookup.
 - Verify conversations, memory, Skill use, evolution, and disclosure caches are isolated.

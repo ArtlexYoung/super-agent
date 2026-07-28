@@ -21,6 +21,7 @@ from skill.kinds.model import (
     model_profile_to_dict,
     select_default_model_profile,
 )
+from skill.kinds.model_management import model_skill_input_from_dict
 from skill.validation import validate_skill_replacement
 from skill.evolution.evaluation import EvaluationCase
 
@@ -172,6 +173,77 @@ class ModelSkillTests(unittest.TestCase):
             override,
             pool.get_chat_provider("model:override", ProviderConnection("mock")),
         )
+
+    def test_user_model_overlay_does_not_change_another_users_model(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_model_skill(root, name="fast", default=True)
+            agent = Agent(AgentConfig.create_default(root), provider=_FixedProvider())
+            alice_manager = agent.for_user("alice").skills.create_model_manager()
+            alice_manager.save_model_skill(
+                model_skill_input_from_dict(
+                    {
+                        "name": "fast",
+                        "description": "Alice model",
+                        "provider": "mock",
+                        "model": "alice-model",
+                        "supports": ["text"],
+                        "purposes": ["answer"],
+                        "default": True,
+                        "agent_can_update": True,
+                        "agent_can_update_connection": False,
+                    }
+                )
+            )
+
+            alice_result = agent.for_user("alice").run("hello")
+            bob_result = agent.for_user("bob").run("hello")
+            alice_lock = agent.runtime.create_store("alice").read_runtime_lock(
+                alice_result.run_id
+            )
+            bob_lock = agent.runtime.create_store("bob").read_runtime_lock(
+                bob_result.run_id
+            )
+
+            assert alice_lock is not None and bob_lock is not None
+            self.assertEqual("alice-model", alice_lock["model"]["model"])
+            self.assertEqual("unit-model", bob_lock["model"]["model"])
+            self.assertEqual("unit-model", agent.model_profile.model)
+
+    def test_agent_resolves_the_same_secret_name_per_user(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            skill_path = _write_model_skill(root, name="remote", default=True)
+            manifest_path = skill_path / "skill.toml"
+            manifest_path.write_text(
+                manifest_path.read_text(encoding="utf-8").replace(
+                    'provider = "mock"',
+                    'provider = "openai-compatible"\napi_key_env = "MODEL_API_KEY"',
+                ),
+                encoding="utf-8",
+            )
+            secrets = {
+                ("alice", "MODEL_API_KEY"): "alice-secret",
+                ("bob", "MODEL_API_KEY"): "bob-secret",
+            }
+            agent = Agent(
+                AgentConfig.create_default(root),
+                secret_lookup=lambda user_id, name: secrets.get((user_id, name)),
+            )
+
+            with patch("provider.chat._send_json_post_request") as send:
+                send.side_effect = lambda _url, _payload, api_key: {
+                    "choices": [{"message": {"content": api_key}}]
+                }
+                alice = agent.for_user("alice").run("hello")
+                bob = agent.for_user("bob").run("hello")
+
+            self.assertEqual("alice-secret", alice.text)
+            self.assertEqual("bob-secret", bob.text)
+            self.assertEqual(
+                ["alice-secret", "bob-secret"],
+                [call.args[2] for call in send.call_args_list],
+            )
 
     def test_agent_cannot_change_user_owned_model_connection(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

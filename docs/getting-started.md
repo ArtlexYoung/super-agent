@@ -49,6 +49,8 @@ super-agent run "Explain this repository"
 
 The CLI reports environment-variable names but never prints secret values.
 
+For a multiuser Python service, pass `secret_lookup(user_id, variable_name)` to `Agent`. Ordinary local and CLI use needs no callback and continues to read the process environment.
+
 For a persistent, described model profile, add `skills/model/<name>/skill.toml` using the example in [Configuration](configuration.md). Model Skills take priority over ephemeral environment profiles. The Web client can create and edit these Skills visually; it stores only credential environment-variable names.
 
 ## Open the Web Client

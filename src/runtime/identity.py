@@ -28,8 +28,8 @@ class RunIdentity:
         parent_run_id: str | None = None,
     ) -> "RunIdentity":
         return cls(
-            user_id=_clean_identity_value(user_id, "user_id"),
-            agent_name=_clean_identity_value(agent_name, "agent_name"),
+            user_id=validate_user_id(user_id),
+            agent_name=validate_agent_name(agent_name),
             run_id=(
                 f"run-{uuid4().hex}"
                 if run_id is None
@@ -43,11 +43,27 @@ class RunIdentity:
         )
 
     def __post_init__(self) -> None:
-        _clean_identity_value(self.user_id, "user_id")
-        _clean_identity_value(self.agent_name, "agent_name")
-        _clean_identity_value(self.run_id, "run_id")
-        _clean_optional_identity_value(self.conversation_id, "conversation_id")
-        _clean_optional_identity_value(self.parent_run_id, "parent_run_id")
+        object.__setattr__(self, "user_id", validate_user_id(self.user_id))
+        object.__setattr__(self, "agent_name", validate_agent_name(self.agent_name))
+        object.__setattr__(self, "run_id", _clean_identity_value(self.run_id, "run_id"))
+        object.__setattr__(
+            self,
+            "conversation_id",
+            _clean_optional_identity_value(self.conversation_id, "conversation_id"),
+        )
+        object.__setattr__(
+            self,
+            "parent_run_id",
+            _clean_optional_identity_value(self.parent_run_id, "parent_run_id"),
+        )
+
+
+def validate_user_id(value: str) -> str:
+    return _clean_identity_value(value, "user_id")
+
+
+def validate_agent_name(value: str) -> str:
+    return _clean_identity_value(value, "agent_name")
 
 
 def _clean_identity_value(value: str, name: str) -> str:

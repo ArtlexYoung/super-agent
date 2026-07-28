@@ -30,12 +30,14 @@ def configure_models_parser(parser: argparse.ArgumentParser) -> None:
         help="list model Skills or zero-configuration environment profiles",
     )
     list_parser.add_argument("--config")
+    list_parser.add_argument("--user-id", default=LOCAL_USER_ID)
     list_parser.add_argument("--output", choices=["text", "json"], default="text")
     resolve_parser = subparsers.add_parser(
         "resolve",
         help="show the default model profile selected for this project",
     )
     resolve_parser.add_argument("--config")
+    resolve_parser.add_argument("--user-id", default=LOCAL_USER_ID)
     resolve_parser.add_argument("--output", choices=["text", "json"], default="text")
     save_parser = subparsers.add_parser(
         "save",
@@ -55,7 +57,10 @@ def run_models_command(args: argparse.Namespace) -> int:
         return _save_model_skill(config, args.user_id, output)
     if args.models_command == "remove":
         return _remove_model_skill(config, args.user_id, args.name, output)
-    profiles = _read_configured_model_profiles(config)
+    profiles = _read_configured_model_profiles(
+        config,
+        getattr(args, "user_id", LOCAL_USER_ID),
+    )
     if args.models_command == "list":
         return _print_model_profiles(config, profiles, output)
     if args.models_command in {None, "resolve"}:
@@ -71,8 +76,17 @@ def _load_config(path: str | None) -> AgentConfig:
     )
 
 
-def _read_configured_model_profiles(config: AgentConfig) -> list[ModelProfile]:
-    disclosure = create_progressive_skill_disclosure(config)
+def _read_configured_model_profiles(
+    config: AgentConfig,
+    user_id: str,
+) -> list[ModelProfile]:
+    backend = create_storage_backend(
+        config.storage.backend,
+        str(config.storage.path),
+        config.storage.url_env,
+    )
+    store = RuntimeStore(backend, config.storage.path, user_id, config.agent.name)
+    disclosure = create_progressive_skill_disclosure(config, store=store)
     index = disclosure.prepare_skill_index()
     return read_model_profiles(disclosure, index)
 

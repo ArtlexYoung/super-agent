@@ -18,12 +18,14 @@ class StorageIsolationVerificationTests(unittest.TestCase):
             )
 
         data = storage_isolation_report_to_dict(report)
-        self.assertEqual(1, data["schema_version"])
+        self.assertEqual(2, data["schema_version"])
         self.assertTrue(data["all_available_backends_passed"])
         self.assertTrue(data["all_backends_verified"])
         self.assertEqual(["passed", "passed"], [item["status"] for item in data["backends"]])
         for item in data["backends"]:
             self.assertIn("temporary_state_cleanup", item["checks"])
+            self.assertIn("skill_evolution_user_isolation", item["checks"])
+            self.assertIn("skill_disclosure_user_isolation", item["checks"])
 
     def test_unconfigured_remote_backends_are_reported_as_unavailable(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {}, clear=True):

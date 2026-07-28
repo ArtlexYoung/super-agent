@@ -91,7 +91,8 @@ class WebAPI:
             store=store,
         )
         index = disclosure.prepare_skill_index()
-        models = read_model_profiles(disclosure, index)
+        environment = self.agent.user_secrets.get_environment_for_user(self.user_id)
+        models = read_model_profiles(disclosure, index, environment)
         return {
             "schema_version": 1,
             "agent": agent_configuration_to_dict(config),
@@ -101,7 +102,9 @@ class WebAPI:
             },
             "configuration_path": str(config.source),
             "skills": _web_skill_list(skill_index_to_dict(index), config),
-            "models": [model_profile_to_dict(profile) for profile in models],
+            "models": [
+                model_profile_to_dict(profile, environment) for profile in models
+            ],
             "conversations": [
                 asdict(item) for item in self.user.conversations.list()
             ],

@@ -8,6 +8,7 @@ from provider.chat import Message
 from runtime.config import AgentConfig
 from runtime.evolution.service import AutomaticEvolutionService
 from runtime.evolution.state import SkillEvolutionState
+from runtime.identity import validate_user_id
 from runtime.models import Conversation, RunEvent
 from runtime.routing import ModelRoutingStats
 from runtime.safety import ActionEffect, ActionRequest
@@ -23,11 +24,8 @@ class UserAgent:
     """Bind every stateful operation to one trusted user identifier."""
 
     def __init__(self, agent: "Agent", user_id: str) -> None:
-        clean_user_id = user_id.strip()
-        if not clean_user_id:
-            raise ValueError("user id cannot be empty")
         self.agent = agent
-        self.user_id = clean_user_id
+        self.user_id = validate_user_id(user_id)
         self.conversations = UserConversations(self)
         self.runs = UserRuns(self)
         self.skills = UserSkills(self)
@@ -220,4 +218,4 @@ class UserConfiguration:
         self.user = user
 
     def replace(self, config: AgentConfig) -> None:
-        self.user.agent._replace_configuration(config, self.user.user_id)
+        self.user.agent._replace_configuration(config)

@@ -341,6 +341,18 @@ super-agent run --user-id alice --conversation-id project-a "Continue the task"
 super-agent conversations list --user-id alice
 ```
 
+Each run resolves that user's Skill index, model profiles, routing evidence, Provider cache, and secrets together. A service can supply secrets without putting values in TOML or Runtime state:
+
+```python
+secrets = {
+    ("alice", "OPENAI_API_KEY"): "...",
+    ("bob", "OPENAI_API_KEY"): "...",
+}
+agent = Agent(secret_lookup=lambda user_id, name: secrets.get((user_id, name)))
+```
+
+The lookup receives only the validated user ID and requested environment-variable name. Its view cannot be enumerated, credential-backed Provider instances are not reused across users, and secret values never enter events or runtime locks. Providers explicitly registered by application code remain application-owned. Without `secret_lookup`, the existing process environment remains the zero-configuration behavior.
+
 Copy selected users between any configured backends without changing domain data:
 
 ```bash

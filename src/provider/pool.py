@@ -25,6 +25,14 @@ class ProviderPool:
             raise ValueError(f"model profile already has a provider: {key}")
         self._providers_by_profile[key] = provider
 
+    def create_user_provider_pool(
+        self,
+        environment: Mapping[str, str],
+    ) -> "ProviderPool":
+        pool = ProviderPool(environment)
+        pool._providers_by_profile = dict(self._providers_by_profile)
+        return pool
+
     def get_chat_provider(
         self,
         profile_key: str,

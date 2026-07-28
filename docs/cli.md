@@ -50,13 +50,14 @@ Initialization writes files only when they are missing.
 super-agent models list
 super-agent models list --output json
 super-agent models list --config agent.toml --output json
+super-agent models list --config agent.toml --user-id alice --output json
 super-agent models resolve
 super-agent models resolve --config agent.toml --output json
 printf '%s' '<model-skill-json>' | super-agent models save --config agent.toml --request-stdin
 super-agent models remove --config agent.toml --name fast
 ```
 
-The commands list effective model Skills from the current user, project, and built-in layers. Otherwise they list ephemeral environment profiles or the built-in mock. `save` writes one user overlay; `remove` deletes only a user-owned model Skill and selects a deterministic replacement default when needed. JSON metadata includes an environment-variable name but never a secret value. See [Configuration](configuration.md) for the request fields.
+The commands list effective model Skills from the selected user, project, and built-in layers. Otherwise they list ephemeral environment profiles or the built-in mock. `save` writes one user overlay; `remove` deletes only a user-owned model Skill and selects a deterministic replacement default when needed. JSON metadata includes an environment-variable name but never a secret value. See [Configuration](configuration.md) for the request fields.
 
 ## Skill Inspection
 

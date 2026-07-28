@@ -16,6 +16,7 @@ from runtime.engine import AgentRuntime, RuntimeResources
 from runtime.identity import LOCAL_USER_ID
 from runtime.models import RunEvent
 from runtime.safety import SafetyPolicy
+from runtime.secrets import UserSecretLookup, UserSecretResolver
 from runtime.tasks import (
     SubAgentResult,
     SubagentCallbacks,
@@ -60,6 +61,7 @@ class Agent:
         capabilities: list[Capability] | None = None,
         storage: StorageBackend | None = None,
         safety_policy: SafetyPolicy | None = None,
+        secret_lookup: UserSecretLookup | None = None,
     ) -> None:
         self.config = _load_agent_config(config)
         self.storage = storage or create_storage_backend(
@@ -67,6 +69,7 @@ class Agent:
             str(self.config.storage.path),
             self.config.storage.url_env,
         )
+        self.user_secrets = UserSecretResolver(secret_lookup)
         bootstrap_disclosure = create_progressive_skill_disclosure(
             self.config,
             storage=self.storage,
@@ -75,11 +78,14 @@ class Agent:
         self.model_profiles = read_model_profiles(
             bootstrap_disclosure,
             bootstrap_index,
+            self.user_secrets.get_environment_for_user(LOCAL_USER_ID),
         )
         self.model_profile: ModelProfile = select_default_model_profile(
             self.model_profiles
         )
-        self.provider_pool = ProviderPool()
+        self.provider_pool = ProviderPool(
+            self.user_secrets.get_environment_for_user(LOCAL_USER_ID)
+        )
         if provider is not None:
             self.provider_pool.add_chat_provider(self.model_profile.key, provider)
         self.capability_registry = create_default_capability_registry()
@@ -90,12 +96,12 @@ class Agent:
             self.capability_registry.add_capability(capability, replace=True)
         self.runtime = AgentRuntime(
             self.config,
-            self.model_profiles,
             RuntimeResources(
                 provider_pool=self.provider_pool,
                 capability_registry=self.capability_registry,
                 storage=self.storage,
                 safety_policy=self.safety_policy,
+                user_secrets=self.user_secrets,
                 skill_change_listener=self._activate_changed_skill,
             ),
         )
@@ -220,35 +226,31 @@ class Agent:
             self._reload_model_profiles(user_id)
 
     def _reload_model_profiles(self, user_id: str = LOCAL_USER_ID) -> None:
-        disclosure = create_progressive_skill_disclosure(
-            self.config,
-            store=self.runtime.create_store(user_id),
-        )
-        index = disclosure.prepare_skill_index()
-        self.model_profiles = read_model_profiles(disclosure, index)
-        self.model_profile = select_default_model_profile(self.model_profiles)
-        self.runtime = AgentRuntime(
-            self.config,
-            self.model_profiles,
-            RuntimeResources(
-                provider_pool=self.provider_pool,
-                capability_registry=self.capability_registry,
-                storage=self.storage,
-                safety_policy=self.safety_policy,
-                skill_change_listener=self._activate_changed_skill,
-            ),
-        )
+        profiles = self.runtime.read_model_profiles(user_id)
+        if user_id == LOCAL_USER_ID:
+            self.model_profiles = profiles
+            self.model_profile = select_default_model_profile(profiles)
 
     def _replace_configuration(
         self,
         config: AgentConfig,
-        user_id: str = LOCAL_USER_ID,
     ) -> None:
         if config.storage != self.config.storage:
             raise ValueError("changing storage requires restarting the Agent")
         self.config = config
         self.safety_policy = SafetyPolicy.from_name(config.agent.safety)
-        self._reload_model_profiles(user_id)
+        self.runtime = AgentRuntime(
+            self.config,
+            RuntimeResources(
+                provider_pool=self.provider_pool,
+                capability_registry=self.capability_registry,
+                storage=self.storage,
+                safety_policy=self.safety_policy,
+                user_secrets=self.user_secrets,
+                skill_change_listener=self._activate_changed_skill,
+            ),
+        )
+        self._reload_model_profiles(LOCAL_USER_ID)
 
     def _make_next_subagent_name(self) -> str:
         index = 1

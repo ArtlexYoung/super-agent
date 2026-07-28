@@ -182,6 +182,11 @@ class SkillEvolutionTests(unittest.TestCase):
                 "Original instructions.",
                 bob_disclosure.open_skill("writer", "prompt").read_instructions().content,
             )
+            self.assertEqual([], agent.for_user("bob").skills.list_evolutions())
+            self.assertNotEqual(
+                manager.store.disclosure.cache_root,
+                bob_disclosure.store.disclosure.cache_root,
+            )
 
     def test_promotion_rejects_candidate_when_active_skill_changed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
