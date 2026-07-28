@@ -238,12 +238,22 @@ class ModelSkillTests(unittest.TestCase):
                 alice = agent.for_user("alice").run("hello")
                 bob = agent.for_user("bob").run("hello")
 
+            alice_lock = agent.runtime.create_store("alice").read_runtime_lock(
+                alice.run_id
+            )
+            bob_lock = agent.runtime.create_store("bob").read_runtime_lock(bob.run_id)
+
             self.assertEqual("alice-secret", alice.text)
             self.assertEqual("bob-secret", bob.text)
             self.assertEqual(
                 ["alice-secret", "bob-secret"],
                 [call.args[2] for call in send.call_args_list],
             )
+            assert alice_lock is not None and bob_lock is not None
+            self.assertTrue(alice_lock["model"]["ready"])
+            self.assertTrue(bob_lock["model"]["ready"])
+            self.assertNotIn("alice-secret", str(alice_lock))
+            self.assertNotIn("bob-secret", str(bob_lock))
 
     def test_agent_cannot_change_user_owned_model_connection(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

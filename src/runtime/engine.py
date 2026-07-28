@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, replace
 from time import perf_counter
-from typing import Callable
+from typing import Callable, Mapping
 
 from capability.defaults import create_progressive_skill_disclosure
 from capability.registry import CapabilityRegistry
@@ -70,6 +70,18 @@ class _RuntimeSessionInput:
     conversation_id: str | None
     parent_run_id: str | None
     event_listener: Callable[[RunEvent], None] | None
+
+
+@dataclass(frozen=True)
+class _RuntimeLockInput:
+    config: AgentConfig
+    model_profile: ModelProfile
+    registry: CapabilityRegistry
+    skill_index: SkillIndex
+    provider: ChatProvider
+    storage: StorageBackend
+    schedule: TaskSchedule
+    environment: Mapping[str, str]
 
 
 class AgentRuntime:
@@ -312,13 +324,18 @@ class AgentRuntime:
         session.store.save_runtime_lock(
             session.identity,
             _runtime_lock_to_dict(
-                self.config,
-                session.model_profile,
-                self.capability_registry,
-                session.require_skill_index(),
-                session.provider,
-                self.storage,
-                schedule,
+                _RuntimeLockInput(
+                    config=self.config,
+                    model_profile=session.model_profile,
+                    registry=self.capability_registry,
+                    skill_index=session.require_skill_index(),
+                    provider=session.provider,
+                    storage=self.storage,
+                    schedule=schedule,
+                    environment=self.user_secrets.get_environment_for_user(
+                        session.identity.user_id
+                    ),
+                )
             ),
         )
 
@@ -489,36 +506,32 @@ def _validate_feedback_score(value: float) -> float:
     return score
 
 
-def _runtime_lock_to_dict(
-    config: AgentConfig,
-    model_profile: ModelProfile,
-    registry: CapabilityRegistry,
-    skill_index: SkillIndex,
-    provider: ChatProvider,
-    storage: StorageBackend,
-    schedule: TaskSchedule,
-) -> dict[str, object]:
-    registry.validate_dependencies()
+def _runtime_lock_to_dict(request: _RuntimeLockInput) -> dict[str, object]:
+    request.registry.validate_dependencies()
     return {
         "schema_version": 9,
         "agent": {
-            "name": config.agent.name,
-            "system": config.agent.system,
-            "workflow": config.agent.workflow,
-            "memory": config.agent.memory,
-            "skills": list(config.agent.skills),
-            "max_agent_chain_depth": config.agent.max_agent_chain_depth,
-            "disable_names": list(config.agent.disable_names),
-            "safety": config.agent.safety,
+            "name": request.config.agent.name,
+            "system": request.config.agent.system,
+            "workflow": request.config.agent.workflow,
+            "memory": request.config.agent.memory,
+            "skills": list(request.config.agent.skills),
+            "max_agent_chain_depth": request.config.agent.max_agent_chain_depth,
+            "disable_names": list(request.config.agent.disable_names),
+            "safety": request.config.agent.safety,
         },
         "model": {
-            **model_profile_to_dict(model_profile),
-            "adapter": f"{type(provider).__module__}.{type(provider).__qualname__}",
+            **model_profile_to_dict(request.model_profile, request.environment),
+            "adapter": (
+                f"{type(request.provider).__module__}."
+                f"{type(request.provider).__qualname__}"
+            ),
         },
-        "task_schedule": schedule.to_dict(),
-        "storage": {"backend": storage.name},
+        "task_schedule": request.schedule.to_dict(),
+        "storage": {"backend": request.storage.name},
         "capabilities": [
-            item.descriptor.to_dict() for item in registry.list_capabilities()
+            item.descriptor.to_dict()
+            for item in request.registry.list_capabilities()
         ],
         "skills": [
             {
@@ -530,6 +543,6 @@ def _runtime_lock_to_dict(
                 "provides": list(entry.provides),
                 "requires": list(entry.requires),
             }
-            for entry in skill_index.entries
+            for entry in request.skill_index.entries
         ],
     }

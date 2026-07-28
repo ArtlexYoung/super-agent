@@ -6,7 +6,7 @@ import sys
 from dataclasses import asdict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Callable, Sequence
 
 from cli_commands.conversations import (
     configure_conversations_parser,
@@ -29,6 +29,20 @@ from runtime.models import RunEvent
 from runtime.tasks import TaskResult
 
 
+COMMAND_HANDLERS: dict[str, Callable[[argparse.Namespace], int]] = {
+    "conversations": run_conversations_command,
+    "evolution": run_evolution_command,
+    "memory": run_memory_command,
+    "models": run_models_command,
+    "runs": run_runs_command,
+    "serve": run_serve_command,
+    "skills": run_skills_command,
+    "storage": run_storage_command,
+}
+SPECIAL_COMMANDS = frozenset({"chat", "init", "run"})
+CLI_COMMANDS = frozenset(COMMAND_HANDLERS) | SPECIAL_COMMANDS
+
+
 @dataclass(frozen=True)
 class RuntimeRequest:
     prompt: str
@@ -38,8 +52,22 @@ class RuntimeRequest:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    if _is_direct_prompt(arguments):
+        return _run_prompt_command(
+            None,
+            RuntimeRequest(prompt=" ".join(arguments), messages=[]),
+            "text",
+        )
     parser = _build_parser()
-    args = parser.parse_args(argv)
+    args = parser.parse_args(arguments)
+    return _run_parsed_command(parser, args)
+
+
+def _run_parsed_command(
+    parser: argparse.ArgumentParser,
+    args: argparse.Namespace,
+) -> int:
     if args.command is None:
         return _run_chat_command(None, LOCAL_USER_ID, None)
     if args.command == "init":
@@ -51,28 +79,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "chat":
         config_path = None if args.config is None else Path(args.config)
         return _run_chat_command(config_path, args.user_id, args.conversation_id)
-    if args.command == "conversations":
-        return run_conversations_command(args)
-    if args.command == "skills":
-        return run_skills_command(args)
-    if args.command == "memory":
-        return run_memory_command(args)
-    if args.command == "models":
-        return run_models_command(args)
-    if args.command == "runs":
-        return run_runs_command(args)
-    if args.command == "storage":
-        return run_storage_command(args)
-    if args.command == "evolution":
-        return run_evolution_command(args)
-    if args.command == "serve":
-        return run_serve_command(args)
+    handler = COMMAND_HANDLERS.get(args.command)
+    if handler is not None:
+        return handler(args)
     parser.print_help()
     return 1
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="super-agent")
+    parser = argparse.ArgumentParser(
+        prog="super-agent",
+        description="Chat with an Agent, or pass a prompt directly without a command.",
+    )
     subparsers = parser.add_subparsers(dest="command")
 
     init_parser = subparsers.add_parser("init", help="create a minimal agent project")
@@ -119,6 +137,14 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     configure_serve_parser(serve_parser)
     return parser
+
+
+def _is_direct_prompt(arguments: list[str]) -> bool:
+    return bool(
+        arguments
+        and arguments[0] not in CLI_COMMANDS
+        and not arguments[0].startswith("-")
+    )
 
 
 def _run_init_command(root: Path) -> int:

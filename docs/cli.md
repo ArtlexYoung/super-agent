@@ -3,6 +3,7 @@
 ## Conversation
 
 ```bash
+super-agent "hello"
 super-agent
 super-agent chat --config agent.toml
 super-agent chat --config agent.toml --user-id alice --conversation-id <id>
@@ -11,7 +12,10 @@ super-agent run --config agent.toml --output json "hello"
 super-agent run --user-id alice --conversation-id <id> "continue"
 ```
 
-`run --output` accepts `text`, `json`, or `jsonl`. Use `--request-stdin` with JSON input for desktop and service integrations.
+Passing a prompt directly is the zero-configuration one-shot path. Use the explicit
+`run` subcommand when you need a project configuration, user or conversation identity,
+or structured output. `run --output` accepts `text`, `json`, or `jsonl`; use
+`--request-stdin` with JSON input for desktop and service integrations.
 
 ## AG-UI Server
 
@@ -115,7 +119,7 @@ super-agent evolution list --config agent.toml --user-id alice --status candidat
 super-agent evolution show --config agent.toml --user-id alice --evolution-id <id> --output json
 ```
 
-`list` and `show` are read-only and never call a model. Runtime owns recommendation, candidate creation, evaluation, promotion, monitoring, and rollback after normal task evaluation. Manual experiments remain available under `skills`.
+`list` and `show` are read-only and never call a model. Runtime owns recommendation, candidate creation, evaluation, promotion, monitoring, and rollback after normal task evaluation. Manual candidate operations remain available under `skills`.
 
 ## Memory
 

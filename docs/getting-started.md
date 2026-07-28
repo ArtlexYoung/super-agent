@@ -19,14 +19,14 @@ This installs the `super-agent` command and the `super_agent` Python module.
 ## Run Without Configuration
 
 ```bash
-super-agent run "hello"
+super-agent "hello"
 ```
 
 ```bash
 super-agent
 ```
 
-The first command runs one prompt. The second starts an interactive conversation. When no model Skill or environment profile is available, the runtime uses its local deterministic mock provider, so both commands work without an API key.
+The first command runs one prompt. The second starts an interactive conversation. When no model Skill or environment profile is available, the runtime uses its local deterministic mock provider, so both commands work without an API key. Use the explicit `run` subcommand only when you need options such as `--config`, `--user-id`, or `--output`.
 
 ## Use a Real Model
 
@@ -44,7 +44,7 @@ Example:
 export OPENAI_API_KEY="..."
 super-agent models list
 super-agent models resolve
-super-agent run "Explain this repository"
+super-agent "Explain this repository"
 ```
 
 The CLI reports environment-variable names but never prints secret values.
@@ -106,6 +106,7 @@ my-agent/
     mcp/filesystem/
     memory/default/
     workflow/direct/
+    planner/default/
 ```
 
 Run it with:
@@ -166,6 +167,6 @@ super-agent evolution list --config my-agent/agent.toml
 
 `runs explain` now includes the task schedule, model attempts, token and cost estimates, routing evidence, relevant Skill freshness, and automatic evolution state. Use `--output json` for integrations.
 
-The reproducible [v0.0.41 task and evolution proof](experiments/v0.0.41.md) verifies multi-model scheduling, user and Agent isolation, automatic promotion, and regression rollback through the normal Runtime path. The archived [v0.0.34 experiment](experiments/v0.0.34.md) covers progressive context and storage backends.
+The maintained [v0.0.61 unified Runtime proof](experiments/v0.0.61.md) verifies user model and credential isolation, automatic scheduling, progressive disclosure cache reuse, memory organization and forgetting, mandatory Safety, canonical state, and user-only Skill evolution through the normal Runtime path.
 
 Continue with [Skills](skills.md), [Architecture](architecture.md), or the [CLI reference](cli.md).

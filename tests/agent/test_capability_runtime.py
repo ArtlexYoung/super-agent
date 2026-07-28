@@ -48,6 +48,19 @@ class CapabilityRuntimeTests(unittest.TestCase):
             self.assertEqual(0, code)
             self.assertEqual("Mock response", output.getvalue().strip())
 
+    def test_cli_accepts_a_prompt_without_a_subcommand(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, chdir(tmp), patch.dict(
+            os.environ,
+            {},
+            clear=True,
+        ):
+            output = StringIO()
+            with patch("sys.stdout", output):
+                code = main(["hello", "there"])
+
+            self.assertEqual(0, code)
+            self.assertEqual("Mock response", output.getvalue().strip())
+
     def test_bare_cli_starts_zero_configuration_chat(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, chdir(tmp), patch.dict(
             os.environ,

@@ -52,7 +52,7 @@ and therefore requires approval under `standard` policy.
 
 An MCP command is passive Skill configuration until its Capability handler runs. Both tool discovery and invocation declare `execute` plus `network`, so a malicious command cannot start a process before the central action check.
 
-The [v0.0.53 end-to-end proof](experiments/v0.0.53.md) verifies over a real AG-UI request
-that an external `execute` plus `network` Tool is blocked before its registered handler
-runs, while the same canonical task failure remains available to evaluation and Skill
+The [v0.0.61 unified Runtime proof](experiments/v0.0.61.md) verifies that an external
+`execute` plus `network` Tool is blocked before its registered handler runs, while the
+same canonical task failure remains available to evaluation and user-scoped Skill
 evolution.

@@ -165,17 +165,12 @@ run operations, `store.disclosure` owns cache/history operations, and `store.mem
 memory/habit operations. These are focused APIs over the same backend, not separate
 sources of truth. Local artifacts are never alternate stores for the same event data.
 
-## Runtime Proof History
+## Runtime Proof
 
-The reproducible `v0.0.53` proof starts the real AG-UI HTTP server and drives one failed
-task through recall-time memory organization, pre-handler Safety blocking, canonical SSE
-error delivery, evaluation, and automatic promotion of an Agent-owned Skill. Its report
-is deterministic, local, dependency-free, and generated outside the shipped Runtime.
-
-The `v0.0.46` proof covers planned model and subagent routing plus Planner/model Skill
-evolution. The earlier `v0.0.41` proof verifies user and Agent routing isolation,
-automatic promotion, and regression rollback from real task evidence.
-
-The archived `v0.0.34` experiment covers progressive context and storage semantics. Its old benchmark orchestration was removed from the shipped Runtime after the result was recorded, so proof code does not become a second public execution framework.
+The maintained [v0.0.61 unified proof](experiments/v0.0.61.md) runs the public API for
+two users through model Skill resolution, automatic scheduling, progressive disclosure,
+memory organization, mandatory Safety, evaluation, and Skill promotion. The fixture
+supplies deterministic model responses only; every lifecycle decision remains inside the
+shipped Runtime. Earlier reports are retained as [release snapshots](experiments/README.md).
 
 Storage contract tests still apply the same domain operations to every backend. Remote checks require dedicated test database environments and never fall back to an Agent's production connection URL.

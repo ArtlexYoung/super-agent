@@ -328,10 +328,12 @@ Status: implemented.
 
 ## v0.0.61: Unified Runtime Proof
 
-Status: planned.
+Status: implemented.
 
 - Simplify CLI and documentation around one beginner path.
 - Publish a deterministic multiuser scheduling, safety, memory, and evolution proof.
 - Remove obsolete experiment and architecture descriptions.
+
+Proof: [current description](experiments/v0.0.61.md) and [machine-readable result](experiments/v0.0.61.json).
 
 The project will not move to `0.1.x` merely because more features exist. That change should follow a reproducible demonstration that the central Skill-first lifecycle is useful and maintainable.

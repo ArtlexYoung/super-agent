@@ -77,6 +77,7 @@ The default server listens only on `127.0.0.1`, accepts request bodies up to 1 M
 
 The server has no authentication or TLS. Keep the default local binding for local use. Protect any non-local binding with an authenticated reverse proxy and an explicit `--allow-origin`. Runtime Safety still authorizes every model-triggered action before its handler runs; AG-UI only observes the resulting canonical events.
 
-The [v0.0.53 end-to-end proof](experiments/v0.0.53.md) starts this server on an ephemeral
-port and verifies canonical Tool, Safety, failure, and `RUN_ERROR` events from one real
-HTTP/SSE request.
+Protocol parsing, event mapping, origin checks, request limits, and static routing are
+covered by the HTTP integration tests. Runtime behavior itself is verified independently
+by the maintained [unified Runtime proof](experiments/v0.0.61.md), so the transport never
+becomes a second execution engine.

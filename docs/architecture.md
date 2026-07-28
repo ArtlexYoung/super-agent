@@ -139,3 +139,9 @@ Passive Skill files cannot supply or weaken that contract.
 - Model-triggered side effects use one Runtime action contract and one safety decision stream.
 - Unknown external actions cannot execute before an allow or explicit approval decision.
 - AG-UI is a transport projection over canonical events, never a second task engine or state store.
+
+## Verification
+
+The maintained [v0.0.61 unified proof](experiments/v0.0.61.md) exercises these
+boundaries through one real Agent with two isolated users. Earlier reports are retained
+only as [release snapshots](experiments/README.md).
