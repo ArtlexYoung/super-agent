@@ -3,10 +3,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from agents.agent import Agent
-from capability.defaults import create_progressive_skill_disclosure
-from provider.chat import MockProvider
-from runtime.config import AgentConfig
+from core.agent import Agent
+from skill.runners.defaults import create_progressive_skill_disclosure
+from core.provider.chat import MockProvider
+from core.config import AgentConfig
 from skill.evolution.evaluation import EvaluationCase
 from support import write_workflow_skill
 
@@ -81,6 +81,7 @@ class SkillEvolutionTests(unittest.TestCase):
                 [
                     _file_changes({"SKILL.md": "Candidate instructions.\n"}),
                     "wrong output",
+                    "required baseline output",
                 ],
             )
             candidate = manager.create_skill_candidate("writer", "improve output")
@@ -121,6 +122,7 @@ class SkillEvolutionTests(unittest.TestCase):
                 [
                     _file_changes({"SKILL.md": "Candidate instructions.\n"}),
                     "required output",
+                    "required baseline output",
                 ]
             )
             agent = _make_agent(root, provider)
@@ -197,6 +199,7 @@ class SkillEvolutionTests(unittest.TestCase):
                 [
                     _file_changes({"SKILL.md": "Candidate instructions.\n"}),
                     "required output",
+                    "required baseline output",
                 ],
             )
             candidate = manager.create_skill_candidate("writer", "improve output")
@@ -227,8 +230,10 @@ class SkillEvolutionTests(unittest.TestCase):
                 [
                     _file_changes({"SKILL.md": "Candidate one.\n"}),
                     "required one",
+                    "required baseline one",
                     _file_changes({"SKILL.md": "Candidate two.\n"}),
                     "required two",
+                    "required baseline two",
                 ],
             )
             first = manager.create_skill_candidate("writer", "first improvement")
@@ -274,6 +279,7 @@ class SkillEvolutionTests(unittest.TestCase):
                 [
                     _file_changes({"SKILL.md": "Candidate instructions.\n"}),
                     "required output",
+                    "required baseline output",
                 ],
             )
             candidate = manager.create_skill_candidate("writer", "improve output")
@@ -308,6 +314,7 @@ class SkillEvolutionTests(unittest.TestCase):
                 [
                     _file_changes({"SKILL.md": "Candidate instructions.\n"}),
                     "required output",
+                    "required baseline output",
                 ],
             )
 
@@ -341,17 +348,17 @@ class SkillEvolutionTests(unittest.TestCase):
             "workflow": ('mode = "direct"', 'mode = "plan"'),
             "mcp": ('command = "echo"', 'command = "printf"'),
         }
-        for capability, (original_config, candidate_config) in configurations.items():
-            with self.subTest(capability=capability), tempfile.TemporaryDirectory() as tmp:
+        for skill_type, (original_config, candidate_config) in configurations.items():
+            with self.subTest(skill_type=skill_type), tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
                 _write_configuration_skill(
                     root,
-                    capability,
+                    skill_type,
                     "adaptive",
                     original_config,
                 )
                 candidate_manifest = _configuration_manifest(
-                    capability,
+                    skill_type,
                     "adaptive",
                     candidate_config,
                 )
@@ -366,13 +373,14 @@ class SkillEvolutionTests(unittest.TestCase):
                             ["resources/old.txt"],
                         ),
                         "required output",
+                        "required baseline output",
                     ],
                 )
 
                 candidate = manager.create_skill_candidate(
                     "adaptive",
                     "improve configuration",
-                    capability=capability,
+                    skill_type=skill_type,
                 )
                 report = manager.evaluate_skill_candidate(
                     candidate.candidate_id,
@@ -386,9 +394,9 @@ class SkillEvolutionTests(unittest.TestCase):
                 )
                 promoted = manager.promote_skill_candidate(candidate.candidate_id)
 
-                active = manager.user_skill_root / capability / "adaptive"
+                active = manager.user_skill_root / skill_type / "adaptive"
                 self.assertTrue(report.passed)
-                self.assertEqual(capability, promoted.capability)
+                self.assertEqual(skill_type, promoted.skill_type)
                 self.assertFalse((candidate.skill_path / "SKILL.md").exists())
                 self.assertEqual("new resource", (active / "resources/new.txt").read_text())
                 self.assertFalse((active / "resources/old.txt").exists())
@@ -396,9 +404,9 @@ class SkillEvolutionTests(unittest.TestCase):
                 record = manager.store.read_evaluation_records(
                     source_type="candidate_evaluation"
                 )[0]
-                self.assertEqual(f"{capability}:adaptive", record.revision.key)
+                self.assertEqual(f"{skill_type}:adaptive", record.revision.key)
 
-                restored = manager.rollback_skill(f"{capability}:adaptive")
+                restored = manager.rollback_skill(f"{skill_type}:adaptive")
 
                 self.assertEqual("0.1.0", restored.version)
                 self.assertTrue((active / "resources/old.txt").is_file())
@@ -423,7 +431,7 @@ class SkillEvolutionTests(unittest.TestCase):
             candidate = manager.create_skill_candidate(
                 "project-memory",
                 "remember project facts",
-                capability="memory",
+                skill_type="memory",
             )
             manager.evaluate_skill_candidate(
                 candidate.candidate_id,
@@ -439,11 +447,11 @@ class SkillEvolutionTests(unittest.TestCase):
 
             target = manager.user_skill_root / "memory" / "project-memory"
             self.assertEqual("memory:project-memory", candidate.key)
-            self.assertEqual("memory", promoted.capability)
+            self.assertEqual("memory", promoted.skill_type)
             self.assertTrue((target / "skill.toml").is_file())
             self.assertFalse((target / "SKILL.md").exists())
 
-    def test_same_name_in_multiple_capabilities_requires_explicit_identity(self) -> None:
+    def test_same_name_in_multiple_types_requires_explicit_identity(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_prompt_skill(root, "shared", "Prompt instructions.")
@@ -453,7 +461,7 @@ class SkillEvolutionTests(unittest.TestCase):
                 [_file_changes({"resources/new.txt": "memory update"})],
             )
 
-            with self.assertRaisesRegex(ValueError, "ambiguous skill name"):
+            with self.assertRaisesRegex(ValueError, "ambiguous Skill name"):
                 manager.create_skill_candidate("shared", "update it")
 
             candidate = manager.create_skill_candidate(
@@ -488,9 +496,7 @@ def _make_agent(root: Path, provider: MockProvider) -> Agent:
 [agent]
 name = "demo"
 system = "Base system."
-workflow = "direct"
-memory = "default"
-skills = []
+skills = ["workflow:direct", "memory:default"]
 
 [paths]
 skills = ["skills"]
@@ -520,14 +526,14 @@ def _write_prompt_skill(
 
 def _write_configuration_skill(
     root: Path,
-    capability: str,
+    skill_type: str,
     name: str,
     configuration: str,
 ) -> None:
-    skill_dir = root / "skills" / capability / name
+    skill_dir = root / "skills" / skill_type / name
     (skill_dir / "resources").mkdir(parents=True)
     (skill_dir / "skill.toml").write_text(
-        _configuration_manifest(capability, name, configuration),
+        _configuration_manifest(skill_type, name, configuration),
         encoding="utf-8",
     )
     (skill_dir / "resources" / "old.txt").write_text("old resource", encoding="utf-8")
@@ -539,9 +545,9 @@ def _prompt_manifest(
     allow_agent_update: bool = True,
 ) -> str:
     return f"""
-schema_version = 2
+schema_version = 3
 name = "{name}"
-capability = "prompt"
+type = "prompt"
 description = "{name} helper"
 version = "{version}"
 agent_created = true
@@ -554,15 +560,15 @@ instructions = "SKILL.md"
 
 
 def _configuration_manifest(
-    capability: str,
+    skill_type: str,
     name: str,
     configuration: str,
 ) -> str:
     return f"""
-schema_version = 2
+schema_version = 3
 name = "{name}"
-capability = "{capability}"
-description = "{name} {capability} helper"
+type = "{skill_type}"
+description = "{name} {skill_type} helper"
 version = "0.1.0"
 agent_created = true
 agent_can_update = true

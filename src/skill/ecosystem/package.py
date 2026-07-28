@@ -14,8 +14,8 @@ from urllib.parse import unquote
 from uuid import uuid4
 
 from skill.disclosure import ProgressiveDisclosureCore
-from runtime.store import create_local_runtime_store
-from runtime.safety import ActionEffect, ActionRequest, RuntimeActionExecutor, SafetyPolicy
+from core.state.store import create_local_runtime_store
+from core.actions import ActionEffect, ActionRequest, ActionRunner, ActionRules
 from skill.manifest import SkillManifest, calculate_skill_directory_sha256
 from skill.validation import validate_skill_directory, validate_skill_replacement
 
@@ -27,19 +27,19 @@ class SkillPackageManager:
     def __init__(
         self,
         skill_disclosure: ProgressiveDisclosureCore,
-        safety_policy: SafetyPolicy | None = None,
+        action_rules: ActionRules | None = None,
     ) -> None:
         self.user_skill_root = skill_disclosure.store.private_root / "skills"
         self.skill_disclosure = ProgressiveDisclosureCore(
             skill_disclosure.skill_roots,
             skill_disclosure.store,
             user_skill_roots=[self.user_skill_root],
-            fallback_skill_roots=skill_disclosure.fallback_skill_roots,
+            builtin_skill_roots=skill_disclosure.builtin_skill_roots,
             disabled_names=skill_disclosure.disabled_names,
             identity=skill_disclosure.identity,
         )
-        self.actions = RuntimeActionExecutor(
-            safety_policy or SafetyPolicy(),
+        self.actions = ActionRunner(
+            action_rules or ActionRules(),
             skill_disclosure.store.append_management_action_event,
         )
 
@@ -57,8 +57,8 @@ class SkillPackageManager:
         )
 
     def _pack_skill(self, name: str, output: Path) -> Path:
-        skill_name, expected_capability = _split_skill_reference(name)
-        manifest = self._read_skill_manifest(skill_name, expected_capability)
+        skill_name, expected_type = _split_skill_reference(name)
+        manifest = self._read_skill_manifest(skill_name, expected_type)
         output_path = output.expanduser()
         if _path_is_within(output_path.resolve(), manifest.path.resolve()):
             raise ValueError("skill package output cannot be inside the skill directory")
@@ -93,15 +93,15 @@ class SkillPackageManager:
             staged = _stage_skill_source(source, Path(tmp))
             manifest = _validate_staged_skill(staged, expected_sha256)
             index = self.skill_disclosure.prepare_skill_index()
-            if index.find_skill(manifest.name, manifest.capability) is not None:
+            if index.find_skill(manifest.name, manifest.skill_type) is not None:
                 raise FileExistsError(
-                    f"skill already exists: {manifest.capability}:{manifest.name}"
+                    f"skill already exists: {manifest.skill_type}:{manifest.name}"
                 )
             target = _managed_skill_target(self.user_skill_root, manifest)
             if target.exists():
                 raise FileExistsError(f"skill target already exists: {target}")
             _install_skill_directory(staged, target)
-            return self._read_skill_manifest(manifest.name, manifest.capability)
+            return self._read_skill_manifest(manifest.name, manifest.skill_type)
 
     def update_skill(
         self,
@@ -130,8 +130,8 @@ class SkillPackageManager:
         source: str,
         expected_sha256: str,
     ) -> SkillManifest:
-        skill_name, expected_capability = _split_skill_reference(name)
-        current = self._read_skill_manifest(skill_name, expected_capability)
+        skill_name, expected_type = _split_skill_reference(name)
+        current = self._read_skill_manifest(skill_name, expected_type)
         target = _managed_skill_target(self.user_skill_root, current)
         with tempfile.TemporaryDirectory(prefix="super-agent-update-") as tmp:
             staged = _stage_skill_source(source, Path(tmp))
@@ -140,14 +140,14 @@ class SkillPackageManager:
                 raise ValueError(
                     f"updated skill name does not match target: {proposed.name} != {skill_name}"
                 )
-            if proposed.capability != current.capability:
+            if proposed.skill_type != current.skill_type:
                 raise ValueError(
-                    "updated skill capability does not match target: "
-                    f"{proposed.capability} != {current.capability}"
+                    "updated Skill type does not match target: "
+                    f"{proposed.skill_type} != {current.skill_type}"
                 )
             validate_skill_replacement(current.path, staged, self.skill_disclosure.store)
             _replace_skill_directory(staged, target)
-        return self._read_skill_manifest(skill_name, current.capability)
+        return self._read_skill_manifest(skill_name, current.skill_type)
 
     def remove_skill(self, name: str) -> None:
         self.actions.execute_action(
@@ -160,12 +160,12 @@ class SkillPackageManager:
         )
 
     def _remove_skill(self, name: str) -> None:
-        skill_name, expected_capability = _split_skill_reference(name)
+        skill_name, expected_type = _split_skill_reference(name)
         index = self.skill_disclosure.prepare_skill_index()
-        entry = index.require_skill(skill_name, expected_capability)
+        entry = index.require_skill(skill_name, expected_type)
         if entry.source != "user":
             raise PermissionError(f"cannot remove shared Skill: {entry.reference.key}")
-        manifest = self._read_skill_manifest(skill_name, expected_capability)
+        manifest = self._read_skill_manifest(skill_name, expected_type)
         _require_managed_skill_path(manifest.path, self.user_skill_root)
         removed = manifest.path.parent / f".{manifest.path.name}.removed-{uuid4().hex}"
         os.replace(manifest.path, removed)
@@ -179,10 +179,10 @@ class SkillPackageManager:
     def _read_skill_manifest(
         self,
         name: str,
-        expected_capability: str | None = None,
+        expected_type: str | None = None,
     ) -> SkillManifest:
         self.skill_disclosure.prepare_skill_index()
-        return self.skill_disclosure.open_skill(name, expected_capability).read_manifest()
+        return self.skill_disclosure.open_skill(name, expected_type).read_manifest()
 
 
 def _stage_skill_source(source: str, temporary_root: Path) -> Path:
@@ -300,7 +300,7 @@ def _validate_staged_skill(path: Path, expected_sha256: str) -> SkillManifest:
 
 
 def _managed_skill_target(skill_root: Path, manifest: SkillManifest) -> Path:
-    return skill_root / manifest.capability / manifest.name
+    return skill_root / manifest.skill_type / manifest.name
 
 
 def _copy_skill_tree(source: Path, target: Path) -> None:
@@ -386,10 +386,10 @@ def _split_skill_reference(value: str) -> tuple[str, str | None]:
     reference = value.strip().lower()
     if ":" not in reference:
         return _clean_skill_name(reference), None
-    capability, name = reference.split(":", 1)
-    if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", capability):
-        raise ValueError(f"invalid skill capability: {capability}")
-    return _clean_skill_name(name), capability
+    skill_type, name = reference.split(":", 1)
+    if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", skill_type):
+        raise ValueError(f"invalid Skill type: {skill_type}")
+    return _clean_skill_name(name), skill_type
 
 
 def _clean_expected_sha256(value: str) -> str:

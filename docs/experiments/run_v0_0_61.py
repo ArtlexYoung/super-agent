@@ -8,10 +8,10 @@ import tempfile
 import threading
 from pathlib import Path
 
-from agents.agent import Agent, AgentRunOptions
-from agents.user import UserAgent
-from runtime.config import AgentConfig
-from runtime.safety import ActionConfirmationRequired
+from core.agent import Agent, AgentRunOptions
+from core.user import UserAgent
+from core.config import AgentConfig
+from core.actions import ActionConfirmationRequired
 from skill.kinds.memory import MiniMemory
 from skill.kinds.model_management import model_skill_input_from_dict
 
@@ -31,7 +31,7 @@ from proof_v0_0_61.fixtures import (
     BOB_SECRET,
     VERSION,
     ExternalCallProbe,
-    ExternalCapability,
+    ExternalSkillRunner,
     ProofModelServer,
     write_project,
 )
@@ -86,7 +86,7 @@ def _run_user_tasks(root: Path, server: ProofModelServer) -> ProofInputs:
     probe = ExternalCallProbe()
     agent = Agent(
         AgentConfig.load_from_file(root / "agent.toml"),
-        capabilities=[ExternalCapability(probe)],
+        skill_runners=[ExternalSkillRunner(probe)],
         secret_lookup=lookup_secret,
     )
     base_url = f"http://127.0.0.1:{server.server_port}/v1"

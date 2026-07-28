@@ -12,18 +12,18 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
-from agents.agent import Agent
-from ag_ui_bridge.server import AGUIHTTPServer, create_ag_ui_server
-from capability.skill_contributions import (
-    CapabilityAction,
-    CapabilityTool,
-    SkillContribution,
+from core.agent import Agent
+from adapter.ag_ui_adapter.server import AGUIHTTPServer, create_ag_ui_server
+from skill.runners.loaded import (
+    SkillAction,
+    SkillTool,
+    LoadedSkill,
 )
-from capability.registry import SkillLoadRequest
-from provider.chat import Message, ModelResponse, ToolCall, ToolDefinition
-from runtime.config import AgentConfig
-from runtime.safety import ActionEffect
-from runtime.storage import StorageEventQuery
+from skill.runners.registry import SkillLoadRequest
+from core.provider.chat import Message, ModelResponse, ToolCall, ToolDefinition
+from core.config import AgentConfig
+from core.actions import ActionEffect
+from core.storage import StorageEventQuery
 from skill.kinds.memory import MiniMemory
 from skill.manifest import Skill
 
@@ -48,34 +48,34 @@ class ExternalCallProbe:
         return {"executed": True}
 
 
-class ExternalCapability:
-    """Expose one risky Tool only through an explicitly registered Capability."""
+class ExternalSkillRunner:
+    """Expose one risky Tool only through an explicitly registered SkillRunner."""
 
     name = "external-operation"
     version = "1"
-    capability_name = "external"
+    skill_type = "external"
     adds_model_context = True
 
     def __init__(self, probe: ExternalCallProbe) -> None:
         self.probe = probe
 
-    def load_skill(self, request: SkillLoadRequest) -> SkillContribution:
+    def load_skill(self, request: SkillLoadRequest) -> LoadedSkill:
         opened = request.disclosure.open_skill(
             request.reference.name,
-            self.capability_name,
+            self.skill_type,
         )
-        return SkillContribution(
+        return LoadedSkill(
             model_context=Skill(
                 opened.read_manifest(),
                 opened.read_instructions().content,
             ),
             tools=(
-                CapabilityTool(
+                SkillTool(
                     "run_external",
                     "Run the external operation declared by this Skill.",
                     {},
                     self.probe.run_external,
-                    action=CapabilityAction(
+                    action=SkillAction(
                         (ActionEffect.EXECUTE, ActionEffect.NETWORK),
                         "external:proof-service",
                     ),
@@ -248,7 +248,7 @@ def run_end_to_end_proof(root: Path) -> dict[str, object]:
     agent = Agent(
         config,
         provider=provider,
-        capabilities=[ExternalCapability(probe)],
+        skill_runners=[ExternalSkillRunner(probe)],
     )
     store = agent.runtime.create_store(USER_ID)
     memory = MiniMemory(store)
@@ -419,10 +419,7 @@ def write_project(root: Path) -> None:
         '''[agent]
 name = "v0053-proof"
 system = "Complete the requested task."
-workflow = "react"
-memory = "default"
-skills = ["external:protected"]
-safety = "standard"
+skills = ["workflow:react", "memory:default", "external:protected"]
 
 [paths]
 skills = ["skills"]
@@ -440,9 +437,9 @@ def write_workflow_skill(root: Path) -> None:
     path = root / "skills/workflow/react"
     path.mkdir(parents=True)
     path.joinpath("skill.toml").write_text(
-        '''schema_version = 2
+        '''schema_version = 3
 name = "react"
-capability = "workflow"
+type = "workflow"
 description = "Tool-using proof workflow"
 version = "0.1.0"
 triggers = []
@@ -460,9 +457,9 @@ def write_memory_skill(root: Path) -> None:
     path = root / "skills/memory/default"
     path.mkdir(parents=True)
     path.joinpath("skill.toml").write_text(
-        '''schema_version = 2
+        '''schema_version = 3
 name = "default"
-capability = "memory"
+type = "memory"
 description = "Recall-time organizing proof memory"
 version = "0.1.0"
 triggers = []
@@ -483,9 +480,9 @@ def write_model_skill(root: Path) -> None:
     path = root / "skills/model/proof"
     path.mkdir(parents=True)
     path.joinpath("skill.toml").write_text(
-        '''schema_version = 2
+        '''schema_version = 3
 name = "proof"
-capability = "model"
+type = "model"
 description = "Deterministic proof model"
 version = "0.1.0"
 triggers = []
@@ -507,9 +504,9 @@ def write_external_skill(root: Path) -> None:
     path = root / "skills/external/protected"
     path.mkdir(parents=True)
     path.joinpath("skill.toml").write_text(
-        '''schema_version = 2
+        '''schema_version = 3
 name = "protected"
-capability = "external"
+type = "external"
 description = "Agent-owned external operation"
 version = "0.1.0"
 triggers = []

@@ -8,17 +8,17 @@ from datetime import UTC, datetime
 from io import StringIO
 from pathlib import Path
 
-from agents.agent import Agent
+from core.agent import Agent
 from cli import main
-from runtime.config import AgentConfig
-from runtime.evaluation import (
+from core.config import AgentConfig
+from core.state.evaluation import (
     EvaluationResult,
     EvaluationSource,
     EvaluationTokenUsage,
     create_evaluation_record,
 )
-from runtime.evolution.recommendations import recommend_skill_revisions
-from skill.revision import SkillRevision
+from core.evolution.recommendations import recommend_skill_revisions
+from skill.evolution.revision import SkillRevision
 
 
 class EvolutionCliTests(unittest.TestCase):
@@ -28,7 +28,7 @@ class EvolutionCliTests(unittest.TestCase):
             agent = Agent(AgentConfig.load_from_file(config_path))
             revision = SkillRevision(
                 key="prompt:writer",
-                capability="prompt",
+                skill_type="prompt",
                 name="writer",
                 version="0.1.0",
                 content_sha256="a" * 64,
@@ -125,9 +125,7 @@ def _write_config(root: Path) -> Path:
 [agent]
 name = "evolution-cli"
 system = "Test system."
-workflow = "direct"
-memory = "default"
-skills = []
+skills = ["workflow:direct", "memory:default"]
 
 [paths]
 skills = ["skills"]

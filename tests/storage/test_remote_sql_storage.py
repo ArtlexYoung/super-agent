@@ -4,18 +4,18 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from runtime.storage import JsonlStorage, SqliteStorage, create_storage_backend
-from runtime.storage.contracts import StorageEventQuery
-from runtime.storage.sql.base import _query_where
-from runtime.storage.sql.mysql import _mysql_connection_arguments
+from core.storage import JsonlStorage, SqliteStorage, create_storage_backend
+from core.storage.contracts import StorageEventQuery
+from core.storage.sql.base import _query_where
+from core.storage.sql.mysql import _mysql_connection_arguments
 
 
 class RemoteSqlStorageConfigurationTests(unittest.TestCase):
     def test_local_backends_do_not_import_remote_database_drivers(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             with (
-                patch("runtime.storage.sql.mysql.import_module") as mysql_import,
-                patch("runtime.storage.sql.postgresql.import_module") as postgresql_import,
+                patch("core.storage.sql.mysql.import_module") as mysql_import,
+                patch("core.storage.sql.postgresql.import_module") as postgresql_import,
             ):
                 jsonl = create_storage_backend("jsonl", tmp)
                 sqlite = create_storage_backend("sqlite", tmp)
@@ -27,7 +27,7 @@ class RemoteSqlStorageConfigurationTests(unittest.TestCase):
 
     def test_mysql_reports_the_exact_optional_dependency_when_missing(self) -> None:
         with patch(
-            "runtime.storage.sql.mysql.import_module",
+            "core.storage.sql.mysql.import_module",
             side_effect=ModuleNotFoundError("pymysql is missing"),
         ):
             with self.assertRaisesRegex(RuntimeError, r"super-agent\[mysql\]"):
@@ -35,7 +35,7 @@ class RemoteSqlStorageConfigurationTests(unittest.TestCase):
 
     def test_postgresql_reports_the_exact_optional_dependency_when_missing(self) -> None:
         with patch(
-            "runtime.storage.sql.postgresql.import_module",
+            "core.storage.sql.postgresql.import_module",
             side_effect=ModuleNotFoundError("psycopg is missing"),
         ):
             with self.assertRaisesRegex(RuntimeError, r"super-agent\[postgresql\]"):
@@ -43,7 +43,7 @@ class RemoteSqlStorageConfigurationTests(unittest.TestCase):
 
     def test_custom_connection_environment_name_is_required(self) -> None:
         with (
-            patch("runtime.storage.sql.mysql.import_module", return_value=object()),
+            patch("core.storage.sql.mysql.import_module", return_value=object()),
             patch.dict(os.environ, {}, clear=True),
         ):
             with self.assertRaisesRegex(ValueError, "CUSTOM_MYSQL_DATABASE_URL"):

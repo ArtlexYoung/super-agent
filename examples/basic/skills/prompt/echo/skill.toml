@@ -1,6 +1,6 @@
-schema_version = 2
+schema_version = 3
 name = "echo"
-capability = "prompt"
+type = "prompt"
 description = "Minimal example skill"
 version = "0.1.0"
 agent_created = false

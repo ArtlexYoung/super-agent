@@ -11,9 +11,9 @@ from pathlib import Path
 from typing import cast
 from uuid import uuid4
 
-from runtime.config import AgentConfig
-from runtime.safety import ActionEffect, ActionRequest, RuntimeActionExecutor, SafetyPolicy
-from runtime.store import RuntimeStore
+from core.config import AgentConfig
+from core.actions import ActionEffect, ActionRequest, ActionRunner, ActionRules
+from core.state.store import RuntimeStore
 from skill.disclosure import ProgressiveDisclosureCore, SkillDisclosure
 from skill.kinds.model import ModelProfile, create_model_profile_from_skill_disclosure
 from skill.manifest import DEFAULT_SKILL_FRESHNESS, SkillEntry, SkillManifest
@@ -55,13 +55,13 @@ class ModelSkillManager:
         self,
         config: AgentConfig,
         store: RuntimeStore,
-        safety_policy: SafetyPolicy | None = None,
+        action_rules: ActionRules | None = None,
     ) -> None:
         self.config = config
         self.store = store
         self.user_skill_root = store.private_root / "skills"
-        self.actions = RuntimeActionExecutor(
-            safety_policy or SafetyPolicy(),
+        self.actions = ActionRunner(
+            action_rules or ActionRules(),
             store.append_management_action_event,
         )
 
@@ -146,7 +146,7 @@ class ModelSkillManager:
         remaining = [
             item
             for item in index.entries
-            if item.reference.capability == "model" and item.reference.name != clean_name
+            if item.reference.skill_type == "model" and item.reference.name != clean_name
         ]
         updates: list[tuple[Path, Path | None, _ModelSkillDocument]] = []
         if removed_document.configuration.get("default") is True and remaining:
@@ -171,7 +171,7 @@ class ModelSkillManager:
         index = disclosure.prepare_skill_index()
         for entry in index.entries:
             if (
-                entry.reference.capability != "model"
+                entry.reference.skill_type != "model"
                 or entry.reference.name in excluded_names
             ):
                 continue
@@ -294,7 +294,7 @@ def _create_model_skill_document(
             triggers=request.triggers,
             entry=SkillEntry(),
             path=Path("."),
-            capability="model",
+            skill_type="model",
             agent_created=False,
             agent_can_update=request.agent_can_update,
             freshness=DEFAULT_SKILL_FRESHNESS,
@@ -427,7 +427,7 @@ def _stage_model_skill(
         validate_skill_directory(
             stage,
             store,
-            expected_capability="model",
+            expected_type="model",
             expected_name=document.manifest.name,
         )
     except Exception:
@@ -442,7 +442,7 @@ def _model_skill_toml(document: _ModelSkillDocument) -> str:
     lines = [
         f"schema_version = {manifest.schema_version}",
         f"name = {_quote(manifest.name)}",
-        'capability = "model"',
+        'type = "model"',
         f"description = {_quote(manifest.description)}",
         f"version = {_quote(manifest.version)}",
         f"triggers = {_array(manifest.triggers)}",

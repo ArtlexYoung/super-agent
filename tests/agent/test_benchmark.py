@@ -2,8 +2,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from runtime.store import create_local_runtime_store
-from skill.benchmark import BenchmarkCase, SkillBenchmark, benchmark_report_to_dict
+from core.state.store import create_local_runtime_store
+from skill.evolution.benchmark import BenchmarkCase, SkillBenchmark, benchmark_report_to_dict
 from skill.disclosure import ProgressiveDisclosureCore
 
 
@@ -82,9 +82,9 @@ def _write_skill(root: Path, name: str, instructions: str) -> None:
     skill_dir.mkdir(parents=True)
     (skill_dir / "skill.toml").write_text(
         f"""
-schema_version = 2
+schema_version = 3
 name = "{name}"
-capability = "prompt"
+type = "prompt"
 description = "{name} benchmark skill"
 version = "0.1.0"
 triggers = ["{name}"]

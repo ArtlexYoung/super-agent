@@ -1,7 +1,7 @@
 import unittest
 
 import super_agent
-from provider.chat import ProviderConnection, create_chat_provider
+from core.provider.chat import ProviderConnection, create_chat_provider
 
 
 class PublicApiTests(unittest.TestCase):
@@ -12,10 +12,13 @@ class PublicApiTests(unittest.TestCase):
             "AgentRunOptions",
             "AGUIEventMapper",
             "AGUIRunInput",
+            "ActionEffect",
+            "ActionMode",
+            "ActionRules",
             "ChatProvider",
-            "Capability",
-            "CapabilityAction",
-            "CapabilityTool",
+            "SkillRunner",
+            "SkillAction",
+            "SkillTool",
             "Conversation",
             "JsonlStorage",
             "LOCAL_USER_ID",
@@ -26,8 +29,9 @@ class PublicApiTests(unittest.TestCase):
             "PostgreSqlStorage",
             "ProviderConnection",
             "ProviderPool",
+            "Skill",
             "SkillManifest",
-            "SkillContribution",
+            "LoadedSkill",
             "SkillLoadRequest",
             "SqliteStorage",
             "StorageBackend",
@@ -43,10 +47,9 @@ class PublicApiTests(unittest.TestCase):
             self.assertIsNotNone(getattr(super_agent, name))
 
         removed_internal_names = {
-            "AgentCapabilitySet",
             "AgentRuntime",
             "AutonomousEvolutionScheduler",
-            "CapabilityRegistry",
+            "SkillRunners",
             "ProgressiveDisclosureCore",
             "RuntimeSession",
             "RuntimeStore",

@@ -1,4 +1,4 @@
-"""Deterministic model, Capability, and Skill fixtures for the v0.0.61 proof."""
+"""Deterministic model, SkillRunner, and Skill fixtures for the v0.0.61 proof."""
 
 from __future__ import annotations
 
@@ -8,13 +8,13 @@ from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
-from capability.registry import SkillLoadRequest
-from capability.skill_contributions import (
-    CapabilityAction,
-    CapabilityTool,
-    SkillContribution,
+from skill.runners.registry import SkillLoadRequest
+from skill.runners.loaded import (
+    SkillAction,
+    SkillTool,
+    LoadedSkill,
 )
-from runtime.safety import ActionEffect
+from core.actions import ActionEffect
 from skill.manifest import Skill
 
 
@@ -50,34 +50,34 @@ class ExternalCallProbe:
         return {"executed": True}
 
 
-class ExternalCapability:
+class ExternalSkillRunner:
     """Expose one risky Tool through trusted code and passive Skill content."""
 
     name = "external-operation"
     version = "1"
-    capability_name = "external"
+    skill_type = "external"
     adds_model_context = True
 
     def __init__(self, probe: ExternalCallProbe) -> None:
         self.probe = probe
 
-    def load_skill(self, request: SkillLoadRequest) -> SkillContribution:
+    def load_skill(self, request: SkillLoadRequest) -> LoadedSkill:
         opened = request.disclosure.open_skill(
             request.reference.name,
-            self.capability_name,
+            self.skill_type,
         )
-        return SkillContribution(
+        return LoadedSkill(
             model_context=Skill(
                 opened.read_manifest(),
                 opened.read_instructions().content,
             ),
             tools=(
-                CapabilityTool(
+                SkillTool(
                     "run_external",
                     "Run the external operation declared by this Skill.",
                     {},
                     self.probe.run_external,
-                    action=CapabilityAction(
+                    action=SkillAction(
                         (ActionEffect.EXECUTE, ActionEffect.NETWORK),
                         "external:proof-service",
                     ),
@@ -245,10 +245,7 @@ def write_project(root: Path) -> None:
         '''[agent]
 name = "v0061-proof"
 system = "Complete the requested task."
-workflow = "react"
-memory = "default"
-skills = ["external:protected"]
-safety = "standard"
+skills = ["workflow:react", "memory:default", "external:protected"]
 
 [paths]
 skills = ["skills"]
@@ -266,9 +263,9 @@ def _write_workflow_skill(root: Path) -> None:
     path = root / "skills/workflow/react"
     path.mkdir(parents=True)
     path.joinpath("skill.toml").write_text(
-        '''schema_version = 2
+        '''schema_version = 3
 name = "react"
-capability = "workflow"
+type = "workflow"
 description = "Tool-using unified proof workflow"
 version = "0.1.0"
 triggers = []
@@ -286,9 +283,9 @@ def _write_memory_skill(root: Path) -> None:
     path = root / "skills/memory/default"
     path.mkdir(parents=True)
     path.joinpath("skill.toml").write_text(
-        '''schema_version = 2
+        '''schema_version = 3
 name = "default"
-capability = "memory"
+type = "memory"
 description = "Recall-time organizing proof memory"
 version = "0.1.0"
 triggers = []
@@ -309,9 +306,9 @@ def _write_external_skill(root: Path) -> None:
     path = root / "skills/external/protected"
     path.mkdir(parents=True)
     path.joinpath("skill.toml").write_text(
-        '''schema_version = 2
+        '''schema_version = 3
 name = "protected"
-capability = "external"
+type = "external"
 description = "Agent-owned protected operation"
 version = "0.1.0"
 triggers = ["external operation"]

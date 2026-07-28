@@ -8,9 +8,9 @@ from pathlib import Path
 from typing import Callable, cast
 from uuid import uuid4
 
-from runtime.safety import ActionEffect, ActionRequest, RuntimeActionExecutor, SafetyPolicy
-from runtime.evolution.files import compare_directory_versions
-from runtime.evolution.state import (
+from core.actions import ActionEffect, ActionRequest, ActionRunner, ActionRules
+from core.evolution.files import compare_directory_versions
+from core.evolution.state import (
     create_skill_candidate_difference,
     list_skill_evolutions,
     record_skill_candidate_evaluation,
@@ -20,9 +20,9 @@ from runtime.evolution.state import (
     require_skill_candidate_can_promote,
     start_manual_skill_evolution,
 )
-from runtime.evolution.state_values import SkillEvolutionState
-from runtime.model_calls import TextModel
-from runtime.store import RuntimeStore
+from core.evolution.state_values import SkillEvolutionState
+from core.task.model_calls import TextModel
+from core.state.store import RuntimeStore
 from skill.evolution.candidate import (
     SkillCandidate,
     SkillCandidateRequest,
@@ -50,7 +50,7 @@ from skill.evolution.artifacts import (
 )
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.manifest import SkillManifest, calculate_skill_directory_sha256
-from skill.revision import (
+from skill.evolution.revision import (
     SkillRevision,
     create_manifest_skill_revision,
 )
@@ -72,7 +72,7 @@ class SkillEvolutionManager:
         models: EvolutionModels,
         minimum_score: float = 0.8,
         on_skill_changed: Callable[[SkillManifest], None] | None = None,
-        safety_policy: SafetyPolicy | None = None,
+        action_rules: ActionRules | None = None,
     ) -> None:
         if minimum_score < 0 or minimum_score > 1:
             raise ValueError("minimum evaluation score must be between 0 and 1")
@@ -80,7 +80,7 @@ class SkillEvolutionManager:
             skill_disclosure.skill_roots,
             store,
             user_skill_roots=skill_disclosure.user_skill_roots,
-            fallback_skill_roots=skill_disclosure.fallback_skill_roots,
+            builtin_skill_roots=skill_disclosure.builtin_skill_roots,
             disabled_names=skill_disclosure.disabled_names,
         )
         self.user_skill_root = store.private_root / "skills"
@@ -89,8 +89,8 @@ class SkillEvolutionManager:
         self.models = models
         self.minimum_score = minimum_score
         self.on_skill_changed = on_skill_changed
-        self.actions = RuntimeActionExecutor(
-            safety_policy or SafetyPolicy(),
+        self.actions = ActionRunner(
+            action_rules or ActionRules(),
             store.append_management_action_event,
         )
 
@@ -99,7 +99,7 @@ class SkillEvolutionManager:
         name: str,
         goal: str,
         *,
-        capability: str | None = None,
+        skill_type: str | None = None,
         evolution_id: str | None = None,
     ) -> SkillCandidate:
         return cast(
@@ -107,13 +107,13 @@ class SkillEvolutionManager:
             self.actions.execute_action(
                 ActionRequest.create(
                     "agent:evolution",
-                    f"skill:candidate:{capability or name}",
+                    f"skill:candidate:{skill_type or name}",
                     (ActionEffect.CREATE,),
                 ),
                 lambda: self._create_skill_candidate(
                     name,
                     goal,
-                    capability=capability,
+                    skill_type=skill_type,
                     evolution_id=evolution_id,
                 ),
             ),
@@ -124,7 +124,7 @@ class SkillEvolutionManager:
         name: str,
         goal: str,
         *,
-        capability: str | None = None,
+        skill_type: str | None = None,
         evolution_id: str | None = None,
     ) -> SkillCandidate:
         candidate = create_candidate(
@@ -134,14 +134,14 @@ class SkillEvolutionManager:
                 text_model=self.models.candidate,
                 name=name,
                 goal=goal,
-                capability=capability,
+                skill_type=skill_type,
             )
         )
         try:
             manifest = validate_skill_directory(
                 candidate.skill_path,
                 self.store,
-                expected_capability=candidate.capability,
+                expected_type=candidate.skill_type,
                 expected_name=candidate.name,
             )
             parent = self._candidate_parent_revision(candidate)
@@ -161,7 +161,7 @@ class SkillEvolutionManager:
             else:
                 if parent is None:
                     raise ValueError("automatic evolution requires an existing Skill revision")
-                current = self._read_active_manifest(candidate.name, candidate.capability)
+                current = self._read_active_manifest(candidate.name, candidate.skill_type)
                 if current is None:
                     raise ValueError(f"automatic evolution source not found: {candidate.key}")
                 record_skill_evolution_candidate(
@@ -204,6 +204,8 @@ class SkillEvolutionManager:
         cases: list[EvaluationCase],
     ) -> EvaluationReport:
         candidate = self._read_candidate(candidate_id)
+        self._candidate_parent_revision(candidate)
+        current = self._read_active_manifest(candidate.name, candidate.skill_type)
         report_id = create_report_id()
         report_path = (
             self.evolution_root
@@ -219,6 +221,7 @@ class SkillEvolutionManager:
                 minimum_score=self.minimum_score,
                 report_path=report_path,
                 store=self.store,
+                baseline_skill_path=None if current is None else current.path,
             ),
         )
         write_json_exclusive(report_path, skill_evaluation_report_to_dict(report))
@@ -246,8 +249,12 @@ class SkillEvolutionManager:
 
     def _promote_skill_candidate(self, candidate_id: str) -> SkillManifest:
         candidate = self._read_candidate(candidate_id)
-        self._read_latest_report(candidate.candidate_id)
-        current = self._read_active_manifest(candidate.name, candidate.capability)
+        report = self._read_latest_report(candidate.candidate_id)
+        if report.candidate_id != candidate.candidate_id:
+            raise ValueError("Skill evaluation report does not match its candidate")
+        if not report.passed or not report.no_regression:
+            raise ValueError("Skill candidate did not pass the no-regression evaluation")
+        current = self._read_active_manifest(candidate.name, candidate.skill_type)
         if current is not None:
             validate_skill_replacement(current.path, candidate.skill_path, self.store)
         current_revision = (
@@ -266,10 +273,10 @@ class SkillEvolutionManager:
             action="promotion_backup",
             previous_revision_id=previous_revision_id,
         )
-        target = self._user_skill_path(candidate.capability, candidate.name)
+        target = self._user_skill_path(candidate.skill_type, candidate.name)
         had_user_overlay = target.is_dir()
         _replace_skill_directory(candidate.skill_path, target)
-        promoted = self._read_active_manifest(candidate.name, candidate.capability)
+        promoted = self._read_active_manifest(candidate.name, candidate.skill_type)
         if promoted is None:
             raise RuntimeError(f"promoted skill not found after replacement: {candidate.name}")
         try:
@@ -295,17 +302,17 @@ class SkillEvolutionManager:
         self,
         name: str,
         *,
-        capability: str | None = None,
+        skill_type: str | None = None,
     ) -> SkillManifest:
         return cast(
             SkillManifest,
             self.actions.execute_action(
                 ActionRequest.create(
                     "agent:evolution",
-                    f"skill:owned:{capability or name}",
+                    f"skill:owned:{skill_type or name}",
                     (ActionEffect.UPDATE,),
                 ),
-                lambda: self._rollback_skill(name, capability=capability),
+                lambda: self._rollback_skill(name, skill_type=skill_type),
             ),
         )
 
@@ -313,21 +320,21 @@ class SkillEvolutionManager:
         self,
         name: str,
         *,
-        capability: str | None = None,
+        skill_type: str | None = None,
     ) -> SkillManifest:
-        skill_name, requested_capability = split_skill_reference(name, capability)
-        current = self._read_active_manifest(skill_name, requested_capability)
+        skill_name, requested_type = split_skill_reference(name, skill_type)
+        current = self._read_active_manifest(skill_name, requested_type)
         if current is None:
             raise KeyError(f"active skill not found: {name}")
-        skill_capability = current.capability
+        current_type = current.skill_type
         evolution = self._require_active_evolution(
-            f"{skill_capability}:{skill_name}"
+            f"{current_type}:{skill_name}"
         )
         revision_id = evolution.rollback_revision_id
         if not revision_id:
             raise ValueError(f"skill has no previous evolution revision: {skill_name}")
         revision = self._read_history_revision(
-            skill_capability,
+            current_type,
             skill_name,
             revision_id,
         )
@@ -336,9 +343,9 @@ class SkillEvolutionManager:
             action="rollback_backup",
             previous_revision_id=revision_id,
         )
-        target = self._user_skill_path(skill_capability, skill_name)
+        target = self._user_skill_path(current_type, skill_name)
         _replace_skill_directory(revision.skill_path, target)
-        restored = self._read_active_manifest(skill_name, skill_capability)
+        restored = self._read_active_manifest(skill_name, current_type)
         if restored is None:
             raise RuntimeError(f"restored skill not found after rollback: {skill_name}")
         try:
@@ -363,9 +370,9 @@ class SkillEvolutionManager:
         goal: str,
         cases: list[EvaluationCase],
         *,
-        capability: str | None = None,
+        skill_type: str | None = None,
     ) -> EvolutionResult:
-        candidate = self.create_skill_candidate(name, goal, capability=capability)
+        candidate = self.create_skill_candidate(name, goal, skill_type=skill_type)
         report = self.evaluate_skill_candidate(candidate.candidate_id, cases)
         if not report.passed:
             return EvolutionResult(candidate=candidate, report=report, status="rejected")
@@ -381,14 +388,14 @@ class SkillEvolutionManager:
         self,
         name: str,
         *,
-        capability: str | None = None,
+        skill_type: str | None = None,
     ) -> list[SkillHistoryRevision]:
-        skill_name, skill_capability = self._resolve_skill_reference(name, capability)
-        history_root = self.evolution_root / "history" / skill_capability / skill_name
+        skill_name, current_type = self._resolve_skill_reference(name, skill_type)
+        history_root = self.evolution_root / "history" / current_type / skill_name
         if not history_root.is_dir():
             return []
         revisions = [
-            self._read_history_revision(skill_capability, skill_name, path.parent.name)
+            self._read_history_revision(current_type, skill_name, path.parent.name)
             for path in history_root.glob("*/revision.json")
         ]
         return sorted(revisions, key=lambda item: (item.created_at, item.revision_id))
@@ -406,7 +413,7 @@ class SkillEvolutionManager:
         self,
         candidate: SkillCandidate,
     ) -> SkillRevision | None:
-        current = self._read_active_manifest(candidate.name, candidate.capability)
+        current = self._read_active_manifest(candidate.name, candidate.skill_type)
         if not candidate.parent_sha256:
             if current is not None:
                 raise ValueError(f"skill was created after candidate proposal: {candidate.key}")
@@ -426,27 +433,27 @@ class SkillEvolutionManager:
     def _read_active_manifest(
         self,
         name: str,
-        capability: str | None,
+        skill_type: str | None,
     ) -> SkillManifest | None:
         index = self.skill_disclosure.prepare_skill_index()
-        entry = index.find_skill(name, capability)
+        entry = index.find_skill(name, skill_type)
         if entry is None:
             return None
         return self.skill_disclosure.open_skill(
             entry.reference.name,
-            entry.reference.capability,
+            entry.reference.skill_type,
         ).read_manifest()
 
     def _resolve_skill_reference(
         self,
         name: str,
-        capability: str | None,
+        skill_type: str | None,
     ) -> tuple[str, str]:
-        skill_name, requested_capability = split_skill_reference(name, capability)
-        current = self._read_active_manifest(skill_name, requested_capability)
+        skill_name, requested_type = split_skill_reference(name, skill_type)
+        current = self._read_active_manifest(skill_name, requested_type)
         if current is not None:
-            return skill_name, current.capability
-        return skill_name, requested_capability or "prompt"
+            return skill_name, current.skill_type
+        return skill_name, requested_type or "prompt"
 
     def _snapshot_current_skill(
         self,
@@ -462,7 +469,7 @@ class SkillEvolutionManager:
         final_path = (
             self.evolution_root
             / "history"
-            / manifest.capability
+            / manifest.skill_type
             / manifest.name
             / revision_id
         )
@@ -471,7 +478,7 @@ class SkillEvolutionManager:
         shutil.copytree(manifest.path, skill_path)
         revision = SkillHistoryRevision(
             revision_id=revision_id,
-            capability=manifest.capability,
+            skill_type=manifest.skill_type,
             skill_name=manifest.name,
             version=manifest.version,
             action=action,
@@ -491,7 +498,7 @@ class SkillEvolutionManager:
 
     def _read_history_revision(
         self,
-        capability: str,
+        skill_type: str,
         name: str,
         revision_id: str,
     ) -> SkillHistoryRevision:
@@ -499,7 +506,7 @@ class SkillEvolutionManager:
         metadata_path = (
             self.evolution_root
             / "history"
-            / capability
+            / skill_type
             / name
             / revision_id
             / "revision.json"
@@ -511,7 +518,7 @@ class SkillEvolutionManager:
             "schema_version",
             "revision_id",
             "skill_key",
-            "capability",
+            "type",
             "skill_name",
             "version",
             "action",
@@ -524,8 +531,8 @@ class SkillEvolutionManager:
         if set(data) != expected_fields:
             raise ValueError(f"skill history revision fields do not match schema: {revision_id}")
         identity_matches = (
-            data["skill_key"] == f"{capability}:{name}"
-            and data["capability"] == capability
+            data["skill_key"] == f"{skill_type}:{name}"
+            and data["type"] == skill_type
             and data["skill_name"] == name
             and data["revision_id"] == revision_id
         )
@@ -533,7 +540,7 @@ class SkillEvolutionManager:
             raise ValueError(f"skill history revision identity does not match path: {revision_id}")
         return SkillHistoryRevision(
             revision_id=str(data["revision_id"]),
-            capability=str(data["capability"]),
+            skill_type=str(data["type"]),
             skill_name=str(data["skill_name"]),
             version=str(data["version"]),
             action=str(data["action"]),
@@ -576,8 +583,8 @@ class SkillEvolutionManager:
             raise ValueError(f"skill has no active promoted evolution: {skill_key}")
         return max(active, key=lambda item: (item.updated_at, item.evolution_id))
 
-    def _user_skill_path(self, capability: str, name: str) -> Path:
-        return self.user_skill_root / capability / name
+    def _user_skill_path(self, skill_type: str, name: str) -> Path:
+        return self.user_skill_root / skill_type / name
 
 
 def _replace_skill_directory(source: Path, target: Path) -> None:

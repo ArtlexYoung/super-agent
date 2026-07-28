@@ -1,8 +1,8 @@
 import json
 import unittest
 
-from ag_ui_bridge.protocol import AGUIEventMapper, AGUIRunInput, encode_sse_event
-from runtime.models import RunEvent
+from adapter.ag_ui_adapter.protocol import AGUIEventMapper, AGUIRunInput, encode_sse_event
+from core.state.models import RunEvent
 
 
 class AGUIProtocolTests(unittest.TestCase):

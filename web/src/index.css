@@ -356,6 +356,82 @@
     @apply grid size-6 shrink-0 place-items-center rounded-md bg-secondary text-xs font-semibold;
   }
 
+  .copilotkit-page {
+    @apply flex h-svh min-h-0 flex-col overflow-hidden bg-background/90;
+  }
+
+  .copilotkit-header {
+    @apply flex min-h-[86px] shrink-0 items-center justify-between gap-5 border-b px-5 py-4 sm:px-8;
+  }
+
+  .copilotkit-title-row {
+    @apply flex min-w-0 items-center gap-3;
+  }
+
+  .copilotkit-title-row h1 {
+    @apply text-xl font-semibold;
+  }
+
+  .copilotkit-title-row p {
+    @apply mt-1 text-sm text-muted-foreground;
+  }
+
+  .copilotkit-connection {
+    @apply flex shrink-0 flex-col items-end gap-1 text-xs text-muted-foreground;
+  }
+
+  .copilotkit-connection code {
+    @apply rounded-md border bg-card px-2 py-1 font-mono text-foreground;
+  }
+
+  .copilotkit-connection span {
+    @apply max-w-56 truncate;
+  }
+
+  .copilotkit-empty {
+    @apply m-auto flex max-w-md flex-col items-center gap-4 px-6 text-center;
+  }
+
+  .copilotkit-empty h2 {
+    @apply text-lg font-semibold;
+  }
+
+  .copilotkit-empty p {
+    @apply text-sm leading-6 text-muted-foreground;
+  }
+
+  .copilotkit-chat-frame {
+    @apply flex min-h-0 flex-1 flex-col bg-background;
+  }
+
+  .copilotkit-message-scroll {
+    @apply min-h-0 flex-1 overflow-y-auto;
+  }
+
+  .copilotkit-message-column {
+    @apply mx-auto flex min-h-full w-full max-w-3xl flex-col gap-5 px-5 py-8;
+  }
+
+  .copilotkit-empty-chat {
+    @apply m-auto flex flex-col items-center gap-2 py-12 text-center;
+  }
+
+  .copilotkit-empty-chat svg {
+    @apply mb-2 size-8 text-primary;
+  }
+
+  .copilotkit-empty-chat strong {
+    @apply text-sm font-semibold;
+  }
+
+  .copilotkit-empty-chat span {
+    @apply text-xs text-muted-foreground;
+  }
+
+  .copilotkit-run-error {
+    @apply mx-auto mb-2 max-w-3xl text-xs text-destructive;
+  }
+
 }
 
 @keyframes message-enter {
@@ -418,8 +494,22 @@
   }
 
   .conversation-page,
-  .configuration-page {
+  .configuration-page,
+  .copilotkit-page {
     height: calc(100svh - 62px);
+  }
+
+  .copilotkit-header {
+    @apply min-h-[76px] px-4;
+  }
+
+  .copilotkit-title-row p,
+  .copilotkit-connection span {
+    @apply hidden;
+  }
+
+  .copilotkit-title-row h1 {
+    @apply text-base;
   }
 
   .configuration-page-header {

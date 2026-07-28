@@ -1,91 +1,105 @@
-# Evaluation, Freshness, Memory, and Evolution
+# Evaluation, Memory, and Evolution
 
-Super Agent treats runtime evidence as the basis for self-improvement.
+Super Agent updates Skills from recorded evidence rather than intuition alone. The same
+user-and-Agent-scoped event stream drives evaluation, freshness, recommendations,
+candidates, promotion, monitoring, and rollback.
 
-## Canonical Evaluation Records
+## Evaluation Records
 
-Online runs and candidate evaluations use one strict record format. Records are `evaluation.recorded` entries in the selected storage backend; with default JSONL they share the user's canonical event stream:
+Every Skill revision that affects a run receives an `evaluation.recorded` event with:
 
-```text
-.super-agent/users/<user-hash>/events.jsonl
-```
+- Exact `type:name`, version, function group, and directory SHA-256.
+- Online run or candidate-evaluation source identity.
+- Success, score, token estimates, latency, error type, and deterministic checks.
 
-Each record separates:
+Readers reject unknown fields, invalid scores, negative metrics, malformed hashes, and
+unsupported schema versions. Candidate evaluation cannot change live freshness because
+freshness reads online `agent_run` evidence only.
 
-- `revision`: the exact Skill identity, capability, version, function group, and SHA-256.
-- `source`: online Agent run or candidate evaluation case.
-- `result`: success, score, token usage, latency, error type, and checks.
+## Freshness Without a Model
 
-The Runtime automatically tracks every Skill revision that affected a run through the shared `RuntimeSession`. Executable mechanisms are represented by their ordinary `capability` Skill revision, never by a second Capability-only identity.
+Freshness is recalculated when the central Skill index is prepared. It uses:
 
-Evaluation record readers reject unknown fields, unsupported source types, invalid scores, negative token values, malformed hashes, and unsupported schema versions.
+- Exponentially weighted quality.
+- Time since the last use.
+- Calls per active week.
+- Input/output token and latency efficiency.
+- Success, error, and empty-output reliability.
+- Successful follow-up use of another Skill in the same function group.
+- Sample confidence that keeps sparse evidence near the default score.
 
-## Skill Freshness
-
-Freshness is a deterministic derived view. It never calls a model and is rebuilt from canonical evaluation records when the Skill index is prepared.
-
-Signals include:
-
-- Quality from an exponentially weighted success score.
-- Recency from time since last use.
-- Frequency from calls over active time.
-- Efficiency from estimated token cost and observed latency.
-- Reliability from success, error, and empty-output rates.
-- Replacement from successful follow-up use of another Skill in the same function group.
-- Confidence that pulls sparse samples toward the default score.
-
-Candidate evaluation records never affect live freshness because freshness consumes only `agent_run` Skill records.
+The result is deterministic and never calls a model.
 
 ```bash
 super-agent skills freshness --config agent.toml
 ```
 
-## Automatic Evolution Loop
+## Automatic Skill Updates
 
-After a run evaluation is stored, Runtime reviews the active Skill revisions. A revision is eligible only when it is Agent-owned and `agent_can_update` is true. No additional configuration is required.
+Only an Agent-owned Skill with `agent_can_update = true` is eligible:
 
-The default signals are:
+```toml
+agent_created = true
+agent_can_update = true
+```
 
-- Any failed run.
-- Average score below `0.75` after at least three samples.
-- Skill freshness below `45` after at least two samples.
-- Successful same-function replacement rate of at least `50%` after two follow-ups.
-- Average estimated token usage of at least `12,000`.
-- Average latency of at least `10,000 ms`.
+When `agent_can_update` is omitted, it defaults to `agent_created`. Human-created Skills
+are immutable by default.
 
-Runtime stores the exact source revision, aggregate metrics, reason codes, source evaluation IDs, and a SHA-256 of the evidence snapshot. The evolution ID is deterministic for the Agent, revision, and evidence, so checking unchanged evidence again is idempotent. New evidence may create a new recommendation.
+After each task evaluation, Core checks failures, sustained low scores, low freshness,
+same-function replacement, high token use, and high latency. Unchanged evidence produces
+the same recommendation ID, so repeated review is idempotent.
 
-An eligible recommendation advances automatically through the central Skill lifecycle:
+An eligible update follows one state machine:
 
-1. The central adaptive model-call path creates an isolated complete-directory candidate and records every added, modified, and deleted path.
-2. Runtime evaluates the candidate against up to three prompts from the runs that triggered the recommendation. If none can be recovered, it uses the evolution goal as one fallback case.
-3. A passing candidate is promoted atomically. A rejected or failed candidate stays inactive and its final status is recorded.
-4. Later real runs monitor the promoted version. Any failure rolls it back; three successful samples with an average score of at least `0.75` mark it stable; a lower average rolls it back.
+```text
+recommend -> create isolated candidate -> evaluate -> promote -> monitor -> stable
+                                                     -> reject
+                                                     -> rollback
+```
+
+The candidate is a complete Skill directory. Validation rejects path traversal, symlinks,
+identity changes, stale parents, empty changes, and invalid manifests. Promotion requires
+a passing no-regression report and atomically writes a user overlay. Shared project and
+built-in Skills are never overwritten.
+
+After promotion, any failed online sample rolls the Skill back. Three successful samples
+with an average score of at least `0.75` mark it stable; a lower average rolls it back.
+Automation errors are recorded in the task trace and returned in `TaskResult.skill_updates`.
+They do not masquerade as successful updates.
 
 ```bash
 super-agent evolution list --config agent.toml --user-id alice
 super-agent evolution show --config agent.toml --user-id alice --evolution-id <id> --output json
 ```
 
-These commands are read-only views over the automatic state. The same inspection is available in Python:
+Manual candidate commands use the same lifecycle:
 
-```python
-agent = Agent("agent.toml")
-skills = agent.for_user("alice").skills
-evolutions = skills.list_evolutions()
-evolution = skills.read_evolution(evolutions[0].evolution_id)
+```bash
+super-agent skills propose --config agent.toml --name prompt:concise --goal "make it clearer"
+super-agent skills evaluate --config agent.toml --candidate-id <id> --cases cases.json
+super-agent skills promote --config agent.toml --candidate-id <id>
+super-agent skills rollback --config agent.toml --name prompt:concise
 ```
 
-Evolution events, model-call evidence, candidate workspaces, and monitoring status remain isolated by user and Agent. An automation failure is recorded as `evolution.automation_failed` in the run trace and never replaces the main task result.
+Executable SkillRunner code is never generated or activated from a candidate. Only passive
+Skill content and configuration can evolve.
 
-## Self-Updating Memory
+## Memory That Can Forget
 
-A memory Skill defines policy while runtime data remains append-only:
+Memory is optional. Select a memory Skill explicitly:
 
 ```toml
-schema_version = 2
+[agent]
+skills = ["memory:default"]
+```
+
+A memory Skill defines behavior:
+
+```toml
+schema_version = 3
 name = "default"
-capability = "memory"
+type = "memory"
 description = "Default memory behavior"
 version = "0.1.0"
 triggers = []
@@ -98,84 +112,22 @@ include_usage_habits = true
 organize_on_recall = true
 ```
 
-Memory supports add, recall, forget, and deterministic duplicate consolidation. Recall ranks relevant candidates, merges exact duplicates without a model call, and can ask the selected model for validated `merge`, `supersede`, `archive`, and `forget` operations. Every change passes through Runtime Safety. Archived and forgotten items disappear from the active view while the original append-only events remain available for audit and future projections. Invalid organizer output is recorded and ignored so recall can continue. Successful Agent runs also update workflow and Skill usage habits for later prompts.
+Memory supports add, recall, forget, and duplicate consolidation. Recall ranks relevant
+items, merges exact duplicates deterministically, then can ask the selected model for
+validated merge, supersede, archive, and forget operations. Every mutation uses the same
+explicit action boundary as other Runtime changes.
+
+Archived and forgotten items disappear from the active view while canonical events remain
+append-only. Invalid or failed model organization is an explicit recall failure; Runtime
+does not silently return the unorganized result.
 
 ```bash
-super-agent memory habits --config agent.toml
 super-agent memory list --config agent.toml --scope agent
-super-agent memory add --config agent.toml --text "Prefer concise answers."
+super-agent memory add --config agent.toml --text "Prefer concise answers." --scope agent
 super-agent memory recall --config agent.toml --query "answer style"
 super-agent memory forget --config agent.toml --item-id <memory-id>
 super-agent memory consolidate --config agent.toml
 ```
 
-## Skill Update Permission
-
-```toml
-agent_created = true
-agent_can_update = true
-```
-
-Human-created Skills are immutable by default. When `agent_can_update` is omitted, it defaults to the value of `agent_created`.
-
-## Central Evolution Lifecycle
-
-```text
-create candidate -> validate -> evaluate -> promote -> rollback
-```
-
-- Candidate files are isolated from active Skills and Capabilities.
-- The candidate unit is a complete Skill directory, including resources.
-- The model returns strict JSON with complete UTF-8 file writes and explicit deletions.
-- The candidate records its parent version and directory hash.
-- Runtime forces the next patch version and rejects path traversal, symlinks, identity changes, and empty changes.
-- Prompt, memory, workflow, MCP, model, custom Skills, and executable `capability` Skills share one Runtime state machine and event stream.
-- Skill evaluation calls the configured Provider with deterministic assertions.
-- Executable `capability` Skill evaluation calls `evaluate_capability(input_data)` in a separate Python process and checks exact JSON output.
-- Promotion requires a passing score and an unchanged active parent.
-- Promotion is atomic and stores an immutable previous revision.
-- Rollback restores the previous revision and records the action.
-
-Python example:
-
-```python
-from super_agent import Agent, EvaluationCase
-
-manager = Agent("agent.toml").for_user("local").skills.create_evolution_manager()
-candidate = manager.create_skill_candidate("prompt:concise", "make answers clearer")
-report = manager.evaluate_skill_candidate(
-    candidate.candidate_id,
-    [
-        EvaluationCase(
-            name="contains answer",
-            prompt="Answer the question",
-            expected_output_contains=["answer"],
-        )
-    ],
-)
-
-if report.passed:
-    manager.promote_skill_candidate(candidate.candidate_id)
-```
-
-CLI example:
-
-```bash
-super-agent skills propose --config agent.toml --name prompt:concise --goal "make it clearer"
-super-agent skills evaluate --config agent.toml --candidate-id <id> --cases cases.json
-super-agent skills promote --config agent.toml --candidate-id <id>
-super-agent skills rollback --config agent.toml --name prompt:concise
-```
-
-For a new Skill, omit `--capability` to create a prompt Skill or pass a Capability explicitly, such as `--capability memory`. Existing bare names resolve automatically only when unique.
-
-Evolution workspaces and evaluation evidence remain isolated by user and Agent. The
-complete Skill directory remains outside the active path until evaluation passes.
-Promotion verifies the original parent version and SHA-256 before replacing declarative
-content. Promotion writes a user overlay and leaves shared project content unchanged.
-Candidate, evaluation, promotion, monitoring, and rollback status use one user-scoped
-event stream; only candidate files, reports, and immutable history snapshots remain file
-artifacts. Runtime never activates executable code from a Skill candidate; Capability code
-must be registered explicitly in application code.
-
-Model Skills use the same flow. Their descriptions and routing traits can evolve normally. Runtime rejects changes to `provider`, `model`, `base_url`, `api_key_env`, or the ownership flag unless the active Skill already declares `agent_can_update_connection = true`. Promoting or rolling back a model Skill refreshes the selected profile in the current Agent.
+Successful tasks can also update workflow and Skill usage habits. All memory items, habits,
+organization decisions, and update evidence remain isolated by user and Agent.

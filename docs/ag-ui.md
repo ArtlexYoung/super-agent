@@ -1,6 +1,8 @@
-# AG-UI Bridge
+# AG-UI Adapter
 
-Super Agent exposes its existing Runtime through the AG-UI protocol without adding a Python dependency or a second execution path.
+Super Agent exposes the same Core task path through AG-UI. The adapter validates protocol
+input, calls `Agent.run(...)`, and maps canonical Runtime events to server-sent events.
+It does not own model selection, conversations, tools, or another execution engine.
 
 ```text
 AG-UI RunAgentInput
@@ -17,12 +19,14 @@ super-agent serve
 
 The default routes are:
 
-- `GET http://127.0.0.1:8765/` for the built React client
-- `POST http://127.0.0.1:8765/ag-ui`
-- `/api/*` for same-origin Runtime management operations
-- `GET http://127.0.0.1:8765/health`
+- `GET http://127.0.0.1:8765/`: built React client.
+- `POST http://127.0.0.1:8765/ag-ui`: AG-UI run endpoint.
+- `/api/*`: same-origin management operations.
+- `GET http://127.0.0.1:8765/health`: health check.
 
-`POST /ag-ui` requires `Content-Type: application/json` and the official AG-UI input fields. Super Agent currently consumes text user messages; `threadId` becomes the persisted conversation ID and `runId` becomes the canonical Runtime run ID.
+`POST /ag-ui` requires `Content-Type: application/json`. `threadId` is the persisted
+conversation ID and `runId` is the canonical Runtime run ID. The latest non-empty user
+message becomes the task prompt.
 
 ```json
 {
@@ -38,7 +42,7 @@ The default routes are:
 }
 ```
 
-The response uses `text/event-stream`. Each frame follows the official SSE encoding:
+The response uses `text/event-stream` and official SSE framing:
 
 ```text
 data: {"type":"RUN_STARTED","threadId":"project-a","runId":"run-001"}
@@ -50,19 +54,22 @@ data: {"type":"RUN_STARTED","threadId":"project-a","runId":"run-001"}
 | Runtime event | AG-UI event |
 | --- | --- |
 | `run.started` | `RUN_STARTED` |
-| `task.started` | `STEP_STARTED` |
-| `task.step.scheduled` | `STEP_STARTED` |
+| `task.started`, `task.step.scheduled` | `STEP_STARTED` |
 | `task.step.completed` | `STEP_FINISHED` |
 | `tool.requested` | `TOOL_CALL_START`, `TOOL_CALL_ARGS`, `TOOL_CALL_END` |
 | `tool.completed`, `tool.failed` | `TOOL_CALL_RESULT` |
 | `task.completed` | `TEXT_MESSAGE_START`, `TEXT_MESSAGE_CONTENT`, `TEXT_MESSAGE_END` |
-| `run.completed` | `RUN_FINISHED` with a success outcome |
+| `run.completed` | `RUN_FINISHED` |
 | `run.failed` | `RUN_ERROR` |
-| every Runtime event | `CUSTOM` with its canonical sequence and payload |
+| every canonical event | `CUSTOM` with sequence and payload |
 
-Provider calls are currently non-streaming, so Runtime progress arrives live while the final assistant text is emitted as one content delta after the model step completes. No events are reconstructed from logs after the run.
+Provider calls are currently non-streaming. Task progress arrives live, while final
+assistant text is emitted after the selected model call completes. Events are forwarded
+from the active run and are not reconstructed from logs.
 
-## Embed in Python
+## Python and CopilotKit
+
+Embed the server with the public library API:
 
 ```python
 from super_agent import Agent, create_ag_ui_server
@@ -71,13 +78,21 @@ server = create_ag_ui_server(Agent())
 server.serve_forever()
 ```
 
-## Security Boundary
+The Web client's CopilotKit page uses `HttpAgent` from `@ag-ui/client`,
+`CopilotKitCoreReact` from the public `/v2/context` entry, and `useAgent` from the public
+`/v2/headless` entry. It renders a small project-native chat against `/ag-ui` and reuses
+an explicitly created conversation ID. The example is lazy-loaded, so the native chat
+does not load CopilotKit and the packaged client does not include its optional rich-chat
+renderers.
 
-The default server listens only on `127.0.0.1`, accepts request bodies up to 1 MiB, and allows browser calls only from the configured origin list. `--user-id` fixes one Runtime user scope when the server starts; client-controlled `forwardedProps` never selects another user.
+## Network and Identity Boundary
 
-The server has no authentication or TLS. Keep the default local binding for local use. Protect any non-local binding with an authenticated reverse proxy and an explicit `--allow-origin`. Runtime Safety still authorizes every model-triggered action before its handler runs; AG-UI only observes the resulting canonical events.
+The default server listens on `127.0.0.1`, limits request bodies to 1 MiB, validates
+content types, and allows only configured browser origins. `--user-id` fixes one Runtime
+user when the server starts; client-controlled state and forwarded properties cannot
+select another user.
 
-Protocol parsing, event mapping, origin checks, request limits, and static routing are
-covered by the HTTP integration tests. Runtime behavior itself is verified independently
-by the maintained [unified Runtime proof](experiments/v0.0.61.md), so the transport never
-becomes a second execution engine.
+The server has no authentication or TLS. Keep it on loopback, or put an authenticated TLS
+reverse proxy in front of it and configure each allowed origin explicitly. Core still
+checks every declared action before its handler runs; AG-UI only transports the resulting
+events.

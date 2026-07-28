@@ -4,8 +4,8 @@ import hashlib
 from pathlib import Path
 from urllib.parse import quote
 
-from runtime.identity import RunIdentity
-from runtime.store import RuntimeStore
+from core.identity import RunIdentity
+from core.state.store import RuntimeStore
 
 from skill.disclosure.models import (
     DisclosedConfiguration,
@@ -23,7 +23,7 @@ from skill.disclosure.models import (
     skill_index_to_dict,
 )
 from skill.disclosure.source import read_skill_sources
-from skill.freshness import calculate_skill_freshness
+from skill.evolution.freshness import calculate_skill_freshness
 from skill.manifest import (
     SkillManifest,
     calculate_skill_directory_sha256,
@@ -37,21 +37,23 @@ class ProgressiveDisclosureCore:
         store: RuntimeStore,
         *,
         user_skill_roots: list[Path] | None = None,
-        fallback_skill_roots: list[Path] | None = None,
+        builtin_skill_roots: list[Path] | None = None,
         disabled_names: list[str] | None = None,
         identity: RunIdentity | None = None,
+        record_disclosures: bool = False,
     ) -> None:
         self.skill_roots = [path.expanduser() for path in skill_roots]
         self.user_skill_roots = [
             path.expanduser() for path in user_skill_roots or []
         ]
-        self.fallback_skill_roots = [
-            path.expanduser() for path in fallback_skill_roots or []
+        self.builtin_skill_roots = [
+            path.expanduser() for path in builtin_skill_roots or []
         ]
         self.store = store
         self.cache_root = store.disclosure.cache_root
         self.disabled_names = list(disabled_names or [])
         self.identity = identity
+        self.record_disclosures = record_disclosures
         self._index: SkillIndex | None = None
         self._sources_by_key: dict[str, SkillSource] = {}
         self._disabled_references: list[SkillReference] = []
@@ -76,25 +78,26 @@ class ProgressiveDisclosureCore:
         )
         self._sources_by_key = {source.reference.key: source for source in scan.sources}
         self._disabled_references = scan.disabled_references
-        self.store.disclosure.write_json(
-            self.identity,
-            "*",
-            "index",
-            self.cache_root / "index.json",
-            skill_index_to_dict(self._index),
-        )
+        if self.record_disclosures:
+            self.store.disclosure.write_json(
+                self.identity,
+                "*",
+                "index",
+                self.cache_root / "index.json",
+                skill_index_to_dict(self._index),
+            )
         return self._index
 
     def select_skill_references_for_prompt(
         self,
         prompt: str,
         enabled_names: list[str] | None = None,
-        allowed_capabilities: set[str] | None = None,
+        allowed_types: set[str] | None = None,
     ) -> list[SkillReference]:
         decisions = self.explain_skill_selection_for_prompt(
             prompt,
             enabled_names,
-            allowed_capabilities,
+            allowed_types,
         )
         selected = [decision.reference for decision in decisions if decision.selected]
         if self.identity is not None:
@@ -119,27 +122,27 @@ class ProgressiveDisclosureCore:
         self,
         prompt: str,
         enabled_names: list[str] | None = None,
-        allowed_capabilities: set[str] | None = None,
+        allowed_types: set[str] | None = None,
     ) -> list[SkillSelectionDecision]:
         index = self._require_index()
-        capabilities = (
+        skill_runners = (
             None
-            if allowed_capabilities is None
-            else {name.lower() for name in allowed_capabilities}
+            if allowed_types is None
+            else {name.lower() for name in allowed_types}
         )
         requested = self._remove_disabled_skill_names(enabled_names or [])
         prompt_text = prompt.lower()
         for entry in index.entries:
-            if capabilities is not None and entry.reference.capability not in capabilities:
+            if skill_runners is not None and entry.reference.skill_type not in skill_runners:
                 continue
             if any(trigger and trigger in prompt_text for trigger in entry.triggers):
                 requested.append(entry.reference.key)
         resolved = index.resolve_skill_dependencies(requested)
-        if capabilities is not None:
+        if skill_runners is not None:
             resolved = [
                 entry
                 for entry in resolved
-                if entry.reference.capability in capabilities
+                if entry.reference.skill_type in skill_runners
             ]
         selected_keys = {entry.reference.key for entry in resolved}
         configured_names = {name.strip().lower() for name in enabled_names or []}
@@ -152,7 +155,7 @@ class ProgressiveDisclosureCore:
                     prompt_text,
                     configured_names,
                     selected_keys,
-                    capabilities,
+                    skill_runners,
                 ),
             )
             for entry in index.entries
@@ -161,14 +164,15 @@ class ProgressiveDisclosureCore:
     def open_skill(
         self,
         name: str,
-        expected_capability: str | None = None,
+        expected_type: str | None = None,
     ) -> "SkillDisclosure":
-        entry = self._require_index().require_skill(name, expected_capability)
+        entry = self._require_index().require_skill(name, expected_type)
         return SkillDisclosure(
             self._sources_by_key[entry.reference.key],
             entry,
             self.store,
             self.identity,
+            self.record_disclosures,
         )
 
     def read_disclosed_content(self, cache_path: str | Path) -> str:
@@ -199,12 +203,12 @@ class ProgressiveDisclosureCore:
         return read_skill_sources(
             self.skill_roots,
             self.disabled_names,
-            self.fallback_skill_roots,
+            self.builtin_skill_roots,
             self.user_skill_roots,
         )
 
     def _remove_disabled_skill_names(self, names: list[str]) -> list[str]:
-        # Ignore a bare name only when every matching capability is disabled.
+        # Ignore a bare name only when every matching skill_type is disabled.
         index = self._require_index()
         disabled_keys = {reference.key for reference in self._disabled_references}
         disabled_names = {reference.name for reference in self._disabled_references}
@@ -231,21 +235,24 @@ class SkillDisclosure:
         index_entry: SkillIndexEntry,
         store: RuntimeStore,
         identity: RunIdentity | None,
+        record_disclosures: bool,
     ) -> None:
         self.source = source
         self.index_entry = index_entry
         self.store = store
         self.identity = identity
+        self.record_disclosures = record_disclosures
 
     def read_manifest(self) -> SkillManifest:
         self._verify_source_content()
-        self.store.disclosure.write_json(
-            self.identity,
-            self.source.reference.key,
-            "manifest",
-            self.index_entry.manifest_cache_path,
-            skill_manifest_to_dict(self.source.manifest),
-        )
+        if self.record_disclosures:
+            self.store.disclosure.write_json(
+                self.identity,
+                self.source.reference.key,
+                "manifest",
+                self.index_entry.manifest_cache_path,
+                skill_manifest_to_dict(self.source.manifest),
+            )
         return self.source.manifest
 
     def read_instructions(self) -> DisclosedText:
@@ -258,25 +265,27 @@ class SkillDisclosure:
                 raise FileNotFoundError(f"skill instructions not found: {path}")
             content = path.read_text(encoding="utf-8").strip()
         self._verify_source_content()
-        self.store.disclosure.write_text(
-            self.identity,
-            self.source.reference.key,
-            "instructions",
-            self.index_entry.instructions_cache_path,
-            content,
-        )
+        if self.record_disclosures:
+            self.store.disclosure.write_text(
+                self.identity,
+                self.source.reference.key,
+                "instructions",
+                self.index_entry.instructions_cache_path,
+                content,
+            )
         return DisclosedText(content=content, cache_path=self.index_entry.instructions_cache_path)
 
     def read_configuration(self) -> DisclosedConfiguration:
         self._verify_source_content()
         content = dict(self.source.configuration)
-        self.store.disclosure.write_json(
-            self.identity,
-            self.source.reference.key,
-            "configuration",
-            self.index_entry.configuration_cache_path,
-            content,
-        )
+        if self.record_disclosures:
+            self.store.disclosure.write_json(
+                self.identity,
+                self.source.reference.key,
+                "configuration",
+                self.index_entry.configuration_cache_path,
+                content,
+            )
         return DisclosedConfiguration(
             content=content,
             cache_path=self.index_entry.configuration_cache_path,
@@ -285,24 +294,25 @@ class SkillDisclosure:
     def read_skill_files(self) -> DisclosedSkillFiles:
         self._verify_source_content()
         files = _read_skill_directory_files(self.source.manifest.path)
-        self.store.disclosure.write_json(
-            self.identity,
-            self.source.reference.key,
-            "files",
-            self.index_entry.files_cache_path,
-            {
-                "schema_version": 1,
-                "files": [
-                    {
-                        "path": item.relative_path,
-                        "size": item.size,
-                        "sha256": item.sha256,
-                        "content": item.content,
-                    }
-                    for item in files
-                ],
-            },
-        )
+        if self.record_disclosures:
+            self.store.disclosure.write_json(
+                self.identity,
+                self.source.reference.key,
+                "files",
+                self.index_entry.files_cache_path,
+                {
+                    "schema_version": 1,
+                    "files": [
+                        {
+                            "path": item.relative_path,
+                            "size": item.size,
+                            "sha256": item.sha256,
+                            "content": item.content,
+                        }
+                        for item in files
+                    ],
+                },
+            )
         return DisclosedSkillFiles(
             files=files,
             cache_path=self.index_entry.files_cache_path,
@@ -327,7 +337,7 @@ def _build_index_entry(
     skill_root = (
         cache_root
         / "skills"
-        / _path_segment(source.reference.capability)
+        / _path_segment(source.reference.skill_type)
         / _path_segment(source.reference.name)
     )
     return SkillIndexEntry(
@@ -390,9 +400,9 @@ def _explain_selection(
     prompt: str,
     configured_names: set[str],
     selected_keys: set[str],
-    allowed_capabilities: set[str] | None,
+    allowed_types: set[str] | None,
 ) -> str:
-    if allowed_capabilities is not None and entry.reference.capability not in allowed_capabilities:
+    if allowed_types is not None and entry.reference.skill_type not in allowed_types:
         return "not eligible for model context"
     trigger = next((value for value in entry.triggers if value and value in prompt), None)
     if trigger is not None:

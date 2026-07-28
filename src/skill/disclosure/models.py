@@ -8,12 +8,12 @@ from skill.manifest import SkillManifest
 
 @dataclass(frozen=True)
 class SkillReference:
-    capability: str
+    skill_type: str
     name: str
 
     @property
     def key(self) -> str:
-        return f"{self.capability}:{self.name}"
+        return f"{self.skill_type}:{self.name}"
 
 
 @dataclass(frozen=True)
@@ -82,36 +82,36 @@ class SkillIndex:
     def find_skill(
         self,
         name: str,
-        expected_capability: str | None = None,
+        expected_type: str | None = None,
     ) -> SkillIndexEntry | None:
         clean_name = _clean_name(name)
-        if expected_capability is not None:
+        if expected_type is not None:
             return self._entries_by_key.get(
-                f"{expected_capability.strip().lower()}:{clean_name}"
+                f"{expected_type.strip().lower()}:{clean_name}"
             )
         if ":" in clean_name:
             return self._entries_by_key.get(clean_name)
         matches = [entry for entry in self.entries if entry.reference.name == clean_name]
         if len(matches) > 1:
-            raise ValueError(f"ambiguous skill name {clean_name}; use capability:name")
+            raise ValueError(f"ambiguous Skill name {clean_name}; use type:name")
         return matches[0] if matches else None
 
     def require_skill(
         self,
         name: str,
-        expected_capability: str | None = None,
+        expected_type: str | None = None,
     ) -> SkillIndexEntry:
-        entry = self.find_skill(name, expected_capability)
+        entry = self.find_skill(name, expected_type)
         if entry is None:
-            capability_text = "" if expected_capability is None else f"{expected_capability}:"
-            raise KeyError(f"skill not found: {capability_text}{name}")
+            type_text = "" if expected_type is None else f"{expected_type}:"
+            raise KeyError(f"skill not found: {type_text}{name}")
         return entry
 
     def resolve_skill_dependencies(self, names: list[str]) -> list[SkillIndexEntry]:
         requested = sorted({_clean_name(name) for name in names})
         if not requested:
             return []
-        providers = _providers_by_capability(self.entries)
+        providers = _providers_by_type(self.entries)
         visit_states: dict[str, str] = {}
         stack: list[str] = []
         resolved: list[SkillIndexEntry] = []
@@ -179,7 +179,7 @@ def skill_index_to_dict(index: SkillIndex) -> dict[str, object]:
             {
                 "key": entry.reference.key,
                 "name": entry.reference.name,
-                "capability": entry.reference.capability,
+                "type": entry.reference.skill_type,
                 "description": entry.description,
                 "version": entry.version,
                 "triggers": list(entry.triggers),
@@ -212,11 +212,11 @@ def _clean_name(name: str) -> str:
     return value
 
 
-def _providers_by_capability(entries: list[SkillIndexEntry]) -> dict[str, list[SkillIndexEntry]]:
+def _providers_by_type(entries: list[SkillIndexEntry]) -> dict[str, list[SkillIndexEntry]]:
     providers: dict[str, list[SkillIndexEntry]] = {}
     for entry in entries:
-        for capability in entry.provides:
-            providers.setdefault(capability, []).append(entry)
+        for skill_type in entry.provides:
+            providers.setdefault(skill_type, []).append(entry)
     for values in providers.values():
         values.sort(key=lambda item: item.reference.key)
     return providers
@@ -239,9 +239,9 @@ def _visit_entry(
         raise ValueError(f"skill dependency cycle: {' -> '.join(stack[cycle_start:] + [key])}")
     visit_states[key] = "visiting"
     stack.append(key)
-    for capability in sorted(entry.requires):
+    for skill_type in sorted(entry.requires):
         _visit_entry(
-            _find_required_entry(capability, index, providers),
+            _find_required_entry(skill_type, index, providers),
             index,
             providers,
             visit_states,
@@ -254,20 +254,20 @@ def _visit_entry(
 
 
 def _find_required_entry(
-    capability: str,
+    skill_type: str,
     index: SkillIndex,
     providers: dict[str, list[SkillIndexEntry]],
 ) -> SkillIndexEntry:
     try:
-        named = index.find_skill(capability)
+        named = index.find_skill(skill_type)
     except ValueError:
         named = None
     if named is not None:
         return named
-    matches = providers.get(capability, [])
+    matches = providers.get(skill_type, [])
     if not matches:
-        raise KeyError(f"missing skill capability: {capability}")
+        raise KeyError(f"missing Skill type: {skill_type}")
     if len(matches) > 1:
         keys = ", ".join(item.reference.key for item in matches)
-        raise ValueError(f"ambiguous skill capability {capability}: {keys}")
+        raise ValueError(f"ambiguous Skill type {skill_type}: {keys}")
     return matches[0]

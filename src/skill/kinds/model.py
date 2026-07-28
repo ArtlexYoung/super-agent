@@ -6,7 +6,7 @@ import os
 from dataclasses import dataclass, field, replace
 from typing import Mapping
 
-from provider.chat import (
+from core.provider.chat import (
     ANTHROPIC_COMPATIBLE_PROVIDER,
     MOCK_PROVIDER,
     OPENAI_COMPATIBLE_PROVIDER,
@@ -74,7 +74,7 @@ def create_model_profile_from_skill_disclosure(
     disclosure: SkillDisclosure,
 ) -> ModelProfile:
     manifest = disclosure.read_manifest()
-    if manifest.capability != "model":
+    if manifest.skill_type != "model":
         raise ValueError(f"skill does not contain a model profile: {manifest.name}")
     configuration = disclosure.read_configuration().content
     unknown = set(configuration) - MODEL_CONFIGURATION_FIELDS
@@ -134,7 +134,7 @@ def read_model_profiles(
     environment: Mapping[str, str] | None = None,
 ) -> list[ModelProfile]:
     model_entries = [
-        entry for entry in index.entries if entry.reference.capability == "model"
+        entry for entry in index.entries if entry.reference.skill_type == "model"
     ]
     if not model_entries:
         return discover_environment_model_profiles(environment)
@@ -150,7 +150,10 @@ def read_model_profiles(
 
 def select_default_model_profile(profiles: list[ModelProfile]) -> ModelProfile:
     if not profiles:
-        raise ValueError("at least one model profile is required")
+        raise RuntimeError(
+            "No model is configured. Add a model Skill, configure a provider "
+            "through the environment, or pass provider= to Agent."
+        )
     defaults = [profile for profile in profiles if profile.default]
     if len(defaults) > 1:
         names = ", ".join(profile.name for profile in defaults)
@@ -207,17 +210,22 @@ def discover_environment_model_profiles(
             )
         )
     profiles = _deduplicate_profiles(profiles)
-    if not profiles:
-        profiles = [
-            _create_ephemeral_profile(
-                "mock",
-                "Deterministic local model used when no configured model is available.",
-                MOCK_PROVIDER,
-                ProviderConnection(MOCK_PROVIDER),
-                "built-in",
-            )
-        ]
     return [replace(profile, default=index == 0) for index, profile in enumerate(profiles)]
+
+
+def create_direct_provider_profile() -> ModelProfile:
+    """Describe a provider explicitly supplied in application code."""
+    return ModelProfile(
+        name="provided",
+        description="Provider supplied directly when creating the Agent.",
+        version="code",
+        model="provided",
+        connection=ProviderConnection(MOCK_PROVIDER),
+        routing=ModelRoutingTraits(["text", "tools"], [], []),
+        default=True,
+        source="code",
+        skill_key="model:provided",
+    )
 
 
 def model_profile_is_ready(

@@ -1,10 +1,10 @@
-"""Central validation for every Skill capability type."""
+"""Central validation for every Skill type."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from runtime.store import RuntimeStore
+from core.state.store import RuntimeStore
 from skill.disclosure import ProgressiveDisclosureCore, SkillDisclosure
 from skill.kinds.mcp import create_mcp_server_from_skill_disclosure
 from skill.kinds.memory import create_memory_from_skill_disclosure
@@ -20,7 +20,7 @@ def validate_skill_directory(
     skill_path: Path,
     store: RuntimeStore,
     *,
-    expected_capability: str | None = None,
+    expected_type: str | None = None,
     expected_name: str | None = None,
 ) -> SkillManifest:
     disclosure = ProgressiveDisclosureCore([skill_path], store)
@@ -28,17 +28,17 @@ def validate_skill_directory(
     if len(index.entries) != 1:
         raise ValueError("skill directory must contain exactly one valid skill")
     entry = index.entries[0]
-    if expected_capability is not None and entry.reference.capability != expected_capability:
+    if expected_type is not None and entry.reference.skill_type != expected_type:
         raise ValueError(
-            "candidate changed skill capability: "
-            f"{expected_capability} -> {entry.reference.capability}"
+            "candidate changed Skill type: "
+            f"{expected_type} -> {entry.reference.skill_type}"
         )
     if expected_name is not None and entry.reference.name != expected_name:
         raise ValueError(
             f"candidate changed skill name: {expected_name} -> {entry.reference.name}"
         )
-    opened = disclosure.open_skill(entry.reference.name, entry.reference.capability)
-    _validate_skill_capability(opened, store, entry.reference.capability)
+    opened = disclosure.open_skill(entry.reference.name, entry.reference.skill_type)
+    _validate_skill_type(opened, store, entry.reference.skill_type)
     return opened.read_manifest()
 
 
@@ -51,11 +51,11 @@ def validate_skill_replacement(
     proposed = _open_only_skill(proposed_path, store)
     current_manifest = current.read_manifest()
     proposed_manifest = proposed.read_manifest()
-    if current_manifest.capability != proposed_manifest.capability:
-        raise ValueError("updated skill cannot change capability")
+    if current_manifest.skill_type != proposed_manifest.skill_type:
+        raise ValueError("updated skill cannot change skill_type")
     if current_manifest.name != proposed_manifest.name:
         raise ValueError("updated skill cannot change name")
-    if proposed_manifest.capability == "model":
+    if proposed_manifest.skill_type == "model":
         _validate_model_replacement(current, proposed)
 
 
@@ -65,23 +65,23 @@ def _open_only_skill(path: Path, store: RuntimeStore) -> SkillDisclosure:
     if len(index.entries) != 1:
         raise ValueError("skill directory must contain exactly one valid skill")
     reference = index.entries[0].reference
-    return disclosure.open_skill(reference.name, reference.capability)
+    return disclosure.open_skill(reference.name, reference.skill_type)
 
 
-def _validate_skill_capability(
+def _validate_skill_type(
     disclosure: SkillDisclosure,
     store: RuntimeStore,
-    capability: str,
+    skill_type: str,
 ) -> None:
-    if capability == "prompt":
+    if skill_type == "prompt":
         _validate_prompt_skill(disclosure)
-    elif capability == "memory":
+    elif skill_type == "memory":
         create_memory_from_skill_disclosure(disclosure, store)
-    elif capability == "workflow":
+    elif skill_type == "workflow":
         create_workflow_policy_from_skill(disclosure)
-    elif capability == "mcp":
+    elif skill_type == "mcp":
         create_mcp_server_from_skill_disclosure(disclosure)
-    elif capability == "model":
+    elif skill_type == "model":
         create_model_profile_from_skill_disclosure(disclosure)
 
 

@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import unittest
 from io import StringIO
@@ -9,6 +10,15 @@ from cli import main
 
 
 class StorageCliTests(unittest.TestCase):
+    def setUp(self) -> None:
+        provider_environment = patch.dict(
+            os.environ,
+            {"SUPER_AGENT_PROVIDER": "mock"},
+            clear=True,
+        )
+        provider_environment.start()
+        self.addCleanup(provider_environment.stop)
+
     def test_copy_moves_only_selected_user_to_sqlite(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -106,7 +116,7 @@ class StorageCliTests(unittest.TestCase):
             with patch("sys.stdout", StringIO()):
                 self.assertEqual(0, main(["init", "--path", tmp]))
             with patch(
-                "runtime.storage.sql.postgresql.import_module",
+                "core.storage.sql.postgresql.import_module",
                 side_effect=ModuleNotFoundError("psycopg is missing"),
             ):
                 with self.assertRaisesRegex(RuntimeError, r"super-agent\[postgresql\]"):

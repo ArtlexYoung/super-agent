@@ -4,115 +4,90 @@
 
 > Skill is all you need.
 
-Super Agent is a **simple, lightweight, self-evolving, skill-first Agent runtime**.
+Super Agent is a **simple, lightweight, self-evolving, skill-first agent runtime**.
 
-Prompts, tools, memory, workflows, model descriptions, and other Agent behavior use one
-Skill format and one lifecycle. Runtime progressively discloses only relevant content,
-executes it through registered Capabilities, records real outcomes, and can improve
-Agent-owned Skills from that evidence.
+Prompts, tools, memory, workflows, model descriptions, and planning rules are all
+Skills. One progressive-disclosure core discovers and loads them only when needed.
+One Runtime schedules the task, records evidence, and improves eligible Agent-owned
+Skills without introducing a second execution path.
 
-The project is experimental (`0.0.x`). Breaking changes are explicit while the core
-model is being validated.
+The project is experimental and remains in `0.0.x`. Breaking changes are intentional
+while the skill-first model is being validated.
 
-## Start
+## Quick Start
 
-Python 3.11 or newer is required. From the repository root:
+Python 3.11 or newer is required. The Python Runtime has no third-party dependency.
 
 ```bash
 python3 -m pip install -e .
+export OPENAI_API_KEY="..."
 super-agent "Explain this repository"
 ```
 
-That is the complete beginner path. It needs no configuration, dependency, API key, or
-project initialization. When no real model is available, the built-in deterministic mock
-keeps the Runtime usable.
+`ANTHROPIC_API_KEY` and `OLLAMA_HOST` are also discovered automatically. No
+`agent.toml` or initialization step is required. To run a deterministic offline demo,
+select the mock Provider explicitly:
 
-Start a continuous conversation:
+```bash
+SUPER_AGENT_PROVIDER=mock super-agent "hello"
+```
+
+Super Agent never creates an implicit mock and never switches models after a Provider
+failure. A missing model or failed call is returned as an explicit error.
+
+Start an interactive conversation or the optional Web client:
 
 ```bash
 super-agent
-```
-
-Open the React Web client:
-
-```bash
 super-agent serve
 ```
 
-Then visit `http://127.0.0.1:8765/`. The same server exposes the AG-UI stream at
-`/ag-ui` and Runtime-backed management routes under `/api`.
+The Web client opens at `http://127.0.0.1:8765/`. It includes the native AG-UI chat,
+visual configuration, run trees, memory management, Skill freshness, and a CopilotKit
+example that connects directly to `POST /ag-ui`.
 
-Use the Python library directly:
+## Python Library
 
 ```python
 from super_agent import Agent
 
-result = Agent().run("Explain progressive Skill disclosure")
+agent = Agent()
+result = agent.run("Explain progressive Skill disclosure")
 print(result.text)
+print(result.run_id)
 ```
 
-## Connect a Model
-
-For the common case, set one environment variable and run the same command:
-
-```bash
-export OPENAI_API_KEY="..."
-super-agent "Summarize this project"
-```
-
-`ANTHROPIC_API_KEY` and `OLLAMA_HOST` are also discovered automatically. The Runtime
-uses the built-in mock only when it finds no configured model.
-
-Create a model Skill when you need a persistent name, description, routing traits, or a
-custom endpoint:
-
-```toml
-# skills/model/fast/skill.toml
-schema_version = 2
-name = "fast"
-capability = "model"
-description = "Low-latency model for summaries"
-version = "0.1.0"
-triggers = ["summary"]
-
-[configuration]
-provider = "openai-compatible"
-model = "gpt-4.1-mini"
-api_key_env = "OPENAI_API_KEY"
-supports = ["text", "tools"]
-purposes = ["summary"]
-default = true
-```
-
-The Web client edits the same model Skills visually. Skill files contain only the
-credential variable name, never the credential value. See
-[Configuration](docs/configuration.md) for every optional trait.
+Application code may explicitly inject its own Provider, storage backend, action
+rules, SkillRunners, and subagents. The CLI uses this same library; it is not a second
+runtime.
 
 ## One Mental Model
 
-Super Agent keeps five responsibilities separate:
-
 ```text
-Provider    provides model intelligence
-Runtime     owns scheduling and the task lifecycle
-Capability  executes a trusted mechanism
-Skill       carries passive content and configuration
-Agent       composes models, Capabilities, storage, and subagents
+Provider     connects model intelligence
+Core         schedules tasks and owns state
+SkillRunner  turns one Skill type into behavior
+Skill        carries passive content and configuration
+Agent        combines everything in readable Python code
 ```
 
-Every task follows one central path:
+Every task follows one path:
 
 ```text
-discover -> disclose -> execute -> observe -> evaluate -> evolve
+Agent.run
+  -> Core creates one run session
+  -> progressive disclosure selects Skills
+  -> SkillRunners load selected Skills
+  -> Core selects a model and executes the task
+  -> events, evaluation, freshness, and evolution evidence are recorded
 ```
 
-There is one progressive disclosure core, one adaptive task loop, one action safety
-boundary, and one canonical event store. Workflow and Planner Skills are policies, not
-parallel execution engines. AG-UI and the Web client project the same Runtime state.
+There are no separate memory, workflow, MCP, or planning engines. They are ordinary
+Skill types loaded by registered SkillRunners. The progressive-disclosure core can also
+be used independently for read-only discovery, with cache and history writes enabled
+only when the caller asks for them.
 
 ## Create a Skill
-
-A Skill is a directory with `skill.toml` and optional content files:
 
 ```text
 skills/prompt/concise/
@@ -121,74 +96,80 @@ skills/prompt/concise/
 ```
 
 ```toml
-schema_version = 2
+schema_version = 3
 name = "concise"
-capability = "prompt"
-description = "Answer clearly with minimal wording"
+type = "prompt"
+description = "Answer with the smallest useful explanation"
 version = "0.1.0"
 triggers = ["brief", "concise"]
+agent_created = false
+agent_can_update = false
 
 [entry]
 instructions = "SKILL.md"
 ```
 
-```markdown
-Prefer short sentences. Keep only information needed to answer the request.
+The stable key is `type:name`, such as `prompt:concise`, `memory:default`, or
+`model:fast`. Custom types need only a matching `Agent.add_skill_runner(...)` call; Core
+does not contain a fixed list of Skill types.
+
+Run `super-agent init --path my-agent` when you want an editable example project. It is
+optional, not a prerequisite.
+
+## Configure Only What You Need
+
+`Agent()` first checks `SUPER_AGENT_CONFIG`, then `agent.toml`, then uses in-memory
+defaults. A complete minimal file is:
+
+```toml
+[agent]
+name = "demo"
+system = "You are a concise, helpful agent."
+skills = []
+disabled_skills = []
+
+[paths]
+skills = ["skills"]
+
+[storage]
+backend = "jsonl"
+path = ".super-agent"
 ```
 
-Prompt, MCP, memory, workflow, Planner, model, and custom declarative Skills share this
-index and lifecycle. Their stable keys use `capability:name`, such as
-`prompt:concise`, `memory:default`, or `model:fast`.
+`skills` pins Skills to every task. Unpinned Skills remain available for automatic
+selection. `disabled_skills` excludes a type, key, or unambiguous name. Model profiles
+are model Skills rather than special Agent fields, and secrets stay in environment
+variables rather than TOML.
 
-Initialize an editable example only when you need one:
+## Automatic Scheduling and Evolution
 
-```bash
-super-agent init --path my-agent
-super-agent run --config my-agent/agent.toml "Give a concise answer"
-```
+- Model Skills describe purpose, features, quality, latency, token cost, and connection
+  environment names. Core chooses a ready model from those declared traits and
+  user-scoped evidence before each model call.
+- Runtime events record the selected model, disclosed Skills, tools, subagents, token
+  estimates, action decisions, result, and failure without storing secret values.
+- Skill freshness is computed without a model from usage, outcome, recency, frequency,
+  token cost, and successful same-function replacements.
+- Agent-owned Skills with `agent_can_update = true` can create candidates, run
+  non-regression evaluation, promote a complete Skill directory, monitor it, and roll it
+  back. Shared project Skills remain read-only baselines.
+- Memory recall can merge, replace, archive, or forget stale items. Every mutation is an
+  explicit event; invalid model output fails instead of returning an unorganized result.
 
-## Automatic Behavior
-
-- **Progressive disclosure**: Runtime loads a compact index first, then manifests,
-  instructions, configuration, and resources only when needed. Disclosed paths and cache
-  hits remain in the run history.
-- **Planning and scheduling**: simple work becomes one direct plan step; complex work can
-  use `planner:default`. Each step selects compatible models and subagents from declared
-  traits plus user-scoped quality, reliability, latency, token, and cost evidence.
-- **Memory maintenance**: recall can merge, supersede, archive, or forget stale facts.
-  Every change is validated and retained as an event, while the active view stays clean.
-- **Self-evolution**: Agent-owned, updateable Skills can become candidates, pass
-  evaluation, be promoted into the user's overlay, and roll back after regressions.
-- **Mandatory Safety**: every executable Tool declares effects such as `read`, `update`,
-  `execute`, or `network`. The default policy keeps internal work automatic and requires
-  approval for risky external effects before a handler runs.
-
-Inspect a run without learning another API:
+Inspect the evidence directly:
 
 ```bash
 super-agent runs explain --run-id <run-id>
 super-agent skills index --output json
+super-agent skills freshness
 super-agent evolution list
 ```
 
 ## Multiuser and Multi-Agent
 
-Bind stateful operations once with `Agent.for_user(...)`. Conversations, memory, routing
-evidence, Skill overlays, disclosure caches, evolution, model profiles, Provider caches,
-and optional secrets remain in that user scope.
-
-```python
-secrets = {
-    ("alice", "OPENAI_API_KEY"): "...",
-    ("bob", "OPENAI_API_KEY"): "...",
-}
-
-agent = Agent(secret_lookup=lambda user_id, name: secrets.get((user_id, name)))
-alice = agent.for_user("alice")
-result = alice.run("Summarize my private project")
-```
-
-Create Agents independently and attach them in readable Python code:
+Bind user state once with `Agent.for_user(...)`. Conversations, memory, Skill usage,
+disclosure history, model evidence, Provider caches, user Skill overlays, and evolution
+state are isolated by user and Agent.
 
 ```python
 main = Agent("agents/main.toml")
@@ -197,70 +178,49 @@ reviewer = Agent("agents/reviewer.toml")
 
 main.add_subagent(coder, name="coder", triggers=["code", "implement"])
 main.add_subagent(reviewer, triggers=["review"])
-result = main.run("Implement and review this change")
+result = main.for_user("alice").run("Implement and review this change")
 ```
 
-Omitting a subagent name creates `subagent01`, `subagent02`, and so on. Nested and cyclic
-graphs produce explicit path warnings; workflow rules decide when execution ends.
+An omitted name becomes `subagent01`, `subagent02`, and so on. Deep or cyclic links
+produce a readable chain warning before execution; they are not silently blocked. An
+optional `max_agent_chain_depth` only controls that warning threshold. Workflow Skills
+define stopping behavior.
 
-## Storage
+## Storage and Explicit Effects
 
-The default backend is readable, dependency-free JSONL under `.super-agent/`. Select
-SQLite by changing one setting and adding no dependency; install only the driver needed
-for optional MySQL or PostgreSQL deployments.
+The default storage is readable, dependency-free JSONL under `.super-agent/`. SQLite is
+also standard-library only. MySQL and PostgreSQL are optional extras installed only when
+selected. All backends implement the same user-scoped event contract.
 
-All backends store the same canonical events. Shared project Skills are read-only
-baselines, while user-created, edited, installed, and evolved Skills live in isolated
-user overlays resolved in this order:
-
-```text
-user > project > builtin
-```
-
-See [Configuration](docs/configuration.md) for backend settings and
-[Runtime](docs/runtime.md) for state semantics.
-
-## Unified Proof
-
-The maintained [v0.0.61 unified Runtime proof](docs/experiments/v0.0.61.md) runs one real
-Agent with isolated Alice and Bob scopes. It verifies user model Skills and credentials,
-automatic model scheduling, progressive disclosure cache reuse, memory organization and
-forgetting, pre-handler Safety blocking, canonical events and locks without secrets, and
-automatic Skill promotion only for the affected user.
-
-The proof is deterministic, local, standard-library only, and requires no real API key:
-
-```bash
-PYTHONPATH=src python3 docs/experiments/run_v0_0_61.py
-```
-
-The [machine-readable report](docs/experiments/v0.0.61.json) contains all seven passing
-checks. Earlier reports are retained as [release history](docs/experiments/README.md),
-not as compatibility targets for the current `0.0.x` API.
+Every side-effecting tool declares its resource and `read`, `create`, `update`, `delete`,
+`execute`, `network`, or `delegate` effects. Core checks those effects before invoking
+the handler. Skill text is untrusted context and cannot grant itself execution rights.
+There is no undeclared fallback action.
 
 ## Documentation
 
-- [Getting Started](docs/getting-started.md)
+- [Getting started](docs/getting-started.md)
 - [Architecture](docs/architecture.md)
-- [Skills and Progressive Disclosure](docs/skills.md)
-- [Capabilities](docs/capabilities.md)
-- [Runtime, Tracing, and Multi-Agent](docs/runtime.md)
-- [Evaluation, Memory, and Evolution](docs/evolution.md)
-- [Runtime Safety](docs/safety.md)
-- [CLI Reference](docs/cli.md)
+- [Skills and progressive disclosure](docs/skills.md)
+- [SkillRunners](docs/skill-runners.md)
 - [Configuration](docs/configuration.md)
-- [Web Client](docs/web.md)
-- [AG-UI Bridge](docs/ag-ui.md)
+- [Core, tracing, and multi-agent execution](docs/runtime.md)
+- [Evaluation, memory, and evolution](docs/evolution.md)
+- [Action rules](docs/safety.md)
+- [CLI reference](docs/cli.md)
+- [Web client](docs/web.md)
+- [AG-UI](docs/ag-ui.md)
 - [Roadmap](docs/roadmap.md)
 
 ## Development
 
 ```bash
-PYTHONPATH=src:tests python3 -m unittest discover -s tests -t .
-python3 -m compileall -q src tests docs/experiments
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src:tests python3 -m unittest discover -s tests -v
+PYTHONPATH=src:tests python3 -m compileall -q src tests docs/experiments
 pnpm --dir web lint
+pnpm --dir web typecheck
 pnpm --dir web build
 ```
 
-The Python Runtime has no third-party dependency. The public API is exported from
-`super_agent`; internal compatibility facades are intentionally absent during `0.0.x`.
+The public Python API is exported from `super_agent`. Internal import compatibility is
+intentionally not provided during `0.0.x`.

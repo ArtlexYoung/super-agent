@@ -4,25 +4,25 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from capability.defaults import create_default_capability_registry
-from capability.registry import SkillLoadRequest
-from capability.skill_contributions import (
-    CapabilityAction,
-    CapabilityTool,
-    SkillContribution,
+from skill.runners.defaults import create_default_skill_runners
+from skill.runners.registry import SkillLoadRequest
+from skill.runners.loaded import (
+    SkillAction,
+    SkillTool,
+    LoadedSkill,
 )
-from capability.skill_executors import create_memory_skill_contribution
-from provider.chat import ToolCall
-from provider.chat import MockProvider
-from runtime.tools import RuntimeTools, RuntimeToolsContext
-from runtime.config import AgentConfig
-from runtime.identity import RunIdentity
-from runtime.session import RuntimeSession
-from runtime.safety import ActionConfirmationRequired, ActionEffect
-from runtime.store import create_local_runtime_store
+from skill.runners.builtins import create_memory_skill_contribution
+from core.provider.chat import ToolCall
+from core.provider.chat import MockProvider
+from core.task.tools import RuntimeTools, RuntimeToolsContext
+from core.config import AgentConfig
+from core.identity import RunIdentity
+from core.session import RuntimeSession
+from core.actions import ActionConfirmationRequired, ActionEffect
+from core.state.store import create_local_runtime_store
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.kinds.memory import MiniMemory
-from skill.kinds.model import discover_environment_model_profiles
+from skill.kinds.model import create_direct_provider_profile
 
 
 class SkillToolsTests(unittest.TestCase):
@@ -40,7 +40,7 @@ class SkillToolsTests(unittest.TestCase):
                 ToolCall(
                     "call-2",
                     "read_skill_instructions",
-                    {"name": "research", "capability": "prompt"},
+                    {"name": "research", "type": "prompt"},
                 )
             )
 
@@ -159,14 +159,14 @@ class SkillToolsTests(unittest.TestCase):
             tools = RuntimeTools(
                 RuntimeToolsContext(session=session),
                 contributions=[
-                    SkillContribution(
+                    LoadedSkill(
                         tools=(
-                            CapabilityTool(
+                            SkillTool(
                                 "run_external",
                                 "Run an external operation.",
                                 {},
                                 run_external,
-                                action=CapabilityAction(
+                                action=SkillAction(
                                     (ActionEffect.EXECUTE, ActionEffect.NETWORK),
                                     "mcp:untrusted",
                                 ),
@@ -201,7 +201,7 @@ class SkillToolsTests(unittest.TestCase):
             session = _create_session(root)
             disclosure = _create_disclosure(root, session)
             index = disclosure.prepare_skill_index()
-            contribution = session.capability_registry.load_skill(
+            contribution = session.skill_runners.load_skill(
                 SkillLoadRequest(
                     disclosure,
                     index.require_skill("untrusted", "mcp").reference,
@@ -238,9 +238,9 @@ def _write_prompt_skill(root: Path, name: str) -> None:
     skill_dir.mkdir(parents=True)
     (skill_dir / "skill.toml").write_text(
         f"""
-schema_version = 2
+schema_version = 3
 name = "{name}"
-capability = "prompt"
+type = "prompt"
 description = "Research helper"
 version = "0.1.0"
 triggers = ["never-match"]
@@ -257,9 +257,9 @@ def _write_mcp_skill(root: Path, script: Path) -> None:
     skill_dir = root / "skills" / "mcp" / "untrusted"
     skill_dir.mkdir(parents=True)
     skill_dir.joinpath("skill.toml").write_text(
-        f'''schema_version = 2
+        f'''schema_version = 3
 name = "untrusted"
-capability = "mcp"
+type = "mcp"
 description = "Untrusted MCP command"
 version = "0.1.0"
 triggers = ["untrusted"]
@@ -278,6 +278,7 @@ def _create_disclosure(root: Path, session: RuntimeSession) -> ProgressiveDisclo
         [root / "skills"],
         session.store,
         identity=session.identity,
+        record_disclosures=True,
     )
 
 
@@ -308,9 +309,9 @@ def _create_session(root: Path) -> RuntimeSession:
     store.start_run(identity, "question")
     return RuntimeSession(
         config=config,
-        model_profile=discover_environment_model_profiles({})[0],
+        model_profile=create_direct_provider_profile(),
         provider=provider,
-        capability_registry=create_default_capability_registry(),
+        skill_runners=create_default_skill_runners(),
         identity=identity,
         store=store,
     )

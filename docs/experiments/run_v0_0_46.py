@@ -8,9 +8,9 @@ import json
 import tempfile
 from pathlib import Path
 
-from agents.agent import Agent
-from runtime.config import AgentConfig
-from runtime.insights import explain_run_with_insight
+from core.agent import Agent
+from core.config import AgentConfig
+from core.state.insights import explain_run_with_insight
 
 
 PLANNING_PROMPT = "Work step by step: research the options and synthesize an answer."
@@ -291,8 +291,6 @@ def write_agent_config(root: Path, agent_name: str) -> AgentConfig:
         f'''[agent]
 name = "{agent_name}"
 system = "Complete the assigned task."
-workflow = "direct"
-memory = "default"
 skills = []
 
 [paths]
@@ -311,9 +309,9 @@ def write_workflow_skill(root: Path) -> None:
     path = root / "skills" / "workflow" / "direct"
     path.mkdir(parents=True)
     path.joinpath("skill.toml").write_text(
-        '''schema_version = 2
+        '''schema_version = 3
 name = "direct"
-capability = "workflow"
+type = "workflow"
 description = "Direct deterministic workflow"
 version = "0.1.0"
 triggers = []
@@ -329,9 +327,9 @@ def write_planner_skill(root: Path) -> None:
     path = root / "skills" / "planner" / "default"
     path.mkdir(parents=True)
     path.joinpath("skill.toml").write_text(
-        '''schema_version = 2
+        '''schema_version = 3
 name = "default"
-capability = "planner"
+type = "planner"
 description = "Agent-owned planning policy"
 version = "0.1.0"
 triggers = []
@@ -385,9 +383,9 @@ def model_skill_manifest(
     agent_can_update: bool,
     description: str,
 ) -> str:
-    return f'''schema_version = 2
+    return f'''schema_version = 3
 name = "{name}"
-capability = "model"
+type = "model"
 description = "{description}"
 version = "0.1.0"
 triggers = []

@@ -1,58 +1,63 @@
-# Runtime Safety
+# Explicit Actions and Skill Isolation
 
-Super Agent uses one action check before model-triggered or management side effects.
-Capabilities declare what an operation can do; Skill content can request those operations,
-but cannot grant itself permission.
-
-`CapabilityTool` has no default action. Every executable tool must explicitly declare its effects and resource before Registry accepts the contribution. Runtime-scoped Skill loading and memory changes also require the same action executor; missing declarations or executors fail before a handler runs. Local data preparation without a `RunIdentity` remains available for tests, imports, and offline management.
+Super Agent checks one action contract before model-triggered tools and management side
+effects. Trusted code declares what an operation can do. Skill text may request an
+operation, but it cannot choose its actor, effects, resource, or rules.
 
 ## Effects
 
-Every action declares at least one effect:
+Every executable action declares at least one effect:
 
-- `read`: inspect scoped data without changing it.
-- `create`: create scoped state or files.
-- `update`: replace or organize existing state.
-- `delete`: remove state or create a deletion tombstone.
+- `read`: inspect scoped data.
+- `create`: create state or files.
+- `update`: change or organize existing state.
+- `delete`: remove state or append a deletion tombstone.
 - `execute`: run registered code or an external process.
 - `network`: communicate outside the Runtime process.
 - `delegate`: run a subagent registered in code.
 
-Runtime records `action.checked` before execution. Allowed actions then record
-`action.completed` or `action.failed`; denied or approval-gated actions record
-`action.blocked`. Audit records contain argument names, never argument values.
+Core records `action.checked` before execution. Allowed actions then record
+`action.completed` or `action.failed`; blocked actions record `action.blocked`.
+Trace records contain argument names, never argument values.
 
-## Presets
+A `SkillTool` has no default action. Missing metadata or a missing Runtime action runner
+is an error before its handler runs.
 
-The optional Agent setting selects one preset:
+## Code-Only Rules
 
-```toml
-[agent]
-safety = "standard"
+Action authority is deliberately not a TOML field. Select it where the Agent is created:
+
+```python
+from super_agent import ActionMode, ActionRules, Agent
+
+read_only = Agent(action_rules=ActionRules(ActionMode.READ_ONLY))
+autonomous = Agent(action_rules=ActionRules(ActionMode.AUTONOMOUS))
 ```
 
-- `standard` allows reads, registered code, subagent delegation, memory lifecycle
-  changes, and Agent-owned Skill candidate changes. External execution, unknown
-  network access, and destructive external changes require approval.
-- `read_only` allows only declared reads.
-- `autonomous` allows every declared action. Scope and input validation still apply.
-- `audit` records decisions without enforcing them and is intended only for migration.
+The presets are:
 
-`standard` is the zero-configuration default. Explicit CLI management commands use a
-`user:` actor and therefore count as user-authorized actions. A Skill cannot choose its
-actor, effect, resource, or safety preset.
+- `standard`: the default; allows declared reads, registered code, subagent delegation,
+  scoped Runtime state, and Agent-owned Skill updates. External execution, network access,
+  and deletion require explicit authorization and are blocked before execution.
+- `read_only`: allows only actions whose sole effect is `read`.
+- `autonomous`: allows every declared action. Scope and input validation still apply.
+- `audit`: records declarations without enforcing them. It must be selected explicitly.
 
-## Skill isolation
+CLI management commands identify themselves as user-requested operations. Model-generated
+Skill content cannot impersonate that actor.
 
-Skill manifests, instructions, configuration, resources, memory, tool output, and
-subagent output are untrusted data. Runtime adds this boundary to every model request and
-does not interpret Skill files as Python or shell code. The reserved executable
-`capability` Skill type is rejected. MCP remains an explicit external execution boundary
-and therefore requires approval under `standard` policy.
+## No Hidden Execution
 
-An MCP command is passive Skill configuration until its Capability handler runs. Both tool discovery and invocation declare `execute` plus `network`, so a malicious command cannot start a process before the central action check.
+Skill manifests, instructions, resources, memory, tool output, and subagent output are
+untrusted data. Core wraps them as untrusted model context and never interprets Skill files
+as Python or shell code. The reserved Skill type `runner` is rejected.
 
-The [v0.0.61 unified Runtime proof](experiments/v0.0.61.md) verifies that an external
-`execute` plus `network` Tool is blocked before its registered handler runs, while the
-same canonical task failure remains available to evaluation and user-scoped Skill
-evolution.
+Custom executable behavior must be registered with `Agent.add_skill_runner(...)`. MCP is
+an explicit process and network boundary: its command remains passive configuration until
+the MCP SkillRunner is invoked, and both discovery and calls declare their effects before
+a process can start.
+
+Package validation also rejects symlinks and paths outside a Skill directory. Candidate
+Skills remain outside active roots until validation and no-regression evaluation pass.
+Provider failures, memory-organization failures, invalid candidates, and blocked actions
+surface as errors rather than alternate behavior.

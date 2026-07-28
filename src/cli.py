@@ -8,25 +8,25 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Sequence
 
-from cli_commands.conversations import (
+from adapter.cli_adapter.conversations import (
     configure_conversations_parser,
     run_conversations_command,
 )
-from cli_commands.evolution import (
+from adapter.cli_adapter.evolution import (
     configure_evolution_parser,
     run_evolution_command,
 )
-from cli_commands.memory import configure_memory_parser, run_memory_command
-from cli_commands.models import configure_models_parser, run_models_command
-from cli_commands.runs import configure_runs_parser, run_runs_command
-from cli_commands.serve import configure_serve_parser, run_serve_command
-from cli_commands.skills import configure_skills_parser, run_skills_command
-from cli_commands.storage import configure_storage_parser, run_storage_command
-from agents.agent import Agent, AgentRunOptions
-from provider.chat import Message
-from runtime.identity import LOCAL_USER_ID
-from runtime.models import RunEvent
-from runtime.tasks import TaskResult
+from adapter.cli_adapter.memory import configure_memory_parser, run_memory_command
+from adapter.cli_adapter.models import configure_models_parser, run_models_command
+from adapter.cli_adapter.runs import configure_runs_parser, run_runs_command
+from adapter.cli_adapter.serve import configure_serve_parser, run_serve_command
+from adapter.cli_adapter.skills import configure_skills_parser, run_skills_command
+from adapter.cli_adapter.storage import configure_storage_parser, run_storage_command
+from core.agent import Agent, AgentRunOptions
+from core.provider.chat import Message
+from core.identity import LOCAL_USER_ID
+from core.state.models import RunEvent
+from core.task.models import TaskResult
 
 
 COMMAND_HANDLERS: dict[str, Callable[[argparse.Namespace], int]] = {
@@ -150,24 +150,10 @@ def _is_direct_prompt(arguments: list[str]) -> bool:
 def _run_init_command(root: Path) -> int:
     root.mkdir(parents=True, exist_ok=True)
     skill_dir = root / "skills" / "prompt" / "echo"
-    mcp_skill_dir = root / "skills" / "mcp" / "filesystem"
-    memory_skill_dir = root / "skills" / "memory" / "default"
-    workflow_skill_dir = root / "skills" / "workflow" / "direct"
-    planner_skill_dir = root / "skills" / "planner" / "default"
     skill_dir.mkdir(parents=True, exist_ok=True)
-    mcp_skill_dir.mkdir(parents=True, exist_ok=True)
-    memory_skill_dir.mkdir(parents=True, exist_ok=True)
-    workflow_skill_dir.mkdir(parents=True, exist_ok=True)
-    planner_skill_dir.mkdir(parents=True, exist_ok=True)
     _write_file_if_missing(root / "agent.toml", _default_agent_config())
     _write_file_if_missing(skill_dir / "skill.toml", _default_skill_manifest())
     _write_file_if_missing(skill_dir / "SKILL.md", "Answer briefly and clearly.\n")
-    _write_file_if_missing(mcp_skill_dir / "skill.toml", _default_mcp_skill_manifest())
-    _write_file_if_missing(mcp_skill_dir / "SKILL.md", "Use this skill when filesystem MCP access is needed.\n")
-    _write_file_if_missing(memory_skill_dir / "skill.toml", _default_memory_skill_manifest())
-    _write_file_if_missing(workflow_skill_dir / "skill.toml", _default_workflow_skill_manifest())
-    _write_file_if_missing(planner_skill_dir / "skill.toml", _default_planner_skill_manifest())
-    _write_file_if_missing(planner_skill_dir / "SKILL.md", _default_planner_instructions())
     print(f"Initialized super-agent project at {root}")
     return 0
 
@@ -309,10 +295,8 @@ def _default_agent_config() -> str:
 [agent]
 name = "super-agent"
 system = "You are a concise, helpful agent."
-workflow = "direct"
-memory = "default"
-skills = ["echo"]
-disable_names = []
+skills = ["prompt:echo"]
+disabled_skills = []
 
 [paths]
 skills = ["skills"]
@@ -325,9 +309,9 @@ path = ".super-agent"
 
 def _default_skill_manifest() -> str:
     return """
-schema_version = 2
+schema_version = 3
 name = "echo"
-capability = "prompt"
+type = "prompt"
 description = "Minimal example skill"
 version = "0.1.0"
 agent_created = false
@@ -341,86 +325,6 @@ triggers = ["echo", "brief"]
 [entry]
 instructions = "SKILL.md"
 """.lstrip()
-
-
-def _default_mcp_skill_manifest() -> str:
-    return """
-schema_version = 2
-name = "filesystem"
-capability = "mcp"
-description = "Example stdio MCP server"
-version = "0.1.0"
-triggers = ["filesystem", "files"]
-
-[entry]
-instructions = "SKILL.md"
-
-[configuration]
-transport = "stdio"
-command = "npx"
-args = ["-y", "@modelcontextprotocol/server-filesystem"]
-""".lstrip()
-
-
-def _default_memory_skill_manifest() -> str:
-    return """
-schema_version = 2
-name = "default"
-capability = "memory"
-description = "Default memory behavior"
-version = "0.1.0"
-triggers = []
-
-[configuration]
-default_scope = "agent"
-recall_limit = 20
-include_in_prompt = true
-include_usage_habits = true
-""".lstrip()
-
-
-def _default_workflow_skill_manifest() -> str:
-    return """
-schema_version = 2
-name = "direct"
-capability = "workflow"
-description = "Direct workflow"
-version = "0.1.0"
-triggers = []
-
-[configuration]
-mode = "direct"
-""".lstrip()
-
-
-def _default_planner_skill_manifest() -> str:
-    return """
-schema_version = 2
-name = "default"
-capability = "planner"
-description = "Default automatic task planner"
-version = "0.1.0"
-agent_created = true
-agent_can_update = true
-function_group = "task-planning"
-triggers = []
-
-[entry]
-instructions = "SKILL.md"
-
-[configuration]
-max_steps = 6
-minimum_prompt_characters = 320
-planning_terms = ["step by step", "first, then", "逐步", "分步骤", "分阶段"]
-""".lstrip()
-
-
-def _default_planner_instructions() -> str:
-    return """Decompose the task into the fewest independently executable steps.
-Return only JSON with a `steps` array. Each step must contain exactly
-`instruction`, `purpose`, `required_features`, and `subagent`. The final step
-must synthesize the completed work into the user-facing answer.
-"""
 
 
 if __name__ == "__main__":

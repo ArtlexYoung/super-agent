@@ -5,10 +5,10 @@ import threading
 import unittest
 from pathlib import Path
 
-from agents.agent import Agent
-from ag_ui_bridge.server import create_ag_ui_server
-from provider.chat import MockProvider
-from runtime.config import AgentConfig
+from core.agent import Agent
+from adapter.ag_ui_adapter.server import create_ag_ui_server
+from core.provider.chat import MockProvider
+from core.config import AgentConfig
 from support import write_workflow_skill
 
 
@@ -233,9 +233,7 @@ def _make_agent(root: Path, provider: MockProvider) -> Agent:
 [agent]
 name = "ag-ui-agent"
 system = "Answer clearly."
-workflow = "direct"
-memory = "default"
-skills = []
+skills = ["workflow:direct", "memory:default"]
 
 [paths]
 skills = ["skills"]

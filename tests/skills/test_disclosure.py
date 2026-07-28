@@ -3,10 +3,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from agents.agent import Agent
-from runtime.config import AgentConfig
-from runtime.store import create_local_runtime_store
-from provider.chat import MockProvider
+from core.agent import Agent
+from core.config import AgentConfig
+from core.state.store import create_local_runtime_store
+from core.provider.chat import MockProvider
 from skill.disclosure import ProgressiveDisclosureCore
 from support import write_workflow_skill
 
@@ -19,6 +19,7 @@ class ProgressiveDisclosureTests(unittest.TestCase):
             disclosure = ProgressiveDisclosureCore(
                 [root / "skills"],
                 create_local_runtime_store(root / ".super-agent"),
+                record_disclosures=True,
             )
 
             index = disclosure.prepare_skill_index()
@@ -70,9 +71,9 @@ def _write_skill(root: Path, name: str, description: str, instruction: str) -> N
     skill_dir.mkdir(parents=True)
     (skill_dir / "skill.toml").write_text(
         f"""
-schema_version = 2
+schema_version = 3
 name = "{name}"
-capability = "prompt"
+type = "prompt"
 description = "{description}"
 version = "0.1.0"
 triggers = ["{name}"]
@@ -92,9 +93,7 @@ def _write_config(root: Path) -> Path:
 [agent]
 name = "demo"
 system = "Base system."
-workflow = "direct"
-memory = "default"
-skills = ["echo"]
+skills = ["workflow:direct", "memory:default", "echo"]
 
 [paths]
 skills = ["skills"]

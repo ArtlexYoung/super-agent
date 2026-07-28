@@ -4,12 +4,12 @@ import json
 import sys
 from pathlib import Path
 
-from agents.agent import Agent
-from capability.defaults import create_default_capability_registry
-from capability.registry import SkillLoadRequest
-from runtime.config import AgentConfig
-from runtime.store import create_local_runtime_store
-from provider.chat import MockProvider
+from core.agent import Agent
+from skill.runners.defaults import create_default_skill_runners
+from skill.runners.registry import SkillLoadRequest
+from core.config import AgentConfig
+from core.state.store import create_local_runtime_store
+from core.provider.chat import MockProvider
 from skill.disclosure import ProgressiveDisclosureCore, SkillReference
 from skill.kinds.mcp import create_mcp_server_from_skill_disclosure
 from skill.kinds.memory import MiniMemory
@@ -51,12 +51,12 @@ class McpSkillTests(unittest.TestCase):
             disclosure = _prepare_disclosure(root)
             selected = disclosure.select_skill_references_for_prompt(
                 "please inspect filesystem",
-                allowed_capabilities={"prompt", "mcp"},
+                allowed_types={"prompt", "mcp"},
             )
             skill = _load_model_context(disclosure, selected[0])
 
             self.assertEqual("filesystem", skill.manifest.name)
-            self.assertEqual("mcp", skill.manifest.capability)
+            self.assertEqual("mcp", skill.manifest.skill_type)
             self.assertIn("Protocol: mcp", skill.instructions)
             self.assertIn("Command: npx -y @mcp/server-filesystem", skill.instructions)
             self.assertEqual(["mcp:filesystem"], [item.key for item in selected])
@@ -91,7 +91,7 @@ class McpSkillTests(unittest.TestCase):
             _write_mcp_server(root, "beta", "Beta MCP", "echo", [])
             disclosure = _prepare_disclosure(root)
             index = disclosure.prepare_skill_index()
-            registry = create_default_capability_registry()
+            registry = create_default_skill_runners()
 
             alpha = registry.load_skill(
                 SkillLoadRequest(
@@ -115,16 +115,16 @@ class McpSkillTests(unittest.TestCase):
             self.assertFalse(alpha_names & beta_names)
             self.assertIn("mcp_alpha_run", alpha.model_context.instructions)
 
-    def test_mcp_capability_requires_command_configuration(self) -> None:
+    def test_mcp_skill_runner_requires_command_configuration(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             server_dir = root / "skills" / "mcp" / "bad"
             server_dir.mkdir(parents=True)
             (server_dir / "skill.toml").write_text(
                 """
-schema_version = 2
+schema_version = 3
 name = "bad"
-capability = "mcp"
+type = "mcp"
 description = "Missing mcp table"
 version = "0.1.0"
 triggers = ["bad"]
@@ -165,7 +165,7 @@ instructions = "SKILL.md"
             root = Path(tmp)
             write_workflow_skill(root)
             _write_mcp_server(root, "github", "GitHub MCP", "npx", ["-y", "@mcp/server-github"])
-            config_path = _write_agent_config(root, disable_names=["mcp"])
+            config_path = _write_agent_config(root, disabled_skills=["mcp"])
             provider = MockProvider("ok")
 
             result = Agent(AgentConfig.load_from_file(config_path), provider=provider).run("github")
@@ -187,7 +187,7 @@ instructions = "SKILL.md"
             config_path = _write_agent_config(
                 root,
                 skills=["echo", "github"],
-                disable_names=["memory:default", "echo", "mcp:github"],
+                disabled_skills=["memory:default", "echo", "mcp:github"],
             )
             provider = MockProvider("ok")
 
@@ -218,9 +218,9 @@ def _write_mcp_server(
         env_text = f"\n[configuration.env]\n{env_lines}"
     (server_dir / "skill.toml").write_text(
         f"""
-schema_version = 2
+schema_version = 3
 name = "{name}"
-capability = "mcp"
+type = "mcp"
 description = "{description}"
 version = "0.1.0"
 triggers = ["{name}"]
@@ -244,9 +244,9 @@ def _write_raw_mcp_configuration(root: Path, name: str, configuration: str) -> N
     server_dir.mkdir(parents=True)
     (server_dir / "skill.toml").write_text(
         f"""
-schema_version = 2
+schema_version = 3
 name = "{name}"
-capability = "mcp"
+type = "mcp"
 description = "Invalid MCP configuration"
 version = "0.1.0"
 triggers = ["{name}"]
@@ -263,9 +263,9 @@ def _write_skill(root: Path, name: str, description: str, instruction: str) -> N
     skill_dir.mkdir(parents=True)
     (skill_dir / "skill.toml").write_text(
         f"""
-schema_version = 2
+schema_version = 3
 name = "{name}"
-capability = "prompt"
+type = "prompt"
 description = "{description}"
 version = "0.1.0"
 triggers = ["{name}"]
@@ -282,20 +282,18 @@ def _write_agent_config(
     root: Path,
     *,
     skills: list[str] | None = None,
-    disable_names: list[str] | None = None,
+    disabled_skills: list[str] | None = None,
 ) -> Path:
     config_path = root / "agent.toml"
-    skills_text = _toml_list(skills or [])
-    disable_names_line = "" if disable_names is None else f"disable_names = {_toml_list(disable_names)}"
+    skills_text = _toml_list(["workflow:direct", "memory:default", *(skills or [])])
+    disabled_skills_line = "" if disabled_skills is None else f"disabled_skills = {_toml_list(disabled_skills)}"
     config_path.write_text(
         f"""
 [agent]
 name = "demo"
 system = "Base system."
-workflow = "direct"
-memory = "default"
 skills = {skills_text}
-{disable_names_line}
+{disabled_skills_line}
 
 [paths]
 skills = ["skills"]
@@ -317,11 +315,11 @@ def _load_model_context(
     disclosure: ProgressiveDisclosureCore,
     reference: SkillReference,
 ) -> Skill:
-    contribution = create_default_capability_registry().load_skill(
+    contribution = create_default_skill_runners().load_skill(
         SkillLoadRequest(disclosure, reference, disclosure.store)
     )
     if contribution.model_context is None:
-        raise AssertionError("MCP Capability did not provide model context")
+        raise AssertionError("MCP SkillRunner did not provide model context")
     return contribution.model_context
 
 
@@ -340,7 +338,7 @@ for line in sys.stdin:
     if method == "initialize":
         result = {
             "protocolVersion": "2025-03-26",
-            "capabilities": {"tools": {}},
+            "skill_runners": {"tools": {}},
             "serverInfo": {"name": "fake", "version": "1"},
         }
     elif method == "tools/list":

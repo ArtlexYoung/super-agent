@@ -5,10 +5,10 @@ import unittest
 from dataclasses import replace
 from pathlib import Path
 
-from agents.agent import Agent
-from ag_ui_bridge.web_api import WebAPI
-from provider.chat import MockProvider
-from runtime.config import AgentConfig
+from core.agent import Agent
+from adapter.ag_ui_adapter.web_api import WebAPI
+from core.provider.chat import MockProvider
+from core.config import AgentConfig
 from skill.kinds.memory import MiniMemory
 
 
@@ -37,7 +37,7 @@ class WebAPIContractTests(unittest.TestCase):
             self.assertEqual("super-agent", _body_dict(body["agent"])["name"])
             skills = _body_list(body["skills"])
             self.assertTrue({"memory", "workflow", "planner"}.issubset(
-                {item["capability"] for item in skills}
+                {item["type"] for item in skills}
             ))
             self.assertNotIn("manifest_cache_path", skills[0])
             child_node = _body_list(body["subagents"])[0]
@@ -81,7 +81,6 @@ class WebAPIContractTests(unittest.TestCase):
             api = WebAPI(agent, "web-user")
             request = dict(_body_dict(api.handle("GET", "/api/bootstrap").body)["agent"])
             request["name"] = "configured-agent"
-            request["safety"] = "autonomous"
 
             response = api.handle("PUT", "/api/config", request)
             loaded = AgentConfig.load_from_file(root / "agent.toml")
@@ -89,7 +88,6 @@ class WebAPIContractTests(unittest.TestCase):
             self.assertEqual(200, response.status)
             self.assertEqual("configured-agent", loaded.agent.name)
             self.assertEqual(config.paths.skills, loaded.paths.skills)
-            self.assertEqual("autonomous", agent.safety_policy.preset.value)
 
     def test_model_skill_can_be_created_and_removed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -106,7 +104,7 @@ class WebAPIContractTests(unittest.TestCase):
             self.assertEqual("fast", created_models[0]["name"])
             self.assertEqual("OPENAI_API_KEY", created_models[0]["api_key_env"])
             self.assertFalse((root / "skills" / "model" / "fast").exists())
-            self.assertEqual("mock", removed_models[0]["name"])
+            self.assertEqual([], removed_models)
 
 
 def _model_request() -> dict[str, object]:

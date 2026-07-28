@@ -1,147 +1,142 @@
 # Architecture
 
-Super Agent uses five responsibilities:
+Super Agent keeps five responsibilities separate and gives each one a direct name.
 
 ```text
-Provider provides intelligence
-Runtime schedules and owns task lifecycle
-Capability executes a Skill mechanism
-Skill carries content and configuration
-Agent composes models, Skills, storage, and subagents
+Provider     connects model intelligence
+Core         schedules tasks and owns mutable Runtime state
+SkillRunner  turns one Skill type into Runtime behavior
+Skill        carries passive content and configuration
+Agent        composes Providers, Core options, SkillRunners, storage, and subagents
 ```
+
+## Source Layout
+
+The shipped Python source has only four packages and two entry modules:
+
+```text
+src/
+  adapter/          external CLI and AG-UI entry points
+  builtin_skills/   passive built-in Skill content
+  core/             Runtime, Provider, task, state, storage, and evolution orchestration
+  skill/            Skill format, disclosure, runners, packages, and evaluation
+  cli.py
+  super_agent.py
+```
+
+`adapter` may import Core. Core never imports CLI, HTTP, React, or another external
+interaction layer. `super_agent.py` is the only public API aggregate.
 
 ## One Task Path
 
-Every public run enters the same kernel:
+Every run enters one kernel:
 
 ```text
-Agent.run
+Agent.run(...)
   -> AgentRuntime.run_task(TaskRequest)
-  -> disclose task context
-  -> AdaptiveTaskLoop selects and executes models, Skills, tools, and subagents
-  -> append TaskTrace events
-  -> evaluate used targets
-  -> review evolution evidence
+  -> RuntimeSession and RuntimeStore
+  -> progressive Skill index and selection
+  -> SkillRunners load selected Skills
+  -> one adaptive task loop executes plans, models, tools, and subagents
+  -> canonical events, evaluation, freshness, and evolution review
 ```
 
-Model calls, tool calls, and subagent work are observable steps of the same task path. `RuntimeSession` is the only mutable context for a task. It carries one `RunIdentity`, `RuntimeStore`, Skill index, disclosure core, selected model, Capability registry, and evidence tracker.
+Direct tasks are one-step plans. Complex tasks are multi-step plans. Both use the same
+loop, event stream, model routing, tool registry, and stopping checks. There is no second
+controller for workflows, memory, planning, or subagents.
 
-Model routing produces one ordered fallback list with explicit confidence and evidence sufficiency. Confidence combines declared compatibility with observed user-scoped outcomes. A low-confidence candidate cannot displace a sufficiently evidenced candidate silently: Runtime records either a confidence escalation or the uncertainty that leaves the provider-failure fallback chain in place.
+`RuntimeSession` is the only mutable run context. It carries the validated identity,
+store, Skill index, disclosure core, selected model state, SkillRunners, action runner,
+and evidence tracker. Derived CLI and Web views are projected from canonical events, not
+from parallel mutable state.
 
-`runtime.insights` projects UI-facing task, model, routing, freshness, and evolution views from canonical events and evaluation records. CLI and user interfaces consume this projection instead of implementing their own evidence logic. `ag_ui_bridge` maps the same live event stream to AG-UI without owning execution or state.
+## Central Progressive Disclosure
 
-`AdaptiveTaskLoop` is the only task-step owner. `runtime.task_preparation` loads passive
-policies and contributions, assembles tools, and builds prompt context, but never advances
-a task. Pure decision functions first filter model profiles by connection readiness and
-required features, then score purpose, prompt traits, default status, declared quality,
-latency, cost, and user-scoped evidence. Skill selection uses the same
-progressive-disclosure core, while subagent selection uses the descriptions and triggers
-supplied by `Agent.add_subagent(...)`.
+All Skill types use `ProgressiveDisclosureCore`:
 
-The progressively disclosed `planner:default` Skill contributes only its planning instruction and deterministic planning thresholds. Every task becomes one `TaskPlan`. Simple tasks receive one deterministic step without a planning model call; complex tasks request and validate a strict model-generated plan. The same step loop owns both forms. Each generated step receives a fresh model fallback order from its purpose and required features, may run one named subagent, and receives prior step results. Planner is data and policy, not a second controller or execution loop.
+1. Scan user, project, and built-in sources into one compact index.
+2. Read a manifest only for a selected reference.
+3. Read instructions, configuration, and resources only when its SkillRunner asks.
+4. Reuse content-addressed cache paths when Runtime explicitly enables recording.
+5. Store disclosure history in the same user-and-Agent event scope as the run.
 
-Task history is the ordered event stream emitted by actual schedule, model, tool, and subagent steps. Runtime does not maintain a second execution context or mutable history. The former scheduler, model-router, and execution modules are intentionally absent.
+Offline discovery is read-only by default. Cache and history writes are explicit options,
+so inspecting available Skills has no hidden side effect.
 
-## Stable Runtime Kernel
+## SkillRunners
 
-Runtime directly owns:
+A SkillRunner is trusted application code registered for exactly one `skill_type`. It has
+one loading method:
 
-- Conversation loading and persistence.
-- Progressive Skill disclosure.
-- Workflow interpretation and model/tool loops.
-- Runtime locks and task traces.
-- Evaluation recording and evolution review.
+```python
+loaded = runner.load_skill(request)
+```
 
-These lifecycle stages cannot be replaced by parallel controllers. Workflow Skills are passive policies containing a mode, instruction, and stopping limit.
+`LoadedSkill` may contribute model context, prompt context, tools, a task policy, a
+planning policy, and a completion callback. Core consumes this one shape for every type.
+Built-in prompt, MCP, memory, workflow, and planner behavior therefore requires no
+type-specific branch in Core.
 
-## Executable Capabilities
+Downloaded Skill directories are always passive. Runtime never imports Python from them.
+Custom executable behavior is added explicitly with `Agent.add_skill_runner(...)`, and
+the exact implementation hash is written to the Runtime lock.
 
-`CapabilityRegistry` stores only explicitly registered Capabilities. Each descriptor
-locks the Capability name, version, class, SHA-256, and dependencies. Authorization lives
-only in Runtime action effects and safety policy.
+## Providers and Model Skills
 
-Every Capability has one `load_skill(request)` method and returns one `SkillContribution`. A contribution may contain model context, prompt context, tools, a task policy, and a completion recorder. Runtime consumes these fields uniformly and never imports concrete memory, MCP, or workflow implementations. Capability-owned tools use one `CapabilityTool` contract and enter the same traced tool registry.
+Provider code only normalizes model protocol calls. Model names, purposes, supported
+features, quality, expected latency, cost, and connection environment names live in
+ordinary model Skills. `ProviderPool` creates a connection lazily after Core selects a
+ready model profile.
 
-Built-ins require no configuration. Custom code composition uses the explicit
-`Agent.add_capability(...)` method. Runtime rejects executable Capability Skills and
-never imports Python from a Skill directory.
-
-## Skills and Providers
-
-Every Skill has the stable identity `capability:name`. Prompt, MCP, memory, workflow,
-model, and custom declarative Skills share one index, progressive-disclosure cache,
-evidence stream, and evolution format.
-
-The index resolves sources in `user > project > builtin` order. User-created, installed,
-edited, and promoted Skills live below the user-and-Agent private runtime root. Project
-Skills are shared read-only baselines, so one user's evolution cannot modify another
-user's effective Skill or the repository copy.
-
-Planner and model routing revisions are not privileged evolution targets. When used, both become ordinary `SkillRevision` values, receive the task's evaluation record, and enter the same recommendation, complete-directory candidate, evaluation, promotion, monitoring, and rollback state machine. Model connection fields remain user-owned unless the active model Skill explicitly grants update permission.
-
-Providers normalize protocol calls only. Model descriptions and routing traits live in model Skills, while connection instances are created lazily by `ProviderPool`.
+There is no implicit Mock Provider and no model-failure fallback. A failed selected call
+records `will_retry = false` and raises the original error. Explicit routing decisions
+occur before a call and are visible in the trace.
 
 ## State and Isolation
 
 ```text
 RuntimeSession
   -> RuntimeStore
-       -> RuntimeDisclosureStore -> scoped cache + disclosure events
-       -> RuntimeMemoryStore     -> memory and habit events
-       -> StorageBackend
-            +-> JSONL (default)
+       -> one StorageBackend
+            +-> JSONL
             +-> SQLite
-            +-> MySQL (optional)
-            +-> PostgreSQL (optional)
+            +-> MySQL
+            +-> PostgreSQL
 ```
 
-`RunIdentity` scopes user, Agent, conversation, task, and parent task through one central validator. Conversations, traces, evaluations, disclosure history, memory, habits, and evolution decisions use one canonical event schema. Derived views can always be rebuilt from those events.
+Every event contains one validated user and Agent scope. Conversations, memory, Skill
+usage, disclosure history, model evidence, Provider caches, user Skill overlays,
+evaluations, and evolution state remain inside that scope. Shared project and built-in
+Skills are read-only baselines; resolution order is `user > project > builtin`.
 
-The focused disclosure and memory stores are domain operation boundaries, not additional
-state backends. `RuntimeStore` creates both with the same user and Agent scope; disclosure
-history and every memory mutation still enter the one configured `StorageBackend`.
-Disclosure file reads and writes are restricted to that scope's cache root.
+JSONL and SQLite use only the standard library. Remote database drivers are imported only
+after their backend is explicitly selected.
 
-Model state follows the same boundary. Runtime resolves model Skills after creating the
-user Store, then creates a run-scoped `AdaptiveTaskLoop` and user Provider pool. A
-`UserSecretResolver` supplies a non-enumerable environment view keyed by validated user
-ID and variable name. A user model overlay or Provider credential therefore cannot alter
-another user's model schedule or cached connection.
+## Explicit Side Effects
 
-## Action Safety
+Every Runtime tool declares one resource and one or more effects. `ActionRunner` checks
+that declaration before invoking the handler and records the decision, completion, or
+failure. A missing declaration is an error; there is no permissive fallback. Skill text
+cannot change an action declaration because it is treated as untrusted model context.
 
-`RuntimeActionExecutor` is the only model-triggered side-effect boundary. A Capability
-declares effects and a resource; Runtime intersects that declaration with the Agent's
-safety preset before invoking the handler. Skill text is never an authority source.
-Management services reuse the same executor and write decisions to the same storage
-backend. See [Runtime Safety](safety.md).
+Management operations such as conversation changes, model Skill writes, and memory
+forgetting use the same action boundary. The Web and CLI adapters do not bypass it.
 
-Capability tools have no implicit action fallback. A Runtime-scoped `SkillLoadRequest`
-is invalid without the central action executor, Registry validates every contributed
-tool contract, and Runtime checks the declared action before invoking its handler.
-Passive Skill files cannot supply or weaken that contract.
+## Evolution
+
+Core records which exact Skill revisions affected each run. Eligible Agent-owned Skills
+enter one candidate, evaluation, promotion, monitoring, and rollback state machine. The
+candidate unit is the complete Skill directory, and promotion requires non-regression
+evidence for every evaluation case. Executable SkillRunner code remains reviewed
+application code rather than downloadable Skill content.
 
 ## Invariants
 
-- One task uses one Runtime session, Skill index, disclosure cache, and store.
-- Runtime is the only task lifecycle and model-loop owner.
-- Every Capability is registered once and locked by exact hash.
-- Runtime consumes only `SkillContribution`, never a Skill-kind-specific runtime object.
-- One run-scoped `AdaptiveTaskLoop` owns plan creation, step scheduling, model fallback, and tool iteration.
-- User Skills override project Skills, which override same-key built-in fallbacks in one disclosure source scan.
-- Every used Skill revision is evaluated automatically.
-- Workflow is Skill data, not a second execution engine.
-- Evolution cannot bypass validation, evaluation, promotion, or rollback.
-- Planner and model Skills cannot bypass the shared Skill evolution state machine.
-- Internal compatibility shells are intentionally absent during `0.0.x`.
-- Model editors persist standard model Skills; API-key values remain outside Skill and Agent configuration.
-- Model profiles, Provider caches, and optional secret lookups are resolved per user.
-- Model-triggered side effects use one Runtime action contract and one safety decision stream.
-- Unknown external actions cannot execute before an allow or explicit approval decision.
-- AG-UI is a transport projection over canonical events, never a second task engine or state store.
-
-## Verification
-
-The maintained [v0.0.61 unified proof](experiments/v0.0.61.md) exercises these
-boundaries through one real Agent with two isolated users. Earlier reports are retained
-only as [release snapshots](experiments/README.md).
+- One run has one Runtime session, store, disclosure core, task loop, and event stream.
+- Every Skill type uses the same index, cache, stable key, evidence, and evolution format.
+- Core has no hard-coded list of custom Skill types.
+- Provider failures, memory organization failures, and invalid evolution candidates are
+  explicit errors rather than silent degradation.
+- User, Agent, conversation, and parent-run identity is preserved through subagent work.
+- AG-UI and CLI are adapters over Core, never alternative task engines.
+- Internal compatibility imports and schema conversion are intentionally absent.

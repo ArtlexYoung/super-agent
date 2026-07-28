@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import unittest
 from io import StringIO
@@ -9,6 +10,15 @@ from cli import main
 
 
 class ConversationsCliTests(unittest.TestCase):
+    def setUp(self) -> None:
+        provider_environment = patch.dict(
+            os.environ,
+            {"SUPER_AGENT_PROVIDER": "mock"},
+            clear=True,
+        )
+        provider_environment.start()
+        self.addCleanup(provider_environment.stop)
+
     def test_conversation_commands_keep_users_isolated(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             config = self._initialize_project(tmp)

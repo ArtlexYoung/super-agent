@@ -1,8 +1,8 @@
 import json
 import unittest
 
-from capability.skill_contributions import PlanningPolicy
-from runtime.planning import (
+from skill.runners.loaded import PlanningPolicy
+from core.task.planning import (
     create_direct_task_plan,
     decide_task_planning,
     read_task_plan,

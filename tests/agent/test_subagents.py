@@ -2,9 +2,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from agents.agent import Agent
-from runtime.config import AgentConfig
-from provider.chat import MockProvider, ModelResponse, ToolCall
+from core.agent import Agent
+from core.config import AgentConfig
+from core.provider.chat import MockProvider, ModelResponse, ToolCall
 from support import write_workflow_skill
 
 
@@ -217,9 +217,7 @@ def _agent(
 [agent]
 name = "{name}"
 system = "{name} system."
-workflow = "{workflow}"
-memory = "default"
-skills = []
+skills = ["workflow:{workflow}", "memory:default"]
 {max_depth_line}
 
 [paths]

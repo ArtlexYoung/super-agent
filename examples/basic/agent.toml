@@ -1,10 +1,8 @@
 [agent]
 name = "basic"
 system = "You are a concise, helpful agent."
-workflow = "direct"
-memory = "default"
 skills = ["echo"]
-disable_names = []
+disabled_skills = []
 
 [paths]
 skills = ["skills"]

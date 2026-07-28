@@ -3,9 +3,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from agents.agent import Agent
-from runtime.config import AgentConfig
-from runtime.insights import explain_run_with_insight
+from core.agent import Agent
+from core.config import AgentConfig
+from core.state.insights import explain_run_with_insight
 from support import write_workflow_skill
 
 
@@ -159,6 +159,7 @@ class PlanningSkillEvolutionTests(unittest.TestCase):
                         }
                     ),
                     "candidate evaluation output",
+                    "baseline evaluation output",
                 ]
             )
             agent = Agent(_write_config(root, "planner-evolution"), provider=provider)
@@ -184,7 +185,12 @@ class PlanningSkillEvolutionTests(unittest.TestCase):
                 ],
             )
             self.assertEqual(
-                {"model:main", "planner:default", "workflow:direct"},
+                {
+                    "memory:default",
+                    "model:main",
+                    "planner:default",
+                    "workflow:direct",
+                },
                 _evaluated_skill_keys(store, run_id),
             )
             self.assertEqual(
@@ -221,6 +227,7 @@ class PlanningSkillEvolutionTests(unittest.TestCase):
                         }
                     ),
                     "candidate evaluation output",
+                    "baseline evaluation output",
                 ]
             )
             agent = Agent(_write_config(root, "model-evolution"), provider=provider)
@@ -245,7 +252,12 @@ class PlanningSkillEvolutionTests(unittest.TestCase):
                 ],
             )
             self.assertEqual(
-                {"model:main", "planner:default", "workflow:direct"},
+                {
+                    "memory:default",
+                    "model:main",
+                    "planner:default",
+                    "workflow:direct",
+                },
                 _evaluated_skill_keys(store, run_id),
             )
             profile = agent.model_profiles[0]
@@ -278,9 +290,7 @@ def _write_config(root: Path, agent_name: str) -> AgentConfig:
         f'''[agent]
 name = "{agent_name}"
 system = "Complete the assigned task."
-workflow = "direct"
-memory = "default"
-skills = []
+skills = ["workflow:direct", "memory:default"]
 
 [paths]
 skills = ["skills"]
@@ -325,9 +335,9 @@ def _model_skill_manifest(
     agent_can_update: bool,
 ) -> str:
     purpose_values = ", ".join(f'"{item}"' for item in purposes)
-    return f'''schema_version = 2
+    return f'''schema_version = 3
 name = "{name}"
-capability = "model"
+type = "model"
 description = "{description}"
 version = "0.1.0"
 triggers = []
@@ -349,9 +359,9 @@ def _write_planner_skill(root: Path) -> None:
     path = root / "skills" / "planner" / "default"
     path.mkdir(parents=True)
     path.joinpath("skill.toml").write_text(
-        '''schema_version = 2
+        '''schema_version = 3
 name = "default"
-capability = "planner"
+type = "planner"
 description = "Agent-owned planning policy"
 version = "0.1.0"
 triggers = []

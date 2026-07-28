@@ -1,35 +1,36 @@
 """Small public facade for the common Super Agent library workflow."""
 
-from agents.agent import Agent, AgentRunOptions
-from agents.user import UserAgent
-from ag_ui_bridge import AGUIEventMapper, AGUIRunInput, create_ag_ui_server
-from capability.registry import Capability, SkillLoadRequest
-from capability.skill_contributions import (
-    CapabilityAction,
-    CapabilityTool,
-    SkillContribution,
+from core.agent import Agent, AgentRunOptions
+from core.actions import ActionEffect, ActionMode, ActionRules
+from core.user import UserAgent
+from adapter.ag_ui_adapter import AGUIEventMapper, AGUIRunInput, create_ag_ui_server
+from skill.runners.registry import SkillRunner, SkillLoadRequest
+from skill.runners.loaded import (
+    SkillAction,
+    SkillTool,
+    LoadedSkill,
 )
-from provider.chat import (
+from core.provider.chat import (
     ChatProvider,
     MockProvider,
     ModelResponse,
     ProviderConnection,
     ToolCall,
 )
-from provider.pool import ProviderPool
-from runtime.config import AgentConfig
-from runtime.identity import LOCAL_USER_ID
-from runtime.models import Conversation
-from runtime.storage import (
+from core.provider.pool import ProviderPool
+from core.config import AgentConfig
+from core.identity import LOCAL_USER_ID
+from core.state.models import Conversation
+from core.storage import (
     JsonlStorage,
     MySqlStorage,
     PostgreSqlStorage,
     SqliteStorage,
     StorageBackend,
 )
-from runtime.tasks import TaskResult, TaskTrace
+from core.task.models import TaskResult, TaskTrace
 from skill.kinds.model import ModelProfile
-from skill.manifest import SkillManifest
+from skill.manifest import Skill, SkillManifest
 
 __all__ = [
     "Agent",
@@ -37,10 +38,13 @@ __all__ = [
     "AgentRunOptions",
     "AGUIEventMapper",
     "AGUIRunInput",
+    "ActionEffect",
+    "ActionMode",
+    "ActionRules",
     "ChatProvider",
-    "Capability",
-    "CapabilityAction",
-    "CapabilityTool",
+    "SkillRunner",
+    "SkillAction",
+    "SkillTool",
     "Conversation",
     "JsonlStorage",
     "LOCAL_USER_ID",
@@ -51,8 +55,9 @@ __all__ = [
     "PostgreSqlStorage",
     "ProviderConnection",
     "ProviderPool",
+    "Skill",
     "SkillManifest",
-    "SkillContribution",
+    "LoadedSkill",
     "SkillLoadRequest",
     "SqliteStorage",
     "StorageBackend",

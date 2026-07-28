@@ -2,19 +2,19 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from runtime.evaluation import (
+from core.state.evaluation import (
     EvaluationResult,
     EvaluationSource,
     EvaluationTokenUsage,
     create_evaluation_record,
 )
-from runtime.store import create_local_runtime_store
+from core.state.store import create_local_runtime_store
 from skill.disclosure import ProgressiveDisclosureCore
-from skill.revision import SkillRevision
+from skill.evolution.revision import SkillRevision
 
 
 class ProgressiveDisclosureCoreTests(unittest.TestCase):
-    def test_index_contains_every_skill_kind_with_stable_keys(self) -> None:
+    def test_read_only_index_contains_every_skill_type_without_writing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_all_skill_kinds(root)
@@ -26,7 +26,7 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
                 ["mcp:filesystem", "memory:default", "prompt:echo", "workflow:direct"],
                 [entry.reference.key for entry in index.entries],
             )
-            self.assertTrue(core.cache_root.joinpath("index.json").is_file())
+            self.assertFalse(core.cache_root.joinpath("index.json").exists())
 
     def test_same_name_in_different_kinds_requires_explicit_kind(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -36,25 +36,25 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
             core = _create_core(root)
             core.prepare_skill_index()
 
-            with self.assertRaisesRegex(ValueError, "ambiguous skill name default"):
+            with self.assertRaisesRegex(ValueError, "ambiguous Skill name default"):
                 core.open_skill("default")
 
-            manifest = core.open_skill("default", expected_capability="memory").read_manifest()
-            self.assertEqual("memory", manifest.capability)
+            manifest = core.open_skill("default", expected_type="memory").read_manifest()
+            self.assertEqual("memory", manifest.skill_type)
 
-    def test_primary_skill_source_overrides_fallback_with_the_same_key(self) -> None:
+    def test_project_skill_source_overrides_builtin_with_the_same_key(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             primary = root / "primary" / "planner" / "default"
-            fallback = root / "fallback" / "planner" / "default"
+            builtin = root / "builtin" / "planner" / "default"
             primary.mkdir(parents=True)
-            fallback.mkdir(parents=True)
+            builtin.mkdir(parents=True)
             _write_manifest(primary, "default", "planner")
-            _write_manifest(fallback, "default", "planner")
+            _write_manifest(builtin, "default", "planner")
             core = ProgressiveDisclosureCore(
                 [root / "primary"],
                 create_local_runtime_store(root / "state"),
-                fallback_skill_roots=[root / "fallback"],
+                builtin_skill_roots=[root / "builtin"],
             )
 
             index = core.prepare_skill_index()
@@ -130,7 +130,7 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
             selected = core.select_skill_references_for_prompt(
                 "research this topic",
                 enabled_names=[],
-                allowed_capabilities={"prompt", "mcp"},
+                allowed_types={"prompt", "mcp"},
             )
 
             self.assertEqual(["prompt:http", "prompt:research"], [item.key for item in selected])
@@ -149,7 +149,7 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
             selected = core.select_skill_references_for_prompt(
                 "filesystem",
                 enabled_names=["filesystem"],
-                allowed_capabilities={"prompt", "mcp"},
+                allowed_types={"prompt", "mcp"},
             )
 
             self.assertEqual([], selected)
@@ -169,7 +169,7 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
             selected = core.select_skill_references_for_prompt(
                 "unrelated",
                 enabled_names=["shared"],
-                allowed_capabilities={"prompt", "mcp"},
+                allowed_types={"prompt", "mcp"},
             )
 
             self.assertEqual(["prompt:shared"], [item.key for item in selected])
@@ -178,9 +178,9 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_prompt_skill(root, "echo", triggers=["echo"], instruction="Answer briefly.")
-            core = _create_core(root)
+            core = _create_recording_core(root)
             core.prepare_skill_index()
-            skill = core.open_skill("echo", expected_capability="prompt")
+            skill = core.open_skill("echo", expected_type="prompt")
 
             manifest = skill.read_manifest()
             first = skill.read_instructions()
@@ -211,7 +211,7 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
                 encoding="utf-8",
             )
             (skill_root / "resources" / "image.bin").write_bytes(b"\xff\x00")
-            core = _create_core(root)
+            core = _create_recording_core(root)
             index = core.prepare_skill_index()
 
             disclosed = core.open_skill("echo", "prompt").read_skill_files()
@@ -268,7 +268,7 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
             ):
                 opened.read_instructions()
 
-    def test_configuration_is_optional_for_every_capability(self) -> None:
+    def test_configuration_is_optional_for_every_skill_type(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             skill_dir = root / "skills" / "memory" / "broken"
@@ -314,14 +314,14 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
             core.prepare_skill_index()
 
             server = create_mcp_server_from_skill_disclosure(
-                core.open_skill("filesystem", expected_capability="mcp")
+                core.open_skill("filesystem", expected_type="mcp")
             )
             memory = create_memory_from_skill_disclosure(
-                core.open_skill("default", expected_capability="memory"),
+                core.open_skill("default", expected_type="memory"),
                 core.store,
             )
             workflow = create_workflow_policy_from_skill(
-                core.open_skill("direct", expected_capability="workflow")
+                core.open_skill("direct", expected_type="workflow")
             )
 
             self.assertEqual("example-mcp", server.command)
@@ -338,7 +338,7 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
                     create_evaluation_record(
                         revision=SkillRevision(
                             key="prompt:research",
-                            capability="prompt",
+                            skill_type="prompt",
                             name="research",
                             version="0.1.0",
                             content_sha256="a" * 64,
@@ -378,6 +378,14 @@ def _create_core(root: Path) -> ProgressiveDisclosureCore:
     return ProgressiveDisclosureCore(
         [root / "skills"],
         create_local_runtime_store(root / "state"),
+    )
+
+
+def _create_recording_core(root: Path) -> ProgressiveDisclosureCore:
+    return ProgressiveDisclosureCore(
+        [root / "skills"],
+        create_local_runtime_store(root / "state"),
+        record_disclosures=True,
     )
 
 
@@ -444,7 +452,7 @@ mode = "direct"
 def _write_manifest(
     skill_dir: Path,
     name: str,
-    capability: str,
+    skill_type: str,
     *,
     triggers: list[str] | None = None,
     provides: list[str] | None = None,
@@ -453,9 +461,9 @@ def _write_manifest(
     extra: str = "",
 ) -> None:
     lines = [
-        "schema_version = 2",
+        "schema_version = 3",
         f'name = "{name}"',
-        f'capability = "{capability}"',
+        f'type = "{skill_type}"',
         f'description = "{name} skill"',
         'version = "0.1.0"',
         f"triggers = {_toml_array(triggers or [])}",

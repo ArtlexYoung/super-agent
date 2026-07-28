@@ -10,27 +10,27 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
-from agents.agent import Agent
-from provider.chat import MockProvider
-from runtime.config import AgentConfig
-from runtime.evaluation import (
+from core.agent import Agent
+from core.provider.chat import MockProvider
+from core.config import AgentConfig
+from core.state.evaluation import (
     EvaluationResult,
     EvaluationRecord,
     EvaluationSource,
     EvaluationTokenUsage,
     create_evaluation_record,
 )
-from runtime.evolution.files import compare_directory_versions
-from runtime.evolution.state import (
+from core.evolution.files import compare_directory_versions
+from core.evolution.state import (
     list_skill_evolutions,
     skill_evolution_to_dict,
 )
-from runtime.evolution.recommendations import recommend_skill_revisions
-from runtime.evolution.evidence import summarize_evaluation_evidence
-from runtime.evolution.service import AutomaticEvolutionService
-from runtime.insights import explain_run_with_insight
-from runtime.store import create_local_runtime_store
-from skill.revision import SkillRevision, create_indexed_skill_revision
+from core.evolution.recommendations import recommend_skill_revisions
+from core.evolution.evidence import summarize_evaluation_evidence
+from core.evolution.service import AutomaticEvolutionService
+from core.state.insights import explain_run_with_insight
+from core.state.store import create_local_runtime_store
+from skill.evolution.revision import SkillRevision, create_indexed_skill_revision
 from support import write_workflow_skill
 
 
@@ -166,6 +166,7 @@ class SkillRevisionEvolutionTests(unittest.TestCase):
                         RuntimeError("task failed"),
                         candidate_response,
                         "candidate evaluation output",
+                        "baseline evaluation output",
                         RuntimeError("promoted regression"),
                     ]
                 ),
@@ -192,7 +193,7 @@ class SkillRevisionEvolutionTests(unittest.TestCase):
                 agent.for_user("local").runs.list_model_routing_stats(purpose="skill_evolution")[0].call_count,
             )
             self.assertEqual(
-                1,
+                2,
                 agent.for_user("local").runs.list_model_routing_stats(purpose="skill_evaluation")[0].call_count,
             )
 
@@ -224,7 +225,7 @@ class SkillRevisionEvolutionTests(unittest.TestCase):
             )
 
             with patch(
-                "runtime.engine.AutomaticEvolutionService.review_and_evolve",
+                "core.engine.AutomaticEvolutionService.review_and_evolve",
                 side_effect=RuntimeError("recommendation unavailable"),
             ):
                 result = agent.run("echo this")
@@ -245,7 +246,9 @@ class SkillRevisionEvolutionTests(unittest.TestCase):
             )
             agent = Agent(
                 AgentConfig.load_from_file(config_path),
-                provider=_SequenceProvider([response, "evaluation output"]),
+                provider=_SequenceProvider(
+                    [response, "candidate evaluation output", "baseline evaluation output"]
+                ),
             )
             manager = agent.for_user("alice").skills.create_evolution_manager()
             entry = manager.skill_disclosure.prepare_skill_index().require_skill(
@@ -302,10 +305,10 @@ def _target(
     key: str = "prompt:search",
     hash_character: str = "a",
 ) -> SkillRevision:
-    capability, name = key.split(":", 1)
+    skill_type, name = key.split(":", 1)
     return SkillRevision(
         key=key,
-        capability=capability,
+        skill_type=skill_type,
         name=name,
         version="0.1.0",
         content_sha256=hash_character * 64,
@@ -378,9 +381,9 @@ def _write_agent_project(root: Path, *, agent_can_update: bool = False) -> Path:
     skill.mkdir(parents=True)
     (skill / "skill.toml").write_text(
         f"""
-schema_version = 2
+schema_version = 3
 name = "echo"
-capability = "prompt"
+type = "prompt"
 description = "Echo helper"
 version = "0.1.0"
 triggers = ["echo"]
@@ -401,9 +404,7 @@ instructions = "SKILL.md"
 [agent]
 name = "evolution-test"
 system = "Test system."
-workflow = "direct"
-memory = "default"
-skills = ["echo"]
+skills = ["workflow:direct", "memory:default", "echo"]
 
 [paths]
 skills = ["skills"]

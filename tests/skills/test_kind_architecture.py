@@ -8,12 +8,31 @@ from pathlib import Path
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.kinds.mcp import McpServer
 from skill.kinds.memory import MiniMemory
-from runtime.tasks import SubAgentResult, TaskResult
+from core.task.models import SubAgentResult, TaskResult
 from skill.kinds.workflow import create_workflow_policy
 from skill.manifest import SkillManifest
 
 
 class SkillKindArchitectureTests(unittest.TestCase):
+    def test_source_root_has_one_declared_layout(self) -> None:
+        entries = {
+            path.name
+            for path in Path("src").iterdir()
+            if path.name != "__pycache__"
+        }
+
+        self.assertEqual(
+            {
+                "adapter",
+                "builtin_skills",
+                "cli.py",
+                "core",
+                "skill",
+                "super_agent.py",
+            },
+            entries,
+        )
+
     def test_skill_kinds_are_loaded_from_unified_skill_package(self) -> None:
         self.assertEqual("McpServer", McpServer.__name__)
         self.assertEqual("MiniMemory", MiniMemory.__name__)
@@ -30,41 +49,17 @@ class SkillKindArchitectureTests(unittest.TestCase):
             with self.assertRaises(ModuleNotFoundError):
                 importlib.import_module(module_name)
 
-    def test_old_core_and_runtime_agent_modules_are_removed(self) -> None:
-        for module_name in [
-            "core.agent",
-            "core.config",
-            "core.provider",
-            "runtime.agent",
-            "skill.evolution.records",
-            "skill.evolution.freshness",
-        ]:
-            with self.assertRaises(ModuleNotFoundError):
-                importlib.import_module(module_name)
-
-    def test_independent_capability_lifecycle_is_removed(self) -> None:
-        for path in [
-            "src/capability/package.py",
-            "src/capability/evolution/manager.py",
-            "src/runtime/benchmark.py",
-            "src/cli_commands/capabilities.py",
-            "src/cli_commands/benchmark.py",
-        ]:
-            self.assertFalse(Path(path).exists())
+    def test_core_contains_runtime_and_provider_code(self) -> None:
+        for module_name in ["core.agent", "core.config", "core.provider"]:
+            self.assertEqual(module_name, importlib.import_module(module_name).__name__)
 
     def test_runtime_engine_owns_evaluation_without_importing_skill_evolution(self) -> None:
-        engine_source = Path("src/runtime/engine.py").read_text(encoding="utf-8")
+        engine_source = Path("src/core/engine.py").read_text(encoding="utf-8")
         self.assertIn("def _record_task_evaluation", engine_source)
-        self.assertFalse(Path("src/capability/contracts.py").exists())
-        self.assertTrue(Path("src/runtime/evaluation.py").is_file())
-        self.assertTrue(Path("src/runtime/session.py").is_file())
-        self.assertTrue(Path("src/runtime/store.py").is_file())
-        self.assertTrue(Path("src/runtime/storage/contracts.py").is_file())
-        self.assertFalse(Path("src/runtime/state.py").exists())
-
-    def test_kind_implementations_stay_inside_skill_package(self) -> None:
-        for path in ["src/mcp.py", "src/memory.py", "src/workflow.py", "src/mcp", "src/memory", "src/workflow"]:
-            self.assertFalse(Path(path).exists())
+        self.assertTrue(Path("src/core/state/evaluation.py").is_file())
+        self.assertTrue(Path("src/core/session.py").is_file())
+        self.assertTrue(Path("src/core/state/store.py").is_file())
+        self.assertTrue(Path("src/core/storage/contracts.py").is_file())
 
     def test_only_center_source_parser_reads_skill_toml(self) -> None:
         python_sources = list(Path("src").rglob("*.py"))
@@ -73,15 +68,9 @@ class SkillKindArchitectureTests(unittest.TestCase):
             for path in python_sources
             if "tomllib.loads" in path.read_text(encoding="utf-8")
             and '"skill.toml"' in path.read_text(encoding="utf-8")
-            and path != Path("src/runtime/config.py")
         ]
 
         self.assertEqual([Path("src/skill/disclosure/source.py")], direct_parsers)
-        self.assertFalse(
-            Path(
-                "src/frontend/mac/Sources/SuperAgentMac/Support/SkillManifestScanner.swift"
-            ).exists()
-        )
 
     def test_only_super_agent_aggregates_public_api(self) -> None:
         for module_name, attribute_name in [

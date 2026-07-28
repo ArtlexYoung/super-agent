@@ -4,10 +4,10 @@ import unittest
 from dataclasses import replace
 from pathlib import Path
 
-from agents.agent import Agent
-from provider.chat import MockProvider
-from runtime.config import AgentConfig
-from runtime.storage import JsonlStorage
+from core.agent import Agent
+from core.provider.chat import MockProvider
+from core.config import AgentConfig
+from core.storage import JsonlStorage
 from skill.kinds.memory import MiniMemory
 
 
@@ -150,9 +150,9 @@ class ConversationRuntimeTests(unittest.TestCase):
                     "write_files": {
                         "skill.toml": "\n".join(
                             [
-                                "schema_version = 2",
+                                "schema_version = 3",
                                 'name = "private-note"',
-                                'capability = "prompt"',
+                                'type = "prompt"',
                                 'description = "Private notes"',
                                 'version = "0.1.0"',
                                 "agent_created = true",

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from capability.skill_contributions import PlanningPolicy
+from skill.runners.loaded import PlanningPolicy
 from skill.disclosure import SkillDisclosure
 
 
@@ -33,8 +33,8 @@ def create_planning_policy_from_skill(
     disclosure: SkillDisclosure,
 ) -> PlanningPolicy:
     manifest = disclosure.read_manifest()
-    if manifest.capability != "planner":
-        raise ValueError(f"skill does not use the planner capability: {manifest.name}")
+    if manifest.skill_type != "planner":
+        raise ValueError(f"skill does not use the planner skill: {manifest.name}")
     data = disclosure.read_configuration().content
     unknown = set(data) - PLANNER_CONFIGURATION_FIELDS
     if unknown:

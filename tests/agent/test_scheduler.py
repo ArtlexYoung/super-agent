@@ -3,9 +3,9 @@ import unittest
 from dataclasses import replace
 from pathlib import Path
 
-from agents.agent import Agent
-from provider.chat import MockProvider, ModelResponse
-from runtime.config import AgentConfig
+from core.agent import Agent, AgentRunOptions
+from core.provider.chat import MockProvider, ModelResponse
+from core.config import AgentConfig
 from support import write_workflow_skill
 
 
@@ -41,7 +41,7 @@ class AdaptiveTaskLoopTests(unittest.TestCase):
                 schedule["models"][0]["reasons"],
             )
 
-    def test_failed_primary_model_falls_back_to_the_next_choice(self) -> None:
+    def test_failed_selected_model_does_not_silently_switch_provider(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_model_skill(root, "general", default=True, quality=0.9)
@@ -51,14 +51,15 @@ class AdaptiveTaskLoopTests(unittest.TestCase):
                 purposes=["summary"],
                 quality=0.7,
             )
-            general = _RecordingProvider("fallback")
+            general = _RecordingProvider("unused")
             agent = Agent(_write_config(root), provider=general)
             agent.add_model_provider("summary", _FailingProvider())
 
-            result = agent.run("summarize this report")
+            with self.assertRaisesRegex(RuntimeError, "primary unavailable"):
+                agent.run("summarize this report")
 
-            self.assertEqual("fallback", result.text)
-            events = agent.for_user("local").runs.read_trace(result.run_id).events
+            run = agent.runtime.create_store().list_runs()[0]
+            events = agent.for_user("local").runs.read_trace(run.run_id).events
             selected = [
                 event.data["profile"]
                 for event in events
@@ -72,19 +73,19 @@ class AdaptiveTaskLoopTests(unittest.TestCase):
                 for event in events
                 if event.event_type == "model.call.completed"
             ]
-            self.assertEqual(["model:summary", "model:general"], selected)
-            self.assertTrue(failed[0].data["will_fallback"])
+            self.assertEqual(["model:summary"], selected)
+            self.assertFalse(failed[0].data["will_retry"])
             self.assertEqual("model:summary", failed[0].data["profile"])
             self.assertEqual("summary", failed[0].data["purpose"])
             self.assertGreater(failed[0].data["input_tokens"], 0)
-            self.assertEqual(["model:general"], [event.data["profile"] for event in completed])
+            self.assertEqual([], completed)
             stats = {
                 item.profile_key: item
                 for item in agent.for_user("local").runs.list_model_routing_stats(purpose="summary")
             }
             self.assertEqual(0.0, stats["model:summary"].reliability)
-            self.assertEqual(1.0, stats["model:general"].reliability)
-            self.assertEqual(["general-model"], general.models)
+            self.assertNotIn("model:general", stats)
+            self.assertEqual([], general.models)
 
     def test_tool_workflow_filters_models_by_required_features(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -170,6 +171,7 @@ class AdaptiveTaskLoopTests(unittest.TestCase):
             user.run(
                 "不对，请重新回答",
                 conversation_id=conversation.conversation_id,
+                run_options=AgentRunOptions(learn_from_conversation=True),
             )
 
             feedback = [
@@ -262,9 +264,7 @@ def _write_config(root: Path, workflow: str = "direct") -> AgentConfig:
         f'''[agent]
 name = "scheduler-test"
 system = "Test scheduler."
-workflow = "{workflow}"
-memory = "default"
-skills = []
+skills = ["workflow:{workflow}", "memory:default"]
 
 [paths]
 skills = ["skills"]
@@ -292,9 +292,9 @@ def _write_model_skill(
     support_values = ", ".join(f'"{item}"' for item in supports or ["text"])
     purpose_values = ", ".join(f'"{item}"' for item in purposes or [])
     path.joinpath("skill.toml").write_text(
-        f'''schema_version = 2
+        f'''schema_version = 3
 name = "{name}"
-capability = "model"
+type = "model"
 description = "Model used by scheduler tests"
 version = "0.1.0"
 triggers = []

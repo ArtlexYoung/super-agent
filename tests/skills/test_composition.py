@@ -4,17 +4,17 @@ import tomllib
 import unittest
 from pathlib import Path
 
-from agents.agent import Agent
-from runtime.config import AgentConfig
-from runtime.store import create_local_runtime_store
-from provider.chat import MockProvider
+from core.agent import Agent
+from core.config import AgentConfig
+from core.state.store import create_local_runtime_store
+from core.provider.chat import MockProvider
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.ecosystem.lock import write_skill_lock_file
 from support import write_workflow_skill
 
 
 class SkillCompositionTests(unittest.TestCase):
-    def test_manifest_reads_provided_and_required_capabilities(self) -> None:
+    def test_manifest_reads_provided_and_required_types(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = _write_skill(
                 Path(tmp),
@@ -47,10 +47,10 @@ class SkillCompositionTests(unittest.TestCase):
     def test_resolver_rejects_missing_dependency(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            _write_skill(root, "report", requires=["missing-capability"])
+            _write_skill(root, "report", requires=["missing-skill_type"])
             _, index = _prepare_disclosure(root)
 
-            with self.assertRaisesRegex(KeyError, "missing skill capability: missing-capability"):
+            with self.assertRaisesRegex(KeyError, "missing Skill type: missing-skill_type"):
                 index.resolve_skill_dependencies(["report"])
 
     def test_resolver_reports_dependency_cycle_chain(self) -> None:
@@ -63,7 +63,7 @@ class SkillCompositionTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "prompt:alpha -> prompt:beta -> prompt:alpha"):
                 index.resolve_skill_dependencies(["alpha"])
 
-    def test_resolver_rejects_ambiguous_capability_provider(self) -> None:
+    def test_resolver_rejects_ambiguous_type_provider(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_skill(root, "first-http", provides=["http"])
@@ -71,7 +71,7 @@ class SkillCompositionTests(unittest.TestCase):
             _write_skill(root, "research", requires=["http"])
             _, index = _prepare_disclosure(root)
 
-            with self.assertRaisesRegex(ValueError, "ambiguous skill capability http"):
+            with self.assertRaisesRegex(ValueError, "ambiguous Skill type http"):
                 index.resolve_skill_dependencies(["research"])
 
     def test_lock_is_deterministic_and_does_not_store_absolute_paths(self) -> None:
@@ -82,7 +82,7 @@ class SkillCompositionTests(unittest.TestCase):
             disclosure, index = _prepare_disclosure(root)
             resolved = index.resolve_skill_dependencies(["research"])
             manifests = [
-                disclosure.open_skill(item.reference.name, item.reference.capability).read_manifest()
+                disclosure.open_skill(item.reference.name, item.reference.skill_type).read_manifest()
                 for item in resolved
             ]
             first_path = root / "first.lock"
@@ -113,9 +113,7 @@ class SkillCompositionTests(unittest.TestCase):
 [agent]
 name = "demo"
 system = "Base system."
-workflow = "direct"
-memory = "default"
-skills = ["report"]
+skills = ["workflow:direct", "memory:default", "report"]
 
 [paths]
 skills = ["skills"]
@@ -154,9 +152,9 @@ def _write_skill(
     required = _toml_array(requires or [])
     (skill_dir / "skill.toml").write_text(
         f"""
-schema_version = 2
+schema_version = 3
 name = "{name}"
-capability = "prompt"
+type = "prompt"
 description = "{name} skill"
 version = "0.1.0"
 provides = {provided}

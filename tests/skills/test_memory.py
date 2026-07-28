@@ -3,12 +3,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from agents.agent import Agent
-from runtime.config import AgentConfig
-from runtime.safety import ActionRequest
-from runtime.storage import StorageEventQuery
-from runtime.store import create_local_runtime_store
-from provider.chat import MockProvider
+from core.agent import Agent
+from core.config import AgentConfig
+from core.actions import ActionRequest
+from core.storage import StorageEventQuery
+from core.state.store import create_local_runtime_store
+from core.provider.chat import MockProvider
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.kinds.memory import MiniMemory, create_memory_from_skill_disclosure
 from support import write_memory_skill, write_workflow_skill
@@ -141,7 +141,7 @@ class MiniMemoryTests(unittest.TestCase):
             self.assertIn("memory.forgotten", event_types)
             self.assertEqual("memory.organization.completed", event_types[-1])
 
-    def test_invalid_model_organization_keeps_recall_available(self) -> None:
+    def test_invalid_model_organization_fails_without_returning_unorganized_memory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             memory = MiniMemory(
                 create_local_runtime_store(Path(tmp)),
@@ -150,9 +150,9 @@ class MiniMemoryTests(unittest.TestCase):
             memory.add_memory_item("Python preference one.")
             memory.add_memory_item("Python preference two.")
 
-            recalled = memory.recall_memory("Python")
+            with self.assertRaisesRegex(ValueError, "valid JSON"):
+                memory.recall_memory("Python")
 
-            self.assertEqual(2, len(recalled))
             events = memory.store.backend.read_events(
                 StorageEventQuery(
                     user_id=memory.store.user_id,
@@ -169,9 +169,9 @@ class MiniMemoryTests(unittest.TestCase):
             skill_dir.mkdir(parents=True)
             (skill_dir / "skill.toml").write_text(
                 """
-schema_version = 2
+schema_version = 3
 name = "project"
-capability = "memory"
+type = "memory"
 description = "Project memory"
 version = "0.1.0"
 triggers = []
@@ -294,9 +294,7 @@ def _make_agent(root: Path, provider: MockProvider) -> Agent:
 [agent]
 name = "demo"
 system = "Base system."
-workflow = "direct"
-memory = "default"
-skills = []
+skills = ["memory:default"]
 
 [paths]
 skills = ["skills"]

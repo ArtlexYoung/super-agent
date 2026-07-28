@@ -1,0 +1,93 @@
+# SkillRunners
+
+A SkillRunner is trusted application code that turns one passive Skill type into Runtime
+behavior. Core owns task scheduling, progressive disclosure, actions, tracing,
+evaluation, and evolution. A SkillRunner has one loading boundary and does not create a
+second runtime.
+
+Built-in SkillRunners handle prompt, MCP, memory, workflow, and planner Skills. Model
+Skills are read by Core when it selects a Provider profile.
+
+## Add a Runner
+
+Register custom code explicitly in Agent composition:
+
+```python
+from super_agent import (
+    ActionEffect,
+    Agent,
+    LoadedSkill,
+    Skill,
+    SkillAction,
+    SkillLoadRequest,
+    SkillTool,
+)
+
+
+class SearchSkillRunner:
+    name = "search-index"
+    version = "1"
+    skill_type = "search"
+    adds_model_context = True
+
+    def load_skill(self, request: SkillLoadRequest) -> LoadedSkill:
+        opened = request.disclosure.open_skill(
+            request.reference.name,
+            self.skill_type,
+        )
+        return LoadedSkill(
+            model_context=Skill(
+                opened.read_manifest(),
+                opened.read_instructions().content,
+            ),
+            tools=(
+                SkillTool(
+                    name="search_index",
+                    description="Search the registered application index.",
+                    properties={"query": {"type": "string"}},
+                    handler=self.search_index,
+                    action=SkillAction(
+                        effects=(ActionEffect.READ, ActionEffect.EXECUTE),
+                        resource="skill:registered:search-index",
+                    ),
+                    required=("query",),
+                ),
+            ),
+        )
+
+    def search_index(self, arguments: dict[str, object]) -> dict[str, object]:
+        return {"query": arguments["query"], "matches": []}
+
+
+agent = Agent()
+agent.add_skill_runner(SearchSkillRunner())
+```
+
+The runner declares `name`, `version`, `skill_type`, `adds_model_context`, and
+`load_skill(request)`. Adding a runner for an existing type explicitly replaces that
+Agent's current runner.
+
+## LoadedSkill
+
+`load_skill` returns one `LoadedSkill`. It may provide:
+
+- Model instruction content.
+- Prompt context built for the current task.
+- Model-callable tools.
+- Workflow or planning rules.
+- A task-completed callback with a declared action.
+
+Tools are available only after their Skill is selected and loaded. A model can disclose
+another Skill during a tool loop; its runner output becomes available on the next model
+step.
+
+Every tool and completion callback must declare a `SkillAction`. Core checks its effects
+and resource before calling trusted code and records the result. Missing action metadata
+fails closed.
+
+## Trust Boundary
+
+Core never imports, compiles, or executes Python from a Skill directory. Skills can update
+the content and configuration consumed by a runner, but executable runner changes remain
+ordinary reviewed application-code changes. The Runtime lock stores each registered
+runner's implementation name, version, dependencies, and source hash.

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import unittest
 
-from runtime.insights import project_model_call_attempts
-from runtime.models import RunEvent
+from core.state.insights import project_model_call_attempts
+from core.state.models import RunEvent
 
 
 class RuntimeInsightTests(unittest.TestCase):

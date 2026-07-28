@@ -5,7 +5,7 @@ import unittest
 import zipfile
 from pathlib import Path
 
-from runtime.store import create_local_runtime_store
+from core.state.store import create_local_runtime_store
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.ecosystem.package import SkillPackageManager
 
@@ -103,7 +103,7 @@ class SkillPackageManagerTests(unittest.TestCase):
             self.assertFalse(user_skill.exists())
             self.assertTrue(current.exists())
 
-    def test_capability_name_selects_one_skill_when_names_are_shared(self) -> None:
+    def test_skill_type_selects_one_skill_when_names_are_shared(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             skill_root = root / "skills"
@@ -113,7 +113,7 @@ class SkillPackageManagerTests(unittest.TestCase):
                 "shared",
                 "0.2.0",
                 "Memory instructions.",
-                capability="memory",
+                skill_type="memory",
             )
             manager = _manager(skill_root)
 
@@ -121,22 +121,22 @@ class SkillPackageManagerTests(unittest.TestCase):
 
             with zipfile.ZipFile(package_path) as archive:
                 manifest = archive.read("shared/skill.toml").decode("utf-8")
-            self.assertIn('capability = "memory"', manifest)
+            self.assertIn('type = "memory"', manifest)
 
-    def test_update_rejects_changing_skill_capability(self) -> None:
+    def test_update_rejects_changing_skill_type(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             skill_root = root / "skills"
             current = skill_root / "memory" / "shared"
             source = root / "updated"
-            _write_skill(current, "shared", "0.1.0", "Memory instructions.", capability="memory")
+            _write_skill(current, "shared", "0.1.0", "Memory instructions.", skill_type="memory")
             _write_skill(source, "shared", "0.2.0", "Prompt instructions.")
 
-            with self.assertRaisesRegex(ValueError, "capability does not match target"):
+            with self.assertRaisesRegex(ValueError, "Skill type does not match target"):
                 _manager(skill_root).update_skill("memory:shared", str(source))
 
             self.assertIn(
-                'capability = "memory"',
+                'type = "memory"',
                 (current / "skill.toml").read_text(encoding="utf-8"),
             )
 
@@ -187,21 +187,21 @@ def _write_skill(
     version: str,
     instructions: str,
     *,
-    capability: str = "prompt",
+    skill_type: str = "prompt",
 ) -> None:
     path.mkdir(parents=True, exist_ok=True)
     (path / "skill.toml").write_text(
         f"""
-schema_version = 2
+schema_version = 3
 name = "{name}"
-capability = "{capability}"
+type = "{skill_type}"
 description = "Packaged skill"
 version = "{version}"
 triggers = ["{name}"]
 
 [entry]
 instructions = "SKILL.md"
-{"" if capability == "prompt" else "\n[configuration]\ndefault_scope = \"agent\""}
+{"" if skill_type == "prompt" else "\n[configuration]\ndefault_scope = \"agent\""}
 """.strip(),
         encoding="utf-8",
     )

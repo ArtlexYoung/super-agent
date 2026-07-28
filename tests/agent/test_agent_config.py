@@ -2,10 +2,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from agents.agent import Agent
-from runtime.config import AgentConfig
-from runtime.store import create_local_runtime_store
-from provider.chat import MockProvider
+from core.agent import Agent
+from core.config import AgentConfig
+from core.state.store import create_local_runtime_store
+from core.provider.chat import MockProvider
 from skill.disclosure import ProgressiveDisclosureCore
 from support import write_workflow_skill
 
@@ -20,12 +20,9 @@ class ConfigSkillAgentTests(unittest.TestCase):
 [agent]
 name = "demo"
 system = "You are concise."
-workflow = "direct"
-memory = "default"
-skills = ["echo"]
+skills = ["workflow:direct", "memory:default", "echo"]
 max_agent_chain_depth = 4
-disable_names = ["mcp:github"]
-safety = "read_only"
+disabled_skills = ["mcp:github"]
 
 [paths]
 skills = ["skills"]
@@ -41,18 +38,18 @@ url_env = "CUSTOM_DATABASE_URL"
             config = AgentConfig.load_from_file(config_path)
 
             self.assertEqual("demo", config.agent.name)
-            self.assertEqual("direct", config.agent.workflow)
-            self.assertEqual("default", config.agent.memory)
-            self.assertEqual(["echo"], config.agent.skills)
+            self.assertEqual(
+                ["workflow:direct", "memory:default", "echo"],
+                config.agent.skills,
+            )
             self.assertEqual(4, config.agent.max_agent_chain_depth)
-            self.assertEqual(["mcp:github"], config.agent.disable_names)
-            self.assertEqual("read_only", config.agent.safety)
+            self.assertEqual(["mcp:github"], config.agent.disabled_skills)
             self.assertEqual([root / "skills"], config.paths.skills)
             self.assertEqual("jsonl", config.storage.backend)
             self.assertEqual(root / ".super-agent", config.storage.path)
             self.assertEqual("CUSTOM_DATABASE_URL", config.storage.url_env)
 
-    def test_default_configuration_uses_standard_safety(self) -> None:
+    def test_default_configuration_requires_no_optional_skills(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             config_path = root / "agent.toml"
@@ -69,14 +66,15 @@ skills = ["skills"]
 
             config = AgentConfig.load_from_file(config_path)
 
-            self.assertEqual("standard", config.agent.safety)
+            self.assertEqual([], config.agent.skills)
+            self.assertEqual([], config.agent.disabled_skills)
 
-    def test_unknown_safety_preset_is_rejected(self) -> None:
+    def test_removed_safety_setting_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "agent.toml"
             path.write_text('[agent]\nsafety = "unsafe"\n', encoding="utf-8")
 
-            with self.assertRaisesRegex(ValueError, "unknown safety preset"):
+            with self.assertRaisesRegex(ValueError, "unknown agent settings: safety"):
                 AgentConfig.load_from_file(path)
 
     def test_removed_feature_switch_is_rejected(self) -> None:
@@ -130,9 +128,9 @@ model = "mock"
             skill_dir.mkdir(parents=True)
             (skill_dir / "skill.toml").write_text(
                 """
-schema_version = 2
+schema_version = 3
 name = "echo"
-capability = "prompt"
+type = "prompt"
 description = "Echo helper"
 version = "0.1.0"
 triggers = ["repeat", "echo"]
@@ -149,11 +147,11 @@ instructions = "SKILL.md"
                 create_local_runtime_store(Path(tmp) / "state"),
             )
             disclosure.prepare_skill_index()
-            loaded = disclosure.open_skill("echo", expected_capability="prompt")
+            loaded = disclosure.open_skill("echo", expected_type="prompt")
             selected = disclosure.select_skill_references_for_prompt(
                 "please repeat this",
                 ["echo"],
-                allowed_capabilities={"prompt", "mcp"},
+                allowed_types={"prompt", "mcp"},
             )
 
             self.assertEqual("echo", loaded.read_manifest().name)
@@ -168,9 +166,9 @@ instructions = "SKILL.md"
             skill_dir.mkdir(parents=True)
             (skill_dir / "skill.toml").write_text(
                 """
-schema_version = 2
+schema_version = 3
 name = "echo"
-capability = "prompt"
+type = "prompt"
 description = "Echo helper"
 version = "0.1.0"
 triggers = ["echo"]
@@ -187,9 +185,7 @@ instructions = "SKILL.md"
 [agent]
 name = "demo"
 system = "Base system."
-workflow = "direct"
-memory = "default"
-skills = ["echo"]
+skills = ["workflow:direct", "echo"]
 
 [paths]
 skills = ["skills"]

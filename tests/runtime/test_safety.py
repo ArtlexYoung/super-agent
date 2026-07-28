@@ -2,22 +2,22 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from capability.defaults import create_default_capability_registry
-from capability.skill_contributions import CapabilityAction
-from provider.chat import MockProvider
-from runtime.config import AgentConfig
-from runtime.identity import RunIdentity
-from runtime.safety import (
+from skill.runners.defaults import create_default_skill_runners
+from skill.runners.loaded import SkillAction
+from core.provider.chat import MockProvider
+from core.config import AgentConfig
+from core.identity import RunIdentity
+from core.actions import (
     ActionConfirmationRequired,
     ActionEffect,
     ActionNotAllowedError,
     ActionRequest,
-    RuntimeActionExecutor,
-    SafetyPolicy,
+    ActionRunner,
+    ActionRules,
 )
-from runtime.session import RuntimeSession
-from runtime.store import create_local_runtime_store
-from skill.kinds.model import discover_environment_model_profiles
+from core.session import RuntimeSession
+from core.state.store import create_local_runtime_store
+from skill.kinds.model import create_direct_provider_profile
 
 
 class RuntimeSafetyTests(unittest.TestCase):
@@ -25,7 +25,7 @@ class RuntimeSafetyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             session = _create_session(
                 Path(tmp),
-                SafetyPolicy.from_name("audit"),
+                ActionRules.from_name("audit"),
             )
 
             result = session.execute_action(
@@ -59,12 +59,12 @@ class RuntimeSafetyTests(unittest.TestCase):
                 (ActionEffect.READ, ActionEffect.READ),
             )
         with self.assertRaisesRegex(ValueError, "at least one effect"):
-            CapabilityAction((), "capability:test")
+            SkillAction((), "skill:test")
         with self.assertRaisesRegex(ValueError, "resource cannot be empty"):
-            CapabilityAction((ActionEffect.READ,), " ")
+            SkillAction((ActionEffect.READ,), " ")
 
     def test_policy_can_emit_enforced_allow_decision(self) -> None:
-        decision = SafetyPolicy().check_action(
+        decision = ActionRules().check_action(
             ActionRequest(
                 "one",
                 "tool:test",
@@ -77,7 +77,7 @@ class RuntimeSafetyTests(unittest.TestCase):
         self.assertTrue(decision.enforced)
 
     def test_standard_policy_allows_internal_memory_but_blocks_mcp(self) -> None:
-        policy = SafetyPolicy()
+        policy = ActionRules()
 
         memory = policy.check_action(
             ActionRequest.create(
@@ -105,8 +105,8 @@ class RuntimeSafetyTests(unittest.TestCase):
             nonlocal called
             called = True
 
-        executor = RuntimeActionExecutor(
-            SafetyPolicy.from_name("read_only"),
+        executor = ActionRunner(
+            ActionRules.from_name("read_only"),
             lambda event_type, data: events.append((event_type, data)),
         )
         with self.assertRaises(ActionNotAllowedError):
@@ -123,7 +123,7 @@ class RuntimeSafetyTests(unittest.TestCase):
         self.assertEqual(["action.checked", "action.blocked"], [item[0] for item in events])
 
     def test_standard_policy_exposes_confirmation_request(self) -> None:
-        executor = RuntimeActionExecutor(SafetyPolicy(), lambda *_: None)
+        executor = ActionRunner(ActionRules(), lambda *_: None)
         request = ActionRequest.create(
             "tool:run_skill",
             "mcp:remote",
@@ -138,7 +138,7 @@ class RuntimeSafetyTests(unittest.TestCase):
 
 def _create_session(
     root: Path,
-    safety_policy: SafetyPolicy | None = None,
+    action_rules: ActionRules | None = None,
 ) -> RuntimeSession:
     config = AgentConfig.create_default(root)
     identity = RunIdentity.create("local", config.agent.name)
@@ -146,10 +146,10 @@ def _create_session(
     store.start_run(identity, "question")
     return RuntimeSession(
         config=config,
-        model_profile=discover_environment_model_profiles({})[0],
+        model_profile=create_direct_provider_profile(),
         provider=MockProvider(),
-        capability_registry=create_default_capability_registry(),
+        skill_runners=create_default_skill_runners(),
         identity=identity,
         store=store,
-        safety_policy=safety_policy or SafetyPolicy(),
+        action_rules=action_rules or ActionRules(),
     )

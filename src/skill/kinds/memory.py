@@ -10,11 +10,11 @@ from datetime import UTC, datetime
 from typing import Any, Callable
 from uuid import uuid4
 
-from provider.chat import Message
-from runtime.identity import RunIdentity
-from runtime.memory_store import RuntimeMemoryStore
-from runtime.safety import ActionEffect, ActionRequest
-from runtime.store import RuntimeStore
+from core.provider.chat import Message
+from core.identity import RunIdentity
+from core.state.memory import RuntimeMemoryStore
+from core.actions import ActionEffect, ActionRequest
+from core.state.store import RuntimeStore
 from skill.disclosure import SkillDisclosure
 
 
@@ -248,7 +248,7 @@ class MiniMemory:
                     "message": str(error),
                 },
             )
-            return
+            raise
         self._apply_memory_operations(operations, remaining)
         self.store.memory.record_memory_organization(
             "memory.organization.completed",
@@ -383,8 +383,8 @@ def create_memory_from_skill_disclosure(
     execute_action: MemoryActionRunner | None = None,
 ) -> MiniMemory:
     manifest = disclosure.read_manifest()
-    if manifest.capability != "memory":
-        raise ValueError(f"skill does not use the memory capability: {manifest.name}")
+    if manifest.skill_type != "memory":
+        raise ValueError(f"skill does not use the memory skill: {manifest.name}")
     policy = _read_memory_policy(disclosure.read_configuration().content)
     return MiniMemory(
         store,
@@ -429,7 +429,10 @@ def _read_memory_operations(
     response: str,
     candidates: list[MemoryItem],
 ) -> list[MemoryOperation]:
-    value = json.loads(response)
+    try:
+        value = json.loads(response)
+    except json.JSONDecodeError as error:
+        raise ValueError("memory organizer must return valid JSON") from error
     if not isinstance(value, dict) or set(value) != {"operations"}:
         raise ValueError("memory organizer must return only an operations array")
     raw_operations = value["operations"]

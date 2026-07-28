@@ -9,18 +9,19 @@ from unittest.mock import patch
 
 from cli import main
 from cli import run_result_to_dict
-from provider.chat import MockProvider
-from runtime.tasks import SubAgentResult, TaskResult
+from core.provider.chat import MockProvider
+from core.task.models import SubAgentResult, TaskResult
 
 
 class CliTests(unittest.TestCase):
     def test_models_list_reports_discovered_models_without_secret_values(self) -> None:
-        output = StringIO()
-        with patch.dict(os.environ, {"OPENAI_API_KEY": "secret-value"}, clear=True), patch(
-            "sys.stdout",
-            output,
-        ):
-            code = main(["models", "list", "--output", "json"])
+        with tempfile.TemporaryDirectory() as tmp, chdir(tmp):
+            output = StringIO()
+            with patch.dict(os.environ, {"OPENAI_API_KEY": "secret-value"}, clear=True), patch(
+                "sys.stdout",
+                output,
+            ):
+                code = main(["models", "list", "--output", "json"])
 
         data = json.loads(output.getvalue())
         self.assertEqual(0, code)
@@ -37,13 +38,9 @@ class CliTests(unittest.TestCase):
             main(["init", "--path", tmp])
             output = StringIO()
 
-            with patch("sys.stdout", output):
-                code = main(["models", "resolve", "--output", "json"])
-
-            data = json.loads(output.getvalue())
-            self.assertEqual(0, code)
-            self.assertEqual("mock", data["model"]["provider"])
-            self.assertEqual(str((Path(tmp) / "agent.toml").resolve()), data["config_path"])
+            with self.assertRaisesRegex(RuntimeError, "No model is configured"):
+                with patch("sys.stdout", output):
+                    main(["models", "resolve", "--output", "json"])
 
     def test_init_creates_config_and_example_skill(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -54,10 +51,10 @@ class CliTests(unittest.TestCase):
             self.assertTrue((root / "agent.toml").exists())
             self.assertTrue((root / "skills" / "prompt" / "echo" / "skill.toml").exists())
             self.assertTrue((root / "skills" / "prompt" / "echo" / "SKILL.md").exists())
-            self.assertTrue((root / "skills" / "mcp" / "filesystem" / "skill.toml").exists())
-            self.assertTrue((root / "skills" / "mcp" / "filesystem" / "SKILL.md").exists())
-            self.assertTrue((root / "skills" / "memory" / "default" / "skill.toml").exists())
-            self.assertTrue((root / "skills" / "workflow" / "direct" / "skill.toml").exists())
+            self.assertEqual(
+                [root / "skills" / "prompt" / "echo" / "skill.toml"],
+                list(root.joinpath("skills").rglob("skill.toml")),
+            )
             self.assertFalse((root / "mcp").exists())
 
     def test_skills_list_prints_available_skills(self) -> None:
@@ -70,7 +67,7 @@ class CliTests(unittest.TestCase):
 
             self.assertEqual(0, code)
             self.assertIn("echo", output.getvalue())
-            self.assertIn("filesystem", output.getvalue())
+            self.assertIn("default\tmemory", output.getvalue())
 
     def test_skills_index_prints_all_kinds_from_central_disclosure(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -93,13 +90,17 @@ class CliTests(unittest.TestCase):
             self.assertEqual(0, code)
             self.assertEqual(4, data["schema_version"])
             self.assertEqual(
-            {"mcp", "memory", "planner", "prompt", "workflow"},
-                {item["capability"] for item in data["skills"]},
+                {"memory", "planner", "prompt", "workflow"},
+                {item["type"] for item in data["skills"]},
             )
             self.assertTrue(all("key" in item for item in data["skills"]))
 
-    def test_run_uses_mock_provider_from_config(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
+    def test_run_uses_explicit_environment_provider(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(
+            os.environ,
+            {"SUPER_AGENT_PROVIDER": "mock"},
+            clear=True,
+        ):
             main(["init", "--path", tmp])
 
             output = StringIO()
@@ -110,9 +111,14 @@ class CliTests(unittest.TestCase):
             self.assertIn("Mock response", output.getvalue())
 
     def test_memory_habits_prints_self_updated_usage(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(
+            os.environ,
+            {"SUPER_AGENT_PROVIDER": "mock"},
+            clear=True,
+        ):
             config = str(Path(tmp) / "agent.toml")
             main(["init", "--path", tmp])
+            _select_skills(Path(config), ["prompt:echo", "memory:default"])
             main(["run", "--config", config, "hello"])
 
             output = StringIO()
@@ -155,16 +161,20 @@ class CliTests(unittest.TestCase):
             self.assertEqual(item["item_id"], json.loads(list_output.getvalue())["item_id"])
 
     def test_skills_propose_evaluate_and_promote_candidate(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(
+            os.environ,
+            {"SUPER_AGENT_PROVIDER": "mock"},
+            clear=True,
+        ):
             config = str(Path(tmp) / "agent.toml")
             main(["init", "--path", tmp])
             candidate_response = json.dumps(
                 {
                     "write_files": {
                         "skill.toml": """
-schema_version = 2
+schema_version = 3
 name = "agent-note"
-capability = "prompt"
+type = "prompt"
 description = "Compact note writer"
 version = "0.1.0"
 agent_created = true
@@ -194,7 +204,7 @@ instructions = "SKILL.md"
             )
             propose_output = StringIO()
             with patch(
-                "provider.pool.create_chat_provider",
+                "core.provider.pool.create_chat_provider",
                 return_value=MockProvider(candidate_response),
             ):
                 with patch("sys.stdout", propose_output):
@@ -249,7 +259,11 @@ instructions = "SKILL.md"
             )
 
     def test_skills_freshness_prints_runtime_stats(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(
+            os.environ,
+            {"SUPER_AGENT_PROVIDER": "mock"},
+            clear=True,
+        ):
             config = str(Path(tmp) / "agent.toml")
             main(["init", "--path", tmp])
             main(["run", "--config", config, "echo hello"])
@@ -264,7 +278,11 @@ instructions = "SKILL.md"
             self.assertIn("freshness=", output.getvalue())
 
     def test_run_can_print_machine_readable_result_with_trace_id(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(
+            os.environ,
+            {"SUPER_AGENT_PROVIDER": "mock"},
+            clear=True,
+        ):
             main(["init", "--path", tmp])
             output = StringIO()
 
@@ -292,7 +310,7 @@ instructions = "SKILL.md"
                 explanation_code = main(["skills", "explain", "--config", config, "--prompt", "echo hello"])
 
             self.assertEqual(0, validation_code)
-            self.assertIn("5 valid skills", validation_output.getvalue())
+            self.assertIn("4 valid skills", validation_output.getvalue())
             self.assertEqual(0, explanation_code)
             self.assertIn("echo\tselected\tmatched trigger: echo", explanation_output.getvalue())
 
@@ -339,9 +357,9 @@ instructions = "SKILL.md"
             update_source.mkdir()
             (update_source / "skill.toml").write_text(
                 """
-schema_version = 2
+schema_version = 3
 name = "echo"
-capability = "prompt"
+type = "prompt"
 description = "Updated echo"
 version = "0.2.0"
 triggers = ["echo"]
@@ -378,7 +396,11 @@ instructions = "SKILL.md"
             self.assertTrue((root / "skills" / "prompt" / "echo").is_dir())
 
     def test_run_reads_stdin_request_and_streams_jsonl_events(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(
+            os.environ,
+            {"SUPER_AGENT_PROVIDER": "mock"},
+            clear=True,
+        ):
             main(["init", "--path", tmp])
             request = {
                 "prompt": "latest question",
@@ -440,14 +462,23 @@ instructions = "SKILL.md"
         self.assertEqual("review-run", data["subagent_results"][0]["subagent_results"][0]["run_id"])
 
 
-def _find_user_skill(root: Path, capability: str, name: str) -> Path:
+def _find_user_skill(root: Path, skill_type: str, name: str) -> Path:
     matches = [
         path.parent
         for path in root.joinpath(".super-agent").rglob(
-            f"skills/{capability}/{name}/skill.toml"
+            f"skills/{skill_type}/{name}/skill.toml"
         )
         if "cache" not in path.parts
     ]
     if len(matches) != 1:
         raise AssertionError(f"expected one user Skill, found {len(matches)}")
     return matches[0]
+
+
+def _select_skills(config_path: Path, skills: list[str]) -> None:
+    content = config_path.read_text(encoding="utf-8")
+    selected = ", ".join(json.dumps(item) for item in skills)
+    config_path.write_text(
+        content.replace('skills = ["prompt:echo"]', f"skills = [{selected}]"),
+        encoding="utf-8",
+    )

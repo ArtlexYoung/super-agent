@@ -5,7 +5,6 @@ import {
   Database,
   Save,
   Settings2,
-  ShieldCheck,
   Sparkles,
 } from "lucide-react"
 
@@ -78,7 +77,7 @@ export function ConfigurationPage({ controller }: ConfigurationPageProps) {
         </TabsContent>
         <TabsContent value="skills" className="configuration-scroll-area">
           <SkillConfiguration
-            skills={data.skills.filter((skill) => skill.capability !== "model")}
+            skills={data.skills.filter((skill) => skill.type !== "model")}
             configuration={draft}
             onChange={setDraft}
           />
@@ -125,7 +124,7 @@ function AgentConfigurationPanel(props: AgentConfigurationPanelProps) {
             <h2>Agent</h2>
             <p>身份与基础行为</p>
           </div>
-          <HelpTooltip label="Agent 组合 Provider、Runtime、Capability 和 Skill；修改名称会切换到新的 Agent 隔离空间。" />
+          <HelpTooltip label="Agent 组合 Provider、Runtime、SkillRunner 和 Skill；修改名称会切换到新的 Agent 隔离空间。" />
         </div>
         <div className="configuration-form-grid">
           <ConfigurationField
@@ -183,40 +182,16 @@ function AgentConfigurationPanel(props: AgentConfigurationPanelProps) {
               </SelectContent>
             </Select>
           </ConfigurationField>
-          <ConfigurationField
-            label="安全策略"
-            help="统一限制 Capability 的读、写、删除、执行、网络和委派动作。只读模式保存后会阻止后续 Web 写操作。"
-          >
-            <Select
-              value={config.safety}
-              onValueChange={(value) =>
-                props.onChange({
-                  ...config,
-                  safety: value as AgentConfiguration["safety"],
-                })
-              }
-            >
-              <SelectTrigger className="w-full" aria-label="安全策略">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="standard">标准</SelectItem>
-                <SelectItem value="read_only">只读</SelectItem>
-                <SelectItem value="autonomous">自主</SelectItem>
-                <SelectItem value="audit">仅审计</SelectItem>
-              </SelectContent>
-            </Select>
-          </ConfigurationField>
         </div>
       </section>
 
       <section className="configuration-section">
         <div className="configuration-section-header">
           <div>
-            <h2>自动能力</h2>
+            <h2>自动选择</h2>
             <p>零配置默认项</p>
           </div>
-          <HelpTooltip label="这些特性由 Runtime 自动使用；具体 Skill 可在 Skill 标签中逐项启用、禁用或固定。" />
+          <HelpTooltip label="Runtime 使用统一的渐进式披露核心；Skill 可逐项启用、禁用或固定。" />
         </div>
         <div className="feature-summary-row">
           <div className="feature-summary-icon">
@@ -255,7 +230,7 @@ function AgentConfigurationPanel(props: AgentConfigurationPanelProps) {
               {props.storage.path}
             </p>
           </div>
-          <ShieldCheck className="size-4 text-emerald-600" />
+          <Badge variant="secondary">按用户隔离</Badge>
         </div>
       </section>
     </div>

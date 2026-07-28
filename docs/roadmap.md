@@ -1,339 +1,97 @@
 # Roadmap
 
-The project remains in `0.0.x` while it tests whether a fully Skill-based, automatic, self-evolving Agent runtime is practical. Each version below has one narrow proof target.
+Super Agent remains in `0.0.x` while it tests one claim: a low-configuration Agent can
+represent prompts, tools, memory, workflows, planning, and model descriptions as
+progressively disclosed Skills, then improve eligible Skills from real evidence.
 
-## v0.0.25: Central Runtime Lifecycle
+## Completed Foundation
 
-Status: implemented.
+Versions `v0.0.25` through `v0.0.61` established the current foundation:
 
-- One `RuntimeSession` per run.
-- Target-neutral evaluation records owned by Runtime.
-- Skill and Capability use tracking centralized in the session.
-- Freshness derived from evaluation evidence.
-- One public progressive-disclosure API.
+- One Runtime session, task loop, event stream, evaluation format, and progressive Skill
+  index per run.
+- JSONL by default, standard-library SQLite, and optional MySQL/PostgreSQL behind one
+  storage contract.
+- User-and-Agent isolation for conversations, memory, disclosure, model evidence, Skill
+  overlays, and evolution state.
+- Code-first subagent composition with readable cycle and depth warnings.
+- Model Skills, evidence-aware scheduling, explicit Provider selection, and traceable
+  decisions.
+- Deterministic Skill freshness plus candidate, evaluation, promotion, monitoring, and
+  rollback for Agent-owned Skills.
+- Explicit action declarations, passive Skill isolation, recall-time memory organization,
+  AG-UI, and the React Web client.
 
-## v0.0.26: Central Storage Semantics
+Reproducible snapshots remain under [experiments](experiments/README.md).
 
-Status: implemented.
-
-- One backend-neutral `StorageEvent` contract for mutable runtime state.
-- One `RuntimeStore` for runs, locks, evaluations, disclosure history, memory, and habits.
-- Dependency-free JSONL as the zero-configuration default.
-- Run snapshots, freshness, and disclosure history derived from canonical events.
-- Explicit `RunIdentity` and user/Agent storage scopes.
-- Old parallel stores and compatibility shells removed.
-
-## v0.0.27: Conversations and User Isolation
-
-Status: implemented.
-
-- Make conversations a first-class Runtime operation.
-- Require one `RunIdentity` across main Agents and subagents.
-- Isolate conversations, memory, Skill usage, freshness, and evolution by user.
-- Make the macOS app read and write conversations through Runtime storage.
-
-## v0.0.28: SQLite Storage
+## v0.0.62: One Public Architecture
 
 Status: implemented.
 
-- Add a standard-library SQLite backend.
-- Preserve the exact `StorageBackend` contract and Runtime semantics.
-- Add transactions, WAL mode, concurrency tests, and storage copy commands.
-- Keep JSONL as the default.
+- Keep only `adapter`, `builtin_skills`, `core`, and `skill` under `src`, plus the
+  CLI and public library entry modules.
+- Keep Provider implementations in `core/provider`; adapters contain only external CLI
+  and AG-UI interaction.
+- Use `type` and `type:name` for every Skill, and one `SkillRunner.load_skill(...)`
+  contract for trusted mechanisms.
+- Remove old imports, old schema fields, conversion shells, and migration aliases.
+- Require an explicit model source, preserve Provider failures, and remove hidden model or
+  memory fallback behavior.
+- Add a lazy CopilotKit integration page over the same AG-UI endpoint.
 
-## v0.0.29: Optional SQL Storage
+## v0.0.63: Request Identity Adapter
 
-Status: implemented.
+Status: planned.
 
-- Add MySQL and PostgreSQL backends as optional extras.
-- Load database drivers only when their backend is selected.
-- Run one shared storage contract suite against every available backend.
-- Document schema setup, connection environment variables, and migration behavior.
+- Let server applications resolve an authenticated external identity into one validated
+  Runtime user for each request.
+- Keep authentication, sessions, and framework dependencies in adapters rather than Core.
+- Add cross-user attack tests for every management and AG-UI route.
+- Preserve the local single-user server with no added dependency or required setup.
 
-## v0.0.30: Evolution for Every Skill Type
+## v0.0.64: Explicit Approval Continuation
 
-Status: implemented.
+Status: planned.
 
-- Treat the complete Skill directory as the candidate unit.
-- Remove prompt-only and mandatory `SKILL.md` assumptions.
-- Use one candidate, evaluation, promotion, history, and rollback flow for prompt, memory, workflow, and MCP Skills.
-- Keep Capability-specific validation inside explicit validators, not separate lifecycles.
+- Return blocked action details as a resumable, user-visible decision rather than asking
+  adapters to repeat opaque work.
+- Let applications approve one exact action ID without broadening global rules.
+- Record request, decision, resumption, completion, and expiry in the canonical trace.
+- Keep unattended execution opt-in through code-only action rules.
 
-## v0.0.31: Capability Registry and Version Lock
+## v0.0.65: Storage at Service Scale
 
-Status: implemented.
+Status: planned.
 
-- Define Capability descriptors, versions, hashes, dependencies, and permissions.
-- Register executable mechanisms through one Runtime registry.
-- Lock exact Capability implementations in every run.
-- Support local install, update, remove, and rollback operations.
+- Add pagination and bounded projection for long conversations, run trees, and Skill
+  evidence without changing storage semantics.
+- Verify concurrent multi-process use and connection lifecycle on each selected backend.
+- Publish deterministic copy, integrity, and recovery checks.
+- Keep JSONL clean and dependency-free as the default path.
 
-## v0.0.32: Capability Self-Evolution
+## v0.0.66: Model and Task Learning Proof
 
-Status: implemented.
+Status: planned.
 
-- Apply the central evolution lifecycle to Capability code.
-- Validate candidates in isolation before activation.
-- Evaluate real behavior, promote atomically, and roll back failures.
-- Default update permission to Agent-created Capabilities.
+- Benchmark task assignment across models with declared traits, sparse evidence, explicit
+  feedback, failure, latency, and cost.
+- Prove that every selected model has a visible reason and that failed calls never trigger
+  hidden replacement.
+- Measure routing quality separately for each user, Agent, and task purpose.
+- Expose compact evidence explanations through CLI, Web, and AG-UI custom events.
 
-## v0.0.33: Autonomous Evolution Scheduling
+## v0.0.67: Skill Evolution Proof
 
-Status: implemented.
+Status: planned.
 
-- Propose evolution from failures, scores, freshness, replacement rate, token cost, and latency.
-- Require no new configuration for the default behavior.
-- Store the reason, evidence, candidate difference, and decision.
-- Prevent repeated optimization loops for unchanged evidence.
+- Run long-lived experiments for freshness, replacement signals, candidate quality,
+  no-regression promotion, monitoring, and rollback.
+- Compare static, eager-loading, progressive, and self-updating Agent variants.
+- Publish failure cases and resource costs, not only successful demonstrations.
+- Define the evidence threshold required before considering a `0.1.x` release.
 
-## v0.0.34: End-to-End Proof
+## Release Gate
 
-Status: implemented.
-
-- Verify the same multiuser behavior on every storage backend.
-- Benchmark discovery, disclosure, execution, evaluation, evolution, and rollback.
-- Compare no-Skill, eager-context, and progressive-Skill approaches.
-- Publish a reproducible local experiment report.
-
-## v0.0.35: One Skill Lifecycle
-
-Status: implemented.
-
-- Represent installable executable mechanisms as `capability` Skills.
-- Remove independent Capability packaging, candidates, evaluation, and rollback.
-- Attribute a Skill-backed Capability's runtime evidence to its source Skill.
-- Remove completed benchmark orchestration from the shipped Runtime API.
-
-## v0.0.36: Model Skills and Provider Pool
-
-Status: implemented.
-
-- Replace the fixed `[model]` table with standard `model` Skills.
-- Keep zero-configuration environment profiles and a local mock fallback.
-- Make Provider adapters lazy, reusable connection mechanisms through one pool.
-- Protect user-owned model connection fields during Skill evolution.
-- Put the selected model profile in each Runtime session and lock, and attribute persistent model Skill use to ordinary evaluation evidence.
-
-## v0.0.37: One Task Kernel
-
-Status: implemented.
-
-- Replace Agent-run and controller contracts with one `TaskRequest` and `run_task` entry.
-- Make Runtime the only model/tool loop and lifecycle owner.
-- Reduce Capability registration to executable Skill handlers.
-- Turn workflow implementations into passive Skill policies.
-- Remove parallel controllers, replacement methods, compatibility aliases, and broad internal exports.
-
-## v0.0.38: Automatic Task Scheduling
-
-Status: implemented.
-
-- Select a compatible configured model for every task and model step.
-- Select matching Skills and subagents through one central scheduler.
-- Use deterministic fallback when a selected model or delegate fails.
-- Record the complete selection reason in the task trace.
-
-## v0.0.39: Evidence-Learned Scheduling
-
-Status: implemented.
-
-- Isolate routing evidence by user, Agent, model Skill, and task purpose.
-- Learn quality, latency, reliability, and cost with bounded UCB exploration.
-- Improve task quality evidence with explicit feedback and implicit correction signals.
-- Preserve deterministic cold-start behavior and user ownership of model connections.
-
-## v0.0.40: Automatic Evolution Loop
-
-Status: implemented.
-
-- Generate candidates automatically for eligible Agent-owned Skills.
-- Evaluate, promote, monitor, and roll back through the same task path.
-- Keep evolution decisions deterministic and isolated by user and Agent.
-- Collapse recommendation and candidate coordination into one clear service.
-
-## v0.0.41: Task and Evolution Proof
-
-Status: implemented.
-
-- Show task trees, scheduler reasons, model evidence, and evolution state in macOS.
-- Publish a reproducible multi-model scheduling and isolation experiment.
-- Verify automatic evolution and rollback from real task evidence.
-- Build and package the versioned macOS release.
-
-Proof: [experiment description](experiments/v0.0.41.md) and [machine-readable result](experiments/v0.0.41.json).
-
-## v0.0.42: Uniform Skill Contributions
-
-Status: implemented.
-
-- Replace opaque Skill runtime values with one `SkillContribution` contract.
-- Let every Capability contribute context, tools, policy, and completion behavior.
-- Remove concrete Memory, MCP, and Workflow imports from task execution.
-- Require custom Capabilities to return one uniform Skill contribution.
-
-## v0.0.43: One Adaptive Task Loop
-
-Status: implemented.
-
-- Collapse scheduling, model routing, execution, and tool iteration into one task loop.
-- Keep model filtering and evidence scoring as pure decisions inside that loop.
-- Derive task history from executed steps instead of a parallel execution context.
-
-## v0.0.44: One Skill Revision State
-
-Status: implemented.
-
-- Replace duplicate evaluation, evolution target, and schedule identities with Skill revisions.
-- Keep evidence, candidate status, promotion, monitoring, and rollback in one state machine.
-- Remove Capability-specific evolution identities because executable mechanisms are Skills.
-
-## v0.0.45: Zero-Configuration Planning
-
-Status: implemented.
-
-- Add a default Planner Skill that can decompose tasks without mandatory configuration.
-- Route every planned step to a model and optional subagent from declared traits and evidence.
-- Preserve a direct fast path when a task needs no planning or tools.
-- Keep Planner inside the central progressive-disclosure, evaluation, and trace path.
-
-## v0.0.46: Self-Evolving Planning Proof
-
-Status: implemented.
-
-- Evaluate Planner and routing Skills from ordinary task evidence.
-- Improve eligible Planner and routing revisions through the same evolution loop.
-- Publish a reproducible zero-configuration scheduling and evolution proof.
-
-Proof: [experiment description](experiments/v0.0.46.md) and [machine-readable result](experiments/v0.0.46.json).
-
-## v0.0.47: Central Action Safety Contract
-
-Status: implemented.
-
-- Describe every model-triggered Runtime action with one validated effect and resource contract.
-- Route tool handlers through `RuntimeSession.execute_action(...)`.
-- Record decisions, completion, and failure without storing argument values.
-- Keep the first policy audit-only so existing behavior remains unchanged while coverage is measured.
-
-## v0.0.48: Enforced Runtime Safety
-
-Status: implemented.
-
-- Enforce `standard`, `read_only`, `autonomous`, and migration-only `audit` presets.
-- Declare effects for disclosure, memory, MCP, subagent, and registered Capability tools.
-- Apply the same action executor to conversations, model Skills, Skill packages, and evolution.
-- Block risky actions before their handlers run and emit an approval-ready action ID.
-
-## v0.0.49: Isolated Skill Content
-
-Status: implemented.
-
-- Remove dynamic Python loading from Skill directories without a compatibility path.
-- Reserve executable Capabilities for explicit `Agent.add_capability(...)` code.
-- Treat Skill, memory, tool, and subagent content as untrusted model context.
-- Remove unenforced Capability permission and ownership metadata.
-
-## v0.0.50: Recall-Time Memory Organization
-
-Status: implemented.
-
-- Rank memory and merge exact duplicates before model-assisted organization.
-- Validate model-proposed merge, supersede, archive, and forget operations.
-- Execute every memory change through Runtime Safety.
-- Preserve immutable history while rebuilding only the active memory view.
-
-## v0.0.51: AG-UI Runtime Bridge
-
-Status: implemented.
-
-- Map canonical Runtime events to official AG-UI event names and payloads.
-- Serve task runs and event streams through a standard-library HTTP and SSE bridge.
-- Keep the bridge optional and free of Python runtime dependencies.
-
-## v0.0.52: React Web Client
-
-Status: implemented.
-
-- Replace the macOS-specific client with a Vite, React, TypeScript, and shadcn/ui app.
-- Provide conversations, streamed chat, configuration, Skill state, memory, and run trees.
-- Keep Runtime state authoritative and use AG-UI as the only live event protocol.
-
-## v0.0.53: Compact End-to-End Runtime
-
-Status: implemented.
-
-- Give disclosure cache/history and memory/habits explicit domain stores without compatibility wrappers.
-- Separate task preparation from the single adaptive execution loop.
-- Split oversized Web configuration and style modules without changing behavior.
-- Prove Safety, memory organization, AG-UI streaming, and automatic evolution together.
-- Publish one concise architecture and verification path for the complete `0.0.x` loop.
-
-Proof: [experiment description](experiments/v0.0.53.md) and [machine-readable result](experiments/v0.0.53.json).
-
-## v0.0.54: Explicit User Scope
-
-Status: implemented.
-
-- Keep `Agent` focused on composition and execution.
-- Bind stateful APIs once with `agent.for_user(user_id)`.
-- Remove feature switches and legacy forwarding methods without compatibility wrappers.
-
-## v0.0.55: One Capability Contract
-
-Status: implemented.
-
-- Give every Capability one `load_skill(...)` boundary.
-- Keep Skill content passive and Capability mechanisms explicit.
-- Remove per-kind loading branches from Runtime.
-
-## v0.0.56: One-Step Direct Plans
-
-Status: implemented.
-
-- Represent direct work as a one-step plan.
-- Execute direct and decomposed tasks through the same step loop.
-- Remove the second direct execution path.
-
-## v0.0.57: Confidence-Aware Scheduling
-
-Status: implemented.
-
-- Attach confidence and evidence sufficiency to model routing decisions.
-- Escalate or fall back when confidence is too low.
-- Record scheduling uncertainty in the canonical trace.
-
-## v0.0.58: Mandatory Runtime Safety
-
-Status: implemented.
-
-- Make one Runtime action boundary mandatory for every side effect.
-- Fail closed when a Capability omits an action declaration.
-- Verify Skill content cannot bypass the boundary.
-
-## v0.0.59: User Skill Overlay
-
-Status: implemented.
-
-- Store compact evolution state as user-scoped events.
-- Overlay user-created and evolved Skills on shared project Skills.
-- Keep one progressive disclosure index for both layers.
-
-## v0.0.60: Multiuser Isolation
-
-Status: implemented.
-
-- Centralize identity validation and user-scoped secret lookup.
-- Verify conversations, memory, Skill use, evolution, and disclosure caches are isolated.
-- Keep local single-user use at zero configuration.
-
-## v0.0.61: Unified Runtime Proof
-
-Status: implemented.
-
-- Simplify CLI and documentation around one beginner path.
-- Publish a deterministic multiuser scheduling, safety, memory, and evolution proof.
-- Remove obsolete experiment and architecture descriptions.
-
-Proof: [current description](experiments/v0.0.61.md) and [machine-readable result](experiments/v0.0.61.json).
-
-The project will not move to `0.1.x` merely because more features exist. That change should follow a reproducible demonstration that the central Skill-first lifecycle is useful and maintainable.
+The project will not move to `0.1.x` because of feature count. The gate is a reproducible
+proof that the single Skill lifecycle is useful, understandable, isolated across users,
+and maintainable without hidden fallback paths or mandatory heavy dependencies.

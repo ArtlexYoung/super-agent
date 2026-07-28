@@ -1,44 +1,53 @@
 # Web Client
 
-The Vite, React, TypeScript, and shadcn/ui client in `web/` is a thin Chinese interface over the Python Runtime. It does not own a Skill parser, conversation store, evidence calculator, or execution engine.
+The `web/` project is a small Chinese React, TypeScript, and shadcn/ui client over the
+Python Core. It does not parse Skills, own conversation state, calculate evidence, or run
+a second task engine.
 
 ## Start
-
-Install Super Agent and start one server:
 
 ```bash
 python3 -m pip install -e .
 super-agent serve
 ```
 
-Open `http://127.0.0.1:8765/`. The standard-library Python server hosts the production assets, management API, and AG-UI SSE endpoint on one origin.
+Open `http://127.0.0.1:8765/`. The standard-library Python server hosts the built client,
+management API, and AG-UI endpoint on one origin.
 
-## Features
+The left navigation contains:
 
-- Runtime-backed conversation creation, rename, clear, delete, and multi-turn chat.
-- Live task progress through AG-UI events.
-- Main Agent and subagent run tree with scheduling, model, freshness, and evolution evidence.
-- Chinese visual Agent configuration with hover help.
-- Skill, MCP, memory, workflow, and model lists backed by the central Skill index.
-- Skill enablement, selection, default behavior, ownership, update permission, and freshness state.
-- Model Skill creation and editing for provider, model name, address, credential environment variable, routing traits, cost, and evolution permissions.
-- Runtime memory inspection and explicit forgetting.
+- `对话`: conversation management, streamed tasks, and main/subagent run trees.
+- `CopilotKit`: a lazy-loaded headless integration example using the official CopilotKit
+  React context and `@ag-ui/client` against the same `POST /ag-ui` endpoint.
+- `配置`: Chinese visual editing for Agent fields, model Skills, all Skill types,
+  ownership/update permission, freshness, memory, and storage-backed state.
 
-Configuration changes are validated by the Python Runtime and written atomically to `agent.toml` or standard model Skill manifests. The selected storage backend remains the source of truth for conversations, runs, memory, and evolution.
+The CopilotKit page reuses the selected persisted conversation ID. If no conversation
+exists it displays an explicit create button; opening the page never creates hidden state.
+The normal conversation page does not load the CopilotKit bundle. The example uses the
+public headless API and a small local message view instead of importing optional rich-text
+chat renderers.
 
-## Credential Boundary
+## Data Ownership
 
-The browser never accepts or persists a raw provider secret. The model editor stores an environment-variable name such as `OPENAI_API_KEY`; the provider reads the value from the server process environment. Secret values do not enter `agent.toml`, `skill.toml`, Web storage, Runtime events, or runtime locks.
+Configuration writes are validated by Python and saved atomically to `agent.toml` or a
+user model Skill. The selected storage backend remains authoritative for conversations,
+runs, memory, and evolution. Skill lists come from the central progressive index and group
+by their actual `type`, including custom types.
 
-## Develop
+The browser stores no raw Provider secret. Model configuration records an environment
+variable name such as `OPENAI_API_KEY`; only the server process resolves its value.
+Secrets do not enter TOML, Web storage, events, or Runtime locks.
 
-Run the Python server in one terminal:
+## Develop and Build
+
+Run the Python server:
 
 ```bash
-PYTHONPATH=src python3 -m cli serve
+PYTHONPATH=src SUPER_AGENT_PROVIDER=mock python3 -m cli serve
 ```
 
-Run Vite in another terminal:
+Run Vite separately:
 
 ```bash
 cd web
@@ -46,15 +55,20 @@ pnpm install
 pnpm dev
 ```
 
-Vite proxies `/api`, `/ag-ui`, and `/health` to `127.0.0.1:8765`. Build production assets with:
+Vite proxies `/api`, `/ag-ui`, and `/health` to `127.0.0.1:8765`.
 
 ```bash
 pnpm lint
+pnpm typecheck
 pnpm build
 ```
 
-The build writes to `src/ag_ui_bridge/static`, so packaged Python distributions can serve the client without Node.js.
+The production build writes to `src/adapter/ag_ui_adapter/static`, so packaged Python
+distributions can serve it without Node.js.
 
-## Security Boundary
+## Network Boundary
 
-The local server applies request-size, origin, path traversal, content-type, CSP, clickjacking, MIME-sniffing, and referrer protections. It intentionally has no authentication or TLS. Keep it bound to loopback, or place authentication and TLS in a reverse proxy before exposing it to a network.
+The local server enforces request size, origin, path traversal, content type, CSP,
+clickjacking, MIME sniffing, and referrer protections. It intentionally has no login or
+TLS. Keep it bound to loopback or put authentication and TLS in a reverse proxy before
+network exposure.

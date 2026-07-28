@@ -6,19 +6,19 @@ from pathlib import Path
 from time import perf_counter
 from uuid import uuid4
 
-from provider.chat import Message
-from runtime.evaluation import (
+from core.provider.chat import Message
+from core.state.evaluation import (
     EvaluationResult,
     EvaluationSource,
     create_evaluation_record,
     estimate_evaluation_token_usage,
 )
-from runtime.model_calls import TextModel
-from runtime.store import RuntimeStore
+from core.task.model_calls import TextModel
+from core.state.store import RuntimeStore
 from skill.disclosure import DisclosedSkillFile, ProgressiveDisclosureCore
 from skill.evolution.candidate import SkillCandidate
 from skill.manifest import Skill, SkillManifest
-from skill.revision import create_manifest_skill_revision
+from skill.evolution.revision import create_manifest_skill_revision
 from skill.validation import validate_skill_directory
 
 
@@ -50,6 +50,9 @@ class EvaluationReport:
     created_at: str
     case_results: list[EvaluationCaseResult]
     path: Path
+    baseline_score: float | None = None
+    baseline_case_results: list[EvaluationCaseResult] = field(default_factory=list)
+    no_regression: bool = True
 
 
 @dataclass(frozen=True)
@@ -68,6 +71,7 @@ class SkillCandidateEvaluationRequest:
     minimum_score: float
     report_path: Path
     store: RuntimeStore
+    baseline_skill_path: Path | None
 
 
 def evaluate_candidate(
@@ -79,7 +83,11 @@ def evaluate_candidate(
         raise ValueError("minimum evaluation score must be between 0 and 1")
     for case in request.cases:
         _validate_evaluation_case(case)
-    skill = _read_candidate_skill(request.candidate, request.store)
+    skill = _read_skill_directory(
+        request.candidate.skill_path,
+        request.store,
+        label="Candidate",
+    )
     revision = create_manifest_skill_revision(
         skill.manifest,
         evolution_supported=True,
@@ -134,16 +142,24 @@ def evaluate_candidate(
                 )
             ]
         )
-    score = round(sum(item.score for item in results) / len(results), 4)
+    baseline_results = _run_baseline_cases(request)
+    score = _average_case_score(results)
+    baseline_score = (
+        None if not baseline_results else _average_case_score(baseline_results)
+    )
+    no_regression = _has_no_case_regression(results, baseline_results)
     return EvaluationReport(
         report_id=request.report_path.stem,
         candidate_id=request.candidate.candidate_id,
         score=score,
-        passed=score >= request.minimum_score,
+        passed=score >= request.minimum_score and no_regression,
         minimum_score=request.minimum_score,
         created_at=_utc_now_text(),
         case_results=results,
         path=request.report_path,
+        baseline_score=baseline_score,
+        baseline_case_results=baseline_results,
+        no_regression=no_regression,
     )
 
 
@@ -215,37 +231,73 @@ def _score_output(
     return round(passed_count / len(checks), 4), descriptions
 
 
-def _read_candidate_skill(candidate: SkillCandidate, store: RuntimeStore) -> Skill:
+def _run_baseline_cases(
+    request: SkillCandidateEvaluationRequest,
+) -> list[EvaluationCaseResult]:
+    if request.baseline_skill_path is None:
+        return []
+    skill = _read_skill_directory(
+        request.baseline_skill_path,
+        request.store,
+        label="Current",
+    )
+    return [
+        _run_evaluation_case(request.text_model, skill.instructions, case)
+        for case in request.cases
+    ]
+
+
+def _average_case_score(results: list[EvaluationCaseResult]) -> float:
+    return round(sum(item.score for item in results) / len(results), 4)
+
+
+def _has_no_case_regression(
+    candidate: list[EvaluationCaseResult],
+    baseline: list[EvaluationCaseResult],
+) -> bool:
+    if not baseline:
+        return True
+    return all(
+        candidate_result.score >= baseline_result.score
+        for candidate_result, baseline_result in zip(candidate, baseline, strict=True)
+    )
+
+
+def _read_skill_directory(
+    skill_path: Path,
+    store: RuntimeStore,
+    *,
+    label: str,
+) -> Skill:
     validate_skill_directory(
-        candidate.skill_path,
+        skill_path,
         store,
-        expected_capability=candidate.capability,
-        expected_name=candidate.name,
     )
     disclosure = ProgressiveDisclosureCore(
-        [candidate.skill_path],
+        [skill_path],
         store,
     )
     index = disclosure.prepare_skill_index()
     entry = index.entries[0]
     opened = disclosure.open_skill(
         entry.reference.name,
-        entry.reference.capability,
+        entry.reference.skill_type,
     )
     manifest = opened.read_manifest()
     files = opened.read_skill_files().files
     return Skill(
         manifest=manifest,
-        instructions=_build_candidate_evaluation_context(manifest, files),
+        instructions=_build_skill_evaluation_context(manifest, files, label),
     )
 
 
-def _build_candidate_evaluation_context(
+def _build_skill_evaluation_context(
     manifest: SkillManifest,
     files: list[DisclosedSkillFile],
+    label: str,
 ) -> str:
     sections = [
-        f"Candidate Skill: {manifest.capability}:{manifest.name}",
+        f"{label} Skill: {manifest.skill_type}:{manifest.name}",
         f"Description: {manifest.description}",
         "Complete candidate directory:",
     ]

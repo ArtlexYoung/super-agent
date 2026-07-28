@@ -1,14 +1,11 @@
-export type AppPage = "conversations" | "configuration"
+export type AppPage = "conversations" | "copilotkit" | "configuration"
 
 export interface AgentConfiguration {
   name: string
   system: string
-  workflow: string
-  memory: string
   skills: string[]
   max_agent_chain_depth: number | null
-  disable_names: string[]
-  safety: "audit" | "standard" | "read_only" | "autonomous"
+  disabled_skills: string[]
 }
 
 export interface ConversationMessage {
@@ -52,7 +49,7 @@ export interface RunSnapshot {
 export interface SkillState {
   key: string
   name: string
-  capability: string
+  type: string
   description: string
   version: string
   triggers: string[]

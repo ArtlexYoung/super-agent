@@ -6,15 +6,15 @@ from contextlib import chdir
 from pathlib import Path
 from unittest.mock import patch
 
-from agents.agent import Agent
-from provider.chat import (
+from core.agent import Agent
+from core.provider.chat import (
     OpenAICompatibleProvider,
     ProviderConnection,
     create_chat_provider,
 )
-from provider.pool import ProviderPool
-from runtime.config import AgentConfig
-from runtime.store import create_local_runtime_store
+from core.provider.pool import ProviderPool
+from core.config import AgentConfig
+from core.state.store import create_local_runtime_store
 from skill.kinds.model import (
     discover_environment_model_profiles,
     model_profile_is_ready,
@@ -65,14 +65,12 @@ class ModelSkillTests(unittest.TestCase):
                     {"SUPER_AGENT_CONFIG": "missing.toml"},
                 )
 
-    def test_no_model_skill_or_environment_uses_ephemeral_mock(self) -> None:
+    def test_no_model_skill_or_environment_has_no_implicit_provider(self) -> None:
         profiles = discover_environment_model_profiles({})
 
-        self.assertEqual(1, len(profiles))
-        self.assertEqual("model:mock", profiles[0].key)
-        self.assertEqual("mock", profiles[0].connection.provider)
-        self.assertEqual("built-in", profiles[0].source)
-        self.assertTrue(profiles[0].default)
+        self.assertEqual([], profiles)
+        with self.assertRaisesRegex(RuntimeError, "No model is configured"):
+            select_default_model_profile(profiles)
 
     def test_environment_discovers_openai_without_exposing_key(self) -> None:
         environment = {"OPENAI_API_KEY": "secret-value"}
@@ -231,7 +229,7 @@ class ModelSkillTests(unittest.TestCase):
                 secret_lookup=lambda user_id, name: secrets.get((user_id, name)),
             )
 
-            with patch("provider.chat._send_json_post_request") as send:
+            with patch("core.provider.chat._send_json_post_request") as send:
                 send.side_effect = lambda _url, _payload, api_key: {
                     "choices": [{"message": {"content": api_key}}]
                 }
@@ -283,6 +281,7 @@ class ModelSkillTests(unittest.TestCase):
                         }
                     ),
                     "required output",
+                    "required baseline output",
                 ]
             )
             agent = Agent(AgentConfig.create_default(root), provider=provider)
@@ -356,9 +355,9 @@ def _write_model_skill_directory(
     path.mkdir(parents=True)
     path.joinpath("skill.toml").write_text(
         f"""
-schema_version = 2
+schema_version = 3
 name = "{name}"
-capability = "model"
+type = "model"
 description = "Fast model for concise summaries"
 version = "0.1.0"
 triggers = ["fast", "summary"]

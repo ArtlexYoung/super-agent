@@ -1,6 +1,6 @@
-schema_version = 2
+schema_version = 3
 name = "default"
-capability = "planner"
+type = "planner"
 description = "Built-in zero-configuration task planner"
 version = "0.0.45"
 triggers = []

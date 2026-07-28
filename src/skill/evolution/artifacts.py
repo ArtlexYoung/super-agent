@@ -15,7 +15,7 @@ from skill.evolution.evaluation import EvaluationCaseResult, EvaluationReport
 @dataclass(frozen=True)
 class SkillHistoryRevision:
     revision_id: str
-    capability: str
+    skill_type: str
     skill_name: str
     version: str
     action: str
@@ -27,7 +27,7 @@ class SkillHistoryRevision:
 
     @property
     def key(self) -> str:
-        return f"{self.capability}:{self.skill_name}"
+        return f"{self.skill_type}:{self.skill_name}"
 
 
 def write_json_exclusive(path: Path, data: dict[str, object]) -> None:
@@ -52,7 +52,7 @@ def write_json_atomically(path: Path, data: dict[str, object]) -> None:
 
 def skill_evaluation_report_to_dict(report: EvaluationReport) -> dict[str, object]:
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "report_id": report.report_id,
         "candidate_id": report.candidate_id,
         "score": report.score,
@@ -60,13 +60,38 @@ def skill_evaluation_report_to_dict(report: EvaluationReport) -> dict[str, objec
         "minimum_score": report.minimum_score,
         "created_at": report.created_at,
         "case_results": [asdict(item) for item in report.case_results],
+        "baseline_score": report.baseline_score,
+        "baseline_case_results": [
+            asdict(item) for item in report.baseline_case_results
+        ],
+        "no_regression": report.no_regression,
     }
 
 
 def read_skill_evaluation_report(path: Path) -> EvaluationReport:
     data = json.loads(path.read_text(encoding="utf-8"))
-    raw_results = data.get("case_results", [])
-    results = [EvaluationCaseResult(**item) for item in raw_results if isinstance(item, dict)]
+    expected = {
+        "schema_version",
+        "report_id",
+        "candidate_id",
+        "score",
+        "passed",
+        "minimum_score",
+        "created_at",
+        "case_results",
+        "baseline_score",
+        "baseline_case_results",
+        "no_regression",
+    }
+    if not isinstance(data, dict) or data.get("schema_version") != 2:
+        raise ValueError(f"unsupported Skill evaluation report: {path}")
+    if set(data) != expected:
+        raise ValueError(f"Skill evaluation report fields do not match schema: {path}")
+    results = _read_case_results(data["case_results"], path)
+    baseline_results = _read_case_results(data["baseline_case_results"], path)
+    baseline_score = data["baseline_score"]
+    if baseline_score is not None:
+        baseline_score = float(baseline_score)
     return EvaluationReport(
         report_id=str(data["report_id"]),
         candidate_id=str(data["candidate_id"]),
@@ -76,7 +101,16 @@ def read_skill_evaluation_report(path: Path) -> EvaluationReport:
         created_at=str(data["created_at"]),
         case_results=results,
         path=path,
+        baseline_score=baseline_score,
+        baseline_case_results=baseline_results,
+        no_regression=bool(data["no_regression"]),
     )
+
+
+def _read_case_results(value: object, path: Path) -> list[EvaluationCaseResult]:
+    if not isinstance(value, list) or not all(isinstance(item, dict) for item in value):
+        raise ValueError(f"Skill evaluation case results are invalid: {path}")
+    return [EvaluationCaseResult(**item) for item in value]
 
 
 def skill_history_revision_to_dict(
@@ -86,7 +120,7 @@ def skill_history_revision_to_dict(
         "schema_version": 2,
         "revision_id": revision.revision_id,
         "skill_key": revision.key,
-        "capability": revision.capability,
+        "type": revision.skill_type,
         "skill_name": revision.skill_name,
         "version": revision.version,
         "action": revision.action,

@@ -4,12 +4,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from agents.agent import Agent
-from provider.chat import OpenAICompatibleProvider, ProviderConnection
-from provider.pool import ProviderPool
-from runtime.config import AgentConfig
-from runtime.identity import RunIdentity, validate_user_id
-from runtime.secrets import UserSecretResolver
+from core.agent import Agent
+from core.provider.chat import OpenAICompatibleProvider, ProviderConnection
+from core.provider.pool import ProviderPool
+from core.config import AgentConfig
+from core.identity import RunIdentity, validate_user_id
+from core.secrets import UserSecretResolver
 
 
 class IdentityAndSecretIsolationTests(unittest.TestCase):

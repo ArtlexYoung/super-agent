@@ -3,9 +3,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from agents.agent import Agent
-from provider.chat import MockProvider
-from runtime.config import AgentConfig
+from core.agent import Agent
+from core.provider.chat import MockProvider
+from core.config import AgentConfig
 
 
 class RunSnapshotTests(unittest.TestCase):
@@ -29,16 +29,13 @@ class RunSnapshotTests(unittest.TestCase):
             self.assertEqual(64, len(snapshot.runtime_lock_sha256 or ""))
             self.assertIsInstance(runtime_lock, dict)
             self.assertEqual("mock", runtime_lock["model"]["provider"])
-            self.assertEqual("provider.chat.MockProvider", runtime_lock["model"]["adapter"])
             self.assertEqual(
-                {
-                    "capability:mcp",
-                    "capability:memory",
-                    "capability:prompt",
-                    "capability:planner",
-                    "capability:workflow",
-                },
-                {item["slot"] for item in runtime_lock["capabilities"]},
+                "core.provider.chat.MockProvider",
+                runtime_lock["model"]["implementation"],
+            )
+            self.assertEqual(
+                {"mcp", "memory", "prompt", "planner", "workflow"},
+                {item["type"] for item in runtime_lock["skill_runners"]},
             )
             self.assertIn(
                 "prompt:echo",
@@ -133,9 +130,9 @@ def _write_prompt_skill(root: Path) -> None:
     skill_root.mkdir(parents=True)
     (skill_root / "skill.toml").write_text(
         """
-schema_version = 2
+schema_version = 3
 name = "echo"
-capability = "prompt"
+type = "prompt"
 description = "Echo helper"
 version = "0.1.0"
 triggers = ["echo"]

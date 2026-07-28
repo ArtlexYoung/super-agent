@@ -15,7 +15,7 @@ from skill.manifest import skill_manifest_from_dict
 def read_skill_sources(
     skill_roots: list[Path],
     disabled_names: list[str],
-    fallback_skill_roots: list[Path] | None = None,
+    builtin_skill_roots: list[Path] | None = None,
     user_skill_roots: list[Path] | None = None,
 ) -> SkillSourceScan:
     # Higher layers keep their key while lower layers are still parsed and validated.
@@ -27,7 +27,7 @@ def read_skill_sources(
         {source.reference.key: source for source in user.sources},
     )
     builtin = _read_source_group(
-        fallback_skill_roots or [],
+        builtin_skill_roots or [],
         disabled_names,
         "builtin",
         {source.reference.key: source for source in project.sources},
@@ -88,7 +88,7 @@ def _read_skill_source(path: Path, source_layer: str) -> SkillSource:
         _validate_instructions_path(manifest.path, manifest.entry.instructions)
     configuration = _read_configuration(data, path)
     return SkillSource(
-        reference=SkillReference(capability=manifest.capability, name=manifest.name),
+        reference=SkillReference(skill_type=manifest.skill_type, name=manifest.name),
         manifest=manifest,
         configuration=configuration,
         manifest_path=path,
@@ -117,7 +117,7 @@ def _list_manifest_paths(roots: list[Path]) -> list[Path]:
 
 def _skill_is_disabled(reference: SkillReference, disabled_names: list[str]) -> bool:
     values = {item.strip().lower() for item in disabled_names}
-    return reference.capability in values or reference.name in values or reference.key in values
+    return reference.skill_type in values or reference.name in values or reference.key in values
 
 
 def _validate_instructions_path(skill_root: Path, instructions: str) -> None:

@@ -3,10 +3,10 @@ import unittest
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from agents.agent import Agent
-from provider.chat import MockProvider
-from runtime.config import AgentConfig
-from runtime.evaluation import (
+from core.agent import Agent
+from core.provider.chat import MockProvider
+from core.config import AgentConfig
+from core.state.evaluation import (
     EvaluationResult,
     EvaluationSource,
     EvaluationTokenUsage,
@@ -14,10 +14,10 @@ from runtime.evaluation import (
     evaluation_record_from_dict,
     evaluation_record_to_dict,
 )
-from runtime.store import create_local_runtime_store
+from core.state.store import create_local_runtime_store
 from skill.disclosure import ProgressiveDisclosureCore
-from skill.freshness import calculate_skill_freshness
-from skill.revision import SkillRevision
+from skill.evolution.freshness import calculate_skill_freshness
+from skill.evolution.revision import SkillRevision
 from support import write_memory_skill, write_workflow_skill
 
 
@@ -28,9 +28,9 @@ class SkillFreshnessTests(unittest.TestCase):
             skill_dir.mkdir(parents=True)
             (skill_dir / "skill.toml").write_text(
                 """
-schema_version = 2
+schema_version = 3
 name = "research"
-capability = "prompt"
+type = "prompt"
 description = "Research helper"
 version = "0.1.0"
 freshness = 83.5
@@ -205,7 +205,7 @@ def _skill_evaluation_record(
     return create_evaluation_record(
         revision=SkillRevision(
             key=skill_key,
-            capability=skill_key.split(":", 1)[0],
+            skill_type=skill_key.split(":", 1)[0],
             name=skill_key.split(":", 1)[1],
             version="0.1.0",
             content_sha256="a" * 64,
@@ -238,9 +238,9 @@ def _write_skill(root: Path, name: str, function_group: str) -> None:
     skill_dir.mkdir(parents=True)
     (skill_dir / "skill.toml").write_text(
         f"""
-schema_version = 2
+schema_version = 3
 name = "{name}"
-capability = "prompt"
+type = "prompt"
 description = "{name} helper"
 version = "0.1.0"
 freshness = 70
@@ -262,9 +262,7 @@ def _write_config(root: Path) -> Path:
 [agent]
 name = "demo"
 system = "Base system."
-workflow = "direct"
-memory = "default"
-skills = ["echo"]
+skills = ["workflow:direct", "memory:default", "echo"]
 
 [paths]
 skills = ["skills"]

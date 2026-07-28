@@ -1,6 +1,6 @@
-schema_version = 2
+schema_version = 3
 name = "filesystem"
-capability = "mcp"
+type = "mcp"
 description = "Example stdio MCP server"
 version = "0.1.0"
 triggers = ["filesystem", "files"]

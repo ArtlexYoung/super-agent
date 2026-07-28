@@ -15,7 +15,7 @@ SKILL_LOCK_SCHEMA_VERSION = 2
 @dataclass(frozen=True)
 class LockedSkill:
     name: str
-    capability: str
+    skill_type: str
     version: str
     sha256: str
     provides: list[str]
@@ -28,10 +28,10 @@ def write_skill_lock_file(manifests: list[SkillManifest], path: Path) -> None:
         _lock_manifest(manifest)
         for manifest in sorted(
             manifests,
-            key=lambda item: (item.capability, item.name),
+            key=lambda item: (item.skill_type, item.name),
         )
     ]
-    keys = {(item.capability, item.name) for item in locked}
+    keys = {(item.skill_type, item.name) for item in locked}
     if len(keys) != len(locked):
         raise ValueError("skill lock cannot contain duplicate skill keys")
     lines = [f"schema_version = {SKILL_LOCK_SCHEMA_VERSION}", ""]
@@ -40,7 +40,7 @@ def write_skill_lock_file(manifests: list[SkillManifest], path: Path) -> None:
             [
                 "[[skills]]",
                 f"name = {json.dumps(item.name)}",
-                f"capability = {json.dumps(item.capability)}",
+                f"type = {json.dumps(item.skill_type)}",
                 f"version = {json.dumps(item.version)}",
                 f"sha256 = {json.dumps(item.sha256)}",
                 f"provides = {_toml_string_array(item.provides)}",
@@ -54,7 +54,7 @@ def write_skill_lock_file(manifests: list[SkillManifest], path: Path) -> None:
 def _lock_manifest(manifest: SkillManifest) -> LockedSkill:
     return LockedSkill(
         name=manifest.name,
-        capability=manifest.capability,
+        skill_type=manifest.skill_type,
         version=manifest.version,
         sha256=calculate_skill_directory_sha256(manifest.path),
         provides=sorted(manifest.provides),

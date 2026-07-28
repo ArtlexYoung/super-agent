@@ -8,10 +8,10 @@ import json
 import tempfile
 from pathlib import Path
 
-from agents.agent import Agent
-from provider.chat import MockProvider
-from runtime.config import AgentConfig
-from runtime.insights import explain_run_with_insight
+from core.agent import Agent
+from core.provider.chat import MockProvider
+from core.config import AgentConfig
+from core.state.insights import explain_run_with_insight
 
 
 ANSWER_PROMPT = "give a concise answer"
@@ -232,8 +232,6 @@ def write_agent_config(
                 "[agent]",
                 f'name = "{name}"',
                 'system = "Deterministic proof Agent."',
-                'workflow = "direct"',
-                'memory = "default"',
                 f"skills = {json.dumps(selected_skills)}",
                 "",
                 "[paths]",
@@ -253,9 +251,9 @@ def write_workflow_skill(root: Path) -> None:
     directory = root / "skills" / "workflow" / "direct"
     directory.mkdir(parents=True)
     directory.joinpath("skill.toml").write_text(
-        """schema_version = 2
+        """schema_version = 3
 name = "direct"
-capability = "workflow"
+type = "workflow"
 description = "Direct deterministic workflow."
 version = "0.1.0"
 triggers = []
@@ -286,9 +284,9 @@ def write_model_skill(
     directory = root / "skills" / "model" / name
     directory.mkdir(parents=True)
     directory.joinpath("skill.toml").write_text(
-        f"""schema_version = 2
+        f"""schema_version = 3
 name = "{name}"
-capability = "model"
+type = "model"
 description = "Deterministic {name} model."
 version = "0.1.0"
 triggers = {json.dumps(purposes)}
@@ -316,9 +314,9 @@ def write_evolvable_prompt_skill(root: Path) -> None:
     directory = root / "skills" / "prompt" / "echo"
     directory.mkdir(parents=True)
     directory.joinpath("skill.toml").write_text(
-        """schema_version = 2
+        """schema_version = 3
 name = "echo"
-capability = "prompt"
+type = "prompt"
 description = "Agent-owned evolution proof Skill."
 version = "0.1.0"
 triggers = ["echo"]

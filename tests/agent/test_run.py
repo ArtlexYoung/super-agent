@@ -3,12 +3,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from agents.agent import Agent
-from provider.chat import MockProvider
-from runtime.config import AgentConfig
-from runtime.identity import RunIdentity
-from runtime.storage import JsonlStorage, StorageEventQuery
-from runtime.store import RuntimeStore, create_local_runtime_store
+from core.agent import Agent
+from core.provider.chat import MockProvider
+from core.config import AgentConfig
+from core.identity import RunIdentity
+from core.storage import JsonlStorage, StorageEventQuery
+from core.state.store import RuntimeStore, create_local_runtime_store
 from support import write_workflow_skill
 
 
@@ -62,7 +62,10 @@ class RuntimeStoreTests(unittest.TestCase):
                 if event.event_type == "skill.disclosed"
             ]
             self.assertEqual(["index", "manifest", "configuration"], disclosed_stages[:3])
-            self.assertEqual("finished", events[-2].data["text"])
+            completed = next(
+                event for event in events if event.event_type == "task.completed"
+            )
+            self.assertEqual("finished", completed.data["text"])
 
     def test_agent_run_writes_failure_trace(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -154,9 +157,7 @@ def _make_agent(root: Path, provider: MockProvider | _FailingProvider) -> Agent:
 [agent]
 name = "trace-agent"
 system = "Trace every run."
-workflow = "direct"
-memory = "default"
-skills = []
+skills = ["workflow:direct", "memory:default"]
 
 [paths]
 skills = ["skills"]

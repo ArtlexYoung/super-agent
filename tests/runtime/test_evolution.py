@@ -5,15 +5,15 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from runtime.evolution import apply_directory_file_changes, read_directory_file_changes
-from runtime.evolution.state import (
+from core.evolution import apply_directory_file_changes, read_directory_file_changes
+from core.evolution.state import (
     record_skill_candidate_evaluation,
     record_skill_candidate_promoted,
     require_skill_candidate_can_promote,
     start_manual_skill_evolution,
 )
-from runtime.store import create_local_runtime_store
-from skill.revision import SkillRevision
+from core.state.store import create_local_runtime_store
+from skill.evolution.revision import SkillRevision
 
 
 class SkillRevisionEvolutionStateTests(unittest.TestCase):
@@ -64,9 +64,9 @@ class SkillRevisionEvolutionStateTests(unittest.TestCase):
     def test_locked_and_non_owned_revisions_cannot_start_evolution(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             store = create_local_runtime_store(Path(tmp))
-            locked = _revision("capability:fixed", "0.1.0", "a")
+            locked = _revision("skill:fixed", "0.1.0", "a")
             candidate = _revision(
-                "capability:fixed",
+                "skill:fixed",
                 "0.1.1",
                 "b",
                 can_update=True,
@@ -129,7 +129,7 @@ class SkillRevisionEvolutionStateTests(unittest.TestCase):
             alpha = create_local_runtime_store(root, user_id="alpha")
             beta = create_local_runtime_store(root, user_id="beta")
             candidate = _revision(
-                "capability:new",
+                "skill:new",
                 "0.1.0",
                 "a",
                 created=True,
@@ -159,10 +159,10 @@ class RuntimeEvolutionFileTests(unittest.TestCase):
                         "delete_files": ["old.txt"],
                     }
                 ),
-                "Capability",
+                "SkillRunner",
             )
 
-            apply_directory_file_changes(root, changes, "Capability")
+            apply_directory_file_changes(root, changes, "SkillRunner")
 
             self.assertFalse((root / "old.txt").exists())
             self.assertEqual("new", (root / "new" / "file.txt").read_text())
@@ -172,7 +172,7 @@ class RuntimeEvolutionFileTests(unittest.TestCase):
             {"write_files": {"../outside.py": "bad"}, "delete_files": []}
         )
         with self.assertRaisesRegex(ValueError, "relative file path"):
-            read_directory_file_changes(response, "Capability")
+            read_directory_file_changes(response, "SkillRunner")
 
 
 def _revision(
@@ -183,10 +183,10 @@ def _revision(
     created: bool = True,
     can_update: bool = False,
 ) -> SkillRevision:
-    capability, name = key.split(":", 1)
+    skill_type, name = key.split(":", 1)
     return SkillRevision(
         key=key,
-        capability=capability,
+        skill_type=skill_type,
         name=name,
         version=version,
         content_sha256=(hash_prefix * 64)[:64],

@@ -1,34 +1,68 @@
-# Runtime, Workflows, Tracing, and Multi-Agent
+# Runtime, Tasks, and Multi-Agent
 
-## One Runtime Session
+## One Task Path
 
-Each `Agent.run(...)` creates one internal `TaskRequest` and one `RuntimeSession` with a `RunIdentity` and `RuntimeStore`. `AgentRuntime.run_task(...)` prepares the Skill index once, then one `AdaptiveTaskLoop` selects and executes models, Skills, tools, and subagents. Runtime records a lock before model calls and appends the final evaluation. `agent.for_user(...).runs.read_trace(...)` returns the ordered events emitted by the executed task steps.
+Every `Agent.run(...)` call creates one task request, Runtime session, user-scoped store,
+Skill index, and adaptive task loop:
 
-Every request emits one `task.plan.created` event. Its `origin` is `direct` for the deterministic one-step fast path or `planner` for a validated model-generated plan. Both forms emit the same `task.step.scheduled` and `task.step.completed` events and use the same executor.
+```text
+Agent.run(...)
+  -> AgentRuntime.run_task(...)
+  -> prepare one progressive Skill index
+  -> plan one or more task steps
+  -> select one model and load selected Skills
+  -> run model, tools, and subagents
+  -> record events, evaluation, freshness, and evolution review
+```
 
-Each scheduled model includes a normalized routing confidence, the number of purpose-specific evidence calls, and whether that evidence is sufficient. Four completed or failed calls make the evidence sufficient. When the highest-scored candidate has confidence below `0.55`, Runtime promotes a sufficiently evidenced candidate when available; otherwise it records the uncertainty and retains the normal provider-failure fallback chain. These decisions are deterministic and require no model call or configuration.
+A direct task is a one-step plan. A decomposed task uses the same step executor. There is
+no separate controller for workflows, memory, subagents, CLI, or Web requests.
 
-## Runtime Conversations
+## Optional Parts
 
-Conversations are event-backed Runtime views, not client-owned message arrays. Create a conversation and reuse its ID:
+The smallest run needs only an Agent and a model source. Other behavior is progressive:
+
+- No conversation ID means no conversation history is loaded or written.
+- No selected memory Skill means no memory is recalled or updated.
+- No selected workflow Skill means the direct workflow is used.
+- The built-in planner may decompose a task when its deterministic rules match.
+- No selected MCP or custom tool Skill means no corresponding tools are exposed.
+
+Missing optional parts do not trigger substitutes. A missing model, invalid Skill,
+failed memory organization, or failed Provider call is an explicit error.
+
+## Conversations
+
+Conversations are event-backed Runtime views. Create one and reuse its ID:
 
 ```python
+from super_agent import Agent
+
+agent = Agent()
 alice = agent.for_user("alice")
-conversation = alice.conversations.create()
+conversation = alice.conversations.create("Project")
 alice.run("first turn", conversation_id=conversation.conversation_id)
 alice.run("second turn", conversation_id=conversation.conversation_id)
 ```
 
-Runtime loads prior messages, appends the current user message, and stores the assistant result with its `run_id` and nested subagent results. `Agent` exposes explicit create, list, read, rename, clear, and delete methods. A `conversation_id` cannot be combined with an explicit `messages` list because that would create two competing history sources.
+Runtime loads prior messages and appends both sides of each completed turn. A
+`conversation_id` cannot be combined with an explicit message list because that would
+create two history sources. Create, list, read, rename, clear, and delete operations are
+explicit.
 
 ## Workflow Skills
 
-A workflow is an ordinary Skill:
+Pin one workflow in `agent.skills` when direct execution is not enough:
 
 ```toml
-schema_version = 2
+[agent]
+skills = ["workflow:react"]
+```
+
+```toml
+schema_version = 3
 name = "react"
-capability = "workflow"
+type = "workflow"
 description = "Tool-using workflow"
 version = "0.1.0"
 triggers = []
@@ -39,42 +73,40 @@ max_steps = 8
 instruction = "Finish when the task is complete."
 ```
 
-Built-in modes:
+The supported modes are `direct`, `plan`, `react`, and `loop`. React and loop
+workflows let the model use currently loaded disclosure, MCP, memory, and subagent tools.
+The workflow's maximum steps and completion conditions provide an explicit exit from tool
+and nested work.
 
-- `direct`: one model request.
-- `plan`: one request with a compact planning instruction.
-- `react`: the model chooses runtime tools until it finishes.
-- `loop`: like react, with an explicit maximum step count.
+## Model Scheduling
 
-The workflow is passive Skill data. Runtime interprets its instruction and termination settings; Agent nesting itself is not forcibly stopped.
+Model Skills describe purpose, supported features, expected quality, latency, cost, and
+Provider connection metadata. Before a call, Core combines those declared traits with
+user-and-Agent-scoped run evidence and a bounded exploration score. The chosen model and
+reasons are written to the task schedule.
 
-## Runtime Tools
+A Provider failure is recorded with `will_retry = false` and raised. Core does not switch
+to another model after a failed call. Choosing another model is a new, visible scheduling
+decision before execution, never a hidden fallback.
 
-React and loop workflows may expose:
+```python
+result = alice.run("Summarize this")
+alice.runs.record_feedback(result.run_id, 0.8, "Useful summary")
+stats = alice.runs.list_model_routing_stats(purpose="summary")
+```
 
-- Skill index and disclosure tools.
-- MCP Skill discovery and calls.
-- Memory list, add, recall-and-organize, forget, and consolidate tools.
-- Subagent list and run tools.
+## Run Traces
 
-Every tool request, completion, and failure is written to the run event stream.
-
-## Run Tracing
-
-Each run receives a unique `run_id`. With the default JSONL backend, all runtime state for one user is appended to one canonical stream:
+Each run receives a unique `run_id`. With default JSONL storage, canonical events are
+appended to:
 
 ```text
 .super-agent/users/<user-hash>/events.jsonl
 ```
 
-Events are ordered and append-only. `RuntimeStore.read_run(...)` replays run events into a `RunSnapshot`; no parallel snapshot file can drift from the trace. The `runtime.locked` event fixes:
-
-- Effective Agent configuration.
-- Primary model profile, ordered fallback candidates, selection reasons, Skill hashes, and Provider adapter.
-- Capability names and versions.
-- Skill versions, dependencies, and directory hashes.
-
-API-key values are not stored.
+The `runtime.locked` event records the effective Agent settings, model profile and
+Provider implementation, task schedule, storage backend, SkillRunner hashes, and exact
+Skill revisions. Secret values are never stored.
 
 ```bash
 super-agent runs status --config agent.toml
@@ -82,37 +114,13 @@ super-agent runs explain --config agent.toml --run-id <run-id>
 super-agent runs export --config agent.toml --run-id <run-id> --output run.json
 ```
 
-Explain and export rebuild the run view and verify the runtime-lock hash before returning its content. `runs explain` additionally projects scheduling reasons, ordered model calls, latency, estimated token and cost metrics, learned routing evidence, relevant Skill freshness, and related automatic Skill evolutions. Its `--output json` schema is the same source used by the Web task tree. A child Agent run can be located by `run_id` across Agent scopes only within the requested user and selected backend.
-
-## Evidence-Learned Model Routing
-
-Model routing is deterministic when no evidence exists. Each real model attempt then records its profile, effective purpose, success or failure, latency, estimated input and output tokens, and estimated cost. Runtime projects those canonical run events into quality and reliability statistics scoped by user, Agent, model Skill, and task purpose.
-
-After evidence exists, the scheduler combines declared model traits with a bounded exploration bonus. A failed primary model is credited only with its failure; a successful fallback receives its own completion evidence.
-
-```python
-alice = agent.for_user("alice")
-result = alice.run("Summarize this")
-alice.runs.record_feedback(result.run_id, 0.8, "Useful summary")
-stats = alice.runs.list_model_routing_stats(purpose="summary")
-```
-
-Scores are between `0` and `1`. Runtime also detects a small deterministic set of correction and exact-retry signals in stored conversation follow-ups. Explicit feedback takes precedence over implicit feedback and all evidence projection stays local; it does not call a model.
-
-## Streaming Protocol
-
-Desktop apps and other processes can send a JSON request and receive JSONL events:
-
-```bash
-printf '%s' '{"prompt":"hello","user_id":"alice","conversation_id":"project-a"}' \
-  | super-agent run --config agent.toml --request-stdin --output jsonl
-```
-
-Each output line has a `type` of `event` or `result`.
+Explain and export rebuild their views from canonical events and verify the Runtime lock
+hash. Child runs can be found across the configured subagent tree only inside the same
+user and storage backend.
 
 ## Multi-Agent Composition
 
-Each Agent is created independently and may use a different model, Skill tree, memory policy, workflow, and Capability set.
+Create each Agent normally, then attach it in code:
 
 ```python
 from super_agent import Agent
@@ -134,43 +142,20 @@ main.add_subagent(
 )
 ```
 
-Omitting `name` generates `subagent01`, `subagent02`, and so on.
+Omitting `name` creates `subagent01`, `subagent02`, and so on. Each child keeps its
+own configuration, Provider set, Skills, storage scope, and child graph.
 
-Direct and plan workflows run matching subagents before the main model request. React and loop workflows let the model call `list_subagents` and `run_subagent`.
+Before execution, Core reports complete cycle paths such as
+`main -> coder -> reviewer -> main` and paths deeper than
+`max_agent_chain_depth`. These are warnings, not execution limits. Omitting the setting
+allows unlimited depth; workflow completion remains the exit mechanism.
 
-## Nested Agent Warnings
+## State and Isolation
 
-Before execution, Runtime reports:
+One backend-neutral event stream is the source of truth for conversations, run traces,
+memory, Skill evidence, disclosure history, and evolution state. JSONL and SQLite are
+standard-library backends. MySQL and PostgreSQL are optional extras.
 
-- A complete cycle path such as `main -> coder -> reviewer -> main`.
-- A complete path that exceeds configured `max_agent_chain_depth`.
-
-Warnings do not block execution. Omitting the maximum allows unlimited nesting.
-
-## Runtime-Owned State
-
-```text
-.super-agent/
-  events.sqlite3                  # SQLite backend only
-  users/<user-hash>/events.jsonl  # JSONL backend only
-  users/<user-hash>/agents/<agent-hash>/cache/
-  users/<user-hash>/agents/<agent-hash>/evolution/
-```
-
-`StorageEvent` is the backend-neutral source of truth for conversations, run traces,
-evaluations, evolution recommendations, memory, usage habits, and disclosure history.
-MySQL and PostgreSQL store that event stream remotely while keeping cache and evolution
-workspaces under the configured local `path`. `RuntimeStore` owns the common scope and
-run operations, `store.disclosure` owns cache/history operations, and `store.memory` owns
-memory/habit operations. These are focused APIs over the same backend, not separate
-sources of truth. Local artifacts are never alternate stores for the same event data.
-
-## Runtime Proof
-
-The maintained [v0.0.61 unified proof](experiments/v0.0.61.md) runs the public API for
-two users through model Skill resolution, automatic scheduling, progressive disclosure,
-memory organization, mandatory Safety, evaluation, and Skill promotion. The fixture
-supplies deterministic model responses only; every lifecycle decision remains inside the
-shipped Runtime. Earlier reports are retained as [release snapshots](experiments/README.md).
-
-Storage contract tests still apply the same domain operations to every backend. Remote checks require dedicated test database environments and never fall back to an Agent's production connection URL.
+Every event and private workspace is scoped by validated user ID and Agent name. User Skill
+overlays, caches, memory, conversations, and usage evidence cannot cross that boundary.
+Shared project and built-in Skills remain read-only baselines.

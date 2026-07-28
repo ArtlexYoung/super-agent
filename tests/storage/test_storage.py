@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 from pathlib import Path
 
-from runtime.storage import (
+from core.storage import (
     JsonlStorage,
     MySqlStorage,
     PostgreSqlStorage,

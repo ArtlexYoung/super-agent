@@ -1,4 +1,4 @@
-import { MessageSquareText, Settings2, Sparkles } from "lucide-react"
+import { Blocks, MessageSquareText, Settings2, Sparkles } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -18,6 +18,7 @@ interface AppShellProps {
 
 const navigation = [
   { page: "conversations" as const, label: "对话", icon: MessageSquareText },
+  { page: "copilotkit" as const, label: "CopilotKit", icon: Blocks },
   { page: "configuration" as const, label: "配置", icon: Settings2 },
 ]
 

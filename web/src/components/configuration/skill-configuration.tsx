@@ -1,8 +1,7 @@
-import { Check, Pin, Sparkles } from "lucide-react"
+import { Sparkles } from "lucide-react"
 
 import { HelpTooltip } from "@/components/shared/help-tooltip"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Progress } from "@/components/ui/progress"
 import { Switch } from "@/components/ui/switch"
@@ -15,48 +14,54 @@ interface SkillConfigurationProps {
   onChange: (configuration: AgentConfiguration) => void
 }
 
-const groups = [
+const knownGroups = [
   {
-    capability: "prompt",
+    type: "prompt",
     title: "提示 Skill",
     help: "为模型渐进披露的提示内容，可按任务自动选择，也可固定使用。",
   },
   {
-    capability: "mcp",
+    type: "mcp",
     title: "MCP",
-    help: "声明外部工具连接；实际调用仍需经过 Runtime Safety。",
+    help: "声明外部工具连接；实际调用仍需经过 Runtime 的动作规则。",
   },
   {
-    capability: "memory",
+    type: "memory",
     title: "记忆",
-    help: "选择启用的记忆机制，并指定 Agent 默认使用的 memory Skill。",
+    help: "记忆也是普通 Skill；可自动选择，也可固定到每次任务。",
   },
   {
-    capability: "workflow",
+    type: "workflow",
     title: "工作流",
-    help: "工作流只承载执行策略和结束条件，Runtime 负责实际调度。",
+    help: "工作流承载执行策略和结束条件，Runtime 负责实际调度。",
   },
   {
-    capability: "planner",
+    type: "planner",
     title: "规划",
     help: "复杂任务按需加载 Planner Skill；简单任务保持直接执行。",
-  },
-  {
-    capability: "capability",
-    title: "执行能力",
-    help: "由应用显式注册执行器的能力 Skill，声明内容本身不会作为代码运行。",
   },
 ]
 
 export function SkillConfiguration(props: SkillConfigurationProps) {
+  const knownTypes = new Set(knownGroups.map((group) => group.type))
+  const customGroups = [...new Set(props.skills.map((skill) => skill.type))]
+    .filter((type) => !knownTypes.has(type))
+    .sort()
+    .map((type) => ({
+      type,
+      title: type,
+      help: `应用注册的 ${type} Skill；Runtime 通过同名 SkillRunner 加载。`,
+    }))
+  const groups = [...knownGroups, ...customGroups]
+
   return (
     <div className="configuration-sections">
       {groups.map((group) => {
         const skills = props.skills.filter(
-          (skill) => skill.capability === group.capability
+          (skill) => skill.type === group.type
         )
         return (
-          <section key={group.capability} className="configuration-section">
+          <section key={group.type} className="configuration-section">
             <div className="configuration-section-header">
               <div>
                 <h2>{group.title}</h2>
@@ -92,25 +97,20 @@ interface SkillRowProps {
 }
 
 function SkillRow({ skill, configuration, onChange }: SkillRowProps) {
-  const defaultField = defaultConfigurationField(skill.capability)
-  const isDefault = defaultField
-    ? configuration[defaultField] === skill.name
-    : false
-  const canPin = !defaultField && skill.capability !== "capability"
   const enabled =
-    !configuration.disable_names.includes(skill.key) &&
-    !configuration.disable_names.includes(skill.name)
+    !configuration.disabled_skills.includes(skill.key) &&
+    !configuration.disabled_skills.includes(skill.name)
   const selected =
     configuration.skills.includes(skill.key) ||
     configuration.skills.includes(skill.name)
 
   function setEnabled(nextEnabled: boolean): void {
-    const withoutSkill = configuration.disable_names.filter(
+    const withoutSkill = configuration.disabled_skills.filter(
       (item) => item !== skill.key && item !== skill.name
     )
     onChange({
       ...configuration,
-      disable_names: nextEnabled ? withoutSkill : [...withoutSkill, skill.key],
+      disabled_skills: nextEnabled ? withoutSkill : [...withoutSkill, skill.key],
     })
   }
 
@@ -124,23 +124,13 @@ function SkillRow({ skill, configuration, onChange }: SkillRowProps) {
     })
   }
 
-  function setDefault(): void {
-    if (defaultField) {
-      onChange({ ...configuration, [defaultField]: skill.name })
-    }
-  }
-
   return (
     <div className={cn("skill-row", !enabled && "skill-row-disabled")}>
       <div className="skill-row-main">
         <div className="skill-row-heading">
           <span className="skill-name">{skill.name}</span>
           <Badge variant="outline">v{skill.version}</Badge>
-          {isDefault ? (
-            <Badge className="bg-emerald-600 text-white">
-              <Check /> 默认
-            </Badge>
-          ) : null}
+          <Badge variant="outline">{skill.type}</Badge>
           {skill.agent_created ? (
             <Badge variant="secondary">
               <Sparkles /> Agent 创建
@@ -170,50 +160,24 @@ function SkillRow({ skill, configuration, onChange }: SkillRowProps) {
         </div>
       </div>
       <div className="skill-row-actions">
-        {defaultField && !isDefault ? (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
+        <label className="skill-pin-control">
+          <Checkbox
+            checked={selected}
             disabled={!enabled}
-            onClick={setDefault}
-          >
-            <Pin />
-            设为默认
-          </Button>
-        ) : null}
-        {canPin ? (
-          <label className="skill-pin-control">
-            <Checkbox
-              checked={selected}
-              disabled={!enabled}
-              onCheckedChange={(checked) => setSelected(checked === true)}
-            />
-            固定使用
-            <HelpTooltip label="固定使用后，每次任务都会加载该 Skill；未固定时由渐进式披露自动选择。" />
-          </label>
-        ) : null}
+            onCheckedChange={(checked) => setSelected(checked === true)}
+          />
+          固定使用
+          <HelpTooltip label="固定后每次任务都会加载；未固定时由渐进式披露按任务选择。" />
+        </label>
         <div className="skill-enable-control">
           <span>{enabled ? "已启用" : "已禁用"}</span>
           <Switch
             checked={enabled}
-            disabled={isDefault}
             onCheckedChange={setEnabled}
             aria-label={`${enabled ? "禁用" : "启用"} ${skill.name}`}
           />
-          {isDefault ? (
-            <HelpTooltip label="默认项不能直接禁用，请先将同类其他 Skill 设为默认。" />
-          ) : null}
         </div>
       </div>
     </div>
   )
-}
-
-function defaultConfigurationField(
-  capability: string
-): "memory" | "workflow" | null {
-  if (capability === "memory") return "memory"
-  if (capability === "workflow") return "workflow"
-  return null
 }

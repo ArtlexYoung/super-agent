@@ -6,11 +6,11 @@ import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from agents.agent import Agent
-from capability.defaults import create_progressive_skill_disclosure
-from runtime.config import AgentConfig
-from runtime.storage import StorageEvent, StorageEventQuery
-from runtime.store import RuntimeStore
+from core.agent import Agent
+from skill.runners.defaults import create_progressive_skill_disclosure
+from core.config import AgentConfig
+from core.storage import StorageEvent, StorageEventQuery
+from core.state.store import RuntimeStore
 from skill.kinds.memory import MiniMemory
 
 from proof_v0_0_61.fixtures import (

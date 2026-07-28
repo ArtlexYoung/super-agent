@@ -2,10 +2,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from agents.agent import Agent
-from runtime.config import AgentConfig
-from provider.chat import MockProvider
-from provider.chat import ModelResponse, ToolCall
+from core.agent import Agent
+from core.config import AgentConfig
+from core.provider.chat import MockProvider
+from core.provider.chat import ModelResponse, ToolCall
 
 
 class ExecutableWorkflowTests(unittest.TestCase):
@@ -22,7 +22,7 @@ class ExecutableWorkflowTests(unittest.TestCase):
                             ToolCall(
                                 "read-1",
                                 "read_skill_instructions",
-                                {"name": "research", "capability": "prompt"},
+                                {"name": "research", "type": "prompt"},
                             )
                         ],
                         "tool_calls",
@@ -64,9 +64,9 @@ def _write_config(root: Path, *, mode: str, max_steps: int) -> Path:
     workflow_dir.mkdir(parents=True)
     (workflow_dir / "skill.toml").write_text(
         f"""
-schema_version = 2
+schema_version = 3
 name = "{mode}"
-capability = "workflow"
+type = "workflow"
 description = "Executable {mode} workflow"
 version = "0.1.0"
 triggers = []
@@ -83,9 +83,7 @@ max_steps = {max_steps}
 [agent]
 name = "workflow-agent"
 system = "Use skills when needed."
-workflow = "{mode}"
-memory = "default"
-skills = []
+skills = ["workflow:{mode}", "memory:default"]
 
 [paths]
 skills = ["skills"]
@@ -104,9 +102,9 @@ def _write_prompt_skill(root: Path, name: str) -> None:
     skill_dir.mkdir(parents=True)
     (skill_dir / "skill.toml").write_text(
         f"""
-schema_version = 2
+schema_version = 3
 name = "{name}"
-capability = "prompt"
+type = "prompt"
 description = "Research helper"
 version = "0.1.0"
 triggers = ["never-match"]

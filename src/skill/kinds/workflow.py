@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from capability.skill_contributions import TaskPolicy
+from skill.runners.loaded import TaskPolicy
 from skill.disclosure import SkillDisclosure
 
 DEFAULT_WORKFLOW_MAX_STEPS = 8
@@ -20,8 +20,8 @@ def create_workflow_policy_from_skill(
     disclosure: SkillDisclosure,
 ) -> TaskPolicy:
     manifest = disclosure.read_manifest()
-    if manifest.capability != "workflow":
-        raise ValueError(f"skill does not use the workflow capability: {manifest.name}")
+    if manifest.skill_type != "workflow":
+        raise ValueError(f"skill does not use the workflow skill: {manifest.name}")
     data = disclosure.read_configuration().content
     mode = str(data.get("mode", manifest.name)).strip().lower()
     base_instruction = _instruction_for_mode(mode)

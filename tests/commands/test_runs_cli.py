@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import unittest
 from dataclasses import replace
@@ -6,13 +7,22 @@ from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
-from agents.agent import Agent
+from core.agent import Agent
 from cli import main
-from provider.chat import MockProvider
-from runtime.config import AgentConfig
+from core.provider.chat import MockProvider
+from core.config import AgentConfig
 
 
 class RunsCliTests(unittest.TestCase):
+    def setUp(self) -> None:
+        provider_environment = patch.dict(
+            os.environ,
+            {"SUPER_AGENT_PROVIDER": "mock"},
+            clear=True,
+        )
+        provider_environment.start()
+        self.addCleanup(provider_environment.stop)
+
     def test_status_explain_and_export_use_saved_run_snapshot(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -87,7 +97,10 @@ class RunsCliTests(unittest.TestCase):
             self.assertEqual("answer", explanation["schedule"]["purpose"])
             self.assertEqual("completed", explanation["model_calls"][0]["status"])
             self.assertEqual(1, explanation["model_calls"][0]["call_id"])
-            self.assertEqual("model:mock", explanation["model_calls"][0]["profile"])
+            self.assertEqual(
+                "model:environment",
+                explanation["model_calls"][0]["profile"],
+            )
             self.assertEqual([], explanation["evolution"])
             self.assertEqual(1, explanation["routing_evidence"][0]["call_count"])
             self.assertTrue(explanation["skill_freshness"])
@@ -138,7 +151,7 @@ class RunsCliTests(unittest.TestCase):
             explanation = explanation_output.getvalue()
             self.assertEqual(0, code)
             self.assertIn("schedule\tpurpose=answer", explanation)
-            self.assertIn("model-call\t1\tprofile=model:mock", explanation)
+            self.assertIn("model-call\t1\tprofile=model:environment", explanation)
             self.assertIn("freshness\t", explanation)
 
     def test_status_without_runs_is_a_successful_empty_result(self) -> None:

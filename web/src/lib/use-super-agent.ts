@@ -50,6 +50,7 @@ export interface SuperAgentController {
   stopRun: () => void
   openRunInsight: (runId: string) => Promise<void>
   closeRunInsight: () => void
+  reloadRuntimeData: (preferredConversationId?: string) => Promise<void>
 }
 
 export function useSuperAgent(): SuperAgentController {
@@ -294,6 +295,7 @@ export function useSuperAgent(): SuperAgentController {
     stopRun,
     openRunInsight,
     closeRunInsight,
+    reloadRuntimeData: refresh,
   }
 }
 

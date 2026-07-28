@@ -175,8 +175,8 @@ class _McpStdioSession:
 
 def create_mcp_server_from_skill_disclosure(disclosure: SkillDisclosure) -> McpServer:
     manifest = disclosure.read_manifest()
-    if manifest.capability != "mcp":
-        raise ValueError(f"skill does not use the MCP capability: {manifest.name}")
+    if manifest.skill_type != "mcp":
+        raise ValueError(f"skill does not use the MCP skill: {manifest.name}")
     configuration = disclosure.read_configuration().content
     transport = _read_transport(configuration.get("transport", "stdio"))
     command = _read_command(configuration.get("command"), manifest.name)
