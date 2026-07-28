@@ -9,14 +9,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Protocol
 
-from capability.skill_contributions import SkillContribution
+from capability.skill_contributions import (
+    CapabilityAction,
+    CapabilityTool,
+    SkillContribution,
+)
 from provider.chat import Message
 from runtime.identity import RunIdentity
 from runtime.safety import ActionRequest
 from runtime.store import RuntimeStore
 from skill.disclosure import ProgressiveDisclosureCore, SkillReference
 
-CAPABILITY_DESCRIPTOR_SCHEMA_VERSION = 5
+CAPABILITY_DESCRIPTOR_SCHEMA_VERSION = 6
 CAPABILITY_SLOT_PREFIX = "capability:"
 _NAME_PATTERN = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}")
 
@@ -31,6 +35,17 @@ class SkillLoadRequest:
     identity: RunIdentity | None = None
     send_text_model_messages: Callable[[list[Message]], str] | None = None
     execute_action: Callable[[ActionRequest, Callable[[], object]], object] | None = None
+
+    def __post_init__(self) -> None:
+        if self.identity is not None and self.execute_action is None:
+            raise ValueError("Runtime Skill loading requires an action executor")
+
+    def require_action_executor(
+        self,
+    ) -> Callable[[ActionRequest, Callable[[], object]], object]:
+        if self.execute_action is None:
+            raise ValueError("Capability requires a Runtime action executor")
+        return self.execute_action
 
 
 class Capability(Protocol):
@@ -110,6 +125,7 @@ class CapabilityRegistry:
         contribution = capability.load_skill(request)
         if not isinstance(contribution, SkillContribution):
             raise TypeError("Capability.load_skill must return SkillContribution")
+        _validate_skill_contribution(contribution)
         return contribution
 
     def list_capabilities(self) -> list[CapabilityRegistration]:
@@ -200,6 +216,22 @@ def _validate_capability(
         raise TypeError("Capability.adds_model_context must be a boolean")
     if not callable(getattr(capability, "load_skill", None)):
         raise TypeError("Capability must define load_skill")
+
+
+def _validate_skill_contribution(contribution: SkillContribution) -> None:
+    if not isinstance(contribution.tools, tuple):
+        raise TypeError("SkillContribution.tools must be a tuple")
+    for tool in contribution.tools:
+        if not isinstance(tool, CapabilityTool):
+            raise TypeError("SkillContribution.tools must contain CapabilityTool values")
+        if not isinstance(tool.action, CapabilityAction):
+            raise TypeError(f"Capability tool must declare an action: {tool.name}")
+        argument = tool.action.resource_argument
+        if argument is not None and argument not in tool.properties:
+            raise ValueError(
+                "Capability tool action resource argument is not declared: "
+                f"{tool.name}.{argument}"
+            )
 
 
 def _capability_slot(value: str) -> str:

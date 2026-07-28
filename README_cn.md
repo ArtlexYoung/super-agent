@@ -204,6 +204,8 @@ super-agent runs explain --config agent.toml --run-id <run-id> --output json
 
 `CapabilityRegistry` 只保存由应用代码明确注册的 Skill 执行机制，可以通过 `agent.add_capability(...)` 替换。每个 Capability 只有一个 `load_skill(request)` 契约，并统一返回 `SkillContribution`，因此 Runtime 不需要了解 Memory、MCP 或 Workflow 的具体类。Skill 目录始终是不可信的声明式内容，Runtime 不会从中导入或执行 Python。
 
+每个 Capability 工具都必须显式声明 `read`、`create`、`update`、`delete`、`execute`、`network` 或 `delegate` 效果，不存在隐式默认权限。声明不完整的 Capability 会在 handler 运行前失败；带 Runtime 身份的 Skill 加载、记忆整理和习惯更新也必须经过同一个 Safety 执行器。Skill 内容本身不能提供或降低权限。
+
 ## 可复现证明
 
 [v0.0.53 端到端 Runtime 证明](docs/experiments/v0.0.53.md)及其[生成的 JSON 报告](docs/experiments/v0.0.53.json)会启动真实 AG-UI HTTP 服务，并执行唯一的标准任务路径。这次运行会在回忆时整理并遗忘记忆，在 handler 执行前拦截外部 Tool，通过 `RUN_ERROR` 发送失败，并把发生失败的 Agent 自建 Skill 从 `0.1.0` 自动晋升到 `0.1.1`。整个证明确定性、本地运行、零依赖，也不需要 API Key。

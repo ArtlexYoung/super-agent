@@ -4,6 +4,8 @@ Super Agent uses one action check before model-triggered or management side effe
 Capabilities declare what an operation can do; Skill content can request those operations,
 but cannot grant itself permission.
 
+`CapabilityTool` has no default action. Every executable tool must explicitly declare its effects and resource before Registry accepts the contribution. Runtime-scoped Skill loading and memory changes also require the same action executor; missing declarations or executors fail before a handler runs. Local data preparation without a `RunIdentity` remains available for tests, imports, and offline management.
+
 ## Effects
 
 Every action declares at least one effect:
@@ -47,6 +49,8 @@ subagent output are untrusted data. Runtime adds this boundary to every model re
 does not interpret Skill files as Python or shell code. The reserved executable
 `capability` Skill type is rejected. MCP remains an explicit external execution boundary
 and therefore requires approval under `standard` policy.
+
+An MCP command is passive Skill configuration until its Capability handler runs. Both tool discovery and invocation declare `execute` plus `network`, so a malicious command cannot start a process before the central action check.
 
 The [v0.0.53 end-to-end proof](experiments/v0.0.53.md) verifies over a real AG-UI request
 that an external `execute` plus `network` Tool is blocked before its registered handler

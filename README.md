@@ -212,7 +212,8 @@ never imported or executed as Python.
 
 Every tool declares `read`, `create`, `update`, `delete`, `execute`, `network`, or
 `delegate` effects. Runtime checks them through one safety policy before calling the
-handler. The default `standard` preset keeps internal operations automatic and blocks
+handler. There is no implicit action declaration: an incomplete Capability fails before
+its handler can run. The default `standard` preset keeps internal operations automatic and blocks
 risky external actions until approved. See [Runtime Safety](docs/safety.md).
 
 ## Reproducible Proof

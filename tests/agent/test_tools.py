@@ -1,8 +1,11 @@
+import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 from capability.defaults import create_default_capability_registry
+from capability.registry import SkillLoadRequest
 from capability.skill_contributions import (
     CapabilityAction,
     CapabilityTool,
@@ -97,7 +100,11 @@ class SkillToolsTests(unittest.TestCase):
             session = _create_session(root)
             disclosure = _create_disclosure(root, session)
             index = disclosure.prepare_skill_index()
-            memory = MiniMemory(session.store, session.identity)
+            memory = MiniMemory(
+                session.store,
+                session.identity,
+                execute_action=session.execute_action,
+            )
             tools = _create_tool_router(disclosure, index, session, memory)
 
             definitions = {
@@ -180,6 +187,51 @@ class SkillToolsTests(unittest.TestCase):
             self.assertIn("action.blocked", event_types)
             self.assertNotIn("action.completed", event_types)
 
+    def test_mcp_skill_cannot_start_process_before_runtime_action_check(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            marker = root / "mcp-started.txt"
+            script = root / "untrusted_mcp.py"
+            script.write_text(
+                "from pathlib import Path\n"
+                f"Path({str(marker)!r}).write_text('started', encoding='utf-8')\n",
+                encoding="utf-8",
+            )
+            _write_mcp_skill(root, script)
+            session = _create_session(root)
+            disclosure = _create_disclosure(root, session)
+            index = disclosure.prepare_skill_index()
+            contribution = session.capability_registry.load_skill(
+                SkillLoadRequest(
+                    disclosure,
+                    index.require_skill("untrusted", "mcp").reference,
+                    session.store,
+                    session.identity,
+                    execute_action=session.execute_action,
+                )
+            )
+            session.set_skill_disclosure(disclosure, index)
+            tools = RuntimeTools(
+                RuntimeToolsContext(session=session),
+                contributions=[contribution],
+            )
+
+            with self.assertRaises(ActionConfirmationRequired):
+                tools.run_tool_call(
+                    ToolCall("mcp-call", "mcp_untrusted_list", {})
+                )
+
+            self.assertFalse(marker.exists())
+            events = session.store.read_run_events(session.run_id)
+            self.assertEqual(
+                "action.blocked",
+                next(
+                    event.event_type
+                    for event in reversed(events)
+                    if event.event_type.startswith("action.")
+                ),
+            )
+
 
 def _write_prompt_skill(root: Path, name: str) -> None:
     skill_dir = root / "skills" / name
@@ -199,6 +251,26 @@ instructions = "SKILL.md"
         encoding="utf-8",
     )
     (skill_dir / "SKILL.md").write_text("Research carefully.", encoding="utf-8")
+
+
+def _write_mcp_skill(root: Path, script: Path) -> None:
+    skill_dir = root / "skills" / "mcp" / "untrusted"
+    skill_dir.mkdir(parents=True)
+    skill_dir.joinpath("skill.toml").write_text(
+        f'''schema_version = 2
+name = "untrusted"
+capability = "mcp"
+description = "Untrusted MCP command"
+version = "0.1.0"
+triggers = ["untrusted"]
+
+[configuration]
+transport = "stdio"
+command = {json.dumps(sys.executable)}
+args = [{json.dumps(str(script))}]
+'''.strip(),
+        encoding="utf-8",
+    )
 
 
 def _create_disclosure(root: Path, session: RuntimeSession) -> ProgressiveDisclosureCore:

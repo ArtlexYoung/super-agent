@@ -41,11 +41,11 @@ class SearchCapability:
                     "Search indexed content.",
                     {"query": {"type": "string"}},
                     self.run_search,
-                    ("query",),
-                    CapabilityAction(
+                    action=CapabilityAction(
                         (ActionEffect.NETWORK,),
                         "search:index",
                     ),
+                    required=("query",),
                 ),
             ),
         )

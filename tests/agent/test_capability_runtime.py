@@ -9,10 +9,15 @@ from unittest.mock import patch
 
 from agents.agent import Agent
 from capability.registry import SkillLoadRequest
-from capability.skill_contributions import CapabilityTool, SkillContribution
+from capability.skill_contributions import (
+    CapabilityAction,
+    CapabilityTool,
+    SkillContribution,
+)
 from cli import main
 from provider.chat import MockProvider, ModelResponse, ToolCall
 from runtime.config import AgentConfig
+from runtime.safety import ActionEffect
 from skill.manifest import Skill
 from support import write_workflow_skill
 
@@ -125,6 +130,22 @@ class CapabilityRuntimeTests(unittest.TestCase):
             self.assertIn("uppercase_text", tool_names)
             self.assertIn("echo", result.skills)
 
+    def test_capability_tool_without_action_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_prompt_skill(root, capability="unsafe")
+            provider = MockProvider("must not run")
+            agent = Agent(
+                AgentConfig.create_default(root),
+                provider=provider,
+                capabilities=[_MissingActionCapability()],
+            )
+
+            with self.assertRaisesRegex(TypeError, "action"):
+                agent.run("please echo this")
+
+            self.assertEqual([], provider.last_messages)
+
     def test_task_trace_uses_one_runtime_task_path(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             agent = Agent(AgentConfig.create_default(tmp))
@@ -199,6 +220,7 @@ class _RecordingPromptCapability:
             )
         )
 
+
 class _TransformCapability(_RecordingPromptCapability):
     capability_name = "transform"
 
@@ -212,9 +234,29 @@ class _TransformCapability(_RecordingPromptCapability):
                     "Convert text to uppercase.",
                     {"text": {"type": "string"}},
                     lambda arguments: {"text": str(arguments["text"]).upper()},
-                    ("text",),
+                    action=CapabilityAction(
+                        (ActionEffect.EXECUTE,),
+                        "capability:registered:uppercase_text",
+                    ),
+                    required=("text",),
                 ),
             ),
+        )
+
+
+class _MissingActionCapability(_RecordingPromptCapability):
+    capability_name = "unsafe"
+
+    def load_skill(self, request: SkillLoadRequest) -> SkillContribution:
+        return SkillContribution(
+            tools=(
+                CapabilityTool(  # type: ignore[call-arg]
+                    "unsafe_tool",
+                    "This tool intentionally omits its action declaration.",
+                    {},
+                    lambda arguments: {"ok": True},
+                ),
+            )
         )
 
 

@@ -3,6 +3,7 @@ import unittest
 from pathlib import Path
 
 from capability.defaults import create_default_capability_registry
+from capability.skill_contributions import CapabilityAction
 from provider.chat import MockProvider
 from runtime.config import AgentConfig
 from runtime.identity import RunIdentity
@@ -57,6 +58,10 @@ class RuntimeSafetyTests(unittest.TestCase):
                 "runtime",
                 (ActionEffect.READ, ActionEffect.READ),
             )
+        with self.assertRaisesRegex(ValueError, "at least one effect"):
+            CapabilityAction((), "capability:test")
+        with self.assertRaisesRegex(ValueError, "resource cannot be empty"):
+            CapabilityAction((ActionEffect.READ,), " ")
 
     def test_policy_can_emit_enforced_allow_decision(self) -> None:
         decision = SafetyPolicy().check_action(

@@ -304,7 +304,7 @@ Status: implemented.
 
 ## v0.0.58: Mandatory Runtime Safety
 
-Status: planned.
+Status: implemented.
 
 - Make one Runtime action boundary mandatory for every side effect.
 - Fail closed when a Capability omits an action declaration.

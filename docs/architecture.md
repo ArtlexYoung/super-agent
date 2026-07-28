@@ -105,6 +105,11 @@ safety preset before invoking the handler. Skill text is never an authority sour
 Management services reuse the same executor and write decisions to the same storage
 backend. See [Runtime Safety](safety.md).
 
+Capability tools have no implicit action fallback. A Runtime-scoped `SkillLoadRequest`
+is invalid without the central action executor, Registry validates every contributed
+tool contract, and Runtime checks the declared action before invoking its handler.
+Passive Skill files cannot supply or weaken that contract.
+
 ## Invariants
 
 - One task uses one Runtime session, Skill index, disclosure cache, and store.

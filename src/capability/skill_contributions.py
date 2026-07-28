@@ -42,6 +42,25 @@ class CapabilityAction:
     resource: str
     resource_argument: str | None = None
 
+    def __post_init__(self) -> None:
+        if not self.effects:
+            raise ValueError("Capability action must declare at least one effect")
+        normalized = tuple(ActionEffect(effect) for effect in self.effects)
+        if len(set(normalized)) != len(normalized):
+            raise ValueError("Capability action effects cannot contain duplicates")
+        if not self.resource.strip():
+            raise ValueError("Capability action resource cannot be empty")
+        if self.resource_argument is not None and not self.resource_argument.strip():
+            raise ValueError("Capability action resource argument cannot be empty")
+        object.__setattr__(self, "effects", normalized)
+        object.__setattr__(self, "resource", self.resource.strip())
+        if self.resource_argument is not None:
+            object.__setattr__(
+                self,
+                "resource_argument",
+                self.resource_argument.strip(),
+            )
+
     def resolve_resource(self, arguments: ToolArguments) -> str:
         if self.resource_argument is None:
             return self.resource
@@ -57,11 +76,8 @@ class CapabilityTool:
     description: str
     properties: dict[str, object]
     handler: ToolHandler
+    action: CapabilityAction
     required: tuple[str, ...] = ()
-    action: CapabilityAction = CapabilityAction(
-        (ActionEffect.EXECUTE,),
-        "capability:registered",
-    )
 
     def to_provider_definition(self) -> ToolDefinition:
         return {

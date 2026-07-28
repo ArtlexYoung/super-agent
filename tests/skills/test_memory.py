@@ -274,11 +274,17 @@ include_usage_habits = false
             agent = _make_agent(root, provider)
 
             agent.run("first")
-            agent.run("second")
+            second = agent.run("second")
             memory = MiniMemory(agent.runtime.create_store())
 
             self.assertEqual(2, memory.usage_habits.read_usage_habits()["total_runs"])
             self.assertIn("workflow direct used 1 times", provider.last_messages[0]["content"])
+            checked_resources = [
+                event.data["resource"]
+                for event in agent.for_user("local").runs.read_trace(second.run_id).events
+                if event.event_type == "action.checked"
+            ]
+            self.assertIn("memory:habits", checked_resources)
 
 
 def _make_agent(root: Path, provider: MockProvider) -> Agent:

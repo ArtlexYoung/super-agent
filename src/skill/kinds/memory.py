@@ -53,11 +53,30 @@ class MemoryOperation:
 
 
 class MemoryUsageHabits:
-    def __init__(self, store: RuntimeMemoryStore) -> None:
+    def __init__(
+        self,
+        store: RuntimeMemoryStore,
+        execute_action: MemoryActionRunner | None = None,
+    ) -> None:
         self.store = store
+        self.execute_action = execute_action
 
     def record_agent_run(self, workflow: str, skills: list[str]) -> None:
-        self.store.record_usage_habits(workflow, skills)
+        def record_usage() -> None:
+            self.store.record_usage_habits(workflow, skills)
+
+        if self.execute_action is None:
+            record_usage()
+            return
+        self.execute_action(
+            ActionRequest.create(
+                "agent:memory",
+                "memory:habits",
+                (ActionEffect.UPDATE,),
+                argument_names=("workflow", "skills"),
+            ),
+            record_usage,
+        )
 
     def read_usage_habits(self) -> dict[str, Any]:
         return self.store.read_usage_habits()
@@ -85,7 +104,9 @@ class MiniMemory:
         self.store = store
         self.identity = identity
         self.policy = policy or MemoryPolicy()
-        self.usage_habits = MemoryUsageHabits(store.memory)
+        if identity is not None and execute_action is None:
+            raise ValueError("Runtime memory requires an action executor")
+        self.usage_habits = MemoryUsageHabits(store.memory, execute_action)
         self.send_text_model_messages = send_text_model_messages
         self.execute_action = execute_action
 

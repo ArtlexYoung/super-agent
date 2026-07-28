@@ -101,6 +101,8 @@ class RuntimeTools:
         allow_existing: bool = False,
     ) -> None:
         for tool in tools:
+            if not isinstance(tool.action, CapabilityAction):
+                raise TypeError(f"Capability tool must declare an action: {tool.name}")
             if tool.name in self._tools:
                 if allow_existing:
                     continue
@@ -142,6 +144,7 @@ class RuntimeTools:
                     reference,
                     self.context.session.store,
                     self.context.session.identity,
+                    execute_action=self.context.session.execute_action,
                 )
             )
             self._add_tools(contribution.tools, allow_existing=True)
@@ -243,32 +246,32 @@ def _create_disclosure_tools(
             "Disclose one skill manifest through the central cache.",
             reference,
             runtime_tools._read_skill_manifest,
-            ("name",),
-            CapabilityAction((ActionEffect.READ,), "skill:manifest", "name"),
+            action=CapabilityAction((ActionEffect.READ,), "skill:manifest", "name"),
+            required=("name",),
         ),
         CapabilityTool(
             "read_skill_instructions",
             "Disclose one skill's instructions through the central cache.",
             reference,
             runtime_tools._read_skill_instructions,
-            ("name",),
-            CapabilityAction((ActionEffect.READ,), "skill:instructions", "name"),
+            action=CapabilityAction((ActionEffect.READ,), "skill:instructions", "name"),
+            required=("name",),
         ),
         CapabilityTool(
             "read_skill_configuration",
             "Disclose one skill's capability configuration through the central cache.",
             reference,
             runtime_tools._read_skill_configuration,
-            ("name",),
-            CapabilityAction((ActionEffect.READ,), "skill:configuration", "name"),
+            action=CapabilityAction((ActionEffect.READ,), "skill:configuration", "name"),
+            required=("name",),
         ),
         CapabilityTool(
             "read_disclosed_content",
             "Read content from a path already produced by the disclosure cache.",
             {"cache_path": {"type": "string"}},
             runtime_tools._read_disclosed_content,
-            ("cache_path",),
-            CapabilityAction((ActionEffect.READ,), "skill:cache"),
+            action=CapabilityAction((ActionEffect.READ,), "skill:cache"),
+            required=("cache_path",),
         ),
     )
 
@@ -302,7 +305,7 @@ def _create_subagent_tools(runtime_tools: RuntimeTools) -> tuple[CapabilityTool,
                 "prompt": {"type": "string"},
             },
             runtime_tools.run_subagent,
-            ("name", "prompt"),
-            CapabilityAction((ActionEffect.DELEGATE,), "subagent", "name"),
+            action=CapabilityAction((ActionEffect.DELEGATE,), "subagent", "name"),
+            required=("name", "prompt"),
         ),
     )

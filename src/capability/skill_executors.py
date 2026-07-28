@@ -84,7 +84,7 @@ class MemoryCapability:
             request.store,
             request.identity,
             send_text_model_messages=request.send_text_model_messages,
-            execute_action=request.execute_action,
+            execute_action=request.require_action_executor(),
         )
         run_id = "" if request.identity is None else request.identity.run_id
         return create_memory_skill_contribution(memory, run_id)
@@ -165,12 +165,12 @@ def _create_memory_tools(memory: MiniMemory, run_id: str) -> tuple[CapabilityToo
             "Store one memory item in the event log.",
             {"text": {"type": "string"}, "scope": scope},
             lambda arguments: _add_memory_item(memory, run_id, arguments),
-            ("text",),
-            CapabilityAction(
+            action=CapabilityAction(
                 (ActionEffect.CREATE,),
                 "memory:active",
                 "scope",
             ),
+            required=("text",),
         ),
         CapabilityTool(
             "recall_memory",
@@ -181,24 +181,24 @@ def _create_memory_tools(memory: MiniMemory, run_id: str) -> tuple[CapabilityToo
                 "limit": {"type": "integer", "minimum": 1},
             },
             lambda arguments: _recall_memory(memory, arguments),
-            ("query",),
-            CapabilityAction(
+            action=CapabilityAction(
                 (ActionEffect.READ, ActionEffect.UPDATE, ActionEffect.DELETE),
                 "memory:active",
                 "scope",
             ),
+            required=("query",),
         ),
         CapabilityTool(
             "forget_memory",
             "Forget one active memory item by ID.",
             {"item_id": {"type": "string"}},
             lambda arguments: _forget_memory(memory, arguments),
-            ("item_id",),
-            CapabilityAction(
+            action=CapabilityAction(
                 (ActionEffect.DELETE,),
                 "memory:active",
                 "item_id",
             ),
+            required=("item_id",),
         ),
         CapabilityTool(
             "consolidate_memory",
@@ -281,8 +281,8 @@ def _create_mcp_tools(
             f"Call one tool from the {server.name} MCP Skill.",
             {"tool": {"type": "string"}, "arguments": {"type": "object"}},
             lambda arguments: _run_mcp_tool(server, arguments),
-            ("tool", "arguments"),
-            action,
+            action=action,
+            required=("tool", "arguments"),
         ),
     )
 
