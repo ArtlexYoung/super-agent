@@ -28,7 +28,7 @@ class WebAPIContractTests(unittest.TestCase):
                 provider=MockProvider("child answer"),
             )
             agent.add_subagent(child, name="research", created_by_agent=True)
-            child_result = child.run("inspect", user_id="web-user")
+            child_result = child.for_user("web-user").run("inspect")
 
             response = WebAPI(agent, "web-user").handle("GET", "/api/bootstrap")
 
@@ -54,9 +54,8 @@ class WebAPIContractTests(unittest.TestCase):
             created = api.handle("POST", "/api/conversations", {"title": "First"})
             conversation_id = str(_body_dict(created.body)["conversation_id"])
 
-            result = agent.run(
+            result = agent.for_user("web-user").run(
                 "hello",
-                user_id="web-user",
                 conversation_id=conversation_id,
             )
             renamed = api.handle(

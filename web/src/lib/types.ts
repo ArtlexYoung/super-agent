@@ -7,7 +7,6 @@ export interface AgentConfiguration {
   memory: string
   skills: string[]
   max_agent_chain_depth: number | null
-  use_features: string[]
   disable_names: string[]
   safety: "audit" | "standard" | "read_only" | "autonomous"
 }

@@ -49,7 +49,7 @@ class SubAgentTests(unittest.TestCase):
             self.assertIn("coder-result", main_provider.last_messages[0]["content"])
             schedule = next(
                 event.data
-                for event in main.read_task_trace(result.run_id).events
+                for event in main.for_user("local").runs.read_trace(result.run_id).events
                 if event.event_type == "task.scheduled"
             )
             self.assertEqual(["coder"], schedule["subagents"])
@@ -99,7 +99,7 @@ class SubAgentTests(unittest.TestCase):
             coder.add_subagent(reviewer, name="reviewer")
             reviewer.add_subagent(tester, name="tester")
 
-            warnings = main.check_subagent_links()
+            warnings = main._check_subagent_links()
 
             self.assertIn("Agent chain depth is 4 layers, configured max_agent_chain_depth is 2", warnings[0])
             self.assertIn("main -> coder -> reviewer -> tester", warnings[0])
@@ -124,7 +124,7 @@ class SubAgentTests(unittest.TestCase):
             coder = _agent(root, "coder")
             main.add_subagent(coder)
 
-            warnings = main.check_subagent_links()
+            warnings = main._check_subagent_links()
 
             self.assertIn("main -> subagent01", warnings[0])
 
@@ -138,7 +138,7 @@ class SubAgentTests(unittest.TestCase):
             coder.add_subagent(reviewer, name="reviewer")
             reviewer.add_subagent(main, name="main")
 
-            warnings = main.check_subagent_links()
+            warnings = main._check_subagent_links()
 
             self.assertIn("Agent chain has cycle: main -> coder -> reviewer -> main", warnings)
 

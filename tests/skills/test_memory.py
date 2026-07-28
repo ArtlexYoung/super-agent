@@ -248,7 +248,7 @@ include_usage_habits = false
             active = MiniMemory(agent.runtime.create_store()).list_memory_items()
             self.assertEqual(["Python project uses 3.12."], [item.text for item in active])
             event_types = [
-                event.event_type for event in agent.read_task_trace(result.run_id).events
+                event.event_type for event in agent.for_user("local").runs.read_trace(result.run_id).events
             ]
             self.assertIn("action.checked", event_types)
 

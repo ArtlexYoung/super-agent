@@ -4,7 +4,6 @@ system = "You are a concise, helpful agent."
 workflow = "direct"
 memory = "default"
 skills = ["echo"]
-use_features = ["skill"]
 disable_names = []
 
 [paths]

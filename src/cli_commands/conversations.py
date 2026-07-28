@@ -40,52 +40,42 @@ def configure_conversations_parser(parser: argparse.ArgumentParser) -> None:
 def run_conversations_command(args: argparse.Namespace) -> int:
     command = args.conversations_command or "list"
     agent = _load_agent(args.config)
+    conversations = agent.for_user(args.user_id).conversations
     if command == "list":
         return _print_json(
             {
                 "schema_version": 1,
                 "conversations": [
-                    asdict(item) for item in agent.list_conversations(args.user_id)
+                    asdict(item) for item in conversations.list()
                 ],
             }
         )
     if command == "show":
-        conversation = agent.read_conversation(
-            args.conversation_id,
-            user_id=args.user_id,
-        )
+        conversation = conversations.read(args.conversation_id)
         return _print_json(asdict(conversation))
     if command == "create":
-        conversation = agent.create_conversation(
+        conversation = conversations.create(
             args.title,
-            user_id=args.user_id,
             conversation_id=args.conversation_id,
         )
         return _print_json(asdict(conversation))
     if command == "rename":
-        conversation = agent.rename_conversation(
+        conversation = conversations.rename(
             args.conversation_id,
             args.title,
-            user_id=args.user_id,
         )
         return _print_json(asdict(conversation))
     if command == "clear":
-        conversation = agent.clear_conversation(
-            args.conversation_id,
-            user_id=args.user_id,
-        )
+        conversation = conversations.clear(args.conversation_id)
         return _print_json(asdict(conversation))
     if command == "delete":
-        agent.delete_conversation(
-            args.conversation_id,
-            user_id=args.user_id,
-        )
+        conversations.delete(args.conversation_id)
         return _print_json({"conversation_id": args.conversation_id, "deleted": True})
     raise ValueError(f"unknown conversations command: {command}")
 
 
 def _load_agent(config_path: str | None) -> Agent:
-    return Agent() if config_path is None else Agent.load_from_config_file(config_path)
+    return Agent(config_path)
 
 
 def _print_json(value: object) -> int:

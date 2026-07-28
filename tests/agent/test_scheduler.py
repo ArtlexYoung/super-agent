@@ -54,7 +54,7 @@ class AdaptiveTaskLoopTests(unittest.TestCase):
             result = agent.run("summarize this report")
 
             self.assertEqual("fallback", result.text)
-            events = agent.read_task_trace(result.run_id).events
+            events = agent.for_user("local").runs.read_trace(result.run_id).events
             selected = [
                 event.data["profile"]
                 for event in events
@@ -76,7 +76,7 @@ class AdaptiveTaskLoopTests(unittest.TestCase):
             self.assertEqual(["model:general"], [event.data["profile"] for event in completed])
             stats = {
                 item.profile_key: item
-                for item in agent.list_model_routing_stats(purpose="summary")
+                for item in agent.for_user("local").runs.list_model_routing_stats(purpose="summary")
             }
             self.assertEqual(0.0, stats["model:summary"].reliability)
             self.assertEqual(1.0, stats["model:general"].reliability)
@@ -120,11 +120,12 @@ class AdaptiveTaskLoopTests(unittest.TestCase):
             agent = Agent(config, provider=alpha)
             agent.add_model_provider("beta", beta)
 
-            first = agent.run("summarize this", user_id="user-a")
-            agent.record_task_feedback(first.run_id, 0.0, "poor result", user_id="user-a")
-            answer = agent.run("answer this question", user_id="user-a")
-            other_user = agent.run("summarize this", user_id="user-b")
-            explored = agent.run("summarize this", user_id="user-a")
+            user_a = agent.for_user("user-a")
+            first = user_a.run("summarize this")
+            user_a.runs.record_feedback(first.run_id, 0.0, "poor result")
+            answer = user_a.run("answer this question")
+            other_user = agent.for_user("user-b").run("summarize this")
+            explored = user_a.run("summarize this")
 
             other_config = replace(
                 config,
@@ -133,7 +134,7 @@ class AdaptiveTaskLoopTests(unittest.TestCase):
             other_alpha = _RecordingProvider("other-alpha")
             other_agent = Agent(other_config, provider=other_alpha)
             other_agent.add_model_provider("beta", _RecordingProvider("other-beta"))
-            other_scope = other_agent.run("summarize this", user_id="user-a")
+            other_scope = other_agent.for_user("user-a").run("summarize this")
 
             self.assertEqual("alpha", first.text)
             self.assertEqual("alpha", answer.text)
@@ -145,10 +146,7 @@ class AdaptiveTaskLoopTests(unittest.TestCase):
                 "bounded exploration: untried model",
                 explored_schedule["models"][0]["reasons"],
             )
-            stats = agent.list_model_routing_stats(
-                user_id="user-a",
-                purpose="summary",
-            )
+            stats = user_a.runs.list_model_routing_stats(purpose="summary")
             by_profile = {item.profile_key: item for item in stats}
             self.assertEqual(0.0, by_profile["model:alpha"].average_quality)
             self.assertEqual(1.0, by_profile["model:beta"].average_quality)
@@ -158,40 +156,32 @@ class AdaptiveTaskLoopTests(unittest.TestCase):
             root = Path(tmp)
             _write_model_skill(root, "general", default=True)
             agent = Agent(_write_config(root), provider=_RecordingProvider("response"))
-            conversation = agent.create_conversation(user_id="correcting-user")
+            user = agent.for_user("correcting-user")
+            conversation = user.conversations.create()
 
-            first = agent.run(
+            first = user.run(
                 "Explain the report",
-                user_id="correcting-user",
                 conversation_id=conversation.conversation_id,
             )
-            agent.run(
+            user.run(
                 "不对，请重新回答",
-                user_id="correcting-user",
                 conversation_id=conversation.conversation_id,
             )
 
             feedback = [
                 event
-                for event in agent.read_task_trace(
-                    first.run_id,
-                    user_id="correcting-user",
-                ).events
+                for event in user.runs.read_trace(first.run_id).events
                 if event.event_type == "task.feedback.recorded"
             ]
             self.assertEqual(1, len(feedback))
             self.assertEqual("implicit", feedback[0].data["source"])
             self.assertEqual(0.2, feedback[0].data["score"])
-            agent.record_task_feedback(
+            user.runs.record_feedback(
                 first.run_id,
                 0.9,
                 "explicit override",
-                user_id="correcting-user",
             )
-            stats = agent.list_model_routing_stats(
-                user_id="correcting-user",
-                purpose="answer",
-            )
+            stats = user.runs.list_model_routing_stats(purpose="answer")
             self.assertAlmostEqual(0.95, stats[0].average_quality)
 
     def test_cold_start_order_is_deterministic(self) -> None:
@@ -202,8 +192,8 @@ class AdaptiveTaskLoopTests(unittest.TestCase):
             agent = Agent(_write_config(root), provider=_RecordingProvider("alpha"))
             agent.add_model_provider("beta", _RecordingProvider("beta"))
 
-            first = agent.run("ordinary task", user_id="cold-a")
-            second = agent.run("ordinary task", user_id="cold-b")
+            first = agent.for_user("cold-a").run("ordinary task")
+            second = agent.for_user("cold-b").run("ordinary task")
 
             self.assertEqual("alpha", first.text)
             self.assertEqual("alpha", second.text)
@@ -294,5 +284,5 @@ def _scheduled_event(
     run_id: str,
     user_id: str = "local",
 ) -> dict[str, object]:
-    events = agent.read_task_trace(run_id, user_id=user_id).events
+    events = agent.for_user(user_id).runs.read_trace(run_id).events
     return next(event.data for event in events if event.event_type == "task.scheduled")

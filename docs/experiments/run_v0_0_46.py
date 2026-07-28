@@ -245,7 +245,7 @@ def run_expected_failure(
 
 def _evolution_result(agent: Agent, run_id: str) -> dict[str, object]:
     store = agent.runtime.create_store()
-    evolution = agent.list_skill_evolutions()[0]
+    evolution = agent.for_user("local").skills.list_evolutions()[0]
     candidate = evolution.candidate_revision
     return {
         "skill_key": evolution.skill_key,

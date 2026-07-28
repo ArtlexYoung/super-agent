@@ -204,7 +204,7 @@ class ModelSkillTests(unittest.TestCase):
                 ]
             )
             agent = Agent(AgentConfig.create_default(root), provider=provider)
-            manager = agent.create_skill_evolution_manager()
+            manager = agent.for_user("local").skills.create_evolution_manager()
 
             candidate = manager.create_skill_candidate(
                 "model:fast",

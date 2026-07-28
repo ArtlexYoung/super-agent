@@ -122,7 +122,7 @@ class SkillEvolutionTests(unittest.TestCase):
                     "required output",
                 ]
             )
-            manager = _make_agent(root, provider).create_skill_evolution_manager()
+            manager = _make_agent(root, provider).for_user("local").skills.create_evolution_manager()
             candidate = manager.create_skill_candidate("writer", "improve output")
             report = manager.evaluate_skill_candidate(
                 candidate.candidate_id,
@@ -430,7 +430,7 @@ class SequenceProvider(MockProvider):
 
 def _make_manager(root: Path, responses: list[str]):
     agent = _make_agent(root, SequenceProvider(responses))
-    return agent.create_skill_evolution_manager()
+    return agent.for_user("local").skills.create_evolution_manager()
 
 
 def _make_agent(root: Path, provider: MockProvider) -> Agent:

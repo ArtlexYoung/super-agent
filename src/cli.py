@@ -148,20 +148,19 @@ def _run_init_command(root: Path) -> int:
 
 def _run_prompt_command(config_path: Path | None, request: RuntimeRequest, output: str) -> int:
     agent = _load_agent(config_path)
+    user = agent.for_user(request.user_id)
     if output == "jsonl":
-        result = agent.run(
+        result = user.run(
             request.prompt,
             messages=request.messages,
-            user_id=request.user_id,
             conversation_id=request.conversation_id,
             run_options=AgentRunOptions(event_listener=_print_run_event),
         )
         print(json.dumps({"type": "result", "result": run_result_to_dict(result)}, ensure_ascii=False))
         return 0
-    result = agent.run(
+    result = user.run(
         request.prompt,
         messages=request.messages,
-        user_id=request.user_id,
         conversation_id=request.conversation_id,
     )
     if output == "json":
@@ -179,10 +178,11 @@ def _run_chat_command(
     conversation_id: str | None,
 ) -> int:
     agent = _load_agent(config_path)
+    user = agent.for_user(user_id)
     conversation = (
-        agent.create_conversation(user_id=user_id)
+        user.conversations.create()
         if conversation_id is None
-        else agent.read_conversation(conversation_id, user_id=user_id)
+        else user.conversations.read(conversation_id)
     )
     while True:
         try:
@@ -193,16 +193,15 @@ def _run_chat_command(
             continue
         if prompt.lower() in {"exit", "quit"}:
             return 0
-        result = agent.run(
+        result = user.run(
             prompt,
-            user_id=user_id,
             conversation_id=conversation.conversation_id,
         )
         print(f"Agent: {result.text}")
 
 
 def _load_agent(config_path: Path | None) -> Agent:
-    return Agent() if config_path is None else Agent.load_from_config_file(str(config_path))
+    return Agent() if config_path is None else Agent(config_path)
 
 
 def run_result_to_dict(result: TaskResult) -> dict[str, Any]:
@@ -287,7 +286,6 @@ system = "You are a concise, helpful agent."
 workflow = "direct"
 memory = "default"
 skills = ["echo"]
-use_features = ["skill"]
 disable_names = []
 
 [paths]

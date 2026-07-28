@@ -134,7 +134,7 @@ def _print_skill_index(config_path: Path, user_id: str) -> int:
 
 
 def _propose_skill(args: argparse.Namespace) -> int:
-    manager = Agent.load_from_config_file(args.config).create_skill_evolution_manager(args.user_id)
+    manager = Agent(args.config).for_user(args.user_id).skills.create_evolution_manager()
     candidate = manager.create_skill_candidate(
         args.name,
         args.goal,
@@ -145,7 +145,7 @@ def _propose_skill(args: argparse.Namespace) -> int:
 
 
 def _evaluate_skill(args: argparse.Namespace) -> int:
-    manager = Agent.load_from_config_file(args.config).create_skill_evolution_manager(args.user_id)
+    manager = Agent(args.config).for_user(args.user_id).skills.create_evolution_manager()
     report = manager.evaluate_skill_candidate(args.candidate_id, _read_evaluation_cases(Path(args.cases)))
     state = "passed" if report.passed else "rejected"
     print(f"Evaluation {report.report_id}: {state} score={report.score:.4f}")
@@ -153,14 +153,14 @@ def _evaluate_skill(args: argparse.Namespace) -> int:
 
 
 def _promote_skill(args: argparse.Namespace) -> int:
-    manager = Agent.load_from_config_file(args.config).create_skill_evolution_manager(args.user_id)
+    manager = Agent(args.config).for_user(args.user_id).skills.create_evolution_manager()
     manifest = manager.promote_skill_candidate(args.candidate_id)
     print(f"Promoted skill: {manifest.capability}:{manifest.name}@{manifest.version}")
     return 0
 
 
 def _evolve_skill(args: argparse.Namespace) -> int:
-    manager = Agent.load_from_config_file(args.config).create_skill_evolution_manager(args.user_id)
+    manager = Agent(args.config).for_user(args.user_id).skills.create_evolution_manager()
     result = manager.evolve_skill(
         args.name,
         args.goal,
@@ -172,7 +172,7 @@ def _evolve_skill(args: argparse.Namespace) -> int:
 
 
 def _rollback_skill(args: argparse.Namespace) -> int:
-    manager = Agent.load_from_config_file(args.config).create_skill_evolution_manager(args.user_id)
+    manager = Agent(args.config).for_user(args.user_id).skills.create_evolution_manager()
     manifest = manager.rollback_skill(args.name, capability=args.capability)
     print(f"Rolled back skill: {manifest.capability}:{manifest.name}@{manifest.version}")
     return 0

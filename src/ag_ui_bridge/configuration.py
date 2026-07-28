@@ -19,7 +19,6 @@ class AgentConfigurationInput:
     memory: str
     skills: list[str]
     max_agent_chain_depth: int | None
-    use_features: list[str]
     disable_names: list[str]
     safety: str
 
@@ -38,7 +37,6 @@ class AgentConfigurationInput:
             memory=_skill_name(value.get("memory"), "memory"),
             skills=_text_list(value.get("skills", []), "skills"),
             max_agent_chain_depth=_optional_depth(value.get("max_agent_chain_depth")),
-            use_features=_text_list(value.get("use_features", []), "use_features"),
             disable_names=_text_list(value.get("disable_names", []), "disable_names"),
             safety=_safety_preset(value.get("safety")),
         )
@@ -57,7 +55,6 @@ def update_agent_configuration(
             memory=request.memory,
             skills=request.skills,
             max_agent_chain_depth=request.max_agent_chain_depth,
-            use_features=request.use_features,
             disable_names=request.disable_names,
             safety=request.safety,
         ),
@@ -76,7 +73,6 @@ def agent_configuration_to_dict(config: AgentConfig) -> dict[str, object]:
         "memory": settings.memory,
         "skills": list(settings.skills),
         "max_agent_chain_depth": settings.max_agent_chain_depth,
-        "use_features": list(settings.use_features),
         "disable_names": list(settings.disable_names),
         "safety": settings.safety,
     }
@@ -97,7 +93,6 @@ def _agent_config_to_toml(config: AgentConfig) -> str:
         lines.append(f"max_agent_chain_depth = {agent.max_agent_chain_depth}")
     lines.extend(
         [
-            f"use_features = {_toml_array(agent.use_features)}",
             f"disable_names = {_toml_array(agent.disable_names)}",
             f"safety = {_toml_string(agent.safety)}",
             "",

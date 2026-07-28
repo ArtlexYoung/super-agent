@@ -135,11 +135,10 @@ def _record_run_feedback(args: argparse.Namespace) -> int:
         if args.config is None
         else AgentConfig.load_from_file(args.config)
     )
-    event = Agent(config).record_task_feedback(
+    event = Agent(config).for_user(args.user_id).runs.record_feedback(
         args.run_id,
         args.score,
         args.reason,
-        user_id=args.user_id,
     )
     if args.output == "json":
         print(json.dumps(asdict(event), ensure_ascii=False, indent=2, sort_keys=True))

@@ -57,7 +57,7 @@ Persist a multi-turn conversation only when you need one:
 
 ```python
 agent = Agent()
-conversation = agent.create_conversation()
+conversation = agent.for_user("local").conversations.create()
 agent.run("Remember that my project uses Python", conversation_id=conversation.conversation_id)
 result = agent.run("Which language does it use?", conversation_id=conversation.conversation_id)
 ```
@@ -180,8 +180,9 @@ The built-in `planner:default` Skill keeps planning optional and zero-configurat
 Routing starts deterministically and uses bounded exploration only after evidence exists for the effective task purpose. Evidence is isolated by user, Agent, model Skill, and purpose. Record an explicit quality score when useful:
 
 ```python
-result = agent.run("Summarize the report", user_id="alice")
-agent.record_task_feedback(result.run_id, 0.25, "Missed the conclusion", user_id="alice")
+alice = agent.for_user("alice")
+result = alice.run("Summarize the report")
+alice.runs.record_feedback(result.run_id, 0.25, "Missed the conclusion")
 ```
 
 ```bash
@@ -278,9 +279,9 @@ Agent relationships live in readable Python code rather than TOML:
 ```python
 from super_agent import Agent
 
-main = Agent.load_from_config_file("agents/main.toml")
-coder = Agent.load_from_config_file("agents/coder.toml")
-reviewer = Agent.load_from_config_file("agents/reviewer.toml")
+main = Agent("agents/main.toml")
+coder = Agent("agents/coder.toml")
+reviewer = Agent("agents/reviewer.toml")
 
 main.add_subagent(coder, name="coder", triggers=["code", "implement"])
 main.add_subagent(reviewer, triggers=["review"])

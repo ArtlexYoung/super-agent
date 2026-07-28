@@ -270,4 +270,68 @@ Status: implemented.
 
 Proof: [experiment description](experiments/v0.0.53.md) and [machine-readable result](experiments/v0.0.53.json).
 
+## v0.0.54: Explicit User Scope
+
+Status: implemented.
+
+- Keep `Agent` focused on composition and execution.
+- Bind stateful APIs once with `agent.for_user(user_id)`.
+- Remove feature switches and legacy forwarding methods without compatibility wrappers.
+
+## v0.0.55: One Capability Contract
+
+Status: planned.
+
+- Give every Capability one `load_skill(...)` boundary.
+- Keep Skill content passive and Capability mechanisms explicit.
+- Remove per-kind loading branches from Runtime.
+
+## v0.0.56: One-Step Direct Plans
+
+Status: planned.
+
+- Represent direct work as a one-step plan.
+- Execute direct and decomposed tasks through the same step loop.
+- Remove the second direct execution path.
+
+## v0.0.57: Confidence-Aware Scheduling
+
+Status: planned.
+
+- Attach confidence and evidence sufficiency to model routing decisions.
+- Escalate or fall back when confidence is too low.
+- Record scheduling uncertainty in the canonical trace.
+
+## v0.0.58: Mandatory Runtime Safety
+
+Status: planned.
+
+- Make one Runtime action boundary mandatory for every side effect.
+- Fail closed when a Capability omits an action declaration.
+- Verify Skill content cannot bypass the boundary.
+
+## v0.0.59: User Skill Overlay
+
+Status: planned.
+
+- Store compact evolution state as user-scoped events.
+- Overlay user-created and evolved Skills on shared project Skills.
+- Keep one progressive disclosure index for both layers.
+
+## v0.0.60: Multiuser Isolation
+
+Status: planned.
+
+- Centralize identity validation and user-scoped secret lookup.
+- Verify conversations, memory, Skill use, evolution, and disclosure caches are isolated.
+- Keep local single-user use at zero configuration.
+
+## v0.0.61: Unified Runtime Proof
+
+Status: planned.
+
+- Simplify CLI and documentation around one beginner path.
+- Publish a deterministic multiuser scheduling, safety, memory, and evolution proof.
+- Remove obsolete experiment and architecture descriptions.
+
 The project will not move to `0.1.x` merely because more features exist. That change should follow a reproducible demonstration that the central Skill-first lifecycle is useful and maintainable.

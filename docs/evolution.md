@@ -70,12 +70,10 @@ super-agent evolution show --config agent.toml --user-id alice --evolution-id <i
 These commands are read-only views over the automatic state. The same inspection is available in Python:
 
 ```python
-agent = Agent.load_from_config_file("agent.toml")
-evolutions = agent.list_skill_evolutions(user_id="alice")
-evolution = agent.read_skill_evolution(
-    evolutions[0].evolution_id,
-    user_id="alice",
-)
+agent = Agent("agent.toml")
+skills = agent.for_user("alice").skills
+evolutions = skills.list_evolutions()
+evolution = skills.read_evolution(evolutions[0].evolution_id)
 ```
 
 Evolution events, model-call evidence, candidate workspaces, and monitoring status remain isolated by user and Agent. An automation failure is recorded as `evolution.automation_failed` in the run trace and never replaces the main task result.
@@ -143,7 +141,7 @@ Python example:
 ```python
 from super_agent import Agent, EvaluationCase
 
-manager = Agent.load_from_config_file("agent.toml").create_skill_evolution_manager()
+manager = Agent("agent.toml").for_user("local").skills.create_evolution_manager()
 candidate = manager.create_skill_candidate("prompt:concise", "make answers clearer")
 report = manager.evaluate_skill_candidate(
     candidate.candidate_id,

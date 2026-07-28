@@ -32,7 +32,7 @@ class AGUIServerTests(unittest.TestCase):
                 "streamed answer",
                 [event.get("delta") for event in events],
             )
-            stored = agent.read_conversation("thread-browser-1", user_id="browser-user")
+            stored = agent.for_user("browser-user").conversations.read("thread-browser-1")
             self.assertEqual(["user", "assistant"], [item.role for item in stored.messages])
             self.assertEqual("run-browser-1", stored.messages[-1].run_id)
             snapshot = agent.runtime.create_store("browser-user").read_run("run-browser-1")

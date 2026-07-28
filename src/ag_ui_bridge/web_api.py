@@ -18,7 +18,7 @@ from runtime.insights import explain_run_with_insight
 from runtime.safety import ActionEffect, ActionRequest
 from skill.disclosure import skill_index_to_dict
 from skill.kinds.model import model_profile_to_dict, read_model_profiles
-from skill.kinds.model_management import ModelSkillManager, model_skill_input_from_dict
+from skill.kinds.model_management import model_skill_input_from_dict
 
 
 @dataclass(frozen=True)
@@ -31,6 +31,7 @@ class WebAPI:
     def __init__(self, agent: Agent, user_id: str) -> None:
         self.agent = agent
         self.user_id = user_id
+        self.user = agent.for_user(user_id)
 
     def handle(self, method: str, path: str, body: object | None = None) -> WebAPIResponse:
         if method == "GET" and path == "/api/bootstrap":
@@ -62,27 +63,20 @@ class WebAPI:
     ) -> WebAPIResponse:
         if method == "POST" and not parts:
             title = _optional_body_text(body, "title")
-            conversation = self.agent.create_conversation(title, user_id=self.user_id)
+            conversation = self.user.conversations.create(title)
             return _ok(asdict(conversation), HTTPStatus.CREATED)
         if len(parts) == 1 and method == "GET":
-            conversation = self.agent.read_conversation(
-                parts[0],
-                user_id=self.user_id,
-            )
+            conversation = self.user.conversations.read(parts[0])
             return _ok(asdict(conversation))
         if len(parts) == 1 and method == "PATCH":
             title = _required_body_text(body, "title")
-            conversation = self.agent.rename_conversation(
-                parts[0],
-                title,
-                user_id=self.user_id,
-            )
+            conversation = self.user.conversations.rename(parts[0], title)
             return _ok(asdict(conversation))
         if len(parts) == 1 and method == "DELETE":
-            self.agent.delete_conversation(parts[0], user_id=self.user_id)
+            self.user.conversations.delete(parts[0])
             return _ok({"conversation_id": parts[0], "deleted": True})
         if len(parts) == 2 and parts[1] == "clear" and method == "POST":
-            return _ok(asdict(self.agent.clear_conversation(parts[0], user_id=self.user_id)))
+            return _ok(asdict(self.user.conversations.clear(parts[0])))
         return WebAPIResponse(HTTPStatus.NOT_FOUND, {"error": "route not found"})
 
     def _read_bootstrap(self) -> dict[str, object]:
@@ -109,7 +103,7 @@ class WebAPI:
             "skills": _web_skill_list(skill_index_to_dict(index), config),
             "models": [model_profile_to_dict(profile) for profile in models],
             "conversations": [
-                asdict(item) for item in self.agent.list_conversations(self.user_id)
+                asdict(item) for item in self.user.conversations.list()
             ],
             "runs": [asdict(item) for item in store.list_runs(50)],
             "memory": store.memory.list_memory_items(),
@@ -151,16 +145,16 @@ class WebAPI:
             ),
             lambda: update_agent_configuration(self.agent.config, request),
         )
-        self.agent.reload_configuration(updated, self.user_id)
+        self.user.configuration.replace(updated)
 
     def _save_model(self, body: object | None) -> None:
-        manager = _model_manager(self.agent, self.user_id)
+        manager = self.user.skills.create_model_manager()
         manager.save_model_skill(model_skill_input_from_dict(body))
-        self.agent.reload_model_profiles(self.user_id)
+        self.user.skills.reload_models()
 
     def _remove_model(self, name: str) -> None:
-        _model_manager(self.agent, self.user_id).remove_model_skill(name)
-        self.agent.reload_model_profiles(self.user_id)
+        self.user.skills.create_model_manager().remove_model_skill(name)
+        self.user.skills.reload_models()
 
 
 def _ok(body: object, status: HTTPStatus = HTTPStatus.OK) -> WebAPIResponse:
@@ -192,14 +186,6 @@ def _web_skill_list(
         for item in skills
         if isinstance(item, dict)
     ]
-
-
-def _model_manager(agent: Agent, user_id: str) -> ModelSkillManager:
-    return ModelSkillManager(
-        agent.config,
-        agent.runtime.create_store(user_id),
-        agent.safety_policy,
-    )
 
 
 def _find_agent_for_run(

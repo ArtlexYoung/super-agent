@@ -174,7 +174,7 @@ class SkillRevisionEvolutionTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "task failed"):
                 agent.run("echo this")
 
-            evolutions = agent.list_skill_evolutions()
+            evolutions = agent.for_user("local").skills.list_evolutions()
             self.assertEqual(["prompt:echo"], [item.skill_key for item in evolutions])
             self.assertIn("failures", evolutions[0].reason_codes)
             self.assertEqual("promoted", evolutions[0].status)
@@ -187,11 +187,11 @@ class SkillRevisionEvolutionTests(unittest.TestCase):
             )
             self.assertEqual(
                 1,
-                agent.list_model_routing_stats(purpose="skill_evolution")[0].call_count,
+                agent.for_user("local").runs.list_model_routing_stats(purpose="skill_evolution")[0].call_count,
             )
             self.assertEqual(
                 1,
-                agent.list_model_routing_stats(purpose="skill_evaluation")[0].call_count,
+                agent.for_user("local").runs.list_model_routing_stats(purpose="skill_evaluation")[0].call_count,
             )
 
             with self.assertRaisesRegex(RuntimeError, "promoted regression"):
@@ -199,7 +199,7 @@ class SkillRevisionEvolutionTests(unittest.TestCase):
 
             store = agent.runtime.create_store()
             regression_run = store.list_runs(1)[0]
-            monitored = agent.list_skill_evolutions()[0]
+            monitored = agent.for_user("local").skills.list_evolutions()[0]
             regression_insight = explain_run_with_insight(store, regression_run.run_id)
             self.assertEqual("rolled_back", monitored.status)
             self.assertEqual(
@@ -245,7 +245,7 @@ class SkillRevisionEvolutionTests(unittest.TestCase):
                 AgentConfig.load_from_file(config_path),
                 provider=_SequenceProvider([response, "evaluation output"]),
             )
-            manager = agent.create_skill_evolution_manager("alice")
+            manager = agent.for_user("alice").skills.create_evolution_manager()
             entry = manager.skill_disclosure.prepare_skill_index().require_skill(
                 "echo",
                 "prompt",

@@ -42,11 +42,7 @@ def create_progressive_skill_disclosure(
             config.agent.name,
         )
     disabled = set(config.agent.disable_names)
-    roots = (
-        config.paths.skills
-        if "skill" in config.agent.use_features and "skill" not in disabled
-        else []
-    )
+    roots = [] if "skill" in disabled else config.paths.skills
     return ProgressiveDisclosureCore(
         roots,
         selected_store,

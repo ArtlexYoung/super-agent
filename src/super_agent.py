@@ -1,6 +1,7 @@
 """Small public facade for the common Super Agent library workflow."""
 
 from agents.agent import Agent, AgentRunOptions
+from agents.user import UserAgent
 from ag_ui_bridge import AGUIEventMapper, AGUIRunInput, create_ag_ui_server
 from provider.chat import (
     ChatProvider,
@@ -47,5 +48,6 @@ __all__ = [
     "TaskResult",
     "TaskTrace",
     "ToolCall",
+    "UserAgent",
     "create_ag_ui_server",
 ]

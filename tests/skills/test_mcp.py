@@ -254,12 +254,10 @@ def _write_agent_config(
     root: Path,
     *,
     skills: list[str] | None = None,
-    use_features: list[str] | None = None,
     disable_names: list[str] | None = None,
 ) -> Path:
     config_path = root / "agent.toml"
     skills_text = _toml_list(skills or [])
-    use_features_line = "" if use_features is None else f"use_features = {_toml_list(use_features)}"
     disable_names_line = "" if disable_names is None else f"disable_names = {_toml_list(disable_names)}"
     config_path.write_text(
         f"""
@@ -269,7 +267,6 @@ system = "Base system."
 workflow = "direct"
 memory = "default"
 skills = {skills_text}
-{use_features_line}
 {disable_names_line}
 
 [paths]

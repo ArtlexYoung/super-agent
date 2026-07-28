@@ -21,7 +21,7 @@ class ZeroConfigurationPlanningTests(unittest.TestCase):
 
             self.assertEqual("direct answer", result.text)
             self.assertEqual(1, len(provider.requests))
-            events = agent.read_task_trace(result.run_id).events
+            events = agent.for_user("local").runs.read_trace(result.run_id).events
             schedule = next(
                 event.data for event in events if event.event_type == "task.scheduled"
             )
@@ -94,7 +94,7 @@ class ZeroConfigurationPlanningTests(unittest.TestCase):
             self.assertEqual(["deep-model", "deep-model"], deep.models)
             self.assertEqual(["researcher"], [item.name for item in result.subagent_results or []])
             self.assertIn("subagent facts", str(fast.requests[1]))
-            events = main.read_task_trace(result.run_id).events
+            events = main.for_user("local").runs.read_trace(result.run_id).events
             schedule = next(
                 event.data for event in events if event.event_type == "task.scheduled"
             )
@@ -153,7 +153,7 @@ class PlanningSkillEvolutionTests(unittest.TestCase):
                 agent.run("Complete this step by step")
 
             store = agent.runtime.create_store()
-            evolution = agent.list_skill_evolutions()[0]
+            evolution = agent.for_user("local").skills.list_evolutions()[0]
             run_id = store.list_runs(1)[0].run_id
             self.assertEqual("planner:default", evolution.skill_key)
             self.assertEqual("automatic", evolution.origin)
@@ -215,7 +215,7 @@ class PlanningSkillEvolutionTests(unittest.TestCase):
                 agent.run("Answer this question")
 
             store = agent.runtime.create_store()
-            evolution = agent.list_skill_evolutions()[0]
+            evolution = agent.for_user("local").skills.list_evolutions()[0]
             run_id = store.list_runs(1)[0].run_id
             self.assertEqual("model:main", evolution.skill_key)
             self.assertEqual("automatic", evolution.origin)

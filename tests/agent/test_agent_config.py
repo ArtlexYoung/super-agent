@@ -24,7 +24,6 @@ workflow = "direct"
 memory = "default"
 skills = ["echo"]
 max_agent_chain_depth = 4
-use_features = ["skill"]
 disable_names = ["mcp:github"]
 safety = "read_only"
 
@@ -46,7 +45,6 @@ url_env = "CUSTOM_DATABASE_URL"
             self.assertEqual("default", config.agent.memory)
             self.assertEqual(["echo"], config.agent.skills)
             self.assertEqual(4, config.agent.max_agent_chain_depth)
-            self.assertEqual(["skill"], config.agent.use_features)
             self.assertEqual(["mcp:github"], config.agent.disable_names)
             self.assertEqual("read_only", config.agent.safety)
             self.assertEqual([root / "skills"], config.paths.skills)
@@ -54,7 +52,7 @@ url_env = "CUSTOM_DATABASE_URL"
             self.assertEqual(root / ".super-agent", config.storage.path)
             self.assertEqual("CUSTOM_DATABASE_URL", config.storage.url_env)
 
-    def test_default_features_only_enable_unified_skill_tree(self) -> None:
+    def test_default_configuration_uses_standard_safety(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             config_path = root / "agent.toml"
@@ -71,7 +69,6 @@ skills = ["skills"]
 
             config = AgentConfig.load_from_file(config_path)
 
-            self.assertEqual(["skill"], config.agent.use_features)
             self.assertEqual("standard", config.agent.safety)
 
     def test_unknown_safety_preset_is_rejected(self) -> None:
@@ -82,7 +79,7 @@ skills = ["skills"]
             with self.assertRaisesRegex(ValueError, "unknown safety preset"):
                 AgentConfig.load_from_file(path)
 
-    def test_feature_names_are_lowercased_without_legacy_aliases(self) -> None:
+    def test_removed_feature_switch_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             config_path = root / "agent.toml"
@@ -94,9 +91,8 @@ use_features = ["SKILLS", "MCP"]
                 encoding="utf-8",
             )
 
-            config = AgentConfig.load_from_file(config_path)
-
-            self.assertEqual(["skills", "mcp"], config.agent.use_features)
+            with self.assertRaisesRegex(ValueError, "unknown agent settings: use_features"):
+                AgentConfig.load_from_file(config_path)
 
     def test_removed_memory_path_is_rejected_instead_of_ignored(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

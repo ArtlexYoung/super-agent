@@ -148,7 +148,6 @@ system = "Base system."
 workflow = "{workflow}"
 memory = "{memory}"
 skills = []
-use_features = ["skill"]
 disable_names = {disable_names_text}
 
 [paths]

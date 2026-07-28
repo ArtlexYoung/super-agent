@@ -4,9 +4,9 @@ from super_agent import Agent
 
 
 def main() -> None:
-    master = Agent.load_from_config_file("examples/basic/agent.toml")
-    coder = Agent.load_from_config_file("examples/basic/agent.toml")
-    reviewer = Agent.load_from_config_file("examples/basic/agent.toml")
+    master = Agent("examples/basic/agent.toml")
+    coder = Agent("examples/basic/agent.toml")
+    reviewer = Agent("examples/basic/agent.toml")
 
     master.add_subagent(coder, name="coder", description="writes code", triggers=["code"])
     master.add_subagent(reviewer, description="reviews risks", triggers=["review"])

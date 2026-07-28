@@ -29,6 +29,7 @@ class PublicApiTests(unittest.TestCase):
             "TaskResult",
             "TaskTrace",
             "ToolCall",
+            "UserAgent",
             "create_ag_ui_server",
         }
 

@@ -316,7 +316,7 @@ def build_proof_result(
     blocked = next(
         event for event in external_action_events if event.event_type == "action.blocked"
     )
-    evolution = setup.agent.list_skill_evolutions(USER_ID)[0]
+    evolution = setup.agent.for_user("local").skills.list_evolutions(USER_ID)[0]
     active_manifest = tomllib.loads(
         setup.root.joinpath("skills/external/protected/skill.toml").read_text(
             encoding="utf-8"

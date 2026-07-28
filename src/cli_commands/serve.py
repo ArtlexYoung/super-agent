@@ -24,11 +24,7 @@ def configure_serve_parser(parser: argparse.ArgumentParser) -> None:
 
 
 def run_serve_command(args: argparse.Namespace) -> int:
-    agent = (
-        Agent()
-        if args.config is None
-        else Agent.load_from_config_file(str(Path(args.config)))
-    )
+    agent = Agent(None if args.config is None else Path(args.config))
     origins = tuple(args.allowed_origins or DEFAULT_ALLOWED_ORIGINS)
     server = create_ag_ui_server(
         agent,

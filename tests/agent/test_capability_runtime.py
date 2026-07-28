@@ -130,7 +130,7 @@ class CapabilityRuntimeTests(unittest.TestCase):
             agent = Agent(AgentConfig.create_default(tmp))
 
             result = agent.run("hello")
-            trace = agent.read_task_trace(result.run_id)
+            trace = agent.for_user("local").runs.read_trace(result.run_id)
 
             self.assertEqual(result.run_id, trace.task_id)
             self.assertIsNone(trace.parent_task_id)

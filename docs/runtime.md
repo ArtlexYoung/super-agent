@@ -2,16 +2,17 @@
 
 ## One Runtime Session
 
-Each `Agent.run(...)` creates one internal `TaskRequest` and one `RuntimeSession` with a `RunIdentity` and `RuntimeStore`. `AgentRuntime.run_task(...)` prepares the Skill index once, then one `AdaptiveTaskLoop` selects and executes models, Skills, tools, and subagents. Runtime records a lock before model calls and appends the final evaluation. `Agent.read_task_trace(...)` returns the ordered events emitted by the executed task steps.
+Each `Agent.run(...)` creates one internal `TaskRequest` and one `RuntimeSession` with a `RunIdentity` and `RuntimeStore`. `AgentRuntime.run_task(...)` prepares the Skill index once, then one `AdaptiveTaskLoop` selects and executes models, Skills, tools, and subagents. Runtime records a lock before model calls and appends the final evaluation. `agent.for_user(...).runs.read_trace(...)` returns the ordered events emitted by the executed task steps.
 
 ## Runtime Conversations
 
 Conversations are event-backed Runtime views, not client-owned message arrays. Create a conversation and reuse its ID:
 
 ```python
-conversation = agent.create_conversation(user_id="alice")
-agent.run("first turn", user_id="alice", conversation_id=conversation.conversation_id)
-agent.run("second turn", user_id="alice", conversation_id=conversation.conversation_id)
+alice = agent.for_user("alice")
+conversation = alice.conversations.create()
+alice.run("first turn", conversation_id=conversation.conversation_id)
+alice.run("second turn", conversation_id=conversation.conversation_id)
 ```
 
 Runtime loads prior messages, appends the current user message, and stores the assistant result with its `run_id` and nested subagent results. `Agent` exposes explicit create, list, read, rename, clear, and delete methods. A `conversation_id` cannot be combined with an explicit `messages` list because that would create two competing history sources.
@@ -86,9 +87,10 @@ Model routing is deterministic when no evidence exists. Each real model attempt 
 After evidence exists, the scheduler combines declared model traits with a bounded exploration bonus. A failed primary model is credited only with its failure; a successful fallback receives its own completion evidence.
 
 ```python
-result = agent.run("Summarize this", user_id="alice")
-agent.record_task_feedback(result.run_id, 0.8, "Useful summary", user_id="alice")
-stats = agent.list_model_routing_stats(user_id="alice", purpose="summary")
+alice = agent.for_user("alice")
+result = alice.run("Summarize this")
+alice.runs.record_feedback(result.run_id, 0.8, "Useful summary")
+stats = alice.runs.list_model_routing_stats(purpose="summary")
 ```
 
 Scores are between `0` and `1`. Runtime also detects a small deterministic set of correction and exact-retry signals in stored conversation follow-ups. Explicit feedback takes precedence over implicit feedback and all evidence projection stays local; it does not call a model.
@@ -111,9 +113,9 @@ Each Agent is created independently and may use a different model, Skill tree, m
 ```python
 from super_agent import Agent
 
-main = Agent.load_from_config_file("agents/main.toml")
-coder = Agent.load_from_config_file("agents/coder.toml")
-reviewer = Agent.load_from_config_file("agents/reviewer.toml")
+main = Agent("agents/main.toml")
+coder = Agent("agents/coder.toml")
+reviewer = Agent("agents/reviewer.toml")
 
 main.add_subagent(
     coder,
@@ -134,7 +136,7 @@ Direct and plan workflows run matching subagents before the main model request. 
 
 ## Nested Agent Warnings
 
-`Agent.check_subagent_links()` reports:
+Before execution, Runtime reports:
 
 - A complete cycle path such as `main -> coder -> reviewer -> main`.
 - A complete path that exceeds configured `max_agent_chain_depth`.

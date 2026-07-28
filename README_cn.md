@@ -57,7 +57,7 @@ print(result.text)
 
 ```python
 agent = Agent()
-conversation = agent.create_conversation()
+conversation = agent.for_user("local").conversations.create()
 agent.run("记住我的项目使用 Python", conversation_id=conversation.conversation_id)
 result = agent.run("项目使用什么语言？", conversation_id=conversation.conversation_id)
 ```
@@ -180,8 +180,9 @@ discover -> disclose -> execute -> observe -> evaluate -> evolve
 模型路由在冷启动时保持确定性，只有同一任务用途积累证据后才进行有界探索。证据按用户、Agent、model Skill 和任务用途隔离。需要时可以直接记录质量分数：
 
 ```python
-result = agent.run("总结报告", user_id="alice")
-agent.record_task_feedback(result.run_id, 0.25, "遗漏了结论", user_id="alice")
+alice = agent.for_user("alice")
+result = alice.run("总结报告")
+alice.runs.record_feedback(result.run_id, 0.25, "遗漏了结论")
 ```
 
 ```bash
@@ -256,9 +257,9 @@ Agent 关系使用容易阅读的 Python 代码，而不是写死在 TOML 中：
 ```python
 from super_agent import Agent
 
-main = Agent.load_from_config_file("agents/main.toml")
-coder = Agent.load_from_config_file("agents/coder.toml")
-reviewer = Agent.load_from_config_file("agents/reviewer.toml")
+main = Agent("agents/main.toml")
+coder = Agent("agents/coder.toml")
+reviewer = Agent("agents/reviewer.toml")
 
 main.add_subagent(coder, name="coder", triggers=["代码", "实现"])
 main.add_subagent(reviewer, triggers=["审查"])

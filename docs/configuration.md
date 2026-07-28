@@ -27,7 +27,6 @@ path = ".super-agent"
 - `workflow`: name of the selected workflow Skill.
 - `memory`: name of the selected memory Skill.
 - `skills`: explicit Skill names or `capability:name` keys.
-- `use_features`: enabled feature names; defaults to `["skill"]`.
 - `disable_names`: Capability names, Skill keys, or bare Skill names to disable.
 - `max_agent_chain_depth`: optional warning threshold; omission means unlimited depth.
 

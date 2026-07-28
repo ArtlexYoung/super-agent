@@ -466,7 +466,6 @@ def _runtime_lock_to_dict(
             "memory": config.agent.memory,
             "skills": list(config.agent.skills),
             "max_agent_chain_depth": config.agent.max_agent_chain_depth,
-            "use_features": list(config.agent.use_features),
             "disable_names": list(config.agent.disable_names),
             "safety": config.agent.safety,
         },

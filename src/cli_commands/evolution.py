@@ -39,16 +39,14 @@ def run_evolution_command(args: argparse.Namespace) -> int:
     command = args.evolution_command
     user_id = getattr(args, "user_id", LOCAL_USER_ID)
     output = getattr(args, "output", "text")
+    skills = agent.for_user(user_id).skills
     if command in {None, "list"}:
-        evolutions = agent.list_skill_evolutions(
-            user_id,
-            status=getattr(args, "status", None),
-        )
+        evolutions = skills.list_evolutions(getattr(args, "status", None))
         _print_evolution_list(evolutions, output)
         return 0
     if command != "show":
         raise ValueError(f"unknown evolution command: {command}")
-    evolution = agent.read_skill_evolution(args.evolution_id, user_id=user_id)
+    evolution = skills.read_evolution(args.evolution_id)
     _print_evolution(evolution, output)
     return 0
 
@@ -99,7 +97,7 @@ def _print_evolution(evolution: SkillEvolutionState, output: str) -> None:
 
 
 def _load_agent(config_path: str | None) -> Agent:
-    return Agent() if config_path is None else Agent.load_from_config_file(config_path)
+    return Agent(config_path)
 
 
 def _add_common_arguments(parser: argparse.ArgumentParser) -> None:

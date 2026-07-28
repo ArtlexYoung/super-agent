@@ -179,9 +179,8 @@ class AGUIRequestHandler(BaseHTTPRequestHandler):
                 self._write_sse_event(mapped)
 
         try:
-            self._server.agent.run(
+            self._server.agent.for_user(self._server.user_id).run(
                 request.prompt,
-                user_id=self._server.user_id,
                 conversation_id=request.thread_id,
                 run_options=AgentRunOptions(
                     run_id=request.run_id,

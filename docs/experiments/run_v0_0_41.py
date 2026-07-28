@@ -108,8 +108,9 @@ def run_scheduling_and_isolation_proof(root: Path) -> dict[str, object]:
     second_config = write_agent_config(root, "scheduler-b")
     first_agent = Agent(AgentConfig.load_from_file(first_config))
     second_agent = Agent(AgentConfig.load_from_file(second_config))
-    answer = first_agent.run(ANSWER_PROMPT, user_id="alpha")
-    analysis = first_agent.run(ANALYSIS_PROMPT, user_id="alpha")
+    alpha = first_agent.for_user("alpha")
+    answer = alpha.run(ANSWER_PROMPT)
+    analysis = alpha.run(ANALYSIS_PROMPT)
     answer_insight = explain_run_with_insight(
         first_agent.runtime.create_store("alpha"),
         answer.run_id,
@@ -122,9 +123,9 @@ def run_scheduling_and_isolation_proof(root: Path) -> dict[str, object]:
         "answer": selected_model_key(answer_insight),
         "analysis": selected_model_key(analysis_insight),
     }
-    alpha_stats = first_agent.list_model_routing_stats(user_id="alpha")
-    beta_stats = first_agent.list_model_routing_stats(user_id="beta")
-    second_agent_stats = second_agent.list_model_routing_stats(user_id="alpha")
+    alpha_stats = alpha.runs.list_model_routing_stats()
+    beta_stats = first_agent.for_user("beta").runs.list_model_routing_stats()
+    second_agent_stats = second_agent.for_user("alpha").runs.list_model_routing_stats()
     return {
         "prompts": [ANSWER_PROMPT, ANALYSIS_PROMPT],
         "selected_models": selected,
@@ -168,10 +169,10 @@ def run_automatic_evolution_proof(root: Path) -> dict[str, object]:
     )
     agent = Agent(AgentConfig.load_from_file(config_path), provider=provider)
     run_expected_failure(agent, "echo first task")
-    promoted = agent.list_skill_evolutions()[0]
+    promoted = agent.for_user("local").skills.list_evolutions()[0]
     promoted_text = read_echo_instructions(root)
     regression_run_id = run_expected_failure(agent, "echo regression task")
-    monitored = agent.read_skill_evolution(promoted.evolution_id)
+    monitored = agent.for_user("local").skills.read_evolution(promoted.evolution_id)
     regression_insight = explain_run_with_insight(
         agent.runtime.create_store(),
         regression_run_id,
@@ -206,7 +207,7 @@ def selected_model_key(insight: dict[str, object]) -> str:
 
 
 def routing_call_count(agent: Agent, purpose: str) -> int:
-    return sum(item.call_count for item in agent.list_model_routing_stats(purpose=purpose))
+    return sum(item.call_count for item in agent.for_user("local").runs.list_model_routing_stats(purpose=purpose))
 
 
 def run_expected_failure(agent: Agent, prompt: str) -> str:
