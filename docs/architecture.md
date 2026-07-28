@@ -54,14 +54,14 @@ These lifecycle stages cannot be replaced by parallel controllers. Workflow Skil
 
 ## Executable Capabilities
 
-`CapabilityRegistry` stores only explicitly registered Skill executors. Each descriptor
-locks the executor name, version, class, SHA-256, and dependencies. Authorization lives
+`CapabilityRegistry` stores only explicitly registered Capabilities. Each descriptor
+locks the Capability name, version, class, SHA-256, and dependencies. Authorization lives
 only in Runtime action effects and safety policy.
 
-Every executor returns one `SkillContribution`. A contribution may contain model context, prompt context, tools, a task policy, and a completion recorder. Runtime consumes these fields uniformly and never imports concrete memory, MCP, or workflow implementations. Capability-owned tools use one `CapabilityTool` contract and enter the same traced tool registry.
+Every Capability has one `load_skill(request)` method and returns one `SkillContribution`. A contribution may contain model context, prompt context, tools, a task policy, and a completion recorder. Runtime consumes these fields uniformly and never imports concrete memory, MCP, or workflow implementations. Capability-owned tools use one `CapabilityTool` contract and enter the same traced tool registry.
 
 Built-ins require no configuration. Custom code composition uses the explicit
-`Agent.add_skill_executor(...)` method. Runtime rejects executable Capability Skills and
+`Agent.add_capability(...)` method. Runtime rejects executable Capability Skills and
 never imports Python from a Skill directory.
 
 ## Skills and Providers
@@ -107,11 +107,11 @@ backend. See [Runtime Safety](safety.md).
 
 - One task uses one Runtime session, Skill index, disclosure cache, and store.
 - Runtime is the only task lifecycle and model-loop owner.
-- Every Skill executor is registered once and locked by exact hash.
+- Every Capability is registered once and locked by exact hash.
 - Runtime consumes only `SkillContribution`, never a Skill-kind-specific runtime object.
 - One `AdaptiveTaskLoop` owns direct execution, planning, step scheduling, model fallback, and tool iteration.
 - Project Skills override same-key built-in fallback Skills inside one disclosure source scan.
-- Every used Skill revision, including an executor's `capability` Skill, is evaluated automatically.
+- Every used Skill revision is evaluated automatically.
 - Workflow is Skill data, not a second execution engine.
 - Evolution cannot bypass validation, evaluation, promotion, or rollback.
 - Planner and model Skills cannot bypass the shared Skill evolution state machine.

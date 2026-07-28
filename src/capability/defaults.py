@@ -1,11 +1,11 @@
-"""Built-in Skill executors and central progressive disclosure defaults."""
+"""Built-in Capabilities and central progressive disclosure defaults."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
 from capability.registry import CapabilityRegistry
-from capability.skill_executors import create_builtin_skill_executors
+from capability.skill_executors import create_builtin_capabilities
 from runtime.config import AgentConfig
 from runtime.identity import LOCAL_USER_ID, RunIdentity
 from runtime.storage import StorageBackend, create_storage_backend
@@ -15,8 +15,8 @@ from skill.disclosure import ProgressiveDisclosureCore
 
 def create_default_capability_registry() -> CapabilityRegistry:
     registry = CapabilityRegistry()
-    for executor in create_builtin_skill_executors().values():
-        registry.add_skill_executor(executor)
+    for capability in create_builtin_capabilities():
+        registry.add_capability(capability)
     return registry
 
 

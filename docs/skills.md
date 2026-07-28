@@ -45,15 +45,15 @@ Schema v2 rejects unknown top-level fields and old Capability-specific configura
 - `memory`: memory policy and runtime memory construction.
 - `workflow`: direct, plan, react, or loop execution behavior.
 - `model`: model description, connection ownership, and routing traits.
-- `capability`: installable executable Runtime mechanism.
+- `capability`: reserved and rejected; executable mechanisms come only from code.
 
-Custom Capability names are discovered automatically. Register a matching Skill executor in code:
+Custom Capability names are discovered automatically. Register a matching Capability in code:
 
 ```python
-agent.add_skill_executor(my_executor)
+agent.add_capability(my_capability)
 ```
 
-The executor's `capability_name` must match the manifest value.
+The Capability's `capability_name` must match the manifest value.
 
 ## Stable Identity
 

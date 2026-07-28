@@ -6,13 +6,15 @@ import math
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from typing import Any
-from capability.skill_executors import create_builtin_skill_executors, load_skill_model_context
+from capability.defaults import create_default_capability_registry
+from capability.registry import CapabilityRegistry, SkillLoadRequest
 from skill.disclosure import (
     ProgressiveDisclosureCore,
     SkillIndex,
     SkillIndexEntry,
+    SkillReference,
 )
+from skill.manifest import Skill
 
 
 BENCHMARK_SCHEMA_VERSION = 2
@@ -57,12 +59,14 @@ class SkillBenchmark:
     def __init__(
         self,
         skill_disclosure: ProgressiveDisclosureCore,
-        skill_executors: dict[str, Any] | None = None,
+        capability_registry: CapabilityRegistry | None = None,
         *,
         base_system_prompt: str = "",
     ) -> None:
         self.skill_disclosure = skill_disclosure
-        self.skill_executors = skill_executors or create_builtin_skill_executors()
+        self.capability_registry = (
+            capability_registry or create_default_capability_registry()
+        )
         self.base_system_prompt = base_system_prompt.strip()
 
     def run_cases(self, cases: list[BenchmarkCase]) -> BenchmarkReport:
@@ -74,8 +78,8 @@ class SkillBenchmark:
             entry
             for entry in skill_index.entries
             if (
-                entry.reference.capability in self.skill_executors
-                and self.skill_executors[entry.reference.capability].adds_model_context
+                entry.reference.capability
+                in self.capability_registry.list_model_context_capabilities()
             )
         ]
         disclosure_index = _build_disclosure_index(skill_index, self.skill_disclosure.cache_root)
@@ -85,7 +89,7 @@ class SkillBenchmark:
                 _build_eager_context(
                     self.skill_disclosure,
                     context_entries,
-                    self.skill_executors,
+                    self.capability_registry,
                 ),
             ]
         )
@@ -130,18 +134,15 @@ class SkillBenchmark:
         selected_references = self.skill_disclosure.select_skill_references_for_prompt(
             prompt,
             case.enabled_skills,
-            allowed_capabilities={
-                name
-                for name, executor in self.skill_executors.items()
-                if executor.adds_model_context
-            },
+            allowed_capabilities=(
+                self.capability_registry.list_model_context_capabilities()
+            ),
         )
         selected = [
-            load_skill_model_context(
+            _load_model_context(
+                self.capability_registry,
                 self.skill_disclosure,
                 reference,
-                self.skill_executors,
-                store=self.skill_disclosure.store,
             )
             for reference in selected_references
         ]
@@ -225,18 +226,34 @@ def benchmark_report_to_dict(report: BenchmarkReport) -> dict[str, object]:
 def _build_eager_context(
     disclosure: ProgressiveDisclosureCore,
     entries: list[SkillIndexEntry],
-    skill_executors: dict[str, Any],
+    capability_registry: CapabilityRegistry,
 ) -> str:
     skills = [
-        load_skill_model_context(
+        _load_model_context(
+            capability_registry,
             disclosure,
             entry.reference,
-            skill_executors,
-            store=disclosure.store,
         )
         for entry in entries
     ]
     return _join_context([skill.instructions for skill in skills])
+
+
+def _load_model_context(
+    registry: CapabilityRegistry,
+    disclosure: ProgressiveDisclosureCore,
+    reference: SkillReference,
+) -> Skill:
+    contribution = registry.load_skill(
+        SkillLoadRequest(
+            disclosure,
+            reference,
+            disclosure.store,
+        )
+    )
+    if contribution.model_context is None:
+        raise ValueError("Capability did not contribute model context")
+    return contribution.model_context
 
 
 def _build_disclosure_index(index: SkillIndex, cache_root: Path) -> str:

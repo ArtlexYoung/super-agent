@@ -252,11 +252,9 @@ def _choose_skills(
     session: RuntimeSession,
     workflow: TaskPolicy,
 ) -> list[SkillReference]:
-    model_context_capabilities = {
-        name
-        for name, executor in session.capability_registry.list_skill_executors().items()
-        if executor.adds_model_context  # type: ignore[attr-defined]
-    }
+    model_context_capabilities = (
+        session.capability_registry.list_model_context_capabilities()
+    )
     return session.require_skill_disclosure().select_skill_references_for_prompt(
         request.prompt,
         session.config.agent.skills,

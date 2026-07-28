@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
-from typing import Callable
+import hashlib
+from dataclasses import asdict
 
+from capability.registry import Capability, SkillLoadRequest
 from capability.skill_contributions import (
     CapabilityAction,
     CapabilityTool,
@@ -12,14 +13,9 @@ from capability.skill_contributions import (
     read_required_tool_string,
     read_tool_object,
 )
-from runtime.identity import RunIdentity
 from runtime.safety import ActionEffect
-from runtime.store import RuntimeStore
-from skill.disclosure import ProgressiveDisclosureCore, SkillReference
 from skill.kinds.mcp import McpServer, create_mcp_server_from_skill_disclosure
 from skill.kinds.memory import (
-    MemoryActionRunner,
-    MemoryTextModel,
     MiniMemory,
     create_memory_from_skill_disclosure,
 )
@@ -28,23 +24,7 @@ from skill.kinds.workflow import create_workflow_policy_from_skill
 from skill.manifest import Skill
 
 
-@dataclass(frozen=True)
-class SkillLoadRequest:
-    disclosure: ProgressiveDisclosureCore
-    reference: SkillReference
-    store: RuntimeStore
-    identity: RunIdentity | None = None
-    send_text_model_messages: MemoryTextModel | None = None
-    execute_action: MemoryActionRunner | None = None
-
-
-@dataclass(frozen=True)
-class CapabilityToolsRequest:
-    disclosure: ProgressiveDisclosureCore
-    record_skill_used: Callable[[SkillReference], None]
-
-
-class PromptSkillExecutor:
+class PromptCapability:
     name = "prompt-context"
     version = "1"
     capability_name = "prompt"
@@ -62,11 +42,8 @@ class PromptSkillExecutor:
             )
         )
 
-    def create_tools(self, request: CapabilityToolsRequest) -> tuple[CapabilityTool, ...]:
-        return ()
 
-
-class McpSkillExecutor:
+class McpCapability:
     name = "mcp-stdio"
     version = "1"
     capability_name = "mcp"
@@ -78,52 +55,20 @@ class McpSkillExecutor:
             self.capability_name,
         )
         server = create_mcp_server_from_skill_disclosure(opened)
+        list_tool_name, run_tool_name = _mcp_tool_names(server.name)
         return SkillContribution(
             model_context=Skill(
                 manifest=opened.read_manifest(),
-                instructions=server.build_skill_instructions(),
-            )
-        )
-
-    def create_tools(self, request: CapabilityToolsRequest) -> tuple[CapabilityTool, ...]:
-        def load_server(name: str) -> McpServer:
-            opened = request.disclosure.open_skill(name, self.capability_name)
-            request.record_skill_used(opened.index_entry.reference)
-            return create_mcp_server_from_skill_disclosure(opened)
-
-        return (
-            CapabilityTool(
-                name="list_skill_tools",
-                description="List tools exposed by one MCP skill.",
-                properties={"name": {"type": "string"}},
-                required=("name",),
-                handler=lambda arguments: _list_mcp_tools(load_server, arguments),
-                action=CapabilityAction(
-                    (ActionEffect.EXECUTE, ActionEffect.NETWORK),
-                    "mcp",
-                    "name",
+                instructions=(
+                    server.build_skill_instructions()
+                    + f"\nRuntime tools: {list_tool_name}, {run_tool_name}"
                 ),
             ),
-            CapabilityTool(
-                name="run_skill",
-                description="Call one tool from an MCP skill.",
-                properties={
-                    "name": {"type": "string"},
-                    "tool": {"type": "string"},
-                    "arguments": {"type": "object"},
-                },
-                required=("name", "tool", "arguments"),
-                handler=lambda arguments: _run_mcp_tool(load_server, arguments),
-                action=CapabilityAction(
-                    (ActionEffect.EXECUTE, ActionEffect.NETWORK),
-                    "mcp",
-                    "name",
-                ),
-            ),
+            tools=_create_mcp_tools(server, list_tool_name, run_tool_name),
         )
 
 
-class MemorySkillExecutor:
+class MemoryCapability:
     name = "event-memory"
     version = "2"
     capability_name = "memory"
@@ -144,11 +89,8 @@ class MemorySkillExecutor:
         run_id = "" if request.identity is None else request.identity.run_id
         return create_memory_skill_contribution(memory, run_id)
 
-    def create_tools(self, request: CapabilityToolsRequest) -> tuple[CapabilityTool, ...]:
-        return ()
 
-
-class WorkflowSkillExecutor:
+class WorkflowCapability:
     name = "tool-loop"
     version = "1"
     capability_name = "workflow"
@@ -163,11 +105,8 @@ class WorkflowSkillExecutor:
             task_policy=create_workflow_policy_from_skill(opened),
         )
 
-    def create_tools(self, request: CapabilityToolsRequest) -> tuple[CapabilityTool, ...]:
-        return ()
 
-
-class PlannerSkillExecutor:
+class PlannerCapability:
     name = "task-planner"
     version = "1"
     capability_name = "planner"
@@ -182,76 +121,15 @@ class PlannerSkillExecutor:
             planning_policy=create_planning_policy_from_skill(opened),
         )
 
-    def create_tools(self, request: CapabilityToolsRequest) -> tuple[CapabilityTool, ...]:
-        return ()
 
-
-def create_builtin_skill_executors() -> dict[str, object]:
-    executors = [
-        PromptSkillExecutor(),
-        McpSkillExecutor(),
-        MemorySkillExecutor(),
-        WorkflowSkillExecutor(),
-        PlannerSkillExecutor(),
-    ]
-    return {executor.capability_name: executor for executor in executors}
-
-
-def load_skill_contribution(
-    disclosure: ProgressiveDisclosureCore,
-    reference: SkillReference,
-    executors: dict[str, object],
-    store: RuntimeStore,
-    identity: RunIdentity | None = None,
-) -> SkillContribution:
-    executor = executors.get(reference.capability)
-    if executor is None:
-        raise KeyError(f"skill executor not found for capability: {reference.capability}")
-    contribution = executor.load_skill(  # type: ignore[attr-defined]
-        SkillLoadRequest(disclosure, reference, store, identity)
+def create_builtin_capabilities() -> tuple[Capability, ...]:
+    return (
+        PromptCapability(),
+        McpCapability(),
+        MemoryCapability(),
+        WorkflowCapability(),
+        PlannerCapability(),
     )
-    if not isinstance(contribution, SkillContribution):
-        raise TypeError("skill executor must return SkillContribution")
-    return contribution
-
-
-def load_skill_model_context(
-    disclosure: ProgressiveDisclosureCore,
-    reference: SkillReference,
-    executors: dict[str, object],
-    store: RuntimeStore,
-    identity: RunIdentity | None = None,
-) -> Skill:
-    contribution = load_skill_contribution(
-        disclosure,
-        reference,
-        executors,
-        store,
-        identity,
-    )
-    if contribution.model_context is None:
-        raise ValueError(
-            f"skill capability cannot enter model context: {reference.capability}"
-        )
-    return contribution.model_context
-
-
-def create_tools_from_capabilities(
-    executors: dict[str, object],
-    request: CapabilityToolsRequest,
-) -> tuple[CapabilityTool, ...]:
-    tools: list[CapabilityTool] = []
-    for capability_name in sorted(executors):
-        executor = executors[capability_name]
-        created = executor.create_tools(request)  # type: ignore[attr-defined]
-        if not isinstance(created, tuple) or not all(
-            isinstance(tool, CapabilityTool) for tool in created
-        ):
-            raise TypeError(
-                f"skill executor create_tools must return CapabilityTool tuple: {capability_name}"
-            )
-        tools.extend(created)
-    return tuple(tools)
 
 
 def create_memory_skill_contribution(
@@ -381,22 +259,54 @@ def _forget_memory(
     return {"item_id": item_id, "forgotten": True}
 
 
-def _list_mcp_tools(
-    load_server: Callable[[str], McpServer],
-    arguments: dict[str, object],
-) -> dict[str, object]:
-    name = read_required_tool_string(arguments, "name")
-    return {"name": name, "tools": load_server(name).list_tools()}
+def _create_mcp_tools(
+    server: McpServer,
+    list_tool_name: str,
+    run_tool_name: str,
+) -> tuple[CapabilityTool, ...]:
+    action = CapabilityAction(
+        (ActionEffect.EXECUTE, ActionEffect.NETWORK),
+        f"mcp:{server.name}",
+    )
+    return (
+        CapabilityTool(
+            list_tool_name,
+            f"List tools exposed by the {server.name} MCP Skill.",
+            {},
+            lambda arguments: {"name": server.name, "tools": server.list_tools()},
+            action=action,
+        ),
+        CapabilityTool(
+            run_tool_name,
+            f"Call one tool from the {server.name} MCP Skill.",
+            {"tool": {"type": "string"}, "arguments": {"type": "object"}},
+            lambda arguments: _run_mcp_tool(server, arguments),
+            ("tool", "arguments"),
+            action,
+        ),
+    )
 
 
 def _run_mcp_tool(
-    load_server: Callable[[str], McpServer],
+    server: McpServer,
     arguments: dict[str, object],
 ) -> dict[str, object]:
-    name = read_required_tool_string(arguments, "name")
     tool = read_required_tool_string(arguments, "tool")
-    result = load_server(name).call_tool(
+    result = server.call_tool(
         tool,
         read_tool_object(arguments, "arguments"),
     )
-    return {"name": name, "tool": tool, "result": result}
+    return {"name": server.name, "tool": tool, "result": result}
+
+
+def _mcp_tool_names(skill_name: str) -> tuple[str, str]:
+    clean = "".join(
+        character if character.isascii() and character.isalnum() else "_"
+        for character in skill_name.lower()
+    ).strip("_")
+    if not clean:
+        clean = hashlib.sha256(skill_name.encode()).hexdigest()[:12]
+    if len(clean) > 40:
+        digest = hashlib.sha256(skill_name.encode()).hexdigest()[:8]
+        clean = f"{clean[:31]}_{digest}"
+    return f"mcp_{clean}_list", f"mcp_{clean}_run"

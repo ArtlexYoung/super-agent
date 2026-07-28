@@ -6,7 +6,7 @@ from dataclasses import dataclass, replace
 from typing import Callable, cast
 
 from capability.skill_contributions import PlanningPolicy, SkillContribution, TaskPolicy
-from capability.skill_executors import SkillLoadRequest
+from capability.registry import SkillLoadRequest
 from provider.chat import Message
 from runtime.planning import PlannedTaskStep, TaskPlanningDecision
 from runtime.session import RuntimeSession
@@ -35,7 +35,7 @@ def load_workflow_policy(session: RuntimeSession) -> TaskPolicy:
         ) from None
     contribution = _load_skill(session, entry.reference)
     if contribution.task_policy is None:
-        raise TypeError("workflow skill executor did not contribute a task policy")
+        raise TypeError("workflow Capability did not contribute a task policy")
     return contribution.task_policy
 
 
@@ -45,7 +45,7 @@ def load_default_planner(session: RuntimeSession) -> LoadedPlanner | None:
         return None
     contribution = _load_skill(session, entry.reference)
     if contribution.planning_policy is None:
-        raise TypeError("planner skill executor did not contribute a planning policy")
+        raise TypeError("planner Capability did not contribute a planning policy")
     return LoadedPlanner(
         policy=contribution.planning_policy,
         contribution=contribution,
@@ -201,10 +201,8 @@ def _load_skill(
         reference.name,
         reference.capability,
     )
-    executor = session.capability_registry.require_skill_executor(reference.capability)
     session.record_skill_used(entry)
-    session.record_skill_executor_used(reference.capability, executor)
-    contribution = executor.load_skill(  # type: ignore[attr-defined]
+    return session.capability_registry.load_skill(
         SkillLoadRequest(
             session.require_skill_disclosure(),
             reference,
@@ -214,9 +212,6 @@ def _load_skill(
             session.execute_action,
         )
     )
-    if not isinstance(contribution, SkillContribution):
-        raise TypeError("skill executor must return SkillContribution")
-    return contribution
 
 
 def _subagent_result_from_dict(value: dict[str, object]) -> SubAgentResult:

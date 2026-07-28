@@ -9,13 +9,13 @@ from runtime.config import AgentConfig
 
 
 class CapabilityRegistryTests(unittest.TestCase):
-    def test_runtime_lock_contains_only_skill_executor_descriptors(self) -> None:
+    def test_runtime_lock_contains_only_capability_descriptors(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             agent = Agent(AgentConfig.create_default(tmp))
             result = agent.run("hello")
             runtime_lock = agent.runtime.create_store().read_runtime_lock(result.run_id)
 
-            self.assertEqual(6, runtime_lock["schema_version"])
+            self.assertEqual(7, runtime_lock["schema_version"])
             locked = runtime_lock["capabilities"]
             self.assertEqual(
                 [
@@ -24,40 +24,40 @@ class CapabilityRegistryTests(unittest.TestCase):
                 ],
                 locked,
             )
-            self.assertTrue(all(item["slot"].startswith("skill_executor:") for item in locked))
+            self.assertTrue(all(item["slot"].startswith("capability:") for item in locked))
             self.assertTrue(all(len(item["content_sha256"]) == 64 for item in locked))
 
     def test_registry_rejects_missing_and_cyclic_dependencies(self) -> None:
         missing = CapabilityRegistry()
-        missing.add_skill_executor(
-            _Executor("alpha", ("skill_executor:missing",))
+        missing.add_capability(
+            _Capability("alpha", ("capability:missing",))
         )
-        with self.assertRaisesRegex(KeyError, "alpha -> skill_executor:missing"):
+        with self.assertRaisesRegex(KeyError, "alpha -> capability:missing"):
             missing.validate_dependencies()
 
         cyclic = CapabilityRegistry()
-        cyclic.add_skill_executor(
-            _Executor("alpha", ("skill_executor:beta",))
+        cyclic.add_capability(
+            _Capability("alpha", ("capability:beta",))
         )
-        cyclic.add_skill_executor(
-            _Executor("beta", ("skill_executor:alpha",))
+        cyclic.add_capability(
+            _Capability("beta", ("capability:alpha",))
         )
-        with self.assertRaisesRegex(ValueError, "alpha -> skill_executor:beta"):
+        with self.assertRaisesRegex(ValueError, "alpha -> capability:beta"):
             cyclic.validate_dependencies()
 
-    def test_registry_rejects_descriptor_for_another_executor(self) -> None:
+    def test_registry_rejects_descriptor_for_another_capability(self) -> None:
         registry = CapabilityRegistry()
-        executor = _Executor("prompt")
+        capability = _Capability("prompt")
         descriptor = replace(
-            create_capability_descriptor("skill_executor:prompt", executor),
-            slot="skill_executor:memory",
+            create_capability_descriptor(capability),
+            slot="capability:memory",
         )
 
         with self.assertRaisesRegex(ValueError, "does not match slot"):
-            registry.add_skill_executor(executor, descriptor)
+            registry.add_capability(capability, descriptor)
 
 
-class _Executor:
+class _Capability:
     name = "test"
     version = "1"
     adds_model_context = True
@@ -72,6 +72,3 @@ class _Executor:
 
     def load_skill(self, request: object) -> object:
         return request
-
-    def create_tools(self, request: object) -> tuple[object, ...]:
-        return ()

@@ -90,16 +90,5 @@ class RuntimeSession:
         )
         self._used_skill_revisions[revision.identity] = revision
 
-    def record_skill_executor_used(
-        self,
-        capability_name: str,
-        executor: object,
-    ) -> None:
-        registration = self.capability_registry.require_registration(capability_name)
-        if registration.implementation is not executor:
-            raise ValueError(
-                "runtime used an unregistered Skill executor: " + capability_name
-            )
-
     def list_used_skill_revisions(self) -> list[SkillRevision]:
         return list(self._used_skill_revisions.values())

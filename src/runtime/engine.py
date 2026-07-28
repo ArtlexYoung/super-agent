@@ -458,7 +458,7 @@ def _runtime_lock_to_dict(
 ) -> dict[str, object]:
     registry.validate_dependencies()
     return {
-        "schema_version": 6,
+        "schema_version": 7,
         "agent": {
             "name": config.agent.name,
             "system": config.agent.system,

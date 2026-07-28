@@ -6,23 +6,23 @@ Capability code is trusted application code. Runtime never imports, compiles, or
 Python from a Skill directory. Register custom code explicitly so the trust decision is
 visible in the Agent composition:
 
-Built-in executors handle prompt, MCP, memory, and workflow Skills. Replace or add one explicitly:
+Built-in Capabilities handle prompt, MCP, memory, workflow, and planner Skills. Replace or add one explicitly:
 
 ```python
-agent.add_skill_executor(executor)
+agent.add_capability(capability)
 ```
 
-An executor declares `name`, `version`, `capability_name`, `adds_model_context`, `load_skill(request)`, and `create_tools(request)`. There are no run-controller, disclosure, evaluator, or updater slots.
+A Capability declares `name`, `version`, `capability_name`, `adds_model_context`, and one method: `load_skill(request)`. There are no parallel tool, run-controller, disclosure, evaluator, or updater contracts.
 
 `load_skill` returns one `SkillContribution`. It can contribute model context, prompt context, tools, a task policy, and a completion recorder without exposing a private runtime object:
 
 ```python
-from capability.skill_contributions import CapabilityAction, CapabilityTool, SkillContribution
+from super_agent import CapabilityAction, CapabilityTool, SkillContribution
 from runtime.safety import ActionEffect
 from skill.manifest import Skill
 
 
-class SearchExecutor:
+class SearchCapability:
     name = "search"
     version = "1"
     capability_name = "search"
@@ -50,14 +50,11 @@ class SearchExecutor:
             ),
         )
 
-    def create_tools(self, request):
-        return ()
-
     def run_search(self, arguments):
         return {"matches": []}
 ```
 
-`create_tools` contributes capability-wide tools that are available before one specific Skill is loaded. Return an empty tuple when the capability has none. Tool calls are always traced by Runtime.
+Tools are loaded progressively with the Skill that declares their content. Tool calls are always traced by Runtime. A model can disclose another Skill during a tool loop; its Capability contribution becomes available on the next model step.
 
 Every contributed tool declares its effects and resource. Runtime checks that declaration
 before calling the handler. Registered code cannot delegate authorization to Skill text.

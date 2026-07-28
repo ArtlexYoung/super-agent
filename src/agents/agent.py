@@ -8,6 +8,7 @@ from capability.defaults import (
     create_default_capability_registry,
     create_progressive_skill_disclosure,
 )
+from capability.registry import Capability
 from provider.chat import ChatProvider, Message
 from provider.pool import ProviderPool
 from runtime.config import AgentConfig
@@ -56,7 +57,7 @@ class Agent:
         config: AgentConfig | str | Path | None = None,
         *,
         provider: ChatProvider | None = None,
-        skill_executors: list[object] | None = None,
+        capabilities: list[Capability] | None = None,
         storage: StorageBackend | None = None,
         safety_policy: SafetyPolicy | None = None,
     ) -> None:
@@ -85,8 +86,8 @@ class Agent:
         self.safety_policy = safety_policy or SafetyPolicy.from_name(
             self.config.agent.safety
         )
-        for executor in skill_executors or []:
-            self.capability_registry.add_skill_executor(executor, replace=True)
+        for capability in capabilities or []:
+            self.capability_registry.add_capability(capability, replace=True)
         self.runtime = AgentRuntime(
             self.config,
             self.model_profiles,
@@ -128,8 +129,8 @@ class Agent:
     def list_subagents(self) -> list[SubAgent]:
         return list(self._subagents)
 
-    def add_skill_executor(self, skill_executor: object) -> None:
-        self.capability_registry.add_skill_executor(skill_executor, replace=True)
+    def add_capability(self, capability: Capability) -> None:
+        self.capability_registry.add_capability(capability, replace=True)
 
     def add_model_provider(self, model_name: str, provider: ChatProvider) -> None:
         key = model_name.strip().lower()

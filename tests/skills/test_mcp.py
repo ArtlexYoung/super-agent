@@ -5,13 +5,15 @@ import sys
 from pathlib import Path
 
 from agents.agent import Agent
+from capability.defaults import create_default_capability_registry
+from capability.registry import SkillLoadRequest
 from runtime.config import AgentConfig
 from runtime.store import create_local_runtime_store
 from provider.chat import MockProvider
-from capability.skill_executors import create_builtin_skill_executors, load_skill_model_context
-from skill.disclosure import ProgressiveDisclosureCore
+from skill.disclosure import ProgressiveDisclosureCore, SkillReference
 from skill.kinds.mcp import create_mcp_server_from_skill_disclosure
 from skill.kinds.memory import MiniMemory
+from skill.manifest import Skill
 from support import write_memory_skill, write_workflow_skill
 
 
@@ -51,12 +53,7 @@ class McpSkillTests(unittest.TestCase):
                 "please inspect filesystem",
                 allowed_capabilities={"prompt", "mcp"},
             )
-            skill = load_skill_model_context(
-                disclosure,
-                selected[0],
-                create_builtin_skill_executors(),
-                disclosure.store,
-            )
+            skill = _load_model_context(disclosure, selected[0])
 
             self.assertEqual("filesystem", skill.manifest.name)
             self.assertEqual("mcp", skill.manifest.capability)
@@ -77,17 +74,48 @@ class McpSkillTests(unittest.TestCase):
             )
 
             disclosure = _prepare_disclosure(root)
-            skill = load_skill_model_context(
+            skill = _load_model_context(
                 disclosure,
-                disclosure.prepare_skill_index().require_skill("github", "mcp").reference,
-                create_builtin_skill_executors(),
-                disclosure.store,
+                disclosure.prepare_skill_index().require_skill(
+                    "github", "mcp"
+                ).reference,
             )
 
             self.assertIn("Environment variables: GITHUB_TOKEN", skill.instructions)
             self.assertNotIn("secret-token", skill.instructions)
 
-    def test_mcp_executor_requires_command_configuration(self) -> None:
+    def test_mcp_tools_are_loaded_with_their_specific_skill(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_mcp_server(root, "alpha", "Alpha MCP", "echo", [])
+            _write_mcp_server(root, "beta", "Beta MCP", "echo", [])
+            disclosure = _prepare_disclosure(root)
+            index = disclosure.prepare_skill_index()
+            registry = create_default_capability_registry()
+
+            alpha = registry.load_skill(
+                SkillLoadRequest(
+                    disclosure,
+                    index.require_skill("alpha", "mcp").reference,
+                    disclosure.store,
+                )
+            )
+            beta = registry.load_skill(
+                SkillLoadRequest(
+                    disclosure,
+                    index.require_skill("beta", "mcp").reference,
+                    disclosure.store,
+                )
+            )
+
+            alpha_names = {tool.name for tool in alpha.tools}
+            beta_names = {tool.name for tool in beta.tools}
+            self.assertEqual({"mcp_alpha_list", "mcp_alpha_run"}, alpha_names)
+            self.assertEqual({"mcp_beta_list", "mcp_beta_run"}, beta_names)
+            self.assertFalse(alpha_names & beta_names)
+            self.assertIn("mcp_alpha_run", alpha.model_context.instructions)
+
+    def test_mcp_capability_requires_command_configuration(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             server_dir = root / "skills" / "mcp" / "bad"
@@ -283,6 +311,18 @@ path = ".super-agent"
 
 def _toml_list(items: list[str]) -> str:
     return "[" + ", ".join(f'"{item}"' for item in items) + "]"
+
+
+def _load_model_context(
+    disclosure: ProgressiveDisclosureCore,
+    reference: SkillReference,
+) -> Skill:
+    contribution = create_default_capability_registry().load_skill(
+        SkillLoadRequest(disclosure, reference, disclosure.store)
+    )
+    if contribution.model_context is None:
+        raise AssertionError("MCP Capability did not provide model context")
+    return contribution.model_context
 
 
 def _write_fake_mcp_server(path: Path) -> None:

@@ -31,7 +31,7 @@ class SkillIsolationTests(unittest.TestCase):
                 [root / "skills"],
                 create_local_runtime_store(root / "state"),
             )
-            with self.assertRaisesRegex(ValueError, "Agent.add_skill_executor"):
+            with self.assertRaisesRegex(ValueError, "Agent.add_capability"):
                 disclosure.prepare_skill_index()
 
             self.assertFalse(marker.exists())
@@ -62,7 +62,7 @@ version = "0.1.0"
 triggers = []
 
 [configuration]
-slot = "skill_executor:prompt"
+slot = "capability:prompt"
 entry_file = "handler.py"
 entry_class = "Malicious"
 '''.strip()

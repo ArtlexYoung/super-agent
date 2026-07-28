@@ -19,7 +19,7 @@ from capability.skill_contributions import (
     CapabilityTool,
     SkillContribution,
 )
-from capability.skill_executors import CapabilityToolsRequest, SkillLoadRequest
+from capability.registry import SkillLoadRequest
 from provider.chat import Message, ModelResponse, ToolCall, ToolDefinition
 from runtime.config import AgentConfig
 from runtime.safety import ActionEffect
@@ -48,7 +48,7 @@ class ExternalCallProbe:
         return {"executed": True}
 
 
-class ExternalSkillExecutor:
+class ExternalCapability:
     """Expose one risky Tool only through an explicitly registered Capability."""
 
     name = "external-operation"
@@ -82,13 +82,6 @@ class ExternalSkillExecutor:
                 ),
             ),
         )
-
-    def create_tools(
-        self,
-        request: CapabilityToolsRequest,
-    ) -> tuple[CapabilityTool, ...]:
-        return ()
-
 
 class ProofProvider:
     """Route deterministic responses by the Runtime-owned model purpose prompt."""
@@ -255,7 +248,7 @@ def run_end_to_end_proof(root: Path) -> dict[str, object]:
     agent = Agent(
         config,
         provider=provider,
-        skill_executors=[ExternalSkillExecutor(probe)],
+        capabilities=[ExternalCapability(probe)],
     )
     store = agent.runtime.create_store(USER_ID)
     memory = MiniMemory(store)

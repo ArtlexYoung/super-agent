@@ -200,7 +200,7 @@ super-agent runs explain --config agent.toml --run-id <run-id> --output json
 
 洞察投影包含调度原因、任务计划及完成步骤、每一步的模型与子 Agent 路由、模型尝试、延迟、估算 token 与成本、学习后的路由证据、相关 Skill 保鲜度和自动进化决策。子 Agent 的 `run_id` 也可以从主项目查看，但查询仍严格限制在同一用户和同一存储后端内。
 
-`CapabilityRegistry` 只保存由应用代码明确注册的 Skill 处理器，可以通过 `agent.add_skill_executor(...)` 替换。每个处理器统一返回 `SkillContribution`，因此 Runtime 不需要了解 Memory、MCP 或 Workflow 的具体类。Skill 目录始终是不可信的声明式内容，Runtime 不会从中导入或执行 Python。
+`CapabilityRegistry` 只保存由应用代码明确注册的 Skill 执行机制，可以通过 `agent.add_capability(...)` 替换。每个 Capability 只有一个 `load_skill(request)` 契约，并统一返回 `SkillContribution`，因此 Runtime 不需要了解 Memory、MCP 或 Workflow 的具体类。Skill 目录始终是不可信的声明式内容，Runtime 不会从中导入或执行 Python。
 
 ## 可复现证明
 
@@ -235,7 +235,7 @@ super-agent skills evolve \
 
 model Skill 的连接字段默认归用户所有。Agent 可以改进说明、触发词、优势、用途和路由特征，但只有用户设置 `agent_can_update_connection = true` 后，Agent 才能修改 `provider`、`model`、`base_url` 或 `api_key_env`。
 
-可执行 Capability 是受信任的应用代码，必须通过 `Agent.add_skill_executor(...)` 明确注册。Runtime 会拒绝 `capability = "capability"` 的 Skill；Agent 可以进化注册代码使用的声明式 Skill，但不能把下载或生成的 Python 自动提升到 Runtime 进程。
+可执行 Capability 是受信任的应用代码，必须通过 `Agent.add_capability(...)` 明确注册。Runtime 会拒绝 `capability = "capability"` 的 Skill；Agent 可以进化注册代码使用的声明式 Skill，但不能把下载或生成的 Python 自动提升到 Runtime 进程。
 
 保鲜度计算不调用大模型，而是根据质量、距离上次调用时间、使用频率、token 成本、延迟、可靠性、同功能替代行为和样本置信度确定性派生。
 

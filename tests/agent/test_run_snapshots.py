@@ -32,11 +32,11 @@ class RunSnapshotTests(unittest.TestCase):
             self.assertEqual("provider.chat.MockProvider", runtime_lock["model"]["adapter"])
             self.assertEqual(
                 {
-                    "skill_executor:mcp",
-                    "skill_executor:memory",
-                    "skill_executor:prompt",
-                    "skill_executor:planner",
-                    "skill_executor:workflow",
+                    "capability:mcp",
+                    "capability:memory",
+                    "capability:prompt",
+                    "capability:planner",
+                    "capability:workflow",
                 },
                 {item["slot"] for item in runtime_lock["capabilities"]},
             )

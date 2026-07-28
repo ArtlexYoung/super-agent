@@ -8,8 +8,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 from agents.agent import Agent
+from capability.registry import SkillLoadRequest
 from capability.skill_contributions import CapabilityTool, SkillContribution
-from capability.skill_executors import CapabilityToolsRequest, SkillLoadRequest
 from cli import main
 from provider.chat import MockProvider, ModelResponse, ToolCall
 from runtime.config import AgentConfig
@@ -59,40 +59,40 @@ class CapabilityRuntimeTests(unittest.TestCase):
             self.assertEqual(0, code)
             self.assertIn("Agent: Mock response", output.getvalue())
 
-    def test_agent_can_replace_one_skill_executor(self) -> None:
+    def test_agent_can_replace_one_capability(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_prompt_skill(root)
             provider = MockProvider("finished")
-            executor = _RecordingPromptExecutor()
+            capability = _RecordingPromptCapability()
             agent = Agent(AgentConfig.create_default(root), provider=provider)
-            agent.add_skill_executor(executor)
+            agent.add_capability(capability)
 
             result = agent.run("please echo this")
 
             self.assertEqual("finished", result.text)
-            self.assertEqual(1, executor.load_count)
+            self.assertEqual(1, capability.load_count)
             self.assertIn(
-                "Loaded by custom executor.",
+                "Loaded by custom Capability.",
                 provider.last_messages[0]["content"],
             )
 
-    def test_registered_custom_skill_executor_is_used(self) -> None:
+    def test_registered_custom_capability_is_used(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_prompt_skill(root, capability="transform")
             provider = MockProvider("finished")
-            executor = _TransformSkillExecutor()
+            capability = _TransformCapability()
             agent = Agent(
                 AgentConfig.create_default(root),
                 provider=provider,
-                skill_executors=[executor],
+                capabilities=[capability],
             )
 
             result = agent.run("please echo this")
 
             self.assertEqual("finished", result.text)
-            self.assertEqual(1, executor.load_count)
+            self.assertEqual(1, capability.load_count)
 
     def test_selected_skill_contributes_tools_without_runtime_changes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -112,7 +112,7 @@ class CapabilityRuntimeTests(unittest.TestCase):
             agent = Agent(
                 AgentConfig.create_default(root),
                 provider=provider,
-                skill_executors=[_TransformSkillExecutor()],
+                capabilities=[_TransformCapability()],
             )
 
             result = agent.run("please echo this")
@@ -177,7 +177,7 @@ class CapabilityRuntimeTests(unittest.TestCase):
             self.assertNotIn("skill.kinds.workflow", source)
 
 
-class _RecordingPromptExecutor:
+class _RecordingPromptCapability:
     name = "recording-prompt"
     version = "1"
     capability_name = "prompt"
@@ -195,15 +195,11 @@ class _RecordingPromptExecutor:
         return SkillContribution(
             model_context=Skill(
                 manifest=opened.read_manifest(),
-                instructions="Loaded by custom executor.",
+                instructions="Loaded by custom Capability.",
             )
         )
 
-    def create_tools(self, request: CapabilityToolsRequest) -> tuple[CapabilityTool, ...]:
-        return ()
-
-
-class _TransformSkillExecutor(_RecordingPromptExecutor):
+class _TransformCapability(_RecordingPromptCapability):
     capability_name = "transform"
 
     def load_skill(self, request: SkillLoadRequest) -> SkillContribution:

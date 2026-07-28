@@ -154,7 +154,7 @@ def _read_capability_name(data: dict[str, object]) -> str:
         raise ValueError("skill capability must use lowercase letters, numbers, '-' or '_'")
     if capability == "capability":
         raise ValueError(
-            "executable Capability code must be registered with Agent.add_skill_executor"
+            "executable Capability code must be registered with Agent.add_capability"
         )
     return capability
 

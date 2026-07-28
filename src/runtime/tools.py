@@ -11,11 +11,7 @@ from capability.skill_contributions import (
     read_optional_tool_string,
     read_required_tool_string,
 )
-from capability.skill_executors import (
-    CapabilityToolsRequest,
-    create_tools_from_capabilities,
-    load_skill_contribution,
-)
+from capability.registry import SkillLoadRequest
 from provider.chat import ToolCall, ToolDefinition
 from runtime.session import RuntimeSession
 from runtime.safety import ActionRequest
@@ -49,15 +45,6 @@ class RuntimeTools:
         )
         self._tools: dict[str, CapabilityTool] = {}
         self._add_tools(_create_disclosure_tools(self, context.session.require_skill_index()))
-        self._add_tools(
-            create_tools_from_capabilities(
-                context.session.capability_registry.list_skill_executors(),
-                CapabilityToolsRequest(
-                    context.session.require_skill_disclosure(),
-                    self._record_skill_executor_used,
-                ),
-            )
-        )
         for contribution in contributions or []:
             self._add_tools(contribution.tools)
         if context.list_subagents is not None and context.run_subagent is not None:
@@ -107,9 +94,16 @@ class RuntimeTools:
             },
         )
 
-    def _add_tools(self, tools: tuple[CapabilityTool, ...]) -> None:
+    def _add_tools(
+        self,
+        tools: tuple[CapabilityTool, ...],
+        *,
+        allow_existing: bool = False,
+    ) -> None:
         for tool in tools:
             if tool.name in self._tools:
+                if allow_existing:
+                    continue
                 raise ValueError(f"runtime tool name already exists: {tool.name}")
             self._tools[tool.name] = tool
 
@@ -137,19 +131,20 @@ class RuntimeTools:
         opened = self._open_requested_skill(arguments)
         disclosed = opened.read_instructions()
         reference = opened.index_entry.reference
-        executor = self.context.session.capability_registry.find_skill_executor(
+        capability = self.context.session.capability_registry.find_capability(
             reference.capability
         )
-        if executor is not None and executor.adds_model_context:  # type: ignore[attr-defined]
-            self._record_skill_executor_used(reference)
-            contribution = load_skill_contribution(
-                self.context.session.require_skill_disclosure(),
-                reference,
-                self.context.session.capability_registry.list_skill_executors(),
-                self.context.session.store,
-                self.context.session.identity,
+        if capability is not None and capability.adds_model_context:
+            self._record_loaded_skill(reference)
+            contribution = self.context.session.capability_registry.load_skill(
+                SkillLoadRequest(
+                    self.context.session.require_skill_disclosure(),
+                    reference,
+                    self.context.session.store,
+                    self.context.session.identity,
+                )
             )
-            self._add_tools(contribution.tools)
+            self._add_tools(contribution.tools, allow_existing=True)
         return {
             "key": reference.key,
             "instructions": disclosed.content,
@@ -200,20 +195,18 @@ class RuntimeTools:
         self.context.session.record_skill_used(opened.index_entry)
         return opened
 
-    def _record_skill_executor_used(self, reference: SkillReference) -> None:
+    def _record_loaded_skill(self, reference: SkillReference) -> None:
         entry = self.context.session.require_skill_index().require_skill(
             reference.name,
             reference.capability,
         )
-        executor = self.context.session.capability_registry.find_skill_executor(
+        if self.context.session.capability_registry.find_capability(
             reference.capability
-        )
-        if executor is None:
+        ) is None:
             raise KeyError(
-                f"skill executor not found for capability: {reference.capability}"
+                f"Capability not found for Skill type: {reference.capability}"
             )
         self.context.session.record_skill_used(entry)
-        self.context.session.record_skill_executor_used(reference.capability, executor)
         if reference.name not in self.used_skill_names:
             self.used_skill_names.append(reference.name)
 

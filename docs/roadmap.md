@@ -169,7 +169,7 @@ Status: implemented.
 - Replace opaque Skill runtime values with one `SkillContribution` contract.
 - Let every Capability contribute context, tools, policy, and completion behavior.
 - Remove concrete Memory, MCP, and Workflow imports from task execution.
-- Require custom executors to declare both Skill loading and capability-wide tools.
+- Require custom Capabilities to return one uniform Skill contribution.
 
 ## v0.0.43: One Adaptive Task Loop
 
@@ -229,7 +229,7 @@ Status: implemented.
 Status: implemented.
 
 - Remove dynamic Python loading from Skill directories without a compatibility path.
-- Reserve executable Capabilities for explicit `Agent.add_skill_executor(...)` code.
+- Reserve executable Capabilities for explicit `Agent.add_capability(...)` code.
 - Treat Skill, memory, tool, and subagent content as untrusted model context.
 - Remove unenforced Capability permission and ownership metadata.
 
@@ -280,7 +280,7 @@ Status: implemented.
 
 ## v0.0.55: One Capability Contract
 
-Status: planned.
+Status: implemented.
 
 - Give every Capability one `load_skill(...)` boundary.
 - Keep Skill content passive and Capability mechanisms explicit.

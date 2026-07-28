@@ -3,6 +3,12 @@
 from agents.agent import Agent, AgentRunOptions
 from agents.user import UserAgent
 from ag_ui_bridge import AGUIEventMapper, AGUIRunInput, create_ag_ui_server
+from capability.registry import Capability, SkillLoadRequest
+from capability.skill_contributions import (
+    CapabilityAction,
+    CapabilityTool,
+    SkillContribution,
+)
 from provider.chat import (
     ChatProvider,
     MockProvider,
@@ -32,6 +38,9 @@ __all__ = [
     "AGUIEventMapper",
     "AGUIRunInput",
     "ChatProvider",
+    "Capability",
+    "CapabilityAction",
+    "CapabilityTool",
     "Conversation",
     "JsonlStorage",
     "LOCAL_USER_ID",
@@ -43,6 +52,8 @@ __all__ = [
     "ProviderConnection",
     "ProviderPool",
     "SkillManifest",
+    "SkillContribution",
+    "SkillLoadRequest",
     "SqliteStorage",
     "StorageBackend",
     "TaskResult",

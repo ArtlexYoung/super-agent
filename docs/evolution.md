@@ -42,7 +42,7 @@ super-agent skills freshness --config agent.toml
 
 ## Automatic Evolution Loop
 
-After a run evaluation is stored, Runtime reviews the active Skill revisions. A revision is eligible only when it is Agent-owned, `agent_can_update` is true, and its Skill executor supports directory evolution. No additional configuration is required.
+After a run evaluation is stored, Runtime reviews the active Skill revisions. A revision is eligible only when it is Agent-owned and `agent_can_update` is true. No additional configuration is required.
 
 The default signals are:
 

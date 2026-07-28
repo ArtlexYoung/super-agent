@@ -200,8 +200,9 @@ super-agent runs explain --config agent.toml --run-id <run-id> --output json
 
 The projection includes scheduler reasons, the task plan and completed steps, every step's model and subagent route, model attempts, latency, estimated tokens and cost, learned routing evidence, relevant Skill freshness, and automatic evolution decisions. A child Agent `run_id` can be inspected through the parent project because the lookup remains restricted to the same user and storage backend.
 
-`CapabilityRegistry` contains only executable Skill handlers registered by application
-code. Replace one explicitly with `agent.add_skill_executor(...)`. Every handler returns
+`CapabilityRegistry` contains only executable Skill mechanisms registered by application
+code. Replace one explicitly with `agent.add_capability(...)`. Every Capability exposes
+only `load_skill(request)` and returns
 one `SkillContribution` containing any model context, prompt context, tools, task policy,
 and completion recorder it provides. Runtime therefore does not know concrete Memory,
 MCP, or Workflow classes. Skill directories are untrusted declarative content and are
@@ -251,7 +252,7 @@ every promoted revision can be rolled back.
 For model Skills, connection fields remain user-owned by default. Agent evolution may improve descriptions, triggers, strengths, purposes, and routing traits, but may change `provider`, `model`, `base_url`, or `api_key_env` only when the user sets `agent_can_update_connection = true`.
 
 Executable Capability code is trusted application code and must be registered explicitly
-with `Agent.add_skill_executor(...)`. Runtime rejects `capability = "capability"` Skills;
+with `Agent.add_capability(...)`. Runtime rejects `capability = "capability"` Skills;
 agents may evolve the declarative Skills consumed by registered code, but cannot promote
 downloaded or generated Python into the Runtime process.
 

@@ -6,7 +6,7 @@ from pathlib import Path
 
 from agents.agent import Agent
 from capability.defaults import create_progressive_skill_disclosure
-from capability.skill_executors import create_builtin_skill_executors
+from capability.skill_executors import create_builtin_capabilities
 from runtime.config import AgentConfig
 from runtime.identity import LOCAL_USER_ID
 from runtime.storage import create_storage_backend
@@ -352,9 +352,9 @@ def _load_package_manager(config_path: Path, user_id: str) -> SkillPackageManage
 
 def _default_model_context_capabilities() -> set[str]:
     return {
-        name
-        for name, executor in create_builtin_skill_executors().items()
-        if executor.adds_model_context
+        capability.capability_name
+        for capability in create_builtin_capabilities()
+        if capability.adds_model_context
     }
 
 

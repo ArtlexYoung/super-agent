@@ -101,7 +101,7 @@ super-agent skills remove --config agent.toml --name research
 Install and update accept `--expected-sha256`.
 
 Skill packages are declarative and never install executable Capability code. Register
-custom executors in Python with `Agent.add_skill_executor(...)`; the CLI intentionally
+custom Capabilities in Python with `Agent.add_capability(...)`; the CLI intentionally
 has no command that loads Python from a Skill package.
 
 ## Automatic Evolution Inspection
