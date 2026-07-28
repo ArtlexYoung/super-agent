@@ -15,17 +15,30 @@ from skill.disclosure import SkillReference
 from skill.kinds.model import ModelProfile, model_profile_is_ready
 
 
+MINIMUM_ROUTING_EVIDENCE_CALLS = 4
+LOW_ROUTING_CONFIDENCE = 0.55
+
+
 @dataclass(frozen=True)
 class ModelChoice:
     profile: ModelProfile
     score: float
     reasons: tuple[str, ...]
+    confidence: float
+    evidence_calls: int = 0
+    evidence_sufficient: bool = False
+    selection: str = "ranked"
 
     def to_dict(self) -> dict[str, object]:
         return {
             "key": self.profile.key,
             "model": self.profile.model,
             "score": round(self.score, 6),
+            "confidence": round(self.confidence, 6),
+            "evidence_calls": self.evidence_calls,
+            "evidence_sufficient": self.evidence_sufficient,
+            "selection": self.selection,
+            "uncertainty": list(_routing_uncertainty(self)),
             "reasons": list(self.reasons),
         }
 
@@ -48,11 +61,19 @@ class TaskSchedule:
         return self.model_choices[0].profile
 
     def to_dict(self) -> dict[str, object]:
+        selected = self.model_choices[0]
         return {
             "purpose": self.purpose,
             "required_features": list(self.required_features),
             "workflow": self.workflow,
             "models": [choice.to_dict() for choice in self.model_choices],
+            "routing": {
+                "confidence": round(selected.confidence, 6),
+                "evidence_calls": selected.evidence_calls,
+                "evidence_sufficient": selected.evidence_sufficient,
+                "selection": selected.selection,
+                "uncertainty": list(_routing_uncertainty(selected)),
+            },
             "skills": [reference.key for reference in self.skill_references],
             "subagents": list(self.subagent_names),
             "subagent_reasons": list(self.subagent_reasons),
@@ -179,17 +200,17 @@ def rank_model_choices(
         )
         for profile in selected
     ]
-    choices = _apply_routing_evidence(static_choices, evidence or {})
-    return tuple(
-        sorted(
-            choices,
-            key=lambda choice: (
-                -choice.score,
-                not choice.profile.default,
-                choice.profile.key,
-            ),
-        )
+    evidence_by_profile = evidence or {}
+    choices = _apply_routing_evidence(static_choices, evidence_by_profile)
+    ranked = sorted(
+        choices,
+        key=lambda choice: (
+            -choice.score,
+            not choice.profile.default,
+            choice.profile.key,
+        ),
     )
+    return _escalate_low_confidence_choice(ranked)
 
 
 def resolve_task_purpose(
@@ -272,35 +293,43 @@ def _score_model(
 ) -> ModelChoice:
     routing = profile.routing
     score = 0.0
+    confidence = 0.15
     reasons: list[str] = []
     if ready:
         score += 5.0
+        confidence += 0.15
         reasons.append("connection ready")
     if compatible:
         score += 40.0
+        confidence += 0.30
         reasons.append("supports required features")
     else:
         reasons.append("fallback: no model supports every required feature")
     if purpose and purpose in routing.purposes:
         score += 30.0
+        confidence += 0.25
         reasons.append(f"matches purpose: {purpose}")
     prompt_purposes = [
         value for value in routing.purposes if _text_matches_label(prompt, value)
     ]
     if prompt_purposes:
         score += 25.0
+        confidence += 0.10
         reasons.append(
             "prompt matches purpose: " + ", ".join(sorted(prompt_purposes))
         )
     matched_strengths = [value for value in routing.strengths if value.lower() in prompt]
     if matched_strengths:
         score += min(15.0, 5.0 * len(matched_strengths))
+        confidence += min(0.05, 0.02 * len(matched_strengths))
         reasons.append("matches strengths: " + ", ".join(sorted(matched_strengths)))
     if profile.default:
         score += 10.0
+        confidence += 0.05
         reasons.append("configured default")
     if routing.quality_score is not None:
         score += routing.quality_score * 10.0
+        confidence += routing.quality_score * 0.10
         reasons.append(f"declared quality: {routing.quality_score:.3f}")
     if routing.expected_latency_ms is not None:
         score -= min(10.0, routing.expected_latency_ms / 1000.0)
@@ -316,7 +345,7 @@ def _score_model(
     if cost:
         score -= min(10.0, cost / 10.0)
         reasons.append(f"declared token cost: {cost:.4f}/million")
-    return ModelChoice(profile, score, tuple(reasons))
+    return ModelChoice(profile, score, tuple(reasons), min(1.0, confidence))
 
 
 def _text_matches_label(text: str, label: str) -> bool:
@@ -344,6 +373,7 @@ def _apply_routing_evidence(
                 replace(
                     choice,
                     score=choice.score + 8.0,
+                    confidence=min(choice.confidence, LOW_ROUTING_CONFIDENCE - 0.06),
                     reasons=choice.reasons + ("bounded exploration: untried model",),
                 )
             )
@@ -360,6 +390,11 @@ def _apply_routing_evidence(
             replace(
                 choice,
                 score=choice.score + learned + exploration,
+                confidence=_evidence_weighted_confidence(choice, stats),
+                evidence_calls=stats.call_count,
+                evidence_sufficient=(
+                    stats.call_count >= MINIMUM_ROUTING_EVIDENCE_CALLS
+                ),
                 reasons=choice.reasons
                 + (
                     f"learned quality: {stats.average_quality:.3f}",
@@ -370,3 +405,72 @@ def _apply_routing_evidence(
             )
         )
     return updated
+
+
+def _evidence_weighted_confidence(
+    choice: ModelChoice,
+    stats: ModelRoutingStats,
+) -> float:
+    evidence_weight = min(
+        0.5,
+        stats.call_count / (stats.call_count + MINIMUM_ROUTING_EVIDENCE_CALLS),
+    )
+    observed_outcome = (stats.average_quality + stats.reliability) / 2.0
+    confidence = (
+        choice.confidence * (1.0 - evidence_weight)
+        + observed_outcome * evidence_weight
+    )
+    return min(1.0, max(0.0, confidence))
+
+
+def _escalate_low_confidence_choice(
+    ranked: list[ModelChoice],
+) -> tuple[ModelChoice, ...]:
+    if not ranked or ranked[0].confidence >= LOW_ROUTING_CONFIDENCE:
+        return tuple(ranked)
+    fallback_index = next(
+        (
+            index
+            for index, choice in enumerate(ranked[1:], start=1)
+            if choice.evidence_sufficient
+            and choice.confidence >= LOW_ROUTING_CONFIDENCE
+        ),
+        None,
+    )
+    if fallback_index is None:
+        ranked[0] = replace(
+            ranked[0],
+            selection="fallback_chain",
+            reasons=ranked[0].reasons
+            + ("low confidence: no evidence-backed model can replace this choice",),
+        )
+        return tuple(ranked)
+    uncertain = ranked[0]
+    selected = replace(
+        ranked[fallback_index],
+        selection="confidence_escalation",
+        reasons=ranked[fallback_index].reasons
+        + (f"confidence escalation replaced {uncertain.profile.key}",),
+    )
+    demoted = replace(
+        uncertain,
+        selection="low_confidence_fallback",
+        reasons=uncertain.reasons
+        + (f"low confidence: fallback after {selected.profile.key}",),
+    )
+    return tuple([selected, *ranked[1:fallback_index], demoted, *ranked[fallback_index + 1 :]])
+
+
+def _routing_uncertainty(choice: ModelChoice) -> tuple[str, ...]:
+    reasons: list[str] = []
+    if not choice.evidence_sufficient:
+        reasons.append(
+            f"only {choice.evidence_calls} of "
+            f"{MINIMUM_ROUTING_EVIDENCE_CALLS} evidence calls"
+        )
+    if choice.confidence < LOW_ROUTING_CONFIDENCE:
+        reasons.append(
+            f"confidence {choice.confidence:.3f} is below "
+            f"{LOW_ROUTING_CONFIDENCE:.3f}"
+        )
+    return tuple(reasons)

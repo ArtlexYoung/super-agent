@@ -32,6 +32,10 @@ class AdaptiveTaskLoopTests(unittest.TestCase):
             self.assertEqual(["summary-model"], summary.models)
             schedule = _scheduled_event(agent, result.run_id)
             self.assertEqual("model:summary", schedule["models"][0]["key"])
+            self.assertGreaterEqual(schedule["routing"]["confidence"], 0.55)
+            self.assertFalse(schedule["routing"]["evidence_sufficient"])
+            self.assertEqual("ranked", schedule["routing"]["selection"])
+            self.assertTrue(schedule["routing"]["uncertainty"])
             self.assertIn(
                 "prompt matches purpose: summary",
                 schedule["models"][0]["reasons"],
@@ -200,6 +204,34 @@ class AdaptiveTaskLoopTests(unittest.TestCase):
             schedule = _scheduled_event(agent, first.run_id, "cold-a")
             self.assertNotIn(
                 "bounded exploration: untried model",
+                schedule["models"][0]["reasons"],
+            )
+
+    def test_low_confidence_model_escalates_to_evidence_backed_model(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_model_skill(root, "alpha", purposes=["summary"], quality=0.0)
+            config = _write_config(root)
+            trainer = Agent(config, provider=_RecordingProvider("trained-alpha"))
+            for _ in range(4):
+                trainer.run("summarize this report")
+
+            _write_model_skill(root, "beta", purposes=["summary"], quality=1.0)
+            alpha = _RecordingProvider("stable-alpha")
+            beta = _RecordingProvider("untried-beta")
+            agent = Agent(config, provider=alpha)
+            agent.add_model_provider("beta", beta)
+
+            result = agent.run("summarize this report")
+
+            self.assertEqual("stable-alpha", result.text)
+            self.assertEqual([], beta.models)
+            schedule = _scheduled_event(agent, result.run_id)
+            self.assertEqual("model:alpha", schedule["models"][0]["key"])
+            self.assertEqual("confidence_escalation", schedule["routing"]["selection"])
+            self.assertTrue(schedule["routing"]["evidence_sufficient"])
+            self.assertIn(
+                "confidence escalation replaced model:beta",
                 schedule["models"][0]["reasons"],
             )
 

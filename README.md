@@ -179,6 +179,8 @@ The built-in `planner:default` Skill keeps planning optional and zero-configurat
 
 Routing starts deterministically and uses bounded exploration only after evidence exists for the effective task purpose. Evidence is isolated by user, Agent, model Skill, and purpose. Record an explicit quality score when useful:
 
+Each route exposes its confidence and evidence sufficiency in the run trace. Runtime automatically prefers an evidence-backed model over a low-confidence candidate, or records that it must rely on the ordinary fallback chain. No routing thresholds need to be configured.
+
 ```python
 alice = agent.for_user("alice")
 result = alice.run("Summarize the report")

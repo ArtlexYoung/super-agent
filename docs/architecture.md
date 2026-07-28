@@ -26,6 +26,8 @@ Agent.run
 
 Model calls, tool calls, and subagent work are observable steps of the same task path. `RuntimeSession` is the only mutable context for a task. It carries one `RunIdentity`, `RuntimeStore`, Skill index, disclosure core, selected model, Capability registry, and evidence tracker.
 
+Model routing produces one ordered fallback list with explicit confidence and evidence sufficiency. Confidence combines declared compatibility with observed user-scoped outcomes. A low-confidence candidate cannot displace a sufficiently evidenced candidate silently: Runtime records either a confidence escalation or the uncertainty that leaves the provider-failure fallback chain in place.
+
 `runtime.insights` projects UI-facing task, model, routing, freshness, and evolution views from canonical events and evaluation records. CLI and user interfaces consume this projection instead of implementing their own evidence logic. `ag_ui_bridge` maps the same live event stream to AG-UI without owning execution or state.
 
 `AdaptiveTaskLoop` is the only task-step owner. `runtime.task_preparation` loads passive

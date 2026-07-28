@@ -296,7 +296,7 @@ Status: implemented.
 
 ## v0.0.57: Confidence-Aware Scheduling
 
-Status: planned.
+Status: implemented.
 
 - Attach confidence and evidence sufficiency to model routing decisions.
 - Escalate or fall back when confidence is too low.

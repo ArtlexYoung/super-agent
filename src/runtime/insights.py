@@ -20,7 +20,7 @@ def explain_run_with_insight(store: RuntimeStore, run_id: str) -> dict[str, obje
     purposes = _model_purposes_for_run(events)
     explanation.update(
         {
-            "schema_version": 4,
+            "schema_version": 5,
             "schedule": schedule,
             "task_plan": _latest_event_data(events, "task.plan.created"),
             "task_steps": project_task_steps(events),

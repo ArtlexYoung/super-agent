@@ -149,6 +149,10 @@ class AdaptiveModelCalls:
                 "model": profile.model,
                 "purpose": context.purpose,
                 "score": choice.score,
+                "confidence": choice.confidence,
+                "evidence_calls": choice.evidence_calls,
+                "evidence_sufficient": choice.evidence_sufficient,
+                "selection": choice.selection,
                 "reasons": list(choice.reasons),
             },
         )

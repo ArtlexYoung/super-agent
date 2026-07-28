@@ -179,6 +179,8 @@ discover -> disclose -> execute -> observe -> evaluate -> evolve
 
 模型路由在冷启动时保持确定性，只有同一任务用途积累证据后才进行有界探索。证据按用户、Agent、model Skill 和任务用途隔离。需要时可以直接记录质量分数：
 
+每次路由都会在运行轨迹中给出置信度和证据充分度。Runtime 会自动用证据充分的模型替代低置信度候选；若没有可靠替代，则明确记录不确定性并保留普通失败回退链。用户不需要配置路由阈值。
+
 ```python
 alice = agent.for_user("alice")
 result = alice.run("总结报告")

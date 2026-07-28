@@ -6,6 +6,8 @@ Each `Agent.run(...)` creates one internal `TaskRequest` and one `RuntimeSession
 
 Every request emits one `task.plan.created` event. Its `origin` is `direct` for the deterministic one-step fast path or `planner` for a validated model-generated plan. Both forms emit the same `task.step.scheduled` and `task.step.completed` events and use the same executor.
 
+Each scheduled model includes a normalized routing confidence, the number of purpose-specific evidence calls, and whether that evidence is sufficient. Four completed or failed calls make the evidence sufficient. When the highest-scored candidate has confidence below `0.55`, Runtime promotes a sufficiently evidenced candidate when available; otherwise it records the uncertainty and retains the normal provider-failure fallback chain. These decisions are deterministic and require no model call or configuration.
+
 ## Runtime Conversations
 
 Conversations are event-backed Runtime views, not client-owned message arrays. Create a conversation and reuse its ID:
