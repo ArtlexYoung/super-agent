@@ -27,16 +27,17 @@ class SkillPackageManager:
     def __init__(
         self,
         skill_disclosure: ProgressiveDisclosureCore,
-        skill_root: Path,
         safety_policy: SafetyPolicy | None = None,
     ) -> None:
+        self.user_skill_root = skill_disclosure.store.private_root / "skills"
         self.skill_disclosure = ProgressiveDisclosureCore(
             skill_disclosure.skill_roots,
             skill_disclosure.store,
+            user_skill_roots=[self.user_skill_root],
             fallback_skill_roots=skill_disclosure.fallback_skill_roots,
             disabled_names=skill_disclosure.disabled_names,
+            identity=skill_disclosure.identity,
         )
-        self.skill_root = skill_root.expanduser()
         self.actions = RuntimeActionExecutor(
             safety_policy or SafetyPolicy(),
             skill_disclosure.store.append_management_action_event,
@@ -96,7 +97,7 @@ class SkillPackageManager:
                 raise FileExistsError(
                     f"skill already exists: {manifest.capability}:{manifest.name}"
                 )
-            target = _managed_skill_target(self.skill_root, manifest)
+            target = _managed_skill_target(self.user_skill_root, manifest)
             if target.exists():
                 raise FileExistsError(f"skill target already exists: {target}")
             _install_skill_directory(staged, target)
@@ -131,7 +132,7 @@ class SkillPackageManager:
     ) -> SkillManifest:
         skill_name, expected_capability = _split_skill_reference(name)
         current = self._read_skill_manifest(skill_name, expected_capability)
-        _require_managed_skill_path(current.path, self.skill_root)
+        target = _managed_skill_target(self.user_skill_root, current)
         with tempfile.TemporaryDirectory(prefix="super-agent-update-") as tmp:
             staged = _stage_skill_source(source, Path(tmp))
             proposed = _validate_staged_skill(staged, expected_sha256)
@@ -145,7 +146,7 @@ class SkillPackageManager:
                     f"{proposed.capability} != {current.capability}"
                 )
             validate_skill_replacement(current.path, staged, self.skill_disclosure.store)
-            _replace_skill_directory(staged, current.path)
+            _replace_skill_directory(staged, target)
         return self._read_skill_manifest(skill_name, current.capability)
 
     def remove_skill(self, name: str) -> None:
@@ -160,8 +161,12 @@ class SkillPackageManager:
 
     def _remove_skill(self, name: str) -> None:
         skill_name, expected_capability = _split_skill_reference(name)
+        index = self.skill_disclosure.prepare_skill_index()
+        entry = index.require_skill(skill_name, expected_capability)
+        if entry.source != "user":
+            raise PermissionError(f"cannot remove shared Skill: {entry.reference.key}")
         manifest = self._read_skill_manifest(skill_name, expected_capability)
-        _require_managed_skill_path(manifest.path, self.skill_root)
+        _require_managed_skill_path(manifest.path, self.user_skill_root)
         removed = manifest.path.parent / f".{manifest.path.name}.removed-{uuid4().hex}"
         os.replace(manifest.path, removed)
         try:
@@ -320,14 +325,18 @@ def _install_skill_directory(source: Path, target: Path) -> None:
 
 
 def _replace_skill_directory(source: Path, target: Path) -> None:
+    target.parent.mkdir(parents=True, exist_ok=True)
     staging = target.parent / f".{target.name}.update-{uuid4().hex}"
     backup = target.parent / f".{target.name}.backup-{uuid4().hex}"
     _copy_skill_tree(source, staging)
+    moved_existing = False
     try:
-        os.replace(target, backup)
+        if target.exists():
+            os.replace(target, backup)
+            moved_existing = True
         os.replace(staging, target)
     except Exception:
-        if backup.exists() and not target.exists():
+        if moved_existing and backup.exists() and not target.exists():
             os.replace(backup, target)
         raise
     finally:

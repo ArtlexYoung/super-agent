@@ -36,11 +36,15 @@ class ProgressiveDisclosureCore:
         skill_roots: list[Path],
         store: RuntimeStore,
         *,
+        user_skill_roots: list[Path] | None = None,
         fallback_skill_roots: list[Path] | None = None,
         disabled_names: list[str] | None = None,
         identity: RunIdentity | None = None,
     ) -> None:
         self.skill_roots = [path.expanduser() for path in skill_roots]
+        self.user_skill_roots = [
+            path.expanduser() for path in user_skill_roots or []
+        ]
         self.fallback_skill_roots = [
             path.expanduser() for path in fallback_skill_roots or []
         ]
@@ -196,6 +200,7 @@ class ProgressiveDisclosureCore:
             self.skill_roots,
             self.disabled_names,
             self.fallback_skill_roots,
+            self.user_skill_roots,
         )
 
     def _remove_disabled_skill_names(self, names: list[str]) -> list[str]:
@@ -337,6 +342,7 @@ def _build_index_entry(
         configuration_cache_path=skill_root / "configuration.json",
         files_cache_path=skill_root / "files.json",
         content_sha256=calculate_skill_directory_sha256(manifest.path),
+        source=source.source,
         agent_created=manifest.agent_created,
         agent_can_update=manifest.agent_can_update,
         freshness=float(runtime.get("freshness", manifest.freshness)),

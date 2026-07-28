@@ -76,6 +76,8 @@ The central index selects Skills from:
 - Trigger text found in the prompt.
 - Dependencies required by selected Skills.
 
+It scans one effective source hierarchy in `user > project > builtin` order. User Skills live under `.super-agent/users/<user-hash>/agents/<agent-hash>/skills` automatically, so their path is never added to `agent.toml`. Each index entry exposes its `user`, `project`, or `builtin` source.
+
 Dependencies are resolved in topological order. Missing requirements, cycles, and ambiguous providers fail with explicit messages.
 
 ```bash
@@ -127,4 +129,4 @@ super-agent skills update --config agent.toml --name research --source ./new-res
 super-agent skills remove --config agent.toml --name research
 ```
 
-Local directories, ZIP archives, and `git+...#subdirectory` sources are supported. Package validation rejects symlinks, path traversal, identity changes during update, and unexpected content hashes.
+Local directories, ZIP archives, and `git+...#subdirectory` sources are supported. Install and update write only the current user's overlay. Updating a shared Skill creates an overlay; removing an overlay reveals the shared version, and removing a shared Skill is rejected. Package validation rejects symlinks, path traversal, identity changes during update, and unexpected content hashes.

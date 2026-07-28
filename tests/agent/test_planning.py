@@ -189,7 +189,7 @@ class PlanningSkillEvolutionTests(unittest.TestCase):
             )
             self.assertEqual(
                 "Create a smaller valid task plan.\n",
-                root.joinpath("skills/planner/default/SKILL.md").read_text(
+                store.private_root.joinpath("skills/planner/default/SKILL.md").read_text(
                     encoding="utf-8"
                 ),
             )

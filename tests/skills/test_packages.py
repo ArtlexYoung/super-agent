@@ -41,14 +41,18 @@ class SkillPackageManagerTests(unittest.TestCase):
 
             directory_target = root / "directory-target"
             zip_target = root / "zip-target"
-            installed_directory = _manager(directory_target).install_skill(str(source))
-            installed_zip = _manager(zip_target).install_skill(str(package_path))
+            directory_manager = _manager(directory_target)
+            zip_manager = _manager(zip_target)
+            installed_directory = directory_manager.install_skill(str(source))
+            installed_zip = zip_manager.install_skill(str(package_path))
 
             self.assertEqual("demo", installed_directory.name)
             self.assertEqual("demo", installed_zip.name)
             self.assertEqual(
                 "Use local demo.",
-                (zip_target / "prompt" / "demo" / "SKILL.md").read_text(encoding="utf-8"),
+                (zip_manager.user_skill_root / "prompt" / "demo" / "SKILL.md").read_text(
+                    encoding="utf-8"
+                ),
             )
 
     @unittest.skipIf(shutil.which("git") is None, "git is required")
@@ -92,9 +96,12 @@ class SkillPackageManagerTests(unittest.TestCase):
             updated = manager.update_skill("demo", str(source))
 
             self.assertEqual("0.2.0", updated.version)
-            self.assertEqual("New instructions.", (current / "SKILL.md").read_text(encoding="utf-8"))
+            user_skill = manager.user_skill_root / "prompt" / "demo"
+            self.assertEqual("Old instructions.", (current / "SKILL.md").read_text())
+            self.assertEqual("New instructions.", (user_skill / "SKILL.md").read_text())
             manager.remove_skill("demo")
-            self.assertFalse(current.exists())
+            self.assertFalse(user_skill.exists())
+            self.assertTrue(current.exists())
 
     def test_capability_name_selects_one_skill_when_names_are_shared(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -167,9 +174,11 @@ class SkillPackageManagerTests(unittest.TestCase):
 def _manager(skill_root: Path) -> SkillPackageManager:
     disclosure = ProgressiveDisclosureCore(
         [skill_root],
-        create_local_runtime_store(skill_root.parent / ".package-runtime"),
+        create_local_runtime_store(
+            skill_root.parent / f".{skill_root.name}-package-runtime"
+        ),
     )
-    return SkillPackageManager(disclosure, skill_root)
+    return SkillPackageManager(disclosure)
 
 
 def _write_skill(

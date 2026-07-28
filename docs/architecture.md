@@ -72,6 +72,11 @@ Every Skill has the stable identity `capability:name`. Prompt, MCP, memory, work
 model, and custom declarative Skills share one index, progressive-disclosure cache,
 evidence stream, and evolution format.
 
+The index resolves sources in `user > project > builtin` order. User-created, installed,
+edited, and promoted Skills live below the user-and-Agent private runtime root. Project
+Skills are shared read-only baselines, so one user's evolution cannot modify another
+user's effective Skill or the repository copy.
+
 Planner and model routing revisions are not privileged evolution targets. When used, both become ordinary `SkillRevision` values, receive the task's evaluation record, and enter the same recommendation, complete-directory candidate, evaluation, promotion, monitoring, and rollback state machine. Model connection fields remain user-owned unless the active model Skill explicitly grants update permission.
 
 Providers normalize protocol calls only. Model descriptions and routing traits live in model Skills, while connection instances are created lazily by `ProviderPool`.

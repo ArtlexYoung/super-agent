@@ -16,42 +16,56 @@ def read_skill_sources(
     skill_roots: list[Path],
     disabled_names: list[str],
     fallback_skill_roots: list[Path] | None = None,
+    user_skill_roots: list[Path] | None = None,
 ) -> SkillSourceScan:
-    # Every consumer shares this parse result instead of rereading TOML in kinds or entry points.
-    primary = _read_source_group(skill_roots, disabled_names)
-    merged = _read_source_group(
+    # Higher layers keep their key while lower layers are still parsed and validated.
+    user = _read_source_group(user_skill_roots or [], disabled_names, "user")
+    project = _read_source_group(
+        skill_roots,
+        disabled_names,
+        "project",
+        {source.reference.key: source for source in user.sources},
+    )
+    builtin = _read_source_group(
         fallback_skill_roots or [],
         disabled_names,
-        {source.reference.key: source for source in primary.sources},
+        "builtin",
+        {source.reference.key: source for source in project.sources},
     )
     disabled_by_key = {
         reference.key: reference
-        for reference in [*primary.disabled_references, *merged.disabled_references]
+        for reference in [
+            *user.disabled_references,
+            *project.disabled_references,
+            *builtin.disabled_references,
+        ]
     }
     return SkillSourceScan(
-        sources=merged.sources,
+        sources=builtin.sources,
         disabled_references=sorted(disabled_by_key.values(), key=lambda item: item.key),
-        issues=[*primary.issues, *merged.issues],
+        issues=[*user.issues, *project.issues, *builtin.issues],
     )
 
 
 def _read_source_group(
     roots: list[Path],
     disabled_names: list[str],
+    source_layer: str,
     existing_sources: dict[str, SkillSource] | None = None,
 ) -> SkillSourceScan:
     sources_by_key = dict(existing_sources or {})
+    higher_layer_keys = set(sources_by_key)
     disabled_by_key: dict[str, SkillReference] = {}
     issues: list[SkillValidationIssue] = []
     for manifest_path in _list_manifest_paths(roots):
         try:
-            source = _read_skill_source(manifest_path)
+            source = _read_skill_source(manifest_path, source_layer)
             if _skill_is_disabled(source.reference, disabled_names):
                 disabled_by_key[source.reference.key] = source.reference
                 continue
             previous = sources_by_key.get(source.reference.key)
             if previous is not None:
-                if existing_sources is not None:
+                if source.reference.key in higher_layer_keys:
                     continue
                 raise ValueError(
                     f"duplicate skill key {source.reference.key}: "
@@ -67,7 +81,7 @@ def _read_source_group(
     )
 
 
-def _read_skill_source(path: Path) -> SkillSource:
+def _read_skill_source(path: Path, source_layer: str) -> SkillSource:
     data = tomllib.loads(path.read_text(encoding="utf-8"))
     manifest = skill_manifest_from_dict(data, path)
     if manifest.entry.instructions is not None:
@@ -78,6 +92,7 @@ def _read_skill_source(path: Path) -> SkillSource:
         manifest=manifest,
         configuration=configuration,
         manifest_path=path,
+        source=source_layer,
     )
 
 

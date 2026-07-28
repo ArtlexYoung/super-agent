@@ -10,7 +10,7 @@ from runtime.evolution.files import DirectoryDifference
 from skill.revision import SkillRevision, skill_revision_to_dict
 
 
-SKILL_EVOLUTION_SCHEMA_VERSION = 1
+SKILL_EVOLUTION_SCHEMA_VERSION = 2
 
 
 @dataclass(frozen=True)
@@ -65,6 +65,7 @@ class SkillEvolutionState:
     candidate_difference: SkillCandidateDifference | None
     report_id: str
     evaluation_score: float | None
+    rollback_revision_id: str
     detail: str
     created_at: str
     updated_at: str
@@ -106,6 +107,7 @@ def skill_evolution_to_dict(state: SkillEvolutionState) -> dict[str, object]:
         ),
         "report_id": state.report_id,
         "evaluation_score": state.evaluation_score,
+        "rollback_revision_id": state.rollback_revision_id,
         "detail": state.detail,
         "created_at": state.created_at,
         "updated_at": state.updated_at,

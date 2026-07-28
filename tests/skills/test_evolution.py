@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 
 from agents.agent import Agent
+from capability.defaults import create_progressive_skill_disclosure
 from provider.chat import MockProvider
 from runtime.config import AgentConfig
 from skill.evolution.evaluation import EvaluationCase
@@ -122,7 +123,8 @@ class SkillEvolutionTests(unittest.TestCase):
                     "required output",
                 ]
             )
-            manager = _make_agent(root, provider).for_user("local").skills.create_evolution_manager()
+            agent = _make_agent(root, provider)
+            manager = agent.for_user("alice").skills.create_evolution_manager()
             candidate = manager.create_skill_candidate("writer", "improve output")
             report = manager.evaluate_skill_candidate(
                 candidate.candidate_id,
@@ -145,7 +147,40 @@ class SkillEvolutionTests(unittest.TestCase):
             self.assertEqual("0.1.1", promoted.version)
             self.assertEqual(
                 "Candidate instructions.\n",
-                (root / "skills" / "writer" / "SKILL.md").read_text(encoding="utf-8"),
+                (manager.user_skill_root / "prompt" / "writer" / "SKILL.md").read_text(
+                    encoding="utf-8"
+                ),
+            )
+            self.assertEqual(
+                "Original instructions.",
+                (root / "skills" / "writer" / "SKILL.md").read_text(),
+            )
+            state = manager.store.read_skill_evolution_events(candidate.candidate_id)
+            self.assertIn(
+                "rollback_revision_id",
+                next(
+                    event.data
+                    for event in state
+                    if event.event_type == "skill_evolution.candidate_promoted"
+                ),
+            )
+            self.assertFalse((manager.evolution_root / "active").exists())
+            self.assertFalse((manager.evolution_root / "promotions").exists())
+            self.assertFalse((manager.evolution_root / "rollbacks").exists())
+            alice_entry = manager.skill_disclosure.prepare_skill_index().require_skill(
+                "writer",
+                "prompt",
+            )
+            bob_disclosure = create_progressive_skill_disclosure(
+                agent.config,
+                store=agent.runtime.create_store("bob"),
+            )
+            bob_entry = bob_disclosure.prepare_skill_index().require_skill("writer", "prompt")
+            self.assertEqual("user", alice_entry.source)
+            self.assertEqual("project", bob_entry.source)
+            self.assertEqual(
+                "Original instructions.",
+                bob_disclosure.open_skill("writer", "prompt").read_instructions().content,
             )
 
     def test_promotion_rejects_candidate_when_active_skill_changed(self) -> None:
@@ -254,7 +289,9 @@ class SkillEvolutionTests(unittest.TestCase):
             self.assertEqual("0.1.0", restored.version)
             self.assertEqual(
                 "Original instructions.",
-                (root / "skills" / "writer" / "SKILL.md").read_text(encoding="utf-8"),
+                (manager.user_skill_root / "prompt" / "writer" / "SKILL.md").read_text(
+                    encoding="utf-8"
+                ),
             )
 
     def test_evolve_skill_runs_one_complete_lifecycle(self) -> None:
@@ -285,7 +322,12 @@ class SkillEvolutionTests(unittest.TestCase):
             self.assertIsNotNone(result.promoted_manifest)
             self.assertEqual(
                 "Candidate instructions.\n",
-                (root / "skills" / "writer" / "SKILL.md").read_text(),
+                (
+                    manager.user_skill_root
+                    / "prompt"
+                    / "writer"
+                    / "SKILL.md"
+                ).read_text(),
             )
 
     def test_configuration_skill_kinds_share_evaluation_promotion_and_rollback(self) -> None:
@@ -339,7 +381,7 @@ class SkillEvolutionTests(unittest.TestCase):
                 )
                 promoted = manager.promote_skill_candidate(candidate.candidate_id)
 
-                active = root / "skills" / capability / "adaptive"
+                active = manager.user_skill_root / capability / "adaptive"
                 self.assertTrue(report.passed)
                 self.assertEqual(capability, promoted.capability)
                 self.assertFalse((candidate.skill_path / "SKILL.md").exists())
@@ -390,7 +432,7 @@ class SkillEvolutionTests(unittest.TestCase):
             )
             promoted = manager.promote_skill_candidate(candidate.candidate_id)
 
-            target = root / "skills" / "memory" / "project-memory"
+            target = manager.user_skill_root / "memory" / "project-memory"
             self.assertEqual("memory:project-memory", candidate.key)
             self.assertEqual("memory", promoted.capability)
             self.assertTrue((target / "skill.toml").is_file())

@@ -91,7 +91,7 @@ class CliTests(unittest.TestCase):
 
             data = json.loads(output.getvalue())
             self.assertEqual(0, code)
-            self.assertEqual(3, data["schema_version"])
+            self.assertEqual(4, data["schema_version"])
             self.assertEqual(
             {"mcp", "memory", "planner", "prompt", "workflow"},
                 {item["capability"] for item in data["skills"]},
@@ -238,17 +238,14 @@ instructions = "SKILL.md"
             self.assertEqual(0, propose_code)
             self.assertEqual(0, evaluate_code)
             self.assertEqual(0, promote_code)
+            user_skill = _find_user_skill(root, "prompt", "agent-note")
             self.assertIn(
                 "agent_created = true",
-                (root / "skills" / "prompt" / "agent-note" / "skill.toml").read_text(
-                    encoding="utf-8"
-                ),
+                user_skill.joinpath("skill.toml").read_text(encoding="utf-8"),
             )
             self.assertEqual(
                 "Answer compactly.\n",
-                (root / "skills" / "prompt" / "agent-note" / "SKILL.md").read_text(
-                    encoding="utf-8"
-                ),
+                user_skill.joinpath("SKILL.md").read_text(encoding="utf-8"),
             )
 
     def test_skills_freshness_prints_runtime_stats(self) -> None:
@@ -326,7 +323,7 @@ instructions = "SKILL.md"
             self.assertIn("echo", graph_output.getvalue())
             self.assertIn('name = "echo"', lock_path.read_text(encoding="utf-8"))
 
-    def test_skills_pack_remove_and_install_manage_local_package(self) -> None:
+    def test_skills_pack_update_and_remove_manage_user_overlay(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             main(["init", "--path", tmp])
@@ -336,10 +333,8 @@ instructions = "SKILL.md"
             pack_code = main(
                 ["skills", "pack", "--config", config, "--name", "echo", "--output", str(package_path)]
             )
-            remove_code = main(["skills", "remove", "--config", config, "--name", "echo"])
-            install_code = main(
-                ["skills", "install", "--config", config, "--source", str(package_path)]
-            )
+            with self.assertRaisesRegex(PermissionError, "cannot remove shared Skill"):
+                main(["skills", "remove", "--config", config, "--name", "echo"])
             update_source = root / "updated-echo"
             update_source.mkdir()
             (update_source / "skill.toml").write_text(
@@ -371,15 +366,16 @@ instructions = "SKILL.md"
             )
 
             self.assertEqual(0, pack_code)
-            self.assertEqual(0, remove_code)
-            self.assertEqual(0, install_code)
             self.assertEqual(0, update_code)
-            installed = root / "skills" / "prompt" / "echo"
-            self.assertTrue((installed / "skill.toml").exists())
+            installed = _find_user_skill(root, "prompt", "echo")
             self.assertEqual(
                 "Updated echo.",
                 (installed / "SKILL.md").read_text(encoding="utf-8"),
             )
+            remove_code = main(["skills", "remove", "--config", config, "--name", "echo"])
+            self.assertEqual(0, remove_code)
+            self.assertFalse(installed.exists())
+            self.assertTrue((root / "skills" / "prompt" / "echo").is_dir())
 
     def test_run_reads_stdin_request_and_streams_jsonl_events(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -442,3 +438,16 @@ instructions = "SKILL.md"
 
         self.assertEqual("child-run", data["subagent_results"][0]["run_id"])
         self.assertEqual("review-run", data["subagent_results"][0]["subagent_results"][0]["run_id"])
+
+
+def _find_user_skill(root: Path, capability: str, name: str) -> Path:
+    matches = [
+        path.parent
+        for path in root.joinpath(".super-agent").rglob(
+            f"skills/{capability}/{name}/skill.toml"
+        )
+        if "cache" not in path.parts
+    ]
+    if len(matches) != 1:
+        raise AssertionError(f"expected one user Skill, found {len(matches)}")
+    return matches[0]

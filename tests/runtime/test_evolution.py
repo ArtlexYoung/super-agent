@@ -42,11 +42,13 @@ class SkillRevisionEvolutionStateTests(unittest.TestCase):
                 "candidate-1",
                 candidate,
                 parent,
+                "revision-parent",
             )
 
             self.assertEqual("candidate_created", started.status)
             self.assertEqual("evaluated", evaluated.status)
             self.assertEqual("promoted", promoted.status)
+            self.assertEqual("revision-parent", promoted.rollback_revision_id)
             self.assertEqual(
                 [
                     "skill_evolution.started",

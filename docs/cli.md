@@ -56,7 +56,7 @@ printf '%s' '<model-skill-json>' | super-agent models save --config agent.toml -
 super-agent models remove --config agent.toml --name fast
 ```
 
-The commands list model Skills when the project contains them. Otherwise they list ephemeral environment profiles or the built-in mock. `save` creates, updates, or renames one model Skill under the first configured Skill root; `remove` deletes one managed model Skill and selects a deterministic replacement default when needed. JSON metadata includes an environment-variable name but never a secret value. See [Configuration](configuration.md) for the request fields.
+The commands list effective model Skills from the current user, project, and built-in layers. Otherwise they list ephemeral environment profiles or the built-in mock. `save` writes one user overlay; `remove` deletes only a user-owned model Skill and selects a deterministic replacement default when needed. JSON metadata includes an environment-variable name but never a secret value. See [Configuration](configuration.md) for the request fields.
 
 ## Skill Inspection
 
@@ -99,6 +99,8 @@ super-agent skills remove --config agent.toml --name research
 ```
 
 Install and update accept `--expected-sha256`.
+
+Install writes a new user Skill. Update may replace a user Skill or create an overlay for a shared Skill. Remove deletes only the user layer; it never deletes a project or built-in Skill.
 
 Skill packages are declarative and never install executable Capability code. Register
 custom Capabilities in Python with `Agent.add_capability(...)`; the CLI intentionally

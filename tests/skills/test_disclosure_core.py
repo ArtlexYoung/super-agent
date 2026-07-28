@@ -62,6 +62,46 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
 
             self.assertEqual(["planner:default"], [entry.reference.key for entry in index.entries])
             self.assertEqual(primary, manifest.path)
+            self.assertEqual("project", index.entries[0].source)
+
+    def test_user_skill_overrides_project_and_is_isolated_by_user(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            project = root / "skills" / "writer"
+            project.mkdir(parents=True)
+            _write_manifest(project, "writer", "prompt", include_entry=True)
+            project.joinpath("SKILL.md").write_text("Project instructions.", encoding="utf-8")
+            alice_store = create_local_runtime_store(root / "state", user_id="alice")
+            bob_store = create_local_runtime_store(root / "state", user_id="bob")
+            alice_skill = alice_store.private_root / "skills" / "prompt" / "writer"
+            alice_skill.mkdir(parents=True)
+            _write_manifest(alice_skill, "writer", "prompt", include_entry=True)
+            alice_skill.joinpath("SKILL.md").write_text("Alice instructions.", encoding="utf-8")
+
+            alice = ProgressiveDisclosureCore(
+                [root / "skills"],
+                alice_store,
+                user_skill_roots=[alice_store.private_root / "skills"],
+            )
+            bob = ProgressiveDisclosureCore(
+                [root / "skills"],
+                bob_store,
+                user_skill_roots=[bob_store.private_root / "skills"],
+            )
+            alice_entry = alice.prepare_skill_index().require_skill("writer", "prompt")
+            bob_entry = bob.prepare_skill_index().require_skill("writer", "prompt")
+
+            self.assertEqual("user", alice_entry.source)
+            self.assertEqual("project", bob_entry.source)
+            self.assertEqual(
+                "Alice instructions.",
+                alice.open_skill("writer", "prompt").read_instructions().content,
+            )
+            self.assertEqual(
+                "Project instructions.",
+                bob.open_skill("writer", "prompt").read_instructions().content,
+            )
+            self.assertEqual("Project instructions.", project.joinpath("SKILL.md").read_text())
 
     def test_validation_rejects_name_that_cannot_form_stable_key(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

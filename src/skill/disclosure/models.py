@@ -22,6 +22,7 @@ class SkillSource:
     manifest: SkillManifest
     configuration: dict[str, object]
     manifest_path: Path
+    source: str
 
 
 @dataclass(frozen=True)
@@ -50,6 +51,7 @@ class SkillIndexEntry:
     configuration_cache_path: Path
     files_cache_path: Path
     content_sha256: str
+    source: str
     agent_created: bool = False
     agent_can_update: bool = False
     freshness: float = 70.0
@@ -172,7 +174,7 @@ class SkillDisclosureEvent:
 
 def skill_index_to_dict(index: SkillIndex) -> dict[str, object]:
     return {
-        "schema_version": 3,
+        "schema_version": 4,
         "skills": [
             {
                 "key": entry.reference.key,
@@ -188,6 +190,7 @@ def skill_index_to_dict(index: SkillIndex) -> dict[str, object]:
                 "configuration_cache_path": str(entry.configuration_cache_path),
                 "files_cache_path": str(entry.files_cache_path),
                 "content_sha256": entry.content_sha256,
+                "source": entry.source,
                 "agent_created": entry.agent_created,
                 "agent_can_update": entry.agent_can_update,
                 "freshness": entry.freshness,

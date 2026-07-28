@@ -172,7 +172,10 @@ For a new Skill, omit `--capability` to create a prompt Skill or pass a Capabili
 Evolution workspaces and evaluation evidence remain isolated by user and Agent. The
 complete Skill directory remains outside the active path until evaluation passes.
 Promotion verifies the original parent version and SHA-256 before replacing declarative
-content. Runtime never activates executable code from a Skill candidate; Capability code
+content. Promotion writes a user overlay and leaves shared project content unchanged.
+Candidate, evaluation, promotion, monitoring, and rollback status use one user-scoped
+event stream; only candidate files, reports, and immutable history snapshots remain file
+artifacts. Runtime never activates executable code from a Skill candidate; Capability code
 must be registered explicitly in application code.
 
 Model Skills use the same flow. Their descriptions and routing traits can evolve normally. Runtime rejects changes to `provider`, `model`, `base_url`, `api_key_env`, or the ownership flag unless the active Skill already declares `agent_can_update_connection = true`. Promoting or rolling back a model Skill refreshes the selected profile in the current Agent.

@@ -198,7 +198,6 @@ class AgentRuntime:
                 user_id,
             )
         return SkillEvolutionManager(
-            config=self.config,
             skill_disclosure=create_progressive_skill_disclosure(
                 self.config,
                 store=store,

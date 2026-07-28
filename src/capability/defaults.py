@@ -46,6 +46,7 @@ def create_progressive_skill_disclosure(
     return ProgressiveDisclosureCore(
         roots,
         selected_store,
+        user_skill_roots=[selected_store.private_root / "skills"],
         fallback_skill_roots=[_builtin_planner_skill_root()],
         disabled_names=config.agent.disable_names,
         identity=identity,

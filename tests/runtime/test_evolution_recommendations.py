@@ -181,7 +181,9 @@ class SkillRevisionEvolutionTests(unittest.TestCase):
             self.assertTrue(evolutions[0].candidate_id)
             self.assertEqual(
                 "Improved instructions.\n",
-                (root / "skills" / "prompt" / "echo" / "SKILL.md").read_text(
+                agent.runtime.create_store().private_root.joinpath(
+                    "skills/prompt/echo/SKILL.md"
+                ).read_text(
                     encoding="utf-8"
                 ),
             )
@@ -208,7 +210,7 @@ class SkillRevisionEvolutionTests(unittest.TestCase):
             )
             self.assertEqual(
                 "Use echo instructions.\n",
-                (root / "skills" / "prompt" / "echo" / "SKILL.md").read_text(
+                store.private_root.joinpath("skills/prompt/echo/SKILL.md").read_text(
                     encoding="utf-8"
                 ),
             )

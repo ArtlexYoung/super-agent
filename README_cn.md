@@ -108,7 +108,7 @@ default = true
 
 model Skill 与其他 Skill 共用中心索引、校验、证据、候选、晋升和回滚流程。详见 [配置说明](docs/configuration.md)。
 
-Web 客户端提供中文可视化 model Skill 编辑器。模型元数据写入项目 Skill 目录，凭据只配置环境变量名，真实 API Key 不会写入浏览器状态、TOML 或运行记录。
+Web 客户端提供中文可视化 model Skill 编辑器。模型元数据写入当前用户的 Skill 覆盖层，凭据只配置环境变量名，真实 API Key 不会写入浏览器状态、TOML 或运行记录。
 
 ## 初始化项目
 
@@ -284,6 +284,8 @@ path = ".super-agent"
 ```
 
 JSONL 会在 `.super-agent/users/<user-hash>/events.jsonl` 下为每个用户保存一条可读的标准事件流。会话、运行、评价、记忆、使用习惯、Skill 保鲜度、进化建议和披露历史都按用户与 Agent 隔离。`RuntimeStore` 负责公共作用域和运行操作；`store.disclosure` 负责披露缓存与历史，`store.memory` 负责同一后端上的记忆与习惯操作。渐进披露缓存和进化工作区只是按用户隔离、可重新生成的本地产物。
+
+可变 Skill 使用同一作用域。Runtime 通过唯一中心索引按 `用户 > 项目 > 内置` 的顺序解析。安装、模型编辑和候选晋升都写入 `.super-agent/users/<user-hash>/agents/<agent-hash>/skills`，不会改动共享的项目 Skill。删除用户 Skill 后会重新露出下层共享 Skill；用户级管理器不能删除共享 Skill。
 
 需要更强的本地并发时，可以选择 Python 标准库自带的 SQLite，Runtime 语义完全相同，也不会增加第三方依赖：
 

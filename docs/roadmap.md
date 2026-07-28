@@ -312,7 +312,7 @@ Status: implemented.
 
 ## v0.0.59: User Skill Overlay
 
-Status: planned.
+Status: implemented.
 
 - Store compact evolution state as user-scoped events.
 - Overlay user-created and evolved Skills on shared project Skills.

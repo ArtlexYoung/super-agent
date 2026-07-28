@@ -338,14 +338,11 @@ def _load_runtime_store(config: AgentConfig, user_id: str) -> RuntimeStore:
 
 def _load_package_manager(config_path: Path, user_id: str) -> SkillPackageManager:
     config = AgentConfig.load_from_file(config_path)
-    if not config.paths.skills:
-        raise ValueError("agent has no skill path configured")
     return SkillPackageManager(
         create_progressive_skill_disclosure(
             config,
             store=_load_runtime_store(config, user_id),
         ),
-        config.paths.skills[0],
         SafetyPolicy.from_name(config.agent.safety),
     )
 

@@ -8,12 +8,11 @@ from pathlib import Path
 from typing import Callable, cast
 from uuid import uuid4
 
-from runtime.config import AgentConfig
 from runtime.safety import ActionEffect, ActionRequest, RuntimeActionExecutor, SafetyPolicy
 from runtime.evolution.files import compare_directory_versions
 from runtime.evolution.state import (
     create_skill_candidate_difference,
-    find_candidate_skill_evolution,
+    list_skill_evolutions,
     record_skill_candidate_evaluation,
     record_skill_candidate_promoted,
     record_skill_evolution_candidate,
@@ -21,6 +20,7 @@ from runtime.evolution.state import (
     require_skill_candidate_can_promote,
     start_manual_skill_evolution,
 )
+from runtime.evolution.state_values import SkillEvolutionState
 from runtime.model_calls import TextModel
 from runtime.store import RuntimeStore
 from skill.evolution.candidate import (
@@ -46,7 +46,6 @@ from skill.evolution.artifacts import (
     skill_evaluation_report_to_dict,
     skill_history_revision_to_dict,
     utc_now_text,
-    write_json_atomically,
     write_json_exclusive,
 )
 from skill.disclosure import ProgressiveDisclosureCore
@@ -68,7 +67,6 @@ class SkillEvolutionManager:
     def __init__(
         self,
         *,
-        config: AgentConfig,
         skill_disclosure: ProgressiveDisclosureCore,
         store: RuntimeStore,
         models: EvolutionModels,
@@ -81,12 +79,11 @@ class SkillEvolutionManager:
         self.skill_disclosure = ProgressiveDisclosureCore(
             skill_disclosure.skill_roots,
             store,
+            user_skill_roots=skill_disclosure.user_skill_roots,
             fallback_skill_roots=skill_disclosure.fallback_skill_roots,
             disabled_names=skill_disclosure.disabled_names,
         )
-        if not config.paths.skills:
-            raise ValueError("agent has no skill path configured")
-        self.skill_root = config.paths.skills[0]
+        self.user_skill_root = store.private_root / "skills"
         self.evolution_root = store.private_root / "evolution"
         self.store = store
         self.models = models
@@ -249,10 +246,7 @@ class SkillEvolutionManager:
 
     def _promote_skill_candidate(self, candidate_id: str) -> SkillManifest:
         candidate = self._read_candidate(candidate_id)
-        report = self._read_latest_report(candidate.candidate_id)
-        promotion_path = self.evolution_root / "promotions" / f"{candidate.candidate_id}.json"
-        if promotion_path.exists():
-            raise ValueError(f"skill candidate was already promoted: {candidate.candidate_id}")
+        self._read_latest_report(candidate.candidate_id)
         current = self._read_active_manifest(candidate.name, candidate.capability)
         if current is not None:
             validate_skill_replacement(current.path, candidate.skill_path, self.store)
@@ -266,18 +260,14 @@ class SkillEvolutionManager:
             candidate.candidate_id,
             current_revision,
         )
-        active_state = self._read_active_state(candidate.capability, candidate.name)
-        previous_revision_id = str(active_state.get("rollback_revision_id", ""))
+        previous_revision_id = self._current_rollback_revision_id(candidate.key)
         rollback_revision = self._snapshot_current_skill(
             current,
             action="promotion_backup",
             previous_revision_id=previous_revision_id,
         )
-        target = (
-            self.skill_root / candidate.capability / candidate.name
-            if current is None
-            else current.path
-        )
+        target = self._user_skill_path(candidate.capability, candidate.name)
+        had_user_overlay = target.is_dir()
         _replace_skill_directory(candidate.skill_path, target)
         promoted = self._read_active_manifest(candidate.name, candidate.capability)
         if promoted is None:
@@ -285,36 +275,19 @@ class SkillEvolutionManager:
         try:
             self._notify_skill_changed(promoted)
         except Exception:
-            if rollback_revision is None:
+            if not had_user_overlay:
                 shutil.rmtree(target)
-            else:
+                self._notify_skill_changed(current)
+            elif rollback_revision is not None:
                 _replace_skill_directory(rollback_revision.skill_path, target)
                 self._notify_skill_changed(current)
             raise
-        write_json_exclusive(
-            promotion_path,
-            {
-                "schema_version": 2,
-                "candidate_id": candidate.candidate_id,
-                "skill_key": candidate.key,
-                "capability": candidate.capability,
-                "skill_name": candidate.name,
-                "version": promoted.version,
-                "report_id": report.report_id,
-                "promoted_at": utc_now_text(),
-            },
-        )
-        self._write_active_state(
-            candidate.capability,
-            candidate.name,
-            candidate_id=candidate.candidate_id,
-            rollback_revision_id="" if rollback_revision is None else rollback_revision.revision_id,
-        )
         record_skill_candidate_promoted(
             self.store,
             candidate.candidate_id,
             create_manifest_skill_revision(promoted, evolution_supported=True),
             current_revision,
+            "" if rollback_revision is None else rollback_revision.revision_id,
         )
         return promoted
 
@@ -347,9 +320,10 @@ class SkillEvolutionManager:
         if current is None:
             raise KeyError(f"active skill not found: {name}")
         skill_capability = current.capability
-        active_state = self._read_active_state(skill_capability, skill_name)
-        candidate_id = str(active_state.get("candidate_id", ""))
-        revision_id = str(active_state.get("rollback_revision_id", ""))
+        evolution = self._require_active_evolution(
+            f"{skill_capability}:{skill_name}"
+        )
+        revision_id = evolution.rollback_revision_id
         if not revision_id:
             raise ValueError(f"skill has no previous evolution revision: {skill_name}")
         revision = self._read_history_revision(
@@ -362,7 +336,8 @@ class SkillEvolutionManager:
             action="rollback_backup",
             previous_revision_id=revision_id,
         )
-        _replace_skill_directory(revision.skill_path, current.path)
+        target = self._user_skill_path(skill_capability, skill_name)
+        _replace_skill_directory(revision.skill_path, target)
         restored = self._read_active_manifest(skill_name, skill_capability)
         if restored is None:
             raise RuntimeError(f"restored skill not found after rollback: {skill_name}")
@@ -370,34 +345,15 @@ class SkillEvolutionManager:
             self._notify_skill_changed(restored)
         except Exception:
             if current_revision is not None:
-                _replace_skill_directory(current_revision.skill_path, current.path)
+                _replace_skill_directory(current_revision.skill_path, target)
                 self._notify_skill_changed(current)
             raise
-        self._write_active_state(
-            skill_capability,
-            skill_name,
-            candidate_id="",
-            rollback_revision_id=revision.previous_revision_id,
-        )
-        rollback_path = self.evolution_root / "rollbacks" / f"rollback-{uuid4().hex}.json"
-        write_json_exclusive(
-            rollback_path,
-            {
-                "schema_version": 2,
-                "skill_key": f"{skill_capability}:{skill_name}",
-                "capability": skill_capability,
-                "skill_name": skill_name,
-                "restored_revision_id": revision.revision_id,
-                "restored_version": restored.version,
-                "rolled_back_at": utc_now_text(),
-            },
-        )
-        evolution = find_candidate_skill_evolution(self.store, candidate_id)
         record_skill_evolution_monitoring(
             self.store,
             evolution.evolution_id,
             "rolled_back",
             f"restored {restored.version} from {revision.revision_id}",
+            rollback_revision_id=revision.previous_revision_id,
         )
         return restored
 
@@ -599,55 +555,29 @@ class SkillEvolutionManager:
             raise ValueError(f"skill candidate has not been evaluated: {candidate_id}")
         return max(reports, key=lambda item: (item.created_at, item.report_id))
 
-    def _read_active_state(self, capability: str, name: str) -> dict[str, object]:
-        path = self.evolution_root / "active" / capability / f"{name}.json"
-        if not path.is_file():
-            return {}
-        data = json.loads(path.read_text(encoding="utf-8"))
-        expected_fields = {
-            "schema_version",
-            "skill_key",
-            "capability",
-            "skill_name",
-            "candidate_id",
-            "rollback_revision_id",
-            "updated_at",
-        }
-        if not isinstance(data, dict) or data.get("schema_version") != 2:
-            raise ValueError(f"invalid active Skill evolution state: {capability}:{name}")
-        identity_matches = (
-            data.get("skill_key") == f"{capability}:{name}"
-            and data.get("capability") == capability
-            and data.get("skill_name") == name
-        )
-        if set(data) != expected_fields or not identity_matches:
-            raise ValueError(
-                "active Skill evolution state identity does not match path: "
-                f"{capability}:{name}"
-            )
-        return data
+    def _current_rollback_revision_id(self, skill_key: str) -> str:
+        active = [
+            state
+            for state in list_skill_evolutions(self.store)
+            if state.skill_key == skill_key and state.status in {"promoted", "stable"}
+        ]
+        if not active:
+            return ""
+        latest = max(active, key=lambda item: (item.updated_at, item.evolution_id))
+        return latest.rollback_revision_id
 
-    def _write_active_state(
-        self,
-        capability: str,
-        name: str,
-        *,
-        candidate_id: str,
-        rollback_revision_id: str,
-    ) -> None:
-        path = self.evolution_root / "active" / capability / f"{name}.json"
-        write_json_atomically(
-            path,
-            {
-                "schema_version": 2,
-                "skill_key": f"{capability}:{name}",
-                "capability": capability,
-                "skill_name": name,
-                "candidate_id": candidate_id,
-                "rollback_revision_id": rollback_revision_id,
-                "updated_at": utc_now_text(),
-            },
-        )
+    def _require_active_evolution(self, skill_key: str) -> SkillEvolutionState:
+        active = [
+            state
+            for state in list_skill_evolutions(self.store)
+            if state.skill_key == skill_key and state.status in {"promoted", "stable"}
+        ]
+        if not active:
+            raise ValueError(f"skill has no active promoted evolution: {skill_key}")
+        return max(active, key=lambda item: (item.updated_at, item.evolution_id))
+
+    def _user_skill_path(self, capability: str, name: str) -> Path:
+        return self.user_skill_root / capability / name
 
 
 def _replace_skill_directory(source: Path, target: Path) -> None:

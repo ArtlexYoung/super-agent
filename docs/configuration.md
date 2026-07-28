@@ -105,7 +105,7 @@ ANTHROPIC_API_KEY
 
 Environment profiles are ephemeral and used only when no enabled model Skill exists. Selection order is `SUPER_AGENT_PROVIDER`, `OLLAMA_HOST`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, then the built-in mock. Use `super-agent models list` and `super-agent models resolve` to inspect available profiles and the selected default. These commands print environment-variable names but never secret values.
 
-The Web model page manages real model Skills through the same Runtime operations. Metadata is written under the first configured Skill root. The browser sends only an environment-variable name such as `OPENAI_API_KEY`; actual key values remain in the server process environment. For automation, send model Skill metadata as JSON on stdin:
+The Web model page manages real model Skills through the same Runtime operations. Metadata is written to the current user's Skill overlay under the storage path; configured project roots stay read-only baselines. The browser sends only an environment-variable name such as `OPENAI_API_KEY`; actual key values remain in the server process environment. For automation, send model Skill metadata as JSON on stdin:
 
 ```bash
 printf '%s' '{"name":"fast","description":"Fast answer model","provider":"openai-compatible","model":"gpt-4.1-mini","api_key_env":"OPENAI_API_KEY","supports":["text","tools"],"purposes":["answer"],"default":true}' \
@@ -114,11 +114,11 @@ printf '%s' '{"name":"fast","description":"Fast answer model","provider":"openai
 super-agent models remove --config agent.toml --name fast
 ```
 
-`models save` creates, updates, or atomically renames a model Skill. Include `previous_name` when renaming. It never accepts or stores a secret value; configure the named environment variable separately.
+`models save` creates, updates, or atomically renames a user model Skill. A shared model Skill can be edited by creating a same-name user overlay, but it cannot be renamed or removed from a user scope. Include `previous_name` when renaming a user-owned Skill. The command never accepts or stores a secret value; configure the named environment variable separately.
 
 ## Paths
 
-`paths.skills` is a list of recursively scanned Skill roots. Relative paths resolve from the configuration file directory.
+`paths.skills` is a list of recursively scanned shared project Skill roots. Relative paths resolve from the configuration file directory. Runtime combines them with the current user's automatically managed root and built-in fallbacks in `user > project > builtin` order; no overlay path needs to be configured.
 
 ## Storage
 

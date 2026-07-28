@@ -108,7 +108,7 @@ default = true
 
 Model Skills use the same central index, validation, evidence, candidate, promotion, and rollback path as every other Skill. See [Configuration](docs/configuration.md).
 
-The Web client provides a Chinese visual editor for model Skills. It writes model metadata to the project Skill directory and stores only the environment-variable name for a credential, never the credential value.
+The Web client provides a Chinese visual editor for model Skills. It writes model metadata to the current user's Skill overlay and stores only the environment-variable name for a credential, never the credential value.
 
 ## Create a Project
 
@@ -306,6 +306,8 @@ path = ".super-agent"
 ```
 
 JSONL stores one readable canonical event stream per user under `.super-agent/users/<user-hash>/events.jsonl`. Conversations, runs, evaluations, memory, usage habits, Skill freshness, evolution recommendations, and disclosure history are isolated by user and Agent inside that stream. `RuntimeStore` owns the common scope and run operations; `store.disclosure` owns cache/history operations and `store.memory` owns memory/habit operations over the same backend. The progressive-disclosure cache and evolution workspace remain rebuildable, user-scoped local artifacts.
+
+Mutable Skills use the same scope. Runtime resolves one central index in `user > project > builtin` order. Installs, model edits, and promoted candidates are written under `.super-agent/users/<user-hash>/agents/<agent-hash>/skills`; shared project Skills remain unchanged. Removing a user Skill reveals the shared Skill below it, while shared Skills cannot be removed through a user-scoped manager.
 
 SQLite is the optional standard-library backend for concurrent local use. It keeps the same Runtime semantics and still adds no package dependency:
 

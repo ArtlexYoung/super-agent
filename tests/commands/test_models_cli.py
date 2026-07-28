@@ -29,7 +29,7 @@ class ModelsCliTests(unittest.TestCase):
             self.assertEqual("0.1.0", first["model"]["version"])
             self.assertEqual("0.1.0", second["model"]["version"])
             self.assertEqual("0.1.1", updated["model"]["version"])
-            self.assertFalse((root / "skills" / "model" / "deep").exists())
+            self.assertFalse(_find_user_model_skill(root, "deep").exists())
             models = {item["name"]: item for item in listed["models"]}
             self.assertEqual({"fast", "precise"}, set(models))
             self.assertFalse(models["fast"]["default"])
@@ -67,7 +67,7 @@ class ModelsCliTests(unittest.TestCase):
             request["api_key_env"] = "OPENAI_API_KEY"
 
             saved = _save_model(config_path, request)
-            text = (root / "skills" / "model" / "remote" / "skill.toml").read_text(
+            text = _find_user_model_skill(root, "remote").joinpath("skill.toml").read_text(
                 encoding="utf-8"
             )
 
@@ -132,3 +132,16 @@ def _model_request(name: str, *, default: bool) -> dict[str, object]:
         "input_cost_per_million": 0.1,
         "output_cost_per_million": 0.2,
     }
+
+
+def _find_user_model_skill(root: Path, name: str) -> Path:
+    matches = [
+        path.parent
+        for path in root.joinpath(".super-agent").rglob(
+            f"skills/model/{name}/skill.toml"
+        )
+        if "cache" not in path.parts
+    ]
+    if len(matches) > 1:
+        raise AssertionError(f"multiple user model Skills found: {name}")
+    return matches[0] if matches else root / ".missing-user-model-skill" / name

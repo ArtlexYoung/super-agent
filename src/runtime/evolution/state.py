@@ -179,6 +179,7 @@ def record_skill_candidate_promoted(
     candidate_id: str,
     active_revision: SkillRevision,
     current_revision: SkillRevision | None,
+    rollback_revision_id: str,
 ) -> SkillEvolutionState:
     state = require_skill_candidate_can_promote(store, candidate_id, current_revision)
     if state.candidate_revision is None:
@@ -192,6 +193,10 @@ def record_skill_candidate_promoted(
         {
             "schema_version": SKILL_EVOLUTION_SCHEMA_VERSION,
             "active_revision": skill_revision_to_dict(active_revision),
+            "rollback_revision_id": _optional_text(
+                rollback_revision_id,
+                "rollback_revision_id",
+            ),
             "status": "promoted",
         },
     )
@@ -221,6 +226,8 @@ def record_skill_evolution_monitoring(
     evolution_id: str,
     status: str,
     detail: str,
+    *,
+    rollback_revision_id: str | None = None,
 ) -> SkillEvolutionState:
     state = read_skill_evolution(store, evolution_id)
     _require_status(state, {"promoted", "stable"})
@@ -233,6 +240,11 @@ def record_skill_evolution_monitoring(
         {
             "schema_version": SKILL_EVOLUTION_SCHEMA_VERSION,
             "detail": _required_text(detail, "monitoring detail"),
+            "rollback_revision_id": (
+                state.rollback_revision_id
+                if rollback_revision_id is None
+                else _optional_text(rollback_revision_id, "rollback_revision_id")
+            ),
             "status": status,
         },
     )
@@ -376,6 +388,7 @@ def _state_from_started_event(
         candidate_difference=None,
         report_id="",
         evaluation_score=None,
+        rollback_revision_id="",
         detail="",
         created_at=event.created_at,
         updated_at=event.created_at,
@@ -428,12 +441,25 @@ def _apply_skill_evolution_event(
         _require_event(
             event,
             event.event_type,
-            {"schema_version", "active_revision", "status"},
+            {
+                "schema_version",
+                "active_revision",
+                "rollback_revision_id",
+                "status",
+            },
         )
         active = skill_revision_from_dict(event.data["active_revision"])
         if state.candidate_revision is None or active.identity != state.candidate_revision.identity:
             raise ValueError("promoted Skill revision changed candidate identity")
-        return replace(state, status=_read_status(event.data["status"]), updated_at=event.created_at)
+        return replace(
+            state,
+            status=_read_status(event.data["status"]),
+            rollback_revision_id=_optional_text(
+                event.data["rollback_revision_id"],
+                "rollback_revision_id",
+            ),
+            updated_at=event.created_at,
+        )
     if event.event_type in {"skill_evolution.failed", "skill_evolution.monitored"}:
         allowed = (
             {"candidate_recommended", "candidate_created"}
@@ -441,14 +467,21 @@ def _apply_skill_evolution_event(
             else {"promoted", "stable"}
         )
         _require_status(state, allowed)
-        _require_event(
-            event,
-            event.event_type,
-            {"schema_version", "detail", "status"},
-        )
+        fields = {"schema_version", "detail", "status"}
+        if event.event_type == "skill_evolution.monitored":
+            fields.add("rollback_revision_id")
+        _require_event(event, event.event_type, fields)
         return replace(
             state,
             status=_read_status(event.data["status"]),
+            rollback_revision_id=(
+                state.rollback_revision_id
+                if event.event_type.endswith("failed")
+                else _optional_text(
+                    event.data["rollback_revision_id"],
+                    "rollback_revision_id",
+                )
+            ),
             detail=_required_text(event.data["detail"], "detail"),
             updated_at=event.created_at,
         )

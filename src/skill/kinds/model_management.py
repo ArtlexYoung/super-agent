@@ -49,7 +49,7 @@ class _ModelSkillDocument:
 
 
 class ModelSkillManager:
-    """Manage model Skills in the first configured project Skill root."""
+    """Manage model Skill overlays inside one user scope."""
 
     def __init__(
         self,
@@ -57,11 +57,9 @@ class ModelSkillManager:
         store: RuntimeStore,
         safety_policy: SafetyPolicy | None = None,
     ) -> None:
-        if not config.paths.skills:
-            raise ValueError("agent has no writable skill path configured")
         self.config = config
         self.store = store
-        self.skill_root = config.paths.skills[0]
+        self.user_skill_root = store.private_root / "skills"
         self.actions = RuntimeActionExecutor(
             safety_policy or SafetyPolicy(),
             store.append_management_action_event,
@@ -96,12 +94,13 @@ class ModelSkillManager:
             opened = disclosure.open_skill(source.reference.name, "model")
             source_document = _read_model_skill_document(opened)
             source_path = source_document.manifest.path
-            _require_managed_path(source_path, self.skill_root)
+            if previous_name != clean_request.name and source.source != "user":
+                raise ValueError("a shared model Skill cannot be renamed by a user overlay")
         version = _next_patch_version(
             "" if source_document is None else source_document.manifest.version
         )
         document = _create_model_skill_document(clean_request, source_document, version)
-        target = self.skill_root / "model" / clean_request.name
+        target = self.user_skill_root / "model" / clean_request.name
         if target.exists() and source_path != target:
             raise FileExistsError(f"model Skill target already exists: {target}")
         updates = [(target, source_path, document)]
@@ -115,7 +114,11 @@ class ModelSkillManager:
         _apply_model_skill_updates(
             updates,
             self.store,
-            removed_path=source_path if source_path != target else None,
+            removed_path=(
+                source_path
+                if source is not None and source.source == "user" and source_path != target
+                else None
+            ),
         )
         return self._read_profile(clean_request.name)
 
@@ -134,10 +137,12 @@ class ModelSkillManager:
         disclosure = self._create_disclosure()
         index = disclosure.prepare_skill_index()
         entry = index.require_skill(clean_name, "model")
+        if entry.source != "user":
+            raise PermissionError(f"cannot remove shared model Skill: model:{clean_name}")
         opened = disclosure.open_skill(clean_name, "model")
         removed_document = _read_model_skill_document(opened)
         removed_path = removed_document.manifest.path
-        _require_managed_path(removed_path, self.skill_root)
+        _require_managed_path(removed_path, self.user_skill_root)
         remaining = [
             item
             for item in index.entries
@@ -148,10 +153,9 @@ class ModelSkillManager:
             replacement = sorted(remaining, key=lambda item: item.reference.key)[0]
             replacement_opened = disclosure.open_skill(replacement.reference.name, "model")
             replacement_document = _read_model_skill_document(replacement_opened)
-            _require_managed_path(replacement_document.manifest.path, self.skill_root)
             updates.append(
                 (
-                    replacement_document.manifest.path,
+                    self.user_skill_root / "model" / replacement.reference.name,
                     replacement_document.manifest.path,
                     _with_default(replacement_document, True),
                 )
@@ -175,10 +179,9 @@ class ModelSkillManager:
             document = _read_model_skill_document(opened)
             if document.configuration.get("default") is not True:
                 continue
-            _require_managed_path(document.manifest.path, self.skill_root)
             updates.append(
                 (
-                    document.manifest.path,
+                    self.user_skill_root / "model" / entry.reference.name,
                     document.manifest.path,
                     _with_default(document, False),
                 )
@@ -193,7 +196,11 @@ class ModelSkillManager:
         )
 
     def _create_disclosure(self) -> ProgressiveDisclosureCore:
-        return ProgressiveDisclosureCore(self.config.paths.skills, self.store)
+        return ProgressiveDisclosureCore(
+            self.config.paths.skills,
+            self.store,
+            user_skill_roots=[self.user_skill_root],
+        )
 
 
 def model_skill_input_from_dict(value: object) -> ModelSkillInput:
