@@ -23,6 +23,8 @@ no separate controller for workflows, memory, subagents, CLI, or Web requests.
 The smallest run needs only an Agent and a model source. Other behavior is progressive:
 
 - No conversation ID means no conversation history is loaded or written.
+- No conversation ID means temporary memory is unavailable; long-term memory remains
+  available when a memory Skill is selected.
 - No selected memory Skill means no memory is recalled or updated.
 - No selected workflow Skill means the direct workflow is used.
 - The built-in planner may decompose a task when its deterministic rules match.

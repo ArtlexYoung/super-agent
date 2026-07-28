@@ -81,7 +81,7 @@ class ConversationRuntimeTests(unittest.TestCase):
             agent.for_user("user-beta").run("beta secret", conversation_id=conversation_id)
             alpha_store = agent.runtime.create_store("user-alpha")
             beta_store = agent.runtime.create_store("user-beta")
-            MiniMemory(alpha_store).add_memory_item("alpha memory")
+            MiniMemory(alpha_store).add_long_term_memory("alpha memory")
 
             self.assertEqual(
                 ["alpha secret", "ok"],

@@ -94,7 +94,7 @@ class WebAPI:
         environment = self.agent.user_secrets.get_environment_for_user(self.user_id)
         models = read_model_profiles(disclosure, index, environment)
         return {
-            "schema_version": 1,
+            "schema_version": 2,
             "agent": agent_configuration_to_dict(config),
             "storage": {
                 "backend": config.storage.backend,
@@ -109,7 +109,7 @@ class WebAPI:
                 asdict(item) for item in self.user.conversations.list()
             ],
             "runs": [asdict(item) for item in store.list_runs(50)],
-            "memory": store.memory.list_memory_items(),
+            "memory": store.memory.list_all_memory_items(),
             "subagents": _subagent_tree(
                 self.agent,
                 self.user_id,
@@ -124,6 +124,17 @@ class WebAPI:
 
     def _forget_memory(self, item_id: str) -> None:
         store = self.agent.runtime.create_store(self.user_id)
+        item = next(
+            (
+                candidate
+                for candidate in store.memory.list_all_memory_items()
+                if candidate["item_id"] == item_id
+            ),
+            None,
+        )
+        if item is None:
+            raise KeyError(f"active memory item not found: {item_id}")
+        conversation_id = item["conversation_id"]
         self.agent.runtime.execute_management_action(
             self.user_id,
             ActionRequest.create(
@@ -134,6 +145,10 @@ class WebAPI:
             lambda: store.memory.forget_memory_items(
                 [item_id],
                 "forgotten from web interface",
+                memory_type=str(item["memory_type"]),
+                conversation_id=(
+                    conversation_id if isinstance(conversation_id, str) else None
+                ),
             ),
         )
 

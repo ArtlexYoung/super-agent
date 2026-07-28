@@ -153,8 +153,11 @@ variables rather than TOML.
 - Agent-owned Skills with `agent_can_update = true` can create candidates, run
   non-regression evaluation, promote a complete Skill directory, monitor it, and roll it
   back. Shared project Skills remain read-only baselines.
-- Memory recall can merge, replace, archive, or forget stale items. Every mutation is an
-  explicit event; invalid model output fails instead of returning an unorganized result.
+- Temporary memory is keyed to the current conversation and cannot enter another
+  conversation. Long-term memory is reserved for abstract, critical, important, stable,
+  or habitual knowledge.
+- Recall organizes each memory type independently and can merge, replace, archive, or
+  forget stale items. Every mutation is explicit; invalid model output is an error.
 
 Inspect the evidence directly:
 

@@ -183,7 +183,7 @@ instructions = "SKILL.md"
             memory = MiniMemory(
                 create_local_runtime_store(root / ".super-agent", agent_name="demo")
             )
-            memory.add_memory_item("Keep answers short.")
+            memory.add_long_term_memory("Keep answers short.")
             config_path = _write_agent_config(
                 root,
                 skills=["echo", "github"],

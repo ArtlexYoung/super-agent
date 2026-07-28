@@ -1,8 +1,8 @@
 schema_version = 3
 name = "default"
 type = "memory"
-description = "Built-in event-based memory"
-version = "0.0.31"
+description = "Built-in temporary and long-term memory behavior"
+version = "0.0.63"
 triggers = []
 
 [configuration]
@@ -10,3 +10,4 @@ default_scope = "agent"
 recall_limit = 20
 include_in_prompt = true
 include_usage_habits = true
+organize_on_recall = true

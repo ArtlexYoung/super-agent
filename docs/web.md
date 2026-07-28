@@ -35,6 +35,10 @@ user model Skill. The selected storage backend remains authoritative for convers
 runs, memory, and evolution. Skill lists come from the central progressive index and group
 by their actual `type`, including custom types.
 
+Memory management separates temporary and long-term items. Temporary rows show their
+conversation identity; long-term rows remain available across conversations. Forgetting
+either type is an explicit management action and does not erase the append-only history.
+
 The browser stores no raw Provider secret. Model configuration records an environment
 variable name such as `OPENAI_API_KEY`; only the server process resolves its value.
 Secrets do not enter TOML, Web storage, events, or Runtime locks.

@@ -29,17 +29,33 @@ class WebAPIContractTests(unittest.TestCase):
             )
             agent.add_subagent(child, name="research", created_by_agent=True)
             child_result = child.for_user("web-user").run("inspect")
+            memory = MiniMemory(agent.runtime.create_store("web-user"))
+            memory.add_long_term_memory("Stable preference.")
+            memory.add_temporary_memory(
+                "Current conversation detail.",
+                conversation_id="conversation-a",
+            )
 
             response = WebAPI(agent, "web-user").handle("GET", "/api/bootstrap")
 
             self.assertEqual(200, response.status)
             body = _body_dict(response.body)
+            self.assertEqual(2, body["schema_version"])
             self.assertEqual("super-agent", _body_dict(body["agent"])["name"])
             skills = _body_list(body["skills"])
             self.assertTrue({"memory", "workflow", "planner"}.issubset(
                 {item["type"] for item in skills}
             ))
             self.assertNotIn("manifest_cache_path", skills[0])
+            memory_items = _body_list(body["memory"])
+            self.assertEqual(
+                {"long_term", "temporary"},
+                {item["memory_type"] for item in memory_items},
+            )
+            temporary = next(
+                item for item in memory_items if item["memory_type"] == "temporary"
+            )
+            self.assertEqual("conversation-a", temporary["conversation_id"])
             child_node = _body_list(body["subagents"])[0]
             self.assertEqual(["super-agent", "research"], child_node["path"])
             self.assertEqual(child_result.run_id, child_node["runs"][0]["run_id"])
@@ -65,7 +81,7 @@ class WebAPIContractTests(unittest.TestCase):
             )
             run = api.handle("GET", f"/api/runs/{result.run_id}")
             memory = MiniMemory(agent.runtime.create_store("web-user"))
-            item = memory.add_memory_item("Forget this note.")
+            item = memory.add_long_term_memory("Forget this note.")
             forgotten = api.handle("DELETE", f"/api/memory/{item.item_id}")
 
             self.assertEqual(201, created.status)

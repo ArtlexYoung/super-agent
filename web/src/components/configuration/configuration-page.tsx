@@ -94,6 +94,7 @@ export function ConfigurationPage({ controller }: ConfigurationPageProps) {
         <TabsContent value="memory" className="configuration-scroll-area">
           <MemoryConfiguration
             memory={data.memory}
+            conversations={data.conversations}
             busy={controller.busy}
             onForget={(itemId) => void controller.forgetMemoryItem(itemId)}
           />

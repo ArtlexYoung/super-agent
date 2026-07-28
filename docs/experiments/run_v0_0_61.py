@@ -97,8 +97,8 @@ def _run_user_tasks(root: Path, server: ProofModelServer) -> ProofInputs:
     alice_memory = MiniMemory(agent.runtime.create_store(ALICE))
     bob_memory = MiniMemory(agent.runtime.create_store(BOB))
     for item in ALICE_MEMORY:
-        alice_memory.add_memory_item(item)
-    bob_memory.add_memory_item(BOB_MEMORY)
+        alice_memory.add_long_term_memory(item)
+    bob_memory.add_long_term_memory(BOB_MEMORY)
     alice_memory_before = sorted(item.text for item in alice_memory.list_memory_items())
     alice.conversations.create(conversation_id=ALICE_CONVERSATION_ID)
     bob.conversations.create(conversation_id=BOB_CONVERSATION_ID)

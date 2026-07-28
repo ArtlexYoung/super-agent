@@ -39,7 +39,19 @@ Status: implemented.
   memory fallback behavior.
 - Add a lazy CopilotKit integration page over the same AG-UI endpoint.
 
-## v0.0.63: Request Identity Adapter
+## v0.0.63: Two Memory Lifetimes
+
+Status: implemented.
+
+- Bind temporary memory to one conversation and prevent cross-conversation access in
+  storage, Runtime tools, recall organization, and prompt context.
+- Reserve long-term memory for abstract, critical, important, stable, or habitual
+  knowledge that remains available across conversations.
+- Replace the generic model write tool with explicit temporary and long-term tools.
+- Show both types and temporary conversation ownership in CLI, Web, events, and tests.
+- Reject untyped memory streams instead of adding migration guesses or hidden fallback.
+
+## v0.0.64: Request Identity Adapter
 
 Status: planned.
 
@@ -49,7 +61,7 @@ Status: planned.
 - Add cross-user attack tests for every management and AG-UI route.
 - Preserve the local single-user server with no added dependency or required setup.
 
-## v0.0.64: Explicit Approval Continuation
+## v0.0.65: Explicit Approval Continuation
 
 Status: planned.
 
@@ -59,7 +71,7 @@ Status: planned.
 - Record request, decision, resumption, completion, and expiry in the canonical trace.
 - Keep unattended execution opt-in through code-only action rules.
 
-## v0.0.65: Storage at Service Scale
+## v0.0.66: Storage at Service Scale
 
 Status: planned.
 
@@ -69,7 +81,7 @@ Status: planned.
 - Publish deterministic copy, integrity, and recovery checks.
 - Keep JSONL clean and dependency-free as the default path.
 
-## v0.0.66: Model and Task Learning Proof
+## v0.0.67: Model and Task Learning Proof
 
 Status: planned.
 
@@ -80,7 +92,7 @@ Status: planned.
 - Measure routing quality separately for each user, Agent, and task purpose.
 - Expose compact evidence explanations through CLI, Web, and AG-UI custom events.
 
-## v0.0.67: Skill Evolution Proof
+## v0.0.68: Skill Evolution Proof
 
 Status: planned.
 

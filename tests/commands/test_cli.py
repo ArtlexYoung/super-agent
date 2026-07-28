@@ -136,7 +136,18 @@ class CliTests(unittest.TestCase):
             add_output = StringIO()
             with patch("sys.stdout", add_output):
                 add_code = main(
-                    ["memory", "add", "--config", config, "--text", "Remember Python.", "--scope", "project"]
+                    [
+                        "memory",
+                        "add",
+                        "--config",
+                        config,
+                        "--text",
+                        "Remember Python.",
+                        "--scope",
+                        "project",
+                        "--type",
+                        "long-term",
+                    ]
                 )
             item = json.loads(add_output.getvalue())
             recall_output = StringIO()
@@ -157,8 +168,66 @@ class CliTests(unittest.TestCase):
             self.assertEqual(0, list_code)
             self.assertEqual(0, forget_code)
             self.assertEqual(0, consolidate_code)
+            self.assertEqual("long_term", item["memory_type"])
+            self.assertIsNone(item["conversation_id"])
             self.assertEqual("Remember Python.", json.loads(recall_output.getvalue())["text"])
             self.assertEqual(item["item_id"], json.loads(list_output.getvalue())["item_id"])
+
+    def test_temporary_memory_cli_requires_and_filters_conversation_id(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            config = str(Path(tmp) / "agent.toml")
+            main(["init", "--path", tmp])
+
+            with self.assertRaisesRegex(ValueError, "current conversation"):
+                main(
+                    [
+                        "memory",
+                        "add",
+                        "--config",
+                        config,
+                        "--text",
+                        "Temporary Python detail.",
+                        "--type",
+                        "temporary",
+                    ]
+                )
+
+            add_output = StringIO()
+            with patch("sys.stdout", add_output):
+                main(
+                    [
+                        "memory",
+                        "add",
+                        "--config",
+                        config,
+                        "--text",
+                        "Temporary Python detail.",
+                        "--type",
+                        "temporary",
+                        "--conversation-id",
+                        "conversation-a",
+                    ]
+                )
+            item = json.loads(add_output.getvalue())
+
+            other_output = StringIO()
+            with patch("sys.stdout", other_output):
+                main(
+                    [
+                        "memory",
+                        "list",
+                        "--config",
+                        config,
+                        "--type",
+                        "temporary",
+                        "--conversation-id",
+                        "conversation-b",
+                    ]
+                )
+
+            self.assertEqual("temporary", item["memory_type"])
+            self.assertEqual("conversation-a", item["conversation_id"])
+            self.assertEqual("", other_output.getvalue())
 
     def test_skills_propose_evaluate_and_promote_candidate(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, patch.dict(

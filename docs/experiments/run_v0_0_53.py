@@ -252,8 +252,8 @@ def run_end_to_end_proof(root: Path) -> dict[str, object]:
     )
     store = agent.runtime.create_store(USER_ID)
     memory = MiniMemory(store)
-    memory.add_memory_item("Legacy project external service endpoint.")
-    memory.add_memory_item("Current project external service endpoint.")
+    memory.add_long_term_memory("Legacy project external service endpoint.")
+    memory.add_long_term_memory("Current project external service endpoint.")
     memory_before = sorted(item.text for item in memory.list_memory_items())
 
     response = run_ag_ui_request(agent)

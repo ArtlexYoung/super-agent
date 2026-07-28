@@ -95,26 +95,6 @@ def conversation_from_events(user_id: str, events: list[StorageEvent]) -> Conver
     )
 
 
-def replay_memory(events: list[StorageEvent]) -> dict[str, dict[str, str]]:
-    active: dict[str, dict[str, str]] = {}
-    for event in events:
-        if event.event_type == "memory.added":
-            item = _memory_item(event.data.get("item"))
-            active[item["item_id"]] = item
-        elif event.event_type == "memory.forgotten":
-            for item_id in string_list(event.data.get("item_ids", [])):
-                active.pop(item_id, None)
-        elif event.event_type in {"memory.merged", "memory.superseded"}:
-            for item_id in string_list(event.data.get("source_item_ids", [])):
-                active.pop(item_id, None)
-            item = _memory_item(event.data.get("item"))
-            active[item["item_id"]] = item
-        elif event.event_type == "memory.archived":
-            for item_id in string_list(event.data.get("item_ids", [])):
-                active.pop(item_id, None)
-    return active
-
-
 def latest_selection_decisions(events: list[RunEvent]) -> list[object]:
     for event in reversed(events):
         if event.event_type == "skills.selected":
@@ -231,15 +211,6 @@ def _conversation_message_from_event(event: StorageEvent) -> ConversationMessage
         run_id=_stored_string(event.data, "run_id", allow_empty=True),
         run_result=None if run_result is None else dict(run_result),
     )
-
-
-def _memory_item(value: object) -> dict[str, str]:
-    if not isinstance(value, dict):
-        raise ValueError("stored memory item must be an object")
-    names = ("item_id", "text", "scope", "source_run_id", "created_at")
-    if any(not isinstance(value.get(name), str) for name in names):
-        raise ValueError("stored memory item fields must be strings")
-    return {name: str(value[name]) for name in names}
 
 
 def _stored_string(

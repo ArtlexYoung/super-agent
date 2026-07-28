@@ -122,6 +122,8 @@ export interface MemoryItem {
   scope: string
   source_run_id: string
   created_at: string
+  memory_type: "temporary" | "long_term"
+  conversation_id: string | null
 }
 
 export interface SubagentNode {

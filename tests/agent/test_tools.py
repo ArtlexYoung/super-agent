@@ -94,10 +94,10 @@ class SkillToolsTests(unittest.TestCase):
                 session.store.read_run_events(session.run_id)[-1].event_type,
             )
 
-    def test_model_can_add_recall_and_forget_memory_with_runtime_tools(self) -> None:
+    def test_model_uses_explicit_temporary_and_long_term_memory_tools(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            session = _create_session(root)
+            session = _create_session(root, conversation_id="conversation-a")
             disclosure = _create_disclosure(root, session)
             index = disclosure.prepare_skill_index()
             memory = MiniMemory(
@@ -110,11 +110,18 @@ class SkillToolsTests(unittest.TestCase):
             definitions = {
                 item["function"]["name"] for item in tools.get_tool_definitions()
             }
-            added = tools.run_tool_call(
+            temporary = tools.run_tool_call(
                 ToolCall(
-                    "add",
-                    "add_memory_item",
-                    {"text": "Remember Python.", "scope": "agent"},
+                    "add-temporary",
+                    "add_temporary_memory",
+                    {"text": "Python note for this conversation.", "scope": "agent"},
+                )
+            )
+            long_term = tools.run_tool_call(
+                ToolCall(
+                    "add-long-term",
+                    "add_long_term_memory",
+                    {"text": "User prefers Python.", "scope": "agent"},
                 )
             )
             recalled = tools.run_tool_call(
@@ -125,22 +132,33 @@ class SkillToolsTests(unittest.TestCase):
                 )
             )
             tools.run_tool_call(
-                ToolCall("forget", "forget_memory", {"item_id": added["item"]["item_id"]})
+                ToolCall(
+                    "forget",
+                    "forget_memory",
+                    {"item_id": temporary["item"]["item_id"]},
+                )
             )
 
             self.assertTrue(
                 {
                     "list_memory_items",
-                    "add_memory_item",
+                    "add_temporary_memory",
+                    "add_long_term_memory",
                     "recall_memory",
                     "forget_memory",
                     "consolidate_memory",
                 }
                 <= definitions
             )
-            self.assertEqual("Remember Python.", recalled["items"][0]["text"])
-            self.assertEqual([], memory.list_memory_items())
-            self.assertEqual(session.run_id, added["item"]["source_run_id"])
+            self.assertEqual(2, len(recalled["items"]))
+            self.assertEqual(
+                ["User prefers Python."],
+                [item.text for item in memory.list_memory_items()],
+            )
+            self.assertEqual("temporary", temporary["item"]["memory_type"])
+            self.assertEqual("conversation-a", temporary["item"]["conversation_id"])
+            self.assertEqual("long_term", long_term["item"]["memory_type"])
+            self.assertEqual(session.run_id, temporary["item"]["source_run_id"])
 
     def test_standard_policy_blocks_external_tool_before_handler_runs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -296,15 +314,22 @@ def _create_tool_router(
         contributions=(
             []
             if memory is None
-            else [create_memory_skill_contribution(memory, session.run_id)]
+            else [create_memory_skill_contribution(memory)]
         ),
     )
 
 
-def _create_session(root: Path) -> RuntimeSession:
+def _create_session(
+    root: Path,
+    conversation_id: str | None = None,
+) -> RuntimeSession:
     config = AgentConfig.create_default(root)
     provider = MockProvider()
-    identity = RunIdentity.create("local", config.agent.name)
+    identity = RunIdentity.create(
+        "local",
+        config.agent.name,
+        conversation_id=conversation_id,
+    )
     store = create_local_runtime_store(root / "state", agent_name=config.agent.name)
     store.start_run(identity, "question")
     return RuntimeSession(

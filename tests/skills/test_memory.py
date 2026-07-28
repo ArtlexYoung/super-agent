@@ -6,11 +6,16 @@ from pathlib import Path
 from core.agent import Agent
 from core.config import AgentConfig
 from core.actions import ActionRequest
+from core.identity import RunIdentity
 from core.storage import StorageEventQuery
 from core.state.store import create_local_runtime_store
 from core.provider.chat import MockProvider
 from skill.disclosure import ProgressiveDisclosureCore
-from skill.kinds.memory import MiniMemory, create_memory_from_skill_disclosure
+from skill.kinds.memory import (
+    MemoryTextModel,
+    MiniMemory,
+    create_memory_from_skill_disclosure,
+)
 from support import write_memory_skill, write_workflow_skill
 
 
@@ -19,19 +24,200 @@ class MiniMemoryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             memory = _memory(Path(tmp))
 
-            item = memory.add_memory_item("Prefer short answers.", source_run_id="run-1")
+            item = memory.add_long_term_memory(
+                "Prefer short answers.",
+                source_run_id="run-1",
+            )
 
             self.assertEqual("agent", item.scope)
+            self.assertEqual("long_term", item.memory_type)
+            self.assertIsNone(item.conversation_id)
             self.assertEqual("run-1", item.source_run_id)
             self.assertEqual([item], memory.list_memory_items())
             self.assertIn("Prefer short answers.", memory.build_prompt_instruction("short answers"))
 
+    def test_temporary_memory_requires_and_records_conversation_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            memory = _memory(Path(tmp))
+
+            with self.assertRaisesRegex(ValueError, "current conversation"):
+                memory.add_temporary_memory("Conversation detail.")
+
+            item = memory.add_temporary_memory(
+                "Conversation detail.",
+                conversation_id="conversation-a",
+            )
+
+            self.assertEqual("temporary", item.memory_type)
+            self.assertEqual("conversation-a", item.conversation_id)
+            self.assertEqual(
+                [item],
+                memory.list_memory_items(
+                    memory_type="temporary",
+                    conversation_id="conversation-a",
+                ),
+            )
+
+    def test_untyped_memory_stream_is_rejected_instead_of_hidden(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            store = create_local_runtime_store(Path(tmp))
+            store.backend.append_event(
+                user_id=store.user_id,
+                agent_name=store.agent_name,
+                stream_type="memory",
+                stream_id="memory",
+                event_type="memory.added",
+                data={"item": {}},
+            )
+
+            with self.assertRaisesRegex(ValueError, "unknown memory stream"):
+                MiniMemory(store).list_memory_items()
+
+    def test_temporary_memory_cannot_cross_conversation_boundaries(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            store = create_local_runtime_store(Path(tmp))
+            seed = MiniMemory(store)
+            alpha = seed.add_temporary_memory(
+                "Alpha-only Python detail.",
+                conversation_id="conversation-a",
+            )
+            beta = seed.add_temporary_memory(
+                "Beta-only Python detail.",
+                conversation_id="conversation-b",
+            )
+            shared = seed.add_long_term_memory("Shared Python preference.")
+            memory = _runtime_memory(store, "conversation-a")
+
+            listed = memory.list_memory_items()
+            recalled = memory.recall_memory("Python")
+
+            self.assertEqual(
+                {alpha.item_id, shared.item_id},
+                {item.item_id for item in listed},
+            )
+            self.assertEqual(
+                {alpha.item_id, shared.item_id},
+                {item.item_id for item in recalled},
+            )
+            self.assertNotIn(beta.item_id, {item.item_id for item in recalled})
+            beta_memory = _runtime_memory(store, "conversation-b")
+            self.assertEqual(
+                {beta.item_id, shared.item_id},
+                {item.item_id for item in beta_memory.list_memory_items()},
+            )
+            with self.assertRaisesRegex(PermissionError, "different conversation"):
+                memory.list_memory_items(
+                    memory_type="temporary",
+                    conversation_id="conversation-b",
+                )
+            with self.assertRaisesRegex(KeyError, "current context"):
+                memory.forget_memory(beta.item_id)
+
+    def test_recall_organizes_each_memory_type_without_mixing_candidates(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            store = create_local_runtime_store(Path(tmp))
+            seed = MiniMemory(store)
+            seed.add_long_term_memory("Python preference one.")
+            seed.add_long_term_memory("Python preference two.")
+            seed.add_temporary_memory(
+                "Python task detail one.",
+                conversation_id="conversation-a",
+            )
+            seed.add_temporary_memory(
+                "Python task detail two.",
+                conversation_id="conversation-a",
+            )
+            seed.add_temporary_memory(
+                "Python private detail from B.",
+                conversation_id="conversation-b",
+            )
+            candidate_groups: list[list[dict[str, object]]] = []
+
+            def organize(messages):
+                payload = json.loads(messages[1]["content"])
+                candidate_groups.append(payload["candidates"])
+                return json.dumps({"operations": []})
+
+            memory = _runtime_memory(store, "conversation-a", organize)
+
+            recalled = memory.recall_memory("Python")
+
+            self.assertEqual(4, len(recalled))
+            self.assertEqual(2, len(candidate_groups))
+            for candidates in candidate_groups:
+                self.assertEqual(1, len({item["memory_type"] for item in candidates}))
+                self.assertEqual(1, len({item["conversation_id"] for item in candidates}))
+            self.assertNotIn(
+                "Python private detail from B.",
+                {item["text"] for group in candidate_groups for item in group},
+            )
+
+    def test_prompt_separates_long_term_and_current_conversation_memory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            store = create_local_runtime_store(Path(tmp))
+            seed = MiniMemory(store)
+            seed.add_long_term_memory("User prefers concise answers.")
+            seed.add_temporary_memory(
+                "Current task uses Python.",
+                conversation_id="conversation-a",
+            )
+            seed.add_temporary_memory(
+                "Another task uses Rust.",
+                conversation_id="conversation-b",
+            )
+
+            prompt = _runtime_memory(store, "conversation-a").build_prompt_instruction()
+
+            self.assertIn("Temporary memory for this conversation", prompt)
+            self.assertIn("Long-term memory", prompt)
+            self.assertIn("Current task uses Python.", prompt)
+            self.assertIn("User prefers concise answers.", prompt)
+            self.assertNotIn("Another task uses Rust.", prompt)
+
+    def test_temporary_replacement_preserves_type_and_conversation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            store = create_local_runtime_store(Path(tmp))
+            seed = MiniMemory(store)
+            old = seed.add_temporary_memory(
+                "Python task uses version 3.11.",
+                conversation_id="conversation-a",
+            )
+            current = seed.add_temporary_memory(
+                "Python task now uses version 3.12.",
+                conversation_id="conversation-a",
+            )
+
+            def organize(messages):
+                return json.dumps(
+                    {
+                        "operations": [
+                            {
+                                "type": "supersede",
+                                "source_item_ids": [old.item_id, current.item_id],
+                                "text": "Python task uses version 3.12.",
+                                "reason": "newer task state",
+                            }
+                        ]
+                    }
+                )
+
+            memory = _runtime_memory(store, "conversation-a", organize)
+
+            recalled = memory.recall_memory(
+                "Python task",
+                memory_type="temporary",
+            )
+
+            self.assertEqual(1, len(recalled))
+            self.assertEqual("temporary", recalled[0].memory_type)
+            self.assertEqual("conversation-a", recalled[0].conversation_id)
+
     def test_recall_filters_scope_and_ranks_lexical_matches(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             memory = _memory(Path(tmp))
-            memory.add_memory_item("Python package release checklist.", scope="project")
-            memory.add_memory_item("Garden watering schedule.", scope="project")
-            memory.add_memory_item("Python preference for this user.", scope="agent")
+            memory.add_long_term_memory("Python package release checklist.", scope="project")
+            memory.add_long_term_memory("Garden watering schedule.", scope="project")
+            memory.add_long_term_memory("Python preference for this user.", scope="agent")
 
             recalled = memory.recall_memory("python package", scope="project", limit=2)
 
@@ -43,7 +229,7 @@ class MiniMemoryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             memory = _memory(root)
-            item = memory.add_memory_item("Temporary fact.")
+            item = memory.add_long_term_memory("Disposable fact.")
 
             memory.forget_memory(item.item_id)
 
@@ -64,9 +250,9 @@ class MiniMemoryTests(unittest.TestCase):
     def test_consolidation_deterministically_merges_duplicate_items(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             memory = _memory(Path(tmp))
-            memory.add_memory_item("Prefer concise answers.", source_run_id="run-1")
-            memory.add_memory_item(" prefer   concise answers. ", source_run_id="run-2")
-            memory.add_memory_item("Keep source links.", source_run_id="run-3")
+            memory.add_long_term_memory("Prefer concise answers.", source_run_id="run-1")
+            memory.add_long_term_memory(" prefer   concise answers. ", source_run_id="run-2")
+            memory.add_long_term_memory("Keep source links.", source_run_id="run-3")
 
             consolidated = memory.consolidate_memory()
 
@@ -75,15 +261,43 @@ class MiniMemoryTests(unittest.TestCase):
             self.assertEqual(2, len(memory.list_memory_items()))
             self.assertEqual([], memory.consolidate_memory())
 
+    def test_consolidation_never_merges_temporary_and_long_term_memory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            memory = _memory(Path(tmp))
+            for source_run_id in ("run-1", "run-2"):
+                memory.add_long_term_memory(
+                    "Prefer concise answers.",
+                    source_run_id=source_run_id,
+                )
+                memory.add_temporary_memory(
+                    "Prefer concise answers.",
+                    source_run_id=source_run_id,
+                    conversation_id="conversation-a",
+                )
+
+            consolidated = memory.consolidate_memory(
+                conversation_id="conversation-a",
+            )
+
+            self.assertEqual(2, len(consolidated))
+            self.assertEqual(
+                {("long_term", None), ("temporary", "conversation-a")},
+                {(item.memory_type, item.conversation_id) for item in consolidated},
+            )
+            self.assertEqual(
+                2,
+                len(memory.list_memory_items(conversation_id="conversation-a")),
+            )
+
     def test_recall_uses_model_to_supersede_archive_and_forget_memory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             store = create_local_runtime_store(root)
             seed = MiniMemory(store)
-            old = seed.add_memory_item("Python project uses version 3.11.", "project")
-            current = seed.add_memory_item("Python project now uses version 3.12.", "project")
-            temporary = seed.add_memory_item("Temporary Python migration note.", "project")
-            wrong = seed.add_memory_item("Wrong Python project fact.", "project")
+            old = seed.add_long_term_memory("Python project uses version 3.11.", "project")
+            current = seed.add_long_term_memory("Python project now uses version 3.12.", "project")
+            temporary = seed.add_long_term_memory("Temporary Python migration note.", "project")
+            wrong = seed.add_long_term_memory("Wrong Python project fact.", "project")
             action_requests: list[ActionRequest] = []
 
             def organize(messages):
@@ -124,6 +338,8 @@ class MiniMemoryTests(unittest.TestCase):
             recalled = memory.recall_memory("Python project", "project")
 
             self.assertEqual(["Python project uses version 3.12."], [item.text for item in recalled])
+            self.assertTrue(all(item.memory_type == "long_term" for item in recalled))
+            self.assertTrue(all(item.conversation_id is None for item in recalled))
             self.assertTrue(action_requests)
             self.assertTrue(all(request.actor == "agent:memory" for request in action_requests))
             event_types = [
@@ -147,8 +363,8 @@ class MiniMemoryTests(unittest.TestCase):
                 create_local_runtime_store(Path(tmp)),
                 send_text_model_messages=lambda messages: "not-json",
             )
-            memory.add_memory_item("Python preference one.")
-            memory.add_memory_item("Python preference two.")
+            memory.add_long_term_memory("Python preference one.")
+            memory.add_long_term_memory("Python preference two.")
 
             with self.assertRaisesRegex(ValueError, "valid JSON"):
                 memory.recall_memory("Python")
@@ -203,13 +419,13 @@ include_usage_habits = false
             write_memory_skill(root)
             MiniMemory(
                 create_local_runtime_store(root / ".super-agent", agent_name="demo")
-            ).add_memory_item("User likes concise answers.")
+            ).add_long_term_memory("User likes concise answers.")
             provider = MockProvider("ok")
             agent = _make_agent(root, provider)
 
             agent.run("Give a concise answer")
 
-            self.assertIn("Memory", provider.last_messages[0]["content"])
+            self.assertIn("Long-term memory", provider.last_messages[0]["content"])
             self.assertIn("User likes concise answers.", provider.last_messages[0]["content"])
 
     def test_agent_organizes_memory_before_main_model_response(self) -> None:
@@ -220,8 +436,8 @@ include_usage_habits = false
             seed = MiniMemory(
                 create_local_runtime_store(root / ".super-agent", agent_name="demo")
             )
-            first = seed.add_memory_item("Python project uses 3.11.")
-            second = seed.add_memory_item("Python project now uses 3.12.")
+            first = seed.add_long_term_memory("Python project uses 3.11.")
+            second = seed.add_long_term_memory("Python project now uses 3.12.")
             provider = _SequenceProvider(
                 [
                     json.dumps(
@@ -310,6 +526,24 @@ path = ".super-agent"
 
 def _memory(root: Path) -> MiniMemory:
     return MiniMemory(create_local_runtime_store(root))
+
+
+def _runtime_memory(
+    store,
+    conversation_id: str,
+    organize: MemoryTextModel | None = None,
+) -> MiniMemory:
+    identity = RunIdentity.create(
+        store.user_id,
+        store.agent_name,
+        conversation_id=conversation_id,
+    )
+    return MiniMemory(
+        store,
+        identity,
+        send_text_model_messages=organize,
+        execute_action=lambda request, action: action(),
+    )
 
 
 class _SequenceProvider(MockProvider):

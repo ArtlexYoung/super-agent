@@ -85,7 +85,7 @@ super-agent skills rollback --config agent.toml --name prompt:concise
 Executable SkillRunner code is never generated or activated from a candidate. Only passive
 Skill content and configuration can evolve.
 
-## Memory That Can Forget
+## Temporary and Long-Term Memory
 
 Memory is optional. Select a memory Skill explicitly:
 
@@ -112,22 +112,40 @@ include_usage_habits = true
 organize_on_recall = true
 ```
 
-Memory supports add, recall, forget, and duplicate consolidation. Recall ranks relevant
-items, merges exact duplicates deterministically, then can ask the selected model for
-validated merge, supersede, archive, and forget operations. Every mutation uses the same
-explicit action boundary as other Runtime changes.
+Each item has one explicit `memory_type`:
+
+- `temporary` requires a conversation ID. Only that conversation can list, recall,
+  organize, replace, or forget the item.
+- `long_term` has no conversation ID. It is reserved for abstract, critical, important,
+  stable, or habitual knowledge that remains useful in later conversations.
+
+The model receives two unambiguous write tools: `add_temporary_memory` and
+`add_long_term_memory`. There is no generic model-side write default and no automatic
+promotion from temporary to long-term memory. Python callers use the methods with the
+same names; the CLI defaults manual additions to `long-term` for convenience.
+
+Recall ranks relevant items and organizes each type and conversation independently. It
+merges exact duplicates deterministically, then can ask the selected model for validated
+merge, supersede, archive, and forget operations. Replacement items must preserve the
+source type, conversation, and scope. Every mutation uses the same explicit action
+boundary as other Runtime changes.
 
 Archived and forgotten items disappear from the active view while canonical events remain
 append-only. Invalid or failed model organization is an explicit recall failure; Runtime
 does not silently return the unorganized result.
 
 ```bash
-super-agent memory list --config agent.toml --scope agent
-super-agent memory add --config agent.toml --text "Prefer concise answers." --scope agent
-super-agent memory recall --config agent.toml --query "answer style"
+super-agent memory list --config agent.toml --type long-term
+super-agent memory add --config agent.toml --type long-term \
+  --text "Prefer concise answers." --scope agent
+super-agent memory add --config agent.toml --type temporary \
+  --conversation-id <conversation-id> --text "This task uses Python 3.12."
+super-agent memory recall --config agent.toml --type temporary \
+  --conversation-id <conversation-id> --query "Python version"
 super-agent memory forget --config agent.toml --item-id <memory-id>
-super-agent memory consolidate --config agent.toml
+super-agent memory consolidate --config agent.toml --type long-term
 ```
 
 Successful tasks can also update workflow and Skill usage habits. All memory items, habits,
-organization decisions, and update evidence remain isolated by user and Agent.
+organization decisions, and update evidence remain isolated by user and Agent. Untyped
+legacy memory streams are rejected explicitly rather than guessed or silently hidden.

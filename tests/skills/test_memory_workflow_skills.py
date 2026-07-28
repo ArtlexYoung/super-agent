@@ -128,7 +128,7 @@ mode = "{mode}"
 def _write_memory_item(root: Path, text: str) -> None:
     MiniMemory(
         create_local_runtime_store(root / ".super-agent", agent_name="demo")
-    ).add_memory_item(text)
+    ).add_long_term_memory(text)
 
 
 def _write_config(

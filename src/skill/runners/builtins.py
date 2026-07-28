@@ -70,7 +70,7 @@ class McpSkillRunner:
 
 class MemorySkillRunner:
     name = "event-memory"
-    version = "2"
+    version = "3"
     skill_type = "memory"
     adds_model_context = False
 
@@ -86,8 +86,7 @@ class MemorySkillRunner:
             send_text_model_messages=request.send_text_model_messages,
             execute_action=request.require_action_executor(),
         )
-        run_id = "" if request.identity is None else request.identity.run_id
-        return create_memory_skill_contribution(memory, run_id)
+        return create_memory_skill_contribution(memory)
 
 
 class WorkflowSkillRunner:
@@ -134,11 +133,10 @@ def create_builtin_skill_runners() -> tuple[SkillRunner, ...]:
 
 def create_memory_skill_contribution(
     memory: MiniMemory,
-    run_id: str,
 ) -> LoadedSkill:
     return LoadedSkill(
         build_prompt_context=memory.build_prompt_instruction,
-        tools=_create_memory_tools(memory, run_id),
+        tools=_create_memory_tools(memory),
         record_task_completed=memory.usage_habits.record_agent_run,
         task_completed_action=SkillAction(
             (ActionEffect.UPDATE,),
@@ -147,16 +145,21 @@ def create_memory_skill_contribution(
     )
 
 
-def _create_memory_tools(memory: MiniMemory, run_id: str) -> tuple[SkillTool, ...]:
+def _create_memory_tools(memory: MiniMemory) -> tuple[SkillTool, ...]:
     scope = {
         "type": "string",
-        "description": "Memory scope such as agent, project, or session.",
+        "description": "Memory scope such as agent, user, or project.",
+    }
+    memory_type = {
+        "type": "string",
+        "enum": ["temporary", "long_term"],
+        "description": "Use temporary for this conversation or long_term for durable knowledge.",
     }
     return (
         SkillTool(
             "list_memory_items",
-            "List active memory items, optionally within one scope.",
-            {"scope": scope},
+            "List active long-term memory and temporary memory from this conversation.",
+            {"scope": scope, "memory_type": memory_type},
             lambda arguments: _list_memory_items(memory, arguments),
             action=SkillAction(
                 (ActionEffect.READ,),
@@ -165,23 +168,36 @@ def _create_memory_tools(memory: MiniMemory, run_id: str) -> tuple[SkillTool, ..
             ),
         ),
         SkillTool(
-            "add_memory_item",
-            "Store one memory item in the event log.",
+            "add_temporary_memory",
+            "Store a detail only for the current conversation. It never enters long-term memory.",
             {"text": {"type": "string"}, "scope": scope},
-            lambda arguments: _add_memory_item(memory, run_id, arguments),
+            lambda arguments: _add_temporary_memory(memory, arguments),
             action=SkillAction(
                 (ActionEffect.CREATE,),
-                "memory:active",
+                "memory:temporary",
+                "scope",
+            ),
+            required=("text",),
+        ),
+        SkillTool(
+            "add_long_term_memory",
+            "Store only abstract, critical, important, stable, or habitual knowledge for future conversations.",
+            {"text": {"type": "string"}, "scope": scope},
+            lambda arguments: _add_long_term_memory(memory, arguments),
+            action=SkillAction(
+                (ActionEffect.CREATE,),
+                "memory:long_term",
                 "scope",
             ),
             required=("text",),
         ),
         SkillTool(
             "recall_memory",
-            "Recall relevant memory while organizing duplicates and stale items.",
+            "Recall relevant allowed memory while organizing duplicates and stale items within each boundary.",
             {
                 "query": {"type": "string"},
                 "scope": scope,
+                "memory_type": memory_type,
                 "limit": {"type": "integer", "minimum": 1},
             },
             lambda arguments: _recall_memory(memory, arguments),
@@ -206,11 +222,9 @@ def _create_memory_tools(memory: MiniMemory, run_id: str) -> tuple[SkillTool, ..
         ),
         SkillTool(
             "consolidate_memory",
-            "Deterministically merge duplicate active memory items.",
-            {},
-            lambda arguments: {
-                "items": [asdict(item) for item in memory.consolidate_memory()]
-            },
+            "Merge exact duplicates without combining memory types or conversations.",
+            {"memory_type": memory_type},
+            lambda arguments: _consolidate_memory(memory, arguments),
             action=SkillAction(
                 (ActionEffect.UPDATE, ActionEffect.DELETE),
                 "memory:active",
@@ -224,19 +238,35 @@ def _list_memory_items(
     arguments: dict[str, object],
 ) -> dict[str, object]:
     scope = read_optional_tool_string(arguments, "scope")
-    return {"items": [asdict(item) for item in memory.list_memory_items(scope)]}
+    memory_type = read_optional_tool_string(arguments, "memory_type")
+    return {
+        "items": [
+            asdict(item)
+            for item in memory.list_memory_items(scope, memory_type=memory_type)
+        ]
+    }
 
 
-def _add_memory_item(
+def _add_temporary_memory(
     memory: MiniMemory,
-    run_id: str,
     arguments: dict[str, object],
 ) -> dict[str, object]:
     scope = read_optional_tool_string(arguments, "scope") or memory.policy.default_scope
-    item = memory.add_memory_item(
+    item = memory.add_temporary_memory(
         read_required_tool_string(arguments, "text"),
         scope=scope,
-        source_run_id=run_id,
+    )
+    return {"item": asdict(item)}
+
+
+def _add_long_term_memory(
+    memory: MiniMemory,
+    arguments: dict[str, object],
+) -> dict[str, object]:
+    scope = read_optional_tool_string(arguments, "scope") or memory.policy.default_scope
+    item = memory.add_long_term_memory(
+        read_required_tool_string(arguments, "text"),
+        scope=scope,
     )
     return {"item": asdict(item)}
 
@@ -246,10 +276,12 @@ def _recall_memory(
     arguments: dict[str, object],
 ) -> dict[str, object]:
     scope = read_optional_tool_string(arguments, "scope") or memory.policy.default_scope
+    memory_type = read_optional_tool_string(arguments, "memory_type")
     items = memory.recall_memory(
         read_required_tool_string(arguments, "query"),
         scope=scope,
         limit=read_optional_positive_tool_integer(arguments, "limit"),
+        memory_type=memory_type,
     )
     return {"items": [asdict(item) for item in items]}
 
@@ -261,6 +293,19 @@ def _forget_memory(
     item_id = read_required_tool_string(arguments, "item_id")
     memory.forget_memory(item_id)
     return {"item_id": item_id, "forgotten": True}
+
+
+def _consolidate_memory(
+    memory: MiniMemory,
+    arguments: dict[str, object],
+) -> dict[str, object]:
+    memory_type = read_optional_tool_string(arguments, "memory_type")
+    return {
+        "items": [
+            asdict(item)
+            for item in memory.consolidate_memory(memory_type=memory_type)
+        ]
+    }
 
 
 def _create_mcp_tools(
