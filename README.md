@@ -11,6 +11,11 @@ Skills. One progressive-disclosure core discovers and loads them only when neede
 One Runtime schedules the task, records evidence, and improves eligible Agent-owned
 Skills without introducing a second execution path.
 
+Task scenes group the Skills needed for one kind of work. The included `common` scene
+handles general tasks, while the optional `code` scene provides a repository coding
+chain. Runtime selects a scene from the request, Agent configuration, or prompt triggers;
+there is no setup step and no hidden fallback after selection.
+
 The project is experimental and remains in `0.0.x`. Breaking changes are intentional
 while the skill-first model is being validated.
 
@@ -57,6 +62,13 @@ print(result.text)
 print(result.run_id)
 ```
 
+Runtime normally chooses a task scene automatically. Applications and CLI users can
+override it for one run:
+
+```python
+result = agent.run("Inspect this change", scene="code")
+```
+
 Application code may explicitly inject its own Provider, storage backend, action
 rules, SkillRunners, and subagents. The CLI uses this same library; it is not a second
 runtime.
@@ -76,7 +88,7 @@ Every task follows one path:
 ```text
 Agent.run
   -> Core creates one run session
-  -> progressive disclosure selects Skills
+  -> progressive disclosure selects one task scene and its Skills
   -> SkillRunners load selected Skills
   -> Core selects a model and executes the task
   -> events, evaluation, freshness, and evolution evidence are recorded
@@ -86,6 +98,43 @@ There are no separate memory, workflow, MCP, or planning engines. They are ordin
 Skill types loaded by registered SkillRunners. The progressive-disclosure core can also
 be used independently for read-only discovery, with cache and history writes enabled
 only when the caller asks for them.
+
+## Task Scenes
+
+Included scene content lives outside Python source and remains ordinary passive Skill
+data:
+
+```text
+skill_scenes/
+  common/   scene + prompt + memory + planner + direct workflow
+  code/     scene + coding prompt + project memory + planner + tool loop
+```
+
+Selection has one explicit order: the run's `scene`, one `scene:*` pinned in
+`agent.skills`, one prompt-trigger match, then the single default scene. Multiple pinned
+or matching scenes are errors. Once selected, Runtime uses only that scene's chain;
+explicitly pinned memory, planner, or workflow Skills replace the same type from the
+scene.
+
+An Agent can create a complete user-private scene during a tool-using conversation with
+`create_skill_scene`. Application code can perform the same explicit operation:
+
+```python
+from super_agent import Agent, SkillSceneInput
+
+alice = Agent().for_user("alice")
+alice.skills.create_scene(
+    SkillSceneInput(
+        name="research",
+        description="Investigate claims and cited sources",
+        triggers=["source investigation"],
+    )
+)
+```
+
+Creation writes five Agent-owned, updateable Skills: `scene`, `prompt`, `memory`,
+`planner`, and `workflow`. The prepared index for the current run is immutable, so the
+new scene becomes available on the next run. Another user cannot read or select it.
 
 ## Create a Skill
 
@@ -137,7 +186,8 @@ path = ".super-agent"
 ```
 
 `skills` pins Skills to every task. Unpinned Skills remain available for automatic
-selection. `disabled_skills` excludes a type, key, or unambiguous name. Model profiles
+selection. Pin at most one `scene:*`; omit it for automatic scene selection.
+`disabled_skills` excludes a type, key, or unambiguous name. Model profiles
 are model Skills rather than special Agent fields, and secrets stay in environment
 variables rather than TOML.
 

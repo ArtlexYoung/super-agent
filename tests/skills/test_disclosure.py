@@ -35,7 +35,7 @@ class ProgressiveDisclosureTests(unittest.TestCase):
                 disclosure.read_disclosed_content(instruction.cache_path),
             )
             self.assertEqual("echo", index_data["skills"][0]["name"])
-            self.assertEqual(4, index_data["schema_version"])
+            self.assertEqual(5, index_data["schema_version"])
             self.assertEqual("project", index_data["skills"][0]["source"])
             self.assertFalse(index_data["skills"][0]["agent_created"])
             self.assertFalse(index_data["skills"][0]["agent_can_update"])
@@ -55,7 +55,7 @@ class ProgressiveDisclosureTests(unittest.TestCase):
             result = agent.run("echo hello")
 
             content = provider.last_messages[0]["content"]
-            self.assertEqual(["echo"], result.skills)
+            self.assertEqual(["common", "echo"], result.skills)
             self.assertIn("Progressive skill disclosure", content)
             self.assertIn("history.json", content)
             self.assertIn("skills/prompt/echo/manifest.json", content)

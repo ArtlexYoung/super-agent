@@ -60,6 +60,7 @@ class SkillIndexEntry:
     call_count: int = 0
     success_count: int = 0
     same_function_successful_followups: int = 0
+    is_default: bool = False
 
 
 @dataclass(frozen=True)
@@ -174,7 +175,7 @@ class SkillDisclosureEvent:
 
 def skill_index_to_dict(index: SkillIndex) -> dict[str, object]:
     return {
-        "schema_version": 4,
+        "schema_version": 5,
         "skills": [
             {
                 "key": entry.reference.key,
@@ -199,6 +200,7 @@ def skill_index_to_dict(index: SkillIndex) -> dict[str, object]:
                 "call_count": entry.call_count,
                 "success_count": entry.success_count,
                 "same_function_successful_followups": entry.same_function_successful_followups,
+                "default": entry.is_default,
             }
             for entry in index.entries
         ],

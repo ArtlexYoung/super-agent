@@ -170,7 +170,7 @@ instructions = "SKILL.md"
 
             result = Agent(AgentConfig.load_from_file(config_path), provider=provider).run("github")
 
-            self.assertEqual([], result.skills)
+            self.assertEqual(["common"], result.skills)
             self.assertNotIn("GitHub MCP", provider.last_messages[0]["content"])
 
     def test_config_can_disable_memory_and_named_skills_in_one_list(self) -> None:
@@ -194,7 +194,7 @@ instructions = "SKILL.md"
             result = Agent(AgentConfig.load_from_file(config_path), provider=provider).run("echo github")
 
             system_prompt = provider.last_messages[0]["content"]
-            self.assertEqual([], result.skills)
+            self.assertEqual(["common"], result.skills)
             self.assertNotIn("Keep answers short.", system_prompt)
             self.assertNotIn("Use echo skill.", system_prompt)
             self.assertNotIn("GitHub MCP", system_prompt)

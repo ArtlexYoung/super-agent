@@ -1,8 +1,9 @@
 # Skills and Progressive Disclosure
 
-A Skill is passive content that describes something an Agent can use. Prompts, MCP
-servers, memory rules, workflows, planners, model profiles, and custom types all use the
-same manifest, identity, source order, disclosure cache, evidence, and update lifecycle.
+A Skill is passive content that describes something an Agent can use. Task scenes,
+prompts, MCP servers, memory rules, workflows, planners, model profiles, and custom types
+all use the same manifest, identity, source order, disclosure cache, evidence, and update
+lifecycle.
 
 ## Directory Format
 
@@ -47,6 +48,7 @@ the code that consumes that type validates its contents.
 
 Common types are:
 
+- `scene`: references the Skill set for one kind of task.
 - `prompt`: model instructions.
 - `mcp`: an MCP server declaration and tool guidance.
 - `memory`: recall, organization, and forgetting rules.
@@ -63,6 +65,7 @@ code cannot come from a Skill directory.
 A Skill key is always `type:name`, for example:
 
 ```text
+scene:code
 prompt:concise
 memory:default
 workflow:react
@@ -70,8 +73,9 @@ model:fast
 search:adaptive
 ```
 
-A bare name is accepted only when it identifies one Skill. Core selects Skills from
-`agent.skills`, prompt trigger matches, and dependencies declared by `requires`.
+A bare name is accepted only when it identifies one Skill. Core first selects one scene,
+then selects Skills from that scene, `agent.skills`, prompt trigger matches, and
+dependencies declared by `requires`.
 Dependency resolution is deterministic and fails on missing providers, ambiguous
 providers, or cycles.
 
@@ -81,13 +85,68 @@ super-agent skills graph --config agent.toml --name prompt:research
 super-agent skills lock --config agent.toml --name prompt:research --output skill.lock
 ```
 
-Core resolves one source hierarchy in `user > project > builtin` order. User Skills live
-inside the current user's private Agent scope and override matching shared Skills. Invalid
-lower layers are still reported instead of being silently ignored.
+Core resolves one source hierarchy in `user > project > builtin` order, where `builtin`
+is the source label for content under root-level `skill_scenes`. User Skills live inside
+the current user's private Agent scope and override matching shared Skills. Invalid lower
+layers are still reported instead of being silently ignored.
+
+## Task Scenes
+
+A scene is an ordinary configuration-only Skill whose `[configuration].skills` field
+contains stable `type:name` references:
+
+```toml
+schema_version = 3
+name = "review"
+type = "scene"
+description = "Code review task chain"
+version = "0.1.0"
+triggers = ["review code", "代码审查"]
+default = false
+
+[configuration]
+skills = [
+  "prompt:review",
+  "memory:review",
+  "planner:review",
+  "workflow:review",
+]
+```
+
+Every scene must reference a workflow. A scene cannot reference another scene and may
+reference at most one planner and one workflow. Every referenced custom type needs a
+registered SkillRunner. Missing references, missing runners, and conflicts are errors;
+Runtime does not substitute another scene or workflow.
+
+The shipped roots are:
+
+```text
+skill_scenes/common/   zero-configuration general task chain and the only default
+skill_scenes/code/     optional repository exploration, editing, testing, and review chain
+```
+
+Scene selection precedence is explicit:
+
+1. `Agent.run(..., scene="name")`, `super-agent run --scene name`, or AG-UI
+   `forwardedProps.scene`.
+2. One `scene:name` in `agent.skills`.
+3. One scene whose manifest trigger matches the prompt.
+4. The single scene with `default = true`.
+
+Multiple configured scenes, multiple trigger matches, or multiple defaults fail clearly.
+Pinned memory, planner, or workflow Skills replace the same type from the selected scene;
+other configured or triggered Skills are added normally.
+
+User-private scenes can be created with `UserSkills.create_scene(...)` or by the model's
+`create_skill_scene` tool in a tool-using scene. Creation writes a complete scene, prompt,
+memory, planner, and workflow set with `agent_created = true` and
+`agent_can_update = true`. It never replaces an existing key. The current run keeps its
+prepared index, and the created scene is visible on the next run only.
 
 ## One Disclosure Core
 
-`ProgressiveDisclosureCore` is the only Skill read path. It provides five stages:
+`ProgressiveDisclosureCore` is the only Skill read and scene-selection path. It provides
+five disclosure stages:
 
 1. `index`: compact identities, summaries, freshness, hashes, and cache paths.
 2. `manifest`: normalized metadata for one selected Skill.

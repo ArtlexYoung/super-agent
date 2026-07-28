@@ -27,7 +27,8 @@ Unknown tables and fields are rejected. There is no migration or old-field conve
 
 - `name`: stable Agent name used in run and storage scopes.
 - `system`: smallest instruction shared by every task. Put specialized behavior in Skills.
-- `skills`: Skill keys or unambiguous names pinned to every task.
+- `skills`: Skill keys or unambiguous names pinned to every task. At most one may be a
+  `scene:*` key.
 - `disabled_skills`: types, keys, or unambiguous names excluded from selection.
 - `max_agent_chain_depth`: optional positive warning threshold. Omit it for no threshold.
 
@@ -53,6 +54,22 @@ Stable Skill keys use `type:name`. A bare name is accepted only when it is unamb
 `disabled_skills = ["mcp"]` disables a whole type, while
 `disabled_skills = ["memory:default"]` disables one Skill.
 
+## Task Scene Selection
+
+No scene setting is required. Runtime automatically chooses the `code` scene when its
+manifest triggers match a coding prompt and otherwise uses the default `common` scene.
+Pin one scene only when an Agent should always use that task chain:
+
+```toml
+[agent]
+skills = ["scene:code"]
+```
+
+For a one-run override, use `Agent.run(..., scene="code")` or CLI `--scene code` instead
+of changing persistent configuration. Explicitly pinned memory, planner, or workflow
+Skills replace that type from the selected scene. Configuring two scenes is rejected;
+Runtime never chooses one by list order.
+
 ## Model Environment
 
 The shortest real-model setup uses one recognized environment source:
@@ -73,7 +90,10 @@ SUPER_AGENT_API_KEY_ENV=<optional environment variable name>
 ```
 
 `SUPER_AGENT_PROVIDER=mock` is the only environment path to the built-in Mock Provider.
-No model is created when all model sources are absent.
+OpenAI, Anthropic, and explicit Mock profiles declare their implemented text and tool
+protocols. An automatically discovered Ollama profile declares text only because local
+model tool support cannot be inferred. No model is created when all model sources are
+absent.
 
 ## Model Skill
 

@@ -5,8 +5,8 @@ behavior. Core owns task scheduling, progressive disclosure, actions, tracing,
 evaluation, and evolution. A SkillRunner has one loading boundary and does not create a
 second runtime.
 
-Built-in SkillRunners handle prompt, MCP, memory, workflow, and planner Skills. Model
-Skills are read by Core when it selects a Provider profile.
+Registered default SkillRunners handle scene, prompt, MCP, memory, workflow, and planner
+Skills. Model Skills are read by Core when it selects a Provider profile.
 
 ## Add a Runner
 
@@ -74,6 +74,7 @@ Agent's current runner.
 - Model instruction content.
 - Prompt context built for the current task.
 - Model-callable tools.
+- A scene policy containing task-specific Skill references.
 - Workflow or planning rules.
 - A task-completed callback with a declared action.
 

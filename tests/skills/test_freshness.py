@@ -164,7 +164,9 @@ instructions = "SKILL.md"
                 {
                     "memory:default",
                     "planner:default",
+                    "prompt:common",
                     "prompt:echo",
+                    "scene:common",
                     "workflow:direct",
                 },
                 skill_keys,

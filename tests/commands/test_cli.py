@@ -88,9 +88,9 @@ class CliTests(unittest.TestCase):
 
             data = json.loads(output.getvalue())
             self.assertEqual(0, code)
-            self.assertEqual(4, data["schema_version"])
+            self.assertEqual(5, data["schema_version"])
             self.assertEqual(
-                {"memory", "planner", "prompt", "workflow"},
+                {"memory", "planner", "prompt", "scene", "workflow"},
                 {item["type"] for item in data["skills"]},
             )
             self.assertTrue(all("key" in item for item in data["skills"]))
@@ -366,6 +366,30 @@ instructions = "SKILL.md"
             self.assertEqual("completed", data["stop_reason"])
             self.assertTrue(data["run_id"])
 
+    def test_run_accepts_explicit_scene(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, chdir(tmp), patch.dict(
+            os.environ,
+            {"SUPER_AGENT_PROVIDER": "mock"},
+            clear=True,
+        ):
+            output = StringIO()
+            with patch("sys.stdout", output):
+                code = main(
+                    [
+                        "run",
+                        "--scene",
+                        "code",
+                        "--output",
+                        "json",
+                        "hello",
+                    ]
+                )
+
+            data = json.loads(output.getvalue())
+            self.assertEqual(0, code)
+            self.assertEqual("code", data["workflow"])
+            self.assertEqual(["code"], data["skills"])
+
     def test_skills_validate_and_explain_have_explicit_commands(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             main(["init", "--path", tmp])
@@ -379,7 +403,7 @@ instructions = "SKILL.md"
                 explanation_code = main(["skills", "explain", "--config", config, "--prompt", "echo hello"])
 
             self.assertEqual(0, validation_code)
-            self.assertIn("4 valid skills", validation_output.getvalue())
+            self.assertIn("11 valid skills", validation_output.getvalue())
             self.assertEqual(0, explanation_code)
             self.assertIn("echo\tselected\tmatched trigger: echo", explanation_output.getvalue())
 
@@ -473,6 +497,7 @@ instructions = "SKILL.md"
             main(["init", "--path", tmp])
             request = {
                 "prompt": "latest question",
+                "scene": "code",
                 "messages": [
                     {"role": "user", "content": "earlier question"},
                     {"role": "assistant", "content": "earlier answer"},
@@ -496,7 +521,16 @@ instructions = "SKILL.md"
             self.assertEqual(0, code)
             self.assertEqual("event", lines[0]["type"])
             self.assertEqual("run.started", lines[0]["event"]["event_type"])
+            selected = next(
+                line["event"]
+                for line in lines
+                if line.get("type") == "event"
+                and line["event"]["event_type"] == "scene.selected"
+            )
+            self.assertEqual("scene:code", selected["data"]["scene_key"])
+            self.assertEqual("selected by task request", selected["data"]["reason"])
             self.assertEqual("result", lines[-1]["type"])
+            self.assertEqual("code", lines[-1]["result"]["workflow"])
             self.assertEqual(lines[0]["event"]["run_id"], lines[-1]["result"]["run_id"])
 
     def test_run_result_serialization_keeps_nested_subagents(self) -> None:

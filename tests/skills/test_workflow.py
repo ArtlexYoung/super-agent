@@ -35,7 +35,7 @@ class ExecutableWorkflowTests(unittest.TestCase):
 
             self.assertEqual("final answer", result.text)
             self.assertEqual("model_finished", result.stop_reason)
-            self.assertEqual(["research"], result.skills)
+            self.assertEqual(["common", "research"], result.skills)
             self.assertEqual(2, len(provider.tool_requests))
             tool_result = provider.tool_requests[1][0][-1]
             self.assertEqual("tool", tool_result["role"])

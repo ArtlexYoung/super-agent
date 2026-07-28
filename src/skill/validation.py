@@ -12,6 +12,8 @@ from skill.kinds.model import (
     create_model_profile_from_skill_disclosure,
     model_connection_fields,
 )
+from skill.kinds.planner import create_planning_policy_from_skill
+from skill.kinds.scene import create_scene_policy_from_skill
 from skill.kinds.workflow import create_workflow_policy_from_skill
 from skill.manifest import SkillManifest
 
@@ -83,6 +85,10 @@ def _validate_skill_type(
         create_mcp_server_from_skill_disclosure(disclosure)
     elif skill_type == "model":
         create_model_profile_from_skill_disclosure(disclosure)
+    elif skill_type == "planner":
+        create_planning_policy_from_skill(disclosure)
+    elif skill_type == "scene":
+        create_scene_policy_from_skill(disclosure)
 
 
 def _validate_prompt_skill(disclosure: SkillDisclosure) -> None:

@@ -20,6 +20,7 @@ from skill.kinds.memory import (
     create_memory_from_skill_disclosure,
 )
 from skill.kinds.planner import create_planning_policy_from_skill
+from skill.kinds.scene import create_scene_creation_tool, create_scene_policy_from_skill
 from skill.kinds.workflow import create_workflow_policy_from_skill
 from skill.manifest import Skill
 
@@ -121,6 +122,23 @@ class PlannerSkillRunner:
         )
 
 
+class SceneSkillRunner:
+    name = "task-scene"
+    version = "1"
+    skill_type = "scene"
+    adds_model_context = False
+
+    def load_skill(self, request: SkillLoadRequest) -> LoadedSkill:
+        opened = request.disclosure.open_skill(
+            request.reference.name,
+            self.skill_type,
+        )
+        return LoadedSkill(
+            scene_policy=create_scene_policy_from_skill(opened),
+            tools=(create_scene_creation_tool(request.store, request.disclosure),),
+        )
+
+
 def create_builtin_skill_runners() -> tuple[SkillRunner, ...]:
     return (
         PromptSkillRunner(),
@@ -128,6 +146,7 @@ def create_builtin_skill_runners() -> tuple[SkillRunner, ...]:
         MemorySkillRunner(),
         WorkflowSkillRunner(),
         PlannerSkillRunner(),
+        SceneSkillRunner(),
     )
 
 

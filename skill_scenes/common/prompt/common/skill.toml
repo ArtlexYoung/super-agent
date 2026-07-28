@@ -1,0 +1,16 @@
+schema_version = 3
+name = "common"
+type = "prompt"
+description = "General task instructions for evidence-based execution"
+version = "0.0.65"
+triggers = []
+agent_created = false
+agent_can_update = false
+freshness = 70
+function_group = "common-task"
+provides = ["common-task-guidance"]
+requires = []
+default = false
+
+[entry]
+instructions = "SKILL.md"

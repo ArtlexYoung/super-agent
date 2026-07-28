@@ -9,6 +9,7 @@ Skill index, and adaptive task loop:
 Agent.run(...)
   -> AgentRuntime.run_task(...)
   -> prepare one progressive Skill index
+  -> select one task scene and resolve its Skill set
   -> plan one or more task steps
   -> select one model and load selected Skills
   -> run model, tools, and subagents
@@ -20,7 +21,9 @@ no separate controller for workflows, memory, subagents, CLI, or Web requests.
 
 ## Optional Parts
 
-The smallest run needs only an Agent and a model source. Other behavior is progressive:
+The smallest run needs an Agent, a model source, and one valid scene. The shipped
+`common` scene satisfies that requirement without user configuration. Other behavior is
+progressive:
 
 - No conversation ID means no conversation history is loaded or written.
 - No conversation ID means temporary memory is unavailable; long-term memory remains
@@ -28,8 +31,8 @@ The smallest run needs only an Agent and a model source. Other behavior is progr
 - With a conversation ID, long-term organization may inspect relevant temporary memory and
   explicitly promote an abstraction without moving or deleting its temporary sources.
 - No selected memory Skill means no memory is recalled or updated.
-- No selected workflow Skill means the direct workflow is used.
-- The built-in planner may decompose a task when its deterministic rules match.
+- A scene may omit a planner; then no planning model call is available.
+- Every scene must select one workflow. A missing or conflicting workflow is an error.
 - No selected MCP or custom tool Skill means no corresponding tools are exposed.
 
 Missing optional parts do not trigger substitutes. A missing model, invalid Skill,
@@ -54,9 +57,22 @@ Runtime loads prior messages and appends both sides of each completed turn. A
 create two history sources. Create, list, read, rename, clear, and delete operations are
 explicit.
 
+## Task Scenes
+
+Scene selection happens once before task scheduling. The order is the request's explicit
+scene, one configured `scene:*`, one prompt-trigger match, and the unique default. Core
+records `scene.selected` with the stable key and reason, then resolves that scene's Skill
+references through the central progressive index.
+
+`common` selects general prompt, memory, planner, and direct workflow Skills. `code`
+selects repository-specific versions and a bounded tool loop. A project can add scene
+Skills under any configured Skill root, and a user can create a private scene. The current
+run never refreshes its prepared index after creation.
+
 ## Workflow Skills
 
-Pin one workflow in `agent.skills` when direct execution is not enough:
+Pin one workflow in `agent.skills` only when it should replace the workflow supplied by
+the selected scene:
 
 ```toml
 [agent]
@@ -162,4 +178,4 @@ standard-library backends. MySQL and PostgreSQL are optional extras.
 
 Every event and private workspace is scoped by validated user ID and Agent name. User Skill
 overlays, caches, memory, conversations, and usage evidence cannot cross that boundary.
-Shared project and built-in Skills remain read-only baselines.
+Shared project and shipped scene Skills remain read-only baselines.

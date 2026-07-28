@@ -28,8 +28,8 @@ Reproducible snapshots remain under [experiments](experiments/README.md).
 
 Status: implemented.
 
-- Keep only `adapter`, `builtin_skills`, `core`, and `skill` under `src`, plus the
-  CLI and public library entry modules.
+- Keep only `adapter`, `core`, and `skill` under `src`, plus the CLI and public library
+  entry modules; passive shipped content lives outside Python source.
 - Keep Provider implementations in `core/provider`; adapters contain only external CLI
   and AG-UI interaction.
 - Use `type` and `type:name` for every Skill, and one `SkillRunner.load_skill(...)`
@@ -62,7 +62,25 @@ Status: implemented.
 - Record source item IDs and the source conversation in the append-only long-term event.
 - Prevent repeat promotion and keep every other organization operation inside one boundary.
 
-## v0.0.65: Request Identity Adapter
+## v0.0.65: Task-Specific Skill Scenes
+
+Status: implemented.
+
+- Move shipped passive content to root-level `skill_scenes/common` and
+  `skill_scenes/code`, with no old path or compatibility loader.
+- Add one ordinary `scene` Skill type that references prompt, memory, planner, workflow,
+  and other task-specific Skills through the central progressive index.
+- Select exactly one scene by explicit request, Agent configuration, prompt triggers, or
+  one default; reject every ambiguity and missing workflow.
+- Provide a general task chain informed by public Hermes and OpenClaw patterns and a full
+  coding chain informed by public Codex source plus Claude Code's public plugins, SDK, and
+  documentation.
+- Let models and Python callers create complete Agent-owned user-private scenes, without
+  mutating the current run's prepared index.
+- Expose scene selection through Python, CLI, stdin JSON, AG-UI, Runtime traces, tests, and
+  Web configuration.
+
+## v0.0.66: Request Identity Adapter
 
 Status: planned.
 
@@ -72,7 +90,7 @@ Status: planned.
 - Add cross-user attack tests for every management and AG-UI route.
 - Preserve the local single-user server with no added dependency or required setup.
 
-## v0.0.66: Explicit Approval Continuation
+## v0.0.67: Explicit Approval Continuation
 
 Status: planned.
 
@@ -82,7 +100,7 @@ Status: planned.
 - Record request, decision, resumption, completion, and expiry in the canonical trace.
 - Keep unattended execution opt-in through code-only action rules.
 
-## v0.0.67: Storage at Service Scale
+## v0.0.68: Storage at Service Scale
 
 Status: planned.
 
@@ -92,7 +110,7 @@ Status: planned.
 - Publish deterministic copy, integrity, and recovery checks.
 - Keep JSONL clean and dependency-free as the default path.
 
-## v0.0.68: Model and Task Learning Proof
+## v0.0.69: Model and Task Learning Proof
 
 Status: planned.
 
@@ -103,7 +121,7 @@ Status: planned.
 - Measure routing quality separately for each user, Agent, and task purpose.
 - Expose compact evidence explanations through CLI, Web, and AG-UI custom events.
 
-## v0.0.69: Skill Evolution Proof
+## v0.0.70: Skill Evolution Proof
 
 Status: planned.
 

@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Callable, Protocol
 
 from skill.runners.loaded import (
+    ScenePolicy,
     SkillAction,
     SkillTool,
     LoadedSkill,
@@ -235,6 +236,11 @@ def _validate_loaded_skill(loaded: LoadedSkill) -> None:
     has_action = loaded.task_completed_action is not None
     if has_callback != has_action:
         raise TypeError("A Skill completion callback must declare one SkillAction")
+    if loaded.scene_policy is not None and not isinstance(
+        loaded.scene_policy,
+        ScenePolicy,
+    ):
+        raise TypeError("LoadedSkill.scene_policy must be a ScenePolicy")
 
 
 def _clean_skill_type(value: str) -> str:

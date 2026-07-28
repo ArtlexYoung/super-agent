@@ -11,12 +11,17 @@ super-agent "hello"
 super-agent
 super-agent chat --config agent.toml --user-id alice --conversation-id <id>
 super-agent run --config agent.toml --user-id alice --output json "hello"
+super-agent run --scene code "inspect and test this repository"
 ```
 
 A bare prompt is the short one-shot form and a bare command starts interactive chat.
 `run --output` accepts `text`, `json`, or `jsonl`. Use `--request-stdin` for a
-JSON request containing `prompt`, optional messages, `user_id`, and
-`conversation_id`. Initialization writes only missing files.
+JSON request containing `prompt`, optional messages, `user_id`, `conversation_id`, and
+`scene`. `chat --scene` fixes one scene for that interactive session. Initialization
+writes only missing files.
+
+When `--scene` is omitted, Runtime selects one scene from Agent configuration, prompt
+triggers, or the unique default. Unknown or ambiguous scenes are errors.
 
 ## Models
 

@@ -48,7 +48,7 @@ def create_progressive_skill_disclosure(
         roots,
         selected_store,
         user_skill_roots=[selected_store.private_root / "skills"],
-        builtin_skill_roots=[_builtin_skill_root()],
+        builtin_skill_roots=[_skill_scene_root()],
         disabled_names=config.agent.disabled_skills,
         identity=identity,
         record_disclosures=(
@@ -59,5 +59,14 @@ def create_progressive_skill_disclosure(
     )
 
 
-def _builtin_skill_root() -> Path:
-    return Path(__file__).resolve().parent.parent.parent / "builtin_skills"
+def _skill_scene_root() -> Path:
+    source_root = Path(__file__).resolve().parents[2]
+    candidates = [
+        source_root / "skill_scenes",
+        source_root.parent / "skill_scenes",
+    ]
+    existing = [path for path in candidates if path.is_dir()]
+    if len(existing) != 1:
+        paths = ", ".join(str(path) for path in candidates)
+        raise RuntimeError(f"expected exactly one installed skill_scenes root: {paths}")
+    return existing[0]

@@ -54,6 +54,20 @@ SUPER_AGENT_PROVIDER=mock super-agent "hello"
 Without a model source, `Agent.run(...)` fails with instructions for configuring one.
 This keeps development behavior from being mistaken for a successful real model call.
 
+## Automatic Task Scenes
+
+No scene configuration is required. General prompts use the included `common` chain;
+repository coding prompts select the optional `code` chain from manifest triggers.
+
+```bash
+super-agent "Summarize these notes"
+super-agent "Implement this repository change"
+super-agent run --scene code "Inspect the current source"
+```
+
+The selected key and reason are recorded as `scene.selected`. An explicit `--scene`
+always precedes trigger matching. Ambiguous matches fail instead of silently choosing one.
+
 ## Chat and Web
 
 Start a stored terminal conversation:
@@ -107,9 +121,9 @@ result = alice.run("second turn", conversation_id=conversation.conversation_id)
 super-agent init --path my-agent
 ```
 
-The command creates only an `agent.toml` and one prompt Skill. Built-in memory, workflow,
-and planner Skills remain available through the same progressive index, so the generated
-project does not copy configuration it does not need.
+The command creates only an `agent.toml` and one prompt Skill. The `common` and `code`
+scene trees remain available through the same progressive index, so the generated project
+does not copy configuration it does not need.
 
 ```bash
 SUPER_AGENT_PROVIDER=mock \

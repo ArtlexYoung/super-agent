@@ -7,6 +7,7 @@ from typing import Callable
 
 from core.provider.chat import ToolDefinition
 from core.actions import ActionEffect
+from skill.disclosure.models import SkillReference
 from skill.manifest import Skill
 
 
@@ -34,6 +35,13 @@ class PlanningPolicy:
     max_steps: int
     minimum_prompt_characters: int
     planning_terms: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class ScenePolicy:
+    name: str
+    skills: tuple[SkillReference, ...]
+    is_default: bool
 
 
 @dataclass(frozen=True)
@@ -102,6 +110,7 @@ class LoadedSkill:
     tools: tuple[SkillTool, ...] = ()
     task_policy: TaskPolicy | None = None
     planning_policy: PlanningPolicy | None = None
+    scene_policy: ScenePolicy | None = None
     record_task_completed: Callable[[str, list[str]], None] | None = None
     task_completed_action: SkillAction | None = None
 

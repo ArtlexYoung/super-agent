@@ -1,16 +1,22 @@
 schema_version = 3
 name = "default"
 type = "planner"
-description = "Built-in zero-configuration task planner"
-version = "0.0.45"
+description = "Default minimal evidence-oriented planner for multi-step tasks"
+version = "0.0.65"
 triggers = []
-function_group = "task-planning"
+agent_created = false
+agent_can_update = false
+freshness = 70
+function_group = "default-planning"
+provides = ["default-planning"]
+requires = []
+default = false
 
 [entry]
 instructions = "SKILL.md"
 
 [configuration]
-max_steps = 6
+max_steps = 8
 minimum_prompt_characters = 320
 planning_terms = [
   "step by step",

@@ -5,7 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Callable, cast
 
-from skill.runners.loaded import PlanningPolicy, LoadedSkill, TaskPolicy
+from skill.runners.loaded import (
+    LoadedSkill,
+    PlanningPolicy,
+    ScenePolicy,
+    TaskPolicy,
+)
 from skill.runners.registry import SkillLoadRequest
 from core.provider.chat import Message
 from core.task.planning import TaskPlanningDecision, TaskStep
@@ -23,10 +28,75 @@ class LoadedPlanner:
     skill_key: str
 
 
-def load_workflow_policy(session: RuntimeSession) -> TaskPolicy:
-    entries = _selected_entries(session, "workflow")
+@dataclass(frozen=True)
+class SelectedTaskSkills:
+    scene_reference: SkillReference
+    scene_policy: ScenePolicy
+    scene_contribution: LoadedSkill
+    references: tuple[SkillReference, ...]
+
+    def list_references(self, skill_type: str) -> list[SkillReference]:
+        return [
+            reference
+            for reference in self.references
+            if reference.skill_type == skill_type
+        ]
+
+
+def select_task_skills(
+    request: TaskRequest,
+    session: RuntimeSession,
+) -> SelectedTaskSkills:
+    disclosure = session.require_skill_disclosure()
+    scene_reference = disclosure.select_skill_scene_for_prompt(
+        request.prompt,
+        session.config.agent.skills,
+        request.scene,
+    )
+    scene_contribution = _load_skill(session, scene_reference)
+    scene_policy = scene_contribution.scene_policy
+    if scene_policy is None:
+        raise TypeError("scene SkillRunner did not provide a scene policy")
+    enabled = _merge_scene_and_configured_skills(session, scene_policy)
+    allowed_types = {
+        entry.descriptor.skill_type
+        for entry in session.skill_runners.list_skill_runners()
+        if entry.descriptor.skill_type != "scene"
+    }
+    unsupported_types = sorted(
+        {
+            reference.skill_type
+            for reference in scene_policy.skills
+            if reference.skill_type not in allowed_types
+        }
+    )
+    if unsupported_types:
+        raise ValueError(
+            "scene references Skill types without registered SkillRunners: "
+            + ", ".join(unsupported_types)
+        )
+    references = disclosure.select_skill_references_for_prompt(
+        request.prompt,
+        enabled,
+        allowed_types,
+    )
+    return SelectedTaskSkills(
+        scene_reference,
+        scene_policy,
+        scene_contribution,
+        tuple(references),
+    )
+
+
+def load_workflow_policy(
+    session: RuntimeSession,
+    selected_skills: SelectedTaskSkills,
+) -> TaskPolicy:
+    entries = _selected_entries(session, selected_skills, "workflow")
     if not entries:
-        return TaskPolicy(name="direct", mode="direct")
+        raise RuntimeError(
+            f"scene:{selected_skills.scene_policy.name} does not select a workflow Skill"
+        )
     if len(entries) > 1:
         keys = ", ".join(entry.reference.key for entry in entries)
         raise ValueError(f"select only one workflow Skill: {keys}")
@@ -37,10 +107,17 @@ def load_workflow_policy(session: RuntimeSession) -> TaskPolicy:
     return contribution.task_policy
 
 
-def load_default_planner(session: RuntimeSession) -> LoadedPlanner | None:
-    entry = session.require_skill_index().find_skill("planner:default")
-    if entry is None:
+def load_selected_planner(
+    session: RuntimeSession,
+    selected_skills: SelectedTaskSkills,
+) -> LoadedPlanner | None:
+    entries = _selected_entries(session, selected_skills, "planner")
+    if not entries:
         return None
+    if len(entries) > 1:
+        keys = ", ".join(entry.reference.key for entry in entries)
+        raise ValueError(f"select only one planner Skill: {keys}")
+    entry = entries[0]
     contribution = _load_skill(session, entry.reference)
     if contribution.planning_policy is None:
         raise TypeError("planner SkillRunner did not contribute a planning policy")
@@ -77,15 +154,16 @@ def apply_planning_to_schedule(
 
 def load_background_contributions(
     session: RuntimeSession,
+    selected_skills: SelectedTaskSkills,
     send_text_model_messages: Callable[[list[Message]], str],
 ) -> list[LoadedSkill]:
-    return [
+    return [selected_skills.scene_contribution] + [
         _load_skill(
             session,
             entry.reference,
             send_text_model_messages=send_text_model_messages,
         )
-        for entry in _selected_entries(session, "memory")
+        for entry in _selected_entries(session, selected_skills, "memory")
     ]
 
 
@@ -202,26 +280,38 @@ def _load_skill(
 
 def _selected_entries(
     session: RuntimeSession,
+    selected_skills: SelectedTaskSkills,
     skill_type: str,
 ) -> list[SkillIndexEntry]:
     index = session.require_skill_index()
-    entries = []
-    for value in session.config.agent.skills:
-        prefix, separator, name = value.strip().lower().partition(":")
-        if separator and prefix == skill_type and name:
-            if _skill_is_disabled(session, skill_type, name):
-                continue
-            entries.append(index.require_skill(name, skill_type))
-    return entries
+    return [
+        index.require_skill(reference.name, skill_type)
+        for reference in selected_skills.list_references(skill_type)
+    ]
 
 
-def _skill_is_disabled(
+def _merge_scene_and_configured_skills(
     session: RuntimeSession,
-    skill_type: str,
-    name: str,
-) -> bool:
-    disabled = set(session.config.agent.disabled_skills)
-    return bool({skill_type, name, f"{skill_type}:{name}"} & disabled)
+    scene_policy: ScenePolicy,
+) -> list[str]:
+    index = session.require_skill_index()
+    configured = [
+        value
+        for value in session.config.agent.skills
+        if not value.strip().lower().startswith("scene:")
+    ]
+    configured_types = {
+        entry.reference.skill_type
+        for value in configured
+        if (entry := index.find_skill(value)) is not None
+    }
+    overridden_types = configured_types & {"memory", "planner", "workflow"}
+    scene_keys = [
+        reference.key
+        for reference in scene_policy.skills
+        if reference.skill_type not in overridden_types
+    ]
+    return [*scene_keys, *configured]
 
 
 def _subagent_result_from_dict(value: dict[str, object]) -> SubAgentResult:

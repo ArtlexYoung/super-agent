@@ -94,7 +94,7 @@ class WebAPI:
         environment = self.agent.user_secrets.get_environment_for_user(self.user_id)
         models = read_model_profiles(disclosure, index, environment)
         return {
-            "schema_version": 2,
+            "schema_version": 3,
             "agent": agent_configuration_to_dict(config),
             "storage": {
                 "backend": config.storage.backend,
@@ -198,7 +198,12 @@ def _web_skill_list(
             }
         }
         | {
-            "enabled": item["key"] not in disabled and item["name"] not in disabled,
+            "enabled": not {
+                item["type"],
+                item["key"],
+                item["name"],
+            }
+            & disabled,
             "selected": item["key"] in selected or item["name"] in selected,
         }
         for item in skills

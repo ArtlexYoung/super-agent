@@ -18,7 +18,7 @@ class AgentSettings:
 
 @dataclass(frozen=True)
 class PathsSettings:
-    # The shared skill tree root recursively scanned for prompt, MCP, memory, and workflow skills.
+    # Shared Skill roots are scanned recursively; manifest type defines behavior.
     skills: list[Path]
 
 

@@ -10,6 +10,10 @@ Super Agent 是一个**简单、轻量、自进化、Skill 优先的 Agent 运�
 需要时发现和加载内容；统一的 Runtime 负责调度、记录证据，并基于真实结果改进允许更新的
 Agent 自建 Skill，不会产生第二套执行链路。
 
+任务场景把一类工作需要的 Skill 组合起来。随软件提供的 `common` 场景处理通用任务，
+可选的 `code` 场景提供完整仓库编码链路。Runtime 根据本次请求、Agent 配置或提示词触发器
+选择场景；无需初始化，也不会在选择后偷偷退化到其他路径。
+
 项目仍处于实验性的 `0.0.x` 阶段。为了验证 Skill-first 模型，破坏性修改会被明确执行，
 不会保留隐式兼容层。
 
@@ -54,6 +58,12 @@ print(result.text)
 print(result.run_id)
 ```
 
+Runtime 通常会自动选择任务场景，也可以在 Python 或 CLI 中为单次运行明确指定：
+
+```python
+result = agent.run("检查这个改动", scene="code")
+```
+
 应用代码可以显式注入自己的 Provider、存储、动作规则、SkillRunner 和子 Agent。CLI 只是
 同一个 Python 内核的入口，不是另一套 Runtime。
 
@@ -72,7 +82,7 @@ Agent        用清晰的 Python 代码组合一切
 ```text
 Agent.run
   -> Core 创建唯一运行会话
-  -> 渐进式披露选择 Skill
+  -> 渐进式披露选择一个任务场景及其 Skill
   -> SkillRunner 加载已选 Skill
   -> Core 选择模型并执行任务
   -> 记录事件、评价、保鲜度和进化证据
@@ -81,6 +91,41 @@ Agent.run
 没有独立的记忆引擎、工作流引擎、MCP 引擎或规划引擎。它们都是由 SkillRunner 加载的
 普通 Skill 类型。渐进式披露核心也可以独立进行只读发现，只有调用者明确要求时才写入缓存
 和历史。
+
+## 任务场景
+
+随软件发布的场景位于 Python 源码之外，仍然只是普通的被动 Skill 数据：
+
+```text
+skill_scenes/
+  common/   场景 + 提示 + 记忆 + 规划器 + 直接工作流
+  code/     场景 + 编码提示 + 项目记忆 + 规划器 + 工具循环
+```
+
+选择顺序固定且可解释：本次运行的 `scene`、`agent.skills` 中唯一固定的 `scene:*`、唯一
+命中的提示词触发场景、最后是唯一默认场景。固定或命中多个场景会直接报错。场景选定后，
+Runtime 只使用该场景的链路；显式固定的 memory、planner 或 workflow Skill 会替换场景中
+同类型的 Skill。
+
+Agent 可以在允许使用工具的对话中调用 `create_skill_scene` 创建完整的用户私有场景，应用
+代码也可以执行同一个显式操作：
+
+```python
+from super_agent import Agent, SkillSceneInput
+
+alice = Agent().for_user("alice")
+alice.skills.create_scene(
+    SkillSceneInput(
+        name="research",
+        description="调查论点及其引用来源",
+        triggers=["来源调查"],
+    )
+)
+```
+
+一次创建会写入 `scene`、`prompt`、`memory`、`planner` 和 `workflow` 五个 Agent 自建、
+可更新 Skill。当前运行已经准备好的索引保持不变，新场景从下一轮开始可用；其他用户无法
+读取或选择它。
 
 ## 创建 Skill
 
@@ -131,8 +176,9 @@ backend = "jsonl"
 path = ".super-agent"
 ```
 
-`skills` 表示每次任务都固定加载的 Skill；未固定的 Skill 仍可被自动选择。
-`disabled_skills` 可以排除一种类型、一个稳定标识或无歧义名称。模型配置是普通的 model
+`skills` 表示每次任务都固定加载的 Skill；未固定的 Skill 仍可被自动选择。最多固定一个
+`scene:*`；省略时自动选择场景。`disabled_skills` 可以排除一种类型、一个稳定标识或无
+歧义名称。模型配置是普通的 model
 Skill，不是特殊的 Agent 字段；密钥只保存在环境变量中。
 
 ## 自动调度与自进化

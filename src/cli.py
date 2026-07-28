@@ -49,6 +49,7 @@ class RuntimeRequest:
     messages: list[Message]
     user_id: str = LOCAL_USER_ID
     conversation_id: str | None = None
+    scene: str | None = None
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -69,7 +70,7 @@ def _run_parsed_command(
     args: argparse.Namespace,
 ) -> int:
     if args.command is None:
-        return _run_chat_command(None, LOCAL_USER_ID, None)
+        return _run_chat_command(None, LOCAL_USER_ID, None, None)
     if args.command == "init":
         return _run_init_command(Path(args.path))
     if args.command == "run":
@@ -78,7 +79,12 @@ def _run_parsed_command(
         return _run_prompt_command(config_path, request, args.output)
     if args.command == "chat":
         config_path = None if args.config is None else Path(args.config)
-        return _run_chat_command(config_path, args.user_id, args.conversation_id)
+        return _run_chat_command(
+            config_path,
+            args.user_id,
+            args.conversation_id,
+            args.scene,
+        )
     handler = COMMAND_HANDLERS.get(args.command)
     if handler is not None:
         return handler(args)
@@ -103,11 +109,13 @@ def _build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--request-stdin", action="store_true")
     run_parser.add_argument("--user-id", default=LOCAL_USER_ID)
     run_parser.add_argument("--conversation-id")
+    run_parser.add_argument("--scene", help="explicit scene name or scene:name key")
 
     chat_parser = subparsers.add_parser("chat", help="start an interactive conversation")
     chat_parser.add_argument("--config")
     chat_parser.add_argument("--user-id", default=LOCAL_USER_ID)
     chat_parser.add_argument("--conversation-id")
+    chat_parser.add_argument("--scene", help="explicit scene name or scene:name key")
 
     conversations_parser = subparsers.add_parser(
         "conversations",
@@ -166,7 +174,10 @@ def _run_prompt_command(config_path: Path | None, request: RuntimeRequest, outpu
             request.prompt,
             messages=request.messages,
             conversation_id=request.conversation_id,
-            run_options=AgentRunOptions(event_listener=_print_run_event),
+            run_options=AgentRunOptions(
+                event_listener=_print_run_event,
+                scene=request.scene,
+            ),
         )
         print(json.dumps({"type": "result", "result": run_result_to_dict(result)}, ensure_ascii=False))
         return 0
@@ -174,6 +185,7 @@ def _run_prompt_command(config_path: Path | None, request: RuntimeRequest, outpu
         request.prompt,
         messages=request.messages,
         conversation_id=request.conversation_id,
+        scene=request.scene,
     )
     if output == "json":
         print(json.dumps(run_result_to_dict(result), ensure_ascii=False))
@@ -188,6 +200,7 @@ def _run_chat_command(
     config_path: Path | None,
     user_id: str,
     conversation_id: str | None,
+    scene: str | None,
 ) -> int:
     agent = _load_agent(config_path)
     user = agent.for_user(user_id)
@@ -208,6 +221,7 @@ def _run_chat_command(
         result = user.run(
             prompt,
             conversation_id=conversation.conversation_id,
+            scene=scene,
         )
         print(f"Agent: {result.text}")
 
@@ -233,6 +247,7 @@ def _read_runtime_request_from_args(args: argparse.Namespace) -> RuntimeRequest:
         messages=[],
         user_id=args.user_id,
         conversation_id=args.conversation_id,
+        scene=args.scene,
     )
 
 
@@ -251,6 +266,7 @@ def _read_runtime_request_from_stdin() -> RuntimeRequest:
             data.get("conversation_id"),
             "conversation_id",
         ),
+        scene=_read_optional_runtime_id(data.get("scene"), "scene"),
     )
 
 

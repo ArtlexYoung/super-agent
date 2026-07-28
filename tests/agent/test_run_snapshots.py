@@ -34,7 +34,7 @@ class RunSnapshotTests(unittest.TestCase):
                 runtime_lock["model"]["implementation"],
             )
             self.assertEqual(
-                {"mcp", "memory", "prompt", "planner", "workflow"},
+                {"mcp", "memory", "planner", "prompt", "scene", "workflow"},
                 {item["type"] for item in runtime_lock["skill_runners"]},
             )
             self.assertIn(

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from pathlib import Path
 from urllib.parse import quote
 
@@ -88,6 +89,37 @@ class ProgressiveDisclosureCore:
             )
         return self._index
 
+    def select_skill_scene_for_prompt(
+        self,
+        prompt: str,
+        enabled_names: list[str] | None = None,
+        requested_scene: str | None = None,
+    ) -> SkillReference:
+        """Select exactly one scene from explicit input, triggers, or one default."""
+        index = self.require_prepared_skill_index()
+        scenes = [
+            entry for entry in index.entries if entry.reference.skill_type == "scene"
+        ]
+        if not scenes:
+            raise RuntimeError("no scene Skill is available")
+        selected, reason = _select_scene_entry(
+            index,
+            scenes,
+            prompt,
+            enabled_names or [],
+            requested_scene,
+        )
+        if self.identity is not None:
+            self.store.append_run_event(
+                self.identity,
+                "scene.selected",
+                {
+                    "scene_key": selected.reference.key,
+                    "reason": reason,
+                },
+            )
+        return selected.reference
+
     def select_skill_references_for_prompt(
         self,
         prompt: str,
@@ -124,7 +156,7 @@ class ProgressiveDisclosureCore:
         enabled_names: list[str] | None = None,
         allowed_types: set[str] | None = None,
     ) -> list[SkillSelectionDecision]:
-        index = self._require_index()
+        index = self.require_prepared_skill_index()
         skill_runners = (
             None
             if allowed_types is None
@@ -166,7 +198,7 @@ class ProgressiveDisclosureCore:
         name: str,
         expected_type: str | None = None,
     ) -> "SkillDisclosure":
-        entry = self._require_index().require_skill(name, expected_type)
+        entry = self.require_prepared_skill_index().require_skill(name, expected_type)
         return SkillDisclosure(
             self._sources_by_key[entry.reference.key],
             entry,
@@ -194,7 +226,7 @@ class ProgressiveDisclosureCore:
             for item in self.store.disclosure.read_history()
         ]
 
-    def _require_index(self) -> SkillIndex:
+    def require_prepared_skill_index(self) -> SkillIndex:
         if self._index is None:
             raise RuntimeError("prepare_skill_index must be called before using skills")
         return self._index
@@ -209,7 +241,7 @@ class ProgressiveDisclosureCore:
 
     def _remove_disabled_skill_names(self, names: list[str]) -> list[str]:
         # Ignore a bare name only when every matching skill_type is disabled.
-        index = self._require_index()
+        index = self.require_prepared_skill_index()
         disabled_keys = {reference.key for reference in self._disabled_references}
         disabled_names = {reference.name for reference in self._disabled_references}
         selected: list[str] = []
@@ -327,6 +359,80 @@ class SkillDisclosure:
             )
 
 
+def _select_scene_entry(
+    index: SkillIndex,
+    scenes: list[SkillIndexEntry],
+    prompt: str,
+    enabled_names: list[str],
+    requested_scene: str | None,
+) -> tuple[SkillIndexEntry, str]:
+    if requested_scene is not None:
+        entry = _require_scene_entry(index, requested_scene)
+        return entry, "selected by task request"
+    configured = _configured_scene_entries(index, enabled_names)
+    if len(configured) > 1:
+        keys = ", ".join(entry.reference.key for entry in configured)
+        raise ValueError(f"select only one configured scene Skill: {keys}")
+    if configured:
+        return configured[0], "enabled by agent config"
+    prompt_text = prompt.lower()
+    triggered = [
+        entry
+        for entry in scenes
+        if any(_scene_trigger_matches(prompt_text, trigger) for trigger in entry.triggers)
+    ]
+    if len(triggered) > 1:
+        keys = ", ".join(entry.reference.key for entry in triggered)
+        raise ValueError(f"task matches multiple scene Skills: {keys}")
+    if triggered:
+        trigger = next(
+            value
+            for value in triggered[0].triggers
+            if _scene_trigger_matches(prompt_text, value)
+        )
+        return triggered[0], f"matched trigger: {trigger}"
+    defaults = [entry for entry in scenes if entry.is_default]
+    if len(defaults) != 1:
+        keys = ", ".join(entry.reference.key for entry in defaults) or "none"
+        raise ValueError(f"expected exactly one default scene Skill; found: {keys}")
+    return defaults[0], "selected as the default scene"
+
+
+def _require_scene_entry(index: SkillIndex, value: str) -> SkillIndexEntry:
+    clean = value.strip().lower()
+    if not clean:
+        raise ValueError("requested scene cannot be empty")
+    if ":" in clean:
+        skill_type, name = clean.split(":", 1)
+        if skill_type != "scene":
+            raise ValueError(f"requested scene must use scene:name: {value}")
+        return index.require_skill(name, "scene")
+    return index.require_skill(clean, "scene")
+
+
+def _configured_scene_entries(
+    index: SkillIndex,
+    enabled_names: list[str],
+) -> list[SkillIndexEntry]:
+    entries: dict[str, SkillIndexEntry] = {}
+    for value in enabled_names:
+        clean = value.strip().lower()
+        if not clean.startswith("scene:"):
+            continue
+        entry = _require_scene_entry(index, clean)
+        entries[entry.reference.key] = entry
+    return [entries[key] for key in sorted(entries)]
+
+
+def _scene_trigger_matches(prompt: str, trigger: str) -> bool:
+    if not trigger:
+        return False
+    if not trigger.isascii():
+        return trigger in prompt
+    escaped = re.escape(trigger)
+    return re.search(rf"(?<![a-z0-9]){escaped}(?![a-z0-9])", prompt) is not None
+
+
 def _build_index_entry(
     source: SkillSource,
     cache_root: Path,
@@ -365,6 +471,7 @@ def _build_index_entry(
         same_function_successful_followups=int(
             runtime.get("same_function_successful_followups", 0)
         ),
+        is_default=manifest.is_default,
     )
 
 

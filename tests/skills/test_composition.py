@@ -128,7 +128,10 @@ path = ".super-agent"
 
             result = agent.run("build an unrelated output")
 
-            self.assertEqual({"report", "research", "transport"}, set(result.skills))
+            self.assertEqual(
+                {"common", "report", "research", "transport"},
+                set(result.skills),
+            )
             index = json.loads(
                 agent.runtime.create_store()
                 .disclosure.cache_root.joinpath("index.json")

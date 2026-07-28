@@ -81,6 +81,7 @@ class ModelSkillTests(unittest.TestCase):
         self.assertEqual("openai-compatible", profile.connection.provider)
         self.assertEqual("gpt-4.1-mini", profile.model)
         self.assertEqual("OPENAI_API_KEY", profile.connection.api_key_env)
+        self.assertEqual(["text", "tools"], profile.routing.supports)
         self.assertTrue(model_profile_is_ready(profile, environment))
         self.assertNotIn("secret-value", str(model_profile_to_dict(profile, environment)))
 
@@ -98,6 +99,7 @@ class ModelSkillTests(unittest.TestCase):
         self.assertEqual("qwen3:8b", selected.model)
         self.assertEqual("http://127.0.0.1:11434/v1", selected.connection.base_url)
         self.assertIsNone(selected.connection.api_key_env)
+        self.assertEqual(["text"], selected.routing.supports)
 
     def test_model_skill_wins_over_environment_and_carries_routing_traits(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, patch.dict(

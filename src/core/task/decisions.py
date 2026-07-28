@@ -44,6 +44,12 @@ class ModelChoice:
 
 
 @dataclass(frozen=True)
+class TaskSkillSelection:
+    scene_key: str
+    references: tuple[SkillReference, ...]
+
+
+@dataclass(frozen=True)
 class TaskSchedule:
     purpose: str
     required_features: tuple[str, ...]
@@ -55,6 +61,7 @@ class TaskSchedule:
     execution_mode: str
     planner: str | None
     planning_reasons: tuple[str, ...]
+    scene: str
 
     @property
     def selected_model(self) -> ModelProfile:
@@ -80,6 +87,7 @@ class TaskSchedule:
             "execution_mode": self.execution_mode,
             "planner": self.planner,
             "planning_reasons": list(self.planning_reasons),
+            "scene": self.scene,
         }
 
 
@@ -87,6 +95,7 @@ def create_task_schedule(
     request: TaskRequest,
     session: RuntimeSession,
     workflow: TaskPolicy,
+    selected_skills: TaskSkillSelection,
     *,
     model_profiles: list[ModelProfile],
     environment: Mapping[str, str],
@@ -106,7 +115,7 @@ def create_task_schedule(
         prompt=request.prompt,
         evidence=evidence,
     )
-    skill_references = _choose_skills(request, session, workflow)
+    skill_references = _model_context_skills(selected_skills, session)
     subagents = request.subagents.list_subagents() if request.include_subagents else []
     subagent_names, subagent_reasons = choose_subagents(request.prompt, subagents)
     return TaskSchedule(
@@ -120,6 +129,7 @@ def create_task_schedule(
         execution_mode="task_plan",
         planner=None,
         planning_reasons=(),
+        scene=selected_skills.scene_key,
     )
 
 
@@ -127,6 +137,7 @@ def create_task_step_schedule(
     step: TaskStep,
     request: TaskRequest,
     session: RuntimeSession,
+    selected_skills: TaskSkillSelection,
     *,
     workflow: TaskPolicy,
     model_profiles: list[ModelProfile],
@@ -147,7 +158,6 @@ def create_task_step_schedule(
         prompt=step.instruction,
         evidence=evidence,
     )
-    step_request = replace(request, prompt=step.instruction)
     subagent_names = () if step.subagent is None else (step.subagent,)
     subagent_reasons = (
         ()
@@ -159,12 +169,13 @@ def create_task_step_schedule(
         required_features=required_features,
         workflow=workflow.name,
         model_choices=model_choices,
-        skill_references=tuple(_choose_skills(step_request, session, workflow)),
+        skill_references=tuple(_model_context_skills(selected_skills, session)),
         subagent_names=subagent_names,
         subagent_reasons=subagent_reasons,
         execution_mode="task_step",
         planner=None,
         planning_reasons=(),
+        scene=selected_skills.scene_key,
     )
 
 
@@ -281,19 +292,16 @@ def _required_features(
     return tuple(sorted(features))
 
 
-def _choose_skills(
-    request: TaskRequest,
+def _model_context_skills(
+    selected_skills: TaskSkillSelection,
     session: RuntimeSession,
-    workflow: TaskPolicy,
 ) -> list[SkillReference]:
-    model_context_types = (
-        session.skill_runners.list_model_context_types()
-    )
-    return session.require_skill_disclosure().select_skill_references_for_prompt(
-        request.prompt,
-        session.config.agent.skills,
-        allowed_types=model_context_types,
-    )
+    model_context_types = session.skill_runners.list_model_context_types()
+    return [
+        reference
+        for reference in selected_skills.references
+        if reference.skill_type in model_context_types
+    ]
 
 
 def _score_model(

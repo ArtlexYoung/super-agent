@@ -12,12 +12,12 @@ Agent        composes Providers, Core options, SkillRunners, storage, and subage
 
 ## Source Layout
 
-The shipped Python source has only four packages and two entry modules:
+The repository keeps passive scene data outside the three Python packages:
 
 ```text
+skill_scenes/       shipped common and optional task-scene Skill trees
 src/
   adapter/          external CLI and AG-UI entry points
-  builtin_skills/   passive built-in Skill content
   core/             Runtime, Provider, task, state, storage, and evolution orchestration
   skill/            Skill format, disclosure, runners, packages, and evaluation
   cli.py
@@ -35,7 +35,7 @@ Every run enters one kernel:
 Agent.run(...)
   -> AgentRuntime.run_task(TaskRequest)
   -> RuntimeSession and RuntimeStore
-  -> progressive Skill index and selection
+  -> progressive index selects one scene and its Skill references
   -> SkillRunners load selected Skills
   -> one adaptive task loop executes plans, models, tools, and subagents
   -> canonical events, evaluation, freshness, and evolution review
@@ -54,11 +54,14 @@ from parallel mutable state.
 
 All Skill types use `ProgressiveDisclosureCore`:
 
-1. Scan user, project, and built-in sources into one compact index.
-2. Read a manifest only for a selected reference.
-3. Read instructions, configuration, and resources only when its SkillRunner asks.
-4. Reuse content-addressed cache paths when Runtime explicitly enables recording.
-5. Store disclosure history in the same user-and-Agent event scope as the run.
+1. Scan user, project, and shipped scene sources into one compact index.
+2. Select exactly one task scene by request, Agent configuration, prompt trigger, or the
+   unique default.
+3. Resolve the scene's ordinary Skill references through the same index.
+4. Read a manifest only for a selected reference.
+5. Read instructions, configuration, and resources only when its SkillRunner asks.
+6. Reuse content-addressed cache paths when Runtime explicitly enables recording.
+7. Store disclosure history in the same user-and-Agent event scope as the run.
 
 Offline discovery is read-only by default. Cache and history writes are explicit options,
 so inspecting available Skills has no hidden side effect.
@@ -72,10 +75,10 @@ one loading method:
 loaded = runner.load_skill(request)
 ```
 
-`LoadedSkill` may contribute model context, prompt context, tools, a task policy, a
-planning policy, and a completion callback. Core consumes this one shape for every type.
-Built-in prompt, MCP, memory, workflow, and planner behavior therefore requires no
-type-specific branch in Core.
+`LoadedSkill` may contribute model context, prompt context, tools, a scene policy, a task
+policy, a planning policy, and a completion callback. Core consumes this one shape for
+every type. Scene, prompt, MCP, memory, workflow, and planner behavior therefore requires
+no separate loader path in Core.
 
 Downloaded Skill directories are always passive. Runtime never imports Python from them.
 Custom executable behavior is added explicitly with `Agent.add_skill_runner(...)`, and
@@ -106,8 +109,9 @@ RuntimeSession
 
 Every event contains one validated user and Agent scope. Conversations, memory, Skill
 usage, disclosure history, model evidence, Provider caches, user Skill overlays,
-evaluations, and evolution state remain inside that scope. Shared project and built-in
-Skills are read-only baselines; resolution order is `user > project > builtin`.
+evaluations, and evolution state remain inside that scope. Shared project and shipped
+scene Skills are read-only baselines. The index reports shipped content with the
+`builtin` source label, so resolution order is `user > project > builtin`.
 
 JSONL and SQLite use only the standard library. Remote database drivers are imported only
 after their backend is explicitly selected.
@@ -133,6 +137,8 @@ application code rather than downloadable Skill content.
 ## Invariants
 
 - One run has one Runtime session, store, disclosure core, task loop, and event stream.
+- One run selects exactly one scene before loading memory, planning, workflow, and prompt
+  content; the selected scene and reason are recorded.
 - Every Skill type uses the same index, cache, stable key, evidence, and evolution format.
 - Core has no hard-coded list of custom Skill types.
 - Provider failures, memory organization failures, and invalid evolution candidates are

@@ -23,6 +23,7 @@ SKILL_MANIFEST_FIELDS = {
     "freshness_updated_at",
     "provides",
     "requires",
+    "default",
 }
 
 
@@ -48,6 +49,7 @@ class SkillManifest:
     freshness_updated_at: str = ""
     provides: list[str] = field(default_factory=list)
     requires: list[str] = field(default_factory=list)
+    is_default: bool = False
 
 def skill_manifest_from_dict(data: dict[str, object], path: Path) -> SkillManifest:
     schema_version = _read_schema_version(data)
@@ -72,6 +74,7 @@ def skill_manifest_from_dict(data: dict[str, object], path: Path) -> SkillManife
         freshness_updated_at=_read_optional_string(data, "freshness_updated_at", ""),
         provides=_read_features(data, "provides", [name]),
         requires=_read_features(data, "requires", []),
+        is_default=_read_bool(data, "default", False),
     )
 
 
@@ -209,6 +212,7 @@ def skill_manifest_to_dict(manifest: SkillManifest) -> dict[str, object]:
         "freshness_updated_at": manifest.freshness_updated_at,
         "provides": list(manifest.provides),
         "requires": list(manifest.requires),
+        "default": manifest.is_default,
     }
     if manifest.entry.instructions is not None:
         data["entry"] = {"instructions": manifest.entry.instructions}

@@ -324,6 +324,7 @@ function runtimeEventLabel(eventName: string): string {
   const labels: Record<string, string> = {
     "run.started": "运行已开始",
     "task.started": "正在理解任务",
+    "scene.selected": "正在选择任务场景",
     "task.scheduled": "正在调度能力",
     "task.plan.created": "计划已生成",
     "task.step.scheduled": "正在执行任务步骤",

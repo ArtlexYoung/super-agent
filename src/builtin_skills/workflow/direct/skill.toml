@@ -1,9 +1,0 @@
-schema_version = 3
-name = "direct"
-type = "workflow"
-description = "Built-in direct workflow"
-version = "0.0.31"
-triggers = []
-
-[configuration]
-mode = "direct"

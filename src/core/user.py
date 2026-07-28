@@ -17,6 +17,8 @@ from core.task.routing import ModelRoutingStats
 from core.actions import ActionEffect, ActionRequest
 from core.task.models import TaskResult, TaskTrace
 from skill.kinds.model_management import ModelSkillManager
+from skill.kinds.scene import CreatedSkillScene, SkillSceneInput, SkillSceneManager
+from skill.runners.defaults import create_progressive_skill_disclosure
 
 if TYPE_CHECKING:
     from core.agent import Agent, AgentRunOptions
@@ -40,6 +42,7 @@ class UserAgent:
         *,
         messages: list[Message] | None = None,
         conversation_id: str | None = None,
+        scene: str | None = None,
         run_options: "AgentRunOptions | None" = None,
     ) -> TaskResult:
         return self.agent._run_for_user(
@@ -47,7 +50,7 @@ class UserAgent:
             self.user_id,
             messages=messages,
             conversation_id=conversation_id,
-            run_options=run_options,
+            run_options=self.agent._run_options_for_scene(run_options, scene),
         )
 
 
@@ -206,6 +209,28 @@ class UserSkills:
             self.user.agent.config,
             self.user.agent.runtime.create_store(self.user.user_id),
             self.user.agent.action_rules,
+        )
+
+    def create_scene(self, request: SkillSceneInput) -> CreatedSkillScene:
+        runtime = self.user.agent.runtime
+        store = runtime.create_store(self.user.user_id)
+        disclosure = create_progressive_skill_disclosure(
+            self.user.agent.config,
+            store=store,
+        )
+        index = disclosure.prepare_skill_index()
+        manager = SkillSceneManager(store, index)
+        return cast(
+            CreatedSkillScene,
+            runtime.execute_management_action(
+                self.user.user_id,
+                ActionRequest.create(
+                    "user:skill-scene",
+                    f"skill:owned:scene:{request.name}",
+                    (ActionEffect.CREATE,),
+                ),
+                lambda: manager.create_skill_scene(request),
+            ),
         )
 
     def reload_models(self) -> None:

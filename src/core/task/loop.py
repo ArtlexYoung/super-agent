@@ -31,20 +31,23 @@ from core.actions import ActionRequest
 from core.session import RuntimeSession
 from core.state.store import RuntimeStore
 from core.task.decisions import (
+    TaskSkillSelection,
     TaskSchedule,
     create_task_step_schedule,
     create_task_schedule,
 )
 from core.task.preparation import (
     LoadedPlanner,
+    SelectedTaskSkills,
     apply_planning_to_schedule,
     build_system_prompt,
     create_runtime_tools,
     load_background_contributions,
-    load_default_planner,
+    load_selected_planner,
     load_scheduled_skill_contributions,
     load_workflow_policy,
     run_task_step_subagents,
+    select_task_skills,
 )
 from core.task.models import SubAgentResult, TaskRequest, TaskResult
 from core.task.tools import RuntimeTools
@@ -61,6 +64,7 @@ class _TaskExecutionContext:
     session: RuntimeSession
     workflow: TaskPolicy
     background_contributions: list[LoadedSkill]
+    selected_skills: SelectedTaskSkills
 
 
 @dataclass
@@ -96,8 +100,9 @@ class AdaptiveTaskLoop:
         session: RuntimeSession,
         before_model_calls: ScheduleListener,
     ) -> TaskResult:
-        workflow = load_workflow_policy(session)
-        planner = load_default_planner(session)
+        selected_skills = select_task_skills(request, session)
+        workflow = load_workflow_policy(session, selected_skills)
+        planner = load_selected_planner(session, selected_skills)
         planning = decide_task_planning(
             None if planner is None else planner.policy,
             request.prompt,
@@ -111,6 +116,7 @@ class AdaptiveTaskLoop:
             schedule_request,
             session,
             workflow,
+            _schedule_skill_selection(selected_skills),
             model_profiles=self.model_profiles,
             environment=self.provider_pool.environment,
         )
@@ -121,6 +127,7 @@ class AdaptiveTaskLoop:
 
         background = load_background_contributions(
             session,
+            selected_skills,
             self.create_text_model(
                 session.store,
                 "memory_organization",
@@ -128,7 +135,13 @@ class AdaptiveTaskLoop:
         )
         if planner is not None:
             background.append(planner.contribution)
-        context = _TaskExecutionContext(request, session, workflow, background)
+        context = _TaskExecutionContext(
+            request,
+            session,
+            workflow,
+            background,
+            selected_skills,
+        )
         if planning.should_plan:
             if planner is None:
                 raise RuntimeError("task requires planning but no Planner Skill is available")
@@ -241,6 +254,7 @@ class AdaptiveTaskLoop:
             step,
             request,
             session,
+            _schedule_skill_selection(context.selected_skills),
             workflow=step_policy,
             model_profiles=self.model_profiles,
             environment=self.provider_pool.environment,
@@ -373,6 +387,15 @@ def _record_disclosed_skills(
             "names": [skill.manifest.name for skill in skills],
             "index_path": str(session.require_skill_index().index_path),
         },
+    )
+
+
+def _schedule_skill_selection(
+    selected_skills: SelectedTaskSkills,
+) -> TaskSkillSelection:
+    return TaskSkillSelection(
+        selected_skills.scene_reference.key,
+        selected_skills.references,
     )
 
 

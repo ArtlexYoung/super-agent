@@ -130,6 +130,7 @@ class AgentRuntime:
                 {
                     "purpose": request.purpose,
                     "required_features": list(request.required_features),
+                    "requested_scene": request.scene,
                 },
             )
             self.skill_runners.validate_dependencies()
@@ -573,7 +574,7 @@ def _skill_update_to_dict(state: SkillEvolutionState) -> dict[str, object]:
 def _runtime_lock_to_dict(request: _RuntimeLockInput) -> dict[str, object]:
     request.skill_runners.validate_dependencies()
     return {
-        "schema_version": 12,
+        "schema_version": 13,
         "agent": {
             "name": request.config.agent.name,
             "system": request.config.agent.system,

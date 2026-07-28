@@ -182,6 +182,7 @@ class AGUIRequestHandler(BaseHTTPRequestHandler):
             self._server.agent.for_user(self._server.user_id).run(
                 request.prompt,
                 conversation_id=request.thread_id,
+                scene=request.scene,
                 run_options=AgentRunOptions(
                     run_id=request.run_id,
                     event_listener=send_runtime_event,

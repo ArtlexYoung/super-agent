@@ -24,7 +24,6 @@ class SkillKindArchitectureTests(unittest.TestCase):
         self.assertEqual(
             {
                 "adapter",
-                "builtin_skills",
                 "cli.py",
                 "core",
                 "skill",
@@ -32,6 +31,8 @@ class SkillKindArchitectureTests(unittest.TestCase):
             },
             entries,
         )
+        self.assertTrue(Path("skill_scenes/common").is_dir())
+        self.assertTrue(Path("skill_scenes/code").is_dir())
 
     def test_skill_kinds_are_loaded_from_unified_skill_package(self) -> None:
         self.assertEqual("McpServer", McpServer.__name__)

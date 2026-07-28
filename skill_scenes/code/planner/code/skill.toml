@@ -1,0 +1,33 @@
+schema_version = 3
+name = "code"
+type = "planner"
+description = "Repository-aware planner for exploration, edits, tests, and final review"
+version = "0.0.65"
+triggers = []
+agent_created = false
+agent_can_update = false
+freshness = 70
+function_group = "code-planning"
+provides = ["code-planning"]
+requires = []
+default = false
+
+[entry]
+instructions = "SKILL.md"
+
+[configuration]
+max_steps = 10
+minimum_prompt_characters = 180
+planning_terms = [
+  "step by step",
+  "multiple files",
+  "across the repository",
+  "fix the bug",
+  "add tests",
+  "review and fix",
+  "分步骤",
+  "多个文件",
+  "整个仓库",
+  "添加测试",
+  "审查并修复",
+]

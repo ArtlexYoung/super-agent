@@ -87,7 +87,7 @@ class SkillRunnerRuntimeTests(unittest.TestCase):
             result = agent.run("please echo this")
 
             self.assertEqual("finished", result.text)
-            self.assertEqual(1, runner.load_count)
+            self.assertEqual(2, runner.load_count)
             self.assertIn(
                 "Loaded by custom SkillRunner.",
                 provider.last_messages[0]["content"],

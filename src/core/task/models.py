@@ -36,6 +36,7 @@ class TaskRequest:
     purpose: str = "auto"
     required_features: tuple[str, ...] = ("text",)
     learn_from_conversation: bool = False
+    scene: str | None = None
 
 
 @dataclass(frozen=True)

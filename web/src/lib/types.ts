@@ -64,6 +64,7 @@ export interface SkillState {
   call_count: number
   success_count: number
   same_function_successful_followups: number
+  default: boolean
   enabled: boolean
   selected: boolean
 }

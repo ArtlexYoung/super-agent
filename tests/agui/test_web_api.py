@@ -40,12 +40,20 @@ class WebAPIContractTests(unittest.TestCase):
 
             self.assertEqual(200, response.status)
             body = _body_dict(response.body)
-            self.assertEqual(2, body["schema_version"])
+            self.assertEqual(3, body["schema_version"])
             self.assertEqual("super-agent", _body_dict(body["agent"])["name"])
             skills = _body_list(body["skills"])
-            self.assertTrue({"memory", "workflow", "planner"}.issubset(
-                {item["type"] for item in skills}
-            ))
+            self.assertTrue(
+                {"memory", "planner", "scene", "workflow"}.issubset(
+                    {item["type"] for item in skills}
+                )
+            )
+            scenes = [item for item in skills if item["type"] == "scene"]
+            self.assertEqual({"common", "code"}, {item["name"] for item in scenes})
+            self.assertEqual(
+                ["common"],
+                [item["name"] for item in scenes if item["default"]],
+            )
             self.assertNotIn("manifest_cache_path", skills[0])
             memory_items = _body_list(body["memory"])
             self.assertEqual(

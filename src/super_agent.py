@@ -30,6 +30,7 @@ from core.storage import (
 )
 from core.task.models import TaskResult, TaskTrace
 from skill.kinds.model import ModelProfile
+from skill.kinds.scene import CreatedSkillScene, SkillSceneInput
 from skill.manifest import Skill, SkillManifest
 
 __all__ = [
@@ -46,6 +47,7 @@ __all__ = [
     "SkillAction",
     "SkillTool",
     "Conversation",
+    "CreatedSkillScene",
     "JsonlStorage",
     "LOCAL_USER_ID",
     "MockProvider",
@@ -56,6 +58,7 @@ __all__ = [
     "ProviderConnection",
     "ProviderPool",
     "Skill",
+    "SkillSceneInput",
     "SkillManifest",
     "LoadedSkill",
     "SkillLoadRequest",

@@ -194,6 +194,7 @@ def discover_environment_model_profiles(
                     api_key_env="OPENAI_API_KEY",
                 ),
                 "environment:OPENAI_API_KEY",
+                supports=["text", "tools"],
             )
         )
     if _environment_text(env, "ANTHROPIC_API_KEY") is not None:
@@ -207,6 +208,7 @@ def discover_environment_model_profiles(
                     api_key_env="ANTHROPIC_API_KEY",
                 ),
                 "environment:ANTHROPIC_API_KEY",
+                supports=["text", "tools"],
             )
         )
     profiles = _deduplicate_profiles(profiles)
@@ -302,6 +304,7 @@ def _profile_from_super_agent_environment(
             _environment_text(environment, "SUPER_AGENT_API_KEY_ENV"),
         ),
         "environment:SUPER_AGENT_PROVIDER",
+        supports=["text", "tools"],
     )
 
 
@@ -311,6 +314,8 @@ def _create_ephemeral_profile(
     model: str,
     connection: ProviderConnection,
     source: str,
+    *,
+    supports: list[str] | None = None,
 ) -> ModelProfile:
     return ModelProfile(
         name=name,
@@ -318,7 +323,7 @@ def _create_ephemeral_profile(
         version="ephemeral",
         model=model,
         connection=normalize_provider_connection(connection),
-        routing=ModelRoutingTraits(["text"], [], []),
+        routing=ModelRoutingTraits(list(supports or ["text"]), [], []),
         default=False,
         source=source,
         skill_key="",

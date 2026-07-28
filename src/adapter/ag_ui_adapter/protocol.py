@@ -14,6 +14,7 @@ class AGUIRunInput:
     thread_id: str
     run_id: str
     prompt: str
+    scene: str | None = None
 
     @classmethod
     def from_dict(cls, value: object) -> "AGUIRunInput":
@@ -25,7 +26,11 @@ class AGUIRunInput:
         if not isinstance(messages, list):
             raise ValueError("AG-UI messages must be an array")
         prompt = _read_latest_user_message(messages)
-        return cls(thread_id, run_id, prompt)
+        forwarded = value.get("forwardedProps", {})
+        if not isinstance(forwarded, dict):
+            raise ValueError("AG-UI forwardedProps must be an object")
+        scene = _read_optional_scene(forwarded.get("scene"))
+        return cls(thread_id, run_id, prompt, scene)
 
 
 class AGUIEventMapper:
@@ -114,6 +119,17 @@ def _read_identifier(data: dict[str, object], name: str) -> str:
     clean = value.strip()
     if len(clean) > 200 or any(ord(character) < 32 for character in clean):
         raise ValueError(f"AG-UI {name} must be at most 200 printable characters")
+    return clean
+
+
+def _read_optional_scene(value: object) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("AG-UI forwardedProps.scene must be a non-empty string")
+    clean = value.strip().lower()
+    if len(clean) > 129 or any(ord(character) < 32 for character in clean):
+        raise ValueError("AG-UI forwardedProps.scene is invalid")
     return clean
 
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
 
@@ -52,6 +52,7 @@ class AgentRunOptions:
     learn_from_conversation: bool = False
     run_id: str | None = None
     event_listener: Callable[[RunEvent], None] | None = None
+    scene: str | None = None
 
 
 class Agent:
@@ -158,6 +159,21 @@ class Agent:
 
         return UserAgent(self, user_id)
 
+    def _run_options_for_scene(
+        self,
+        run_options: AgentRunOptions | None,
+        scene: str | None,
+    ) -> AgentRunOptions | None:
+        if scene is None:
+            return run_options
+        clean_scene = scene.strip().lower()
+        if not clean_scene:
+            raise ValueError("scene cannot be empty")
+        options = run_options or AgentRunOptions()
+        if options.scene is not None and options.scene.strip().lower() != clean_scene:
+            raise ValueError("scene conflicts with AgentRunOptions.scene")
+        return replace(options, scene=clean_scene)
+
     def _check_subagent_links(self) -> list[str]:
         warnings: list[str] = []
         root_chain = [self.config.agent.name]
@@ -181,6 +197,7 @@ class Agent:
         *,
         messages: list[Message] | None = None,
         conversation_id: str | None = None,
+        scene: str | None = None,
         run_options: AgentRunOptions | None = None,
     ) -> TaskResult:
         return self._run_for_user(
@@ -188,7 +205,7 @@ class Agent:
             LOCAL_USER_ID,
             messages=messages,
             conversation_id=conversation_id,
-            run_options=run_options,
+            run_options=self._run_options_for_scene(run_options, scene),
         )
 
     def _run_for_user(
@@ -212,6 +229,7 @@ class Agent:
             include_subagents=options.include_subagents,
             warning_messages=warnings,
             learn_from_conversation=options.learn_from_conversation,
+            scene=options.scene,
             subagents=SubagentCallbacks(
                 list_subagents=self._list_subagents_for_model,
                 run_named_subagent=self._run_named_subagent_for_model,

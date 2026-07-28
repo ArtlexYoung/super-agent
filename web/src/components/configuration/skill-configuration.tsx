@@ -16,6 +16,11 @@ interface SkillConfigurationProps {
 
 const knownGroups = [
   {
+    type: "scene",
+    title: "任务场景",
+    help: "Runtime 会按对话内容自动选择一套 Skill；固定场景后将覆盖自动识别。",
+  },
+  {
     type: "prompt",
     title: "提示 Skill",
     help: "为模型渐进披露的提示内容，可按任务自动选择，也可固定使用。",
@@ -57,9 +62,7 @@ export function SkillConfiguration(props: SkillConfigurationProps) {
   return (
     <div className="configuration-sections">
       {groups.map((group) => {
-        const skills = props.skills.filter(
-          (skill) => skill.type === group.type
-        )
+        const skills = props.skills.filter((skill) => skill.type === group.type)
         return (
           <section key={group.type} className="configuration-section">
             <div className="configuration-section-header">
@@ -77,6 +80,7 @@ export function SkillConfiguration(props: SkillConfigurationProps) {
                     skill={skill}
                     configuration={props.configuration}
                     onChange={props.onChange}
+                    sameTypeSkills={skills}
                   />
                 ))}
               </div>
@@ -94,10 +98,17 @@ interface SkillRowProps {
   skill: SkillState
   configuration: AgentConfiguration
   onChange: (configuration: AgentConfiguration) => void
+  sameTypeSkills: SkillState[]
 }
 
-function SkillRow({ skill, configuration, onChange }: SkillRowProps) {
+function SkillRow({
+  skill,
+  configuration,
+  onChange,
+  sameTypeSkills,
+}: SkillRowProps) {
   const enabled =
+    !configuration.disabled_skills.includes(skill.type) &&
     !configuration.disabled_skills.includes(skill.key) &&
     !configuration.disabled_skills.includes(skill.name)
   const selected =
@@ -106,17 +117,29 @@ function SkillRow({ skill, configuration, onChange }: SkillRowProps) {
 
   function setEnabled(nextEnabled: boolean): void {
     const withoutSkill = configuration.disabled_skills.filter(
+      (item) => item !== skill.type && item !== skill.key && item !== skill.name
+    )
+    const withoutSelection = configuration.skills.filter(
       (item) => item !== skill.key && item !== skill.name
     )
     onChange({
       ...configuration,
-      disabled_skills: nextEnabled ? withoutSkill : [...withoutSkill, skill.key],
+      disabled_skills: nextEnabled
+        ? withoutSkill
+        : [...withoutSkill, skill.key],
+      skills: nextEnabled ? configuration.skills : withoutSelection,
     })
   }
 
   function setSelected(nextSelected: boolean): void {
+    const removable = new Set(
+      (skill.type === "scene" ? sameTypeSkills : [skill]).flatMap((item) => [
+        item.key,
+        item.name,
+      ])
+    )
     const withoutSkill = configuration.skills.filter(
-      (item) => item !== skill.key && item !== skill.name
+      (item) => !removable.has(item)
     )
     onChange({
       ...configuration,
@@ -131,6 +154,9 @@ function SkillRow({ skill, configuration, onChange }: SkillRowProps) {
           <span className="skill-name">{skill.name}</span>
           <Badge variant="outline">v{skill.version}</Badge>
           <Badge variant="outline">{skill.type}</Badge>
+          {skill.type === "scene" && skill.default ? (
+            <Badge variant="secondary">默认</Badge>
+          ) : null}
           {skill.agent_created ? (
             <Badge variant="secondary">
               <Sparkles /> Agent 创建
@@ -166,8 +192,14 @@ function SkillRow({ skill, configuration, onChange }: SkillRowProps) {
             disabled={!enabled}
             onCheckedChange={(checked) => setSelected(checked === true)}
           />
-          固定使用
-          <HelpTooltip label="固定后每次任务都会加载；未固定时由渐进式披露按任务选择。" />
+          {skill.type === "scene" ? "固定场景" : "固定使用"}
+          <HelpTooltip
+            label={
+              skill.type === "scene"
+                ? "固定后每次任务使用此场景；不固定时根据对话自动识别。"
+                : "固定后每次任务都会加载；未固定时由渐进式披露按任务选择。"
+            }
+          />
         </label>
         <div className="skill-enable-control">
           <span>{enabled ? "已启用" : "已禁用"}</span>
