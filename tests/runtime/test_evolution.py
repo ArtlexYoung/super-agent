@@ -13,14 +13,14 @@ from skill.evolution.state import (
     start_manual_skill_evolution,
 )
 from skill.evolution.values import CandidateEvaluation
-from skill.state.store import create_local_runtime_store
+from skill.state.events import create_local_event_store
 from skill.evolution.change.revision import SkillRevision
 
 
 class SkillRevisionEvolutionStateTests(unittest.TestCase):
     def test_candidate_evaluation_and_promotion_share_one_event_stream(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            store = create_local_runtime_store(Path(tmp))
+            store = create_local_event_store(Path(tmp))
             parent = _revision("prompt:writer", "0.1.0", "a", can_update=True)
             candidate = _revision("prompt:writer", "0.1.1", "b", can_update=True)
 
@@ -63,7 +63,7 @@ class SkillRevisionEvolutionStateTests(unittest.TestCase):
 
     def test_locked_and_non_owned_revisions_cannot_start_evolution(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            store = create_local_runtime_store(Path(tmp))
+            store = create_local_event_store(Path(tmp))
             locked = _revision("skill:fixed", "0.1.0", "a")
             candidate = _revision(
                 "skill:fixed",
@@ -92,7 +92,7 @@ class SkillRevisionEvolutionStateTests(unittest.TestCase):
 
     def test_promotion_requires_passed_evaluation_and_unchanged_revision(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            store = create_local_runtime_store(Path(tmp))
+            store = create_local_event_store(Path(tmp))
             parent = _revision("prompt:writer", "0.1.0", "a", can_update=True)
             candidate = _revision("prompt:writer", "0.1.1", "b", can_update=True)
             start_manual_skill_evolution(
@@ -121,7 +121,7 @@ class SkillRevisionEvolutionStateTests(unittest.TestCase):
 
     def test_state_rejects_passing_evaluation_with_regression(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            store = create_local_runtime_store(Path(tmp))
+            store = create_local_event_store(Path(tmp))
             parent = _revision("prompt:writer", "0.1.0", "a", can_update=True)
             candidate = _revision("prompt:writer", "0.1.1", "b", can_update=True)
             start_manual_skill_evolution(
@@ -148,8 +148,8 @@ class SkillRevisionEvolutionStateTests(unittest.TestCase):
     def test_skill_evolution_events_are_isolated_by_user(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            alpha = create_local_runtime_store(root, user_id="alpha")
-            beta = create_local_runtime_store(root, user_id="beta")
+            alpha = create_local_event_store(root, user_id="alpha")
+            beta = create_local_event_store(root, user_id="beta")
             candidate = _revision(
                 "skill:new",
                 "0.1.0",
@@ -181,10 +181,10 @@ class RuntimeEvolutionFileTests(unittest.TestCase):
                         "delete_files": ["old.txt"],
                     }
                 ),
-                "SkillRunner",
+                "SkillLoader",
             )
 
-            apply_directory_file_changes(root, changes, "SkillRunner")
+            apply_directory_file_changes(root, changes, "SkillLoader")
 
             self.assertFalse((root / "old.txt").exists())
             self.assertEqual("new", (root / "new" / "file.txt").read_text())
@@ -194,7 +194,7 @@ class RuntimeEvolutionFileTests(unittest.TestCase):
             {"write_files": {"../outside.py": "bad"}, "delete_files": []}
         )
         with self.assertRaisesRegex(ValueError, "relative file path"):
-            read_directory_file_changes(response, "SkillRunner")
+            read_directory_file_changes(response, "SkillLoader")
 
 
 def _revision(

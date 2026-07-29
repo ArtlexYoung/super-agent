@@ -9,7 +9,7 @@ from uuid import uuid4
 
 from core.checks import ActionEffect
 from skill.state.memory import LONG_TERM_MEMORY, TEMPORARY_MEMORY
-from skill.state.store import RuntimeStore
+from skill.state.events import EventStore
 from skill.kinds.memory_models import (
     MemoryItem,
     MemoryOperation,
@@ -61,7 +61,7 @@ class MemoryOrganizer:
 
     def __init__(
         self,
-        store: RuntimeStore,
+        store: EventStore,
         run_memory_change: MemoryChangeRunner,
         read_source_run_id: Callable[[], str],
         send_text_model_messages: MemoryTextModel | None = None,

@@ -9,8 +9,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 from super_agent import Agent
-from skill.runners.registry import SkillLoadRequest
-from skill.runners.loaded import (
+from skill.loaders.registry import SkillLoadRequest
+from skill.loaders.loaded import (
     SkillAction,
     SkillTool,
     LoadedSkill,
@@ -24,7 +24,7 @@ from skill.manifest import Skill
 from support import write_workflow_skill
 
 
-class SkillRunnerRuntimeTests(unittest.TestCase):
+class SkillLoaderRuntimeTests(unittest.TestCase):
     def test_agent_reports_missing_model_in_an_empty_directory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, chdir(tmp), patch.dict(
             os.environ,
@@ -76,40 +76,40 @@ class SkillRunnerRuntimeTests(unittest.TestCase):
             self.assertEqual(0, code)
             self.assertIn("Agent: Mock response", output.getvalue())
 
-    def test_agent_can_replace_one_skill_runner(self) -> None:
+    def test_agent_can_replace_one_skill_loader(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_prompt_skill(root)
             provider = MockProvider("finished")
-            runner = _RecordingPromptSkillRunner()
+            loader = _RecordingPromptSkillLoader()
             agent = Agent(AgentConfig.create_default(root), provider=provider)
-            agent.add_skill_runner(runner)
+            agent.add_skill_loader(loader)
 
             result = agent.run("please echo this")
 
             self.assertEqual("finished", result.text)
-            self.assertEqual(2, runner.load_count)
+            self.assertEqual(2, loader.load_count)
             self.assertIn(
-                "Loaded by custom SkillRunner.",
+                "Loaded by custom SkillLoader.",
                 provider.last_messages[0]["content"],
             )
 
-    def test_registered_custom_skill_runner_is_used(self) -> None:
+    def test_registered_custom_skill_loader_is_used(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_prompt_skill(root, skill_type="transform")
             provider = MockProvider("finished")
-            runner = _TransformSkillRunner()
+            loader = _TransformSkillLoader()
             agent = Agent(
                 AgentConfig.create_default(root),
                 provider=provider,
-                skill_runners=[runner],
+                skill_loaders=[loader],
             )
 
             result = agent.run("please echo this")
 
             self.assertEqual("finished", result.text)
-            self.assertEqual(1, runner.load_count)
+            self.assertEqual(1, loader.load_count)
 
     def test_selected_skill_contributes_tools_without_runtime_changes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -129,7 +129,7 @@ class SkillRunnerRuntimeTests(unittest.TestCase):
             agent = Agent(
                 _config_with_skills(root, ["workflow:react"]),
                 provider=provider,
-                skill_runners=[_TransformSkillRunner()],
+                skill_loaders=[_TransformSkillLoader()],
             )
 
             result = agent.run("please echo this")
@@ -142,7 +142,7 @@ class SkillRunnerRuntimeTests(unittest.TestCase):
             self.assertIn("uppercase_text", tool_names)
             self.assertIn("echo", result.skills)
 
-    def test_skill_runner_tool_without_action_fails_closed(self) -> None:
+    def test_skill_loader_tool_without_action_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_prompt_skill(root, skill_type="unsafe")
@@ -150,7 +150,7 @@ class SkillRunnerRuntimeTests(unittest.TestCase):
             agent = Agent(
                 AgentConfig.create_default(root),
                 provider=provider,
-                skill_runners=[_MissingActionSkillRunner()],
+                skill_loaders=[_MissingActionSkillLoader()],
             )
 
             with self.assertRaisesRegex(TaskPreflightError, "action"):
@@ -163,6 +163,7 @@ class SkillRunnerRuntimeTests(unittest.TestCase):
             agent = Agent(
                 AgentConfig.create_default(tmp),
                 provider=MockProvider(),
+                use_storage=True,
             )
 
             result = agent.run("hello")
@@ -217,12 +218,12 @@ class SkillRunnerRuntimeTests(unittest.TestCase):
             }
             self.assertEqual({"Run"}, run_classes)
             self.assertFalse(Path("src/core/session.py").exists())
-            run_plan_source = Path("src/skill/task/run_plan.py").read_text(
+            plan_source = Path("src/skill/task/plan.py").read_text(
                 encoding="utf-8"
             )
-            self.assertNotIn("TaskSchedule", run_plan_source)
-            self.assertNotIn("TaskSkillSelection", run_plan_source)
-            self.assertNotIn("RoutePlan", run_plan_source)
+            self.assertNotIn("TaskSchedule", plan_source)
+            self.assertNotIn("TaskSkillSelection", plan_source)
+            self.assertNotIn("RoutePlan", plan_source)
             self.assertFalse(Path("src/core/task/route_plan.py").exists())
             self.assertFalse(Path("src/core/task/decisions.py").exists())
 
@@ -237,7 +238,7 @@ class SkillRunnerRuntimeTests(unittest.TestCase):
     def test_runtime_does_not_import_concrete_skill_kinds(self) -> None:
         for path in (
             Path("src/skill/task/loop.py"),
-            Path("src/skill/task/run_plan.py"),
+            Path("src/skill/task/plan.py"),
             Path("src/skill/task/tools.py"),
         ):
             source = path.read_text(encoding="utf-8")
@@ -246,7 +247,7 @@ class SkillRunnerRuntimeTests(unittest.TestCase):
             self.assertNotIn("skill.kinds.workflow", source)
 
 
-class _RecordingPromptSkillRunner:
+class _RecordingPromptSkillLoader:
     name = "recording-prompt"
     version = "1"
     skill_type = "prompt"
@@ -264,12 +265,12 @@ class _RecordingPromptSkillRunner:
         return LoadedSkill(
             model_context=Skill(
                 manifest=opened.read_manifest(),
-                instructions="Loaded by custom SkillRunner.",
+                instructions="Loaded by custom SkillLoader.",
             )
         )
 
 
-class _TransformSkillRunner(_RecordingPromptSkillRunner):
+class _TransformSkillLoader(_RecordingPromptSkillLoader):
     skill_type = "transform"
 
     def load_skill(self, request: SkillLoadRequest) -> LoadedSkill:
@@ -292,7 +293,7 @@ class _TransformSkillRunner(_RecordingPromptSkillRunner):
         )
 
 
-class _MissingActionSkillRunner(_RecordingPromptSkillRunner):
+class _MissingActionSkillLoader(_RecordingPromptSkillLoader):
     skill_type = "unsafe"
 
     def load_skill(self, request: SkillLoadRequest) -> LoadedSkill:

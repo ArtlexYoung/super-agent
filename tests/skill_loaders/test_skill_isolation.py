@@ -29,7 +29,7 @@ class SkillIsolationTests(unittest.TestCase):
             disclosure = ProgressiveDisclosureCore(
                 [root / "skills"],
             )
-            with self.assertRaisesRegex(ValueError, "Agent.add_skill_runner"):
+            with self.assertRaisesRegex(ValueError, "Agent.add_skill_loader"):
                 disclosure.prepare_skill_index()
 
             self.assertFalse(marker.exists())

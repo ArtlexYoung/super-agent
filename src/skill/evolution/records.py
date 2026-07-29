@@ -17,7 +17,7 @@ from skill.evolution.change.revision import (
 from skill.task.model_calls import estimate_text_tokens
 
 if TYPE_CHECKING:
-    from skill.state.store import RuntimeStore
+    from skill.state.events import EventStore
 
 
 EVALUATION_RECORD_SCHEMA_VERSION = 2
@@ -82,7 +82,7 @@ class EvaluationRecord:
 
 
 def append_evaluation_records(
-    store: RuntimeStore,
+    store: EventStore,
     records: list[EvaluationRecord],
 ) -> None:
     """Append validated evaluation records to their canonical event streams."""
@@ -98,7 +98,7 @@ def append_evaluation_records(
 
 
 def read_evaluation_records(
-    store: RuntimeStore,
+    store: EventStore,
     *,
     skill_key: str | None = None,
     source_type: str | None = None,

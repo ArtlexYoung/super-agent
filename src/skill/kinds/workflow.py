@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from skill.runners.loaded import TaskPolicy
+from skill.loaders.loaded import TaskPolicy
 from skill.disclosure import SkillDisclosure
 
 DEFAULT_WORKFLOW_MAX_STEPS = 8

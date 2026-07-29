@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Protocol
 
-from skill.runners.loaded import (
+from skill.loaders.loaded import (
     SkillAction,
     SkillTool,
     LoadedSkill,
@@ -20,19 +20,19 @@ from core.checks import ActionRequest
 from skill.disclosure import ProgressiveDisclosureCore, SkillReference
 
 if TYPE_CHECKING:
-    from skill.state.store import RuntimeStore
+    from skill.state.events import EventStore
 
-SKILL_RUNNER_SCHEMA_VERSION = 9
+SKILL_LOADER_SCHEMA_VERSION = 9
 _NAME_PATTERN = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}")
 
 
 @dataclass(frozen=True)
 class SkillLoadRequest:
-    """All Runtime services available while one SkillRunner loads one Skill."""
+    """All Runtime services available while one SkillLoader loads one Skill."""
 
     disclosure: ProgressiveDisclosureCore
     reference: SkillReference
-    store: RuntimeStore | None = None
+    store: EventStore | None = None
     identity: RunIdentity | None = None
     send_text_model_messages: Callable[[list[Message]], str] | None = None
     execute_action: Callable[[ActionRequest, Callable[[], object]], object] | None = None
@@ -41,7 +41,7 @@ class SkillLoadRequest:
         if self.identity is not None and self.execute_action is None:
             raise ValueError("Runtime Skill loading requires an action executor")
 
-    def require_store(self, feature: str = "SkillRunner") -> RuntimeStore:
+    def require_store(self, feature: str = "SkillLoader") -> EventStore:
         if self.store is None:
             raise ValueError(f"{feature} requires Runtime storage")
         return self.store
@@ -50,11 +50,11 @@ class SkillLoadRequest:
         self,
     ) -> Callable[[ActionRequest, Callable[[], object]], object]:
         if self.execute_action is None:
-            raise ValueError("SkillRunner requires a Runtime action executor")
+            raise ValueError("SkillLoader requires a Runtime action executor")
         return self.execute_action
 
 
-class SkillRunner(Protocol):
+class SkillLoader(Protocol):
     """Trusted mechanism that turns passive Skill content into Runtime behavior."""
 
     name: str
@@ -67,7 +67,7 @@ class SkillRunner(Protocol):
 
 
 @dataclass(frozen=True)
-class SkillRunnerInfo:
+class SkillLoaderInfo:
     skill_type: str
     name: str
     version: str
@@ -75,7 +75,7 @@ class SkillRunnerInfo:
     content_sha256: str
     dependencies: tuple[str, ...] = ()
     required_services: tuple[str, ...] = ()
-    schema_version: int = SKILL_RUNNER_SCHEMA_VERSION
+    schema_version: int = SKILL_LOADER_SCHEMA_VERSION
 
     @property
     def key(self) -> str:
@@ -96,51 +96,51 @@ class SkillRunnerInfo:
 
 
 @dataclass(frozen=True)
-class SkillRunnerEntry:
-    descriptor: SkillRunnerInfo
-    implementation: SkillRunner
+class SkillLoaderEntry:
+    descriptor: SkillLoaderInfo
+    implementation: SkillLoader
 
 
-class SkillRunners:
+class SkillLoaders:
     """Own the only executable boundary between Runtime and Skill content."""
 
     def __init__(self) -> None:
-        self._registrations: dict[str, SkillRunnerEntry] = {}
+        self._registrations: dict[str, SkillLoaderEntry] = {}
 
-    def add_skill_runner(
+    def add_skill_loader(
         self,
-        runner: SkillRunner,
-        info: SkillRunnerInfo | None = None,
+        loader: SkillLoader,
+        info: SkillLoaderInfo | None = None,
         *,
         replace: bool = False,
-    ) -> SkillRunnerInfo:
-        skill_type = _required_text(runner, "skill_type")
-        selected = info or describe_skill_runner(runner)
-        _validate_skill_runner(selected, runner, skill_type)
+    ) -> SkillLoaderInfo:
+        skill_type = _required_text(loader, "skill_type")
+        selected = info or describe_skill_loader(loader)
+        _validate_skill_loader(selected, loader, skill_type)
         if skill_type in self._registrations and not replace:
-            raise ValueError(f"Skill runner already exists for type: {skill_type}")
-        self._registrations[skill_type] = SkillRunnerEntry(selected, runner)
+            raise ValueError(f"Skill loader already exists for type: {skill_type}")
+        self._registrations[skill_type] = SkillLoaderEntry(selected, loader)
         return selected
 
-    def find_skill_runner(self, skill_type: str) -> SkillRunner | None:
+    def find_skill_loader(self, skill_type: str) -> SkillLoader | None:
         registration = self._registrations.get(_clean_skill_type(skill_type))
         return None if registration is None else registration.implementation
 
     def load_skill(self, request: SkillLoadRequest) -> LoadedSkill:
-        runner = self._require_registration(request.reference.skill_type).implementation
-        loaded = runner.load_skill(request)
+        loader = self._require_registration(request.reference.skill_type).implementation
+        loaded = loader.load_skill(request)
         if not isinstance(loaded, LoadedSkill):
-            raise TypeError("SkillRunner.load_skill must return LoadedSkill")
+            raise TypeError("SkillLoader.load_skill must return LoadedSkill")
         _validate_loaded_skill(loaded)
         return loaded
 
-    def list_skill_runners(self) -> list[SkillRunnerEntry]:
+    def list_skill_loaders(self) -> list[SkillLoaderEntry]:
         return [self._registrations[key] for key in sorted(self._registrations)]
 
     def list_model_context_types(self) -> set[str]:
         return {
             item.descriptor.skill_type
-            for item in self.list_skill_runners()
+            for item in self.list_skill_loaders()
             if item.implementation.adds_model_context
         }
 
@@ -150,7 +150,7 @@ class SkillRunners:
             for dependency in registration.descriptor.dependencies:
                 if dependency not in registrations:
                     raise KeyError(
-                        f"Skill runner dependency not found: {skill_type} -> {dependency}"
+                        f"Skill loader dependency not found: {skill_type} -> {dependency}"
                     )
         visiting: set[str] = set()
         visited: set[str] = set()
@@ -159,7 +159,7 @@ class SkillRunners:
             if skill_type in visiting:
                 start = chain.index(skill_type)
                 raise ValueError(
-                    "Skill runner dependency cycle: "
+                    "Skill loader dependency cycle: "
                     + " -> ".join(chain[start:] + [skill_type])
                 )
             if skill_type in visited:
@@ -173,30 +173,30 @@ class SkillRunners:
         for skill_type in registrations:
             visit(skill_type, [])
 
-    def _require_registration(self, skill_type: str) -> SkillRunnerEntry:
+    def _require_registration(self, skill_type: str) -> SkillLoaderEntry:
         clean_type = _clean_skill_type(skill_type)
         registration = self._registrations.get(clean_type)
         if registration is None:
-            raise KeyError(f"Skill runner not found for type: {clean_type}")
+            raise KeyError(f"Skill loader not found for type: {clean_type}")
         return registration
 
 
-def describe_skill_runner(
-    runner: SkillRunner,
-) -> SkillRunnerInfo:
-    skill_type = _clean_skill_type(_required_text(runner, "skill_type"))
-    return SkillRunnerInfo(
+def describe_skill_loader(
+    loader: SkillLoader,
+) -> SkillLoaderInfo:
+    skill_type = _clean_skill_type(_required_text(loader, "skill_type"))
+    return SkillLoaderInfo(
         skill_type=skill_type,
-        name=_required_text(runner, "name"),
-        version=_required_text(runner, "version"),
-        implementation=f"{type(runner).__module__}.{type(runner).__qualname__}",
-        content_sha256=calculate_skill_runner_sha256(runner),
-        dependencies=_text_tuple(runner, "dependencies", ()),
-        required_services=_text_tuple(runner, "required_services", ()),
+        name=_required_text(loader, "name"),
+        version=_required_text(loader, "version"),
+        implementation=f"{type(loader).__module__}.{type(loader).__qualname__}",
+        content_sha256=calculate_skill_loader_sha256(loader),
+        dependencies=_text_tuple(loader, "dependencies", ()),
+        required_services=_text_tuple(loader, "required_services", ()),
     )
 
 
-def calculate_skill_runner_sha256(implementation: object) -> str:
+def calculate_skill_loader_sha256(implementation: object) -> str:
     digest = hashlib.sha256()
     implementation_type = type(implementation)
     digest.update(f"{implementation_type.__module__}.{implementation_type.__qualname__}".encode())
@@ -211,21 +211,21 @@ def calculate_skill_runner_sha256(implementation: object) -> str:
     return digest.hexdigest()
 
 
-def _validate_skill_runner(
-    info: SkillRunnerInfo,
-    runner: object,
+def _validate_skill_loader(
+    info: SkillLoaderInfo,
+    loader: object,
     expected_type: str,
 ) -> None:
     if info.skill_type != expected_type:
-        raise ValueError(f"Skill runner type does not match: {info.skill_type}")
-    if info.name != _required_text(runner, "name"):
-        raise ValueError("Skill runner name does not match its code")
-    if info.version != _required_text(runner, "version"):
-        raise ValueError("Skill runner version does not match its code")
-    if not isinstance(getattr(runner, "adds_model_context", None), bool):
-        raise TypeError("SkillRunner.adds_model_context must be a boolean")
-    if not callable(getattr(runner, "load_skill", None)):
-        raise TypeError("SkillRunner must define load_skill")
+        raise ValueError(f"Skill loader type does not match: {info.skill_type}")
+    if info.name != _required_text(loader, "name"):
+        raise ValueError("Skill loader name does not match its code")
+    if info.version != _required_text(loader, "version"):
+        raise ValueError("Skill loader version does not match its code")
+    if not isinstance(getattr(loader, "adds_model_context", None), bool):
+        raise TypeError("SkillLoader.adds_model_context must be a boolean")
+    if not callable(getattr(loader, "load_skill", None)):
+        raise TypeError("SkillLoader must define load_skill")
 
 
 def _validate_loaded_skill(loaded: LoadedSkill) -> None:
@@ -244,25 +244,25 @@ def _validate_skill_tool(tool: object) -> None:
     if not isinstance(tool, SkillTool):
         raise TypeError("LoadedSkill.tools must contain SkillTool values")
     if not isinstance(tool.name, str) or not tool.name.strip():
-        raise ValueError("SkillRunner tool name must be a non-empty string")
+        raise ValueError("SkillLoader tool name must be a non-empty string")
     if not isinstance(tool.description, str) or not tool.description.strip():
-        raise ValueError(f"SkillRunner tool description is empty: {tool.name}")
+        raise ValueError(f"SkillLoader tool description is empty: {tool.name}")
     if not isinstance(tool.properties, dict):
-        raise TypeError(f"SkillRunner tool properties must be an object: {tool.name}")
+        raise TypeError(f"SkillLoader tool properties must be an object: {tool.name}")
     if not callable(tool.handler):
-        raise TypeError(f"SkillRunner tool handler must be callable: {tool.name}")
+        raise TypeError(f"SkillLoader tool handler must be callable: {tool.name}")
     if not isinstance(tool.required, tuple) or not all(
         isinstance(name, str) and name in tool.properties for name in tool.required
     ):
         raise ValueError(
-            f"SkillRunner tool required names must exist in properties: {tool.name}"
+            f"SkillLoader tool required names must exist in properties: {tool.name}"
         )
     if not isinstance(tool.action, SkillAction):
-        raise TypeError(f"SkillRunner tool must declare an action: {tool.name}")
+        raise TypeError(f"SkillLoader tool must declare an action: {tool.name}")
     argument = tool.action.resource_argument
     if argument is not None and argument not in tool.properties:
         raise ValueError(
-            "SkillRunner tool action resource argument is not declared: "
+            "SkillLoader tool action resource argument is not declared: "
             f"{tool.name}.{argument}"
         )
 
@@ -287,7 +287,7 @@ def _clean_skill_type(value: str) -> str:
 
 
 def _required_text(value: object, name: str) -> str:
-    return _clean_text(getattr(value, name, None), f"Skill runner {name}")
+    return _clean_text(getattr(value, name, None), f"Skill loader {name}")
 
 
 def _clean_text(value: object, label: str) -> str:
@@ -305,5 +305,5 @@ def _text_tuple(
     if not isinstance(selected, tuple) or not all(
         isinstance(item, str) and item.strip() for item in selected
     ):
-        raise TypeError(f"Skill runner {name} must be a tuple of non-empty strings")
+        raise TypeError(f"Skill loader {name} must be a tuple of non-empty strings")
     return tuple(item.strip().lower() for item in selected)

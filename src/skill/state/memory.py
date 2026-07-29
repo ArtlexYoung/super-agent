@@ -10,7 +10,7 @@ from core.state.views import usage_habits_from_events
 from core.events import StorageEvent
 
 if TYPE_CHECKING:
-    from skill.state.store import RuntimeStore
+    from skill.state.events import EventStore
 
 
 LONG_TERM_MEMORY = "long_term"
@@ -29,7 +29,7 @@ MEMORY_ORGANIZATION_EVENTS = frozenset(
 class RuntimeMemoryStore:
     """Own active memory views while preserving immutable events."""
 
-    def __init__(self, store: RuntimeStore) -> None:
+    def __init__(self, store: EventStore) -> None:
         self._store = store
         self._known_streams_checked = False
 

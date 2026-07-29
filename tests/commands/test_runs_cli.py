@@ -106,7 +106,7 @@ class RunsCliTests(unittest.TestCase):
             self.assertEqual("completed", status["runs"][0]["status"])
             self.assertEqual(0, explanation_code)
             self.assertEqual(run_id, explanation["snapshot"]["run_id"])
-            self.assertEqual("answer", explanation["run_plan"]["purpose"])
+            self.assertEqual("answer", explanation["plan"]["purpose"])
             self.assertEqual("completed", explanation["model_calls"][0]["status"])
             self.assertEqual(1, explanation["model_calls"][0]["call_id"])
             self.assertEqual(
@@ -249,12 +249,16 @@ class RunsCliTests(unittest.TestCase):
             config_path = root / "agent.toml"
             main(["init", "--path", tmp])
             config = AgentConfig.load_from_file(config_path)
-            parent = Agent(config, provider=MockProvider("parent result"))
+            parent = Agent(
+                config, provider=MockProvider("parent result"), use_storage=True
+            )
             child_config = replace(
                 config,
                 agent=replace(config.agent, name="worker"),
             )
-            child = Agent(child_config, provider=MockProvider("child result"))
+            child = Agent(
+                child_config, provider=MockProvider("child result"), use_storage=True
+            )
             parent.add_subagent(child, name="worker")
             result = parent.run("delegate this")
             child_run_id = result.subagent_results[0].run_id

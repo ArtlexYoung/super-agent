@@ -61,9 +61,9 @@ function RunInsightContent({ insight }: { insight: RunInsight }) {
 
       <section>
         <SectionTitle icon={Route} title="任务路径" />
-        {insight.task_steps.length ? (
+        {insight.steps.length ? (
           <div className="space-y-2">
-            {insight.task_steps.map((step, index) => (
+            {insight.steps.map((step, index) => (
               <div key={index} className="insight-row">
                 <span className="insight-index">{index + 1}</span>
                 <div className="min-w-0 flex-1">

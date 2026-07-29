@@ -14,7 +14,7 @@ from skill.evolution.state import (
     SkillEvolutionState,
     recommend_skill_evolution,
 )
-from skill.state.store import RuntimeStore
+from skill.state.events import EventStore
 from skill.evolution.change.revision import SkillRevision
 from skill.evolution.records import read_evaluation_records
 
@@ -31,7 +31,7 @@ MAX_STORED_EVIDENCE_RECORD_IDS = 100
 
 
 def recommend_skill_revisions(
-    store: RuntimeStore,
+    store: EventStore,
     revisions: list[SkillRevision],
 ) -> list[SkillEvolutionState]:
     """Create one recommendation for each unchanged evidence snapshot."""

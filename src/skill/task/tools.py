@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
 
-from skill.runners.loaded import (
+from skill.loaders.loaded import (
     SkillAction,
     SkillTool,
     LoadedSkill,
@@ -118,7 +118,7 @@ class RuntimeTools:
             raise ValueError("Skill contribution contains duplicate tool names")
         for tool in tools:
             if not isinstance(tool.action, SkillAction):
-                raise TypeError(f"SkillRunner tool must declare an action: {tool.name}")
+                raise TypeError(f"SkillLoader tool must declare an action: {tool.name}")
             if tool.name in self._tools:
                 raise ValueError(f"runtime tool name already exists: {tool.name}")
 
@@ -181,12 +181,12 @@ class RuntimeTools:
     def _activate_skill(self, arguments: dict[str, object]) -> dict[str, object]:
         opened = self._open_requested_skill(arguments)
         reference = opened.index_entry.reference
-        runner = self.context.session.skills.loaders.find_skill_runner(
+        loader = self.context.session.skills.loaders.find_skill_loader(
             reference.skill_type
         )
-        if runner is None:
+        if loader is None:
             raise KeyError(
-                f"SkillRunner not found for Skill type: {reference.skill_type}"
+                f"SkillLoader not found for Skill type: {reference.skill_type}"
             )
         if reference.key in self._activated_skill_keys:
             return {"key": reference.key, "already_active": True, "tools": []}
@@ -200,7 +200,7 @@ class RuntimeTools:
             or contribution.included_skills
         ):
             raise ValueError(
-                f"Skill cannot be activated after the RunPlan is frozen: {reference.key}"
+                f"Skill cannot be activated after the Plan is frozen: {reference.key}"
             )
         self._validate_new_tools(contribution.tools)
         self._record_loaded_skill(reference)
@@ -245,11 +245,11 @@ class RuntimeTools:
             reference.name,
             reference.skill_type,
         )
-        if self.context.session.skills.loaders.find_skill_runner(
+        if self.context.session.skills.loaders.find_skill_loader(
             reference.skill_type
         ) is None:
             raise KeyError(
-                f"SkillRunner not found for Skill type: {reference.skill_type}"
+                f"SkillLoader not found for Skill type: {reference.skill_type}"
             )
         self.context.session.record_skill_used(entry)
         if reference.name not in self.used_skill_names:
@@ -341,12 +341,12 @@ def _create_disclosure_tools(
 def _skill_reference_properties(
     skill_index: SkillIndex,
 ) -> dict[str, dict[str, object]]:
-    skill_runners = sorted(
+    skill_loaders = sorted(
         {entry.reference.skill_type for entry in skill_index.entries}
     )
     return {
         "name": {"type": "string"},
-        "type": {"type": "string", "enum": skill_runners},
+        "type": {"type": "string", "enum": skill_loaders},
     }
 
 

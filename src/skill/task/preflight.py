@@ -8,12 +8,12 @@ from typing import Callable
 from core.provider.chat import Message
 from core.provider.pool import ProviderPool
 from skill.task.run import Run
-from core.models import TaskRequest
-from skill.task.run_plan import RunPlan
+from core.models import Task
+from skill.task.plan import Plan
 from skill.task.tools import RuntimeTools, RuntimeToolsContext
 from skill.disclosure import SkillReference
-from skill.runners.loaded import LoadedSkill
-from skill.runners.registry import SkillRunnerEntry
+from skill.loaders.loaded import LoadedSkill
+from skill.loaders.registry import SkillLoaderEntry
 from core.checks import action_requires_checker
 
 
@@ -41,9 +41,9 @@ class TaskPreflightError(RuntimeError):
 
 
 def check_run_before_execution(
-    request: TaskRequest,
+    request: Task,
     session: Run,
-    run_plan: RunPlan,
+    plan: Plan,
     *,
     provider_pool: ProviderPool,
     send_text_model_messages: Callable[[list[Message]], str],
@@ -52,12 +52,12 @@ def check_run_before_execution(
     problems: list[PreflightProblem] = []
     registrations = {
         entry.descriptor.skill_type: entry
-        for entry in session.skills.loaders.list_skill_runners()
+        for entry in session.skills.loaders.list_skill_loaders()
     }
-    _check_runner_dependencies(session, problems)
+    _check_loader_dependencies(session, problems)
     contributions = _load_planned_skills(
         session,
-        run_plan,
+        plan,
         registrations=registrations,
         send_text_model_messages=send_text_model_messages,
         problems=problems,
@@ -68,12 +68,12 @@ def check_run_before_execution(
         contributions,
         problems=problems,
     )
-    _check_selected_provider(run_plan, provider_pool, problems)
-    _check_subagents(request, run_plan, problems)
+    _check_selected_provider(plan, provider_pool, problems)
+    _check_subagents(request, plan, problems)
     data = {
-        "scene": run_plan.scene.key,
-        "skills": [reference.key for reference in _planned_references(run_plan)],
-        "provider": run_plan.model.profile_key,
+        "scene": plan.scene.key,
+        "skills": [reference.key for reference in _planned_references(plan)],
+        "provider": plan.model.profile_key,
         "tools": tool_names,
         "problems": [problem.to_dict() for problem in problems],
     }
@@ -83,33 +83,33 @@ def check_run_before_execution(
     session.record_event("task.preflight.completed", data)
 
 
-def _check_runner_dependencies(
+def _check_loader_dependencies(
     session: Run,
     problems: list[PreflightProblem],
 ) -> None:
     try:
         session.skills.loaders.validate_dependencies()
     except Exception as error:
-        problems.append(_problem("runner_dependencies", "SkillRunners", error))
+        problems.append(_problem("loader_dependencies", "SkillLoaders", error))
 
 
 def _load_planned_skills(
     session: Run,
-    run_plan: RunPlan,
+    plan: Plan,
     *,
-    registrations: dict[str, SkillRunnerEntry],
+    registrations: dict[str, SkillLoaderEntry],
     send_text_model_messages: Callable[[list[Message]], str],
     problems: list[PreflightProblem],
 ) -> list[LoadedSkill]:
     loaded: list[LoadedSkill] = []
-    for reference in _planned_references(run_plan):
+    for reference in _planned_references(plan):
         registration = registrations.get(reference.skill_type)
         if registration is None:
             problems.append(
                 PreflightProblem(
-                    "runner_missing",
+                    "loader_missing",
                     reference.key,
-                    f"SkillRunner not found for type: {reference.skill_type}",
+                    f"SkillLoader not found for type: {reference.skill_type}",
                 )
             )
             continue
@@ -140,7 +140,7 @@ def _load_planned_skills(
 
 
 def _check_runtime_tools(
-    request: TaskRequest,
+    request: Task,
     session: Run,
     contributions: list[LoadedSkill],
     *,
@@ -198,11 +198,11 @@ def _check_action_checker(
 
 
 def _check_selected_provider(
-    run_plan: RunPlan,
+    plan: Plan,
     provider_pool: ProviderPool,
     problems: list[PreflightProblem],
 ) -> None:
-    decision = run_plan.model
+    decision = plan.model
     try:
         provider_pool.get_chat_provider(
             decision.profile_key,
@@ -215,8 +215,8 @@ def _check_selected_provider(
 
 
 def _check_subagents(
-    request: TaskRequest,
-    run_plan: RunPlan,
+    request: Task,
+    plan: Plan,
     problems: list[PreflightProblem],
 ) -> None:
     try:
@@ -227,7 +227,7 @@ def _check_subagents(
     except Exception as error:
         problems.append(_problem("subagents_unavailable", "subagents", error))
         return
-    for name in run_plan.subagent_names:
+    for name in plan.subagent_names:
         if name not in available:
             problems.append(
                 PreflightProblem(
@@ -238,13 +238,13 @@ def _check_subagents(
             )
 
 
-def _planned_references(run_plan: RunPlan) -> tuple[SkillReference, ...]:
-    values = (run_plan.scheduler, run_plan.scene, *run_plan.skills)
+def _planned_references(plan: Plan) -> tuple[SkillReference, ...]:
+    values = (plan.scheduler, plan.scene, *plan.skills)
     return tuple(dict.fromkeys(values))
 
 
 def _missing_services(
-    registration: SkillRunnerEntry,
+    registration: SkillLoaderEntry,
     session: Run,
 ) -> list[str]:
     available = {"event_stream", "text_model"}

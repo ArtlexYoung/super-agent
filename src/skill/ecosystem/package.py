@@ -14,7 +14,7 @@ from urllib.parse import unquote
 from uuid import uuid4
 
 from core.checks import ActionEffect, ActionRequest, ActionRunner, ActionRules
-from skill.state.store import RuntimeStore
+from skill.state.events import EventStore
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.directory import replace_skill_directory_atomically
 from skill.manifest import SkillManifest, calculate_skill_directory_sha256
@@ -28,7 +28,7 @@ class SkillPackageManager:
     def __init__(
         self,
         skill_disclosure: ProgressiveDisclosureCore,
-        store: RuntimeStore,
+        store: EventStore,
         action_rules: ActionRules | None = None,
     ) -> None:
         self.store = store

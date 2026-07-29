@@ -110,7 +110,11 @@ class ModelSkillTests(unittest.TestCase):
             root = Path(tmp)
             _write_model_skill(root, name="fast", default=True)
 
-            agent = Agent(AgentConfig.create_default(root), provider=_FixedProvider())
+            agent = Agent(
+                AgentConfig.create_default(root),
+                provider=_FixedProvider(),
+                use_storage=True,
+            )
 
             self.assertEqual(1, len(agent.model_profiles))
             self.assertEqual("model:fast", agent.model_profile.key)
@@ -123,11 +127,15 @@ class ModelSkillTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_model_skill(root, name="fast", default=True)
-            agent = Agent(AgentConfig.create_default(root), provider=_FixedProvider())
+            agent = Agent(
+                AgentConfig.create_default(root),
+                provider=_FixedProvider(),
+                use_storage=True,
+            )
 
             result = agent.run("summarize this")
             agent.learn_from_run(result.run_id)
-            store = agent.runtime.create_store()
+            store = agent.runtime.create_event_store()
             runtime_lock = store.read_runtime_lock(result.run_id)
             records = read_evaluation_records(store, source_type="agent_run")
 
@@ -181,7 +189,11 @@ class ModelSkillTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_model_skill(root, name="fast", default=True)
-            agent = Agent(AgentConfig.create_default(root), provider=_FixedProvider())
+            agent = Agent(
+                AgentConfig.create_default(root),
+                provider=_FixedProvider(),
+                use_storage=True,
+            )
             alice_manager = agent.for_user("alice").skills.create_model_manager()
             alice_manager.save_model_skill(
                 model_skill_input_from_dict(
@@ -201,10 +213,10 @@ class ModelSkillTests(unittest.TestCase):
 
             alice_result = agent.for_user("alice").run("hello")
             bob_result = agent.for_user("bob").run("hello")
-            alice_lock = agent.runtime.create_store("alice").read_runtime_lock(
+            alice_lock = agent.runtime.create_event_store("alice").read_runtime_lock(
                 alice_result.run_id
             )
-            bob_lock = agent.runtime.create_store("bob").read_runtime_lock(
+            bob_lock = agent.runtime.create_event_store("bob").read_runtime_lock(
                 bob_result.run_id
             )
 
@@ -232,6 +244,7 @@ class ModelSkillTests(unittest.TestCase):
             agent = Agent(
                 AgentConfig.create_default(root),
                 secret_lookup=lambda user_id, name: secrets.get((user_id, name)),
+                use_storage=True,
             )
 
             with patch("core.provider.chat._send_json_post_request") as send:
@@ -241,10 +254,10 @@ class ModelSkillTests(unittest.TestCase):
                 alice = agent.for_user("alice").run("hello")
                 bob = agent.for_user("bob").run("hello")
 
-            alice_lock = agent.runtime.create_store("alice").read_runtime_lock(
+            alice_lock = agent.runtime.create_event_store("alice").read_runtime_lock(
                 alice.run_id
             )
-            bob_lock = agent.runtime.create_store("bob").read_runtime_lock(bob.run_id)
+            bob_lock = agent.runtime.create_event_store("bob").read_runtime_lock(bob.run_id)
 
             self.assertEqual("alice-secret", alice.text)
             self.assertEqual("bob-secret", bob.text)
@@ -287,7 +300,11 @@ class ModelSkillTests(unittest.TestCase):
                     "required baseline output",
                 ]
             )
-            agent = Agent(AgentConfig.create_default(root), provider=provider)
+            agent = Agent(
+                AgentConfig.create_default(root),
+                provider=provider,
+                use_storage=True,
+            )
             manager = agent.for_user("local").skills.create_evolution_manager()
 
             candidate = manager.create_skill_candidate(

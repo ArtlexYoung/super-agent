@@ -30,7 +30,7 @@ Status: implemented.
   entry modules; passive shipped content lives outside Python source.
 - Keep Provider implementations in `core/provider`; adapters contain only external CLI
   and AG-UI interaction.
-- Use `type` and `type:name` for every Skill, and one `SkillRunner.load_skill(...)`
+- Use `type` and `type:name` for every Skill, and one `SkillLoader.load_skill(...)`
   contract for trusted mechanisms.
 - Remove old imports, old schema fields, conversion shells, and migration aliases.
 - Require an explicit model source, preserve Provider failures, and remove hidden model or
@@ -82,7 +82,7 @@ Status: implemented.
 
 Status: implemented.
 
-- Make the central disclosure catalog read-only by default and remove its RuntimeStore
+- Make the central disclosure catalog read-only by default and remove its EventStore
   dependency.
 - Inject freshness, cache writes, history reads, and run events through explicit inputs.
 - Keep cache paths optional and produce the same progressive index prompt without storage.
@@ -106,14 +106,15 @@ Status: implemented.
 - Let the task Runtime execute with Provider, Skills, and an in-memory event sink only.
 - Make conversations, memory, persistence, disclosure cache, and evaluation independent
   optional services.
-- Keep `Agent()` stateful by default while exposing one explicit stateless construction.
+- Initially keep `Agent()` stateful by default; v0.0.92 later makes the zero-storage path
+  the Python library default.
 - Prove the stateless path creates no files and does not silently substitute features.
 
 ## v0.0.69: Preflight and Staged Actions
 
 Status: implemented.
 
-- Check every planned Skill, runner, Provider, tool, and required service before the first
+- Check every planned Skill, loader, Provider, tool, and required service before the first
   model call.
 - Separate side-effecting actions into explicit prepare and apply stages.
 - Return all preflight problems together without partially executing the task.
@@ -143,7 +144,7 @@ Status: implemented.
 
 Status: implemented.
 
-- Import concrete Skill kinds only when their runner loads a selected Skill.
+- Import concrete Skill kinds only when their loader loads a selected Skill.
 - Import storage, state, learning, and evolution implementations only when explicitly used.
 - Keep `super_agent` focused on the everyday Runtime API and expose advanced APIs from
   their owning modules.
@@ -156,7 +157,7 @@ Status: implemented.
 - Use one `RunEventLog` for ordered in-memory events, streaming, subscribers, persisted
   traces, and returned task events.
 - Lazily initialize disclosure, memory, evaluation, and state projections from
-  `RuntimeStore` only when their operations need them.
+  `EventStore` only when their operations need them.
 - Keep persistent tracing independent from optional learning state.
 - Prove that a persisted stateless scene can run without importing memory, evaluation, or
   evolution modules.
@@ -165,8 +166,8 @@ Status: implemented.
 
 Status: implemented.
 
-- Replace the mixed routing object with an immutable, serializable `RunPlan` and keep
-  loaded policies and callbacks in an internal `PreparedRun`.
+- Replace the mixed routing object with an immutable, serializable `Plan` and keep
+  loaded policies and callbacks in one task-local `RunContext`.
 - Put exactly one `ModelDecision` in each executable plan; candidate ranking remains a
   pure deterministic function and never reaches execution.
 - Use the same model decision for preflight, the Runtime lock, selection events, and the
@@ -218,10 +219,10 @@ Status: implemented.
 
 - Select automatic scenes from service-compatible candidates before freezing the plan;
   record exclusions and reject incompatible explicit choices.
-- Record the effective workflow mode and model-call limit in every RunPlan, and reject
+- Record the effective workflow mode and model-call limit in every Plan, and reject
   planner steps that require tools when the selected workflow does not allow them.
 - Move private scene creation into an explicit storage-dependent `scene_manager` Skill
-  instead of conditionally omitting a tool from the Scene runner.
+  instead of conditionally omitting a tool from the Scene loader.
 - Raise requested subscriber and learning failures by default while preserving the
   completed task result; best-effort behavior is an explicit per-run choice.
 
@@ -231,7 +232,7 @@ Status: implemented.
 
 - Make `Run` the only mutable per-run context and require its disclosure core and Skill
   index at construction time.
-- Let `AgentRuntime` directly construct identity, event log, optional store, models, task
+- Let `Runtime` directly construct identity, event log, optional store, models, task
   loop, and Run from its explicit dependencies.
 - Delete the resource container, session-request object, user-model wrapper, two factory
   functions, late disclosure setter, and all compatibility names.
@@ -242,13 +243,13 @@ Status: implemented.
 
 Status: implemented.
 
-- Make every trusted runner return the same validated `LoadedSkill` result for model
+- Make every trusted loader return the same validated `LoadedSkill` result for model
   context, prompt context, tools, rules, callbacks, and included Skills.
 - Replace the scene-only policy result with the generic `included_skills` field; scene
   Skills remain ordinary composition content rather than a second execution mechanism.
 - Keep scene selection in central progressive disclosure and keep composition, explicit
-  Agent overrides, dependency expansion, and runner checks in one Core path.
-- Reject malformed and duplicate included references at the runner boundary and remove
+  Agent overrides, dependency expansion, and loader checks in one Core path.
+- Reject malformed and duplicate included references at the loader boundary and remove
   the old scene policy function and names without compatibility aliases.
 
 ## v0.0.81: Explicit Reads and Changes
@@ -257,7 +258,7 @@ Status: implemented.
 
 - Make every Skill `read_*` operation pure; cache and history writes happen only through
   matching `disclose_*` operations.
-- Separate model-side Skill disclosure from `activate_skill`, which alone loads runner
+- Separate model-side Skill disclosure from `activate_skill`, which alone loads loader
   output, attaches tools, records use, and contributes task-completion behavior.
 - Make memory recall a pure ranked read and replace recall-time organization with an
   immutable prepare-and-apply plan that rejects stale sources.
@@ -268,9 +269,9 @@ Status: implemented.
 
 Status: implemented.
 
-- Make `RuntimeStore.append_event`, `read_events`, and `delete_events` the only
+- Make `EventStore.append_event`, `read_events`, and `delete_events` the only
   user-and-Agent-scoped access to persisted Runtime events.
-- Pass the RuntimeStore directly to memory and disclosure projections; remove callback
+- Pass the EventStore directly to memory and disclosure projections; remove callback
   protocols, duplicate backend calls, and the public backend escape hatch.
 - Project one run's snapshot, ordered events, Runtime lock, selection, and disclosure path
   from one immutable event read instead of independently rereading storage.
@@ -296,11 +297,11 @@ Status: implemented.
 
 - Make `Agent` construction free of storage creation, Skill scanning, model discovery, and
   Runtime assembly while keeping configuration errors immediate.
-- Allow SkillRunner, MCP server, event subscriber, and subagent registration before the
+- Allow SkillLoader, MCP server, event subscriber, and subagent registration before the
   first Runtime operation.
 - Build all lazy components once under a lock and publish them atomically; raise failures
   unchanged and allow a clean retry instead of caching partial initialization.
-- Give every CLI command the same direct configuration, Agent, and RuntimeStore loaders
+- Give every CLI command the same direct configuration, Agent, and EventStore loaders
   instead of repeating adapter assembly.
 
 ## v0.0.85: Enforced Maintenance Budgets
@@ -335,7 +336,7 @@ Status: implemented.
 - Add one `Skills` object that owns a verified index snapshot and the trusted loaders
   allowed to turn passive content into task behavior.
 - Make every Run receive only that central object instead of independently carrying a
-  disclosure core, Skill index, and runner registry that could drift apart.
+  disclosure core, Skill index, and loader registry that could drift apart.
 - Route model discovery, task preparation, tool activation, preflight, and Runtime locks
   through the same `Skills` snapshot.
 - Keep ordinary reads free of cache or history writes; recording remains an explicit
@@ -376,7 +377,7 @@ Status: implemented.
 - Keep action declarations mandatory for every tool while creating the action checker only
   when a checked action or management change actually runs.
 - Let stateless model-only tasks complete without constructing action rules, an action
-  runner, storage, or another optional state layer.
+  executor, storage, or another optional state layer.
 - Allow an explicitly checker-free Runtime to execute read-only tools, but reject every
   state-changing tool and completion callback together during preflight.
 - Preserve the standard checked policy for the zero-configuration Agent; external changes
@@ -396,6 +397,21 @@ Status: implemented.
   evidence produced earlier in a plan cannot silently reroute its later work.
 - Remove the old `routing` module and initial model preselection; no Provider is obtained
   before the Scheduler has made an unambiguous decision.
+
+## v0.0.92: Smaller Explicit Library API
+
+Status: implemented.
+
+- Replace vague runtime task names with `Runtime`, `Task`, `RunResult`, `Plan`, `Step`,
+  `SkillLoader`, and `EventStore`; remove old modules and aliases directly.
+- Use one task-local `RunContext` from initial scheduling through every planned Step,
+  instead of wrapping the same Plan and loaded mechanisms more than once.
+- Make Python `Agent()` storage-free by default. Supplying `storage=` or setting
+  `use_storage=True` is explicit; CLI and Web entry points explicitly enable JSONL.
+- Rename the Skill loader package and documentation without forwarding modules, and keep
+  preflight, Runtime locks, activation, and registration on that one vocabulary.
+- Preserve all-step scheduling before execution, strict Provider selection, ordered
+  in-memory events, and explicit failures when a selected feature requires storage.
 
 ## Release Gate
 

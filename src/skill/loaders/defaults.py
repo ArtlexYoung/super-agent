@@ -1,36 +1,36 @@
-"""Built-in Skill runners and central progressive disclosure defaults."""
+"""Built-in Skill loaders and central progressive disclosure defaults."""
 
 from __future__ import annotations
 
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from skill.runners.registry import SkillRunners
-from skill.runners.builtins import create_builtin_skill_runners
-from skill.runners.mcp import McpServers
+from skill.loaders.registry import SkillLoaders
+from skill.loaders.builtins import create_builtin_skill_loaders
+from skill.loaders.mcp import McpServers
 from core.config import AgentConfig
 from core.models import RunIdentity
 from skill.disclosure import DisclosureRecorder, ProgressiveDisclosureCore
 from skill.skills import Skills
 
 if TYPE_CHECKING:
-    from skill.state.store import RuntimeStore
+    from skill.state.events import EventStore
 
 
-def create_default_skill_runners(
+def create_default_skill_loaders(
     mcp_servers: McpServers | None = None,
-) -> SkillRunners:
-    runners = SkillRunners()
+) -> SkillLoaders:
+    loaders = SkillLoaders()
     servers = mcp_servers or McpServers()
-    for runner in create_builtin_skill_runners(servers):
-        runners.add_skill_runner(runner)
-    return runners
+    for loader in create_builtin_skill_loaders(servers):
+        loaders.add_skill_loader(loader)
+    return loaders
 
 
 def create_progressive_skill_disclosure(
     config: AgentConfig,
     *,
-    store: RuntimeStore | None = None,
+    store: EventStore | None = None,
     identity: RunIdentity | None = None,
     record_disclosures: bool | None = None,
     include_freshness: bool = True,
@@ -47,7 +47,7 @@ def create_progressive_skill_disclosure(
     roots = [] if "skill" in disabled else config.paths.skills
     should_record = identity is not None if record_disclosures is None else record_disclosures
     if should_record and store is None:
-        raise ValueError("recording Skill disclosure requires a RuntimeStore")
+        raise ValueError("recording Skill disclosure requires an EventStore")
     return ProgressiveDisclosureCore(
         roots,
         user_skill_roots=([] if store is None else [store.private_root / "skills"]),
@@ -66,8 +66,8 @@ def create_progressive_skill_disclosure(
 def create_skills(
     config: AgentConfig,
     *,
-    loaders: SkillRunners | None = None,
-    store: RuntimeStore | None = None,
+    loaders: SkillLoaders | None = None,
+    store: EventStore | None = None,
     identity: RunIdentity | None = None,
     record_disclosures: bool | None = None,
     include_freshness: bool = True,
@@ -84,7 +84,7 @@ def create_skills(
 
 
 def create_runtime_disclosure_recorder(
-    store: RuntimeStore,
+    store: EventStore,
     identity: RunIdentity | None = None,
 ) -> DisclosureRecorder:
     """Adapt Runtime state recording to the storage-free disclosure contract."""

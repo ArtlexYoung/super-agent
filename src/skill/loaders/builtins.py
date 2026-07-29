@@ -4,8 +4,8 @@ import hashlib
 from dataclasses import asdict
 from typing import TYPE_CHECKING
 
-from skill.runners.registry import SkillRunner, SkillLoadRequest
-from skill.runners.loaded import (
+from skill.loaders.registry import SkillLoader, SkillLoadRequest
+from skill.loaders.loaded import (
     SkillAction,
     SkillTool,
     LoadedSkill,
@@ -20,10 +20,10 @@ from skill.manifest import Skill
 if TYPE_CHECKING:
     from skill.kinds.memory import MiniMemory
     from skill.kinds.memory_models import MemoryOrganizationPlan
-    from skill.runners.mcp import McpServers, RegisteredMcpServer
+    from skill.loaders.mcp import McpServers, RegisteredMcpServer
 
 
-class PromptSkillRunner:
+class PromptSkillLoader:
     name = "prompt-context"
     version = "1"
     skill_type = "prompt"
@@ -42,7 +42,7 @@ class PromptSkillRunner:
         )
 
 
-class McpSkillRunner:
+class McpSkillLoader:
     name = "registered-mcp"
     version = "2"
     skill_type = "mcp"
@@ -81,7 +81,7 @@ class McpSkillRunner:
         return self.servers.list_code_registrations()
 
 
-class MemorySkillRunner:
+class MemorySkillLoader:
     name = "event-memory"
     version = "4"
     skill_type = "memory"
@@ -107,7 +107,7 @@ class MemorySkillRunner:
         return create_memory_skill_contribution(memory)
 
 
-class WorkflowSkillRunner:
+class WorkflowSkillLoader:
     name = "tool-loop"
     version = "1"
     skill_type = "workflow"
@@ -127,7 +127,7 @@ class WorkflowSkillRunner:
         )
 
 
-class PlannerSkillRunner:
+class PlannerSkillLoader:
     name = "task-planner"
     version = "1"
     skill_type = "planner"
@@ -148,7 +148,7 @@ class PlannerSkillRunner:
         )
 
 
-class SchedulerSkillRunner:
+class SchedulerSkillLoader:
     name = "task-scheduler"
     version = "1"
     skill_type = "scheduler"
@@ -168,7 +168,7 @@ class SchedulerSkillRunner:
         )
 
 
-class SceneSkillRunner:
+class SceneSkillLoader:
     name = "task-scene"
     version = "1"
     skill_type = "scene"
@@ -188,7 +188,7 @@ class SceneSkillRunner:
         )
 
 
-class SceneManagerSkillRunner:
+class SceneManagerSkillLoader:
     name = "private-scene-manager"
     version = "1"
     skill_type = "scene_manager"
@@ -216,18 +216,18 @@ class SceneManagerSkillRunner:
         )
 
 
-def create_builtin_skill_runners(
+def create_builtin_skill_loaders(
     mcp_servers: McpServers,
-) -> tuple[SkillRunner, ...]:
+) -> tuple[SkillLoader, ...]:
     return (
-        PromptSkillRunner(),
-        McpSkillRunner(mcp_servers),
-        MemorySkillRunner(),
-        WorkflowSkillRunner(),
-        PlannerSkillRunner(),
-        SchedulerSkillRunner(),
-        SceneSkillRunner(),
-        SceneManagerSkillRunner(),
+        PromptSkillLoader(),
+        McpSkillLoader(mcp_servers),
+        MemorySkillLoader(),
+        WorkflowSkillLoader(),
+        PlannerSkillLoader(),
+        SchedulerSkillLoader(),
+        SceneSkillLoader(),
+        SceneManagerSkillLoader(),
     )
 
 

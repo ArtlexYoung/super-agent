@@ -64,7 +64,7 @@ super-agent skills remove --config agent.toml --name prompt:research
 ```
 
 Install and update accept `--expected-sha256`. They write the user overlay only and never
-load executable Python. Custom SkillRunners are registered in application code.
+load executable Python. Custom SkillLoaders are registered in application code.
 
 Run manual evolution through the same candidate lifecycle used by automation:
 

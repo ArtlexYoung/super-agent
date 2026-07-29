@@ -14,7 +14,7 @@ class PublicApiTests(unittest.TestCase):
             "ActionMode",
             "ActionRules",
             "ChatProvider",
-            "SkillRunner",
+            "SkillLoader",
             "SkillAction",
             "SkillTool",
             "Conversation",
@@ -35,7 +35,7 @@ class PublicApiTests(unittest.TestCase):
             "SkillLoadRequest",
             "StorageBackend",
             "StdioMcpServer",
-            "TaskResult",
+            "RunResult",
             "TaskPreflightError",
             "TaskTrace",
             "ToolCall",
@@ -46,12 +46,12 @@ class PublicApiTests(unittest.TestCase):
             self.assertIsNotNone(getattr(super_agent, name))
 
         removed_internal_names = {
-            "AgentRuntime",
+            "Runtime",
             "AutonomousEvolutionScheduler",
-            "SkillRunners",
+            "SkillLoaders",
             "ProgressiveDisclosureCore",
             "Run",
-            "RuntimeStore",
+            "EventStore",
             "SkillEvolutionManager",
         }
         self.assertFalse(removed_internal_names & set(super_agent.__all__))

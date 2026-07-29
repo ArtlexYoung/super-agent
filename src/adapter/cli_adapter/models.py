@@ -4,8 +4,8 @@ import argparse
 import json
 import sys
 
-from adapter.cli_adapter import load_agent_config, load_runtime_store
-from skill.runners.defaults import create_skills
+from adapter.cli_adapter import load_agent_config, load_event_store
+from skill.loaders.defaults import create_skills
 from core.config import AgentConfig
 from core.models import LOCAL_USER_ID
 from core.checks import ActionRules
@@ -70,7 +70,7 @@ def _read_configured_model_profiles(
     config: AgentConfig,
     user_id: str,
 ) -> list[ModelProfile]:
-    store = load_runtime_store(config, user_id)
+    store = load_event_store(config, user_id)
     return read_model_profiles(create_skills(config, store=store))
 
 
@@ -167,7 +167,7 @@ def _create_model_skill_manager(
     config: AgentConfig,
     user_id: str,
 ) -> ModelSkillManager:
-    store = load_runtime_store(config, user_id)
+    store = load_event_store(config, user_id)
     return ModelSkillManager(
         config,
         store,

@@ -3,18 +3,18 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from skill.runners.defaults import (
-    create_default_skill_runners,
+from skill.loaders.defaults import (
+    create_default_skill_loaders,
     create_runtime_disclosure_recorder,
 )
 from skill.skills import Skills
-from skill.runners.registry import SkillLoadRequest
-from skill.runners.loaded import (
+from skill.loaders.registry import SkillLoadRequest
+from skill.loaders.loaded import (
     SkillAction,
     SkillTool,
     LoadedSkill,
 )
-from skill.runners.builtins import create_memory_skill_contribution
+from skill.loaders.builtins import create_memory_skill_contribution
 from core.provider.chat import ToolCall
 from core.provider.chat import MockProvider
 from skill.task.tools import RuntimeTools, RuntimeToolsContext
@@ -23,12 +23,12 @@ from skill.task.run import Run
 from core.models import RunIdentity
 from core.checks import ActionConfirmationRequired, ActionEffect, ActionRules
 from core.state.event_log import RunEventLog
-from skill.state.store import RuntimeStore
+from skill.state.events import EventStore
 from adapter.storage import JsonlStorage
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.kinds.memory import MiniMemory
 from skill.kinds.model import create_direct_provider_profile
-from skill.runners.mcp import McpServers, StdioMcpServer
+from skill.loaders.mcp import McpServers, StdioMcpServer
 
 
 class SkillToolsTests(unittest.TestCase):
@@ -356,7 +356,7 @@ def _create_session(
     )
     backend = JsonlStorage(root / "state")
     event_log = RunEventLog(identity, backend=backend)
-    store = RuntimeStore(
+    store = EventStore(
         backend,
         root / "state",
         "local",
@@ -372,7 +372,7 @@ def _create_session(
         config=config,
         model_profile=create_direct_provider_profile(),
         provider=provider,
-        skills=Skills(disclosure, create_default_skill_runners(mcp_servers)),
+        skills=Skills(disclosure, create_default_skill_loaders(mcp_servers)),
         identity=identity,
         event_log=event_log,
         store=store,

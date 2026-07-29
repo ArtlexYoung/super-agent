@@ -2,9 +2,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from skill.runners.defaults import create_default_skill_runners
+from skill.loaders.defaults import create_default_skill_loaders
 from skill.skills import Skills
-from skill.runners.loaded import SkillAction
+from skill.loaders.loaded import SkillAction
 from core.provider.chat import MockProvider
 from core.config import AgentConfig
 from skill.task.run import Run
@@ -18,7 +18,7 @@ from core.checks import (
     ActionRules,
 )
 from core.state.event_log import RunEventLog
-from skill.state.store import RuntimeStore
+from skill.state.events import EventStore
 from adapter.storage import JsonlStorage
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.kinds.model import create_direct_provider_profile
@@ -215,7 +215,7 @@ def _create_session(
     identity = RunIdentity.create("local", config.agent.name)
     backend = JsonlStorage(root / "state")
     event_log = RunEventLog(identity, backend=backend)
-    store = RuntimeStore(
+    store = EventStore(
         backend,
         root / "state",
         "local",
@@ -228,7 +228,7 @@ def _create_session(
         config=config,
         model_profile=create_direct_provider_profile(),
         provider=MockProvider(),
-        skills=Skills(disclosure, create_default_skill_runners()),
+        skills=Skills(disclosure, create_default_skill_loaders()),
         identity=identity,
         event_log=event_log,
         store=store,
@@ -247,7 +247,7 @@ def _create_session_without_action_checker() -> Run:
         provider=MockProvider(),
         skills=Skills(
             ProgressiveDisclosureCore([]),
-            create_default_skill_runners(),
+            create_default_skill_loaders(),
         ),
         identity=identity,
         event_log=event_log,

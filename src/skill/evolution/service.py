@@ -11,7 +11,7 @@ from skill.evolution.state import (
     read_skill_evolution,
     record_skill_evolution_monitoring,
 )
-from skill.state.store import RuntimeStore
+from skill.state.events import EventStore
 from skill.evolution.change.evaluation import EvaluationCase
 from skill.evolution.change.manager import SkillEvolutionManager
 from skill.evolution.change.revision import SkillRevision
@@ -27,7 +27,7 @@ class AutomaticEvolutionService:
 
     def __init__(
         self,
-        store: RuntimeStore,
+        store: EventStore,
         manager: SkillEvolutionManager,
     ) -> None:
         self.store = store

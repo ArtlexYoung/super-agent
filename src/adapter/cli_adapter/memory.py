@@ -6,13 +6,13 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Callable, TypeVar, cast
 
-from adapter.cli_adapter import load_agent_config, load_runtime_store
+from adapter.cli_adapter import load_agent_config, load_event_store
 from core.checks import ActionEffect, ActionRequest, ActionRunner, ActionRules
 from core.config import AgentConfig
 from core.models import LOCAL_USER_ID
 from skill.state.memory import LONG_TERM_MEMORY, TEMPORARY_MEMORY
 from skill.kinds.memory import MemoryItem, MiniMemory, create_memory_from_skill_disclosure
-from skill.runners.defaults import create_progressive_skill_disclosure
+from skill.loaders.defaults import create_progressive_skill_disclosure
 
 
 CLI_MEMORY_TYPES = ("temporary", "long-term")
@@ -191,7 +191,7 @@ def _consolidate_memory(args: argparse.Namespace) -> int:
 
 def _load_configured_memory(config_path: Path, user_id: str) -> MiniMemory:
     config = load_agent_config(config_path)
-    store = load_runtime_store(config, user_id)
+    store = load_event_store(config, user_id)
     disclosure = create_progressive_skill_disclosure(config, store=store)
     disclosure.prepare_skill_index()
     skill = disclosure.open_skill(

@@ -12,7 +12,7 @@ from core.models import RunIdentity
 from core.checks import ActionRequest
 from adapter.storage import JsonlStorage
 from core.events import StorageEventQuery
-from skill.state.store import RuntimeStore, create_local_runtime_store
+from skill.state.events import EventStore, create_local_event_store
 from core.provider.chat import MockProvider
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.kinds.memory import (
@@ -65,7 +65,7 @@ class MiniMemoryTests(unittest.TestCase):
 
     def test_untyped_memory_stream_is_rejected_instead_of_hidden(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            store = create_local_runtime_store(Path(tmp))
+            store = create_local_event_store(Path(tmp))
             store.append_event(
                 "memory",
                 "memory",
@@ -78,7 +78,7 @@ class MiniMemoryTests(unittest.TestCase):
 
     def test_temporary_memory_cannot_cross_conversation_boundaries(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            store = create_local_runtime_store(Path(tmp))
+            store = create_local_event_store(Path(tmp))
             seed = MiniMemory(store)
             alpha = seed.add_temporary_memory(
                 "Alpha-only Python detail.",
@@ -118,7 +118,7 @@ class MiniMemoryTests(unittest.TestCase):
 
     def test_organization_prepares_each_memory_type_without_mixing_candidates(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            store = create_local_runtime_store(Path(tmp))
+            store = create_local_event_store(Path(tmp))
             seed = MiniMemory(store)
             seed.add_long_term_memory("Python preference one.")
             seed.add_long_term_memory("Python preference two.")
@@ -169,7 +169,7 @@ class MiniMemoryTests(unittest.TestCase):
 
     def test_prompt_separates_long_term_and_current_conversation_memory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            store = create_local_runtime_store(Path(tmp))
+            store = create_local_event_store(Path(tmp))
             seed = MiniMemory(store)
             seed.add_long_term_memory("User prefers concise answers.")
             seed.add_temporary_memory(
@@ -191,7 +191,7 @@ class MiniMemoryTests(unittest.TestCase):
 
     def test_temporary_replacement_preserves_type_and_conversation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            store = create_local_runtime_store(Path(tmp))
+            store = create_local_event_store(Path(tmp))
             seed = MiniMemory(store)
             old = seed.add_temporary_memory(
                 "Python task uses version 3.11.",
@@ -349,7 +349,7 @@ class MiniMemoryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             backend = _PromotionBarrierStorage(root)
-            store = RuntimeStore(backend, root, "local", "super-agent")
+            store = EventStore(backend, root, "local", "super-agent")
             source = MiniMemory(store).add_temporary_memory(
                 "The user repeatedly asks for concise answers.",
                 conversation_id="conversation-a",
@@ -401,7 +401,7 @@ class MiniMemoryTests(unittest.TestCase):
 
     def test_temporary_organization_cannot_promote_memory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            store = create_local_runtime_store(Path(tmp))
+            store = create_local_event_store(Path(tmp))
             seed = MiniMemory(store)
             first = seed.add_temporary_memory(
                 "Concise answer preference one.",
@@ -516,7 +516,7 @@ class MiniMemoryTests(unittest.TestCase):
     def test_prepared_organization_requires_explicit_apply(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            store = create_local_runtime_store(root)
+            store = create_local_event_store(root)
             seed = MiniMemory(store)
             old = seed.add_long_term_memory("Python project uses version 3.11.", "project")
             current = seed.add_long_term_memory("Python project now uses version 3.12.", "project")
@@ -591,7 +591,7 @@ class MiniMemoryTests(unittest.TestCase):
 
     def test_applying_a_stale_organization_plan_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            store = create_local_runtime_store(Path(tmp))
+            store = create_local_event_store(Path(tmp))
             seed = MiniMemory(store)
             old = seed.add_long_term_memory("Python project uses version 3.11.")
             current = seed.add_long_term_memory(
@@ -631,7 +631,7 @@ class MiniMemoryTests(unittest.TestCase):
     def test_invalid_organization_plan_fails_without_changing_recall(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             memory = MiniMemory(
-                create_local_runtime_store(Path(tmp)),
+                create_local_event_store(Path(tmp)),
                 send_text_model_messages=lambda messages: "not-json",
             )
             memory.add_long_term_memory("Python preference one.")
@@ -670,7 +670,7 @@ include_usage_habits = false
 """.strip(),
                 encoding="utf-8",
             )
-            store = create_local_runtime_store(root / "state")
+            store = create_local_event_store(root / "state")
             disclosure = ProgressiveDisclosureCore([root / "skills"])
             disclosure.prepare_skill_index()
             memory = create_memory_from_skill_disclosure(
@@ -688,7 +688,7 @@ include_usage_habits = false
             write_workflow_skill(root)
             write_memory_skill(root)
             MiniMemory(
-                create_local_runtime_store(root / ".super-agent", agent_name="demo")
+                create_local_event_store(root / ".super-agent", agent_name="demo")
             ).add_long_term_memory("User likes concise answers.")
             provider = MockProvider("ok")
             agent = _make_agent(root, provider)
@@ -704,7 +704,7 @@ include_usage_habits = false
             write_workflow_skill(root)
             write_memory_skill(root)
             seed = MiniMemory(
-                create_local_runtime_store(root / ".super-agent", agent_name="demo")
+                create_local_event_store(root / ".super-agent", agent_name="demo")
             )
             first = seed.add_long_term_memory("Python project uses 3.11.")
             second = seed.add_long_term_memory("Python project now uses 3.12.")
@@ -714,7 +714,7 @@ include_usage_habits = false
             result = agent.run("Which Python version does the project use?")
 
             self.assertEqual("final answer", result.text)
-            active = MiniMemory(agent.runtime.create_store()).list_memory_items()
+            active = MiniMemory(agent.runtime.create_event_store()).list_memory_items()
             self.assertEqual(
                 {first.item_id, second.item_id},
                 {item.item_id for item in active},
@@ -747,7 +747,7 @@ include_usage_habits = false
 
             agent.run("first")
             second = agent.run("second")
-            memory = MiniMemory(agent.runtime.create_store())
+            memory = MiniMemory(agent.runtime.create_event_store())
 
             self.assertEqual(2, memory.usage_habits.read_usage_habits()["total_runs"])
             self.assertIn("workflow direct used 1 times", provider.last_messages[0]["content"])
@@ -777,23 +777,27 @@ path = ".super-agent"
 """.strip(),
         encoding="utf-8",
     )
-    return Agent(AgentConfig.load_from_file(config_path), provider=provider)
+    return Agent(
+        AgentConfig.load_from_file(config_path),
+        provider=provider,
+        use_storage=True,
+    )
 
 
 def _memory(root: Path) -> MiniMemory:
-    return MiniMemory(create_local_runtime_store(root))
+    return MiniMemory(create_local_event_store(root))
 
 
 def _create_memory_promotion_scenario(
     root: Path,
 ) -> tuple[
-    RuntimeStore,
+    EventStore,
     MiniMemory,
     MemoryItem,
     list[dict[str, object]],
     list[ActionRequest],
 ]:
-    store = create_local_runtime_store(root)
+    store = create_local_event_store(root)
     seed = MiniMemory(store)
     source = seed.add_temporary_memory(
         "The user repeatedly asks for concise answers.",

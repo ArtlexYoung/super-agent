@@ -153,9 +153,9 @@ export interface BootstrapData {
 export interface RunInsight {
   schema_version: number
   snapshot: RunSnapshot
-  run_plan: Record<string, unknown>
+  plan: Record<string, unknown>
   task_plan: Record<string, unknown>
-  task_steps: Array<Record<string, unknown>>
+  steps: Array<Record<string, unknown>>
   model_calls: Array<Record<string, unknown>>
   routing_evidence: Array<Record<string, unknown>>
   skill_freshness: Array<Record<string, unknown>>

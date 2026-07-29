@@ -157,7 +157,7 @@ def _read_skill_type(data: dict[str, object]) -> str:
         raise ValueError("skill type must use lowercase letters, numbers, '-' or '_'")
     if skill_type == "runner":
         raise ValueError(
-            "executable SkillRunner code must be registered with Agent.add_skill_runner"
+            "executable SkillLoader code must be registered with Agent.add_skill_loader"
         )
     return skill_type
 

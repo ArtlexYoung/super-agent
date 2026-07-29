@@ -14,7 +14,7 @@ from skill.state.memory import (
     TEMPORARY_MEMORY,
     validate_memory_type,
 )
-from skill.state.store import RuntimeStore
+from skill.state.events import EventStore
 from skill.disclosure import SkillDisclosure
 from skill.kinds.memory_models import (
     MemoryItem,
@@ -49,7 +49,7 @@ MemoryLocation = tuple[str, str | None]
 class MiniMemory:
     def __init__(
         self,
-        store: RuntimeStore,
+        store: EventStore,
         identity: RunIdentity | None = None,
         policy: MemoryPolicy | None = None,
         *,
@@ -465,7 +465,7 @@ class MiniMemory:
 
 def create_memory_from_skill_disclosure(
     disclosure: SkillDisclosure,
-    store: RuntimeStore,
+    store: EventStore,
     identity: RunIdentity | None = None,
     *,
     send_text_model_messages: MemoryTextModel | None = None,

@@ -5,10 +5,10 @@ from pathlib import Path
 
 from super_agent import Agent
 from core.config import AgentConfig
-from skill.state.store import create_local_runtime_store
+from skill.state.events import create_local_event_store
 from core.provider.chat import MockProvider
 from skill.disclosure import ProgressiveDisclosureCore
-from skill.runners.defaults import create_runtime_disclosure_recorder
+from skill.loaders.defaults import create_runtime_disclosure_recorder
 from support import write_workflow_skill
 
 
@@ -17,7 +17,7 @@ class ProgressiveDisclosureTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_skill(root, "echo", "Echo helper", "Always answer briefly.")
-            store = create_local_runtime_store(root / ".super-agent")
+            store = create_local_event_store(root / ".super-agent")
             disclosure = ProgressiveDisclosureCore(
                 [root / "skills"],
                 recorder=create_runtime_disclosure_recorder(store),
@@ -55,7 +55,11 @@ class ProgressiveDisclosureTests(unittest.TestCase):
             config_path = _write_config(root)
             provider = MockProvider("ok")
 
-            agent = Agent(AgentConfig.load_from_file(config_path), provider=provider)
+            agent = Agent(
+                AgentConfig.load_from_file(config_path),
+                provider=provider,
+                use_storage=True,
+            )
             result = agent.run("echo hello")
 
             content = provider.last_messages[0]["content"]
@@ -64,7 +68,7 @@ class ProgressiveDisclosureTests(unittest.TestCase):
             self.assertIn("history.json", content)
             self.assertIn("skills/prompt/echo/manifest.json", content)
             self.assertTrue(
-                agent.runtime.create_store()
+                agent.runtime.create_event_store()
                 .disclosure.cache_root.joinpath("index.json")
                 .exists()
             )

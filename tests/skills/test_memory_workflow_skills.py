@@ -5,26 +5,28 @@ from pathlib import Path
 
 from super_agent import Agent
 from core.config import AgentConfig
-from skill.state.store import create_local_runtime_store
+from skill.state.events import create_local_event_store
 from core.provider.chat import MockProvider
 from skill.kinds.memory import MiniMemory
 
 
-class MemoryWorkflowSkillRunnerTests(unittest.TestCase):
+class MemoryWorkflowSkillLoaderTests(unittest.TestCase):
     def test_agent_loads_memory_from_memory_skill(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_workflow_skill(root, "direct", "direct")
             _write_memory_skill(root, "default")
-            _write_memory_item(root, "Remember via Skill SkillRunner.")
+            _write_memory_item(root, "Remember via Skill SkillLoader.")
             provider = MockProvider("ok")
 
-            result = Agent(AgentConfig.load_from_file(_write_config(root)), provider=provider).run(
-                "remember via Skill SkillRunner"
-            )
+            result = Agent(
+                AgentConfig.load_from_file(_write_config(root)),
+                provider=provider,
+                use_storage=True,
+            ).run("remember via Skill SkillLoader")
 
             self.assertEqual("ok", result.text)
-            self.assertIn("Remember via Skill SkillRunner.", provider.last_messages[0]["content"])
+            self.assertIn("Remember via Skill SkillLoader.", provider.last_messages[0]["content"])
 
     def test_agent_can_disable_named_memory_skill(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -37,6 +39,7 @@ class MemoryWorkflowSkillRunnerTests(unittest.TestCase):
             Agent(
                 AgentConfig.load_from_file(_write_config(root, disabled_skills=["memory:default"])),
                 provider=provider,
+                use_storage=True,
             ).run("hello")
 
             self.assertNotIn("Should stay hidden.", provider.last_messages[0]["content"])
@@ -44,17 +47,19 @@ class MemoryWorkflowSkillRunnerTests(unittest.TestCase):
     def test_agent_loads_workflow_from_workflow_skill(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            _write_workflow_skill(root, "careful", "plan", instruction="Workflow SkillRunner marker.")
+            _write_workflow_skill(root, "careful", "plan", instruction="Workflow SkillLoader marker.")
             provider = _SequenceProvider([json.dumps(_one_step_plan()), "ok"])
 
-            result = Agent(AgentConfig.load_from_file(_write_config(root, workflow="careful")), provider=provider).run(
-                "hello"
-            )
+            result = Agent(
+                AgentConfig.load_from_file(_write_config(root, workflow="careful")),
+                provider=provider,
+                use_storage=True,
+            ).run("hello")
 
             self.assertEqual("careful", result.workflow)
             self.assertEqual(2, len(provider.requests))
             self.assertIn(
-                "Workflow SkillRunner marker.",
+                "Workflow SkillLoader marker.",
                 provider.requests[1][0]["content"],
             )
 
@@ -127,7 +132,7 @@ mode = "{mode}"
 
 def _write_memory_item(root: Path, text: str) -> None:
     MiniMemory(
-        create_local_runtime_store(root / ".super-agent", agent_name="demo")
+        create_local_event_store(root / ".super-agent", agent_name="demo")
     ).add_long_term_memory(text)
 
 

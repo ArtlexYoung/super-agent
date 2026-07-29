@@ -19,11 +19,11 @@ if TYPE_CHECKING:
     from core.provider.chat import ChatProvider, Message
     from core.state.event_log import RunEventLog
     from core.state.models import RunEvent
-    from skill.state.store import RuntimeStore
+    from skill.state.events import EventStore
     from core.state.subscribers import RuntimeEventSubscriber, SubscriberFailure
     from skill.disclosure import SkillIndexEntry, SkillReference
     from skill.kinds.model import ModelProfile
-    from skill.runners.loaded import LoadedSkill
+    from skill.loaders.loaded import LoadedSkill
     from skill.skills import Skills
 
 
@@ -35,7 +35,7 @@ class Run:
     skills: Skills
     identity: RunIdentity
     event_log: RunEventLog
-    store: RuntimeStore | None
+    store: EventStore | None
     allow_subscriber_failures: bool = False
     create_action_rules: Callable[[], ActionRules] | None = field(
         default=None,
@@ -100,7 +100,7 @@ class Run:
     def list_recorded_events(self) -> list[RunEvent]:
         return self.event_log.list_events()
 
-    def require_store(self, feature: str) -> RuntimeStore:
+    def require_store(self, feature: str) -> EventStore:
         if self.store is None:
             raise RuntimeError(f"{feature} requires Runtime storage")
         return self.store

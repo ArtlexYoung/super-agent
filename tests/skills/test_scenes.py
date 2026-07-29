@@ -11,7 +11,7 @@ from skill.kinds.scene import (
     SkillSceneInput,
     read_scene_included_skills,
 )
-from skill.runners.defaults import create_progressive_skill_disclosure
+from skill.loaders.defaults import create_progressive_skill_disclosure
 from skill.evolution.records import read_evaluation_records
 
 
@@ -54,12 +54,16 @@ class SkillSceneTests(unittest.TestCase):
         for prompt, scene, workflow, skill, instruction, expected_keys in cases:
             with self.subTest(scene=scene), tempfile.TemporaryDirectory() as tmp:
                 provider = MockProvider("finished")
-                agent = Agent(AgentConfig.create_default(tmp), provider=provider)
+                agent = Agent(
+                    AgentConfig.create_default(tmp),
+                    provider=provider,
+                    use_storage=True,
+                )
 
                 result = agent.run(prompt)
                 agent.learn_from_run(result.run_id)
 
-                store = agent.runtime.create_store()
+                store = agent.runtime.create_event_store()
                 selected = _event_data(store, result.run_id, "scene.selected")
                 evaluated = {
                     record.revision.key
@@ -75,12 +79,14 @@ class SkillSceneTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             provider = MockProvider("finished")
-            agent = Agent(AgentConfig.create_default(root), provider=provider)
+            agent = Agent(
+                AgentConfig.create_default(root), provider=provider, use_storage=True
+            )
 
             result = agent.run("Implement a repository change", scene="common")
 
             selected = _event_data(
-                agent.runtime.create_store(),
+                agent.runtime.create_event_store(),
                 result.run_id,
                 "scene.selected",
             )
@@ -93,10 +99,14 @@ class SkillSceneTests(unittest.TestCase):
                 config,
                 agent=replace(config.agent, skills=["scene:common"]),
             )
-            configured_agent = Agent(configured, provider=MockProvider("configured"))
+            configured_agent = Agent(
+                configured,
+                provider=MockProvider("configured"),
+                use_storage=True,
+            )
             configured_result = configured_agent.run("Implement another change")
             configured_event = _event_data(
-                configured_agent.runtime.create_store(),
+                configured_agent.runtime.create_event_store(),
                 configured_result.run_id,
                 "scene.selected",
             )
@@ -184,7 +194,7 @@ class SkillSceneTests(unittest.TestCase):
             with self.assertRaisesRegex(KeyError, "workflow:not-there"):
                 agent.run("hello", scene="broken")
 
-    def test_scene_reference_without_registered_runner_fails(self) -> None:
+    def test_scene_reference_without_registered_loader_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_scene_skill(
@@ -200,7 +210,7 @@ class SkillSceneTests(unittest.TestCase):
 
             with self.assertRaisesRegex(
                 ValueError,
-                "without registered SkillRunners: search",
+                "without registered SkillLoaders: search",
             ):
                 agent.run("hello", scene="unsupported")
 
@@ -209,6 +219,7 @@ class SkillSceneTests(unittest.TestCase):
             agent = Agent(
                 AgentConfig.create_default(tmp),
                 provider=MockProvider("finished"),
+                use_storage=True,
             )
             alice = agent.for_user("alice")
             request = SkillSceneInput(
@@ -237,7 +248,7 @@ class SkillSceneTests(unittest.TestCase):
 
             result = alice.run("Perform a ledger review")
             selected = _event_data(
-                agent.runtime.create_store("alice"),
+                agent.runtime.create_event_store("alice"),
                 result.run_id,
                 "scene.selected",
             )
@@ -274,7 +285,9 @@ class SkillSceneTests(unittest.TestCase):
             ],
         )
         with tempfile.TemporaryDirectory() as tmp:
-            agent = Agent(AgentConfig.create_default(tmp), provider=provider)
+            agent = Agent(
+                AgentConfig.create_default(tmp), provider=provider, use_storage=True
+            )
 
             result = agent.for_user("alice").run(
                 "Create scene for source investigation"

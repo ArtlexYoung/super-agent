@@ -22,7 +22,7 @@ from skill.evolution.state import (
 )
 from skill.evolution.values import CandidateEvaluation, SkillEvolutionState
 from skill.task.model_calls import TextModel
-from skill.state.store import RuntimeStore
+from skill.state.events import EventStore
 from skill.evolution.change.candidate import (
     SkillCandidate,
     SkillCandidateRequest,
@@ -77,7 +77,7 @@ class SkillEvolutionManager:
         self,
         *,
         skill_disclosure: ProgressiveDisclosureCore,
-        store: RuntimeStore,
+        store: EventStore,
         models: EvolutionModels,
         minimum_score: float = 0.8,
         on_skill_changed: Callable[[SkillManifest], None] | None = None,

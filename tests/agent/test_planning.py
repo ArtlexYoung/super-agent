@@ -16,7 +16,9 @@ class ZeroConfigurationPlanningTests(unittest.TestCase):
             root = Path(tmp)
             _write_model_skill(root, "fast", default=True, purposes=["answer"])
             provider = _SequenceProvider(["direct answer"])
-            agent = Agent(_write_config(root, "direct-agent"), provider=provider)
+            agent = Agent(
+                _write_config(root, "direct-agent"), provider=provider, use_storage=True
+            )
 
             result = agent.run("Answer this question")
             agent.learn_from_run(result.run_id)
@@ -24,20 +26,20 @@ class ZeroConfigurationPlanningTests(unittest.TestCase):
             self.assertEqual("direct answer", result.text)
             self.assertEqual(1, len(provider.requests))
             events = agent.for_user("local").runs.read_trace(result.run_id).events
-            run_plan = next(
+            plan = next(
                 event.data for event in events if event.event_type == "task.scheduled"
             )
-            self.assertEqual(3, run_plan["schema_version"])
-            self.assertEqual("scheduler:default", run_plan["scheduler"])
-            self.assertEqual("direct", run_plan["workflow_mode"])
-            self.assertEqual(8, run_plan["max_model_steps"])
-            self.assertEqual("direct", run_plan["mode"])
-            self.assertEqual("scene:common", run_plan["scene"])
-            self.assertEqual("workflow:direct", run_plan["workflow"])
-            self.assertEqual("planner:default", run_plan["planner"])
-            self.assertFalse(run_plan["planning"]["required"])
-            self.assertIn("memory:default", run_plan["skills"])
-            self.assertIn("prompt:common", run_plan["model_context_skills"])
+            self.assertEqual(3, plan["schema_version"])
+            self.assertEqual("scheduler:default", plan["scheduler"])
+            self.assertEqual("direct", plan["workflow_mode"])
+            self.assertEqual(8, plan["max_model_steps"])
+            self.assertEqual("direct", plan["mode"])
+            self.assertEqual("scene:common", plan["scene"])
+            self.assertEqual("workflow:direct", plan["workflow"])
+            self.assertEqual("planner:default", plan["planner"])
+            self.assertFalse(plan["planning"]["required"])
+            self.assertIn("memory:default", plan["skills"])
+            self.assertIn("prompt:common", plan["model_context_skills"])
             plan = next(
                 event.data
                 for event in events
@@ -55,7 +57,7 @@ class ZeroConfigurationPlanningTests(unittest.TestCase):
                 ],
             )
             records = read_evaluation_records(
-                agent.runtime.create_store(),
+                agent.runtime.create_event_store(),
                 skill_key="planner:default"
             )
             self.assertEqual(1, len(records))
@@ -98,11 +100,14 @@ class ZeroConfigurationPlanningTests(unittest.TestCase):
             }
             fast = _SequenceProvider([json.dumps(plan), "research result"])
             deep = _SequenceProvider(["analysis result", "final answer"])
-            main = Agent(_write_config(root, "planning-agent"), provider=fast)
+            main = Agent(
+                _write_config(root, "planning-agent"), provider=fast, use_storage=True
+            )
             main.add_model_provider("deep", deep)
             researcher = Agent(
                 _write_config(root, "research-agent"),
                 provider=_SequenceProvider(["subagent facts"]),
+                use_storage=True,
             )
             main.add_subagent(
                 researcher,
@@ -122,13 +127,13 @@ class ZeroConfigurationPlanningTests(unittest.TestCase):
             self.assertEqual(["researcher"], [item.name for item in result.subagent_results or []])
             self.assertIn("subagent facts", str(fast.requests[1]))
             events = main.for_user("local").runs.read_trace(result.run_id).events
-            run_plan = next(
+            plan = next(
                 event.data for event in events if event.event_type == "task.scheduled"
             )
-            self.assertEqual("planning", run_plan["mode"])
-            self.assertEqual("planner:default", run_plan["planner"])
-            self.assertTrue(run_plan["planning"]["required"])
-            self.assertEqual([], run_plan["model_context_skills"])
+            self.assertEqual("planning", plan["mode"])
+            self.assertEqual("planner:default", plan["planner"])
+            self.assertTrue(plan["planning"]["required"])
+            self.assertEqual([], plan["model_context_skills"])
             step_models = [
                 event.data["model"]["key"]
                 for event in events
@@ -158,18 +163,18 @@ class ZeroConfigurationPlanningTests(unittest.TestCase):
             ]
             self.assertLess(max(scheduled_indexes), min(execution_indexes))
             insight = explain_run_with_insight(
-                main.runtime.create_store(),
+                main.runtime.create_event_store(),
                 result.run_id,
             )
             self.assertEqual("planner:default", insight["task_plan"]["planner"])
             self.assertEqual("planner", insight["task_plan"]["origin"])
             self.assertEqual(
                 ["completed", "completed", "completed"],
-                [step["status"] for step in insight["task_steps"]],
+                [step["status"] for step in insight["steps"]],
             )
             used_keys = {
                 record.revision.key
-                for record in read_evaluation_records(main.runtime.create_store())
+                for record in read_evaluation_records(main.runtime.create_event_store())
             }
             self.assertTrue(
                 {"planner:default", "model:fast", "model:deep"} <= used_keys
@@ -197,12 +202,16 @@ class PlanningSkillEvolutionTests(unittest.TestCase):
                     "baseline evaluation output",
                 ]
             )
-            agent = Agent(_write_config(root, "planner-evolution"), provider=provider)
+            agent = Agent(
+                _write_config(root, "planner-evolution"),
+                provider=provider,
+                use_storage=True,
+            )
 
             with self.assertRaisesRegex(ValueError, "planner response"):
                 agent.run("Complete this step by step")
 
-            store = agent.runtime.create_store()
+            store = agent.runtime.create_event_store()
             run_id = store.list_runs(1)[0].run_id
             agent.learn_from_run(run_id)
             evolution = agent.for_user("local").skills.list_evolutions()[0]
@@ -269,12 +278,16 @@ class PlanningSkillEvolutionTests(unittest.TestCase):
                     "baseline evaluation output",
                 ]
             )
-            agent = Agent(_write_config(root, "model-evolution"), provider=provider)
+            agent = Agent(
+                _write_config(root, "model-evolution"),
+                provider=provider,
+                use_storage=True,
+            )
 
             with self.assertRaisesRegex(RuntimeError, "model unavailable"):
                 agent.run("Answer this question")
 
-            store = agent.runtime.create_store()
+            store = agent.runtime.create_event_store()
             run_id = store.list_runs(1)[0].run_id
             agent.learn_from_run(run_id)
             evolution = agent.for_user("local").skills.list_evolutions()[0]

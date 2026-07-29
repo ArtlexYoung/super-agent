@@ -17,11 +17,12 @@ class RunSnapshotTests(unittest.TestCase):
             agent = Agent(
                 AgentConfig.create_default(root),
                 provider=MockProvider("finished"),
+                use_storage=True,
             )
 
             result = agent.run("echo this")
 
-            store = agent.runtime.create_store()
+            store = agent.runtime.create_event_store()
             snapshot = store.read_run(result.run_id)
             with patch.object(
                 agent.storage,
@@ -51,18 +52,18 @@ class RunSnapshotTests(unittest.TestCase):
                     "scene_manager",
                     "workflow",
                 },
-                {item["type"] for item in runtime_lock["skill_runners"]},
+                {item["type"] for item in runtime_lock["skill_loaders"]},
             )
             self.assertIn(
                 "prompt:echo",
                 {item["key"] for item in runtime_lock["skills"]},
             )
-            self.assertEqual(3, runtime_lock["run_plan"]["schema_version"])
+            self.assertEqual(3, runtime_lock["plan"]["schema_version"])
             self.assertEqual(
                 "scheduler:default",
-                runtime_lock["run_plan"]["scheduler"],
+                runtime_lock["plan"]["scheduler"],
             )
-            self.assertEqual("scene:common", runtime_lock["run_plan"]["scene"])
+            self.assertEqual("scene:common", runtime_lock["plan"]["scene"])
             self.assertNotIn("task_schedule", runtime_lock)
             self.assertIn(
                 {
@@ -88,12 +89,13 @@ class RunSnapshotTests(unittest.TestCase):
             agent = Agent(
                 AgentConfig.create_default(root),
                 provider=_FailingProvider(),
+                use_storage=True,
             )
 
             with self.assertRaisesRegex(RuntimeError, "provider failed"):
                 agent.run("hello")
 
-            snapshots = agent.runtime.create_store().list_runs()
+            snapshots = agent.runtime.create_event_store().list_runs()
             self.assertEqual(1, len(snapshots))
             self.assertEqual("failed", snapshots[0].status)
             self.assertEqual("run.failed", snapshots[0].last_event_type)
@@ -106,6 +108,7 @@ class RunSnapshotTests(unittest.TestCase):
             agent = Agent(
                 AgentConfig.create_default(root),
                 provider=MockProvider(),
+                use_storage=True,
             )
             result = agent.run("hello")
             path = next((root / ".super-agent").rglob("events.jsonl"))
@@ -118,7 +121,7 @@ class RunSnapshotTests(unittest.TestCase):
             )
 
             with self.assertRaisesRegex(ValueError, "runtime lock hash does not match"):
-                agent.runtime.create_store().read_runtime_lock(result.run_id)
+                agent.runtime.create_event_store().read_runtime_lock(result.run_id)
 
     def test_run_snapshot_is_derived_from_the_canonical_event_stream(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -126,10 +129,11 @@ class RunSnapshotTests(unittest.TestCase):
             agent = Agent(
                 AgentConfig.create_default(root),
                 provider=MockProvider(),
+                use_storage=True,
             )
 
             result = agent.run("hello")
-            store = agent.runtime.create_store()
+            store = agent.runtime.create_event_store()
             snapshot = store.read_run(result.run_id)
             events = store.read_run_events(result.run_id)
 

@@ -15,9 +15,9 @@ from core.models import RunIdentity, validate_user_id
 class IdentityAndSecretIsolationTests(unittest.TestCase):
     def test_every_user_entry_point_uses_the_same_identity_validation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            agent = Agent(AgentConfig.create_default(Path(tmp)))
+            agent = Agent(AgentConfig.create_default(Path(tmp)), use_storage=True)
             user = agent.for_user("  alice  ")
-            store = agent.runtime.create_store("  alice  ")
+            store = agent.runtime.create_event_store("  alice  ")
             identity = RunIdentity.create("  alice  ", "  demo  ")
 
             self.assertEqual("alice", validate_user_id("  alice  "))

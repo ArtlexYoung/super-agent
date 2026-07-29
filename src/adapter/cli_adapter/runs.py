@@ -5,11 +5,11 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
-from adapter.cli_adapter import load_agent, load_runtime_store
+from adapter.cli_adapter import load_agent, load_event_store
 from core.models import LOCAL_USER_ID
 from skill.evolution.insights import explain_run_with_insight
 from core.state.models import RunSnapshot
-from skill.state.store import RuntimeStore
+from skill.state.events import EventStore
 
 
 def configure_runs_parser(parser: argparse.ArgumentParser) -> None:
@@ -164,18 +164,18 @@ def _learn_from_run(args: argparse.Namespace) -> int:
     return 0
 
 
-def _load_run_snapshot_store(config_path: str | None, user_id: str) -> RuntimeStore:
-    return load_runtime_store(config_path, user_id)
+def _load_run_snapshot_store(config_path: str | None, user_id: str) -> EventStore:
+    return load_event_store(config_path, user_id)
 
 
-def _resolve_run_id(store: RuntimeStore, requested: str | None) -> str | None:
+def _resolve_run_id(store: EventStore, requested: str | None) -> str | None:
     if requested:
         return requested.strip()
     snapshots = store.list_runs(1)
     return snapshots[0].run_id if snapshots else None
 
 
-def _find_run_store(store: RuntimeStore, run_id: str) -> RuntimeStore:
+def _find_run_store(store: EventStore, run_id: str) -> EventStore:
     try:
         store.read_run(run_id)
         return store
@@ -205,9 +205,9 @@ def _print_run_explanation(explanation: dict[str, object]) -> None:
             f"model\t{model['provider']}\t{model['model']}"
             f"\tbase_url={model.get('base_url') or ''}"
         )
-        skill_runners = runtime_lock.get("skill_runners", [])
+        skill_loaders = runtime_lock.get("skill_loaders", [])
         skills = runtime_lock.get("skills", [])
-        print(f"lock\thandlers={len(skill_runners)}\tskills={len(skills)}")
+        print(f"lock\thandlers={len(skill_loaders)}\tskills={len(skills)}")
     for decision in explanation.get("selection_decisions", []):
         if isinstance(decision, dict):
             reason = str(decision.get("reason", ""))
@@ -225,10 +225,10 @@ def _print_run_explanation(explanation: dict[str, object]) -> None:
                 f"disclosure\t{data.get('skill_key', '')}\t{data.get('stage', '')}"
                 f"\tcache_hit={str(data.get('cache_hit', False)).lower()}"
             )
-    _print_run_plan_insight(explanation.get("run_plan"))
+    _print_plan_insight(explanation.get("plan"))
     _print_task_plan_insight(
         explanation.get("task_plan"),
-        explanation.get("task_steps"),
+        explanation.get("steps"),
     )
     _print_model_call_insight(explanation.get("model_calls"))
     _print_routing_insight(explanation.get("routing_evidence"))
@@ -236,7 +236,7 @@ def _print_run_explanation(explanation: dict[str, object]) -> None:
     _print_evolution_insight(explanation.get("evolution"))
 
 
-def _print_run_plan_insight(value: object) -> None:
+def _print_plan_insight(value: object) -> None:
     if not isinstance(value, dict):
         return
     print(

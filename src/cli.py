@@ -27,7 +27,7 @@ from super_agent import AgentRunOptions
 from core.provider.chat import Message
 from core.models import LOCAL_USER_ID
 from core.state.models import RunEvent
-from core.models import TaskResult
+from core.models import RunResult
 
 
 COMMAND_HANDLERS: dict[str, Callable[[argparse.Namespace], int]] = {
@@ -45,7 +45,7 @@ CLI_COMMANDS = frozenset(COMMAND_HANDLERS) | SPECIAL_COMMANDS
 
 
 @dataclass(frozen=True)
-class RuntimeRequest:
+class CliRequest:
     prompt: str
     messages: list[Message]
     user_id: str = LOCAL_USER_ID
@@ -58,7 +58,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if _is_direct_prompt(arguments):
         return _run_prompt_command(
             None,
-            RuntimeRequest(prompt=" ".join(arguments), messages=[]),
+            CliRequest(prompt=" ".join(arguments), messages=[]),
             "text",
         )
     parser = _build_parser()
@@ -167,7 +167,7 @@ def _run_init_command(root: Path) -> int:
     return 0
 
 
-def _run_prompt_command(config_path: Path | None, request: RuntimeRequest, output: str) -> int:
+def _run_prompt_command(config_path: Path | None, request: CliRequest, output: str) -> int:
     agent = load_agent(config_path)
     user = agent.for_user(request.user_id)
     if output == "jsonl":
@@ -227,7 +227,7 @@ def _run_chat_command(
         print(f"Agent: {result.text}")
 
 
-def run_result_to_dict(result: TaskResult) -> dict[str, Any]:
+def run_result_to_dict(result: RunResult) -> dict[str, Any]:
     return asdict(result)
 
 
@@ -235,11 +235,11 @@ def _print_run_event(event: RunEvent) -> None:
     print(json.dumps({"type": "event", "event": asdict(event)}, ensure_ascii=False), flush=True)
 
 
-def _read_runtime_request_from_args(args: argparse.Namespace) -> RuntimeRequest:
+def _read_runtime_request_from_args(args: argparse.Namespace) -> CliRequest:
     prompt = " ".join(args.prompt).strip()
     if not prompt:
         raise ValueError("run prompt cannot be empty")
-    return RuntimeRequest(
+    return CliRequest(
         prompt=prompt,
         messages=[],
         user_id=args.user_id,
@@ -248,14 +248,14 @@ def _read_runtime_request_from_args(args: argparse.Namespace) -> RuntimeRequest:
     )
 
 
-def _read_runtime_request_from_stdin() -> RuntimeRequest:
+def _read_runtime_request_from_stdin() -> CliRequest:
     data = json.loads(sys.stdin.read())
     if not isinstance(data, dict):
         raise ValueError("runtime request must be a JSON object")
     prompt = str(data.get("prompt", "")).strip()
     if not prompt:
         raise ValueError("runtime request prompt cannot be empty")
-    return RuntimeRequest(
+    return CliRequest(
         prompt=prompt,
         messages=_read_runtime_messages(data.get("messages", [])),
         user_id=_read_runtime_user_id(data.get("user_id", LOCAL_USER_ID)),

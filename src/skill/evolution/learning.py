@@ -22,7 +22,7 @@ from skill.evolution.records import (
     read_evaluation_records,
 )
 from core.state.models import RunEvent
-from skill.state.store import RuntimeStore
+from skill.state.events import EventStore
 from core.models import RunLearningResult
 from skill.task.model_calls import list_model_routing_stats
 from skill.evolution.freshness import calculate_skill_freshness
@@ -40,7 +40,7 @@ LEARNING_COMPLETED_EVENT = "learning.completed"
 
 
 def learn_from_run(
-    store: RuntimeStore,
+    store: EventStore,
     run_id: str,
     create_skill_updater: Callable[[], SkillEvolutionManager],
 ) -> RunLearningResult:
@@ -140,7 +140,7 @@ def learn_from_run(
 
 
 def _record_run_evaluations(
-    store: RuntimeStore,
+    store: EventStore,
     terminal: RunEvent,
     revisions: list[SkillRevision],
     result: EvaluationResult,
@@ -169,7 +169,7 @@ def _record_run_evaluations(
 
 
 def _calculate_current_freshness(
-    store: RuntimeStore,
+    store: EventStore,
     revisions: list[SkillRevision],
 ) -> list[dict[str, object]]:
     by_skill = calculate_skill_freshness(
@@ -183,7 +183,7 @@ def _calculate_current_freshness(
 
 
 def _read_run_model_routing(
-    store: RuntimeStore,
+    store: EventStore,
     run_id: str,
 ) -> list[dict[str, object]]:
     observed = {
@@ -254,7 +254,7 @@ def _result_from_completed_event(
     )
 
 
-def _identity_from_events(store: RuntimeStore, events: list[RunEvent]) -> RunIdentity:
+def _identity_from_events(store: EventStore, events: list[RunEvent]) -> RunIdentity:
     first = events[0]
     conversation_id = first.data.get("conversation_id")
     if conversation_id is not None and not isinstance(conversation_id, str):
@@ -290,7 +290,7 @@ def _find_event(events: list[RunEvent], event_type: str) -> RunEvent | None:
 
 
 def _evaluation_record_id(
-    store: RuntimeStore,
+    store: EventStore,
     run_id: str,
     revision: SkillRevision,
 ) -> str:

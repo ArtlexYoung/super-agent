@@ -24,38 +24,38 @@ from core.state.subscribers import (
 )
 from core.events import StorageBackend
 from skill.task.loop import AdaptiveTaskLoop, list_run_actions
-from skill.task.run_plan import RunPlan
+from skill.task.plan import Plan
 from skill.task.preparation import RuntimeLockInput, create_runtime_lock
 from skill.task.model_calls import estimate_text_tokens
-from core.models import RunLearningResult, TaskRequest, TaskResult, TaskTrace
+from core.models import RunLearningResult, Task, RunResult, TaskTrace
 from skill.skills import Skills
 from skill.kinds.model import (
     ModelProfile,
     read_model_profiles,
 )
 from skill.manifest import SkillManifest
-from skill.runners.defaults import create_skills
-from skill.runners.registry import SkillRunners
+from skill.loaders.defaults import create_skills
+from skill.loaders.registry import SkillLoaders
 
 if TYPE_CHECKING:
-    from skill.state.store import RuntimeStore
+    from skill.state.events import EventStore
     from skill.task.model_calls import ModelRoutingStats
     from skill.evolution.change.manager import SkillEvolutionManager
 
 
-class AgentRuntime:
+class Runtime:
     def __init__(
         self,
         config: AgentConfig,
         provider_pool: ProviderPool,
-        skill_runners: SkillRunners,
+        skill_loaders: SkillLoaders,
         storage: StorageBackend | None,
         create_action_rules: Callable[[], ActionRules] | None,
         user_secrets: UserSecretResolver,
     ) -> None:
         self.config = config
         self.provider_pool = provider_pool
-        self.skill_runners = skill_runners
+        self.skill_loaders = skill_loaders
         self.storage = storage
         self.create_action_rules = create_action_rules
         self.user_secrets = user_secrets
@@ -74,14 +74,14 @@ class AgentRuntime:
 
     def run_task(
         self,
-        request: TaskRequest,
+        request: Task,
         *,
         user_id: str = LOCAL_USER_ID,
         run_id: str | None = None,
         conversation_id: str | None = None,
         parent_run_id: str | None = None,
         event_listener: Callable[[RunEvent], None] | None = None,
-    ) -> TaskResult:
+    ) -> RunResult:
         identity = RunIdentity.create(
             user_id,
             self.config.agent.name,
@@ -103,7 +103,7 @@ class AgentRuntime:
             result = task_loop.run_task(
                 request,
                 run,
-                lambda run_plan: self._lock_task_context(run, run_plan),
+                lambda plan: self._lock_task_context(run, plan),
             )
             result = replace(
                 result,
@@ -166,12 +166,12 @@ class AgentRuntime:
     def list_event_subscribers(self) -> tuple[RuntimeEventSubscriber, ...]:
         return self.event_subscribers.list_subscribers()
 
-    def create_store(self, user_id: str = LOCAL_USER_ID) -> RuntimeStore:
+    def create_event_store(self, user_id: str = LOCAL_USER_ID) -> EventStore:
         if self.storage is None:
             raise RuntimeError("Runtime storage is disabled for this Agent")
-        from skill.state.store import RuntimeStore
+        from skill.state.events import EventStore
 
-        return RuntimeStore(
+        return EventStore(
             self.storage,
             self.config.storage.path,
             user_id,
@@ -184,7 +184,7 @@ class AgentRuntime:
         request: ActionRequest,
         action: Callable[[], object],
     ) -> object:
-        store = self.create_store(user_id)
+        store = self.create_event_store(user_id)
         return ActionRunner(
             self._get_action_rules(),
             store.append_management_action_event,
@@ -199,7 +199,7 @@ class AgentRuntime:
         *,
         user_id: str = LOCAL_USER_ID,
     ) -> TaskTrace:
-        store = self.create_store(user_id)
+        store = self.create_event_store(user_id)
         snapshot = store.read_run(task_id)
         return TaskTrace(task_id, snapshot.parent_run_id, store.read_run_events(task_id))
 
@@ -241,7 +241,7 @@ class AgentRuntime:
         *,
         user_id: str = LOCAL_USER_ID,
     ) -> RunLearningResult:
-        store = self.create_store(user_id)
+        store = self.create_event_store(user_id)
         snapshot = store.read_run(run_id)
         if snapshot.agent_name != self.config.agent.name:
             raise ValueError(f"run belongs to another Agent: {run_id}")
@@ -273,7 +273,7 @@ class AgentRuntime:
     ) -> list[ModelRoutingStats]:
         from skill.task.model_calls import list_model_routing_stats
 
-        return list_model_routing_stats(self.create_store(user_id), purpose)
+        return list_model_routing_stats(self.create_event_store(user_id), purpose)
 
     def create_skill_updater(
         self,
@@ -282,7 +282,7 @@ class AgentRuntime:
     ) -> SkillEvolutionManager:
         from skill.evolution.change.manager import EvolutionModels, SkillEvolutionManager
 
-        store = self.create_store(user_id)
+        store = self.create_event_store(user_id)
         change_handler = on_skill_changed
         if change_handler is None and self.skill_change_listener is not None:
             change_handler = lambda manifest: self.skill_change_listener(
@@ -320,13 +320,13 @@ class AgentRuntime:
 
     def read_model_profiles(self, user_id: str = LOCAL_USER_ID) -> list[ModelProfile]:
         skills = self._create_skills(
-            None if self.storage is None else self.create_store(user_id)
+            None if self.storage is None else self.create_event_store(user_id)
         )
         return self._read_model_profiles(skills, user_id)
 
     def _create_run(
         self,
-        request: TaskRequest,
+        request: Task,
         identity: RunIdentity,
         event_listener: Callable[[RunEvent], None] | None,
     ) -> tuple[Run, AdaptiveTaskLoop]:
@@ -335,7 +335,7 @@ class AgentRuntime:
             backend=self.storage,
             event_listener=event_listener,
         )
-        store = self._create_run_store(identity, event_log)
+        store = self._create_run_event_store(identity, event_log)
         event_log.start_run(request.prompt)
         try:
             skills = self._create_skills(
@@ -369,16 +369,16 @@ class AgentRuntime:
             )
             raise
 
-    def _create_run_store(
+    def _create_run_event_store(
         self,
         identity: RunIdentity,
         event_log: RunEventLog,
-    ) -> RuntimeStore | None:
+    ) -> EventStore | None:
         if self.storage is None:
             return None
-        from skill.state.store import RuntimeStore
+        from skill.state.events import EventStore
 
-        return RuntimeStore(
+        return EventStore(
             self.storage,
             self.config.storage.path,
             identity.user_id,
@@ -396,12 +396,12 @@ class AgentRuntime:
 
     def _create_skills(
         self,
-        store: RuntimeStore | None,
+        store: EventStore | None,
         identity: RunIdentity | None = None,
     ) -> Skills:
         return create_skills(
             self.config,
-            loaders=self.skill_runners,
+            loaders=self.skill_loaders,
             store=store,
             identity=identity if store is not None else None,
             include_freshness=False,
@@ -430,7 +430,7 @@ class AgentRuntime:
     def _lock_task_context(
         self,
         run: Run,
-        run_plan: RunPlan,
+        plan: Plan,
     ) -> None:
         if run.model_profile is None or run.provider is None:
             raise RuntimeError("task model must be selected before Runtime lock")
@@ -441,7 +441,7 @@ class AgentRuntime:
                 skills=run.skills,
                 provider=run.provider,
                 storage=self.storage,
-                run_plan=run_plan,
+                plan=plan,
                 environment=self.user_secrets.get_environment_for_user(
                     run.identity.user_id
                 ),
@@ -473,7 +473,7 @@ class AgentRuntime:
         clean_score = _validate_feedback_score(score)
         if not isinstance(reason, str):
             raise TypeError("task feedback reason must be a string")
-        store = self.create_store(user_id)
+        store = self.create_event_store(user_id)
         snapshot = store.read_run(task_id)
         identity = RunIdentity(
             user_id=snapshot.user_id,

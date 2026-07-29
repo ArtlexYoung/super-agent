@@ -16,7 +16,7 @@ from skill.evolution.records import (
     evaluation_record_to_dict,
     read_evaluation_records,
 )
-from skill.state.store import create_local_runtime_store
+from skill.state.events import create_local_event_store
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.evolution.freshness import calculate_skill_freshness
 from skill.evolution.change.revision import SkillRevision
@@ -76,7 +76,7 @@ instructions = "SKILL.md"
                 created_at=called_at,
             )
 
-            store = create_local_runtime_store(root)
+            store = create_local_event_store(root)
             append_evaluation_records(store, [run_record, candidate_record])
 
             records = read_evaluation_records(store)
@@ -93,7 +93,7 @@ instructions = "SKILL.md"
     def test_same_function_successful_followup_reduces_previous_skill_freshness(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            store = create_local_runtime_store(root)
+            store = create_local_event_store(root)
             first_time = datetime(2026, 7, 7, 12, tzinfo=UTC)
             second_time = first_time + timedelta(minutes=5)
 
@@ -126,7 +126,7 @@ instructions = "SKILL.md"
                 "search",
                 datetime(2026, 7, 7, 12, tzinfo=UTC),
             )
-            store = create_local_runtime_store(root)
+            store = create_local_event_store(root)
 
             append_evaluation_records(store, [record])
 
@@ -152,12 +152,16 @@ instructions = "SKILL.md"
             write_memory_skill(root)
             _write_skill(root, "echo", "general")
             config_path = _write_config(root)
-            agent = Agent(AgentConfig.load_from_file(config_path), provider=MockProvider("useful answer"))
+            agent = Agent(
+                AgentConfig.load_from_file(config_path),
+                provider=MockProvider("useful answer"),
+                use_storage=True,
+            )
 
             result = agent.run("echo hello")
             agent.learn_from_run(result.run_id)
 
-            store = agent.runtime.create_store()
+            store = agent.runtime.create_event_store()
             records = read_evaluation_records(store)
             stats = calculate_skill_freshness(
                 read_evaluation_records(store, source_type="agent_run")
@@ -189,12 +193,13 @@ instructions = "SKILL.md"
             agent = Agent(
                 AgentConfig.load_from_file(_write_config(root)),
                 provider=_FailingProvider(),
+                use_storage=True,
             )
 
             with self.assertRaisesRegex(RuntimeError, "provider unavailable"):
                 agent.run("echo hello")
 
-            store = agent.runtime.create_store()
+            store = agent.runtime.create_event_store()
             run_id = store.list_runs(1)[0].run_id
             agent.learn_from_run(run_id)
             records = read_evaluation_records(

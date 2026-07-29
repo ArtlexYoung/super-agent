@@ -12,7 +12,7 @@ from core.files import write_bytes_atomically
 from core.state.views import disclosure_history_from_events
 
 if TYPE_CHECKING:
-    from skill.state.store import RuntimeStore
+    from skill.state.events import EventStore
 
 
 class RuntimeDisclosureStore:
@@ -21,7 +21,7 @@ class RuntimeDisclosureStore:
     def __init__(
         self,
         cache_root: Path,
-        store: RuntimeStore,
+        store: EventStore,
     ) -> None:
         self.cache_root = cache_root.expanduser().absolute()
         self.history_path = self.cache_root / "history.json"

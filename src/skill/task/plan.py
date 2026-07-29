@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
-from core.models import TaskRequest
-from skill.task.planning import TaskStep
+from core.models import Task
+from skill.task.planning import Step
 from skill.task.model_calls import ModelDecision
 from skill.disclosure import SkillReference
 
 
 @dataclass(frozen=True)
-class RunPlan:
+class Plan:
     """Immutable, serializable decisions fixed before model execution."""
 
     purpose: str
@@ -71,14 +71,14 @@ class RunPlan:
         }
 
 
-def create_task_step_run_plan(
-    step: TaskStep,
-    request: TaskRequest,
-    run_plan: RunPlan,
+def create_step_plan(
+    step: Step,
+    request: Task,
+    plan: Plan,
     *,
     model: ModelDecision,
     model_context_skills: tuple[SkillReference, ...],
-) -> RunPlan:
+) -> Plan:
     required_features = tuple(
         sorted(set(request.required_features) | set(step.required_features) | {"text"})
     )
@@ -89,7 +89,7 @@ def create_task_step_run_plan(
         else (f"{step.subagent}: selected by Planner Skill",)
     )
     return replace(
-        run_plan,
+        plan,
         purpose=step.purpose,
         required_features=required_features,
         model=model,

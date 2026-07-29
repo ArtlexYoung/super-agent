@@ -14,10 +14,10 @@ from uuid import uuid4
 from core.checks import ActionEffect
 from skill.disclosure import ProgressiveDisclosureCore, SkillDisclosure, SkillIndex
 from skill.disclosure.models import SkillReference
-from skill.runners.loaded import SkillAction, SkillTool
+from skill.loaders.loaded import SkillAction, SkillTool
 
 if TYPE_CHECKING:
-    from skill.state.store import RuntimeStore
+    from skill.state.events import EventStore
 
 
 SCENE_CONFIGURATION_FIELDS = {"skills"}
@@ -71,7 +71,7 @@ def read_scene_included_skills(
 
 
 def create_scene_creation_tool(
-    store: RuntimeStore,
+    store: EventStore,
     disclosure: ProgressiveDisclosureCore,
 ) -> SkillTool:
     manager = SkillSceneManager(
@@ -108,7 +108,7 @@ def create_scene_creation_tool(
 class SkillSceneManager:
     """Create complete user-owned scenes without mutating a prepared run index."""
 
-    def __init__(self, store: RuntimeStore, current_index: SkillIndex) -> None:
+    def __init__(self, store: EventStore, current_index: SkillIndex) -> None:
         self.store = store
         self.current_index = current_index
         self.user_skill_root = store.private_root / "skills"

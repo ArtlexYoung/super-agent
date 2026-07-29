@@ -55,7 +55,7 @@ export function SkillConfiguration(props: SkillConfigurationProps) {
     .map((type) => ({
       type,
       title: type,
-      help: `应用注册的 ${type} Skill；Runtime 通过同名 SkillRunner 加载。`,
+      help: `应用注册的 ${type} Skill；Runtime 通过同名 SkillLoader 加载。`,
     }))
   const groups = [...knownGroups, ...customGroups]
 

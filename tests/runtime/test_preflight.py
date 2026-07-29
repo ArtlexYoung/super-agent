@@ -8,7 +8,7 @@ from core.config import AgentConfig
 from core.checks import ActionEffect
 from core.provider.chat import MockProvider
 from skill.task.preflight import TaskPreflightError
-from skill.runners.loaded import LoadedSkill, SkillAction, SkillTool
+from skill.loaders.loaded import LoadedSkill, SkillAction, SkillTool
 
 
 class TaskPreflightTests(unittest.TestCase):
@@ -30,9 +30,9 @@ class TaskPreflightTests(unittest.TestCase):
             agent = Agent(
                 config,
                 provider=provider,
-                skill_runners=[
-                    _ServiceSkillRunner("alpha", ("storage",)),
-                    _ServiceSkillRunner("beta", ("database",)),
+                skill_loaders=[
+                    _ServiceSkillLoader("alpha", ("storage",)),
+                    _ServiceSkillLoader("beta", ("database",)),
                 ],
                 use_storage=False,
             )
@@ -58,6 +58,7 @@ class TaskPreflightTests(unittest.TestCase):
             agent = Agent(
                 AgentConfig.create_default(Path(tmp)),
                 provider=MockProvider("finished"),
+                use_storage=True,
             )
 
             result = agent.run("hello")
@@ -85,7 +86,7 @@ class TaskPreflightTests(unittest.TestCase):
             agent = Agent(
                 config,
                 provider=provider,
-                skill_runners=[_ActionSkillRunner()],
+                skill_loaders=[_ActionSkillLoader()],
                 use_storage=False,
             )
             agent.runtime.create_action_rules = None
@@ -103,7 +104,7 @@ class TaskPreflightTests(unittest.TestCase):
             self.assertEqual([], provider.last_messages)
 
 
-class _ServiceSkillRunner:
+class _ServiceSkillLoader:
     name = "service-test"
     version = "1"
     adds_model_context = False
@@ -116,7 +117,7 @@ class _ServiceSkillRunner:
         return LoadedSkill()
 
 
-class _ActionSkillRunner:
+class _ActionSkillLoader:
     name = "action-test"
     version = "1"
     skill_type = "test_action"

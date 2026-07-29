@@ -6,9 +6,9 @@ import json
 import re
 from dataclasses import dataclass
 
-from skill.runners.loaded import PlanningPolicy
+from skill.loaders.loaded import PlanningPolicy
 from core.provider.chat import Message
-from core.models import TaskRequest
+from core.models import Task
 from skill.kinds.model import ModelProfile
 
 
@@ -28,7 +28,7 @@ class TaskPlanningDecision:
 
 
 @dataclass(frozen=True)
-class TaskStep:
+class Step:
     instruction: str
     purpose: str
     required_features: tuple[str, ...]
@@ -45,7 +45,7 @@ class TaskStep:
 
 @dataclass(frozen=True)
 class TaskPlan:
-    steps: tuple[TaskStep, ...]
+    steps: tuple[Step, ...]
     origin: str
 
     def to_dict(self) -> dict[str, object]:
@@ -91,7 +91,7 @@ def decide_task_planning(
 
 def build_task_planning_messages(
     policy: PlanningPolicy,
-    request: TaskRequest,
+    request: Task,
     *,
     subagents: list[dict[str, object]],
     model_profiles: list[ModelProfile],
@@ -152,7 +152,7 @@ def create_direct_task_plan(
 ) -> TaskPlan:
     return TaskPlan(
         (
-            TaskStep(
+            Step(
                 instruction=prompt,
                 purpose=purpose,
                 required_features=required_features,
@@ -163,9 +163,9 @@ def create_direct_task_plan(
     )
 
 
-def build_task_step_prompt(
+def build_step_prompt(
     original_prompt: str,
-    step: TaskStep,
+    step: Step,
     completed_results: list[str],
 ) -> str:
     if not completed_results and step.instruction == original_prompt:
@@ -187,7 +187,7 @@ def build_task_step_prompt(
 def _read_task_plan_step(
     value: object,
     available_subagent_names: set[str],
-) -> TaskStep:
+) -> Step:
     if not isinstance(value, dict) or set(value) != TASK_PLAN_STEP_FIELDS:
         raise ValueError(
             "planner step fields must be instruction, purpose, required_features, "
@@ -199,7 +199,7 @@ def _read_task_plan_step(
         raise ValueError("planner step purpose must be a simple lowercase label")
     features = _read_features(value["required_features"])
     subagent = _read_subagent(value["subagent"], available_subagent_names)
-    return TaskStep(instruction, purpose, features, subagent)
+    return Step(instruction, purpose, features, subagent)
 
 
 def _read_features(value: object) -> tuple[str, ...]:

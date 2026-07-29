@@ -48,15 +48,16 @@ print(result.text)
 print(result.run_id)
 ```
 
-`Agent()` 使用惰性初始化。配置会立即校验；存储、Skill 扫描、模型发现和 Runtime 组装会
-等到首次使用时才发生。因此可以先注册 Skill runner、MCP 服务、事件订阅者和子 Agent。
+`Agent()` 使用惰性初始化。配置会立即校验；Skill 扫描、模型发现和 Runtime 组装会等到
+首次使用时才发生。只有应用明确启用或传入存储时才会打开存储。因此可以先注册 Skill
+loader、MCP 服务、事件订阅者和子 Agent。
 
-嵌入式任务如果不需要会话、记忆、缓存或持久化证据，可以关闭存储：
+Python 库默认不启用存储，适合不需要会话、记忆、缓存或持久化证据的嵌入式任务：
 
 ```python
 from super_agent import Agent, MockProvider
 
-agent = Agent(provider=MockProvider("离线结果"), use_storage=False)
+agent = Agent(provider=MockProvider("离线结果"))
 result = agent.run("对这段文本分类")
 print(result.events)
 ```
@@ -68,9 +69,9 @@ print(result.events)
 ```text
 Provider     连接模型智能
 Core         规划运行、执行任务并管理可选状态
-SkillRunner  将一种 Skill 转为运行行为
+SkillLoader  将一种 Skill 转为运行行为
 Skill        保存被动内容与配置
-Agent        在 Python 中组合 Provider、runner、存储和子 Agent
+Agent        在 Python 中组合 Provider、SkillLoader、可选存储和子 Agent
 ```
 
 每次任务只走一条链路：
@@ -79,8 +80,8 @@ Agent        在 Python 中组合 Provider、runner、存储和子 Agent
 Agent.run
   -> 创建一个完整 Run
   -> 选择一个任务场景，渐进披露所需 Skill
-  -> 使用一个 Scheduler Skill 创建只含一次模型决定的 RunPlan
-  -> 预检 runner、服务、工具、Provider 和子 Agent
+  -> 使用一个 Scheduler Skill 创建只含一次模型决定的 Plan
+  -> 预检 SkillLoader、服务、工具、Provider 和子 Agent
   -> 执行并产生一条有序事件流
   -> 可选地从不可变证据中学习
 ```
@@ -94,7 +95,7 @@ Agent.run
 - **可进化：** 显式调用 `learn_from_run` 后才评价证据。允许更新的 Agent 自建 Skill 可以
   依次经过候选、不退化评价、晋升、监控和回滚。
 
-Skill 内容只是被动数据，不能给自己授予执行权限。可执行 MCP 服务和自定义 Skill runner
+Skill 内容只是被动数据，不能给自己授予执行权限。可执行 MCP 服务和自定义 Skill loader
 必须在可信应用代码中注册，工具也必须在预检前声明操作效果。
 
 ## Skill 与场景
@@ -108,7 +109,7 @@ skill_scenes/
 ```
 
 Runtime 根据本次明确指定、Agent 配置或提示词触发器选择一个场景。出现歧义时直接报错。
-应用可以通过 `Agent.add_skill_runner(...)` 注册任意 Skill 类型，Core 不维护固定类型列表。
+应用可以通过 `Agent.add_skill_loader(...)` 注册任意 Skill 类型，Core 不维护固定类型列表。
 
 只有需要可编辑示例时才运行 `super-agent init --path my-agent`。模型配置是 model Skill，
 API 密钥仍放在环境变量中。格式详见 [Skill](docs/skills.md) 与
@@ -116,8 +117,9 @@ API 密钥仍放在环境变量中。格式详见 [Skill](docs/skills.md) 与
 
 ## 可选层
 
-默认存储是 `.super-agent/` 下可直接阅读的本地 JSONL。SQLite 同样只使用标准库。
-MySQL 与 PostgreSQL 驱动只在明确选择对应后端后作为可选依赖加载。
+CLI 与 Web 应用明确使用 `.super-agent/` 下可直接阅读的本地 JSONL。Python 库可通过
+`Agent(use_storage=True)` 启用相同后端。SQLite 同样只使用标准库；MySQL 与 PostgreSQL
+驱动只在明确选择对应后端后作为可选依赖加载。
 
 常用入口：
 
@@ -137,7 +139,7 @@ super-agent skills freshness
 - [快速开始](docs/getting-started.md)
 - [架构](docs/architecture.md)
 - [Skill 与渐进式披露](docs/skills.md)
-- [Skill runner 与 MCP](docs/skill-runners.md)
+- [Skill loader 与 MCP](docs/skill-loaders.md)
 - [配置与存储](docs/configuration.md)
 - [Runtime、追踪、用户与子 Agent](docs/runtime.md)
 - [记忆、评价、保鲜度与进化](docs/evolution.md)

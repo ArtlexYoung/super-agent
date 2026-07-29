@@ -7,7 +7,7 @@ from pathlib import Path
 from super_agent import Agent
 from core.config import AgentConfig
 from core.models import LOCAL_USER_ID
-from skill.state.store import RuntimeStore
+from skill.state.events import EventStore
 
 
 AgentConfigSource = AgentConfig | str | Path | None
@@ -22,13 +22,13 @@ def load_agent_config(source: AgentConfigSource = None) -> AgentConfig:
 
 
 def load_agent(source: AgentConfigSource = None) -> Agent:
-    return Agent(load_agent_config(source))
+    return Agent(load_agent_config(source), use_storage=True)
 
 
-def load_runtime_store(
+def load_event_store(
     source: AgentConfigSource = None,
     user_id: str = LOCAL_USER_ID,
-) -> RuntimeStore:
+) -> EventStore:
     config = load_agent_config(source)
     from adapter.storage import create_storage_backend
 
@@ -37,7 +37,7 @@ def load_runtime_store(
         str(config.storage.path),
         config.storage.url_env,
     )
-    return RuntimeStore(
+    return EventStore(
         backend,
         config.storage.path,
         user_id,

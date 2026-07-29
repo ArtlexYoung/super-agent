@@ -80,9 +80,9 @@ class SubAgentTests(unittest.TestCase):
             result = main.run("write code")
 
             child_run_id = result.subagent_results[0].run_id
-            child_events = coder.runtime.create_store().read_run_events(child_run_id)
-            self.assertEqual([], read_evaluation_records(main.runtime.create_store()))
-            self.assertEqual([], read_evaluation_records(coder.runtime.create_store()))
+            child_events = coder.runtime.create_event_store().read_run_events(child_run_id)
+            self.assertEqual([], read_evaluation_records(main.runtime.create_event_store()))
+            self.assertEqual([], read_evaluation_records(coder.runtime.create_event_store()))
             self.assertFalse(
                 any(event.event_type.startswith("learning.") for event in child_events)
             )
@@ -216,9 +216,9 @@ class SubAgentTests(unittest.TestCase):
             child = result.subagent_results[0]
             self.assertEqual("write the implementation", child.prompt)
             self.assertTrue(child.run_id)
-            child_events = coder.runtime.create_store().read_run_events(child.run_id)
+            child_events = coder.runtime.create_event_store().read_run_events(child.run_id)
             self.assertEqual(result.run_id, child_events[0].parent_run_id)
-            parent_events = main.runtime.create_store().read_run_events(result.run_id)
+            parent_events = main.runtime.create_event_store().read_run_events(result.run_id)
             self.assertIn("subagent.completed", [event.event_type for event in parent_events])
             self.assertIn("coder-result", str(main_provider.last_messages))
 
@@ -251,4 +251,8 @@ path = ".super-agent"
 """.strip(),
         encoding="utf-8",
     )
-    return Agent(AgentConfig.load_from_file(config_path), provider=provider or MockProvider(response))
+    return Agent(
+        AgentConfig.load_from_file(config_path),
+        provider=provider or MockProvider(response),
+        use_storage=True,
+    )

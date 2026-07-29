@@ -7,7 +7,7 @@ import re
 from dataclasses import dataclass, replace
 from typing import Callable, Mapping
 
-from core.models import TaskRequest
+from core.models import Task
 from skill.disclosure import (
     ProgressiveDisclosureCore,
     SkillDisclosure,
@@ -15,7 +15,7 @@ from skill.disclosure import (
     SkillReference,
 )
 from skill.kinds.model import ModelProfile, model_profile_is_ready
-from skill.runners.loaded import LoadedSkill
+from skill.loaders.loaded import LoadedSkill
 from skill.task.model_calls import (
     LOW_ROUTING_CONFIDENCE,
     MINIMUM_ROUTING_EVIDENCE_CALLS,
@@ -56,7 +56,7 @@ class Scheduler:
     def select_scene(
         self,
         disclosure: ProgressiveDisclosureCore,
-        request: TaskRequest,
+        request: Task,
         enabled_skills: list[str],
         unavailable_scenes: Mapping[str, tuple[str, ...]],
     ) -> SkillReference:
@@ -112,7 +112,7 @@ class Scheduler:
 
     def resolve_required_features(
         self,
-        request: TaskRequest,
+        request: Task,
         *,
         uses_tools: bool,
     ) -> tuple[str, ...]:
@@ -244,7 +244,7 @@ def load_scheduler(
         )
     contribution = load_skill(selected.reference)
     if contribution.scheduling_policy is None:
-        raise TypeError("scheduler Skill runner did not provide scheduling rules")
+        raise TypeError("scheduler Skill loader did not provide scheduling rules")
     return SelectedScheduler(
         selected.reference,
         Scheduler(contribution.scheduling_policy),

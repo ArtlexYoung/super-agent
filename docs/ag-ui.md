@@ -80,7 +80,7 @@ Embed the server with the public library API:
 from adapter.ag_ui_adapter import create_ag_ui_server
 from super_agent import Agent
 
-server = create_ag_ui_server(Agent())
+server = create_ag_ui_server(Agent(use_storage=True))
 server.serve_forever()
 ```
 

@@ -85,7 +85,7 @@ class SubagentCallbacks:
 
 
 @dataclass(frozen=True)
-class TaskRequest:
+class Task:
     prompt: str
     messages: list[Message]
     include_subagents: bool
@@ -99,7 +99,7 @@ class TaskRequest:
 
 
 @dataclass(frozen=True)
-class TaskResult:
+class RunResult:
     text: str
     workflow: str
     skills: list[str]

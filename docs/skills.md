@@ -56,7 +56,7 @@ Common types are:
 - `planner`: task decomposition rules.
 - `model`: Provider connection metadata and routing traits.
 
-Custom type names are allowed. Register a matching SkillRunner in Python when the type
+Custom type names are allowed. Register a matching SkillLoader in Python when the type
 needs executable behavior. The manifest type `runner` is reserved because executable
 code cannot come from a Skill directory.
 
@@ -136,7 +136,7 @@ skills = [
 
 Every scene must reference a workflow. A scene cannot reference another scene and may
 reference at most one planner and one workflow. Every referenced custom type needs a
-registered SkillRunner. Missing references, missing runners, and conflicts are errors;
+registered SkillLoader. Missing references, missing loaders, and conflicts are errors;
 Runtime does not substitute another scene or workflow.
 
 The shipped roots are:
@@ -197,7 +197,7 @@ when a recorder exists. The model always receives the compact index first and us
 `disclose_skill_manifest`, `disclose_skill_instructions`, or
 `disclose_skill_configuration` when it needs more content. `read_disclosed_content` reads
 an already disclosed path without activating its Skill. `activate_skill` is the separate
-operation that loads a runner contribution, attaches its tools, and records actual use.
+operation that loads a loader contribution, attaches its tools, and records actual use.
 Offline listing, validation, and ordinary reads have no storage side effects.
 
 ## Packages

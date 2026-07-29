@@ -15,7 +15,7 @@ from adapter.conversations import (
     read_conversation,
 )
 from core.events import StorageBackend, StorageEventQuery
-from skill.state.store import RuntimeStore
+from skill.state.events import EventStore
 from skill.kinds.memory import MiniMemory
 from skill.evolution.change.revision import SkillRevision
 
@@ -184,19 +184,19 @@ def _run_multiuser_isolation_checks(
 ) -> tuple[list[str], int]:
     user_a, user_b = user_ids
     agent_name = "proof-agent"
-    store_a = RuntimeStore(
+    store_a = EventStore(
         backend=backend,
         local_root=local_root,
         user_id=user_a,
         agent_name=agent_name,
     )
-    store_b = RuntimeStore(
+    store_b = EventStore(
         backend=backend,
         local_root=local_root,
         user_id=user_b,
         agent_name=agent_name,
     )
-    subagent_store = RuntimeStore(
+    subagent_store = EventStore(
         backend=backend,
         local_root=local_root,
         user_id=user_a,
@@ -232,7 +232,7 @@ def _run_multiuser_isolation_checks(
     return checks, event_count
 
 
-def _write_isolated_domain_state(store: RuntimeStore, marker: str) -> None:
+def _write_isolated_domain_state(store: EventStore, marker: str) -> None:
     conversation_id = "shared-conversation"
     create_conversation(store, marker, conversation_id=conversation_id)
     append_conversation_turn(
@@ -261,7 +261,7 @@ def _write_isolated_domain_state(store: RuntimeStore, marker: str) -> None:
     )
 
 
-def _require_conversation_isolation(store: RuntimeStore, marker: str) -> str:
+def _require_conversation_isolation(store: EventStore, marker: str) -> str:
     messages = read_conversation(store, "shared-conversation").messages
     if [message.content for message in messages] != [
         f"{marker}-only",
@@ -271,7 +271,7 @@ def _require_conversation_isolation(store: RuntimeStore, marker: str) -> str:
     return "conversation_user_isolation"
 
 
-def _require_memory_isolation(store: RuntimeStore, marker: str) -> str:
+def _require_memory_isolation(store: EventStore, marker: str) -> str:
     if [item.text for item in MiniMemory(store).list_memory_items()] != [
         f"{marker}-only"
     ]:
@@ -279,21 +279,21 @@ def _require_memory_isolation(store: RuntimeStore, marker: str) -> str:
     return "memory_user_isolation"
 
 
-def _require_habit_isolation(store: RuntimeStore, skill_name: str) -> str:
+def _require_habit_isolation(store: EventStore, skill_name: str) -> str:
     habits = store.memory.read_usage_habits()
     if habits["skills"] != {skill_name: 1}:
         raise AssertionError("usage habit user isolation failed")
     return "skill_usage_user_isolation"
 
 
-def _require_evolution_isolation(store: RuntimeStore, skill_name: str) -> str:
+def _require_evolution_isolation(store: EventStore, skill_name: str) -> str:
     states = list_skill_evolutions(store)
     if [state.skill_key for state in states] != [f"prompt:{skill_name}"]:
         raise AssertionError("Skill evolution user isolation failed")
     return "skill_evolution_user_isolation"
 
 
-def _require_disclosure_isolation(store: RuntimeStore, skill_name: str) -> str:
+def _require_disclosure_isolation(store: EventStore, skill_name: str) -> str:
     path = store.disclosure.cache_root / "proof.txt"
     marker = skill_name.removesuffix("-skill")
     if store.disclosure.read_content(path) != f"{marker}-only":
@@ -304,15 +304,15 @@ def _require_disclosure_isolation(store: RuntimeStore, skill_name: str) -> str:
     return "skill_disclosure_user_isolation"
 
 
-def _require_private_roots_differ(first: RuntimeStore, second: RuntimeStore) -> str:
+def _require_private_roots_differ(first: EventStore, second: EventStore) -> str:
     if first.private_root == second.private_root:
         raise AssertionError("Runtime private roots are not isolated")
     return "private_artifact_user_isolation"
 
 
 def _require_agent_isolation(
-    main_store: RuntimeStore,
-    subagent_store: RuntimeStore,
+    main_store: EventStore,
+    subagent_store: EventStore,
 ) -> str:
     main_texts = [item.text for item in MiniMemory(main_store).list_memory_items()]
     subagent_texts = [

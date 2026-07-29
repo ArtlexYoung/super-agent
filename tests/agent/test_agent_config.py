@@ -10,7 +10,7 @@ from core.provider.chat import MockProvider
 from adapter.storage import create_storage_backend
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.kinds.model import read_model_profiles
-from skill.runners.defaults import create_skills
+from skill.loaders.defaults import create_skills
 from support import write_workflow_skill
 
 
@@ -220,7 +220,7 @@ class LazyAgentInitializationTests(unittest.TestCase):
             child = Agent(config, provider=MockProvider("child"), use_storage=False)
 
             agent.add_subagent(child)
-            agent.add_skill_runner(_UnusedSkillRunner())
+            agent.add_skill_loader(_UnusedSkillLoader())
             agent.add_mcp_server(
                 "example",
                 _UnusedMcpServer(),
@@ -247,6 +247,7 @@ class LazyAgentInitializationTests(unittest.TestCase):
             agent = Agent(
                 AgentConfig.create_default(Path(tmp)),
                 provider=MockProvider("ready"),
+                use_storage=True,
             )
 
             runtime = agent.runtime
@@ -286,24 +287,24 @@ class LazyAgentInitializationTests(unittest.TestCase):
             self.assertIsNotNone(agent.runtime)
             self.assertEqual(2, attempts)
 
-    def test_supplied_storage_provider_and_runner_keep_their_identity(self) -> None:
+    def test_supplied_storage_provider_and_loader_keep_their_identity(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             config = AgentConfig.create_default(root)
             storage = create_storage_backend("jsonl", str(root / "state"))
             provider = MockProvider("ready")
-            runner = _UnusedSkillRunner()
+            loader = _UnusedSkillLoader()
             agent = Agent(
                 config,
                 provider=provider,
                 storage=storage,
-                skill_runners=[runner],
+                skill_loaders=[loader],
             )
 
             self.assertIs(storage, agent.storage)
             self.assertIs(
-                runner,
-                agent.skill_runners.find_skill_runner("unused"),
+                loader,
+                agent.skill_loaders.find_skill_loader("unused"),
             )
             self.assertIs(
                 provider,
@@ -314,16 +315,16 @@ class LazyAgentInitializationTests(unittest.TestCase):
             )
 
 
-class _UnusedSkillRunner:
+class _UnusedSkillLoader:
     skill_type = "unused"
-    name = "unused-test-runner"
+    name = "unused-test-loader"
     version = "1"
     adds_model_context = False
     dependencies: tuple[str, ...] = ()
     required_services: tuple[str, ...] = ()
 
     def load_skill(self, request: object) -> object:
-        raise AssertionError(f"unused runner was called: {request}")
+        raise AssertionError(f"unused loader was called: {request}")
 
 
 class _UnusedMcpServer:

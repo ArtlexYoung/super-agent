@@ -125,7 +125,7 @@ function AgentConfigurationPanel(props: AgentConfigurationPanelProps) {
             <h2>Agent</h2>
             <p>身份与基础行为</p>
           </div>
-          <HelpTooltip label="Agent 组合 Provider、Runtime、SkillRunner 和 Skill；修改名称会切换到新的 Agent 隔离空间。" />
+          <HelpTooltip label="Agent 组合 Provider、Runtime、SkillLoader 和 Skill；修改名称会切换到新的 Agent 隔离空间。" />
         </div>
         <div className="configuration-form-grid">
           <ConfigurationField

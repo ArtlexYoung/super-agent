@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable, Protocol
 from uuid import uuid4
 
-from skill.runners.loaded import TaskPolicy
+from skill.loaders.loaded import TaskPolicy
 from core.provider.chat import (
     ChatProvider,
     Message,
@@ -19,12 +19,12 @@ from core.provider.chat import (
 from core.provider.pool import ProviderPool
 from core.runtime import ModelCall, Runtime, estimate_text_tokens
 from core.state.models import Conversation
-from core.models import TaskRequest
+from core.models import Task
 from skill.kinds.model import ModelProfile
 from skill.manifest import Skill
 
 if TYPE_CHECKING:
-    from skill.state.store import RuntimeStore
+    from skill.state.events import EventStore
     from skill.task.scheduler import Scheduler
 
 
@@ -171,7 +171,7 @@ class AdaptiveModelCalls:
 
     def create_text_model(
         self,
-        store: RuntimeStore | None,
+        store: EventStore | None,
         purpose: str,
         record_event: EventWriter | None = None,
         *,
@@ -190,7 +190,7 @@ class AdaptiveModelCalls:
 
     def choose_model(
         self,
-        store: RuntimeStore | None,
+        store: EventStore | None,
         purpose: str,
         prompt: str,
         *,
@@ -264,7 +264,7 @@ class AdaptiveModelCalls:
 @dataclass(frozen=True)
 class _AdaptiveTextModel:
     model_calls: AdaptiveModelCalls
-    store: RuntimeStore | None
+    store: EventStore | None
     record_event: EventWriter | None
     purpose: str
     scheduler: Scheduler
@@ -301,7 +301,7 @@ class _AdaptiveTextModel:
 
 
 def list_model_routing_stats(
-    store: RuntimeStore,
+    store: EventStore,
     purpose: str | None = None,
 ) -> list[ModelRoutingStats]:
     events = store.read_events()
@@ -440,7 +440,7 @@ def _nonnegative_number(value: object) -> float:
 
 
 def build_model_messages(
-    request: TaskRequest,
+    request: Task,
     workflow: TaskPolicy,
     skills: list[Skill],
     *,

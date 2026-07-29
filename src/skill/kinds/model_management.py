@@ -13,7 +13,7 @@ from uuid import uuid4
 
 from core.config import AgentConfig
 from core.checks import ActionEffect, ActionRequest, ActionRunner, ActionRules
-from skill.state.store import RuntimeStore
+from skill.state.events import EventStore
 from skill.disclosure import ProgressiveDisclosureCore, SkillDisclosure
 from skill.kinds.model import ModelProfile, create_model_profile_from_skill_disclosure
 from skill.manifest import DEFAULT_SKILL_FRESHNESS, SkillEntry, SkillManifest
@@ -54,7 +54,7 @@ class ModelSkillManager:
     def __init__(
         self,
         config: AgentConfig,
-        store: RuntimeStore,
+        store: EventStore,
         action_rules: ActionRules | None = None,
     ) -> None:
         self.config = config
@@ -361,7 +361,7 @@ def _with_default(
 
 def _apply_model_skill_updates(
     updates: list[tuple[Path, Path | None, _ModelSkillDocument]],
-    store: RuntimeStore,
+    store: EventStore,
     *,
     removed_path: Path | None,
 ) -> None:
@@ -384,7 +384,7 @@ def _apply_model_skill_updates(
 
 def _stage_model_skill_updates(
     updates: list[tuple[Path, Path | None, _ModelSkillDocument]],
-    store: RuntimeStore,
+    store: EventStore,
 ) -> list[tuple[Path, Path]]:
     stages: list[tuple[Path, Path]] = []
     try:
@@ -436,7 +436,7 @@ def _stage_model_skill(
     target: Path,
     source: Path | None,
     document: _ModelSkillDocument,
-    store: RuntimeStore,
+    store: EventStore,
 ) -> tuple[Path, Path]:
     target.parent.mkdir(parents=True, exist_ok=True)
     stage = target.parent / f".{target.name}.model-stage-{uuid4().hex}"

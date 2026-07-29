@@ -25,7 +25,7 @@ from skill.evolution.values import (
     validate_skill_evolution_recommendation,
 )
 from core.events import StorageEvent
-from skill.state.store import RuntimeStore
+from skill.state.events import EventStore
 from skill.evolution.change.revision import (
     SkillRevision,
     skill_revision_from_dict,
@@ -64,7 +64,7 @@ class _SkillEvolutionStart:
 
 
 def start_manual_skill_evolution(
-    store: RuntimeStore,
+    store: EventStore,
     candidate_id: str,
     source_revision: SkillRevision | None,
     candidate_revision: SkillRevision,
@@ -87,7 +87,7 @@ def start_manual_skill_evolution(
 
 
 def recommend_skill_evolution(
-    store: RuntimeStore,
+    store: EventStore,
     evolution_id: str,
     revision: SkillRevision,
     recommendation: SkillEvolutionRecommendation,
@@ -118,7 +118,7 @@ def recommend_skill_evolution(
 
 
 def record_skill_evolution_candidate(
-    store: RuntimeStore,
+    store: EventStore,
     evolution_id: str,
     candidate_id: str,
     candidate_revision: SkillRevision,
@@ -143,7 +143,7 @@ def record_skill_evolution_candidate(
 
 
 def record_skill_candidate_evaluation(
-    store: RuntimeStore,
+    store: EventStore,
     candidate_id: str,
     evaluation: CandidateEvaluation,
 ) -> SkillEvolutionState:
@@ -163,7 +163,7 @@ def record_skill_candidate_evaluation(
 
 
 def require_skill_candidate_can_promote(
-    store: RuntimeStore,
+    store: EventStore,
     candidate_id: str,
     current_revision: SkillRevision | None,
 ) -> SkillEvolutionState:
@@ -178,7 +178,7 @@ def require_skill_candidate_can_promote(
 
 
 def record_skill_candidate_promoted(
-    store: RuntimeStore,
+    store: EventStore,
     candidate_id: str,
     active_revision: SkillRevision,
     current_revision: SkillRevision | None,
@@ -206,7 +206,7 @@ def record_skill_candidate_promoted(
 
 
 def record_skill_evolution_failure(
-    store: RuntimeStore,
+    store: EventStore,
     evolution_id: str,
     error: Exception,
 ) -> SkillEvolutionState:
@@ -225,7 +225,7 @@ def record_skill_evolution_failure(
 
 
 def record_skill_evolution_monitoring(
-    store: RuntimeStore,
+    store: EventStore,
     evolution_id: str,
     status: str,
     detail: str,
@@ -254,7 +254,7 @@ def record_skill_evolution_monitoring(
 
 
 def read_skill_evolution(
-    store: RuntimeStore,
+    store: EventStore,
     evolution_id: str,
 ) -> SkillEvolutionState:
     clean_id = _clean_evolution_id(evolution_id)
@@ -265,7 +265,7 @@ def read_skill_evolution(
 
 
 def list_skill_evolutions(
-    store: RuntimeStore,
+    store: EventStore,
     status: str | None = None,
 ) -> list[SkillEvolutionState]:
     grouped: dict[str, list[StorageEvent]] = {}
@@ -287,7 +287,7 @@ def list_skill_evolutions(
 
 
 def find_candidate_skill_evolution(
-    store: RuntimeStore,
+    store: EventStore,
     candidate_id: str,
 ) -> SkillEvolutionState:
     clean_id = _required_text(candidate_id, "candidate_id")
@@ -314,7 +314,7 @@ def replay_skill_evolution(
 
 
 def _start_skill_evolution(
-    store: RuntimeStore,
+    store: EventStore,
     evolution_id: str,
     start: _SkillEvolutionStart,
 ) -> SkillEvolutionState:
@@ -509,7 +509,7 @@ def _apply_evolution_result(
 
 
 def _append_and_apply(
-    store: RuntimeStore,
+    store: EventStore,
     state: SkillEvolutionState,
     event_type: str,
     data: dict[str, object],

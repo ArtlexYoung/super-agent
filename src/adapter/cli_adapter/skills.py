@@ -4,10 +4,10 @@ import argparse
 import json
 from pathlib import Path
 
-from adapter.cli_adapter import load_agent, load_agent_config, load_runtime_store
-from skill.runners.defaults import create_progressive_skill_disclosure
-from skill.runners.builtins import create_builtin_skill_runners
-from skill.runners.mcp import McpServers
+from adapter.cli_adapter import load_agent, load_agent_config, load_event_store
+from skill.loaders.defaults import create_progressive_skill_disclosure
+from skill.loaders.builtins import create_builtin_skill_loaders
+from skill.loaders.mcp import McpServers
 from core.config import AgentConfig
 from core.models import LOCAL_USER_ID
 from core.checks import ActionRules
@@ -180,7 +180,7 @@ def _rollback_skill(args: argparse.Namespace) -> int:
 
 def _show_skill_freshness(config_path: Path, user_id: str) -> int:
     config = load_agent_config(config_path)
-    store = load_runtime_store(config, user_id)
+    store = load_event_store(config, user_id)
     stats = calculate_skill_freshness(
         read_evaluation_records(store, source_type="agent_run")
     )
@@ -213,7 +213,7 @@ def _explain_skills(config_path: Path, user_id: str, prompt: str) -> int:
     config = load_agent_config(config_path)
     disclosure = create_progressive_skill_disclosure(
         config,
-        store=load_runtime_store(config, user_id),
+        store=load_event_store(config, user_id),
     )
     disclosure.prepare_skill_index()
     decisions = disclosure.explain_skill_selection_for_prompt(
@@ -318,13 +318,13 @@ def _load_skill_disclosure(
     config = load_agent_config(config_path)
     return create_progressive_skill_disclosure(
         config,
-        store=load_runtime_store(config, user_id),
+        store=load_event_store(config, user_id),
     )
 
 
 def _load_package_manager(config_path: Path, user_id: str) -> SkillPackageManager:
     config = load_agent_config(config_path)
-    store = load_runtime_store(config, user_id)
+    store = load_event_store(config, user_id)
     return SkillPackageManager(
         create_progressive_skill_disclosure(
             config,
@@ -337,9 +337,9 @@ def _load_package_manager(config_path: Path, user_id: str) -> SkillPackageManage
 
 def _default_model_context_types() -> set[str]:
     return {
-        runner.skill_type
-        for runner in create_builtin_skill_runners(McpServers())
-        if runner.adds_model_context
+        loader.skill_type
+        for loader in create_builtin_skill_loaders(McpServers())
+        if loader.adds_model_context
     }
 
 

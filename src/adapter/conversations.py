@@ -9,16 +9,16 @@ from uuid import uuid4
 from core.checks import ActionEffect, ActionRequest, ActionRunner, ActionRules, PreparedAction
 from core.events import StorageEvent
 from core.provider.chat import Message
-from core.models import TaskResult
+from core.models import RunResult
 from core.state.models import Conversation, ConversationMessage
 
 if TYPE_CHECKING:
-    from skill.state.store import RuntimeStore
+    from skill.state.events import EventStore
 
 
 @dataclass(frozen=True)
 class PendingConversationTurn:
-    store: RuntimeStore
+    store: EventStore
     action_runner: ActionRunner
     prepared_action: PreparedAction
     conversation: Conversation | None
@@ -27,7 +27,7 @@ class PendingConversationTurn:
 
 
 def prepare_conversation_turn(
-    store: RuntimeStore,
+    store: EventStore,
     action_rules: ActionRules,
     conversation_id: str,
     prompt: str,
@@ -62,7 +62,7 @@ def prepare_conversation_turn(
 
 def complete_conversation_turn(
     pending: PendingConversationTurn,
-    result: TaskResult,
+    result: RunResult,
 ) -> None:
     """Apply one previously checked conversation change after a successful run."""
     pending.action_runner.apply_action(
@@ -79,7 +79,7 @@ def complete_conversation_turn(
 
 
 def create_conversation(
-    store: RuntimeStore,
+    store: EventStore,
     title: str = "",
     *,
     conversation_id: str | None = None,
@@ -99,7 +99,7 @@ def create_conversation(
     return read_conversation(store, selected_id)
 
 
-def read_conversation(store: RuntimeStore, conversation_id: str) -> Conversation:
+def read_conversation(store: EventStore, conversation_id: str) -> Conversation:
     selected_id = _required_text(conversation_id, "conversation_id")
     events = store.read_events("conversation", selected_id)
     if not events:
@@ -107,7 +107,7 @@ def read_conversation(store: RuntimeStore, conversation_id: str) -> Conversation
     return conversation_from_events(store.user_id, events)
 
 
-def list_conversations(store: RuntimeStore) -> list[Conversation]:
+def list_conversations(store: EventStore) -> list[Conversation]:
     grouped: dict[str, list[StorageEvent]] = {}
     for event in store.read_events("conversation"):
         grouped.setdefault(event.stream_id, []).append(event)
@@ -119,7 +119,7 @@ def list_conversations(store: RuntimeStore) -> list[Conversation]:
 
 
 def rename_conversation(
-    store: RuntimeStore,
+    store: EventStore,
     conversation_id: str,
     title: str,
 ) -> Conversation:
@@ -135,7 +135,7 @@ def rename_conversation(
     return read_conversation(store, conversation.conversation_id)
 
 
-def clear_conversation(store: RuntimeStore, conversation_id: str) -> Conversation:
+def clear_conversation(store: EventStore, conversation_id: str) -> Conversation:
     conversation = read_conversation(store, conversation_id)
     store.append_event(
         "conversation",
@@ -146,13 +146,13 @@ def clear_conversation(store: RuntimeStore, conversation_id: str) -> Conversatio
     return read_conversation(store, conversation.conversation_id)
 
 
-def delete_conversation(store: RuntimeStore, conversation_id: str) -> None:
+def delete_conversation(store: EventStore, conversation_id: str) -> None:
     conversation = read_conversation(store, conversation_id)
     store.delete_events("conversation", conversation.conversation_id)
 
 
 def append_conversation_turn(
-    store: RuntimeStore,
+    store: EventStore,
     conversation_id: str,
     prompt: str,
     response: str,

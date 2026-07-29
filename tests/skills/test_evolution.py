@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from super_agent import Agent
-from skill.runners.defaults import create_progressive_skill_disclosure
+from skill.loaders.defaults import create_progressive_skill_disclosure
 from core.provider.chat import MockProvider
 from core.config import AgentConfig
 from skill.evolution.change.evaluation import EvaluationCase, require_report_allows_promotion
@@ -205,7 +205,7 @@ class SkillEvolutionTests(unittest.TestCase):
                 "writer",
                 "prompt",
             )
-            bob_store = agent.runtime.create_store("bob")
+            bob_store = agent.runtime.create_event_store("bob")
             bob_disclosure = create_progressive_skill_disclosure(
                 agent.config,
                 store=bob_store,
@@ -816,7 +816,11 @@ path = ".super-agent"
 """.strip(),
         encoding="utf-8",
     )
-    return Agent(AgentConfig.load_from_file(config_path), provider=provider)
+    return Agent(
+        AgentConfig.load_from_file(config_path),
+        provider=provider,
+        use_storage=True,
+    )
 
 
 def _write_prompt_skill(

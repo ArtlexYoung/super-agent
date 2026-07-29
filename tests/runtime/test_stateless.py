@@ -25,7 +25,7 @@ from core.provider.chat import MockProvider
 
 with tempfile.TemporaryDirectory() as temporary_directory:
     config = AgentConfig.create_default(Path(temporary_directory))
-    agent = Agent(config, provider=MockProvider("finished"))
+    agent = Agent(config, provider=MockProvider("finished"), use_storage=True)
     result = agent.run("hello", scene="stateless")
 assert result.text == "finished"
 blocked = (
@@ -56,13 +56,13 @@ from core.provider.chat import MockProvider
 
 with tempfile.TemporaryDirectory() as temporary_directory:
     config = AgentConfig.create_default(Path(temporary_directory))
-    result = Agent(config, provider=MockProvider("finished"), use_storage=False).run("hello")
+    result = Agent(config, provider=MockProvider("finished")).run("hello")
 assert result.text == "finished"
 blocked = (
     "skill.evolution.records",
     "skill.evolution.learning",
     "skill.state.memory",
-    "skill.state.store",
+    "skill.state.events",
     "adapter.storage",
     "skill.evolution",
     "skill.kinds.mcp",
@@ -79,7 +79,7 @@ print(json.dumps(sorted(name for name in sys.modules if name.startswith(blocked)
         with tempfile.TemporaryDirectory() as tmp:
             config = AgentConfig.create_default(Path(tmp))
             received = []
-            agent = Agent(config, provider=MockProvider("finished"), use_storage=False)
+            agent = Agent(config, provider=MockProvider("finished"))
 
             result = agent.run(
                 "hello",
@@ -101,7 +101,7 @@ print(json.dumps(sorted(name for name in sys.modules if name.startswith(blocked)
                 for event in result.events
                 if event.event_type == "runtime.locked"
             )
-            self.assertEqual("scene:stateless", locked["run_plan"]["scene"])
+            self.assertEqual("scene:stateless", locked["plan"]["scene"])
             self.assertEqual({"enabled": False, "backend": None}, locked["storage"])
             selected = next(
                 event.data
@@ -153,7 +153,7 @@ print(json.dumps(sorted(name for name in sys.modules if name.startswith(blocked)
     def test_explicit_backend_conflicts_with_disabled_storage(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             config = AgentConfig.create_default(Path(tmp))
-            stateful = Agent(config, provider=MockProvider())
+            stateful = Agent(config, provider=MockProvider(), use_storage=True)
 
             with self.assertRaisesRegex(
                 ValueError,

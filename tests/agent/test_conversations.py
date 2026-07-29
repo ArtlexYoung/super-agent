@@ -19,10 +19,12 @@ from skill.evolution.records import read_evaluation_records
 class ConversationRuntimeTests(unittest.TestCase):
     def test_conversation_management_replays_events(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            agent = Agent(AgentConfig.create_default(tmp), provider=MockProvider())
+            agent = Agent(
+                AgentConfig.create_default(tmp), provider=MockProvider(), use_storage=True
+            )
             conversations = agent.for_user("local").conversations
             conversation = conversations.create("Original")
-            store = agent.runtime.create_store()
+            store = agent.runtime.create_event_store()
 
             append_conversation_turn(
                 store,
@@ -47,7 +49,9 @@ class ConversationRuntimeTests(unittest.TestCase):
     def test_second_turn_loads_history_from_runtime_storage(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             provider = _SequenceProvider(["first answer", "second answer"])
-            agent = Agent(AgentConfig.create_default(tmp), provider=provider)
+            agent = Agent(
+                AgentConfig.create_default(tmp), provider=provider, use_storage=True
+            )
             user = agent.for_user("local")
             conversation = user.conversations.create()
 
@@ -69,7 +73,9 @@ class ConversationRuntimeTests(unittest.TestCase):
 
     def test_explicit_messages_cannot_compete_with_stored_conversation_history(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            agent = Agent(AgentConfig.create_default(tmp), provider=MockProvider())
+            agent = Agent(
+                AgentConfig.create_default(tmp), provider=MockProvider(), use_storage=True
+            )
             user = agent.for_user("local")
             conversation = user.conversations.create()
 
@@ -85,6 +91,7 @@ class ConversationRuntimeTests(unittest.TestCase):
             agent = Agent(
                 AgentConfig.create_default(tmp),
                 provider=_FailingProvider(),
+                use_storage=True,
             )
             user = agent.for_user("local")
             conversation = user.conversations.create("Failure test")
@@ -97,7 +104,11 @@ class ConversationRuntimeTests(unittest.TestCase):
 
     def test_user_scopes_isolate_conversations_memory_evaluations_and_cache(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            agent = Agent(AgentConfig.create_default(tmp), provider=MockProvider("ok"))
+            agent = Agent(
+                AgentConfig.create_default(tmp),
+                provider=MockProvider("ok"),
+                use_storage=True,
+            )
             conversation_id = "shared-conversation-id"
 
             alpha = agent.for_user("user-alpha")
@@ -106,8 +117,8 @@ class ConversationRuntimeTests(unittest.TestCase):
             beta_result = beta.run("beta secret", conversation_id=conversation_id)
             alpha.runs.learn(alpha_result.run_id)
             beta.runs.learn(beta_result.run_id)
-            alpha_store = agent.runtime.create_store("user-alpha")
-            beta_store = agent.runtime.create_store("user-beta")
+            alpha_store = agent.runtime.create_event_store("user-alpha")
+            beta_store = agent.runtime.create_event_store("user-beta")
             MiniMemory(alpha_store).add_long_term_memory("alpha memory")
 
             self.assertEqual(
@@ -148,7 +159,7 @@ class ConversationRuntimeTests(unittest.TestCase):
             )
 
             stored = main_user.conversations.read(conversation.conversation_id)
-            child_run = worker.runtime.create_store("user-a").read_run(
+            child_run = worker.runtime.create_event_store("user-a").read_run(
                 result.subagent_results[0].run_id
             )
             self.assertEqual(2, len(stored.messages))
@@ -161,12 +172,14 @@ class ConversationRuntimeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             config = AgentConfig.create_default(root)
-            first = Agent(config, provider=MockProvider("persisted answer"))
+            first = Agent(
+                config, provider=MockProvider("persisted answer"), use_storage=True
+            )
             first_user = first.for_user("local")
             conversation = first_user.conversations.create()
             first_user.run("persist this", conversation_id=conversation.conversation_id)
 
-            second = Agent(config, provider=MockProvider())
+            second = Agent(config, provider=MockProvider(), use_storage=True)
 
             loaded = second.for_user("local").conversations.read(
                 conversation.conversation_id
@@ -201,7 +214,11 @@ class ConversationRuntimeTests(unittest.TestCase):
                     "delete_files": [],
                 }
             )
-            agent = Agent(AgentConfig.create_default(tmp), provider=MockProvider(response))
+            agent = Agent(
+                AgentConfig.create_default(tmp),
+                provider=MockProvider(response),
+                use_storage=True,
+            )
             alpha = agent.for_user("alpha").skills.create_evolution_manager()
             beta = agent.for_user("beta").skills.create_evolution_manager()
 
@@ -219,7 +236,9 @@ class ConversationRuntimeTests(unittest.TestCase):
                 config,
                 storage=replace(config.storage, backend="sqlite"),
             )
-            first = Agent(config, provider=MockProvider("sqlite answer"))
+            first = Agent(
+                config, provider=MockProvider("sqlite answer"), use_storage=True
+            )
             first_user = first.for_user("alice")
             conversation = first_user.conversations.create()
             first_user.run(
@@ -228,7 +247,7 @@ class ConversationRuntimeTests(unittest.TestCase):
             )
 
             loaded = (
-                Agent(config, provider=MockProvider())
+                Agent(config, provider=MockProvider(), use_storage=True)
                 .for_user("alice")
                 .conversations.read(conversation.conversation_id)
             )

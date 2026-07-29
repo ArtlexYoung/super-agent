@@ -9,18 +9,18 @@ from core.checks import ActionRequest
 from core.models import RunIdentity
 from core.provider.chat import Message
 from skill.disclosure import ProgressiveDisclosureCore, SkillReference
-from skill.runners.loaded import LoadedSkill
-from skill.runners.registry import SkillLoadRequest, SkillRunner, SkillRunners
+from skill.loaders.loaded import LoadedSkill
+from skill.loaders.registry import SkillLoadRequest, SkillLoader, SkillLoaders
 
 if TYPE_CHECKING:
-    from skill.state.store import RuntimeStore
+    from skill.state.events import EventStore
 
 
 @dataclass(frozen=True)
 class SkillServices:
     """Optional services exposed explicitly while one Skill is loaded."""
 
-    store: RuntimeStore | None = None
+    store: EventStore | None = None
     identity: RunIdentity | None = None
     send_text_model_messages: Callable[[list[Message]], str] | None = None
     execute_action: Callable[[ActionRequest, Callable[[], object]], object] | None = None
@@ -32,20 +32,20 @@ class Skills:
     def __init__(
         self,
         disclosure: ProgressiveDisclosureCore,
-        loaders: SkillRunners | None = None,
+        loaders: SkillLoaders | None = None,
     ) -> None:
         self.disclosure = disclosure
-        self.loaders = loaders or SkillRunners()
+        self.loaders = loaders or SkillLoaders()
         self.index = disclosure.prepare_skill_index()
 
-    def add_loader(self, loader: SkillRunner, *, replace: bool = False) -> None:
-        self.loaders.add_skill_runner(loader, replace=replace)
+    def add_loader(self, loader: SkillLoader, *, replace: bool = False) -> None:
+        self.loaders.add_skill_loader(loader, replace=replace)
 
-    def find_loader(self, skill_type: str) -> SkillRunner | None:
-        return self.loaders.find_skill_runner(skill_type)
+    def find_loader(self, skill_type: str) -> SkillLoader | None:
+        return self.loaders.find_skill_loader(skill_type)
 
     def list_loaders(self) -> list:
-        return self.loaders.list_skill_runners()
+        return self.loaders.list_skill_loaders()
 
     def list_model_context_types(self) -> set[str]:
         return self.loaders.list_model_context_types()

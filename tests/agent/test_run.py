@@ -10,11 +10,11 @@ from core.models import RunIdentity
 from core.state.event_log import RunEventLog
 from adapter.storage import JsonlStorage
 from core.events import StorageEventQuery
-from skill.state.store import RuntimeStore, create_local_runtime_store
+from skill.state.events import EventStore, create_local_event_store
 from support import write_workflow_skill
 
 
-class RuntimeStoreTests(unittest.TestCase):
+class EventStoreTests(unittest.TestCase):
     def test_run_event_log_orders_memory_events_and_notifies_explicit_observers(self) -> None:
         identity = RunIdentity.create("local", "main")
         listened = []
@@ -30,9 +30,9 @@ class RuntimeStoreTests(unittest.TestCase):
         self.assertEqual([started, completed], observed)
         self.assertEqual([1, 2], [event.sequence for event in event_log.list_events()])
 
-    def test_runtime_store_records_ordered_run_events(self) -> None:
+    def test_event_store_records_ordered_run_events(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            store = create_local_runtime_store(Path(tmp), agent_name="main")
+            store = create_local_event_store(Path(tmp), agent_name="main")
             identity = RunIdentity.create("local", "main")
 
             store.start_run(identity, "hello")
@@ -43,12 +43,12 @@ class RuntimeStoreTests(unittest.TestCase):
             self.assertEqual(["run.started", "skills.selected"], [event.event_type for event in events])
             self.assertEqual("hello", events[0].data["prompt"])
 
-    def test_runtime_store_is_the_only_agent_scoped_event_access(self) -> None:
+    def test_event_store_is_the_only_agent_scoped_event_access(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             backend = JsonlStorage(root)
-            alpha = RuntimeStore(backend, root, "local", "alpha")
-            beta = RuntimeStore(backend, root, "local", "beta")
+            alpha = EventStore(backend, root, "local", "alpha")
+            beta = EventStore(backend, root, "local", "beta")
 
             stored = alpha.append_event(
                 "custom",
@@ -65,10 +65,10 @@ class RuntimeStoreTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             backend = JsonlStorage(root)
-            parent_store = RuntimeStore(backend, root, "local", "main")
+            parent_store = EventStore(backend, root, "local", "main")
             parent = RunIdentity.create("local", "main")
             parent_store.start_run(parent, "parent")
-            child_store = RuntimeStore(backend, root, "local", "worker")
+            child_store = EventStore(backend, root, "local", "worker")
             child = RunIdentity.create("local", "worker", parent_run_id=parent.run_id)
 
             child_store.start_run(child, "child")
@@ -84,7 +84,7 @@ class RuntimeStoreTests(unittest.TestCase):
 
             result = agent.run("hello")
 
-            events = agent.runtime.create_store().read_run_events(result.run_id)
+            events = agent.runtime.create_event_store().read_run_events(result.run_id)
             self.assertEqual(result.events, events)
             self.assertEqual("completed", result.stop_reason)
             event_types = [event.event_type for event in events]
@@ -111,8 +111,8 @@ class RuntimeStoreTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "provider failed"):
                 agent.run("hello")
 
-            runs = agent.runtime.create_store().list_runs()
-            events = agent.runtime.create_store().read_run_events(runs[0].run_id)
+            runs = agent.runtime.create_event_store().list_runs()
+            events = agent.runtime.create_event_store().read_run_events(runs[0].run_id)
             self.assertEqual("run.failed", events[-1].event_type)
             self.assertEqual("RuntimeError", events[-1].data["error_type"])
 
@@ -204,4 +204,8 @@ path = ".super-agent"
 """.strip(),
         encoding="utf-8",
     )
-    return Agent(AgentConfig.load_from_file(config_path), provider=provider)
+    return Agent(
+        AgentConfig.load_from_file(config_path),
+        provider=provider,
+        use_storage=True,
+    )

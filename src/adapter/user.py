@@ -23,10 +23,10 @@ from adapter.conversations import (
 )
 from skill.task.model_calls import ModelRoutingStats
 from core.checks import ActionEffect, ActionRequest
-from core.models import RunLearningResult, TaskResult, TaskTrace
+from core.models import RunLearningResult, RunResult, TaskTrace
 from skill.kinds.model_management import ModelSkillManager
 from skill.kinds.scene import CreatedSkillScene, SkillSceneInput, SkillSceneManager
-from skill.runners.defaults import create_progressive_skill_disclosure
+from skill.loaders.defaults import create_progressive_skill_disclosure
 
 if TYPE_CHECKING:
     from super_agent import Agent, AgentRunOptions
@@ -52,7 +52,7 @@ class UserAgent:
         conversation_id: str | None = None,
         scene: str | None = None,
         run_options: "AgentRunOptions | None" = None,
-    ) -> TaskResult:
+    ) -> RunResult:
         return self.agent._run_for_user(
             prompt,
             self.user_id,
@@ -85,7 +85,7 @@ class UserConversations:
                     (ActionEffect.CREATE,),
                 ),
                 lambda: create_conversation(
-                    runtime.create_store(self.user.user_id),
+                    runtime.create_event_store(self.user.user_id),
                     title,
                     conversation_id=conversation_id,
                 ),
@@ -93,11 +93,11 @@ class UserConversations:
         )
 
     def list(self) -> list[Conversation]:
-        store = self.user.agent.runtime.create_store(self.user.user_id)
+        store = self.user.agent.runtime.create_event_store(self.user.user_id)
         return list_conversations(store)
 
     def read(self, conversation_id: str) -> Conversation:
-        store = self.user.agent.runtime.create_store(self.user.user_id)
+        store = self.user.agent.runtime.create_event_store(self.user.user_id)
         return read_conversation(store, conversation_id)
 
     def rename(self, conversation_id: str, title: str) -> Conversation:
@@ -112,7 +112,7 @@ class UserConversations:
                     (ActionEffect.UPDATE,),
                 ),
                 lambda: rename_conversation(
-                    runtime.create_store(self.user.user_id),
+                    runtime.create_event_store(self.user.user_id),
                     conversation_id,
                     title,
                 ),
@@ -131,7 +131,7 @@ class UserConversations:
                     (ActionEffect.DELETE,),
                 ),
                 lambda: clear_conversation(
-                    runtime.create_store(self.user.user_id),
+                    runtime.create_event_store(self.user.user_id),
                     conversation_id
                 ),
             ),
@@ -147,7 +147,7 @@ class UserConversations:
                 (ActionEffect.DELETE,),
             ),
             lambda: delete_conversation(
-                runtime.create_store(self.user.user_id),
+                runtime.create_event_store(self.user.user_id),
                 conversation_id
             ),
         )
@@ -213,23 +213,23 @@ class UserSkills:
         )
 
     def list_evolutions(self, status: str | None = None) -> list[SkillEvolutionState]:
-        store = self.user.agent.runtime.create_store(self.user.user_id)
+        store = self.user.agent.runtime.create_event_store(self.user.user_id)
         return list_skill_evolutions(store, status)
 
     def read_evolution(self, evolution_id: str) -> SkillEvolutionState:
-        store = self.user.agent.runtime.create_store(self.user.user_id)
+        store = self.user.agent.runtime.create_event_store(self.user.user_id)
         return read_skill_evolution(store, evolution_id)
 
     def create_model_manager(self) -> ModelSkillManager:
         return ModelSkillManager(
             self.user.agent.config,
-            self.user.agent.runtime.create_store(self.user.user_id),
+            self.user.agent.runtime.create_event_store(self.user.user_id),
             self.user.agent.action_rules,
         )
 
     def create_scene(self, request: SkillSceneInput) -> CreatedSkillScene:
         runtime = self.user.agent.runtime
-        store = runtime.create_store(self.user.user_id)
+        store = runtime.create_event_store(self.user.user_id)
         disclosure = create_progressive_skill_disclosure(
             self.user.agent.config,
             store=store,

@@ -30,7 +30,7 @@ from skill.evolution.recommendations import recommend_skill_revisions
 from skill.evolution.evidence import summarize_evaluation_evidence
 from skill.evolution.service import AutomaticEvolutionService
 from skill.evolution.insights import explain_run_with_insight
-from skill.state.store import create_local_runtime_store
+from skill.state.events import create_local_event_store
 from skill.evolution.change.revision import SkillRevision, create_indexed_skill_revision
 from support import write_workflow_skill
 
@@ -59,7 +59,7 @@ class SkillRevisionEvolutionTests(unittest.TestCase):
         ):
             with self.subTest(reason_code=reason_code), tempfile.TemporaryDirectory() as tmp:
                 records, revision, freshness = _records_for_reason(reason_code)
-                store = create_local_runtime_store(Path(tmp))
+                store = create_local_event_store(Path(tmp))
                 append_evaluation_records(store, records)
 
                 evolutions = recommend_skill_revisions(
@@ -77,7 +77,7 @@ class SkillRevisionEvolutionTests(unittest.TestCase):
     def test_locked_and_non_evolvable_revisions_are_not_recommended(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             revision = _target()
-            store = create_local_runtime_store(Path(tmp))
+            store = create_local_event_store(Path(tmp))
             append_evaluation_records(store, [_record(revision, success=False)])
 
             locked = recommend_skill_revisions(
@@ -98,7 +98,7 @@ class SkillRevisionEvolutionTests(unittest.TestCase):
     ) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             revision = _target()
-            store = create_local_runtime_store(Path(tmp))
+            store = create_local_event_store(Path(tmp))
             append_evaluation_records(store, [_record(revision, success=False, sequence=1)])
             evolvable = _evolvable_revision(revision)
 
@@ -117,8 +117,8 @@ class SkillRevisionEvolutionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             revision = _target()
-            alpha_store = create_local_runtime_store(root, user_id="alpha")
-            beta_store = create_local_runtime_store(root, user_id="beta")
+            alpha_store = create_local_event_store(root, user_id="alpha")
+            beta_store = create_local_event_store(root, user_id="beta")
             append_evaluation_records(alpha_store, [_record(revision, success=False)])
 
             created = recommend_skill_revisions(
@@ -171,11 +171,12 @@ class SkillRevisionEvolutionTests(unittest.TestCase):
                         RuntimeError("promoted regression"),
                     ]
                 ),
+                use_storage=True,
             )
 
             with self.assertRaisesRegex(RuntimeError, "task failed"):
                 agent.run("echo this")
-            failed_run = agent.runtime.create_store().list_runs(1)[0]
+            failed_run = agent.runtime.create_event_store().list_runs(1)[0]
             agent.learn_from_run(failed_run.run_id)
 
             evolutions = agent.for_user("local").skills.list_evolutions()
@@ -185,7 +186,7 @@ class SkillRevisionEvolutionTests(unittest.TestCase):
             self.assertTrue(evolutions[0].candidate_id)
             self.assertEqual(
                 "Improved instructions.\n",
-                agent.runtime.create_store().private_root.joinpath(
+                agent.runtime.create_event_store().private_root.joinpath(
                     "skills/prompt/echo/SKILL.md"
                 ).read_text(
                     encoding="utf-8"
@@ -203,7 +204,7 @@ class SkillRevisionEvolutionTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "promoted regression"):
                 agent.run("echo this again")
 
-            store = agent.runtime.create_store()
+            store = agent.runtime.create_event_store()
             regression_run = store.list_runs(1)[0]
             agent.learn_from_run(regression_run.run_id)
             monitored = agent.for_user("local").skills.list_evolutions()[0]
@@ -226,6 +227,7 @@ class SkillRevisionEvolutionTests(unittest.TestCase):
             agent = Agent(
                 AgentConfig.load_from_file(_write_agent_project(root)),
                 provider=MockProvider("completed"),
+                use_storage=True,
             )
 
             result = agent.run("echo this")
@@ -235,7 +237,7 @@ class SkillRevisionEvolutionTests(unittest.TestCase):
             ), self.assertRaisesRegex(RuntimeError, "recommendation unavailable"):
                 agent.learn_from_run(result.run_id)
 
-            events = agent.runtime.create_store().read_run_events(result.run_id)
+            events = agent.runtime.create_event_store().read_run_events(result.run_id)
             self.assertEqual("completed", result.text)
             self.assertEqual("learning.failed", events[-1].event_type)
             self.assertEqual("skill_evolution", events[-1].data["stage"])
@@ -255,6 +257,7 @@ class SkillRevisionEvolutionTests(unittest.TestCase):
                 provider=_SequenceProvider(
                     [response, "candidate evaluation output", "baseline evaluation output"]
                 ),
+                use_storage=True,
             )
             manager = agent.for_user("alice").skills.create_evolution_manager()
             entry = manager.skill_disclosure.prepare_skill_index().require_skill(
@@ -265,7 +268,7 @@ class SkillRevisionEvolutionTests(unittest.TestCase):
                 entry,
                 evolution_supported=True,
             )
-            store = agent.runtime.create_store("alice")
+            store = agent.runtime.create_event_store("alice")
             append_evaluation_records(store, [_record(revision, success=False)])
             updated = AutomaticEvolutionService(store, manager).review_and_evolve(
                 [revision]

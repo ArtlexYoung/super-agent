@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from skill.runners.loaded import PlanningPolicy
+from skill.loaders.loaded import PlanningPolicy
 from skill.disclosure import SkillDisclosure
 
 

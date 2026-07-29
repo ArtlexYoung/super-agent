@@ -17,8 +17,8 @@ if TYPE_CHECKING:
     from core.state.models import RunEvent, RunSnapshot
 
 
-class RuntimeStore:
-    """Expose domain operations while keeping backend details out of skill_runners."""
+class EventStore:
+    """Expose domain operations while keeping backend details out of skill_loaders."""
 
     def __init__(
         self,
@@ -116,7 +116,7 @@ class RuntimeStore:
             )
         )
 
-    def store_for_run(self, run_id: str) -> RuntimeStore:
+    def store_for_run(self, run_id: str) -> EventStore:
         """Select the Agent-scoped store for one run inside this user scope."""
         selected_id = _required_text(run_id, "run_id")
         events = self._backend.read_events(
@@ -134,7 +134,7 @@ class RuntimeStore:
         agent_name = agent_names.pop()
         if agent_name == self.agent_name:
             return self
-        return RuntimeStore(
+        return EventStore(
             self._backend,
             self.local_root,
             self.user_id,
@@ -315,15 +315,15 @@ class RuntimeStore:
             raise ValueError("run identity does not match runtime store scope")
 
 
-def create_local_runtime_store(
+def create_local_event_store(
     root: Path,
     *,
     user_id: str = "local",
     agent_name: str = "super-agent",
-) -> RuntimeStore:
+) -> EventStore:
     from adapter.storage.jsonl import JsonlStorage
 
-    return RuntimeStore(JsonlStorage(root), root, user_id, agent_name)
+    return EventStore(JsonlStorage(root), root, user_id, agent_name)
 
 
 def _required_text(value: object, name: str) -> str:

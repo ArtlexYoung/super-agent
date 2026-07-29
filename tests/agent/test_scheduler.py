@@ -25,7 +25,7 @@ class AdaptiveTaskLoopTests(unittest.TestCase):
             )
             general = _RecordingProvider("general")
             summary = _RecordingProvider("summary")
-            agent = Agent(_write_config(root), provider=general)
+            agent = Agent(_write_config(root), provider=general, use_storage=True)
             agent.add_model_provider("summary", summary)
 
             result = agent.run("summarize this report")
@@ -43,8 +43,8 @@ class AdaptiveTaskLoopTests(unittest.TestCase):
                 "prompt matches purpose: summary",
                 schedule["model"]["reasons"],
             )
-            runtime_lock = agent.runtime.create_store().read_runtime_lock(result.run_id)
-            self.assertEqual(schedule["model"], runtime_lock["run_plan"]["model"])
+            runtime_lock = agent.runtime.create_event_store().read_runtime_lock(result.run_id)
+            self.assertEqual(schedule["model"], runtime_lock["plan"]["model"])
             selected = next(
                 event.data
                 for event in agent.for_user("local").runs.read_trace(result.run_id).events
@@ -65,13 +65,13 @@ class AdaptiveTaskLoopTests(unittest.TestCase):
                 quality=0.7,
             )
             general = _RecordingProvider("unused")
-            agent = Agent(_write_config(root), provider=general)
+            agent = Agent(_write_config(root), provider=general, use_storage=True)
             agent.add_model_provider("summary", _FailingProvider())
 
             with self.assertRaisesRegex(RuntimeError, "primary unavailable"):
                 agent.run("summarize this report")
 
-            run = agent.runtime.create_store().list_runs()[0]
+            run = agent.runtime.create_event_store().list_runs()[0]
             events = agent.for_user("local").runs.read_trace(run.run_id).events
             selected = [
                 event.data["profile"]
@@ -116,6 +116,7 @@ class AdaptiveTaskLoopTests(unittest.TestCase):
             agent = Agent(
                 _write_config(root, workflow="react"),
                 provider=_RecordingProvider("general"),
+                use_storage=True,
             )
             agent.add_model_provider("tools", tools)
 
@@ -141,7 +142,7 @@ class AdaptiveTaskLoopTests(unittest.TestCase):
             config = _write_config(root)
             alpha = _RecordingProvider("alpha")
             beta = _RecordingProvider("beta")
-            agent = Agent(config, provider=alpha)
+            agent = Agent(config, provider=alpha, use_storage=True)
             agent.add_model_provider("beta", beta)
 
             user_a = agent.for_user("user-a")
@@ -156,7 +157,7 @@ class AdaptiveTaskLoopTests(unittest.TestCase):
                 agent=replace(config.agent, name="other-agent"),
             )
             other_alpha = _RecordingProvider("other-alpha")
-            other_agent = Agent(other_config, provider=other_alpha)
+            other_agent = Agent(other_config, provider=other_alpha, use_storage=True)
             other_agent.add_model_provider("beta", _RecordingProvider("other-beta"))
             other_scope = other_agent.for_user("user-a").run("summarize this")
 
@@ -179,7 +180,11 @@ class AdaptiveTaskLoopTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_model_skill(root, "general", default=True)
-            agent = Agent(_write_config(root), provider=_RecordingProvider("response"))
+            agent = Agent(
+                _write_config(root),
+                provider=_RecordingProvider("response"),
+                use_storage=True,
+            )
             user = agent.for_user("correcting-user")
             conversation = user.conversations.create()
 
@@ -216,7 +221,7 @@ class AdaptiveTaskLoopTests(unittest.TestCase):
             _write_model_skill(root, "beta", quality=0.5)
             alpha = _RecordingProvider("alpha")
             beta = _RecordingProvider("beta")
-            agent = Agent(_write_config(root), provider=alpha)
+            agent = Agent(_write_config(root), provider=alpha, use_storage=True)
             agent.add_model_provider("beta", beta)
 
             with self.assertRaisesRegex(ValueError, "model selection is tied"):
@@ -235,7 +240,11 @@ class AdaptiveTaskLoopTests(unittest.TestCase):
                 default=True,
             )
             _write_model_skill(root, "analysis", purposes=["analysis"])
-            agent = Agent(_write_config(root), provider=_RecordingProvider("unused"))
+            agent = Agent(
+                _write_config(root),
+                provider=_RecordingProvider("unused"),
+                use_storage=True,
+            )
             agent.add_model_provider("analysis", _RecordingProvider("unused"))
 
             with self.assertRaisesRegex(ValueError, "task purpose is ambiguous"):
@@ -254,7 +263,7 @@ class AdaptiveTaskLoopTests(unittest.TestCase):
                 ),
             )
             provider = _RecordingProvider("main")
-            agent = Agent(config, provider=provider)
+            agent = Agent(config, provider=provider, use_storage=True)
 
             result = agent.run("hello")
 
@@ -262,8 +271,16 @@ class AdaptiveTaskLoopTests(unittest.TestCase):
                 "scheduler:single",
                 _scheduled_event(agent, result.run_id)["scheduler"],
             )
-            first = Agent(_write_config(root), provider=_RecordingProvider("first"))
-            second = Agent(_write_config(root), provider=_RecordingProvider("second"))
+            first = Agent(
+                _write_config(root),
+                provider=_RecordingProvider("first"),
+                use_storage=True,
+            )
+            second = Agent(
+                _write_config(root),
+                provider=_RecordingProvider("second"),
+                use_storage=True,
+            )
             agent.add_subagent(first, name="first")
             agent.add_subagent(second, name="second")
 
@@ -277,14 +294,18 @@ class AdaptiveTaskLoopTests(unittest.TestCase):
             root = Path(tmp)
             _write_model_skill(root, "alpha", purposes=["summary"], quality=0.0)
             config = _write_config(root)
-            trainer = Agent(config, provider=_RecordingProvider("trained-alpha"))
+            trainer = Agent(
+                config,
+                provider=_RecordingProvider("trained-alpha"),
+                use_storage=True,
+            )
             for _ in range(4):
                 trainer.run("summarize this report")
 
             _write_model_skill(root, "beta", purposes=["summary"], quality=1.0)
             alpha = _RecordingProvider("stable-alpha")
             beta = _RecordingProvider("untried-beta")
-            agent = Agent(config, provider=alpha)
+            agent = Agent(config, provider=alpha, use_storage=True)
             agent.add_model_provider("beta", beta)
 
             result = agent.run("summarize this report")

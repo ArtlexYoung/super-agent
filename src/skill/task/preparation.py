@@ -5,12 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable, Mapping, cast
 
-from skill.runners.loaded import (
+from skill.loaders.loaded import (
     LoadedSkill,
     PlanningPolicy,
     TaskPolicy,
 )
-from skill.runners.registry import SkillRunners
+from skill.loaders.registry import SkillLoaders
 from skill.skills import Skills
 from core.config import AgentConfig
 from core.provider.chat import ChatProvider, Message
@@ -22,12 +22,12 @@ from skill.task.model_calls import (
     ModelSelectionRequest,
     list_model_routing_stats,
 )
-from skill.task.run_plan import RunPlan
+from skill.task.plan import Plan
 from skill.task.scheduler import (
     Scheduler,
     load_scheduler,
 )
-from core.models import SubAgentResult, TaskRequest
+from core.models import SubAgentResult, Task
 from skill.task.tools import RuntimeTools, RuntimeToolsContext
 from skill.disclosure import SkillIndex, SkillIndexEntry, SkillReference
 from skill.kinds.model import ModelProfile, model_profile_to_dict
@@ -40,21 +40,24 @@ class RuntimeLockInput:
     skills: Skills
     provider: ChatProvider
     storage: StorageBackend | None
-    run_plan: RunPlan
+    plan: Plan
     environment: Mapping[str, str]
 
 
 @dataclass(frozen=True)
-class PreparedRun:
-    """Loaded mechanisms paired with one pure RunPlan."""
+class RunContext:
+    """Task-local data shared by scheduling and execution."""
 
-    run_plan: RunPlan
+    task: Task
+    run: Run
+    plan: Plan
     model_profile: ModelProfile
     workflow_policy: TaskPolicy
     scene_contribution: LoadedSkill
     planner_policy: PlanningPolicy | None
     planner_contribution: LoadedSkill | None
     scheduler: Scheduler
+    background_contributions: tuple[LoadedSkill, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -82,12 +85,12 @@ def create_runtime_lock(request: RuntimeLockInput) -> dict[str, object]:
                 f"{type(request.provider).__qualname__}"
             ),
         },
-        "run_plan": request.run_plan.to_dict(),
+        "plan": request.plan.to_dict(),
         "storage": {
             "enabled": request.storage is not None,
             "backend": None if request.storage is None else request.storage.name,
         },
-        "skill_runners": [
+        "skill_loaders": [
             item.descriptor.to_dict()
             for item in request.skills.list_loaders()
         ],
@@ -108,10 +111,10 @@ def create_runtime_lock(request: RuntimeLockInput) -> dict[str, object]:
 
 
 def _list_registered_code(
-    skill_runners: SkillRunners,
+    skill_loaders: SkillLoaders,
 ) -> list[dict[str, object]]:
     registrations: list[dict[str, object]] = []
-    for entry in skill_runners.list_skill_runners():
+    for entry in skill_loaders.list_skill_loaders():
         list_registrations = getattr(
             entry.implementation,
             "list_code_registrations",
@@ -123,7 +126,7 @@ def _list_registered_code(
         if not isinstance(values, list) or not all(
             isinstance(value, dict) for value in values
         ):
-            raise TypeError("SkillRunner code registrations must be a list of objects")
+            raise TypeError("SkillLoader code registrations must be a list of objects")
         registrations.extend(dict(value) for value in values)
     return sorted(
         registrations,
@@ -132,12 +135,12 @@ def _list_registered_code(
 
 
 def prepare_run(
-    request: TaskRequest,
+    request: Task,
     session: Run,
     model_profiles: list[ModelProfile],
     *,
     environment: Mapping[str, str],
-) -> PreparedRun:
+) -> RunContext:
     selected_scheduler = load_scheduler(
         session.skills.index,
         session.config.agent.skills,
@@ -151,7 +154,7 @@ def prepare_run(
         references,
         scheduler,
     )
-    planner_reference, planner_policy, planner_contribution = _load_run_planner(
+    planner_reference, planner_policy, planner_contribution = _load_planner(
         session,
         references,
         scheduler,
@@ -195,7 +198,7 @@ def prepare_run(
         request.prompt,
         available_subagents,
     )
-    run_plan = RunPlan(
+    plan = Plan(
         purpose=purpose,
         required_features=required_features,
         model=model,
@@ -219,8 +222,10 @@ def prepare_run(
             planning.reasons if planning.should_plan else ("direct one-step plan",)
         ),
     )
-    return PreparedRun(
-        run_plan=run_plan,
+    return RunContext(
+        task=request,
+        run=session,
+        plan=plan,
         model_profile=_require_model_profile(model_profiles, model.profile_key),
         workflow_policy=workflow_policy,
         scene_contribution=selected.scene_contribution,
@@ -231,7 +236,7 @@ def prepare_run(
 
 
 def _select_run_skills(
-    request: TaskRequest,
+    request: Task,
     session: Run,
     scheduler: Scheduler,
 ) -> _SelectedRunSkills:
@@ -244,14 +249,14 @@ def _select_run_skills(
     )
     scene_contribution = _load_skill(session, scene_reference)
     if not scene_contribution.included_skills:
-        raise TypeError("scene SkillRunner did not include any Skills")
+        raise TypeError("scene SkillLoader did not include any Skills")
     enabled = _merge_included_and_configured_skills(
         session,
         scene_contribution.included_skills,
     )
     allowed_types = {
         entry.descriptor.skill_type
-        for entry in session.skills.loaders.list_skill_runners()
+        for entry in session.skills.loaders.list_skill_loaders()
         if entry.descriptor.skill_type != "scene"
     }
     unsupported_types = sorted(
@@ -263,7 +268,7 @@ def _select_run_skills(
     )
     if unsupported_types:
         raise ValueError(
-            "scene references Skill types without registered SkillRunners: "
+            "scene references Skill types without registered SkillLoaders: "
             + ", ".join(unsupported_types)
         )
     references = tuple(
@@ -286,9 +291,9 @@ def _list_unavailable_scenes(
     available_services = {"event_stream", "text_model"}
     if session.store is not None:
         available_services.add("storage")
-    runners = {
+    loaders = {
         entry.descriptor.skill_type: entry.descriptor
-        for entry in session.skills.loaders.list_skill_runners()
+        for entry in session.skills.loaders.list_skill_loaders()
     }
     disclosure = session.skills.disclosure
     index = session.skills.index
@@ -305,9 +310,9 @@ def _list_unavailable_scenes(
             entry = index.find_skill(value)
             if entry is None:
                 continue
-            runner = runners.get(entry.reference.skill_type)
-            if runner is not None:
-                required_services.update(runner.required_services)
+            loader = loaders.get(entry.reference.skill_type)
+            if loader is not None:
+                required_services.update(loader.required_services)
         missing = tuple(sorted(required_services - available_services))
         if missing:
             unavailable[scene.reference.key] = missing
@@ -315,7 +320,7 @@ def _list_unavailable_scenes(
 
 
 def _choose_run_model(
-    request: TaskRequest,
+    request: Task,
     session: Run,
     model_profiles: list[ModelProfile],
     *,
@@ -350,11 +355,11 @@ def _load_run_workflow(
         raise RuntimeError("selected scene does not select a workflow Skill")
     contribution = _load_skill(session, reference)
     if contribution.task_policy is None:
-        raise TypeError("workflow Skill runner did not provide task rules")
+        raise TypeError("workflow Skill loader did not provide task rules")
     return reference, contribution.task_policy
 
 
-def _load_run_planner(
+def _load_planner(
     session: Run,
     references: tuple[SkillReference, ...],
     scheduler: Scheduler,
@@ -364,39 +369,39 @@ def _load_run_planner(
         return None, None, None
     contribution = _load_skill(session, reference)
     if contribution.planning_policy is None:
-        raise TypeError("planner SkillRunner did not contribute a planning policy")
+        raise TypeError("planner SkillLoader did not contribute a planning policy")
     return reference, contribution.planning_policy, contribution
 
 
 def load_background_contributions(
-    session: Run,
-    prepared_run: PreparedRun,
+    context: RunContext,
     send_text_model_messages: Callable[[list[Message]], str],
 ) -> list[LoadedSkill]:
-    run_plan = prepared_run.run_plan
-    contributions = [prepared_run.scene_contribution] + [
+    session = context.run
+    plan = context.plan
+    contributions = [context.scene_contribution] + [
         _load_skill(
             session,
             entry.reference,
             send_text_model_messages=send_text_model_messages,
         )
-        for entry in _selected_entries(session, run_plan.skills, "memory")
+        for entry in _selected_entries(session, plan.skills, "memory")
     ]
     contributions.extend(
         _load_skill(session, entry.reference)
-        for entry in _selected_entries(session, run_plan.skills, "scene_manager")
+        for entry in _selected_entries(session, plan.skills, "scene_manager")
     )
-    if prepared_run.planner_contribution is not None:
-        contributions.append(prepared_run.planner_contribution)
+    if context.planner_contribution is not None:
+        contributions.append(context.planner_contribution)
     return contributions
 
 
 def load_run_skill_contributions(
     session: Run,
-    run_plan: RunPlan,
+    plan: Plan,
 ) -> list[LoadedSkill]:
     contributions: list[LoadedSkill] = []
-    for reference in run_plan.model_context_skills:
+    for reference in plan.model_context_skills:
         contribution = _load_skill(session, reference)
         if contribution.model_context is None:
             raise ValueError(
@@ -407,7 +412,7 @@ def load_run_skill_contributions(
 
 
 def create_runtime_tools(
-    request: TaskRequest,
+    request: Task,
     session: Run,
     contributions: list[LoadedSkill],
     send_text_model_messages: Callable[[list[Message]], str],
@@ -432,10 +437,10 @@ def create_runtime_tools(
     )
 
 
-def run_task_step_subagents(
-    request: TaskRequest,
+def run_step_subagents(
+    request: Task,
     session: Run,
-    run_plan: RunPlan,
+    plan: Plan,
 ) -> list[SubAgentResult]:
     return [
         _subagent_result_from_dict(
@@ -445,7 +450,7 @@ def run_task_step_subagents(
                 session,
             )
         )
-        for name in run_plan.subagent_names
+        for name in plan.subagent_names
     ]
 
 
@@ -482,7 +487,7 @@ def _require_model_profile(
 
 
 def build_system_prompt(
-    request: TaskRequest,
+    request: Task,
     session: Run,
     contributions: list[LoadedSkill],
     *,

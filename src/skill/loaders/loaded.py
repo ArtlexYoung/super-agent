@@ -1,4 +1,4 @@
-"""Values produced when a Skill runner loads Skill content."""
+"""Values produced when a Skill loader loads Skill content."""
 
 from __future__ import annotations
 
@@ -48,14 +48,14 @@ class SkillAction:
 
     def __post_init__(self) -> None:
         if not self.effects:
-            raise ValueError("SkillRunner action must declare at least one effect")
+            raise ValueError("SkillLoader action must declare at least one effect")
         normalized = tuple(ActionEffect(effect) for effect in self.effects)
         if len(set(normalized)) != len(normalized):
-            raise ValueError("SkillRunner action effects cannot contain duplicates")
+            raise ValueError("SkillLoader action effects cannot contain duplicates")
         if not self.resource.strip():
-            raise ValueError("SkillRunner action resource cannot be empty")
+            raise ValueError("SkillLoader action resource cannot be empty")
         if self.resource_argument is not None and not self.resource_argument.strip():
-            raise ValueError("SkillRunner action resource argument cannot be empty")
+            raise ValueError("SkillLoader action resource argument cannot be empty")
         object.__setattr__(self, "effects", normalized)
         object.__setattr__(self, "resource", self.resource.strip())
         if self.resource_argument is not None:

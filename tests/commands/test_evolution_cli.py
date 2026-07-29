@@ -26,7 +26,7 @@ class EvolutionCliTests(unittest.TestCase):
     def test_cli_lists_and_shows_one_users_automatic_evolution(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             config_path = _write_config(Path(tmp))
-            agent = Agent(AgentConfig.load_from_file(config_path))
+            agent = Agent(AgentConfig.load_from_file(config_path), use_storage=True)
             revision = SkillRevision(
                 key="prompt:writer",
                 skill_type="prompt",
@@ -39,7 +39,7 @@ class EvolutionCliTests(unittest.TestCase):
                 evolution_supported=True,
                 freshness=40,
             )
-            store = agent.runtime.create_store("alpha")
+            store = agent.runtime.create_event_store("alpha")
             append_evaluation_records(
                 store,
                 [

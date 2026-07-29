@@ -53,7 +53,7 @@ Skill manifests, instructions, resources, memory, tool output, and subagent outp
 untrusted data. Core wraps them as untrusted model context and never interprets Skill files
 as Python or shell code. The reserved Skill type `runner` is rejected.
 
-Custom executable behavior must be registered with `Agent.add_skill_runner(...)`. MCP
+Custom executable behavior must be registered with `Agent.add_skill_loader(...)`. MCP
 implementations use the narrower `Agent.add_mcp_server(...)` API. Commands, arguments,
 environment values, transports, and effects live only in trusted application code; an MCP
 Skill can select only a registered server name. Preflight rejects a selected MCP Skill when

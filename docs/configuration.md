@@ -3,6 +3,8 @@
 Configuration is optional. `Agent()` checks `SUPER_AGENT_CONFIG`, then `agent.toml` in
 the current directory, then uses an in-memory default. Missing model configuration is not
 silently replaced: a model source must come from the environment or application code.
+The Python library does not open storage unless `use_storage=True` or `storage=` is
+supplied. CLI and Web entry points explicitly enable the configured backend.
 
 ## Minimal `agent.toml`
 
@@ -171,7 +173,7 @@ agent = Agent(
     action_rules=ActionRules(ActionMode.READ_ONLY),
     secret_lookup=lambda user_id, name: lookup_secret(user_id, name),
 )
-agent.add_skill_runner(custom_runner)
+agent.add_skill_loader(custom_loader)
 agent.add_mcp_server(
     "filesystem",
     StdioMcpServer(
@@ -189,7 +191,7 @@ agent.add_mcp_server(
 agent.add_subagent(worker, name="worker")
 ```
 
-Provider instances, custom SkillRunners, MCP implementations, action authority, secret
+Provider instances, custom SkillLoaders, MCP implementations, action authority, secret
 lookup, storage object injection, and subagent graphs are deliberately code-first. An MCP
 Skill contains only optional `[configuration].server`; executable settings in Skill TOML
 are rejected.

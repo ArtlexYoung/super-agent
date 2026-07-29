@@ -5,13 +5,13 @@ from pathlib import Path
 from threading import RLock
 from typing import TYPE_CHECKING, Callable
 
-from skill.runners.defaults import (
-    create_default_skill_runners,
+from skill.loaders.defaults import (
+    create_default_skill_loaders,
     create_skills,
 )
-from skill.runners.registry import SkillLoadRequest, SkillRunner, SkillRunners
-from skill.runners.mcp import McpServer, McpServers, StdioMcpServer
-from skill.runners.loaded import LoadedSkill, SkillAction, SkillTool
+from skill.loaders.registry import SkillLoadRequest, SkillLoader, SkillLoaders
+from skill.loaders.mcp import McpServer, McpServers, StdioMcpServer
+from skill.loaders.loaded import LoadedSkill, SkillAction, SkillTool
 from core.provider.chat import (
     ChatProvider,
     Message,
@@ -22,7 +22,7 @@ from core.provider.chat import (
 )
 from core.provider.pool import ProviderPool
 from core.config import AgentConfig
-from skill.task.runtime import AgentRuntime
+from skill.task.runtime import Runtime
 from skill.task.run import Run
 from core.models import LOCAL_USER_ID
 from core.state.models import RunEvent
@@ -37,8 +37,8 @@ from core.models import (
     RunLearningResult,
     SubAgentResult,
     SubagentCallbacks,
-    TaskRequest,
-    TaskResult,
+    Task,
+    RunResult,
     TaskTrace,
 )
 from core.state.models import Conversation
@@ -83,32 +83,32 @@ class Agent:
         config: AgentConfig | str | Path | None = None,
         *,
         provider: ChatProvider | None = None,
-        skill_runners: list[SkillRunner] | None = None,
+        skill_loaders: list[SkillLoader] | None = None,
         storage: StorageBackend | None = None,
-        use_storage: bool = True,
+        use_storage: bool | None = None,
         action_rules: ActionRules | None = None,
         secret_lookup: UserSecretLookup | None = None,
     ) -> None:
-        if not isinstance(use_storage, bool):
-            raise TypeError("use_storage must be a boolean")
-        if storage is not None and not use_storage:
+        if use_storage is not None and not isinstance(use_storage, bool):
+            raise TypeError("use_storage must be a boolean or None")
+        if storage is not None and use_storage is False:
             raise ValueError("storage cannot be combined with use_storage=False")
         self.config = _load_agent_config(config)
         self._action_rules = action_rules
         self.user_secrets = UserSecretResolver(secret_lookup)
-        self._use_storage = use_storage
+        self._use_storage = storage is not None if use_storage is None else use_storage
         self._configured_storage = storage
         self._provided_provider = provider
         self._storage: StorageBackend | None = None
-        self._runtime: AgentRuntime | None = None
+        self._runtime: Runtime | None = None
         self._provider_pool: ProviderPool | None = None
         self._model_profiles: list[ModelProfile] = []
         self._model_profile: ModelProfile | None = None
         self._code_model_profiles: tuple[ModelProfile, ...] = ()
         self._mcp_servers = McpServers()
-        self._skill_runners = create_default_skill_runners(self._mcp_servers)
-        for runner in skill_runners or []:
-            self._skill_runners.add_skill_runner(runner, replace=True)
+        self._skill_loaders = create_default_skill_loaders(self._mcp_servers)
+        for loader in skill_loaders or []:
+            self._skill_loaders.add_skill_loader(loader, replace=True)
         self._pending_event_subscribers = RuntimeEventSubscribers()
         self._initialization_lock = RLock()
         self._subagents: list[SubAgent] = []
@@ -123,7 +123,7 @@ class Agent:
         return self._create_action_rules()
 
     @property
-    def runtime(self) -> AgentRuntime:
+    def runtime(self) -> Runtime:
         self._ensure_initialized()
         if self._runtime is None:
             raise RuntimeError("Agent initialization did not create a Runtime")
@@ -151,8 +151,8 @@ class Agent:
         return self._mcp_servers
 
     @property
-    def skill_runners(self) -> SkillRunners:
-        return self._skill_runners
+    def skill_loaders(self) -> SkillLoaders:
+        return self._skill_loaders
 
     def add_subagent(
         self,
@@ -182,9 +182,9 @@ class Agent:
     def list_subagents(self) -> list[SubAgent]:
         return list(self._subagents)
 
-    def add_skill_runner(self, runner: SkillRunner) -> None:
+    def add_skill_loader(self, loader: SkillLoader) -> None:
         with self._initialization_lock:
-            self._skill_runners.add_skill_runner(runner, replace=True)
+            self._skill_loaders.add_skill_loader(loader, replace=True)
 
     def add_mcp_server(
         self,
@@ -257,7 +257,7 @@ class Agent:
         conversation_id: str | None = None,
         scene: str | None = None,
         run_options: AgentRunOptions | None = None,
-    ) -> TaskResult:
+    ) -> RunResult:
         return self._run_for_user(
             prompt,
             LOCAL_USER_ID,
@@ -277,7 +277,7 @@ class Agent:
         messages: list[Message] | None = None,
         conversation_id: str | None = None,
         run_options: AgentRunOptions | None = None,
-    ) -> TaskResult:
+    ) -> RunResult:
         options = run_options or AgentRunOptions()
         prepared_messages = list(messages or [])
         pending_turn = None
@@ -291,7 +291,7 @@ class Agent:
             from adapter.conversations import prepare_conversation_turn
 
             prepared_messages, pending_turn = prepare_conversation_turn(
-                self.runtime.create_store(user_id),
+                self.runtime.create_event_store(user_id),
                 self.action_rules,
                 conversation_id,
                 prompt,
@@ -307,7 +307,7 @@ class Agent:
             if options.include_subagents and options.check_subagent_links_before_run
             else []
         )
-        request = TaskRequest(
+        request = Task(
             prompt=prompt,
             messages=prepared_messages,
             include_subagents=options.include_subagents,
@@ -404,7 +404,7 @@ class Agent:
             store = self._create_bootstrap_store(storage)
             skills = create_skills(
                 self.config,
-                loaders=self._skill_runners,
+                loaders=self._skill_loaders,
                 store=store,
                 include_freshness=False,
             )
@@ -446,12 +446,12 @@ class Agent:
     def _create_bootstrap_store(
         self,
         storage: StorageBackend | None,
-    ) -> "RuntimeStore | None":
+    ) -> "EventStore | None":
         if storage is None:
             return None
-        from skill.state.store import RuntimeStore
+        from skill.state.events import EventStore
 
-        return RuntimeStore(
+        return EventStore(
             storage,
             self.config.storage.path,
             LOCAL_USER_ID,
@@ -465,11 +465,11 @@ class Agent:
         storage: StorageBackend | None,
         code_profiles: tuple[ModelProfile, ...],
         event_subscribers: tuple[RuntimeEventSubscriber, ...],
-    ) -> AgentRuntime:
-        runtime = AgentRuntime(
+    ) -> Runtime:
+        runtime = Runtime(
             config,
             provider_pool,
-            self._skill_runners,
+            self._skill_loaders,
             storage,
             self._create_action_rules,
             self.user_secrets,
@@ -555,8 +555,8 @@ class Agent:
         self,
         prompt: str,
         parent_session: Run,
-    ) -> TaskResult:
-        request = TaskRequest(
+    ) -> RunResult:
+        request = Task(
             prompt=prompt,
             messages=[],
             include_subagents=True,
@@ -619,7 +619,7 @@ __all__ = [
     "ActionMode",
     "ActionRules",
     "ChatProvider",
-    "SkillRunner",
+    "SkillLoader",
     "SkillAction",
     "SkillTool",
     "Conversation",
@@ -640,7 +640,7 @@ __all__ = [
     "SkillLoadRequest",
     "StorageBackend",
     "StdioMcpServer",
-    "TaskResult",
+    "RunResult",
     "TaskPreflightError",
     "TaskTrace",
     "ToolCall",

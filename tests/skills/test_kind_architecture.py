@@ -7,9 +7,9 @@ from pathlib import Path
 
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.kinds.mcp import McpSkillSettings
-from skill.runners.mcp import McpServer
+from skill.loaders.mcp import McpServer
 from skill.kinds.memory import MiniMemory
-from core.models import SubAgentResult, TaskResult
+from core.models import SubAgentResult, RunResult
 from skill.kinds.workflow import create_workflow_policy
 from skill.manifest import SkillManifest
 
@@ -39,7 +39,7 @@ class SkillKindArchitectureTests(unittest.TestCase):
         self.assertEqual("McpServer", McpServer.__name__)
         self.assertEqual("McpSkillSettings", McpSkillSettings.__name__)
         self.assertEqual("MiniMemory", MiniMemory.__name__)
-        self.assertEqual("TaskResult", TaskResult.__name__)
+        self.assertEqual("RunResult", RunResult.__name__)
         self.assertEqual("SubAgentResult", SubAgentResult.__name__)
         self.assertEqual("direct", create_workflow_policy("direct").name)
         self.assertEqual("ProgressiveDisclosureCore", ProgressiveDisclosureCore.__name__)
@@ -72,7 +72,7 @@ class SkillKindArchitectureTests(unittest.TestCase):
         self.assertTrue(Path("src/core/state/subscribers.py").is_file())
         self.assertTrue(Path("src/skill/task/run.py").is_file())
         self.assertFalse(Path("src/core/session.py").exists())
-        self.assertTrue(Path("src/skill/state/store.py").is_file())
+        self.assertTrue(Path("src/skill/state/events.py").is_file())
         self.assertTrue(Path("src/core/events.py").is_file())
         self.assertTrue(Path("src/adapter/storage/jsonl.py").is_file())
         self.assertFalse(Path("src/core/storage").exists())

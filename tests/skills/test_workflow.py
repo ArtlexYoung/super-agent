@@ -42,7 +42,11 @@ class ExecutableWorkflowTests(unittest.TestCase):
                 ]
             )
 
-            result = Agent(AgentConfig.load_from_file(config_path), provider=provider).run("unrelated question")
+            result = Agent(
+                AgentConfig.load_from_file(config_path),
+                provider=provider,
+                use_storage=True,
+            ).run("unrelated question")
 
             self.assertEqual("final answer", result.text)
             self.assertEqual("model_finished", result.stop_reason)
@@ -64,7 +68,11 @@ class ExecutableWorkflowTests(unittest.TestCase):
             )
             provider = MockProvider(tool_responses=[repeated_call, repeated_call])
 
-            result = Agent(AgentConfig.load_from_file(config_path), provider=provider).run("keep working")
+            result = Agent(
+                AgentConfig.load_from_file(config_path),
+                provider=provider,
+                use_storage=True,
+            ).run("keep working")
 
             self.assertEqual("max_steps", result.stop_reason)
             self.assertEqual(2, len(provider.tool_requests))

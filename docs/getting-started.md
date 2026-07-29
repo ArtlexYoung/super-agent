@@ -108,7 +108,7 @@ assert agent.run("hello").text == "test answer"
 For stored multi-turn history, create a conversation in one user scope:
 
 ```python
-agent = Agent()
+agent = Agent(use_storage=True)
 alice = agent.for_user("alice")
 conversation = alice.conversations.create("Project notes")
 alice.run("first turn", conversation_id=conversation.conversation_id)

@@ -6,29 +6,33 @@ from pathlib import Path
 from super_agent import Agent
 from core.provider.chat import MockProvider
 from skill.disclosure import ProgressiveDisclosureCore, SkillReference
-from skill.runners.loaded import LoadedSkill
-from skill.runners.registry import (
+from skill.loaders.loaded import LoadedSkill
+from skill.loaders.registry import (
     SkillLoadRequest,
-    SkillRunners,
-    describe_skill_runner,
+    SkillLoaders,
+    describe_skill_loader,
 )
 from core.config import AgentConfig
 
 
-class SkillRunnersTests(unittest.TestCase):
-    def test_runtime_lock_contains_only_skill_runner_descriptions(self) -> None:
+class SkillLoadersTests(unittest.TestCase):
+    def test_runtime_lock_contains_only_skill_loader_descriptions(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            agent = Agent(AgentConfig.create_default(tmp), provider=MockProvider())
+            agent = Agent(
+                AgentConfig.create_default(tmp),
+                provider=MockProvider(),
+                use_storage=True,
+            )
             result = agent.run("hello")
-            runtime_lock = agent.runtime.create_store().read_runtime_lock(result.run_id)
+            runtime_lock = agent.runtime.create_event_store().read_runtime_lock(result.run_id)
 
             self.assertEqual(18, runtime_lock["schema_version"])
             self.assertEqual([], runtime_lock["registered_code"])
-            locked = runtime_lock["skill_runners"]
+            locked = runtime_lock["skill_loaders"]
             self.assertEqual(
                 [
                     item.descriptor.to_dict()
-                    for item in agent.skill_runners.list_skill_runners()
+                    for item in agent.skill_loaders.list_skill_loaders()
                 ],
                 locked,
             )
@@ -39,33 +43,33 @@ class SkillRunnersTests(unittest.TestCase):
             self.assertEqual(["storage", "text_model"], memory["required_services"])
 
     def test_registry_rejects_missing_and_cyclic_dependencies(self) -> None:
-        missing = SkillRunners()
-        missing.add_skill_runner(
-            _SkillRunner("alpha", ("missing",))
+        missing = SkillLoaders()
+        missing.add_skill_loader(
+            _SkillLoader("alpha", ("missing",))
         )
         with self.assertRaisesRegex(KeyError, "alpha -> missing"):
             missing.validate_dependencies()
 
-        cyclic = SkillRunners()
-        cyclic.add_skill_runner(
-            _SkillRunner("alpha", ("beta",))
+        cyclic = SkillLoaders()
+        cyclic.add_skill_loader(
+            _SkillLoader("alpha", ("beta",))
         )
-        cyclic.add_skill_runner(
-            _SkillRunner("beta", ("alpha",))
+        cyclic.add_skill_loader(
+            _SkillLoader("beta", ("alpha",))
         )
         with self.assertRaisesRegex(ValueError, "alpha -> beta"):
             cyclic.validate_dependencies()
 
     def test_registry_rejects_description_for_another_skill_type(self) -> None:
-        registry = SkillRunners()
-        runner = _SkillRunner("prompt")
+        registry = SkillLoaders()
+        loader = _SkillLoader("prompt")
         descriptor = replace(
-            describe_skill_runner(runner),
+            describe_skill_loader(loader),
             skill_type="memory",
         )
 
         with self.assertRaisesRegex(ValueError, "type does not match"):
-            registry.add_skill_runner(runner, descriptor)
+            registry.add_skill_loader(loader, descriptor)
 
     def test_registry_validates_the_shared_included_skill_contract(self) -> None:
         reference = SkillReference("prompt", "common")
@@ -74,25 +78,25 @@ class SkillRunnersTests(unittest.TestCase):
             SkillReference("group", "test"),
         )
 
-        valid = SkillRunners()
-        valid.add_skill_runner(_LoadedSkillRunner((reference,)))
+        valid = SkillLoaders()
+        valid.add_skill_loader(_LoadedSkillLoader((reference,)))
         self.assertEqual(
             (reference,),
             valid.load_skill(request).included_skills,
         )
 
-        invalid_type = SkillRunners()
-        invalid_type.add_skill_runner(_LoadedSkillRunner(("prompt:common",)))
+        invalid_type = SkillLoaders()
+        invalid_type.add_skill_loader(_LoadedSkillLoader(("prompt:common",)))
         with self.assertRaisesRegex(TypeError, "tuple of SkillReference"):
             invalid_type.load_skill(request)
 
-        duplicate = SkillRunners()
-        duplicate.add_skill_runner(_LoadedSkillRunner((reference, reference)))
+        duplicate = SkillLoaders()
+        duplicate.add_skill_loader(_LoadedSkillLoader((reference, reference)))
         with self.assertRaisesRegex(ValueError, "cannot contain duplicates"):
             duplicate.load_skill(request)
 
 
-class _SkillRunner:
+class _SkillLoader:
     name = "test"
     version = "1"
     adds_model_context = True
@@ -109,7 +113,7 @@ class _SkillRunner:
         return request
 
 
-class _LoadedSkillRunner:
+class _LoadedSkillLoader:
     name = "included-skill-test"
     version = "1"
     skill_type = "group"

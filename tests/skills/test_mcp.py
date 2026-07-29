@@ -7,17 +7,17 @@ from pathlib import Path
 from core import __version__
 from core.checks import ActionEffect
 from super_agent import Agent
-from skill.runners.defaults import create_default_skill_runners
-from skill.runners.registry import SkillLoadRequest
+from skill.loaders.defaults import create_default_skill_loaders
+from skill.loaders.registry import SkillLoadRequest
 from core.config import AgentConfig
-from skill.state.store import create_local_runtime_store
+from skill.state.events import create_local_event_store
 from core.provider.chat import MockProvider
 from skill.task.preflight import TaskPreflightError
 from skill.disclosure import ProgressiveDisclosureCore, SkillReference
 from skill.kinds.mcp import read_mcp_skill_settings
 from skill.kinds.memory import MiniMemory
 from skill.manifest import Skill
-from skill.runners.mcp import McpServers, StdioMcpServer
+from skill.loaders.mcp import McpServers, StdioMcpServer
 from support import write_memory_skill, write_workflow_skill
 
 
@@ -99,7 +99,7 @@ class McpSkillTests(unittest.TestCase):
             disclosure = _prepare_disclosure(root)
             index = disclosure.prepare_skill_index()
             servers = _registered_servers("alpha", "beta")
-            registry = create_default_skill_runners(servers)
+            registry = create_default_skill_loaders(servers)
 
             alpha = registry.load_skill(
                 SkillLoadRequest(
@@ -125,7 +125,7 @@ class McpSkillTests(unittest.TestCase):
                 alpha.tools[0].action.effects,
             )
 
-    def test_mcp_skill_runner_requires_matching_code_registration(self) -> None:
+    def test_mcp_skill_loader_requires_matching_code_registration(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             server_dir = root / "skills" / "mcp" / "bad"
@@ -148,7 +148,7 @@ instructions = "SKILL.md"
             disclosure = _prepare_disclosure(root)
 
             with self.assertRaisesRegex(KeyError, "not registered in code"):
-                create_default_skill_runners().load_skill(
+                create_default_skill_loaders().load_skill(
                     SkillLoadRequest(
                         disclosure,
                         disclosure.prepare_skill_index().require_skill(
@@ -204,7 +204,7 @@ instructions = "SKILL.md"
             config = AgentConfig.load_from_file(
                 _write_agent_config(root, skills=["mcp:calculator"])
             )
-            agent = Agent(config, provider=MockProvider("ok"))
+            agent = Agent(config, provider=MockProvider("ok"), use_storage=True)
             agent.add_mcp_server(
                 "calculator",
                 _FakeMcpServer(),
@@ -213,7 +213,7 @@ instructions = "SKILL.md"
 
             result = agent.run("use calculator")
 
-            runtime_lock = agent.runtime.create_store().read_runtime_lock(result.run_id)
+            runtime_lock = agent.runtime.create_event_store().read_runtime_lock(result.run_id)
             registered = runtime_lock["registered_code"]
             self.assertEqual(18, runtime_lock["schema_version"])
             self.assertEqual("calculator", registered[0]["name"])
@@ -228,7 +228,11 @@ instructions = "SKILL.md"
             config_path = _write_agent_config(root, disabled_skills=["mcp"])
             provider = MockProvider("ok")
 
-            result = Agent(AgentConfig.load_from_file(config_path), provider=provider).run("github")
+            result = Agent(
+                AgentConfig.load_from_file(config_path),
+                provider=provider,
+                use_storage=True,
+            ).run("github")
 
             self.assertEqual(["common"], result.skills)
             self.assertNotIn("GitHub MCP", provider.last_messages[0]["content"])
@@ -241,7 +245,7 @@ instructions = "SKILL.md"
             _write_skill(root, "echo", "Echo helper", "Use echo skill.")
             _write_mcp_skill(root, "github", "GitHub MCP")
             memory = MiniMemory(
-                create_local_runtime_store(root / ".super-agent", agent_name="demo")
+                create_local_event_store(root / ".super-agent", agent_name="demo")
             )
             memory.add_long_term_memory("Keep answers short.")
             config_path = _write_agent_config(
@@ -251,7 +255,11 @@ instructions = "SKILL.md"
             )
             provider = MockProvider("ok")
 
-            result = Agent(AgentConfig.load_from_file(config_path), provider=provider).run("echo github")
+            result = Agent(
+                AgentConfig.load_from_file(config_path),
+                provider=provider,
+                use_storage=True,
+            ).run("echo github")
 
             system_prompt = provider.last_messages[0]["content"]
             self.assertEqual(["common"], result.skills)
@@ -373,11 +381,11 @@ def _load_model_context(
     reference: SkillReference,
     servers: McpServers,
 ) -> Skill:
-    contribution = create_default_skill_runners(servers).load_skill(
+    contribution = create_default_skill_loaders(servers).load_skill(
         SkillLoadRequest(disclosure, reference)
     )
     if contribution.model_context is None:
-        raise AssertionError("MCP SkillRunner did not provide model context")
+        raise AssertionError("MCP SkillLoader did not provide model context")
     return contribution.model_context
 
 
@@ -421,7 +429,7 @@ for line in sys.stdin:
         client_version = request["params"]["clientInfo"]["version"]
         result = {
             "protocolVersion": "2025-03-26",
-            "skill_runners": {"tools": {}},
+            "skill_loaders": {"tools": {}},
             "serverInfo": {"name": "fake", "version": "1"},
         }
     elif method == "tools/list":

@@ -52,16 +52,17 @@ print(result.run_id)
 ```
 
 `Agent()` is lazy. It validates configuration immediately, then waits until first use to
-open storage, scan Skills, discover models, and assemble Runtime. This leaves room to
-register Skill runners, MCP servers, event subscribers, and subagents first.
+scan Skills, discover models, and assemble Runtime. Storage is not opened unless the
+application explicitly enables or supplies it. This leaves room to
+register Skill loaders, MCP servers, event subscribers, and subagents first.
 
-Storage can be disabled when an embedded task needs no conversations, memory, cache, or
-persisted evidence:
+The Python library starts without storage. This is enough for an embedded task that needs
+no conversations, memory, cache, or persisted evidence:
 
 ```python
 from super_agent import Agent, MockProvider
 
-agent = Agent(provider=MockProvider("offline result"), use_storage=False)
+agent = Agent(provider=MockProvider("offline result"))
 result = agent.run("Classify this text")
 print(result.events)
 ```
@@ -74,9 +75,9 @@ requested feature to keep a task running.
 ```text
 Provider     connects model intelligence
 Core         plans runs, executes tasks, and owns optional state
-SkillRunner  turns one Skill type into behavior
+SkillLoader  turns one Skill type into behavior
 Skill        stores passive content and configuration
-Agent        combines Providers, runners, storage, and subagents in Python
+Agent        combines Providers, SkillLoaders, optional storage, and subagents in Python
 ```
 
 Every run uses one path:
@@ -85,8 +86,8 @@ Every run uses one path:
 Agent.run
   -> build one complete Run
   -> select one task scene and progressively disclose its Skills
-  -> use one Scheduler Skill to create one RunPlan with one model decision
-  -> preflight every runner, service, tool, Provider, and subagent
+  -> use one Scheduler Skill to create one Plan with one model decision
+  -> preflight every SkillLoader, service, tool, Provider, and subagent
   -> execute and emit one ordered event stream
   -> optionally learn from that immutable evidence
 ```
@@ -104,7 +105,7 @@ The design has four practical guarantees:
   monitoring, and rollback.
 
 Skill content is passive data and cannot grant itself execution rights. Executable MCP
-servers and custom Skill runners are registered in trusted application code. Tools declare
+servers and custom Skill loaders are registered in trusted application code. Tools declare
 their effects before preflight.
 
 ## Skills and Scenes
@@ -119,7 +120,7 @@ skill_scenes/
 
 Runtime selects one scene from an explicit request, Agent configuration, or prompt
 triggers. Ambiguity is an error. Applications can add any Skill type by registering a
-runner with `Agent.add_skill_runner(...)`; Core does not contain a fixed type list.
+loader with `Agent.add_skill_loader(...)`; Core does not contain a fixed type list.
 
 Use `super-agent init --path my-agent` only when you want an editable example. Model
 profiles are model Skills, while API keys remain in environment variables. See
@@ -127,9 +128,10 @@ profiles are model Skills, while API keys remain in environment variables. See
 
 ## Optional Layers
 
-The default is local, readable JSONL storage under `.super-agent/`. SQLite also uses only
-the standard library. MySQL and PostgreSQL drivers are optional extras loaded only when
-their backend is selected.
+The CLI and Web app explicitly use local, readable JSONL storage under `.super-agent/`.
+The Python library enables the same backend with `Agent(use_storage=True)`. SQLite also
+uses only the standard library. MySQL and PostgreSQL drivers are optional extras loaded
+only when their backend is selected.
 
 Common entry points:
 
@@ -149,7 +151,7 @@ workflow, planning, MCP, scenes, and model profiles remain ordinary Skill types.
 - [Getting started](docs/getting-started.md)
 - [Architecture](docs/architecture.md)
 - [Skills and progressive disclosure](docs/skills.md)
-- [Skill runners and MCP](docs/skill-runners.md)
+- [Skill loaders and MCP](docs/skill-loaders.md)
 - [Configuration and storage](docs/configuration.md)
 - [Runtime, tracing, users, and subagents](docs/runtime.md)
 - [Memory, evaluation, freshness, and evolution](docs/evolution.md)

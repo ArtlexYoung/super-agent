@@ -12,7 +12,7 @@ from adapter.ag_ui_adapter.configuration import (
     agent_configuration_to_dict,
     update_agent_configuration,
 )
-from skill.runners.defaults import create_skills
+from skill.loaders.defaults import create_skills
 from core.config import AgentConfig
 from skill.evolution.insights import explain_run_with_insight
 from core.checks import ActionEffect, ActionRequest
@@ -80,7 +80,7 @@ class WebAPI:
         return WebAPIResponse(HTTPStatus.NOT_FOUND, {"error": "route not found"})
 
     def _read_bootstrap(self) -> dict[str, object]:
-        store = self.agent.runtime.create_store(self.user_id)
+        store = self.agent.runtime.create_event_store(self.user_id)
         config = self.agent.config
         all_skills_config = replace(
             config,
@@ -119,10 +119,10 @@ class WebAPI:
 
     def _read_run(self, run_id: str) -> dict[str, object]:
         agent = _find_agent_for_run(self.agent, self.user_id, run_id, set())
-        return explain_run_with_insight(agent.runtime.create_store(self.user_id), run_id)
+        return explain_run_with_insight(agent.runtime.create_event_store(self.user_id), run_id)
 
     def _forget_memory(self, item_id: str) -> None:
-        store = self.agent.runtime.create_store(self.user_id)
+        store = self.agent.runtime.create_event_store(self.user_id)
         item = next(
             (
                 candidate
@@ -220,7 +220,7 @@ def _find_agent_for_run(
         raise KeyError(f"run not found: {run_id}")
     seen.add(id(agent))
     try:
-        agent.runtime.create_store(user_id).read_run(run_id)
+        agent.runtime.create_event_store(user_id).read_run(run_id)
         return agent
     except KeyError:
         pass
@@ -244,7 +244,7 @@ def _subagent_tree(
     nodes: list[dict[str, object]] = []
     for subagent in agent.list_subagents():
         child_path = [*path, subagent.name]
-        child_store = subagent.agent.runtime.create_store(user_id)
+        child_store = subagent.agent.runtime.create_event_store(user_id)
         nodes.append(
             {
                 "name": subagent.name,

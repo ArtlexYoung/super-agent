@@ -16,7 +16,11 @@ class WebAPIContractTests(unittest.TestCase):
     def test_bootstrap_projects_runtime_state_without_cache_paths(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            agent = Agent(AgentConfig.create_default(root), provider=MockProvider("ok"))
+            agent = Agent(
+                AgentConfig.create_default(root),
+                provider=MockProvider("ok"),
+                use_storage=True,
+            )
             child = Agent(
                 replace(
                     AgentConfig.create_default(root / "child"),
@@ -26,10 +30,11 @@ class WebAPIContractTests(unittest.TestCase):
                     ),
                 ),
                 provider=MockProvider("child answer"),
+                use_storage=True,
             )
             agent.add_subagent(child, name="research", created_by_agent=True)
             child_result = child.for_user("web-user").run("inspect")
-            memory = MiniMemory(agent.runtime.create_store("web-user"))
+            memory = MiniMemory(agent.runtime.create_event_store("web-user"))
             memory.add_long_term_memory("Stable preference.")
             memory.add_temporary_memory(
                 "Current conversation detail.",
@@ -76,6 +81,7 @@ class WebAPIContractTests(unittest.TestCase):
             agent = Agent(
                 AgentConfig.create_default(Path(tmp)),
                 provider=MockProvider("runtime answer"),
+                use_storage=True,
             )
             api = WebAPI(agent, "web-user")
             created = api.handle("POST", "/api/conversations", {"title": "First"})
@@ -91,7 +97,7 @@ class WebAPIContractTests(unittest.TestCase):
                 {"title": "Renamed"},
             )
             run = api.handle("GET", f"/api/runs/{result.run_id}")
-            memory = MiniMemory(agent.runtime.create_store("web-user"))
+            memory = MiniMemory(agent.runtime.create_event_store("web-user"))
             item = memory.add_long_term_memory("Forget this note.")
             forgotten = api.handle("DELETE", f"/api/memory/{item.item_id}")
 
@@ -104,7 +110,7 @@ class WebAPIContractTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             config = AgentConfig.create_default(root)
-            agent = Agent(config, provider=MockProvider("ok"))
+            agent = Agent(config, provider=MockProvider("ok"), use_storage=True)
             api = WebAPI(agent, "web-user")
             request = dict(_body_dict(api.handle("GET", "/api/bootstrap").body)["agent"])
             request["name"] = "configured-agent"
@@ -119,7 +125,11 @@ class WebAPIContractTests(unittest.TestCase):
     def test_model_skill_can_be_created_and_removed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            agent = Agent(AgentConfig.create_default(root), provider=MockProvider())
+            agent = Agent(
+                AgentConfig.create_default(root),
+                provider=MockProvider(),
+                use_storage=True,
+            )
             api = WebAPI(agent, "web-user")
 
             created = api.handle("POST", "/api/models", _model_request())

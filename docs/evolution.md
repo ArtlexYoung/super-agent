@@ -102,7 +102,7 @@ super-agent skills promote --config agent.toml --candidate-id <id>
 super-agent skills rollback --config agent.toml --name prompt:concise
 ```
 
-Executable SkillRunner code is never generated or activated from a candidate. Only passive
+Executable SkillLoader code is never generated or activated from a candidate. Only passive
 Skill content and configuration can evolve.
 
 ## Temporary and Long-Term Memory

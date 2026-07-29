@@ -3,20 +3,20 @@
 ## One Task Path
 
 Every `Agent.run(...)` call creates one task request, complete `Run`, event log, Skill
-index, and adaptive task loop. `AgentRuntime` is the only owner of that construction;
+index, and adaptive task loop. `Runtime` is the only owner of that construction;
 there is no resource wrapper, request wrapper, or second user-model Runtime. The log
 stays in memory or writes through the selected
 backend; domain state is attached only when storage is enabled:
 
 ```text
 Agent.run(...)
-  -> AgentRuntime.run_task(...)
+  -> Runtime.run_task(...)
   -> prepare one progressive Skill index
   -> load one Scheduler Skill
-  -> create one RunPlan with exactly one model decision
+  -> create one Plan with exactly one model decision
   -> preflight the planned Skills, services, tools, Provider, and subagents
   -> plan one or more task steps
-  -> load and execute the prepared run
+  -> execute one RunContext shared by every step
   -> run model, tools, and subagents
   -> emit an optional learning request after task execution
   -> independent subscribers evaluate, refresh evidence, and review evolution
@@ -25,10 +25,11 @@ Agent.run(...)
 A direct task is a one-step plan. A decomposed task uses the same step executor. There is
 no separate controller for workflows, memory, subagents, CLI, or Web requests.
 
-`RunPlan` is immutable, serializable, and contains only decisions. It separates all
+`Plan` is immutable, serializable, and contains only decisions. It separates all
 selected Skills from the smaller model-context Skill set and includes the exact workflow,
-optional planner, one `ModelDecision`, features, and subagents. Loaded policies and
-callbacks stay in the internal `PreparedRun`; they never enter the plan. Missing,
+optional planner, one `ModelDecision`, features, and subagents. The task-local
+`RunContext` pairs that Plan with loaded policies and callbacks; those mechanisms never
+enter the Plan. Missing,
 ambiguous, or incompatible choices fail while the plan is created. Core records the same
 plan in `task.scheduled` and the Runtime lock instead of rebuilding decisions for each
 consumer.
@@ -45,12 +46,13 @@ action, so a pure stateless model call does not initialize the action layer.
 ## Optional Parts
 
 The smallest run needs an Agent, a model source, and one valid scene. The shipped
-`common` scene satisfies the default stateful path without user configuration. When
-`use_storage=False`, Runtime evaluates scene service requirements before freezing the
+`common` scene satisfies an explicitly stateful path without further configuration. The
+Python library is storage-free by default. When storage is disabled, Runtime evaluates
+scene service requirements before freezing the
 plan. The shipped `stateless` scene is selected because it is the only compatible
 candidate; the reason and excluded candidates are recorded. An explicitly requested
 incompatible scene fails instead of being replaced. Stateless execution keeps ordered
-events in `TaskResult.events` and creates no backend, cache, conversation, memory,
+events in `RunResult.events` and creates no backend, cache, conversation, memory,
 evaluation, or evolution state. Other behavior is progressive:
 
 - No conversation ID means no conversation history is loaded or written.
@@ -78,7 +80,7 @@ after inspecting the task result:
 ```python
 from super_agent import Agent
 
-agent = Agent()
+agent = Agent(use_storage=True)
 result = agent.run("Answer this")
 learning = agent.learn_from_run(result.run_id)
 ```
@@ -97,7 +99,7 @@ class AuditEvents:
         write_audit_record(event)
 
 
-agent = Agent()
+agent = Agent(use_storage=True)
 agent.add_event_subscriber(AuditEvents())
 ```
 
@@ -110,7 +112,7 @@ create no evaluation or evolution state, and explicit learning fails because sto
 disabled.
 
 `RunEventLog` is the only run-event writer in both modes. Streaming listeners,
-`TaskResult.events`, subscribers, and persisted replay therefore observe the same order.
+`RunResult.events`, subscribers, and persisted replay therefore observe the same order.
 Conversation, memory, evaluation, disclosure, and evolution projections load only when
 their operation or selected Skill needs them.
 
@@ -179,7 +181,7 @@ and nested work.
 Model Skills describe purpose, supported features, expected quality, latency, cost, and
 Provider connection metadata. The selected Scheduler Skill combines those declared traits
 with user-and-Agent-scoped run evidence and a bounded exploration score. Candidate ranking
-is a pure input-to-output operation; only the final `ModelDecision` enters the `RunPlan`.
+is a pure input-to-output operation; only the final `ModelDecision` enters the `Plan`.
 
 The built-in `scheduler:default` needs no user configuration. An equal top score or more
 than one automatically inferred purpose is an error, not a name-order fallback. For a
@@ -188,7 +190,7 @@ Custom Scheduler and model Skills use the same ownership and evolution rules as 
 other passive Skill.
 
 A Provider failure is recorded and raised without a retry marker or another model call.
-Choosing another model requires a new, visible `RunPlan` before execution; it is never a
+Choosing another model requires a new, visible `Plan` before execution; it is never a
 hidden fallback.
 
 ```python
@@ -199,7 +201,7 @@ stats = alice.runs.list_model_routing_stats(purpose="summary")
 
 ## Run Traces
 
-Each run receives a unique `run_id`. With default JSONL storage, canonical events are
+Each run receives a unique `run_id`. With JSONL storage enabled, canonical events are
 appended to:
 
 ```text
@@ -207,7 +209,7 @@ appended to:
 ```
 
 The `runtime.locked` event records the effective Agent settings, model profile and
-Provider implementation, RunPlan, storage backend, SkillRunner hashes, code-registered
+Provider implementation, Plan, storage backend, SkillLoader hashes, code-registered
 MCP implementation and settings hashes, declared effects, and exact Skill revisions.
 Secret and environment values are never stored.
 

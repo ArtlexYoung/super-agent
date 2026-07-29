@@ -1,7 +1,7 @@
 import json
 import unittest
 
-from skill.runners.loaded import PlanningPolicy
+from skill.loaders.loaded import PlanningPolicy
 from skill.task.planning import (
     create_direct_task_plan,
     decide_task_planning,

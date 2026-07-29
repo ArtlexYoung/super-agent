@@ -5,7 +5,7 @@ Super Agent keeps five responsibilities separate and gives each one a direct nam
 ```text
 Provider     connects model intelligence
 Core         executes prepared model calls and checks declared actions
-SkillRunner  turns one Skill type into task behavior
+SkillLoader  turns one Skill type into task behavior
 Skill        carries passive content and configuration
 Agent        composes Providers, Core options, Skills, storage, and subagents
 ```
@@ -19,7 +19,7 @@ skill_scenes/       shipped common and optional task-scene Skill trees
 src/
   adapter/          external entry points, conversations, and storage implementations
   core/             Skill-independent Runtime, Provider, events, checks, and storage port
-  skill/            Skill format, scheduling, state, runners, packages, and evolution
+  skill/            Skill format, scheduling, state, loaders, packages, and evolution
   cli.py
   super_agent.py
 ```
@@ -33,7 +33,7 @@ registries. Storage creation, Skill indexing, model discovery, and Runtime assem
 together on first use behind one lock. Components are published only after the whole build
 succeeds, so concurrent first calls share one Runtime and a failed build leaves no partial
 state. CLI commands use the same three direct loaders for configuration, Agent, and scoped
-RuntimeStore creation.
+EventStore creation.
 
 ## One Task Path
 
@@ -41,11 +41,11 @@ Every run enters one kernel:
 
 ```text
 Agent.run(...)
-  -> AgentRuntime.run_task(TaskRequest)
-  -> Run with one RunEventLog and an optional RuntimeStore
+  -> Runtime.run_task(Task)
+  -> Run with one RunEventLog and an optional EventStore
   -> progressive index selects one scene and its Skill references
   -> one Scheduler Skill fixes scene, Skills, workflow, planner, model, and subagents
-  -> one immutable RunPlan records those decisions
+  -> one immutable Plan records those decisions
   -> preflight validates the complete run before any model or subagent call
   -> one Skills snapshot loads the run and one task loop executes it
   -> one terminal event keeps immutable learning evidence
@@ -57,16 +57,16 @@ Direct tasks are one-step plans. Complex tasks are multi-step plans. Both use th
 loop, event stream, model routing, tool registry, and stopping checks. There is no second
 controller for workflows, memory, planning, or subagents.
 
-`RunPlan` is the only execution decision object. It contains the selected Scheduler,
+`Plan` is the only execution decision object. It contains the selected Scheduler,
 stable scene, Skill, workflow, and planner references, exactly one model decision with
-reasons, required features, and subagent choices. Loaded policies and callbacks live only
-in `PreparedRun`.
+reasons, required features, and subagent choices. One task-local `RunContext` pairs it
+with loaded policies and callbacks during scheduling and execution.
 Core creates the plan before the matching execution and records that same object in the
 task event and Runtime lock. Planned steps use the same contract. There are no candidate
 lists or partial selection objects to reconcile later.
 
 Preflight loads each planned Skill once into the Run and aggregates missing
-runners, declared services, invalid tools, the selected Provider, and subagents into one
+loaders, declared services, invalid tools, the selected Provider, and subagents into one
 report. A failed report raises `TaskPreflightError` before the Runtime lock, model call,
 tool handler, or subagent run. Execution reuses the checked Skill contributions.
 
@@ -74,7 +74,7 @@ tool handler, or subagent run. Execution reuses the checked Skill contributions.
 validated identity, one small `RunEventLog`, optional store, selected model state, one
 Skills snapshot, an optional action-checker factory, event subscribers, and evidence
 tracker. The action runner is created only when a checked action actually runs.
-`AgentRuntime` constructs it directly from explicit dependencies; no resource container,
+`Runtime` constructs it directly from explicit dependencies; no resource container,
 session request, user-model wrapper, factory shell, or late disclosure setter exists. The
 event log uses memory without a backend and persists the same ordered records when a
 backend exists. Derived CLI and Web views are projected from canonical events, not from
@@ -100,16 +100,16 @@ All Skill types use one central `Skills` object. Its internal progressive reader
 7. Store disclosure history in the same user-and-Agent event scope as the run.
 
 Offline discovery and ordinary reads are pure. Disclosure writes cache and history only
-when explicitly requested, while activation separately loads runner behavior and records
+when explicitly requested, while activation separately loads loader behavior and records
 actual Skill use. Inspecting available Skills has no hidden side effect.
 
-## SkillRunners
+## SkillLoaders
 
-A SkillRunner is trusted application code registered for exactly one `skill_type`. It has
+A SkillLoader is trusted application code registered for exactly one `skill_type`. It has
 one loading method:
 
 ```python
-loaded = runner.load_skill(request)
+loaded = loader.load_skill(request)
 ```
 
 `LoadedSkill` may contribute model context, prompt context, tools, included Skills, a task
@@ -118,7 +118,7 @@ every type. Scene, prompt, MCP, memory, workflow, and planner behavior therefore
 no separate loader path in Core.
 
 Downloaded Skill directories are always passive. Runtime never imports Python from them.
-Custom executable behavior is added explicitly with `Agent.add_skill_runner(...)`. MCP
+Custom executable behavior is added explicitly with `Agent.add_skill_loader(...)`. MCP
 servers use `Agent.add_mcp_server(...)`; the Skill stores only a registered name while
 trusted code owns the command, environment, transport, and declared effects. The Runtime
 lock records implementation and settings hashes without environment values.
@@ -147,7 +147,7 @@ before a call and is visible in the plan, Runtime lock, selection event, and Pro
 Run
   -> RunEventLog
        -> optional StorageBackend
-  -> optional RuntimeStore
+  -> optional EventStore
        -> scoped canonical events
        -> lazy memory / disclosure / evaluation projections
 ```
@@ -158,7 +158,7 @@ evaluations, and evolution state remain inside that scope. Shared project and sh
 scene Skills are read-only baselines. The index reports shipped content with the
 `builtin` source label, so resolution order is `user > project > builtin`.
 
-`RuntimeStore` is the scoped Skill-state event boundary. It does not expose its backend;
+`EventStore` is the scoped Skill-state event boundary. It does not expose its backend;
 memory and disclosure receive the store itself instead of independent writer and reader
 callbacks. Run explanation reads one canonical stream once, then derives the snapshot,
 ordered Runtime events, lock, decisions, and disclosure path from that same input.
@@ -169,10 +169,10 @@ one event only after a successful run. JSONL and SQLite use only the standard li
 remote database drivers are imported only after their backend is explicitly selected.
 
 Concrete Skill kinds, storage implementations, state projections, learning, evolution,
-and adapters are also imported only when their corresponding runner or service is used.
+and adapters are also imported only when their corresponding loader or service is used.
 A stateless task does not initialize those optional layers.
 
-`RuntimeStore` lazily creates disclosure and memory state and imports evaluation or view
+`EventStore` lazily creates disclosure and memory state and imports evaluation or view
 code only for the matching operation. Ordinary runs keep persistent traces without
 initializing evaluation, freshness, or evolution services; explicit learning loads them.
 
@@ -202,7 +202,7 @@ evidence for every evaluation case. The state machine binds one immutable report
 SHA-256 to the normalized cases plus candidate and baseline directory hashes. Manual and
 automatic evolution use this same gate. Activation checks source, copied, and current
 target hashes around the atomic directory switch. Runtime refresh and state publication
-either complete together or restore the previous Skill explicitly. Executable SkillRunner
+either complete together or restore the previous Skill explicitly. Executable SkillLoader
 code remains reviewed application code rather than downloadable Skill content. Package
 installation and updates reuse the same verified directory switch.
 
@@ -217,7 +217,7 @@ than methods added to the general event store.
 
 - One task has one complete Run, disclosure core, task loop, and event stream; storage
   is one explicit optional service.
-- Every model execution reads one immutable RunPlan created before that execution.
+- Every model execution reads one immutable Plan created before that execution.
 - Every task uses one selected Scheduler Skill; ambiguous choices never use list order.
 - Evaluation and evolution never write directly from the task loop; they observe immutable
   Runtime events and can be disabled without changing execution.

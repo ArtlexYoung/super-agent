@@ -9,22 +9,22 @@ from skill.evolution.state import (
 )
 from core.state.models import RunEvent
 from skill.task.model_calls import list_model_routing_stats
-from skill.state.store import RuntimeStore
+from skill.state.events import EventStore
 from skill.evolution.freshness import calculate_skill_freshness
 from skill.evolution.records import read_evaluation_records
 
 
-def explain_run_with_insight(store: RuntimeStore, run_id: str) -> dict[str, object]:
+def explain_run_with_insight(store: EventStore, run_id: str) -> dict[str, object]:
     explanation = store.explain_run(run_id)
     events = store.read_run_events(run_id)
-    run_plan = _latest_event_data(events, "task.scheduled")
+    plan = _latest_event_data(events, "task.scheduled")
     purposes = _model_purposes_for_run(events)
     explanation.update(
         {
             "schema_version": 7,
-            "run_plan": run_plan,
+            "plan": plan,
             "task_plan": _latest_event_data(events, "task.plan.created"),
-            "task_steps": project_task_steps(events),
+            "steps": project_steps(events),
             "model_calls": project_model_calls(events),
             "routing_evidence": [
                 item.to_dict()
@@ -38,7 +38,7 @@ def explain_run_with_insight(store: RuntimeStore, run_id: str) -> dict[str, obje
     return explanation
 
 
-def project_task_steps(events: list[RunEvent]) -> list[dict[str, object]]:
+def project_steps(events: list[RunEvent]) -> list[dict[str, object]]:
     steps: dict[int, dict[str, object]] = {}
     for event in events:
         if event.event_type not in {"task.step.scheduled", "task.step.completed"}:
@@ -91,7 +91,7 @@ def project_model_calls(events: list[RunEvent]) -> list[dict[str, object]]:
     return calls
 
 
-def _evolution_for_run(store: RuntimeStore, run_id: str) -> list[dict[str, object]]:
+def _evolution_for_run(store: EventStore, run_id: str) -> list[dict[str, object]]:
     run_records = [
         record
         for record in read_evaluation_records(store, source_type="agent_run")
@@ -124,7 +124,7 @@ def _skill_evolution_matches_run(
 
 
 def _skill_freshness_for_run(
-    store: RuntimeStore,
+    store: EventStore,
     run_id: str,
 ) -> list[dict[str, object]]:
     run_records = [

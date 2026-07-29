@@ -103,12 +103,13 @@ class RuntimeEventSubscriberTests(unittest.TestCase):
             agent = Agent(
                 AgentConfig.create_default(Path(tmp)),
                 provider=MockProvider("completed answer"),
+                use_storage=True,
             )
 
             result = agent.run("hello")
 
             self.assertEqual("completed answer", result.text)
-            self.assertEqual([], read_evaluation_records(agent.runtime.create_store()))
+            self.assertEqual([], read_evaluation_records(agent.runtime.create_event_store()))
             self.assertFalse(
                 any(event.event_type.startswith("learning.") for event in result.events)
             )
@@ -121,6 +122,7 @@ class RuntimeEventSubscriberTests(unittest.TestCase):
             agent = Agent(
                 AgentConfig.create_default(Path(tmp)),
                 provider=MockProvider("completed answer"),
+                use_storage=True,
             )
 
             result = agent.run("hello")
@@ -131,7 +133,7 @@ class RuntimeEventSubscriberTests(unittest.TestCase):
             self.assertEqual(first.events, second.events)
             self.assertEqual(
                 len(first.evaluation_record_ids),
-                len(read_evaluation_records(agent.runtime.create_store())),
+                len(read_evaluation_records(agent.runtime.create_event_store())),
             )
 
     def test_explicit_learning_failure_is_recorded_and_can_be_retried(self) -> None:
@@ -139,6 +141,7 @@ class RuntimeEventSubscriberTests(unittest.TestCase):
             agent = Agent(
                 AgentConfig.create_default(Path(tmp)),
                 provider=MockProvider("completed answer"),
+                use_storage=True,
             )
 
             result = agent.run("hello")
@@ -148,7 +151,7 @@ class RuntimeEventSubscriberTests(unittest.TestCase):
             ), self.assertRaisesRegex(RuntimeError, "evolution unavailable"):
                 agent.learn_from_run(result.run_id)
 
-            failed_events = agent.runtime.create_store().read_run_events(result.run_id)
+            failed_events = agent.runtime.create_event_store().read_run_events(result.run_id)
             failure = next(
                 event for event in reversed(failed_events)
                 if event.event_type == "learning.failed"

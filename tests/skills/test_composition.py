@@ -123,7 +123,11 @@ path = ".super-agent"
 """.strip(),
                 encoding="utf-8",
             )
-            agent = Agent(AgentConfig.load_from_file(config_path), provider=MockProvider("ok"))
+            agent = Agent(
+                AgentConfig.load_from_file(config_path),
+                provider=MockProvider("ok"),
+                use_storage=True,
+            )
 
             result = agent.run("build an unrelated output")
 
@@ -132,7 +136,7 @@ path = ".super-agent"
                 set(result.skills),
             )
             index = json.loads(
-                agent.runtime.create_store()
+                agent.runtime.create_event_store()
                 .disclosure.cache_root.joinpath("index.json")
                 .read_text()
             )

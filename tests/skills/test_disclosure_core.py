@@ -11,11 +11,11 @@ from skill.evolution.records import (
     create_evaluation_record,
     read_evaluation_records,
 )
-from skill.state.store import create_local_runtime_store
+from skill.state.events import create_local_event_store
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.evolution.freshness import calculate_skill_freshness
 from skill.evolution.change.revision import SkillRevision
-from skill.runners.defaults import create_runtime_disclosure_recorder
+from skill.loaders.defaults import create_runtime_disclosure_recorder
 from skill.skills import Skills
 from skill.task.run import Run
 
@@ -28,7 +28,7 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
         self.assertIs(skills.index, skills.disclosure.require_prepared_skill_index())
         self.assertIn("skills", run_fields)
         self.assertFalse(
-            {"skill_disclosure", "skill_index", "skill_runners"} & run_fields
+            {"skill_disclosure", "skill_index", "skill_loaders"} & run_fields
         )
 
     def test_read_only_index_contains_every_skill_type_without_writing(self) -> None:
@@ -92,8 +92,8 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
             project.mkdir(parents=True)
             _write_manifest(project, "writer", "prompt", include_entry=True)
             project.joinpath("SKILL.md").write_text("Project instructions.", encoding="utf-8")
-            alice_store = create_local_runtime_store(root / "state", user_id="alice")
-            bob_store = create_local_runtime_store(root / "state", user_id="bob")
+            alice_store = create_local_event_store(root / "state", user_id="alice")
+            bob_store = create_local_event_store(root / "state", user_id="bob")
             alice_skill = alice_store.private_root / "skills" / "prompt" / "writer"
             alice_skill.mkdir(parents=True)
             _write_manifest(alice_skill, "writer", "prompt", include_entry=True)
@@ -289,7 +289,7 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
     def test_disclosure_write_rejects_path_outside_cache(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            store = create_local_runtime_store(root / "state")
+            store = create_local_event_store(root / "state")
             outside = root / "outside.txt"
 
             with self.assertRaisesRegex(ValueError, "outside disclosure cache"):
@@ -371,7 +371,7 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
             )
             memory = create_memory_from_skill_disclosure(
                 core.open_skill("default", expected_type="memory"),
-                create_local_runtime_store(root / "state"),
+                create_local_event_store(root / "state"),
             )
             workflow = create_workflow_policy_from_skill(
                 core.open_skill("direct", expected_type="workflow")
@@ -385,7 +385,7 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_prompt_skill(root, "research", triggers=["research"])
-            store = create_local_runtime_store(root / "state")
+            store = create_local_event_store(root / "state")
             append_evaluation_records(
                 store,
                 [
@@ -435,7 +435,7 @@ def _create_core(root: Path) -> ProgressiveDisclosureCore:
 
 
 def _create_recording_core(root: Path) -> ProgressiveDisclosureCore:
-    store = create_local_runtime_store(root / "state")
+    store = create_local_event_store(root / "state")
     return ProgressiveDisclosureCore(
         [root / "skills"],
         recorder=create_runtime_disclosure_recorder(store),
