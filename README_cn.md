@@ -115,7 +115,7 @@ Agent.run
   -> Core 为场景、Skill、工作流、规划器和模型创建唯一 RoutePlan
   -> 预检一次检查所有计划中的 runner、服务、工具、Provider 和子 Agent
   -> SkillRunner 加载计划中的 Skill，Core 执行该路由
-  -> 记录事件、评价、保鲜度和进化证据
+  -> 唯一事件日志记录运行，已启用的学习层消费其中的事件
 ```
 
 没有独立的记忆引擎、工作流引擎、MCP 引擎或规划引擎。它们都是由 SkillRunner 加载的

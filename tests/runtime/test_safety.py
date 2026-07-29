@@ -16,7 +16,9 @@ from core.actions import (
     ActionRules,
 )
 from core.session import RuntimeSession
-from core.state.store import create_local_runtime_store
+from core.state.event_log import RunEventLog
+from core.state.store import RuntimeStore
+from core.storage import JsonlStorage
 from skill.kinds.model import create_direct_provider_profile
 
 
@@ -179,14 +181,23 @@ def _create_session(
 ) -> RuntimeSession:
     config = AgentConfig.create_default(root)
     identity = RunIdentity.create("local", config.agent.name)
-    store = create_local_runtime_store(root / "state", agent_name=config.agent.name)
-    store.start_run(identity, "question")
+    backend = JsonlStorage(root / "state")
+    event_log = RunEventLog(identity, backend=backend)
+    store = RuntimeStore(
+        backend,
+        root / "state",
+        "local",
+        config.agent.name,
+        run_event_log=event_log,
+    )
+    event_log.start_run("question")
     return RuntimeSession(
         config=config,
         model_profile=create_direct_provider_profile(),
         provider=MockProvider(),
         skill_runners=create_default_skill_runners(),
         identity=identity,
+        event_log=event_log,
         store=store,
         action_rules=action_rules or ActionRules(),
     )

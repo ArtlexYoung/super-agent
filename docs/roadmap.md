@@ -151,6 +151,18 @@ Status: implemented.
   their owning modules.
 - Prove in a fresh process that stateless execution does not initialize optional layers.
 
+## v0.0.73: Small Event Log and Optional Domain State
+
+Status: implemented.
+
+- Use one `RunEventLog` for ordered in-memory events, streaming, subscribers, persisted
+  traces, and returned task events.
+- Lazily initialize disclosure, memory, evaluation, and state projections from
+  `RuntimeStore` only when their operations need them.
+- Keep persistent tracing available when run learning is explicitly disabled.
+- Prove that a persisted stateless scene can run without importing memory, evaluation, or
+  evolution modules.
+
 ## Release Gate
 
 The project will not move to `0.1.x` because of feature count. The gate is a reproducible

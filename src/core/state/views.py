@@ -10,22 +10,6 @@ from core.state.models import Conversation, ConversationMessage, RunEvent, RunSn
 from core.storage import StorageEvent
 
 
-def run_event_from_storage(
-    event: StorageEvent,
-    sequence: int,
-    parent_run_id: str | None,
-) -> RunEvent:
-    return RunEvent(
-        run_id=event.stream_id,
-        sequence=sequence,
-        event_type=event.event_type,
-        created_at=event.created_at,
-        agent_name=event.agent_name,
-        parent_run_id=parent_run_id,
-        data=dict(event.data),
-    )
-
-
 def run_snapshot_from_events(user_id: str, events: list[StorageEvent]) -> RunSnapshot:
     ordered = sorted(events, key=lambda event: event.position)
     started = ordered[0]

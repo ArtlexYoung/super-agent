@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Callable
 
 from skill.runners.defaults import create_progressive_skill_disclosure
@@ -13,6 +12,7 @@ from core.provider.chat import ChatProvider, Message
 from core.provider.pool import ProviderPool
 from core.config import AgentConfig
 from core.identity import RunIdentity
+from core.state.event_log import RunEventLog
 from core.state.models import RunEvent
 from core.state.subscribers import (
     RuntimeEventSubscriber,
@@ -79,17 +79,16 @@ class RuntimeSession:
     provider: ChatProvider
     skill_runners: SkillRunners
     identity: RunIdentity
+    event_log: RunEventLog
     store: RuntimeStore | None
     learn_from_run: bool = True
     action_rules: ActionRules = field(default_factory=ActionRules)
-    event_listener: Callable[[RunEvent], None] | None = None
     event_subscribers: RuntimeEventSubscribers = field(
         default_factory=RuntimeEventSubscribers,
         repr=False,
     )
     skill_disclosure: ProgressiveDisclosureCore | None = None
     skill_index: SkillIndex | None = None
-    _events: list[RunEvent] = field(default_factory=list, init=False, repr=False)
     _used_skill_revisions: dict[tuple[str, str, str], SkillRevision] = field(
         default_factory=dict,
         init=False,
@@ -109,6 +108,7 @@ class RuntimeSession:
 
     def __post_init__(self) -> None:
         self._action_runner = ActionRunner(self.action_rules, self.record_event)
+        self.event_log.add_observer(self._publish_event)
 
     @property
     def run_id(self) -> str:
@@ -119,15 +119,11 @@ class RuntimeSession:
         event_type: str,
         data: dict[str, object] | None = None,
     ) -> RunEvent:
-        event = self._append_event(event_type, data)
-        self._events.append(event)
-        self._publish_event(event)
-        return event
+        return self.event_log.append_event(event_type, data)
 
     def publish_existing_event(self, event: RunEvent) -> None:
         if event.run_id != self.run_id or event.agent_name != self.identity.agent_name:
             raise ValueError("Runtime event does not belong to this session")
-        self._events.append(event)
         self._publish_event(event)
 
     def add_event_subscriber(self, subscriber: RuntimeEventSubscriber) -> None:
@@ -136,38 +132,18 @@ class RuntimeSession:
     def list_subscriber_failures(self) -> list[dict[str, object]]:
         return [failure.to_dict() for failure in self._subscriber_failures]
 
-    def _append_event(
-        self,
-        event_type: str,
-        data: dict[str, object] | None = None,
-    ) -> RunEvent:
-        if self.store is not None:
-            return self.store.append_run_event(self.identity, event_type, data)
-        event = RunEvent(
-            run_id=self.run_id,
-            sequence=len(self._events) + 1,
-            event_type=event_type,
-            created_at=_utc_now_text(),
-            agent_name=self.identity.agent_name,
-            parent_run_id=self.identity.parent_run_id,
-            data=dict(data or {}),
-        )
-        if self.event_listener is not None:
-            self.event_listener(event)
-        return event
-
     def _publish_event(self, event: RunEvent) -> None:
         failures = self.event_subscribers.publish_event(event)
         self._subscriber_failures.extend(failures)
         for failure in failures:
-            failure_event = self._append_event(
+            self.event_log.append_event(
                 "runtime.subscriber.failed",
                 failure.to_dict(),
+                notify_observers=False,
             )
-            self._events.append(failure_event)
 
     def list_recorded_events(self) -> list[RunEvent]:
-        return list(self._events)
+        return self.event_log.list_events()
 
     def require_store(self, feature: str) -> RuntimeStore:
         if self.store is None:
@@ -258,14 +234,18 @@ def create_runtime_session(
         conversation_id=request.conversation_id,
         parent_run_id=request.parent_run_id,
     )
+    event_log = RunEventLog(
+        identity,
+        backend=resources.storage,
+        event_listener=request.event_listener,
+    )
     store = _create_runtime_store(
         config,
         resources,
         identity=identity,
-        event_listener=request.event_listener,
+        event_log=event_log,
     )
-    if store is not None:
-        store.start_run(identity, request.prompt)
+    event_log.start_run(request.prompt)
     try:
         user_runtime = create_user_model_runtime(
             config,
@@ -273,22 +253,22 @@ def create_runtime_session(
             store=store,
             user_id=identity.user_id,
             identity=identity,
+            include_freshness=request.learn_from_run,
         )
         session = _create_prepared_session(
             config,
             resources,
             request,
             identity=identity,
+            event_log=event_log,
             store=store,
             user_runtime=user_runtime,
         )
     except Exception as error:
-        if store is not None:
-            store.append_run_event(
-                identity,
-                "run.failed",
-                {"error_type": type(error).__name__, "message": str(error)},
-            )
+        event_log.append_event(
+            "run.failed",
+            {"error_type": type(error).__name__, "message": str(error)},
+        )
         raise
     return session, user_runtime.task_loop
 
@@ -300,6 +280,7 @@ def create_user_model_runtime(
     store: RuntimeStore | None,
     user_id: str,
     identity: RunIdentity | None = None,
+    include_freshness: bool = False,
 ) -> UserModelRuntime:
     from core.task.loop import AdaptiveTaskLoop
 
@@ -307,6 +288,7 @@ def create_user_model_runtime(
         config,
         store=store,
         identity=identity if store is not None else None,
+        include_freshness=include_freshness,
     )
     skill_index = disclosure.prepare_skill_index()
     environment = resources.user_secrets.get_environment_for_user(user_id)
@@ -327,7 +309,7 @@ def _create_runtime_store(
     resources: RuntimeResources,
     *,
     identity: RunIdentity,
-    event_listener: Callable[[RunEvent], None] | None,
+    event_log: RunEventLog,
 ) -> RuntimeStore | None:
     if resources.storage is None:
         return None
@@ -338,7 +320,7 @@ def _create_runtime_store(
         config.storage.path,
         identity.user_id,
         identity.agent_name,
-        event_listener,
+        run_event_log=event_log,
     )
 
 
@@ -348,6 +330,7 @@ def _create_prepared_session(
     request: RuntimeSessionRequest,
     *,
     identity: RunIdentity,
+    event_log: RunEventLog,
     store: RuntimeStore | None,
     user_runtime: UserModelRuntime,
 ) -> RuntimeSession:
@@ -361,28 +344,14 @@ def _create_prepared_session(
         ),
         skill_runners=resources.skill_runners,
         identity=identity,
+        event_log=event_log,
         store=store,
         learn_from_run=request.learn_from_run,
         action_rules=resources.action_rules,
-        event_listener=request.event_listener,
         event_subscribers=RuntimeEventSubscribers(resources.event_subscribers),
     )
-    if store is None:
-        session.record_event(
-            "run.started",
-            {
-                "prompt": request.prompt,
-                "conversation_id": identity.conversation_id,
-                "parent_run_id": identity.parent_run_id,
-            },
-        )
-    else:
-        for event in store.read_run_events(identity.run_id):
-            session.publish_existing_event(event)
+    for event in event_log.list_events():
+        session.publish_existing_event(event)
     user_runtime.disclosure.set_event_writer(session.record_event)
     session.set_skill_disclosure(user_runtime.disclosure, user_runtime.skill_index)
     return session
-
-
-def _utc_now_text() -> str:
-    return datetime.now(UTC).isoformat().replace("+00:00", "Z")

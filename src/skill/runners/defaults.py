@@ -28,9 +28,10 @@ def create_progressive_skill_disclosure(
     store: RuntimeStore | None = None,
     identity: RunIdentity | None = None,
     record_disclosures: bool | None = None,
+    include_freshness: bool = True,
 ) -> ProgressiveDisclosureCore:
     freshness_stats = {}
-    if store is not None:
+    if store is not None and include_freshness:
         from skill.evolution.freshness import calculate_skill_freshness
 
         freshness_stats = calculate_skill_freshness(

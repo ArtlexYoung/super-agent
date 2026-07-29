@@ -76,7 +76,7 @@ class AgentRuntime:
                 learn_from_run=request.learn_from_run,
             )
         )
-        if session.store is not None:
+        if session.store is not None and request.learn_from_run:
             from core.state.learning import create_learning_event_subscribers
 
             for subscriber in create_learning_event_subscribers(
@@ -452,9 +452,7 @@ def _validate_feedback_score(value: float) -> float:
 
 
 def _list_result_events(session: RuntimeSession) -> list[RunEvent]:
-    if session.store is None:
-        return session.list_recorded_events()
-    return session.store.read_run_events(session.run_id)
+    return session.list_recorded_events()
 
 
 def _add_recording_error_note(

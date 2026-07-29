@@ -22,7 +22,9 @@ from core.config import AgentConfig
 from core.identity import RunIdentity
 from core.session import RuntimeSession
 from core.actions import ActionConfirmationRequired, ActionEffect
-from core.state.store import create_local_runtime_store
+from core.state.event_log import RunEventLog
+from core.state.store import RuntimeStore
+from core.storage import JsonlStorage
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.kinds.memory import MiniMemory
 from skill.kinds.model import create_direct_provider_profile
@@ -334,13 +336,22 @@ def _create_session(
         config.agent.name,
         conversation_id=conversation_id,
     )
-    store = create_local_runtime_store(root / "state", agent_name=config.agent.name)
-    store.start_run(identity, "question")
+    backend = JsonlStorage(root / "state")
+    event_log = RunEventLog(identity, backend=backend)
+    store = RuntimeStore(
+        backend,
+        root / "state",
+        "local",
+        config.agent.name,
+        run_event_log=event_log,
+    )
+    event_log.start_run("question")
     return RuntimeSession(
         config=config,
         model_profile=create_direct_provider_profile(),
         provider=provider,
         skill_runners=create_default_skill_runners(),
         identity=identity,
+        event_log=event_log,
         store=store,
     )

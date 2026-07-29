@@ -122,7 +122,7 @@ Agent.run
   -> Core creates one RoutePlan for scene, Skills, workflow, planner, and model
   -> preflight checks every planned runner, service, tool, Provider, and subagent
   -> SkillRunners load the planned Skills and Core executes the route
-  -> events, evaluation, freshness, and evolution evidence are recorded
+  -> one event log records the run; enabled learning layers consume its events
 ```
 
 There are no separate memory, workflow, MCP, or planning engines. They are ordinary

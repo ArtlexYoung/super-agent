@@ -13,6 +13,42 @@ from core.task.preflight import TaskPreflightError
 
 
 class StatelessRuntimeTests(unittest.TestCase):
+    def test_persistent_event_log_does_not_require_optional_domain_state(self) -> None:
+        repository_root = Path(__file__).resolve().parents[2]
+        script = """
+import json
+import sys
+import tempfile
+from pathlib import Path
+from core.agent import Agent, AgentRunOptions
+from core.config import AgentConfig
+from core.provider.chat import MockProvider
+
+with tempfile.TemporaryDirectory() as temporary_directory:
+    config = AgentConfig.create_default(Path(temporary_directory))
+    agent = Agent(config, provider=MockProvider("finished"))
+    result = agent.run(
+        "hello",
+        scene="stateless",
+        run_options=AgentRunOptions(learn_from_run=False),
+    )
+assert result.text == "finished"
+blocked = (
+    "core.evolution",
+    "core.state.evaluation",
+    "core.state.learning",
+    "core.state.memory",
+    "skill.evolution",
+    "skill.kinds.mcp",
+    "skill.kinds.memory",
+)
+print(json.dumps(sorted(name for name in sys.modules if name.startswith(blocked))))
+"""
+        completed = _run_fresh_process(repository_root, script)
+
+        self.assertEqual(0, completed.returncode, completed.stderr)
+        self.assertEqual([], json.loads(completed.stdout))
+
     def test_stateless_run_does_not_import_optional_runtime_layers(self) -> None:
         repository_root = Path(__file__).resolve().parents[2]
         script = """
@@ -30,7 +66,7 @@ with tempfile.TemporaryDirectory() as temporary_directory:
 assert result.text == "finished"
 blocked = (
     "adapter.",
-    "core.evolution.",
+    "core.evolution",
     "core.state.evaluation",
     "core.state.learning",
     "core.state.memory",
@@ -38,28 +74,13 @@ blocked = (
     "core.storage.jsonl",
     "core.storage.sql",
     "core.storage.sqlite",
-    "skill.evolution.",
+    "skill.evolution",
     "skill.kinds.mcp",
     "skill.kinds.memory",
 )
 print(json.dumps(sorted(name for name in sys.modules if name.startswith(blocked))))
 """
-        environment = dict(os.environ)
-        environment.update(
-            {
-                "PYTHONDONTWRITEBYTECODE": "1",
-                "PYTHONPATH": str(repository_root / "src"),
-            }
-        )
-
-        completed = subprocess.run(
-            [sys.executable, "-c", script],
-            cwd=repository_root,
-            env=environment,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        completed = _run_fresh_process(repository_root, script)
 
         self.assertEqual(0, completed.returncode, completed.stderr)
         self.assertEqual([], json.loads(completed.stdout))
@@ -134,6 +155,27 @@ print(json.dumps(sorted(name for name in sys.modules if name.startswith(blocked)
                     storage=stateful.storage,
                     use_storage=False,
                 )
+
+
+def _run_fresh_process(
+    repository_root: Path,
+    script: str,
+) -> subprocess.CompletedProcess[str]:
+    environment = dict(os.environ)
+    environment.update(
+        {
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "PYTHONPATH": str(repository_root / "src"),
+        }
+    )
+    return subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=repository_root,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
 
 
 if __name__ == "__main__":

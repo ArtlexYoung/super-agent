@@ -45,6 +45,7 @@ class RuntimeEventSubscriberTests(unittest.TestCase):
                 if event.event_type == "task.scheduled"
             )
             self.assertEqual(result.run_id, scheduled.run_id)
+            self.assertEqual(result.events, subscriber.events)
             with self.assertRaisesRegex(TypeError, "read-only"):
                 scheduled.data["new"] = True
             with self.assertRaisesRegex(TypeError, "read-only"):

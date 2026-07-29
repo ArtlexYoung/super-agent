@@ -97,6 +97,7 @@ class Agent:
         bootstrap_disclosure = create_progressive_skill_disclosure(
             self.config,
             store=bootstrap_store,
+            include_freshness=False,
         )
         bootstrap_index = bootstrap_disclosure.prepare_skill_index()
         self.model_profiles = read_model_profiles(

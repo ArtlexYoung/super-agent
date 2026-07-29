@@ -7,12 +7,28 @@ from core.agent import Agent
 from core.provider.chat import MockProvider
 from core.config import AgentConfig
 from core.identity import RunIdentity
+from core.state.event_log import RunEventLog
 from core.storage import JsonlStorage, StorageEventQuery
 from core.state.store import RuntimeStore, create_local_runtime_store
 from support import write_workflow_skill
 
 
 class RuntimeStoreTests(unittest.TestCase):
+    def test_run_event_log_orders_memory_events_and_notifies_explicit_observers(self) -> None:
+        identity = RunIdentity.create("local", "main")
+        listened = []
+        observed = []
+        event_log = RunEventLog(identity, event_listener=listened.append)
+        event_log.add_observer(observed.append)
+
+        started = event_log.start_run("hello")
+        completed = event_log.append_event("run.completed", {"status": "ok"})
+
+        self.assertEqual([started, completed], event_log.list_events())
+        self.assertEqual([started, completed], listened)
+        self.assertEqual([started, completed], observed)
+        self.assertEqual([1, 2], [event.sequence for event in event_log.list_events()])
+
     def test_runtime_store_records_ordered_run_events(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             store = create_local_runtime_store(Path(tmp), agent_name="main")
@@ -50,6 +66,7 @@ class RuntimeStoreTests(unittest.TestCase):
             result = agent.run("hello")
 
             events = agent.runtime.create_store().read_run_events(result.run_id)
+            self.assertEqual(result.events, events)
             self.assertEqual("completed", result.stop_reason)
             event_types = [event.event_type for event in events]
             self.assertEqual("run.started", event_types[0])

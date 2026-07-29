@@ -4,29 +4,19 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Callable
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from core.state.evaluation import (
-    EvaluationRecord,
-    evaluation_record_from_dict,
-    evaluation_record_to_dict,
-)
-from core.state.disclosure import RuntimeDisclosureStore
 from core.identity import RunIdentity, validate_agent_name, validate_user_id
-from core.state.memory import RuntimeMemoryStore
-from core.state.models import Conversation, ConversationMessage, RunEvent, RunSnapshot
+from core.state.event_log import RunEventLog, run_event_from_storage
 from core.storage import StorageBackend, StorageEvent, StorageEventQuery
-from core.storage.files import create_scope_digest, write_bytes_atomically
-from core.storage.jsonl import JsonlStorage
-from core.state.views import (
-    conversation_from_events,
-    explain_run_from_views,
-    optional_string,
-    run_event_from_storage,
-    run_snapshot_from_events,
-    runtime_lock_from_events,
-)
+from core.storage.files import create_scope_digest
+
+if TYPE_CHECKING:
+    from core.state.disclosure import RuntimeDisclosureStore
+    from core.state.evaluation import EvaluationRecord
+    from core.state.memory import RuntimeMemoryStore
+    from core.state.models import Conversation, ConversationMessage, RunEvent, RunSnapshot
 
 
 class RuntimeStore:
@@ -38,13 +28,14 @@ class RuntimeStore:
         local_root: Path,
         user_id: str,
         agent_name: str,
-        event_listener: Callable[[RunEvent], None] | None = None,
+        *,
+        run_event_log: RunEventLog | None = None,
     ) -> None:
         self.backend = backend
         self.local_root = local_root.expanduser().absolute()
         self.user_id = validate_user_id(user_id)
         self.agent_name = validate_agent_name(agent_name)
-        self.event_listener = event_listener
+        self._run_event_log = run_event_log
         self.private_root = (
             self.local_root
             / "users"
@@ -52,17 +43,35 @@ class RuntimeStore:
             / "agents"
             / create_scope_digest(self.agent_name)
         )
-        self.disclosure = RuntimeDisclosureStore(
-            self.private_root / "cache",
-            append_scoped_event=self._append_scoped_event,
-            append_run_event=self.append_run_event,
-            read_all_events=self._read_all_storage_events,
-        )
-        self.memory = RuntimeMemoryStore(
-            self._append_scoped_event,
-            self._read_storage_events,
-            self.agent_name,
-        )
+        self._disclosure: RuntimeDisclosureStore | None = None
+        self._memory: RuntimeMemoryStore | None = None
+        if run_event_log is not None:
+            self._require_identity_scope(run_event_log.identity)
+
+    @property
+    def disclosure(self) -> RuntimeDisclosureStore:
+        if self._disclosure is None:
+            from core.state.disclosure import RuntimeDisclosureStore
+
+            self._disclosure = RuntimeDisclosureStore(
+                self.private_root / "cache",
+                append_scoped_event=self._append_scoped_event,
+                append_run_event=self.append_run_event,
+                read_all_events=self._read_all_storage_events,
+            )
+        return self._disclosure
+
+    @property
+    def memory(self) -> RuntimeMemoryStore:
+        if self._memory is None:
+            from core.state.memory import RuntimeMemoryStore
+
+            self._memory = RuntimeMemoryStore(
+                self._append_scoped_event,
+                self._read_storage_events,
+                self.agent_name,
+            )
+        return self._memory
 
     def create_conversation(
         self,
@@ -96,6 +105,8 @@ class RuntimeStore:
         return conversation
 
     def read_conversation(self, conversation_id: str) -> Conversation:
+        from core.state.views import conversation_from_events
+
         selected_id = _required_text(conversation_id, "conversation_id")
         events = self._read_storage_events("conversation", selected_id)
         if not events:
@@ -103,6 +114,8 @@ class RuntimeStore:
         return conversation_from_events(self.user_id, events)
 
     def list_conversations(self) -> list[Conversation]:
+        from core.state.views import conversation_from_events
+
         grouped: dict[str, list[StorageEvent]] = {}
         for event in self._read_storage_events("conversation"):
             grouped.setdefault(event.stream_id, []).append(event)
@@ -179,6 +192,10 @@ class RuntimeStore:
 
     def start_run(self, identity: RunIdentity, prompt: str) -> RunEvent:
         self._require_identity_scope(identity)
+        if self._run_event_log is not None:
+            if identity != self._run_event_log.identity:
+                raise ValueError("run identity does not match the active event log")
+            return self._run_event_log.start_run(prompt)
         if self._read_storage_events("run", identity.run_id):
             raise ValueError(f"run already exists: {identity.run_id}")
         return self.append_run_event(
@@ -198,6 +215,10 @@ class RuntimeStore:
         data: dict[str, object] | None = None,
     ) -> RunEvent:
         self._require_identity_scope(identity)
+        if self._run_event_log is not None:
+            if identity != self._run_event_log.identity:
+                raise ValueError("run identity does not match the active event log")
+            return self._run_event_log.append_event(event_type, data)
         stored = self.backend.append_event(
             user_id=self.user_id,
             agent_name=self.agent_name,
@@ -208,11 +229,11 @@ class RuntimeStore:
         )
         events = self._read_storage_events("run", identity.run_id)
         event = run_event_from_storage(stored, len(events), identity.parent_run_id)
-        if self.event_listener is not None:
-            self.event_listener(event)
         return event
 
     def read_run(self, run_id: str) -> RunSnapshot:
+        from core.state.views import run_snapshot_from_events
+
         events = self._read_storage_events("run", run_id)
         if not events:
             raise KeyError(f"run not found: {run_id}")
@@ -224,6 +245,8 @@ class RuntimeStore:
         *,
         conversation_id: str | None = None,
     ) -> list[RunSnapshot]:
+        from core.state.views import run_snapshot_from_events
+
         if limit is not None and limit <= 0:
             raise ValueError("run limit must be greater than zero")
         grouped: dict[str, list[StorageEvent]] = {}
@@ -243,6 +266,8 @@ class RuntimeStore:
         return snapshots if limit is None else snapshots[:limit]
 
     def read_run_events(self, run_id: str) -> list[RunEvent]:
+        from core.state.views import optional_string
+
         events = self._read_storage_events("run", run_id)
         if not events:
             raise KeyError(f"run not found: {run_id}")
@@ -253,12 +278,16 @@ class RuntimeStore:
         ]
 
     def read_runtime_lock(self, run_id: str) -> dict[str, object] | None:
+        from core.state.views import runtime_lock_from_events
+
         return runtime_lock_from_events(
             run_id,
             self._read_storage_events("run", run_id),
         )
 
     def explain_run(self, run_id: str) -> dict[str, object]:
+        from core.state.views import explain_run_from_views
+
         return explain_run_from_views(
             self.read_run(run_id),
             self.read_run_events(run_id),
@@ -266,6 +295,8 @@ class RuntimeStore:
         )
 
     def export_run(self, run_id: str, path: Path) -> Path:
+        from core.storage.files import write_bytes_atomically
+
         explanation = self.explain_run(run_id)
         document = {
             "schema_version": 1,
@@ -283,6 +314,8 @@ class RuntimeStore:
         return path
 
     def append_evaluation_records(self, records: list[EvaluationRecord]) -> None:
+        from core.state.evaluation import evaluation_record_to_dict
+
         for record in records:
             self.backend.append_event(
                 user_id=self.user_id,
@@ -301,6 +334,8 @@ class RuntimeStore:
         skill_key: str | None = None,
         source_type: str | None = None,
     ) -> list[EvaluationRecord]:
+        from core.state.evaluation import evaluation_record_from_dict
+
         records = [
             evaluation_record_from_dict(event.data)
             for event in self._read_storage_events("skill_evaluation")
@@ -415,6 +450,8 @@ def create_local_runtime_store(
     user_id: str = "local",
     agent_name: str = "super-agent",
 ) -> RuntimeStore:
+    from core.storage.jsonl import JsonlStorage
+
     return RuntimeStore(JsonlStorage(root), root, user_id, agent_name)
 
 

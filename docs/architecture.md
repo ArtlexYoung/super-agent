@@ -35,7 +35,7 @@ Every run enters one kernel:
 ```text
 Agent.run(...)
   -> AgentRuntime.run_task(TaskRequest)
-  -> RuntimeSession with an optional RuntimeStore
+  -> RuntimeSession with one RunEventLog and an optional RuntimeStore
   -> progressive index selects one scene and its Skill references
   -> one immutable RoutePlan fixes scene, Skills, workflow, planner, and model
   -> preflight validates the complete route before any model or subagent call
@@ -59,11 +59,12 @@ runners, declared services, invalid tools, the selected Provider, and subagents 
 report. A failed report raises `TaskPreflightError` before the Runtime lock, model call,
 tool handler, or subagent run. Execution reuses the checked Skill contributions.
 
-`RuntimeSession` is the only mutable run context. It carries the validated identity,
-optional store, Skill index, disclosure core, selected model state, SkillRunners, action
-runner, event subscribers, and evidence tracker. Without a store it keeps ordered events
-in memory and uses the same task loop. Derived CLI and Web views are projected from
-canonical events, not from parallel mutable state.
+`RuntimeSession` is the only mutable run context. It carries the validated identity, one
+small `RunEventLog`, optional store, Skill index, disclosure core, selected model state,
+SkillRunners, action runner, event subscribers, and evidence tracker. The event log uses
+memory without a backend and persists the same ordered records when a backend exists.
+Derived CLI and Web views are projected from canonical events, not from parallel mutable
+state.
 
 Post-run learning is an optional event layer, not part of task execution. Runtime emits
 `learning.requested`; named evaluation, freshness, routing-evidence, and evolution
@@ -120,12 +121,11 @@ occur before a call and are visible in the trace.
 
 ```text
 RuntimeSession
-  -> optional RuntimeStore
-       -> one StorageBackend
-            +-> JSONL
-            +-> SQLite
-            +-> MySQL
-            +-> PostgreSQL
+  -> RunEventLog
+       -> optional StorageBackend
+  -> optional RuntimeStore domain views
+       -> the same StorageBackend
+            +-> JSONL / SQLite / MySQL / PostgreSQL
 ```
 
 Every event contains one validated user and Agent scope. Conversations, memory, Skill
@@ -140,6 +140,10 @@ after their backend is explicitly selected.
 Concrete Skill kinds, storage implementations, state projections, learning, evolution,
 and adapters are also imported only when their corresponding runner or service is used.
 A stateless task does not initialize those optional layers.
+
+`RuntimeStore` lazily creates disclosure and memory state and imports evaluation or view
+code only for the matching operation. Disabling run learning keeps persistent traces but
+does not initialize evaluation, freshness, or evolution services.
 
 ## Explicit Side Effects
 

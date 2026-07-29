@@ -2,8 +2,9 @@
 
 ## One Task Path
 
-Every `Agent.run(...)` call creates one task request, Runtime session, Skill index, and
-adaptive task loop. A user-scoped store is attached only when storage is enabled:
+Every `Agent.run(...)` call creates one task request, Runtime session, event log, Skill
+index, and adaptive task loop. The log stays in memory or writes through the selected
+backend; domain state is attached only when storage is enabled:
 
 ```text
 Agent.run(...)
@@ -93,6 +94,11 @@ Subscriber names are unique. Built-in names are reserved. A subscriber failure r
 replace a completed result or the original task error. `event_listener` remains the
 streaming interface and is not treated as a learning subscriber. Stateless runs record
 `learning.skipped` and create no evaluation or evolution state.
+
+`RunEventLog` is the only run-event writer in both modes. Streaming listeners,
+`TaskResult.events`, subscribers, and persisted replay therefore observe the same order.
+Conversation, memory, evaluation, disclosure, and evolution projections load only when
+their operation or selected Skill needs them.
 
 ## Conversations
 
