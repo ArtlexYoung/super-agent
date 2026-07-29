@@ -51,7 +51,7 @@ def check_run_before_execution(
     problems: list[PreflightProblem] = []
     registrations = {
         entry.descriptor.skill_type: entry
-        for entry in session.skill_runners.list_skill_runners()
+        for entry in session.skills.loaders.list_skill_runners()
     }
     _check_runner_dependencies(session, problems)
     contributions = _load_planned_skills(
@@ -87,7 +87,7 @@ def _check_runner_dependencies(
     problems: list[PreflightProblem],
 ) -> None:
     try:
-        session.skill_runners.validate_dependencies()
+        session.skills.loaders.validate_dependencies()
     except Exception as error:
         problems.append(_problem("runner_dependencies", "SkillRunners", error))
 

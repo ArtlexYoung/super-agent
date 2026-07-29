@@ -328,6 +328,19 @@ Status: implemented.
   the adapter layer instead of treating either as Runtime mechanisms.
 - Enforce the one-way boundary with an AST test: no Core module may import Skill code.
 
+## v0.0.87: One Skill Center
+
+Status: implemented.
+
+- Add one `Skills` object that owns a verified index snapshot and the trusted loaders
+  allowed to turn passive content into task behavior.
+- Make every Run receive only that central object instead of independently carrying a
+  disclosure core, Skill index, and runner registry that could drift apart.
+- Route model discovery, task preparation, tool activation, preflight, and Runtime locks
+  through the same `Skills` snapshot.
+- Keep ordinary reads free of cache or history writes; recording remains an explicit
+  property of the disclosure recorder attached when `Skills` is built.
+
 ## Release Gate
 
 The project will not move to `0.1.x` because of feature count. The gate is a reproducible

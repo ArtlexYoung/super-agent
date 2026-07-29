@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Callable
 
 from skill.runners.defaults import (
     create_default_skill_runners,
-    create_progressive_skill_disclosure,
+    create_skills,
 )
 from skill.runners.registry import SkillLoadRequest, SkillRunner, SkillRunners
 from skill.runners.mcp import McpServer, McpServers, StdioMcpServer
@@ -346,14 +346,14 @@ class Agent:
                 return
             storage = self._create_configured_storage()
             store = self._create_bootstrap_store(storage)
-            disclosure = create_progressive_skill_disclosure(
+            skills = create_skills(
                 self.config,
+                loaders=self._skill_runners,
                 store=store,
                 include_freshness=False,
             )
-            index = disclosure.prepare_skill_index()
             environment = self.user_secrets.get_environment_for_user(LOCAL_USER_ID)
-            profiles = read_model_profiles(disclosure, index, environment)
+            profiles = read_model_profiles(skills, environment)
             code_profiles: tuple[ModelProfile, ...] = ()
             if self._provided_provider is not None and not profiles:
                 code_profiles = (create_direct_provider_profile(),)

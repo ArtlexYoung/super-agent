@@ -23,7 +23,7 @@ from skill.disclosure import DisclosedSkillFile, ProgressiveDisclosureCore
 from skill.evolution.candidate import SkillCandidate
 from skill.manifest import Skill, SkillManifest, calculate_skill_directory_sha256
 from skill.evolution.revision import SkillRevision, create_manifest_skill_revision
-from skill.validation import validate_skill_directory
+from skill.ecosystem.validation import validate_skill_directory
 
 
 @dataclass(frozen=True)

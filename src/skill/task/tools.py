@@ -45,11 +45,11 @@ class RuntimeTools:
             else delegated_subagent_results
         )
         self._tools: dict[str, SkillTool] = {}
-        disclosure = context.session.skill_disclosure
+        disclosure = context.session.skills.disclosure
         self._add_tools(
             _create_disclosure_tools(
                 self,
-                context.session.skill_index,
+                context.session.skills.index,
                 include_cache_reader=disclosure.recorder is not None,
             )
         )
@@ -120,7 +120,7 @@ class RuntimeTools:
                 raise ValueError(f"runtime tool name already exists: {tool.name}")
 
     def _list_skills(self, arguments: dict[str, object]) -> dict[str, object]:
-        return skill_index_to_dict(self.context.session.skill_index)
+        return skill_index_to_dict(self.context.session.skills.index)
 
     def _disclose_skill_manifest(
         self,
@@ -172,13 +172,13 @@ class RuntimeTools:
         arguments: dict[str, object],
     ) -> dict[str, object]:
         path = read_required_tool_string(arguments, "cache_path")
-        content = self.context.session.skill_disclosure.read_disclosed_content(path)
+        content = self.context.session.skills.disclosure.read_disclosed_content(path)
         return {"cache_path": path, "content": content}
 
     def _activate_skill(self, arguments: dict[str, object]) -> dict[str, object]:
         opened = self._open_requested_skill(arguments)
         reference = opened.index_entry.reference
-        runner = self.context.session.skill_runners.find_skill_runner(
+        runner = self.context.session.skills.loaders.find_skill_runner(
             reference.skill_type
         )
         if runner is None:
@@ -231,18 +231,18 @@ class RuntimeTools:
     def _open_requested_skill(self, arguments: dict[str, object]) -> SkillDisclosure:
         name = read_required_tool_string(arguments, "name")
         skill_type = read_optional_tool_string(arguments, "type")
-        opened = self.context.session.skill_disclosure.open_skill(
+        opened = self.context.session.skills.disclosure.open_skill(
             name,
             expected_type=skill_type,
         )
         return opened
 
     def _record_loaded_skill(self, reference: SkillReference) -> None:
-        entry = self.context.session.skill_index.require_skill(
+        entry = self.context.session.skills.index.require_skill(
             reference.name,
             reference.skill_type,
         )
-        if self.context.session.skill_runners.find_skill_runner(
+        if self.context.session.skills.loaders.find_skill_runner(
             reference.skill_type
         ) is None:
             raise KeyError(

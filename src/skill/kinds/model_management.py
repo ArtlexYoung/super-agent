@@ -17,7 +17,7 @@ from skill.state.store import RuntimeStore
 from skill.disclosure import ProgressiveDisclosureCore, SkillDisclosure
 from skill.kinds.model import ModelProfile, create_model_profile_from_skill_disclosure
 from skill.manifest import DEFAULT_SKILL_FRESHNESS, SkillEntry, SkillManifest
-from skill.validation import validate_skill_directory
+from skill.ecosystem.validation import validate_skill_directory
 
 
 @dataclass(frozen=True)

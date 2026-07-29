@@ -166,7 +166,7 @@ prepared index, and the created scene is visible on the next run only.
 
 ## One Disclosure Core
 
-`ProgressiveDisclosureCore` is the only Skill read and scene-selection path. Constructing
+`Skills` is the only Skill read, loading, and scene-selection path. Constructing
 it with Skill roots is read-only: it does not create a storage backend, cache directory,
 or history. Freshness data and recording are explicit inputs. It provides five disclosure
 stages:

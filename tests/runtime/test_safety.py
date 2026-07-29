@@ -3,6 +3,7 @@ import unittest
 from pathlib import Path
 
 from skill.runners.defaults import create_default_skill_runners
+from skill.skills import Skills
 from skill.runners.loaded import SkillAction
 from core.provider.chat import MockProvider
 from core.config import AgentConfig
@@ -193,16 +194,13 @@ def _create_session(
     )
     event_log.start_run("question")
     disclosure = ProgressiveDisclosureCore([])
-    index = disclosure.prepare_skill_index()
     return Run(
         config=config,
         model_profile=create_direct_provider_profile(),
         provider=MockProvider(),
-        skill_runners=create_default_skill_runners(),
+        skills=Skills(disclosure, create_default_skill_runners()),
         identity=identity,
         event_log=event_log,
         store=store,
-        skill_disclosure=disclosure,
-        skill_index=index,
         action_rules=action_rules or ActionRules(),
     )

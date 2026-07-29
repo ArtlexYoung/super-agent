@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+from dataclasses import fields
 from pathlib import Path
 
 from skill.evolution.tracking.run_evaluation import (
@@ -13,9 +14,21 @@ from skill.disclosure import ProgressiveDisclosureCore
 from skill.evolution.freshness import calculate_skill_freshness
 from skill.evolution.revision import SkillRevision
 from skill.runners.defaults import create_runtime_disclosure_recorder
+from skill.skills import Skills
+from skill.task.run import Run
 
 
 class ProgressiveDisclosureCoreTests(unittest.TestCase):
+    def test_run_owns_one_central_skills_snapshot(self) -> None:
+        skills = Skills(ProgressiveDisclosureCore([]))
+        run_fields = {field.name for field in fields(Run)}
+
+        self.assertIs(skills.index, skills.disclosure.require_prepared_skill_index())
+        self.assertIn("skills", run_fields)
+        self.assertFalse(
+            {"skill_disclosure", "skill_index", "skill_runners"} & run_fields
+        )
+
     def test_read_only_index_contains_every_skill_type_without_writing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

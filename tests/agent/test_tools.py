@@ -7,6 +7,7 @@ from skill.runners.defaults import (
     create_default_skill_runners,
     create_runtime_disclosure_recorder,
 )
+from skill.skills import Skills
 from skill.runners.registry import SkillLoadRequest
 from skill.runners.loaded import (
     SkillAction,
@@ -37,7 +38,7 @@ class SkillToolsTests(unittest.TestCase):
             _write_prompt_skill(root, "research")
             session = _create_session(root)
             disclosure = _create_disclosure(session)
-            index = session.skill_index
+            index = session.skills.index
             tools = _create_tool_router(disclosure, index, session)
 
             listed = tools.run_tool_call(ToolCall("call-1", "list_skills", {}))
@@ -77,7 +78,7 @@ class SkillToolsTests(unittest.TestCase):
             _write_prompt_skill(root, "research")
             session = _create_session(root)
             disclosure = _create_disclosure(session)
-            index = session.skill_index
+            index = session.skills.index
             cached = disclosure.open_skill(
                 "research",
                 "prompt",
@@ -101,7 +102,7 @@ class SkillToolsTests(unittest.TestCase):
             root = Path(tmp)
             session = _create_session(root)
             disclosure = _create_disclosure(session)
-            index = session.skill_index
+            index = session.skills.index
             tools = _create_tool_router(disclosure, index, session)
 
             with self.assertRaisesRegex(KeyError, "unknown runtime tool"):
@@ -117,7 +118,7 @@ class SkillToolsTests(unittest.TestCase):
             root = Path(tmp)
             session = _create_session(root, conversation_id="conversation-a")
             disclosure = _create_disclosure(session)
-            index = session.skill_index
+            index = session.skills.index
             memory = MiniMemory(
                 session.store,
                 session.identity,
@@ -185,7 +186,7 @@ class SkillToolsTests(unittest.TestCase):
             root = Path(tmp)
             session = _create_session(root)
             disclosure = _create_disclosure(session)
-            index = session.skill_index
+            index = session.skills.index
             called = False
 
             def run_external(arguments: dict[str, object]) -> dict[str, object]:
@@ -246,8 +247,8 @@ class SkillToolsTests(unittest.TestCase):
             )
             session = _create_session(root, mcp_servers=mcp_servers)
             disclosure = _create_disclosure(session)
-            index = session.skill_index
-            contribution = session.skill_runners.load_skill(
+            index = session.skills.index
+            contribution = session.skills.loaders.load_skill(
                 SkillLoadRequest(
                     disclosure,
                     index.require_skill("untrusted", "mcp").reference,
@@ -317,7 +318,7 @@ server = "untrusted"
 
 
 def _create_disclosure(session: Run) -> ProgressiveDisclosureCore:
-    return session.skill_disclosure
+    return session.skills.disclosure
 
 
 def _create_tool_router(
@@ -326,7 +327,7 @@ def _create_tool_router(
     session: Run,
     memory: MiniMemory | None = None,
 ) -> RuntimeTools:
-    if disclosure is not session.skill_disclosure or index is not session.skill_index:
+    if disclosure is not session.skills.disclosure or index is not session.skills.index:
         raise ValueError("tool router must use the Run Skill snapshot")
     return RuntimeTools(
         RuntimeToolsContext(
@@ -367,15 +368,12 @@ def _create_session(
         [root / "skills"],
         recorder=create_runtime_disclosure_recorder(store, identity),
     )
-    index = disclosure.prepare_skill_index()
     return Run(
         config=config,
         model_profile=create_direct_provider_profile(),
         provider=provider,
-        skill_runners=create_default_skill_runners(mcp_servers),
+        skills=Skills(disclosure, create_default_skill_runners(mcp_servers)),
         identity=identity,
         event_log=event_log,
         store=store,
-        skill_disclosure=disclosure,
-        skill_index=index,
     )

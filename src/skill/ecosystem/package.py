@@ -18,7 +18,7 @@ from skill.state.store import RuntimeStore
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.directory import replace_skill_directory_atomically
 from skill.manifest import SkillManifest, calculate_skill_directory_sha256
-from skill.validation import validate_skill_directory, validate_skill_replacement
+from skill.ecosystem.validation import validate_skill_directory, validate_skill_replacement
 
 
 FIXED_ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)

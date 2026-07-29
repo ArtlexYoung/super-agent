@@ -11,6 +11,7 @@ from skill.runners.mcp import McpServers
 from core.config import AgentConfig
 from core.models import RunIdentity
 from skill.disclosure import DisclosureRecorder, ProgressiveDisclosureCore
+from skill.skills import Skills
 
 if TYPE_CHECKING:
     from skill.state.store import RuntimeStore
@@ -59,6 +60,26 @@ def create_progressive_skill_disclosure(
         ),
         record_event=None,
     )
+
+
+def create_skills(
+    config: AgentConfig,
+    *,
+    loaders: SkillRunners | None = None,
+    store: RuntimeStore | None = None,
+    identity: RunIdentity | None = None,
+    record_disclosures: bool | None = None,
+    include_freshness: bool = True,
+) -> Skills:
+    """Build one complete Skill snapshot through the central entry point."""
+    disclosure = create_progressive_skill_disclosure(
+        config,
+        store=store,
+        identity=identity,
+        record_disclosures=record_disclosures,
+        include_freshness=include_freshness,
+    )
+    return Skills(disclosure, loaders)
 
 
 def create_runtime_disclosure_recorder(

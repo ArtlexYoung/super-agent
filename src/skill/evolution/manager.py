@@ -62,7 +62,7 @@ from skill.evolution.revision import (
     create_manifest_skill_revision,
 )
 from skill.evolution.freshness import calculate_skill_freshness
-from skill.validation import validate_skill_directory, validate_skill_replacement
+from skill.ecosystem.validation import validate_skill_directory, validate_skill_replacement
 
 
 @dataclass(frozen=True)

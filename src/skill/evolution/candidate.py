@@ -24,7 +24,7 @@ from skill.disclosure import (
     SkillIndexEntry,
 )
 from skill.manifest import SkillManifest, calculate_skill_directory_sha256
-from skill.validation import validate_skill_directory
+from skill.ecosystem.validation import validate_skill_directory
 
 
 @dataclass(frozen=True)

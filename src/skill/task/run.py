@@ -16,15 +16,10 @@ if TYPE_CHECKING:
     from core.state.models import RunEvent
     from skill.state.store import RuntimeStore
     from core.state.subscribers import RuntimeEventSubscriber, SubscriberFailure
-    from skill.disclosure import (
-        ProgressiveDisclosureCore,
-        SkillIndex,
-        SkillIndexEntry,
-        SkillReference,
-    )
+    from skill.disclosure import SkillIndexEntry, SkillReference
     from skill.kinds.model import ModelProfile
     from skill.runners.loaded import LoadedSkill
-    from skill.runners.registry import SkillRunners
+    from skill.skills import Skills
 
 
 @dataclass
@@ -32,12 +27,10 @@ class Run:
     config: AgentConfig
     model_profile: ModelProfile
     provider: ChatProvider
-    skill_runners: SkillRunners
+    skills: Skills
     identity: RunIdentity
     event_log: RunEventLog
     store: RuntimeStore | None
-    skill_disclosure: ProgressiveDisclosureCore
-    skill_index: SkillIndex
     allow_subscriber_failures: bool = False
     action_rules: ActionRules = field(default_factory=ActionRules)
     event_subscribers: RuntimeEventSubscribers = field(
@@ -117,31 +110,27 @@ class Run:
         reference: SkillReference,
         send_text_model_messages: Callable[[list[Message]], str] | None = None,
     ) -> LoadedSkill:
-        from skill.runners.registry import SkillLoadRequest
-
         key = (reference.key, send_text_model_messages is not None)
         loaded = self._loaded_skills.get(key)
         if loaded is None:
-            loaded = self.skill_runners.load_skill(
-                SkillLoadRequest(
-                    self.skill_disclosure,
-                    reference,
+            from skill.skills import SkillServices
+
+            loaded = self.skills.load(
+                reference,
+                SkillServices(
                     self.store,
                     self.identity,
                     send_text_model_messages,
                     self.execute_action,
-                )
+                ),
             )
             self._loaded_skills[key] = loaded
         return loaded
 
     def select_model(self, profile: ModelProfile, provider: ChatProvider) -> None:
-        entry = self.skill_index.find_skill(profile.key)
+        entry = self.skills.index.find_skill(profile.key)
         if entry is not None and entry.reference.skill_type == "model":
-            opened = self.skill_disclosure.open_skill(
-                entry.reference.name,
-                expected_type="model",
-            )
+            opened = self.skills.open(entry.reference)
             opened.disclose_manifest()
             opened.disclose_configuration()
             self.record_skill_used(entry)

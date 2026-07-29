@@ -21,7 +21,7 @@ from skill.kinds.model import (
     select_default_model_profile,
 )
 from skill.kinds.model_management import model_skill_input_from_dict
-from skill.validation import validate_skill_replacement
+from skill.ecosystem.validation import validate_skill_replacement
 from skill.evolution.evaluation import EvaluationCase
 
 

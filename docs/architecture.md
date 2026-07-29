@@ -7,7 +7,7 @@ Provider     connects model intelligence
 Core         executes prepared model calls and checks declared actions
 SkillRunner  turns one Skill type into task behavior
 Skill        carries passive content and configuration
-Agent        composes Providers, Core options, SkillRunners, storage, and subagents
+Agent        composes Providers, Core options, Skills, storage, and subagents
 ```
 
 ## Source Layout
@@ -46,7 +46,7 @@ Agent.run(...)
   -> progressive index selects one scene and its Skill references
   -> one immutable RunPlan fixes scene, Skills, workflow, planner, and one model
   -> preflight validates the complete run before any model or subagent call
-  -> SkillRunners load the run and one task loop executes it
+  -> one Skills snapshot loads the run and one task loop executes it
   -> one terminal event keeps immutable learning evidence
   -> an explicit post-run call evaluates evidence and reviews Skill evolution
 ```
@@ -69,7 +69,7 @@ tool handler, or subagent run. Execution reuses the checked Skill contributions.
 
 `Run` is the only mutable per-run context. It is complete when constructed and carries the
 validated identity, one small `RunEventLog`, optional store, Skill index, disclosure core,
-selected model state, SkillRunners, action runner, event subscribers, and evidence tracker.
+selected model state, one Skills snapshot, action runner, event subscribers, and evidence tracker.
 `AgentRuntime` constructs it directly from explicit dependencies; no resource container,
 session request, user-model wrapper, factory shell, or late disclosure setter exists. The
 event log uses memory without a backend and persists the same ordered records when a
@@ -84,7 +84,7 @@ separate observers of recursively read-only run events.
 
 ## Central Progressive Disclosure
 
-All Skill types use `ProgressiveDisclosureCore`:
+All Skill types use one central `Skills` object. Its internal progressive reader:
 
 1. Scan user, project, and shipped scene sources into one compact index.
 2. Select exactly one task scene by request, Agent configuration, prompt trigger, or the

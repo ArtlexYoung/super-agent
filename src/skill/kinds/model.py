@@ -13,7 +13,8 @@ from core.provider.chat import (
     ProviderConnection,
     normalize_provider_connection,
 )
-from skill.disclosure import ProgressiveDisclosureCore, SkillDisclosure, SkillIndex
+from skill.disclosure import SkillDisclosure
+from skill.skills import Skills
 from skill.manifest import calculate_skill_directory_sha256
 
 DEFAULT_OPENAI_MODEL = "gpt-4.1-mini"
@@ -129,18 +130,17 @@ def create_model_profile_from_skill_disclosure(
 
 
 def read_model_profiles(
-    disclosure: ProgressiveDisclosureCore,
-    index: SkillIndex,
+    skills: Skills,
     environment: Mapping[str, str] | None = None,
 ) -> list[ModelProfile]:
     model_entries = [
-        entry for entry in index.entries if entry.reference.skill_type == "model"
+        entry for entry in skills.index.entries if entry.reference.skill_type == "model"
     ]
     if not model_entries:
         return discover_environment_model_profiles(environment)
     profiles = [
         create_model_profile_from_skill_disclosure(
-            disclosure.open_skill(entry.reference.name, "model")
+            skills.open(entry.reference)
         )
         for entry in model_entries
     ]

@@ -11,6 +11,7 @@ from skill.runners.loaded import (
     TaskPolicy,
 )
 from skill.runners.registry import SkillRunners
+from skill.skills import Skills
 from core.config import AgentConfig
 from core.provider.chat import ChatProvider, Message
 from core.storage import StorageBackend
@@ -36,8 +37,7 @@ from skill.kinds.model import ModelProfile, model_profile_to_dict
 class RuntimeLockInput:
     config: AgentConfig
     model_profile: ModelProfile
-    skill_runners: SkillRunners
-    skill_index: SkillIndex
+    skills: Skills
     provider: ChatProvider
     storage: StorageBackend | None
     run_plan: RunPlan
@@ -64,7 +64,7 @@ class _SelectedRunSkills:
 
 
 def create_runtime_lock(request: RuntimeLockInput) -> dict[str, object]:
-    request.skill_runners.validate_dependencies()
+    request.skills.validate_loaders()
     return {
         "schema_version": 18,
         "agent": {
@@ -88,9 +88,9 @@ def create_runtime_lock(request: RuntimeLockInput) -> dict[str, object]:
         },
         "skill_runners": [
             item.descriptor.to_dict()
-            for item in request.skill_runners.list_skill_runners()
+            for item in request.skills.list_loaders()
         ],
-        "registered_code": _list_registered_code(request.skill_runners),
+        "registered_code": _list_registered_code(request.skills.loaders),
         "skills": [
             {
                 "key": entry.reference.key,
@@ -101,7 +101,7 @@ def create_runtime_lock(request: RuntimeLockInput) -> dict[str, object]:
                 "provides": list(entry.provides),
                 "requires": list(entry.requires),
             }
-            for entry in request.skill_index.entries
+            for entry in request.skills.index.entries
         ],
     }
 
@@ -219,7 +219,7 @@ def _select_run_skills(
     request: TaskRequest,
     session: Run,
 ) -> _SelectedRunSkills:
-    disclosure = session.skill_disclosure
+    disclosure = session.skills.disclosure
     scene_reference = disclosure.select_skill_scene_for_prompt(
         request.prompt,
         session.config.agent.skills,
@@ -235,7 +235,7 @@ def _select_run_skills(
     )
     allowed_types = {
         entry.descriptor.skill_type
-        for entry in session.skill_runners.list_skill_runners()
+        for entry in session.skills.loaders.list_skill_runners()
         if entry.descriptor.skill_type != "scene"
     }
     unsupported_types = sorted(
@@ -272,10 +272,10 @@ def _list_unavailable_scenes(
         available_services.add("storage")
     runners = {
         entry.descriptor.skill_type: entry.descriptor
-        for entry in session.skill_runners.list_skill_runners()
+        for entry in session.skills.loaders.list_skill_runners()
     }
-    disclosure = session.skill_disclosure
-    index = session.skill_index
+    disclosure = session.skills.disclosure
+    index = session.skills.index
     unavailable: dict[str, tuple[str, ...]] = {}
     for scene in index.entries:
         if scene.reference.skill_type != "scene":
@@ -449,7 +449,7 @@ def _select_model_context_skills(
     selected_skills: tuple[SkillReference, ...],
     session: Run,
 ) -> tuple[SkillReference, ...]:
-    model_context_types = session.skill_runners.list_model_context_types()
+    model_context_types = session.skills.loaders.list_model_context_types()
     return tuple(
         reference
         for reference in selected_skills
@@ -491,7 +491,7 @@ def build_system_prompt(
             detail = f" ({item.description})" if item.description else ""
             lines.append(f"- {item.name}{detail}: {item.text}")
         untrusted_parts.append("\n".join(lines))
-    disclosure = session.skill_index.build_progressive_disclosure_prompt()
+    disclosure = session.skills.index.build_progressive_disclosure_prompt()
     if disclosure:
         untrusted_parts.append(disclosure)
     if untrusted_parts:
@@ -509,7 +509,7 @@ def _load_skill(
     *,
     send_text_model_messages: Callable[[list[Message]], str] | None = None,
 ) -> LoadedSkill:
-    entry = session.skill_index.require_skill(
+    entry = session.skills.index.require_skill(
         reference.name,
         reference.skill_type,
     )
@@ -522,7 +522,7 @@ def _selected_entries(
     references: tuple[SkillReference, ...],
     skill_type: str,
 ) -> list[SkillIndexEntry]:
-    index = session.skill_index
+    index = session.skills.index
     return [
         index.require_skill(reference.name, skill_type)
         for reference in references
@@ -534,7 +534,7 @@ def _merge_included_and_configured_skills(
     session: Run,
     included_skills: tuple[SkillReference, ...],
 ) -> list[str]:
-    index = session.skill_index
+    index = session.skills.index
     configured = [
         value
         for value in session.config.agent.skills

@@ -12,7 +12,7 @@ from adapter.ag_ui_adapter.configuration import (
     agent_configuration_to_dict,
     update_agent_configuration,
 )
-from skill.runners.defaults import create_progressive_skill_disclosure
+from skill.runners.defaults import create_skills
 from core.config import AgentConfig
 from skill.evolution.tracking.insights import explain_run_with_insight
 from core.checks import ActionEffect, ActionRequest
@@ -86,13 +86,12 @@ class WebAPI:
             config,
             agent=replace(config.agent, disabled_skills=[]),
         )
-        disclosure = create_progressive_skill_disclosure(
+        skills = create_skills(
             all_skills_config,
             store=store,
         )
-        index = disclosure.prepare_skill_index()
         environment = self.agent.user_secrets.get_environment_for_user(self.user_id)
-        models = read_model_profiles(disclosure, index, environment)
+        models = read_model_profiles(skills, environment)
         return {
             "schema_version": 3,
             "agent": agent_configuration_to_dict(config),
@@ -101,7 +100,7 @@ class WebAPI:
                 "path": str(config.storage.path),
             },
             "configuration_path": str(config.source),
-            "skills": _web_skill_list(skill_index_to_dict(index), config),
+            "skills": _web_skill_list(skill_index_to_dict(skills.index), config),
             "models": [
                 model_profile_to_dict(profile, environment) for profile in models
             ],

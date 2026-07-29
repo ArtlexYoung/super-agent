@@ -319,7 +319,7 @@ def _write_and_validate_scene_documents(
     documents: dict[str, dict[str, str]],
     name: str,
 ) -> dict[str, Path]:
-    from skill.validation import validate_skill_directory
+    from skill.ecosystem.validation import validate_skill_directory
 
     staged: dict[str, Path] = {}
     for skill_type, files in documents.items():

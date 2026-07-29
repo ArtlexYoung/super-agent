@@ -5,7 +5,7 @@ import json
 import sys
 
 from adapter.cli_adapter import load_agent_config, load_runtime_store
-from skill.runners.defaults import create_progressive_skill_disclosure
+from skill.runners.defaults import create_skills
 from core.config import AgentConfig
 from core.models import LOCAL_USER_ID
 from core.checks import ActionRules
@@ -71,9 +71,7 @@ def _read_configured_model_profiles(
     user_id: str,
 ) -> list[ModelProfile]:
     store = load_runtime_store(config, user_id)
-    disclosure = create_progressive_skill_disclosure(config, store=store)
-    index = disclosure.prepare_skill_index()
-    return read_model_profiles(disclosure, index)
+    return read_model_profiles(create_skills(config, store=store))
 
 
 def _print_model_profiles(

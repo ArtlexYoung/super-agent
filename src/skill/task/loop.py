@@ -430,7 +430,7 @@ def _record_disclosed_skills(
         "skills.disclosed",
         {
             "names": [skill.manifest.name for skill in skills],
-            "index_path": _optional_path(session.skill_index.index_path),
+            "index_path": _optional_path(session.skills.index.index_path),
         },
     )
 

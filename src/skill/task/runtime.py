@@ -28,14 +28,14 @@ from skill.task.run_plan import RunPlan
 from skill.task.preparation import RuntimeLockInput, create_runtime_lock
 from skill.task.model_calls import estimate_text_tokens
 from core.models import RunLearningResult, TaskRequest, TaskResult, TaskTrace
-from skill.disclosure import ProgressiveDisclosureCore, SkillIndex
+from skill.skills import Skills
 from skill.kinds.model import (
     ModelProfile,
     read_model_profiles,
     select_default_model_profile,
 )
 from skill.manifest import SkillManifest
-from skill.runners.defaults import create_progressive_skill_disclosure
+from skill.runners.defaults import create_skills
 from skill.runners.registry import SkillRunners
 
 if TYPE_CHECKING:
@@ -277,11 +277,11 @@ class AgentRuntime:
                 manifest,
                 user_id,
             )
-        disclosure, index = self._create_disclosure(store)
-        profiles = self._read_model_profiles(disclosure, index, user_id)
+        skills = self._create_skills(store)
+        profiles = self._read_model_profiles(skills, user_id)
         task_loop = self._create_task_loop(profiles, user_id)
         return SkillEvolutionManager(
-            skill_disclosure=disclosure,
+            skill_disclosure=skills.disclosure,
             store=store,
             models=EvolutionModels(
                 candidate=task_loop.create_text_model(
@@ -298,10 +298,10 @@ class AgentRuntime:
         )
 
     def read_model_profiles(self, user_id: str = LOCAL_USER_ID) -> list[ModelProfile]:
-        disclosure, index = self._create_disclosure(
+        skills = self._create_skills(
             None if self.storage is None else self.create_store(user_id)
         )
-        return self._read_model_profiles(disclosure, index, user_id)
+        return self._read_model_profiles(skills, user_id)
 
     def _create_run(
         self,
@@ -317,11 +317,11 @@ class AgentRuntime:
         store = self._create_run_store(identity, event_log)
         event_log.start_run(request.prompt)
         try:
-            disclosure, index = self._create_disclosure(
+            skills = self._create_skills(
                 store,
                 identity,
             )
-            profiles = self._read_model_profiles(disclosure, index, identity.user_id)
+            profiles = self._read_model_profiles(skills, identity.user_id)
             task_loop = self._create_task_loop(profiles, identity.user_id)
             default_profile = select_default_model_profile(profiles)
             run = Run(
@@ -331,12 +331,10 @@ class AgentRuntime:
                     default_profile.key,
                     default_profile.connection,
                 ),
-                skill_runners=self.skill_runners,
+                skills=skills,
                 identity=identity,
                 event_log=event_log,
                 store=store,
-                skill_disclosure=disclosure,
-                skill_index=index,
                 allow_subscriber_failures=request.allow_subscriber_failures,
                 action_rules=self.action_rules,
                 event_subscribers=RuntimeEventSubscribers(
@@ -345,7 +343,7 @@ class AgentRuntime:
             )
             for event in event_log.list_events():
                 run.publish_existing_event(event)
-            disclosure.set_event_writer(run.record_event)
+            skills.disclosure.set_event_writer(run.record_event)
             return run, task_loop
         except Exception as error:
             event_log.append_event(
@@ -371,27 +369,26 @@ class AgentRuntime:
             run_event_log=event_log,
         )
 
-    def _create_disclosure(
+    def _create_skills(
         self,
         store: RuntimeStore | None,
         identity: RunIdentity | None = None,
-    ) -> tuple[ProgressiveDisclosureCore, SkillIndex]:
-        disclosure = create_progressive_skill_disclosure(
+    ) -> Skills:
+        return create_skills(
             self.config,
+            loaders=self.skill_runners,
             store=store,
             identity=identity if store is not None else None,
             include_freshness=False,
         )
-        return disclosure, disclosure.prepare_skill_index()
 
     def _read_model_profiles(
         self,
-        disclosure: ProgressiveDisclosureCore,
-        index: SkillIndex,
+        skills: Skills,
         user_id: str,
     ) -> list[ModelProfile]:
         environment = self.user_secrets.get_environment_for_user(user_id)
-        profiles = read_model_profiles(disclosure, index, environment)
+        profiles = read_model_profiles(skills, environment)
         return profiles or list(self.code_model_profiles)
 
     def _create_task_loop(
@@ -414,8 +411,7 @@ class AgentRuntime:
             RuntimeLockInput(
                 config=self.config,
                 model_profile=run.model_profile,
-                skill_runners=self.skill_runners,
-                skill_index=run.skill_index,
+                skills=run.skills,
                 provider=run.provider,
                 storage=self.storage,
                 run_plan=run_plan,

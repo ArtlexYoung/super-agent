@@ -10,7 +10,7 @@ from core.provider.chat import MockProvider
 from core.storage import create_storage_backend
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.kinds.model import read_model_profiles
-from skill.runners.defaults import create_progressive_skill_disclosure
+from skill.runners.defaults import create_skills
 from support import write_workflow_skill
 
 
@@ -211,8 +211,8 @@ skills = ["skills"]
 class LazyAgentInitializationTests(unittest.TestCase):
     def test_construction_and_registration_do_not_initialize_runtime_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, patch(
-            "super_agent.create_progressive_skill_disclosure"
-        ) as create_disclosure, patch(
+            "super_agent.create_skills"
+        ) as build_skills, patch(
             "core.storage.create_storage_backend"
         ) as create_storage:
             config = AgentConfig.create_default(Path(tmp))
@@ -228,16 +228,16 @@ class LazyAgentInitializationTests(unittest.TestCase):
             )
             agent.add_event_subscriber(_RecordingSubscriber())
 
-            create_disclosure.assert_not_called()
+            build_skills.assert_not_called()
             create_storage.assert_not_called()
             self.assertIsNone(agent._runtime)
             self.assertEqual("subagent01", agent.list_subagents()[0].name)
 
     def test_first_runtime_access_initializes_everything_once(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, patch(
-            "super_agent.create_progressive_skill_disclosure",
-            wraps=create_progressive_skill_disclosure,
-        ) as create_disclosure, patch(
+            "super_agent.create_skills",
+            wraps=create_skills,
+        ) as build_skills, patch(
             "super_agent.read_model_profiles",
             wraps=read_model_profiles,
         ) as discover_models, patch(
@@ -254,7 +254,7 @@ class LazyAgentInitializationTests(unittest.TestCase):
             self.assertIs(runtime, agent.runtime)
             self.assertIsNotNone(agent.storage)
             self.assertEqual("model:provided", agent.model_profiles[0].key)
-            self.assertEqual(1, create_disclosure.call_count)
+            self.assertEqual(1, build_skills.call_count)
             self.assertEqual(1, discover_models.call_count)
             self.assertEqual(1, create_storage.call_count)
 
