@@ -6,14 +6,20 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Callable
 
-from skill.runners.registry import SkillRunners
-from core.provider.chat import ChatProvider
+from skill.runners.loaded import LoadedSkill
+from skill.runners.registry import SkillLoadRequest, SkillRunners
+from core.provider.chat import ChatProvider, Message
 from core.config import AgentConfig
 from core.identity import RunIdentity
 from core.state.models import RunEvent
 from core.actions import ActionRequest, ActionRunner, ActionRules
 from core.state.store import RuntimeStore
-from skill.disclosure import ProgressiveDisclosureCore, SkillIndex, SkillIndexEntry
+from skill.disclosure import (
+    ProgressiveDisclosureCore,
+    SkillIndex,
+    SkillIndexEntry,
+    SkillReference,
+)
 from skill.kinds.model import ModelProfile
 from skill.evolution.revision import SkillRevision, create_indexed_skill_revision
 
@@ -35,6 +41,15 @@ class RuntimeSession:
         init=False,
         repr=False,
     )
+    _action_runner: ActionRunner = field(init=False, repr=False)
+    _loaded_skills: dict[tuple[str, bool], LoadedSkill] = field(
+        default_factory=dict,
+        init=False,
+        repr=False,
+    )
+
+    def __post_init__(self) -> None:
+        self._action_runner = ActionRunner(self.action_rules, self.record_event)
 
     @property
     def run_id(self) -> str:
@@ -75,10 +90,28 @@ class RuntimeSession:
         request: ActionRequest,
         action: Callable[[], object],
     ) -> object:
-        return ActionRunner(
-            self.action_rules,
-            self.record_event,
-        ).execute_action(request, action)
+        return self._action_runner.execute_action(request, action)
+
+    def load_skill(
+        self,
+        reference: SkillReference,
+        send_text_model_messages: Callable[[list[Message]], str] | None = None,
+    ) -> LoadedSkill:
+        key = (reference.key, send_text_model_messages is not None)
+        loaded = self._loaded_skills.get(key)
+        if loaded is None:
+            loaded = self.skill_runners.load_skill(
+                SkillLoadRequest(
+                    self.require_skill_disclosure(),
+                    reference,
+                    self.store,
+                    self.identity,
+                    send_text_model_messages,
+                    self.execute_action,
+                )
+            )
+            self._loaded_skills[key] = loaded
+        return loaded
 
     def set_skill_disclosure(
         self,

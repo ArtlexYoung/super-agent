@@ -21,7 +21,7 @@ from core.actions import ActionRequest
 from core.state.store import RuntimeStore
 from skill.disclosure import ProgressiveDisclosureCore, SkillReference
 
-SKILL_RUNNER_SCHEMA_VERSION = 7
+SKILL_RUNNER_SCHEMA_VERSION = 8
 _NAME_PATTERN = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}")
 
 
@@ -60,6 +60,7 @@ class SkillRunner(Protocol):
     version: str
     skill_type: str
     adds_model_context: bool
+    required_services: tuple[str, ...]
 
     def load_skill(self, request: SkillLoadRequest) -> LoadedSkill: ...
 
@@ -72,6 +73,7 @@ class SkillRunnerInfo:
     implementation: str
     content_sha256: str
     dependencies: tuple[str, ...] = ()
+    required_services: tuple[str, ...] = ()
     schema_version: int = SKILL_RUNNER_SCHEMA_VERSION
 
     @property
@@ -88,6 +90,7 @@ class SkillRunnerInfo:
             "implementation": self.implementation,
             "content_sha256": self.content_sha256,
             "dependencies": list(self.dependencies),
+            "required_services": list(self.required_services),
         }
 
 
@@ -188,6 +191,7 @@ def describe_skill_runner(
         implementation=f"{type(runner).__module__}.{type(runner).__qualname__}",
         content_sha256=calculate_skill_runner_sha256(runner),
         dependencies=_text_tuple(runner, "dependencies", ()),
+        required_services=_text_tuple(runner, "required_services", ()),
     )
 
 
@@ -229,6 +233,20 @@ def _validate_loaded_skill(loaded: LoadedSkill) -> None:
     for tool in loaded.tools:
         if not isinstance(tool, SkillTool):
             raise TypeError("LoadedSkill.tools must contain SkillTool values")
+        if not isinstance(tool.name, str) or not tool.name.strip():
+            raise ValueError("SkillRunner tool name must be a non-empty string")
+        if not isinstance(tool.description, str) or not tool.description.strip():
+            raise ValueError(f"SkillRunner tool description is empty: {tool.name}")
+        if not isinstance(tool.properties, dict):
+            raise TypeError(f"SkillRunner tool properties must be an object: {tool.name}")
+        if not callable(tool.handler):
+            raise TypeError(f"SkillRunner tool handler must be callable: {tool.name}")
+        if not isinstance(tool.required, tuple) or not all(
+            isinstance(name, str) and name in tool.properties for name in tool.required
+        ):
+            raise ValueError(
+                f"SkillRunner tool required names must exist in properties: {tool.name}"
+            )
         if not isinstance(tool.action, SkillAction):
             raise TypeError(f"SkillRunner tool must declare an action: {tool.name}")
         argument = tool.action.resource_argument
@@ -272,7 +290,7 @@ def _text_tuple(
 ) -> tuple[str, ...]:
     selected = getattr(value, name, default)
     if not isinstance(selected, tuple) or not all(
-        isinstance(item, str) and item for item in selected
+        isinstance(item, str) and item.strip() for item in selected
     ):
         raise TypeError(f"Skill runner {name} must be a tuple of non-empty strings")
     return tuple(item.strip().lower() for item in selected)

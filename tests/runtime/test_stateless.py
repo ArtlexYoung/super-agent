@@ -5,6 +5,7 @@ from pathlib import Path
 from core.agent import Agent, AgentRunOptions
 from core.config import AgentConfig
 from core.provider.chat import MockProvider
+from core.task.preflight import TaskPreflightError
 
 
 class StatelessRuntimeTests(unittest.TestCase):
@@ -56,8 +57,8 @@ class StatelessRuntimeTests(unittest.TestCase):
             agent = Agent(config, provider=MockProvider(), use_storage=False)
 
             with self.assertRaisesRegex(
-                ValueError,
-                "memory Skill requires Runtime storage",
+                TaskPreflightError,
+                "memory:default.*storage",
             ):
                 agent.run("hello", scene="common")
 

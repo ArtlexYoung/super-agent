@@ -96,6 +96,7 @@ Agent.run
   -> Core 创建唯一运行会话
   -> 渐进式披露选择一个任务场景及其 Skill
   -> Core 为场景、Skill、工作流、规划器和模型创建唯一 RoutePlan
+  -> 预检一次检查所有计划中的 runner、服务、工具、Provider 和子 Agent
   -> SkillRunner 加载计划中的 Skill，Core 执行该路由
   -> 记录事件、评价、保鲜度和进化证据
 ```
@@ -243,9 +244,11 @@ workflow Skill 定义。
 默认存储是 `.super-agent/` 下可直接阅读、零依赖的 JSONL。SQLite 同样只使用标准库；
 MySQL 和 PostgreSQL 只在选择后安装对应可选依赖。所有后端实现同一个用户隔离事件契约。
 
-每个有副作用的工具都要声明资源和 `read`、`create`、`update`、`delete`、`execute`、
-`network` 或 `delegate` 效果。Core 在 handler 运行前检查这些效果。Skill 文本只是未受信任
-上下文，不能给自己授予执行权限，也不存在未声明动作的退化路径。
+每个工具都要声明资源和 `read`、`create`、`update`、`delete`、`execute`、`network` 或
+`delegate` 效果。首次模型调用前，预检会一次返回所有缺失 runner、服务、无效工具、不可用
+Provider 和子 Agent。状态变化随后明确经过 `prepared`、`applying`、`applied` 阶段；读取在
+检查后直接执行。Skill 文本只是未受信任上下文，不能给自己授予执行权限，也不存在未声明
+动作的退化路径。
 
 ## 文档
 

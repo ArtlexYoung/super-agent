@@ -37,6 +37,7 @@ Agent.run(...)
   -> RuntimeSession with an optional RuntimeStore
   -> progressive index selects one scene and its Skill references
   -> one immutable RoutePlan fixes scene, Skills, workflow, planner, and model
+  -> preflight validates the complete route before any model or subagent call
   -> SkillRunners load the route and one task loop executes it
   -> canonical events, evaluation, freshness, and evolution review
 ```
@@ -50,6 +51,11 @@ planner references, model choices with reasons, required features, and subagent 
 Core creates it before the matching execution and records that same object in the task
 event and Runtime lock. Planned steps use the same contract. There are no partial scene,
 Skill-selection, or schedule objects to reconcile later.
+
+Preflight loads each planned Skill once into the Runtime session and aggregates missing
+runners, declared services, invalid tools, the selected Provider, and subagents into one
+report. A failed report raises `TaskPreflightError` before the Runtime lock, model call,
+tool handler, or subagent run. Execution reuses the checked Skill contributions.
 
 `RuntimeSession` is the only mutable run context. It carries the validated identity,
 optional store, Skill index, disclosure core, selected model state, SkillRunners, action
@@ -126,8 +132,9 @@ after their backend is explicitly selected.
 ## Explicit Side Effects
 
 Every Runtime tool declares one resource and one or more effects. `ActionRunner` checks
-that declaration before invoking the handler and records the decision, completion, or
-failure. A missing declaration is an error; there is no permissive fallback. Skill text
+that declaration before invoking the handler and records the decision or failure. A
+missing declaration is an error; there is no permissive fallback. Mutations are checked,
+prepared, and then explicitly applied. Reads run directly after their check. Skill text
 cannot change an action declaration because it is treated as untrusted model context.
 
 Management operations such as conversation changes, model Skill writes, and memory

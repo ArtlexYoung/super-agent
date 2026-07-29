@@ -74,6 +74,7 @@ class MemorySkillRunner:
     version = "4"
     skill_type = "memory"
     adds_model_context = False
+    required_services = ("storage", "text_model")
 
     def load_skill(self, request: SkillLoadRequest) -> LoadedSkill:
         opened = request.disclosure.open_skill(

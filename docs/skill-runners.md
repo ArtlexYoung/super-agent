@@ -29,6 +29,7 @@ class SearchSkillRunner:
     version = "1"
     skill_type = "search"
     adds_model_context = True
+    required_services = ()
 
     def load_skill(self, request: SkillLoadRequest) -> LoadedSkill:
         opened = request.disclosure.open_skill(
@@ -63,9 +64,11 @@ agent = Agent()
 agent.add_skill_runner(SearchSkillRunner())
 ```
 
-The runner declares `name`, `version`, `skill_type`, `adds_model_context`, and
-`load_skill(request)`. Adding a runner for an existing type explicitly replaces that
-Agent's current runner.
+The runner declares `name`, `version`, `skill_type`, `adds_model_context`, optional
+`required_services`, and `load_skill(request)`. Built-in service names are `storage`,
+`text_model`, and `event_stream`. Preflight verifies every selected runner's declaration
+before execution. Adding a runner for an existing type explicitly replaces that Agent's
+current runner.
 
 ## LoadedSkill
 
@@ -91,4 +94,4 @@ fails closed.
 Core never imports, compiles, or executes Python from a Skill directory. Skills can update
 the content and configuration consumed by a runner, but executable runner changes remain
 ordinary reviewed application-code changes. The Runtime lock stores each registered
-runner's implementation name, version, dependencies, and source hash.
+runner's implementation name, version, dependencies, required services, and source hash.

@@ -34,6 +34,7 @@ from core.storage import StorageBackend
 from core.storage.values import encode_storage_data
 from core.state.store import RuntimeStore
 from core.task.route_plan import RoutePlan
+from core.task.preflight import TaskPreflightError
 from core.task.loop import AdaptiveTaskLoop, list_run_actions
 from core.task.models import TaskRequest, TaskResult, TaskTrace
 from skill.disclosure import ProgressiveDisclosureCore, SkillIndex
@@ -135,7 +136,6 @@ class AgentRuntime:
                     "requested_scene": request.scene,
                 },
             )
-            self.skill_runners.validate_dependencies()
             result = task_loop.run_task(
                 request,
                 session,
@@ -171,7 +171,11 @@ class AgentRuntime:
                 events=_list_result_events(session),
             )
         except Exception as error:
-            if session.store is not None and not evaluation_attempted:
+            if (
+                session.store is not None
+                and not evaluation_attempted
+                and not isinstance(error, TaskPreflightError)
+            ):
                 self._try_record_failed_task_evaluation(
                     session,
                     request.prompt,
@@ -632,7 +636,7 @@ def _skill_update_to_dict(state: SkillEvolutionState) -> dict[str, object]:
 def _runtime_lock_to_dict(request: _RuntimeLockInput) -> dict[str, object]:
     request.skill_runners.validate_dependencies()
     return {
-        "schema_version": 15,
+        "schema_version": 16,
         "agent": {
             "name": request.config.agent.name,
             "system": request.config.agent.system,

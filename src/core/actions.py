@@ -97,6 +97,14 @@ class ActionDecision:
 
 
 @dataclass(frozen=True)
+class PreparedAction:
+    """An allowed state change that has not run its handler yet."""
+
+    request: ActionRequest
+    decision: ActionDecision
+
+
+@dataclass(frozen=True)
 class ActionRules:
     """Apply one small preset to every declared Runtime action."""
 
@@ -173,12 +181,47 @@ class ActionRunner:
     def __init__(self, policy: ActionRules, record_event: EventRecorder) -> None:
         self.policy = policy
         self.record_event = record_event
+        self._prepared_actions: dict[str, PreparedAction] = {}
+
+    def prepare_action(self, request: ActionRequest) -> PreparedAction:
+        if _is_read_only(request):
+            raise ValueError("read-only actions execute directly and cannot be prepared")
+        decision = self._check_action(request)
+        self._require_action_not_prepared(request)
+        prepared = PreparedAction(request, decision)
+        self._prepared_actions[request.action_id] = prepared
+        self.record_event(
+            "action.prepared",
+            {**request.to_event_data(), **decision.to_event_data()},
+        )
+        return prepared
+
+    def apply_action(
+        self,
+        prepared: PreparedAction,
+        action: Callable[[], Result],
+    ) -> Result:
+        request = prepared.request
+        expected = self._prepared_actions.get(request.action_id)
+        if expected != prepared:
+            raise ValueError(f"action is not prepared or was already applied: {request.action_id}")
+        del self._prepared_actions[request.action_id]
+        self.record_event("action.applying", request.to_event_data())
+        return self._run_action(request, action)
 
     def execute_action(
         self,
         request: ActionRequest,
         action: Callable[[], Result],
     ) -> Result:
+        if _is_read_only(request):
+            self._check_action(request)
+            self._require_action_not_prepared(request)
+            return self._run_action(request, action)
+        prepared = self.prepare_action(request)
+        return self.apply_action(prepared, action)
+
+    def _check_action(self, request: ActionRequest) -> ActionDecision:
         decision = self.policy.check_action(request)
         self.record_event(
             "action.checked",
@@ -190,6 +233,13 @@ class ActionRunner:
         if decision.decision == ActionDecisionType.REQUIRE_CONFIRMATION:
             self._record_blocked(request, decision)
             raise ActionConfirmationRequired(request, decision)
+        return decision
+
+    def _run_action(
+        self,
+        request: ActionRequest,
+        action: Callable[[], Result],
+    ) -> Result:
         try:
             result = action()
         except Exception as error:
@@ -202,8 +252,12 @@ class ActionRunner:
                 },
             )
             raise
-        self.record_event("action.completed", request.to_event_data())
+        self.record_event("action.applied", request.to_event_data())
         return result
+
+    def _require_action_not_prepared(self, request: ActionRequest) -> None:
+        if request.action_id in self._prepared_actions:
+            raise ValueError(f"action id is already prepared: {request.action_id}")
 
     def _record_blocked(
         self,
@@ -233,6 +287,10 @@ _INTERNAL_RESOURCE_PREFIXES = (
 
 def _is_internal_resource(resource: str) -> bool:
     return resource.startswith(_INTERNAL_RESOURCE_PREFIXES)
+
+
+def _is_read_only(request: ActionRequest) -> bool:
+    return set(request.effects) == {ActionEffect.READ}
 
 
 def _allow(reason: str) -> ActionDecision:

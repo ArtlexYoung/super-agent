@@ -10,7 +10,6 @@ from skill.runners.loaded import (
     ScenePolicy,
     TaskPolicy,
 )
-from skill.runners.registry import SkillLoadRequest
 from core.provider.chat import Message
 from core.task.planning import decide_task_planning
 from core.session import RuntimeSession
@@ -279,16 +278,7 @@ def _load_skill(
         reference.skill_type,
     )
     session.record_skill_used(entry)
-    return session.skill_runners.load_skill(
-        SkillLoadRequest(
-            session.require_skill_disclosure(),
-            reference,
-            session.store,
-            session.identity,
-            send_text_model_messages,
-            session.execute_action,
-        )
-    )
+    return session.load_skill(reference, send_text_model_messages)
 
 
 def _selected_entries(

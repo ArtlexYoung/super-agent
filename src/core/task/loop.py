@@ -24,6 +24,7 @@ from core.task.planning import (
     create_direct_task_plan,
     read_task_plan,
 )
+from core.task.preflight import check_route_before_execution
 from core.actions import ActionRequest
 from core.session import RuntimeSession
 from core.state.store import RuntimeStore
@@ -96,17 +97,25 @@ class AdaptiveTaskLoop:
             self.provider_pool.environment,
         )
         session.record_event("task.scheduled", route_plan.to_dict())
+        organization_model = self.create_text_model(
+            session.store,
+            "memory_organization",
+            session.record_event,
+        )
+        check_route_before_execution(
+            request,
+            session,
+            route_plan,
+            self.provider_pool,
+            organization_model.send_messages,
+        )
         self._select_primary_model(session, route_plan)
         before_model_calls(route_plan)
 
         background = load_background_contributions(
             session,
             route_plan,
-            self.create_text_model(
-                session.store,
-                "memory_organization",
-                session.record_event,
-            ).send_messages,
+            organization_model.send_messages,
         )
         context = _TaskExecutionContext(
             request,
@@ -412,7 +421,7 @@ def _record_task_completed(
 
 def list_run_actions(session: RuntimeSession) -> list[dict[str, object]]:
     terminal = {
-        "action.completed": "completed",
+        "action.applied": "applied",
         "action.blocked": "blocked",
         "action.failed": "failed",
     }

@@ -10,6 +10,7 @@ Agent.run(...)
   -> AgentRuntime.run_task(...)
   -> prepare one progressive Skill index
   -> create one RoutePlan for scene, Skills, workflow, planner, and model
+  -> preflight the planned Skills, services, tools, Provider, and subagents
   -> plan one or more task steps
   -> load and execute the planned route
   -> run model, tools, and subagents
@@ -24,6 +25,12 @@ from the smaller model-context Skill set, and includes the exact workflow, optio
 planner, model ranking, features, and subagents. Missing, ambiguous, or incompatible
 choices fail while this plan is created. Core records the same plan in `task.scheduled`
 and the Runtime lock instead of rebuilding routing state for each consumer.
+
+After scheduling, preflight loads each planned Skill once and aggregates every detected
+problem. `task.preflight.completed` is recorded before the first model or subagent call.
+On failure, `TaskPreflightError.problems` contains all detected codes, targets, and
+messages; Runtime records `task.preflight.failed` and does not lock or partially execute
+the route.
 
 ## Optional Parts
 

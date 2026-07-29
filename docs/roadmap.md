@@ -113,7 +113,7 @@ Status: implemented.
 
 ## v0.0.69: Preflight and Staged Actions
 
-Status: planned.
+Status: implemented.
 
 - Check every planned Skill, runner, Provider, tool, and required service before the first
   model call.

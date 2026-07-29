@@ -16,7 +16,7 @@ class SkillRunnersTests(unittest.TestCase):
             result = agent.run("hello")
             runtime_lock = agent.runtime.create_store().read_runtime_lock(result.run_id)
 
-            self.assertEqual(15, runtime_lock["schema_version"])
+            self.assertEqual(16, runtime_lock["schema_version"])
             locked = runtime_lock["skill_runners"]
             self.assertEqual(
                 [
@@ -27,6 +27,9 @@ class SkillRunnersTests(unittest.TestCase):
             )
             self.assertTrue(all(item["type"] for item in locked))
             self.assertTrue(all(len(item["content_sha256"]) == 64 for item in locked))
+            memory = next(item for item in locked if item["type"] == "memory")
+            self.assertEqual(8, memory["schema_version"])
+            self.assertEqual(["storage", "text_model"], memory["required_services"])
 
     def test_registry_rejects_missing_and_cyclic_dependencies(self) -> None:
         missing = SkillRunners()

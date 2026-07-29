@@ -103,6 +103,7 @@ Agent.run
   -> Core creates one run session
   -> progressive disclosure selects one task scene and its Skills
   -> Core creates one RoutePlan for scene, Skills, workflow, planner, and model
+  -> preflight checks every planned runner, service, tool, Provider, and subagent
   -> SkillRunners load the planned Skills and Core executes the route
   -> events, evaluation, freshness, and evolution evidence are recorded
 ```
@@ -261,10 +262,12 @@ The default storage is readable, dependency-free JSONL under `.super-agent/`. SQ
 also standard-library only. MySQL and PostgreSQL are optional extras installed only when
 selected. All backends implement the same user-scoped event contract.
 
-Every side-effecting tool declares its resource and `read`, `create`, `update`, `delete`,
-`execute`, `network`, or `delegate` effects. Core checks those effects before invoking
-the handler. Skill text is untrusted context and cannot grant itself execution rights.
-There is no undeclared fallback action.
+Every tool declares its resource and `read`, `create`, `update`, `delete`, `execute`,
+`network`, or `delegate` effects. Before the first model call, preflight returns all
+missing runners, services, invalid tools, unavailable Providers, and subagents together.
+State changes then pass explicit `prepared` and `applying` stages before `applied`; reads
+execute directly after their check. Skill text is untrusted context and cannot grant
+itself execution rights. There is no undeclared fallback action.
 
 ## Documentation
 

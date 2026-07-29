@@ -29,6 +29,7 @@ from core.storage import (
     StorageBackend,
 )
 from core.task.models import TaskResult, TaskTrace
+from core.task.preflight import PreflightProblem, TaskPreflightError
 from skill.kinds.model import ModelProfile
 from skill.kinds.scene import CreatedSkillScene, SkillSceneInput
 from skill.manifest import Skill, SkillManifest
@@ -57,6 +58,7 @@ __all__ = [
     "PostgreSqlStorage",
     "ProviderConnection",
     "ProviderPool",
+    "PreflightProblem",
     "Skill",
     "SkillSceneInput",
     "SkillManifest",
@@ -65,6 +67,7 @@ __all__ = [
     "SqliteStorage",
     "StorageBackend",
     "TaskResult",
+    "TaskPreflightError",
     "TaskTrace",
     "ToolCall",
     "UserAgent",

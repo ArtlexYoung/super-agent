@@ -11,7 +11,6 @@ from skill.runners.loaded import (
     read_optional_tool_string,
     read_required_tool_string,
 )
-from skill.runners.registry import SkillLoadRequest
 from core.provider.chat import ToolCall, ToolDefinition
 from core.session import RuntimeSession
 from core.actions import ActionRequest
@@ -145,15 +144,7 @@ class RuntimeTools:
         )
         if skill_type is not None and skill_type.adds_model_context:
             self._record_loaded_skill(reference)
-            contribution = self.context.session.skill_runners.load_skill(
-                SkillLoadRequest(
-                    self.context.session.require_skill_disclosure(),
-                    reference,
-                    self.context.session.store,
-                    self.context.session.identity,
-                    execute_action=self.context.session.execute_action,
-                )
-            )
+            contribution = self.context.session.load_skill(reference)
             self._add_tools(contribution.tools, allow_existing=True)
         return {
             "key": reference.key,

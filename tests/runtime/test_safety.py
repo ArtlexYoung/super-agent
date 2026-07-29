@@ -46,7 +46,44 @@ class RuntimeSafetyTests(unittest.TestCase):
             self.assertFalse(checked.data["enforced"])
             self.assertEqual(["query"], checked.data["argument_names"])
             self.assertNotIn("arguments", checked.data)
-            self.assertEqual("action.completed", events[-1].event_type)
+            self.assertEqual("action.applied", events[-1].event_type)
+            self.assertNotIn(
+                "action.prepared",
+                [event.event_type for event in events],
+            )
+
+    def test_state_change_is_prepared_before_it_is_applied(self) -> None:
+        events: list[tuple[str, dict[str, object]]] = []
+        changed = False
+        runner = ActionRunner(
+            ActionRules.from_name("autonomous"),
+            lambda event_type, data: events.append((event_type, data)),
+        )
+        request = ActionRequest.create(
+            "tool:update",
+            "memory:long_term",
+            (ActionEffect.UPDATE,),
+            action_id="change-1",
+        )
+
+        prepared = runner.prepare_action(request)
+        self.assertFalse(changed)
+
+        def apply_change() -> str:
+            nonlocal changed
+            changed = True
+            return "updated"
+
+        result = runner.apply_action(prepared, apply_change)
+
+        self.assertTrue(changed)
+        self.assertEqual("updated", result)
+        self.assertEqual(
+            ["action.checked", "action.prepared", "action.applying", "action.applied"],
+            [event_type for event_type, _ in events],
+        )
+        with self.assertRaisesRegex(ValueError, "already applied"):
+            runner.apply_action(prepared, apply_change)
 
     def test_action_contract_rejects_unknown_or_duplicate_effects(self) -> None:
         with self.assertRaises(ValueError):

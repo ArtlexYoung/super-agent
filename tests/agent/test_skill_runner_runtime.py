@@ -19,6 +19,7 @@ from cli import main
 from core.provider.chat import MockProvider, ModelResponse, ToolCall
 from core.config import AgentConfig
 from core.actions import ActionEffect
+from core.task.preflight import TaskPreflightError
 from skill.manifest import Skill
 from support import write_workflow_skill
 
@@ -152,7 +153,7 @@ class SkillRunnerRuntimeTests(unittest.TestCase):
                 skill_runners=[_MissingActionSkillRunner()],
             )
 
-            with self.assertRaisesRegex(TypeError, "action"):
+            with self.assertRaisesRegex(TaskPreflightError, "action"):
                 agent.run("please echo this")
 
             self.assertEqual([], provider.last_messages)

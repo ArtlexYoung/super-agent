@@ -16,9 +16,10 @@ Every executable action declares at least one effect:
 - `network`: communicate outside the Runtime process.
 - `delegate`: run a subagent registered in code.
 
-Core records `action.checked` before execution. Allowed actions then record
-`action.completed` or `action.failed`; blocked actions record `action.blocked`.
-Trace records contain argument names, never argument values.
+Core records `action.checked` before execution. Reads execute directly and finish with
+`action.applied` or `action.failed`. State changes record `action.prepared` without
+running the handler, followed by `action.applying` and `action.applied`; blocked actions
+record `action.blocked`. Trace records contain argument names, never argument values.
 
 A `SkillTool` has no default action. Missing metadata or a missing Runtime action runner
 is an error before its handler runs.

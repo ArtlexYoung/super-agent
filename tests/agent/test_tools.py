@@ -56,7 +56,7 @@ class SkillToolsTests(unittest.TestCase):
             ]
             self.assertIn("tool.requested", event_types)
             self.assertIn("action.checked", event_types)
-            self.assertIn("action.completed", event_types)
+            self.assertIn("action.applied", event_types)
             self.assertIn("tool.completed", event_types)
             self.assertIn("skill.disclosed", event_types)
 
@@ -206,7 +206,7 @@ class SkillToolsTests(unittest.TestCase):
                 for event in session.store.read_run_events(session.run_id)
             ]
             self.assertIn("action.blocked", event_types)
-            self.assertNotIn("action.completed", event_types)
+            self.assertNotIn("action.applied", event_types)
 
     def test_mcp_skill_cannot_start_process_before_runtime_action_check(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
