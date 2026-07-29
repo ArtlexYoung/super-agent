@@ -265,7 +265,9 @@ variables rather than TOML.
 - Agent-owned Skills with `agent_can_update = true` can create candidates, run
   non-regression evaluation, promote a complete Skill directory, monitor it, and roll it
   back. Promotion uses the exact recorded report and rejects changed candidates,
-  baselines, cases, or report files; shared project Skills remain read-only baselines.
+  baselines, cases, or report files. Activation verifies the copied directory and restores
+  the previous Skill if Runtime refresh or state recording fails; shared project Skills
+  remain read-only baselines.
 - Temporary memory is keyed to the current conversation and cannot enter another
   conversation. Long-term memory is reserved for abstract, critical, important, stable,
   or habitual knowledge.

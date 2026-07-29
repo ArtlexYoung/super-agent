@@ -201,6 +201,19 @@ Status: implemented.
 - Make manual and automatic evolution pass through the same strict report reader and
   promotion gate.
 
+## v0.0.77: Failure-Atomic Skill Activation
+
+Status: implemented.
+
+- Verify the source, copied directory, and current target revision before every Skill
+  promotion or rollback switch.
+- Restore the previous Skill and Runtime view when activation callbacks or evolution-state
+  writes fail; reject a conflicting third directory state instead of overwriting it.
+- Remove reports and history snapshots that could not be bound to state, while preserving
+  both the original and cleanup errors through normal exception chaining.
+- Reject symlinked Skill directories and require rollback history content to match the
+  source revision hash already stored in evolution state.
+
 ## Release Gate
 
 The project will not move to `0.1.x` because of feature count. The gate is a reproducible

@@ -5,19 +5,21 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
+from skill.directory import require_skill_directory_matches
+from skill.evolution.candidate import clean_record_id
 from skill.evolution.evaluation import (
     EvaluationCase,
     EvaluationCaseResult,
     EvaluationReport,
     validate_evaluation_report,
 )
-from skill.evolution.candidate import clean_record_id
 from skill.manifest import SkillManifest, calculate_skill_directory_sha256
 
 
@@ -41,9 +43,14 @@ class SkillHistoryRevision:
 
 def write_json_exclusive(path: Path, data: dict[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("x", encoding="utf-8") as file:
-        json.dump(data, file, ensure_ascii=False, indent=2, sort_keys=True)
-        file.write("\n")
+    file = path.open("x", encoding="utf-8")
+    try:
+        with file:
+            json.dump(data, file, ensure_ascii=False, indent=2, sort_keys=True)
+            file.write("\n")
+    except Exception:
+        path.unlink(missing_ok=True)
+        raise
 
 
 def write_json_atomically(path: Path, data: dict[str, object]) -> None:
@@ -241,9 +248,17 @@ def save_skill_history_revision(
     *,
     action: str,
     previous_revision_id: str,
+    expected_sha256: str,
 ) -> SkillHistoryRevision | None:
     if manifest is None:
+        if expected_sha256:
+            raise ValueError("missing Skill cannot have a history SHA-256")
         return None
+    if action not in {"promotion_backup", "rollback_backup"}:
+        raise ValueError(f"unsupported Skill history action: {action}")
+    if previous_revision_id:
+        clean_record_id(previous_revision_id)
+    require_skill_directory_matches(manifest.path, expected_sha256, "history source")
     revision_id = f"revision-{uuid4().hex}"
     final_path = (
         evolution_root
@@ -253,27 +268,32 @@ def save_skill_history_revision(
         / revision_id
     )
     staging_path = final_path.parent / f".{revision_id}.tmp"
-    skill_path = staging_path / "skill"
-    shutil.copytree(manifest.path, skill_path)
-    revision = SkillHistoryRevision(
-        revision_id=revision_id,
-        skill_type=manifest.skill_type,
-        skill_name=manifest.name,
-        version=manifest.version,
-        action=action,
-        created_at=utc_now_text(),
-        previous_revision_id=previous_revision_id,
-        sha256=calculate_skill_directory_sha256(skill_path),
-        skill_path=final_path / "skill",
-        metadata_path=final_path / "revision.json",
-    )
-    write_json_exclusive(
-        staging_path / "revision.json",
-        skill_history_revision_to_dict(revision),
-    )
-    final_path.parent.mkdir(parents=True, exist_ok=True)
-    os.replace(staging_path, final_path)
-    return revision
+    try:
+        skill_path = staging_path / "skill"
+        shutil.copytree(manifest.path, skill_path)
+        revision = SkillHistoryRevision(
+            revision_id=revision_id,
+            skill_type=manifest.skill_type,
+            skill_name=manifest.name,
+            version=manifest.version,
+            action=action,
+            created_at=utc_now_text(),
+            previous_revision_id=previous_revision_id,
+            sha256=expected_sha256,
+            skill_path=final_path / "skill",
+            metadata_path=final_path / "revision.json",
+        )
+        require_skill_directory_matches(skill_path, expected_sha256, "history copy")
+        write_json_exclusive(
+            staging_path / "revision.json",
+            skill_history_revision_to_dict(revision),
+        )
+        final_path.parent.mkdir(parents=True, exist_ok=True)
+        os.replace(staging_path, final_path)
+        return revision
+    finally:
+        if staging_path.exists():
+            shutil.rmtree(staging_path)
 
 
 def read_skill_history_revision(
@@ -282,6 +302,8 @@ def read_skill_history_revision(
     name: str,
     revision_id: str,
 ) -> SkillHistoryRevision:
+    skill_type = _read_path_name(skill_type, "type")
+    name = _read_path_name(name, "name")
     clean_record_id(revision_id)
     metadata_path = (
         evolution_root
@@ -291,7 +313,15 @@ def read_skill_history_revision(
         / revision_id
         / "revision.json"
     )
-    if not metadata_path.is_file():
+    history_paths = [
+        evolution_root / "history",
+        evolution_root / "history" / skill_type,
+        evolution_root / "history" / skill_type / name,
+        metadata_path.parent,
+    ]
+    if any(path.is_symlink() for path in history_paths):
+        raise ValueError(f"Skill history path cannot contain symlinks: {revision_id}")
+    if metadata_path.is_symlink() or not metadata_path.is_file():
         raise KeyError(f"skill history revision not found: {revision_id}")
     data = json.loads(metadata_path.read_text(encoding="utf-8"))
     expected_fields = {
@@ -310,48 +340,88 @@ def read_skill_history_revision(
         raise ValueError(f"invalid skill history revision: {revision_id}")
     if set(data) != expected_fields:
         raise ValueError(f"skill history revision fields do not match schema: {revision_id}")
+    stored_revision_id = _read_text(data["revision_id"], "revision_id", metadata_path)
+    stored_type = _read_text(data["type"], "type", metadata_path)
+    stored_name = _read_text(data["skill_name"], "skill_name", metadata_path)
     identity_matches = (
-        data["skill_key"] == f"{skill_type}:{name}"
-        and data["type"] == skill_type
-        and data["skill_name"] == name
-        and data["revision_id"] == revision_id
+        _read_text(data["skill_key"], "skill_key", metadata_path)
+        == f"{skill_type}:{name}"
+        and stored_type == skill_type
+        and stored_name == name
+        and stored_revision_id == revision_id
     )
     if not identity_matches:
         raise ValueError(f"skill history revision identity does not match path: {revision_id}")
-    return SkillHistoryRevision(
-        revision_id=str(data["revision_id"]),
-        skill_type=str(data["type"]),
-        skill_name=str(data["skill_name"]),
-        version=str(data["version"]),
-        action=str(data["action"]),
-        created_at=str(data["created_at"]),
-        previous_revision_id=str(data["previous_revision_id"]),
-        sha256=str(data["sha256"]),
+    action = _read_non_empty_text(data["action"], "action", metadata_path)
+    if action not in {"promotion_backup", "rollback_backup"}:
+        raise ValueError(f"unsupported Skill history action: {action}")
+    previous_revision_id = _read_text(
+        data["previous_revision_id"],
+        "previous_revision_id",
+        metadata_path,
+    )
+    if previous_revision_id:
+        clean_record_id(previous_revision_id)
+    revision = SkillHistoryRevision(
+        revision_id=stored_revision_id,
+        skill_type=stored_type,
+        skill_name=stored_name,
+        version=_read_non_empty_text(data["version"], "version", metadata_path),
+        action=action,
+        created_at=_read_non_empty_text(data["created_at"], "created_at", metadata_path),
+        previous_revision_id=previous_revision_id,
+        sha256=_read_sha256(data["sha256"], "sha256", metadata_path),
         skill_path=metadata_path.parent / "skill",
         metadata_path=metadata_path,
     )
+    actual_sha256 = calculate_skill_directory_sha256(revision.skill_path)
+    if actual_sha256 != revision.sha256:
+        raise ValueError(f"skill history revision content changed: {revision_id}")
+    return revision
 
 
-def replace_skill_directory_atomically(source: Path, target: Path) -> None:
-    target.parent.mkdir(parents=True, exist_ok=True)
-    staging = target.parent / f".{target.name}.candidate-{uuid4().hex}"
-    backup = target.parent / f".{target.name}.backup-{uuid4().hex}"
-    shutil.copytree(source, staging)
-    moved_existing = False
-    try:
-        if target.exists():
-            os.replace(target, backup)
-            moved_existing = True
-        os.replace(staging, target)
-    except Exception:
-        if moved_existing and backup.exists() and not target.exists():
-            os.replace(backup, target)
-        raise
-    finally:
-        if staging.exists():
-            shutil.rmtree(staging)
-    if backup.exists():
-        shutil.rmtree(backup)
+def delete_skill_history_revision(
+    evolution_root: Path,
+    revision: SkillHistoryRevision,
+) -> None:
+    revision_root = revision.metadata_path.parent
+    expected_root = (
+        evolution_root
+        / "history"
+        / revision.skill_type
+        / revision.skill_name
+        / revision.revision_id
+    )
+    if (
+        revision_root != expected_root
+        or revision.skill_path.parent != revision_root
+        or not revision_root.is_dir()
+    ):
+        raise ValueError(f"invalid Skill history revision path: {revision.revision_id}")
+    shutil.rmtree(revision_root)
+
+
+def _read_path_name(value: object, name: str) -> str:
+    if not isinstance(value, str):
+        raise TypeError(f"Skill history {name} must be text")
+    text = value.strip()
+    if re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", text) is None:
+        raise ValueError(f"invalid Skill history {name}: {text}")
+    return text
+
+
+def _read_non_empty_text(value: object, name: str, path: Path) -> str:
+    text = _read_text(value, name, path)
+    if not text.strip():
+        raise ValueError(f"Skill artifact {name} cannot be empty: {path}")
+    return text
+
+
+def _read_sha256(value: object, name: str, path: Path) -> str:
+    text = _read_non_empty_text(value, name, path)
+    if re.fullmatch(r"[0-9a-f]{64}", text) is None:
+        raise ValueError(f"Skill artifact {name} must be a SHA-256 value: {path}")
+    return text
 
 
 def utc_now_text() -> str:

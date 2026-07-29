@@ -30,6 +30,10 @@ from skill.evolution.candidate import (
     split_skill_reference,
     verify_candidate_files,
 )
+from skill.directory import (
+    replace_skill_directory_atomically,
+    restore_skill_directory_after_failed_change,
+)
 from skill.evolution.evaluation import (
     EvaluationCase,
     EvaluationReport,
@@ -42,8 +46,8 @@ from skill.evolution.evaluation import (
 from skill.evolution.artifacts import (
     SkillHistoryRevision,
     calculate_skill_evaluation_report_sha256,
+    delete_skill_history_revision,
     read_skill_history_revision,
-    replace_skill_directory_atomically,
     save_skill_history_revision,
     read_skill_evaluation_report,
     skill_evaluation_report_to_dict,
@@ -233,18 +237,22 @@ class SkillEvolutionManager:
             ),
         )
         write_json_exclusive(report_path, skill_evaluation_report_to_dict(report))
-        report_sha256 = calculate_skill_evaluation_report_sha256(report_path)
-        record_skill_candidate_evaluation(
-            self.store,
-            candidate.candidate_id,
-            CandidateEvaluation(
-                report_id=report.report_id,
-                report_sha256=report_sha256,
-                score=report.score,
-                passed=report.passed,
-                no_regression=report.no_regression,
-            ),
-        )
+        try:
+            report_sha256 = calculate_skill_evaluation_report_sha256(report_path)
+            record_skill_candidate_evaluation(
+                self.store,
+                candidate.candidate_id,
+                CandidateEvaluation(
+                    report_id=report.report_id,
+                    report_sha256=report_sha256,
+                    score=report.score,
+                    passed=report.passed,
+                    no_regression=report.no_regression,
+                ),
+            )
+        except Exception:
+            report_path.unlink()
+            raise
         return report
 
     def promote_skill_candidate(self, candidate_id: str) -> SkillManifest:
@@ -293,36 +301,68 @@ class SkillEvolutionManager:
             candidate,
             "" if current_revision is None else current_revision.content_sha256,
         )
+        target = self._user_skill_path(candidate.skill_type, candidate.name)
+        had_user_overlay = current is not None and current.path.absolute() == target.absolute()
+        expected_target_sha256 = (
+            current_revision.content_sha256
+            if had_user_overlay and current_revision is not None
+            else ""
+        )
         previous_revision_id = self._current_rollback_revision_id(candidate.key)
         rollback_revision = save_skill_history_revision(
             self.evolution_root,
             current,
             action="promotion_backup",
             previous_revision_id=previous_revision_id,
+            expected_sha256=(
+                "" if current_revision is None else current_revision.content_sha256
+            ),
         )
-        target = self._user_skill_path(candidate.skill_type, candidate.name)
-        had_user_overlay = target.is_dir()
-        replace_skill_directory_atomically(candidate.skill_path, target)
-        promoted = self._read_active_manifest(candidate.name, candidate.skill_type)
-        if promoted is None:
-            raise RuntimeError(f"promoted skill not found after replacement: {candidate.name}")
         try:
+            replace_skill_directory_atomically(
+                candidate.skill_path,
+                target,
+                expected_source_sha256=candidate.candidate_sha256,
+                expected_target_sha256=expected_target_sha256,
+            )
+            promoted = self._read_active_manifest(candidate.name, candidate.skill_type)
+            if promoted is None:
+                raise RuntimeError(
+                    f"promoted skill not found after replacement: {candidate.name}"
+                )
+            promoted_revision = create_manifest_skill_revision(
+                promoted,
+                evolution_supported=True,
+            )
+            if (
+                state.candidate_revision is None
+                or promoted_revision.identity != state.candidate_revision.identity
+            ):
+                raise ValueError("activated Skill does not match the evaluated candidate")
             self._notify_skill_changed(promoted)
+            record_skill_candidate_promoted(
+                self.store,
+                candidate.candidate_id,
+                promoted_revision,
+                current_revision,
+                "" if rollback_revision is None else rollback_revision.revision_id,
+            )
         except Exception:
-            if not had_user_overlay:
-                shutil.rmtree(target)
-                self._notify_skill_changed(current)
-            elif rollback_revision is not None:
-                replace_skill_directory_atomically(rollback_revision.skill_path, target)
-                self._notify_skill_changed(current)
+            previous_source = (
+                rollback_revision.skill_path
+                if had_user_overlay and rollback_revision is not None
+                else None
+            )
+            restore_skill_directory_after_failed_change(
+                target,
+                candidate.candidate_sha256,
+                previous_source,
+                expected_target_sha256,
+            )
+            self._notify_skill_changed(current)
+            if rollback_revision is not None:
+                delete_skill_history_revision(self.evolution_root, rollback_revision)
             raise
-        record_skill_candidate_promoted(
-            self.store,
-            candidate.candidate_id,
-            create_manifest_skill_revision(promoted, evolution_supported=True),
-            current_revision,
-            "" if rollback_revision is None else rollback_revision.revision_id,
-        )
         return promoted
 
     def rollback_skill(
@@ -360,37 +400,68 @@ class SkillEvolutionManager:
         revision_id = evolution.rollback_revision_id
         if not revision_id:
             raise ValueError(f"skill has no previous evolution revision: {skill_name}")
+        target = self._user_skill_path(current_type, skill_name)
+        if current.path.absolute() != target.absolute():
+            raise ValueError(f"promoted Skill overlay is missing: {current.key}")
+        current_revision = create_manifest_skill_revision(current, evolution_supported=True)
+        if (
+            evolution.candidate_revision is None
+            or current_revision.identity != evolution.candidate_revision.identity
+        ):
+            raise ValueError(f"promoted Skill changed before rollback: {current.key}")
+        if evolution.source_revision is None:
+            raise ValueError(f"promoted Skill has no rollback source: {current.key}")
         revision = read_skill_history_revision(
             self.evolution_root,
             current_type,
             skill_name,
             revision_id,
         )
-        current_revision = save_skill_history_revision(
+        if revision.sha256 != evolution.source_revision.content_sha256:
+            raise ValueError(f"Skill rollback revision does not match state: {revision_id}")
+        current_snapshot = save_skill_history_revision(
             self.evolution_root,
             current,
             action="rollback_backup",
             previous_revision_id=revision_id,
+            expected_sha256=current_revision.content_sha256,
         )
-        target = self._user_skill_path(current_type, skill_name)
-        replace_skill_directory_atomically(revision.skill_path, target)
-        restored = self._read_active_manifest(skill_name, current_type)
-        if restored is None:
-            raise RuntimeError(f"restored skill not found after rollback: {skill_name}")
+        if current_snapshot is None:
+            raise RuntimeError(f"could not snapshot promoted Skill: {current.key}")
         try:
+            replace_skill_directory_atomically(
+                revision.skill_path,
+                target,
+                expected_source_sha256=revision.sha256,
+                expected_target_sha256=current_revision.content_sha256,
+            )
+            restored = self._read_active_manifest(skill_name, current_type)
+            if restored is None:
+                raise RuntimeError(f"restored skill not found after rollback: {skill_name}")
+            restored_revision = create_manifest_skill_revision(
+                restored,
+                evolution_supported=True,
+            )
+            if restored_revision.identity != evolution.source_revision.identity:
+                raise ValueError("restored Skill does not match the rollback source")
             self._notify_skill_changed(restored)
+            record_skill_evolution_monitoring(
+                self.store,
+                evolution.evolution_id,
+                "rolled_back",
+                f"restored {restored.version} from {revision.revision_id}",
+                rollback_revision_id=revision.previous_revision_id,
+            )
         except Exception:
-            if current_revision is not None:
-                replace_skill_directory_atomically(current_revision.skill_path, target)
-                self._notify_skill_changed(current)
+            restore_skill_directory_after_failed_change(
+                target,
+                revision.sha256,
+                current_snapshot.skill_path,
+                current_snapshot.sha256,
+            )
+            self._notify_skill_changed(current)
+            delete_skill_history_revision(self.evolution_root, current_snapshot)
             raise
-        record_skill_evolution_monitoring(
-            self.store,
-            evolution.evolution_id,
-            "rolled_back",
-            f"restored {restored.version} from {revision.revision_id}",
-            rollback_revision_id=revision.previous_revision_id,
-        )
         return restored
 
     def evolve_skill(

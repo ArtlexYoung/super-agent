@@ -4,10 +4,29 @@ from dataclasses import replace
 from pathlib import Path
 
 from skill.disclosure import ProgressiveDisclosureCore
-from skill.manifest import skill_manifest_to_dict
+from skill.manifest import calculate_skill_directory_sha256, skill_manifest_to_dict
 
 
 class SkillManifestContractTests(unittest.TestCase):
+    def test_directory_hash_rejects_directory_symlinks(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest_path = _write_skill(root)
+            outside = root / "outside"
+            outside.mkdir()
+            (manifest_path.parent / "linked").symlink_to(
+                outside,
+                target_is_directory=True,
+            )
+
+            with self.assertRaisesRegex(ValueError, "cannot contain symlinks"):
+                calculate_skill_directory_sha256(manifest_path.parent)
+
+            skill_link = root / "skill-link"
+            skill_link.symlink_to(manifest_path.parent, target_is_directory=True)
+            with self.assertRaisesRegex(ValueError, "cannot contain symlinks"):
+                calculate_skill_directory_sha256(skill_link)
+
     def test_manifest_reads_supported_schema_version(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             _write_skill(Path(tmp), schema_version=3)

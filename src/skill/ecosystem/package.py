@@ -13,9 +13,10 @@ from typing import cast
 from urllib.parse import unquote
 from uuid import uuid4
 
-from skill.disclosure import ProgressiveDisclosureCore
-from core.state.store import RuntimeStore
 from core.actions import ActionEffect, ActionRequest, ActionRunner, ActionRules
+from core.state.store import RuntimeStore
+from skill.disclosure import ProgressiveDisclosureCore
+from skill.directory import replace_skill_directory_atomically
 from skill.manifest import SkillManifest, calculate_skill_directory_sha256
 from skill.validation import validate_skill_directory, validate_skill_replacement
 
@@ -100,7 +101,12 @@ class SkillPackageManager:
             target = _managed_skill_target(self.user_skill_root, manifest)
             if target.exists():
                 raise FileExistsError(f"skill target already exists: {target}")
-            _install_skill_directory(staged, target)
+            replace_skill_directory_atomically(
+                staged,
+                target,
+                expected_source_sha256=calculate_skill_directory_sha256(staged),
+                expected_target_sha256="",
+            )
             return self._read_skill_manifest(manifest.name, manifest.skill_type)
 
     def update_skill(
@@ -146,7 +152,17 @@ class SkillPackageManager:
                     f"{proposed.skill_type} != {current.skill_type}"
                 )
             validate_skill_replacement(current.path, staged)
-            _replace_skill_directory(staged, target)
+            expected_target_sha256 = (
+                calculate_skill_directory_sha256(current.path)
+                if current.path.absolute() == target.absolute()
+                else ""
+            )
+            replace_skill_directory_atomically(
+                staged,
+                target,
+                expected_source_sha256=calculate_skill_directory_sha256(staged),
+                expected_target_sha256=expected_target_sha256,
+            )
         return self._read_skill_manifest(skill_name, current.skill_type)
 
     def remove_skill(self, name: str) -> None:
@@ -308,39 +324,6 @@ def _copy_skill_tree(source: Path, target: Path) -> None:
         ignore=shutil.ignore_patterns(".git", "__pycache__"),
     )
     _reject_symlinks(target)
-
-
-def _install_skill_directory(source: Path, target: Path) -> None:
-    target.parent.mkdir(parents=True, exist_ok=True)
-    staging = target.parent / f".{target.name}.install-{uuid4().hex}"
-    _copy_skill_tree(source, staging)
-    try:
-        os.replace(staging, target)
-    finally:
-        if staging.exists():
-            shutil.rmtree(staging)
-
-
-def _replace_skill_directory(source: Path, target: Path) -> None:
-    target.parent.mkdir(parents=True, exist_ok=True)
-    staging = target.parent / f".{target.name}.update-{uuid4().hex}"
-    backup = target.parent / f".{target.name}.backup-{uuid4().hex}"
-    _copy_skill_tree(source, staging)
-    moved_existing = False
-    try:
-        if target.exists():
-            os.replace(target, backup)
-            moved_existing = True
-        os.replace(staging, target)
-    except Exception:
-        if moved_existing and backup.exists() and not target.exists():
-            os.replace(backup, target)
-        raise
-    finally:
-        if staging.exists():
-            shutil.rmtree(staging)
-    if backup.exists():
-        shutil.rmtree(backup)
 
 
 def _write_deterministic_skill_zip(source: Path, name: str, output: Path) -> None:

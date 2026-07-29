@@ -2,12 +2,14 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from core.agent import Agent
 from skill.runners.defaults import create_progressive_skill_disclosure
 from core.provider.chat import MockProvider
 from core.config import AgentConfig
-from skill.evolution.evaluation import EvaluationCase
+from skill.evolution.evaluation import EvaluationCase, require_report_allows_promotion
+from skill.manifest import calculate_skill_directory_sha256
 from support import write_workflow_skill
 
 
@@ -252,6 +254,113 @@ class SkillEvolutionTests(unittest.TestCase):
                 (root / "skills" / "writer" / "SKILL.md").read_text(),
             )
 
+    def test_failed_evaluation_state_write_removes_unrecorded_report(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_prompt_skill(root, "writer", "Original instructions.")
+            manager = _make_manager(
+                root,
+                [
+                    _file_changes({"SKILL.md": "Candidate instructions.\n"}),
+                    "required output",
+                    "required baseline output",
+                ],
+            )
+            candidate = manager.create_skill_candidate("writer", "improve output")
+
+            with patch.object(
+                manager.store,
+                "append_skill_evolution_event",
+                side_effect=RuntimeError("state write failed"),
+            ), self.assertRaisesRegex(RuntimeError, "state write failed"):
+                manager.evaluate_skill_candidate(
+                    candidate.candidate_id,
+                    [EvaluationCase("required", "write", ["required"])],
+                )
+
+            report_root = manager.evolution_root / "evaluations" / candidate.candidate_id
+            self.assertEqual([], list(report_root.glob("*.json")))
+            self.assertEqual(
+                "candidate_created",
+                manager.store.read_skill_evolution_events(candidate.candidate_id)[-1].data[
+                    "status"
+                ],
+            )
+
+    def test_failed_promotion_state_write_restores_active_skill(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_prompt_skill(root, "writer", "Original instructions.")
+            manager = _make_manager(
+                root,
+                [
+                    _file_changes({"SKILL.md": "Candidate instructions.\n"}),
+                    "required output",
+                    "required baseline output",
+                ],
+            )
+            candidate = manager.create_skill_candidate("writer", "improve output")
+            manager.evaluate_skill_candidate(
+                candidate.candidate_id,
+                [EvaluationCase("required", "write", ["required"])],
+            )
+
+            with patch.object(
+                manager.store,
+                "append_skill_evolution_event",
+                side_effect=RuntimeError("state write failed"),
+            ), self.assertRaisesRegex(RuntimeError, "state write failed"):
+                manager.promote_skill_candidate(candidate.candidate_id)
+
+            self.assertFalse(
+                (manager.user_skill_root / "prompt" / "writer").exists()
+            )
+            self.assertEqual(
+                "Original instructions.",
+                (root / "skills" / "writer" / "SKILL.md").read_text(),
+            )
+            self.assertEqual([], manager.list_skill_history("prompt:writer"))
+
+    def test_candidate_change_during_promotion_cannot_reach_active_skills(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_prompt_skill(root, "writer", "Original instructions.")
+            manager = _make_manager(
+                root,
+                [
+                    _file_changes({"SKILL.md": "Candidate instructions.\n"}),
+                    "required output",
+                    "required baseline output",
+                ],
+            )
+            candidate = manager.create_skill_candidate("writer", "improve output")
+            manager.evaluate_skill_candidate(
+                candidate.candidate_id,
+                [EvaluationCase("required", "write", ["required"])],
+            )
+
+            def change_after_report_check(report, checked_candidate, baseline_sha256):
+                require_report_allows_promotion(
+                    report,
+                    checked_candidate,
+                    baseline_sha256,
+                )
+                (checked_candidate.skill_path / "SKILL.md").write_text(
+                    "Changed after evaluation.",
+                    encoding="utf-8",
+                )
+
+            with patch(
+                "skill.evolution.manager.require_report_allows_promotion",
+                side_effect=change_after_report_check,
+            ), self.assertRaisesRegex(ValueError, "source changed"):
+                manager.promote_skill_candidate(candidate.candidate_id)
+
+            self.assertFalse(
+                (manager.user_skill_root / "prompt" / "writer").exists()
+            )
+            self.assertEqual([], manager.list_skill_history("prompt:writer"))
+
     def test_promotion_ignores_an_unrecorded_newer_report(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -438,6 +547,69 @@ class SkillEvolutionTests(unittest.TestCase):
                     encoding="utf-8"
                 ),
             )
+
+    def test_failed_rollback_state_write_restores_promoted_skill(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_prompt_skill(root, "writer", "Original instructions.")
+            manager = _make_manager(
+                root,
+                [
+                    _file_changes({"SKILL.md": "Candidate instructions.\n"}),
+                    "required output",
+                    "required baseline output",
+                ],
+            )
+            candidate = manager.create_skill_candidate("writer", "improve output")
+            manager.evaluate_skill_candidate(
+                candidate.candidate_id,
+                [EvaluationCase("required", "write", ["required"])],
+            )
+            manager.promote_skill_candidate(candidate.candidate_id)
+
+            with patch.object(
+                manager.store,
+                "append_skill_evolution_event",
+                side_effect=RuntimeError("state write failed"),
+            ), self.assertRaisesRegex(RuntimeError, "state write failed"):
+                manager.rollback_skill("prompt:writer")
+
+            active = manager.user_skill_root / "prompt" / "writer" / "SKILL.md"
+            self.assertEqual("Candidate instructions.\n", active.read_text())
+            self.assertEqual(1, len(manager.list_skill_history("prompt:writer")))
+
+    def test_rollback_rejects_history_changed_with_its_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_prompt_skill(root, "writer", "Original instructions.")
+            manager = _make_manager(
+                root,
+                [
+                    _file_changes({"SKILL.md": "Candidate instructions.\n"}),
+                    "required output",
+                    "required baseline output",
+                ],
+            )
+            candidate = manager.create_skill_candidate("writer", "improve output")
+            manager.evaluate_skill_candidate(
+                candidate.candidate_id,
+                [EvaluationCase("required", "write", ["required"])],
+            )
+            manager.promote_skill_candidate(candidate.candidate_id)
+            history = manager.list_skill_history("prompt:writer")[0]
+            (history.skill_path / "SKILL.md").write_text(
+                "Changed history.",
+                encoding="utf-8",
+            )
+            metadata = json.loads(history.metadata_path.read_text(encoding="utf-8"))
+            metadata["sha256"] = calculate_skill_directory_sha256(history.skill_path)
+            history.metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "does not match state"):
+                manager.rollback_skill("prompt:writer")
+
+            active = manager.user_skill_root / "prompt" / "writer" / "SKILL.md"
+            self.assertEqual("Candidate instructions.\n", active.read_text())
 
     def test_evolve_skill_runs_one_complete_lifecycle(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

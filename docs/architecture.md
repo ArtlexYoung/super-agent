@@ -166,8 +166,11 @@ enter one candidate, evaluation, promotion, monitoring, and rollback state machi
 candidate unit is the complete Skill directory, and promotion requires non-regression
 evidence for every evaluation case. The state machine binds one immutable report by ID and
 SHA-256 to the normalized cases plus candidate and baseline directory hashes. Manual and
-automatic evolution use this same gate. Executable SkillRunner code remains reviewed
-application code rather than downloadable Skill content.
+automatic evolution use this same gate. Activation checks source, copied, and current
+target hashes around the atomic directory switch. Runtime refresh and state publication
+either complete together or restore the previous Skill explicitly. Executable SkillRunner
+code remains reviewed application code rather than downloadable Skill content. Package
+installation and updates reuse the same verified directory switch.
 
 ## Invariants
 

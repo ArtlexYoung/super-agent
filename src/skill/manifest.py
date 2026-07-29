@@ -220,12 +220,18 @@ def skill_manifest_to_dict(manifest: SkillManifest) -> dict[str, object]:
 
 
 def calculate_skill_directory_sha256(path: Path) -> str:
+    if path.is_symlink():
+        raise ValueError(f"skill directories cannot contain symlinks: {path}")
     if not path.is_dir():
         raise FileNotFoundError(f"skill directory not found: {path}")
     digest = hashlib.sha256()
-    for file_path in sorted(item for item in path.rglob("*") if item.is_file()):
-        if file_path.is_symlink():
-            raise ValueError(f"skill files cannot contain symlinks: {file_path}")
+    files: list[Path] = []
+    for item in path.rglob("*"):
+        if item.is_symlink():
+            raise ValueError(f"skill directories cannot contain symlinks: {item}")
+        if item.is_file():
+            files.append(item)
+    for file_path in sorted(files):
         digest.update(file_path.relative_to(path).as_posix().encode("utf-8"))
         digest.update(b"\0")
         digest.update(file_path.read_bytes())

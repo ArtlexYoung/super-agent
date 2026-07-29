@@ -72,6 +72,13 @@ must pass, the aggregate must reach the configured minimum, and no same-name cas
 below its baseline. Evolution state records the exact report ID and file hash; promotion
 never substitutes a newer report. Shared project and built-in Skills are never overwritten.
 
+Activation verifies both the expected target revision and the copied candidate before the
+atomic directory switch. Runtime refresh and the promoted-state event are part of the same
+compensated operation: if either fails, the previous directory and Runtime view are
+restored, and the unused history snapshot is removed. A failed evaluation-state write
+likewise removes its unrecorded report. Rollback applies the same rules in reverse and
+requires the history content hash to match the source revision stored in evolution state.
+
 After promotion, any failed online sample rolls the Skill back. Three successful samples
 with an average score of at least `0.75` mark it stable; a lower average rolls it back.
 Automation errors are recorded as `runtime.subscriber.failed` and returned in
