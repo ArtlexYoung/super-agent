@@ -103,9 +103,9 @@ Skill 内容只是被动数据，不能给自己授予执行权限。可执行 M
 随软件提供的场景树位于 Python 源码之外，本身仍是普通 Skill：
 
 ```text
-skill_scenes/
-  common/   通用任务，也包含无存储运行路径
-  code/     仓库规划、工具使用、验证与审查链路
+src/skill/builtin/
+  scene/common/   通用任务 Skill 组合
+  scene/code/     仓库任务 Skill 组合
 ```
 
 Runtime 根据本次明确指定、Agent 配置或提示词触发器选择一个场景。出现歧义时直接报错。

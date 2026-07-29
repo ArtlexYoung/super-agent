@@ -16,7 +16,7 @@ from uuid import uuid4
 from core.checks import ActionEffect, ActionRequest, ActionRunner, ActionRules
 from skill.state.events import EventStore
 from skill.disclosure import ProgressiveDisclosureCore
-from skill.directory import replace_skill_directory_atomically
+from skill.ecosystem.directory import replace_skill_directory_atomically
 from skill.manifest import SkillManifest, calculate_skill_directory_sha256
 from skill.ecosystem.validation import validate_skill_directory, validate_skill_replacement
 

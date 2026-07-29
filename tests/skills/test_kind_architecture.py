@@ -32,8 +32,10 @@ class SkillKindArchitectureTests(unittest.TestCase):
             },
             entries,
         )
-        self.assertTrue(Path("skill_scenes/common").is_dir())
-        self.assertTrue(Path("skill_scenes/code").is_dir())
+        builtin_root = Path("src/skill/builtin")
+        self.assertTrue((builtin_root / "scene/common").is_dir())
+        self.assertTrue((builtin_root / "scene/code").is_dir())
+        self.assertFalse(Path("skill_scenes").exists())
 
     def test_skill_kinds_are_loaded_from_unified_skill_package(self) -> None:
         self.assertEqual("McpServer", McpServer.__name__)

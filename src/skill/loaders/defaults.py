@@ -51,7 +51,7 @@ def create_progressive_skill_disclosure(
     return ProgressiveDisclosureCore(
         roots,
         user_skill_roots=([] if store is None else [store.private_root / "skills"]),
-        builtin_skill_roots=[_skill_scene_root()],
+        builtin_skill_roots=[_builtin_skill_root()],
         disabled_names=config.agent.disabled_skills,
         freshness_stats=freshness_stats,
         recorder=(
@@ -111,14 +111,8 @@ def create_runtime_disclosure_recorder(
     )
 
 
-def _skill_scene_root() -> Path:
-    source_root = Path(__file__).resolve().parents[2]
-    candidates = [
-        source_root / "skill_scenes",
-        source_root.parent / "skill_scenes",
-    ]
-    existing = [path for path in candidates if path.is_dir()]
-    if len(existing) != 1:
-        paths = ", ".join(str(path) for path in candidates)
-        raise RuntimeError(f"expected exactly one installed skill_scenes root: {paths}")
-    return existing[0]
+def _builtin_skill_root() -> Path:
+    root = Path(__file__).resolve().parents[1] / "builtin"
+    if not root.is_dir():
+        raise RuntimeError(f"built-in Skill root not found: {root}")
+    return root

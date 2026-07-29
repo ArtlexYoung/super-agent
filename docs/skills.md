@@ -107,7 +107,7 @@ super-agent skills lock --config agent.toml --name prompt:research --output skil
 ```
 
 Core resolves one source hierarchy in `user > project > builtin` order, where `builtin`
-is the source label for content under root-level `skill_scenes`. User Skills live inside
+is the source label for content under package-level `src/skill/builtin`. User Skills live inside
 the current user's private Agent scope and override matching shared Skills. Invalid lower
 layers are still reported instead of being silently ignored.
 
@@ -142,8 +142,8 @@ Runtime does not substitute another scene or workflow.
 The shipped roots are:
 
 ```text
-skill_scenes/common/   zero-configuration general task chain and the only default
-skill_scenes/code/     optional repository exploration, editing, testing, and review chain
+src/skill/builtin/scene/common/   zero-configuration general task composition
+src/skill/builtin/scene/code/     optional repository task composition
 ```
 
 Scene selection precedence is explicit:

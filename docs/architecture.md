@@ -15,7 +15,7 @@ Agent        composes Providers, Core options, Skills, storage, and subagents
 The repository keeps passive scene data outside the three Python packages:
 
 ```text
-skill_scenes/       shipped common and optional task-scene Skill trees
+src/skill/builtin/  shipped Skills grouped by stable `type/name` keys
 src/
   adapter/          external entry points, conversations, and storage implementations
   core/             Skill-independent Runtime, Provider, events, checks, and storage port

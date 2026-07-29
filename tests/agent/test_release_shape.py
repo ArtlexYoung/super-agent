@@ -55,7 +55,6 @@ class ReleaseShapeTests(unittest.TestCase):
                 "src/skill",
                 "src/cli.py",
                 "src/super_agent.py",
-                "skill_scenes",
             ],
             wheel["only-include"],
         )
@@ -73,6 +72,7 @@ class ReleaseShapeTests(unittest.TestCase):
             "src/runtime",
             "src/super_agent",
             "src/workflow",
+            "skill_scenes",
             "src/core/actions.py",
             "src/core/identity.py",
             "src/core/secrets.py",

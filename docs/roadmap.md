@@ -64,8 +64,8 @@ Status: implemented.
 
 Status: implemented.
 
-- Move shipped passive content to root-level `skill_scenes/common` and
-  `skill_scenes/code`, with no old path or compatibility loader.
+- Keep shipped passive content under `src/skill/builtin`, grouped by stable
+  `type/name` keys, with no external package-data path or compatibility loader.
 - Add one ordinary `scene` Skill type that references prompt, memory, planner, workflow,
   and other task-specific Skills through the central progressive index.
 - Select exactly one scene by explicit request, Agent configuration, prompt triggers, or
@@ -412,6 +412,17 @@ Status: implemented.
   preflight, Runtime locks, activation, and registration on that one vocabulary.
 - Preserve all-step scheduling before execution, strict Provider selection, ordered
   in-memory events, and explicit failures when a selected feature requires storage.
+
+## v0.0.93: Packaged Built-in Skills
+
+Status: implemented.
+
+- Move shipped Skills under `src/skill/builtin`, grouped directly by their stable
+  `type/name` keys instead of separate common and code directory trees.
+- Remove the root-level package-data path and its source-versus-installed probing logic.
+- Keep scene selection behavior unchanged while making shared scheduler and scene manager
+  ownership visible in the directory layout.
+- Include passive Skill manifests and content in the normal `skill` wheel package.
 
 ## Release Gate
 

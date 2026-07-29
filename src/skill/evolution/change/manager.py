@@ -31,7 +31,7 @@ from skill.evolution.change.candidate import (
     split_skill_reference,
     verify_candidate_files,
 )
-from skill.directory import (
+from skill.ecosystem.directory import (
     replace_skill_directory_atomically,
     restore_skill_directory_after_failed_change,
 )

@@ -113,9 +113,9 @@ their effects before preflight.
 The shipped scene trees are ordinary Skills outside Python source:
 
 ```text
-skill_scenes/
-  common/   general tasks, including a storage-free path
-  code/     repository planning, tool use, verification, and review
+src/skill/builtin/
+  scene/common/   general task Skill composition
+  scene/code/     repository task Skill composition
 ```
 
 Runtime selects one scene from an explicit request, Agent configuration, or prompt
