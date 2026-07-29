@@ -151,6 +151,14 @@ def prepare_run(
         workflow_mode=workflow_policy.mode,
         required_features=request.required_features,
     )
+    if planning.should_plan and planner_policy is None:
+        raise RuntimeError(
+            "task requires planning but the selected scene has no planner Skill"
+        )
+    if "tools" in request.required_features and not workflow_policy.uses_tools:
+        raise ValueError(
+            "task requires tools but the selected workflow does not allow tools"
+        )
     purpose = resolve_task_purpose(
         model_profiles,
         "planning" if planning.should_plan else request.purpose,
@@ -182,6 +190,8 @@ def prepare_run(
         scene=selected.scene_reference,
         skills=references,
         workflow=workflow_reference,
+        workflow_mode=workflow_policy.mode,
+        max_model_steps=workflow_policy.max_steps,
         planner=planner_reference,
         model_context_skills=(
             ()
@@ -215,6 +225,7 @@ def _select_run_skills(
         request.prompt,
         session.config.agent.skills,
         request.scene,
+        unavailable_scenes=_list_unavailable_scenes(session),
     )
     scene_contribution = _load_skill(session, scene_reference)
     scene_policy = scene_contribution.scene_policy
@@ -250,6 +261,40 @@ def _select_run_skills(
         scene_contribution,
         references,
     )
+
+
+def _list_unavailable_scenes(
+    session: RuntimeSession,
+) -> dict[str, tuple[str, ...]]:
+    available_services = {"event_stream", "text_model"}
+    if session.store is not None:
+        available_services.add("storage")
+    runners = {
+        entry.descriptor.skill_type: entry.descriptor
+        for entry in session.skill_runners.list_skill_runners()
+    }
+    disclosure = session.require_skill_disclosure()
+    index = session.require_skill_index()
+    unavailable: dict[str, tuple[str, ...]] = {}
+    for scene in index.entries:
+        if scene.reference.skill_type != "scene":
+            continue
+        configuration = disclosure.inspect_skill_configuration(scene.reference)
+        values = configuration.get("skills")
+        if not isinstance(values, list) or not all(isinstance(item, str) for item in values):
+            continue
+        required_services: set[str] = set()
+        for value in values:
+            entry = index.find_skill(value)
+            if entry is None:
+                continue
+            runner = runners.get(entry.reference.skill_type)
+            if runner is not None:
+                required_services.update(runner.required_services)
+        missing = tuple(sorted(required_services - available_services))
+        if missing:
+            unavailable[scene.reference.key] = missing
+    return unavailable
 
 
 def _choose_run_model(
@@ -325,6 +370,10 @@ def load_background_contributions(
         )
         for entry in _selected_entries(session, run_plan.skills, "memory")
     ]
+    contributions.extend(
+        _load_skill(session, entry.reference)
+        for entry in _selected_entries(session, run_plan.skills, "scene_manager")
+    )
     if prepared_run.planner_contribution is not None:
         contributions.append(prepared_run.planner_contribution)
     return contributions

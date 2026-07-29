@@ -62,6 +62,7 @@ class RuntimeSessionRequest:
     parent_run_id: str | None
     event_listener: Callable[[RunEvent], None] | None
     learn_from_run: bool
+    allow_subscriber_failures: bool
 
 
 @dataclass(frozen=True)
@@ -82,6 +83,7 @@ class RuntimeSession:
     event_log: RunEventLog
     store: RuntimeStore | None
     learn_from_run: bool = True
+    allow_subscriber_failures: bool = False
     action_rules: ActionRules = field(default_factory=ActionRules)
     event_subscribers: RuntimeEventSubscribers = field(
         default_factory=RuntimeEventSubscribers,
@@ -347,6 +349,7 @@ def _create_prepared_session(
         event_log=event_log,
         store=store,
         learn_from_run=request.learn_from_run,
+        allow_subscriber_failures=request.allow_subscriber_failures,
         action_rules=resources.action_rules,
         event_subscribers=RuntimeEventSubscribers(resources.event_subscribers),
     )

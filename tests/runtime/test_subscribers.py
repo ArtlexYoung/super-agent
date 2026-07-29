@@ -10,6 +10,7 @@ from core.config import AgentConfig
 from core.provider.chat import MockProvider
 from core.state.learning import EvaluationEventSubscriber
 from core.state.models import RunEvent
+from core.state.subscribers import RuntimeEventSubscriberError
 
 
 class RuntimeEventSubscriberTests(unittest.TestCase):
@@ -53,7 +54,7 @@ class RuntimeEventSubscriberTests(unittest.TestCase):
             with self.assertRaisesRegex(TypeError, "read-only"):
                 scheduled.data["skills"].append("prompt:other")
 
-    def test_failing_subscriber_is_reported_without_changing_result(self) -> None:
+    def test_failing_subscriber_fails_the_run_by_default(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             agent = Agent(
                 AgentConfig.create_default(Path(tmp)),
@@ -61,7 +62,10 @@ class RuntimeEventSubscriberTests(unittest.TestCase):
             )
             agent.add_event_subscriber(_FailingSubscriber())
 
-            result = agent.run("hello")
+            with self.assertRaises(RuntimeEventSubscriberError) as caught:
+                agent.run("hello")
+
+            result = caught.exception.result
 
             self.assertEqual("completed answer", result.text)
             self.assertEqual("completed", result.stop_reason)
@@ -77,7 +81,23 @@ class RuntimeEventSubscriberTests(unittest.TestCase):
                 [event.event_type for event in result.events],
             )
 
-    def test_evaluation_failure_does_not_fail_completed_task(self) -> None:
+    def test_failing_subscriber_can_be_explicitly_allowed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            agent = Agent(
+                AgentConfig.create_default(Path(tmp)),
+                provider=MockProvider("completed answer"),
+            )
+            agent.add_event_subscriber(_FailingSubscriber())
+
+            result = agent.run(
+                "hello",
+                run_options=AgentRunOptions(allow_subscriber_failures=True),
+            )
+
+            self.assertEqual("completed answer", result.text)
+            self.assertTrue(result.subscriber_failures)
+
+    def test_evaluation_failure_fails_requested_learning_phase(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             agent = Agent(
                 AgentConfig.create_default(Path(tmp)),
@@ -89,7 +109,10 @@ class RuntimeEventSubscriberTests(unittest.TestCase):
                 "handle_event",
                 _fail_evaluation_request,
             ):
-                result = agent.run("hello")
+                with self.assertRaises(RuntimeEventSubscriberError) as caught:
+                    agent.run("hello")
+
+            result = caught.exception.result
 
             self.assertEqual("completed answer", result.text)
             self.assertEqual(

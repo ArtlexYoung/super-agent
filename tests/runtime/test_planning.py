@@ -44,6 +44,17 @@ class TaskPlanningContractTests(unittest.TestCase):
         self.assertEqual("Answer this", plan.steps[0].instruction)
         self.assertEqual(("text",), plan.steps[0].required_features)
 
+    def test_missing_planner_does_not_downgrade_requested_planning(self) -> None:
+        decision = decide_task_planning(
+            None,
+            "Use the available tools",
+            workflow_mode="plan",
+            required_features=("text", "tools"),
+        )
+
+        self.assertTrue(decision.should_plan)
+        self.assertIn("planner Skill is unavailable", decision.reasons)
+
     def test_plan_parser_rejects_unknown_subagent_and_too_many_steps(self) -> None:
         step = {
             "instruction": "Do work",

@@ -166,6 +166,7 @@ instructions = "SKILL.md"
                     "prompt:common",
                     "prompt:echo",
                     "scene:common",
+                    "scene_manager:default",
                     "workflow:direct",
                 },
                 skill_keys,

@@ -146,28 +146,40 @@ class SceneSkillRunner:
     adds_model_context = False
 
     def load_skill(self, request: SkillLoadRequest) -> LoadedSkill:
-        from skill.kinds.scene import (
-            create_scene_creation_tool,
-            create_scene_policy_from_skill,
-        )
+        from skill.kinds.scene import create_scene_policy_from_skill
 
         opened = request.disclosure.open_skill(
             request.reference.name,
             self.skill_type,
         )
-        tools = (
-            ()
-            if request.store is None
-            else (
-                create_scene_creation_tool(
-                    request.store,
-                    request.disclosure,
-                ),
-            )
-        )
         return LoadedSkill(
             scene_policy=create_scene_policy_from_skill(opened),
-            tools=tools,
+        )
+
+
+class SceneManagerSkillRunner:
+    name = "private-scene-manager"
+    version = "1"
+    skill_type = "scene_manager"
+    adds_model_context = False
+    required_services = ("storage",)
+
+    def load_skill(self, request: SkillLoadRequest) -> LoadedSkill:
+        from skill.kinds.scene import create_scene_creation_tool
+
+        opened = request.disclosure.open_skill(
+            request.reference.name,
+            self.skill_type,
+        )
+        instructions = opened.read_instructions().content
+        return LoadedSkill(
+            build_prompt_context=lambda _prompt: instructions,
+            tools=(
+                create_scene_creation_tool(
+                    request.require_store("scene manager Skill"),
+                    request.disclosure,
+                ),
+            ),
         )
 
 
@@ -181,6 +193,7 @@ def create_builtin_skill_runners(
         WorkflowSkillRunner(),
         PlannerSkillRunner(),
         SceneSkillRunner(),
+        SceneManagerSkillRunner(),
     )
 
 

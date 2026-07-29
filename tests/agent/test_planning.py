@@ -25,7 +25,9 @@ class ZeroConfigurationPlanningTests(unittest.TestCase):
             run_plan = next(
                 event.data for event in events if event.event_type == "task.scheduled"
             )
-            self.assertEqual(1, run_plan["schema_version"])
+            self.assertEqual(2, run_plan["schema_version"])
+            self.assertEqual("direct", run_plan["workflow_mode"])
+            self.assertEqual(8, run_plan["max_model_steps"])
             self.assertEqual("direct", run_plan["mode"])
             self.assertEqual("scene:common", run_plan["scene"])
             self.assertEqual("workflow:direct", run_plan["workflow"])
@@ -206,6 +208,7 @@ class PlanningSkillEvolutionTests(unittest.TestCase):
                     "model:main",
                     "planner:default",
                     "scene:common",
+                    "scene_manager:default",
                     "workflow:direct",
                 },
                 _evaluated_skill_keys(store, run_id),
@@ -275,6 +278,7 @@ class PlanningSkillEvolutionTests(unittest.TestCase):
                     "planner:default",
                     "prompt:common",
                     "scene:common",
+                    "scene_manager:default",
                     "workflow:direct",
                 },
                 _evaluated_skill_keys(store, run_id),

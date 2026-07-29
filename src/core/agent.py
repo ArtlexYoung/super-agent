@@ -53,6 +53,7 @@ class AgentRunOptions:
     check_subagent_links_before_run: bool = True
     learn_from_conversation: bool = False
     learn_from_run: bool = True
+    allow_subscriber_failures: bool = False
     run_id: str | None = None
     event_listener: Callable[[RunEvent], None] | None = None
     scene: str | None = None
@@ -256,8 +257,6 @@ class Agent:
         options = run_options or AgentRunOptions()
         if not isinstance(options.learn_from_run, bool):
             raise TypeError("learn_from_run must be a boolean")
-        if self.storage is None and options.scene is None:
-            options = replace(options, scene="stateless")
         warnings = (
             self._check_subagent_links()
             if options.include_subagents and options.check_subagent_links_before_run
@@ -270,6 +269,7 @@ class Agent:
             warning_messages=warnings,
             learn_from_conversation=options.learn_from_conversation,
             learn_from_run=options.learn_from_run,
+            allow_subscriber_failures=options.allow_subscriber_failures,
             scene=options.scene,
             subagents=SubagentCallbacks(
                 list_subagents=self._list_subagents_for_model,
@@ -399,6 +399,7 @@ class Agent:
             include_subagents=True,
             warning_messages=[],
             learn_from_run=parent_session.learn_from_run,
+            allow_subscriber_failures=parent_session.allow_subscriber_failures,
             subagents=SubagentCallbacks(
                 list_subagents=self._list_subagents_for_model,
                 run_named_subagent=self._run_named_subagent_for_model,

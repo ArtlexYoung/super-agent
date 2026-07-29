@@ -240,6 +240,7 @@ def _create_scene_documents(request: SkillSceneInput) -> dict[str, dict[str, str
         f"memory:{name}",
         f"planner:{name}",
         f"workflow:{name}",
+        "scene_manager:default",
     ]
     return {
         "scene": {

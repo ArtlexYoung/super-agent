@@ -32,6 +32,18 @@ class SubscriberFailure:
         }
 
 
+class RuntimeEventSubscriberError(RuntimeError):
+    """Report requested event work that failed while preserving the task result."""
+
+    def __init__(self, failures: list[dict[str, object]], result: object) -> None:
+        self.failures = tuple(dict(item) for item in failures)
+        self.result = result
+        names = ", ".join(
+            sorted({str(item.get("subscriber", "unknown")) for item in failures})
+        )
+        super().__init__(f"Runtime event subscribers failed: {names}")
+
+
 class RuntimeEventSubscribers:
     def __init__(
         self,

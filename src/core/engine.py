@@ -11,6 +11,7 @@ from core.config import AgentConfig
 from core.identity import LOCAL_USER_ID, RunIdentity
 from core.state.models import Conversation, RunEvent
 from core.state.subscribers import (
+    RuntimeEventSubscriberError,
     RuntimeEventSubscriber,
     RuntimeEventSubscribers,
     get_runtime_event_subscriber_name,
@@ -74,6 +75,7 @@ class AgentRuntime:
                 parent_run_id=parent_run_id,
                 event_listener=event_listener,
                 learn_from_run=request.learn_from_run,
+                allow_subscriber_failures=request.allow_subscriber_failures,
             )
         )
         if session.store is not None and request.learn_from_run:
@@ -124,13 +126,19 @@ class AgentRuntime:
                     "stop_reason": result.stop_reason,
                 },
             )
-            return replace(
+            final_result = replace(
                 result,
                 actions=list_run_actions(session),
                 skill_updates=_list_skill_updates(session.list_recorded_events()),
                 subscriber_failures=session.list_subscriber_failures(),
                 events=_list_result_events(session),
             )
+            failures = session.list_subscriber_failures()
+            if failures and not request.allow_subscriber_failures:
+                raise RuntimeEventSubscriberError(failures, final_result)
+            return final_result
+        except RuntimeEventSubscriberError:
+            raise
         except Exception as error:
             if not learning_recorded and not isinstance(error, TaskPreflightError):
                 learning_recorded = True

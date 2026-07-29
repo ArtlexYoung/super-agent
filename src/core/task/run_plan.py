@@ -68,6 +68,8 @@ class RunPlan:
     scene: SkillReference
     skills: tuple[SkillReference, ...]
     workflow: SkillReference
+    workflow_mode: str
+    max_model_steps: int
     planner: SkillReference | None
     model_context_skills: tuple[SkillReference, ...]
     subagent_names: tuple[str, ...]
@@ -85,12 +87,14 @@ class RunPlan:
 
     def to_dict(self) -> dict[str, object]:
         return {
-            "schema_version": 1,
+            "schema_version": 2,
             "purpose": self.purpose,
             "required_features": list(self.required_features),
             "scene": self.scene.key,
             "skills": [reference.key for reference in self.skills],
             "workflow": self.workflow.key,
+            "workflow_mode": self.workflow_mode,
+            "max_model_steps": self.max_model_steps,
             "planner": None if self.planner is None else self.planner.key,
             "model": self.model.to_dict(),
             "routing": {

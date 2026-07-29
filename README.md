@@ -258,8 +258,9 @@ variables rather than TOML.
 - Runtime events record the selected model, disclosed Skills, tools, subagents, token
   estimates, action decisions, result, and failure without storing secret values.
 - Post-run learning is event-driven and optional. Evaluation, freshness, routing evidence,
-  and evolution subscribe independently to immutable events; one subscriber failure does
-  not replace a completed task result.
+  and evolution subscribe independently to immutable events. A requested subscriber
+  failure raises `RuntimeEventSubscriberError` with the completed task result attached;
+  continuing after such failures requires an explicit run option.
 - Skill freshness is computed without a model from usage, outcome, recency, frequency,
   token cost, and successful same-function replacements.
 - Agent-owned Skills with `agent_can_update = true` can create candidates, run

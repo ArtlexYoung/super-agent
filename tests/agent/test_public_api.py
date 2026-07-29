@@ -26,6 +26,7 @@ class PublicApiTests(unittest.TestCase):
             "ProviderConnection",
             "ProviderPool",
             "RuntimeEventSubscriber",
+            "RuntimeEventSubscriberError",
             "PreflightProblem",
             "Skill",
             "SkillManifest",

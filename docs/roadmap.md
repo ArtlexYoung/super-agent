@@ -214,6 +214,19 @@ Status: implemented.
 - Reject symlinked Skill directories and require rollback history content to match the
   source revision hash already stored in evolution state.
 
+## v0.0.78: Explicit Non-Degradation Contract
+
+Status: implemented.
+
+- Select automatic scenes from service-compatible candidates before freezing the plan;
+  record exclusions and reject incompatible explicit choices.
+- Record the effective workflow mode and model-call limit in every RunPlan, and reject
+  planner steps that require tools when the selected workflow does not allow them.
+- Move private scene creation into an explicit storage-dependent `scene_manager` Skill
+  instead of conditionally omitting a tool from the Scene runner.
+- Raise requested subscriber and learning failures by default while preserving the
+  completed task result; best-effort behavior is an explicit per-run choice.
+
 ## Release Gate
 
 The project will not move to `0.1.x` because of feature count. The gate is a reproducible

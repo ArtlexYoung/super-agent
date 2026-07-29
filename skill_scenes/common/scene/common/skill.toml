@@ -18,4 +18,5 @@ skills = [
   "memory:default",
   "planner:default",
   "workflow:direct",
+  "scene_manager:default",
 ]

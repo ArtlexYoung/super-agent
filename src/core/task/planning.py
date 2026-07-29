@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 
-from skill.runners.loaded import PlanningPolicy, TaskPolicy
+from skill.runners.loaded import PlanningPolicy
 from core.provider.chat import Message
 from core.task.models import TaskRequest
 from skill.kinds.model import ModelProfile
@@ -55,15 +55,6 @@ class TaskPlan:
         }
 
 
-def create_task_step_policy(
-    workflow: TaskPolicy,
-    step: TaskStep,
-) -> TaskPolicy:
-    if "tools" not in step.required_features or workflow.uses_tools:
-        return workflow
-    return replace(workflow, mode="react")
-
-
 def decide_task_planning(
     policy: PlanningPolicy | None,
     prompt: str,
@@ -71,14 +62,16 @@ def decide_task_planning(
     workflow_mode: str,
     required_features: tuple[str, ...],
 ) -> TaskPlanningDecision:
-    if policy is None:
-        return TaskPlanningDecision(False, ("planner Skill is unavailable",))
     reasons: list[str] = []
     if workflow_mode == "plan":
         reasons.append("workflow requests planning")
     extra_features = sorted(set(required_features) - {"text"})
     if extra_features:
         reasons.append("task requests features: " + ", ".join(extra_features))
+    if policy is None:
+        if reasons:
+            reasons.append("planner Skill is unavailable")
+        return TaskPlanningDecision(bool(reasons), tuple(reasons))
     clean_prompt = prompt.strip().lower()
     matched_term = next(
         (term for term in policy.planning_terms if term in clean_prompt),

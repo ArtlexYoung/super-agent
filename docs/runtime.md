@@ -39,11 +39,13 @@ the run.
 ## Optional Parts
 
 The smallest run needs an Agent, a model source, and one valid scene. The shipped
-`common` scene satisfies the default stateful path without user configuration. Passing
-`use_storage=False` selects the shipped `stateless` scene unless the caller explicitly
-requests another scene. It keeps ordered Runtime events in `TaskResult.events` and does
-not create a backend, cache, conversation, memory, evaluation, or evolution state. Other
-behavior is progressive:
+`common` scene satisfies the default stateful path without user configuration. When
+`use_storage=False`, Runtime evaluates scene service requirements before freezing the
+plan. The shipped `stateless` scene is selected because it is the only compatible
+candidate; the reason and excluded candidates are recorded. An explicitly requested
+incompatible scene fails instead of being replaced. Stateless execution keeps ordered
+events in `TaskResult.events` and creates no backend, cache, conversation, memory,
+evaluation, or evolution state. Other behavior is progressive:
 
 - No conversation ID means no conversation history is loaded or written.
 - No conversation ID means temporary memory is unavailable; long-term memory remains
@@ -93,11 +95,13 @@ agent = Agent()
 agent.add_event_subscriber(AuditEvents())
 ```
 
-Subscriber names are unique. Built-in names are reserved. A subscriber failure records
-`runtime.subscriber.failed` and appears in `TaskResult.subscriber_failures`; it does not
-replace a completed result or the original task error. `event_listener` remains the
-streaming interface and is not treated as a learning subscriber. Stateless runs record
-`learning.skipped` and create no evaluation or evolution state.
+Subscriber names are unique and built-in names are reserved. A subscriber failure records
+`runtime.subscriber.failed` and raises `RuntimeEventSubscriberError` after preserving the
+completed result on `error.result`. Set
+`AgentRunOptions(allow_subscriber_failures=True)` only when best-effort post-run work is
+explicitly acceptable. `event_listener` remains the streaming interface and is not
+treated as a learning subscriber. Stateless runs record `learning.skipped` and create no
+evaluation or evolution state.
 
 `RunEventLog` is the only run-event writer in both modes. Streaming listeners,
 `TaskResult.events`, subscribers, and persisted replay therefore observe the same order.

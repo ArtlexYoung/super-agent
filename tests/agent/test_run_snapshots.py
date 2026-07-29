@@ -34,14 +34,22 @@ class RunSnapshotTests(unittest.TestCase):
                 runtime_lock["model"]["implementation"],
             )
             self.assertEqual(
-                {"mcp", "memory", "planner", "prompt", "scene", "workflow"},
+                {
+                    "mcp",
+                    "memory",
+                    "planner",
+                    "prompt",
+                    "scene",
+                    "scene_manager",
+                    "workflow",
+                },
                 {item["type"] for item in runtime_lock["skill_runners"]},
             )
             self.assertIn(
                 "prompt:echo",
                 {item["key"] for item in runtime_lock["skills"]},
             )
-            self.assertEqual(1, runtime_lock["run_plan"]["schema_version"])
+            self.assertEqual(2, runtime_lock["run_plan"]["schema_version"])
             self.assertEqual("scene:common", runtime_lock["run_plan"]["scene"])
             self.assertNotIn("task_schedule", runtime_lock)
             self.assertIn(

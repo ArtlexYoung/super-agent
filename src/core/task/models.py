@@ -37,6 +37,7 @@ class TaskRequest:
     required_features: tuple[str, ...] = ("text",)
     learn_from_conversation: bool = False
     learn_from_run: bool = True
+    allow_subscriber_failures: bool = False
     scene: str | None = None
 
 

@@ -22,7 +22,6 @@ from core.task.planning import (
     build_task_step_prompt,
     build_task_planning_messages,
     create_direct_task_plan,
-    create_task_step_policy,
     read_task_plan,
 )
 from core.task.preflight import check_run_before_execution
@@ -361,6 +360,10 @@ class AdaptiveTaskLoop:
         request = context.request
         session = context.session
         parent = context.prepared_run
+        if "tools" in step.required_features and not parent.workflow_policy.uses_tools:
+            raise ValueError(
+                "planned step requires tools but the selected workflow does not allow tools"
+            )
         required_features = tuple(
             sorted(
                 set(request.required_features)
@@ -388,7 +391,7 @@ class AdaptiveTaskLoop:
             parent,
             run_plan=run_plan,
             model_profile=self.model_calls.require_model_profile(model),
-            workflow_policy=create_task_step_policy(parent.workflow_policy, step),
+            workflow_policy=parent.workflow_policy,
         )
 
     def _select_run_model(

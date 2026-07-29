@@ -119,6 +119,8 @@ class ProgressiveDisclosureCore:
         prompt: str,
         enabled_names: list[str] | None = None,
         requested_scene: str | None = None,
+        *,
+        unavailable_scenes: Mapping[str, tuple[str, ...]] | None = None,
     ) -> SkillReference:
         """Select exactly one scene from explicit input, triggers, or one default."""
         index = self.require_prepared_skill_index()
@@ -133,6 +135,7 @@ class ProgressiveDisclosureCore:
             prompt,
             enabled_names or [],
             requested_scene,
+            unavailable_scenes or {},
         )
         if self.record_event is not None:
             self.record_event(
@@ -140,9 +143,24 @@ class ProgressiveDisclosureCore:
                 {
                     "scene_key": selected.reference.key,
                     "reason": reason,
+                    "unavailable_candidates": {
+                        key: list(services)
+                        for key, services in sorted((unavailable_scenes or {}).items())
+                    },
                 },
             )
         return selected.reference
+
+    def inspect_skill_configuration(
+        self,
+        reference: SkillReference,
+    ) -> dict[str, object]:
+        """Read indexed configuration without disclosure cache or history writes."""
+        self.require_prepared_skill_index().require_skill(
+            reference.name,
+            reference.skill_type,
+        )
+        return dict(self._sources_by_key[reference.key].configuration)
 
     def select_skill_references_for_prompt(
         self,
@@ -382,15 +400,18 @@ def _select_scene_entry(
     prompt: str,
     enabled_names: list[str],
     requested_scene: str | None,
+    unavailable_scenes: Mapping[str, tuple[str, ...]],
 ) -> tuple[SkillIndexEntry, str]:
     if requested_scene is not None:
         entry = _require_scene_entry(index, requested_scene)
+        _require_scene_available(entry, unavailable_scenes)
         return entry, "selected by task request"
     configured = _configured_scene_entries(index, enabled_names)
     if len(configured) > 1:
         keys = ", ".join(entry.reference.key for entry in configured)
         raise ValueError(f"select only one configured scene Skill: {keys}")
     if configured:
+        _require_scene_available(configured[0], unavailable_scenes)
         return configured[0], "enabled by agent config"
     prompt_text = prompt.lower()
     triggered = [
@@ -402,17 +423,45 @@ def _select_scene_entry(
         keys = ", ".join(entry.reference.key for entry in triggered)
         raise ValueError(f"task matches multiple scene Skills: {keys}")
     if triggered:
+        _require_scene_available(triggered[0], unavailable_scenes)
         trigger = next(
             value
             for value in triggered[0].triggers
             if _scene_trigger_matches(prompt_text, value)
         )
         return triggered[0], f"matched trigger: {trigger}"
-    defaults = [entry for entry in scenes if entry.is_default]
+    defaults = [
+        entry
+        for entry in scenes
+        if entry.is_default and entry.reference.key not in unavailable_scenes
+    ]
+    if not defaults:
+        available = [
+            entry
+            for entry in scenes
+            if entry.reference.key not in unavailable_scenes
+        ]
+        if len(available) == 1:
+            return (
+                available[0],
+                "selected as the only scene compatible with available Runtime services",
+            )
     if len(defaults) != 1:
         keys = ", ".join(entry.reference.key for entry in defaults) or "none"
         raise ValueError(f"expected exactly one default scene Skill; found: {keys}")
     return defaults[0], "selected as the default scene"
+
+
+def _require_scene_available(
+    entry: SkillIndexEntry,
+    unavailable_scenes: Mapping[str, tuple[str, ...]],
+) -> None:
+    missing = unavailable_scenes.get(entry.reference.key)
+    if missing:
+        raise RuntimeError(
+            f"{entry.reference.key} requires unavailable Runtime services: "
+            + ", ".join(missing)
+        )
 
 
 def _require_scene_entry(index: SkillIndex, value: str) -> SkillIndexEntry:

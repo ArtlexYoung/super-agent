@@ -30,6 +30,7 @@ from core.evolution.evidence import summarize_evaluation_evidence
 from core.evolution.service import AutomaticEvolutionService
 from core.state.insights import explain_run_with_insight
 from core.state.store import create_local_runtime_store
+from core.state.subscribers import RuntimeEventSubscriberError
 from skill.evolution.revision import SkillRevision, create_indexed_skill_revision
 from support import write_workflow_skill
 
@@ -216,7 +217,7 @@ class SkillRevisionEvolutionTests(unittest.TestCase):
                 ),
             )
 
-    def test_scheduling_error_does_not_replace_successful_run_result(self) -> None:
+    def test_scheduling_error_fails_the_requested_evolution_phase(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             agent = Agent(
@@ -228,7 +229,10 @@ class SkillRevisionEvolutionTests(unittest.TestCase):
                 "core.state.learning.AutomaticEvolutionService.review_and_evolve",
                 side_effect=RuntimeError("recommendation unavailable"),
             ):
-                result = agent.run("echo this")
+                with self.assertRaises(RuntimeEventSubscriberError) as caught:
+                    agent.run("echo this")
+
+            result = caught.exception.result
 
             events = agent.runtime.create_store().read_run_events(result.run_id)
             self.assertEqual("completed", result.text)

@@ -9,7 +9,6 @@ from pathlib import Path
 from core.agent import Agent, AgentRunOptions
 from core.config import AgentConfig
 from core.provider.chat import MockProvider
-from core.task.preflight import TaskPreflightError
 
 
 class StatelessRuntimeTests(unittest.TestCase):
@@ -113,6 +112,16 @@ print(json.dumps(sorted(name for name in sys.modules if name.startswith(blocked)
             )
             self.assertEqual("scene:stateless", locked["run_plan"]["scene"])
             self.assertEqual({"enabled": False, "backend": None}, locked["storage"])
+            selected = next(
+                event.data
+                for event in result.events
+                if event.event_type == "scene.selected"
+            )
+            self.assertIn("only scene compatible", selected["reason"])
+            self.assertEqual(
+                ["storage"],
+                selected["unavailable_candidates"]["scene:common"],
+            )
 
     def test_stateless_conversation_fails_instead_of_creating_storage(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -133,8 +142,8 @@ print(json.dumps(sorted(name for name in sys.modules if name.startswith(blocked)
             agent = Agent(config, provider=MockProvider(), use_storage=False)
 
             with self.assertRaisesRegex(
-                TaskPreflightError,
-                "memory:default.*storage",
+                RuntimeError,
+                "scene:common.*storage",
             ):
                 agent.run("hello", scene="common")
 

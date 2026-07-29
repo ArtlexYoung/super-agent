@@ -70,8 +70,9 @@ state.
 Post-run learning is an optional event layer, not part of task execution. Runtime emits
 `learning.requested`; named evaluation, freshness, routing-evidence, and evolution
 subscribers handle it independently. Every event payload is recursively read-only.
-Subscriber errors become `runtime.subscriber.failed` events and
-`TaskResult.subscriber_failures`, while the completed task result remains unchanged.
+Subscriber errors become `runtime.subscriber.failed` events. Runtime raises
+`RuntimeEventSubscriberError` with the completed `TaskResult` attached unless that run
+explicitly allows subscriber failures.
 
 ## Central Progressive Disclosure
 
