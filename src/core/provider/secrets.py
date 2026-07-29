@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from collections.abc import Callable, Iterator, Mapping
 
-from core.identity import validate_user_id
+from core.run import validate_user_id
 
 
 UserSecretLookup = Callable[[str, str], str | None]

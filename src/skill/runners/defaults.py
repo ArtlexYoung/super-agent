@@ -9,7 +9,7 @@ from skill.runners.registry import SkillRunners
 from skill.runners.builtins import create_builtin_skill_runners
 from skill.runners.mcp import McpServers
 from core.config import AgentConfig
-from core.identity import RunIdentity
+from core.run import RunIdentity
 from skill.disclosure import DisclosureRecorder, ProgressiveDisclosureCore
 
 if TYPE_CHECKING:

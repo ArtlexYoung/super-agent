@@ -402,89 +402,110 @@ def _apply_skill_evolution_event(
     event: StorageEvent,
 ) -> SkillEvolutionState:
     if event.event_type == "skill_evolution.candidate_created":
-        _require_status(state, {"candidate_recommended"})
-        _require_event(
-            event,
-            event.event_type,
-            {"schema_version", "candidate_id", "candidate_revision", "candidate_difference", "status"},
-        )
-        return replace(
-            state,
-            status=_read_status(event.data["status"]),
-            candidate_id=_required_text(event.data["candidate_id"], "candidate_id"),
-            candidate_revision=skill_revision_from_dict(event.data["candidate_revision"]),
-            candidate_difference=skill_candidate_difference_from_dict(
-                event.data["candidate_difference"]
-            ),
-            updated_at=event.created_at,
-        )
+        return _apply_candidate_created(state, event)
     if event.event_type == "skill_evolution.candidate_evaluated":
-        _require_status(state, {"candidate_created", "evaluated", "rejected"})
-        _require_event(
-            event,
-            event.event_type,
-            {"schema_version", "evaluation", "status"},
-        )
-        evaluation = candidate_evaluation_from_dict(event.data["evaluation"])
-        status = _read_status(event.data["status"])
-        if status != ("evaluated" if evaluation.passed else "rejected"):
-            raise ValueError("Skill candidate evaluation status does not match result")
-        return replace(
-            state,
-            status=status,
-            evaluation=evaluation,
-            updated_at=event.created_at,
-        )
+        return _apply_candidate_evaluated(state, event)
     if event.event_type == "skill_evolution.candidate_promoted":
-        _require_status(state, {"evaluated"})
-        _require_event(
-            event,
-            event.event_type,
-            {
-                "schema_version",
-                "active_revision",
-                "rollback_revision_id",
-                "status",
-            },
-        )
-        active = skill_revision_from_dict(event.data["active_revision"])
-        if state.candidate_revision is None or active.identity != state.candidate_revision.identity:
-            raise ValueError("promoted Skill revision changed candidate identity")
-        return replace(
-            state,
-            status=_read_status(event.data["status"]),
-            rollback_revision_id=_optional_text(
-                event.data["rollback_revision_id"],
-                "rollback_revision_id",
-            ),
-            updated_at=event.created_at,
-        )
+        return _apply_candidate_promoted(state, event)
     if event.event_type in {"skill_evolution.failed", "skill_evolution.monitored"}:
-        allowed = (
-            {"candidate_recommended", "candidate_created"}
-            if event.event_type.endswith("failed")
-            else {"promoted", "stable"}
-        )
-        _require_status(state, allowed)
-        fields = {"schema_version", "detail", "status"}
-        if event.event_type == "skill_evolution.monitored":
-            fields.add("rollback_revision_id")
-        _require_event(event, event.event_type, fields)
-        return replace(
-            state,
-            status=_read_status(event.data["status"]),
-            rollback_revision_id=(
-                state.rollback_revision_id
-                if event.event_type.endswith("failed")
-                else _optional_text(
-                    event.data["rollback_revision_id"],
-                    "rollback_revision_id",
-                )
-            ),
-            detail=_required_text(event.data["detail"], "detail"),
-            updated_at=event.created_at,
-        )
+        return _apply_evolution_result(state, event)
     raise ValueError(f"unknown Skill evolution event: {event.event_type}")
+
+
+def _apply_candidate_created(
+    state: SkillEvolutionState,
+    event: StorageEvent,
+) -> SkillEvolutionState:
+    _require_status(state, {"candidate_recommended"})
+    _require_event(
+        event,
+        event.event_type,
+        {"schema_version", "candidate_id", "candidate_revision", "candidate_difference", "status"},
+    )
+    return replace(
+        state,
+        status=_read_status(event.data["status"]),
+        candidate_id=_required_text(event.data["candidate_id"], "candidate_id"),
+        candidate_revision=skill_revision_from_dict(event.data["candidate_revision"]),
+        candidate_difference=skill_candidate_difference_from_dict(
+            event.data["candidate_difference"]
+        ),
+        updated_at=event.created_at,
+    )
+
+
+def _apply_candidate_evaluated(
+    state: SkillEvolutionState,
+    event: StorageEvent,
+) -> SkillEvolutionState:
+    _require_status(state, {"candidate_created", "evaluated", "rejected"})
+    _require_event(
+        event,
+        event.event_type,
+        {"schema_version", "evaluation", "status"},
+    )
+    evaluation = candidate_evaluation_from_dict(event.data["evaluation"])
+    status = _read_status(event.data["status"])
+    if status != ("evaluated" if evaluation.passed else "rejected"):
+        raise ValueError("Skill candidate evaluation status does not match result")
+    return replace(
+        state,
+        status=status,
+        evaluation=evaluation,
+        updated_at=event.created_at,
+    )
+
+
+def _apply_candidate_promoted(
+    state: SkillEvolutionState,
+    event: StorageEvent,
+) -> SkillEvolutionState:
+    _require_status(state, {"evaluated"})
+    _require_event(
+        event,
+        event.event_type,
+        {"schema_version", "active_revision", "rollback_revision_id", "status"},
+    )
+    active = skill_revision_from_dict(event.data["active_revision"])
+    if state.candidate_revision is None or active.identity != state.candidate_revision.identity:
+        raise ValueError("promoted Skill revision changed candidate identity")
+    return replace(
+        state,
+        status=_read_status(event.data["status"]),
+        rollback_revision_id=_optional_text(
+            event.data["rollback_revision_id"],
+            "rollback_revision_id",
+        ),
+        updated_at=event.created_at,
+    )
+
+
+def _apply_evolution_result(
+    state: SkillEvolutionState,
+    event: StorageEvent,
+) -> SkillEvolutionState:
+    failed = event.event_type == "skill_evolution.failed"
+    _require_status(
+        state,
+        {"candidate_recommended", "candidate_created"} if failed else {"promoted", "stable"},
+    )
+    fields = {"schema_version", "detail", "status"}
+    if not failed:
+        fields.add("rollback_revision_id")
+    _require_event(event, event.event_type, fields)
+    rollback_revision_id = state.rollback_revision_id
+    if not failed:
+        rollback_revision_id = _optional_text(
+            event.data["rollback_revision_id"],
+            "rollback_revision_id",
+        )
+    return replace(
+        state,
+        status=_read_status(event.data["status"]),
+        rollback_revision_id=rollback_revision_id,
+        detail=_required_text(event.data["detail"], "detail"),
+        updated_at=event.created_at,
+    )
 
 
 def _append_and_apply(

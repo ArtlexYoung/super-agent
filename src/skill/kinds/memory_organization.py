@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from typing import Callable
 from uuid import uuid4
 
-from core.actions import ActionEffect
-from core.provider.chat import Message
+from core.task.actions import ActionEffect
 from core.state.memory import LONG_TERM_MEMORY, TEMPORARY_MEMORY
 from core.state.store import RuntimeStore
 from skill.kinds.memory_models import (
@@ -18,12 +17,14 @@ from skill.kinds.memory_models import (
     MemoryTextModel,
 )
 from skill.kinds.memory_support import (
+    build_memory_organization_messages,
     clean_item_id,
     clean_memory_text,
     memory_boundary,
     memory_item_from_dict,
     normalize_memory_text,
     utc_now_text,
+    validate_memory_organization_input,
 )
 
 
@@ -44,6 +45,15 @@ MemoryChangeRunner = Callable[
     ],
     object,
 ]
+
+
+@dataclass
+class _MemoryOperationValidation:
+    target_type: str
+    candidate_ids: set[str]
+    promotable_ids: set[str]
+    boundaries: dict[str, tuple[str, str | None, str]]
+    used_ids: set[str]
 
 
 class MemoryOrganizer:
@@ -418,51 +428,6 @@ class MemoryOrganizer:
         )
 
 
-def build_memory_organization_messages(
-    query: str,
-    candidates: list[MemoryItem],
-    *,
-    target_memory_type: str,
-    temporary_context: list[MemoryItem] | None = None,
-    promotable_temporary_item_ids: set[str] | None = None,
-) -> list[Message]:
-    temporary = list(temporary_context or [])
-    promotable_ids = set(promotable_temporary_item_ids or set())
-    _validate_organization_input(
-        target_memory_type,
-        candidates,
-        temporary,
-        promotable_ids,
-    )
-    purpose = (
-        "Keep long-term memory only when it is abstract, critical, important, stable, "
-        "or habitual. Current-conversation temporary_context is read-only evidence. "
-        "Use promote to create an abstract long-term item from temporary source IDs; "
-        "promotion leaves those temporary items unchanged."
-        if target_memory_type == LONG_TERM_MEMORY
-        else "Temporary memory belongs only to this conversation."
-    )
-    schema = (
-        f"{purpose} Return only JSON with an operations array. Each operation has type, "
-        "source_item_ids, reason, and text. type is merge, supersede, archive, or "
-        "forget; long-term organization also allows promote. merge needs at least two "
-        "candidate IDs. merge and supersede require replacement text. promote requires "
-        "temporary_context IDs and abstract long-term replacement text. Other operations "
-        "may reference only candidates. Use no operation when memories remain useful "
-        "and consistent."
-    )
-    payload = {
-        "query": query,
-        "candidates": [asdict(item) for item in candidates],
-        "temporary_context": [asdict(item) for item in temporary],
-        "promotable_temporary_item_ids": sorted(promotable_ids),
-    }
-    return [
-        {"role": "system", "content": schema},
-        {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
-    ]
-
-
 def read_memory_operations(
     response: str,
     candidates: list[MemoryItem],
@@ -473,86 +438,61 @@ def read_memory_operations(
 ) -> list[MemoryOperation]:
     temporary = list(temporary_context or [])
     promotable_ids = set(promotable_temporary_item_ids or set())
-    _validate_organization_input(
+    validate_memory_organization_input(
         target_memory_type,
         candidates,
         temporary,
         promotable_ids,
     )
+    raw_operations = _read_raw_memory_operations(response)
+    validation = _MemoryOperationValidation(
+        target_type=target_memory_type,
+        candidate_ids={item.item_id for item in candidates},
+        promotable_ids=promotable_ids,
+        boundaries={
+            item.item_id: memory_boundary(item)
+            for item in [*candidates, *temporary]
+        },
+        used_ids=set(),
+    )
+    operations: list[MemoryOperation] = []
+    for raw in raw_operations:
+        operation = _read_memory_operation(raw)
+        _validate_and_track_memory_operation(validation, operation)
+        operations.append(operation)
+    return operations
+
+
+def _read_raw_memory_operations(response: str) -> list[object]:
     try:
         value = json.loads(response)
     except json.JSONDecodeError as error:
         raise ValueError("memory organizer must return valid JSON") from error
     if not isinstance(value, dict) or set(value) != {"operations"}:
         raise ValueError("memory organizer must return only an operations array")
-    raw_operations = value["operations"]
-    if not isinstance(raw_operations, list):
+    operations = value["operations"]
+    if not isinstance(operations, list):
         raise ValueError("memory organizer operations must be an array")
-    candidate_ids = {item.item_id for item in candidates}
-    boundaries = {
-        item.item_id: memory_boundary(item)
-        for item in [*candidates, *temporary]
-    }
-    used_ids: set[str] = set()
-    operations: list[MemoryOperation] = []
-    for raw in raw_operations:
-        operation = _read_memory_operation(raw)
-        source_ids = set(operation.source_item_ids)
-        allowed_ids = (
-            promotable_ids
-            if operation.operation == "promote"
-            else candidate_ids
-        )
-        if not source_ids <= allowed_ids:
-            source_name = (
-                "temporary context"
-                if operation.operation == "promote"
-                else "candidate"
-            )
-            raise ValueError(f"memory organizer referenced an unknown {source_name}")
-        if (
-            operation.operation == "promote"
-            and target_memory_type != LONG_TERM_MEMORY
-        ):
-            raise ValueError("only long-term organization can promote temporary memory")
-        if source_ids & used_ids:
-            raise ValueError("memory organizer reused a candidate in multiple operations")
-        if len({boundaries[item_id] for item_id in source_ids}) != 1:
-            raise ValueError("memory organizer cannot combine memory boundaries")
-        used_ids.update(source_ids)
-        operations.append(operation)
     return operations
 
 
-def _validate_organization_input(
-    target_type: str,
-    candidates: list[MemoryItem],
-    temporary_context: list[MemoryItem],
-    promotable_temporary_item_ids: set[str],
+def _validate_and_track_memory_operation(
+    validation: _MemoryOperationValidation,
+    operation: MemoryOperation,
 ) -> None:
-    if target_type not in {LONG_TERM_MEMORY, TEMPORARY_MEMORY}:
-        raise ValueError("memory organization target type is invalid")
-    if not candidates and not temporary_context:
-        raise ValueError("memory organization requires candidates or temporary context")
-    if candidates and len({memory_boundary(item) for item in candidates}) != 1:
-        raise ValueError("memory organization candidates must share one boundary")
-    if any(item.memory_type != target_type for item in candidates):
-        raise ValueError("memory organization candidates do not match the target type")
-    if temporary_context:
-        if target_type != LONG_TERM_MEMORY:
-            raise ValueError("temporary context is only available to long-term organization")
-        if any(item.memory_type == LONG_TERM_MEMORY for item in temporary_context):
-            raise ValueError("long-term organization context must contain temporary memory")
-        if len({memory_boundary(item) for item in temporary_context}) != 1:
-            raise ValueError("temporary organization context must share one boundary")
-        scopes = {item.scope for item in [*candidates, *temporary_context]}
-        if len(scopes) != 1:
-            raise ValueError("long-term candidates and temporary context must share one scope")
-    temporary_ids = {item.item_id for item in temporary_context}
-    if not promotable_temporary_item_ids <= temporary_ids:
-        raise ValueError("promotable memory IDs must belong to temporary context")
-    if target_type != LONG_TERM_MEMORY and promotable_temporary_item_ids:
+    source_ids = set(operation.source_item_ids)
+    promotes = operation.operation == "promote"
+    allowed_ids = validation.promotable_ids if promotes else validation.candidate_ids
+    if not source_ids <= allowed_ids:
+        source_name = "temporary context" if promotes else "candidate"
+        raise ValueError(f"memory organizer referenced an unknown {source_name}")
+    if promotes and validation.target_type != LONG_TERM_MEMORY:
         raise ValueError("only long-term organization can promote temporary memory")
+    if source_ids & validation.used_ids:
+        raise ValueError("memory organizer reused a candidate in multiple operations")
+    if len({validation.boundaries[item_id] for item_id in source_ids}) != 1:
+        raise ValueError("memory organizer cannot combine memory boundaries")
+    validation.used_ids.update(source_ids)
 
 
 def _read_memory_operation(value: object) -> MemoryOperation:
@@ -564,6 +504,16 @@ def _read_memory_operation(value: object) -> MemoryOperation:
     operation = str(value.get("type", "")).strip().lower()
     if operation not in MEMORY_OPERATION_TYPES:
         raise ValueError(f"unknown memory organization operation: {operation}")
+    source_ids = _read_memory_operation_source_ids(value, operation)
+    text = _read_memory_operation_text(value, operation)
+    reason = str(value.get("reason", "")).strip()
+    return MemoryOperation(operation, source_ids, text, reason)
+
+
+def _read_memory_operation_source_ids(
+    value: dict[object, object],
+    operation: str,
+) -> tuple[str, ...]:
     raw_ids = value.get("source_item_ids")
     if not isinstance(raw_ids, list) or not raw_ids:
         raise ValueError("memory operation source_item_ids must be a non-empty array")
@@ -572,10 +522,16 @@ def _read_memory_operation(value: object) -> MemoryOperation:
         raise ValueError("memory operation source_item_ids cannot contain duplicates")
     if operation == "merge" and len(source_ids) < 2:
         raise ValueError("memory merge requires at least two source items")
+    return source_ids
+
+
+def _read_memory_operation_text(
+    value: dict[object, object],
+    operation: str,
+) -> str:
     text = str(value.get("text", "")).strip()
     if operation in {"merge", "supersede", "promote"}:
-        text = clean_memory_text(text)
-    elif text:
+        return clean_memory_text(text)
+    if text:
         raise ValueError(f"memory {operation} operation cannot include replacement text")
-    reason = str(value.get("reason", "")).strip()
-    return MemoryOperation(operation, source_ids, text, reason)
+    return ""

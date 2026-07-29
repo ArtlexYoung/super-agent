@@ -13,6 +13,21 @@ from pathlib import Path
 from core import __version__
 
 
+MAX_FUNCTION_LINES = 100
+MAX_CONTROL_FLOW_COMPLEXITY = 10
+MAX_SOURCE_LINES = 600
+MAX_DIRECTORY_CHILDREN = 10
+CONTROL_FLOW_NODES = (
+    ast.If,
+    ast.For,
+    ast.AsyncFor,
+    ast.While,
+    ast.ExceptHandler,
+    ast.Match,
+    ast.IfExp,
+)
+
+
 class ReleaseShapeTests(unittest.TestCase):
     def setUp(self) -> None:
         self.project = tomllib.loads(
@@ -58,6 +73,10 @@ class ReleaseShapeTests(unittest.TestCase):
             "src/runtime",
             "src/super_agent",
             "src/workflow",
+            "src/core/actions.py",
+            "src/core/identity.py",
+            "src/core/secrets.py",
+            "src/core/session.py",
         ]
 
         self.assertEqual([], [path for path in removed_paths if Path(path).exists()])
@@ -72,7 +91,7 @@ class ReleaseShapeTests(unittest.TestCase):
                     "-c",
                     "from super_agent import Agent; "
                     "from adapter.ag_ui_adapter import AGUIEventMapper; "
-                    "from core.session import Run; "
+                    "from core.run import Run; "
                     "from skill.manifest import SkillManifest",
                 ],
                 cwd=tmp,
@@ -84,14 +103,74 @@ class ReleaseShapeTests(unittest.TestCase):
 
         self.assertEqual(0, completed.returncode, completed.stderr)
 
+    def test_removed_core_modules_cannot_be_imported(self) -> None:
+        environment = dict(os.environ)
+        environment["PYTHONPATH"] = str(Path("src").resolve())
+        with tempfile.TemporaryDirectory() as tmp:
+            for module_name in (
+                "core.actions",
+                "core.identity",
+                "core.secrets",
+                "core.session",
+            ):
+                with self.subTest(module_name=module_name):
+                    completed = subprocess.run(
+                        [sys.executable, "-c", f"import {module_name}"],
+                        cwd=tmp,
+                        check=False,
+                        capture_output=True,
+                        text=True,
+                        env=environment,
+                    )
+
+                    self.assertNotEqual(0, completed.returncode)
+
     def test_python_source_files_stay_within_the_size_limit(self) -> None:
         oversized = {}
         for path in Path("src").rglob("*.py"):
             line_count = _count_non_import_lines(path)
-            if line_count > 600:
+            if line_count > MAX_SOURCE_LINES:
                 oversized[str(path)] = line_count
 
         self.assertEqual({}, oversized)
+
+    def test_python_functions_stay_within_maintenance_limits(self) -> None:
+        oversized = {}
+        complex_functions = {}
+        for path in Path("src").rglob("*.py"):
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            for function in (
+                node
+                for node in ast.walk(tree)
+                if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+            ):
+                key = f"{path}:{function.lineno}:{function.name}"
+                line_count = function.end_lineno - function.lineno + 1
+                complexity = _count_control_flow_complexity(function)
+                if line_count > MAX_FUNCTION_LINES:
+                    oversized[key] = line_count
+                if complexity > MAX_CONTROL_FLOW_COMPLEXITY:
+                    complex_functions[key] = complexity
+
+        self.assertEqual({}, oversized)
+        self.assertEqual({}, complex_functions)
+
+    def test_source_directories_stay_within_the_child_limit(self) -> None:
+        crowded = {}
+        directories = [Path("src"), *Path("src").rglob("*")]
+        for directory in directories:
+            if not directory.is_dir() or directory.name == "__pycache__":
+                continue
+            children = [
+                child
+                for child in directory.iterdir()
+                if child.name not in {"__init__.py", "__pycache__"}
+                and not child.name.startswith(".")
+            ]
+            if len(children) > MAX_DIRECTORY_CHILDREN:
+                crowded[str(directory)] = len(children)
+
+        self.assertEqual({}, crowded)
 
 
 def _count_non_import_lines(path: Path) -> int:
@@ -101,6 +180,34 @@ def _count_non_import_lines(path: Path) -> int:
         if isinstance(node, ast.Import | ast.ImportFrom):
             import_lines.update(range(node.lineno, node.end_lineno + 1))
     return len(source.splitlines()) - len(import_lines)
+
+
+def _count_control_flow_complexity(
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> int:
+    counter = _ControlFlowCounter()
+    for statement in function.body:
+        counter.visit(statement)
+    return 1 + counter.branches
+
+
+class _ControlFlowCounter(ast.NodeVisitor):
+    def __init__(self) -> None:
+        self.branches = 0
+
+    def generic_visit(self, node: ast.AST) -> None:
+        if isinstance(node, CONTROL_FLOW_NODES):
+            self.branches += 1
+        super().generic_visit(node)
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        return None
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        return None
+
+    def visit_Lambda(self, node: ast.Lambda) -> None:
+        return None
 
 
 if __name__ == "__main__":

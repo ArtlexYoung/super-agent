@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping, Protocol
 
 from core import __version__
-from core.actions import ActionEffect
+from core.task.actions import ActionEffect
 
 
 MCP_PROTOCOL_VERSION = "2025-03-26"

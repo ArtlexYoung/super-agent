@@ -15,11 +15,11 @@ from core.provider.chat import ChatProvider, Message
 from core.provider.pool import ProviderPool
 from core.config import AgentConfig
 from core.engine import AgentRuntime
-from core.identity import LOCAL_USER_ID
+from core.run import LOCAL_USER_ID, Run
 from core.state.models import RunEvent
 from core.state.subscribers import RuntimeEventSubscriber, RuntimeEventSubscribers
-from core.actions import ActionEffect, ActionRules
-from core.secrets import UserSecretLookup, UserSecretResolver
+from core.task.actions import ActionEffect, ActionRules
+from core.provider.secrets import UserSecretLookup, UserSecretResolver
 from core.task.models import (
     RunLearningResult,
     SubAgentResult,
@@ -27,7 +27,6 @@ from core.task.models import (
     TaskRequest,
     TaskResult,
 )
-from core.session import Run
 from skill.kinds.model import (
     ModelProfile,
     create_direct_provider_profile,

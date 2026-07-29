@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from core.actions import ActionEffect
+from core.task.actions import ActionEffect
 from skill.disclosure import ProgressiveDisclosureCore, SkillDisclosure, SkillIndex
 from skill.disclosure.models import SkillReference
 from skill.runners.loaded import SkillAction, SkillTool

@@ -22,7 +22,7 @@ from core.state.store import RuntimeStore
 from skill.disclosure import DisclosedSkillFile, ProgressiveDisclosureCore
 from skill.evolution.candidate import SkillCandidate
 from skill.manifest import Skill, SkillManifest, calculate_skill_directory_sha256
-from skill.evolution.revision import create_manifest_skill_revision
+from skill.evolution.revision import SkillRevision, create_manifest_skill_revision
 from skill.validation import validate_skill_directory
 
 
@@ -82,6 +82,13 @@ class SkillCandidateEvaluationRequest:
     baseline_skill_path: Path | None
 
 
+@dataclass(frozen=True)
+class _CandidateEvaluationContext:
+    request: SkillCandidateEvaluationRequest
+    revision: SkillRevision
+    instructions: str
+
+
 def evaluate_candidate(
     request: SkillCandidateEvaluationRequest,
 ) -> EvaluationReport:
@@ -101,57 +108,90 @@ def evaluate_candidate(
         skill.manifest,
         evolution_supported=True,
     )
-    results: list[EvaluationCaseResult] = []
-    for case in cases:
-        started_at = perf_counter()
-        try:
-            case_result = _run_evaluation_case(
-                request.text_model,
-                skill.instructions,
-                case,
-            )
-        except Exception as error:
-            request.store.append_evaluation_records(
-                [
-                    create_evaluation_record(
-                        revision,
-                        _candidate_evaluation_source(request.candidate, case),
-                        EvaluationResult(
-                            success=False,
-                            score=0.0,
-                            token_usage=estimate_evaluation_token_usage(
-                                _evaluation_input_text(skill.instructions, case),
-                                "",
-                            ),
-                            latency_ms=_elapsed_milliseconds(started_at),
-                            error_type=type(error).__name__,
-                            checks=["fail:provider_call"],
-                        ),
-                    )
-                ]
-            )
-            raise
-        results.append(case_result)
-        request.store.append_evaluation_records(
-            [
-                create_evaluation_record(
-                    revision,
-                    _candidate_evaluation_source(request.candidate, case),
-                    EvaluationResult(
-                        success=case_result.passed,
-                        score=case_result.score,
-                        token_usage=estimate_evaluation_token_usage(
-                            _evaluation_input_text(skill.instructions, case),
-                            case_result.output,
-                        ),
-                        latency_ms=_elapsed_milliseconds(started_at),
-                        error_type="",
-                        checks=case_result.checks,
-                    ),
-                )
-            ]
-        )
+    results = _run_candidate_cases(
+        _CandidateEvaluationContext(request, revision, skill.instructions),
+        cases,
+    )
     baseline_results = _run_baseline_cases(request, cases)
+    _verify_evaluated_directories(request, candidate_sha256, baseline_sha256)
+    report = _create_evaluation_report(
+        request,
+        cases=cases,
+        results=results,
+        baseline_results=baseline_results,
+        candidate_sha256=candidate_sha256,
+        baseline_sha256=baseline_sha256,
+    )
+    validate_evaluation_report(report)
+    return report
+
+
+def _run_candidate_cases(
+    context: _CandidateEvaluationContext,
+    cases: list[EvaluationCase],
+) -> list[EvaluationCaseResult]:
+    return [_run_candidate_case(context, case) for case in cases]
+
+
+def _run_candidate_case(
+    context: _CandidateEvaluationContext,
+    case: EvaluationCase,
+) -> EvaluationCaseResult:
+    started_at = perf_counter()
+    try:
+        result = _run_evaluation_case(
+            context.request.text_model,
+            context.instructions,
+            case,
+        )
+    except Exception as error:
+        _append_candidate_case_evidence(
+            context,
+            case,
+            started_at,
+            error=error,
+        )
+        raise
+    _append_candidate_case_evidence(context, case, started_at, result=result)
+    return result
+
+
+def _append_candidate_case_evidence(
+    context: _CandidateEvaluationContext,
+    case: EvaluationCase,
+    started_at: float,
+    *,
+    result: EvaluationCaseResult | None = None,
+    error: Exception | None = None,
+) -> None:
+    output = "" if result is None else result.output
+    evaluation = EvaluationResult(
+        success=result is not None and result.passed,
+        score=0.0 if result is None else result.score,
+        token_usage=estimate_evaluation_token_usage(
+            _evaluation_input_text(context.instructions, case),
+            output,
+        ),
+        latency_ms=_elapsed_milliseconds(started_at),
+        error_type="" if error is None else type(error).__name__,
+        checks=["fail:provider_call"] if result is None else result.checks,
+    )
+    context.request.store.append_evaluation_records(
+        [
+            create_evaluation_record(
+                context.revision,
+                _candidate_evaluation_source(context.request.candidate, case),
+                evaluation,
+            )
+        ]
+    )
+
+
+def _verify_evaluated_directories(
+    request: SkillCandidateEvaluationRequest,
+    candidate_sha256: str,
+    baseline_sha256: str,
+) -> None:
     _require_unchanged_directory(
         request.candidate.skill_path,
         candidate_sha256,
@@ -163,6 +203,17 @@ def evaluate_candidate(
             baseline_sha256,
             "baseline",
         )
+
+
+def _create_evaluation_report(
+    request: SkillCandidateEvaluationRequest,
+    *,
+    cases: list[EvaluationCase],
+    results: list[EvaluationCaseResult],
+    baseline_results: list[EvaluationCaseResult],
+    candidate_sha256: str,
+    baseline_sha256: str,
+) -> EvaluationReport:
     score = _average_case_score(results)
     baseline_score = (
         None if not baseline_results else _average_case_score(baseline_results)
@@ -189,7 +240,6 @@ def evaluate_candidate(
         baseline_case_results=baseline_results,
         no_regression=no_regression,
     )
-    validate_evaluation_report(report)
     return report
 
 
@@ -355,19 +405,7 @@ def _validate_report_scores(report: EvaluationReport) -> None:
     if not report.case_results:
         raise ValueError("Skill evaluation report has no candidate results")
     for result in [*report.case_results, *report.baseline_case_results]:
-        if not isinstance(result.name, str) or not result.name.strip():
-            raise ValueError("Skill evaluation result name cannot be empty")
-        if not isinstance(result.output, str):
-            raise TypeError(f"Skill evaluation result output must be text: {result.name}")
-        if not isinstance(result.checks, list) or not all(
-            isinstance(check, str) and check for check in result.checks
-        ):
-            raise TypeError(f"Skill evaluation result checks are invalid: {result.name}")
-        if not isinstance(result.passed, bool):
-            raise TypeError(f"Skill evaluation result passed must be boolean: {result.name}")
-        _validate_score(result.score, f"result {result.name}")
-        if result.passed != (result.score == 1.0):
-            raise ValueError(f"Skill evaluation result is invalid: {result.name}")
+        _validate_case_result(result)
     score = _average_case_score(report.case_results)
     baseline_score = (
         None
@@ -394,6 +432,22 @@ def _validate_report_scores(report: EvaluationReport) -> None:
         passed,
     ):
         raise ValueError("Skill evaluation report decision does not match its results")
+
+
+def _validate_case_result(result: EvaluationCaseResult) -> None:
+    if not isinstance(result.name, str) or not result.name.strip():
+        raise ValueError("Skill evaluation result name cannot be empty")
+    if not isinstance(result.output, str):
+        raise TypeError(f"Skill evaluation result output must be text: {result.name}")
+    if not isinstance(result.checks, list) or not all(
+        isinstance(check, str) and check for check in result.checks
+    ):
+        raise TypeError(f"Skill evaluation result checks are invalid: {result.name}")
+    if not isinstance(result.passed, bool):
+        raise TypeError(f"Skill evaluation result passed must be boolean: {result.name}")
+    _validate_score(result.score, f"result {result.name}")
+    if result.passed != (result.score == 1.0):
+        raise ValueError(f"Skill evaluation result is invalid: {result.name}")
 
 
 def _read_skill_directory(

@@ -25,7 +25,7 @@ from adapter.cli_adapter.skills import configure_skills_parser, run_skills_comma
 from adapter.cli_adapter.storage import configure_storage_parser, run_storage_command
 from core.agent import AgentRunOptions
 from core.provider.chat import Message
-from core.identity import LOCAL_USER_ID
+from core.run import LOCAL_USER_ID
 from core.state.models import RunEvent
 from core.task.models import TaskResult
 

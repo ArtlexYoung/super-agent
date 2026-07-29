@@ -66,6 +66,16 @@ class _CandidateDirectoryRequest:
     name: str
 
 
+@dataclass(frozen=True)
+class _CandidateSource:
+    skill_type: str
+    current: SkillManifest | None
+    files: list[DisclosedSkillFile]
+    parent_version: str
+    proposed_version: str
+    parent_sha256: str
+
+
 def create_candidate(request: SkillCandidateRequest) -> SkillCandidate:
     skill_name, requested_type = split_skill_reference(
         request.name,
@@ -74,65 +84,53 @@ def create_candidate(request: SkillCandidateRequest) -> SkillCandidate:
     evolution_goal = request.goal.strip()
     if not evolution_goal:
         raise ValueError("skill evolution goal cannot be empty")
-    index = request.skill_disclosure.prepare_skill_index()
-    current_entry = index.find_skill(skill_name, requested_type)
-    skill_type = (
-        current_entry.reference.skill_type
-        if current_entry is not None
-        else requested_type or "prompt"
-    )
-    current_disclosure = _open_current_skill(
+    source = _read_candidate_source(
         request.skill_disclosure,
-        current_entry,
+        skill_name,
+        requested_type,
     )
-    current = None if current_disclosure is None else current_disclosure.read_manifest()
-    if current is not None and not current.agent_can_update:
-        raise PermissionError(f"skill does not allow agent evolution: {skill_type}:{skill_name}")
-    current_files = (
-        []
-        if current_disclosure is None
-        else current_disclosure.read_skill_files().files
-    )
-    parent_version = "" if current is None else current.version
-    proposed_version = "0.1.0" if current is None else increment_patch_version(current.version)
-    parent_sha256 = "" if current is None else calculate_skill_directory_sha256(current.path)
     response = request.text_model.send_messages(
         _build_candidate_messages(
             skill_name,
-            skill_type,
+            source.skill_type,
             evolution_goal,
-            current_files,
+            source.files,
         ),
     )
     changes = read_directory_file_changes(response, "Skill")
-    if current is not None and calculate_skill_directory_sha256(current.path) != parent_sha256:
+    if source.current is not None and calculate_skill_directory_sha256(
+        source.current.path
+    ) != source.parent_sha256:
         raise ValueError(
-            f"active skill changed during candidate proposal: {skill_type}:{skill_name}"
+            "active skill changed during candidate proposal: "
+            f"{source.skill_type}:{skill_name}"
         )
 
-    candidate_id = f"{skill_type}-{skill_name}-{uuid4().hex[:12]}"
+    candidate_id = f"{source.skill_type}-{skill_name}-{uuid4().hex[:12]}"
     candidate_dir = request.candidate_root / candidate_id
     skill_path = candidate_dir / "skill"
     manifest = _write_candidate_skill_directory(
         _CandidateDirectoryRequest(
             skill_path=skill_path,
-            current=current,
+            current=source.current,
             changes=changes,
-            version=proposed_version,
-            skill_type=skill_type,
+            version=source.proposed_version,
+            skill_type=source.skill_type,
             name=skill_name,
         )
     )
-    if current is None and not (manifest.agent_created and manifest.agent_can_update):
+    if source.current is None and not (
+        manifest.agent_created and manifest.agent_can_update
+    ):
         raise ValueError("new Skill candidates must allow Agent-owned updates")
     candidate = SkillCandidate(
         candidate_id=candidate_id,
-        skill_type=skill_type,
+        skill_type=source.skill_type,
         name=skill_name,
         goal=evolution_goal,
-        parent_version=parent_version,
-        proposed_version=proposed_version,
-        parent_sha256=parent_sha256,
+        parent_version=source.parent_version,
+        proposed_version=source.proposed_version,
+        parent_sha256=source.parent_sha256,
         candidate_sha256=calculate_skill_directory_sha256(skill_path),
         created_at=_utc_now_text(),
         skill_path=skill_path,
@@ -140,6 +138,41 @@ def create_candidate(request: SkillCandidateRequest) -> SkillCandidate:
     )
     _write_candidate_metadata(candidate)
     return candidate
+
+
+def _read_candidate_source(
+    disclosure: ProgressiveDisclosureCore,
+    skill_name: str,
+    requested_type: str | None,
+) -> _CandidateSource:
+    current_entry = disclosure.prepare_skill_index().find_skill(
+        skill_name,
+        requested_type,
+    )
+    skill_type = (
+        current_entry.reference.skill_type
+        if current_entry is not None
+        else requested_type or "prompt"
+    )
+    opened = _open_current_skill(disclosure, current_entry)
+    current = None if opened is None else opened.read_manifest()
+    if current is not None and not current.agent_can_update:
+        raise PermissionError(
+            f"skill does not allow agent evolution: {skill_type}:{skill_name}"
+        )
+    files = [] if opened is None else opened.read_skill_files().files
+    return _CandidateSource(
+        skill_type=skill_type,
+        current=current,
+        files=files,
+        parent_version="" if current is None else current.version,
+        proposed_version=(
+            "0.1.0" if current is None else increment_patch_version(current.version)
+        ),
+        parent_sha256=(
+            "" if current is None else calculate_skill_directory_sha256(current.path)
+        ),
+    )
 
 
 def load_candidate(candidate_root: Path, candidate_id: str) -> SkillCandidate:

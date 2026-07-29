@@ -7,8 +7,8 @@ from dataclasses import asdict
 from typing import Callable
 from uuid import uuid4
 
-from core.actions import ActionEffect, ActionRequest
-from core.identity import RunIdentity
+from core.run import RunIdentity
+from core.task.actions import ActionEffect, ActionRequest
 from core.state.memory import (
     LONG_TERM_MEMORY,
     TEMPORARY_MEMORY,

@@ -6,7 +6,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 from adapter.cli_adapter import load_agent_config
-from core.identity import LOCAL_USER_ID
+from core.run import LOCAL_USER_ID
 from core.storage import create_storage_backend
 from core.storage.copy import copy_storage_events
 

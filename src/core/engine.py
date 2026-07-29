@@ -7,12 +7,11 @@ from dataclasses import asdict, replace
 from time import perf_counter
 from typing import TYPE_CHECKING, Callable
 
-from core.actions import ActionEffect, ActionRequest, ActionRunner, ActionRules
+from core.task.actions import ActionEffect, ActionRequest, ActionRunner, ActionRules
 from core.config import AgentConfig
-from core.identity import LOCAL_USER_ID, RunIdentity
+from core.run import LOCAL_USER_ID, Run, RunIdentity
 from core.provider.pool import ProviderPool
-from core.secrets import UserSecretResolver
-from core.session import Run
+from core.provider.secrets import UserSecretResolver
 from core.state.event_log import RunEventLog
 from core.state.models import Conversation, RunEvent
 from core.state.subscribers import (

@@ -16,7 +16,7 @@ from core.provider.chat import ChatProvider, Message
 from core.storage import StorageBackend
 from core.task.planning import decide_task_planning
 from core.task.routing import list_model_routing_stats
-from core.session import Run
+from core.run import Run
 from core.task.run_plan import (
     ModelDecision,
     ModelSelectionRequest,

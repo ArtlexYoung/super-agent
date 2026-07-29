@@ -15,8 +15,8 @@ from skill.runners.loaded import (
     LoadedSkill,
 )
 from core.provider.chat import Message
-from core.identity import RunIdentity
-from core.actions import ActionRequest
+from core.run import RunIdentity
+from core.task.actions import ActionRequest
 from skill.disclosure import ProgressiveDisclosureCore, SkillReference
 
 if TYPE_CHECKING:
@@ -232,42 +232,49 @@ def _validate_loaded_skill(loaded: LoadedSkill) -> None:
     if not isinstance(loaded.tools, tuple):
         raise TypeError("LoadedSkill.tools must be a tuple")
     for tool in loaded.tools:
-        if not isinstance(tool, SkillTool):
-            raise TypeError("LoadedSkill.tools must contain SkillTool values")
-        if not isinstance(tool.name, str) or not tool.name.strip():
-            raise ValueError("SkillRunner tool name must be a non-empty string")
-        if not isinstance(tool.description, str) or not tool.description.strip():
-            raise ValueError(f"SkillRunner tool description is empty: {tool.name}")
-        if not isinstance(tool.properties, dict):
-            raise TypeError(f"SkillRunner tool properties must be an object: {tool.name}")
-        if not callable(tool.handler):
-            raise TypeError(f"SkillRunner tool handler must be callable: {tool.name}")
-        if not isinstance(tool.required, tuple) or not all(
-            isinstance(name, str) and name in tool.properties for name in tool.required
-        ):
-            raise ValueError(
-                f"SkillRunner tool required names must exist in properties: {tool.name}"
-            )
-        if not isinstance(tool.action, SkillAction):
-            raise TypeError(f"SkillRunner tool must declare an action: {tool.name}")
-        argument = tool.action.resource_argument
-        if argument is not None and argument not in tool.properties:
-            raise ValueError(
-                "SkillRunner tool action resource argument is not declared: "
-                f"{tool.name}.{argument}"
-            )
+        _validate_skill_tool(tool)
     has_callback = loaded.record_task_completed is not None
     has_action = loaded.task_completed_action is not None
     if has_callback != has_action:
         raise TypeError("A Skill completion callback must declare one SkillAction")
-    if not isinstance(loaded.included_skills, tuple) or not all(
-        isinstance(reference, SkillReference)
-        for reference in loaded.included_skills
+    _validate_included_skills(loaded.included_skills)
+
+
+def _validate_skill_tool(tool: object) -> None:
+    if not isinstance(tool, SkillTool):
+        raise TypeError("LoadedSkill.tools must contain SkillTool values")
+    if not isinstance(tool.name, str) or not tool.name.strip():
+        raise ValueError("SkillRunner tool name must be a non-empty string")
+    if not isinstance(tool.description, str) or not tool.description.strip():
+        raise ValueError(f"SkillRunner tool description is empty: {tool.name}")
+    if not isinstance(tool.properties, dict):
+        raise TypeError(f"SkillRunner tool properties must be an object: {tool.name}")
+    if not callable(tool.handler):
+        raise TypeError(f"SkillRunner tool handler must be callable: {tool.name}")
+    if not isinstance(tool.required, tuple) or not all(
+        isinstance(name, str) and name in tool.properties for name in tool.required
+    ):
+        raise ValueError(
+            f"SkillRunner tool required names must exist in properties: {tool.name}"
+        )
+    if not isinstance(tool.action, SkillAction):
+        raise TypeError(f"SkillRunner tool must declare an action: {tool.name}")
+    argument = tool.action.resource_argument
+    if argument is not None and argument not in tool.properties:
+        raise ValueError(
+            "SkillRunner tool action resource argument is not declared: "
+            f"{tool.name}.{argument}"
+        )
+
+
+def _validate_included_skills(included_skills: object) -> None:
+    if not isinstance(included_skills, tuple) or not all(
+        isinstance(reference, SkillReference) for reference in included_skills
     ):
         raise TypeError(
             "LoadedSkill.included_skills must be a tuple of SkillReference values"
         )
-    keys = [reference.key for reference in loaded.included_skills]
+    keys = [reference.key for reference in included_skills]
     if len(keys) != len(set(keys)):
         raise ValueError("LoadedSkill.included_skills cannot contain duplicates")
 

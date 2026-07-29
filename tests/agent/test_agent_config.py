@@ -4,7 +4,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from core.agent import Agent
-from core.actions import ActionEffect
+from core.task.actions import ActionEffect
 from core.config import AgentConfig
 from core.provider.chat import MockProvider
 from core.storage import create_storage_backend

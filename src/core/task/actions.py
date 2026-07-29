@@ -1,4 +1,4 @@
-"""Central action contract and safety decisions for runtime side effects."""
+"""Central action contract and checks for Runtime side effects."""
 
 from __future__ import annotations
 
@@ -139,23 +139,27 @@ class ActionRules:
             return _allow("the user approved this action")
         if self.preset == ActionMode.AUTONOMOUS:
             return _allow("autonomous policy allows declared actions")
-        if request.actor.startswith("user:"):
-            return _allow("the user explicitly requested this management action")
-        effects = set(request.effects)
-        if effects == {ActionEffect.READ}:
-            return _allow("standard policy allows declared reads")
-        if effects == {ActionEffect.DELEGATE}:
-            return _allow("standard policy allows registered subagent delegation")
-        if request.resource.startswith("skill:registered") and effects <= {
-            ActionEffect.READ,
-            ActionEffect.EXECUTE,
-        }:
-            return _allow("standard policy allows explicitly registered code")
-        if _is_internal_resource(request.resource) and effects <= _INTERNAL_EFFECTS:
-            return _allow("standard policy allows scoped internal state changes")
-        if effects & {ActionEffect.EXECUTE, ActionEffect.NETWORK, ActionEffect.DELETE}:
-            return _confirm("external execution, network access, or deletion needs approval")
-        return _confirm("the declared state change needs approval")
+        return _check_standard_action(request)
+
+
+def _check_standard_action(request: ActionRequest) -> ActionDecision:
+    if request.actor.startswith("user:"):
+        return _allow("the user explicitly requested this management action")
+    effects = set(request.effects)
+    if effects == {ActionEffect.READ}:
+        return _allow("standard policy allows declared reads")
+    if effects == {ActionEffect.DELEGATE}:
+        return _allow("standard policy allows registered subagent delegation")
+    if request.resource.startswith("skill:registered") and effects <= {
+        ActionEffect.READ,
+        ActionEffect.EXECUTE,
+    }:
+        return _allow("standard policy allows explicitly registered code")
+    if _is_internal_resource(request.resource) and effects <= _INTERNAL_EFFECTS:
+        return _allow("standard policy allows scoped internal state changes")
+    if effects & {ActionEffect.EXECUTE, ActionEffect.NETWORK, ActionEffect.DELETE}:
+        return _confirm("external execution, network access, or deletion needs approval")
+    return _confirm("the declared state change needs approval")
 
 
 class ActionBlockedError(PermissionError):

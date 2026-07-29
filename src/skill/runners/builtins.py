@@ -14,7 +14,7 @@ from skill.runners.loaded import (
     read_required_tool_string,
     read_tool_object,
 )
-from core.actions import ActionEffect
+from core.task.actions import ActionEffect
 from skill.manifest import Skill
 
 if TYPE_CHECKING:

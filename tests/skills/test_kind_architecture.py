@@ -65,7 +65,8 @@ class SkillKindArchitectureTests(unittest.TestCase):
         self.assertNotIn("learning.requested", engine_source)
         self.assertTrue(Path("src/core/state/evaluation.py").is_file())
         self.assertTrue(Path("src/core/state/subscribers.py").is_file())
-        self.assertTrue(Path("src/core/session.py").is_file())
+        self.assertTrue(Path("src/core/run.py").is_file())
+        self.assertFalse(Path("src/core/session.py").exists())
         self.assertTrue(Path("src/core/state/store.py").is_file())
         self.assertTrue(Path("src/core/storage/contracts.py").is_file())
 

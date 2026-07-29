@@ -12,7 +12,7 @@ from typing import cast
 from uuid import uuid4
 
 from core.config import AgentConfig
-from core.actions import ActionEffect, ActionRequest, ActionRunner, ActionRules
+from core.task.actions import ActionEffect, ActionRequest, ActionRunner, ActionRules
 from core.state.store import RuntimeStore
 from skill.disclosure import ProgressiveDisclosureCore, SkillDisclosure
 from skill.kinds.model import ModelProfile, create_model_profile_from_skill_disclosure
@@ -365,45 +365,71 @@ def _apply_model_skill_updates(
     *,
     removed_path: Path | None,
 ) -> None:
-    # Validate every complete staged Skill before changing any active directory.
-    stages: list[tuple[Path, Path]] = []
-    try:
-        for target, source, document in updates:
-            stages.append(_stage_model_skill(target, source, document, store))
-    except Exception:
-        for _, stage in stages:
-            if stage.exists():
-                shutil.rmtree(stage)
-        raise
+    stages = _stage_model_skill_updates(updates, store)
     affected = [target for target, _, _ in updates]
     if removed_path is not None and removed_path not in affected:
         affected.append(removed_path)
     backups: dict[Path, Path] = {}
     try:
-        # Same-filesystem renames make a multi-Skill default change recoverable.
-        for path in affected:
-            if path.exists():
-                backup = path.parent / f".{path.name}.model-backup-{uuid4().hex}"
-                os.replace(path, backup)
-                backups[path] = backup
-        for target, stage in stages:
-            target.parent.mkdir(parents=True, exist_ok=True)
-            os.replace(stage, target)
+        _backup_model_skill_directories(affected, backups)
+        _activate_model_skill_stages(stages)
     except Exception:
-        for target, _ in stages:
-            if target.exists() and target not in backups:
-                shutil.rmtree(target)
-        for path, backup in reversed(list(backups.items())):
-            if path.exists():
-                shutil.rmtree(path)
-            os.replace(backup, path)
+        _restore_model_skill_directories(stages, backups)
         raise
     finally:
-        for _, stage in stages:
-            if stage.exists():
-                shutil.rmtree(stage)
+        _remove_model_skill_stages(stages)
     for backup in backups.values():
         shutil.rmtree(backup)
+
+
+def _stage_model_skill_updates(
+    updates: list[tuple[Path, Path | None, _ModelSkillDocument]],
+    store: RuntimeStore,
+) -> list[tuple[Path, Path]]:
+    stages: list[tuple[Path, Path]] = []
+    try:
+        for target, source, document in updates:
+            stages.append(_stage_model_skill(target, source, document, store))
+    except Exception:
+        _remove_model_skill_stages(stages)
+        raise
+    return stages
+
+
+def _backup_model_skill_directories(
+    paths: list[Path],
+    backups: dict[Path, Path],
+) -> None:
+    for path in paths:
+        if path.exists():
+            backup = path.parent / f".{path.name}.model-backup-{uuid4().hex}"
+            os.replace(path, backup)
+            backups[path] = backup
+
+
+def _activate_model_skill_stages(stages: list[tuple[Path, Path]]) -> None:
+    for target, stage in stages:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        os.replace(stage, target)
+
+
+def _restore_model_skill_directories(
+    stages: list[tuple[Path, Path]],
+    backups: dict[Path, Path],
+) -> None:
+    for target, _ in stages:
+        if target.exists() and target not in backups:
+            shutil.rmtree(target)
+    for path, backup in reversed(list(backups.items())):
+        if path.exists():
+            shutil.rmtree(path)
+        os.replace(backup, path)
+
+
+def _remove_model_skill_stages(stages: list[tuple[Path, Path]]) -> None:
+    for _, stage in stages:
+        if stage.exists():
+            shutil.rmtree(stage)
 
 
 def _stage_model_skill(

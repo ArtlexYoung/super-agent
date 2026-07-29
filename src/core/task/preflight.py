@@ -7,7 +7,7 @@ from typing import Callable
 
 from core.provider.chat import Message
 from core.provider.pool import ProviderPool
-from core.session import Run
+from core.run import Run
 from core.task.models import TaskRequest
 from core.task.run_plan import RunPlan
 from core.task.tools import RuntimeTools, RuntimeToolsContext

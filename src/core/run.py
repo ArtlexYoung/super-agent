@@ -1,33 +1,82 @@
-"""Mutable state shared by every step of one Agent run."""
+"""Identity and mutable state for one Agent run."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Callable
+from uuid import uuid4
 
-from core.actions import ActionRequest, ActionRunner, ActionRules
-from core.config import AgentConfig
-from core.identity import RunIdentity
-from core.provider.chat import ChatProvider, Message
-from core.state.event_log import RunEventLog
-from core.state.models import RunEvent
-from core.state.subscribers import (
-    RuntimeEventSubscriber,
-    RuntimeEventSubscribers,
-    SubscriberFailure,
-)
-from skill.disclosure import (
-    ProgressiveDisclosureCore,
-    SkillIndex,
-    SkillIndexEntry,
-    SkillReference,
-)
-from skill.kinds.model import ModelProfile
-from skill.runners.loaded import LoadedSkill
-from skill.runners.registry import SkillLoadRequest, SkillRunners
+from core.state.subscribers import RuntimeEventSubscribers
+from core.task.actions import ActionRequest, ActionRunner, ActionRules
 
 if TYPE_CHECKING:
+    from core.config import AgentConfig
+    from core.provider.chat import ChatProvider, Message
+    from core.state.event_log import RunEventLog
+    from core.state.models import RunEvent
     from core.state.store import RuntimeStore
+    from core.state.subscribers import RuntimeEventSubscriber, SubscriberFailure
+    from skill.disclosure import (
+        ProgressiveDisclosureCore,
+        SkillIndex,
+        SkillIndexEntry,
+        SkillReference,
+    )
+    from skill.kinds.model import ModelProfile
+    from skill.runners.loaded import LoadedSkill
+    from skill.runners.registry import SkillRunners
+
+
+LOCAL_USER_ID = "local"
+
+
+@dataclass(frozen=True)
+class RunIdentity:
+    user_id: str
+    agent_name: str
+    run_id: str
+    conversation_id: str | None = None
+    parent_run_id: str | None = None
+
+    @classmethod
+    def create(
+        cls,
+        user_id: str,
+        agent_name: str,
+        *,
+        run_id: str | None = None,
+        conversation_id: str | None = None,
+        parent_run_id: str | None = None,
+    ) -> "RunIdentity":
+        return cls(
+            user_id=validate_user_id(user_id),
+            agent_name=validate_agent_name(agent_name),
+            run_id=(
+                f"run-{uuid4().hex}"
+                if run_id is None
+                else _clean_identity_value(run_id, "run_id")
+            ),
+            conversation_id=_clean_optional_identity_value(
+                conversation_id,
+                "conversation_id",
+            ),
+            parent_run_id=_clean_optional_identity_value(parent_run_id, "parent_run_id"),
+        )
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "user_id", validate_user_id(self.user_id))
+        object.__setattr__(self, "agent_name", validate_agent_name(self.agent_name))
+        object.__setattr__(self, "run_id", _clean_identity_value(self.run_id, "run_id"))
+        object.__setattr__(
+            self,
+            "conversation_id",
+            _clean_optional_identity_value(self.conversation_id, "conversation_id"),
+        )
+        object.__setattr__(
+            self,
+            "parent_run_id",
+            _clean_optional_identity_value(self.parent_run_id, "parent_run_id"),
+        )
 
 
 @dataclass
@@ -120,6 +169,8 @@ class Run:
         reference: SkillReference,
         send_text_model_messages: Callable[[list[Message]], str] | None = None,
     ) -> LoadedSkill:
+        from skill.runners.registry import SkillLoadRequest
+
         key = (reference.key, send_text_model_messages is not None)
         loaded = self._loaded_skills.get(key)
         if loaded is None:
@@ -170,3 +221,26 @@ class Run:
             }
             for entry in self._used_skill_entries.values()
         ]
+
+
+def validate_user_id(value: str) -> str:
+    return _clean_identity_value(value, "user_id")
+
+
+def validate_agent_name(value: str) -> str:
+    return _clean_identity_value(value, "agent_name")
+
+
+def _clean_identity_value(value: str, name: str) -> str:
+    if not isinstance(value, str):
+        raise TypeError(f"{name} must be a string")
+    clean = value.strip()
+    if not clean:
+        raise ValueError(f"{name} cannot be empty")
+    if len(clean) > 200 or any(ord(character) < 32 for character in clean):
+        raise ValueError(f"{name} must be at most 200 printable characters")
+    return clean
+
+
+def _clean_optional_identity_value(value: str | None, name: str) -> str | None:
+    return None if value is None else _clean_identity_value(value, name)

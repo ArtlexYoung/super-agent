@@ -6,7 +6,7 @@ from pathlib import Path
 
 from core.agent import Agent
 from core.config import AgentConfig
-from core.identity import LOCAL_USER_ID
+from core.run import LOCAL_USER_ID
 from core.state.store import RuntimeStore
 
 

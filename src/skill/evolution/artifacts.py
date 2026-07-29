@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
+from core.evolution.state_values import CandidateEvaluation
 from skill.directory import require_skill_directory_matches
 from skill.evolution.candidate import clean_record_id
 from skill.evolution.evaluation import (
@@ -151,6 +152,33 @@ def read_skill_evaluation_report(path: Path) -> EvaluationReport:
 
 def calculate_skill_evaluation_report_sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def read_recorded_skill_evaluation_report(
+    evolution_root: Path,
+    candidate_id: str,
+    evaluation: CandidateEvaluation,
+) -> EvaluationReport:
+    clean_record_id(candidate_id)
+    clean_record_id(evaluation.report_id)
+    path = (
+        evolution_root
+        / "evaluations"
+        / candidate_id
+        / f"{evaluation.report_id}.json"
+    )
+    if not path.is_file():
+        raise ValueError(f"recorded Skill evaluation report is missing: {candidate_id}")
+    if calculate_skill_evaluation_report_sha256(path) != evaluation.report_sha256:
+        raise ValueError(f"recorded Skill evaluation report changed: {candidate_id}")
+    report = read_skill_evaluation_report(path)
+    if (report.score, report.passed, report.no_regression) != (
+        evaluation.score,
+        evaluation.passed,
+        evaluation.no_regression,
+    ):
+        raise ValueError("Skill evaluation state does not match its report")
+    return report
 
 
 def _read_cases(value: object, path: Path) -> list[EvaluationCase]:
@@ -378,6 +406,26 @@ def read_skill_history_revision(
     if actual_sha256 != revision.sha256:
         raise ValueError(f"skill history revision content changed: {revision_id}")
     return revision
+
+
+def list_skill_history_revisions(
+    evolution_root: Path,
+    skill_type: str,
+    skill_name: str,
+) -> list[SkillHistoryRevision]:
+    history_root = evolution_root / "history" / skill_type / skill_name
+    if not history_root.is_dir():
+        return []
+    revisions = [
+        read_skill_history_revision(
+            evolution_root,
+            skill_type,
+            skill_name,
+            path.parent.name,
+        )
+        for path in history_root.glob("*/revision.json")
+    ]
+    return sorted(revisions, key=lambda item: (item.created_at, item.revision_id))
 
 
 def delete_skill_history_revision(

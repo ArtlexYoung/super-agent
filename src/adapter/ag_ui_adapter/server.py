@@ -14,9 +14,9 @@ from urllib.parse import unquote, urlsplit
 from core.agent import Agent, AgentRunOptions
 from adapter.ag_ui_adapter.protocol import AGUIEventMapper, AGUIRunInput, encode_sse_event
 from adapter.ag_ui_adapter.web_api import WebAPI, WebAPIResponse
-from core.identity import LOCAL_USER_ID, validate_user_id
+from core.run import LOCAL_USER_ID, validate_user_id
 from core.state.models import RunEvent
-from core.actions import ActionBlockedError
+from core.task.actions import ActionBlockedError
 
 
 MAX_REQUEST_BYTES = 1_048_576

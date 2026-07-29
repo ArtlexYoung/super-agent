@@ -7,8 +7,8 @@ import sys
 from adapter.cli_adapter import load_agent_config, load_runtime_store
 from skill.runners.defaults import create_progressive_skill_disclosure
 from core.config import AgentConfig
-from core.identity import LOCAL_USER_ID
-from core.actions import ActionRules
+from core.run import LOCAL_USER_ID
+from core.task.actions import ActionRules
 from skill.kinds.model import (
     ModelProfile,
     model_profile_to_dict,

@@ -18,9 +18,8 @@ from core.provider.chat import ToolCall
 from core.provider.chat import MockProvider
 from core.task.tools import RuntimeTools, RuntimeToolsContext
 from core.config import AgentConfig
-from core.identity import RunIdentity
-from core.session import Run
-from core.actions import ActionConfirmationRequired, ActionEffect
+from core.run import Run, RunIdentity
+from core.task.actions import ActionConfirmationRequired, ActionEffect
 from core.state.event_log import RunEventLog
 from core.state.store import RuntimeStore
 from core.storage import JsonlStorage

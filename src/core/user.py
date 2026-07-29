@@ -11,10 +11,10 @@ from core.evolution.state import (
     list_skill_evolutions,
     read_skill_evolution,
 )
-from core.identity import validate_user_id
+from core.run import validate_user_id
 from core.state.models import Conversation, RunEvent
 from core.task.routing import ModelRoutingStats
-from core.actions import ActionEffect, ActionRequest
+from core.task.actions import ActionEffect, ActionRequest
 from core.task.models import RunLearningResult, TaskResult, TaskTrace
 from skill.kinds.model_management import ModelSkillManager
 from skill.kinds.scene import CreatedSkillScene, SkillSceneInput, SkillSceneManager

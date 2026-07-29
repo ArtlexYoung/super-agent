@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from core.identity import RunIdentity
+from core.run import RunIdentity
 from core.storage.files import write_bytes_atomically
 from core.state.views import disclosure_history_from_events
 

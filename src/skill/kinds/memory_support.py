@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import json
 import re
 from collections import Counter
+from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import Any, Callable
 
-from core.actions import ActionEffect, ActionRequest
-from core.state.memory import RuntimeMemoryStore
+from core.provider.chat import Message
+from core.state.memory import LONG_TERM_MEMORY, TEMPORARY_MEMORY, RuntimeMemoryStore
+from core.task.actions import ActionEffect, ActionRequest
 from skill.kinds.memory_models import MemoryItem, MemoryPolicy
 
 
@@ -83,6 +86,114 @@ def memory_item_from_dict(item: dict[str, object]) -> MemoryItem:
 
 def memory_boundary(item: MemoryItem) -> tuple[str, str | None, str]:
     return item.memory_type, item.conversation_id, item.scope
+
+
+def build_memory_organization_messages(
+    query: str,
+    candidates: list[MemoryItem],
+    *,
+    target_memory_type: str,
+    temporary_context: list[MemoryItem] | None = None,
+    promotable_temporary_item_ids: set[str] | None = None,
+) -> list[Message]:
+    temporary = list(temporary_context or [])
+    promotable_ids = set(promotable_temporary_item_ids or set())
+    validate_memory_organization_input(
+        target_memory_type,
+        candidates,
+        temporary,
+        promotable_ids,
+    )
+    purpose = (
+        "Keep long-term memory only when it is abstract, critical, important, stable, "
+        "or habitual. Current-conversation temporary_context is read-only evidence. "
+        "Use promote to create an abstract long-term item from temporary source IDs; "
+        "promotion leaves those temporary items unchanged."
+        if target_memory_type == LONG_TERM_MEMORY
+        else "Temporary memory belongs only to this conversation."
+    )
+    schema = (
+        f"{purpose} Return only JSON with an operations array. Each operation has type, "
+        "source_item_ids, reason, and text. type is merge, supersede, archive, or "
+        "forget; long-term organization also allows promote. merge needs at least two "
+        "candidate IDs. merge and supersede require replacement text. promote requires "
+        "temporary_context IDs and abstract long-term replacement text. Other operations "
+        "may reference only candidates. Use no operation when memories remain useful "
+        "and consistent."
+    )
+    payload = {
+        "query": query,
+        "candidates": [asdict(item) for item in candidates],
+        "temporary_context": [asdict(item) for item in temporary],
+        "promotable_temporary_item_ids": sorted(promotable_ids),
+    }
+    return [
+        {"role": "system", "content": schema},
+        {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
+    ]
+
+
+def validate_memory_organization_input(
+    target_type: str,
+    candidates: list[MemoryItem],
+    temporary_context: list[MemoryItem],
+    promotable_temporary_item_ids: set[str],
+) -> None:
+    if target_type not in {LONG_TERM_MEMORY, TEMPORARY_MEMORY}:
+        raise ValueError("memory organization target type is invalid")
+    if not candidates and not temporary_context:
+        raise ValueError("memory organization requires candidates or temporary context")
+    _validate_organization_candidates(target_type, candidates)
+    _validate_temporary_organization_context(
+        target_type,
+        candidates,
+        temporary_context,
+    )
+    _validate_promotable_memory_ids(
+        target_type,
+        temporary_context,
+        promotable_temporary_item_ids,
+    )
+
+
+def _validate_organization_candidates(
+    target_type: str,
+    candidates: list[MemoryItem],
+) -> None:
+    if candidates and len({memory_boundary(item) for item in candidates}) != 1:
+        raise ValueError("memory organization candidates must share one boundary")
+    if any(item.memory_type != target_type for item in candidates):
+        raise ValueError("memory organization candidates do not match the target type")
+
+
+def _validate_temporary_organization_context(
+    target_type: str,
+    candidates: list[MemoryItem],
+    temporary_context: list[MemoryItem],
+) -> None:
+    if not temporary_context:
+        return
+    if target_type != LONG_TERM_MEMORY:
+        raise ValueError("temporary context is only available to long-term organization")
+    if any(item.memory_type == LONG_TERM_MEMORY for item in temporary_context):
+        raise ValueError("long-term organization context must contain temporary memory")
+    if len({memory_boundary(item) for item in temporary_context}) != 1:
+        raise ValueError("temporary organization context must share one boundary")
+    scopes = {item.scope for item in [*candidates, *temporary_context]}
+    if len(scopes) != 1:
+        raise ValueError("long-term candidates and temporary context must share one scope")
+
+
+def _validate_promotable_memory_ids(
+    target_type: str,
+    temporary_context: list[MemoryItem],
+    promotable_ids: set[str],
+) -> None:
+    temporary_ids = {item.item_id for item in temporary_context}
+    if not promotable_ids <= temporary_ids:
+        raise ValueError("promotable memory IDs must belong to temporary context")
+    if target_type != LONG_TERM_MEMORY and promotable_ids:
+        raise ValueError("only long-term organization can promote temporary memory")
 
 
 def clean_memory_text(text: str) -> str:

@@ -12,9 +12,8 @@ from skill.runners.loaded import (
     read_required_tool_string,
 )
 from core.provider.chat import Message, ToolCall, ToolDefinition
-from core.session import Run
-from core.actions import ActionRequest
-from core.actions import ActionEffect
+from core.run import Run
+from core.task.actions import ActionEffect, ActionRequest
 from skill.disclosure import SkillDisclosure, SkillIndex, SkillReference, skill_index_to_dict
 
 if TYPE_CHECKING:

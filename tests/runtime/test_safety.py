@@ -6,8 +6,8 @@ from skill.runners.defaults import create_default_skill_runners
 from skill.runners.loaded import SkillAction
 from core.provider.chat import MockProvider
 from core.config import AgentConfig
-from core.identity import RunIdentity
-from core.actions import (
+from core.run import Run, RunIdentity
+from core.task.actions import (
     ActionConfirmationRequired,
     ActionEffect,
     ActionNotAllowedError,
@@ -15,7 +15,6 @@ from core.actions import (
     ActionRunner,
     ActionRules,
 )
-from core.session import Run
 from core.state.event_log import RunEventLog
 from core.state.store import RuntimeStore
 from core.storage import JsonlStorage

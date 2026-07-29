@@ -18,7 +18,7 @@ from skill.runners.loaded import (
 from cli import main
 from core.provider.chat import MockProvider, ModelResponse, ToolCall
 from core.config import AgentConfig
-from core.actions import ActionEffect
+from core.task.actions import ActionEffect
 from core.task.preflight import TaskPreflightError
 from skill.manifest import Skill
 from support import write_workflow_skill
@@ -186,21 +186,30 @@ class SkillRunnerRuntimeTests(unittest.TestCase):
             self.assertFalse(hasattr(agent.runtime, "_create_user_model_runtime"))
             self.assertFalse(hasattr(agent.runtime, "task_scheduler"))
             self.assertFalse(hasattr(agent.runtime, "model_router"))
-            session_tree = ast.parse(
-                Path("src/core/session.py").read_text(encoding="utf-8")
+            run_tree = ast.parse(
+                Path("src/core/run.py").read_text(encoding="utf-8")
             )
-            session_functions = {
+            run_functions = {
                 node.name
-                for node in session_tree.body
+                for node in run_tree.body
                 if isinstance(node, ast.FunctionDef)
             }
-            self.assertEqual(set(), session_functions)
-            session_classes = {
+            self.assertEqual(
+                {
+                    "validate_user_id",
+                    "validate_agent_name",
+                    "_clean_identity_value",
+                    "_clean_optional_identity_value",
+                },
+                run_functions,
+            )
+            run_classes = {
                 node.name
-                for node in session_tree.body
+                for node in run_tree.body
                 if isinstance(node, ast.ClassDef)
             }
-            self.assertEqual({"Run"}, session_classes)
+            self.assertEqual({"RunIdentity", "Run"}, run_classes)
+            self.assertFalse(Path("src/core/session.py").exists())
             run_plan_source = Path("src/core/task/run_plan.py").read_text(
                 encoding="utf-8"
             )

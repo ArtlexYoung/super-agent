@@ -42,7 +42,7 @@ Every run enters one kernel:
 ```text
 Agent.run(...)
   -> AgentRuntime.run_task(TaskRequest)
-  -> RuntimeSession with one RunEventLog and an optional RuntimeStore
+  -> Run with one RunEventLog and an optional RuntimeStore
   -> progressive index selects one scene and its Skill references
   -> one immutable RunPlan fixes scene, Skills, workflow, planner, and one model
   -> preflight validates the complete run before any model or subagent call

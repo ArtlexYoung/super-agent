@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 from core import __version__
-from core.actions import ActionEffect
+from core.task.actions import ActionEffect
 from core.agent import Agent
 from skill.runners.defaults import create_default_skill_runners
 from skill.runners.registry import SkillLoadRequest

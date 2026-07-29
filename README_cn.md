@@ -2,24 +2,20 @@
 
 [English README](README.md)
 
+**一个简单、轻量、自进化、Skill 优先的 Agent 运行时。**
+
 > Skill is all you need.
 
-Super Agent 是一个**简单、轻量、自进化、Skill 优先的 Agent 运行时**。
+提示、工具、记忆、工作流、规划器和模型说明都使用同一种 Skill 格式。统一的渐进式披露
+核心负责找到相关内容，一套 Runtime 负责规划和执行任务。存储、记忆、学习与进化都是可选
+层，启用后仍走同一条链路，不会各自建立一套引擎。
 
-提示、工具、记忆、工作流、模型说明和规划规则都是 Skill。统一的渐进式披露核心只在
-需要时发现和加载内容；统一的 Runtime 负责调度、记录证据，并基于真实结果改进允许更新的
-Agent 自建 Skill，不会产生第二套执行链路。
+Super Agent 仍处于实验性的 `0.0.x` 阶段。破坏性修改会直接完成，不保留旧导入或隐式兼容
+行为。
 
-任务场景把一类工作需要的 Skill 组合起来。随软件提供的 `common` 场景处理通用任务，
-可选的 `code` 场景提供完整仓库编码链路。Runtime 根据本次请求、Agent 配置或提示词触发器
-选择场景；无需初始化，也不会在选择后偷偷退化到其他路径。
+## 三条命令开始使用
 
-项目仍处于实验性的 `0.0.x` 阶段。为了验证 Skill-first 模型，破坏性修改会被明确执行，
-不会保留隐式兼容层。
-
-## 快速开始
-
-需要 Python 3.11 或更高版本。Python Runtime 不依赖任何第三方库。
+需要 Python 3.11 或更高版本。默认 Python Runtime 没有第三方依赖。
 
 ```bash
 python3 -m pip install -e .
@@ -27,302 +23,124 @@ export OPENAI_API_KEY="..."
 super-agent "解释这个仓库"
 ```
 
-也会自动发现 `ANTHROPIC_API_KEY` 和 `OLLAMA_HOST`。不需要先创建 `agent.toml`，也不
-需要初始化项目。完全离线演示时，请显式选择 Mock Provider：
+也会自动发现 `ANTHROPIC_API_KEY` 和 `OLLAMA_HOST`。无需初始化项目，也无需创建
+`agent.toml`。确定性离线检查需要明确选择 Mock Provider：
 
 ```bash
 SUPER_AGENT_PROVIDER=mock super-agent "你好"
 ```
 
-Super Agent 不会偷偷创建 Mock，也不会在 Provider 失败后偷偷切换模型。没有模型或调用
-失败时会直接返回清楚的错误。
+没有可用模型时，运行会返回配置错误。Provider 调用失败会原样抛出，Runtime 不会偷偷切换
+模型或替换成 Mock。
 
-启动连续对话或可选 Web 客户端：
+不带提示词运行 `super-agent` 可以进入终端对话。运行 `super-agent serve` 可在
+`http://127.0.0.1:8765/` 打开 React 客户端和 AG-UI 接口。
 
-```bash
-super-agent
-super-agent serve
-```
-
-Web 地址是 `http://127.0.0.1:8765/`，包含原生 AG-UI 对话、可视化配置、运行树、
-记忆管理、Skill 保鲜度，以及直接连接 `POST /ag-ui` 的 CopilotKit 示例。
-
-## Python 库
+## 作为 Python 库使用
 
 ```python
 from super_agent import Agent
 
 agent = Agent()
 result = agent.run("解释渐进式 Skill 披露")
+
 print(result.text)
 print(result.run_id)
 ```
 
-创建 `Agent` 时只读取配置，不会打开存储、扫描 Skill、发现模型或组装 Runtime；这些工作
-会推迟到首次真正需要时。因此可以先注册自定义 SkillRunner、MCP 服务、事件订阅者和子
-Agent，再开始初始化。初始化只成功发布一次；失败会直接抛出，后续调用会从干净状态重试。
+`Agent()` 使用惰性初始化。配置会立即校验；存储、Skill 扫描、模型发现和 Runtime 组装会
+等到首次使用时才发生。因此可以先注册 Skill runner、MCP 服务、事件订阅者和子 Agent。
 
-Runtime 通常会自动选择任务场景，也可以在 Python 或 CLI 中为单次运行明确指定：
-
-```python
-result = agent.run("检查这个改动", scene="code")
-```
-
-嵌入式调用如果明确不能创建存储后端、会话、记忆、缓存或评价状态，可以显式关闭存储。
-同一套 Runtime 循环会使用随软件提供的无状态场景，并直接在结果中返回有序事件：
+嵌入式任务如果不需要会话、记忆、缓存或持久化证据，可以关闭存储：
 
 ```python
-agent = Agent(provider=my_provider, use_storage=False)
+from super_agent import Agent, MockProvider
+
+agent = Agent(provider=MockProvider("离线结果"), use_storage=False)
 result = agent.run("对这段文本分类")
 print(result.events)
 ```
 
-在这个模式下选择依赖存储的场景或传入会话 ID 会直接报错；Runtime 不会删除请求的功能，
-也不会改为偷偷创建存储。
+这个模式下请求依赖存储的功能会直接报错。Runtime 不会为了继续运行而删掉用户请求的功能。
 
-应用代码可以显式注入自己的 Provider、存储、动作规则、SkillRunner 和子 Agent。CLI 只是
-同一个 Python 内核的入口，不是另一套 Runtime。
-
-## 只增加需要的层
-
-零配置路径默认使用本地 JSONL，但更低或更高的层都不是必选项。每次选择都是显式的，并且
-始终复用同一个披露与执行核心：
-
-| 需求 | 选择 | 增加的行为 |
-| --- | --- | --- |
-| 只查看 Skill 数据 | 只读渐进式披露 | 不调用模型，不创建缓存、历史或存储 |
-| 运行一次隔离任务 | `Agent(provider=..., use_storage=False)` | Provider 执行与内存事件 |
-| 保留本地证据 | `Agent()` | JSONL 追踪、披露缓存、评价和保鲜度 |
-| 延续一次对话 | 传入 `conversation_id` | 隔离的消息，以及临时和长期记忆 Skill |
-| 增加行为 | `add_skill_runner(...)` 或 `add_subagent(...)` | 显式的自定义执行或委派 |
-| 进化私有 Skill | 允许更新的 Agent 自建 Skill | 候选、证据绑定评价、晋升、监控和回滚 |
-
-Runtime 会在第一次模型调用前检查所选层的全部要求。缺少服务或 runner 时会明确报错，不会
-偷偷删除用户请求的功能。
-
-## 一个心智模型
+## 一套运行模型
 
 ```text
 Provider     连接模型智能
-Core         调度任务并管理状态
-SkillRunner  将一种 Skill 类型变成行为
-Skill        承载被动内容和配置
-Agent        用清晰的 Python 代码组合一切
+Core         规划运行、执行任务并管理可选状态
+SkillRunner  将一种 Skill 转为运行行为
+Skill        保存被动内容与配置
+Agent        在 Python 中组合 Provider、runner、存储和子 Agent
 ```
 
-每个任务只经过一条路径：
+每次任务只走一条链路：
 
 ```text
 Agent.run
-  -> Core 创建唯一且完整的 Run 上下文
-  -> 渐进式披露选择一个任务场景及其 Skill
-  -> Core 创建唯一 RunPlan，其中只包含一个模型决定
-  -> 预检一次检查所有计划中的 runner、服务、工具、Provider 和子 Agent
-  -> SkillRunner 加载计划中的 Skill，Core 执行本次运行
-  -> 唯一、带作用域的事件路径记录运行，所有视图和学习层消费同一批事件
+  -> 创建一个完整 Run
+  -> 选择一个任务场景，渐进披露所需 Skill
+  -> 创建一个只含一次模型决定的 RunPlan
+  -> 预检 runner、服务、工具、Provider 和子 Agent
+  -> 执行并产生一条有序事件流
+  -> 可选地从不可变证据中学习
 ```
 
-没有独立的记忆引擎、工作流引擎、MCP 引擎或规划引擎。它们都是由 SkillRunner 加载的
-普通 Skill 类型。渐进式披露核心也可以独立进行只读发现，只有调用者明确要求时才写入缓存
-和历史。
-每个 runner 都返回同一种 `LoadedSkill` 结果；场景通过该结果包含任务所需的 Skill，
-不会再引入第二套场景执行接口。
-读取 Skill 源内容是纯操作。缓存披露、runner 激活、记忆整理以及其他状态变化都是独立、
-显式的操作。
+这套设计有四个直接保证：
 
-## 任务场景
+- **渐进式：** 只读 Skill 发现不需要存储；只有选中的有状态功能才会加入运行。
+- **显式：** 读取不会写入。变更有可见的准备与应用阶段。缺少服务或模型输出无效时直接
+  失败，不会偷偷缩减功能。
+- **隔离：** 会话、记忆、证据、披露历史和用户 Skill 覆盖层都按用户与 Agent 隔离。
+- **可进化：** 显式调用 `learn_from_run` 后才评价证据。允许更新的 Agent 自建 Skill 可以
+  依次经过候选、不退化评价、晋升、监控和回滚。
 
-随软件发布的场景位于 Python 源码之外，仍然只是普通的被动 Skill 数据：
+Skill 内容只是被动数据，不能给自己授予执行权限。可执行 MCP 服务和自定义 Skill runner
+必须在可信应用代码中注册，工具也必须在预检前声明操作效果。
+
+## Skill 与场景
+
+随软件提供的场景树位于 Python 源码之外，本身仍是普通 Skill：
 
 ```text
 skill_scenes/
-  common/   有状态/无状态场景 + 提示 + 记忆 + 规划器 + 直接工作流
-  code/     场景 + 编码提示 + 项目记忆 + 规划器 + 工具循环
+  common/   通用任务，也包含无存储运行路径
+  code/     仓库规划、工具使用、验证与审查链路
 ```
 
-选择顺序固定且可解释：本次运行的 `scene`、`agent.skills` 中唯一固定的 `scene:*`、唯一
-命中的提示词触发场景、最后是唯一默认场景。固定或命中多个场景会直接报错。场景选定后，
-Runtime 只使用该场景的链路；显式固定的 memory、planner 或 workflow Skill 会替换场景中
-同类型的 Skill。
+Runtime 根据本次明确指定、Agent 配置或提示词触发器选择一个场景。出现歧义时直接报错。
+应用可以通过 `Agent.add_skill_runner(...)` 注册任意 Skill 类型，Core 不维护固定类型列表。
 
-Agent 可以在允许使用工具的对话中调用 `create_skill_scene` 创建完整的用户私有场景，应用
-代码也可以执行同一个显式操作：
+只有需要可编辑示例时才运行 `super-agent init --path my-agent`。模型配置是 model Skill，
+API 密钥仍放在环境变量中。格式详见 [Skill](docs/skills.md) 与
+[配置](docs/configuration.md)。
 
-```python
-from skill.kinds.scene import SkillSceneInput
-from super_agent import Agent
+## 可选层
 
-alice = Agent().for_user("alice")
-alice.skills.create_scene(
-    SkillSceneInput(
-        name="research",
-        description="调查论点及其引用来源",
-        triggers=["来源调查"],
-    )
-)
-```
+默认存储是 `.super-agent/` 下可直接阅读的本地 JSONL。SQLite 同样只使用标准库。
+MySQL 与 PostgreSQL 驱动只在明确选择对应后端后作为可选依赖加载。
 
-一次创建会写入 `scene`、`prompt`、`memory`、`planner` 和 `workflow` 五个 Agent 自建、
-可更新 Skill。当前运行已经准备好的索引保持不变，新场景从下一轮开始可用；其他用户无法
-读取或选择它。
-
-## 创建 Skill
-
-```text
-skills/prompt/concise/
-  skill.toml
-  SKILL.md
-```
-
-```toml
-schema_version = 3
-name = "concise"
-type = "prompt"
-description = "用最短的内容给出有用回答"
-version = "0.1.0"
-triggers = ["简短", "精简"]
-agent_created = false
-agent_can_update = false
-
-[entry]
-instructions = "SKILL.md"
-```
-
-稳定标识是 `type:name`，例如 `prompt:concise`、`memory:default` 和 `model:fast`。
-自定义类型只需在代码中调用匹配的 `Agent.add_skill_runner(...)`；Core 没有写死 Skill
-类型列表。
-
-可执行的 MCP 实现只放在可信应用代码中。被动 MCP Skill 只包含说明和可选的
-`[configuration].server` 名称；Skill 内容中的命令、参数、环境、传输方式和副作用字段都会
-被拒绝：
-
-```python
-from super_agent import ActionEffect, Agent, StdioMcpServer
-
-agent = Agent()
-agent.add_mcp_server(
-    "filesystem",
-    StdioMcpServer(
-        "npx",
-        arguments=("-y", "@modelcontextprotocol/server-filesystem"),
-    ),
-    effects=(
-        ActionEffect.READ,
-        ActionEffect.CREATE,
-        ActionEffect.UPDATE,
-        ActionEffect.DELETE,
-        ActionEffect.EXECUTE,
-    ),
-)
-```
-
-缺少代码注册时，预检会在调用模型或启动进程前失败。Runtime 会先检查完整副作用声明，并在
-运行锁中记录代码和设置哈希，但不会记录环境变量值。
-
-需要一个可编辑示例项目时再运行 `super-agent init --path my-agent`。初始化是可选工具，
-不是使用前提。
-
-## 只配置真正需要的内容
-
-`Agent()` 依次检查 `SUPER_AGENT_CONFIG`、当前目录的 `agent.toml`，最后使用内存默认值。
-完整的最小配置如下：
-
-```toml
-[agent]
-name = "demo"
-system = "You are a concise, helpful agent."
-skills = []
-disabled_skills = []
-
-[paths]
-skills = ["skills"]
-
-[storage]
-backend = "jsonl"
-path = ".super-agent"
-```
-
-`skills` 表示每次任务都固定加载的 Skill；未固定的 Skill 仍可被自动选择。最多固定一个
-`scene:*`；省略时自动选择场景。`disabled_skills` 可以排除一种类型、一个稳定标识或无
-歧义名称。模型配置是普通的 model
-Skill，不是特殊的 Agent 字段；密钥只保存在环境变量中。
-
-## 自动调度与自进化
-
-- model Skill 声明用途、特性、质量、延迟、token 成本和连接环境变量。Core 在每次模型
-  调用前，根据这些声明和当前用户的真实证据选择已就绪模型。
-- Runtime 事件记录模型选择、Skill 披露、工具、子 Agent、token 估算、动作决定、结果和
-  失败，但不保存密钥值。
-- 每次运行只记录不可变的学习证据，不会更新学习状态。显式调用
-  `Agent.learn_from_run(run_id)` 或 `runs learn` 后，才会评价本轮运行、刷新路由与保鲜度证据，
-  并检查符合条件的 Skill 进化。
-- Skill 保鲜度不调用大模型，而是综合使用次数、结果、时间间隔、频率、token 成本以及同
-  功能 Skill 的成功替代情况计算。
-- `agent_can_update = true` 的 Agent 自建 Skill 可以创建候选、执行不退化评价、晋升完整
-  Skill 目录、持续监控并在退化时回滚。晋升只使用状态中记录的那份报告；候选、基线、用例
-  或报告文件发生变化都会失败。激活前会校验复制后的完整目录；Runtime 刷新或状态记录失败
-  时会恢复原 Skill。共享项目 Skill 始终是只读基线。
-- 临时记忆严格绑定当前会话，无法进入其他会话；长期记忆只用于抽象、关键、重要、稳定或
-  习惯性的内容。
-- 整理长期记忆时，模型可以查看当前会话的相关临时记忆，并显式提升其中的抽象内容。临时
-  来源仍保留在原会话中，来源条目 ID 会进入可审计事件。
-- 回忆只能通过校验后的操作合并、替换、归档、遗忘或提升记忆。每次变化都是显式事件；模型
-  返回无效整理结果时会失败，不会偷偷返回未整理内容。
-
-直接查看证据：
+常用入口：
 
 ```bash
-super-agent runs learn --run-id <run-id>
-super-agent runs explain --run-id <run-id>
+super-agent run --scene code "检查这个改动"
 super-agent skills index --output json
+super-agent runs explain --run-id <run-id>
+super-agent runs learn --run-id <run-id>
 super-agent skills freshness
-super-agent evolution list
 ```
 
-显式学习操作是幂等的。失败时会记录包含准确阶段的 `learning.failed` 并抛出原始异常；重试会
-复用已经写入的证据。应用仍可通过 `Agent.add_event_subscriber(...)` 添加运行观察器，失败信息
-会明确出现在 `TaskResult.subscriber_failures`。无状态 Agent 可以运行，但由于没有持久化证据
-存储，不能执行学习。
-
-## 多用户与多 Agent
-
-通过 `Agent.for_user(...)` 一次绑定用户。会话、记忆、Skill 使用情况、披露历史、模型证据、
-Provider 缓存、用户 Skill 覆盖层和进化状态都会按用户和 Agent 隔离。
-
-```python
-main = Agent("agents/main.toml")
-coder = Agent("agents/coder.toml")
-reviewer = Agent("agents/reviewer.toml")
-
-main.add_subagent(coder, name="coder", triggers=["代码", "实现"])
-main.add_subagent(reviewer, triggers=["审查"])
-result = main.for_user("alice").run("实现并审查这个改动")
-```
-
-省略名称时会依次生成 `subagent01`、`subagent02`。深层或循环链路会在执行前给出完整路径
-警告，但不会被静默阻断。可选的 `max_agent_chain_depth` 只控制警告阈值，最终停止条件由
-workflow Skill 定义。
-
-## 存储与显式副作用
-
-默认存储是 `.super-agent/` 下可直接阅读、零依赖的 JSONL。SQLite 同样只使用标准库；
-MySQL 和 PostgreSQL 只在选择后安装对应可选依赖。所有后端实现同一个用户隔离事件契约。
-
-每个工具都要声明资源和 `read`、`create`、`update`、`delete`、`execute`、`network` 或
-`delegate` 效果。首次模型调用前，预检会一次返回所有缺失 runner、服务、无效工具、不可用
-Provider 和子 Agent。状态变化随后明确经过 `prepared`、`applying`、`applied` 阶段；读取在
-检查后直接执行。Skill 文本只是未受信任上下文，不能给自己授予执行权限，也不存在未声明
-动作的退化路径。
+子 Agent 通过 Python 中的 `Agent.add_subagent(...)` 组合，不写入 TOML。记忆、工作流、
+规划、MCP、场景和模型配置仍然都是普通 Skill 类型。
 
 ## 文档
 
 - [快速开始](docs/getting-started.md)
 - [架构](docs/architecture.md)
 - [Skill 与渐进式披露](docs/skills.md)
-- [SkillRunner](docs/skill-runners.md)
-- [配置](docs/configuration.md)
-- [Core、追踪与多 Agent](docs/runtime.md)
-- [评价、记忆与进化](docs/evolution.md)
+- [Skill runner 与 MCP](docs/skill-runners.md)
+- [配置与存储](docs/configuration.md)
+- [Runtime、追踪、用户与子 Agent](docs/runtime.md)
+- [记忆、评价、保鲜度与进化](docs/evolution.md)
 - [动作规则](docs/safety.md)
 - [CLI 参考](docs/cli.md)
 - [Web 客户端](docs/web.md)
@@ -333,11 +151,11 @@ Provider 和子 Agent。状态变化随后明确经过 `prepared`、`applying`�
 
 ```bash
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src:tests python3 -m unittest discover -s tests -v
-PYTHONPATH=src:tests python3 -m compileall -q src tests docs/experiments
+PYTHONDONTWRITEBYTECODE=1 python3 -m compileall -q src tests
 pnpm --dir web lint
 pnpm --dir web typecheck
 pnpm --dir web build
 ```
 
-`super_agent` 只导出日常使用的小型 Runtime API。高级适配器、具体存储后端和 Skill 类型
-管理 API 从各自所属模块导入。`0.0.x` 阶段不提供内部导入兼容层。
+发布测试会约束源码布局、导入边界、函数与文件大小、控制流和目录子项数量。`0.0.x` 阶段
+不提供内部导入兼容层。

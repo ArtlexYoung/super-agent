@@ -7,7 +7,7 @@ import json
 
 from adapter.cli_adapter import load_agent
 from core.evolution.state import SkillEvolutionState, skill_evolution_to_dict
-from core.identity import LOCAL_USER_ID
+from core.run import LOCAL_USER_ID
 
 
 EVOLUTION_STATUSES = (

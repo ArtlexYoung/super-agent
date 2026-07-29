@@ -25,8 +25,8 @@ from core.task.planning import (
     read_task_plan,
 )
 from core.task.preflight import check_run_before_execution
-from core.actions import ActionRequest
-from core.session import Run
+from core.run import Run
+from core.task.actions import ActionRequest
 from core.task.run_plan import (
     RunPlan,
     create_task_step_run_plan,

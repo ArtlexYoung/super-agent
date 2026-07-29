@@ -22,8 +22,6 @@ Versions `v0.0.25` through `v0.0.61` established the current foundation:
 - Explicit action declarations, passive Skill isolation, staged memory organization,
   AG-UI, and the React Web client.
 
-Reproducible snapshots remain under [experiments](experiments/README.md).
-
 ## v0.0.62: One Public Architecture
 
 Status: implemented.
@@ -304,6 +302,19 @@ Status: implemented.
   unchanged and allow a clean retry instead of caching partial initialization.
 - Give every CLI command the same direct configuration, Agent, and RuntimeStore loaders
   instead of repeating adapter assembly.
+
+## v0.0.85: Enforced Maintenance Budgets
+
+Status: implemented.
+
+- Merge run identity and per-run state into `core.run`, keep actions with task execution,
+  and keep secret resolution with Providers; remove the four old modules outright.
+- Split long validation and Skill activation flows into direct preparation, verification,
+  application, and recovery steps without changing failure-atomic behavior.
+- Enforce source-file, function-length, control-flow, directory-size, fresh-import, and
+  removed-module limits in release tests.
+- Remove historical experiment snapshots already preserved by Git tags and shorten both
+  READMEs to installation, first run, core guarantees, and links to focused documentation.
 
 ## Release Gate
 

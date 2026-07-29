@@ -11,7 +11,7 @@ from core.evolution.state_values import (
     SkillEvolutionState,
     candidate_evaluation_to_dict,
 )
-from core.identity import RunIdentity
+from core.run import RunIdentity
 from core.state.evaluation import (
     EvaluationRecord,
     EvaluationResult,

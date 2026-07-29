@@ -8,8 +8,8 @@ from threading import Barrier
 
 from core.agent import Agent
 from core.config import AgentConfig
-from core.actions import ActionRequest
-from core.identity import RunIdentity
+from core.run import RunIdentity
+from core.task.actions import ActionRequest
 from core.storage import JsonlStorage, StorageEventQuery
 from core.state.store import RuntimeStore, create_local_runtime_store
 from core.provider.chat import MockProvider

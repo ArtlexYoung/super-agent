@@ -15,7 +15,7 @@ from adapter.ag_ui_adapter.configuration import (
 from skill.runners.defaults import create_progressive_skill_disclosure
 from core.config import AgentConfig
 from core.state.insights import explain_run_with_insight
-from core.actions import ActionEffect, ActionRequest
+from core.task.actions import ActionEffect, ActionRequest
 from skill.disclosure import skill_index_to_dict
 from skill.kinds.model import model_profile_to_dict, read_model_profiles
 from skill.kinds.model_management import model_skill_input_from_dict

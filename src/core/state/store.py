@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from core.identity import RunIdentity, validate_agent_name, validate_user_id
+from core.run import RunIdentity, validate_agent_name, validate_user_id
 from core.state.event_log import RunEventLog
 from core.storage import StorageBackend, StorageEvent, StorageEventQuery
 from core.storage.files import create_scope_digest

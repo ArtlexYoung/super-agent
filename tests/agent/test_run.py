@@ -6,7 +6,7 @@ from pathlib import Path
 from core.agent import Agent
 from core.provider.chat import MockProvider
 from core.config import AgentConfig
-from core.identity import RunIdentity
+from core.run import RunIdentity
 from core.state.event_log import RunEventLog
 from core.storage import JsonlStorage, StorageEventQuery
 from core.state.store import RuntimeStore, create_local_runtime_store
