@@ -22,10 +22,17 @@ class ZeroConfigurationPlanningTests(unittest.TestCase):
             self.assertEqual("direct answer", result.text)
             self.assertEqual(1, len(provider.requests))
             events = agent.for_user("local").runs.read_trace(result.run_id).events
-            schedule = next(
+            route_plan = next(
                 event.data for event in events if event.event_type == "task.scheduled"
             )
-            self.assertEqual("task_plan", schedule["execution_mode"])
+            self.assertEqual(1, route_plan["schema_version"])
+            self.assertEqual("direct", route_plan["mode"])
+            self.assertEqual("scene:common", route_plan["scene"])
+            self.assertEqual("workflow:direct", route_plan["workflow"])
+            self.assertEqual("planner:default", route_plan["planner"])
+            self.assertFalse(route_plan["planning"]["required"])
+            self.assertIn("memory:default", route_plan["skills"])
+            self.assertIn("prompt:common", route_plan["model_context_skills"])
             plan = next(
                 event.data
                 for event in events
@@ -108,11 +115,13 @@ class ZeroConfigurationPlanningTests(unittest.TestCase):
             self.assertEqual(["researcher"], [item.name for item in result.subagent_results or []])
             self.assertIn("subagent facts", str(fast.requests[1]))
             events = main.for_user("local").runs.read_trace(result.run_id).events
-            schedule = next(
+            route_plan = next(
                 event.data for event in events if event.event_type == "task.scheduled"
             )
-            self.assertEqual("task_plan", schedule["execution_mode"])
-            self.assertEqual("planner:default", schedule["planner"])
+            self.assertEqual("planning", route_plan["mode"])
+            self.assertEqual("planner:default", route_plan["planner"])
+            self.assertTrue(route_plan["planning"]["required"])
+            self.assertEqual([], route_plan["model_context_skills"])
             step_models = [
                 event.data["models"][0]["key"]
                 for event in events
@@ -121,6 +130,13 @@ class ZeroConfigurationPlanningTests(unittest.TestCase):
             self.assertEqual(
                 ["model:fast", "model:deep", "model:deep"],
                 step_models,
+            )
+            self.assertTrue(
+                all(
+                    event.data["mode"] == "step"
+                    for event in events
+                    if event.event_type == "task.step.scheduled"
+                )
             )
             insight = explain_run_with_insight(
                 main.runtime.create_store(),

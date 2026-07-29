@@ -31,7 +31,7 @@ from core.secrets import UserSecretResolver
 from core.session import RuntimeSession
 from core.storage import StorageBackend
 from core.state.store import RuntimeStore
-from core.task.decisions import TaskSchedule
+from core.task.route_plan import RoutePlan
 from core.task.loop import AdaptiveTaskLoop, list_run_actions
 from core.task.models import TaskRequest, TaskResult, TaskTrace
 from skill.disclosure import ProgressiveDisclosureCore, SkillIndex
@@ -82,7 +82,7 @@ class _RuntimeLockInput:
     skill_index: SkillIndex
     provider: ChatProvider
     storage: StorageBackend
-    schedule: TaskSchedule
+    route_plan: RoutePlan
     environment: Mapping[str, str]
 
 
@@ -137,7 +137,7 @@ class AgentRuntime:
             result = task_loop.run_task(
                 request,
                 session,
-                lambda schedule: self._lock_task_context(session, schedule),
+                lambda route_plan: self._lock_task_context(session, route_plan),
             )
             evaluation_attempted = True
             skill_updates = self._record_task_evaluation(
@@ -329,7 +329,7 @@ class AgentRuntime:
     def _lock_task_context(
         self,
         session: RuntimeSession,
-        schedule: TaskSchedule,
+        route_plan: RoutePlan,
     ) -> None:
         session.store.save_runtime_lock(
             session.identity,
@@ -341,7 +341,7 @@ class AgentRuntime:
                     skill_index=session.require_skill_index(),
                     provider=session.provider,
                     storage=self.storage,
-                    schedule=schedule,
+                    route_plan=route_plan,
                     environment=self.user_secrets.get_environment_for_user(
                         session.identity.user_id
                     ),
@@ -574,7 +574,7 @@ def _skill_update_to_dict(state: SkillEvolutionState) -> dict[str, object]:
 def _runtime_lock_to_dict(request: _RuntimeLockInput) -> dict[str, object]:
     request.skill_runners.validate_dependencies()
     return {
-        "schema_version": 13,
+        "schema_version": 14,
         "agent": {
             "name": request.config.agent.name,
             "system": request.config.agent.system,
@@ -589,7 +589,7 @@ def _runtime_lock_to_dict(request: _RuntimeLockInput) -> dict[str, object]:
                 f"{type(request.provider).__qualname__}"
             ),
         },
-        "task_schedule": request.schedule.to_dict(),
+        "route_plan": request.route_plan.to_dict(),
         "storage": {"backend": request.storage.name},
         "skill_runners": [
             item.descriptor.to_dict()

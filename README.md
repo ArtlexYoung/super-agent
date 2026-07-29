@@ -89,8 +89,8 @@ Every task follows one path:
 Agent.run
   -> Core creates one run session
   -> progressive disclosure selects one task scene and its Skills
-  -> SkillRunners load selected Skills
-  -> Core selects a model and executes the task
+  -> Core creates one RoutePlan for scene, Skills, workflow, planner, and model
+  -> SkillRunners load the planned Skills and Core executes the route
   -> events, evaluation, freshness, and evolution evidence are recorded
 ```
 

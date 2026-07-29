@@ -36,14 +36,20 @@ Agent.run(...)
   -> AgentRuntime.run_task(TaskRequest)
   -> RuntimeSession and RuntimeStore
   -> progressive index selects one scene and its Skill references
-  -> SkillRunners load selected Skills
-  -> one adaptive task loop executes plans, models, tools, and subagents
+  -> one immutable RoutePlan fixes scene, Skills, workflow, planner, and model
+  -> SkillRunners load the route and one task loop executes it
   -> canonical events, evaluation, freshness, and evolution review
 ```
 
 Direct tasks are one-step plans. Complex tasks are multi-step plans. Both use the same
 loop, event stream, model routing, tool registry, and stopping checks. There is no second
 controller for workflows, memory, planning, or subagents.
+
+`RoutePlan` is the only routing result. It contains stable scene, Skill, workflow, and
+planner references, model choices with reasons, required features, and subagent choices.
+Core creates it before the matching execution and records that same object in the task
+event and Runtime lock. Planned steps use the same contract. There are no partial scene,
+Skill-selection, or schedule objects to reconcile later.
 
 `RuntimeSession` is the only mutable run context. It carries the validated identity,
 store, Skill index, disclosure core, selected model state, SkillRunners, action runner,
@@ -137,6 +143,7 @@ application code rather than downloadable Skill content.
 ## Invariants
 
 - One run has one Runtime session, store, disclosure core, task loop, and event stream.
+- Every model execution reads one immutable RoutePlan created before that execution.
 - One run selects exactly one scene before loading memory, planning, workflow, and prompt
   content; the selected scene and reason are recorded.
 - Every Skill type uses the same index, cache, stable key, evidence, and evolution format.

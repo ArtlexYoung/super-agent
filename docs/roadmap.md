@@ -94,7 +94,7 @@ Status: implemented.
 
 ## v0.0.67: One Route Plan
 
-Status: planned.
+Status: implemented.
 
 - Represent scene, Skill, workflow, and model choices in one immutable `RoutePlan`.
 - Produce the plan once before execution and record the same object without rebuilding it.

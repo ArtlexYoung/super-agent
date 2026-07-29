@@ -16,12 +16,12 @@ from skill.evolution.freshness import calculate_skill_freshness
 def explain_run_with_insight(store: RuntimeStore, run_id: str) -> dict[str, object]:
     explanation = store.explain_run(run_id)
     events = store.read_run_events(run_id)
-    schedule = _latest_event_data(events, "task.scheduled")
+    route_plan = _latest_event_data(events, "task.scheduled")
     purposes = _model_purposes_for_run(events)
     explanation.update(
         {
-            "schema_version": 5,
-            "schedule": schedule,
+            "schema_version": 6,
+            "route_plan": route_plan,
             "task_plan": _latest_event_data(events, "task.plan.created"),
             "task_steps": project_task_steps(events),
             "model_calls": project_model_call_attempts(events),

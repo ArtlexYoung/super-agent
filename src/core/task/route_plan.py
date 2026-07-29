@@ -1,14 +1,14 @@
-"""Pure scheduling decisions used by the central adaptive task loop."""
+"""One explicit route contract for every task and planned step."""
 
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import Mapping
 
-from skill.runners.loaded import TaskPolicy
+from skill.runners.loaded import LoadedSkill, PlanningPolicy, TaskPolicy
 from core.task.routing import ModelRoutingStats, list_model_routing_stats
-from core.task.planning import TaskStep
+from core.task.planning import TaskStep, create_task_step_policy
 from core.session import RuntimeSession
 from core.task.models import TaskRequest
 from skill.disclosure import SkillReference
@@ -44,35 +44,48 @@ class ModelChoice:
 
 
 @dataclass(frozen=True)
-class TaskSkillSelection:
-    scene_key: str
-    references: tuple[SkillReference, ...]
+class RoutePlan:
+    """Freeze every routing choice before its matching model execution."""
 
-
-@dataclass(frozen=True)
-class TaskSchedule:
     purpose: str
     required_features: tuple[str, ...]
-    workflow: str
     model_choices: tuple[ModelChoice, ...]
-    skill_references: tuple[SkillReference, ...]
+    scene: SkillReference
+    skills: tuple[SkillReference, ...]
+    workflow: SkillReference
+    planner: SkillReference | None
+    model_context_skills: tuple[SkillReference, ...]
     subagent_names: tuple[str, ...]
     subagent_reasons: tuple[str, ...]
-    execution_mode: str
-    planner: str | None
+    mode: str
+    planning_required: bool
     planning_reasons: tuple[str, ...]
-    scene: str
+    workflow_policy: TaskPolicy = field(repr=False, compare=False)
+    scene_contribution: LoadedSkill = field(repr=False, compare=False)
+    planner_policy: PlanningPolicy | None = field(repr=False, compare=False)
+    planner_contribution: LoadedSkill | None = field(repr=False, compare=False)
 
     @property
     def selected_model(self) -> ModelProfile:
         return self.model_choices[0].profile
 
+    def list_skills(self, skill_type: str) -> list[SkillReference]:
+        return [
+            reference
+            for reference in self.skills
+            if reference.skill_type == skill_type
+        ]
+
     def to_dict(self) -> dict[str, object]:
         selected = self.model_choices[0]
         return {
+            "schema_version": 1,
             "purpose": self.purpose,
             "required_features": list(self.required_features),
-            "workflow": self.workflow,
+            "scene": self.scene.key,
+            "skills": [reference.key for reference in self.skills],
+            "workflow": self.workflow.key,
+            "planner": None if self.planner is None else self.planner.key,
             "models": [choice.to_dict() for choice in self.model_choices],
             "routing": {
                 "confidence": round(selected.confidence, 6),
@@ -81,82 +94,38 @@ class TaskSchedule:
                 "selection": selected.selection,
                 "uncertainty": list(_routing_uncertainty(selected)),
             },
-            "skills": [reference.key for reference in self.skill_references],
+            "model_context_skills": [
+                reference.key for reference in self.model_context_skills
+            ],
             "subagents": list(self.subagent_names),
             "subagent_reasons": list(self.subagent_reasons),
-            "execution_mode": self.execution_mode,
-            "planner": self.planner,
-            "planning_reasons": list(self.planning_reasons),
-            "scene": self.scene,
+            "mode": self.mode,
+            "planning": {
+                "required": self.planning_required,
+                "reasons": list(self.planning_reasons),
+            },
         }
 
 
-def create_task_schedule(
-    request: TaskRequest,
-    session: RuntimeSession,
-    workflow: TaskPolicy,
-    selected_skills: TaskSkillSelection,
-    *,
-    model_profiles: list[ModelProfile],
-    environment: Mapping[str, str],
-) -> TaskSchedule:
-    """Resolve one immutable schedule without owning task execution state."""
-    purpose = resolve_task_purpose(model_profiles, request.purpose, request.prompt)
-    evidence = {
-        item.profile_key: item
-        for item in list_model_routing_stats(session.store, purpose)
-    }
-    required_features = _required_features(request, workflow)
-    model_choices = rank_model_choices(
-        model_profiles,
-        environment,
-        purpose=purpose,
-        required_features=required_features,
-        prompt=request.prompt,
-        evidence=evidence,
-    )
-    skill_references = _model_context_skills(selected_skills, session)
-    subagents = request.subagents.list_subagents() if request.include_subagents else []
-    subagent_names, subagent_reasons = choose_subagents(request.prompt, subagents)
-    return TaskSchedule(
-        purpose=purpose,
-        required_features=required_features,
-        workflow=workflow.name,
-        model_choices=model_choices,
-        skill_references=tuple(skill_references),
-        subagent_names=tuple(subagent_names),
-        subagent_reasons=tuple(subagent_reasons),
-        execution_mode="task_plan",
-        planner=None,
-        planning_reasons=(),
-        scene=selected_skills.scene_key,
-    )
-
-
-def create_task_step_schedule(
+def create_task_step_route_plan(
     step: TaskStep,
     request: TaskRequest,
     session: RuntimeSession,
-    selected_skills: TaskSkillSelection,
-    *,
-    workflow: TaskPolicy,
+    route_plan: RoutePlan,
     model_profiles: list[ModelProfile],
     environment: Mapping[str, str],
-) -> TaskSchedule:
-    evidence = {
-        item.profile_key: item
-        for item in list_model_routing_stats(session.store, step.purpose)
-    }
+) -> RoutePlan:
+    workflow = create_task_step_policy(route_plan.workflow_policy, step)
     required_features = tuple(
         sorted(set(request.required_features) | set(step.required_features) | {"text"})
     )
-    model_choices = rank_model_choices(
+    model_choices = choose_models_for_route(
+        session,
         model_profiles,
         environment,
-        purpose=step.purpose,
-        required_features=required_features,
-        prompt=step.instruction,
-        evidence=evidence,
+        step.purpose,
+        required_features,
+        step.instruction,
     )
     subagent_names = () if step.subagent is None else (step.subagent,)
     subagent_reasons = (
@@ -164,18 +133,41 @@ def create_task_step_schedule(
         if step.subagent is None
         else (f"{step.subagent}: selected by Planner Skill",)
     )
-    return TaskSchedule(
+    return replace(
+        route_plan,
         purpose=step.purpose,
         required_features=required_features,
-        workflow=workflow.name,
         model_choices=model_choices,
-        skill_references=tuple(_model_context_skills(selected_skills, session)),
+        model_context_skills=select_model_context_skills(
+            route_plan.skills,
+            session,
+        ),
         subagent_names=subagent_names,
         subagent_reasons=subagent_reasons,
-        execution_mode="task_step",
-        planner=None,
-        planning_reasons=(),
-        scene=selected_skills.scene_key,
+        mode="step",
+        workflow_policy=workflow,
+    )
+
+
+def choose_models_for_route(
+    session: RuntimeSession,
+    model_profiles: list[ModelProfile],
+    environment: Mapping[str, str],
+    purpose: str,
+    required_features: tuple[str, ...],
+    prompt: str,
+) -> tuple[ModelChoice, ...]:
+    evidence = {
+        item.profile_key: item
+        for item in list_model_routing_stats(session.store, purpose)
+    }
+    return rank_model_choices(
+        model_profiles,
+        environment,
+        purpose=purpose,
+        required_features=required_features,
+        prompt=prompt,
+        evidence=evidence,
     )
 
 
@@ -281,7 +273,7 @@ def choose_subagents(
     return names, reasons
 
 
-def _required_features(
+def resolve_required_features(
     request: TaskRequest,
     workflow: TaskPolicy,
 ) -> tuple[str, ...]:
@@ -292,16 +284,16 @@ def _required_features(
     return tuple(sorted(features))
 
 
-def _model_context_skills(
-    selected_skills: TaskSkillSelection,
+def select_model_context_skills(
+    selected_skills: tuple[SkillReference, ...],
     session: RuntimeSession,
-) -> list[SkillReference]:
+) -> tuple[SkillReference, ...]:
     model_context_types = session.skill_runners.list_model_context_types()
-    return [
+    return tuple(
         reference
-        for reference in selected_skills.references
+        for reference in selected_skills
         if reference.skill_type in model_context_types
-    ]
+    )
 
 
 def _score_model(

@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
-from typing import Callable, cast
+from typing import Callable, Mapping, cast
 
 from skill.runners.loaded import (
     LoadedSkill,
@@ -13,40 +12,28 @@ from skill.runners.loaded import (
 )
 from skill.runners.registry import SkillLoadRequest
 from core.provider.chat import Message
-from core.task.planning import TaskPlanningDecision, TaskStep
+from core.task.planning import decide_task_planning
 from core.session import RuntimeSession
-from core.task.decisions import TaskSchedule
+from core.task.route_plan import (
+    RoutePlan,
+    choose_models_for_route,
+    choose_subagents,
+    resolve_required_features,
+    resolve_task_purpose,
+    select_model_context_skills,
+)
 from core.task.models import SubAgentResult, TaskRequest
 from core.task.tools import RuntimeTools, RuntimeToolsContext
 from skill.disclosure import SkillIndexEntry, SkillReference
+from skill.kinds.model import ModelProfile
 
 
-@dataclass(frozen=True)
-class LoadedPlanner:
-    policy: PlanningPolicy
-    contribution: LoadedSkill
-    skill_key: str
-
-
-@dataclass(frozen=True)
-class SelectedTaskSkills:
-    scene_reference: SkillReference
-    scene_policy: ScenePolicy
-    scene_contribution: LoadedSkill
-    references: tuple[SkillReference, ...]
-
-    def list_references(self, skill_type: str) -> list[SkillReference]:
-        return [
-            reference
-            for reference in self.references
-            if reference.skill_type == skill_type
-        ]
-
-
-def select_task_skills(
+def prepare_route_plan(
     request: TaskRequest,
     session: RuntimeSession,
-) -> SelectedTaskSkills:
+    model_profiles: list[ModelProfile],
+    environment: Mapping[str, str],
+) -> RoutePlan:
     disclosure = session.require_skill_disclosure()
     scene_reference = disclosure.select_skill_scene_for_prompt(
         request.prompt,
@@ -75,28 +62,79 @@ def select_task_skills(
             "scene references Skill types without registered SkillRunners: "
             + ", ".join(unsupported_types)
         )
-    references = disclosure.select_skill_references_for_prompt(
-        request.prompt,
-        enabled,
-        allowed_types,
-    )
-    return SelectedTaskSkills(
-        scene_reference,
-        scene_policy,
-        scene_contribution,
-        tuple(references),
-    )
-
-
-def load_workflow_policy(
-    session: RuntimeSession,
-    selected_skills: SelectedTaskSkills,
-) -> TaskPolicy:
-    entries = _selected_entries(session, selected_skills, "workflow")
-    if not entries:
-        raise RuntimeError(
-            f"scene:{selected_skills.scene_policy.name} does not select a workflow Skill"
+    references = tuple(
+        disclosure.select_skill_references_for_prompt(
+            request.prompt,
+            enabled,
+            allowed_types,
         )
+    )
+    workflow_reference, workflow_policy = _load_route_workflow(session, references)
+    planner_reference, planner_policy, planner_contribution = _load_route_planner(
+        session,
+        references,
+    )
+    planning = decide_task_planning(
+        planner_policy,
+        request.prompt,
+        workflow_mode=workflow_policy.mode,
+        required_features=request.required_features,
+    )
+    purpose = resolve_task_purpose(
+        model_profiles,
+        "planning" if planning.should_plan else request.purpose,
+        request.prompt,
+    )
+    required_features = resolve_required_features(request, workflow_policy)
+    model_choices = choose_models_for_route(
+        session,
+        model_profiles,
+        environment,
+        purpose,
+        required_features,
+        request.prompt,
+    )
+    available_subagents = (
+        request.subagents.list_subagents() if request.include_subagents else []
+    )
+    subagent_names, subagent_reasons = choose_subagents(
+        request.prompt,
+        available_subagents,
+    )
+    return RoutePlan(
+        purpose=purpose,
+        required_features=required_features,
+        model_choices=model_choices,
+        scene=scene_reference,
+        skills=references,
+        workflow=workflow_reference,
+        planner=planner_reference,
+        model_context_skills=(
+            ()
+            if planning.should_plan
+            else select_model_context_skills(references, session)
+        ),
+        subagent_names=() if planning.should_plan else tuple(subagent_names),
+        subagent_reasons=() if planning.should_plan else tuple(subagent_reasons),
+        mode="planning" if planning.should_plan else "direct",
+        planning_required=planning.should_plan,
+        planning_reasons=(
+            planning.reasons if planning.should_plan else ("direct one-step plan",)
+        ),
+        workflow_policy=workflow_policy,
+        scene_contribution=scene_contribution,
+        planner_policy=planner_policy,
+        planner_contribution=planner_contribution,
+    )
+
+
+def _load_route_workflow(
+    session: RuntimeSession,
+    references: tuple[SkillReference, ...],
+) -> tuple[SkillReference, TaskPolicy]:
+    entries = _selected_entries(session, references, "workflow")
+    if not entries:
+        raise RuntimeError("selected scene does not select a workflow Skill")
     if len(entries) > 1:
         keys = ", ".join(entry.reference.key for entry in entries)
         raise ValueError(f"select only one workflow Skill: {keys}")
@@ -104,16 +142,16 @@ def load_workflow_policy(
     contribution = _load_skill(session, entry.reference)
     if contribution.task_policy is None:
         raise TypeError("workflow Skill runner did not provide task rules")
-    return contribution.task_policy
+    return entry.reference, contribution.task_policy
 
 
-def load_selected_planner(
+def _load_route_planner(
     session: RuntimeSession,
-    selected_skills: SelectedTaskSkills,
-) -> LoadedPlanner | None:
-    entries = _selected_entries(session, selected_skills, "planner")
+    references: tuple[SkillReference, ...],
+) -> tuple[SkillReference | None, PlanningPolicy | None, LoadedSkill | None]:
+    entries = _selected_entries(session, references, "planner")
     if not entries:
-        return None
+        return None, None, None
     if len(entries) > 1:
         keys = ", ".join(entry.reference.key for entry in entries)
         raise ValueError(f"select only one planner Skill: {keys}")
@@ -121,58 +159,33 @@ def load_selected_planner(
     contribution = _load_skill(session, entry.reference)
     if contribution.planning_policy is None:
         raise TypeError("planner SkillRunner did not contribute a planning policy")
-    return LoadedPlanner(
-        policy=contribution.planning_policy,
-        contribution=contribution,
-        skill_key=entry.reference.key,
-    )
-
-
-def apply_planning_to_schedule(
-    schedule: TaskSchedule,
-    planner: LoadedPlanner | None,
-    planning: TaskPlanningDecision,
-) -> TaskSchedule:
-    return replace(
-        schedule,
-        skill_references=() if planning.should_plan else schedule.skill_references,
-        subagent_names=() if planning.should_plan else schedule.subagent_names,
-        subagent_reasons=() if planning.should_plan else schedule.subagent_reasons,
-        execution_mode="task_plan",
-        planner=(
-            planner.skill_key
-            if planning.should_plan and planner is not None
-            else None
-        ),
-        planning_reasons=(
-            planning.reasons
-            if planning.should_plan
-            else ("direct one-step plan",)
-        ),
-    )
+    return entry.reference, contribution.planning_policy, contribution
 
 
 def load_background_contributions(
     session: RuntimeSession,
-    selected_skills: SelectedTaskSkills,
+    route_plan: RoutePlan,
     send_text_model_messages: Callable[[list[Message]], str],
 ) -> list[LoadedSkill]:
-    return [selected_skills.scene_contribution] + [
+    contributions = [route_plan.scene_contribution] + [
         _load_skill(
             session,
             entry.reference,
             send_text_model_messages=send_text_model_messages,
         )
-        for entry in _selected_entries(session, selected_skills, "memory")
+        for entry in _selected_entries(session, route_plan.skills, "memory")
     ]
+    if route_plan.planner_contribution is not None:
+        contributions.append(route_plan.planner_contribution)
+    return contributions
 
 
-def load_scheduled_skill_contributions(
+def load_route_skill_contributions(
     session: RuntimeSession,
-    schedule: TaskSchedule,
+    route_plan: RoutePlan,
 ) -> list[LoadedSkill]:
     contributions: list[LoadedSkill] = []
-    for reference in schedule.skill_references:
+    for reference in route_plan.model_context_skills:
         contribution = _load_skill(session, reference)
         if contribution.model_context is None:
             raise ValueError(
@@ -209,7 +222,7 @@ def create_runtime_tools(
 def run_task_step_subagents(
     request: TaskRequest,
     session: RuntimeSession,
-    schedule: TaskSchedule,
+    route_plan: RoutePlan,
 ) -> list[SubAgentResult]:
     return [
         _subagent_result_from_dict(
@@ -219,7 +232,7 @@ def run_task_step_subagents(
                 session,
             )
         )
-        for name in schedule.subagent_names
+        for name in route_plan.subagent_names
     ]
 
 
@@ -280,13 +293,14 @@ def _load_skill(
 
 def _selected_entries(
     session: RuntimeSession,
-    selected_skills: SelectedTaskSkills,
+    references: tuple[SkillReference, ...],
     skill_type: str,
 ) -> list[SkillIndexEntry]:
     index = session.require_skill_index()
     return [
         index.require_skill(reference.name, skill_type)
-        for reference in selected_skills.list_references(skill_type)
+        for reference in references
+        if reference.skill_type == skill_type
     ]
 
 

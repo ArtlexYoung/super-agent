@@ -153,7 +153,7 @@ export interface BootstrapData {
 export interface RunInsight {
   schema_version: number
   snapshot: RunSnapshot
-  schedule: Record<string, unknown>
+  route_plan: Record<string, unknown>
   task_plan: Record<string, unknown>
   task_steps: Array<Record<string, unknown>>
   model_calls: Array<Record<string, unknown>>

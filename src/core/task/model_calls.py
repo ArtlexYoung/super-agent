@@ -21,7 +21,7 @@ from core.state.evaluation import estimate_evaluation_token_usage
 from core.task.routing import list_model_routing_stats
 from core.session import RuntimeSession
 from core.state.store import RuntimeStore
-from core.task.decisions import ModelChoice, rank_model_choices
+from core.task.route_plan import ModelChoice, rank_model_choices
 from core.task.models import TaskRequest
 from skill.kinds.model import ModelProfile
 from skill.manifest import Skill
@@ -106,7 +106,7 @@ class AdaptiveModelCalls:
         tools: list[ToolDefinition] | None = None,
     ) -> ModelResponse:
         if not choices:
-            raise RuntimeError("task schedule contains no model choices")
+            raise RuntimeError("RoutePlan contains no model choices")
         choice = choices[0]
         provider = self._prepare_model_attempt(choice, 1, context)
         evidence = _create_call_evidence(choice, 1, context, messages, tools)

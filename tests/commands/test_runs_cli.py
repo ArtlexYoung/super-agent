@@ -94,7 +94,7 @@ class RunsCliTests(unittest.TestCase):
             self.assertEqual("completed", status["runs"][0]["status"])
             self.assertEqual(0, explanation_code)
             self.assertEqual(run_id, explanation["snapshot"]["run_id"])
-            self.assertEqual("answer", explanation["schedule"]["purpose"])
+            self.assertEqual("answer", explanation["route_plan"]["purpose"])
             self.assertEqual("completed", explanation["model_calls"][0]["status"])
             self.assertEqual(1, explanation["model_calls"][0]["call_id"])
             self.assertEqual(
@@ -150,7 +150,7 @@ class RunsCliTests(unittest.TestCase):
 
             explanation = explanation_output.getvalue()
             self.assertEqual(0, code)
-            self.assertIn("schedule\tpurpose=answer", explanation)
+            self.assertIn("route-plan\tpurpose=answer", explanation)
             self.assertIn("model-call\t1\tprofile=model:environment", explanation)
             self.assertIn("freshness\t", explanation)
 

@@ -185,6 +185,12 @@ class SkillRunnerRuntimeTests(unittest.TestCase):
             self.assertTrue(hasattr(agent.runtime, "_create_user_model_runtime"))
             self.assertFalse(hasattr(agent.runtime, "task_scheduler"))
             self.assertFalse(hasattr(agent.runtime, "model_router"))
+            route_source = Path("src/core/task/route_plan.py").read_text(
+                encoding="utf-8"
+            )
+            self.assertNotIn("TaskSchedule", route_source)
+            self.assertNotIn("TaskSkillSelection", route_source)
+            self.assertFalse(Path("src/core/task/decisions.py").exists())
 
     def test_core_exposes_one_task_entry_method(self) -> None:
         tree = ast.parse(Path("src/core/engine.py").read_text(encoding="utf-8"))
@@ -197,7 +203,7 @@ class SkillRunnerRuntimeTests(unittest.TestCase):
     def test_runtime_does_not_import_concrete_skill_kinds(self) -> None:
         for path in (
             Path("src/core/task/loop.py"),
-            Path("src/core/task/decisions.py"),
+            Path("src/core/task/route_plan.py"),
             Path("src/core/task/tools.py"),
         ):
             source = path.read_text(encoding="utf-8")

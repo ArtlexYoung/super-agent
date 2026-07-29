@@ -83,8 +83,8 @@ Agent        用清晰的 Python 代码组合一切
 Agent.run
   -> Core 创建唯一运行会话
   -> 渐进式披露选择一个任务场景及其 Skill
-  -> SkillRunner 加载已选 Skill
-  -> Core 选择模型并执行任务
+  -> Core 为场景、Skill、工作流、规划器和模型创建唯一 RoutePlan
+  -> SkillRunner 加载计划中的 Skill，Core 执行该路由
   -> 记录事件、评价、保鲜度和进化证据
 ```
 

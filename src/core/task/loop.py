@@ -18,36 +18,26 @@ from core.task.model_calls import (
 )
 from core.task.planning import (
     TaskPlan,
-    TaskPlanningDecision,
     TaskStep,
     build_task_step_prompt,
     build_task_planning_messages,
     create_direct_task_plan,
-    create_task_step_policy,
-    decide_task_planning,
     read_task_plan,
 )
 from core.actions import ActionRequest
 from core.session import RuntimeSession
 from core.state.store import RuntimeStore
-from core.task.decisions import (
-    TaskSkillSelection,
-    TaskSchedule,
-    create_task_step_schedule,
-    create_task_schedule,
+from core.task.route_plan import (
+    RoutePlan,
+    create_task_step_route_plan,
 )
 from core.task.preparation import (
-    LoadedPlanner,
-    SelectedTaskSkills,
-    apply_planning_to_schedule,
     build_system_prompt,
     create_runtime_tools,
     load_background_contributions,
-    load_selected_planner,
-    load_scheduled_skill_contributions,
-    load_workflow_policy,
+    load_route_skill_contributions,
+    prepare_route_plan,
     run_task_step_subagents,
-    select_task_skills,
 )
 from core.task.models import SubAgentResult, TaskRequest, TaskResult
 from core.task.tools import RuntimeTools
@@ -55,16 +45,15 @@ from skill.kinds.model import ModelProfile
 from skill.manifest import Skill
 
 
-ScheduleListener = Callable[[TaskSchedule], None]
+RoutePlanListener = Callable[[RoutePlan], None]
 
 
 @dataclass(frozen=True)
 class _TaskExecutionContext:
     request: TaskRequest
     session: RuntimeSession
-    workflow: TaskPolicy
+    route_plan: RoutePlan
     background_contributions: list[LoadedSkill]
-    selected_skills: SelectedTaskSkills
 
 
 @dataclass
@@ -98,64 +87,41 @@ class AdaptiveTaskLoop:
         self,
         request: TaskRequest,
         session: RuntimeSession,
-        before_model_calls: ScheduleListener,
+        before_model_calls: RoutePlanListener,
     ) -> TaskResult:
-        selected_skills = select_task_skills(request, session)
-        workflow = load_workflow_policy(session, selected_skills)
-        planner = load_selected_planner(session, selected_skills)
-        planning = decide_task_planning(
-            None if planner is None else planner.policy,
-            request.prompt,
-            workflow_mode=workflow.mode,
-            required_features=request.required_features,
-        )
-        schedule_request = (
-            replace(request, purpose="planning") if planning.should_plan else request
-        )
-        schedule = create_task_schedule(
-            schedule_request,
+        route_plan = prepare_route_plan(
+            request,
             session,
-            workflow,
-            _schedule_skill_selection(selected_skills),
-            model_profiles=self.model_profiles,
-            environment=self.provider_pool.environment,
+            self.model_profiles,
+            self.provider_pool.environment,
         )
-        schedule = apply_planning_to_schedule(schedule, planner, planning)
-        session.record_event("task.scheduled", schedule.to_dict())
-        self._select_primary_model(session, schedule)
-        before_model_calls(schedule)
+        session.record_event("task.scheduled", route_plan.to_dict())
+        self._select_primary_model(session, route_plan)
+        before_model_calls(route_plan)
 
         background = load_background_contributions(
             session,
-            selected_skills,
+            route_plan,
             self.create_text_model(
                 session.store,
                 "memory_organization",
             ).send_messages,
         )
-        if planner is not None:
-            background.append(planner.contribution)
         context = _TaskExecutionContext(
             request,
             session,
-            workflow,
+            route_plan,
             background,
-            selected_skills,
         )
-        if planning.should_plan:
-            if planner is None:
+        if route_plan.planning_required:
+            if route_plan.planner_policy is None:
                 raise RuntimeError("task requires planning but no Planner Skill is available")
-            plan = self._create_planner_task_plan(
-                context,
-                schedule,
-                planner,
-                planning,
-            )
+            plan = self._create_planner_task_plan(context)
             return self._run_task_plan(context, plan)
         plan = create_direct_task_plan(
             request.prompt,
-            schedule.purpose,
-            schedule.required_features,
+            route_plan.purpose,
+            route_plan.required_features,
         )
         session.record_event(
             "task.plan.created",
@@ -165,40 +131,41 @@ class AdaptiveTaskLoop:
                 **plan.to_dict(),
             },
         )
-        return self._run_task_plan(context, plan, schedule)
+        return self._run_task_plan(context, plan, route_plan)
 
     def _create_planner_task_plan(
         self,
         context: _TaskExecutionContext,
-        schedule: TaskSchedule,
-        planner: LoadedPlanner,
-        planning: TaskPlanningDecision,
     ) -> TaskPlan:
         request = context.request
         session = context.session
+        route_plan = context.route_plan
+        planner_policy = route_plan.planner_policy
+        if planner_policy is None or route_plan.planner is None:
+            raise RuntimeError("task requires planning but no Planner Skill is available")
         subagents = (
             request.subagents.list_subagents() if request.include_subagents else []
         )
         response = self.model_calls.call_model(
             build_task_planning_messages(
-                planner.policy,
+                planner_policy,
                 request,
                 subagents=subagents,
                 model_profiles=self.model_profiles,
             ),
-            schedule.model_choices,
+            route_plan.model_choices,
             ModelCallContext("planning", session.record_event, session.select_model),
         )
         plan = read_task_plan(
             response.text,
-            planner.policy,
+            planner_policy,
             {str(item.get("name", "")) for item in subagents},
         )
         session.record_event(
             "task.plan.created",
             {
-                "planner": planner.skill_key,
-                "reasons": list(planning.reasons),
+                "planner": route_plan.planner.key,
+                "reasons": list(route_plan.planning_reasons),
                 **plan.to_dict(),
             },
         )
@@ -208,7 +175,7 @@ class AdaptiveTaskLoop:
         self,
         context: _TaskExecutionContext,
         plan: TaskPlan,
-        direct_schedule: TaskSchedule | None = None,
+        direct_route_plan: RoutePlan | None = None,
     ) -> TaskResult:
         progress = _TaskProgress(
             completed_results=[],
@@ -223,13 +190,13 @@ class AdaptiveTaskLoop:
                 step,
                 step_number,
                 progress,
-                direct_schedule,
+                direct_route_plan,
             )
             progress.completed_results.append(text)
-            direct_schedule = None
+            direct_route_plan = None
         result = TaskResult(
             text=progress.completed_results[-1],
-            workflow=context.workflow.name,
+            workflow=context.route_plan.workflow_policy.name,
             skills=_used_skill_names(progress.skills, progress.tools),
             subagent_results=progress.subagent_results,
             warning_messages=context.request.warning_messages,
@@ -245,31 +212,29 @@ class AdaptiveTaskLoop:
         step: TaskStep,
         step_number: int,
         progress: _TaskProgress,
-        schedule: TaskSchedule | None,
+        route_plan: RoutePlan | None,
     ) -> tuple[str, str]:
         request = context.request
         session = context.session
-        step_policy = create_task_step_policy(context.workflow, step)
-        selected_schedule = schedule or create_task_step_schedule(
+        selected_route = route_plan or create_task_step_route_plan(
             step,
             request,
             session,
-            _schedule_skill_selection(context.selected_skills),
-            workflow=step_policy,
-            model_profiles=self.model_profiles,
-            environment=self.provider_pool.environment,
+            context.route_plan,
+            self.model_profiles,
+            self.provider_pool.environment,
         )
         session.record_event(
             "task.step.scheduled",
             {
                 "step": step_number,
                 "instruction": step.instruction,
-                **selected_schedule.to_dict(),
+                **selected_route.to_dict(),
             },
         )
-        contributions = load_scheduled_skill_contributions(
+        contributions = load_route_skill_contributions(
             session,
-            selected_schedule,
+            selected_route,
         )
         combined = context.background_contributions + contributions
         skills = [
@@ -281,7 +246,7 @@ class AdaptiveTaskLoop:
         step_subagents = run_task_step_subagents(
             delegation_request,
             session,
-            selected_schedule,
+            selected_route,
         )
         tools = create_runtime_tools(request, session, combined)
         step_prompt = build_task_step_prompt(
@@ -301,11 +266,16 @@ class AdaptiveTaskLoop:
             combined,
             step_subagents,
         )
-        messages = build_model_messages(step_request, step_policy, skills, system)
+        messages = build_model_messages(
+            step_request,
+            selected_route.workflow_policy,
+            skills,
+            system,
+        )
         text, stop_reason = self._run_model_loop(
             session,
-            step_policy,
-            selected_schedule,
+            selected_route.workflow_policy,
+            selected_route,
             tools,
             messages,
         )
@@ -331,19 +301,19 @@ class AdaptiveTaskLoop:
         self,
         session: RuntimeSession,
         workflow: TaskPolicy,
-        schedule: TaskSchedule,
+        route_plan: RoutePlan,
         tools: RuntimeTools,
         messages: list[Message],
     ) -> tuple[str, str]:
         context = ModelCallContext(
-            purpose=schedule.purpose,
+            purpose=route_plan.purpose,
             record_event=session.record_event,
             select_model=session.select_model,
         )
         if not workflow.uses_tools:
             response = self.model_calls.call_model(
                 messages,
-                schedule.model_choices,
+                route_plan.model_choices,
                 context,
             )
             return response.text, "completed"
@@ -351,7 +321,7 @@ class AdaptiveTaskLoop:
         for step in range(1, workflow.max_steps + 1):
             response = self.model_calls.call_model(
                 messages,
-                schedule.model_choices,
+                route_plan.model_choices,
                 context,
                 tools=tools.get_tool_definitions(),
             )
@@ -369,9 +339,9 @@ class AdaptiveTaskLoop:
     def _select_primary_model(
         self,
         session: RuntimeSession,
-        schedule: TaskSchedule,
+        route_plan: RoutePlan,
     ) -> None:
-        profile = schedule.selected_model
+        profile = route_plan.selected_model
         session.select_model(
             profile,
             self.provider_pool.get_chat_provider(profile.key, profile.connection),
@@ -387,15 +357,6 @@ def _record_disclosed_skills(
             "names": [skill.manifest.name for skill in skills],
             "index_path": str(session.require_skill_index().index_path),
         },
-    )
-
-
-def _schedule_skill_selection(
-    selected_skills: SelectedTaskSkills,
-) -> TaskSkillSelection:
-    return TaskSkillSelection(
-        selected_skills.scene_reference.key,
-        selected_skills.references,
     )
 
 

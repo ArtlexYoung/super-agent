@@ -240,7 +240,7 @@ def _print_run_explanation(explanation: dict[str, object]) -> None:
                 f"disclosure\t{data.get('skill_key', '')}\t{data.get('stage', '')}"
                 f"\tcache_hit={str(data.get('cache_hit', False)).lower()}"
             )
-    _print_schedule_insight(explanation.get("schedule"))
+    _print_route_plan_insight(explanation.get("route_plan"))
     _print_task_plan_insight(
         explanation.get("task_plan"),
         explanation.get("task_steps"),
@@ -251,17 +251,17 @@ def _print_run_explanation(explanation: dict[str, object]) -> None:
     _print_evolution_insight(explanation.get("evolution"))
 
 
-def _print_schedule_insight(value: object) -> None:
+def _print_route_plan_insight(value: object) -> None:
     if not isinstance(value, dict):
         return
     print(
-        f"schedule\tpurpose={value.get('purpose', '')}"
+        f"route-plan\tpurpose={value.get('purpose', '')}"
         f"\tworkflow={value.get('workflow', '')}"
         f"\tfeatures={','.join(_string_items(value.get('required_features')))}"
     )
     for model in _object_items(value.get("models")):
         print(
-            f"scheduled-model\t{model.get('key', '')}"
+            f"route-model\t{model.get('key', '')}"
             f"\tscore={model.get('score', '')}"
             f"\treasons={'; '.join(_string_items(model.get('reasons')))}"
         )
