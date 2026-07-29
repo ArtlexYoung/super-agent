@@ -487,6 +487,21 @@ Status: implemented.
 - Reuse the canonical evolution serialization in learning results instead of maintaining a
   smaller duplicate state projection.
 
+## v0.0.99: Reproducible Skill-First Release Gate
+
+Status: implemented.
+
+- Add release assertions for no-scene direct execution, one selected scene, independent
+  per-Agent scenes, and failures before any Provider call.
+- Prove that a requested tool feature without a workflow fails explicitly and that model
+  failures never retry, switch Providers, remove features, or substitute mock behavior.
+- Lock the complete built-in Skill resource set into the packaged `skill` source tree and
+  reject the return of removed compatibility and one-call evolution modules.
+- Make the English and Chinese README files lead with the zero-configuration CLI and Python
+  paths while moving internal details to focused documentation.
+- Require the full Python tests, bytecode compilation, Web lint, typecheck, production
+  build, and package artifact inspection before the release tag is created.
+
 ## Release Gate
 
 The project will not move to `0.1.x` because of feature count. The gate is a reproducible

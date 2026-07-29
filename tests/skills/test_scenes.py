@@ -113,9 +113,10 @@ class SkillSceneTests(unittest.TestCase):
 
     def test_agent_can_restrict_or_disable_scenes_in_code(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
+            provider = _CountingProvider("finished")
             agent = Agent(
                 AgentConfig.create_default(tmp),
-                provider=MockProvider("finished"),
+                provider=provider,
                 use_storage=True,
             )
             agent.use_only_scenes("code")
@@ -140,6 +141,7 @@ class SkillSceneTests(unittest.TestCase):
             self.assertIsNone(direct_plan["scene"])
             self.assertIsNone(direct_plan["workflow"])
             self.assertEqual("direct", direct.workflow)
+            self.assertEqual(2, provider.call_count)
 
     def test_run_can_disable_scenes_without_changing_agent_policy(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -249,9 +251,10 @@ class SkillSceneTests(unittest.TestCase):
             )
             self.assertEqual(["prompt:common"], [item.key for item in references])
 
+            provider = _CountingProvider("finished")
             result = Agent(
                 AgentConfig.create_default(root),
-                provider=MockProvider("finished"),
+                provider=provider,
             ).run("hello", scene="answer")
             plan = next(
                 event.data
@@ -261,18 +264,21 @@ class SkillSceneTests(unittest.TestCase):
             self.assertEqual("scene:answer", plan["scene"])
             self.assertIsNone(plan["workflow"])
             self.assertEqual("direct", result.workflow)
+            self.assertEqual(1, provider.call_count)
 
     def test_missing_scene_reference_fails_without_fallback(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_scene_skill(root, "broken", ["workflow:not-there"], [])
+            provider = _CountingProvider("unused")
             agent = Agent(
                 AgentConfig.create_default(root),
-                provider=MockProvider("unused"),
+                provider=provider,
             )
 
             with self.assertRaisesRegex(KeyError, "workflow:not-there"):
                 agent.run("hello", scene="broken")
+            self.assertEqual(0, provider.call_count)
 
     def test_scene_reference_without_registered_loader_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -427,6 +433,20 @@ def _write_scene_skill(
         ),
         encoding="utf-8",
     )
+
+
+class _CountingProvider(MockProvider):
+    def __init__(self, response: str) -> None:
+        super().__init__(response)
+        self.call_count = 0
+
+    def send_chat_messages(self, messages, model):
+        self.call_count += 1
+        return super().send_chat_messages(messages, model)
+
+    def send_chat_messages_with_tools(self, messages, model, tools):
+        self.call_count += 1
+        return super().send_chat_messages_with_tools(messages, model, tools)
 
 
 if __name__ == "__main__":

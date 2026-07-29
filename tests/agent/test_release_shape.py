@@ -60,6 +60,49 @@ class ReleaseShapeTests(unittest.TestCase):
         )
         self.assertEqual(["src"], wheel["sources"])
 
+    def test_builtin_skill_resources_are_complete_and_packaged(self) -> None:
+        root = Path("src/skill/builtin")
+        expected = {
+            "memory/code/skill.toml",
+            "memory/default/skill.toml",
+            "planner/code/SKILL.md",
+            "planner/code/skill.toml",
+            "planner/default/SKILL.md",
+            "planner/default/skill.toml",
+            "prompt/code/SKILL.md",
+            "prompt/code/skill.toml",
+            "prompt/common/SKILL.md",
+            "prompt/common/skill.toml",
+            "scene/code/skill.toml",
+            "scene/common/skill.toml",
+            "scene_manager/default/SKILL.md",
+            "scene_manager/default/skill.toml",
+            "scheduler/default/skill.toml",
+            "workflow/code/skill.toml",
+            "workflow/direct/skill.toml",
+        }
+        packaged = {
+            str(path.relative_to(root))
+            for path in root.rglob("*")
+            if path.is_file()
+        }
+
+        self.assertEqual(expected, packaged)
+        wheel = self.project["tool"]["hatch"]["build"]["targets"]["wheel"]
+        self.assertIn("src/skill", wheel["only-include"])
+
+    def test_removed_evolution_shells_do_not_return(self) -> None:
+        self.assertFalse(Path("src/skill/evolution/service.py").exists())
+        self.assertFalse(Path("src/skill/evolution/change/revision.py").exists())
+        source = Path("src/skill/evolution/change/manager.py").read_text(
+            encoding="utf-8"
+        )
+        cli_source = Path("src/adapter/cli_adapter/skills.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertNotIn("def evolve_skill", source)
+        self.assertNotIn('add_parser("evolve"', cli_source)
+
     def test_removed_source_layouts_do_not_return(self) -> None:
         removed_paths = [
             "src/builtin_skills",

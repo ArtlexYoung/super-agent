@@ -75,6 +75,7 @@ class SubAgentTests(unittest.TestCase):
             root = Path(tmp)
             main = _agent(root, "main", "main-result")
             coder = _agent(root, "coder", "coder-result")
+            main.use_only_scenes("common")
             coder.use_only_scenes("code")
             main.add_subagent(coder, name="coder", triggers=["code"])
 
@@ -86,6 +87,14 @@ class SubAgentTests(unittest.TestCase):
                 for event in coder.runtime.create_event_store().read_run_events(child_run_id)
                 if event.event_type == "task.scheduled"
             )
+            parent_plan = next(
+                event.data
+                for event in main.runtime.create_event_store().read_run_events(
+                    result.run_id
+                )
+                if event.event_type == "task.scheduled"
+            )
+            self.assertEqual("scene:common", parent_plan["scene"])
             self.assertEqual("scene:code", child_plan["scene"])
 
     def test_subagent_runs_do_not_learn_until_explicitly_requested(self) -> None:

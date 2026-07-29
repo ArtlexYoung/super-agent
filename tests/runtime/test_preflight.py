@@ -7,6 +7,7 @@ from super_agent import Agent, AgentRunOptions
 from core.config import AgentConfig
 from core.checks import ActionEffect
 from core.provider.chat import MockProvider
+from core.models import SubagentCallbacks, Task
 from skill.task.preflight import TaskPreflightError
 from skill.loaders.loaded import LoadedSkill, SkillAction, SkillTool
 
@@ -103,6 +104,32 @@ class TaskPreflightTests(unittest.TestCase):
             self.assertIn("skill:task-completed", problem.target)
             self.assertEqual([], provider.last_messages)
 
+    def test_tool_request_without_workflow_fails_before_provider_call(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            provider = _CountingProvider()
+            agent = Agent(
+                AgentConfig.create_default(Path(tmp)),
+                provider=provider,
+                use_storage=False,
+            )
+            request = Task(
+                prompt="Use a tool",
+                messages=[],
+                include_subagents=False,
+                warning_messages=[],
+                subagents=SubagentCallbacks(lambda: [], _reject_subagent_run),
+                required_features=("text", "tools"),
+                use_scenes=False,
+            )
+
+            with self.assertRaisesRegex(
+                ValueError,
+                "task requires tools but no workflow Skill was selected",
+            ):
+                agent.runtime.run_task(request)
+
+            self.assertEqual(0, provider.call_count)
+
 
 class _ServiceSkillLoader:
     name = "service-test"
@@ -144,6 +171,24 @@ class _ActionSkillLoader:
                 "memory:test",
             ),
         )
+
+
+class _CountingProvider(MockProvider):
+    def __init__(self) -> None:
+        super().__init__("must not run")
+        self.call_count = 0
+
+    def send_chat_messages(self, messages, model):
+        self.call_count += 1
+        return super().send_chat_messages(messages, model)
+
+    def send_chat_messages_with_tools(self, messages, model, tools):
+        self.call_count += 1
+        return super().send_chat_messages_with_tools(messages, model, tools)
+
+
+def _reject_subagent_run(name: str, prompt: str, session: object) -> dict[str, object]:
+    raise AssertionError(f"unexpected subagent call: {name} {prompt} {session}")
 
 
 def _write_skill(root: Path, skill_type: str, name: str) -> None:
