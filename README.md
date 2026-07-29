@@ -151,7 +151,8 @@ An Agent can create a complete user-private scene during a tool-using conversati
 `create_skill_scene`. Application code can perform the same explicit operation:
 
 ```python
-from super_agent import Agent, SkillSceneInput
+from skill.kinds.scene import SkillSceneInput
+from super_agent import Agent
 
 alice = Agent().for_user("alice")
 alice.skills.create_scene(
@@ -320,5 +321,6 @@ pnpm --dir web typecheck
 pnpm --dir web build
 ```
 
-The public Python API is exported from `super_agent`. Internal import compatibility is
-intentionally not provided during `0.0.x`.
+`super_agent` exports the small everyday Runtime API. Advanced adapters, concrete storage
+backends, and Skill-type management APIs are imported from their owning modules. Internal
+import compatibility is intentionally not provided during `0.0.x`.

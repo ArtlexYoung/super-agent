@@ -25,8 +25,6 @@ from core.task.models import (
     TaskResult,
 )
 from core.session import RuntimeResources, RuntimeSession
-from core.storage import StorageBackend, create_storage_backend
-from core.state.store import RuntimeStore
 from skill.kinds.model import (
     ModelProfile,
     create_direct_provider_profile,
@@ -35,6 +33,7 @@ from skill.kinds.model import (
 )
 
 if TYPE_CHECKING:
+    from core.storage import StorageBackend
     from skill.manifest import SkillManifest
 
 
@@ -75,29 +74,29 @@ class Agent:
         if storage is not None and not use_storage:
             raise ValueError("storage cannot be combined with use_storage=False")
         self.config = _load_agent_config(config)
-        self.storage = (
-            None
-            if not use_storage
-            else storage
-            or create_storage_backend(
+        self.storage = storage
+        if use_storage and self.storage is None:
+            from core.storage import create_storage_backend
+
+            self.storage = create_storage_backend(
                 self.config.storage.backend,
                 str(self.config.storage.path),
                 self.config.storage.url_env,
             )
-        )
         self.user_secrets = UserSecretResolver(secret_lookup)
+        bootstrap_store = None
+        if self.storage is not None:
+            from core.state.store import RuntimeStore
+
+            bootstrap_store = RuntimeStore(
+                self.storage,
+                self.config.storage.path,
+                LOCAL_USER_ID,
+                self.config.agent.name,
+            )
         bootstrap_disclosure = create_progressive_skill_disclosure(
             self.config,
-            store=(
-                None
-                if self.storage is None
-                else RuntimeStore(
-                    self.storage,
-                    self.config.storage.path,
-                    LOCAL_USER_ID,
-                    self.config.agent.name,
-                )
-            ),
+            store=bootstrap_store,
         )
         bootstrap_index = bootstrap_disclosure.prepare_skill_index()
         self.model_profiles = read_model_profiles(

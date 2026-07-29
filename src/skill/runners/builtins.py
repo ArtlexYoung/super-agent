@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import asdict
+from typing import TYPE_CHECKING
 
 from skill.runners.registry import SkillRunner, SkillLoadRequest
 from skill.runners.loaded import (
@@ -14,15 +15,11 @@ from skill.runners.loaded import (
     read_tool_object,
 )
 from core.actions import ActionEffect
-from skill.kinds.mcp import McpServer, create_mcp_server_from_skill_disclosure
-from skill.kinds.memory import (
-    MiniMemory,
-    create_memory_from_skill_disclosure,
-)
-from skill.kinds.planner import create_planning_policy_from_skill
-from skill.kinds.scene import create_scene_creation_tool, create_scene_policy_from_skill
-from skill.kinds.workflow import create_workflow_policy_from_skill
 from skill.manifest import Skill
+
+if TYPE_CHECKING:
+    from skill.kinds.mcp import McpServer
+    from skill.kinds.memory import MiniMemory
 
 
 class PromptSkillRunner:
@@ -51,6 +48,8 @@ class McpSkillRunner:
     adds_model_context = True
 
     def load_skill(self, request: SkillLoadRequest) -> LoadedSkill:
+        from skill.kinds.mcp import create_mcp_server_from_skill_disclosure
+
         opened = request.disclosure.open_skill(
             request.reference.name,
             self.skill_type,
@@ -77,6 +76,8 @@ class MemorySkillRunner:
     required_services = ("storage", "text_model")
 
     def load_skill(self, request: SkillLoadRequest) -> LoadedSkill:
+        from skill.kinds.memory import create_memory_from_skill_disclosure
+
         opened = request.disclosure.open_skill(
             request.reference.name,
             self.skill_type,
@@ -98,6 +99,8 @@ class WorkflowSkillRunner:
     adds_model_context = False
 
     def load_skill(self, request: SkillLoadRequest) -> LoadedSkill:
+        from skill.kinds.workflow import create_workflow_policy_from_skill
+
         opened = request.disclosure.open_skill(
             request.reference.name,
             self.skill_type,
@@ -114,6 +117,8 @@ class PlannerSkillRunner:
     adds_model_context = False
 
     def load_skill(self, request: SkillLoadRequest) -> LoadedSkill:
+        from skill.kinds.planner import create_planning_policy_from_skill
+
         opened = request.disclosure.open_skill(
             request.reference.name,
             self.skill_type,
@@ -130,6 +135,11 @@ class SceneSkillRunner:
     adds_model_context = False
 
     def load_skill(self, request: SkillLoadRequest) -> LoadedSkill:
+        from skill.kinds.scene import (
+            create_scene_creation_tool,
+            create_scene_policy_from_skill,
+        )
+
         opened = request.disclosure.open_skill(
             request.reference.name,
             self.skill_type,

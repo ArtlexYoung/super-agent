@@ -141,7 +141,8 @@ Agent 可以在允许使用工具的对话中调用 `create_skill_scene` 创建�
 代码也可以执行同一个显式操作：
 
 ```python
-from super_agent import Agent, SkillSceneInput
+from skill.kinds.scene import SkillSceneInput
+from super_agent import Agent
 
 alice = Agent().for_user("alice")
 alice.skills.create_scene(
@@ -298,4 +299,5 @@ pnpm --dir web typecheck
 pnpm --dir web build
 ```
 
-公共 Python API 统一从 `super_agent` 导出。`0.0.x` 阶段不提供内部导入兼容层。
+`super_agent` 只导出日常使用的小型 Runtime API。高级适配器、具体存储后端和 Skill 类型
+管理 API 从各自所属模块导入。`0.0.x` 阶段不提供内部导入兼容层。

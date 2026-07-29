@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from core.state.models import Conversation
-from core.storage import StorageEventQuery
-from core.state.store import RuntimeStore
+
+if TYPE_CHECKING:
+    from core.state.store import RuntimeStore
 
 
 _CORRECTION_MARKERS = (
@@ -75,6 +77,8 @@ def list_model_routing_stats(
     store: RuntimeStore,
     purpose: str | None = None,
 ) -> list[ModelRoutingStats]:
+    from core.storage import StorageEventQuery
+
     events = store.backend.read_events(
         StorageEventQuery(
             user_id=store.user_id,

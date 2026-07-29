@@ -5,26 +5,15 @@ from __future__ import annotations
 import hashlib
 from dataclasses import asdict, replace
 from time import perf_counter
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 
 from core.config import AgentConfig
 from core.identity import LOCAL_USER_ID, RunIdentity
-from core.state.learning import (
-    BUILTIN_LEARNING_SUBSCRIBER_NAMES,
-    create_learning_event_subscribers,
-    list_skill_updates_from_events,
-    record_task_learning_event,
-)
 from core.state.models import Conversation, RunEvent
 from core.state.subscribers import (
     RuntimeEventSubscriber,
     RuntimeEventSubscribers,
     get_runtime_event_subscriber_name,
-)
-from core.task.routing import (
-    ModelRoutingStats,
-    detect_implicit_conversation_feedback,
-    list_model_routing_stats,
 )
 from core.actions import ActionEffect, ActionRequest, ActionRunner
 from core.session import (
@@ -35,7 +24,6 @@ from core.session import (
     create_user_model_runtime,
 )
 from core.storage.values import encode_storage_data
-from core.state.store import RuntimeStore
 from core.task.route_plan import RoutePlan
 from core.task.preparation import RuntimeLockInput, create_runtime_lock
 from core.task.preflight import TaskPreflightError
@@ -43,7 +31,11 @@ from core.task.loop import list_run_actions
 from core.task.models import TaskRequest, TaskResult, TaskTrace
 from skill.kinds.model import ModelProfile
 from skill.manifest import SkillManifest
-from skill.evolution.manager import EvolutionModels, SkillEvolutionManager
+
+if TYPE_CHECKING:
+    from core.state.store import RuntimeStore
+    from core.task.routing import ModelRoutingStats
+    from skill.evolution.manager import SkillEvolutionManager
 
 
 class AgentRuntime:
@@ -85,6 +77,8 @@ class AgentRuntime:
             )
         )
         if session.store is not None:
+            from core.state.learning import create_learning_event_subscribers
+
             for subscriber in create_learning_event_subscribers(
                 session,
                 lambda: self.create_skill_updater(session.identity.user_id),
@@ -108,7 +102,7 @@ class AgentRuntime:
                 lambda route_plan: self._lock_task_context(session, route_plan),
             )
             learning_recorded = True
-            record_task_learning_event(
+            _record_task_learning(
                 session,
                 enabled=request.learn_from_run,
                 prompt=request.prompt,
@@ -117,9 +111,7 @@ class AgentRuntime:
             )
             result = replace(
                 result,
-                skill_updates=list_skill_updates_from_events(
-                    session.list_recorded_events()
-                ),
+                skill_updates=_list_skill_updates(session.list_recorded_events()),
                 subscriber_failures=session.list_subscriber_failures(),
             )
             if session.store is not None:
@@ -135,9 +127,7 @@ class AgentRuntime:
             return replace(
                 result,
                 actions=list_run_actions(session),
-                skill_updates=list_skill_updates_from_events(
-                    session.list_recorded_events()
-                ),
+                skill_updates=_list_skill_updates(session.list_recorded_events()),
                 subscriber_failures=session.list_subscriber_failures(),
                 events=_list_result_events(session),
             )
@@ -145,7 +135,7 @@ class AgentRuntime:
             if not learning_recorded and not isinstance(error, TaskPreflightError):
                 learning_recorded = True
                 try:
-                    record_task_learning_event(
+                    _record_task_learning(
                         session,
                         enabled=request.learn_from_run,
                         prompt=request.prompt,
@@ -173,6 +163,8 @@ class AgentRuntime:
             raise
 
     def add_event_subscriber(self, subscriber: RuntimeEventSubscriber) -> None:
+        from core.state.learning import BUILTIN_LEARNING_SUBSCRIBER_NAMES
+
         name = get_runtime_event_subscriber_name(subscriber)
         if name in BUILTIN_LEARNING_SUBSCRIBER_NAMES:
             raise ValueError(f"Runtime event subscriber name is reserved: {name}")
@@ -184,6 +176,8 @@ class AgentRuntime:
     def create_store(self, user_id: str = LOCAL_USER_ID) -> RuntimeStore:
         if self.resources.storage is None:
             raise RuntimeError("Runtime storage is disabled for this Agent")
+        from core.state.store import RuntimeStore
+
         return RuntimeStore(
             self.resources.storage,
             self.config.storage.path,
@@ -238,6 +232,8 @@ class AgentRuntime:
         user_id: str = LOCAL_USER_ID,
         purpose: str | None = None,
     ) -> list[ModelRoutingStats]:
+        from core.task.routing import list_model_routing_stats
+
         return list_model_routing_stats(self.create_store(user_id), purpose)
 
     def create_skill_updater(
@@ -245,6 +241,8 @@ class AgentRuntime:
         user_id: str = LOCAL_USER_ID,
         on_skill_changed: Callable[[SkillManifest], None] | None = None,
     ) -> SkillEvolutionManager:
+        from skill.evolution.manager import EvolutionModels, SkillEvolutionManager
+
         store = self.create_store(user_id)
         change_handler = on_skill_changed
         if change_handler is None and self.resources.skill_change_listener is not None:
@@ -368,6 +366,8 @@ class AgentRuntime:
         prompt: str,
         session: RuntimeSession,
     ) -> None:
+        from core.task.routing import detect_implicit_conversation_feedback
+
         feedback = detect_implicit_conversation_feedback(conversation, prompt)
         if feedback is None:
             return
@@ -465,3 +465,45 @@ def _add_recording_error_note(
     error.add_note(
         f"Could not {operation}: {type(recording_error).__name__}: {recording_error}"
     )
+
+
+def _record_task_learning(
+    session: RuntimeSession,
+    *,
+    enabled: bool,
+    prompt: str,
+    output: str,
+    started_at: float,
+    error: Exception | None = None,
+) -> RunEvent:
+    if not enabled:
+        return session.record_event("learning.skipped", {"reason": "disabled"})
+    if session.store is None:
+        return session.record_event(
+            "learning.skipped",
+            {"reason": "storage_disabled"},
+        )
+    from core.state.learning import record_task_learning_event
+
+    return record_task_learning_event(
+        session,
+        enabled=True,
+        prompt=prompt,
+        output=output,
+        started_at=started_at,
+        error=error,
+    )
+
+
+def _list_skill_updates(events: list[RunEvent]) -> list[dict[str, object]]:
+    updates: list[dict[str, object]] = []
+    for event in events:
+        if event.event_type != "learning.evolution.reviewed":
+            continue
+        values = event.data.get("updates")
+        if not isinstance(values, list) or not all(
+            isinstance(item, dict) for item in values
+        ):
+            raise ValueError("learning evolution updates must contain an array of objects")
+        updates.extend(dict(item) for item in values)
+    return updates

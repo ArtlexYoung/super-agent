@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 
 from skill.runners.loaded import LoadedSkill, TaskPolicy
 from core.provider.chat import Message, ModelResponse
@@ -27,7 +27,6 @@ from core.task.planning import (
 from core.task.preflight import check_route_before_execution
 from core.actions import ActionRequest
 from core.session import RuntimeSession
-from core.state.store import RuntimeStore
 from core.task.route_plan import (
     RoutePlan,
     create_task_step_route_plan,
@@ -44,6 +43,9 @@ from core.task.models import SubAgentResult, TaskRequest, TaskResult
 from core.task.tools import RuntimeTools
 from skill.kinds.model import ModelProfile
 from skill.manifest import Skill
+
+if TYPE_CHECKING:
+    from core.state.store import RuntimeStore
 
 
 RoutePlanListener = Callable[[RoutePlan], None]

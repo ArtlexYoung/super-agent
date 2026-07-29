@@ -20,7 +20,6 @@ from core.state.subscribers import (
     SubscriberFailure,
 )
 from core.actions import ActionRequest, ActionRunner, ActionRules
-from core.state.store import RuntimeStore
 from core.storage import StorageBackend
 from skill.disclosure import (
     ProgressiveDisclosureCore,
@@ -34,11 +33,12 @@ from skill.kinds.model import (
     select_default_model_profile,
 )
 from skill.manifest import SkillManifest
-from skill.evolution.revision import SkillRevision, create_indexed_skill_revision
 from core.secrets import UserSecretResolver
 
 if TYPE_CHECKING:
+    from core.state.store import RuntimeStore
     from core.task.loop import AdaptiveTaskLoop
+    from skill.evolution.revision import SkillRevision
 
 
 @dataclass(frozen=True)
@@ -232,6 +232,10 @@ class RuntimeSession:
             self.record_skill_used(entry)
 
     def record_skill_used(self, entry: SkillIndexEntry) -> None:
+        if self.store is None or not self.learn_from_run:
+            return
+        from skill.evolution.revision import create_indexed_skill_revision
+
         revision = create_indexed_skill_revision(
             entry,
             evolution_supported=bool(self.config.paths.skills),
@@ -327,6 +331,8 @@ def _create_runtime_store(
 ) -> RuntimeStore | None:
     if resources.storage is None:
         return None
+    from core.state.store import RuntimeStore
+
     return RuntimeStore(
         resources.storage,
         config.storage.path,

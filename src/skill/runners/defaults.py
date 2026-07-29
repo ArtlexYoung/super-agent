@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from skill.runners.registry import SkillRunners
 from skill.runners.builtins import create_builtin_skill_runners
 from core.config import AgentConfig
 from core.identity import RunIdentity
-from core.state.store import RuntimeStore
 from skill.disclosure import DisclosureRecorder, ProgressiveDisclosureCore
-from skill.evolution.freshness import calculate_skill_freshness
+
+if TYPE_CHECKING:
+    from core.state.store import RuntimeStore
 
 
 def create_default_skill_runners() -> SkillRunners:
@@ -27,6 +29,13 @@ def create_progressive_skill_disclosure(
     identity: RunIdentity | None = None,
     record_disclosures: bool | None = None,
 ) -> ProgressiveDisclosureCore:
+    freshness_stats = {}
+    if store is not None:
+        from skill.evolution.freshness import calculate_skill_freshness
+
+        freshness_stats = calculate_skill_freshness(
+            store.read_evaluation_records(source_type="agent_run")
+        )
     disabled = set(config.agent.disabled_skills)
     roots = [] if "skill" in disabled else config.paths.skills
     should_record = identity is not None if record_disclosures is None else record_disclosures
@@ -37,13 +46,7 @@ def create_progressive_skill_disclosure(
         user_skill_roots=([] if store is None else [store.private_root / "skills"]),
         builtin_skill_roots=[_skill_scene_root()],
         disabled_names=config.agent.disabled_skills,
-        freshness_stats=(
-            {}
-            if store is None
-            else calculate_skill_freshness(
-                store.read_evaluation_records(source_type="agent_run")
-            )
-        ),
+        freshness_stats=freshness_stats,
         recorder=(
             create_runtime_disclosure_recorder(store, identity)
             if should_record and store is not None

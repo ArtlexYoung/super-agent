@@ -14,6 +14,7 @@ from skill.evolution.revision import (
     skill_revision_to_dict,
     validate_skill_revision,
 )
+from core.task.model_calls import estimate_text_tokens
 
 
 EVALUATION_RECORD_SCHEMA_VERSION = 2
@@ -101,8 +102,8 @@ def estimate_evaluation_token_usage(
     output_text: str,
 ) -> EvaluationTokenUsage:
     return EvaluationTokenUsage(
-        input_tokens=_estimate_tokens(input_text),
-        output_tokens=_estimate_tokens(output_text),
+        input_tokens=estimate_text_tokens(input_text),
+        output_tokens=estimate_text_tokens(output_text),
     )
 
 
@@ -315,10 +316,6 @@ def _score_value(value: object) -> float:
     if not math.isfinite(score) or not 0 <= score <= 1:
         raise ValueError("evaluation result score must be between 0 and 1")
     return score
-
-
-def _estimate_tokens(text: str) -> int:
-    return 0 if not text else math.ceil(len(text) / 4)
 
 
 def _format_datetime(value: datetime) -> str:

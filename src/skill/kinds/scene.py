@@ -8,13 +8,16 @@ import re
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from core.actions import ActionEffect
-from core.state.store import RuntimeStore
 from skill.disclosure import ProgressiveDisclosureCore, SkillDisclosure, SkillIndex
 from skill.disclosure.models import SkillReference
 from skill.runners.loaded import ScenePolicy, SkillAction, SkillTool
+
+if TYPE_CHECKING:
+    from core.state.store import RuntimeStore
 
 
 SCENE_CONFIGURATION_FIELDS = {"skills"}

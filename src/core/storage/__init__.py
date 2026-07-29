@@ -1,8 +1,4 @@
 from core.storage.contracts import StorageBackend, StorageEvent, StorageEventQuery
-from core.storage.copy import StorageCopyReport, StorageCopyUserResult, copy_storage_events
-from core.storage.jsonl import JsonlStorage
-from core.storage.sql import MySqlStorage, PostgreSqlStorage
-from core.storage.sqlite import SqliteStorage
 
 
 def create_storage_backend(
@@ -11,12 +7,20 @@ def create_storage_backend(
     url_env: str | None = None,
 ) -> StorageBackend:
     if backend == "jsonl":
+        from core.storage.jsonl import JsonlStorage
+
         return JsonlStorage(path)
     if backend == "sqlite":
+        from core.storage.sqlite import SqliteStorage
+
         return SqliteStorage(path)
     if backend == "mysql":
+        from core.storage.sql.mysql import MySqlStorage
+
         return MySqlStorage(url_env)
     if backend == "postgresql":
+        from core.storage.sql.postgresql import PostgreSqlStorage
+
         return PostgreSqlStorage(url_env)
     raise ValueError(f"unknown storage backend: {backend}")
 
@@ -25,11 +29,40 @@ __all__ = [
     "MySqlStorage",
     "PostgreSqlStorage",
     "SqliteStorage",
-    "StorageCopyReport",
-    "StorageCopyUserResult",
     "StorageBackend",
     "StorageEvent",
     "StorageEventQuery",
-    "copy_storage_events",
     "create_storage_backend",
 ]
+
+
+def __getattr__(name: str) -> object:
+    if name == "JsonlStorage":
+        from core.storage.jsonl import JsonlStorage
+
+        return JsonlStorage
+    if name == "SqliteStorage":
+        from core.storage.sqlite import SqliteStorage
+
+        return SqliteStorage
+    if name == "MySqlStorage":
+        from core.storage.sql.mysql import MySqlStorage
+
+        return MySqlStorage
+    if name == "PostgreSqlStorage":
+        from core.storage.sql.postgresql import PostgreSqlStorage
+
+        return PostgreSqlStorage
+    if name in {"StorageCopyReport", "StorageCopyUserResult", "copy_storage_events"}:
+        from core.storage.copy import (
+            StorageCopyReport,
+            StorageCopyUserResult,
+            copy_storage_events,
+        )
+
+        return {
+            "StorageCopyReport": StorageCopyReport,
+            "StorageCopyUserResult": StorageCopyUserResult,
+            "copy_storage_events": copy_storage_events,
+        }[name]
+    raise AttributeError(name)

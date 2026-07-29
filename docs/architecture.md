@@ -25,7 +25,8 @@ src/
 ```
 
 `adapter` may import Core. Core never imports CLI, HTTP, React, or another external
-interaction layer. `super_agent.py` is the only public API aggregate.
+interaction layer. `super_agent.py` is the small everyday API; advanced APIs are imported
+from the adapter, Core, or Skill module that owns them.
 
 ## One Task Path
 
@@ -135,6 +136,10 @@ scene Skills are read-only baselines. The index reports shipped content with the
 
 JSONL and SQLite use only the standard library. Remote database drivers are imported only
 after their backend is explicitly selected.
+
+Concrete Skill kinds, storage implementations, state projections, learning, evolution,
+and adapters are also imported only when their corresponding runner or service is used.
+A stateless task does not initialize those optional layers.
 
 ## Explicit Side Effects
 

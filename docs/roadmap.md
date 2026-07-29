@@ -141,6 +141,16 @@ Status: implemented.
 - Enforce dependency, version, source-size, fresh-import, removed-path, and wheel-layout
   checks for the reduced public surface.
 
+## v0.0.72: Progressive Imports and Assembly
+
+Status: implemented.
+
+- Import concrete Skill kinds only when their runner loads a selected Skill.
+- Import storage, state, learning, and evolution implementations only when explicitly used.
+- Keep `super_agent` focused on the everyday Runtime API and expose advanced APIs from
+  their owning modules.
+- Prove in a fresh process that stateless execution does not initialize optional layers.
+
 ## Release Gate
 
 The project will not move to `0.1.x` because of feature count. The gate is a reproducible

@@ -7,7 +7,7 @@ import inspect
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Protocol
+from typing import TYPE_CHECKING, Callable, Protocol
 
 from skill.runners.loaded import (
     ScenePolicy,
@@ -18,8 +18,10 @@ from skill.runners.loaded import (
 from core.provider.chat import Message
 from core.identity import RunIdentity
 from core.actions import ActionRequest
-from core.state.store import RuntimeStore
 from skill.disclosure import ProgressiveDisclosureCore, SkillReference
+
+if TYPE_CHECKING:
+    from core.state.store import RuntimeStore
 
 SKILL_RUNNER_SCHEMA_VERSION = 8
 _NAME_PATTERN = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}")

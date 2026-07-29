@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass
 from time import perf_counter
-from typing import Callable, Protocol
+from typing import TYPE_CHECKING, Callable, Protocol
 from uuid import uuid4
 
 from skill.runners.loaded import TaskPolicy
@@ -17,14 +18,15 @@ from core.provider.chat import (
     ToolDefinition,
 )
 from core.provider.pool import ProviderPool
-from core.state.evaluation import estimate_evaluation_token_usage
 from core.task.routing import list_model_routing_stats
 from core.session import RuntimeSession
-from core.state.store import RuntimeStore
 from core.task.route_plan import ModelChoice, rank_model_choices
 from core.task.models import TaskRequest
 from skill.kinds.model import ModelProfile
 from skill.manifest import Skill
+
+if TYPE_CHECKING:
+    from core.state.store import RuntimeStore
 
 
 EventWriter = Callable[[str, dict[str, object]], object]
@@ -279,8 +281,12 @@ def _create_call_evidence(
         ensure_ascii=False,
         sort_keys=True,
     )
-    token_usage = estimate_evaluation_token_usage(input_text, "")
-    return _ModelCallEvidence(choice, attempt, context.purpose, token_usage.input_tokens)
+    return _ModelCallEvidence(
+        choice,
+        attempt,
+        context.purpose,
+        estimate_text_tokens(input_text),
+    )
 
 
 def _record_model_completion(
@@ -320,7 +326,7 @@ def _model_call_metrics(
     started_at: float,
 ) -> dict[str, object]:
     profile = evidence.choice.profile
-    output_tokens = estimate_evaluation_token_usage("", output).output_tokens
+    output_tokens = estimate_text_tokens(output)
     input_cost = evidence.input_tokens * (profile.routing.input_cost_per_million or 0.0)
     output_cost = output_tokens * (profile.routing.output_cost_per_million or 0.0)
     return {
@@ -347,3 +353,7 @@ def _model_response_text(response: ModelResponse) -> str:
         ensure_ascii=False,
         sort_keys=True,
     )
+
+
+def estimate_text_tokens(text: str) -> int:
+    return 0 if not text else math.ceil(len(text) / 4)
