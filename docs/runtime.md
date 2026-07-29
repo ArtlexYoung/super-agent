@@ -124,7 +124,7 @@ alice.run("first turn", conversation_id=conversation.conversation_id)
 alice.run("second turn", conversation_id=conversation.conversation_id)
 ```
 
-Runtime loads prior messages and appends both sides of each completed turn. A
+The conversation Adapter loads prior messages and appends both sides of each completed turn. A
 `conversation_id` cannot be combined with an explicit message list because that would
 create two history sources. Create, list, read, rename, clear, and delete operations are
 explicit.

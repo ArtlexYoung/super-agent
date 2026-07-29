@@ -6,32 +6,34 @@ import hashlib
 from datetime import datetime
 from typing import TYPE_CHECKING, Callable
 
-from skill.evolution.tracking.service import AutomaticEvolutionService
-from skill.evolution.tracking.values import (
+from skill.evolution.service import AutomaticEvolutionService
+from skill.evolution.values import (
     SkillEvolutionState,
     candidate_evaluation_to_dict,
 )
 from core.models import RunIdentity
-from skill.evolution.tracking.run_evaluation import (
+from skill.evolution.records import (
     EvaluationRecord,
     EvaluationResult,
     EvaluationSource,
+    append_evaluation_records,
     create_evaluation_record,
     evaluation_result_from_dict,
+    read_evaluation_records,
 )
 from core.state.models import RunEvent
 from skill.state.store import RuntimeStore
 from core.models import RunLearningResult
 from skill.task.routing import list_model_routing_stats
 from skill.evolution.freshness import calculate_skill_freshness
-from skill.evolution.revision import (
+from skill.evolution.change.revision import (
     SkillRevision,
     skill_revision_from_dict,
     skill_revision_to_dict,
 )
 
 if TYPE_CHECKING:
-    from skill.evolution.manager import SkillEvolutionManager
+    from skill.evolution.change.manager import SkillEvolutionManager
 
 
 LEARNING_COMPLETED_EVENT = "learning.completed"
@@ -145,7 +147,7 @@ def _record_run_evaluations(
 ) -> list[EvaluationRecord]:
     existing = {
         record.record_id: record
-        for record in store.read_evaluation_records(source_type="agent_run")
+        for record in read_evaluation_records(store, source_type="agent_run")
     }
     records: list[EvaluationRecord] = []
     for revision in revisions:
@@ -161,7 +163,7 @@ def _record_run_evaluations(
             _require_same_evaluation(stored, record)
             records.append(stored)
             continue
-        store.append_evaluation_records([record])
+        append_evaluation_records(store, [record])
         records.append(record)
     return records
 
@@ -171,7 +173,7 @@ def _calculate_current_freshness(
     revisions: list[SkillRevision],
 ) -> list[dict[str, object]]:
     by_skill = calculate_skill_freshness(
-        store.read_evaluation_records(source_type="agent_run")
+        read_evaluation_records(store, source_type="agent_run")
     )
     return [
         dict(by_skill[key])

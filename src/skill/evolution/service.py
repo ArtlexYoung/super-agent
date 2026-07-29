@@ -2,19 +2,19 @@
 
 from __future__ import annotations
 
-from skill.evolution.tracking.run_evaluation import EvaluationRecord
-from skill.evolution.tracking.evidence import summarize_evaluation_evidence
-from skill.evolution.tracking.recommendations import recommend_skill_revisions
-from skill.evolution.tracking.state import (
+from skill.evolution.records import EvaluationRecord, read_evaluation_records
+from skill.evolution.evidence import summarize_evaluation_evidence
+from skill.evolution.recommendations import recommend_skill_revisions
+from skill.evolution.state import (
     SkillEvolutionState,
     list_skill_evolutions,
     read_skill_evolution,
     record_skill_evolution_monitoring,
 )
 from skill.state.store import RuntimeStore
-from skill.evolution.evaluation import EvaluationCase
-from skill.evolution.manager import SkillEvolutionManager
-from skill.evolution.revision import SkillRevision
+from skill.evolution.change.evaluation import EvaluationCase
+from skill.evolution.change.manager import SkillEvolutionManager
+from skill.evolution.change.revision import SkillRevision
 
 
 MONITORING_MINIMUM_SAMPLES = 3
@@ -85,7 +85,10 @@ class AutomaticEvolutionService:
         selected_ids = set(state.evidence_record_ids)
         records = [
             record
-            for record in self.store.read_evaluation_records(source_type="agent_run")
+            for record in read_evaluation_records(
+                self.store,
+                source_type="agent_run",
+            )
             if record.record_id in selected_ids and record.source.run_id
         ]
         cases: list[EvaluationCase] = []
@@ -152,7 +155,8 @@ class AutomaticEvolutionService:
     ) -> list[EvaluationRecord]:
         return [
             record
-            for record in self.store.read_evaluation_records(
+            for record in read_evaluation_records(
+                self.store,
                 skill_key=revision.key,
                 source_type="agent_run",
             )

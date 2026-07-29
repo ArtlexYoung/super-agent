@@ -14,7 +14,7 @@ from adapter.ag_ui_adapter.configuration import (
 )
 from skill.runners.defaults import create_skills
 from core.config import AgentConfig
-from skill.evolution.tracking.insights import explain_run_with_insight
+from skill.evolution.insights import explain_run_with_insight
 from core.checks import ActionEffect, ActionRequest
 from skill.disclosure import skill_index_to_dict
 from skill.kinds.model import model_profile_to_dict, read_model_profiles

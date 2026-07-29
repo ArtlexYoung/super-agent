@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, replace
 
-from skill.evolution.tracking.values import (
+from skill.evolution.values import (
     SKILL_EVOLUTION_SCHEMA_VERSION,
     CandidateEvaluation,
     SkillCandidateDifference,
@@ -26,7 +26,7 @@ from skill.evolution.tracking.values import (
 )
 from core.events import StorageEvent
 from skill.state.store import RuntimeStore
-from skill.evolution.revision import (
+from skill.evolution.change.revision import (
     SkillRevision,
     skill_revision_from_dict,
     skill_revision_to_dict,

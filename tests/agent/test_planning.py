@@ -5,7 +5,8 @@ from pathlib import Path
 
 from super_agent import Agent
 from core.config import AgentConfig
-from skill.evolution.tracking.insights import explain_run_with_insight
+from skill.evolution.insights import explain_run_with_insight
+from skill.evolution.records import read_evaluation_records
 from support import write_workflow_skill
 
 
@@ -52,7 +53,8 @@ class ZeroConfigurationPlanningTests(unittest.TestCase):
                     if event.event_type.startswith("task.step.")
                 ],
             )
-            records = agent.runtime.create_store().read_evaluation_records(
+            records = read_evaluation_records(
+                agent.runtime.create_store(),
                 skill_key="planner:default"
             )
             self.assertEqual(1, len(records))
@@ -154,7 +156,7 @@ class ZeroConfigurationPlanningTests(unittest.TestCase):
             )
             used_keys = {
                 record.revision.key
-                for record in main.runtime.create_store().read_evaluation_records()
+                for record in read_evaluation_records(main.runtime.create_store())
             }
             self.assertTrue(
                 {"planner:default", "model:fast", "model:deep"} <= used_keys
@@ -415,7 +417,7 @@ planning_terms = ["step by step"]
 def _evaluated_skill_keys(store, run_id: str) -> set[str]:
     return {
         record.revision.key
-        for record in store.read_evaluation_records(source_type="agent_run")
+        for record in read_evaluation_records(store, source_type="agent_run")
         if record.source.run_id == run_id
     }
 

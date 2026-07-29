@@ -59,15 +59,16 @@ class SkillKindArchitectureTests(unittest.TestCase):
     def test_runtime_learning_is_an_explicit_post_run_operation(self) -> None:
         engine_source = Path("src/skill/task/runtime.py").read_text(encoding="utf-8")
         learning_source = Path(
-            "src/skill/evolution/tracking/learning.py"
+            "src/skill/evolution/learning.py"
         ).read_text(encoding="utf-8")
         self.assertNotIn("def _record_task_evaluation", engine_source)
         self.assertIn("def learn_from_run", learning_source)
         self.assertNotIn("EventSubscriber", learning_source)
         self.assertNotIn("learning.requested", engine_source)
         self.assertTrue(
-            Path("src/skill/evolution/tracking/run_evaluation.py").is_file()
+            Path("src/skill/evolution/records.py").is_file()
         )
+        self.assertFalse(Path("src/skill/evolution/tracking").exists())
         self.assertTrue(Path("src/core/state/subscribers.py").is_file())
         self.assertTrue(Path("src/skill/task/run.py").is_file())
         self.assertFalse(Path("src/core/session.py").exists())
@@ -106,7 +107,7 @@ class SkillKindArchitectureTests(unittest.TestCase):
                 sys.executable,
                 "-c",
                 "from skill.manifest import SkillManifest; "
-                "from skill.evolution.manager import SkillEvolutionManager; "
+                "from skill.evolution.change.manager import SkillEvolutionManager; "
                 "from super_agent import Agent",
             ],
             check=False,

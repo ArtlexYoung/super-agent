@@ -41,7 +41,7 @@ from skill.runners.registry import SkillRunners
 if TYPE_CHECKING:
     from skill.state.store import RuntimeStore
     from skill.task.routing import ModelRoutingStats
-    from skill.evolution.manager import SkillEvolutionManager
+    from skill.evolution.change.manager import SkillEvolutionManager
 
 
 class AgentRuntime:
@@ -247,7 +247,7 @@ class AgentRuntime:
         if snapshot.agent_name != self.config.agent.name:
             raise ValueError(f"run belongs to another Agent: {run_id}")
 
-        from skill.evolution.tracking.learning import learn_from_run
+        from skill.evolution.learning import learn_from_run
 
         result = self.execute_management_action(
             user_id,
@@ -281,7 +281,7 @@ class AgentRuntime:
         user_id: str = LOCAL_USER_ID,
         on_skill_changed: Callable[[SkillManifest], None] | None = None,
     ) -> SkillEvolutionManager:
-        from skill.evolution.manager import EvolutionModels, SkillEvolutionManager
+        from skill.evolution.change.manager import EvolutionModels, SkillEvolutionManager
 
         store = self.create_store(user_id)
         change_handler = on_skill_changed

@@ -12,10 +12,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
-from skill.evolution.tracking.values import CandidateEvaluation
+from skill.evolution.values import CandidateEvaluation
 from skill.directory import require_skill_directory_matches
-from skill.evolution.candidate import clean_record_id
-from skill.evolution.evaluation import (
+from skill.evolution.change.candidate import clean_record_id
+from skill.evolution.change.evaluation import (
     EvaluationCase,
     EvaluationCaseResult,
     EvaluationReport,

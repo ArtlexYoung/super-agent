@@ -10,6 +10,7 @@ from core.config import AgentConfig
 from core.provider.chat import MockProvider
 from core.state.models import RunEvent
 from core.state.subscribers import RuntimeEventSubscriberError
+from skill.evolution.records import read_evaluation_records
 
 
 class RuntimeEventSubscriberTests(unittest.TestCase):
@@ -107,7 +108,7 @@ class RuntimeEventSubscriberTests(unittest.TestCase):
             result = agent.run("hello")
 
             self.assertEqual("completed answer", result.text)
-            self.assertEqual([], agent.runtime.create_store().read_evaluation_records())
+            self.assertEqual([], read_evaluation_records(agent.runtime.create_store()))
             self.assertFalse(
                 any(event.event_type.startswith("learning.") for event in result.events)
             )
@@ -130,7 +131,7 @@ class RuntimeEventSubscriberTests(unittest.TestCase):
             self.assertEqual(first.events, second.events)
             self.assertEqual(
                 len(first.evaluation_record_ids),
-                len(agent.runtime.create_store().read_evaluation_records()),
+                len(read_evaluation_records(agent.runtime.create_store())),
             )
 
     def test_explicit_learning_failure_is_recorded_and_can_be_retried(self) -> None:
@@ -142,7 +143,7 @@ class RuntimeEventSubscriberTests(unittest.TestCase):
 
             result = agent.run("hello")
             with patch(
-                "skill.evolution.tracking.learning.AutomaticEvolutionService.review_and_evolve",
+                "skill.evolution.learning.AutomaticEvolutionService.review_and_evolve",
                 side_effect=RuntimeError("evolution unavailable"),
             ), self.assertRaisesRegex(RuntimeError, "evolution unavailable"):
                 agent.learn_from_run(result.run_id)

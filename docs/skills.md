@@ -198,7 +198,7 @@ when a recorder exists. The model always receives the compact index first and us
 `disclose_skill_configuration` when it needs more content. `read_disclosed_content` reads
 an already disclosed path without activating its Skill. `activate_skill` is the separate
 operation that loads a runner contribution, attaches its tools, and records actual use.
-Offline listing, benchmarking, validation, and ordinary reads have no storage side effects.
+Offline listing, validation, and ordinary reads have no storage side effects.
 
 ## Packages
 

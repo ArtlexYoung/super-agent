@@ -22,7 +22,8 @@ from skill.kinds.model import (
 )
 from skill.kinds.model_management import model_skill_input_from_dict
 from skill.ecosystem.validation import validate_skill_replacement
-from skill.evolution.evaluation import EvaluationCase
+from skill.evolution.change.evaluation import EvaluationCase
+from skill.evolution.records import read_evaluation_records
 
 
 class ModelSkillTests(unittest.TestCase):
@@ -128,7 +129,7 @@ class ModelSkillTests(unittest.TestCase):
             agent.learn_from_run(result.run_id)
             store = agent.runtime.create_store()
             runtime_lock = store.read_runtime_lock(result.run_id)
-            records = store.read_evaluation_records(source_type="agent_run")
+            records = read_evaluation_records(store, source_type="agent_run")
 
             self.assertIsNotNone(runtime_lock)
             assert runtime_lock is not None

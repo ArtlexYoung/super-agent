@@ -11,18 +11,19 @@ from time import perf_counter
 from uuid import uuid4
 
 from core.provider.chat import Message
-from skill.evolution.tracking.run_evaluation import (
+from skill.evolution.records import (
     EvaluationResult,
     EvaluationSource,
+    append_evaluation_records,
     create_evaluation_record,
     estimate_evaluation_token_usage,
 )
 from skill.task.model_calls import TextModel
 from skill.state.store import RuntimeStore
 from skill.disclosure import DisclosedSkillFile, ProgressiveDisclosureCore
-from skill.evolution.candidate import SkillCandidate
+from skill.evolution.change.candidate import SkillCandidate
 from skill.manifest import Skill, SkillManifest, calculate_skill_directory_sha256
-from skill.evolution.revision import SkillRevision, create_manifest_skill_revision
+from skill.evolution.change.revision import SkillRevision, create_manifest_skill_revision
 from skill.ecosystem.validation import validate_skill_directory
 
 
@@ -176,14 +177,15 @@ def _append_candidate_case_evidence(
         error_type="" if error is None else type(error).__name__,
         checks=["fail:provider_call"] if result is None else result.checks,
     )
-    context.request.store.append_evaluation_records(
+    append_evaluation_records(
+        context.request.store,
         [
             create_evaluation_record(
                 context.revision,
                 _candidate_evaluation_source(context.request.candidate, case),
                 evaluation,
             )
-        ]
+        ],
     )
 
 

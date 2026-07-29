@@ -354,6 +354,21 @@ Status: implemented.
 - Commit each successful user and assistant conversation turn as one event; a failed model
   run leaves no partial user message and missing storage fails before task execution.
 
+## v0.0.89: One Skill Evolution Domain
+
+Status: implemented.
+
+- Remove the vague `evolution/tracking` layer; keep evidence, records, learning,
+  recommendations, insights, and state directly under one evolution package.
+- Group only candidate creation, evaluation, promotion, and rollback in the clear
+  `evolution/change` subdomain and remove old import paths without aliases.
+- Move evaluation record projection out of the generic event store so evolution explicitly
+  reads and appends its own canonical records.
+- Keep prepare and apply separate: candidate creation and evaluation cannot activate a
+  Skill, and only an explicit checked promotion performs the atomic directory change.
+- Remove the production benchmark helper; reproducible behavior remains covered by focused
+  execution, evaluation, non-regression, and release-shape tests.
+
 ## Release Gate
 
 The project will not move to `0.1.x` because of feature count. The gate is a reproducible

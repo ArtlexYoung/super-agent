@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from skill.evolution.tracking.state import (
+from skill.evolution.state import (
     SkillEvolutionState,
     list_skill_evolutions,
     skill_evolution_to_dict,
@@ -11,6 +11,7 @@ from core.state.models import RunEvent
 from skill.task.routing import list_model_routing_stats
 from skill.state.store import RuntimeStore
 from skill.evolution.freshness import calculate_skill_freshness
+from skill.evolution.records import read_evaluation_records
 
 
 def explain_run_with_insight(store: RuntimeStore, run_id: str) -> dict[str, object]:
@@ -93,7 +94,7 @@ def project_model_calls(events: list[RunEvent]) -> list[dict[str, object]]:
 def _evolution_for_run(store: RuntimeStore, run_id: str) -> list[dict[str, object]]:
     run_records = [
         record
-        for record in store.read_evaluation_records(source_type="agent_run")
+        for record in read_evaluation_records(store, source_type="agent_run")
         if record.source.run_id == run_id
     ]
     if not run_records:
@@ -128,14 +129,14 @@ def _skill_freshness_for_run(
 ) -> list[dict[str, object]]:
     run_records = [
         record
-        for record in store.read_evaluation_records(source_type="agent_run")
+        for record in read_evaluation_records(store, source_type="agent_run")
         if record.source.run_id == run_id
     ]
     run_skill_keys = {record.revision.key for record in run_records}
     if not run_skill_keys:
         return []
     current = calculate_skill_freshness(
-        store.read_evaluation_records(source_type="agent_run")
+        read_evaluation_records(store, source_type="agent_run")
     )
     return [current[key] for key in sorted(run_skill_keys) if key in current]
 

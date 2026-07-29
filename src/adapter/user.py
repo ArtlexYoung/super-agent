@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, cast
 
 from core.provider.chat import Message
 from core.config import AgentConfig
-from skill.evolution.tracking.state import (
+from skill.evolution.state import (
     SkillEvolutionState,
     list_skill_evolutions,
     read_skill_evolution,
@@ -30,7 +30,7 @@ from skill.runners.defaults import create_progressive_skill_disclosure
 
 if TYPE_CHECKING:
     from super_agent import Agent, AgentRunOptions
-    from skill.evolution.manager import SkillEvolutionManager
+    from skill.evolution.change.manager import SkillEvolutionManager
 
 
 class UserAgent:

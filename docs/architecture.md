@@ -190,6 +190,13 @@ either complete together or restore the previous Skill explicitly. Executable Sk
 code remains reviewed application code rather than downloadable Skill content. Package
 installation and updates reuse the same verified directory switch.
 
+Learning evidence, records, recommendations, and state live directly in
+`skill/evolution`. Candidate creation, evaluation, promotion, and rollback live in the
+explicit `skill/evolution/change` subdomain. Preparing a candidate or evaluation never
+activates it; only `promote_skill_candidate` applies a checked directory replacement.
+Evaluation records are projected by `evolution.records` over generic scoped events rather
+than methods added to the general event store.
+
 ## Invariants
 
 - One task has one complete Run, disclosure core, task loop, and event stream; storage

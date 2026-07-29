@@ -6,18 +6,20 @@ from pathlib import Path
 from super_agent import Agent
 from core.provider.chat import MockProvider
 from core.config import AgentConfig
-from skill.evolution.tracking.run_evaluation import (
+from skill.evolution.records import (
     EvaluationResult,
     EvaluationSource,
     EvaluationTokenUsage,
+    append_evaluation_records,
     create_evaluation_record,
     evaluation_record_from_dict,
     evaluation_record_to_dict,
+    read_evaluation_records,
 )
 from skill.state.store import create_local_runtime_store
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.evolution.freshness import calculate_skill_freshness
-from skill.evolution.revision import SkillRevision
+from skill.evolution.change.revision import SkillRevision
 from support import write_memory_skill, write_workflow_skill
 
 
@@ -75,11 +77,11 @@ instructions = "SKILL.md"
             )
 
             store = create_local_runtime_store(root)
-            store.append_evaluation_records([run_record, candidate_record])
+            append_evaluation_records(store, [run_record, candidate_record])
 
-            records = store.read_evaluation_records()
+            records = read_evaluation_records(store)
             stats = calculate_skill_freshness(
-                store.read_evaluation_records(source_type="agent_run"),
+                read_evaluation_records(store, source_type="agent_run"),
                 called_at,
             )["prompt:research"]
             self.assertEqual(1, stats["call_count"])
@@ -95,19 +97,21 @@ instructions = "SKILL.md"
             first_time = datetime(2026, 7, 7, 12, tzinfo=UTC)
             second_time = first_time + timedelta(minutes=5)
 
-            store.append_evaluation_records(
+            append_evaluation_records(
+                store,
                 [_skill_evaluation_record("prompt:old-search", "search", first_time)]
             )
             before = calculate_skill_freshness(
-                store.read_evaluation_records(source_type="agent_run"),
+                read_evaluation_records(store, source_type="agent_run"),
                 first_time,
             )["prompt:old-search"]["freshness"]
-            store.append_evaluation_records(
+            append_evaluation_records(
+                store,
                 [_skill_evaluation_record("prompt:new-search", "search", second_time, run_id="run-2")]
             )
 
             old_stats = calculate_skill_freshness(
-                store.read_evaluation_records(source_type="agent_run"),
+                read_evaluation_records(store, source_type="agent_run"),
                 second_time,
             )["prompt:old-search"]
             self.assertEqual(1, old_stats["same_function_followups"])
@@ -124,9 +128,10 @@ instructions = "SKILL.md"
             )
             store = create_local_runtime_store(root)
 
-            store.append_evaluation_records([record])
+            append_evaluation_records(store, [record])
 
-            loaded = store.read_evaluation_records(
+            loaded = read_evaluation_records(
+                store,
                 skill_key="prompt:research",
                 source_type="agent_run",
             )
@@ -153,9 +158,9 @@ instructions = "SKILL.md"
             agent.learn_from_run(result.run_id)
 
             store = agent.runtime.create_store()
-            records = store.read_evaluation_records()
+            records = read_evaluation_records(store)
             stats = calculate_skill_freshness(
-                store.read_evaluation_records(source_type="agent_run")
+                read_evaluation_records(store, source_type="agent_run")
             )
             self.assertEqual(1, stats["prompt:echo"]["call_count"])
             self.assertGreater(stats["prompt:echo"]["freshness"], 70)
@@ -191,7 +196,8 @@ instructions = "SKILL.md"
             store = agent.runtime.create_store()
             run_id = store.list_runs(1)[0].run_id
             agent.learn_from_run(run_id)
-            records = store.read_evaluation_records(
+            records = read_evaluation_records(
+                store,
                 source_type="agent_run"
             )
             self.assertTrue(records)

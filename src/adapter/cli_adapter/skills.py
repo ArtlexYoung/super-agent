@@ -13,8 +13,9 @@ from core.models import LOCAL_USER_ID
 from core.checks import ActionRules
 from skill.disclosure import ProgressiveDisclosureCore, skill_index_to_dict
 from skill.ecosystem.package import SkillPackageManager
-from skill.evolution.evaluation import EvaluationCase
+from skill.evolution.change.evaluation import EvaluationCase
 from skill.evolution.freshness import calculate_skill_freshness
+from skill.evolution.records import read_evaluation_records
 from skill.ecosystem.lock import write_skill_lock_file
 from skill.manifest import SkillManifest
 
@@ -181,7 +182,7 @@ def _show_skill_freshness(config_path: Path, user_id: str) -> int:
     config = load_agent_config(config_path)
     store = load_runtime_store(config, user_id)
     stats = calculate_skill_freshness(
-        store.read_evaluation_records(source_type="agent_run")
+        read_evaluation_records(store, source_type="agent_run")
     )
     if not stats:
         print("No skill freshness stats yet.")

@@ -6,8 +6,8 @@ import math
 import re
 from dataclasses import asdict, dataclass
 
-from skill.evolution.tracking.files import DirectoryDifference
-from skill.evolution.revision import SkillRevision, skill_revision_to_dict
+from skill.evolution.change.files import DirectoryDifference
+from skill.evolution.change.revision import SkillRevision, skill_revision_to_dict
 
 
 SKILL_EVOLUTION_SCHEMA_VERSION = 3

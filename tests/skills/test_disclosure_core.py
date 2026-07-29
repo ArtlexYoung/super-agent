@@ -3,16 +3,18 @@ import unittest
 from dataclasses import fields
 from pathlib import Path
 
-from skill.evolution.tracking.run_evaluation import (
+from skill.evolution.records import (
     EvaluationResult,
     EvaluationSource,
     EvaluationTokenUsage,
+    append_evaluation_records,
     create_evaluation_record,
+    read_evaluation_records,
 )
 from skill.state.store import create_local_runtime_store
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.evolution.freshness import calculate_skill_freshness
-from skill.evolution.revision import SkillRevision
+from skill.evolution.change.revision import SkillRevision
 from skill.runners.defaults import create_runtime_disclosure_recorder
 from skill.skills import Skills
 from skill.task.run import Run
@@ -384,7 +386,8 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
             root = Path(tmp)
             _write_prompt_skill(root, "research", triggers=["research"])
             store = create_local_runtime_store(root / "state")
-            store.append_evaluation_records(
+            append_evaluation_records(
+                store,
                 [
                     create_evaluation_record(
                         revision=SkillRevision(
@@ -418,7 +421,7 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
             entry = ProgressiveDisclosureCore(
                 [root / "skills"],
                 freshness_stats=calculate_skill_freshness(
-                    store.read_evaluation_records(source_type="agent_run")
+                    read_evaluation_records(store, source_type="agent_run")
                 ),
             ).prepare_skill_index().require_skill("research", "prompt")
 

@@ -12,6 +12,7 @@ from skill.kinds.scene import (
     read_scene_included_skills,
 )
 from skill.runners.defaults import create_progressive_skill_disclosure
+from skill.evolution.records import read_evaluation_records
 
 
 class SkillSceneTests(unittest.TestCase):
@@ -60,7 +61,7 @@ class SkillSceneTests(unittest.TestCase):
                 selected = _event_data(store, result.run_id, "scene.selected")
                 evaluated = {
                     record.revision.key
-                    for record in store.read_evaluation_records(source_type="agent_run")
+                    for record in read_evaluation_records(store, source_type="agent_run")
                 }
                 self.assertEqual(scene, selected["scene_key"])
                 self.assertEqual(workflow, result.workflow)

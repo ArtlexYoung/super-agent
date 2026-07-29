@@ -7,8 +7,8 @@ from pathlib import Path
 from typing import Callable, cast
 
 from core.checks import ActionEffect, ActionRequest, ActionRunner, ActionRules
-from skill.evolution.tracking.files import compare_directory_versions
-from skill.evolution.tracking.state import (
+from skill.evolution.change.files import compare_directory_versions
+from skill.evolution.state import (
     create_skill_candidate_difference,
     list_skill_evolutions,
     record_skill_candidate_evaluation,
@@ -20,10 +20,10 @@ from skill.evolution.tracking.state import (
     require_skill_candidate_can_promote,
     start_manual_skill_evolution,
 )
-from skill.evolution.tracking.values import CandidateEvaluation, SkillEvolutionState
+from skill.evolution.values import CandidateEvaluation, SkillEvolutionState
 from skill.task.model_calls import TextModel
 from skill.state.store import RuntimeStore
-from skill.evolution.candidate import (
+from skill.evolution.change.candidate import (
     SkillCandidate,
     SkillCandidateRequest,
     create_candidate,
@@ -35,7 +35,7 @@ from skill.directory import (
     replace_skill_directory_atomically,
     restore_skill_directory_after_failed_change,
 )
-from skill.evolution.evaluation import (
+from skill.evolution.change.evaluation import (
     EvaluationCase,
     EvaluationReport,
     EvolutionResult,
@@ -44,7 +44,7 @@ from skill.evolution.evaluation import (
     evaluate_candidate,
     require_report_allows_promotion,
 )
-from skill.evolution.artifacts import (
+from skill.evolution.change.artifacts import (
     SkillHistoryRevision,
     calculate_skill_evaluation_report_sha256,
     delete_skill_history_revision,
@@ -57,11 +57,12 @@ from skill.evolution.artifacts import (
 )
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.manifest import SkillManifest, calculate_skill_directory_sha256
-from skill.evolution.revision import (
+from skill.evolution.change.revision import (
     SkillRevision,
     create_manifest_skill_revision,
 )
 from skill.evolution.freshness import calculate_skill_freshness
+from skill.evolution.records import read_evaluation_records
 from skill.ecosystem.validation import validate_skill_directory, validate_skill_replacement
 
 
@@ -95,7 +96,7 @@ class SkillEvolutionManager:
             builtin_skill_roots=skill_disclosure.builtin_skill_roots,
             disabled_names=skill_disclosure.disabled_names,
             freshness_stats=calculate_skill_freshness(
-                store.read_evaluation_records(source_type="agent_run")
+                read_evaluation_records(store, source_type="agent_run")
             ),
         )
         self.user_skill_root = store.private_root / "skills"

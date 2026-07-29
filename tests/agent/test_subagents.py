@@ -5,6 +5,7 @@ from pathlib import Path
 from super_agent import Agent, AgentRunOptions
 from core.config import AgentConfig
 from core.provider.chat import MockProvider, ModelResponse, ToolCall
+from skill.evolution.records import read_evaluation_records
 from support import write_workflow_skill
 
 
@@ -80,8 +81,8 @@ class SubAgentTests(unittest.TestCase):
 
             child_run_id = result.subagent_results[0].run_id
             child_events = coder.runtime.create_store().read_run_events(child_run_id)
-            self.assertEqual([], main.runtime.create_store().read_evaluation_records())
-            self.assertEqual([], coder.runtime.create_store().read_evaluation_records())
+            self.assertEqual([], read_evaluation_records(main.runtime.create_store()))
+            self.assertEqual([], read_evaluation_records(coder.runtime.create_store()))
             self.assertFalse(
                 any(event.event_type.startswith("learning.") for event in child_events)
             )

@@ -4,18 +4,19 @@ from __future__ import annotations
 
 import hashlib
 
-from skill.evolution.tracking.evidence import (
+from skill.evolution.evidence import (
     EvaluationEvidenceSummary,
     summarize_evaluation_evidence,
 )
-from skill.evolution.tracking.state import (
+from skill.evolution.state import (
     SkillEvolutionMetrics,
     SkillEvolutionRecommendation,
     SkillEvolutionState,
     recommend_skill_evolution,
 )
 from skill.state.store import RuntimeStore
-from skill.evolution.revision import SkillRevision
+from skill.evolution.change.revision import SkillRevision
+from skill.evolution.records import read_evaluation_records
 
 
 LOW_SCORE_MINIMUM_SAMPLES = 3
@@ -35,7 +36,7 @@ def recommend_skill_revisions(
 ) -> list[SkillEvolutionState]:
     """Create one recommendation for each unchanged evidence snapshot."""
     summaries = summarize_evaluation_evidence(
-        store.read_evaluation_records(source_type="agent_run")
+        read_evaluation_records(store, source_type="agent_run")
     )
     summaries_by_identity = {
         summary.revision.identity: summary for summary in summaries

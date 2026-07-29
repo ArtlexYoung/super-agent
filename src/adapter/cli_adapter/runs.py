@@ -7,7 +7,7 @@ from pathlib import Path
 
 from adapter.cli_adapter import load_agent, load_runtime_store
 from core.models import LOCAL_USER_ID
-from skill.evolution.tracking.insights import explain_run_with_insight
+from skill.evolution.insights import explain_run_with_insight
 from core.state.models import RunSnapshot
 from skill.state.store import RuntimeStore
 

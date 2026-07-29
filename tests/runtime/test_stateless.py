@@ -29,9 +29,8 @@ with tempfile.TemporaryDirectory() as temporary_directory:
     result = agent.run("hello", scene="stateless")
 assert result.text == "finished"
 blocked = (
-    "skill.evolution.tracking",
-    "skill.evolution.tracking.run_evaluation",
-    "skill.evolution.tracking.learning",
+    "skill.evolution.records",
+    "skill.evolution.learning",
     "skill.state.memory",
     "skill.evolution",
     "skill.kinds.mcp",
@@ -60,9 +59,8 @@ with tempfile.TemporaryDirectory() as temporary_directory:
     result = Agent(config, provider=MockProvider("finished"), use_storage=False).run("hello")
 assert result.text == "finished"
 blocked = (
-    "skill.evolution.tracking",
-    "skill.evolution.tracking.run_evaluation",
-    "skill.evolution.tracking.learning",
+    "skill.evolution.records",
+    "skill.evolution.learning",
     "skill.state.memory",
     "skill.state.store",
     "adapter.storage",

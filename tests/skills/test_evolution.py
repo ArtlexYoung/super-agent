@@ -8,7 +8,8 @@ from super_agent import Agent
 from skill.runners.defaults import create_progressive_skill_disclosure
 from core.provider.chat import MockProvider
 from core.config import AgentConfig
-from skill.evolution.evaluation import EvaluationCase, require_report_allows_promotion
+from skill.evolution.change.evaluation import EvaluationCase, require_report_allows_promotion
+from skill.evolution.records import read_evaluation_records
 from skill.manifest import calculate_skill_directory_sha256
 from support import write_workflow_skill
 
@@ -119,7 +120,8 @@ class SkillEvolutionTests(unittest.TestCase):
 
             self.assertFalse(report.passed)
             self.assertEqual(0.0, report.score)
-            records = manager.store.read_evaluation_records(
+            records = read_evaluation_records(
+                manager.store,
                 source_type="candidate_evaluation"
             )
             self.assertEqual(1, len(records))
@@ -351,7 +353,7 @@ class SkillEvolutionTests(unittest.TestCase):
                 )
 
             with patch(
-                "skill.evolution.manager.require_report_allows_promotion",
+                "skill.evolution.change.manager.require_report_allows_promotion",
                 side_effect=change_after_report_check,
             ), self.assertRaisesRegex(ValueError, "source changed"):
                 manager.promote_skill_candidate(candidate.candidate_id)
@@ -707,7 +709,8 @@ class SkillEvolutionTests(unittest.TestCase):
                 self.assertEqual("new resource", (active / "resources/new.txt").read_text())
                 self.assertFalse((active / "resources/old.txt").exists())
                 self.assertIn(candidate_config, (active / "skill.toml").read_text())
-                record = manager.store.read_evaluation_records(
+                record = read_evaluation_records(
+                    manager.store,
                     source_type="candidate_evaluation"
                 )[0]
                 self.assertEqual(f"{skill_type}:adaptive", record.revision.key)

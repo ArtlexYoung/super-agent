@@ -38,9 +38,10 @@ def create_progressive_skill_disclosure(
     freshness_stats = {}
     if store is not None and include_freshness:
         from skill.evolution.freshness import calculate_skill_freshness
+        from skill.evolution.records import read_evaluation_records
 
         freshness_stats = calculate_skill_freshness(
-            store.read_evaluation_records(source_type="agent_run")
+            read_evaluation_records(store, source_type="agent_run")
         )
     disabled = set(config.agent.disabled_skills)
     roots = [] if "skill" in disabled else config.paths.skills

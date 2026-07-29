@@ -5,16 +5,19 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from skill.evolution.revision import (
+from skill.evolution.change.revision import (
     SkillRevision,
     skill_revision_from_dict,
     skill_revision_to_dict,
     validate_skill_revision,
 )
 from skill.task.model_calls import estimate_text_tokens
+
+if TYPE_CHECKING:
+    from skill.state.store import RuntimeStore
 
 
 EVALUATION_RECORD_SCHEMA_VERSION = 2
@@ -76,6 +79,42 @@ class EvaluationRecord:
     revision: SkillRevision
     source: EvaluationSource
     result: EvaluationResult
+
+
+def append_evaluation_records(
+    store: RuntimeStore,
+    records: list[EvaluationRecord],
+) -> None:
+    """Append validated evaluation records to their canonical event streams."""
+    for record in records:
+        store.append_event(
+            "skill_evaluation",
+            record.record_id,
+            "evaluation.recorded",
+            data=evaluation_record_to_dict(record),
+            event_id=record.record_id,
+            created_at=record.created_at,
+        )
+
+
+def read_evaluation_records(
+    store: RuntimeStore,
+    *,
+    skill_key: str | None = None,
+    source_type: str | None = None,
+) -> list[EvaluationRecord]:
+    """Project evaluation records from one scoped event store."""
+    records = [
+        evaluation_record_from_dict(event.data)
+        for event in store.read_events("skill_evaluation")
+        if event.event_type == "evaluation.recorded"
+    ]
+    return [
+        record
+        for record in records
+        if (skill_key is None or record.revision.key == skill_key)
+        and (source_type is None or record.source.source_type == source_type)
+    ]
 
 
 def create_evaluation_record(

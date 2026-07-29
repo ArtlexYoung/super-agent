@@ -11,14 +11,15 @@ from pathlib import Path
 from super_agent import Agent
 from cli import main
 from core.config import AgentConfig
-from skill.evolution.tracking.run_evaluation import (
+from skill.evolution.records import (
     EvaluationResult,
     EvaluationSource,
     EvaluationTokenUsage,
+    append_evaluation_records,
     create_evaluation_record,
 )
-from skill.evolution.tracking.recommendations import recommend_skill_revisions
-from skill.evolution.revision import SkillRevision
+from skill.evolution.recommendations import recommend_skill_revisions
+from skill.evolution.change.revision import SkillRevision
 
 
 class EvolutionCliTests(unittest.TestCase):
@@ -39,7 +40,8 @@ class EvolutionCliTests(unittest.TestCase):
                 freshness=40,
             )
             store = agent.runtime.create_store("alpha")
-            store.append_evaluation_records(
+            append_evaluation_records(
+                store,
                 [
                     create_evaluation_record(
                         revision,

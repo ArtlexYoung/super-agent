@@ -13,7 +13,6 @@ from core.files import create_scope_digest
 
 if TYPE_CHECKING:
     from skill.state.disclosure import RuntimeDisclosureStore
-    from skill.evolution.tracking.run_evaluation import EvaluationRecord
     from skill.state.memory import RuntimeMemoryStore
     from core.state.models import RunEvent, RunSnapshot
 
@@ -259,39 +258,6 @@ class RuntimeStore:
             ).encode("utf-8"),
         )
         return path
-
-    def append_evaluation_records(self, records: list[EvaluationRecord]) -> None:
-        from skill.evolution.tracking.run_evaluation import evaluation_record_to_dict
-
-        for record in records:
-            self.append_event(
-                "skill_evaluation",
-                record.record_id,
-                "evaluation.recorded",
-                data=evaluation_record_to_dict(record),
-                event_id=record.record_id,
-                created_at=record.created_at,
-            )
-
-    def read_evaluation_records(
-        self,
-        *,
-        skill_key: str | None = None,
-        source_type: str | None = None,
-    ) -> list[EvaluationRecord]:
-        from skill.evolution.tracking.run_evaluation import evaluation_record_from_dict
-
-        records = [
-            evaluation_record_from_dict(event.data)
-            for event in self.read_events("skill_evaluation")
-            if event.event_type == "evaluation.recorded"
-        ]
-        return [
-            record
-            for record in records
-            if (skill_key is None or record.revision.key == skill_key)
-            and (source_type is None or record.source.source_type == source_type)
-        ]
 
     def append_skill_evolution_event(
         self,

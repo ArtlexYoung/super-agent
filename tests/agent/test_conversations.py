@@ -13,6 +13,7 @@ from adapter.conversations import (
     read_conversation,
 )
 from skill.kinds.memory import MiniMemory
+from skill.evolution.records import read_evaluation_records
 
 
 class ConversationRuntimeTests(unittest.TestCase):
@@ -124,8 +125,8 @@ class ConversationRuntimeTests(unittest.TestCase):
                 ],
             )
             self.assertEqual([], MiniMemory(beta_store).list_memory_items())
-            self.assertTrue(alpha_store.read_evaluation_records())
-            self.assertTrue(beta_store.read_evaluation_records())
+            self.assertTrue(read_evaluation_records(alpha_store))
+            self.assertTrue(read_evaluation_records(beta_store))
             self.assertNotEqual(
                 alpha_store.disclosure.cache_root,
                 beta_store.disclosure.cache_root,
