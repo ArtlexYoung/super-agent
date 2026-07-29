@@ -10,7 +10,9 @@ from core.state.evaluation import (
 )
 from core.state.store import create_local_runtime_store
 from skill.disclosure import ProgressiveDisclosureCore
+from skill.evolution.freshness import calculate_skill_freshness
 from skill.evolution.revision import SkillRevision
+from skill.runners.defaults import create_runtime_disclosure_recorder
 
 
 class ProgressiveDisclosureCoreTests(unittest.TestCase):
@@ -26,7 +28,12 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
                 ["mcp:filesystem", "memory:default", "prompt:echo", "workflow:direct"],
                 [entry.reference.key for entry in index.entries],
             )
-            self.assertFalse(core.cache_root.joinpath("index.json").exists())
+            self.assertIsNone(index.index_path)
+            self.assertIsNone(index.history_path)
+            self.assertFalse((root / "state").exists())
+            prompt = index.build_progressive_disclosure_prompt()
+            self.assertIn("prompt:echo", prompt)
+            self.assertNotIn("cache", prompt)
 
     def test_same_name_in_different_kinds_requires_explicit_kind(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -53,7 +60,6 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
             _write_manifest(builtin, "default", "planner")
             core = ProgressiveDisclosureCore(
                 [root / "primary"],
-                create_local_runtime_store(root / "state"),
                 builtin_skill_roots=[root / "builtin"],
             )
 
@@ -80,12 +86,10 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
 
             alice = ProgressiveDisclosureCore(
                 [root / "skills"],
-                alice_store,
                 user_skill_roots=[alice_store.private_root / "skills"],
             )
             bob = ProgressiveDisclosureCore(
                 [root / "skills"],
-                bob_store,
                 user_skill_roots=[bob_store.private_root / "skills"],
             )
             alice_entry = alice.prepare_skill_index().require_skill("writer", "prompt")
@@ -141,7 +145,6 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
             _write_mcp_skill(root, "filesystem")
             core = ProgressiveDisclosureCore(
                 [root / "skills"],
-                create_local_runtime_store(root / "state"),
                 disabled_names=["mcp"],
             )
             core.prepare_skill_index()
@@ -161,7 +164,6 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
             _write_mcp_skill(root, "shared")
             core = ProgressiveDisclosureCore(
                 [root / "skills"],
-                create_local_runtime_store(root / "state"),
                 disabled_names=["mcp:shared"],
             )
             core.prepare_skill_index()
@@ -225,13 +227,23 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
     def test_read_disclosed_content_rejects_path_outside_cache(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            core = _create_core(root)
+            core = _create_recording_core(root)
             core.prepare_skill_index()
             outside = root / "outside.txt"
             outside.write_text("outside", encoding="utf-8")
 
             with self.assertRaisesRegex(ValueError, "outside disclosure cache"):
                 core.read_disclosed_content(outside)
+
+    def test_cache_and_history_reads_require_explicit_recording(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            core = _create_core(Path(tmp))
+            core.prepare_skill_index()
+
+            with self.assertRaisesRegex(RuntimeError, "recording is not configured"):
+                core.read_disclosed_content("missing")
+            with self.assertRaisesRegex(RuntimeError, "recording is not configured"):
+                core.read_disclosure_history()
 
     def test_disclosure_write_rejects_path_outside_cache(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -318,7 +330,7 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
             )
             memory = create_memory_from_skill_disclosure(
                 core.open_skill("default", expected_type="memory"),
-                core.store,
+                create_local_runtime_store(root / "state"),
             )
             workflow = create_workflow_policy_from_skill(
                 core.open_skill("direct", expected_type="workflow")
@@ -366,7 +378,9 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
 
             entry = ProgressiveDisclosureCore(
                 [root / "skills"],
-                store,
+                freshness_stats=calculate_skill_freshness(
+                    store.read_evaluation_records(source_type="agent_run")
+                ),
             ).prepare_skill_index().require_skill("research", "prompt")
 
             self.assertEqual(1, entry.call_count)
@@ -375,17 +389,14 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
 
 
 def _create_core(root: Path) -> ProgressiveDisclosureCore:
-    return ProgressiveDisclosureCore(
-        [root / "skills"],
-        create_local_runtime_store(root / "state"),
-    )
+    return ProgressiveDisclosureCore([root / "skills"])
 
 
 def _create_recording_core(root: Path) -> ProgressiveDisclosureCore:
+    store = create_local_runtime_store(root / "state")
     return ProgressiveDisclosureCore(
         [root / "skills"],
-        create_local_runtime_store(root / "state"),
-        record_disclosures=True,
+        recorder=create_runtime_disclosure_recorder(store),
     )
 
 

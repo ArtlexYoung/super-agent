@@ -14,7 +14,6 @@ from core.provider.chat import (
 )
 from core.provider.pool import ProviderPool
 from core.config import AgentConfig
-from core.state.store import create_local_runtime_store
 from skill.kinds.model import (
     discover_environment_model_profiles,
     model_profile_is_ready,
@@ -262,10 +261,8 @@ class ModelSkillTests(unittest.TestCase):
             proposed = root / "proposed"
             _write_model_skill_directory(current, model="first")
             _write_model_skill_directory(proposed, model="second")
-            store = create_local_runtime_store(root / "state")
-
             with self.assertRaisesRegex(PermissionError, "does not allow Agent connection"):
-                validate_skill_replacement(current, proposed, store)
+                validate_skill_replacement(current, proposed)
 
     def test_model_skill_promotion_and_rollback_refresh_the_current_agent(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

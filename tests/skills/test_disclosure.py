@@ -8,6 +8,7 @@ from core.config import AgentConfig
 from core.state.store import create_local_runtime_store
 from core.provider.chat import MockProvider
 from skill.disclosure import ProgressiveDisclosureCore
+from skill.runners.defaults import create_runtime_disclosure_recorder
 from support import write_workflow_skill
 
 
@@ -16,10 +17,10 @@ class ProgressiveDisclosureTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_skill(root, "echo", "Echo helper", "Always answer briefly.")
+            store = create_local_runtime_store(root / ".super-agent")
             disclosure = ProgressiveDisclosureCore(
                 [root / "skills"],
-                create_local_runtime_store(root / ".super-agent"),
-                record_disclosures=True,
+                recorder=create_runtime_disclosure_recorder(store),
             )
 
             index = disclosure.prepare_skill_index()
@@ -35,7 +36,7 @@ class ProgressiveDisclosureTests(unittest.TestCase):
                 disclosure.read_disclosed_content(instruction.cache_path),
             )
             self.assertEqual("echo", index_data["skills"][0]["name"])
-            self.assertEqual(5, index_data["schema_version"])
+            self.assertEqual(6, index_data["schema_version"])
             self.assertEqual("project", index_data["skills"][0]["source"])
             self.assertFalse(index_data["skills"][0]["agent_created"])
             self.assertFalse(index_data["skills"][0]["agent_can_update"])

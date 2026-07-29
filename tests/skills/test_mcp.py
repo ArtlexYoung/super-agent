@@ -97,14 +97,12 @@ class McpSkillTests(unittest.TestCase):
                 SkillLoadRequest(
                     disclosure,
                     index.require_skill("alpha", "mcp").reference,
-                    disclosure.store,
                 )
             )
             beta = registry.load_skill(
                 SkillLoadRequest(
                     disclosure,
                     index.require_skill("beta", "mcp").reference,
-                    disclosure.store,
                 )
             )
 
@@ -316,7 +314,7 @@ def _load_model_context(
     reference: SkillReference,
 ) -> Skill:
     contribution = create_default_skill_runners().load_skill(
-        SkillLoadRequest(disclosure, reference, disclosure.store)
+        SkillLoadRequest(disclosure, reference)
     )
     if contribution.model_context is None:
         raise AssertionError("MCP SkillRunner did not provide model context")
@@ -370,7 +368,6 @@ for line in sys.stdin:
 def _prepare_disclosure(root: Path) -> ProgressiveDisclosureCore:
     disclosure = ProgressiveDisclosureCore(
         [root / "skills"],
-        create_local_runtime_store(root / "state"),
     )
     disclosure.prepare_skill_index()
     return disclosure

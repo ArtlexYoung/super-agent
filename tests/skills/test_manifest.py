@@ -4,7 +4,6 @@ from dataclasses import replace
 from pathlib import Path
 
 from skill.disclosure import ProgressiveDisclosureCore
-from core.state.store import create_local_runtime_store
 from skill.manifest import skill_manifest_to_dict
 
 
@@ -148,10 +147,7 @@ instructions = "SKILL.md"
 
 
 def _create_disclosure(root: Path) -> ProgressiveDisclosureCore:
-    return ProgressiveDisclosureCore(
-        [root],
-        create_local_runtime_store(root / ".runtime-state"),
-    )
+    return ProgressiveDisclosureCore([root])
 
 
 def _read_manifest(root: Path, name: str):

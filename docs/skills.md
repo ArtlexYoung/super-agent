@@ -145,8 +145,10 @@ prepared index, and the created scene is visible on the next run only.
 
 ## One Disclosure Core
 
-`ProgressiveDisclosureCore` is the only Skill read and scene-selection path. It provides
-five disclosure stages:
+`ProgressiveDisclosureCore` is the only Skill read and scene-selection path. Constructing
+it with Skill roots is read-only: it does not create a storage backend, cache directory,
+or history. Freshness data and recording are explicit inputs. It provides five disclosure
+stages:
 
 1. `index`: compact identities, summaries, freshness, hashes, and cache paths.
 2. `manifest`: normalized metadata for one selected Skill.
@@ -155,7 +157,8 @@ five disclosure stages:
 5. `files`: the full inventory; UTF-8 files include content and binary files include size
    and SHA-256 only.
 
-During a run, disclosure writes content-addressed cache entries under:
+When Runtime explicitly attaches a disclosure recorder, disclosure writes
+content-addressed cache entries under:
 
 ```text
 .super-agent/users/<user-hash>/agents/<agent-hash>/cache/
@@ -167,11 +170,11 @@ During a run, disclosure writes content-addressed cache entries under:
   skills/<type>/<name>/files.json
 ```
 
-The model receives the index and stable cache paths first. It can use
-`read_disclosed_content` to read a previously disclosed path without repeating
-selection. Every run-time disclosure is recorded in the canonical event stream;
-`history.json` is a rebuildable view. Offline listing and validation do not write cache
-or history unless recording is explicitly enabled.
+The model always receives the compact index first. With a recorder, that index also
+contains stable cache paths, and `read_disclosed_content` can read a previously disclosed
+path without repeating selection. Every recorded run-time disclosure enters the canonical
+event stream; `history.json` is a rebuildable view. Offline listing, benchmarking, and
+validation have no storage side effects.
 
 ## Packages
 

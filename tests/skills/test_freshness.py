@@ -46,7 +46,6 @@ instructions = "SKILL.md"
 
             disclosure = ProgressiveDisclosureCore(
                 [skill_dir.parent],
-                create_local_runtime_store(Path(tmp) / "state"),
             )
             disclosure.prepare_skill_index()
             manifest = disclosure.open_skill("research", "prompt").read_manifest()

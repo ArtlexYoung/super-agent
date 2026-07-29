@@ -172,13 +172,11 @@ class SkillPackageManagerTests(unittest.TestCase):
 
 
 def _manager(skill_root: Path) -> SkillPackageManager:
-    disclosure = ProgressiveDisclosureCore(
-        [skill_root],
-        create_local_runtime_store(
-            skill_root.parent / f".{skill_root.name}-package-runtime"
-        ),
+    store = create_local_runtime_store(
+        skill_root.parent / f".{skill_root.name}-package-runtime"
     )
-    return SkillPackageManager(disclosure)
+    disclosure = ProgressiveDisclosureCore([skill_root])
+    return SkillPackageManager(disclosure, store)
 
 
 def _write_skill(

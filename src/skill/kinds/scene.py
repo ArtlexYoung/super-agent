@@ -125,7 +125,6 @@ class SkillSceneManager:
                 stage_root,
                 documents,
                 clean.name,
-                self.store,
             )
             for skill_type, target in targets.items():
                 target.parent.mkdir(parents=True, exist_ok=True)
@@ -312,7 +311,6 @@ def _write_and_validate_scene_documents(
     stage_root: Path,
     documents: dict[str, dict[str, str]],
     name: str,
-    store: RuntimeStore,
 ) -> dict[str, Path]:
     from skill.validation import validate_skill_directory
 
@@ -324,7 +322,6 @@ def _write_and_validate_scene_documents(
             skill_path.joinpath(relative_path).write_text(content, encoding="utf-8")
         validate_skill_directory(
             skill_path,
-            store,
             expected_type=skill_type,
             expected_name=name,
         )

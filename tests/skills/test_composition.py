@@ -6,7 +6,6 @@ from pathlib import Path
 
 from core.agent import Agent
 from core.config import AgentConfig
-from core.state.store import create_local_runtime_store
 from core.provider.chat import MockProvider
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.ecosystem.lock import write_skill_lock_file
@@ -178,8 +177,5 @@ def _toml_array(values: list[str]) -> str:
 
 
 def _prepare_disclosure(root: Path):
-    disclosure = ProgressiveDisclosureCore(
-        [root],
-        create_local_runtime_store(root / ".runtime-state"),
-    )
+    disclosure = ProgressiveDisclosureCore([root])
     return disclosure, disclosure.prepare_skill_index()

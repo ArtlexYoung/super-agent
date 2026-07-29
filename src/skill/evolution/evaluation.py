@@ -85,7 +85,6 @@ def evaluate_candidate(
         _validate_evaluation_case(case)
     skill = _read_skill_directory(
         request.candidate.skill_path,
-        request.store,
         label="Candidate",
     )
     revision = create_manifest_skill_revision(
@@ -238,7 +237,6 @@ def _run_baseline_cases(
         return []
     skill = _read_skill_directory(
         request.baseline_skill_path,
-        request.store,
         label="Current",
     )
     return [
@@ -265,18 +263,11 @@ def _has_no_case_regression(
 
 def _read_skill_directory(
     skill_path: Path,
-    store: RuntimeStore,
     *,
     label: str,
 ) -> Skill:
-    validate_skill_directory(
-        skill_path,
-        store,
-    )
-    disclosure = ProgressiveDisclosureCore(
-        [skill_path],
-        store,
-    )
+    validate_skill_directory(skill_path)
+    disclosure = ProgressiveDisclosureCore([skill_path])
     index = disclosure.prepare_skill_index()
     entry = index.entries[0]
     opened = disclosure.open_skill(

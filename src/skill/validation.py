@@ -4,10 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from core.state.store import RuntimeStore
 from skill.disclosure import ProgressiveDisclosureCore, SkillDisclosure
 from skill.kinds.mcp import create_mcp_server_from_skill_disclosure
-from skill.kinds.memory import create_memory_from_skill_disclosure
+from skill.kinds.memory import create_memory_policy_from_skill
 from skill.kinds.model import (
     create_model_profile_from_skill_disclosure,
     model_connection_fields,
@@ -20,12 +19,11 @@ from skill.manifest import SkillManifest
 
 def validate_skill_directory(
     skill_path: Path,
-    store: RuntimeStore,
     *,
     expected_type: str | None = None,
     expected_name: str | None = None,
 ) -> SkillManifest:
-    disclosure = ProgressiveDisclosureCore([skill_path], store)
+    disclosure = ProgressiveDisclosureCore([skill_path])
     index = disclosure.prepare_skill_index()
     if len(index.entries) != 1:
         raise ValueError("skill directory must contain exactly one valid skill")
@@ -40,17 +38,16 @@ def validate_skill_directory(
             f"candidate changed skill name: {expected_name} -> {entry.reference.name}"
         )
     opened = disclosure.open_skill(entry.reference.name, entry.reference.skill_type)
-    _validate_skill_type(opened, store, entry.reference.skill_type)
+    _validate_skill_type(opened, entry.reference.skill_type)
     return opened.read_manifest()
 
 
 def validate_skill_replacement(
     current_path: Path,
     proposed_path: Path,
-    store: RuntimeStore,
 ) -> None:
-    current = _open_only_skill(current_path, store)
-    proposed = _open_only_skill(proposed_path, store)
+    current = _open_only_skill(current_path)
+    proposed = _open_only_skill(proposed_path)
     current_manifest = current.read_manifest()
     proposed_manifest = proposed.read_manifest()
     if current_manifest.skill_type != proposed_manifest.skill_type:
@@ -61,8 +58,8 @@ def validate_skill_replacement(
         _validate_model_replacement(current, proposed)
 
 
-def _open_only_skill(path: Path, store: RuntimeStore) -> SkillDisclosure:
-    disclosure = ProgressiveDisclosureCore([path], store)
+def _open_only_skill(path: Path) -> SkillDisclosure:
+    disclosure = ProgressiveDisclosureCore([path])
     index = disclosure.prepare_skill_index()
     if len(index.entries) != 1:
         raise ValueError("skill directory must contain exactly one valid skill")
@@ -72,13 +69,12 @@ def _open_only_skill(path: Path, store: RuntimeStore) -> SkillDisclosure:
 
 def _validate_skill_type(
     disclosure: SkillDisclosure,
-    store: RuntimeStore,
     skill_type: str,
 ) -> None:
     if skill_type == "prompt":
         _validate_prompt_skill(disclosure)
     elif skill_type == "memory":
-        create_memory_from_skill_disclosure(disclosure, store)
+        create_memory_policy_from_skill(disclosure)
     elif skill_type == "workflow":
         create_workflow_policy_from_skill(disclosure)
     elif skill_type == "mcp":

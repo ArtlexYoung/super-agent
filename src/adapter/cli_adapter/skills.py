@@ -338,11 +338,13 @@ def _load_runtime_store(config: AgentConfig, user_id: str) -> RuntimeStore:
 
 def _load_package_manager(config_path: Path, user_id: str) -> SkillPackageManager:
     config = AgentConfig.load_from_file(config_path)
+    store = _load_runtime_store(config, user_id)
     return SkillPackageManager(
         create_progressive_skill_disclosure(
             config,
-            store=_load_runtime_store(config, user_id),
+            store=store,
         ),
+        store,
         ActionRules(),
     )
 

@@ -470,10 +470,7 @@ def create_memory_from_skill_disclosure(
     send_text_model_messages: MemoryTextModel | None = None,
     execute_action: MemoryActionRunner | None = None,
 ) -> MiniMemory:
-    manifest = disclosure.read_manifest()
-    if manifest.skill_type != "memory":
-        raise ValueError(f"skill does not use the memory skill: {manifest.name}")
-    policy = read_memory_policy(disclosure.read_configuration().content)
+    policy = create_memory_policy_from_skill(disclosure)
     return MiniMemory(
         store,
         identity,
@@ -481,3 +478,12 @@ def create_memory_from_skill_disclosure(
         send_text_model_messages=send_text_model_messages,
         execute_action=execute_action,
     )
+
+
+def create_memory_policy_from_skill(
+    disclosure: SkillDisclosure,
+) -> MemoryPolicy:
+    manifest = disclosure.read_manifest()
+    if manifest.skill_type != "memory":
+        raise ValueError(f"skill does not use the memory skill: {manifest.name}")
+    return read_memory_policy(disclosure.read_configuration().content)

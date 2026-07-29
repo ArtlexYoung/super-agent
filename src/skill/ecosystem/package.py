@@ -14,7 +14,7 @@ from urllib.parse import unquote
 from uuid import uuid4
 
 from skill.disclosure import ProgressiveDisclosureCore
-from core.state.store import create_local_runtime_store
+from core.state.store import RuntimeStore
 from core.actions import ActionEffect, ActionRequest, ActionRunner, ActionRules
 from skill.manifest import SkillManifest, calculate_skill_directory_sha256
 from skill.validation import validate_skill_directory, validate_skill_replacement
@@ -27,20 +27,20 @@ class SkillPackageManager:
     def __init__(
         self,
         skill_disclosure: ProgressiveDisclosureCore,
+        store: RuntimeStore,
         action_rules: ActionRules | None = None,
     ) -> None:
-        self.user_skill_root = skill_disclosure.store.private_root / "skills"
+        self.store = store
+        self.user_skill_root = store.private_root / "skills"
         self.skill_disclosure = ProgressiveDisclosureCore(
             skill_disclosure.skill_roots,
-            skill_disclosure.store,
             user_skill_roots=[self.user_skill_root],
             builtin_skill_roots=skill_disclosure.builtin_skill_roots,
             disabled_names=skill_disclosure.disabled_names,
-            identity=skill_disclosure.identity,
         )
         self.actions = ActionRunner(
             action_rules or ActionRules(),
-            skill_disclosure.store.append_management_action_event,
+            store.append_management_action_event,
         )
 
     def pack_skill(self, name: str, output: Path) -> Path:
@@ -145,7 +145,7 @@ class SkillPackageManager:
                     "updated Skill type does not match target: "
                     f"{proposed.skill_type} != {current.skill_type}"
                 )
-            validate_skill_replacement(current.path, staged, self.skill_disclosure.store)
+            validate_skill_replacement(current.path, staged)
             _replace_skill_directory(staged, target)
         return self._read_skill_manifest(skill_name, current.skill_type)
 
@@ -285,10 +285,7 @@ def _locate_skill_directory(root: Path) -> Path:
 
 def _validate_staged_skill(path: Path, expected_sha256: str) -> SkillManifest:
     _reject_symlinks(path)
-    manifest = validate_skill_directory(
-        path,
-        create_local_runtime_store(path.parent / ".package-validation"),
-    )
+    manifest = validate_skill_directory(path)
     clean_name = _clean_skill_name(manifest.name)
     if clean_name != manifest.name:
         raise ValueError(f"packaged skill name must be normalized: {manifest.name}")

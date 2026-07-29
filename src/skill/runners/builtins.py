@@ -82,7 +82,7 @@ class MemorySkillRunner:
         )
         memory = create_memory_from_skill_disclosure(
             opened,
-            request.store,
+            request.require_store(),
             request.identity,
             send_text_model_messages=request.send_text_model_messages,
             execute_action=request.require_action_executor(),
@@ -135,7 +135,12 @@ class SceneSkillRunner:
         )
         return LoadedSkill(
             scene_policy=create_scene_policy_from_skill(opened),
-            tools=(create_scene_creation_tool(request.store, request.disclosure),),
+            tools=(
+                create_scene_creation_tool(
+                    request.require_store(),
+                    request.disclosure,
+                ),
+            ),
         )
 
 

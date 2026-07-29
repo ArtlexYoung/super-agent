@@ -54,6 +54,7 @@ from skill.evolution.revision import (
     SkillRevision,
     create_manifest_skill_revision,
 )
+from skill.evolution.freshness import calculate_skill_freshness
 from skill.validation import validate_skill_directory, validate_skill_replacement
 
 
@@ -78,10 +79,12 @@ class SkillEvolutionManager:
             raise ValueError("minimum evaluation score must be between 0 and 1")
         self.skill_disclosure = ProgressiveDisclosureCore(
             skill_disclosure.skill_roots,
-            store,
             user_skill_roots=skill_disclosure.user_skill_roots,
             builtin_skill_roots=skill_disclosure.builtin_skill_roots,
             disabled_names=skill_disclosure.disabled_names,
+            freshness_stats=calculate_skill_freshness(
+                store.read_evaluation_records(source_type="agent_run")
+            ),
         )
         self.user_skill_root = store.private_root / "skills"
         self.evolution_root = store.private_root / "evolution"
@@ -140,7 +143,6 @@ class SkillEvolutionManager:
         try:
             manifest = validate_skill_directory(
                 candidate.skill_path,
-                self.store,
                 expected_type=candidate.skill_type,
                 expected_name=candidate.name,
             )
@@ -256,7 +258,7 @@ class SkillEvolutionManager:
             raise ValueError("Skill candidate did not pass the no-regression evaluation")
         current = self._read_active_manifest(candidate.name, candidate.skill_type)
         if current is not None:
-            validate_skill_replacement(current.path, candidate.skill_path, self.store)
+            validate_skill_replacement(current.path, candidate.skill_path)
         current_revision = (
             None
             if current is None

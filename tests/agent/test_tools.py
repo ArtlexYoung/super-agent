@@ -4,7 +4,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from skill.runners.defaults import create_default_skill_runners
+from skill.runners.defaults import (
+    create_default_skill_runners,
+    create_runtime_disclosure_recorder,
+)
 from skill.runners.registry import SkillLoadRequest
 from skill.runners.loaded import (
     SkillAction,
@@ -294,9 +297,10 @@ args = [{json.dumps(str(script))}]
 def _create_disclosure(root: Path, session: RuntimeSession) -> ProgressiveDisclosureCore:
     return ProgressiveDisclosureCore(
         [root / "skills"],
-        session.store,
-        identity=session.identity,
-        record_disclosures=True,
+        recorder=create_runtime_disclosure_recorder(
+            session.store,
+            session.identity,
+        ),
     )
 
 

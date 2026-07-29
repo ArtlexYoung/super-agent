@@ -4,7 +4,6 @@ from pathlib import Path
 
 from core.agent import Agent
 from core.config import AgentConfig
-from core.state.store import create_local_runtime_store
 from core.provider.chat import MockProvider
 from skill.disclosure import ProgressiveDisclosureCore
 from support import write_workflow_skill
@@ -144,7 +143,6 @@ instructions = "SKILL.md"
 
             disclosure = ProgressiveDisclosureCore(
                 [Path(tmp) / "skills"],
-                create_local_runtime_store(Path(tmp) / "state"),
             )
             disclosure.prepare_skill_index()
             loaded = disclosure.open_skill("echo", expected_type="prompt")

@@ -198,7 +198,6 @@ class ModelSkillManager:
     def _create_disclosure(self) -> ProgressiveDisclosureCore:
         return ProgressiveDisclosureCore(
             self.config.paths.skills,
-            self.store,
             user_skill_roots=[self.user_skill_root],
         )
 
@@ -426,7 +425,6 @@ def _stage_model_skill(
         )
         validate_skill_directory(
             stage,
-            store,
             expected_type="model",
             expected_name=document.manifest.name,
         )

@@ -243,7 +243,7 @@ def build_system_prompt(
             detail = f" ({item.description})" if item.description else ""
             lines.append(f"- {item.name}{detail}: {item.text}")
         untrusted_parts.append("\n".join(lines))
-    disclosure = session.require_skill_index().build_prompt_with_cache_paths()
+    disclosure = session.require_skill_index().build_progressive_disclosure_prompt()
     if disclosure:
         untrusted_parts.append(disclosure)
     if untrusted_parts:

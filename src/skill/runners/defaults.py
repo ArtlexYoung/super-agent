@@ -7,10 +7,10 @@ from pathlib import Path
 from skill.runners.registry import SkillRunners
 from skill.runners.builtins import create_builtin_skill_runners
 from core.config import AgentConfig
-from core.identity import LOCAL_USER_ID, RunIdentity
-from core.storage import StorageBackend, create_storage_backend
+from core.identity import RunIdentity
 from core.state.store import RuntimeStore
-from skill.disclosure import ProgressiveDisclosureCore
+from skill.disclosure import DisclosureRecorder, ProgressiveDisclosureCore
+from skill.evolution.freshness import calculate_skill_freshness
 
 
 def create_default_skill_runners() -> SkillRunners:
@@ -24,38 +24,68 @@ def create_progressive_skill_disclosure(
     config: AgentConfig,
     *,
     store: RuntimeStore | None = None,
-    storage: StorageBackend | None = None,
-    user_id: str = LOCAL_USER_ID,
     identity: RunIdentity | None = None,
     record_disclosures: bool | None = None,
 ) -> ProgressiveDisclosureCore:
-    selected_store = store
-    if selected_store is None:
-        selected_storage = storage or create_storage_backend(
-            config.storage.backend,
-            str(config.storage.path),
-            config.storage.url_env,
-        )
-        selected_store = RuntimeStore(
-            selected_storage,
-            config.storage.path,
-            user_id,
-            config.agent.name,
-        )
     disabled = set(config.agent.disabled_skills)
     roots = [] if "skill" in disabled else config.paths.skills
+    should_record = identity is not None if record_disclosures is None else record_disclosures
+    if should_record and store is None:
+        raise ValueError("recording Skill disclosure requires a RuntimeStore")
     return ProgressiveDisclosureCore(
         roots,
-        selected_store,
-        user_skill_roots=[selected_store.private_root / "skills"],
+        user_skill_roots=([] if store is None else [store.private_root / "skills"]),
         builtin_skill_roots=[_skill_scene_root()],
         disabled_names=config.agent.disabled_skills,
-        identity=identity,
-        record_disclosures=(
-            identity is not None
-            if record_disclosures is None
-            else record_disclosures
+        freshness_stats=(
+            {}
+            if store is None
+            else calculate_skill_freshness(
+                store.read_evaluation_records(source_type="agent_run")
+            )
         ),
+        recorder=(
+            create_runtime_disclosure_recorder(store, identity)
+            if should_record and store is not None
+            else None
+        ),
+        record_event=(
+            None
+            if identity is None or store is None
+            else lambda event_type, data: store.append_run_event(
+                identity,
+                event_type,
+                data,
+            )
+        ),
+    )
+
+
+def create_runtime_disclosure_recorder(
+    store: RuntimeStore,
+    identity: RunIdentity | None = None,
+) -> DisclosureRecorder:
+    """Adapt Runtime state recording to the storage-free disclosure contract."""
+    disclosure = store.disclosure
+    return DisclosureRecorder(
+        cache_root=disclosure.cache_root,
+        history_path=disclosure.history_path,
+        write_text=lambda key, stage, path, content: disclosure.write_text(
+            identity,
+            key,
+            stage,
+            path,
+            content,
+        ),
+        write_json=lambda key, stage, path, content: disclosure.write_json(
+            identity,
+            key,
+            stage,
+            path,
+            content,
+        ),
+        read_content=disclosure.read_content,
+        read_history=disclosure.read_history,
     )
 
 

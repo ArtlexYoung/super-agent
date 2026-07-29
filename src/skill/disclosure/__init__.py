@@ -1,4 +1,4 @@
-from skill.disclosure.core import ProgressiveDisclosureCore, SkillDisclosure
+from skill.disclosure.core import DisclosureRecorder, ProgressiveDisclosureCore, SkillDisclosure
 from skill.disclosure.models import (
     DisclosedConfiguration,
     DisclosedSkillFile,
@@ -19,6 +19,7 @@ __all__ = [
     "DisclosedSkillFile",
     "DisclosedSkillFiles",
     "DisclosedText",
+    "DisclosureRecorder",
     "ProgressiveDisclosureCore",
     "SkillDisclosure",
     "SkillDisclosureEvent",

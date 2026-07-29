@@ -8,7 +8,6 @@ from core.agent import Agent
 from core.provider.chat import MockProvider
 from core.config import AgentConfig
 from skill.disclosure import ProgressiveDisclosureCore
-from core.state.store import create_local_runtime_store
 
 
 class SkillIsolationTests(unittest.TestCase):
@@ -29,7 +28,6 @@ class SkillIsolationTests(unittest.TestCase):
 
             disclosure = ProgressiveDisclosureCore(
                 [root / "skills"],
-                create_local_runtime_store(root / "state"),
             )
             with self.assertRaisesRegex(ValueError, "Agent.add_skill_runner"):
                 disclosure.prepare_skill_index()

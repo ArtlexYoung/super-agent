@@ -12,7 +12,6 @@ from uuid import uuid4
 
 from core.provider.chat import Message
 from core.task.model_calls import TextModel
-from core.state.store import RuntimeStore
 from core.evolution import (
     DirectoryFileChanges,
     apply_directory_file_changes,
@@ -63,7 +62,6 @@ class _CandidateDirectoryRequest:
     current: SkillManifest | None
     changes: DirectoryFileChanges
     version: str
-    store: RuntimeStore
     skill_type: str
     name: str
 
@@ -121,7 +119,6 @@ def create_candidate(request: SkillCandidateRequest) -> SkillCandidate:
             current=current,
             changes=changes,
             version=proposed_version,
-            store=request.skill_disclosure.store,
             skill_type=skill_type,
             name=skill_name,
         )
@@ -270,7 +267,6 @@ def _write_candidate_skill_directory(
     _set_manifest_version(manifest_path, request.version)
     return validate_skill_directory(
         skill_path,
-        request.store,
         expected_type=request.skill_type,
         expected_name=request.name,
     )

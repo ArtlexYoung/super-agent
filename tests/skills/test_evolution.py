@@ -173,9 +173,10 @@ class SkillEvolutionTests(unittest.TestCase):
                 "writer",
                 "prompt",
             )
+            bob_store = agent.runtime.create_store("bob")
             bob_disclosure = create_progressive_skill_disclosure(
                 agent.config,
-                store=agent.runtime.create_store("bob"),
+                store=bob_store,
             )
             bob_entry = bob_disclosure.prepare_skill_index().require_skill("writer", "prompt")
             self.assertEqual("user", alice_entry.source)
@@ -187,7 +188,7 @@ class SkillEvolutionTests(unittest.TestCase):
             self.assertEqual([], agent.for_user("bob").skills.list_evolutions())
             self.assertNotEqual(
                 manager.store.disclosure.cache_root,
-                bob_disclosure.store.disclosure.cache_root,
+                bob_store.disclosure.cache_root,
             )
 
     def test_promotion_rejects_candidate_when_active_skill_changed(self) -> None:

@@ -4,7 +4,6 @@ import hashlib
 import json
 import math
 from dataclasses import asdict, dataclass, field
-from pathlib import Path
 
 from skill.runners.defaults import create_default_skill_runners
 from skill.runners.registry import SkillRunners, SkillLoadRequest
@@ -82,7 +81,7 @@ class SkillBenchmark:
                 in self.skill_runners.list_model_context_types()
             )
         ]
-        disclosure_index = _build_disclosure_index(skill_index, self.skill_disclosure.cache_root)
+        disclosure_index = skill_index.build_progressive_disclosure_prompt()
         eager_skill_context = _join_context(
             [
                 disclosure_index,
@@ -248,17 +247,11 @@ def _load_model_context(
         SkillLoadRequest(
             disclosure,
             reference,
-            disclosure.store,
         )
     )
     if contribution.model_context is None:
         raise ValueError("SkillRunner did not contribute model context")
     return contribution.model_context
-
-
-def _build_disclosure_index(index: SkillIndex, cache_root: Path) -> str:
-    text = index.build_prompt_with_cache_paths()
-    return text.replace(str(cache_root), "<disclosure-cache>")
 
 
 def _create_benchmark_input_sha256(

@@ -592,7 +592,7 @@ include_usage_habits = false
                 encoding="utf-8",
             )
             store = create_local_runtime_store(root / "state")
-            disclosure = ProgressiveDisclosureCore([root / "skills"], store)
+            disclosure = ProgressiveDisclosureCore([root / "skills"])
             disclosure.prepare_skill_index()
             memory = create_memory_from_skill_disclosure(
                 disclosure.open_skill("project", "memory"),

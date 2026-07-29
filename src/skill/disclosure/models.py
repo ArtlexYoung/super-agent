@@ -46,10 +46,10 @@ class SkillIndexEntry:
     triggers: list[str]
     provides: list[str]
     requires: list[str]
-    manifest_cache_path: Path
-    instructions_cache_path: Path
-    configuration_cache_path: Path
-    files_cache_path: Path
+    manifest_cache_path: Path | None
+    instructions_cache_path: Path | None
+    configuration_cache_path: Path | None
+    files_cache_path: Path | None
     content_sha256: str
     source: str
     agent_created: bool = False
@@ -73,8 +73,8 @@ class SkillSelectionDecision:
 @dataclass(frozen=True)
 class SkillIndex:
     entries: list[SkillIndexEntry]
-    index_path: Path
-    history_path: Path
+    index_path: Path | None = None
+    history_path: Path | None = None
     _entries_by_key: dict[str, SkillIndexEntry] = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -120,30 +120,34 @@ class SkillIndex:
             _visit_entry(self.require_skill(name), self, providers, visit_states, stack, resolved)
         return resolved
 
-    def build_prompt_with_cache_paths(self) -> str:
-        lines = [
-            "Progressive skill disclosure:",
-            f"- index: {self.index_path}",
-            f"- history: {self.history_path}",
-        ]
-        for entry in self.entries:
-            lines.append(
-                f"- {entry.reference.key}: {entry.description} "
-                f"-> {entry.manifest_cache_path}"
+    def build_progressive_disclosure_prompt(self) -> str:
+        """Describe available Skills and include cache paths only when recorded."""
+        lines = ["Progressive skill disclosure:"]
+        if self.index_path is not None and self.history_path is not None:
+            lines.extend(
+                [
+                    f"- index: {self.index_path}",
+                    f"- history: {self.history_path}",
+                ]
             )
+        for entry in self.entries:
+            summary = f"- {entry.reference.key}: {entry.description}"
+            if entry.manifest_cache_path is not None:
+                summary += f" -> {entry.manifest_cache_path}"
+            lines.append(summary)
         return "\n".join(lines)
 
 
 @dataclass(frozen=True)
 class DisclosedText:
     content: str
-    cache_path: Path
+    cache_path: Path | None
 
 
 @dataclass(frozen=True)
 class DisclosedConfiguration:
     content: dict[str, object]
-    cache_path: Path
+    cache_path: Path | None
 
 
 @dataclass(frozen=True)
@@ -157,7 +161,7 @@ class DisclosedSkillFile:
 @dataclass(frozen=True)
 class DisclosedSkillFiles:
     files: list[DisclosedSkillFile]
-    cache_path: Path
+    cache_path: Path | None
 
 
 @dataclass(frozen=True)
@@ -175,7 +179,7 @@ class SkillDisclosureEvent:
 
 def skill_index_to_dict(index: SkillIndex) -> dict[str, object]:
     return {
-        "schema_version": 5,
+        "schema_version": 6,
         "skills": [
             {
                 "key": entry.reference.key,
@@ -186,10 +190,10 @@ def skill_index_to_dict(index: SkillIndex) -> dict[str, object]:
                 "triggers": list(entry.triggers),
                 "provides": list(entry.provides),
                 "requires": list(entry.requires),
-                "manifest_cache_path": str(entry.manifest_cache_path),
-                "instructions_cache_path": str(entry.instructions_cache_path),
-                "configuration_cache_path": str(entry.configuration_cache_path),
-                "files_cache_path": str(entry.files_cache_path),
+                "manifest_cache_path": _optional_path(entry.manifest_cache_path),
+                "instructions_cache_path": _optional_path(entry.instructions_cache_path),
+                "configuration_cache_path": _optional_path(entry.configuration_cache_path),
+                "files_cache_path": _optional_path(entry.files_cache_path),
                 "content_sha256": entry.content_sha256,
                 "source": entry.source,
                 "agent_created": entry.agent_created,
@@ -205,6 +209,10 @@ def skill_index_to_dict(index: SkillIndex) -> dict[str, object]:
             for entry in index.entries
         ],
     }
+
+
+def _optional_path(path: Path | None) -> str | None:
+    return None if path is None else str(path)
 
 
 def _clean_name(name: str) -> str:

@@ -80,56 +80,64 @@ Status: implemented.
 - Expose scene selection through Python, CLI, stdin JSON, AG-UI, Runtime traces, tests, and
   Web configuration.
 
-## v0.0.66: Request Identity Adapter
+## v0.0.66: Storage-Free Progressive Disclosure
+
+Status: implemented.
+
+- Make the central disclosure catalog read-only by default and remove its RuntimeStore
+  dependency.
+- Inject freshness, cache writes, history reads, and run events through explicit inputs.
+- Keep cache paths optional and produce the same progressive index prompt without storage.
+- Validate Skill directories, replacements, packages, scenes, and candidates without
+  creating hidden state directories.
+- Preserve cache hits and disclosure history only when a Runtime recorder is requested.
+
+## v0.0.67: One Route Plan
 
 Status: planned.
 
-- Let server applications resolve an authenticated external identity into one validated
-  Runtime user for each request.
-- Keep authentication, sessions, and framework dependencies in adapters rather than Core.
-- Add cross-user attack tests for every management and AG-UI route.
-- Preserve the local single-user server with no added dependency or required setup.
+- Represent scene, Skill, workflow, and model choices in one immutable `RoutePlan`.
+- Produce the plan once before execution and record the same object without rebuilding it.
+- Reject missing, ambiguous, or incompatible choices while planning.
+- Remove parallel selection result objects and adapter-specific routing logic.
 
-## v0.0.67: Explicit Approval Continuation
-
-Status: planned.
-
-- Return blocked action details as a resumable, user-visible decision rather than asking
-  adapters to repeat opaque work.
-- Let applications approve one exact action ID without broadening global rules.
-- Record request, decision, resumption, completion, and expiry in the canonical trace.
-- Keep unattended execution opt-in through code-only action rules.
-
-## v0.0.68: Storage at Service Scale
+## v0.0.68: Stateless Runtime
 
 Status: planned.
 
-- Add pagination and bounded projection for long conversations, run trees, and Skill
-  evidence without changing storage semantics.
-- Verify concurrent multi-process use and connection lifecycle on each selected backend.
-- Publish deterministic copy, integrity, and recovery checks.
-- Keep JSONL clean and dependency-free as the default path.
+- Let the task Runtime execute with Provider, Skills, and an in-memory event sink only.
+- Make conversations, memory, persistence, disclosure cache, and evaluation independent
+  optional services.
+- Keep `Agent()` stateful by default while exposing one explicit stateless construction.
+- Prove the stateless path creates no files and does not silently substitute features.
 
-## v0.0.69: Model and Task Learning Proof
-
-Status: planned.
-
-- Benchmark task assignment across models with declared traits, sparse evidence, explicit
-  feedback, failure, latency, and cost.
-- Prove that every selected model has a visible reason and that failed calls never trigger
-  hidden replacement.
-- Measure routing quality separately for each user, Agent, and task purpose.
-- Expose compact evidence explanations through CLI, Web, and AG-UI custom events.
-
-## v0.0.70: Skill Evolution Proof
+## v0.0.69: Preflight and Staged Actions
 
 Status: planned.
 
-- Run long-lived experiments for freshness, replacement signals, candidate quality,
-  no-regression promotion, monitoring, and rollback.
-- Compare static, eager-loading, progressive, and self-updating Agent variants.
-- Publish failure cases and resource costs, not only successful demonstrations.
-- Define the evidence threshold required before considering a `0.1.x` release.
+- Check every planned Skill, runner, Provider, tool, and required service before the first
+  model call.
+- Separate side-effecting actions into explicit prepare and apply stages.
+- Return all preflight problems together without partially executing the task.
+- Keep reads direct and make every mutation visible in the run result and event stream.
+
+## v0.0.70: Optional Event-Driven Learning
+
+Status: planned.
+
+- Publish immutable Runtime events without requiring evaluation or evolution services.
+- Let evaluation, freshness, routing evidence, and evolution subscribe independently.
+- Make subscriber failures explicit while keeping the completed task result intact.
+- Remove direct learning writes from the task loop.
+
+## v0.0.71: Lean Core Release
+
+Status: planned.
+
+- Delete superseded plans, duplicate data objects, unused helpers, and stale documentation.
+- Keep the default path dependency-free, stateful, and zero-configuration.
+- Document the progressive opt-in layers from pure disclosure through full self-evolution.
+- Publish architecture and package checks for the reduced public surface.
 
 ## Release Gate
 

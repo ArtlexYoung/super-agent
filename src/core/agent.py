@@ -25,6 +25,7 @@ from core.task.models import (
 )
 from core.session import RuntimeSession
 from core.storage import StorageBackend, create_storage_backend
+from core.state.store import RuntimeStore
 from skill.kinds.model import (
     ModelProfile,
     create_direct_provider_profile,
@@ -75,7 +76,12 @@ class Agent:
         self.user_secrets = UserSecretResolver(secret_lookup)
         bootstrap_disclosure = create_progressive_skill_disclosure(
             self.config,
-            storage=self.storage,
+            store=RuntimeStore(
+                self.storage,
+                self.config.storage.path,
+                LOCAL_USER_ID,
+                self.config.agent.name,
+            ),
         )
         bootstrap_index = bootstrap_disclosure.prepare_skill_index()
         self.model_profiles = read_model_profiles(

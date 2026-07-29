@@ -88,7 +88,7 @@ class CliTests(unittest.TestCase):
 
             data = json.loads(output.getvalue())
             self.assertEqual(0, code)
-            self.assertEqual(5, data["schema_version"])
+            self.assertEqual(6, data["schema_version"])
             self.assertEqual(
                 {"memory", "planner", "prompt", "scene", "workflow"},
                 {item["type"] for item in data["skills"]},
