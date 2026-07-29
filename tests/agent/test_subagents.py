@@ -70,6 +70,24 @@ class SubAgentTests(unittest.TestCase):
             self.assertEqual([], result.subagent_results)
             self.assertEqual([], coder_provider.last_messages)
 
+    def test_subagent_keeps_its_own_scene_policy(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            main = _agent(root, "main", "main-result")
+            coder = _agent(root, "coder", "coder-result")
+            coder.use_only_scenes("code")
+            main.add_subagent(coder, name="coder", triggers=["code"])
+
+            result = main.run("write code")
+
+            child_run_id = result.subagent_results[0].run_id
+            child_plan = next(
+                event.data
+                for event in coder.runtime.create_event_store().read_run_events(child_run_id)
+                if event.event_type == "task.scheduled"
+            )
+            self.assertEqual("scene:code", child_plan["scene"])
+
     def test_subagent_runs_do_not_learn_until_explicitly_requested(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

@@ -117,39 +117,44 @@ class ProgressiveDisclosureCore:
     def select_skill_scene_for_prompt(
         self,
         prompt: str,
-        enabled_names: list[str] | None = None,
         requested_scene: str | None = None,
         *,
+        use_scenes: bool = True,
+        allowed_scenes: tuple[str, ...] = (),
         unavailable_scenes: Mapping[str, tuple[str, ...]] | None = None,
-    ) -> SkillReference:
-        """Select exactly one scene from explicit input, triggers, or one default."""
+    ) -> SkillReference | None:
         index = self.require_prepared_skill_index()
-        scenes = [
-            entry for entry in index.entries if entry.reference.skill_type == "scene"
-        ]
-        if not scenes:
+        scenes = [entry for entry in index.entries if entry.reference.skill_type == "scene"]
+        if not use_scenes:
+            if requested_scene is not None:
+                raise ValueError("scene cannot be requested when scenes are disabled")
+            selected = None
+            reason = "scenes disabled by Agent"
+        elif not scenes:
             raise RuntimeError("no scene Skill is available")
-        selected, reason = _select_scene_entry(
-            index,
-            scenes,
-            prompt,
-            enabled_names or [],
-            requested_scene,
-            unavailable_scenes or {},
-        )
+        else:
+            selected, reason = _select_scene_entry(
+                index,
+                scenes,
+                prompt,
+                requested_scene,
+                allowed_scenes,
+                unavailable_scenes or {},
+            )
         if self.record_event is not None:
             self.record_event(
                 "scene.selected",
                 {
-                    "scene_key": selected.reference.key,
+                    "scene_key": None if selected is None else selected.reference.key,
                     "reason": reason,
+                    "allowed_scenes": list(allowed_scenes),
                     "unavailable_candidates": {
                         key: list(services)
                         for key, services in sorted((unavailable_scenes or {}).items())
                     },
                 },
             )
-        return selected.reference
+        return None if selected is None else selected.reference
 
     def inspect_skill_configuration(
         self,
@@ -427,25 +432,23 @@ def _select_scene_entry(
     index: SkillIndex,
     scenes: list[SkillIndexEntry],
     prompt: str,
-    enabled_names: list[str],
     requested_scene: str | None,
+    allowed_scenes: tuple[str, ...],
     unavailable_scenes: Mapping[str, tuple[str, ...]],
 ) -> tuple[SkillIndexEntry, str]:
+    allowed = _resolve_allowed_scene_entries(index, scenes, allowed_scenes)
     if requested_scene is not None:
         entry = _require_scene_entry(index, requested_scene)
+        if entry not in allowed:
+            raise ValueError(
+                f"requested scene is outside the Agent scene policy: {entry.reference.key}"
+            )
         _require_scene_available(entry, unavailable_scenes)
         return entry, "selected by task request"
-    configured = _configured_scene_entries(index, enabled_names)
-    if len(configured) > 1:
-        keys = ", ".join(entry.reference.key for entry in configured)
-        raise ValueError(f"select only one configured scene Skill: {keys}")
-    if configured:
-        _require_scene_available(configured[0], unavailable_scenes)
-        return configured[0], "enabled by agent config"
     prompt_text = prompt.lower()
     triggered = [
         entry
-        for entry in scenes
+        for entry in allowed
         if any(_scene_trigger_matches(prompt_text, trigger) for trigger in entry.triggers)
     ]
     if len(triggered) > 1:
@@ -459,22 +462,23 @@ def _select_scene_entry(
             if _scene_trigger_matches(prompt_text, value)
         )
         return triggered[0], f"matched trigger: {trigger}"
+    if allowed_scenes and len(allowed) == 1:
+        _require_scene_available(allowed[0], unavailable_scenes)
+        return allowed[0], "selected as the only scene allowed by Agent"
     defaults = [
         entry
-        for entry in scenes
+        for entry in allowed
         if entry.is_default and entry.reference.key not in unavailable_scenes
     ]
     if not defaults:
         available = [
             entry
-            for entry in scenes
+            for entry in allowed
             if entry.reference.key not in unavailable_scenes
         ]
         if len(available) == 1:
-            return (
-                available[0],
-                "selected as the only scene compatible with available Runtime services",
-            )
+            reason = "selected as the only scene compatible with available Runtime services"
+            return available[0], reason
     if len(defaults) != 1:
         keys = ", ".join(entry.reference.key for entry in defaults) or "none"
         raise ValueError(f"expected exactly one default scene Skill; found: {keys}")
@@ -505,18 +509,18 @@ def _require_scene_entry(index: SkillIndex, value: str) -> SkillIndexEntry:
     return index.require_skill(clean, "scene")
 
 
-def _configured_scene_entries(
+def _resolve_allowed_scene_entries(
     index: SkillIndex,
-    enabled_names: list[str],
+    scenes: list[SkillIndexEntry],
+    allowed_names: tuple[str, ...],
 ) -> list[SkillIndexEntry]:
-    entries: dict[str, SkillIndexEntry] = {}
-    for value in enabled_names:
-        clean = value.strip().lower()
-        if not clean.startswith("scene:"):
-            continue
-        entry = _require_scene_entry(index, clean)
-        entries[entry.reference.key] = entry
-    return [entries[key] for key in sorted(entries)]
+    if not allowed_names:
+        return scenes
+    entries = [_require_scene_entry(index, name) for name in allowed_names]
+    keys = [entry.reference.key for entry in entries]
+    if len(keys) != len(set(keys)):
+        raise ValueError("Agent scene policy contains duplicate scenes")
+    return entries
 
 
 def _scene_trigger_matches(prompt: str, trigger: str) -> bool:

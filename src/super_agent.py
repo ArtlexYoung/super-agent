@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from threading import RLock
 from typing import TYPE_CHECKING, Callable
@@ -34,12 +34,16 @@ from core.checks import (
 )
 from core.provider.secrets import UserSecretLookup, UserSecretResolver
 from core.models import (
+    AgentRunOptions,
     RunLearningResult,
     SubAgentResult,
     SubagentCallbacks,
     Task,
     RunResult,
     TaskTrace,
+    normalize_scene_names,
+    require_scenes_configured_in_code,
+    resolve_agent_run_options,
 )
 from core.state.models import Conversation
 from core.state.subscribers import RuntimeEventSubscriberError
@@ -66,17 +70,6 @@ class SubAgent:
     created_by_agent: bool = False
 
 
-@dataclass(frozen=True)
-class AgentRunOptions:
-    include_subagents: bool = True
-    check_subagent_links_before_run: bool = True
-    learn_from_conversation: bool = False
-    allow_subscriber_failures: bool = False
-    run_id: str | None = None
-    event_listener: Callable[[RunEvent], None] | None = None
-    scene: str | None = None
-
-
 class Agent:
     def __init__(
         self,
@@ -94,6 +87,7 @@ class Agent:
         if storage is not None and use_storage is False:
             raise ValueError("storage cannot be combined with use_storage=False")
         self.config = _load_agent_config(config)
+        require_scenes_configured_in_code(self.config.agent.skills)
         self._action_rules = action_rules
         self.user_secrets = UserSecretResolver(secret_lookup)
         self._use_storage = storage is not None if use_storage is None else use_storage
@@ -112,6 +106,8 @@ class Agent:
         self._pending_event_subscribers = RuntimeEventSubscribers()
         self._initialization_lock = RLock()
         self._subagents: list[SubAgent] = []
+        self._use_scenes = True
+        self._allowed_scenes: tuple[str, ...] = ()
 
     @property
     def storage(self) -> StorageBackend | None:
@@ -182,6 +178,25 @@ class Agent:
     def list_subagents(self) -> list[SubAgent]:
         return list(self._subagents)
 
+    def use_only_scenes(self, *names: str) -> None:
+        """Restrict this Agent to an explicit non-empty scene list."""
+        scenes = normalize_scene_names(names)
+        with self._initialization_lock:
+            self._use_scenes = True
+            self._allowed_scenes = scenes
+
+    def disable_scenes(self) -> None:
+        """Run this Agent without scene composition."""
+        with self._initialization_lock:
+            self._use_scenes = False
+            self._allowed_scenes = ()
+
+    def select_scenes_automatically(self) -> None:
+        """Let this Agent select from every available scene."""
+        with self._initialization_lock:
+            self._use_scenes = True
+            self._allowed_scenes = ()
+
     def add_skill_loader(self, loader: SkillLoader) -> None:
         with self._initialization_lock:
             self._skill_loaders.add_skill_loader(loader, replace=True)
@@ -217,20 +232,13 @@ class Agent:
 
         return UserAgent(self, user_id)
 
-    def _run_options_for_scene(
+    def _resolve_run_options(
         self,
         run_options: AgentRunOptions | None,
         scene: str | None,
+        use_scenes: bool | None,
     ) -> AgentRunOptions | None:
-        if scene is None:
-            return run_options
-        clean_scene = scene.strip().lower()
-        if not clean_scene:
-            raise ValueError("scene cannot be empty")
-        options = run_options or AgentRunOptions()
-        if options.scene is not None and options.scene.strip().lower() != clean_scene:
-            raise ValueError("scene conflicts with AgentRunOptions.scene")
-        return replace(options, scene=clean_scene)
+        return resolve_agent_run_options(run_options, scene, use_scenes)
 
     def _check_subagent_links(self) -> list[str]:
         warnings: list[str] = []
@@ -256,6 +264,7 @@ class Agent:
         messages: list[Message] | None = None,
         conversation_id: str | None = None,
         scene: str | None = None,
+        use_scenes: bool | None = None,
         run_options: AgentRunOptions | None = None,
     ) -> RunResult:
         return self._run_for_user(
@@ -263,7 +272,7 @@ class Agent:
             LOCAL_USER_ID,
             messages=messages,
             conversation_id=conversation_id,
-            run_options=self._run_options_for_scene(run_options, scene),
+            run_options=self._resolve_run_options(run_options, scene, use_scenes),
         )
 
     def learn_from_run(self, run_id: str) -> RunLearningResult:
@@ -315,6 +324,12 @@ class Agent:
             learn_from_conversation=options.learn_from_conversation,
             allow_subscriber_failures=options.allow_subscriber_failures,
             scene=options.scene,
+            use_scenes=(
+                self._use_scenes
+                if options.use_scenes is None
+                else options.use_scenes
+            ),
+            allowed_scenes=self._allowed_scenes,
             subagents=SubagentCallbacks(
                 list_subagents=self._list_subagents_for_model,
                 run_named_subagent=self._run_named_subagent_for_model,
@@ -351,7 +366,6 @@ class Agent:
             reason,
             user_id=user_id,
         )
-
 
     def _activate_changed_skill(
         self,
@@ -562,6 +576,8 @@ class Agent:
             include_subagents=True,
             warning_messages=[],
             allow_subscriber_failures=parent_session.allow_subscriber_failures,
+            use_scenes=self._use_scenes,
+            allowed_scenes=self._allowed_scenes,
             subagents=SubagentCallbacks(
                 list_subagents=self._list_subagents_for_model,
                 run_named_subagent=self._run_named_subagent_for_model,

@@ -138,9 +138,9 @@ explicit.
 ## Task Scenes
 
 Scene selection happens once before task scheduling. The order is the request's explicit
-scene, one configured `scene:*`, one prompt-trigger match, and the unique default. Core
-records `scene.selected` with the stable key and reason, then resolves that scene's Skill
-references through the central progressive index.
+scene, the Agent's code-level allowlist, one prompt-trigger match, and the unique default.
+Core records `scene.selected` with the stable key or `null` and its reason, then resolves
+the selected Skill references through the central progressive index.
 
 `common` selects general prompt, memory, planner, and direct workflow Skills. `code`
 selects repository-specific versions and a bounded tool loop. A project can add scene

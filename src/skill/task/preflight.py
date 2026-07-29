@@ -71,7 +71,7 @@ def check_run_before_execution(
     _check_selected_provider(plan, provider_pool, problems)
     _check_subagents(request, plan, problems)
     data = {
-        "scene": plan.scene.key,
+        "scene": None if plan.scene is None else plan.scene.key,
         "skills": [reference.key for reference in _planned_references(plan)],
         "provider": plan.model.profile_key,
         "tools": tool_names,
@@ -239,7 +239,7 @@ def _check_subagents(
 
 
 def _planned_references(plan: Plan) -> tuple[SkillReference, ...]:
-    values = (plan.scheduler, plan.scene, *plan.skills)
+    values = (plan.scheduler, *(() if plan.scene is None else (plan.scene,)), *plan.skills)
     return tuple(dict.fromkeys(values))
 
 

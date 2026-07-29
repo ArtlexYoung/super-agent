@@ -53,7 +53,7 @@ class RunContext:
     plan: Plan
     model_profile: ModelProfile
     workflow_policy: TaskPolicy
-    scene_contribution: LoadedSkill
+    scene_contribution: LoadedSkill | None
     planner_policy: PlanningPolicy | None
     planner_contribution: LoadedSkill | None
     scheduler: Scheduler
@@ -62,8 +62,8 @@ class RunContext:
 
 @dataclass(frozen=True)
 class _SelectedRunSkills:
-    scene_reference: SkillReference
-    scene_contribution: LoadedSkill
+    scene_reference: SkillReference | None
+    scene_contribution: LoadedSkill | None
     references: tuple[SkillReference, ...]
 
 
@@ -153,6 +153,7 @@ def prepare_run(
         session,
         references,
         scheduler,
+        required=selected.scene_reference is not None,
     )
     planner_reference, planner_policy, planner_contribution = _load_planner(
         session,
@@ -244,9 +245,23 @@ def _select_run_skills(
     scene_reference = scheduler.select_scene(
         disclosure,
         request,
-        session.config.agent.skills,
         _list_unavailable_scenes(session),
     )
+    if scene_reference is None:
+        enabled = _configured_non_scene_skills(session)
+        allowed_types = {
+            entry.descriptor.skill_type
+            for entry in session.skills.loaders.list_skill_loaders()
+            if entry.descriptor.skill_type not in {"scene", "scheduler"}
+        }
+        references = tuple(
+            disclosure.select_skill_references_for_prompt(
+                request.prompt,
+                enabled,
+                allowed_types,
+            )
+        )
+        return _SelectedRunSkills(None, None, references)
     scene_contribution = _load_skill(session, scene_reference)
     if not scene_contribution.included_skills:
         raise TypeError("scene SkillLoader did not include any Skills")
@@ -349,10 +364,12 @@ def _load_run_workflow(
     session: Run,
     references: tuple[SkillReference, ...],
     scheduler: Scheduler,
-) -> tuple[SkillReference, TaskPolicy]:
-    reference = scheduler.select_one_skill(references, "workflow", required=True)
+    *,
+    required: bool,
+) -> tuple[SkillReference | None, TaskPolicy]:
+    reference = scheduler.select_one_skill(references, "workflow", required=required)
     if reference is None:
-        raise RuntimeError("selected scene does not select a workflow Skill")
+        return None, TaskPolicy("direct", "direct", max_steps=1)
     contribution = _load_skill(session, reference)
     if contribution.task_policy is None:
         raise TypeError("workflow Skill loader did not provide task rules")
@@ -379,7 +396,7 @@ def load_background_contributions(
 ) -> list[LoadedSkill]:
     session = context.run
     plan = context.plan
-    contributions = [context.scene_contribution] + [
+    contributions = ([] if context.scene_contribution is None else [context.scene_contribution]) + [
         _load_skill(
             session,
             entry.reference,
@@ -569,6 +586,14 @@ def _merge_included_and_configured_skills(
         if reference.skill_type not in overridden_types
     ]
     return [*scene_keys, *configured]
+
+
+def _configured_non_scene_skills(session: Run) -> list[str]:
+    return [
+        value
+        for value in session.config.agent.skills
+        if not value.strip().lower().startswith(("scene:", "scheduler:"))
+    ]
 
 
 def _subagent_result_from_dict(value: dict[str, object]) -> SubAgentResult:

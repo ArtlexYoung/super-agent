@@ -29,8 +29,7 @@ Unknown tables and fields are rejected. There is no migration or old-field conve
 
 - `name`: stable Agent name used in run and storage scopes.
 - `system`: smallest instruction shared by every task. Put specialized behavior in Skills.
-- `skills`: Skill keys or unambiguous names pinned to every task. At most one may be a
-  `scene:*` key.
+- `skills`: non-scene Skill keys or unambiguous names pinned to every task.
 - `disabled_skills`: types, keys, or unambiguous names excluded from selection.
 - `max_agent_chain_depth`: optional positive warning threshold. Omit it for no threshold.
 
@@ -60,17 +59,19 @@ Stable Skill keys use `type:name`. A bare name is accepted only when it is unamb
 
 No scene setting is required. Runtime automatically chooses the `code` scene when its
 manifest triggers match a coding prompt and otherwise uses the default `common` scene.
-Pin one scene only when an Agent should always use that task chain:
+Specialize each Agent in readable Python code:
 
-```toml
-[agent]
-skills = ["scene:code"]
+```python
+coder.use_only_scenes("code")
+researcher.disable_scenes()
+main.add_subagent(coder, name="coder")
+main.add_subagent(researcher, name="researcher")
 ```
 
 For a one-run override, use `Agent.run(..., scene="code")` or CLI `--scene code` instead
-of changing persistent configuration. Explicitly pinned memory, planner, or workflow
-Skills replace that type from the selected scene. Configuring two scenes is rejected;
-Runtime never chooses one by list order.
+of changing the Agent policy. `Agent.run(..., use_scenes=False)` explicitly bypasses scene
+composition for one run. Explicitly pinned memory, planner, or workflow Skills replace
+that type from the selected scene. A `scene:*` entry in `agent.skills` is rejected.
 
 ## Model Environment
 

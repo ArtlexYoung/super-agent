@@ -29,7 +29,7 @@ class ZeroConfigurationPlanningTests(unittest.TestCase):
             plan = next(
                 event.data for event in events if event.event_type == "task.scheduled"
             )
-            self.assertEqual(3, plan["schema_version"])
+            self.assertEqual(4, plan["schema_version"])
             self.assertEqual("scheduler:default", plan["scheduler"])
             self.assertEqual("direct", plan["workflow_mode"])
             self.assertEqual(8, plan["max_model_steps"])

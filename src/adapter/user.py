@@ -51,6 +51,7 @@ class UserAgent:
         messages: list[Message] | None = None,
         conversation_id: str | None = None,
         scene: str | None = None,
+        use_scenes: bool | None = None,
         run_options: "AgentRunOptions | None" = None,
     ) -> RunResult:
         return self.agent._run_for_user(
@@ -58,7 +59,11 @@ class UserAgent:
             self.user_id,
             messages=messages,
             conversation_id=conversation_id,
-            run_options=self.agent._run_options_for_scene(run_options, scene),
+            run_options=self.agent._resolve_run_options(
+                run_options,
+                scene,
+                use_scenes,
+            ),
         )
 
 

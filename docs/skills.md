@@ -134,7 +134,7 @@ skills = [
 ]
 ```
 
-Every scene must reference a workflow. A scene cannot reference another scene and may
+Every scene currently references a workflow. A scene cannot reference another scene and may
 reference at most one planner and one workflow. Every referenced custom type needs a
 registered SkillLoader. Missing references, missing loaders, and conflicts are errors;
 Runtime does not substitute another scene or workflow.
@@ -150,11 +150,12 @@ Scene selection precedence is explicit:
 
 1. `Agent.run(..., scene="name")`, `super-agent run --scene name`, or AG-UI
    `forwardedProps.scene`.
-2. One `scene:name` in `agent.skills`.
-3. One scene whose manifest trigger matches the prompt.
-4. The single scene with `default = true`.
+2. The scenes allowed by `Agent.use_only_scenes(...)`, when configured in code.
+3. One allowed scene whose manifest trigger matches the prompt.
+4. The single allowed scene with `default = true`.
 
-Multiple configured scenes, multiple trigger matches, or multiple defaults fail clearly.
+Multiple trigger matches or multiple defaults fail clearly. `Agent.disable_scenes()` and
+`Agent.run(..., use_scenes=False)` select no scene and record that choice in the Plan.
 Pinned memory, planner, or workflow Skills replace the same type from the selected scene;
 other configured or triggered Skills are added normally.
 

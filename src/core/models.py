@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Callable
 from uuid import uuid4
 
@@ -11,6 +11,64 @@ from core.state.models import RunEvent
 
 
 LOCAL_USER_ID = "local"
+
+
+@dataclass(frozen=True)
+class AgentRunOptions:
+    include_subagents: bool = True
+    check_subagent_links_before_run: bool = True
+    learn_from_conversation: bool = False
+    allow_subscriber_failures: bool = False
+    run_id: str | None = None
+    event_listener: Callable[[RunEvent], None] | None = None
+    scene: str | None = None
+    use_scenes: bool | None = None
+
+
+def resolve_agent_run_options(
+    options: AgentRunOptions | None,
+    scene: str | None,
+    use_scenes: bool | None,
+) -> AgentRunOptions | None:
+    if scene is None and use_scenes is None:
+        return options
+    resolved = options or AgentRunOptions()
+    clean_scene = None if scene is None else scene.strip().lower()
+    if scene is not None and not clean_scene:
+        raise ValueError("scene cannot be empty")
+    if resolved.scene is not None and clean_scene not in {None, resolved.scene.lower()}:
+        raise ValueError("scene conflicts with AgentRunOptions.scene")
+    if use_scenes is not None and not isinstance(use_scenes, bool):
+        raise TypeError("use_scenes must be a boolean or None")
+    if (
+        resolved.use_scenes is not None
+        and use_scenes is not None
+        and resolved.use_scenes != use_scenes
+    ):
+        raise ValueError("use_scenes conflicts with AgentRunOptions.use_scenes")
+    scene_value = resolved.scene if clean_scene is None else clean_scene
+    use_value = resolved.use_scenes if use_scenes is None else use_scenes
+    if scene_value is not None and use_value is False:
+        raise ValueError("scene cannot be requested when scenes are disabled")
+    return replace(resolved, scene=scene_value, use_scenes=use_value)
+
+
+def normalize_scene_names(names: tuple[str, ...]) -> tuple[str, ...]:
+    if not names:
+        raise ValueError("use_only_scenes requires at least one scene")
+    normalized = tuple(name.strip().lower() for name in names)
+    if any(not name for name in normalized):
+        raise ValueError("scene names cannot be empty")
+    if len(normalized) != len(set(normalized)):
+        raise ValueError("scene names cannot contain duplicates")
+    return normalized
+
+
+def require_scenes_configured_in_code(skills: list[str]) -> None:
+    if any(name.strip().lower().startswith("scene:") for name in skills):
+        raise ValueError(
+            "configure Agent scenes in code with use_only_scenes(), not agent.skills"
+        )
 
 
 @dataclass(frozen=True)
@@ -96,6 +154,8 @@ class Task:
     learn_from_conversation: bool = False
     allow_subscriber_failures: bool = False
     scene: str | None = None
+    use_scenes: bool = True
+    allowed_scenes: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

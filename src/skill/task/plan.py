@@ -18,9 +18,9 @@ class Plan:
     required_features: tuple[str, ...]
     model: ModelDecision
     scheduler: SkillReference
-    scene: SkillReference
+    scene: SkillReference | None
     skills: tuple[SkillReference, ...]
-    workflow: SkillReference
+    workflow: SkillReference | None
     workflow_mode: str
     max_model_steps: int
     planner: SkillReference | None
@@ -40,13 +40,13 @@ class Plan:
 
     def to_dict(self) -> dict[str, object]:
         return {
-            "schema_version": 3,
+            "schema_version": 4,
             "purpose": self.purpose,
             "required_features": list(self.required_features),
             "scheduler": self.scheduler.key,
-            "scene": self.scene.key,
+            "scene": None if self.scene is None else self.scene.key,
             "skills": [reference.key for reference in self.skills],
-            "workflow": self.workflow.key,
+            "workflow": None if self.workflow is None else self.workflow.key,
             "workflow_mode": self.workflow_mode,
             "max_model_steps": self.max_model_steps,
             "planner": None if self.planner is None else self.planner.key,

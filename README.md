@@ -110,7 +110,7 @@ their effects before preflight.
 
 ## Skills and Scenes
 
-The shipped scene trees are ordinary Skills outside Python source:
+The shipped scenes are ordinary passive Skills inside the `skill` package:
 
 ```text
 src/skill/builtin/
@@ -118,9 +118,11 @@ src/skill/builtin/
   scene/code/     repository task Skill composition
 ```
 
-Runtime selects one scene from an explicit request, Agent configuration, or prompt
-triggers. Ambiguity is an error. Applications can add any Skill type by registering a
-loader with `Agent.add_skill_loader(...)`; Core does not contain a fixed type list.
+Runtime selects one scene from an explicit request or prompt triggers. Each Agent can use
+all scenes, call `use_only_scenes(...)`, or call `disable_scenes()` independently. Scene
+specialization is configured in Python, never TOML. Ambiguity is an error. Applications
+can add any Skill type by registering a loader with `Agent.add_skill_loader(...)`; Core
+does not contain a fixed type list.
 
 Use `super-agent init --path my-agent` only when you want an editable example. Model
 profiles are model Skills, while API keys remain in environment variables. See

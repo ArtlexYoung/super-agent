@@ -57,13 +57,13 @@ class Scheduler:
         self,
         disclosure: ProgressiveDisclosureCore,
         request: Task,
-        enabled_skills: list[str],
         unavailable_scenes: Mapping[str, tuple[str, ...]],
-    ) -> SkillReference:
+    ) -> SkillReference | None:
         return disclosure.select_skill_scene_for_prompt(
             request.prompt,
-            enabled_skills,
             request.scene,
+            use_scenes=request.use_scenes,
+            allowed_scenes=request.allowed_scenes,
             unavailable_scenes=unavailable_scenes,
         )
 

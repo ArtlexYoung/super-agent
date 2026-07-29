@@ -424,6 +424,17 @@ Status: implemented.
   ownership visible in the directory layout.
 - Include passive Skill manifests and content in the normal `skill` wheel package.
 
+## v0.0.94: Per-Agent Scene Policies
+
+Status: implemented.
+
+- Add clear `use_only_scenes(...)`, `disable_scenes()`, and
+  `select_scenes_automatically()` Python methods to each Agent.
+- Keep a subagent's scene policy independent when its parent delegates work.
+- Remove scene pinning from TOML and reject `scene:*` entries instead of ignoring them.
+- Record scene allowlists and explicit no-scene choices in the immutable Plan and event
+  stream; unavailable, ambiguous, or policy-excluded scenes fail before execution.
+
 ## Release Gate
 
 The project will not move to `0.1.x` because of feature count. The gate is a reproducible

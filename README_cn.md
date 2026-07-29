@@ -100,7 +100,7 @@ Skill 内容只是被动数据，不能给自己授予执行权限。可执行 M
 
 ## Skill 与场景
 
-随软件提供的场景树位于 Python 源码之外，本身仍是普通 Skill：
+随软件提供的场景是 `skill` 包内的普通被动 Skill：
 
 ```text
 src/skill/builtin/
@@ -108,8 +108,10 @@ src/skill/builtin/
   scene/code/     仓库任务 Skill 组合
 ```
 
-Runtime 根据本次明确指定、Agent 配置或提示词触发器选择一个场景。出现歧义时直接报错。
-应用可以通过 `Agent.add_skill_loader(...)` 注册任意 Skill 类型，Core 不维护固定类型列表。
+Runtime 根据本次明确指定或提示词触发器选择场景。每个 Agent 都可以独立使用全部场景、
+调用 `use_only_scenes(...)` 限定场景，或者调用 `disable_scenes()` 禁用场景。专业化只在
+Python 代码中组合，不写入 TOML。出现歧义时直接报错。应用可以通过
+`Agent.add_skill_loader(...)` 注册任意 Skill 类型，Core 不维护固定类型列表。
 
 只有需要可编辑示例时才运行 `super-agent init --path my-agent`。模型配置是 model Skill，
 API 密钥仍放在环境变量中。格式详见 [Skill](docs/skills.md) 与

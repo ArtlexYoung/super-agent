@@ -1,7 +1,6 @@
 import json
 import tempfile
 import unittest
-from dataclasses import replace
 from pathlib import Path
 
 from super_agent import Agent
@@ -94,16 +93,12 @@ class SkillSceneTests(unittest.TestCase):
             self.assertEqual("scene:common", selected["scene_key"])
             self.assertEqual("selected by task request", selected["reason"])
 
-            config = AgentConfig.create_default(root)
-            configured = replace(
-                config,
-                agent=replace(config.agent, skills=["scene:common"]),
-            )
             configured_agent = Agent(
-                configured,
+                AgentConfig.create_default(root),
                 provider=MockProvider("configured"),
                 use_storage=True,
             )
+            configured_agent.use_only_scenes("common")
             configured_result = configured_agent.run("Implement another change")
             configured_event = _event_data(
                 configured_agent.runtime.create_event_store(),
@@ -111,7 +106,65 @@ class SkillSceneTests(unittest.TestCase):
                 "scene.selected",
             )
             self.assertEqual("direct", configured_result.workflow)
-            self.assertEqual("enabled by agent config", configured_event["reason"])
+            self.assertEqual(
+                "selected as the only scene allowed by Agent",
+                configured_event["reason"],
+            )
+
+    def test_agent_can_restrict_or_disable_scenes_in_code(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            agent = Agent(
+                AgentConfig.create_default(tmp),
+                provider=MockProvider("finished"),
+                use_storage=True,
+            )
+            agent.use_only_scenes("code")
+
+            restricted = agent.run("Summarize these notes")
+            restricted_plan = _event_data(
+                agent.runtime.create_event_store(),
+                restricted.run_id,
+                "task.scheduled",
+            )
+            self.assertEqual("scene:code", restricted_plan["scene"])
+            with self.assertRaisesRegex(ValueError, "outside the Agent scene policy"):
+                agent.run("hello", scene="common")
+
+            agent.disable_scenes()
+            direct = agent.run("Answer directly")
+            direct_plan = _event_data(
+                agent.runtime.create_event_store(),
+                direct.run_id,
+                "task.scheduled",
+            )
+            self.assertIsNone(direct_plan["scene"])
+            self.assertIsNone(direct_plan["workflow"])
+            self.assertEqual("direct", direct.workflow)
+
+    def test_run_can_disable_scenes_without_changing_agent_policy(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            agent = Agent(
+                AgentConfig.create_default(tmp),
+                provider=MockProvider("finished"),
+            )
+
+            direct = agent.run("hello", use_scenes=False)
+            automatic = agent.run("hello")
+
+            direct_plan = next(
+                event.data
+                for event in direct.events
+                if event.event_type == "task.scheduled"
+            )
+            automatic_plan = next(
+                event.data
+                for event in automatic.events
+                if event.event_type == "task.scheduled"
+            )
+            self.assertIsNone(direct_plan["scene"])
+            self.assertEqual("scene:stateless", automatic_plan["scene"])
+            with self.assertRaisesRegex(ValueError, "scenes are disabled"):
+                agent.run("hello", scene="code", use_scenes=False)
 
     def test_scene_selection_rejects_ambiguous_inputs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -119,10 +172,10 @@ class SkillSceneTests(unittest.TestCase):
                 AgentConfig.create_default(tmp)
             )
             disclosure.prepare_skill_index()
-            with self.assertRaisesRegex(ValueError, "only one configured scene"):
+            with self.assertRaisesRegex(ValueError, "duplicate scenes"):
                 disclosure.select_skill_scene_for_prompt(
                     "hello",
-                    ["scene:common", "scene:code"],
+                    allowed_scenes=("common", "common"),
                 )
 
         with tempfile.TemporaryDirectory() as tmp:

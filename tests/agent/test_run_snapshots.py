@@ -58,7 +58,7 @@ class RunSnapshotTests(unittest.TestCase):
                 "prompt:echo",
                 {item["key"] for item in runtime_lock["skills"]},
             )
-            self.assertEqual(3, runtime_lock["plan"]["schema_version"])
+            self.assertEqual(4, runtime_lock["plan"]["schema_version"])
             self.assertEqual(
                 "scheduler:default",
                 runtime_lock["plan"]["scheduler"],
