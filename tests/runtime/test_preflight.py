@@ -3,10 +3,10 @@ import unittest
 from dataclasses import replace
 from pathlib import Path
 
-from core.agent import Agent, AgentRunOptions
+from super_agent import Agent, AgentRunOptions
 from core.config import AgentConfig
 from core.provider.chat import MockProvider
-from core.task.preflight import TaskPreflightError
+from skill.task.preflight import TaskPreflightError
 from skill.runners.loaded import LoadedSkill
 
 

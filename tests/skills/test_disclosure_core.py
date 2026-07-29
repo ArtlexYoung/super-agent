@@ -2,13 +2,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from core.state.evaluation import (
+from skill.evolution.tracking.run_evaluation import (
     EvaluationResult,
     EvaluationSource,
     EvaluationTokenUsage,
     create_evaluation_record,
 )
-from core.state.store import create_local_runtime_store
+from skill.state.store import create_local_runtime_store
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.evolution.freshness import calculate_skill_freshness
 from skill.evolution.revision import SkillRevision

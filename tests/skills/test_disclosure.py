@@ -3,9 +3,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from core.agent import Agent
+from super_agent import Agent
 from core.config import AgentConfig
-from core.state.store import create_local_runtime_store
+from skill.state.store import create_local_runtime_store
 from core.provider.chat import MockProvider
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.runners.defaults import create_runtime_disclosure_recorder

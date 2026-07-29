@@ -10,7 +10,7 @@ from unittest.mock import patch
 from cli import main
 from cli import run_result_to_dict
 from core.provider.chat import MockProvider
-from core.task.models import SubAgentResult, TaskResult
+from core.models import SubAgentResult, TaskResult
 
 
 class CliTests(unittest.TestCase):

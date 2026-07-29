@@ -9,11 +9,11 @@ from skill.runners.registry import SkillRunners
 from skill.runners.builtins import create_builtin_skill_runners
 from skill.runners.mcp import McpServers
 from core.config import AgentConfig
-from core.run import RunIdentity
+from core.models import RunIdentity
 from skill.disclosure import DisclosureRecorder, ProgressiveDisclosureCore
 
 if TYPE_CHECKING:
-    from core.state.store import RuntimeStore
+    from skill.state.store import RuntimeStore
 
 
 def create_default_skill_runners(

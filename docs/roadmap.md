@@ -316,6 +316,18 @@ Status: implemented.
 - Remove historical experiment snapshots already preserved by Git tags and shorten both
   READMEs to installation, first run, core guarantees, and links to focused documentation.
 
+## v0.0.86: One-Way Runtime Kernel
+
+Status: implemented.
+
+- Make Core a Skill-independent Provider execution kernel with one immutable `ModelCall`
+  input and explicit selected, completed, or failed events.
+- Move task scheduling, Skill-backed run state, optional persisted state, and evolution
+  ownership out of Core without leaving import aliases or compatibility modules.
+- Put Agent composition in the public `super_agent` entry and user-scoped management in
+  the adapter layer instead of treating either as Runtime mechanisms.
+- Enforce the one-way boundary with an AST test: no Core module may import Skill code.
+
 ## Release Gate
 
 The project will not move to `0.1.x` because of feature count. The gate is a reproducible

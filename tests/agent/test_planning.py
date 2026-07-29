@@ -3,9 +3,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from core.agent import Agent
+from super_agent import Agent
 from core.config import AgentConfig
-from core.state.insights import explain_run_with_insight
+from skill.evolution.tracking.insights import explain_run_with_insight
 from support import write_workflow_skill
 
 

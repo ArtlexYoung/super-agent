@@ -91,7 +91,7 @@ class ReleaseShapeTests(unittest.TestCase):
                     "-c",
                     "from super_agent import Agent; "
                     "from adapter.ag_ui_adapter import AGUIEventMapper; "
-                    "from core.run import Run; "
+                    "from skill.task.run import Run; "
                     "from skill.manifest import SkillManifest",
                 ],
                 cwd=tmp,
@@ -124,6 +124,36 @@ class ReleaseShapeTests(unittest.TestCase):
                     )
 
                     self.assertNotEqual(0, completed.returncode)
+
+    def test_core_never_imports_skill_implementations(self) -> None:
+        violations = {}
+        for path in Path("src/core").rglob("*.py"):
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            imports = []
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ImportFrom) and (node.module or "").startswith("skill"):
+                    imports.append(node.module)
+                if isinstance(node, ast.Import):
+                    imports.extend(
+                        name.name for name in node.names if name.name.startswith("skill")
+                    )
+            if imports:
+                violations[str(path)] = sorted(set(imports))
+
+        self.assertEqual({}, violations)
+
+    def test_removed_coupled_core_domains_do_not_return(self) -> None:
+        removed = [
+            "src/core/agent.py",
+            "src/core/engine.py",
+            "src/core/evolution",
+            "src/core/run.py",
+            "src/core/state/store.py",
+            "src/core/task",
+            "src/core/user.py",
+        ]
+
+        self.assertEqual([], [path for path in removed if Path(path).exists()])
 
     def test_python_source_files_stay_within_the_size_limit(self) -> None:
         oversized = {}

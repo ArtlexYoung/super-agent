@@ -6,8 +6,8 @@ import argparse
 import json
 
 from adapter.cli_adapter import load_agent
-from core.evolution.state import SkillEvolutionState, skill_evolution_to_dict
-from core.run import LOCAL_USER_ID
+from skill.evolution.tracking.state import SkillEvolutionState, skill_evolution_to_dict
+from core.models import LOCAL_USER_ID
 
 
 EVOLUTION_STATUSES = (

@@ -7,7 +7,7 @@ import json
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
-from core.state.evaluation import EvaluationRecord, evaluation_record_to_dict
+from skill.evolution.tracking.run_evaluation import EvaluationRecord, evaluation_record_to_dict
 from skill.evolution.revision import SkillRevision
 
 

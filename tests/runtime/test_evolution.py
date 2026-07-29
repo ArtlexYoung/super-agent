@@ -5,15 +5,15 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from core.evolution import apply_directory_file_changes, read_directory_file_changes
-from core.evolution.state import (
+from skill.evolution.tracking import apply_directory_file_changes, read_directory_file_changes
+from skill.evolution.tracking.state import (
     record_skill_candidate_evaluation,
     record_skill_candidate_promoted,
     require_skill_candidate_can_promote,
     start_manual_skill_evolution,
 )
-from core.evolution.state_values import CandidateEvaluation
-from core.state.store import create_local_runtime_store
+from skill.evolution.tracking.values import CandidateEvaluation
+from skill.state.store import create_local_runtime_store
 from skill.evolution.revision import SkillRevision
 
 

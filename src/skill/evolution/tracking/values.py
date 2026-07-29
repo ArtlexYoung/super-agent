@@ -6,7 +6,7 @@ import math
 import re
 from dataclasses import asdict, dataclass
 
-from core.evolution.files import DirectoryDifference
+from skill.evolution.tracking.files import DirectoryDifference
 from skill.evolution.revision import SkillRevision, skill_revision_to_dict
 
 

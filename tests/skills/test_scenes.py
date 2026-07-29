@@ -4,7 +4,7 @@ import unittest
 from dataclasses import replace
 from pathlib import Path
 
-from core.agent import Agent
+from super_agent import Agent
 from core.config import AgentConfig
 from core.provider.chat import MockProvider, ModelResponse, ToolCall
 from skill.kinds.scene import (

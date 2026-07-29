@@ -6,7 +6,7 @@ from contextlib import chdir
 from pathlib import Path
 from unittest.mock import patch
 
-from core.agent import Agent
+from super_agent import Agent
 from core.provider.chat import (
     OpenAICompatibleProvider,
     ProviderConnection,

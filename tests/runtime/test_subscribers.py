@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from core.agent import Agent, AgentRunOptions
+from super_agent import Agent, AgentRunOptions
 from core.config import AgentConfig
 from core.provider.chat import MockProvider
 from core.state.models import RunEvent
@@ -142,7 +142,7 @@ class RuntimeEventSubscriberTests(unittest.TestCase):
 
             result = agent.run("hello")
             with patch(
-                "core.state.learning.AutomaticEvolutionService.review_and_evolve",
+                "skill.evolution.tracking.learning.AutomaticEvolutionService.review_and_evolve",
                 side_effect=RuntimeError("evolution unavailable"),
             ), self.assertRaisesRegex(RuntimeError, "evolution unavailable"):
                 agent.learn_from_run(result.run_id)

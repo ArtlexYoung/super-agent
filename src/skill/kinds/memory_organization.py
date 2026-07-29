@@ -7,9 +7,9 @@ from dataclasses import asdict, dataclass
 from typing import Callable
 from uuid import uuid4
 
-from core.task.actions import ActionEffect
-from core.state.memory import LONG_TERM_MEMORY, TEMPORARY_MEMORY
-from core.state.store import RuntimeStore
+from core.checks import ActionEffect
+from skill.state.memory import LONG_TERM_MEMORY, TEMPORARY_MEMORY
+from skill.state.store import RuntimeStore
 from skill.kinds.memory_models import (
     MemoryItem,
     MemoryOperation,

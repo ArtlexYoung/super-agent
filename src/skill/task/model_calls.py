@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import json
-import math
 from dataclasses import dataclass
-from time import perf_counter
 from typing import TYPE_CHECKING, Callable, Protocol
 from uuid import uuid4
 
@@ -18,18 +16,19 @@ from core.provider.chat import (
     ToolDefinition,
 )
 from core.provider.pool import ProviderPool
-from core.task.routing import list_model_routing_stats
-from core.task.run_plan import (
+from core.runtime import ModelCall, Runtime, estimate_text_tokens
+from skill.task.routing import list_model_routing_stats
+from skill.task.run_plan import (
     ModelDecision,
     ModelSelectionRequest,
     choose_model as choose_model_decision,
 )
-from core.task.models import TaskRequest
+from core.models import TaskRequest
 from skill.kinds.model import ModelProfile
 from skill.manifest import Skill
 
 if TYPE_CHECKING:
-    from core.state.store import RuntimeStore
+    from skill.state.store import RuntimeStore
 
 
 EventWriter = Callable[[str, dict[str, object]], object]
@@ -55,13 +54,6 @@ class ModelCallContext:
     select_model: ModelSelector | None = None
 
 
-@dataclass(frozen=True)
-class _ModelCallEvidence:
-    decision: ModelDecision
-    purpose: str
-    input_tokens: int
-
-
 class AdaptiveModelCalls:
     """Choose one compatible provider and record its exact outcome."""
 
@@ -72,6 +64,7 @@ class AdaptiveModelCalls:
     ) -> None:
         self.model_profiles = list(model_profiles)
         self.provider_pool = provider_pool
+        self.runtime = Runtime()
 
     def create_text_model(
         self,
@@ -121,35 +114,11 @@ class AdaptiveModelCalls:
         tools: list[ToolDefinition] | None = None,
     ) -> ModelResponse:
         provider = self._prepare_model_call(decision, context)
-        evidence = _create_call_evidence(
-            decision,
-            context,
-            messages,
-            tools=tools,
+        return self.runtime.call_model(
+            _to_model_call(decision, context, messages, tools),
+            provider,
+            context.record_event,
         )
-        started_at = perf_counter()
-        try:
-            response = _send_provider_request(
-                provider,
-                decision.model,
-                messages,
-                tools=tools,
-            )
-        except Exception as error:
-            _record_model_failure(
-                context,
-                evidence,
-                error,
-                started_at=started_at,
-            )
-            raise
-        _record_model_completion(
-            context,
-            evidence,
-            response,
-            started_at=started_at,
-        )
-        return response
 
     def require_model_profile(self, decision: ModelDecision) -> ModelProfile:
         profile = next(
@@ -182,20 +151,6 @@ class AdaptiveModelCalls:
         )
         if context.select_model is not None:
             context.select_model(profile, provider)
-        context.record_event(
-            "model.call.selected",
-            {
-                "profile": decision.profile_key,
-                "model": decision.model,
-                "purpose": context.purpose,
-                "score": decision.score,
-                "confidence": decision.confidence,
-                "evidence_calls": decision.evidence_calls,
-                "evidence_sufficient": decision.evidence_sufficient,
-                "selection": decision.selection,
-                "reasons": list(decision.reasons),
-            },
-        )
         return provider
 
 
@@ -292,101 +247,26 @@ def tool_result_message(call: ToolCall, result: dict[str, object]) -> Message:
     }
 
 
-def _send_provider_request(
-    provider: ChatProvider,
-    model: str,
-    messages: list[Message],
-    *,
-    tools: list[ToolDefinition] | None,
-) -> ModelResponse:
-    if tools is None:
-        return ModelResponse(provider.send_chat_messages(messages, model), [], "completed")
-    return provider.send_chat_messages_with_tools(messages, model, tools)
-
-
-def _create_call_evidence(
+def _to_model_call(
     decision: ModelDecision,
     context: ModelCallContext,
     messages: list[Message],
-    *,
     tools: list[ToolDefinition] | None,
-) -> _ModelCallEvidence:
-    input_text = json.dumps(
-        {"messages": messages, "tools": tools or []},
-        ensure_ascii=False,
-        sort_keys=True,
-    )
-    return _ModelCallEvidence(
-        decision,
-        context.purpose,
-        estimate_text_tokens(input_text),
-    )
-
-
-def _record_model_completion(
-    context: ModelCallContext,
-    evidence: _ModelCallEvidence,
-    response: ModelResponse,
-    *,
-    started_at: float,
-) -> None:
-    output = response.text if not response.tool_calls else _model_response_text(response)
-    context.record_event(
-        "model.call.completed",
-        _model_call_metrics(evidence, output, started_at),
-    )
-
-
-def _record_model_failure(
-    context: ModelCallContext,
-    evidence: _ModelCallEvidence,
-    error: Exception,
-    *,
-    started_at: float,
-) -> None:
-    context.record_event(
-        "model.call.failed",
-        {
-            **_model_call_metrics(evidence, "", started_at),
-            "error_type": type(error).__name__,
-            "message": str(error),
+) -> ModelCall:
+    return ModelCall(
+        profile_key=decision.profile_key,
+        model=decision.model,
+        purpose=context.purpose,
+        messages=tuple(messages),
+        tools=None if tools is None else tuple(tools),
+        input_cost_per_million=decision.input_cost_per_million or 0.0,
+        output_cost_per_million=decision.output_cost_per_million or 0.0,
+        selection={
+            "score": decision.score,
+            "confidence": decision.confidence,
+            "evidence_calls": decision.evidence_calls,
+            "evidence_sufficient": decision.evidence_sufficient,
+            "selection": decision.selection,
+            "reasons": list(decision.reasons),
         },
     )
-
-
-def _model_call_metrics(
-    evidence: _ModelCallEvidence,
-    output: str,
-    started_at: float,
-) -> dict[str, object]:
-    decision = evidence.decision
-    output_tokens = estimate_text_tokens(output)
-    input_cost = evidence.input_tokens * (decision.input_cost_per_million or 0.0)
-    output_cost = output_tokens * (decision.output_cost_per_million or 0.0)
-    return {
-        "profile": decision.profile_key,
-        "model": decision.model,
-        "purpose": evidence.purpose,
-        "latency_ms": max(0, round((perf_counter() - started_at) * 1000)),
-        "input_tokens": evidence.input_tokens,
-        "output_tokens": output_tokens,
-        "estimated_cost": (input_cost + output_cost) / 1_000_000,
-    }
-
-
-def _model_response_text(response: ModelResponse) -> str:
-    return json.dumps(
-        {
-            "text": response.text,
-            "tool_calls": [
-                {"name": call.name, "arguments": call.arguments}
-                for call in response.tool_calls
-            ],
-        },
-        ensure_ascii=False,
-        sort_keys=True,
-    )
-
-
-def estimate_text_tokens(text: str) -> int:
-    return 0 if not text else math.ceil(len(text) / 4)

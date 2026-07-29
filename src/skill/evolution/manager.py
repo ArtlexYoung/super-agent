@@ -6,9 +6,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, cast
 
-from core.task.actions import ActionEffect, ActionRequest, ActionRunner, ActionRules
-from core.evolution.files import compare_directory_versions
-from core.evolution.state import (
+from core.checks import ActionEffect, ActionRequest, ActionRunner, ActionRules
+from skill.evolution.tracking.files import compare_directory_versions
+from skill.evolution.tracking.state import (
     create_skill_candidate_difference,
     list_skill_evolutions,
     record_skill_candidate_evaluation,
@@ -20,9 +20,9 @@ from core.evolution.state import (
     require_skill_candidate_can_promote,
     start_manual_skill_evolution,
 )
-from core.evolution.state_values import CandidateEvaluation, SkillEvolutionState
-from core.task.model_calls import TextModel
-from core.state.store import RuntimeStore
+from skill.evolution.tracking.values import CandidateEvaluation, SkillEvolutionState
+from skill.task.model_calls import TextModel
+from skill.state.store import RuntimeStore
 from skill.evolution.candidate import (
     SkillCandidate,
     SkillCandidateRequest,

@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Callable
 from skill.runners.loaded import LoadedSkill
 from core.provider.chat import Message, ModelResponse
 from core.provider.pool import ProviderPool
-from core.task.model_calls import (
+from skill.task.model_calls import (
     AdaptiveModelCalls,
     ModelCallContext,
     TextModel,
@@ -16,7 +16,7 @@ from core.task.model_calls import (
     build_model_messages,
     tool_result_message,
 )
-from core.task.planning import (
+from skill.task.planning import (
     TaskPlan,
     TaskStep,
     build_task_step_prompt,
@@ -24,14 +24,14 @@ from core.task.planning import (
     create_direct_task_plan,
     read_task_plan,
 )
-from core.task.preflight import check_run_before_execution
-from core.run import Run
-from core.task.actions import ActionRequest
-from core.task.run_plan import (
+from skill.task.preflight import check_run_before_execution
+from skill.task.run import Run
+from core.checks import ActionRequest
+from skill.task.run_plan import (
     RunPlan,
     create_task_step_run_plan,
 )
-from core.task.preparation import (
+from skill.task.preparation import (
     PreparedRun,
     build_system_prompt,
     create_runtime_tools,
@@ -41,13 +41,13 @@ from core.task.preparation import (
     run_task_step_subagents,
     select_model_context_skills,
 )
-from core.task.models import SubAgentResult, TaskRequest, TaskResult
-from core.task.tools import RuntimeTools
+from core.models import SubAgentResult, TaskRequest, TaskResult
+from skill.task.tools import RuntimeTools
 from skill.kinds.model import ModelProfile
 from skill.manifest import Skill
 
 if TYPE_CHECKING:
-    from core.state.store import RuntimeStore
+    from skill.state.store import RuntimeStore
 
 
 RunPlanListener = Callable[[RunPlan], None]

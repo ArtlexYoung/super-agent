@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from core.storage.verification import (
+from tests.storage.verification_support import (
     storage_isolation_report_to_dict,
     verify_multiuser_isolation_across_storage_backends,
 )

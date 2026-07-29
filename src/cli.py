@@ -23,11 +23,11 @@ from adapter.cli_adapter.runs import configure_runs_parser, run_runs_command
 from adapter.cli_adapter.serve import configure_serve_parser, run_serve_command
 from adapter.cli_adapter.skills import configure_skills_parser, run_skills_command
 from adapter.cli_adapter.storage import configure_storage_parser, run_storage_command
-from core.agent import AgentRunOptions
+from super_agent import AgentRunOptions
 from core.provider.chat import Message
-from core.run import LOCAL_USER_ID
+from core.models import LOCAL_USER_ID
 from core.state.models import RunEvent
-from core.task.models import TaskResult
+from core.models import TaskResult
 
 
 COMMAND_HANDLERS: dict[str, Callable[[argparse.Namespace], int]] = {

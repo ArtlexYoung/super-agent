@@ -7,15 +7,15 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from core.run import RunIdentity, validate_agent_name, validate_user_id
+from core.models import RunIdentity, validate_agent_name, validate_user_id
 from core.state.event_log import RunEventLog
 from core.storage import StorageBackend, StorageEvent, StorageEventQuery
 from core.storage.files import create_scope_digest
 
 if TYPE_CHECKING:
-    from core.state.disclosure import RuntimeDisclosureStore
-    from core.state.evaluation import EvaluationRecord
-    from core.state.memory import RuntimeMemoryStore
+    from skill.state.disclosure import RuntimeDisclosureStore
+    from skill.evolution.tracking.run_evaluation import EvaluationRecord
+    from skill.state.memory import RuntimeMemoryStore
     from core.state.models import Conversation, ConversationMessage, RunEvent, RunSnapshot
 
 
@@ -51,7 +51,7 @@ class RuntimeStore:
     @property
     def disclosure(self) -> RuntimeDisclosureStore:
         if self._disclosure is None:
-            from core.state.disclosure import RuntimeDisclosureStore
+            from skill.state.disclosure import RuntimeDisclosureStore
 
             self._disclosure = RuntimeDisclosureStore(
                 self.private_root / "cache",
@@ -62,7 +62,7 @@ class RuntimeStore:
     @property
     def memory(self) -> RuntimeMemoryStore:
         if self._memory is None:
-            from core.state.memory import RuntimeMemoryStore
+            from skill.state.memory import RuntimeMemoryStore
 
             self._memory = RuntimeMemoryStore(self)
         return self._memory
@@ -370,7 +370,7 @@ class RuntimeStore:
         return path
 
     def append_evaluation_records(self, records: list[EvaluationRecord]) -> None:
-        from core.state.evaluation import evaluation_record_to_dict
+        from skill.evolution.tracking.run_evaluation import evaluation_record_to_dict
 
         for record in records:
             self.append_event(
@@ -388,7 +388,7 @@ class RuntimeStore:
         skill_key: str | None = None,
         source_type: str | None = None,
     ) -> list[EvaluationRecord]:
-        from core.state.evaluation import evaluation_record_from_dict
+        from skill.evolution.tracking.run_evaluation import evaluation_record_from_dict
 
         records = [
             evaluation_record_from_dict(event.data)

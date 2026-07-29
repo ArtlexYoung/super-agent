@@ -7,9 +7,10 @@ from dataclasses import asdict, replace
 from time import perf_counter
 from typing import TYPE_CHECKING, Callable
 
-from core.task.actions import ActionEffect, ActionRequest, ActionRunner, ActionRules
+from core.checks import ActionEffect, ActionRequest, ActionRunner, ActionRules
 from core.config import AgentConfig
-from core.run import LOCAL_USER_ID, Run, RunIdentity
+from skill.task.run import Run
+from core.models import LOCAL_USER_ID, RunIdentity
 from core.provider.pool import ProviderPool
 from core.provider.secrets import UserSecretResolver
 from core.state.event_log import RunEventLog
@@ -22,11 +23,11 @@ from core.state.subscribers import (
 )
 from core.storage import StorageBackend
 from core.storage.values import encode_storage_data
-from core.task.loop import AdaptiveTaskLoop, list_run_actions
-from core.task.run_plan import RunPlan
-from core.task.preparation import RuntimeLockInput, create_runtime_lock
-from core.task.model_calls import estimate_text_tokens
-from core.task.models import RunLearningResult, TaskRequest, TaskResult, TaskTrace
+from skill.task.loop import AdaptiveTaskLoop, list_run_actions
+from skill.task.run_plan import RunPlan
+from skill.task.preparation import RuntimeLockInput, create_runtime_lock
+from skill.task.model_calls import estimate_text_tokens
+from core.models import RunLearningResult, TaskRequest, TaskResult, TaskTrace
 from skill.disclosure import ProgressiveDisclosureCore, SkillIndex
 from skill.kinds.model import (
     ModelProfile,
@@ -38,8 +39,8 @@ from skill.runners.defaults import create_progressive_skill_disclosure
 from skill.runners.registry import SkillRunners
 
 if TYPE_CHECKING:
-    from core.state.store import RuntimeStore
-    from core.task.routing import ModelRoutingStats
+    from skill.state.store import RuntimeStore
+    from skill.task.routing import ModelRoutingStats
     from skill.evolution.manager import SkillEvolutionManager
 
 
@@ -172,7 +173,7 @@ class AgentRuntime:
     def create_store(self, user_id: str = LOCAL_USER_ID) -> RuntimeStore:
         if self.storage is None:
             raise RuntimeError("Runtime storage is disabled for this Agent")
-        from core.state.store import RuntimeStore
+        from skill.state.store import RuntimeStore
 
         return RuntimeStore(
             self.storage,
@@ -233,7 +234,7 @@ class AgentRuntime:
         if snapshot.agent_name != self.config.agent.name:
             raise ValueError(f"run belongs to another Agent: {run_id}")
 
-        from core.state.learning import learn_from_run
+        from skill.evolution.tracking.learning import learn_from_run
 
         result = self.execute_management_action(
             user_id,
@@ -258,7 +259,7 @@ class AgentRuntime:
         user_id: str = LOCAL_USER_ID,
         purpose: str | None = None,
     ) -> list[ModelRoutingStats]:
-        from core.task.routing import list_model_routing_stats
+        from skill.task.routing import list_model_routing_stats
 
         return list_model_routing_stats(self.create_store(user_id), purpose)
 
@@ -360,7 +361,7 @@ class AgentRuntime:
     ) -> RuntimeStore | None:
         if self.storage is None:
             return None
-        from core.state.store import RuntimeStore
+        from skill.state.store import RuntimeStore
 
         return RuntimeStore(
             self.storage,
@@ -483,7 +484,7 @@ class AgentRuntime:
         prompt: str,
         run: Run,
     ) -> None:
-        from core.task.routing import detect_implicit_conversation_feedback
+        from skill.task.routing import detect_implicit_conversation_feedback
 
         feedback = detect_implicit_conversation_feedback(conversation, prompt)
         if feedback is None:

@@ -10,7 +10,7 @@ from core.state.views import usage_habits_from_events
 from core.storage import StorageEvent
 
 if TYPE_CHECKING:
-    from core.state.store import RuntimeStore
+    from skill.state.store import RuntimeStore
 
 
 LONG_TERM_MEMORY = "long_term"

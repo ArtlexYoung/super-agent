@@ -2,7 +2,7 @@ import json
 import unittest
 
 from skill.runners.loaded import PlanningPolicy
-from core.task.planning import (
+from skill.task.planning import (
     create_direct_task_plan,
     decide_task_planning,
     read_task_plan,

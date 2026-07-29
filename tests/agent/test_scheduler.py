@@ -3,10 +3,10 @@ import unittest
 from dataclasses import replace
 from pathlib import Path
 
-from core.agent import Agent, AgentRunOptions
+from super_agent import Agent, AgentRunOptions
 from core.config import AgentConfig
 from core.provider.chat import MockProvider, ModelResponse, ProviderConnection
-from core.task.run_plan import ModelSelectionRequest, choose_model
+from skill.task.run_plan import ModelSelectionRequest, choose_model
 from skill.kinds.model import ModelProfile, ModelRoutingTraits
 from support import write_workflow_skill
 

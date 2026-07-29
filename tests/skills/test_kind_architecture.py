@@ -9,7 +9,7 @@ from skill.disclosure import ProgressiveDisclosureCore
 from skill.kinds.mcp import McpSkillSettings
 from skill.runners.mcp import McpServer
 from skill.kinds.memory import MiniMemory
-from core.task.models import SubAgentResult, TaskResult
+from core.models import SubAgentResult, TaskResult
 from skill.kinds.workflow import create_workflow_policy
 from skill.manifest import SkillManifest
 
@@ -53,21 +53,25 @@ class SkillKindArchitectureTests(unittest.TestCase):
                 importlib.import_module(module_name)
 
     def test_core_contains_runtime_and_provider_code(self) -> None:
-        for module_name in ["core.agent", "core.config", "core.provider"]:
+        for module_name in ["super_agent", "core.config", "core.provider"]:
             self.assertEqual(module_name, importlib.import_module(module_name).__name__)
 
     def test_runtime_learning_is_an_explicit_post_run_operation(self) -> None:
-        engine_source = Path("src/core/engine.py").read_text(encoding="utf-8")
-        learning_source = Path("src/core/state/learning.py").read_text(encoding="utf-8")
+        engine_source = Path("src/skill/task/runtime.py").read_text(encoding="utf-8")
+        learning_source = Path(
+            "src/skill/evolution/tracking/learning.py"
+        ).read_text(encoding="utf-8")
         self.assertNotIn("def _record_task_evaluation", engine_source)
         self.assertIn("def learn_from_run", learning_source)
         self.assertNotIn("EventSubscriber", learning_source)
         self.assertNotIn("learning.requested", engine_source)
-        self.assertTrue(Path("src/core/state/evaluation.py").is_file())
+        self.assertTrue(
+            Path("src/skill/evolution/tracking/run_evaluation.py").is_file()
+        )
         self.assertTrue(Path("src/core/state/subscribers.py").is_file())
-        self.assertTrue(Path("src/core/run.py").is_file())
+        self.assertTrue(Path("src/skill/task/run.py").is_file())
         self.assertFalse(Path("src/core/session.py").exists())
-        self.assertTrue(Path("src/core/state/store.py").is_file())
+        self.assertTrue(Path("src/skill/state/store.py").is_file())
         self.assertTrue(Path("src/core/storage/contracts.py").is_file())
 
     def test_only_center_source_parser_reads_skill_toml(self) -> None:

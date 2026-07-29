@@ -5,7 +5,7 @@ import unittest
 import zipfile
 from pathlib import Path
 
-from core.state.store import create_local_runtime_store
+from skill.state.store import create_local_runtime_store
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.ecosystem.package import SkillPackageManager
 

@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from core.agent import Agent, AgentRunOptions
+from super_agent import Agent, AgentRunOptions
 from core.config import AgentConfig
 from core.provider.chat import MockProvider
 
@@ -19,7 +19,7 @@ import json
 import sys
 import tempfile
 from pathlib import Path
-from core.agent import Agent, AgentRunOptions
+from super_agent import Agent, AgentRunOptions
 from core.config import AgentConfig
 from core.provider.chat import MockProvider
 
@@ -29,10 +29,10 @@ with tempfile.TemporaryDirectory() as temporary_directory:
     result = agent.run("hello", scene="stateless")
 assert result.text == "finished"
 blocked = (
-    "core.evolution",
-    "core.state.evaluation",
-    "core.state.learning",
-    "core.state.memory",
+    "skill.evolution.tracking",
+    "skill.evolution.tracking.run_evaluation",
+    "skill.evolution.tracking.learning",
+    "skill.state.memory",
     "skill.evolution",
     "skill.kinds.mcp",
     "skill.kinds.memory",
@@ -51,7 +51,7 @@ import json
 import sys
 import tempfile
 from pathlib import Path
-from core.agent import Agent
+from super_agent import Agent
 from core.config import AgentConfig
 from core.provider.chat import MockProvider
 
@@ -61,11 +61,11 @@ with tempfile.TemporaryDirectory() as temporary_directory:
 assert result.text == "finished"
 blocked = (
     "adapter.",
-    "core.evolution",
-    "core.state.evaluation",
-    "core.state.learning",
-    "core.state.memory",
-    "core.state.store",
+    "skill.evolution.tracking",
+    "skill.evolution.tracking.run_evaluation",
+    "skill.evolution.tracking.learning",
+    "skill.state.memory",
+    "skill.state.store",
     "core.storage.jsonl",
     "core.storage.sql",
     "core.storage.sqlite",

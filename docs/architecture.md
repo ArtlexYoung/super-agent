@@ -4,8 +4,8 @@ Super Agent keeps five responsibilities separate and gives each one a direct nam
 
 ```text
 Provider     connects model intelligence
-Core         schedules tasks and owns mutable Runtime state
-SkillRunner  turns one Skill type into Runtime behavior
+Core         executes prepared model calls and checks declared actions
+SkillRunner  turns one Skill type into task behavior
 Skill        carries passive content and configuration
 Agent        composes Providers, Core options, SkillRunners, storage, and subagents
 ```
@@ -18,14 +18,14 @@ The repository keeps passive scene data outside the three Python packages:
 skill_scenes/       shipped common and optional task-scene Skill trees
 src/
   adapter/          external CLI and AG-UI entry points
-  core/             Runtime, Provider, task, state, storage, and evolution orchestration
-  skill/            Skill format, disclosure, runners, packages, and evaluation
+  core/             Skill-independent Runtime, Provider, events, checks, and storage ports
+  skill/            Skill format, scheduling, state, runners, packages, and evolution
   cli.py
   super_agent.py
 ```
 
-`adapter` may import Core. Core never imports CLI, HTTP, React, or another external
-interaction layer. `super_agent.py` is the small everyday API; advanced APIs are imported
+`adapter` and `skill` may import Core. Core never imports Skill, CLI, HTTP, React, or
+another external interaction layer. `super_agent.py` is the composition and everyday API; advanced APIs are imported
 from the adapter, Core, or Skill module that owns them.
 
 `Agent` construction reads and validates configuration and prepares only in-memory code

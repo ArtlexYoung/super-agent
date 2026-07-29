@@ -7,10 +7,10 @@ from typing import Callable
 
 from core.provider.chat import Message
 from core.provider.pool import ProviderPool
-from core.run import Run
-from core.task.models import TaskRequest
-from core.task.run_plan import RunPlan
-from core.task.tools import RuntimeTools, RuntimeToolsContext
+from skill.task.run import Run
+from core.models import TaskRequest
+from skill.task.run_plan import RunPlan
+from skill.task.tools import RuntimeTools, RuntimeToolsContext
 from skill.disclosure import SkillReference
 from skill.runners.loaded import LoadedSkill
 from skill.runners.registry import SkillRunnerEntry

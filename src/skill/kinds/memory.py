@@ -7,14 +7,14 @@ from dataclasses import asdict
 from typing import Callable
 from uuid import uuid4
 
-from core.run import RunIdentity
-from core.task.actions import ActionEffect, ActionRequest
-from core.state.memory import (
+from core.models import RunIdentity
+from core.checks import ActionEffect, ActionRequest
+from skill.state.memory import (
     LONG_TERM_MEMORY,
     TEMPORARY_MEMORY,
     validate_memory_type,
 )
-from core.state.store import RuntimeStore
+from skill.state.store import RuntimeStore
 from skill.disclosure import SkillDisclosure
 from skill.kinds.memory_models import (
     MemoryItem,

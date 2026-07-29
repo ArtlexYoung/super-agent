@@ -3,8 +3,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from core.agent import Agent
-from core.task.actions import ActionEffect
+from super_agent import Agent
+from core.checks import ActionEffect
 from core.config import AgentConfig
 from core.provider.chat import MockProvider
 from core.storage import create_storage_backend
@@ -211,7 +211,7 @@ skills = ["skills"]
 class LazyAgentInitializationTests(unittest.TestCase):
     def test_construction_and_registration_do_not_initialize_runtime_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, patch(
-            "core.agent.create_progressive_skill_disclosure"
+            "super_agent.create_progressive_skill_disclosure"
         ) as create_disclosure, patch(
             "core.storage.create_storage_backend"
         ) as create_storage:
@@ -235,10 +235,10 @@ class LazyAgentInitializationTests(unittest.TestCase):
 
     def test_first_runtime_access_initializes_everything_once(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, patch(
-            "core.agent.create_progressive_skill_disclosure",
+            "super_agent.create_progressive_skill_disclosure",
             wraps=create_progressive_skill_disclosure,
         ) as create_disclosure, patch(
-            "core.agent.read_model_profiles",
+            "super_agent.read_model_profiles",
             wraps=read_model_profiles,
         ) as discover_models, patch(
             "core.storage.create_storage_backend",
@@ -269,7 +269,7 @@ class LazyAgentInitializationTests(unittest.TestCase):
             return read_model_profiles(*args, **kwargs)
 
         with tempfile.TemporaryDirectory() as tmp, patch(
-            "core.agent.read_model_profiles",
+            "super_agent.read_model_profiles",
             side_effect=discover_models_once_ready,
         ):
             agent = Agent(

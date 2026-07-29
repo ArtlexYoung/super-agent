@@ -5,7 +5,7 @@ import threading
 import unittest
 from pathlib import Path
 
-from core.agent import Agent
+from super_agent import Agent
 from adapter.ag_ui_adapter.server import create_ag_ui_server
 from core.provider.chat import MockProvider
 from core.config import AgentConfig

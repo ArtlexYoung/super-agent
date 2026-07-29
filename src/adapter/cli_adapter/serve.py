@@ -6,7 +6,7 @@ import argparse
 
 from adapter.cli_adapter import load_agent
 from adapter.ag_ui_adapter.server import DEFAULT_ALLOWED_ORIGINS, create_ag_ui_server
-from core.run import LOCAL_USER_ID
+from core.models import LOCAL_USER_ID
 
 
 def configure_serve_parser(parser: argparse.ArgumentParser) -> None:

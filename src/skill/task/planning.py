@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 from skill.runners.loaded import PlanningPolicy
 from core.provider.chat import Message
-from core.task.models import TaskRequest
+from core.models import TaskRequest
 from skill.kinds.model import ModelProfile
 
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Callable
 
-from core.run import RunIdentity
+from core.models import RunIdentity
 from core.state.models import RunEvent
 from core.state.views import run_event_from_storage
 from core.storage import StorageBackend, StorageEvent, StorageEventQuery

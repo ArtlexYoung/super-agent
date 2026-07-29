@@ -5,14 +5,14 @@ import sys
 from pathlib import Path
 
 from core import __version__
-from core.task.actions import ActionEffect
-from core.agent import Agent
+from core.checks import ActionEffect
+from super_agent import Agent
 from skill.runners.defaults import create_default_skill_runners
 from skill.runners.registry import SkillLoadRequest
 from core.config import AgentConfig
-from core.state.store import create_local_runtime_store
+from skill.state.store import create_local_runtime_store
 from core.provider.chat import MockProvider
-from core.task.preflight import TaskPreflightError
+from skill.task.preflight import TaskPreflightError
 from skill.disclosure import ProgressiveDisclosureCore, SkillReference
 from skill.kinds.mcp import read_mcp_skill_settings
 from skill.kinds.memory import MiniMemory

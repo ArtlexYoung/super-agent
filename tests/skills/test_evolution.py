@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from core.agent import Agent
+from super_agent import Agent
 from skill.runners.defaults import create_progressive_skill_disclosure
 from core.provider.chat import MockProvider
 from core.config import AgentConfig

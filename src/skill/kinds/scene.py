@@ -11,13 +11,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from core.task.actions import ActionEffect
+from core.checks import ActionEffect
 from skill.disclosure import ProgressiveDisclosureCore, SkillDisclosure, SkillIndex
 from skill.disclosure.models import SkillReference
 from skill.runners.loaded import SkillAction, SkillTool
 
 if TYPE_CHECKING:
-    from core.state.store import RuntimeStore
+    from skill.state.store import RuntimeStore
 
 
 SCENE_CONFIGURATION_FIELDS = {"skills"}

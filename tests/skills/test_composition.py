@@ -4,7 +4,7 @@ import tomllib
 import unittest
 from pathlib import Path
 
-from core.agent import Agent
+from super_agent import Agent
 from core.config import AgentConfig
 from core.provider.chat import MockProvider
 from skill.disclosure import ProgressiveDisclosureCore

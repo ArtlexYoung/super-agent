@@ -14,10 +14,10 @@ from skill.runners.registry import SkillRunners
 from core.config import AgentConfig
 from core.provider.chat import ChatProvider, Message
 from core.storage import StorageBackend
-from core.task.planning import decide_task_planning
-from core.task.routing import list_model_routing_stats
-from core.run import Run
-from core.task.run_plan import (
+from skill.task.planning import decide_task_planning
+from skill.task.routing import list_model_routing_stats
+from skill.task.run import Run
+from skill.task.run_plan import (
     ModelDecision,
     ModelSelectionRequest,
     RunPlan,
@@ -26,8 +26,8 @@ from core.task.run_plan import (
     resolve_required_features,
     resolve_task_purpose,
 )
-from core.task.models import SubAgentResult, TaskRequest
-from core.task.tools import RuntimeTools, RuntimeToolsContext
+from core.models import SubAgentResult, TaskRequest
+from skill.task.tools import RuntimeTools, RuntimeToolsContext
 from skill.disclosure import SkillIndex, SkillIndexEntry, SkillReference
 from skill.kinds.model import ModelProfile, model_profile_to_dict
 

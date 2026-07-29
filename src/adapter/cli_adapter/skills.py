@@ -9,8 +9,8 @@ from skill.runners.defaults import create_progressive_skill_disclosure
 from skill.runners.builtins import create_builtin_skill_runners
 from skill.runners.mcp import McpServers
 from core.config import AgentConfig
-from core.run import LOCAL_USER_ID
-from core.task.actions import ActionRules
+from core.models import LOCAL_USER_ID
+from core.checks import ActionRules
 from skill.disclosure import ProgressiveDisclosureCore, skill_index_to_dict
 from skill.ecosystem.package import SkillPackageManager
 from skill.evolution.evaluation import EvaluationCase

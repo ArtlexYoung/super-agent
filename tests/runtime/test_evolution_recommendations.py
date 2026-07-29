@@ -10,26 +10,26 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
-from core.agent import Agent
+from super_agent import Agent
 from core.provider.chat import MockProvider
 from core.config import AgentConfig
-from core.state.evaluation import (
+from skill.evolution.tracking.run_evaluation import (
     EvaluationResult,
     EvaluationRecord,
     EvaluationSource,
     EvaluationTokenUsage,
     create_evaluation_record,
 )
-from core.evolution.files import compare_directory_versions
-from core.evolution.state import (
+from skill.evolution.tracking.files import compare_directory_versions
+from skill.evolution.tracking.state import (
     list_skill_evolutions,
     skill_evolution_to_dict,
 )
-from core.evolution.recommendations import recommend_skill_revisions
-from core.evolution.evidence import summarize_evaluation_evidence
-from core.evolution.service import AutomaticEvolutionService
-from core.state.insights import explain_run_with_insight
-from core.state.store import create_local_runtime_store
+from skill.evolution.tracking.recommendations import recommend_skill_revisions
+from skill.evolution.tracking.evidence import summarize_evaluation_evidence
+from skill.evolution.tracking.service import AutomaticEvolutionService
+from skill.evolution.tracking.insights import explain_run_with_insight
+from skill.state.store import create_local_runtime_store
 from skill.evolution.revision import SkillRevision, create_indexed_skill_revision
 from support import write_workflow_skill
 
@@ -229,7 +229,7 @@ class SkillRevisionEvolutionTests(unittest.TestCase):
 
             result = agent.run("echo this")
             with patch(
-                "core.state.learning.AutomaticEvolutionService.review_and_evolve",
+                "skill.evolution.tracking.learning.AutomaticEvolutionService.review_and_evolve",
                 side_effect=RuntimeError("recommendation unavailable"),
             ), self.assertRaisesRegex(RuntimeError, "recommendation unavailable"):
                 agent.learn_from_run(result.run_id)

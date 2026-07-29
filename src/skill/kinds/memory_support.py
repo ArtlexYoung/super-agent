@@ -10,8 +10,8 @@ from datetime import UTC, datetime
 from typing import Any, Callable
 
 from core.provider.chat import Message
-from core.state.memory import LONG_TERM_MEMORY, TEMPORARY_MEMORY, RuntimeMemoryStore
-from core.task.actions import ActionEffect, ActionRequest
+from skill.state.memory import LONG_TERM_MEMORY, TEMPORARY_MEMORY, RuntimeMemoryStore
+from core.checks import ActionEffect, ActionRequest
 from skill.kinds.memory_models import MemoryItem, MemoryPolicy
 
 

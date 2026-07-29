@@ -7,9 +7,9 @@ from dataclasses import dataclass, replace
 from typing import Mapping
 
 from core.provider.chat import ProviderConnection
-from core.task.models import TaskRequest
-from core.task.planning import TaskStep
-from core.task.routing import ModelRoutingStats
+from core.models import TaskRequest
+from skill.task.planning import TaskStep
+from skill.task.routing import ModelRoutingStats
 from skill.disclosure import SkillReference
 from skill.kinds.model import ModelProfile, model_profile_is_ready
 

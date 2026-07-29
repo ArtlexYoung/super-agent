@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-from core.state.evaluation import EvaluationRecord
-from core.evolution.evidence import summarize_evaluation_evidence
-from core.evolution.recommendations import recommend_skill_revisions
-from core.evolution.state import (
+from skill.evolution.tracking.run_evaluation import EvaluationRecord
+from skill.evolution.tracking.evidence import summarize_evaluation_evidence
+from skill.evolution.tracking.recommendations import recommend_skill_revisions
+from skill.evolution.tracking.state import (
     SkillEvolutionState,
     list_skill_evolutions,
     read_skill_evolution,
     record_skill_evolution_monitoring,
 )
-from core.state.store import RuntimeStore
+from skill.state.store import RuntimeStore
 from skill.evolution.evaluation import EvaluationCase
 from skill.evolution.manager import SkillEvolutionManager
 from skill.evolution.revision import SkillRevision

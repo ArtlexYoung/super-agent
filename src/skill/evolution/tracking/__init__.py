@@ -1,8 +1,8 @@
-from core.evolution.evidence import (
+from skill.evolution.tracking.evidence import (
     EvaluationEvidenceSummary,
     summarize_evaluation_evidence,
 )
-from core.evolution.files import (
+from skill.evolution.tracking.files import (
     DirectoryDifference,
     DirectoryFileChanges,
     DisclosedDirectoryFile,
@@ -12,14 +12,14 @@ from core.evolution.files import (
     read_directory_file_changes,
     read_directory_files,
 )
-from core.evolution.recommendations import recommend_skill_revisions
-from core.evolution.state import (
+from skill.evolution.tracking.recommendations import recommend_skill_revisions
+from skill.evolution.tracking.state import (
     create_skill_candidate_difference,
     list_skill_evolutions,
     read_skill_evolution,
     skill_evolution_to_dict,
 )
-from core.evolution.state_values import (
+from skill.evolution.tracking.values import (
     CandidateEvaluation,
     SkillCandidateDifference,
     SkillEvolutionMetrics,

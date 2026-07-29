@@ -4,17 +4,17 @@ from __future__ import annotations
 
 import hashlib
 
-from core.evolution.evidence import (
+from skill.evolution.tracking.evidence import (
     EvaluationEvidenceSummary,
     summarize_evaluation_evidence,
 )
-from core.evolution.state import (
+from skill.evolution.tracking.state import (
     SkillEvolutionMetrics,
     SkillEvolutionRecommendation,
     SkillEvolutionState,
     recommend_skill_evolution,
 )
-from core.state.store import RuntimeStore
+from skill.state.store import RuntimeStore
 from skill.evolution.revision import SkillRevision
 
 

@@ -11,8 +11,8 @@ from pathlib import Path
 from uuid import uuid4
 
 from core.provider.chat import Message
-from core.task.model_calls import TextModel
-from core.evolution import (
+from skill.task.model_calls import TextModel
+from skill.evolution.tracking import (
     DirectoryFileChanges,
     apply_directory_file_changes,
     read_directory_file_changes,

@@ -8,7 +8,7 @@ from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
-from core.agent import Agent
+from super_agent import Agent
 from skill.runners.registry import SkillLoadRequest
 from skill.runners.loaded import (
     SkillAction,
@@ -18,8 +18,8 @@ from skill.runners.loaded import (
 from cli import main
 from core.provider.chat import MockProvider, ModelResponse, ToolCall
 from core.config import AgentConfig
-from core.task.actions import ActionEffect
-from core.task.preflight import TaskPreflightError
+from core.checks import ActionEffect
+from skill.task.preflight import TaskPreflightError
 from skill.manifest import Skill
 from support import write_workflow_skill
 
@@ -186,31 +186,38 @@ class SkillRunnerRuntimeTests(unittest.TestCase):
             self.assertFalse(hasattr(agent.runtime, "_create_user_model_runtime"))
             self.assertFalse(hasattr(agent.runtime, "task_scheduler"))
             self.assertFalse(hasattr(agent.runtime, "model_router"))
-            run_tree = ast.parse(
-                Path("src/core/run.py").read_text(encoding="utf-8")
+            identity_tree = ast.parse(
+                Path("src/core/models.py").read_text(encoding="utf-8")
             )
-            run_functions = {
+            identity_functions = {
                 node.name
-                for node in run_tree.body
+                for node in identity_tree.body
                 if isinstance(node, ast.FunctionDef)
             }
-            self.assertEqual(
+            self.assertTrue(
                 {
                     "validate_user_id",
                     "validate_agent_name",
                     "_clean_identity_value",
                     "_clean_optional_identity_value",
-                },
-                run_functions,
+                }
+                <= identity_functions
             )
-            run_classes = {
+            identity_classes = {
                 node.name
-                for node in run_tree.body
+                for node in identity_tree.body
                 if isinstance(node, ast.ClassDef)
             }
-            self.assertEqual({"RunIdentity", "Run"}, run_classes)
+            self.assertIn("RunIdentity", identity_classes)
+            run_tree = ast.parse(
+                Path("src/skill/task/run.py").read_text(encoding="utf-8")
+            )
+            run_classes = {
+                node.name for node in run_tree.body if isinstance(node, ast.ClassDef)
+            }
+            self.assertEqual({"Run"}, run_classes)
             self.assertFalse(Path("src/core/session.py").exists())
-            run_plan_source = Path("src/core/task/run_plan.py").read_text(
+            run_plan_source = Path("src/skill/task/run_plan.py").read_text(
                 encoding="utf-8"
             )
             self.assertNotIn("TaskSchedule", run_plan_source)
@@ -220,7 +227,7 @@ class SkillRunnerRuntimeTests(unittest.TestCase):
             self.assertFalse(Path("src/core/task/decisions.py").exists())
 
     def test_core_exposes_one_task_entry_method(self) -> None:
-        tree = ast.parse(Path("src/core/engine.py").read_text(encoding="utf-8"))
+        tree = ast.parse(Path("src/skill/task/runtime.py").read_text(encoding="utf-8"))
         method_names = {
             node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
         }
@@ -229,9 +236,9 @@ class SkillRunnerRuntimeTests(unittest.TestCase):
 
     def test_runtime_does_not_import_concrete_skill_kinds(self) -> None:
         for path in (
-            Path("src/core/task/loop.py"),
-            Path("src/core/task/run_plan.py"),
-            Path("src/core/task/tools.py"),
+            Path("src/skill/task/loop.py"),
+            Path("src/skill/task/run_plan.py"),
+            Path("src/skill/task/tools.py"),
         ):
             source = path.read_text(encoding="utf-8")
             self.assertNotIn("skill.kinds.memory", source)

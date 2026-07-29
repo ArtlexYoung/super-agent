@@ -6,8 +6,9 @@ from skill.runners.defaults import create_default_skill_runners
 from skill.runners.loaded import SkillAction
 from core.provider.chat import MockProvider
 from core.config import AgentConfig
-from core.run import Run, RunIdentity
-from core.task.actions import (
+from skill.task.run import Run
+from core.models import RunIdentity
+from core.checks import (
     ActionConfirmationRequired,
     ActionEffect,
     ActionNotAllowedError,
@@ -16,7 +17,7 @@ from core.task.actions import (
     ActionRules,
 )
 from core.state.event_log import RunEventLog
-from core.state.store import RuntimeStore
+from skill.state.store import RuntimeStore
 from core.storage import JsonlStorage
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.kinds.model import create_direct_provider_profile

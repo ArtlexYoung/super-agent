@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Callable
 
 from core.provider.chat import ToolDefinition
-from core.task.actions import ActionEffect
+from core.checks import ActionEffect
 from skill.disclosure.models import SkillReference
 from skill.manifest import Skill
 

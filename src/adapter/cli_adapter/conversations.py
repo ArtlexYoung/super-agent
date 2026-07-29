@@ -5,7 +5,7 @@ import json
 from dataclasses import asdict
 
 from adapter.cli_adapter import load_agent
-from core.run import LOCAL_USER_ID
+from core.models import LOCAL_USER_ID
 
 
 def configure_conversations_parser(parser: argparse.ArgumentParser) -> None:

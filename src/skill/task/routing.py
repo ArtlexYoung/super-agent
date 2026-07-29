@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from core.state.models import Conversation
 
 if TYPE_CHECKING:
-    from core.state.store import RuntimeStore
+    from skill.state.store import RuntimeStore
 
 
 _CORRECTION_MARKERS = (

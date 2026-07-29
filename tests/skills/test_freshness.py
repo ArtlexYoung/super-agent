@@ -3,10 +3,10 @@ import unittest
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from core.agent import Agent
+from super_agent import Agent
 from core.provider.chat import MockProvider
 from core.config import AgentConfig
-from core.state.evaluation import (
+from skill.evolution.tracking.run_evaluation import (
     EvaluationResult,
     EvaluationSource,
     EvaluationTokenUsage,
@@ -14,7 +14,7 @@ from core.state.evaluation import (
     evaluation_record_from_dict,
     evaluation_record_to_dict,
 )
-from core.state.store import create_local_runtime_store
+from skill.state.store import create_local_runtime_store
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.evolution.freshness import calculate_skill_freshness
 from skill.evolution.revision import SkillRevision

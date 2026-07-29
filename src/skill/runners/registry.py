@@ -15,12 +15,12 @@ from skill.runners.loaded import (
     LoadedSkill,
 )
 from core.provider.chat import Message
-from core.run import RunIdentity
-from core.task.actions import ActionRequest
+from core.models import RunIdentity
+from core.checks import ActionRequest
 from skill.disclosure import ProgressiveDisclosureCore, SkillReference
 
 if TYPE_CHECKING:
-    from core.state.store import RuntimeStore
+    from skill.state.store import RuntimeStore
 
 SKILL_RUNNER_SCHEMA_VERSION = 9
 _NAME_PATTERN = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}")

@@ -5,7 +5,7 @@ import unittest
 from dataclasses import replace
 from pathlib import Path
 
-from core.agent import Agent
+from super_agent import Agent
 from adapter.ag_ui_adapter.web_api import WebAPI
 from core.provider.chat import MockProvider
 from core.config import AgentConfig

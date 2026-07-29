@@ -4,12 +4,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from core.agent import Agent
+from super_agent import Agent
 from core.provider.chat import OpenAICompatibleProvider, ProviderConnection
 from core.provider.pool import ProviderPool
 from core.config import AgentConfig
 from core.provider.secrets import UserSecretResolver
-from core.run import RunIdentity, validate_user_id
+from core.models import RunIdentity, validate_user_id
 
 
 class IdentityAndSecretIsolationTests(unittest.TestCase):

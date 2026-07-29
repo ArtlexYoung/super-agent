@@ -12,8 +12,8 @@ from typing import cast
 from uuid import uuid4
 
 from core.config import AgentConfig
-from core.task.actions import ActionEffect, ActionRequest, ActionRunner, ActionRules
-from core.state.store import RuntimeStore
+from core.checks import ActionEffect, ActionRequest, ActionRunner, ActionRules
+from skill.state.store import RuntimeStore
 from skill.disclosure import ProgressiveDisclosureCore, SkillDisclosure
 from skill.kinds.model import ModelProfile, create_model_profile_from_skill_disclosure
 from skill.manifest import DEFAULT_SKILL_FRESHNESS, SkillEntry, SkillManifest

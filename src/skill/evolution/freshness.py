@@ -6,8 +6,8 @@ import math
 from datetime import UTC, datetime
 from typing import Any
 
-from core.state.evaluation import EvaluationRecord
-from core.evolution.evidence import (
+from skill.evolution.tracking.run_evaluation import EvaluationRecord
+from skill.evolution.tracking.evidence import (
     EvaluationEvidenceSummary,
     summarize_evaluation_evidence,
 )

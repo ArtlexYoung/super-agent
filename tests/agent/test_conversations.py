@@ -4,7 +4,7 @@ import unittest
 from dataclasses import replace
 from pathlib import Path
 
-from core.agent import Agent
+from super_agent import Agent
 from core.provider.chat import MockProvider
 from core.config import AgentConfig
 from core.storage import JsonlStorage

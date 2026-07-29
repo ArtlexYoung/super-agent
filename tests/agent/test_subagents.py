@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from core.agent import Agent, AgentRunOptions
+from super_agent import Agent, AgentRunOptions
 from core.config import AgentConfig
 from core.provider.chat import MockProvider, ModelResponse, ToolCall
 from support import write_workflow_skill
