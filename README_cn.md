@@ -64,6 +64,18 @@ Runtime 通常会自动选择任务场景，也可以在 Python 或 CLI 中为�
 result = agent.run("检查这个改动", scene="code")
 ```
 
+嵌入式调用如果明确不能创建存储后端、会话、记忆、缓存或评价状态，可以显式关闭存储。
+同一套 Runtime 循环会使用随软件提供的无状态场景，并直接在结果中返回有序事件：
+
+```python
+agent = Agent(provider=my_provider, use_storage=False)
+result = agent.run("对这段文本分类")
+print(result.events)
+```
+
+在这个模式下选择依赖存储的场景或传入会话 ID 会直接报错；Runtime 不会删除请求的功能，
+也不会改为偷偷创建存储。
+
 应用代码可以显式注入自己的 Provider、存储、动作规则、SkillRunner 和子 Agent。CLI 只是
 同一个 Python 内核的入口，不是另一套 Runtime。
 
@@ -98,7 +110,7 @@ Agent.run
 
 ```text
 skill_scenes/
-  common/   场景 + 提示 + 记忆 + 规划器 + 直接工作流
+  common/   有状态/无状态场景 + 提示 + 记忆 + 规划器 + 直接工作流
   code/     场景 + 编码提示 + 项目记忆 + 规划器 + 工具循环
 ```
 

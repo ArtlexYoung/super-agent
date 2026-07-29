@@ -49,7 +49,10 @@ class WebAPIContractTests(unittest.TestCase):
                 )
             )
             scenes = [item for item in skills if item["type"] == "scene"]
-            self.assertEqual({"common", "code"}, {item["name"] for item in scenes})
+            self.assertEqual(
+                {"common", "code", "stateless"},
+                {item["name"] for item in scenes},
+            )
             self.assertEqual(
                 ["common"],
                 [item["name"] for item in scenes if item["default"]],

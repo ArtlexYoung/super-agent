@@ -105,6 +105,7 @@ class AdaptiveTaskLoop:
             self.create_text_model(
                 session.store,
                 "memory_organization",
+                session.record_event,
             ).send_messages,
         )
         context = _TaskExecutionContext(
@@ -292,10 +293,11 @@ class AdaptiveTaskLoop:
 
     def create_text_model(
         self,
-        store: RuntimeStore,
+        store: RuntimeStore | None,
         purpose: str,
+        record_event: Callable[[str, dict[str, object]], object] | None = None,
     ) -> TextModel:
-        return self.model_calls.create_text_model(store, purpose)
+        return self.model_calls.create_text_model(store, purpose, record_event)
 
     def _run_model_loop(
         self,
@@ -355,7 +357,7 @@ def _record_disclosed_skills(
         "skills.disclosed",
         {
             "names": [skill.manifest.name for skill in skills],
-            "index_path": str(session.require_skill_index().index_path),
+            "index_path": _optional_path(session.require_skill_index().index_path),
         },
     )
 
@@ -422,9 +424,13 @@ def list_run_actions(session: RuntimeSession) -> list[dict[str, object]]:
             "status": terminal[event.event_type],
             "reason": event.data.get("reason", ""),
         }
-        for event in session.store.read_run_events(session.run_id)
+        for event in session.list_recorded_events()
         if event.event_type in terminal
     ]
+
+
+def _optional_path(path: object | None) -> str | None:
+    return None if path is None else str(path)
 
 
 def _used_skill_names(

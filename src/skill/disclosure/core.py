@@ -81,6 +81,12 @@ class ProgressiveDisclosureCore:
     def validate_skill_sources(self) -> list[SkillValidationIssue]:
         return self._read_skill_sources().issues
 
+    def set_event_writer(self, record_event: RecordEvent) -> None:
+        """Connect Runtime events after a storage-free catalog has been prepared."""
+        if self.record_event is not None:
+            raise RuntimeError("Skill disclosure event writer is already configured")
+        self.record_event = record_event
+
     def prepare_skill_index(self) -> SkillIndex:
         # One core instance owns one snapshot; later selection and disclosure never rescan roots.
         scan = self._read_skill_sources()

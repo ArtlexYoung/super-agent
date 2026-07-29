@@ -64,23 +64,37 @@ class Agent:
         provider: ChatProvider | None = None,
         skill_runners: list[SkillRunner] | None = None,
         storage: StorageBackend | None = None,
+        use_storage: bool = True,
         action_rules: ActionRules | None = None,
         secret_lookup: UserSecretLookup | None = None,
     ) -> None:
+        if not isinstance(use_storage, bool):
+            raise TypeError("use_storage must be a boolean")
+        if storage is not None and not use_storage:
+            raise ValueError("storage cannot be combined with use_storage=False")
         self.config = _load_agent_config(config)
-        self.storage = storage or create_storage_backend(
-            self.config.storage.backend,
-            str(self.config.storage.path),
-            self.config.storage.url_env,
+        self.storage = (
+            None
+            if not use_storage
+            else storage
+            or create_storage_backend(
+                self.config.storage.backend,
+                str(self.config.storage.path),
+                self.config.storage.url_env,
+            )
         )
         self.user_secrets = UserSecretResolver(secret_lookup)
         bootstrap_disclosure = create_progressive_skill_disclosure(
             self.config,
-            store=RuntimeStore(
-                self.storage,
-                self.config.storage.path,
-                LOCAL_USER_ID,
-                self.config.agent.name,
+            store=(
+                None
+                if self.storage is None
+                else RuntimeStore(
+                    self.storage,
+                    self.config.storage.path,
+                    LOCAL_USER_ID,
+                    self.config.agent.name,
+                )
             ),
         )
         bootstrap_index = bootstrap_disclosure.prepare_skill_index()
@@ -224,6 +238,8 @@ class Agent:
         run_options: AgentRunOptions | None = None,
     ) -> TaskResult:
         options = run_options or AgentRunOptions()
+        if self.storage is None and options.scene is None:
+            options = replace(options, scene="stateless")
         warnings = (
             self._check_subagent_links()
             if options.include_subagents and options.check_subagent_links_before_run
@@ -269,7 +285,7 @@ class Agent:
         self,
         config: AgentConfig,
     ) -> None:
-        if config.storage != self.config.storage:
+        if self.storage is not None and config.storage != self.config.storage:
             raise ValueError("changing storage requires restarting the Agent")
         self.config = config
         self.runtime = AgentRuntime(

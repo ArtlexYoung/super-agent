@@ -40,9 +40,9 @@ class SkillLoadRequest:
         if self.identity is not None and self.execute_action is None:
             raise ValueError("Runtime Skill loading requires an action executor")
 
-    def require_store(self) -> RuntimeStore:
+    def require_store(self, feature: str = "SkillRunner") -> RuntimeStore:
         if self.store is None:
-            raise ValueError("SkillRunner requires Runtime storage")
+            raise ValueError(f"{feature} requires Runtime storage")
         return self.store
 
     def require_action_executor(

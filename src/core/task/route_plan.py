@@ -157,10 +157,14 @@ def choose_models_for_route(
     required_features: tuple[str, ...],
     prompt: str,
 ) -> tuple[ModelChoice, ...]:
-    evidence = {
-        item.profile_key: item
-        for item in list_model_routing_stats(session.store, purpose)
-    }
+    evidence = (
+        {}
+        if session.store is None
+        else {
+            item.profile_key: item
+            for item in list_model_routing_stats(session.store, purpose)
+        }
+    )
     return rank_model_choices(
         model_profiles,
         environment,

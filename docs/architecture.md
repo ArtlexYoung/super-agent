@@ -34,7 +34,7 @@ Every run enters one kernel:
 ```text
 Agent.run(...)
   -> AgentRuntime.run_task(TaskRequest)
-  -> RuntimeSession and RuntimeStore
+  -> RuntimeSession with an optional RuntimeStore
   -> progressive index selects one scene and its Skill references
   -> one immutable RoutePlan fixes scene, Skills, workflow, planner, and model
   -> SkillRunners load the route and one task loop executes it
@@ -52,8 +52,9 @@ event and Runtime lock. Planned steps use the same contract. There are no partia
 Skill-selection, or schedule objects to reconcile later.
 
 `RuntimeSession` is the only mutable run context. It carries the validated identity,
-store, Skill index, disclosure core, selected model state, SkillRunners, action runner,
-and evidence tracker. Derived CLI and Web views are projected from canonical events, not
+optional store, Skill index, disclosure core, selected model state, SkillRunners, action
+runner, and evidence tracker. Without a store it keeps ordered events in memory and uses
+the same task loop. Derived CLI and Web views are projected from canonical events, not
 from parallel mutable state.
 
 ## Central Progressive Disclosure
@@ -105,7 +106,7 @@ occur before a call and are visible in the trace.
 
 ```text
 RuntimeSession
-  -> RuntimeStore
+  -> optional RuntimeStore
        -> one StorageBackend
             +-> JSONL
             +-> SQLite
@@ -142,7 +143,8 @@ application code rather than downloadable Skill content.
 
 ## Invariants
 
-- One run has one Runtime session, store, disclosure core, task loop, and event stream.
+- One run has one Runtime session, disclosure core, task loop, and event stream; storage
+  is one explicit optional service.
 - Every model execution reads one immutable RoutePlan created before that execution.
 - One run selects exactly one scene before loading memory, planning, workflow, and prompt
   content; the selected scene and reason are recorded.

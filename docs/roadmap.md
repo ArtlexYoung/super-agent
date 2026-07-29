@@ -103,7 +103,7 @@ Status: implemented.
 
 ## v0.0.68: Stateless Runtime
 
-Status: planned.
+Status: implemented.
 
 - Let the task Runtime execute with Provider, Skills, and an in-memory event sink only.
 - Make conversations, memory, persistence, disclosure cache, and evaluation independent

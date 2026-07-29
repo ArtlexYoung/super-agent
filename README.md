@@ -69,6 +69,19 @@ override it for one run:
 result = agent.run("Inspect this change", scene="code")
 ```
 
+For an embedded call that must not create a backend, conversation, memory, cache, or
+evaluation state, disable storage explicitly. The same Runtime loop uses the shipped
+storage-free scene and returns its ordered events in memory:
+
+```python
+agent = Agent(provider=my_provider, use_storage=False)
+result = agent.run("Classify this text")
+print(result.events)
+```
+
+Selecting a storage-dependent scene or passing a conversation ID in this mode is an
+error; Runtime never removes the requested feature or creates storage as a substitute.
+
 Application code may explicitly inject its own Provider, storage backend, action
 rules, SkillRunners, and subagents. The CLI uses this same library; it is not a second
 runtime.
@@ -106,7 +119,7 @@ data:
 
 ```text
 skill_scenes/
-  common/   scene + prompt + memory + planner + direct workflow
+  common/   stateful/stateless scenes + prompt + memory + planner + direct workflow
   code/     scene + coding prompt + project memory + planner + tool loop
 ```
 

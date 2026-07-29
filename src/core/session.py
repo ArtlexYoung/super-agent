@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Callable
 
 from skill.runners.registry import SkillRunners
@@ -23,10 +24,12 @@ class RuntimeSession:
     provider: ChatProvider
     skill_runners: SkillRunners
     identity: RunIdentity
-    store: RuntimeStore
+    store: RuntimeStore | None
     action_rules: ActionRules = field(default_factory=ActionRules)
+    event_listener: Callable[[RunEvent], None] | None = None
     skill_disclosure: ProgressiveDisclosureCore | None = None
     skill_index: SkillIndex | None = None
+    _events: list[RunEvent] = field(default_factory=list, init=False, repr=False)
     _used_skill_revisions: dict[tuple[str, str, str], SkillRevision] = field(
         default_factory=dict,
         init=False,
@@ -42,7 +45,30 @@ class RuntimeSession:
         event_type: str,
         data: dict[str, object] | None = None,
     ) -> RunEvent:
-        return self.store.append_run_event(self.identity, event_type, data)
+        if self.store is not None:
+            event = self.store.append_run_event(self.identity, event_type, data)
+        else:
+            event = RunEvent(
+                run_id=self.run_id,
+                sequence=len(self._events) + 1,
+                event_type=event_type,
+                created_at=_utc_now_text(),
+                agent_name=self.identity.agent_name,
+                parent_run_id=self.identity.parent_run_id,
+                data=dict(data or {}),
+            )
+            if self.event_listener is not None:
+                self.event_listener(event)
+        self._events.append(event)
+        return event
+
+    def list_recorded_events(self) -> list[RunEvent]:
+        return list(self._events)
+
+    def require_store(self, feature: str) -> RuntimeStore:
+        if self.store is None:
+            raise RuntimeError(f"{feature} requires Runtime storage")
+        return self.store
 
     def execute_action(
         self,
@@ -92,3 +118,7 @@ class RuntimeSession:
 
     def list_used_skill_revisions(self) -> list[SkillRevision]:
         return list(self._used_skill_revisions.values())
+
+
+def _utc_now_text() -> str:
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")

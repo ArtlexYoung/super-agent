@@ -44,7 +44,14 @@ class RuntimeTools:
             else delegated_subagent_results
         )
         self._tools: dict[str, SkillTool] = {}
-        self._add_tools(_create_disclosure_tools(self, context.session.require_skill_index()))
+        disclosure = context.session.require_skill_disclosure()
+        self._add_tools(
+            _create_disclosure_tools(
+                self,
+                context.session.require_skill_index(),
+                include_cache_reader=disclosure.recorder is not None,
+            )
+        )
         for contribution in contributions or []:
             self._add_tools(contribution.tools)
         if context.list_subagents is not None and context.run_subagent is not None:
@@ -126,7 +133,7 @@ class RuntimeTools:
                 "provides": manifest.provides,
                 "requires": manifest.requires,
             },
-            "cache_path": str(opened.index_entry.manifest_cache_path),
+            "cache_path": _optional_path(opened.index_entry.manifest_cache_path),
         }
 
     def _read_skill_instructions(self, arguments: dict[str, object]) -> dict[str, object]:
@@ -151,7 +158,7 @@ class RuntimeTools:
         return {
             "key": reference.key,
             "instructions": disclosed.content,
-            "cache_path": str(disclosed.cache_path),
+            "cache_path": _optional_path(disclosed.cache_path),
         }
 
     def _read_skill_configuration(
@@ -163,7 +170,7 @@ class RuntimeTools:
         return {
             "key": opened.index_entry.reference.key,
             "configuration": disclosed.content,
-            "cache_path": str(disclosed.cache_path),
+            "cache_path": _optional_path(disclosed.cache_path),
         }
 
     def _read_disclosed_content(
@@ -217,9 +224,13 @@ class RuntimeTools:
         requested = Path(cache_path).expanduser().resolve()
         for entry in self.context.session.require_skill_index().entries:
             disclosed_paths = {
-                entry.manifest_cache_path.resolve(),
-                entry.instructions_cache_path.resolve(),
-                entry.configuration_cache_path.resolve(),
+                path.resolve()
+                for path in (
+                    entry.manifest_cache_path,
+                    entry.instructions_cache_path,
+                    entry.configuration_cache_path,
+                )
+                if path is not None
             }
             if requested in disclosed_paths:
                 self.context.session.record_skill_used(entry)
@@ -231,9 +242,11 @@ class RuntimeTools:
 def _create_disclosure_tools(
     runtime_tools: RuntimeTools,
     skill_index: SkillIndex,
+    *,
+    include_cache_reader: bool,
 ) -> tuple[SkillTool, ...]:
     reference = _skill_reference_properties(skill_index)
-    return (
+    tools = [
         SkillTool(
             "list_skills",
             "List every available Skill type from the central index.",
@@ -265,15 +278,19 @@ def _create_disclosure_tools(
             action=SkillAction((ActionEffect.READ,), "skill:configuration", "name"),
             required=("name",),
         ),
-        SkillTool(
-            "read_disclosed_content",
-            "Read content from a path already produced by the disclosure cache.",
-            {"cache_path": {"type": "string"}},
-            runtime_tools._read_disclosed_content,
-            action=SkillAction((ActionEffect.READ,), "skill:cache"),
-            required=("cache_path",),
-        ),
-    )
+    ]
+    if include_cache_reader:
+        tools.append(
+            SkillTool(
+                "read_disclosed_content",
+                "Read content from a path already produced by the disclosure cache.",
+                {"cache_path": {"type": "string"}},
+                runtime_tools._read_disclosed_content,
+                action=SkillAction((ActionEffect.READ,), "skill:cache"),
+                required=("cache_path",),
+            )
+        )
+    return tuple(tools)
 
 
 def _skill_reference_properties(
@@ -286,6 +303,10 @@ def _skill_reference_properties(
         "name": {"type": "string"},
         "type": {"type": "string", "enum": skill_runners},
     }
+
+
+def _optional_path(path: Path | None) -> str | None:
+    return None if path is None else str(path)
 
 
 def _create_subagent_tools(runtime_tools: RuntimeTools) -> tuple[SkillTool, ...]:

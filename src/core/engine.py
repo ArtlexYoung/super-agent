@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import asdict, dataclass, replace
 from time import perf_counter
 from typing import Callable, Mapping
@@ -30,6 +31,7 @@ from core.actions import ActionEffect, ActionRequest, ActionRunner, ActionRules
 from core.secrets import UserSecretResolver
 from core.session import RuntimeSession
 from core.storage import StorageBackend
+from core.storage.values import encode_storage_data
 from core.state.store import RuntimeStore
 from core.task.route_plan import RoutePlan
 from core.task.loop import AdaptiveTaskLoop, list_run_actions
@@ -49,7 +51,7 @@ from skill.evolution.manager import EvolutionModels, SkillEvolutionManager
 class RuntimeResources:
     provider_pool: ProviderPool
     skill_runners: SkillRunners
-    storage: StorageBackend
+    storage: StorageBackend | None
     action_rules: ActionRules
     user_secrets: UserSecretResolver
     code_model_profiles: tuple[ModelProfile, ...] = ()
@@ -81,7 +83,7 @@ class _RuntimeLockInput:
     skill_runners: SkillRunners
     skill_index: SkillIndex
     provider: ChatProvider
-    storage: StorageBackend
+    storage: StorageBackend | None
     route_plan: RoutePlan
     environment: Mapping[str, str]
 
@@ -139,36 +141,55 @@ class AgentRuntime:
                 session,
                 lambda route_plan: self._lock_task_context(session, route_plan),
             )
-            evaluation_attempted = True
-            skill_updates = self._record_task_evaluation(
-                session,
-                EvaluationSource(source_type="agent_run", run_id=session.run_id),
-                _create_task_evaluation(request.prompt, result.text, started_at),
-            )
-            result = replace(result, skill_updates=skill_updates)
-            self._record_conversation_result(session, result)
-            session.store.finish_run(
-                session.identity,
-                workflow=result.workflow,
-                used_skills=result.skills,
-                stop_reason=result.stop_reason,
-            )
+            if session.store is not None:
+                evaluation_attempted = True
+                skill_updates = self._record_task_evaluation(
+                    session,
+                    EvaluationSource(source_type="agent_run", run_id=session.run_id),
+                    _create_task_evaluation(request.prompt, result.text, started_at),
+                )
+                result = replace(result, skill_updates=skill_updates)
+                self._record_conversation_result(session, result)
+                session.store.finish_run(
+                    session.identity,
+                    workflow=result.workflow,
+                    used_skills=result.skills,
+                    stop_reason=result.stop_reason,
+                )
+            else:
+                session.record_event(
+                    "run.completed",
+                    {
+                        "workflow": result.workflow,
+                        "used_skills": list(result.skills),
+                        "stop_reason": result.stop_reason,
+                    },
+                )
             return replace(
                 result,
                 actions=list_run_actions(session),
+                events=_list_result_events(session),
             )
         except Exception as error:
-            if not evaluation_attempted:
+            if session.store is not None and not evaluation_attempted:
                 self._try_record_failed_task_evaluation(
                     session,
                     request.prompt,
                     started_at,
                     error,
                 )
-            session.store.fail_run(session.identity, error)
+            if session.store is None:
+                session.record_event(
+                    "run.failed",
+                    {"error_type": type(error).__name__, "message": str(error)},
+                )
+            else:
+                session.store.fail_run(session.identity, error)
             raise
 
     def create_store(self, user_id: str = LOCAL_USER_ID) -> RuntimeStore:
+        if self.storage is None:
+            raise RuntimeError("Runtime storage is disabled for this Agent")
         return RuntimeStore(
             self.storage,
             self.config.storage.path,
@@ -237,7 +258,7 @@ class AgentRuntime:
                 manifest,
                 user_id,
             )
-        user_runtime = self._create_user_model_runtime(store)
+        user_runtime = self._create_user_model_runtime(store, user_id)
         return SkillEvolutionManager(
             skill_disclosure=user_runtime.disclosure,
             store=store,
@@ -257,7 +278,10 @@ class AgentRuntime:
 
     def read_model_profiles(self, user_id: str = LOCAL_USER_ID) -> list[ModelProfile]:
         return list(
-            self._create_user_model_runtime(self.create_store(user_id)).profiles
+            self._create_user_model_runtime(
+                None if self.storage is None else self.create_store(user_id),
+                user_id,
+            ).profiles
         )
 
     def _create_runtime_session(
@@ -271,16 +295,25 @@ class AgentRuntime:
             conversation_id=request.conversation_id,
             parent_run_id=request.parent_run_id,
         )
-        store = RuntimeStore(
-            self.storage,
-            self.config.storage.path,
-            identity.user_id,
-            identity.agent_name,
-            request.event_listener,
+        store = (
+            None
+            if self.storage is None
+            else RuntimeStore(
+                self.storage,
+                self.config.storage.path,
+                identity.user_id,
+                identity.agent_name,
+                request.event_listener,
+            )
         )
-        store.start_run(identity, request.prompt)
+        if store is not None:
+            store.start_run(identity, request.prompt)
         try:
-            user_runtime = self._create_user_model_runtime(store, identity)
+            user_runtime = self._create_user_model_runtime(
+                store,
+                identity.user_id,
+                identity,
+            )
             default_profile = select_default_model_profile(user_runtime.profiles)
             session = RuntimeSession(
                 config=self.config,
@@ -293,28 +326,41 @@ class AgentRuntime:
                 identity=identity,
                 store=store,
                 action_rules=self.action_rules,
+                event_listener=request.event_listener,
             )
+            if store is None:
+                session.record_event(
+                    "run.started",
+                    {
+                        "prompt": request.prompt,
+                        "conversation_id": identity.conversation_id,
+                        "parent_run_id": identity.parent_run_id,
+                    },
+                )
+                user_runtime.disclosure.set_event_writer(session.record_event)
             session.set_skill_disclosure(
                 user_runtime.disclosure,
                 user_runtime.skill_index,
             )
         except Exception as error:
-            store.fail_run(identity, error)
+            if store is not None:
+                store.fail_run(identity, error)
             raise
         return session, user_runtime.task_loop
 
     def _create_user_model_runtime(
         self,
-        store: RuntimeStore,
+        store: RuntimeStore | None,
+        user_id: str,
         identity: RunIdentity | None = None,
     ) -> _UserModelRuntime:
         disclosure = create_progressive_skill_disclosure(
             self.config,
             store=store,
-            identity=identity,
+            identity=identity if store is not None else None,
         )
         skill_index = disclosure.prepare_skill_index()
-        environment = self.user_secrets.get_environment_for_user(store.user_id)
+        environment = self.user_secrets.get_environment_for_user(user_id)
         profiles = read_model_profiles(disclosure, skill_index, environment)
         if not profiles:
             profiles = list(self.code_model_profiles)
@@ -331,22 +377,30 @@ class AgentRuntime:
         session: RuntimeSession,
         route_plan: RoutePlan,
     ) -> None:
-        session.store.save_runtime_lock(
-            session.identity,
-            _runtime_lock_to_dict(
-                _RuntimeLockInput(
-                    config=self.config,
-                    model_profile=session.model_profile,
-                    skill_runners=self.skill_runners,
-                    skill_index=session.require_skill_index(),
-                    provider=session.provider,
-                    storage=self.storage,
-                    route_plan=route_plan,
-                    environment=self.user_secrets.get_environment_for_user(
-                        session.identity.user_id
-                    ),
-                )
-            ),
+        runtime_lock = _runtime_lock_to_dict(
+            _RuntimeLockInput(
+                config=self.config,
+                model_profile=session.model_profile,
+                skill_runners=self.skill_runners,
+                skill_index=session.require_skill_index(),
+                provider=session.provider,
+                storage=self.storage,
+                route_plan=route_plan,
+                environment=self.user_secrets.get_environment_for_user(
+                    session.identity.user_id
+                ),
+            )
+        )
+        if session.store is not None:
+            session.store.save_runtime_lock(session.identity, runtime_lock)
+            return
+        content = encode_storage_data(runtime_lock)
+        session.record_event(
+            "runtime.locked",
+            {
+                "runtime_lock": runtime_lock,
+                "runtime_lock_sha256": hashlib.sha256(content.encode()).hexdigest(),
+            },
         )
 
     def _prepare_conversation_request(
@@ -357,6 +411,7 @@ class AgentRuntime:
         conversation_id = session.identity.conversation_id
         if conversation_id is None or session.identity.parent_run_id is not None:
             return request
+        store = session.require_store("conversation history")
         if request.messages:
             raise ValueError("conversation_id cannot be combined with explicit messages")
         conversation = session.execute_action(
@@ -365,7 +420,7 @@ class AgentRuntime:
                 f"conversation:{conversation_id}",
                 (ActionEffect.CREATE, ActionEffect.UPDATE),
             ),
-            lambda: session.store.ensure_conversation(
+            lambda: store.ensure_conversation(
                 conversation_id,
                 request.prompt[:48],
             ),
@@ -384,7 +439,7 @@ class AgentRuntime:
                 f"conversation:{conversation_id}",
                 (ActionEffect.UPDATE,),
             ),
-            lambda: session.store.append_conversation_message(
+            lambda: store.append_conversation_message(
                 conversation_id,
                 "user",
                 request.prompt,
@@ -457,13 +512,14 @@ class AgentRuntime:
         conversation_id = session.identity.conversation_id
         if conversation_id is None or session.identity.parent_run_id is not None:
             return
+        store = session.require_store("conversation history")
         session.execute_action(
             ActionRequest.create(
                 "agent:conversation",
                 f"conversation:{conversation_id}",
                 (ActionEffect.UPDATE,),
             ),
-            lambda: session.store.append_conversation_message(
+            lambda: store.append_conversation_message(
                 conversation_id,
                 "assistant",
                 result.text,
@@ -478,7 +534,8 @@ class AgentRuntime:
         source: EvaluationSource,
         result: EvaluationResult,
     ) -> list[dict[str, object]]:
-        session.store.append_evaluation_records(
+        store = session.require_store("task evaluation")
+        store.append_evaluation_records(
             [
                 create_evaluation_record(revision, source, result)
                 for revision in session.list_used_skill_revisions()
@@ -490,11 +547,12 @@ class AgentRuntime:
         self,
         session: RuntimeSession,
     ) -> list[dict[str, object]]:
+        store = session.require_store("automatic Skill evolution")
         try:
             manager = self.create_skill_updater(session.identity.user_id)
             if not isinstance(manager, SkillEvolutionManager):
                 raise TypeError("skill updater must be SkillEvolutionManager")
-            states = AutomaticEvolutionService(session.store, manager).review_and_evolve(
+            states = AutomaticEvolutionService(store, manager).review_and_evolve(
                 session.list_used_skill_revisions()
             )
             return [_skill_update_to_dict(state) for state in states]
@@ -574,7 +632,7 @@ def _skill_update_to_dict(state: SkillEvolutionState) -> dict[str, object]:
 def _runtime_lock_to_dict(request: _RuntimeLockInput) -> dict[str, object]:
     request.skill_runners.validate_dependencies()
     return {
-        "schema_version": 14,
+        "schema_version": 15,
         "agent": {
             "name": request.config.agent.name,
             "system": request.config.agent.system,
@@ -590,7 +648,10 @@ def _runtime_lock_to_dict(request: _RuntimeLockInput) -> dict[str, object]:
             ),
         },
         "route_plan": request.route_plan.to_dict(),
-        "storage": {"backend": request.storage.name},
+        "storage": {
+            "enabled": request.storage is not None,
+            "backend": None if request.storage is None else request.storage.name,
+        },
         "skill_runners": [
             item.descriptor.to_dict()
             for item in request.skill_runners.list_skill_runners()
@@ -608,3 +669,9 @@ def _runtime_lock_to_dict(request: _RuntimeLockInput) -> dict[str, object]:
             for entry in request.skill_index.entries
         ],
     }
+
+
+def _list_result_events(session: RuntimeSession) -> list[RunEvent]:
+    if session.store is None:
+        return session.list_recorded_events()
+    return session.store.read_run_events(session.run_id)

@@ -50,6 +50,7 @@ class TaskResult:
     stop_reason: str = "completed"
     actions: list[dict[str, object]] | None = None
     skill_updates: list[dict[str, object]] = field(default_factory=list)
+    events: list[RunEvent] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

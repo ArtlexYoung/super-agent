@@ -2,8 +2,8 @@
 
 ## One Task Path
 
-Every `Agent.run(...)` call creates one task request, Runtime session, user-scoped store,
-Skill index, and adaptive task loop:
+Every `Agent.run(...)` call creates one task request, Runtime session, Skill index, and
+adaptive task loop. A user-scoped store is attached only when storage is enabled:
 
 ```text
 Agent.run(...)
@@ -28,8 +28,11 @@ and the Runtime lock instead of rebuilding routing state for each consumer.
 ## Optional Parts
 
 The smallest run needs an Agent, a model source, and one valid scene. The shipped
-`common` scene satisfies that requirement without user configuration. Other behavior is
-progressive:
+`common` scene satisfies the default stateful path without user configuration. Passing
+`use_storage=False` selects the shipped `stateless` scene unless the caller explicitly
+requests another scene. It keeps ordered Runtime events in `TaskResult.events` and does
+not create a backend, cache, conversation, memory, evaluation, or evolution state. Other
+behavior is progressive:
 
 - No conversation ID means no conversation history is loaded or written.
 - No conversation ID means temporary memory is unavailable; long-term memory remains

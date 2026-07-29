@@ -403,7 +403,7 @@ instructions = "SKILL.md"
                 explanation_code = main(["skills", "explain", "--config", config, "--prompt", "echo hello"])
 
             self.assertEqual(0, validation_code)
-            self.assertIn("11 valid skills", validation_output.getvalue())
+            self.assertIn("12 valid skills", validation_output.getvalue())
             self.assertEqual(0, explanation_code)
             self.assertIn("echo\tselected\tmatched trigger: echo", explanation_output.getvalue())
 

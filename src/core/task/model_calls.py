@@ -69,25 +69,37 @@ class AdaptiveModelCalls:
         self.model_profiles = list(model_profiles)
         self.provider_pool = provider_pool
 
-    def create_text_model(self, store: RuntimeStore, purpose: str) -> TextModel:
+    def create_text_model(
+        self,
+        store: RuntimeStore | None,
+        purpose: str,
+        record_event: EventWriter | None = None,
+    ) -> TextModel:
+        if store is None and record_event is None:
+            raise ValueError("a text model requires storage or an event writer")
         return _AdaptiveTextModel(
             model_calls=self,
             store=store,
+            record_event=record_event,
             purpose=purpose.strip().lower(),
             operation_id=f"model-operation-{uuid4().hex}",
         )
 
     def choose_models(
         self,
-        store: RuntimeStore,
+        store: RuntimeStore | None,
         purpose: str,
         prompt: str,
         required_features: tuple[str, ...] = ("text",),
     ) -> tuple[ModelChoice, ...]:
-        evidence = {
-            item.profile_key: item
-            for item in list_model_routing_stats(store, purpose)
-        }
+        evidence = (
+            {}
+            if store is None
+            else {
+                item.profile_key: item
+                for item in list_model_routing_stats(store, purpose)
+            }
+        )
         return rank_model_choices(
             self.model_profiles,
             self.provider_pool.environment,
@@ -155,7 +167,8 @@ class AdaptiveModelCalls:
 @dataclass(frozen=True)
 class _AdaptiveTextModel:
     model_calls: AdaptiveModelCalls
-    store: RuntimeStore
+    store: RuntimeStore | None
+    record_event: EventWriter | None
     purpose: str
     operation_id: str
 
@@ -177,7 +190,11 @@ class _AdaptiveTextModel:
         return response.text
 
     def _record_event(self, event_type: str, data: dict[str, object]) -> object:
-        return self.store.append_model_call_event(self.operation_id, event_type, data)
+        if self.store is not None:
+            return self.store.append_model_call_event(self.operation_id, event_type, data)
+        if self.record_event is None:
+            raise RuntimeError("text model event writer is not configured")
+        return self.record_event(event_type, data)
 
 
 def build_model_messages(
