@@ -266,6 +266,19 @@ Status: implemented.
 - Disclose selected model Skills through the same center and remove old tool names,
   events, and memory settings without compatibility behavior.
 
+## v0.0.82: One Canonical Event Path
+
+Status: implemented.
+
+- Make `RuntimeStore.append_event`, `read_events`, and `delete_events` the only
+  user-and-Agent-scoped access to persisted Runtime events.
+- Pass the RuntimeStore directly to memory and disclosure projections; remove callback
+  protocols, duplicate backend calls, and the public backend escape hatch.
+- Project one run's snapshot, ordered events, Runtime lock, selection, and disclosure path
+  from one immutable event read instead of independently rereading storage.
+- Keep cross-Agent run lookup inside the same user through one explicit `store_for_run`
+  operation and reject ambiguous ownership.
+
 ## Release Gate
 
 The project will not move to `0.1.x` because of feature count. The gate is a reproducible

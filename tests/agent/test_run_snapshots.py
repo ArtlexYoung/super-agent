@@ -2,6 +2,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from core.agent import Agent
 from core.provider.chat import MockProvider
@@ -22,7 +23,13 @@ class RunSnapshotTests(unittest.TestCase):
 
             store = agent.runtime.create_store()
             snapshot = store.read_run(result.run_id)
-            explanation = store.explain_run(result.run_id)
+            with patch.object(
+                agent.storage,
+                "read_events",
+                wraps=agent.storage.read_events,
+            ) as read_events:
+                explanation = store.explain_run(result.run_id)
+            self.assertEqual(1, read_events.call_count)
             runtime_lock = explanation["runtime_lock"]
             self.assertEqual("completed", snapshot.status)
             self.assertEqual("run.completed", snapshot.last_event_type)

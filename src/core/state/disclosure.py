@@ -5,24 +5,14 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
-from typing import Callable
+from typing import TYPE_CHECKING
 
 from core.identity import RunIdentity
-from core.state.models import RunEvent
-from core.storage import StorageEvent
 from core.storage.files import write_bytes_atomically
 from core.state.views import disclosure_history_from_events
 
-
-AppendScopedEvent = Callable[
-    [str, str, str, dict[str, object]],
-    StorageEvent,
-]
-AppendRunEvent = Callable[
-    [RunIdentity, str, dict[str, object] | None],
-    RunEvent,
-]
-ReadAllEvents = Callable[[], list[StorageEvent]]
+if TYPE_CHECKING:
+    from core.state.store import RuntimeStore
 
 
 class RuntimeDisclosureStore:
@@ -31,16 +21,11 @@ class RuntimeDisclosureStore:
     def __init__(
         self,
         cache_root: Path,
-        *,
-        append_scoped_event: AppendScopedEvent,
-        append_run_event: AppendRunEvent,
-        read_all_events: ReadAllEvents,
+        store: RuntimeStore,
     ) -> None:
         self.cache_root = cache_root.expanduser().absolute()
         self.history_path = self.cache_root / "history.json"
-        self._append_scoped_event = append_scoped_event
-        self._append_run_event = append_run_event
-        self._read_all_events = read_all_events
+        self._store = store
 
     def write_text(
         self,
@@ -81,7 +66,7 @@ class RuntimeDisclosureStore:
         return self._require_cache_path(path).read_text(encoding="utf-8")
 
     def read_history(self) -> list[dict[str, object]]:
-        return disclosure_history_from_events(self._read_all_events())
+        return disclosure_history_from_events(self._store.read_events())
 
     def _write_bytes(
         self,
@@ -107,14 +92,14 @@ class RuntimeDisclosureStore:
             "cache_hit": cache_hit,
         }
         if identity is None:
-            self._append_scoped_event(
+            self._store.append_event(
                 "disclosure",
                 "management",
                 "skill.disclosed",
-                data,
+                data=data,
             )
         else:
-            self._append_run_event(identity, "skill.disclosed", data)
+            self._store.append_run_event(identity, "skill.disclosed", data)
         write_bytes_atomically(
             self.history_path,
             (

@@ -10,7 +10,7 @@ from core.config import AgentConfig
 from core.identity import LOCAL_USER_ID
 from core.state.insights import explain_run_with_insight
 from core.state.models import RunSnapshot
-from core.storage import StorageEventQuery, create_storage_backend
+from core.storage import create_storage_backend
 from core.state.store import RuntimeStore
 
 
@@ -178,24 +178,7 @@ def _find_run_store(store: RuntimeStore, run_id: str) -> RuntimeStore:
         store.read_run(run_id)
         return store
     except KeyError:
-        events = store.backend.read_events(
-            StorageEventQuery(
-                user_id=store.user_id,
-                stream_type="run",
-                stream_id=run_id,
-            )
-        )
-        if not events:
-            raise KeyError(f"run not found: {run_id}") from None
-        agent_names = {event.agent_name for event in events}
-        if len(agent_names) != 1:
-            raise ValueError(f"run belongs to multiple Agents: {run_id}")
-        return RuntimeStore(
-            store.backend,
-            store.local_root,
-            store.user_id,
-            agent_names.pop(),
-        )
+        return store.store_for_run(run_id)
 
 
 def _run_status_line(snapshot: RunSnapshot) -> str:

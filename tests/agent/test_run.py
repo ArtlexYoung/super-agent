@@ -42,6 +42,24 @@ class RuntimeStoreTests(unittest.TestCase):
             self.assertEqual(["run.started", "skills.selected"], [event.event_type for event in events])
             self.assertEqual("hello", events[0].data["prompt"])
 
+    def test_runtime_store_is_the_only_agent_scoped_event_access(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            backend = JsonlStorage(root)
+            alpha = RuntimeStore(backend, root, "local", "alpha")
+            beta = RuntimeStore(backend, root, "local", "beta")
+
+            stored = alpha.append_event(
+                "custom",
+                "stream-1",
+                "custom.created",
+                data={"value": 1},
+            )
+
+            self.assertFalse(hasattr(alpha, "backend"))
+            self.assertEqual([stored], alpha.read_events("custom", "stream-1"))
+            self.assertEqual([], beta.read_events("custom", "stream-1"))
+
     def test_child_run_keeps_parent_run_id_across_agent_stores(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

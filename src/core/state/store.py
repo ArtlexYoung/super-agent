@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from core.identity import RunIdentity, validate_agent_name, validate_user_id
-from core.state.event_log import RunEventLog, run_event_from_storage
+from core.state.event_log import RunEventLog
 from core.storage import StorageBackend, StorageEvent, StorageEventQuery
 from core.storage.files import create_scope_digest
 
@@ -31,7 +31,7 @@ class RuntimeStore:
         *,
         run_event_log: RunEventLog | None = None,
     ) -> None:
-        self.backend = backend
+        self._backend = backend
         self.local_root = local_root.expanduser().absolute()
         self.user_id = validate_user_id(user_id)
         self.agent_name = validate_agent_name(agent_name)
@@ -55,9 +55,7 @@ class RuntimeStore:
 
             self._disclosure = RuntimeDisclosureStore(
                 self.private_root / "cache",
-                append_scoped_event=self._append_scoped_event,
-                append_run_event=self.append_run_event,
-                read_all_events=self._read_all_storage_events,
+                self,
             )
         return self._disclosure
 
@@ -66,12 +64,84 @@ class RuntimeStore:
         if self._memory is None:
             from core.state.memory import RuntimeMemoryStore
 
-            self._memory = RuntimeMemoryStore(
-                self._append_scoped_event,
-                self._read_storage_events,
-                self.agent_name,
-            )
+            self._memory = RuntimeMemoryStore(self)
         return self._memory
+
+    def append_event(
+        self,
+        stream_type: str,
+        stream_id: str,
+        event_type: str,
+        *,
+        data: dict[str, object],
+        event_id: str | None = None,
+        created_at: str | None = None,
+    ) -> StorageEvent:
+        """Append one canonical event inside this user and Agent scope."""
+        return self._backend.append_event(
+            user_id=self.user_id,
+            agent_name=self.agent_name,
+            stream_type=_required_text(stream_type, "stream_type"),
+            stream_id=_required_text(stream_id, "stream_id"),
+            event_type=_required_text(event_type, "event_type"),
+            data=dict(data),
+            event_id=event_id,
+            created_at=created_at,
+        )
+
+    def read_events(
+        self,
+        stream_type: str | None = None,
+        stream_id: str | None = None,
+        *,
+        event_type: str | None = None,
+    ) -> list[StorageEvent]:
+        """Read canonical events without escaping this user and Agent scope."""
+        return self._backend.read_events(
+            StorageEventQuery(
+                user_id=self.user_id,
+                agent_name=self.agent_name,
+                stream_type=stream_type,
+                stream_id=stream_id,
+                event_type=event_type,
+            )
+        )
+
+    def delete_events(self, stream_type: str, stream_id: str | None = None) -> int:
+        """Explicitly delete one scoped event stream or stream type."""
+        return self._backend.delete_events(
+            StorageEventQuery(
+                user_id=self.user_id,
+                agent_name=self.agent_name,
+                stream_type=_required_text(stream_type, "stream_type"),
+                stream_id=stream_id,
+            )
+        )
+
+    def store_for_run(self, run_id: str) -> RuntimeStore:
+        """Select the Agent-scoped store for one run inside this user scope."""
+        selected_id = _required_text(run_id, "run_id")
+        events = self._backend.read_events(
+            StorageEventQuery(
+                user_id=self.user_id,
+                stream_type="run",
+                stream_id=selected_id,
+            )
+        )
+        if not events:
+            raise KeyError(f"run not found: {selected_id}")
+        agent_names = {event.agent_name for event in events}
+        if len(agent_names) != 1:
+            raise ValueError(f"run belongs to multiple Agents: {selected_id}")
+        agent_name = agent_names.pop()
+        if agent_name == self.agent_name:
+            return self
+        return RuntimeStore(
+            self._backend,
+            self.local_root,
+            self.user_id,
+            agent_name,
+        )
 
     def create_conversation(
         self,
@@ -83,13 +153,13 @@ class RuntimeStore:
             conversation_id,
             "conversation_id",
         )
-        if self._read_storage_events("conversation", selected_id):
+        if self.read_events("conversation", selected_id):
             raise ValueError(f"conversation already exists: {selected_id}")
-        self._append_scoped_event(
+        self.append_event(
             "conversation",
             selected_id,
             "conversation.created",
-            {"title": _optional_title(title)},
+            data={"title": _optional_title(title)},
         )
         return self.read_conversation(selected_id)
 
@@ -108,7 +178,7 @@ class RuntimeStore:
         from core.state.views import conversation_from_events
 
         selected_id = _required_text(conversation_id, "conversation_id")
-        events = self._read_storage_events("conversation", selected_id)
+        events = self.read_events("conversation", selected_id)
         if not events:
             raise KeyError(f"conversation not found: {selected_id}")
         return conversation_from_events(self.user_id, events)
@@ -117,7 +187,7 @@ class RuntimeStore:
         from core.state.views import conversation_from_events
 
         grouped: dict[str, list[StorageEvent]] = {}
-        for event in self._read_storage_events("conversation"):
+        for event in self.read_events("conversation"):
             grouped.setdefault(event.stream_id, []).append(event)
         return sorted(
             (conversation_from_events(self.user_id, events) for events in grouped.values()),
@@ -129,34 +199,27 @@ class RuntimeStore:
         conversation = self.read_conversation(conversation_id)
         clean_title = _required_text(title, "conversation title")
         if conversation.title != clean_title:
-            self._append_scoped_event(
+            self.append_event(
                 "conversation",
                 conversation.conversation_id,
                 "conversation.renamed",
-                {"title": clean_title},
+                data={"title": clean_title},
             )
         return self.read_conversation(conversation.conversation_id)
 
     def clear_conversation(self, conversation_id: str) -> Conversation:
         conversation = self.read_conversation(conversation_id)
-        self._append_scoped_event(
+        self.append_event(
             "conversation",
             conversation.conversation_id,
             "conversation.cleared",
-            {},
+            data={},
         )
         return self.read_conversation(conversation.conversation_id)
 
     def delete_conversation(self, conversation_id: str) -> None:
         conversation = self.read_conversation(conversation_id)
-        self.backend.delete_events(
-            StorageEventQuery(
-                user_id=self.user_id,
-                agent_name=self.agent_name,
-                stream_type="conversation",
-                stream_id=conversation.conversation_id,
-            )
-        )
+        self.delete_events("conversation", conversation.conversation_id)
 
     def append_conversation_message(
         self,
@@ -172,12 +235,10 @@ class RuntimeStore:
         if clean_role not in {"user", "assistant"}:
             raise ValueError(f"unknown conversation message role: {clean_role}")
         message_id = str(uuid4())
-        self.backend.append_event(
-            user_id=self.user_id,
-            agent_name=self.agent_name,
-            stream_type="conversation",
-            stream_id=conversation.conversation_id,
-            event_type="conversation.message_added",
+        self.append_event(
+            "conversation",
+            conversation.conversation_id,
+            "conversation.message_added",
             data={
                 "message_id": message_id,
                 "role": clean_role,
@@ -196,7 +257,7 @@ class RuntimeStore:
             if identity != self._run_event_log.identity:
                 raise ValueError("run identity does not match the active event log")
             return self._run_event_log.start_run(prompt)
-        if self._read_storage_events("run", identity.run_id):
+        if self.read_events("run", identity.run_id):
             raise ValueError(f"run already exists: {identity.run_id}")
         return self.append_run_event(
             identity,
@@ -219,22 +280,22 @@ class RuntimeStore:
             if identity != self._run_event_log.identity:
                 raise ValueError("run identity does not match the active event log")
             return self._run_event_log.append_event(event_type, data)
-        stored = self.backend.append_event(
-            user_id=self.user_id,
-            agent_name=self.agent_name,
-            stream_type="run",
-            stream_id=identity.run_id,
-            event_type=event_type,
+        stored = self.append_event(
+            "run",
+            identity.run_id,
+            event_type,
             data=dict(data or {}),
         )
-        events = self._read_storage_events("run", identity.run_id)
+        events = self.read_events("run", identity.run_id)
+        from core.state.views import run_event_from_storage
+
         event = run_event_from_storage(stored, len(events), identity.parent_run_id)
         return event
 
     def read_run(self, run_id: str) -> RunSnapshot:
         from core.state.views import run_snapshot_from_events
 
-        events = self._read_storage_events("run", run_id)
+        events = self.read_events("run", run_id)
         if not events:
             raise KeyError(f"run not found: {run_id}")
         return run_snapshot_from_events(self.user_id, events)
@@ -250,7 +311,7 @@ class RuntimeStore:
         if limit is not None and limit <= 0:
             raise ValueError("run limit must be greater than zero")
         grouped: dict[str, list[StorageEvent]] = {}
-        for event in self._read_storage_events("run"):
+        for event in self.read_events("run"):
             grouped.setdefault(event.stream_id, []).append(event)
         snapshots = sorted(
             (run_snapshot_from_events(self.user_id, events) for events in grouped.values()),
@@ -266,33 +327,28 @@ class RuntimeStore:
         return snapshots if limit is None else snapshots[:limit]
 
     def read_run_events(self, run_id: str) -> list[RunEvent]:
-        from core.state.views import optional_string
+        from core.state.views import run_events_from_storage
 
-        events = self._read_storage_events("run", run_id)
+        events = self.read_events("run", run_id)
         if not events:
             raise KeyError(f"run not found: {run_id}")
-        parent_run_id = optional_string(events[0].data.get("parent_run_id"))
-        return [
-            run_event_from_storage(event, sequence, parent_run_id)
-            for sequence, event in enumerate(events, 1)
-        ]
+        return run_events_from_storage(events)
 
     def read_runtime_lock(self, run_id: str) -> dict[str, object] | None:
         from core.state.views import runtime_lock_from_events
 
         return runtime_lock_from_events(
             run_id,
-            self._read_storage_events("run", run_id),
+            self.read_events("run", run_id),
         )
 
     def explain_run(self, run_id: str) -> dict[str, object]:
-        from core.state.views import explain_run_from_views
+        from core.state.views import explain_run_from_events
 
-        return explain_run_from_views(
-            self.read_run(run_id),
-            self.read_run_events(run_id),
-            self.read_runtime_lock(run_id),
-        )
+        events = self.read_events("run", run_id)
+        if not events:
+            raise KeyError(f"run not found: {run_id}")
+        return explain_run_from_events(self.user_id, events)
 
     def export_run(self, run_id: str, path: Path) -> Path:
         from core.storage.files import write_bytes_atomically
@@ -317,12 +373,10 @@ class RuntimeStore:
         from core.state.evaluation import evaluation_record_to_dict
 
         for record in records:
-            self.backend.append_event(
-                user_id=self.user_id,
-                agent_name=self.agent_name,
-                stream_type="skill_evaluation",
-                stream_id=record.record_id,
-                event_type="evaluation.recorded",
+            self.append_event(
+                "skill_evaluation",
+                record.record_id,
+                "evaluation.recorded",
                 data=evaluation_record_to_dict(record),
                 event_id=record.record_id,
                 created_at=record.created_at,
@@ -338,7 +392,7 @@ class RuntimeStore:
 
         records = [
             evaluation_record_from_dict(event.data)
-            for event in self._read_storage_events("skill_evaluation")
+            for event in self.read_events("skill_evaluation")
             if event.event_type == "evaluation.recorded"
         ]
         return [
@@ -356,12 +410,10 @@ class RuntimeStore:
         *,
         event_id: str | None = None,
     ) -> StorageEvent:
-        return self.backend.append_event(
-            user_id=self.user_id,
-            agent_name=self.agent_name,
-            stream_type="skill_evolution",
-            stream_id=_required_text(evolution_id, "Skill evolution_id"),
-            event_type=_required_text(event_type, "Skill evolution event_type"),
+        return self.append_event(
+            "skill_evolution",
+            _required_text(evolution_id, "Skill evolution_id"),
+            _required_text(event_type, "Skill evolution event_type"),
             data=dict(data),
             event_id=event_id,
         )
@@ -372,11 +424,11 @@ class RuntimeStore:
         event_type: str,
         data: dict[str, object],
     ) -> StorageEvent:
-        return self._append_scoped_event(
+        return self.append_event(
             "model_call",
             _required_text(operation_id, "model operation_id"),
             _required_text(event_type, "model event_type"),
-            dict(data),
+            data=dict(data),
         )
 
     def append_management_action_event(
@@ -384,11 +436,11 @@ class RuntimeStore:
         event_type: str,
         data: dict[str, object],
     ) -> StorageEvent:
-        return self._append_scoped_event(
+        return self.append_event(
             "action",
             "management",
             event_type,
-            data,
+            data=data,
         )
 
     def read_skill_evolution_events(
@@ -399,45 +451,7 @@ class RuntimeStore:
             evolution_id,
             "Skill evolution_id",
         )
-        return self._read_storage_events("skill_evolution", selected_id)
-
-    def _append_scoped_event(
-        self,
-        stream_type: str,
-        stream_id: str,
-        event_type: str,
-        data: dict[str, object],
-        *,
-        event_id: str | None = None,
-    ) -> StorageEvent:
-        return self.backend.append_event(
-            user_id=self.user_id,
-            agent_name=self.agent_name,
-            stream_type=stream_type,
-            stream_id=stream_id,
-            event_type=event_type,
-            data=data,
-            event_id=event_id,
-        )
-
-    def _read_storage_events(
-        self,
-        stream_type: str,
-        stream_id: str | None = None,
-    ) -> list[StorageEvent]:
-        return self.backend.read_events(
-            StorageEventQuery(
-                user_id=self.user_id,
-                agent_name=self.agent_name,
-                stream_type=stream_type,
-                stream_id=stream_id,
-            )
-        )
-
-    def _read_all_storage_events(self) -> list[StorageEvent]:
-        return self.backend.read_events(
-            StorageEventQuery(user_id=self.user_id, agent_name=self.agent_name)
-        )
+        return self.read_events("skill_evolution", selected_id)
 
     def _require_identity_scope(self, identity: RunIdentity) -> None:
         if identity.user_id != self.user_id or identity.agent_name != self.agent_name:

@@ -11,10 +11,8 @@ from core.storage import StorageEvent
 
 
 def run_snapshot_from_events(user_id: str, events: list[StorageEvent]) -> RunSnapshot:
-    ordered = sorted(events, key=lambda event: event.position)
+    ordered = _ordered_run_events(events)
     started = ordered[0]
-    if started.event_type != "run.started":
-        raise ValueError(f"run stream does not start with run.started: {started.stream_id}")
     terminal = next(
         (event for event in reversed(ordered) if event.event_type in {"run.completed", "run.failed"}),
         None,
@@ -79,7 +77,32 @@ def conversation_from_events(user_id: str, events: list[StorageEvent]) -> Conver
     )
 
 
-def latest_selection_decisions(events: list[RunEvent]) -> list[object]:
+def run_events_from_storage(events: list[StorageEvent]) -> list[RunEvent]:
+    ordered = _ordered_run_events(events)
+    parent_run_id = optional_string(ordered[0].data.get("parent_run_id"))
+    return [
+        run_event_from_storage(event, sequence, parent_run_id)
+        for sequence, event in enumerate(ordered, 1)
+    ]
+
+
+def run_event_from_storage(
+    event: StorageEvent,
+    sequence: int,
+    parent_run_id: str | None,
+) -> RunEvent:
+    return RunEvent(
+        run_id=event.stream_id,
+        sequence=sequence,
+        event_type=event.event_type,
+        created_at=event.created_at,
+        agent_name=event.agent_name,
+        parent_run_id=parent_run_id,
+        data=dict(event.data),
+    )
+
+
+def _latest_selection_decisions(events: list[RunEvent]) -> list[object]:
     for event in reversed(events):
         if event.event_type == "skills.selected":
             decisions = event.data.get("decisions", [])
@@ -91,10 +114,13 @@ def runtime_lock_from_events(
     run_id: str,
     events: list[StorageEvent],
 ) -> dict[str, object] | None:
+    if not events:
+        return None
+    ordered = _ordered_run_events(events)
     lock_event = next(
         (
             event
-            for event in reversed(events)
+            for event in reversed(ordered)
             if event.event_type == "runtime.locked"
         ),
         None,
@@ -116,16 +142,18 @@ def runtime_lock_from_events(
     return dict(runtime_lock)
 
 
-def explain_run_from_views(
-    snapshot: RunSnapshot,
-    events: list[RunEvent],
-    runtime_lock: dict[str, object] | None,
+def explain_run_from_events(
+    user_id: str,
+    stored_events: list[StorageEvent],
 ) -> dict[str, object]:
+    snapshot = run_snapshot_from_events(user_id, stored_events)
+    events = run_events_from_storage(stored_events)
+    runtime_lock = runtime_lock_from_events(snapshot.run_id, stored_events)
     return {
         "schema_version": 1,
         "snapshot": asdict(snapshot),
         "runtime_lock": runtime_lock,
-        "selection_decisions": latest_selection_decisions(events),
+        "selection_decisions": _latest_selection_decisions(events),
         "disclosure_path": [
             asdict(event) for event in events if event.event_type == "skill.disclosed"
         ],
@@ -207,3 +235,23 @@ def _stored_string(
     if not isinstance(value, str) or (not allow_empty and not value):
         raise ValueError(f"stored {name} must be a string")
     return value
+
+
+def _ordered_run_events(events: list[StorageEvent]) -> list[StorageEvent]:
+    if not events:
+        raise ValueError("run event stream cannot be empty")
+    ordered = sorted(events, key=lambda event: event.position)
+    first = ordered[0]
+    if any(
+        event.stream_type != "run"
+        or event.stream_id != first.stream_id
+        or event.user_id != first.user_id
+        or event.agent_name != first.agent_name
+        for event in ordered
+    ):
+        raise ValueError("run projection cannot combine event streams")
+    if first.event_type != "run.started":
+        raise ValueError(
+            f"run stream does not start with run.started: {first.stream_id}"
+        )
+    return ordered

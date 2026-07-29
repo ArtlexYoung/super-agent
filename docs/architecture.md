@@ -127,12 +127,12 @@ before a call and is visible in the plan, Runtime lock, selection event, and Pro
 ## State and Isolation
 
 ```text
-RuntimeSession
+Run
   -> RunEventLog
        -> optional StorageBackend
-  -> optional RuntimeStore domain views
-       -> the same StorageBackend
-            +-> JSONL / SQLite / MySQL / PostgreSQL
+  -> optional RuntimeStore
+       -> scoped canonical events
+       -> lazy conversation / memory / disclosure / evaluation projections
 ```
 
 Every event contains one validated user and Agent scope. Conversations, memory, Skill
@@ -140,6 +140,11 @@ usage, disclosure history, model evidence, Provider caches, user Skill overlays,
 evaluations, and evolution state remain inside that scope. Shared project and shipped
 scene Skills are read-only baselines. The index reports shipped content with the
 `builtin` source label, so resolution order is `user > project > builtin`.
+
+`RuntimeStore` is the only persisted event boundary. It does not expose its backend;
+memory and disclosure receive the store itself instead of independent writer and reader
+callbacks. Run explanation reads one canonical stream once, then derives the snapshot,
+ordered Runtime events, lock, decisions, and disclosure path from that same input.
 
 JSONL and SQLite use only the standard library. Remote database drivers are imported only
 after their backend is explicitly selected.

@@ -7,6 +7,7 @@ from typing import Callable
 
 from core.identity import RunIdentity
 from core.state.models import RunEvent
+from core.state.views import run_event_from_storage
 from core.storage import StorageBackend, StorageEvent, StorageEventQuery
 
 
@@ -24,7 +25,7 @@ class RunEventLog:
         event_listener: RunEventObserver | None = None,
     ) -> None:
         self.identity = identity
-        self.backend = backend
+        self._backend = backend
         self.event_listener = event_listener
         self._events: list[RunEvent] = []
         self._observers: list[RunEventObserver] = []
@@ -50,7 +51,7 @@ class RunEventLog:
     ) -> RunEvent:
         clean_type = _required_text(event_type, "run event type")
         content = dict(data or {})
-        if self.backend is None:
+        if self._backend is None:
             event = RunEvent(
                 run_id=self.identity.run_id,
                 sequence=len(self._events) + 1,
@@ -61,7 +62,7 @@ class RunEventLog:
                 data=content,
             )
         else:
-            stored = self.backend.append_event(
+            stored = self._backend.append_event(
                 user_id=self.identity.user_id,
                 agent_name=self.identity.agent_name,
                 stream_type="run",
@@ -91,9 +92,9 @@ class RunEventLog:
         return list(self._events)
 
     def _read_stored_events(self) -> list[StorageEvent]:
-        if self.backend is None:
+        if self._backend is None:
             return []
-        return self.backend.read_events(
+        return self._backend.read_events(
             StorageEventQuery(
                 user_id=self.identity.user_id,
                 agent_name=self.identity.agent_name,
@@ -101,22 +102,6 @@ class RunEventLog:
                 stream_id=self.identity.run_id,
             )
         )
-
-
-def run_event_from_storage(
-    event: StorageEvent,
-    sequence: int,
-    parent_run_id: str | None,
-) -> RunEvent:
-    return RunEvent(
-        run_id=event.stream_id,
-        sequence=sequence,
-        event_type=event.event_type,
-        created_at=event.created_at,
-        agent_name=event.agent_name,
-        parent_run_id=parent_run_id,
-        data=dict(event.data),
-    )
 
 
 def _required_text(value: object, name: str) -> str:

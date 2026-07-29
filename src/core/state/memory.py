@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Iterable
-from typing import Callable, Protocol
+from typing import TYPE_CHECKING
 
 from core.state.views import usage_habits_from_events
 from core.storage import StorageEvent
+
+if TYPE_CHECKING:
+    from core.state.store import RuntimeStore
 
 
 LONG_TERM_MEMORY = "long_term"
@@ -23,45 +26,22 @@ MEMORY_ORGANIZATION_EVENTS = frozenset(
 )
 
 
-class AppendScopedEvent(Protocol):
-    def __call__(
-        self,
-        stream_type: str,
-        stream_id: str,
-        event_type: str,
-        data: dict[str, object],
-        *,
-        event_id: str | None = None,
-    ) -> StorageEvent:
-        ...
-
-
-ReadScopedEvents = Callable[[str, str | None], list[StorageEvent]]
-
-
 class RuntimeMemoryStore:
     """Own active memory views while preserving immutable events."""
 
-    def __init__(
-        self,
-        append_scoped_event: AppendScopedEvent,
-        read_scoped_events: ReadScopedEvents,
-        event_namespace: str,
-    ) -> None:
-        self._append_scoped_event = append_scoped_event
-        self._read_scoped_events = read_scoped_events
-        self._event_namespace = event_namespace
+    def __init__(self, store: RuntimeStore) -> None:
+        self._store = store
         self._known_streams_checked = False
 
     def add_memory_item(self, item: dict[str, object]) -> None:
         self._require_known_memory_streams()
         validated = _validate_memory_item(item)
         stream_id = _memory_stream_id_for_item(validated)
-        self._append_scoped_event(
+        self._store.append_event(
             "memory",
             stream_id,
             "memory.added",
-            {"item": validated},
+            data={"item": validated},
         )
 
     def list_memory_items(
@@ -74,7 +54,7 @@ class RuntimeMemoryStore:
         self._require_known_memory_streams()
         stream_id = memory_stream_id(memory_type, conversation_id)
         active = _replay_memory(
-            self._read_scoped_events("memory", stream_id),
+            self._store.read_events("memory", stream_id),
             stream_id,
         )
         return _sort_memory_items(
@@ -86,7 +66,7 @@ class RuntimeMemoryStore:
     def list_all_memory_items(self) -> list[dict[str, object]]:
         self._require_known_memory_streams()
         grouped: dict[str, list[StorageEvent]] = {}
-        for event in self._read_scoped_events("memory", None):
+        for event in self._store.read_events("memory"):
             grouped.setdefault(event.stream_id, []).append(event)
         active: list[dict[str, object]] = []
         for stream_id, events in grouped.items():
@@ -104,11 +84,11 @@ class RuntimeMemoryStore:
         self._require_known_memory_streams()
         stream_id = memory_stream_id(memory_type, conversation_id)
         selected = self._require_active_memory_items(item_ids, stream_id)
-        self._append_scoped_event(
+        self._store.append_event(
             "memory",
             stream_id,
             "memory.forgotten",
-            {"item_ids": selected, "reason": reason.strip()},
+            data={"item_ids": selected, "reason": reason.strip()},
         )
 
     def merge_memory_items(
@@ -151,7 +131,7 @@ class RuntimeMemoryStore:
             self._require_active_memory_items(source_item_ids, source_stream)
         )
         source_items = _replay_memory(
-            self._read_scoped_events("memory", source_stream),
+            self._store.read_events("memory", source_stream),
             source_stream,
         )
         validated = _validate_memory_item(replacement)
@@ -175,20 +155,20 @@ class RuntimeMemoryStore:
             "reason": reason.strip(),
         }
         event_id = _promotion_event_id(
-            self._event_namespace,
+            self._store.agent_name,
             conversation_id,
             selected,
         )
-        event = self._append_scoped_event(
+        event = self._store.append_event(
             "memory",
             LONG_TERM_MEMORY,
             "memory.promoted",
-            event_data,
+            data=event_data,
             event_id=event_id,
         )
         if (
             event.event_id != event_id
-            or event.agent_name != self._event_namespace
+            or event.agent_name != self._store.agent_name
             or event.stream_id != LONG_TERM_MEMORY
             or event.event_type != "memory.promoted"
             or event.data != event_data
@@ -208,7 +188,7 @@ class RuntimeMemoryStore:
             return set()
         source_conversation_id = _required_conversation_id(conversation_id)
         promoted: set[str] = set()
-        for event in self._read_scoped_events("memory", LONG_TERM_MEMORY):
+        for event in self._store.read_events("memory", LONG_TERM_MEMORY):
             if event.event_type != "memory.promoted":
                 continue
             source_ids, recorded_conversation_id, _ = _validate_memory_promotion(
@@ -229,11 +209,11 @@ class RuntimeMemoryStore:
         self._require_known_memory_streams()
         stream_id = memory_stream_id(memory_type, conversation_id)
         selected = self._require_active_memory_items(item_ids, stream_id)
-        self._append_scoped_event(
+        self._store.append_event(
             "memory",
             stream_id,
             "memory.archived",
-            {"item_ids": selected, "reason": reason.strip()},
+            data={"item_ids": selected, "reason": reason.strip()},
         )
 
     def record_memory_organization(
@@ -247,24 +227,24 @@ class RuntimeMemoryStore:
         self._require_known_memory_streams()
         if event_type not in MEMORY_ORGANIZATION_EVENTS:
             raise ValueError(f"unknown memory organization event: {event_type}")
-        self._append_scoped_event(
+        self._store.append_event(
             "memory",
             memory_stream_id(memory_type, conversation_id),
             event_type,
-            data,
+            data=data,
         )
 
     def record_usage_habits(self, workflow: str, skills: list[str]) -> None:
-        self._append_scoped_event(
+        self._store.append_event(
             "habit",
             "usage",
             "agent.completed",
-            {"workflow": workflow, "skills": list(skills)},
+            data={"workflow": workflow, "skills": list(skills)},
         )
 
     def read_usage_habits(self) -> dict[str, object]:
         return usage_habits_from_events(
-            self._read_scoped_events("habit", "usage")
+            self._store.read_events("habit", "usage")
         )
 
     def _replace_memory_items(
@@ -278,11 +258,11 @@ class RuntimeMemoryStore:
         validated = _validate_memory_item(replacement)
         stream_id = _memory_stream_id_for_item(validated)
         selected = self._require_active_memory_items(source_item_ids, stream_id)
-        self._append_scoped_event(
+        self._store.append_event(
             "memory",
             stream_id,
             event_type,
-            {
+            data={
                 "source_item_ids": selected,
                 "item": validated,
                 "reason": reason.strip(),
@@ -298,7 +278,7 @@ class RuntimeMemoryStore:
         if not selected:
             raise ValueError("memory operation requires at least one item")
         active = _replay_memory(
-            self._read_scoped_events("memory", stream_id),
+            self._store.read_events("memory", stream_id),
             stream_id,
         )
         missing = sorted(set(selected) - set(active))
@@ -309,7 +289,7 @@ class RuntimeMemoryStore:
     def _require_known_memory_streams(self) -> None:
         if self._known_streams_checked:
             return
-        for event in self._read_scoped_events("memory", None):
+        for event in self._store.read_events("memory"):
             _validate_memory_stream_id(event.stream_id)
         self._known_streams_checked = True
 

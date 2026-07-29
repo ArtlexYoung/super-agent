@@ -65,12 +65,10 @@ class MiniMemoryTests(unittest.TestCase):
     def test_untyped_memory_stream_is_rejected_instead_of_hidden(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             store = create_local_runtime_store(Path(tmp))
-            store.backend.append_event(
-                user_id=store.user_id,
-                agent_name=store.agent_name,
-                stream_type="memory",
-                stream_id="memory",
-                event_type="memory.added",
+            store.append_event(
+                "memory",
+                "memory",
+                "memory.added",
                 data={"item": {}},
             )
 
@@ -300,14 +298,7 @@ class MiniMemoryTests(unittest.TestCase):
             self.assertEqual(1, len(promotion_actions))
             self.assertEqual(("create",), tuple(promotion_actions[0].effects))
 
-            events = store.backend.read_events(
-                StorageEventQuery(
-                    user_id=store.user_id,
-                    agent_name=store.agent_name,
-                    stream_type="memory",
-                    stream_id="long_term",
-                )
-            )
+            events = store.read_events("memory", "long_term")
             promoted = next(
                 event for event in events if event.event_type == "memory.promoted"
             )
@@ -472,13 +463,7 @@ class MiniMemoryTests(unittest.TestCase):
             memory.forget_memory(item.item_id)
 
             self.assertEqual([], memory.list_memory_items())
-            events = memory.store.backend.read_events(
-                StorageEventQuery(
-                    user_id=memory.store.user_id,
-                    agent_name=memory.store.agent_name,
-                    stream_type="memory",
-                )
-            )
+            events = memory.store.read_events("memory")
             self.assertEqual(
                 ["memory.added", "memory.forgotten"],
                 [event.event_type for event in events],
@@ -596,13 +581,7 @@ class MiniMemoryTests(unittest.TestCase):
             self.assertTrue(all(request.actor == "agent:memory" for request in action_requests))
             event_types = [
                 event.event_type
-                for event in store.backend.read_events(
-                    StorageEventQuery(
-                        user_id=store.user_id,
-                        agent_name=store.agent_name,
-                        stream_type="memory",
-                    )
-                )
+                for event in store.read_events("memory")
             ]
             self.assertIn("memory.superseded", event_types)
             self.assertIn("memory.archived", event_types)
@@ -665,13 +644,7 @@ class MiniMemoryTests(unittest.TestCase):
                 )
             self.assertEqual(2, len(memory.recall_memory("Python")))
 
-            events = memory.store.backend.read_events(
-                StorageEventQuery(
-                    user_id=memory.store.user_id,
-                    agent_name=memory.store.agent_name,
-                    stream_type="memory",
-                )
-            )
+            events = memory.store.read_events("memory")
             self.assertEqual("memory.organization.failed", events[-1].event_type)
 
     def test_memory_policy_is_loaded_from_memory_skill_manifest(self) -> None:

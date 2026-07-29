@@ -208,9 +208,9 @@ super-agent runs explain --config agent.toml --run-id <run-id>
 super-agent runs export --config agent.toml --run-id <run-id> --output run.json
 ```
 
-Explain and export rebuild their views from canonical events and verify the Runtime lock
-hash. Child runs can be found across the configured subagent tree only inside the same
-user and storage backend.
+Explain and export read one canonical run stream once, rebuild every view from that same
+input, and verify the Runtime lock hash. Child runs can be found across the configured
+subagent tree only inside the same user; ambiguous Agent ownership is rejected.
 
 ## Multi-Agent Composition
 

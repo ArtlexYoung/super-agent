@@ -77,14 +77,7 @@ def list_model_routing_stats(
     store: RuntimeStore,
     purpose: str | None = None,
 ) -> list[ModelRoutingStats]:
-    from core.storage import StorageEventQuery
-
-    events = store.backend.read_events(
-        StorageEventQuery(
-            user_id=store.user_id,
-            agent_name=store.agent_name,
-        )
-    )
+    events = store.read_events()
     implicit_feedback: dict[str, float] = {}
     explicit_feedback: dict[str, float] = {}
     for event in events:
