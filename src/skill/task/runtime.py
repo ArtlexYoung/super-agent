@@ -51,14 +51,14 @@ class AgentRuntime:
         provider_pool: ProviderPool,
         skill_runners: SkillRunners,
         storage: StorageBackend | None,
-        action_rules: ActionRules,
+        create_action_rules: Callable[[], ActionRules] | None,
         user_secrets: UserSecretResolver,
     ) -> None:
         self.config = config
         self.provider_pool = provider_pool
         self.skill_runners = skill_runners
         self.storage = storage
-        self.action_rules = action_rules
+        self.create_action_rules = create_action_rules
         self.user_secrets = user_secrets
         self.code_model_profiles: tuple[ModelProfile, ...] = ()
         self.skill_change_listener: Callable[[SkillManifest, str], None] | None = None
@@ -187,7 +187,7 @@ class AgentRuntime:
     ) -> object:
         store = self.create_store(user_id)
         return ActionRunner(
-            self.action_rules,
+            self._get_action_rules(),
             store.append_management_action_event,
         ).execute_action(
             request,
@@ -307,7 +307,7 @@ class AgentRuntime:
                 ),
             ),
             on_skill_changed=change_handler,
-            action_rules=self.action_rules,
+            action_rules=self._get_action_rules(),
         )
 
     def read_model_profiles(self, user_id: str = LOCAL_USER_ID) -> list[ModelProfile]:
@@ -349,7 +349,7 @@ class AgentRuntime:
                 event_log=event_log,
                 store=store,
                 allow_subscriber_failures=request.allow_subscriber_failures,
-                action_rules=self.action_rules,
+                create_action_rules=self.create_action_rules,
                 event_subscribers=RuntimeEventSubscribers(
                     self.event_subscribers.list_subscribers()
                 ),
@@ -381,6 +381,14 @@ class AgentRuntime:
             identity.agent_name,
             run_event_log=event_log,
         )
+
+    def _get_action_rules(self) -> ActionRules:
+        if self.create_action_rules is None:
+            raise RuntimeError("management action requires an action checker")
+        rules = self.create_action_rules()
+        if not isinstance(rules, ActionRules):
+            raise TypeError("action rules factory must return ActionRules")
+        return rules
 
     def _create_skills(
         self,

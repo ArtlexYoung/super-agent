@@ -61,6 +61,9 @@ class RuntimeTools:
     def get_tool_definitions(self) -> list[ToolDefinition]:
         return [tool.to_provider_definition() for tool in self._tools.values()]
 
+    def list_tools(self) -> tuple[SkillTool, ...]:
+        return tuple(self._tools.values())
+
     def run_tool_call(self, call: ToolCall) -> dict[str, object]:
         self.context.session.record_event(
             "tool.requested",

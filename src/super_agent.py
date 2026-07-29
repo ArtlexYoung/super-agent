@@ -94,7 +94,7 @@ class Agent:
         if storage is not None and not use_storage:
             raise ValueError("storage cannot be combined with use_storage=False")
         self.config = _load_agent_config(config)
-        self.action_rules = action_rules or ActionRules()
+        self._action_rules = action_rules
         self.user_secrets = UserSecretResolver(secret_lookup)
         self._use_storage = use_storage
         self._configured_storage = storage
@@ -117,6 +117,10 @@ class Agent:
     def storage(self) -> StorageBackend | None:
         self._ensure_initialized()
         return self._storage
+
+    @property
+    def action_rules(self) -> ActionRules:
+        return self._create_action_rules()
 
     @property
     def runtime(self) -> AgentRuntime:
@@ -467,7 +471,7 @@ class Agent:
             provider_pool,
             self._skill_runners,
             storage,
-            self.action_rules,
+            self._create_action_rules,
             self.user_secrets,
         )
         runtime.set_code_model_profiles(code_profiles)
@@ -475,6 +479,12 @@ class Agent:
         for subscriber in event_subscribers:
             runtime.add_event_subscriber(subscriber)
         return runtime
+
+    def _create_action_rules(self) -> ActionRules:
+        with self._initialization_lock:
+            if self._action_rules is None:
+                self._action_rules = ActionRules()
+            return self._action_rules
 
     def _make_next_subagent_name(self) -> str:
         index = 1

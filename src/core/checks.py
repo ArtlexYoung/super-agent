@@ -274,6 +274,11 @@ class ActionRunner:
         )
 
 
+def action_requires_checker(effects: tuple[ActionEffect, ...]) -> bool:
+    """Return whether declared effects can change state or leave the process."""
+    return set(effects) != {ActionEffect.READ}
+
+
 _INTERNAL_EFFECTS = {
     ActionEffect.READ,
     ActionEffect.CREATE,

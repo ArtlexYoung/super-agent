@@ -176,6 +176,36 @@ class RuntimeSafetyTests(unittest.TestCase):
 
         self.assertEqual(request, raised.exception.request)
 
+    def test_read_only_action_does_not_require_action_checker(self) -> None:
+        session = _create_session_without_action_checker()
+
+        result = session.execute_action(
+            ActionRequest.create(
+                "tool:list_skills",
+                "skill:index",
+                (ActionEffect.READ,),
+            ),
+            lambda: {"skills": []},
+        )
+
+        self.assertEqual({"skills": []}, result)
+
+    def test_state_change_requires_action_checker(self) -> None:
+        session = _create_session_without_action_checker()
+
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "action checker is required for effects: execute, network",
+        ):
+            session.execute_action(
+                ActionRequest.create(
+                    "tool:remote",
+                    "mcp:remote",
+                    (ActionEffect.EXECUTE, ActionEffect.NETWORK),
+                ),
+                lambda: None,
+            )
+
 
 def _create_session(
     root: Path,
@@ -202,5 +232,25 @@ def _create_session(
         identity=identity,
         event_log=event_log,
         store=store,
-        action_rules=action_rules or ActionRules(),
+        create_action_rules=lambda: action_rules or ActionRules(),
+    )
+
+
+def _create_session_without_action_checker() -> Run:
+    config = AgentConfig.create_default(Path("."))
+    identity = RunIdentity.create("local", config.agent.name)
+    event_log = RunEventLog(identity)
+    event_log.start_run("question")
+    return Run(
+        config=config,
+        model_profile=create_direct_provider_profile(),
+        provider=MockProvider(),
+        skills=Skills(
+            ProgressiveDisclosureCore([]),
+            create_default_skill_runners(),
+        ),
+        identity=identity,
+        event_log=event_log,
+        store=None,
+        create_action_rules=None,
     )

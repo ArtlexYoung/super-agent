@@ -5,9 +5,10 @@ from pathlib import Path
 
 from super_agent import Agent, AgentRunOptions
 from core.config import AgentConfig
+from core.checks import ActionEffect
 from core.provider.chat import MockProvider
 from skill.task.preflight import TaskPreflightError
-from skill.runners.loaded import LoadedSkill
+from skill.runners.loaded import LoadedSkill, SkillAction, SkillTool
 
 
 class TaskPreflightTests(unittest.TestCase):
@@ -71,6 +72,36 @@ class TaskPreflightTests(unittest.TestCase):
                 any(action["status"] == "applied" for action in result.actions or [])
             )
 
+    def test_preflight_rejects_side_effects_without_action_checker(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_skill(root, "test_action", "remote")
+            config = AgentConfig.create_default(root)
+            config = replace(
+                config,
+                agent=replace(config.agent, skills=["test_action:remote"]),
+            )
+            provider = MockProvider("must not run")
+            agent = Agent(
+                config,
+                provider=provider,
+                skill_runners=[_ActionSkillRunner()],
+                use_storage=False,
+            )
+            agent.runtime.create_action_rules = None
+
+            with self.assertRaises(TaskPreflightError) as raised:
+                agent.run("hello")
+
+            problem = next(
+                item
+                for item in raised.exception.problems
+                if item.code == "action_checker_missing"
+            )
+            self.assertIn("tool:run_remote", problem.target)
+            self.assertIn("skill:task-completed", problem.target)
+            self.assertEqual([], provider.last_messages)
+
 
 class _ServiceSkillRunner:
     name = "service-test"
@@ -83,6 +114,35 @@ class _ServiceSkillRunner:
 
     def load_skill(self, request: object) -> LoadedSkill:
         return LoadedSkill()
+
+
+class _ActionSkillRunner:
+    name = "action-test"
+    version = "1"
+    skill_type = "test_action"
+    adds_model_context = False
+    required_services: tuple[str, ...] = ()
+
+    def load_skill(self, request: object) -> LoadedSkill:
+        return LoadedSkill(
+            tools=(
+                SkillTool(
+                    "run_remote",
+                    "Run one remote operation",
+                    {},
+                    lambda _arguments: {"ok": True},
+                    SkillAction(
+                        (ActionEffect.EXECUTE, ActionEffect.NETWORK),
+                        "remote:test",
+                    ),
+                ),
+            ),
+            record_task_completed=lambda _text, _skills: None,
+            task_completed_action=SkillAction(
+                (ActionEffect.CREATE,),
+                "memory:test",
+            ),
+        )
 
 
 def _write_skill(root: Path, skill_type: str, name: str) -> None:

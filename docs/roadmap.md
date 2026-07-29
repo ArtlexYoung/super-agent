@@ -369,6 +369,19 @@ Status: implemented.
 - Remove the production benchmark helper; reproducible behavior remains covered by focused
   execution, evaluation, non-regression, and release-shape tests.
 
+## v0.0.90: Checks Only When Actions Need Them
+
+Status: implemented.
+
+- Keep action declarations mandatory for every tool while creating the action checker only
+  when a checked action or management change actually runs.
+- Let stateless model-only tasks complete without constructing action rules, an action
+  runner, storage, or another optional state layer.
+- Allow an explicitly checker-free Runtime to execute read-only tools, but reject every
+  state-changing tool and completion callback together during preflight.
+- Preserve the standard checked policy for the zero-configuration Agent; external changes
+  still require confirmation and never run through an implicit permissive path.
+
 ## Release Gate
 
 The project will not move to `0.1.x` because of feature count. The gate is a reproducible

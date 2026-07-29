@@ -21,7 +21,7 @@ from skill.task.tools import RuntimeTools, RuntimeToolsContext
 from core.config import AgentConfig
 from skill.task.run import Run
 from core.models import RunIdentity
-from core.checks import ActionConfirmationRequired, ActionEffect
+from core.checks import ActionConfirmationRequired, ActionEffect, ActionRules
 from core.state.event_log import RunEventLog
 from skill.state.store import RuntimeStore
 from adapter.storage import JsonlStorage
@@ -376,4 +376,5 @@ def _create_session(
         identity=identity,
         event_log=event_log,
         store=store,
+        create_action_rules=ActionRules,
     )

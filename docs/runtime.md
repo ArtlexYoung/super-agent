@@ -36,7 +36,10 @@ After scheduling, preflight loads each planned Skill once and aggregates every d
 problem. `task.preflight.completed` is recorded before the first model or subagent call.
 On failure, `TaskPreflightError.problems` contains all detected codes, targets, and
 messages; Runtime records `task.preflight.failed` and does not lock or partially execute
-the run.
+the run. Preflight also rejects state-changing tools and completion callbacks when an
+embedded Runtime has no action checker. Read-only tools may remain available in that
+minimal mode. The default Agent creates its standard rules only on the first checked
+action, so a pure stateless model call does not initialize the action layer.
 
 ## Optional Parts
 

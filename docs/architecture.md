@@ -69,8 +69,9 @@ report. A failed report raises `TaskPreflightError` before the Runtime lock, mod
 tool handler, or subagent run. Execution reuses the checked Skill contributions.
 
 `Run` is the only mutable per-run context. It is complete when constructed and carries the
-validated identity, one small `RunEventLog`, optional store, Skill index, disclosure core,
-selected model state, one Skills snapshot, action runner, event subscribers, and evidence tracker.
+validated identity, one small `RunEventLog`, optional store, selected model state, one
+Skills snapshot, an optional action-checker factory, event subscribers, and evidence
+tracker. The action runner is created only when a checked action actually runs.
 `AgentRuntime` constructs it directly from explicit dependencies; no resource container,
 session request, user-model wrapper, factory shell, or late disclosure setter exists. The
 event log uses memory without a backend and persists the same ordered records when a
@@ -173,6 +174,12 @@ that declaration before invoking the handler and records the decision or failure
 missing declaration is an error; there is no permissive fallback. Mutations are checked,
 prepared, and then explicitly applied. Reads run directly after their check. Skill text
 cannot change an action declaration because it is treated as untrusted model context.
+
+Preflight inspects the complete planned tool set and completion callbacks. If an embedded
+Runtime intentionally has no action checker, reads remain available but any declared
+create, update, delete, execute, network, or delegation effect fails before the first
+model call. The default Agent supplies standard rules lazily, so model-only runs do not
+initialize the checker and state-changing behavior never becomes implicitly permissive.
 
 Management operations such as conversation changes, model Skill writes, and memory
 forgetting use the same action boundary. The Web and CLI adapters do not bypass it.

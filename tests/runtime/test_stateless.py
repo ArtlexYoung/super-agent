@@ -114,6 +114,16 @@ print(json.dumps(sorted(name for name in sys.modules if name.startswith(blocked)
                 selected["unavailable_candidates"]["scene:common"],
             )
 
+    def test_pure_model_run_does_not_create_action_rules(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            config = AgentConfig.create_default(Path(tmp))
+            agent = Agent(config, provider=MockProvider("finished"), use_storage=False)
+
+            result = agent.run("hello")
+
+            self.assertEqual("finished", result.text)
+            self.assertIsNone(agent._action_rules)
+
     def test_stateless_conversation_fails_instead_of_creating_storage(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             config = AgentConfig.create_default(Path(tmp))

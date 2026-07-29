@@ -7,7 +7,12 @@ from typing import TYPE_CHECKING, Callable
 
 from core.models import RunIdentity
 from core.state.subscribers import RuntimeEventSubscribers
-from core.checks import ActionRequest, ActionRunner, ActionRules
+from core.checks import (
+    ActionRequest,
+    ActionRunner,
+    ActionRules,
+    action_requires_checker,
+)
 
 if TYPE_CHECKING:
     from core.config import AgentConfig
@@ -32,7 +37,10 @@ class Run:
     event_log: RunEventLog
     store: RuntimeStore | None
     allow_subscriber_failures: bool = False
-    action_rules: ActionRules = field(default_factory=ActionRules)
+    create_action_rules: Callable[[], ActionRules] | None = field(
+        default=None,
+        repr=False,
+    )
     event_subscribers: RuntimeEventSubscribers = field(
         default_factory=RuntimeEventSubscribers,
         repr=False,
@@ -42,7 +50,7 @@ class Run:
         init=False,
         repr=False,
     )
-    _action_runner: ActionRunner = field(init=False, repr=False)
+    _action_runner: ActionRunner | None = field(default=None, init=False, repr=False)
     _loaded_skills: dict[tuple[str, bool], LoadedSkill] = field(
         default_factory=dict,
         init=False,
@@ -55,7 +63,6 @@ class Run:
     )
 
     def __post_init__(self) -> None:
-        self._action_runner = ActionRunner(self.action_rules, self.record_event)
         self.event_log.add_observer(self._publish_event)
 
     @property
@@ -103,7 +110,25 @@ class Run:
         request: ActionRequest,
         action: Callable[[], object],
     ) -> object:
+        if self.create_action_rules is None:
+            if action_requires_checker(request.effects):
+                effects = ", ".join(effect.value for effect in request.effects)
+                raise RuntimeError(
+                    f"action checker is required for effects: {effects}"
+                )
+            return action()
+        if self._action_runner is None:
+            action_rules = self.create_action_rules()
+            if not isinstance(action_rules, ActionRules):
+                raise TypeError("action rules factory must return ActionRules")
+            self._action_runner = ActionRunner(
+                action_rules,
+                self.record_event,
+            )
         return self._action_runner.execute_action(request, action)
+
+    def has_action_checker(self) -> bool:
+        return self.create_action_rules is not None
 
     def load_skill(
         self,

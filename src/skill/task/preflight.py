@@ -14,6 +14,7 @@ from skill.task.tools import RuntimeTools, RuntimeToolsContext
 from skill.disclosure import SkillReference
 from skill.runners.loaded import LoadedSkill
 from skill.runners.registry import SkillRunnerEntry
+from core.checks import action_requires_checker
 
 
 @dataclass(frozen=True)
@@ -149,7 +150,7 @@ def _check_runtime_tools(
         has_subagents = request.include_subagents and bool(
             request.subagents.list_subagents()
         )
-        definitions = RuntimeTools(
+        runtime_tools = RuntimeTools(
             RuntimeToolsContext(
                 session=session,
                 list_subagents=(
@@ -158,11 +159,42 @@ def _check_runtime_tools(
                 run_subagent=(lambda _name, _prompt: {}) if has_subagents else None,
             ),
             contributions=contributions,
-        ).get_tool_definitions()
+        )
+        _check_action_checker(session, runtime_tools, contributions, problems)
+        definitions = runtime_tools.get_tool_definitions()
         return [str(item["function"]["name"]) for item in definitions]
     except Exception as error:
         problems.append(_problem("tools_invalid", "Runtime tools", error))
         return []
+
+
+def _check_action_checker(
+    session: Run,
+    runtime_tools: RuntimeTools,
+    contributions: list[LoadedSkill],
+    problems: list[PreflightProblem],
+) -> None:
+    if session.has_action_checker():
+        return
+    targets = [
+        f"tool:{tool.name}"
+        for tool in runtime_tools.list_tools()
+        if action_requires_checker(tool.action.effects)
+    ]
+    targets.extend(
+        "skill:task-completed"
+        for contribution in contributions
+        if contribution.task_completed_action is not None
+        and action_requires_checker(contribution.task_completed_action.effects)
+    )
+    if targets:
+        problems.append(
+            PreflightProblem(
+                "action_checker_missing",
+                ", ".join(sorted(set(targets))),
+                "declared state-changing effects require an action checker",
+            )
+        )
 
 
 def _check_selected_provider(
