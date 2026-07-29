@@ -339,7 +339,7 @@ class Agent:
         prompt: str,
         user_id: str,
     ) -> None:
-        from skill.task.routing import detect_implicit_conversation_feedback
+        from skill.task.model_calls import detect_implicit_conversation_feedback
 
         feedback = detect_implicit_conversation_feedback(conversation, prompt)
         if feedback is None:

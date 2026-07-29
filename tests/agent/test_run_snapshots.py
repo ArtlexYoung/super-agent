@@ -46,6 +46,7 @@ class RunSnapshotTests(unittest.TestCase):
                     "memory",
                     "planner",
                     "prompt",
+                    "scheduler",
                     "scene",
                     "scene_manager",
                     "workflow",
@@ -56,7 +57,11 @@ class RunSnapshotTests(unittest.TestCase):
                 "prompt:echo",
                 {item["key"] for item in runtime_lock["skills"]},
             )
-            self.assertEqual(2, runtime_lock["run_plan"]["schema_version"])
+            self.assertEqual(3, runtime_lock["run_plan"]["schema_version"])
+            self.assertEqual(
+                "scheduler:default",
+                runtime_lock["run_plan"]["scheduler"],
+            )
             self.assertEqual("scene:common", runtime_lock["run_plan"]["scene"])
             self.assertNotIn("task_schedule", runtime_lock)
             self.assertIn(

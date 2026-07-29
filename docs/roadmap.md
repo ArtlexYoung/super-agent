@@ -382,6 +382,21 @@ Status: implemented.
 - Preserve the standard checked policy for the zero-configuration Agent; external changes
   still require confirmation and never run through an implicit permissive path.
 
+## v0.0.91: One Scheduler Skill
+
+Status: implemented.
+
+- Add one zero-configuration `scheduler:default` Skill and route scene, workflow, planner,
+  purpose, model, and subagent choices through its central `Scheduler` mechanism.
+- Keep model descriptions and Scheduler policy as ordinary inspectable, replaceable, and
+  evolvable Skill content rather than fixed Provider or Runtime configuration.
+- Reject model-score ties, multiple automatic purposes, conflicting single selections,
+  and one-subagent policy ambiguity instead of using list or name order.
+- Freeze and record every planned Step's one model decision before executing any Step, so
+  evidence produced earlier in a plan cannot silently reroute its later work.
+- Remove the old `routing` module and initial model preselection; no Provider is obtained
+  before the Scheduler has made an unambiguous decision.
+
 ## Release Gate
 
 The project will not move to `0.1.x` because of feature count. The gate is a reproducible

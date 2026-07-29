@@ -1,0 +1,18 @@
+schema_version = 3
+name = "default"
+type = "scheduler"
+description = "Central task scheduler with explicit ambiguity checks"
+version = "0.0.91"
+triggers = []
+agent_created = false
+agent_can_update = false
+freshness = 70
+function_group = "task-scheduling"
+provides = ["task-scheduling"]
+requires = []
+default = true
+
+[configuration]
+default_purpose = "answer"
+model_score_tie_tolerance = 0.000001
+subagent_mode = "all_matches"

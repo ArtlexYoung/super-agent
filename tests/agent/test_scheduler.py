@@ -6,7 +6,8 @@ from pathlib import Path
 from super_agent import Agent, AgentRunOptions
 from core.config import AgentConfig
 from core.provider.chat import MockProvider, ModelResponse, ProviderConnection
-from skill.task.run_plan import ModelSelectionRequest, choose_model
+from skill.task.model_calls import ModelSelectionRequest
+from skill.task.scheduler import Scheduler, SchedulingPolicy
 from skill.kinds.model import ModelProfile, ModelRoutingTraits
 from support import write_workflow_skill
 
@@ -129,7 +130,13 @@ class AdaptiveTaskLoopTests(unittest.TestCase):
     def test_feedback_learning_is_isolated_by_user_agent_and_purpose(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            _write_model_skill(root, "alpha", purposes=["summary"], quality=0.5)
+            _write_model_skill(
+                root,
+                "alpha",
+                purposes=["summary"],
+                quality=0.0,
+                default=True,
+            )
             _write_model_skill(root, "beta", purposes=["summary"], quality=0.5)
             config = _write_config(root)
             alpha = _RecordingProvider("alpha")
@@ -202,24 +209,68 @@ class AdaptiveTaskLoopTests(unittest.TestCase):
             stats = user.runs.list_model_routing_stats(purpose="answer")
             self.assertAlmostEqual(0.95, stats[0].average_quality)
 
-    def test_cold_start_order_is_deterministic(self) -> None:
+    def test_cold_start_model_score_tie_is_explicit(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_model_skill(root, "alpha", quality=0.5)
             _write_model_skill(root, "beta", quality=0.5)
-            agent = Agent(_write_config(root), provider=_RecordingProvider("alpha"))
-            agent.add_model_provider("beta", _RecordingProvider("beta"))
+            alpha = _RecordingProvider("alpha")
+            beta = _RecordingProvider("beta")
+            agent = Agent(_write_config(root), provider=alpha)
+            agent.add_model_provider("beta", beta)
 
-            first = agent.for_user("cold-a").run("ordinary task")
-            second = agent.for_user("cold-b").run("ordinary task")
+            with self.assertRaisesRegex(ValueError, "model selection is tied"):
+                agent.for_user("cold-a").run("ordinary task")
 
-            self.assertEqual("alpha", first.text)
-            self.assertEqual("alpha", second.text)
-            schedule = _scheduled_event(agent, first.run_id, "cold-a")
-            self.assertNotIn(
-                "bounded exploration: untried model",
-                schedule["model"]["reasons"],
+            self.assertEqual([], alpha.models)
+            self.assertEqual([], beta.models)
+
+    def test_automatic_purpose_rejects_multiple_matches(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_model_skill(
+                root,
+                "summary",
+                purposes=["summary"],
+                default=True,
             )
+            _write_model_skill(root, "analysis", purposes=["analysis"])
+            agent = Agent(_write_config(root), provider=_RecordingProvider("unused"))
+            agent.add_model_provider("analysis", _RecordingProvider("unused"))
+
+            with self.assertRaisesRegex(ValueError, "task purpose is ambiguous"):
+                agent.run("summarize this analysis")
+
+    def test_configured_scheduler_skill_controls_subagent_ambiguity(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_scheduler_skill(root, "single", subagent_mode="one_match")
+            config = _write_config(root)
+            config = replace(
+                config,
+                agent=replace(
+                    config.agent,
+                    skills=[*config.agent.skills, "scheduler:single"],
+                ),
+            )
+            provider = _RecordingProvider("main")
+            agent = Agent(config, provider=provider)
+
+            result = agent.run("hello")
+
+            self.assertEqual(
+                "scheduler:single",
+                _scheduled_event(agent, result.run_id)["scheduler"],
+            )
+            first = Agent(_write_config(root), provider=_RecordingProvider("first"))
+            second = Agent(_write_config(root), provider=_RecordingProvider("second"))
+            agent.add_subagent(first, name="first")
+            agent.add_subagent(second, name="second")
+
+            with self.assertRaisesRegex(ValueError, "multiple subagents"):
+                agent.run("delegate this")
+
+            self.assertEqual(["provided"], provider.models)
 
     def test_low_confidence_model_escalates_to_evidence_backed_model(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -262,9 +313,10 @@ class AdaptiveTaskLoopTests(unittest.TestCase):
             skill_key="model:only",
         )
         request = ModelSelectionRequest("answer", ("text",), "hello")
+        scheduler = Scheduler(SchedulingPolicy("test"))
 
-        first = choose_model([profile], {}, request)
-        second = choose_model([profile], {}, request)
+        first = scheduler.choose_model([profile], {}, request)
+        second = scheduler.choose_model([profile], {}, request)
 
         self.assertEqual(first, second)
         self.assertEqual("model:only", first.profile_key)
@@ -339,6 +391,31 @@ supports = [{support_values}]
 purposes = [{purpose_values}]
 default = {str(default).lower()}
 quality_score = {quality}
+'''.strip(),
+        encoding="utf-8",
+    )
+
+
+def _write_scheduler_skill(
+    root: Path,
+    name: str,
+    *,
+    subagent_mode: str,
+) -> None:
+    path = root / "skills" / "scheduler" / name
+    path.mkdir(parents=True, exist_ok=True)
+    path.joinpath("skill.toml").write_text(
+        f'''schema_version = 3
+name = "{name}"
+type = "scheduler"
+description = "Scheduler used by tests"
+version = "0.1.0"
+triggers = []
+
+[configuration]
+default_purpose = "answer"
+model_score_tie_tolerance = 0.000001
+subagent_mode = "{subagent_mode}"
 '''.strip(),
         encoding="utf-8",
     )

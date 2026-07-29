@@ -30,8 +30,8 @@ if TYPE_CHECKING:
 @dataclass
 class Run:
     config: AgentConfig
-    model_profile: ModelProfile
-    provider: ChatProvider
+    model_profile: ModelProfile | None
+    provider: ChatProvider | None
     skills: Skills
     identity: RunIdentity
     event_log: RunEventLog

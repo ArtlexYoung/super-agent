@@ -16,16 +16,16 @@ from core.config import AgentConfig
 from core.provider.chat import ChatProvider, Message
 from core.events import StorageBackend
 from skill.task.planning import decide_task_planning
-from skill.task.routing import list_model_routing_stats
 from skill.task.run import Run
-from skill.task.run_plan import (
+from skill.task.model_calls import (
     ModelDecision,
     ModelSelectionRequest,
-    RunPlan,
-    choose_model,
-    choose_subagents,
-    resolve_required_features,
-    resolve_task_purpose,
+    list_model_routing_stats,
+)
+from skill.task.run_plan import RunPlan
+from skill.task.scheduler import (
+    Scheduler,
+    load_scheduler,
 )
 from core.models import SubAgentResult, TaskRequest
 from skill.task.tools import RuntimeTools, RuntimeToolsContext
@@ -54,6 +54,7 @@ class PreparedRun:
     scene_contribution: LoadedSkill
     planner_policy: PlanningPolicy | None
     planner_contribution: LoadedSkill | None
+    scheduler: Scheduler
 
 
 @dataclass(frozen=True)
@@ -137,12 +138,23 @@ def prepare_run(
     *,
     environment: Mapping[str, str],
 ) -> PreparedRun:
-    selected = _select_run_skills(request, session)
+    selected_scheduler = load_scheduler(
+        session.skills.index,
+        session.config.agent.skills,
+        lambda reference: _load_skill(session, reference),
+    )
+    scheduler = selected_scheduler.scheduler
+    selected = _select_run_skills(request, session, scheduler)
     references = selected.references
-    workflow_reference, workflow_policy = _load_run_workflow(session, references)
+    workflow_reference, workflow_policy = _load_run_workflow(
+        session,
+        references,
+        scheduler,
+    )
     planner_reference, planner_policy, planner_contribution = _load_run_planner(
         session,
         references,
+        scheduler,
     )
     planning = decide_task_planning(
         planner_policy,
@@ -158,12 +170,12 @@ def prepare_run(
         raise ValueError(
             "task requires tools but the selected workflow does not allow tools"
         )
-    purpose = resolve_task_purpose(
+    purpose = scheduler.resolve_purpose(
         model_profiles,
         "planning" if planning.should_plan else request.purpose,
         request.prompt,
     )
-    required_features = resolve_required_features(
+    required_features = scheduler.resolve_required_features(
         request,
         uses_tools=workflow_policy.uses_tools,
     )
@@ -174,11 +186,12 @@ def prepare_run(
         environment=environment,
         purpose=purpose,
         required_features=required_features,
+        scheduler=scheduler,
     )
     available_subagents = (
         request.subagents.list_subagents() if request.include_subagents else []
     )
-    subagent_names, subagent_reasons = choose_subagents(
+    subagent_names, subagent_reasons = scheduler.choose_subagents(
         request.prompt,
         available_subagents,
     )
@@ -186,6 +199,7 @@ def prepare_run(
         purpose=purpose,
         required_features=required_features,
         model=model,
+        scheduler=selected_scheduler.reference,
         scene=selected.scene_reference,
         skills=references,
         workflow=workflow_reference,
@@ -212,19 +226,21 @@ def prepare_run(
         scene_contribution=selected.scene_contribution,
         planner_policy=planner_policy,
         planner_contribution=planner_contribution,
+        scheduler=scheduler,
     )
 
 
 def _select_run_skills(
     request: TaskRequest,
     session: Run,
+    scheduler: Scheduler,
 ) -> _SelectedRunSkills:
     disclosure = session.skills.disclosure
-    scene_reference = disclosure.select_skill_scene_for_prompt(
-        request.prompt,
+    scene_reference = scheduler.select_scene(
+        disclosure,
+        request,
         session.config.agent.skills,
-        request.scene,
-        unavailable_scenes=_list_unavailable_scenes(session),
+        _list_unavailable_scenes(session),
     )
     scene_contribution = _load_skill(session, scene_reference)
     if not scene_contribution.included_skills:
@@ -306,6 +322,7 @@ def _choose_run_model(
     environment: Mapping[str, str],
     purpose: str,
     required_features: tuple[str, ...],
+    scheduler: Scheduler,
 ) -> ModelDecision:
     evidence = (
         {}
@@ -315,7 +332,7 @@ def _choose_run_model(
             for item in list_model_routing_stats(session.store, purpose)
         }
     )
-    return choose_model(
+    return scheduler.choose_model(
         model_profiles,
         environment,
         ModelSelectionRequest(purpose, required_features, request.prompt),
@@ -326,35 +343,29 @@ def _choose_run_model(
 def _load_run_workflow(
     session: Run,
     references: tuple[SkillReference, ...],
+    scheduler: Scheduler,
 ) -> tuple[SkillReference, TaskPolicy]:
-    entries = _selected_entries(session, references, "workflow")
-    if not entries:
+    reference = scheduler.select_one_skill(references, "workflow", required=True)
+    if reference is None:
         raise RuntimeError("selected scene does not select a workflow Skill")
-    if len(entries) > 1:
-        keys = ", ".join(entry.reference.key for entry in entries)
-        raise ValueError(f"select only one workflow Skill: {keys}")
-    entry = entries[0]
-    contribution = _load_skill(session, entry.reference)
+    contribution = _load_skill(session, reference)
     if contribution.task_policy is None:
         raise TypeError("workflow Skill runner did not provide task rules")
-    return entry.reference, contribution.task_policy
+    return reference, contribution.task_policy
 
 
 def _load_run_planner(
     session: Run,
     references: tuple[SkillReference, ...],
+    scheduler: Scheduler,
 ) -> tuple[SkillReference | None, PlanningPolicy | None, LoadedSkill | None]:
-    entries = _selected_entries(session, references, "planner")
-    if not entries:
+    reference = scheduler.select_one_skill(references, "planner", required=False)
+    if reference is None:
         return None, None, None
-    if len(entries) > 1:
-        keys = ", ".join(entry.reference.key for entry in entries)
-        raise ValueError(f"select only one planner Skill: {keys}")
-    entry = entries[0]
-    contribution = _load_skill(session, entry.reference)
+    contribution = _load_skill(session, reference)
     if contribution.planning_policy is None:
         raise TypeError("planner SkillRunner did not contribute a planning policy")
-    return entry.reference, contribution.planning_policy, contribution
+    return reference, contribution.planning_policy, contribution
 
 
 def load_background_contributions(
@@ -539,6 +550,7 @@ def _merge_included_and_configured_skills(
         value
         for value in session.config.agent.skills
         if not value.strip().lower().startswith("scene:")
+        and not value.strip().lower().startswith("scheduler:")
     ]
     configured_types = {
         entry.reference.skill_type

@@ -1,12 +1,13 @@
 # SkillRunners
 
 A SkillRunner is trusted application code that turns one passive Skill type into Runtime
-behavior. Core owns task scheduling, progressive disclosure, actions, tracing,
-evaluation, and evolution. A SkillRunner has one loading boundary and does not create a
-second runtime.
+behavior. The Skill task layer owns scheduling, progressive disclosure, tracing,
+evaluation, and evolution; Core only executes prepared Provider calls and checks declared
+actions. A SkillRunner has one loading boundary and does not create a second runtime.
 
-Registered default SkillRunners handle scene, prompt, MCP, memory, workflow, and planner
-Skills. Model Skills are read by Core when it selects a Provider profile.
+Registered default SkillRunners handle scheduler, scene, prompt, MCP, memory, workflow,
+and planner Skills. Model Skills are read by the selected Scheduler when it chooses a
+Provider profile.
 
 ## Add a Runner
 
@@ -105,7 +106,7 @@ without matching code registration fails preflight.
 - Prompt context built for the current task.
 - Model-callable tools.
 - Other Skill references through the same `included_skills` field used by scene Skills.
-- Workflow or planning rules.
+- Scheduling, workflow, or planning rules.
 - A task-completed callback with a declared action.
 
 Tools are available only after their Skill is selected and loaded. Disclosing another

@@ -31,6 +31,7 @@ from skill.task.run_plan import (
     RunPlan,
     create_task_step_run_plan,
 )
+from skill.task.scheduler import Scheduler
 from skill.task.preparation import (
     PreparedRun,
     build_system_prompt,
@@ -106,6 +107,7 @@ class AdaptiveTaskLoop:
             session.store,
             "memory_organization",
             session.record_event,
+            scheduler=prepared_run.scheduler,
         )
         check_run_before_execution(
             request,
@@ -200,16 +202,23 @@ class AdaptiveTaskLoop:
             subagent_results=[],
             contributions=list(context.background_contributions),
         )
-        for step_number, step in enumerate(plan.steps, start=1):
+        scheduled_runs = self._schedule_task_steps(
+            context,
+            plan,
+            direct_prepared_run,
+        )
+        for step_number, (step, selected_run) in enumerate(
+            zip(plan.steps, scheduled_runs, strict=True),
+            start=1,
+        ):
             text, progress.stop_reason = self._run_task_step(
                 context,
                 step,
                 step_number,
                 progress=progress,
-                prepared_run=direct_prepared_run,
+                selected_run=selected_run,
             )
             progress.completed_results.append(text)
-            direct_prepared_run = None
         result = TaskResult(
             text=progress.completed_results[-1],
             workflow=context.prepared_run.workflow_policy.name,
@@ -222,6 +231,30 @@ class AdaptiveTaskLoop:
         _record_task_completed(context.session, result, progress.contributions)
         return replace(result, actions=list_run_actions(context.session))
 
+    def _schedule_task_steps(
+        self,
+        context: _TaskExecutionContext,
+        plan: TaskPlan,
+        direct_prepared_run: PreparedRun | None,
+    ) -> list[PreparedRun]:
+        scheduled: list[PreparedRun] = []
+        for step_number, step in enumerate(plan.steps, start=1):
+            selected = direct_prepared_run or self._prepare_task_step_run(
+                context,
+                step,
+            )
+            context.session.record_event(
+                "task.step.scheduled",
+                {
+                    "step": step_number,
+                    "instruction": step.instruction,
+                    **selected.run_plan.to_dict(),
+                },
+            )
+            scheduled.append(selected)
+            direct_prepared_run = None
+        return scheduled
+
     def _run_task_step(
         self,
         context: _TaskExecutionContext,
@@ -229,23 +262,11 @@ class AdaptiveTaskLoop:
         step_number: int,
         *,
         progress: _TaskProgress,
-        prepared_run: PreparedRun | None,
+        selected_run: PreparedRun,
     ) -> tuple[str, str]:
         request = context.request
         session = context.session
-        selected_run = prepared_run or self._prepare_task_step_run(
-            context,
-            step,
-        )
         run_plan = selected_run.run_plan
-        session.record_event(
-            "task.step.scheduled",
-            {
-                "step": step_number,
-                "instruction": step.instruction,
-                **run_plan.to_dict(),
-            },
-        )
         contributions = load_run_skill_contributions(
             session,
             run_plan,
@@ -266,6 +287,7 @@ class AdaptiveTaskLoop:
             session.store,
             "memory_organization",
             session.record_event,
+            scheduler=selected_run.scheduler,
         )
         tools = create_runtime_tools(
             request,
@@ -319,8 +341,15 @@ class AdaptiveTaskLoop:
         store: RuntimeStore | None,
         purpose: str,
         record_event: Callable[[str, dict[str, object]], object] | None = None,
+        *,
+        scheduler: Scheduler,
     ) -> TextModel:
-        return self.model_calls.create_text_model(store, purpose, record_event)
+        return self.model_calls.create_text_model(
+            store,
+            purpose,
+            record_event,
+            scheduler=scheduler,
+        )
 
     def _run_model_loop(
         self,
@@ -386,6 +415,7 @@ class AdaptiveTaskLoop:
             session.store,
             step.purpose,
             step.instruction,
+            scheduler=parent.scheduler,
             required_features=required_features,
         )
         run_plan = create_task_step_run_plan(

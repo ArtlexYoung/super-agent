@@ -8,7 +8,7 @@ from skill.evolution.state import (
     skill_evolution_to_dict,
 )
 from core.state.models import RunEvent
-from skill.task.routing import list_model_routing_stats
+from skill.task.model_calls import list_model_routing_stats
 from skill.state.store import RuntimeStore
 from skill.evolution.freshness import calculate_skill_freshness
 from skill.evolution.records import read_evaluation_records

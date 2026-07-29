@@ -85,7 +85,7 @@ Every run uses one path:
 Agent.run
   -> build one complete Run
   -> select one task scene and progressively disclose its Skills
-  -> create one RunPlan with one model decision
+  -> use one Scheduler Skill to create one RunPlan with one model decision
   -> preflight every runner, service, tool, Provider, and subagent
   -> execute and emit one ordered event stream
   -> optionally learn from that immutable evidence

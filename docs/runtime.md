@@ -12,6 +12,7 @@ backend; domain state is attached only when storage is enabled:
 Agent.run(...)
   -> AgentRuntime.run_task(...)
   -> prepare one progressive Skill index
+  -> load one Scheduler Skill
   -> create one RunPlan with exactly one model decision
   -> preflight the planned Skills, services, tools, Provider, and subagents
   -> plan one or more task steps
@@ -176,9 +177,15 @@ and nested work.
 ## Model Scheduling
 
 Model Skills describe purpose, supported features, expected quality, latency, cost, and
-Provider connection metadata. Before a call, Core combines those declared traits with
-user-and-Agent-scoped run evidence and a bounded exploration score. Candidate ranking is
-a pure input-to-output operation; only the final `ModelDecision` enters the `RunPlan`.
+Provider connection metadata. The selected Scheduler Skill combines those declared traits
+with user-and-Agent-scoped run evidence and a bounded exploration score. Candidate ranking
+is a pure input-to-output operation; only the final `ModelDecision` enters the `RunPlan`.
+
+The built-in `scheduler:default` needs no user configuration. An equal top score or more
+than one automatically inferred purpose is an error, not a name-order fallback. For a
+multi-step plan, all Step model decisions are fixed and recorded before any Step executes.
+Custom Scheduler and model Skills use the same ownership and evolution rules as every
+other passive Skill.
 
 A Provider failure is recorded and raised without a retry marker or another model call.
 Choosing another model requires a new, visible `RunPlan` before execution; it is never a

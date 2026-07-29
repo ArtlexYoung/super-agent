@@ -32,7 +32,6 @@ from skill.skills import Skills
 from skill.kinds.model import (
     ModelProfile,
     read_model_profiles,
-    select_default_model_profile,
 )
 from skill.manifest import SkillManifest
 from skill.runners.defaults import create_skills
@@ -40,7 +39,7 @@ from skill.runners.registry import SkillRunners
 
 if TYPE_CHECKING:
     from skill.state.store import RuntimeStore
-    from skill.task.routing import ModelRoutingStats
+    from skill.task.model_calls import ModelRoutingStats
     from skill.evolution.change.manager import SkillEvolutionManager
 
 
@@ -272,7 +271,7 @@ class AgentRuntime:
         user_id: str = LOCAL_USER_ID,
         purpose: str | None = None,
     ) -> list[ModelRoutingStats]:
-        from skill.task.routing import list_model_routing_stats
+        from skill.task.model_calls import list_model_routing_stats
 
         return list_model_routing_stats(self.create_store(user_id), purpose)
 
@@ -293,6 +292,13 @@ class AgentRuntime:
         skills = self._create_skills(store)
         profiles = self._read_model_profiles(skills, user_id)
         task_loop = self._create_task_loop(profiles, user_id)
+        from skill.task.scheduler import load_scheduler
+
+        scheduler = load_scheduler(
+            skills.index,
+            self.config.agent.skills,
+            skills.load,
+        ).scheduler
         return SkillEvolutionManager(
             skill_disclosure=skills.disclosure,
             store=store,
@@ -300,10 +306,12 @@ class AgentRuntime:
                 candidate=task_loop.create_text_model(
                     store,
                     "skill_evolution",
+                    scheduler=scheduler,
                 ),
                 evaluation=task_loop.create_text_model(
                     store,
                     "skill_evaluation",
+                    scheduler=scheduler,
                 ),
             ),
             on_skill_changed=change_handler,
@@ -336,14 +344,10 @@ class AgentRuntime:
             )
             profiles = self._read_model_profiles(skills, identity.user_id)
             task_loop = self._create_task_loop(profiles, identity.user_id)
-            default_profile = select_default_model_profile(profiles)
             run = Run(
                 config=self.config,
-                model_profile=default_profile,
-                provider=task_loop.provider_pool.get_chat_provider(
-                    default_profile.key,
-                    default_profile.connection,
-                ),
+                model_profile=None,
+                provider=None,
                 skills=skills,
                 identity=identity,
                 event_log=event_log,
@@ -428,6 +432,8 @@ class AgentRuntime:
         run: Run,
         run_plan: RunPlan,
     ) -> None:
+        if run.model_profile is None or run.provider is None:
+            raise RuntimeError("task model must be selected before Runtime lock")
         runtime_lock = create_runtime_lock(
             RuntimeLockInput(
                 config=self.config,

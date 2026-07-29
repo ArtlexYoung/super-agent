@@ -44,7 +44,8 @@ Agent.run(...)
   -> AgentRuntime.run_task(TaskRequest)
   -> Run with one RunEventLog and an optional RuntimeStore
   -> progressive index selects one scene and its Skill references
-  -> one immutable RunPlan fixes scene, Skills, workflow, planner, and one model
+  -> one Scheduler Skill fixes scene, Skills, workflow, planner, model, and subagents
+  -> one immutable RunPlan records those decisions
   -> preflight validates the complete run before any model or subagent call
   -> one Skills snapshot loads the run and one task loop executes it
   -> one terminal event keeps immutable learning evidence
@@ -56,9 +57,10 @@ Direct tasks are one-step plans. Complex tasks are multi-step plans. Both use th
 loop, event stream, model routing, tool registry, and stopping checks. There is no second
 controller for workflows, memory, planning, or subagents.
 
-`RunPlan` is the only execution decision object. It contains stable scene, Skill,
-workflow, and planner references, exactly one model decision with reasons, required
-features, and subagent choices. Loaded policies and callbacks live only in `PreparedRun`.
+`RunPlan` is the only execution decision object. It contains the selected Scheduler,
+stable scene, Skill, workflow, and planner references, exactly one model decision with
+reasons, required features, and subagent choices. Loaded policies and callbacks live only
+in `PreparedRun`.
 Core creates the plan before the matching execution and records that same object in the
 task event and Runtime lock. Planned steps use the same contract. There are no candidate
 lists or partial selection objects to reconcile later.
@@ -125,8 +127,15 @@ lock records implementation and settings hashes without environment values.
 
 Provider code only normalizes model protocol calls. Model names, purposes, supported
 features, quality, expected latency, cost, and connection environment names live in
-ordinary model Skills. `ProviderPool` creates a connection lazily after Core selects a
-ready model profile.
+ordinary model Skills. `ProviderPool` creates a connection lazily after the Scheduler
+selects one ready model profile.
+
+The shipped `scheduler:default` Skill configures the central Scheduler without requiring
+user setup. A project can explicitly select one replacement Scheduler Skill. The same
+Scheduler chooses scene, workflow, planner, purpose, model, and subagents, and model
+descriptions remain ordinary evolvable Skills. Equal model scores and multiple automatic
+purposes fail explicitly rather than using source, registration, or name order. After a
+Planner response, every Step model decision is recorded before the first Step executes.
 
 There is no implicit Mock Provider and no model-failure fallback. A failed selected call
 records the error and raises it without a retry marker. The exact `ModelDecision` is fixed
@@ -209,6 +218,7 @@ than methods added to the general event store.
 - One task has one complete Run, disclosure core, task loop, and event stream; storage
   is one explicit optional service.
 - Every model execution reads one immutable RunPlan created before that execution.
+- Every task uses one selected Scheduler Skill; ambiguous choices never use list order.
 - Evaluation and evolution never write directly from the task loop; they observe immutable
   Runtime events and can be disabled without changing execution.
 - One run selects exactly one scene before loading memory, planning, workflow, and prompt

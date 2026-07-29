@@ -148,6 +148,26 @@ class PlannerSkillRunner:
         )
 
 
+class SchedulerSkillRunner:
+    name = "task-scheduler"
+    version = "1"
+    skill_type = "scheduler"
+    adds_model_context = False
+
+    def load_skill(self, request: SkillLoadRequest) -> LoadedSkill:
+        from skill.task.scheduler import read_scheduling_policy
+
+        opened = request.disclosure.open_skill(
+            request.reference.name,
+            self.skill_type,
+        )
+        opened.disclose_manifest()
+        opened.disclose_configuration()
+        return LoadedSkill(
+            scheduling_policy=read_scheduling_policy(opened),
+        )
+
+
 class SceneSkillRunner:
     name = "task-scene"
     version = "1"
@@ -205,6 +225,7 @@ def create_builtin_skill_runners(
         MemorySkillRunner(),
         WorkflowSkillRunner(),
         PlannerSkillRunner(),
+        SchedulerSkillRunner(),
         SceneSkillRunner(),
         SceneManagerSkillRunner(),
     )

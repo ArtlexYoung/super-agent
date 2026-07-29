@@ -27,7 +27,8 @@ class ZeroConfigurationPlanningTests(unittest.TestCase):
             run_plan = next(
                 event.data for event in events if event.event_type == "task.scheduled"
             )
-            self.assertEqual(2, run_plan["schema_version"])
+            self.assertEqual(3, run_plan["schema_version"])
+            self.assertEqual("scheduler:default", run_plan["scheduler"])
             self.assertEqual("direct", run_plan["workflow_mode"])
             self.assertEqual(8, run_plan["max_model_steps"])
             self.assertEqual("direct", run_plan["mode"])
@@ -144,6 +145,18 @@ class ZeroConfigurationPlanningTests(unittest.TestCase):
                     if event.event_type == "task.step.scheduled"
                 )
             )
+            scheduled_indexes = [
+                index
+                for index, event in enumerate(events)
+                if event.event_type == "task.step.scheduled"
+            ]
+            execution_indexes = [
+                index
+                for index, event in enumerate(events)
+                if event.event_type == "model.call.selected"
+                and event.data["purpose"] != "planning"
+            ]
+            self.assertLess(max(scheduled_indexes), min(execution_indexes))
             insight = explain_run_with_insight(
                 main.runtime.create_store(),
                 result.run_id,
@@ -212,6 +225,7 @@ class PlanningSkillEvolutionTests(unittest.TestCase):
                     "memory:default",
                     "model:main",
                     "planner:default",
+                    "scheduler:default",
                     "scene:common",
                     "scene_manager:default",
                     "workflow:direct",
@@ -283,6 +297,7 @@ class PlanningSkillEvolutionTests(unittest.TestCase):
                     "model:main",
                     "planner:default",
                     "prompt:common",
+                    "scheduler:default",
                     "scene:common",
                     "scene_manager:default",
                     "workflow:direct",

@@ -79,7 +79,7 @@ Agent        在 Python 中组合 Provider、runner、存储和子 Agent
 Agent.run
   -> 创建一个完整 Run
   -> 选择一个任务场景，渐进披露所需 Skill
-  -> 创建一个只含一次模型决定的 RunPlan
+  -> 使用一个 Scheduler Skill 创建只含一次模型决定的 RunPlan
   -> 预检 runner、服务、工具、Provider 和子 Agent
   -> 执行并产生一条有序事件流
   -> 可选地从不可变证据中学习

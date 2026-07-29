@@ -21,7 +21,7 @@ from adapter.conversations import (
     read_conversation,
     rename_conversation,
 )
-from skill.task.routing import ModelRoutingStats
+from skill.task.model_calls import ModelRoutingStats
 from core.checks import ActionEffect, ActionRequest
 from core.models import RunLearningResult, TaskResult, TaskTrace
 from skill.kinds.model_management import ModelSkillManager

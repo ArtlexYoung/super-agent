@@ -239,7 +239,7 @@ def _check_subagents(
 
 
 def _planned_references(run_plan: RunPlan) -> tuple[SkillReference, ...]:
-    values = (run_plan.scene, *run_plan.skills)
+    values = (run_plan.scheduler, run_plan.scene, *run_plan.skills)
     return tuple(dict.fromkeys(values))
 
 

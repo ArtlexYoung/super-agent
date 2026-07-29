@@ -24,7 +24,7 @@ from skill.evolution.records import (
 from core.state.models import RunEvent
 from skill.state.store import RuntimeStore
 from core.models import RunLearningResult
-from skill.task.routing import list_model_routing_stats
+from skill.task.model_calls import list_model_routing_stats
 from skill.evolution.freshness import calculate_skill_freshness
 from skill.evolution.change.revision import (
     SkillRevision,
