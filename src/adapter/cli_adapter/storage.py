@@ -7,8 +7,8 @@ from pathlib import Path
 
 from adapter.cli_adapter import load_agent_config
 from core.models import LOCAL_USER_ID
-from core.storage import create_storage_backend
-from core.storage.copy import copy_storage_events
+from adapter.storage import create_storage_backend
+from adapter.storage.copy import copy_storage_events
 
 
 def configure_storage_parser(parser: argparse.ArgumentParser) -> None:

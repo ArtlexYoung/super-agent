@@ -6,8 +6,8 @@ import hashlib
 import json
 from dataclasses import asdict
 
-from core.state.models import Conversation, ConversationMessage, RunEvent, RunSnapshot
-from core.storage import StorageEvent
+from core.events import StorageEvent
+from core.state.models import RunEvent, RunSnapshot
 
 
 def run_snapshot_from_events(user_id: str, events: list[StorageEvent]) -> RunSnapshot:
@@ -45,35 +45,6 @@ def run_snapshot_from_events(user_id: str, events: list[StorageEvent]) -> RunSna
         used_skills=string_list(data.get("used_skills", [])),
         stop_reason=optional_string(data.get("stop_reason")),
         error=error,
-    )
-
-
-def conversation_from_events(user_id: str, events: list[StorageEvent]) -> Conversation:
-    ordered = sorted(events, key=lambda event: event.position)
-    created = ordered[0]
-    if created.event_type != "conversation.created":
-        raise ValueError(
-            f"conversation stream does not start with conversation.created: {created.stream_id}"
-        )
-    title = _stored_string(created.data, "title", allow_empty=True)
-    messages: list[ConversationMessage] = []
-    for event in ordered[1:]:
-        if event.event_type == "conversation.renamed":
-            title = _stored_string(event.data, "title")
-        elif event.event_type == "conversation.cleared":
-            messages.clear()
-        elif event.event_type == "conversation.message_added":
-            messages.append(_conversation_message_from_event(event))
-        else:
-            raise ValueError(f"unknown conversation event type: {event.event_type}")
-    return Conversation(
-        conversation_id=created.stream_id,
-        user_id=user_id,
-        agent_name=created.agent_name,
-        title=title,
-        created_at=created.created_at,
-        updated_at=ordered[-1].created_at,
-        messages=messages,
     )
 
 
@@ -206,35 +177,6 @@ def optional_string(value: object) -> str | None:
 def _increment_count(counts: object, name: str) -> None:
     if isinstance(counts, dict) and name:
         counts[name] = int(counts.get(name, 0)) + 1
-
-
-def _conversation_message_from_event(event: StorageEvent) -> ConversationMessage:
-    role = _stored_string(event.data, "role")
-    if role not in {"user", "assistant"}:
-        raise ValueError(f"unknown conversation message role: {role}")
-    run_result = event.data.get("run_result")
-    if run_result is not None and not isinstance(run_result, dict):
-        raise ValueError("stored conversation run_result must be an object or null")
-    return ConversationMessage(
-        message_id=_stored_string(event.data, "message_id"),
-        role=role,
-        content=_stored_string(event.data, "content"),
-        created_at=event.created_at,
-        run_id=_stored_string(event.data, "run_id", allow_empty=True),
-        run_result=None if run_result is None else dict(run_result),
-    )
-
-
-def _stored_string(
-    data: dict[str, object],
-    name: str,
-    *,
-    allow_empty: bool = False,
-) -> str:
-    value = data.get(name)
-    if not isinstance(value, str) or (not allow_empty and not value):
-        raise ValueError(f"stored {name} must be a string")
-    return value
 
 
 def _ordered_run_events(events: list[StorageEvent]) -> list[StorageEvent]:

@@ -7,7 +7,7 @@ from super_agent import Agent
 from core.checks import ActionEffect
 from core.config import AgentConfig
 from core.provider.chat import MockProvider
-from core.storage import create_storage_backend
+from adapter.storage import create_storage_backend
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.kinds.model import read_model_profiles
 from skill.runners.defaults import create_skills
@@ -213,7 +213,7 @@ class LazyAgentInitializationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp, patch(
             "super_agent.create_skills"
         ) as build_skills, patch(
-            "core.storage.create_storage_backend"
+            "adapter.storage.create_storage_backend"
         ) as create_storage:
             config = AgentConfig.create_default(Path(tmp))
             agent = Agent(config, provider=MockProvider("ready"))
@@ -241,7 +241,7 @@ class LazyAgentInitializationTests(unittest.TestCase):
             "super_agent.read_model_profiles",
             wraps=read_model_profiles,
         ) as discover_models, patch(
-            "core.storage.create_storage_backend",
+            "adapter.storage.create_storage_backend",
             wraps=create_storage_backend,
         ) as create_storage:
             agent = Agent(

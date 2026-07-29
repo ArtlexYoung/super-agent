@@ -116,7 +116,7 @@ class StorageCliTests(unittest.TestCase):
             with patch("sys.stdout", StringIO()):
                 self.assertEqual(0, main(["init", "--path", tmp]))
             with patch(
-                "core.storage.sql.postgresql.import_module",
+                "adapter.storage.sql.postgresql.import_module",
                 side_effect=ModuleNotFoundError("psycopg is missing"),
             ):
                 with self.assertRaisesRegex(RuntimeError, r"super-agent\[postgresql\]"):

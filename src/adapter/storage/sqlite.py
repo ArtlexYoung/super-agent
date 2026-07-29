@@ -6,8 +6,8 @@ import sqlite3
 from pathlib import Path
 from uuid import uuid4
 
-from core.storage.contracts import StorageEvent, StorageEventQuery
-from core.storage.values import (
+from core.events import StorageEvent, StorageEventQuery
+from adapter.storage.values import (
     clean_storage_text,
     decode_storage_data,
     encode_storage_data,

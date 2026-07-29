@@ -7,7 +7,11 @@ from pathlib import Path
 from super_agent import Agent
 from core.provider.chat import MockProvider
 from core.config import AgentConfig
-from core.storage import JsonlStorage
+from adapter.storage import JsonlStorage
+from adapter.conversations import (
+    append_conversation_turn,
+    read_conversation,
+)
 from skill.kinds.memory import MiniMemory
 
 
@@ -19,10 +23,13 @@ class ConversationRuntimeTests(unittest.TestCase):
             conversation = conversations.create("Original")
             store = agent.runtime.create_store()
 
-            store.append_conversation_message(
+            append_conversation_turn(
+                store,
                 conversation.conversation_id,
-                "user",
                 "Remember this",
+                "Remembered",
+                run_id="run-1",
+                run_result={"run_id": "run-1"},
             )
             renamed = conversations.rename(conversation.conversation_id, "Renamed")
             cleared = conversations.clear(conversation.conversation_id)
@@ -72,6 +79,21 @@ class ConversationRuntimeTests(unittest.TestCase):
                     messages=[{"role": "user", "content": "duplicate history"}],
                 )
 
+    def test_failed_run_does_not_append_a_partial_conversation_turn(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            agent = Agent(
+                AgentConfig.create_default(tmp),
+                provider=_FailingProvider(),
+            )
+            user = agent.for_user("local")
+            conversation = user.conversations.create("Failure test")
+
+            with self.assertRaisesRegex(RuntimeError, "provider failed"):
+                user.run("do not persist this", conversation_id=conversation.conversation_id)
+
+            stored = user.conversations.read(conversation.conversation_id)
+            self.assertEqual([], stored.messages)
+
     def test_user_scopes_isolate_conversations_memory_evaluations_and_cache(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             agent = Agent(AgentConfig.create_default(tmp), provider=MockProvider("ok"))
@@ -89,11 +111,17 @@ class ConversationRuntimeTests(unittest.TestCase):
 
             self.assertEqual(
                 ["alpha secret", "ok"],
-                [item.content for item in alpha_store.read_conversation(conversation_id).messages],
+                [
+                    item.content
+                    for item in read_conversation(alpha_store, conversation_id).messages
+                ],
             )
             self.assertEqual(
                 ["beta secret", "ok"],
-                [item.content for item in beta_store.read_conversation(conversation_id).messages],
+                [
+                    item.content
+                    for item in read_conversation(beta_store, conversation_id).messages
+                ],
             )
             self.assertEqual([], MiniMemory(beta_store).list_memory_items())
             self.assertTrue(alpha_store.read_evaluation_records())
@@ -220,6 +248,11 @@ class _SequenceProvider(MockProvider):
     def send_chat_messages(self, messages, model):
         self.calls.append(list(messages))
         return self.responses.pop(0)
+
+
+class _FailingProvider(MockProvider):
+    def send_chat_messages(self, messages, model):
+        raise RuntimeError("provider failed")
 
 
 def _named_agent(

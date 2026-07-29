@@ -8,7 +8,8 @@ from core.provider.chat import MockProvider
 from core.config import AgentConfig
 from core.models import RunIdentity
 from core.state.event_log import RunEventLog
-from core.storage import JsonlStorage, StorageEventQuery
+from adapter.storage import JsonlStorage
+from core.events import StorageEventQuery
 from skill.state.store import RuntimeStore, create_local_runtime_store
 from support import write_workflow_skill
 

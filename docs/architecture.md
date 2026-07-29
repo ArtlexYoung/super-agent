@@ -17,8 +17,8 @@ The repository keeps passive scene data outside the three Python packages:
 ```text
 skill_scenes/       shipped common and optional task-scene Skill trees
 src/
-  adapter/          external CLI and AG-UI entry points
-  core/             Skill-independent Runtime, Provider, events, checks, and storage ports
+  adapter/          external entry points, conversations, and storage implementations
+  core/             Skill-independent Runtime, Provider, events, checks, and storage port
   skill/            Skill format, scheduling, state, runners, packages, and evolution
   cli.py
   super_agent.py
@@ -48,6 +48,7 @@ Agent.run(...)
   -> preflight validates the complete run before any model or subagent call
   -> one Skills snapshot loads the run and one task loop executes it
   -> one terminal event keeps immutable learning evidence
+  -> the Adapter commits an optional complete conversation turn
   -> an explicit post-run call evaluates evidence and reviews Skill evolution
 ```
 
@@ -138,7 +139,7 @@ Run
        -> optional StorageBackend
   -> optional RuntimeStore
        -> scoped canonical events
-       -> lazy conversation / memory / disclosure / evaluation projections
+       -> lazy memory / disclosure / evaluation projections
 ```
 
 Every event contains one validated user and Agent scope. Conversations, memory, Skill
@@ -147,13 +148,15 @@ evaluations, and evolution state remain inside that scope. Shared project and sh
 scene Skills are read-only baselines. The index reports shipped content with the
 `builtin` source label, so resolution order is `user > project > builtin`.
 
-`RuntimeStore` is the only persisted event boundary. It does not expose its backend;
+`RuntimeStore` is the scoped Skill-state event boundary. It does not expose its backend;
 memory and disclosure receive the store itself instead of independent writer and reader
 callbacks. Run explanation reads one canonical stream once, then derives the snapshot,
 ordered Runtime events, lock, decisions, and disclosure path from that same input.
 
-JSONL and SQLite use only the standard library. Remote database drivers are imported only
-after their backend is explicitly selected.
+The conversation Adapter projects and changes conversation streams without adding
+conversation behavior to task Runtime. It commits a complete user and assistant turn in
+one event only after a successful run. JSONL and SQLite use only the standard library;
+remote database drivers are imported only after their backend is explicitly selected.
 
 Concrete Skill kinds, storage implementations, state projections, learning, evolution,
 and adapters are also imported only when their corresponding runner or service is used.

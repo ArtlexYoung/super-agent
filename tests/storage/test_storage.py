@@ -7,16 +7,14 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 from pathlib import Path
 
-from core.storage import (
+from adapter.storage import (
     JsonlStorage,
     MySqlStorage,
     PostgreSqlStorage,
     SqliteStorage,
-    StorageBackend,
-    StorageEvent,
-    StorageEventQuery,
     copy_storage_events,
 )
+from core.events import StorageBackend, StorageEvent, StorageEventQuery
 
 
 class StorageContractTests:

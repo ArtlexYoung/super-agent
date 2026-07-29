@@ -10,7 +10,8 @@ from super_agent import Agent
 from core.config import AgentConfig
 from core.models import RunIdentity
 from core.checks import ActionRequest
-from core.storage import JsonlStorage, StorageEventQuery
+from adapter.storage import JsonlStorage
+from core.events import StorageEventQuery
 from skill.state.store import RuntimeStore, create_local_runtime_store
 from core.provider.chat import MockProvider
 from skill.disclosure import ProgressiveDisclosureCore

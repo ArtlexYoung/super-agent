@@ -5,18 +5,17 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import TYPE_CHECKING
-from uuid import uuid4
 
+from core.events import StorageBackend, StorageEvent, StorageEventQuery
 from core.models import RunIdentity, validate_agent_name, validate_user_id
 from core.state.event_log import RunEventLog
-from core.storage import StorageBackend, StorageEvent, StorageEventQuery
-from core.storage.files import create_scope_digest
+from core.files import create_scope_digest
 
 if TYPE_CHECKING:
     from skill.state.disclosure import RuntimeDisclosureStore
     from skill.evolution.tracking.run_evaluation import EvaluationRecord
     from skill.state.memory import RuntimeMemoryStore
-    from core.state.models import Conversation, ConversationMessage, RunEvent, RunSnapshot
+    from core.state.models import RunEvent, RunSnapshot
 
 
 class RuntimeStore:
@@ -143,114 +142,6 @@ class RuntimeStore:
             agent_name,
         )
 
-    def create_conversation(
-        self,
-        title: str = "",
-        *,
-        conversation_id: str | None = None,
-    ) -> Conversation:
-        selected_id = str(uuid4()) if conversation_id is None else _required_text(
-            conversation_id,
-            "conversation_id",
-        )
-        if self.read_events("conversation", selected_id):
-            raise ValueError(f"conversation already exists: {selected_id}")
-        self.append_event(
-            "conversation",
-            selected_id,
-            "conversation.created",
-            data={"title": _optional_title(title)},
-        )
-        return self.read_conversation(selected_id)
-
-    def ensure_conversation(self, conversation_id: str, title: str = "") -> Conversation:
-        selected_id = _required_text(conversation_id, "conversation_id")
-        try:
-            conversation = self.read_conversation(selected_id)
-        except KeyError:
-            return self.create_conversation(title, conversation_id=selected_id)
-        suggested_title = _optional_title(title)
-        if not conversation.title and suggested_title:
-            return self.rename_conversation(selected_id, suggested_title)
-        return conversation
-
-    def read_conversation(self, conversation_id: str) -> Conversation:
-        from core.state.views import conversation_from_events
-
-        selected_id = _required_text(conversation_id, "conversation_id")
-        events = self.read_events("conversation", selected_id)
-        if not events:
-            raise KeyError(f"conversation not found: {selected_id}")
-        return conversation_from_events(self.user_id, events)
-
-    def list_conversations(self) -> list[Conversation]:
-        from core.state.views import conversation_from_events
-
-        grouped: dict[str, list[StorageEvent]] = {}
-        for event in self.read_events("conversation"):
-            grouped.setdefault(event.stream_id, []).append(event)
-        return sorted(
-            (conversation_from_events(self.user_id, events) for events in grouped.values()),
-            key=lambda item: (item.updated_at, item.conversation_id),
-            reverse=True,
-        )
-
-    def rename_conversation(self, conversation_id: str, title: str) -> Conversation:
-        conversation = self.read_conversation(conversation_id)
-        clean_title = _required_text(title, "conversation title")
-        if conversation.title != clean_title:
-            self.append_event(
-                "conversation",
-                conversation.conversation_id,
-                "conversation.renamed",
-                data={"title": clean_title},
-            )
-        return self.read_conversation(conversation.conversation_id)
-
-    def clear_conversation(self, conversation_id: str) -> Conversation:
-        conversation = self.read_conversation(conversation_id)
-        self.append_event(
-            "conversation",
-            conversation.conversation_id,
-            "conversation.cleared",
-            data={},
-        )
-        return self.read_conversation(conversation.conversation_id)
-
-    def delete_conversation(self, conversation_id: str) -> None:
-        conversation = self.read_conversation(conversation_id)
-        self.delete_events("conversation", conversation.conversation_id)
-
-    def append_conversation_message(
-        self,
-        conversation_id: str,
-        role: str,
-        content: str,
-        *,
-        run_id: str = "",
-        run_result: dict[str, object] | None = None,
-    ) -> ConversationMessage:
-        conversation = self.read_conversation(conversation_id)
-        clean_role = _required_text(role, "conversation message role").lower()
-        if clean_role not in {"user", "assistant"}:
-            raise ValueError(f"unknown conversation message role: {clean_role}")
-        message_id = str(uuid4())
-        self.append_event(
-            "conversation",
-            conversation.conversation_id,
-            "conversation.message_added",
-            data={
-                "message_id": message_id,
-                "role": clean_role,
-                "content": _required_text(content, "conversation message content"),
-                "run_id": run_id.strip(),
-                "run_result": None if run_result is None else dict(run_result),
-            },
-            event_id=message_id,
-        )
-        messages = self.read_conversation(conversation.conversation_id).messages
-        return next(message for message in reversed(messages) if message.message_id == message_id)
-
     def start_run(self, identity: RunIdentity, prompt: str) -> RunEvent:
         self._require_identity_scope(identity)
         if self._run_event_log is not None:
@@ -351,7 +242,7 @@ class RuntimeStore:
         return explain_run_from_events(self.user_id, events)
 
     def export_run(self, run_id: str, path: Path) -> Path:
-        from core.storage.files import write_bytes_atomically
+        from core.files import write_bytes_atomically
 
         explanation = self.explain_run(run_id)
         document = {
@@ -464,7 +355,7 @@ def create_local_runtime_store(
     user_id: str = "local",
     agent_name: str = "super-agent",
 ) -> RuntimeStore:
-    from core.storage.jsonl import JsonlStorage
+    from adapter.storage.jsonl import JsonlStorage
 
     return RuntimeStore(JsonlStorage(root), root, user_id, agent_name)
 
@@ -472,10 +363,4 @@ def create_local_runtime_store(
 def _required_text(value: object, name: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{name} cannot be empty")
-    return value.strip()
-
-
-def _optional_title(value: object) -> str:
-    if not isinstance(value, str):
-        raise TypeError("conversation title must be a string")
     return value.strip()

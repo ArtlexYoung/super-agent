@@ -6,7 +6,7 @@ from importlib import import_module
 from typing import Any
 from urllib.parse import parse_qsl, unquote, urlsplit
 
-from core.storage.sql.base import (
+from adapter.storage.sql.base import (
     RemoteSqlStorage,
     read_storage_connection_url,
     remote_database_location,

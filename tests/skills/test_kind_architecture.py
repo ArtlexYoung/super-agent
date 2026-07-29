@@ -72,7 +72,9 @@ class SkillKindArchitectureTests(unittest.TestCase):
         self.assertTrue(Path("src/skill/task/run.py").is_file())
         self.assertFalse(Path("src/core/session.py").exists())
         self.assertTrue(Path("src/skill/state/store.py").is_file())
-        self.assertTrue(Path("src/core/storage/contracts.py").is_file())
+        self.assertTrue(Path("src/core/events.py").is_file())
+        self.assertTrue(Path("src/adapter/storage/jsonl.py").is_file())
+        self.assertFalse(Path("src/core/storage").exists())
 
     def test_only_center_source_parser_reads_skill_toml(self) -> None:
         python_sources = list(Path("src").rglob("*.py"))

@@ -13,6 +13,14 @@ from skill.evolution.tracking.state import (
 )
 from core.models import validate_user_id
 from core.state.models import Conversation, RunEvent
+from adapter.conversations import (
+    clear_conversation,
+    create_conversation,
+    delete_conversation,
+    list_conversations,
+    read_conversation,
+    rename_conversation,
+)
 from skill.task.routing import ModelRoutingStats
 from core.checks import ActionEffect, ActionRequest
 from core.models import RunLearningResult, TaskResult, TaskTrace
@@ -76,7 +84,8 @@ class UserConversations:
                     "conversation:new",
                     (ActionEffect.CREATE,),
                 ),
-                lambda: runtime.create_store(self.user.user_id).create_conversation(
+                lambda: create_conversation(
+                    runtime.create_store(self.user.user_id),
                     title,
                     conversation_id=conversation_id,
                 ),
@@ -84,14 +93,12 @@ class UserConversations:
         )
 
     def list(self) -> list[Conversation]:
-        return self.user.agent.runtime.create_store(
-            self.user.user_id
-        ).list_conversations()
+        store = self.user.agent.runtime.create_store(self.user.user_id)
+        return list_conversations(store)
 
     def read(self, conversation_id: str) -> Conversation:
-        return self.user.agent.runtime.create_store(
-            self.user.user_id
-        ).read_conversation(conversation_id)
+        store = self.user.agent.runtime.create_store(self.user.user_id)
+        return read_conversation(store, conversation_id)
 
     def rename(self, conversation_id: str, title: str) -> Conversation:
         runtime = self.user.agent.runtime
@@ -104,7 +111,8 @@ class UserConversations:
                     f"conversation:{conversation_id}",
                     (ActionEffect.UPDATE,),
                 ),
-                lambda: runtime.create_store(self.user.user_id).rename_conversation(
+                lambda: rename_conversation(
+                    runtime.create_store(self.user.user_id),
                     conversation_id,
                     title,
                 ),
@@ -122,7 +130,8 @@ class UserConversations:
                     f"conversation:{conversation_id}",
                     (ActionEffect.DELETE,),
                 ),
-                lambda: runtime.create_store(self.user.user_id).clear_conversation(
+                lambda: clear_conversation(
+                    runtime.create_store(self.user.user_id),
                     conversation_id
                 ),
             ),
@@ -137,7 +146,8 @@ class UserConversations:
                 f"conversation:{conversation_id}",
                 (ActionEffect.DELETE,),
             ),
-            lambda: runtime.create_store(self.user.user_id).delete_conversation(
+            lambda: delete_conversation(
+                runtime.create_store(self.user.user_id),
                 conversation_id
             ),
         )

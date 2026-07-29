@@ -24,7 +24,7 @@ from skill.evolution.tracking.values import (
     validate_skill_candidate_difference,
     validate_skill_evolution_recommendation,
 )
-from core.storage import StorageEvent
+from core.events import StorageEvent
 from skill.state.store import RuntimeStore
 from skill.evolution.revision import (
     SkillRevision,

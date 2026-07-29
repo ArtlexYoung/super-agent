@@ -9,7 +9,12 @@ from time import perf_counter
 from uuid import uuid4
 
 from skill.evolution.tracking.state import list_skill_evolutions, start_manual_skill_evolution
-from core.storage.contracts import StorageBackend, StorageEventQuery
+from adapter.conversations import (
+    append_conversation_turn,
+    create_conversation,
+    read_conversation,
+)
+from core.events import StorageBackend, StorageEventQuery
 from skill.state.store import RuntimeStore
 from skill.kinds.memory import MiniMemory
 from skill.evolution.revision import SkillRevision
@@ -155,7 +160,7 @@ def _create_verification_storage_backend(
     root: Path,
     remote_url_environments: dict[str, str],
 ) -> StorageBackend:
-    from core.storage import create_storage_backend
+    from adapter.storage import create_storage_backend
 
     url_env = remote_url_environments.get(name)
     # Dedicated test URLs keep verification writes away from production Agent storage.
@@ -229,12 +234,14 @@ def _run_multiuser_isolation_checks(
 
 def _write_isolated_domain_state(store: RuntimeStore, marker: str) -> None:
     conversation_id = "shared-conversation"
-    store.create_conversation(marker, conversation_id=conversation_id)
-    store.append_conversation_message(
+    create_conversation(store, marker, conversation_id=conversation_id)
+    append_conversation_turn(
+        store,
         conversation_id,
-        "user",
         f"{marker}-only",
+        f"{marker}-answer",
         run_id=f"{marker}-run",
+        run_result={"run_id": f"{marker}-run"},
     )
     MiniMemory(store).add_long_term_memory(f"{marker}-only")
     store.memory.record_usage_habits("direct", [f"{marker}-skill"])
@@ -255,8 +262,11 @@ def _write_isolated_domain_state(store: RuntimeStore, marker: str) -> None:
 
 
 def _require_conversation_isolation(store: RuntimeStore, marker: str) -> str:
-    messages = store.read_conversation("shared-conversation").messages
-    if [message.content for message in messages] != [f"{marker}-only"]:
+    messages = read_conversation(store, "shared-conversation").messages
+    if [message.content for message in messages] != [
+        f"{marker}-only",
+        f"{marker}-answer",
+    ]:
         raise AssertionError("conversation user isolation failed")
     return "conversation_user_isolation"
 

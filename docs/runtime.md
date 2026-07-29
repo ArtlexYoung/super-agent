@@ -112,7 +112,7 @@ their operation or selected Skill needs them.
 
 ## Conversations
 
-Conversations are event-backed Runtime views. Create one and reuse its ID:
+Conversations are event-backed Adapter views. Create one and reuse its ID:
 
 ```python
 from super_agent import Agent

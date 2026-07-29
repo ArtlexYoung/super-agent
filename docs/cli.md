@@ -106,7 +106,7 @@ super-agent memory forget --config agent.toml --user-id alice \
 super-agent memory consolidate --config agent.toml --user-id alice --type long-term
 ```
 
-Conversation history is owned by Core. Do not combine a conversation ID with an explicit
+Conversation history is owned by the conversation Adapter. Do not combine a conversation ID with an explicit
 message list. `memory add` defaults to `long-term`; `temporary` operations require a
 conversation ID. Memory commands require an enabled memory Skill and use the same action
 rules as Agent runs.

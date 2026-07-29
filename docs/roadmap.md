@@ -341,6 +341,19 @@ Status: implemented.
 - Keep ordinary reads free of cache or history writes; recording remains an explicit
   property of the disclosure recorder attached when `Skills` is built.
 
+## v0.0.88: Optional Event Storage
+
+Status: implemented.
+
+- Keep only backend-neutral event records and the storage protocol in Core; move JSONL,
+  SQLite, MySQL, PostgreSQL, copying, and value encoding to the Adapter layer.
+- Make stateless runs avoid importing or initializing every storage implementation while
+  retaining the same ordered in-memory run events.
+- Move conversation projection and changes out of task Runtime and the generic event store
+  into one explicit Adapter module.
+- Commit each successful user and assistant conversation turn as one event; a failed model
+  run leaves no partial user message and missing storage fails before task execution.
+
 ## Release Gate
 
 The project will not move to `0.1.x` because of feature count. The gate is a reproducible

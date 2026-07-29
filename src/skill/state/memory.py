@@ -7,7 +7,7 @@ from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
 from core.state.views import usage_habits_from_events
-from core.storage import StorageEvent
+from core.events import StorageEvent
 
 if TYPE_CHECKING:
     from skill.state.store import RuntimeStore

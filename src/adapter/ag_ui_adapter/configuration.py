@@ -7,7 +7,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 from core.config import AgentConfig, AgentSettings
-from core.storage.files import write_bytes_atomically
+from core.files import write_bytes_atomically
 
 
 @dataclass(frozen=True)

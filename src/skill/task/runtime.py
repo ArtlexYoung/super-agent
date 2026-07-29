@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import hashlib
-from dataclasses import asdict, replace
+import json
+from dataclasses import replace
 from time import perf_counter
 from typing import TYPE_CHECKING, Callable
 
@@ -14,15 +15,14 @@ from core.models import LOCAL_USER_ID, RunIdentity
 from core.provider.pool import ProviderPool
 from core.provider.secrets import UserSecretResolver
 from core.state.event_log import RunEventLog
-from core.state.models import Conversation, RunEvent
+from core.state.models import RunEvent
 from core.state.subscribers import (
     RuntimeEventSubscriberError,
     RuntimeEventSubscriber,
     RuntimeEventSubscribers,
     get_runtime_event_subscriber_name,
 )
-from core.storage import StorageBackend
-from core.storage.values import encode_storage_data
+from core.events import StorageBackend
 from skill.task.loop import AdaptiveTaskLoop, list_run_actions
 from skill.task.run_plan import RunPlan
 from skill.task.preparation import RuntimeLockInput, create_runtime_lock
@@ -93,7 +93,6 @@ class AgentRuntime:
         run, task_loop = self._create_run(request, identity, event_listener)
         started_at = perf_counter()
         try:
-            request = self._prepare_conversation_request(request, run)
             run.record_event(
                 "task.started",
                 {
@@ -111,8 +110,6 @@ class AgentRuntime:
                 result,
                 subscriber_failures=run.list_subscriber_failures(),
             )
-            if run.store is not None:
-                self._record_conversation_result(run, result)
             run.record_event(
                 "run.completed",
                 {
@@ -221,6 +218,22 @@ class AgentRuntime:
             reason=reason,
             user_id=user_id,
             source="explicit",
+        )
+
+    def record_inferred_task_feedback(
+        self,
+        task_id: str,
+        score: float,
+        reason: str,
+        *,
+        user_id: str = LOCAL_USER_ID,
+    ) -> RunEvent:
+        return self._record_task_feedback(
+            task_id,
+            score,
+            reason=reason,
+            user_id=user_id,
+            source="implicit",
         )
 
     def learn_from_run(
@@ -420,85 +433,18 @@ class AgentRuntime:
                 ),
             )
         )
-        content = encode_storage_data(runtime_lock)
+        content = json.dumps(
+            runtime_lock,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
         run.record_event(
             "runtime.locked",
             {
                 "runtime_lock": runtime_lock,
                 "runtime_lock_sha256": hashlib.sha256(content.encode()).hexdigest(),
             },
-        )
-
-    def _prepare_conversation_request(
-        self,
-        request: TaskRequest,
-        run: Run,
-    ) -> TaskRequest:
-        conversation_id = run.identity.conversation_id
-        if conversation_id is None or run.identity.parent_run_id is not None:
-            return request
-        store = run.require_store("conversation history")
-        if request.messages:
-            raise ValueError("conversation_id cannot be combined with explicit messages")
-        conversation = run.execute_action(
-            ActionRequest.create(
-                "agent:conversation",
-                f"conversation:{conversation_id}",
-                (ActionEffect.CREATE, ActionEffect.UPDATE),
-            ),
-            lambda: store.ensure_conversation(
-                conversation_id,
-                request.prompt[:48],
-            ),
-        )
-        if not isinstance(conversation, Conversation):
-            raise TypeError("conversation storage must return Conversation")
-        if request.learn_from_conversation:
-            self._record_conversation_feedback(conversation, request.prompt, run)
-        messages = [
-            {"role": message.role, "content": message.content}
-            for message in conversation.messages
-        ]
-        run.execute_action(
-            ActionRequest.create(
-                "agent:conversation",
-                f"conversation:{conversation_id}",
-                (ActionEffect.UPDATE,),
-            ),
-            lambda: store.append_conversation_message(
-                conversation_id,
-                "user",
-                request.prompt,
-                run_id=run.run_id,
-            ),
-        )
-        return replace(request, messages=messages)
-
-    def _record_conversation_feedback(
-        self,
-        conversation: Conversation,
-        prompt: str,
-        run: Run,
-    ) -> None:
-        from skill.task.routing import detect_implicit_conversation_feedback
-
-        feedback = detect_implicit_conversation_feedback(conversation, prompt)
-        if feedback is None:
-            return
-        task_id, score, reason = feedback
-        run.execute_action(
-            ActionRequest.create(
-                "agent:conversation-feedback",
-                f"conversation:{conversation.conversation_id}",
-                (ActionEffect.UPDATE,),
-            ),
-            lambda: self._record_task_feedback(
-                task_id,
-                score,
-                reason=reason,
-                user_id=run.identity.user_id,
-                source="implicit",
-            ),
         )
 
     def _record_task_feedback(
@@ -530,30 +476,6 @@ class AgentRuntime:
                 "reason": reason.strip(),
                 "source": source,
             },
-        )
-
-    @staticmethod
-    def _record_conversation_result(
-        run: Run,
-        result: TaskResult,
-    ) -> None:
-        conversation_id = run.identity.conversation_id
-        if conversation_id is None or run.identity.parent_run_id is not None:
-            return
-        store = run.require_store("conversation history")
-        run.execute_action(
-            ActionRequest.create(
-                "agent:conversation",
-                f"conversation:{conversation_id}",
-                (ActionEffect.UPDATE,),
-            ),
-            lambda: store.append_conversation_message(
-                conversation_id,
-                "assistant",
-                result.text,
-                run_id=run.run_id,
-                run_result=asdict(result),
-            ),
         )
 
 def _validate_feedback_score(value: float) -> float:

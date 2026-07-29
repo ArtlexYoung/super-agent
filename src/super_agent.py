@@ -27,7 +27,11 @@ from skill.task.run import Run
 from core.models import LOCAL_USER_ID
 from core.state.models import RunEvent
 from core.state.subscribers import RuntimeEventSubscriber, RuntimeEventSubscribers
-from core.checks import ActionEffect, ActionMode, ActionRules
+from core.checks import (
+    ActionEffect,
+    ActionMode,
+    ActionRules,
+)
 from core.provider.secrets import UserSecretLookup, UserSecretResolver
 from core.models import (
     RunLearningResult,
@@ -39,7 +43,7 @@ from core.models import (
 )
 from core.state.models import Conversation
 from core.state.subscribers import RuntimeEventSubscriberError
-from core.storage import StorageBackend
+from core.events import StorageBackend
 from skill.task.preflight import PreflightProblem, TaskPreflightError
 from skill.kinds.model import (
     ModelProfile,
@@ -271,6 +275,29 @@ class Agent:
         run_options: AgentRunOptions | None = None,
     ) -> TaskResult:
         options = run_options or AgentRunOptions()
+        prepared_messages = list(messages or [])
+        pending_turn = None
+        if conversation_id is not None:
+            if messages:
+                raise ValueError(
+                    "conversation_id cannot be combined with explicit messages"
+                )
+            if self.runtime.storage is None:
+                raise RuntimeError("conversation history requires Runtime storage")
+            from adapter.conversations import prepare_conversation_turn
+
+            prepared_messages, pending_turn = prepare_conversation_turn(
+                self.runtime.create_store(user_id),
+                self.action_rules,
+                conversation_id,
+                prompt,
+            )
+            if pending_turn.conversation is not None and options.learn_from_conversation:
+                self._record_conversation_feedback(
+                    pending_turn.conversation,
+                    prompt,
+                    user_id,
+                )
         warnings = (
             self._check_subagent_links()
             if options.include_subagents and options.check_subagent_links_before_run
@@ -278,7 +305,7 @@ class Agent:
         )
         request = TaskRequest(
             prompt=prompt,
-            messages=list(messages or []),
+            messages=prepared_messages,
             include_subagents=options.include_subagents,
             warning_messages=warnings,
             learn_from_conversation=options.learn_from_conversation,
@@ -289,13 +316,38 @@ class Agent:
                 run_named_subagent=self._run_named_subagent_for_model,
             ),
         )
-        return self.runtime.run_task(
+        result = self.runtime.run_task(
             request,
             user_id=user_id,
             run_id=options.run_id,
             conversation_id=conversation_id,
             event_listener=options.event_listener,
         )
+        if pending_turn is not None:
+            from adapter.conversations import complete_conversation_turn
+
+            complete_conversation_turn(pending_turn, result)
+        return result
+
+    def _record_conversation_feedback(
+        self,
+        conversation: Conversation,
+        prompt: str,
+        user_id: str,
+    ) -> None:
+        from skill.task.routing import detect_implicit_conversation_feedback
+
+        feedback = detect_implicit_conversation_feedback(conversation, prompt)
+        if feedback is None:
+            return
+        run_id, score, reason = feedback
+        self.runtime.record_inferred_task_feedback(
+            run_id,
+            score,
+            reason,
+            user_id=user_id,
+        )
+
 
     def _activate_changed_skill(
         self,
@@ -379,7 +431,7 @@ class Agent:
     def _create_configured_storage(self) -> StorageBackend | None:
         if self._configured_storage is not None or not self._use_storage:
             return self._configured_storage
-        from core.storage import create_storage_backend
+        from adapter.storage import create_storage_backend
 
         return create_storage_backend(
             self.config.storage.backend,

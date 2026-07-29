@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from core.models import RunIdentity
-from core.storage.files import write_bytes_atomically
+from core.files import write_bytes_atomically
 from core.state.views import disclosure_history_from_events
 
 if TYPE_CHECKING:

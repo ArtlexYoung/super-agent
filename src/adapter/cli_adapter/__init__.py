@@ -30,7 +30,7 @@ def load_runtime_store(
     user_id: str = LOCAL_USER_ID,
 ) -> RuntimeStore:
     config = load_agent_config(source)
-    from core.storage import create_storage_backend
+    from adapter.storage import create_storage_backend
 
     backend = create_storage_backend(
         config.storage.backend,

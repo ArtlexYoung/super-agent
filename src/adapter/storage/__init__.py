@@ -1,4 +1,9 @@
-from core.storage.contracts import StorageBackend, StorageEvent, StorageEventQuery
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from core.events import StorageBackend
 
 
 def create_storage_backend(
@@ -7,19 +12,19 @@ def create_storage_backend(
     url_env: str | None = None,
 ) -> StorageBackend:
     if backend == "jsonl":
-        from core.storage.jsonl import JsonlStorage
+        from adapter.storage.jsonl import JsonlStorage
 
         return JsonlStorage(path)
     if backend == "sqlite":
-        from core.storage.sqlite import SqliteStorage
+        from adapter.storage.sqlite import SqliteStorage
 
         return SqliteStorage(path)
     if backend == "mysql":
-        from core.storage.sql.mysql import MySqlStorage
+        from adapter.storage.sql.mysql import MySqlStorage
 
         return MySqlStorage(url_env)
     if backend == "postgresql":
-        from core.storage.sql.postgresql import PostgreSqlStorage
+        from adapter.storage.sql.postgresql import PostgreSqlStorage
 
         return PostgreSqlStorage(url_env)
     raise ValueError(f"unknown storage backend: {backend}")
@@ -29,32 +34,29 @@ __all__ = [
     "MySqlStorage",
     "PostgreSqlStorage",
     "SqliteStorage",
-    "StorageBackend",
-    "StorageEvent",
-    "StorageEventQuery",
     "create_storage_backend",
 ]
 
 
 def __getattr__(name: str) -> object:
     if name == "JsonlStorage":
-        from core.storage.jsonl import JsonlStorage
+        from adapter.storage.jsonl import JsonlStorage
 
         return JsonlStorage
     if name == "SqliteStorage":
-        from core.storage.sqlite import SqliteStorage
+        from adapter.storage.sqlite import SqliteStorage
 
         return SqliteStorage
     if name == "MySqlStorage":
-        from core.storage.sql.mysql import MySqlStorage
+        from adapter.storage.sql.mysql import MySqlStorage
 
         return MySqlStorage
     if name == "PostgreSqlStorage":
-        from core.storage.sql.postgresql import PostgreSqlStorage
+        from adapter.storage.sql.postgresql import PostgreSqlStorage
 
         return PostgreSqlStorage
     if name in {"StorageCopyReport", "StorageCopyUserResult", "copy_storage_events"}:
-        from core.storage.copy import (
+        from adapter.storage.copy import (
             StorageCopyReport,
             StorageCopyUserResult,
             copy_storage_events,

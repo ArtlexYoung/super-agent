@@ -60,15 +60,12 @@ with tempfile.TemporaryDirectory() as temporary_directory:
     result = Agent(config, provider=MockProvider("finished"), use_storage=False).run("hello")
 assert result.text == "finished"
 blocked = (
-    "adapter.",
     "skill.evolution.tracking",
     "skill.evolution.tracking.run_evaluation",
     "skill.evolution.tracking.learning",
     "skill.state.memory",
     "skill.state.store",
-    "core.storage.jsonl",
-    "core.storage.sql",
-    "core.storage.sqlite",
+    "adapter.storage",
     "skill.evolution",
     "skill.kinds.mcp",
     "skill.kinds.memory",

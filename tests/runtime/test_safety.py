@@ -19,7 +19,7 @@ from core.checks import (
 )
 from core.state.event_log import RunEventLog
 from skill.state.store import RuntimeStore
-from core.storage import JsonlStorage
+from adapter.storage import JsonlStorage
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.kinds.model import create_direct_provider_profile
 
