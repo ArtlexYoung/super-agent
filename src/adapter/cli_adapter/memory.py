@@ -11,7 +11,7 @@ from core.checks import ActionEffect, ActionRequest, ActionRunner, ActionRules
 from core.config import AgentConfig
 from core.models import LOCAL_USER_ID
 from skill.state.memory import LONG_TERM_MEMORY, TEMPORARY_MEMORY
-from skill.kinds.memory import MemoryItem, MiniMemory, create_memory_from_skill_disclosure
+from skill.state.memory_service import MemoryItem, MiniMemory, create_memory_from_skill_disclosure
 from skill.loaders.defaults import create_progressive_skill_disclosure
 
 

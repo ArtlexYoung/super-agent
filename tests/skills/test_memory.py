@@ -15,7 +15,7 @@ from core.events import StorageEventQuery
 from skill.state.events import EventStore, create_local_event_store
 from core.provider.chat import MockProvider
 from skill.disclosure import ProgressiveDisclosureCore
-from skill.kinds.memory import (
+from skill.state.memory_service import (
     MemoryItem,
     MemoryTextModel,
     MiniMemory,

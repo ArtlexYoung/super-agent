@@ -24,8 +24,8 @@ from adapter.conversations import (
 from skill.task.model_calls import ModelRoutingStats
 from core.checks import ActionEffect, ActionRequest
 from core.models import RunLearningResult, RunResult, TaskTrace
-from skill.kinds.model_management import ModelSkillManager
-from skill.kinds.scene import CreatedSkillScene, SkillSceneInput, SkillSceneManager
+from skill.ecosystem.models import ModelSkillManager
+from skill.ecosystem.scenes import CreatedSkillScene, SkillSceneInput, SkillSceneManager
 from skill.loaders.defaults import create_progressive_skill_disclosure
 
 if TYPE_CHECKING:

@@ -6,15 +6,15 @@ import unittest
 from pathlib import Path
 
 from skill.disclosure import ProgressiveDisclosureCore
-from skill.kinds.mcp import McpSkillSettings
+from skill.loaders.mcp import McpSkillSettings
 from skill.loaders.mcp import McpServer
-from skill.kinds.memory import MiniMemory
+from skill.state.memory_service import MiniMemory
 from core.models import SubAgentResult, RunResult
-from skill.kinds.workflow import create_workflow_policy
+from skill.loaders.workflow import create_workflow_policy
 from skill.manifest import SkillManifest
 
 
-class SkillKindArchitectureTests(unittest.TestCase):
+class SkillArchitectureTests(unittest.TestCase):
     def test_source_root_has_one_declared_layout(self) -> None:
         entries = {
             path.name
@@ -37,7 +37,7 @@ class SkillKindArchitectureTests(unittest.TestCase):
         self.assertTrue((builtin_root / "scene/code").is_dir())
         self.assertFalse(Path("skill_scenes").exists())
 
-    def test_skill_kinds_are_loaded_from_unified_skill_package(self) -> None:
+    def test_skill_mechanisms_have_clear_owners(self) -> None:
         self.assertEqual("McpServer", McpServer.__name__)
         self.assertEqual("McpSkillSettings", McpSkillSettings.__name__)
         self.assertEqual("MiniMemory", MiniMemory.__name__)
@@ -96,10 +96,11 @@ class SkillKindArchitectureTests(unittest.TestCase):
             ("skill", "SkillManifest"),
             ("skill.ecosystem", "SkillPackageManager"),
             ("skill.evolution", "SkillEvolutionManager"),
-            ("skill.kinds", "MiniMemory"),
         ]:
             module = importlib.import_module(module_name)
             self.assertFalse(hasattr(module, attribute_name))
+        with self.assertRaises(ModuleNotFoundError):
+            importlib.import_module("skill.kinds")
 
     def test_real_modules_and_public_api_import_in_fresh_process(self) -> None:
         environment = dict(os.environ)

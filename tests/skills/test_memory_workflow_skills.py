@@ -7,7 +7,7 @@ from super_agent import Agent
 from core.config import AgentConfig
 from skill.state.events import create_local_event_store
 from core.provider.chat import MockProvider
-from skill.kinds.memory import MiniMemory
+from skill.state.memory_service import MiniMemory
 
 
 class MemoryWorkflowSkillLoaderTests(unittest.TestCase):

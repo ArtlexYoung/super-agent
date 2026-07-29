@@ -12,7 +12,7 @@ from adapter.conversations import (
     append_conversation_turn,
     read_conversation,
 )
-from skill.kinds.memory import MiniMemory
+from skill.state.memory_service import MiniMemory
 from skill.evolution.records import read_evaluation_records
 
 

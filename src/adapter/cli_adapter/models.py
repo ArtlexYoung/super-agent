@@ -9,13 +9,13 @@ from skill.loaders.defaults import create_skills
 from core.config import AgentConfig
 from core.models import LOCAL_USER_ID
 from core.checks import ActionRules
-from skill.kinds.model import (
+from skill.loaders.models import (
     ModelProfile,
     model_profile_to_dict,
     read_model_profiles,
     select_default_model_profile,
 )
-from skill.kinds.model_management import (
+from skill.ecosystem.models import (
     ModelSkillManager,
     model_skill_input_from_dict,
 )

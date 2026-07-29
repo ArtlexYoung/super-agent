@@ -16,14 +16,14 @@ from skill.state.memory import (
 )
 from skill.state.events import EventStore
 from skill.disclosure import SkillDisclosure
-from skill.kinds.memory_models import (
+from skill.state.memory_models import (
     MemoryItem,
     MemoryOrganizationPlan,
     MemoryPolicy,
     MemoryTextModel,
 )
-from skill.kinds.memory_organization import MemoryOrganizer
-from skill.kinds.memory_support import (
+from skill.state.memory_organization import MemoryOrganizer
+from skill.state.memory_support import (
     MemoryActionRunner,
     MemoryUsageHabits,
     clean_item_id,

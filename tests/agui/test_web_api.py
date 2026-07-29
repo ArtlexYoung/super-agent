@@ -9,7 +9,7 @@ from super_agent import Agent
 from adapter.ag_ui_adapter.web_api import WebAPI
 from core.provider.chat import MockProvider
 from core.config import AgentConfig
-from skill.kinds.memory import MiniMemory
+from skill.state.memory_service import MiniMemory
 
 
 class WebAPIContractTests(unittest.TestCase):

@@ -20,7 +20,7 @@ from core.provider.pool import ProviderPool
 from core.runtime import ModelCall, Runtime, estimate_text_tokens
 from core.state.models import Conversation
 from core.models import Task
-from skill.kinds.model import ModelProfile
+from skill.loaders.models import ModelProfile
 from skill.manifest import Skill
 
 if TYPE_CHECKING:

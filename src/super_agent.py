@@ -49,7 +49,7 @@ from core.state.models import Conversation
 from core.state.subscribers import RuntimeEventSubscriberError
 from core.events import StorageBackend
 from skill.task.preflight import PreflightProblem, TaskPreflightError
-from skill.kinds.model import (
+from skill.loaders.models import (
     ModelProfile,
     create_direct_provider_profile,
     read_model_profiles,

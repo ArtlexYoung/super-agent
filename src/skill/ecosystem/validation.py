@@ -5,15 +5,15 @@ from __future__ import annotations
 from pathlib import Path
 
 from skill.disclosure import ProgressiveDisclosureCore, SkillDisclosure
-from skill.kinds.mcp import read_mcp_skill_settings
-from skill.kinds.memory import create_memory_policy_from_skill
-from skill.kinds.model import (
+from skill.loaders.mcp import read_mcp_skill_settings
+from skill.state.memory_service import create_memory_policy_from_skill
+from skill.loaders.models import (
     create_model_profile_from_skill_disclosure,
     model_connection_fields,
 )
-from skill.kinds.planner import create_planning_policy_from_skill
-from skill.kinds.scene import read_scene_included_skills
-from skill.kinds.workflow import create_workflow_policy_from_skill
+from skill.task.planning import create_planning_policy_from_skill
+from skill.ecosystem.scenes import read_scene_included_skills
+from skill.loaders.workflow import create_workflow_policy_from_skill
 from skill.manifest import SkillManifest
 
 

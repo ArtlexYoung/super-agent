@@ -356,9 +356,9 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
             self.assertIn("leaves skill directory", issues[0].message)
 
     def test_kind_factories_only_accept_center_disclosure(self) -> None:
-        from skill.kinds.mcp import read_mcp_skill_settings
-        from skill.kinds.memory import create_memory_from_skill_disclosure
-        from skill.kinds.workflow import create_workflow_policy_from_skill
+        from skill.loaders.mcp import read_mcp_skill_settings
+        from skill.state.memory_service import create_memory_from_skill_disclosure
+        from skill.loaders.workflow import create_workflow_policy_from_skill
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

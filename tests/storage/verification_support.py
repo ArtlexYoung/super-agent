@@ -16,7 +16,7 @@ from adapter.conversations import (
 )
 from core.events import StorageBackend, StorageEventQuery
 from skill.state.events import EventStore
-from skill.kinds.memory import MiniMemory
+from skill.state.memory_service import MiniMemory
 from skill.evolution.change.revision import SkillRevision
 
 

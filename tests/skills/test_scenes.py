@@ -6,7 +6,7 @@ from pathlib import Path
 from super_agent import Agent
 from core.config import AgentConfig
 from core.provider.chat import MockProvider, ModelResponse, ToolCall
-from skill.kinds.scene import (
+from skill.ecosystem.scenes import (
     SkillSceneInput,
     read_scene_included_skills,
 )

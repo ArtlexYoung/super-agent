@@ -29,7 +29,7 @@ from skill.task.preparation import RuntimeLockInput, create_runtime_lock
 from skill.task.model_calls import estimate_text_tokens
 from core.models import RunLearningResult, Task, RunResult, TaskTrace
 from skill.skills import Skills
-from skill.kinds.model import (
+from skill.loaders.models import (
     ModelProfile,
     read_model_profiles,
 )

@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from skill.state.events import EventStore
     from core.state.subscribers import RuntimeEventSubscriber, SubscriberFailure
     from skill.disclosure import SkillIndexEntry, SkillReference
-    from skill.kinds.model import ModelProfile
+    from skill.loaders.models import ModelProfile
     from skill.loaders.loaded import LoadedSkill
     from skill.skills import Skills
 

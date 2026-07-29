@@ -10,13 +10,13 @@ from uuid import uuid4
 from core.checks import ActionEffect
 from skill.state.memory import LONG_TERM_MEMORY, TEMPORARY_MEMORY
 from skill.state.events import EventStore
-from skill.kinds.memory_models import (
+from skill.state.memory_models import (
     MemoryItem,
     MemoryOperation,
     MemoryOrganizationPlan,
     MemoryTextModel,
 )
-from skill.kinds.memory_support import (
+from skill.state.memory_support import (
     build_memory_organization_messages,
     clean_item_id,
     clean_memory_text,

@@ -14,13 +14,13 @@ from core.provider.chat import (
 )
 from core.provider.pool import ProviderPool
 from core.config import AgentConfig
-from skill.kinds.model import (
+from skill.loaders.models import (
     discover_environment_model_profiles,
     model_profile_is_ready,
     model_profile_to_dict,
     select_default_model_profile,
 )
-from skill.kinds.model_management import model_skill_input_from_dict
+from skill.ecosystem.models import model_skill_input_from_dict
 from skill.ecosystem.validation import validate_skill_replacement
 from skill.evolution.change.evaluation import EvaluationCase
 from skill.evolution.records import read_evaluation_records

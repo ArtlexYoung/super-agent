@@ -447,6 +447,17 @@ Status: implemented.
 - Fail explicit incompatible scene policies and tool requests without a tool-using
   workflow instead of silently changing the requested behavior.
 
+## v0.0.96: Direct Skill Mechanism Ownership
+
+Status: implemented.
+
+- Remove the vague `skill/kinds` package and every old import without forwarding modules.
+- Put model and workflow interpretation with loaders, memory behavior with state, scene
+  and model changes with the Skill ecosystem, and planning rules with task planning.
+- Merge MCP Skill settings into the MCP loader and planner settings into task planning.
+- Add `SkillLoadRequest.open_skill()` as the one direct way for a loader to open its exact
+  progressively disclosed reference, removing repeated open-and-type code.
+
 ## Release Gate
 
 The project will not move to `0.1.x` because of feature count. The gate is a reproducible

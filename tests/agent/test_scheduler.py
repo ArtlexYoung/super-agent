@@ -8,7 +8,7 @@ from core.config import AgentConfig
 from core.provider.chat import MockProvider, ModelResponse, ProviderConnection
 from skill.task.model_calls import ModelSelectionRequest
 from skill.task.scheduler import Scheduler, SchedulingPolicy
-from skill.kinds.model import ModelProfile, ModelRoutingTraits
+from skill.loaders.models import ModelProfile, ModelRoutingTraits
 from support import write_workflow_skill
 
 

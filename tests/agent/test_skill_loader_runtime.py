@@ -242,9 +242,9 @@ class SkillLoaderRuntimeTests(unittest.TestCase):
             Path("src/skill/task/tools.py"),
         ):
             source = path.read_text(encoding="utf-8")
-            self.assertNotIn("skill.kinds.memory", source)
-            self.assertNotIn("skill.kinds.mcp", source)
-            self.assertNotIn("skill.kinds.workflow", source)
+            self.assertNotIn("skill.state.memory_service", source)
+            self.assertNotIn("skill.loaders.mcp", source)
+            self.assertNotIn("skill.loaders.workflow", source)
 
 
 class _RecordingPromptSkillLoader:

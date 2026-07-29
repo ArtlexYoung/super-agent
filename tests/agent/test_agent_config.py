@@ -9,7 +9,7 @@ from core.config import AgentConfig
 from core.provider.chat import MockProvider
 from adapter.storage import create_storage_backend
 from skill.disclosure import ProgressiveDisclosureCore
-from skill.kinds.model import read_model_profiles
+from skill.loaders.models import read_model_profiles
 from skill.loaders.defaults import create_skills
 from support import write_workflow_skill
 

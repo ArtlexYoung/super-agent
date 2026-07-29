@@ -15,7 +15,7 @@ from core.config import AgentConfig
 from core.checks import ActionEffect, ActionRequest, ActionRunner, ActionRules
 from skill.state.events import EventStore
 from skill.disclosure import ProgressiveDisclosureCore, SkillDisclosure
-from skill.kinds.model import ModelProfile, create_model_profile_from_skill_disclosure
+from skill.loaders.models import ModelProfile, create_model_profile_from_skill_disclosure
 from skill.manifest import DEFAULT_SKILL_FRESHNESS, SkillEntry, SkillManifest
 from skill.ecosystem.validation import validate_skill_directory
 

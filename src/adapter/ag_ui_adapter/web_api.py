@@ -17,8 +17,8 @@ from core.config import AgentConfig
 from skill.evolution.insights import explain_run_with_insight
 from core.checks import ActionEffect, ActionRequest
 from skill.disclosure import skill_index_to_dict
-from skill.kinds.model import model_profile_to_dict, read_model_profiles
-from skill.kinds.model_management import model_skill_input_from_dict
+from skill.loaders.models import model_profile_to_dict, read_model_profiles
+from skill.ecosystem.models import model_skill_input_from_dict
 
 
 @dataclass(frozen=True)

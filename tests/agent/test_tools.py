@@ -26,8 +26,8 @@ from core.state.event_log import RunEventLog
 from skill.state.events import EventStore
 from adapter.storage import JsonlStorage
 from skill.disclosure import ProgressiveDisclosureCore
-from skill.kinds.memory import MiniMemory
-from skill.kinds.model import create_direct_provider_profile
+from skill.state.memory_service import MiniMemory
+from skill.loaders.models import create_direct_provider_profile
 from skill.loaders.mcp import McpServers, StdioMcpServer
 
 

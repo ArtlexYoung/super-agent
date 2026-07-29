@@ -18,8 +18,8 @@ from core.checks import ActionEffect
 from skill.manifest import Skill
 
 if TYPE_CHECKING:
-    from skill.kinds.memory import MiniMemory
-    from skill.kinds.memory_models import MemoryOrganizationPlan
+    from skill.state.memory_service import MiniMemory
+    from skill.state.memory_models import MemoryOrganizationPlan
     from skill.loaders.mcp import McpServers, RegisteredMcpServer
 
 
@@ -30,10 +30,7 @@ class PromptSkillLoader:
     adds_model_context = True
 
     def load_skill(self, request: SkillLoadRequest) -> LoadedSkill:
-        opened = request.disclosure.open_skill(
-            request.reference.name,
-            self.skill_type,
-        )
+        opened = request.open_skill()
         return LoadedSkill(
             model_context=Skill(
                 manifest=opened.disclose_manifest(),
@@ -52,12 +49,9 @@ class McpSkillLoader:
         self.servers = servers
 
     def load_skill(self, request: SkillLoadRequest) -> LoadedSkill:
-        from skill.kinds.mcp import read_mcp_skill_settings
+        from skill.loaders.mcp import read_mcp_skill_settings
 
-        opened = request.disclosure.open_skill(
-            request.reference.name,
-            self.skill_type,
-        )
+        opened = request.open_skill()
         opened.disclose_configuration()
         settings = read_mcp_skill_settings(opened)
         registered = self.servers.require_mcp_server(settings.server_name)
@@ -89,12 +83,9 @@ class MemorySkillLoader:
     required_services = ("storage", "text_model")
 
     def load_skill(self, request: SkillLoadRequest) -> LoadedSkill:
-        from skill.kinds.memory import create_memory_from_skill_disclosure
+        from skill.state.memory_service import create_memory_from_skill_disclosure
 
-        opened = request.disclosure.open_skill(
-            request.reference.name,
-            self.skill_type,
-        )
+        opened = request.open_skill()
         opened.disclose_manifest()
         opened.disclose_configuration()
         memory = create_memory_from_skill_disclosure(
@@ -114,12 +105,9 @@ class WorkflowSkillLoader:
     adds_model_context = False
 
     def load_skill(self, request: SkillLoadRequest) -> LoadedSkill:
-        from skill.kinds.workflow import create_workflow_policy_from_skill
+        from skill.loaders.workflow import create_workflow_policy_from_skill
 
-        opened = request.disclosure.open_skill(
-            request.reference.name,
-            self.skill_type,
-        )
+        opened = request.open_skill()
         opened.disclose_manifest()
         opened.disclose_configuration()
         return LoadedSkill(
@@ -134,12 +122,9 @@ class PlannerSkillLoader:
     adds_model_context = False
 
     def load_skill(self, request: SkillLoadRequest) -> LoadedSkill:
-        from skill.kinds.planner import create_planning_policy_from_skill
+        from skill.task.planning import create_planning_policy_from_skill
 
-        opened = request.disclosure.open_skill(
-            request.reference.name,
-            self.skill_type,
-        )
+        opened = request.open_skill()
         opened.disclose_manifest()
         opened.disclose_configuration()
         opened.disclose_instructions()
@@ -157,10 +142,7 @@ class SchedulerSkillLoader:
     def load_skill(self, request: SkillLoadRequest) -> LoadedSkill:
         from skill.task.scheduler import read_scheduling_policy
 
-        opened = request.disclosure.open_skill(
-            request.reference.name,
-            self.skill_type,
-        )
+        opened = request.open_skill()
         opened.disclose_manifest()
         opened.disclose_configuration()
         return LoadedSkill(
@@ -175,12 +157,9 @@ class SceneSkillLoader:
     adds_model_context = False
 
     def load_skill(self, request: SkillLoadRequest) -> LoadedSkill:
-        from skill.kinds.scene import read_scene_included_skills
+        from skill.ecosystem.scenes import read_scene_included_skills
 
-        opened = request.disclosure.open_skill(
-            request.reference.name,
-            self.skill_type,
-        )
+        opened = request.open_skill()
         opened.disclose_manifest()
         opened.disclose_configuration()
         return LoadedSkill(
@@ -196,12 +175,9 @@ class SceneManagerSkillLoader:
     required_services = ("storage",)
 
     def load_skill(self, request: SkillLoadRequest) -> LoadedSkill:
-        from skill.kinds.scene import create_scene_creation_tool
+        from skill.ecosystem.scenes import create_scene_creation_tool
 
-        opened = request.disclosure.open_skill(
-            request.reference.name,
-            self.skill_type,
-        )
+        opened = request.open_skill()
         opened.disclose_manifest()
         opened.disclose_configuration()
         instructions = opened.disclose_instructions().content

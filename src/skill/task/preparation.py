@@ -30,7 +30,7 @@ from skill.task.scheduler import (
 from core.models import SubAgentResult, Task
 from skill.task.tools import RuntimeTools, RuntimeToolsContext
 from skill.disclosure import SkillIndex, SkillIndexEntry, SkillReference
-from skill.kinds.model import ModelProfile, model_profile_to_dict
+from skill.loaders.models import ModelProfile, model_profile_to_dict
 
 
 @dataclass(frozen=True)

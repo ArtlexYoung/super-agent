@@ -44,7 +44,7 @@ from skill.task.preparation import (
 )
 from core.models import SubAgentResult, Task, RunResult
 from skill.task.tools import RuntimeTools
-from skill.kinds.model import ModelProfile
+from skill.loaders.models import ModelProfile
 from skill.manifest import Skill
 
 if TYPE_CHECKING:

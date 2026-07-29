@@ -33,8 +33,7 @@ blocked = (
     "skill.evolution.learning",
     "skill.state.memory",
     "skill.evolution",
-    "skill.kinds.mcp",
-    "skill.kinds.memory",
+    "skill.state.memory_service",
 )
 print(json.dumps(sorted(name for name in sys.modules if name.startswith(blocked))))
 """
@@ -65,8 +64,7 @@ blocked = (
     "skill.state.events",
     "adapter.storage",
     "skill.evolution",
-    "skill.kinds.mcp",
-    "skill.kinds.memory",
+    "skill.state.memory_service",
 )
 print(json.dumps(sorted(name for name in sys.modules if name.startswith(blocked))))
 """

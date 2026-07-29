@@ -17,7 +17,7 @@ from skill.loaders.loaded import (
 from core.provider.chat import Message
 from core.models import RunIdentity
 from core.checks import ActionRequest
-from skill.disclosure import ProgressiveDisclosureCore, SkillReference
+from skill.disclosure import ProgressiveDisclosureCore, SkillDisclosure, SkillReference
 
 if TYPE_CHECKING:
     from skill.state.events import EventStore
@@ -45,6 +45,13 @@ class SkillLoadRequest:
         if self.store is None:
             raise ValueError(f"{feature} requires Runtime storage")
         return self.store
+
+    def open_skill(self) -> SkillDisclosure:
+        """Open this exact reference through the central disclosure snapshot."""
+        return self.disclosure.open_skill(
+            self.reference.name,
+            self.reference.skill_type,
+        )
 
     def require_action_executor(
         self,

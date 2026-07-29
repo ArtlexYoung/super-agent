@@ -12,7 +12,7 @@ from typing import Any, Callable
 from core.provider.chat import Message
 from skill.state.memory import LONG_TERM_MEMORY, TEMPORARY_MEMORY, RuntimeMemoryStore
 from core.checks import ActionEffect, ActionRequest
-from skill.kinds.memory_models import MemoryItem, MemoryPolicy
+from skill.state.memory_models import MemoryItem, MemoryPolicy
 
 
 DEFAULT_RECALL_LIMIT = 20

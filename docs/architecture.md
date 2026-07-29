@@ -12,7 +12,7 @@ Agent        composes Providers, Core options, Skills, storage, and subagents
 
 ## Source Layout
 
-The repository keeps passive scene data outside the three Python packages:
+The repository keeps shipped passive Skills inside the owning Python package:
 
 ```text
 src/skill/builtin/  shipped Skills grouped by stable `type/name` keys
@@ -27,6 +27,15 @@ src/
 `adapter` and `skill` may import Core. Core never imports Skill, CLI, HTTP, React, or
 another external interaction layer. `super_agent.py` is the composition and everyday API; advanced APIs are imported
 from the adapter, Core, or Skill module that owns them.
+
+Inside `skill`, code follows its actual owner instead of a generic kind layer:
+
+```text
+loaders/    Skill loading, model profiles, workflow rules, and MCP registration
+task/       scheduling, planning, preflight, and execution
+state/      memory behavior and event-backed state
+ecosystem/  Skill packages, model changes, and user-created scenes
+```
 
 `Agent` construction reads and validates configuration and prepares only in-memory code
 registries. Storage creation, Skill indexing, model discovery, and Runtime assembly happen

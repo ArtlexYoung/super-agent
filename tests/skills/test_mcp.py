@@ -14,8 +14,8 @@ from skill.state.events import create_local_event_store
 from core.provider.chat import MockProvider
 from skill.task.preflight import TaskPreflightError
 from skill.disclosure import ProgressiveDisclosureCore, SkillReference
-from skill.kinds.mcp import read_mcp_skill_settings
-from skill.kinds.memory import MiniMemory
+from skill.loaders.mcp import read_mcp_skill_settings
+from skill.state.memory_service import MiniMemory
 from skill.manifest import Skill
 from skill.loaders.mcp import McpServers, StdioMcpServer
 from support import write_memory_skill, write_workflow_skill

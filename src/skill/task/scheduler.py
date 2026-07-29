@@ -14,7 +14,7 @@ from skill.disclosure import (
     SkillIndex,
     SkillReference,
 )
-from skill.kinds.model import ModelProfile, model_profile_is_ready
+from skill.loaders.models import ModelProfile, model_profile_is_ready
 from skill.loaders.loaded import LoadedSkill
 from skill.task.model_calls import (
     LOW_ROUTING_CONFIDENCE,
