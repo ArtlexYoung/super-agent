@@ -4,14 +4,12 @@ import argparse
 import json
 from pathlib import Path
 
-from core.agent import Agent
+from adapter.cli_adapter import load_agent, load_agent_config, load_runtime_store
 from skill.runners.defaults import create_progressive_skill_disclosure
 from skill.runners.builtins import create_builtin_skill_runners
 from skill.runners.mcp import McpServers
 from core.config import AgentConfig
 from core.identity import LOCAL_USER_ID
-from core.storage import create_storage_backend
-from core.state.store import RuntimeStore
 from core.actions import ActionRules
 from skill.disclosure import ProgressiveDisclosureCore, skill_index_to_dict
 from skill.ecosystem.package import SkillPackageManager
@@ -135,7 +133,7 @@ def _print_skill_index(config_path: Path, user_id: str) -> int:
 
 
 def _propose_skill(args: argparse.Namespace) -> int:
-    manager = Agent(args.config).for_user(args.user_id).skills.create_evolution_manager()
+    manager = load_agent(args.config).for_user(args.user_id).skills.create_evolution_manager()
     candidate = manager.create_skill_candidate(
         args.name,
         args.goal,
@@ -146,7 +144,7 @@ def _propose_skill(args: argparse.Namespace) -> int:
 
 
 def _evaluate_skill(args: argparse.Namespace) -> int:
-    manager = Agent(args.config).for_user(args.user_id).skills.create_evolution_manager()
+    manager = load_agent(args.config).for_user(args.user_id).skills.create_evolution_manager()
     report = manager.evaluate_skill_candidate(args.candidate_id, _read_evaluation_cases(Path(args.cases)))
     state = "passed" if report.passed else "rejected"
     print(f"Evaluation {report.report_id}: {state} score={report.score:.4f}")
@@ -154,14 +152,14 @@ def _evaluate_skill(args: argparse.Namespace) -> int:
 
 
 def _promote_skill(args: argparse.Namespace) -> int:
-    manager = Agent(args.config).for_user(args.user_id).skills.create_evolution_manager()
+    manager = load_agent(args.config).for_user(args.user_id).skills.create_evolution_manager()
     manifest = manager.promote_skill_candidate(args.candidate_id)
     print(f"Promoted skill: {manifest.skill_type}:{manifest.name}@{manifest.version}")
     return 0
 
 
 def _evolve_skill(args: argparse.Namespace) -> int:
-    manager = Agent(args.config).for_user(args.user_id).skills.create_evolution_manager()
+    manager = load_agent(args.config).for_user(args.user_id).skills.create_evolution_manager()
     result = manager.evolve_skill(
         args.name,
         args.goal,
@@ -173,15 +171,15 @@ def _evolve_skill(args: argparse.Namespace) -> int:
 
 
 def _rollback_skill(args: argparse.Namespace) -> int:
-    manager = Agent(args.config).for_user(args.user_id).skills.create_evolution_manager()
+    manager = load_agent(args.config).for_user(args.user_id).skills.create_evolution_manager()
     manifest = manager.rollback_skill(args.name, skill_type=args.skill_type)
     print(f"Rolled back skill: {manifest.skill_type}:{manifest.name}@{manifest.version}")
     return 0
 
 
 def _show_skill_freshness(config_path: Path, user_id: str) -> int:
-    config = AgentConfig.load_from_file(config_path)
-    store = _load_runtime_store(config, user_id)
+    config = load_agent_config(config_path)
+    store = load_runtime_store(config, user_id)
     stats = calculate_skill_freshness(
         store.read_evaluation_records(source_type="agent_run")
     )
@@ -211,10 +209,10 @@ def _validate_skills(config_path: Path, user_id: str) -> int:
 
 
 def _explain_skills(config_path: Path, user_id: str, prompt: str) -> int:
-    config = AgentConfig.load_from_file(config_path)
+    config = load_agent_config(config_path)
     disclosure = create_progressive_skill_disclosure(
         config,
-        store=_load_runtime_store(config, user_id),
+        store=load_runtime_store(config, user_id),
     )
     disclosure.prepare_skill_index()
     decisions = disclosure.explain_skill_selection_for_prompt(
@@ -316,30 +314,16 @@ def _load_skill_disclosure(
     config_path: Path,
     user_id: str,
 ) -> ProgressiveDisclosureCore:
-    config = AgentConfig.load_from_file(config_path)
+    config = load_agent_config(config_path)
     return create_progressive_skill_disclosure(
         config,
-        store=_load_runtime_store(config, user_id),
-    )
-
-
-def _load_runtime_store(config: AgentConfig, user_id: str) -> RuntimeStore:
-    backend = create_storage_backend(
-        config.storage.backend,
-        str(config.storage.path),
-        config.storage.url_env,
-    )
-    return RuntimeStore(
-        backend,
-        config.storage.path,
-        user_id,
-        config.agent.name,
+        store=load_runtime_store(config, user_id),
     )
 
 
 def _load_package_manager(config_path: Path, user_id: str) -> SkillPackageManager:
-    config = AgentConfig.load_from_file(config_path)
-    store = _load_runtime_store(config, user_id)
+    config = load_agent_config(config_path)
+    store = load_runtime_store(config, user_id)
     return SkillPackageManager(
         create_progressive_skill_disclosure(
             config,

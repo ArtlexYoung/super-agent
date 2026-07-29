@@ -5,7 +5,7 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
-from core.config import AgentConfig
+from adapter.cli_adapter import load_agent_config
 from core.identity import LOCAL_USER_ID
 from core.storage import create_storage_backend
 from core.storage.copy import copy_storage_events
@@ -32,11 +32,7 @@ def configure_storage_parser(parser: argparse.ArgumentParser) -> None:
 def run_storage_command(args: argparse.Namespace) -> int:
     if args.storage_command != "copy":
         raise ValueError("storage command is required")
-    config = (
-        AgentConfig.load_automatically()
-        if args.config is None
-        else AgentConfig.load_from_file(args.config)
-    )
+    config = load_agent_config(args.config)
     source = create_storage_backend(
         config.storage.backend,
         str(config.storage.path),

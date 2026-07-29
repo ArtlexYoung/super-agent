@@ -141,8 +141,10 @@ class ModelSkillTests(unittest.TestCase):
             _write_model_skill(root, name="one", default=True)
             _write_model_skill(root, name="two", default=True)
 
+            agent = Agent(AgentConfig.create_default(root))
+
             with self.assertRaisesRegex(ValueError, "multiple model Skills are marked default"):
-                Agent(AgentConfig.create_default(root))
+                _ = agent.model_profiles
 
     def test_local_openai_compatible_provider_can_run_without_api_key(self) -> None:
         provider = create_chat_provider(

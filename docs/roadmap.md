@@ -292,6 +292,19 @@ Status: implemented.
 - Use deterministic run-evaluation IDs so retries reuse completed work without duplicate
   evidence or hidden fallback behavior.
 
+## v0.0.84: Lazy Zero-Configuration Entry
+
+Status: implemented.
+
+- Make `Agent` construction free of storage creation, Skill scanning, model discovery, and
+  Runtime assembly while keeping configuration errors immediate.
+- Allow SkillRunner, MCP server, event subscriber, and subagent registration before the
+  first Runtime operation.
+- Build all lazy components once under a lock and publish them atomically; raise failures
+  unchanged and allow a clean retry instead of caching partial initialization.
+- Give every CLI command the same direct configuration, Agent, and RuntimeStore loaders
+  instead of repeating adapter assembly.
+
 ## Release Gate
 
 The project will not move to `0.1.x` because of feature count. The gate is a reproducible

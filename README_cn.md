@@ -58,6 +58,10 @@ print(result.text)
 print(result.run_id)
 ```
 
+创建 `Agent` 时只读取配置，不会打开存储、扫描 Skill、发现模型或组装 Runtime；这些工作
+会推迟到首次真正需要时。因此可以先注册自定义 SkillRunner、MCP 服务、事件订阅者和子
+Agent，再开始初始化。初始化只成功发布一次；失败会直接抛出，后续调用会从干净状态重试。
+
 Runtime 通常会自动选择任务场景，也可以在 Python 或 CLI 中为单次运行明确指定：
 
 ```python

@@ -28,6 +28,13 @@ src/
 interaction layer. `super_agent.py` is the small everyday API; advanced APIs are imported
 from the adapter, Core, or Skill module that owns them.
 
+`Agent` construction reads and validates configuration and prepares only in-memory code
+registries. Storage creation, Skill indexing, model discovery, and Runtime assembly happen
+together on first use behind one lock. Components are published only after the whole build
+succeeds, so concurrent first calls share one Runtime and a failed build leaves no partial
+state. CLI commands use the same three direct loaders for configuration, Agent, and scoped
+RuntimeStore creation.
+
 ## One Task Path
 
 Every run enters one kernel:

@@ -3,14 +3,12 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from pathlib import Path
 
+from adapter.cli_adapter import load_agent_config, load_runtime_store
 from skill.runners.defaults import create_progressive_skill_disclosure
 from core.config import AgentConfig
 from core.identity import LOCAL_USER_ID
 from core.actions import ActionRules
-from core.storage import create_storage_backend
-from core.state.store import RuntimeStore
 from skill.kinds.model import (
     ModelProfile,
     model_profile_to_dict,
@@ -51,7 +49,7 @@ def configure_models_parser(parser: argparse.ArgumentParser) -> None:
 
 
 def run_models_command(args: argparse.Namespace) -> int:
-    config = _load_config(getattr(args, "config", None))
+    config = load_agent_config(getattr(args, "config", None))
     output = getattr(args, "output", "text")
     if args.models_command == "save":
         return _save_model_skill(config, args.user_id, output)
@@ -68,24 +66,11 @@ def run_models_command(args: argparse.Namespace) -> int:
     raise ValueError(f"unknown models command: {args.models_command}")
 
 
-def _load_config(path: str | None) -> AgentConfig:
-    return (
-        AgentConfig.load_automatically()
-        if path is None
-        else AgentConfig.load_from_file(Path(path))
-    )
-
-
 def _read_configured_model_profiles(
     config: AgentConfig,
     user_id: str,
 ) -> list[ModelProfile]:
-    backend = create_storage_backend(
-        config.storage.backend,
-        str(config.storage.path),
-        config.storage.url_env,
-    )
-    store = RuntimeStore(backend, config.storage.path, user_id, config.agent.name)
+    store = load_runtime_store(config, user_id)
     disclosure = create_progressive_skill_disclosure(config, store=store)
     index = disclosure.prepare_skill_index()
     return read_model_profiles(disclosure, index)
@@ -184,12 +169,7 @@ def _create_model_skill_manager(
     config: AgentConfig,
     user_id: str,
 ) -> ModelSkillManager:
-    backend = create_storage_backend(
-        config.storage.backend,
-        str(config.storage.path),
-        config.storage.url_env,
-    )
-    store = RuntimeStore(backend, config.storage.path, user_id, config.agent.name)
+    store = load_runtime_store(config, user_id)
     return ModelSkillManager(
         config,
         store,

@@ -5,12 +5,10 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
-from core.agent import Agent
-from core.config import AgentConfig
+from adapter.cli_adapter import load_agent, load_runtime_store
 from core.identity import LOCAL_USER_ID
 from core.state.insights import explain_run_with_insight
 from core.state.models import RunSnapshot
-from core.storage import create_storage_backend
 from core.state.store import RuntimeStore
 
 
@@ -141,12 +139,7 @@ def _export_run(args: argparse.Namespace) -> int:
 
 
 def _record_run_feedback(args: argparse.Namespace) -> int:
-    config = (
-        AgentConfig.load_automatically()
-        if args.config is None
-        else AgentConfig.load_from_file(args.config)
-    )
-    event = Agent(config).for_user(args.user_id).runs.record_feedback(
+    event = load_agent(args.config).for_user(args.user_id).runs.record_feedback(
         args.run_id,
         args.score,
         args.reason,
@@ -159,12 +152,7 @@ def _record_run_feedback(args: argparse.Namespace) -> int:
 
 
 def _learn_from_run(args: argparse.Namespace) -> int:
-    config = (
-        AgentConfig.load_automatically()
-        if args.config is None
-        else AgentConfig.load_from_file(args.config)
-    )
-    result = Agent(config).for_user(args.user_id).runs.learn(args.run_id)
+    result = load_agent(args.config).for_user(args.user_id).runs.learn(args.run_id)
     if args.output == "json":
         print(json.dumps(asdict(result), ensure_ascii=False, indent=2, sort_keys=True))
     else:
@@ -177,22 +165,7 @@ def _learn_from_run(args: argparse.Namespace) -> int:
 
 
 def _load_run_snapshot_store(config_path: str | None, user_id: str) -> RuntimeStore:
-    config = (
-        AgentConfig.load_automatically()
-        if config_path is None
-        else AgentConfig.load_from_file(config_path)
-    )
-    backend = create_storage_backend(
-        config.storage.backend,
-        str(config.storage.path),
-        config.storage.url_env,
-    )
-    return RuntimeStore(
-        backend,
-        config.storage.path,
-        user_id,
-        config.agent.name,
-    )
+    return load_runtime_store(config_path, user_id)
 
 
 def _resolve_run_id(store: RuntimeStore, requested: str | None) -> str | None:

@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 
-from core.agent import Agent
+from adapter.cli_adapter import load_agent
 from core.evolution.state import SkillEvolutionState, skill_evolution_to_dict
 from core.identity import LOCAL_USER_ID
 
@@ -35,7 +35,7 @@ def configure_evolution_parser(parser: argparse.ArgumentParser) -> None:
 
 
 def run_evolution_command(args: argparse.Namespace) -> int:
-    agent = _load_agent(getattr(args, "config", None))
+    agent = load_agent(getattr(args, "config", None))
     command = args.evolution_command
     user_id = getattr(args, "user_id", LOCAL_USER_ID)
     output = getattr(args, "output", "text")
@@ -94,10 +94,6 @@ def _print_evolution(evolution: SkillEvolutionState, output: str) -> None:
         f"{evolution.evolution_id}\t{evolution.skill_key}\t"
         f"{evolution.status}\t{evolution.candidate_id}"
     )
-
-
-def _load_agent(config_path: str | None) -> Agent:
-    return Agent(config_path)
 
 
 def _add_common_arguments(parser: argparse.ArgumentParser) -> None:

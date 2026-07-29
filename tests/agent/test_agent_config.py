@@ -1,11 +1,16 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from core.agent import Agent
+from core.actions import ActionEffect
 from core.config import AgentConfig
 from core.provider.chat import MockProvider
+from core.storage import create_storage_backend
 from skill.disclosure import ProgressiveDisclosureCore
+from skill.kinds.model import read_model_profiles
+from skill.runners.defaults import create_progressive_skill_disclosure
 from support import write_workflow_skill
 
 
@@ -201,3 +206,136 @@ skills = ["skills"]
             self.assertIn("Base system.", provider.last_messages[0]["content"])
             self.assertIn("Use skill context.", provider.last_messages[0]["content"])
             self.assertEqual("echo hello", provider.last_messages[-1]["content"])
+
+
+class LazyAgentInitializationTests(unittest.TestCase):
+    def test_construction_and_registration_do_not_initialize_runtime_state(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, patch(
+            "core.agent.create_progressive_skill_disclosure"
+        ) as create_disclosure, patch(
+            "core.storage.create_storage_backend"
+        ) as create_storage:
+            config = AgentConfig.create_default(Path(tmp))
+            agent = Agent(config, provider=MockProvider("ready"))
+            child = Agent(config, provider=MockProvider("child"), use_storage=False)
+
+            agent.add_subagent(child)
+            agent.add_skill_runner(_UnusedSkillRunner())
+            agent.add_mcp_server(
+                "example",
+                _UnusedMcpServer(),
+                effects=(ActionEffect.EXECUTE,),
+            )
+            agent.add_event_subscriber(_RecordingSubscriber())
+
+            create_disclosure.assert_not_called()
+            create_storage.assert_not_called()
+            self.assertIsNone(agent._runtime)
+            self.assertEqual("subagent01", agent.list_subagents()[0].name)
+
+    def test_first_runtime_access_initializes_everything_once(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, patch(
+            "core.agent.create_progressive_skill_disclosure",
+            wraps=create_progressive_skill_disclosure,
+        ) as create_disclosure, patch(
+            "core.agent.read_model_profiles",
+            wraps=read_model_profiles,
+        ) as discover_models, patch(
+            "core.storage.create_storage_backend",
+            wraps=create_storage_backend,
+        ) as create_storage:
+            agent = Agent(
+                AgentConfig.create_default(Path(tmp)),
+                provider=MockProvider("ready"),
+            )
+
+            runtime = agent.runtime
+
+            self.assertIs(runtime, agent.runtime)
+            self.assertIsNotNone(agent.storage)
+            self.assertEqual("model:provided", agent.model_profiles[0].key)
+            self.assertEqual(1, create_disclosure.call_count)
+            self.assertEqual(1, discover_models.call_count)
+            self.assertEqual(1, create_storage.call_count)
+
+    def test_failed_initialization_is_visible_and_can_be_retried(self) -> None:
+        attempts = 0
+
+        def discover_models_once_ready(*args: object, **kwargs: object) -> object:
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                raise RuntimeError("model discovery unavailable")
+            return read_model_profiles(*args, **kwargs)
+
+        with tempfile.TemporaryDirectory() as tmp, patch(
+            "core.agent.read_model_profiles",
+            side_effect=discover_models_once_ready,
+        ):
+            agent = Agent(
+                AgentConfig.create_default(Path(tmp)),
+                provider=MockProvider("ready"),
+            )
+
+            with self.assertRaisesRegex(RuntimeError, "model discovery unavailable"):
+                _ = agent.runtime
+
+            self.assertIsNone(agent._runtime)
+            self.assertIsNone(agent._storage)
+            self.assertIsNone(agent._provider_pool)
+            self.assertIsNotNone(agent.runtime)
+            self.assertEqual(2, attempts)
+
+    def test_supplied_storage_provider_and_runner_keep_their_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = AgentConfig.create_default(root)
+            storage = create_storage_backend("jsonl", str(root / "state"))
+            provider = MockProvider("ready")
+            runner = _UnusedSkillRunner()
+            agent = Agent(
+                config,
+                provider=provider,
+                storage=storage,
+                skill_runners=[runner],
+            )
+
+            self.assertIs(storage, agent.storage)
+            self.assertIs(
+                runner,
+                agent.skill_runners.find_skill_runner("unused"),
+            )
+            self.assertIs(
+                provider,
+                agent.provider_pool.get_chat_provider(
+                    agent.model_profile.key,
+                    agent.model_profile.connection,
+                ),
+            )
+
+
+class _UnusedSkillRunner:
+    skill_type = "unused"
+    name = "unused-test-runner"
+    version = "1"
+    adds_model_context = False
+    dependencies: tuple[str, ...] = ()
+    required_services: tuple[str, ...] = ()
+
+    def load_skill(self, request: object) -> object:
+        raise AssertionError(f"unused runner was called: {request}")
+
+
+class _UnusedMcpServer:
+    def list_tools(self) -> list[dict[str, object]]:
+        return []
+
+    def call_tool(self, name: str, arguments: dict[str, object]) -> dict[str, object]:
+        raise AssertionError(f"unused MCP server was called: {name} {arguments}")
+
+
+class _RecordingSubscriber:
+    name = "lazy-registration"
+
+    def handle_event(self, event: object) -> None:
+        pass

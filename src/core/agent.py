@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
+from threading import RLock
 from typing import TYPE_CHECKING, Callable
 
 from skill.runners.defaults import (
     create_default_skill_runners,
     create_progressive_skill_disclosure,
 )
-from skill.runners.registry import SkillRunner
+from skill.runners.registry import SkillRunner, SkillRunners
 from skill.runners.mcp import McpServer, McpServers
 from core.provider.chat import ChatProvider, Message
 from core.provider.pool import ProviderPool
@@ -16,7 +17,7 @@ from core.config import AgentConfig
 from core.engine import AgentRuntime
 from core.identity import LOCAL_USER_ID
 from core.state.models import RunEvent
-from core.state.subscribers import RuntimeEventSubscriber
+from core.state.subscribers import RuntimeEventSubscriber, RuntimeEventSubscribers
 from core.actions import ActionEffect, ActionRules
 from core.secrets import UserSecretLookup, UserSecretResolver
 from core.task.models import (
@@ -76,58 +77,61 @@ class Agent:
         if storage is not None and not use_storage:
             raise ValueError("storage cannot be combined with use_storage=False")
         self.config = _load_agent_config(config)
-        self.storage = storage
-        if use_storage and self.storage is None:
-            from core.storage import create_storage_backend
-
-            self.storage = create_storage_backend(
-                self.config.storage.backend,
-                str(self.config.storage.path),
-                self.config.storage.url_env,
-            )
-        self.user_secrets = UserSecretResolver(secret_lookup)
-        bootstrap_store = None
-        if self.storage is not None:
-            from core.state.store import RuntimeStore
-
-            bootstrap_store = RuntimeStore(
-                self.storage,
-                self.config.storage.path,
-                LOCAL_USER_ID,
-                self.config.agent.name,
-            )
-        bootstrap_disclosure = create_progressive_skill_disclosure(
-            self.config,
-            store=bootstrap_store,
-            include_freshness=False,
-        )
-        bootstrap_index = bootstrap_disclosure.prepare_skill_index()
-        self.model_profiles = read_model_profiles(
-            bootstrap_disclosure,
-            bootstrap_index,
-            self.user_secrets.get_environment_for_user(LOCAL_USER_ID),
-        )
-        self._code_model_profiles: tuple[ModelProfile, ...] = ()
-        if provider is not None and not self.model_profiles:
-            self._code_model_profiles = (create_direct_provider_profile(),)
-            self.model_profiles = list(self._code_model_profiles)
-        self.model_profile = (
-            select_default_model_profile(self.model_profiles)
-            if self.model_profiles
-            else None
-        )
-        self.provider_pool = ProviderPool(
-            self.user_secrets.get_environment_for_user(LOCAL_USER_ID)
-        )
-        if provider is not None and self.model_profile is not None:
-            self.provider_pool.add_chat_provider(self.model_profile.key, provider)
-        self.mcp_servers = McpServers()
-        self.skill_runners = create_default_skill_runners(self.mcp_servers)
         self.action_rules = action_rules or ActionRules()
+        self.user_secrets = UserSecretResolver(secret_lookup)
+        self._use_storage = use_storage
+        self._configured_storage = storage
+        self._provided_provider = provider
+        self._storage: StorageBackend | None = None
+        self._runtime: AgentRuntime | None = None
+        self._provider_pool: ProviderPool | None = None
+        self._model_profiles: list[ModelProfile] = []
+        self._model_profile: ModelProfile | None = None
+        self._code_model_profiles: tuple[ModelProfile, ...] = ()
+        self._mcp_servers = McpServers()
+        self._skill_runners = create_default_skill_runners(self._mcp_servers)
         for runner in skill_runners or []:
-            self.skill_runners.add_skill_runner(runner, replace=True)
-        self.runtime = self._create_runtime()
+            self._skill_runners.add_skill_runner(runner, replace=True)
+        self._pending_event_subscribers = RuntimeEventSubscribers()
+        self._initialization_lock = RLock()
         self._subagents: list[SubAgent] = []
+
+    @property
+    def storage(self) -> StorageBackend | None:
+        self._ensure_initialized()
+        return self._storage
+
+    @property
+    def runtime(self) -> AgentRuntime:
+        self._ensure_initialized()
+        if self._runtime is None:
+            raise RuntimeError("Agent initialization did not create a Runtime")
+        return self._runtime
+
+    @property
+    def provider_pool(self) -> ProviderPool:
+        self._ensure_initialized()
+        if self._provider_pool is None:
+            raise RuntimeError("Agent initialization did not create a Provider pool")
+        return self._provider_pool
+
+    @property
+    def model_profiles(self) -> list[ModelProfile]:
+        self._ensure_initialized()
+        return self._model_profiles
+
+    @property
+    def model_profile(self) -> ModelProfile | None:
+        self._ensure_initialized()
+        return self._model_profile
+
+    @property
+    def mcp_servers(self) -> McpServers:
+        return self._mcp_servers
+
+    @property
+    def skill_runners(self) -> SkillRunners:
+        return self._skill_runners
 
     def add_subagent(
         self,
@@ -158,7 +162,8 @@ class Agent:
         return list(self._subagents)
 
     def add_skill_runner(self, runner: SkillRunner) -> None:
-        self.skill_runners.add_skill_runner(runner, replace=True)
+        with self._initialization_lock:
+            self._skill_runners.add_skill_runner(runner, replace=True)
 
     def add_mcp_server(
         self,
@@ -167,10 +172,15 @@ class Agent:
         *,
         effects: tuple[ActionEffect, ...],
     ) -> None:
-        self.mcp_servers.add_mcp_server(name, server, effects=effects)
+        with self._initialization_lock:
+            self._mcp_servers.add_mcp_server(name, server, effects=effects)
 
     def add_event_subscriber(self, subscriber: RuntimeEventSubscriber) -> None:
-        self.runtime.add_event_subscriber(subscriber)
+        with self._initialization_lock:
+            if self._runtime is None:
+                self._pending_event_subscribers.add_subscriber(subscriber)
+            else:
+                self._runtime.add_event_subscriber(subscriber)
 
     def add_model_provider(self, model_name: str, provider: ChatProvider) -> None:
         key = model_name.strip().lower()
@@ -178,7 +188,8 @@ class Agent:
             key = f"model:{key}"
         if key not in {profile.key for profile in self.model_profiles}:
             raise KeyError(f"model profile not found: {key}")
-        self.provider_pool.add_chat_provider(key, provider)
+        with self._initialization_lock:
+            self.provider_pool.add_chat_provider(key, provider)
 
     def for_user(self, user_id: str) -> "UserAgent":
         from core.user import UserAgent
@@ -284,8 +295,8 @@ class Agent:
     def _reload_model_profiles(self, user_id: str = LOCAL_USER_ID) -> None:
         profiles = self.runtime.read_model_profiles(user_id)
         if user_id == LOCAL_USER_ID:
-            self.model_profiles = profiles
-            self.model_profile = (
+            self._model_profiles = profiles
+            self._model_profile = (
                 select_default_model_profile(profiles) if profiles else None
             )
 
@@ -293,26 +304,108 @@ class Agent:
         self,
         config: AgentConfig,
     ) -> None:
-        if self.storage is not None and config.storage != self.config.storage:
-            raise ValueError("changing storage requires restarting the Agent")
-        event_subscribers = self.runtime.list_event_subscribers()
-        self.config = config
-        self.runtime = self._create_runtime(event_subscribers)
-        self._reload_model_profiles(LOCAL_USER_ID)
+        with self._initialization_lock:
+            has_storage = self._configured_storage is not None or self._storage is not None
+            if has_storage and config.storage != self.config.storage:
+                raise ValueError("changing storage requires restarting the Agent")
+            if self._runtime is None:
+                self.config = config
+                return
+            runtime = self._build_runtime(
+                config,
+                self.provider_pool,
+                self._storage,
+                self._code_model_profiles,
+                self._runtime.list_event_subscribers(),
+            )
+            profiles = runtime.read_model_profiles(LOCAL_USER_ID)
+            profile = select_default_model_profile(profiles) if profiles else None
+            self.config = config
+            self._runtime = runtime
+            self._model_profiles = profiles
+            self._model_profile = profile
 
-    def _create_runtime(
+    def _ensure_initialized(self) -> None:
+        if self._runtime is not None:
+            return
+        with self._initialization_lock:
+            if self._runtime is not None:
+                return
+            storage = self._create_configured_storage()
+            store = self._create_bootstrap_store(storage)
+            disclosure = create_progressive_skill_disclosure(
+                self.config,
+                store=store,
+                include_freshness=False,
+            )
+            index = disclosure.prepare_skill_index()
+            environment = self.user_secrets.get_environment_for_user(LOCAL_USER_ID)
+            profiles = read_model_profiles(disclosure, index, environment)
+            code_profiles: tuple[ModelProfile, ...] = ()
+            if self._provided_provider is not None and not profiles:
+                code_profiles = (create_direct_provider_profile(),)
+                profiles = list(code_profiles)
+            profile = select_default_model_profile(profiles) if profiles else None
+            provider_pool = ProviderPool(environment)
+            if self._provided_provider is not None and profile is not None:
+                provider_pool.add_chat_provider(profile.key, self._provided_provider)
+            runtime = self._build_runtime(
+                self.config,
+                provider_pool,
+                storage,
+                code_profiles,
+                self._pending_event_subscribers.list_subscribers(),
+            )
+            self._storage = storage
+            self._provider_pool = provider_pool
+            self._model_profiles = profiles
+            self._model_profile = profile
+            self._code_model_profiles = code_profiles
+            self._runtime = runtime
+
+    def _create_configured_storage(self) -> StorageBackend | None:
+        if self._configured_storage is not None or not self._use_storage:
+            return self._configured_storage
+        from core.storage import create_storage_backend
+
+        return create_storage_backend(
+            self.config.storage.backend,
+            str(self.config.storage.path),
+            self.config.storage.url_env,
+        )
+
+    def _create_bootstrap_store(
         self,
-        event_subscribers: tuple[RuntimeEventSubscriber, ...] = (),
+        storage: StorageBackend | None,
+    ) -> "RuntimeStore | None":
+        if storage is None:
+            return None
+        from core.state.store import RuntimeStore
+
+        return RuntimeStore(
+            storage,
+            self.config.storage.path,
+            LOCAL_USER_ID,
+            self.config.agent.name,
+        )
+
+    def _build_runtime(
+        self,
+        config: AgentConfig,
+        provider_pool: ProviderPool,
+        storage: StorageBackend | None,
+        code_profiles: tuple[ModelProfile, ...],
+        event_subscribers: tuple[RuntimeEventSubscriber, ...],
     ) -> AgentRuntime:
         runtime = AgentRuntime(
-            self.config,
-            self.provider_pool,
-            self.skill_runners,
-            self.storage,
+            config,
+            provider_pool,
+            self._skill_runners,
+            storage,
             self.action_rules,
             self.user_secrets,
         )
-        runtime.set_code_model_profiles(self._code_model_profiles)
+        runtime.set_code_model_profiles(code_profiles)
         runtime.set_skill_change_listener(self._activate_changed_skill)
         for subscriber in event_subscribers:
             runtime.add_event_subscriber(subscriber)

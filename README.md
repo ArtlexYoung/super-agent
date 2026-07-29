@@ -62,6 +62,12 @@ print(result.text)
 print(result.run_id)
 ```
 
+Creating an `Agent` reads its configuration but does not open storage, scan Skills,
+discover models, or build the Runtime until the first operation needs them. Custom
+SkillRunners, MCP servers, event subscribers, and subagents can therefore be registered
+before startup work begins. Initialization is performed once; a failure is raised and a
+later call retries from a clean state.
+
 Runtime normally chooses a task scene automatically. Applications and CLI users can
 override it for one run:
 

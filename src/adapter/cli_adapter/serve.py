@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 
-from core.agent import Agent
+from adapter.cli_adapter import load_agent
 from adapter.ag_ui_adapter.server import DEFAULT_ALLOWED_ORIGINS, create_ag_ui_server
 from core.identity import LOCAL_USER_ID
 
@@ -24,7 +23,7 @@ def configure_serve_parser(parser: argparse.ArgumentParser) -> None:
 
 
 def run_serve_command(args: argparse.Namespace) -> int:
-    agent = Agent(None if args.config is None else Path(args.config))
+    agent = load_agent(args.config)
     origins = tuple(args.allowed_origins or DEFAULT_ALLOWED_ORIGINS)
     server = create_ag_ui_server(
         agent,

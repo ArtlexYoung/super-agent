@@ -4,7 +4,7 @@ import argparse
 import json
 from dataclasses import asdict
 
-from core.agent import Agent
+from adapter.cli_adapter import load_agent
 from core.identity import LOCAL_USER_ID
 
 
@@ -39,7 +39,7 @@ def configure_conversations_parser(parser: argparse.ArgumentParser) -> None:
 
 def run_conversations_command(args: argparse.Namespace) -> int:
     command = args.conversations_command or "list"
-    agent = _load_agent(args.config)
+    agent = load_agent(args.config)
     conversations = agent.for_user(args.user_id).conversations
     if command == "list":
         return _print_json(
@@ -72,10 +72,6 @@ def run_conversations_command(args: argparse.Namespace) -> int:
         conversations.delete(args.conversation_id)
         return _print_json({"conversation_id": args.conversation_id, "deleted": True})
     raise ValueError(f"unknown conversations command: {command}")
-
-
-def _load_agent(config_path: str | None) -> Agent:
-    return Agent(config_path)
 
 
 def _print_json(value: object) -> int:

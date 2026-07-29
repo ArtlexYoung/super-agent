@@ -12,6 +12,7 @@ from adapter.cli_adapter.conversations import (
     configure_conversations_parser,
     run_conversations_command,
 )
+from adapter.cli_adapter import load_agent
 from adapter.cli_adapter.evolution import (
     configure_evolution_parser,
     run_evolution_command,
@@ -22,7 +23,7 @@ from adapter.cli_adapter.runs import configure_runs_parser, run_runs_command
 from adapter.cli_adapter.serve import configure_serve_parser, run_serve_command
 from adapter.cli_adapter.skills import configure_skills_parser, run_skills_command
 from adapter.cli_adapter.storage import configure_storage_parser, run_storage_command
-from core.agent import Agent, AgentRunOptions
+from core.agent import AgentRunOptions
 from core.provider.chat import Message
 from core.identity import LOCAL_USER_ID
 from core.state.models import RunEvent
@@ -167,7 +168,7 @@ def _run_init_command(root: Path) -> int:
 
 
 def _run_prompt_command(config_path: Path | None, request: RuntimeRequest, output: str) -> int:
-    agent = _load_agent(config_path)
+    agent = load_agent(config_path)
     user = agent.for_user(request.user_id)
     if output == "jsonl":
         result = user.run(
@@ -202,7 +203,7 @@ def _run_chat_command(
     conversation_id: str | None,
     scene: str | None,
 ) -> int:
-    agent = _load_agent(config_path)
+    agent = load_agent(config_path)
     user = agent.for_user(user_id)
     conversation = (
         user.conversations.create()
@@ -224,10 +225,6 @@ def _run_chat_command(
             scene=scene,
         )
         print(f"Agent: {result.text}")
-
-
-def _load_agent(config_path: Path | None) -> Agent:
-    return Agent() if config_path is None else Agent(config_path)
 
 
 def run_result_to_dict(result: TaskResult) -> dict[str, Any]:
