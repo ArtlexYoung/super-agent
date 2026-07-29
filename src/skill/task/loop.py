@@ -35,11 +35,11 @@ from skill.task.scheduler import Scheduler
 from skill.task.preparation import (
     RunContext,
     build_system_prompt,
+    create_subagent_result,
     create_runtime_tools,
     load_background_contributions,
     load_run_skill_contributions,
     prepare_run,
-    run_step_subagents,
     select_model_context_skills,
 )
 from core.models import SubAgentResult, Task, RunResult
@@ -115,15 +115,11 @@ class AdaptiveTaskLoop:
             context,
             organization_model.send_messages,
         )
-        context = replace(
-            context,
-            background_contributions=tuple(background),
-        )
         if plan.planning_required:
             if context.planner_policy is None:
                 raise RuntimeError("task requires planning but no Planner Skill is available")
             plan = self._create_planner_task_plan(context)
-            return self._run_task_plan(context, plan)
+            return self._run_task_plan(context, plan, background)
         plan = create_direct_task_plan(
             request.prompt,
             plan.purpose,
@@ -137,7 +133,7 @@ class AdaptiveTaskLoop:
                 **plan.to_dict(),
             },
         )
-        return self._run_task_plan(context, plan, context)
+        return self._run_task_plan(context, plan, background)
 
     def _create_planner_task_plan(
         self,
@@ -181,30 +177,26 @@ class AdaptiveTaskLoop:
         self,
         context: RunContext,
         plan: TaskPlan,
-        direct_context: RunContext | None = None,
+        background_contributions: list[LoadedSkill],
     ) -> RunResult:
         progress = _TaskProgress(
             completed_results=[],
             skills=[],
             tools=[],
             subagent_results=[],
-            contributions=list(context.background_contributions),
+            contributions=list(background_contributions),
         )
-        step_contexts = self._schedule_steps(
-            context,
-            plan,
-            direct_context,
-        )
+        step_contexts = self._schedule_steps(context, plan)
         for step_number, (step, step_context) in enumerate(
             zip(plan.steps, step_contexts, strict=True),
             start=1,
         ):
             text, progress.stop_reason = self._run_step(
-                context,
+                step_context,
                 step,
                 step_number,
                 progress=progress,
-                step_context=step_context,
+                background_contributions=background_contributions,
             )
             progress.completed_results.append(text)
         result = RunResult(
@@ -223,13 +215,15 @@ class AdaptiveTaskLoop:
         self,
         context: RunContext,
         plan: TaskPlan,
-        direct_context: RunContext | None,
     ) -> list[RunContext]:
+        if not context.plan.planning_required and len(plan.steps) != 1:
+            raise ValueError("direct task plan must contain exactly one step")
         scheduled: list[RunContext] = []
         for step_number, step in enumerate(plan.steps, start=1):
-            selected = direct_context or self._prepare_step_context(
-                context,
-                step,
+            selected = (
+                self._prepare_step_context(context, step)
+                if context.plan.planning_required
+                else context
             )
             context.run.record_event(
                 "task.step.scheduled",
@@ -240,37 +234,40 @@ class AdaptiveTaskLoop:
                 },
             )
             scheduled.append(selected)
-            direct_context = None
         return scheduled
 
     def _run_step(
         self,
-        context: RunContext,
+        step_context: RunContext,
         step: Step,
         step_number: int,
         *,
         progress: _TaskProgress,
-        step_context: RunContext,
+        background_contributions: list[LoadedSkill],
     ) -> tuple[str, str]:
-        request = context.task
-        session = context.run
+        request = step_context.task
+        session = step_context.run
         plan = step_context.plan
         contributions = load_run_skill_contributions(
             session,
             plan,
         )
-        combined = list(context.background_contributions) + contributions
+        combined = [*background_contributions, *contributions]
         skills = [
             contribution.model_context
             for contribution in contributions
             if contribution.model_context is not None
         ]
-        delegation_request = replace(request, prompt=step.instruction)
-        step_subagents = run_step_subagents(
-            delegation_request,
-            session,
-            plan,
-        )
+        step_subagents = [
+            create_subagent_result(
+                request.subagents.run_named_subagent(
+                    name,
+                    step.instruction,
+                    session,
+                )
+            )
+            for name in plan.subagent_names
+        ]
         organization_model = self.create_text_model(
             session.store,
             "memory_organization",
@@ -415,12 +412,7 @@ class AdaptiveTaskLoop:
                 session,
             ),
         )
-        return replace(
-            context,
-            plan=plan,
-            model_profile=self.model_calls.require_model_profile(model),
-            workflow_policy=context.workflow_policy,
-        )
+        return replace(context, plan=plan)
 
     def _select_run_model(
         self,
@@ -429,8 +421,6 @@ class AdaptiveTaskLoop:
     ) -> None:
         decision = context.plan.model
         profile = self.model_calls.require_model_profile(decision)
-        if profile != context.model_profile:
-            raise RuntimeError("prepared model profile does not match Plan")
         session.select_model(
             profile,
             self.provider_pool.get_chat_provider(

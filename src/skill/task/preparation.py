@@ -11,9 +11,7 @@ from skill.loaders.loaded import (
     TaskPolicy,
 )
 from skill.loaders.registry import SkillLoaders
-from skill.skills import Skills
-from core.config import AgentConfig
-from core.provider.chat import ChatProvider, Message
+from core.provider.chat import Message
 from core.events import StorageBackend
 from skill.task.planning import decide_task_planning
 from skill.task.run import Run
@@ -34,30 +32,17 @@ from skill.loaders.models import ModelProfile, model_profile_to_dict
 
 
 @dataclass(frozen=True)
-class RuntimeLockInput:
-    config: AgentConfig
-    model_profile: ModelProfile
-    skills: Skills
-    provider: ChatProvider
-    storage: StorageBackend | None
-    plan: Plan
-    environment: Mapping[str, str]
-
-
-@dataclass(frozen=True)
 class RunContext:
     """Task-local data shared by scheduling and execution."""
 
     task: Task
     run: Run
     plan: Plan
-    model_profile: ModelProfile
     workflow_policy: TaskPolicy
     scene_contribution: LoadedSkill | None
     planner_policy: PlanningPolicy | None
     planner_contribution: LoadedSkill | None
     scheduler: Scheduler
-    background_contributions: tuple[LoadedSkill, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -67,34 +52,42 @@ class _SelectedRunSkills:
     references: tuple[SkillReference, ...]
 
 
-def create_runtime_lock(request: RuntimeLockInput) -> dict[str, object]:
-    request.skills.validate_loaders()
+def create_runtime_lock(
+    run: Run,
+    plan: Plan,
+    *,
+    storage: StorageBackend | None,
+    environment: Mapping[str, str],
+) -> dict[str, object]:
+    if run.model_profile is None or run.provider is None:
+        raise RuntimeError("task model must be selected before Runtime lock")
+    run.skills.validate_loaders()
     return {
         "schema_version": 18,
         "agent": {
-            "name": request.config.agent.name,
-            "system": request.config.agent.system,
-            "skills": list(request.config.agent.skills),
-            "max_agent_chain_depth": request.config.agent.max_agent_chain_depth,
-            "disabled_skills": list(request.config.agent.disabled_skills),
+            "name": run.config.agent.name,
+            "system": run.config.agent.system,
+            "skills": list(run.config.agent.skills),
+            "max_agent_chain_depth": run.config.agent.max_agent_chain_depth,
+            "disabled_skills": list(run.config.agent.disabled_skills),
         },
         "model": {
-            **model_profile_to_dict(request.model_profile, request.environment),
+            **model_profile_to_dict(run.model_profile, environment),
             "implementation": (
-                f"{type(request.provider).__module__}."
-                f"{type(request.provider).__qualname__}"
+                f"{type(run.provider).__module__}."
+                f"{type(run.provider).__qualname__}"
             ),
         },
-        "plan": request.plan.to_dict(),
+        "plan": plan.to_dict(),
         "storage": {
-            "enabled": request.storage is not None,
-            "backend": None if request.storage is None else request.storage.name,
+            "enabled": storage is not None,
+            "backend": None if storage is None else storage.name,
         },
         "skill_loaders": [
             item.descriptor.to_dict()
-            for item in request.skills.list_loaders()
+            for item in run.skills.list_loaders()
         ],
-        "registered_code": _list_registered_code(request.skills.loaders),
+        "registered_code": _list_registered_code(run.skills.loaders),
         "skills": [
             {
                 "key": entry.reference.key,
@@ -105,7 +98,7 @@ def create_runtime_lock(request: RuntimeLockInput) -> dict[str, object]:
                 "provides": list(entry.provides),
                 "requires": list(entry.requires),
             }
-            for entry in request.skills.index.entries
+            for entry in run.skills.index.entries
         ],
     }
 
@@ -209,7 +202,7 @@ def prepare_run(
         model_context_skills=(
             ()
             if planning.should_plan
-            else _select_model_context_skills(references, session)
+            else select_model_context_skills(references, session)
         ),
         subagent_names=() if planning.should_plan else tuple(subagent_names),
         subagent_reasons=() if planning.should_plan else tuple(subagent_reasons),
@@ -223,7 +216,6 @@ def prepare_run(
         task=request,
         run=session,
         plan=plan,
-        model_profile=_require_model_profile(model_profiles, model.profile_key),
         workflow_policy=workflow_policy,
         scene_contribution=selected.scene_contribution,
         planner_policy=planner_policy,
@@ -446,7 +438,7 @@ def create_runtime_tools(
 
     def run_subagent(name: str, prompt: str) -> dict[str, object]:
         value = request.subagents.run_named_subagent(name, prompt, session)
-        collected_results.append(_subagent_result_from_dict(value))
+        collected_results.append(create_subagent_result(value))
         return value
 
     return RuntimeTools(
@@ -461,31 +453,7 @@ def create_runtime_tools(
     )
 
 
-def run_step_subagents(
-    request: Task,
-    session: Run,
-    plan: Plan,
-) -> list[SubAgentResult]:
-    return [
-        _subagent_result_from_dict(
-            request.subagents.run_named_subagent(
-                name,
-                request.prompt,
-                session,
-            )
-        )
-        for name in plan.subagent_names
-    ]
-
-
 def select_model_context_skills(
-    selected_skills: tuple[SkillReference, ...],
-    session: Run,
-) -> tuple[SkillReference, ...]:
-    return _select_model_context_skills(selected_skills, session)
-
-
-def _select_model_context_skills(
     selected_skills: tuple[SkillReference, ...],
     session: Run,
 ) -> tuple[SkillReference, ...]:
@@ -495,19 +463,6 @@ def _select_model_context_skills(
         for reference in selected_skills
         if reference.skill_type in model_context_types
     )
-
-
-def _require_model_profile(
-    model_profiles: list[ModelProfile],
-    profile_key: str,
-) -> ModelProfile:
-    profile = next(
-        (item for item in model_profiles if item.key == profile_key),
-        None,
-    )
-    if profile is None:
-        raise RuntimeError(f"selected model profile is unavailable: {profile_key}")
-    return profile
 
 
 def build_system_prompt(
@@ -603,7 +558,7 @@ def _configured_non_scene_skills(session: Run) -> list[str]:
     ]
 
 
-def _subagent_result_from_dict(value: dict[str, object]) -> SubAgentResult:
+def create_subagent_result(value: dict[str, object]) -> SubAgentResult:
     nested = value.get("subagent_results")
     return SubAgentResult(
         name=str(value["name"]),
@@ -612,7 +567,7 @@ def _subagent_result_from_dict(value: dict[str, object]) -> SubAgentResult:
         prompt=str(value.get("prompt", "")),
         created_by_agent=bool(value.get("created_by_agent", False)),
         subagent_results=(
-            [_subagent_result_from_dict(cast(dict[str, object], item)) for item in nested]
+            [create_subagent_result(cast(dict[str, object], item)) for item in nested]
             if isinstance(nested, list)
             else None
         ),

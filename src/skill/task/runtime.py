@@ -25,7 +25,7 @@ from core.state.subscribers import (
 from core.events import StorageBackend
 from skill.task.loop import AdaptiveTaskLoop, list_run_actions
 from skill.task.plan import Plan
-from skill.task.preparation import RuntimeLockInput, create_runtime_lock
+from skill.task.preparation import create_runtime_lock
 from skill.task.model_calls import estimate_text_tokens
 from core.models import RunLearningResult, Task, RunResult, TaskTrace
 from skill.skills import Skills
@@ -435,17 +435,12 @@ class Runtime:
         if run.model_profile is None or run.provider is None:
             raise RuntimeError("task model must be selected before Runtime lock")
         runtime_lock = create_runtime_lock(
-            RuntimeLockInput(
-                config=self.config,
-                model_profile=run.model_profile,
-                skills=run.skills,
-                provider=run.provider,
-                storage=self.storage,
-                plan=plan,
-                environment=self.user_secrets.get_environment_for_user(
-                    run.identity.user_id
-                ),
-            )
+            run,
+            plan,
+            storage=self.storage,
+            environment=self.user_secrets.get_environment_for_user(
+                run.identity.user_id
+            ),
         )
         content = json.dumps(
             runtime_lock,

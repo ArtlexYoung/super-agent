@@ -458,6 +458,20 @@ Status: implemented.
 - Add `SkillLoadRequest.open_skill()` as the one direct way for a loader to open its exact
   progressively disclosed reference, removing repeated open-and-type code.
 
+## v0.0.97: One Explicit Task Context
+
+Status: implemented.
+
+- Build the Runtime lock directly from the active Run and immutable Plan instead of copying
+  the same configuration, provider, storage, and Skill registry into another request object.
+- Keep model choice only in the Plan and selected Run provider; remove its duplicate task
+  context projection and validate the selected profile when it is actually applied.
+- Pass background Skill contributions explicitly into task execution rather than replacing
+  an immutable context with execution state.
+- Let scheduling choose direct versus planned contexts from the Plan itself while preserving
+  the guarantee that every planned Step is routed and recorded before any Step executes.
+- Execute planned subagents in the task loop and remove one-call forwarding helpers.
+
 ## Release Gate
 
 The project will not move to `0.1.x` because of feature count. The gate is a reproducible
