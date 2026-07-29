@@ -66,8 +66,11 @@ recommend -> create isolated candidate -> evaluate -> promote -> monitor -> stab
 
 The candidate is a complete Skill directory. Validation rejects path traversal, symlinks,
 identity changes, stale parents, empty changes, and invalid manifests. Promotion requires
-a passing no-regression report and atomically writes a user overlay. Shared project and
-built-in Skills are never overwritten.
+a passing no-regression report and atomically writes a user overlay. The report binds the
+normalized case set and the complete candidate and baseline directory hashes. Every case
+must pass, the aggregate must reach the configured minimum, and no same-name case may score
+below its baseline. Evolution state records the exact report ID and file hash; promotion
+never substitutes a newer report. Shared project and built-in Skills are never overwritten.
 
 After promotion, any failed online sample rolls the Skill back. Three successful samples
 with an average score of at least `0.75` mark it stable; a lower average rolls it back.

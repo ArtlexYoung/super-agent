@@ -10,7 +10,7 @@ from core.evolution.files import DirectoryDifference
 from skill.evolution.revision import SkillRevision, skill_revision_to_dict
 
 
-SKILL_EVOLUTION_SCHEMA_VERSION = 2
+SKILL_EVOLUTION_SCHEMA_VERSION = 3
 
 
 @dataclass(frozen=True)
@@ -39,6 +39,15 @@ class SkillCandidateDifference:
 
 
 @dataclass(frozen=True)
+class CandidateEvaluation:
+    report_id: str
+    report_sha256: str
+    score: float
+    passed: bool
+    no_regression: bool
+
+
+@dataclass(frozen=True)
 class SkillEvolutionRecommendation:
     evidence_sha256: str
     evidence_record_ids: list[str]
@@ -63,8 +72,7 @@ class SkillEvolutionState:
     candidate_id: str
     candidate_revision: SkillRevision | None
     candidate_difference: SkillCandidateDifference | None
-    report_id: str
-    evaluation_score: float | None
+    evaluation: CandidateEvaluation | None
     rollback_revision_id: str
     detail: str
     created_at: str
@@ -105,13 +113,48 @@ def skill_evolution_to_dict(state: SkillEvolutionState) -> dict[str, object]:
             if state.candidate_difference is None
             else skill_candidate_difference_to_dict(state.candidate_difference)
         ),
-        "report_id": state.report_id,
-        "evaluation_score": state.evaluation_score,
+        "evaluation": (
+            None
+            if state.evaluation is None
+            else candidate_evaluation_to_dict(state.evaluation)
+        ),
         "rollback_revision_id": state.rollback_revision_id,
         "detail": state.detail,
         "created_at": state.created_at,
         "updated_at": state.updated_at,
     }
+
+
+def candidate_evaluation_to_dict(value: CandidateEvaluation) -> dict[str, object]:
+    validate_candidate_evaluation(value)
+    return asdict(value)
+
+
+def candidate_evaluation_from_dict(value: object) -> CandidateEvaluation:
+    fields = set(CandidateEvaluation.__dataclass_fields__)
+    if not isinstance(value, dict) or set(value) != fields:
+        raise ValueError("Skill candidate evaluation does not match schema")
+    evaluation = CandidateEvaluation(
+        report_id=_required_text(value["report_id"], "report_id"),
+        report_sha256=_required_sha256(value["report_sha256"], "report_sha256"),
+        score=_non_negative_float(value["score"], "score"),
+        passed=_required_boolean(value["passed"], "passed"),
+        no_regression=_required_boolean(value["no_regression"], "no_regression"),
+    )
+    validate_candidate_evaluation(evaluation)
+    return evaluation
+
+
+def validate_candidate_evaluation(value: CandidateEvaluation) -> None:
+    _required_text(value.report_id, "report_id")
+    _required_sha256(value.report_sha256, "report_sha256")
+    score = _non_negative_float(value.score, "score")
+    if score > 1:
+        raise ValueError("Skill candidate evaluation score must be between 0 and 1")
+    if not isinstance(value.passed, bool) or not isinstance(value.no_regression, bool):
+        raise TypeError("Skill candidate evaluation decisions must be booleans")
+    if value.passed and not value.no_regression:
+        raise ValueError("Skill candidate cannot pass with regression")
 
 
 def create_skill_candidate_difference(
@@ -261,6 +304,12 @@ def _required_text(value: object, name: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"Skill evolution {name} cannot be empty")
     return value.strip()
+
+
+def _required_boolean(value: object, name: str) -> bool:
+    if not isinstance(value, bool):
+        raise TypeError(f"Skill evolution {name} must be a boolean")
+    return value
 
 
 def _non_negative_int(value: object, name: str) -> int:

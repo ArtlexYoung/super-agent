@@ -62,5 +62,7 @@ process can start.
 
 Package validation also rejects symlinks and paths outside a Skill directory. Candidate
 Skills remain outside active roots until validation and no-regression evaluation pass.
-Provider failures, memory-organization failures, invalid candidates, and blocked actions
-surface as errors rather than alternate behavior.
+Promotion reads only the report bound into evolution state and verifies its file hash,
+case-set hash, candidate hash, and baseline hash. Changed or unrecorded reports cannot
+authorize a write. Provider failures, memory-organization failures, invalid candidates,
+and blocked actions surface as errors rather than alternate behavior.

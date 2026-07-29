@@ -7,16 +7,20 @@ from dataclasses import dataclass, replace
 
 from core.evolution.state_values import (
     SKILL_EVOLUTION_SCHEMA_VERSION,
+    CandidateEvaluation,
     SkillCandidateDifference,
     SkillEvolutionMetrics,
     SkillEvolutionRecommendation,
     SkillEvolutionState,
+    candidate_evaluation_from_dict,
+    candidate_evaluation_to_dict,
     create_skill_candidate_difference,
     optional_skill_evolution_metrics_from_dict,
     skill_candidate_difference_from_dict,
     skill_candidate_difference_to_dict,
     skill_evolution_metrics_to_dict,
     skill_evolution_to_dict,
+    validate_candidate_evaluation,
     validate_skill_candidate_difference,
     validate_skill_evolution_recommendation,
 )
@@ -141,24 +145,19 @@ def record_skill_evolution_candidate(
 def record_skill_candidate_evaluation(
     store: RuntimeStore,
     candidate_id: str,
-    report_id: str,
-    score: float,
-    passed: bool,
+    evaluation: CandidateEvaluation,
 ) -> SkillEvolutionState:
     state = find_candidate_skill_evolution(store, candidate_id)
     _require_status(state, {"candidate_created", "evaluated", "rejected"})
-    if not isinstance(passed, bool):
-        raise TypeError("Skill candidate evaluation passed must be a boolean")
+    validate_candidate_evaluation(evaluation)
     return _append_and_apply(
         store,
         state,
         "skill_evolution.candidate_evaluated",
         {
             "schema_version": SKILL_EVOLUTION_SCHEMA_VERSION,
-            "report_id": _required_text(report_id, "report_id"),
-            "evaluation_score": _read_score(score),
-            "passed": passed,
-            "status": "evaluated" if passed else "rejected",
+            "evaluation": candidate_evaluation_to_dict(evaluation),
+            "status": "evaluated" if evaluation.passed else "rejected",
         },
     )
 
@@ -170,6 +169,10 @@ def require_skill_candidate_can_promote(
 ) -> SkillEvolutionState:
     state = find_candidate_skill_evolution(store, candidate_id)
     _require_status(state, {"evaluated"})
+    if state.evaluation is None or not (
+        state.evaluation.passed and state.evaluation.no_regression
+    ):
+        raise ValueError("Skill candidate has no passing no-regression evaluation")
     _require_same_revision(state.source_revision, current_revision, state.skill_key)
     return state
 
@@ -386,8 +389,7 @@ def _state_from_started_event(
         candidate_id=_optional_text(event.data["candidate_id"], "candidate_id"),
         candidate_revision=_optional_revision_from_dict(event.data["candidate_revision"]),
         candidate_difference=None,
-        report_id="",
-        evaluation_score=None,
+        evaluation=None,
         rollback_revision_id="",
         detail="",
         created_at=event.created_at,
@@ -421,19 +423,16 @@ def _apply_skill_evolution_event(
         _require_event(
             event,
             event.event_type,
-            {"schema_version", "report_id", "evaluation_score", "passed", "status"},
+            {"schema_version", "evaluation", "status"},
         )
-        passed = event.data["passed"]
-        if not isinstance(passed, bool):
-            raise TypeError("Skill candidate evaluation passed must be a boolean")
+        evaluation = candidate_evaluation_from_dict(event.data["evaluation"])
         status = _read_status(event.data["status"])
-        if status != ("evaluated" if passed else "rejected"):
+        if status != ("evaluated" if evaluation.passed else "rejected"):
             raise ValueError("Skill candidate evaluation status does not match result")
         return replace(
             state,
             status=status,
-            report_id=_required_text(event.data["report_id"], "report_id"),
-            evaluation_score=_read_score(event.data["evaluation_score"]),
+            evaluation=evaluation,
             updated_at=event.created_at,
         )
     if event.event_type == "skill_evolution.candidate_promoted":
@@ -581,15 +580,6 @@ def _clean_evolution_id(value: str) -> str:
     if re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,191}", clean) is None:
         raise ValueError("invalid Skill evolution id")
     return clean
-
-
-def _read_score(value: object) -> float:
-    if isinstance(value, bool) or not isinstance(value, int | float):
-        raise TypeError("Skill evolution evaluation_score must be a number")
-    score = float(value)
-    if not 0 <= score <= 1:
-        raise ValueError("Skill evolution evaluation_score must be between 0 and 1")
-    return score
 
 
 def _required_sha256(value: object, name: str) -> str:

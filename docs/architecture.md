@@ -164,7 +164,9 @@ forgetting use the same action boundary. The Web and CLI adapters do not bypass 
 Core records which exact Skill revisions affected each run. Eligible Agent-owned Skills
 enter one candidate, evaluation, promotion, monitoring, and rollback state machine. The
 candidate unit is the complete Skill directory, and promotion requires non-regression
-evidence for every evaluation case. Executable SkillRunner code remains reviewed
+evidence for every evaluation case. The state machine binds one immutable report by ID and
+SHA-256 to the normalized cases plus candidate and baseline directory hashes. Manual and
+automatic evolution use this same gate. Executable SkillRunner code remains reviewed
 application code rather than downloadable Skill content.
 
 ## Invariants

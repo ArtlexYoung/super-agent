@@ -188,6 +188,19 @@ Status: implemented.
 - Record implementation and settings hashes plus effects in the Runtime lock without
   recording environment values.
 
+## v0.0.76: Evidence-Bound Skill Promotion
+
+Status: implemented.
+
+- Bind every evaluation report to normalized cases plus complete candidate and baseline
+  directory hashes.
+- Require every candidate case to pass, the configured minimum score to be reached, and
+  every same-name case to match or exceed its baseline.
+- Store one exact report ID and SHA-256 in evolution state; never select evidence by file
+  recency or silently substitute an unrecorded report.
+- Make manual and automatic evolution pass through the same strict report reader and
+  promotion gate.
+
 ## Release Gate
 
 The project will not move to `0.1.x` because of feature count. The gate is a reproducible

@@ -14,14 +14,17 @@ from core.evolution.files import (
 )
 from core.evolution.recommendations import recommend_skill_revisions
 from core.evolution.state import (
-    SkillCandidateDifference,
-    SkillEvolutionMetrics,
-    SkillEvolutionRecommendation,
-    SkillEvolutionState,
     create_skill_candidate_difference,
     list_skill_evolutions,
     read_skill_evolution,
     skill_evolution_to_dict,
+)
+from core.evolution.state_values import (
+    CandidateEvaluation,
+    SkillCandidateDifference,
+    SkillEvolutionMetrics,
+    SkillEvolutionRecommendation,
+    SkillEvolutionState,
 )
 
 __all__ = [
@@ -29,6 +32,7 @@ __all__ = [
     "DirectoryFileChanges",
     "DisclosedDirectoryFile",
     "EvaluationEvidenceSummary",
+    "CandidateEvaluation",
     "SkillCandidateDifference",
     "SkillEvolutionMetrics",
     "SkillEvolutionRecommendation",

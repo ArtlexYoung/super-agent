@@ -12,6 +12,24 @@ from support import write_workflow_skill
 
 
 class SkillEvolutionTests(unittest.TestCase):
+    def test_invalid_minimum_score_is_rejected_before_model_use(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            provider = SequenceProvider([])
+            manager = _make_agent(root, provider).for_user(
+                "local"
+            ).skills.create_evolution_manager()
+
+            with self.assertRaisesRegex(ValueError, "between 0 and 1"):
+                type(manager)(
+                    skill_disclosure=manager.skill_disclosure,
+                    store=manager.store,
+                    models=manager.models,
+                    minimum_score=float("nan"),
+                )
+
+            self.assertEqual([], provider.responses)
+
     def test_candidate_does_not_change_active_skill_before_promotion(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -143,6 +161,9 @@ class SkillEvolutionTests(unittest.TestCase):
             promoted = manager.promote_skill_candidate(candidate.candidate_id)
 
             self.assertTrue(report.passed)
+            self.assertEqual(candidate.candidate_sha256, report.candidate_content_sha256)
+            self.assertEqual(candidate.parent_sha256, report.baseline_content_sha256)
+            self.assertEqual(64, len(report.case_set_sha256))
             self.assertIn("Evaluation requirement", provider.last_messages[0]["content"])
             self.assertIn("FILE SKILL.md", provider.last_messages[0]["content"])
             self.assertEqual("writer", promoted.name)
@@ -158,6 +179,13 @@ class SkillEvolutionTests(unittest.TestCase):
                 (root / "skills" / "writer" / "SKILL.md").read_text(),
             )
             state = manager.store.read_skill_evolution_events(candidate.candidate_id)
+            evaluated_event = next(
+                event
+                for event in state
+                if event.event_type == "skill_evolution.candidate_evaluated"
+            )
+            self.assertEqual(3, evaluated_event.data["schema_version"])
+            self.assertEqual(64, len(evaluated_event.data["evaluation"]["report_sha256"]))
             self.assertIn(
                 "rollback_revision_id",
                 next(
@@ -190,6 +218,111 @@ class SkillEvolutionTests(unittest.TestCase):
                 manager.store.disclosure.cache_root,
                 bob_store.disclosure.cache_root,
             )
+
+    def test_promotion_rejects_a_changed_recorded_report(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_prompt_skill(root, "writer", "Original instructions.")
+            manager = _make_manager(
+                root,
+                [
+                    _file_changes({"SKILL.md": "Candidate instructions.\n"}),
+                    "required output",
+                    "required baseline output",
+                ],
+            )
+            candidate = manager.create_skill_candidate("writer", "improve output")
+            report = manager.evaluate_skill_candidate(
+                candidate.candidate_id,
+                [EvaluationCase("required", "write", ["required"])],
+            )
+            report.path.write_text(
+                report.path.read_text(encoding="utf-8").replace(
+                    "required output",
+                    "changed output",
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "report changed"):
+                manager.promote_skill_candidate(candidate.candidate_id)
+
+            self.assertEqual(
+                "Original instructions.",
+                (root / "skills" / "writer" / "SKILL.md").read_text(),
+            )
+
+    def test_promotion_ignores_an_unrecorded_newer_report(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_prompt_skill(root, "writer", "Original instructions.")
+            manager = _make_manager(
+                root,
+                [
+                    _file_changes({"SKILL.md": "Candidate instructions.\n"}),
+                    "required output",
+                    "required baseline output",
+                ],
+            )
+            candidate = manager.create_skill_candidate("writer", "improve output")
+            report = manager.evaluate_skill_candidate(
+                candidate.candidate_id,
+                [EvaluationCase("required", "write", ["required"])],
+            )
+            orphan = json.loads(report.path.read_text(encoding="utf-8"))
+            orphan["report_id"] = "report-unrecorded"
+            orphan["created_at"] = "9999-12-31T23:59:59Z"
+            orphan_path = report.path.parent / "report-unrecorded.json"
+            orphan_path.write_text(json.dumps(orphan), encoding="utf-8")
+
+            promoted = manager.promote_skill_candidate(candidate.candidate_id)
+
+            self.assertEqual("0.1.1", promoted.version)
+
+    def test_evaluation_rejects_duplicate_case_names(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_prompt_skill(root, "writer", "Original instructions.")
+            manager = _make_manager(
+                root,
+                [_file_changes({"SKILL.md": "Candidate instructions.\n"})],
+            )
+            candidate = manager.create_skill_candidate("writer", "improve output")
+
+            with self.assertRaisesRegex(ValueError, "case names must be unique"):
+                manager.evaluate_skill_candidate(
+                    candidate.candidate_id,
+                    [
+                        EvaluationCase("same", "first"),
+                        EvaluationCase("same", "second"),
+                    ],
+                )
+
+    def test_every_case_must_pass_even_when_average_reaches_minimum(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_prompt_skill(root, "writer", "Original instructions.")
+            candidate_outputs = ["required"] * 4 + ["wrong"]
+            baseline_outputs = ["required"] * 4 + ["wrong"]
+            manager = _make_manager(
+                root,
+                [
+                    _file_changes({"SKILL.md": "Candidate instructions.\n"}),
+                    *candidate_outputs,
+                    *baseline_outputs,
+                ],
+            )
+            candidate = manager.create_skill_candidate("writer", "improve output")
+            cases = [
+                EvaluationCase(f"case-{index}", "write", ["required"])
+                for index in range(5)
+            ]
+
+            report = manager.evaluate_skill_candidate(candidate.candidate_id, cases)
+
+            self.assertEqual(0.8, report.score)
+            self.assertTrue(report.no_regression)
+            self.assertFalse(report.passed)
 
     def test_promotion_rejects_candidate_when_active_skill_changed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

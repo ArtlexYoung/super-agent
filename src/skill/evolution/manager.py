@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-import json
-import os
+import math
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, cast
-from uuid import uuid4
 
 from core.actions import ActionEffect, ActionRequest, ActionRunner, ActionRules
 from core.evolution.files import compare_directory_versions
@@ -20,7 +18,7 @@ from core.evolution.state import (
     require_skill_candidate_can_promote,
     start_manual_skill_evolution,
 )
-from core.evolution.state_values import SkillEvolutionState
+from core.evolution.state_values import CandidateEvaluation, SkillEvolutionState
 from core.task.model_calls import TextModel
 from core.state.store import RuntimeStore
 from skill.evolution.candidate import (
@@ -39,13 +37,16 @@ from skill.evolution.evaluation import (
     SkillCandidateEvaluationRequest,
     create_report_id,
     evaluate_candidate,
+    require_report_allows_promotion,
 )
 from skill.evolution.artifacts import (
     SkillHistoryRevision,
+    calculate_skill_evaluation_report_sha256,
+    read_skill_history_revision,
+    replace_skill_directory_atomically,
+    save_skill_history_revision,
     read_skill_evaluation_report,
     skill_evaluation_report_to_dict,
-    skill_history_revision_to_dict,
-    utc_now_text,
     write_json_exclusive,
 )
 from skill.disclosure import ProgressiveDisclosureCore
@@ -75,7 +76,12 @@ class SkillEvolutionManager:
         on_skill_changed: Callable[[SkillManifest], None] | None = None,
         action_rules: ActionRules | None = None,
     ) -> None:
-        if minimum_score < 0 or minimum_score > 1:
+        if (
+            isinstance(minimum_score, bool)
+            or not isinstance(minimum_score, int | float)
+            or not math.isfinite(float(minimum_score))
+            or not 0 <= minimum_score <= 1
+        ):
             raise ValueError("minimum evaluation score must be between 0 and 1")
         self.skill_disclosure = ProgressiveDisclosureCore(
             skill_disclosure.skill_roots,
@@ -90,7 +96,7 @@ class SkillEvolutionManager:
         self.evolution_root = store.private_root / "evolution"
         self.store = store
         self.models = models
-        self.minimum_score = minimum_score
+        self.minimum_score = float(minimum_score)
         self.on_skill_changed = on_skill_changed
         self.actions = ActionRunner(
             action_rules or ActionRules(),
@@ -227,12 +233,17 @@ class SkillEvolutionManager:
             ),
         )
         write_json_exclusive(report_path, skill_evaluation_report_to_dict(report))
+        report_sha256 = calculate_skill_evaluation_report_sha256(report_path)
         record_skill_candidate_evaluation(
             self.store,
             candidate.candidate_id,
-            report.report_id,
-            report.score,
-            report.passed,
+            CandidateEvaluation(
+                report_id=report.report_id,
+                report_sha256=report_sha256,
+                score=report.score,
+                passed=report.passed,
+                no_regression=report.no_regression,
+            ),
         )
         return report
 
@@ -251,11 +262,6 @@ class SkillEvolutionManager:
 
     def _promote_skill_candidate(self, candidate_id: str) -> SkillManifest:
         candidate = self._read_candidate(candidate_id)
-        report = self._read_latest_report(candidate.candidate_id)
-        if report.candidate_id != candidate.candidate_id:
-            raise ValueError("Skill evaluation report does not match its candidate")
-        if not report.passed or not report.no_regression:
-            raise ValueError("Skill candidate did not pass the no-regression evaluation")
         current = self._read_active_manifest(candidate.name, candidate.skill_type)
         if current is not None:
             validate_skill_replacement(current.path, candidate.skill_path)
@@ -264,20 +270,39 @@ class SkillEvolutionManager:
             if current is None
             else create_manifest_skill_revision(current, evolution_supported=True)
         )
-        require_skill_candidate_can_promote(
+        state = require_skill_candidate_can_promote(
             self.store,
             candidate.candidate_id,
             current_revision,
         )
+        if state.evaluation is None:
+            raise ValueError("Skill candidate has no recorded evaluation")
+        report = self._read_recorded_report(candidate.candidate_id, state.evaluation)
+        if (
+            report.score,
+            report.passed,
+            report.no_regression,
+        ) != (
+            state.evaluation.score,
+            state.evaluation.passed,
+            state.evaluation.no_regression,
+        ):
+            raise ValueError("Skill evaluation state does not match its report")
+        require_report_allows_promotion(
+            report,
+            candidate,
+            "" if current_revision is None else current_revision.content_sha256,
+        )
         previous_revision_id = self._current_rollback_revision_id(candidate.key)
-        rollback_revision = self._snapshot_current_skill(
+        rollback_revision = save_skill_history_revision(
+            self.evolution_root,
             current,
             action="promotion_backup",
             previous_revision_id=previous_revision_id,
         )
         target = self._user_skill_path(candidate.skill_type, candidate.name)
         had_user_overlay = target.is_dir()
-        _replace_skill_directory(candidate.skill_path, target)
+        replace_skill_directory_atomically(candidate.skill_path, target)
         promoted = self._read_active_manifest(candidate.name, candidate.skill_type)
         if promoted is None:
             raise RuntimeError(f"promoted skill not found after replacement: {candidate.name}")
@@ -288,7 +313,7 @@ class SkillEvolutionManager:
                 shutil.rmtree(target)
                 self._notify_skill_changed(current)
             elif rollback_revision is not None:
-                _replace_skill_directory(rollback_revision.skill_path, target)
+                replace_skill_directory_atomically(rollback_revision.skill_path, target)
                 self._notify_skill_changed(current)
             raise
         record_skill_candidate_promoted(
@@ -335,18 +360,20 @@ class SkillEvolutionManager:
         revision_id = evolution.rollback_revision_id
         if not revision_id:
             raise ValueError(f"skill has no previous evolution revision: {skill_name}")
-        revision = self._read_history_revision(
+        revision = read_skill_history_revision(
+            self.evolution_root,
             current_type,
             skill_name,
             revision_id,
         )
-        current_revision = self._snapshot_current_skill(
+        current_revision = save_skill_history_revision(
+            self.evolution_root,
             current,
             action="rollback_backup",
             previous_revision_id=revision_id,
         )
         target = self._user_skill_path(current_type, skill_name)
-        _replace_skill_directory(revision.skill_path, target)
+        replace_skill_directory_atomically(revision.skill_path, target)
         restored = self._read_active_manifest(skill_name, current_type)
         if restored is None:
             raise RuntimeError(f"restored skill not found after rollback: {skill_name}")
@@ -354,7 +381,7 @@ class SkillEvolutionManager:
             self._notify_skill_changed(restored)
         except Exception:
             if current_revision is not None:
-                _replace_skill_directory(current_revision.skill_path, target)
+                replace_skill_directory_atomically(current_revision.skill_path, target)
                 self._notify_skill_changed(current)
             raise
         record_skill_evolution_monitoring(
@@ -397,7 +424,12 @@ class SkillEvolutionManager:
         if not history_root.is_dir():
             return []
         revisions = [
-            self._read_history_revision(current_type, skill_name, path.parent.name)
+            read_skill_history_revision(
+                self.evolution_root,
+                current_type,
+                skill_name,
+                path.parent.name,
+            )
             for path in history_root.glob("*/revision.json")
         ]
         return sorted(revisions, key=lambda item: (item.created_at, item.revision_id))
@@ -457,112 +489,24 @@ class SkillEvolutionManager:
             return skill_name, current.skill_type
         return skill_name, requested_type or "prompt"
 
-    def _snapshot_current_skill(
+    def _read_recorded_report(
         self,
-        manifest: SkillManifest | None,
-        *,
-        action: str,
-        previous_revision_id: str,
-    ) -> SkillHistoryRevision | None:
-        if manifest is None:
-            return None
-        # Create history once; promotion and rollback read revisions without overwriting them.
-        revision_id = f"revision-{uuid4().hex}"
-        final_path = (
+        candidate_id: str,
+        evaluation: CandidateEvaluation,
+    ) -> EvaluationReport:
+        clean_record_id(candidate_id)
+        clean_record_id(evaluation.report_id)
+        path = (
             self.evolution_root
-            / "history"
-            / manifest.skill_type
-            / manifest.name
-            / revision_id
+            / "evaluations"
+            / candidate_id
+            / f"{evaluation.report_id}.json"
         )
-        staging_path = final_path.parent / f".{revision_id}.tmp"
-        skill_path = staging_path / "skill"
-        shutil.copytree(manifest.path, skill_path)
-        revision = SkillHistoryRevision(
-            revision_id=revision_id,
-            skill_type=manifest.skill_type,
-            skill_name=manifest.name,
-            version=manifest.version,
-            action=action,
-            created_at=utc_now_text(),
-            previous_revision_id=previous_revision_id,
-            sha256=calculate_skill_directory_sha256(skill_path),
-            skill_path=final_path / "skill",
-            metadata_path=final_path / "revision.json",
-        )
-        write_json_exclusive(
-            staging_path / "revision.json",
-            skill_history_revision_to_dict(revision),
-        )
-        final_path.parent.mkdir(parents=True, exist_ok=True)
-        os.replace(staging_path, final_path)
-        return revision
-
-    def _read_history_revision(
-        self,
-        skill_type: str,
-        name: str,
-        revision_id: str,
-    ) -> SkillHistoryRevision:
-        clean_record_id(revision_id)
-        metadata_path = (
-            self.evolution_root
-            / "history"
-            / skill_type
-            / name
-            / revision_id
-            / "revision.json"
-        )
-        if not metadata_path.is_file():
-            raise KeyError(f"skill history revision not found: {revision_id}")
-        data = json.loads(metadata_path.read_text(encoding="utf-8"))
-        expected_fields = {
-            "schema_version",
-            "revision_id",
-            "skill_key",
-            "type",
-            "skill_name",
-            "version",
-            "action",
-            "created_at",
-            "previous_revision_id",
-            "sha256",
-        }
-        if not isinstance(data, dict) or data.get("schema_version") != 2:
-            raise ValueError(f"invalid skill history revision: {revision_id}")
-        if set(data) != expected_fields:
-            raise ValueError(f"skill history revision fields do not match schema: {revision_id}")
-        identity_matches = (
-            data["skill_key"] == f"{skill_type}:{name}"
-            and data["type"] == skill_type
-            and data["skill_name"] == name
-            and data["revision_id"] == revision_id
-        )
-        if not identity_matches:
-            raise ValueError(f"skill history revision identity does not match path: {revision_id}")
-        return SkillHistoryRevision(
-            revision_id=str(data["revision_id"]),
-            skill_type=str(data["type"]),
-            skill_name=str(data["skill_name"]),
-            version=str(data["version"]),
-            action=str(data["action"]),
-            created_at=str(data["created_at"]),
-            previous_revision_id=str(data["previous_revision_id"]),
-            sha256=str(data["sha256"]),
-            skill_path=metadata_path.parent / "skill",
-            metadata_path=metadata_path,
-        )
-
-    def _read_latest_report(self, candidate_id: str) -> EvaluationReport:
-        root = self.evolution_root / "evaluations" / candidate_id
-        reports = (
-            [read_skill_evaluation_report(path) for path in root.glob("report-*.json")]
-            if root.is_dir()
-            else []
-        )
-        if not reports:
-            raise ValueError(f"skill candidate has not been evaluated: {candidate_id}")
-        return max(reports, key=lambda item: (item.created_at, item.report_id))
+        if not path.is_file():
+            raise ValueError(f"recorded Skill evaluation report is missing: {candidate_id}")
+        if calculate_skill_evaluation_report_sha256(path) != evaluation.report_sha256:
+            raise ValueError(f"recorded Skill evaluation report changed: {candidate_id}")
+        return read_skill_evaluation_report(path)
 
     def _current_rollback_revision_id(self, skill_key: str) -> str:
         active = [
@@ -587,26 +531,3 @@ class SkillEvolutionManager:
 
     def _user_skill_path(self, skill_type: str, name: str) -> Path:
         return self.user_skill_root / skill_type / name
-
-
-def _replace_skill_directory(source: Path, target: Path) -> None:
-    # Copy the full candidate before renaming directories, restoring the old directory on failure.
-    target.parent.mkdir(parents=True, exist_ok=True)
-    staging = target.parent / f".{target.name}.candidate-{uuid4().hex}"
-    backup = target.parent / f".{target.name}.backup-{uuid4().hex}"
-    shutil.copytree(source, staging)
-    moved_existing = False
-    try:
-        if target.exists():
-            os.replace(target, backup)
-            moved_existing = True
-        os.replace(staging, target)
-    except Exception:
-        if moved_existing and backup.exists() and not target.exists():
-            os.replace(backup, target)
-        raise
-    finally:
-        if staging.exists():
-            shutil.rmtree(staging)
-    if backup.exists():
-        shutil.rmtree(backup)

@@ -12,6 +12,7 @@ from core.evolution.state import (
     require_skill_candidate_can_promote,
     start_manual_skill_evolution,
 )
+from core.evolution.state_values import CandidateEvaluation
 from core.state.store import create_local_runtime_store
 from skill.evolution.revision import SkillRevision
 
@@ -33,9 +34,7 @@ class SkillRevisionEvolutionStateTests(unittest.TestCase):
             evaluated = record_skill_candidate_evaluation(
                 store,
                 "candidate-1",
-                "report-1",
-                1.0,
-                True,
+                _evaluation("report-1", 1.0, True),
             )
             promoted = record_skill_candidate_promoted(
                 store,
@@ -47,6 +46,7 @@ class SkillRevisionEvolutionStateTests(unittest.TestCase):
 
             self.assertEqual("candidate_created", started.status)
             self.assertEqual("evaluated", evaluated.status)
+            self.assertEqual("report-1", evaluated.evaluation.report_id)
             self.assertEqual("promoted", promoted.status)
             self.assertEqual("revision-parent", promoted.rollback_revision_id)
             self.assertEqual(
@@ -105,9 +105,7 @@ class SkillRevisionEvolutionStateTests(unittest.TestCase):
             record_skill_candidate_evaluation(
                 store,
                 "candidate-2",
-                "report-2",
-                0.2,
-                False,
+                _evaluation("report-2", 0.2, False),
             )
             with self.assertRaisesRegex(ValueError, "cannot transition from rejected"):
                 require_skill_candidate_can_promote(store, "candidate-2", parent)
@@ -115,13 +113,37 @@ class SkillRevisionEvolutionStateTests(unittest.TestCase):
             record_skill_candidate_evaluation(
                 store,
                 "candidate-2",
-                "report-3",
-                1.0,
-                True,
+                _evaluation("report-3", 1.0, True),
             )
             changed = _revision("prompt:writer", "0.1.0", "c", can_update=True)
             with self.assertRaisesRegex(ValueError, "parent changed"):
                 require_skill_candidate_can_promote(store, "candidate-2", changed)
+
+    def test_state_rejects_passing_evaluation_with_regression(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            store = create_local_runtime_store(Path(tmp))
+            parent = _revision("prompt:writer", "0.1.0", "a", can_update=True)
+            candidate = _revision("prompt:writer", "0.1.1", "b", can_update=True)
+            start_manual_skill_evolution(
+                store,
+                "candidate-regression",
+                parent,
+                candidate,
+                "change",
+            )
+
+            with self.assertRaisesRegex(ValueError, "cannot pass with regression"):
+                record_skill_candidate_evaluation(
+                    store,
+                    "candidate-regression",
+                    CandidateEvaluation(
+                        report_id="report-regression",
+                        report_sha256="c" * 64,
+                        score=1.0,
+                        passed=True,
+                        no_regression=False,
+                    ),
+                )
 
     def test_skill_evolution_events_are_isolated_by_user(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -195,4 +217,14 @@ def _revision(
         agent_can_update=can_update,
         evolution_supported=True,
         freshness=70.0,
+    )
+
+
+def _evaluation(report_id: str, score: float, passed: bool) -> CandidateEvaluation:
+    return CandidateEvaluation(
+        report_id=report_id,
+        report_sha256="c" * 64,
+        score=score,
+        passed=passed,
+        no_regression=True,
     )

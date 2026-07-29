@@ -98,7 +98,7 @@ mandatory. Each choice is explicit and keeps the same disclosure and execution c
 | Keep local evidence | `Agent()` | JSONL traces, disclosure cache, evaluation, and freshness |
 | Continue a conversation | pass `conversation_id` | Isolated messages plus temporary and long-term memory Skills |
 | Add behavior | `add_skill_runner(...)` or `add_subagent(...)` | Explicit custom execution or delegation |
-| Evolve private Skills | Agent-owned Skill with updates enabled | Candidate, non-regression check, promotion, monitoring, and rollback |
+| Evolve private Skills | Agent-owned Skill with updates enabled | Candidate, evidence-bound evaluation, promotion, monitoring, and rollback |
 
 Runtime validates the requirements for the selected layer before the first model call.
 It reports a missing service or runner instead of silently removing the requested feature.
@@ -264,7 +264,8 @@ variables rather than TOML.
   token cost, and successful same-function replacements.
 - Agent-owned Skills with `agent_can_update = true` can create candidates, run
   non-regression evaluation, promote a complete Skill directory, monitor it, and roll it
-  back. Shared project Skills remain read-only baselines.
+  back. Promotion uses the exact recorded report and rejects changed candidates,
+  baselines, cases, or report files; shared project Skills remain read-only baselines.
 - Temporary memory is keyed to the current conversation and cannot enter another
   conversation. Long-term memory is reserved for abstract, critical, important, stable,
   or habitual knowledge.

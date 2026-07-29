@@ -78,6 +78,10 @@ super-agent evolution show --config agent.toml --user-id alice \
   --evolution-id <id> --output json
 ```
 
+Evaluation reports store the normalized cases, candidate and baseline directory hashes,
+and per-case results. Promotion uses only the exact report recorded in evolution state;
+editing it or adding a newer report fails instead of changing the accepted evidence.
+
 ## Conversations and Memory
 
 ```bash

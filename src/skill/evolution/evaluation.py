@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import hashlib
+import json
+import math
+import re
+from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from time import perf_counter
@@ -17,7 +21,7 @@ from core.task.model_calls import TextModel
 from core.state.store import RuntimeStore
 from skill.disclosure import DisclosedSkillFile, ProgressiveDisclosureCore
 from skill.evolution.candidate import SkillCandidate
-from skill.manifest import Skill, SkillManifest
+from skill.manifest import Skill, SkillManifest, calculate_skill_directory_sha256
 from skill.evolution.revision import create_manifest_skill_revision
 from skill.validation import validate_skill_directory
 
@@ -48,8 +52,12 @@ class EvaluationReport:
     passed: bool
     minimum_score: float
     created_at: str
+    cases: list[EvaluationCase]
     case_results: list[EvaluationCaseResult]
     path: Path
+    candidate_content_sha256: str
+    baseline_content_sha256: str
+    case_set_sha256: str
     baseline_score: float | None = None
     baseline_case_results: list[EvaluationCaseResult] = field(default_factory=list)
     no_regression: bool = True
@@ -77,12 +85,14 @@ class SkillCandidateEvaluationRequest:
 def evaluate_candidate(
     request: SkillCandidateEvaluationRequest,
 ) -> EvaluationReport:
-    if not request.cases:
-        raise ValueError("skill candidate evaluation requires at least one case")
-    if request.minimum_score < 0 or request.minimum_score > 1:
-        raise ValueError("minimum evaluation score must be between 0 and 1")
-    for case in request.cases:
-        _validate_evaluation_case(case)
+    _validate_score(request.minimum_score, "minimum_score")
+    cases = _normalize_evaluation_cases(request.cases)
+    candidate_sha256 = _require_unchanged_directory(
+        request.candidate.skill_path,
+        request.candidate.candidate_sha256,
+        "candidate",
+    )
+    baseline_sha256 = _read_baseline_sha256(request)
     skill = _read_skill_directory(
         request.candidate.skill_path,
         label="Candidate",
@@ -92,7 +102,7 @@ def evaluate_candidate(
         evolution_supported=True,
     )
     results: list[EvaluationCaseResult] = []
-    for case in request.cases:
+    for case in cases:
         started_at = perf_counter()
         try:
             case_result = _run_evaluation_case(
@@ -141,25 +151,46 @@ def evaluate_candidate(
                 )
             ]
         )
-    baseline_results = _run_baseline_cases(request)
+    baseline_results = _run_baseline_cases(request, cases)
+    _require_unchanged_directory(
+        request.candidate.skill_path,
+        candidate_sha256,
+        "candidate",
+    )
+    if request.baseline_skill_path is not None:
+        _require_unchanged_directory(
+            request.baseline_skill_path,
+            baseline_sha256,
+            "baseline",
+        )
     score = _average_case_score(results)
     baseline_score = (
         None if not baseline_results else _average_case_score(baseline_results)
     )
     no_regression = _has_no_case_regression(results, baseline_results)
-    return EvaluationReport(
+    report = EvaluationReport(
         report_id=request.report_path.stem,
         candidate_id=request.candidate.candidate_id,
         score=score,
-        passed=score >= request.minimum_score and no_regression,
+        passed=(
+            score >= request.minimum_score
+            and all(result.passed for result in results)
+            and no_regression
+        ),
         minimum_score=request.minimum_score,
         created_at=_utc_now_text(),
+        cases=cases,
         case_results=results,
         path=request.report_path,
+        candidate_content_sha256=candidate_sha256,
+        baseline_content_sha256=baseline_sha256,
+        case_set_sha256=calculate_evaluation_case_set_sha256(cases),
         baseline_score=baseline_score,
         baseline_case_results=baseline_results,
         no_regression=no_regression,
     )
+    validate_evaluation_report(report)
+    return report
 
 
 def create_report_id() -> str:
@@ -232,6 +263,7 @@ def _score_output(
 
 def _run_baseline_cases(
     request: SkillCandidateEvaluationRequest,
+    cases: list[EvaluationCase],
 ) -> list[EvaluationCaseResult]:
     if request.baseline_skill_path is None:
         return []
@@ -241,7 +273,7 @@ def _run_baseline_cases(
     )
     return [
         _run_evaluation_case(request.text_model, skill.instructions, case)
-        for case in request.cases
+        for case in cases
     ]
 
 
@@ -255,10 +287,113 @@ def _has_no_case_regression(
 ) -> bool:
     if not baseline:
         return True
-    return all(
-        candidate_result.score >= baseline_result.score
-        for candidate_result, baseline_result in zip(candidate, baseline, strict=True)
+    baseline_by_name = {result.name: result for result in baseline}
+    return set(baseline_by_name) == {result.name for result in candidate} and all(
+        result.score >= baseline_by_name[result.name].score for result in candidate
     )
+
+
+def calculate_evaluation_case_set_sha256(cases: list[EvaluationCase]) -> str:
+    content = json.dumps(
+        [asdict(case) for case in cases],
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(content.encode()).hexdigest()
+
+
+def validate_evaluation_report(report: EvaluationReport) -> None:
+    for name, value in (
+        ("report_id", report.report_id),
+        ("candidate_id", report.candidate_id),
+        ("created_at", report.created_at),
+    ):
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"Skill evaluation report {name} cannot be empty")
+    if not isinstance(report.passed, bool) or not isinstance(report.no_regression, bool):
+        raise TypeError("Skill evaluation report decisions must be booleans")
+    cases = _normalize_evaluation_cases(report.cases)
+    if cases != report.cases:
+        raise ValueError("Skill evaluation report cases are not normalized")
+    _require_sha256(report.candidate_content_sha256, "candidate_content_sha256")
+    if report.baseline_content_sha256:
+        _require_sha256(report.baseline_content_sha256, "baseline_content_sha256")
+    if report.case_set_sha256 != calculate_evaluation_case_set_sha256(cases):
+        raise ValueError("Skill evaluation report case set hash does not match")
+    if [case.name for case in cases] != [result.name for result in report.case_results]:
+        raise ValueError("Skill evaluation report candidate cases do not match")
+    has_baseline = bool(report.baseline_content_sha256)
+    if has_baseline != bool(report.baseline_case_results):
+        raise ValueError("Skill evaluation report baseline evidence does not match")
+    if has_baseline and [case.name for case in cases] != [
+        result.name for result in report.baseline_case_results
+    ]:
+        raise ValueError("Skill evaluation report baseline cases do not match")
+    _validate_report_scores(report)
+
+
+def require_report_allows_promotion(
+    report: EvaluationReport,
+    candidate: SkillCandidate,
+    baseline_content_sha256: str,
+) -> None:
+    validate_evaluation_report(report)
+    if report.candidate_id != candidate.candidate_id:
+        raise ValueError("Skill evaluation report does not match its candidate")
+    if report.candidate_content_sha256 != candidate.candidate_sha256:
+        raise ValueError("Skill evaluation report candidate revision changed")
+    if report.baseline_content_sha256 != candidate.parent_sha256:
+        raise ValueError("Skill evaluation report does not match the candidate parent")
+    if report.baseline_content_sha256 != baseline_content_sha256:
+        raise ValueError("Skill evaluation baseline changed before promotion")
+    if not report.passed:
+        raise ValueError("Skill candidate did not pass the no-regression evaluation")
+
+
+def _validate_report_scores(report: EvaluationReport) -> None:
+    if not report.case_results:
+        raise ValueError("Skill evaluation report has no candidate results")
+    for result in [*report.case_results, *report.baseline_case_results]:
+        if not isinstance(result.name, str) or not result.name.strip():
+            raise ValueError("Skill evaluation result name cannot be empty")
+        if not isinstance(result.output, str):
+            raise TypeError(f"Skill evaluation result output must be text: {result.name}")
+        if not isinstance(result.checks, list) or not all(
+            isinstance(check, str) and check for check in result.checks
+        ):
+            raise TypeError(f"Skill evaluation result checks are invalid: {result.name}")
+        if not isinstance(result.passed, bool):
+            raise TypeError(f"Skill evaluation result passed must be boolean: {result.name}")
+        _validate_score(result.score, f"result {result.name}")
+        if result.passed != (result.score == 1.0):
+            raise ValueError(f"Skill evaluation result is invalid: {result.name}")
+    score = _average_case_score(report.case_results)
+    baseline_score = (
+        None
+        if not report.baseline_case_results
+        else _average_case_score(report.baseline_case_results)
+    )
+    no_regression = _has_no_case_regression(
+        report.case_results,
+        report.baseline_case_results,
+    )
+    passed = (
+        score >= report.minimum_score
+        and all(result.passed for result in report.case_results)
+        and no_regression
+    )
+    _validate_score(report.score, "score")
+    _validate_score(report.minimum_score, "minimum_score")
+    if report.baseline_score is not None:
+        _validate_score(report.baseline_score, "baseline_score")
+    if (report.score, report.baseline_score, report.no_regression, report.passed) != (
+        score,
+        baseline_score,
+        no_regression,
+        passed,
+    ):
+        raise ValueError("Skill evaluation report decision does not match its results")
 
 
 def _read_skill_directory(
@@ -302,12 +437,66 @@ def _build_skill_evaluation_context(
     return "\n\n".join(sections)
 
 
-def _validate_evaluation_case(case: EvaluationCase) -> None:
-    name = case.name.strip()
-    if not name:
-        raise ValueError("evaluation case name cannot be empty")
-    if not case.prompt.strip():
-        raise ValueError(f"evaluation case prompt cannot be empty: {name}")
+def _normalize_evaluation_cases(cases: list[EvaluationCase]) -> list[EvaluationCase]:
+    if not cases:
+        raise ValueError("skill candidate evaluation requires at least one case")
+    normalized: list[EvaluationCase] = []
+    for case in cases:
+        name = case.name.strip()
+        prompt = case.prompt.strip()
+        if not name:
+            raise ValueError("evaluation case name cannot be empty")
+        if not prompt:
+            raise ValueError(f"evaluation case prompt cannot be empty: {name}")
+        normalized.append(
+            EvaluationCase(
+                name=name,
+                prompt=prompt,
+                expected_output_contains=_clean_checks(case.expected_output_contains),
+                forbidden_output_contains=_clean_checks(case.forbidden_output_contains),
+                evaluator_instruction=case.evaluator_instruction.strip(),
+            )
+        )
+    names = [case.name for case in normalized]
+    if len(names) != len(set(names)):
+        raise ValueError("evaluation case names must be unique")
+    return normalized
+
+
+def _clean_checks(values: list[str]) -> list[str]:
+    if not isinstance(values, list) or not all(isinstance(value, str) for value in values):
+        raise TypeError("evaluation case checks must be a string array")
+    return [value.strip() for value in values if value.strip()]
+
+
+def _read_baseline_sha256(request: SkillCandidateEvaluationRequest) -> str:
+    if request.baseline_skill_path is None:
+        if request.candidate.parent_sha256:
+            raise ValueError("existing Skill candidate requires baseline evaluation")
+        return ""
+    actual = calculate_skill_directory_sha256(request.baseline_skill_path)
+    if actual != request.candidate.parent_sha256:
+        raise ValueError("candidate baseline does not match its parent revision")
+    return actual
+
+
+def _require_unchanged_directory(path: Path, expected: str, label: str) -> str:
+    actual = calculate_skill_directory_sha256(path)
+    if actual != expected:
+        raise ValueError(f"Skill evaluation {label} changed during evaluation")
+    return actual
+
+
+def _require_sha256(value: str, name: str) -> None:
+    if re.fullmatch(r"[0-9a-f]{64}", value) is None:
+        raise ValueError(f"Skill evaluation report {name} must be a SHA-256 value")
+
+
+def _validate_score(value: float, name: str) -> None:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise TypeError(f"Skill evaluation report {name} must be a number")
+    if not math.isfinite(float(value)) or not 0 <= value <= 1:
+        raise ValueError(f"Skill evaluation report {name} must be between 0 and 1")
 
 
 def _candidate_evaluation_source(

@@ -6,7 +6,10 @@ from time import perf_counter
 from typing import TYPE_CHECKING, Callable
 
 from core.evolution.service import AutomaticEvolutionService
-from core.evolution.state_values import SkillEvolutionState
+from core.evolution.state_values import (
+    SkillEvolutionState,
+    candidate_evaluation_to_dict,
+)
 from core.state.evaluation import (
     EvaluationResult,
     EvaluationSource,
@@ -254,5 +257,9 @@ def _skill_update_to_dict(state: SkillEvolutionState) -> dict[str, object]:
         "skill_key": state.skill_key,
         "status": state.status,
         "detail": state.detail,
-        "evaluation_score": state.evaluation_score,
+        "evaluation": (
+            None
+            if state.evaluation is None
+            else candidate_evaluation_to_dict(state.evaluation)
+        ),
     }

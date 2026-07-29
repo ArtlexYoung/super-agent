@@ -324,10 +324,12 @@ def _print_freshness_insight(value: object) -> None:
 
 def _print_evolution_insight(value: object) -> None:
     for evolution in _object_items(value):
+        evaluation = evolution.get("evaluation")
+        score = evaluation.get("score", "") if isinstance(evaluation, dict) else ""
         print(
             f"evolution\t{evolution.get('skill_key', '')}"
             f"\tstatus={evolution.get('status', '')}"
-            f"\tscore={evolution.get('evaluation_score', '')}"
+            f"\tscore={score}"
             f"\treasons={'; '.join(_string_items(evolution.get('reasons')))}"
         )
 
