@@ -286,8 +286,8 @@ Status: implemented.
   routing, or Skill evolution state.
 - Add explicit, idempotent `learn_from_run` operations for Python and CLI users; record
   the exact failing stage and raise instead of silently continuing.
-- Give manual and automatic Skill updates one `continue_skill_evolution` path through
-  candidate creation, evaluation, rejection, and promotion.
+- Give manual and automatic Skill updates one recorded state machine for candidate
+  creation, evaluation, rejection, and promotion.
 - Use deterministic run-evaluation IDs so retries reuse completed work without duplicate
   evidence or hidden fallback behavior.
 
@@ -471,6 +471,21 @@ Status: implemented.
 - Let scheduling choose direct versus planned contexts from the Plan itself while preserving
   the guarantee that every planned Step is routed and recorded before any Step executes.
 - Execute planned subagents in the task loop and remove one-call forwarding helpers.
+
+## v0.0.98: Explicit Evolution Stages
+
+Status: implemented.
+
+- Remove the Python and CLI one-call evolution path; manual callers now create a candidate,
+  evaluate it, and promote it through three visible operations.
+- Keep automatic evolution inside explicit post-run learning while invoking candidate
+  creation, evaluation, and promotion as separate state-machine stages.
+- Guarantee that candidate creation and evaluation only write isolated artifacts and
+  records; only the checked promotion stage may replace an active Skill directory.
+- Move shared Skill revision values into the evolution value model and automatic stage
+  scheduling into learning, deleting the old revision and service forwarding modules.
+- Reuse the canonical evolution serialization in learning results instead of maintaining a
+  smaller duplicate state projection.
 
 ## Release Gate
 

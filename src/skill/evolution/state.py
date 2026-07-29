@@ -12,6 +12,7 @@ from skill.evolution.values import (
     SkillEvolutionMetrics,
     SkillEvolutionRecommendation,
     SkillEvolutionState,
+    SkillRevision,
     candidate_evaluation_from_dict,
     candidate_evaluation_to_dict,
     create_skill_candidate_difference,
@@ -23,15 +24,12 @@ from skill.evolution.values import (
     validate_candidate_evaluation,
     validate_skill_candidate_difference,
     validate_skill_evolution_recommendation,
-)
-from core.events import StorageEvent
-from skill.state.events import EventStore
-from skill.evolution.change.revision import (
-    SkillRevision,
     skill_revision_from_dict,
     skill_revision_to_dict,
     validate_skill_revision,
 )
+from core.events import StorageEvent
+from skill.state.events import EventStore
 
 
 SKILL_EVOLUTION_STATUSES = frozenset(

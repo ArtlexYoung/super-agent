@@ -17,7 +17,7 @@ from adapter.conversations import (
 from core.events import StorageBackend, StorageEventQuery
 from skill.state.events import EventStore
 from skill.state.memory_service import MiniMemory
-from skill.evolution.change.revision import SkillRevision
+from skill.evolution.values import SkillRevision
 
 
 STORAGE_BACKEND_NAMES = ("jsonl", "sqlite", "mysql", "postgresql")

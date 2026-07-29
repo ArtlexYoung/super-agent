@@ -34,9 +34,6 @@ def configure_skills_parser(parser: argparse.ArgumentParser) -> None:
     evaluate_parser.add_argument("--cases", required=True)
     promote_parser = subparsers.add_parser("promote", help="promote a passing skill candidate")
     _add_evolution_candidate_arguments(promote_parser)
-    evolve_parser = subparsers.add_parser("evolve", help="propose, evaluate, and promote a skill")
-    _add_evolution_name_arguments(evolve_parser)
-    evolve_parser.add_argument("--cases", required=True)
     rollback_parser = subparsers.add_parser("rollback", help="restore the previous skill revision")
     rollback_parser.add_argument("--config", default="agent.toml")
     rollback_parser.add_argument("--name", required=True)
@@ -71,7 +68,6 @@ def configure_skills_parser(parser: argparse.ArgumentParser) -> None:
         propose_parser,
         evaluate_parser,
         promote_parser,
-        evolve_parser,
         rollback_parser,
         freshness_parser,
         validate_parser,
@@ -93,7 +89,6 @@ def run_skills_command(args: argparse.Namespace) -> int:
         "propose": lambda: _propose_skill(args),
         "evaluate": lambda: _evaluate_skill(args),
         "promote": lambda: _promote_skill(args),
-        "evolve": lambda: _evolve_skill(args),
         "rollback": lambda: _rollback_skill(args),
         "freshness": lambda: _show_skill_freshness(Path(args.config), args.user_id),
         "validate": lambda: _validate_skills(Path(args.config), args.user_id),
@@ -157,18 +152,6 @@ def _promote_skill(args: argparse.Namespace) -> int:
     manifest = manager.promote_skill_candidate(args.candidate_id)
     print(f"Promoted skill: {manifest.skill_type}:{manifest.name}@{manifest.version}")
     return 0
-
-
-def _evolve_skill(args: argparse.Namespace) -> int:
-    manager = load_agent(args.config).for_user(args.user_id).skills.create_evolution_manager()
-    result = manager.evolve_skill(
-        args.name,
-        args.goal,
-        _read_evaluation_cases(Path(args.cases)),
-        skill_type=args.skill_type,
-    )
-    print(f"Evolution {result.status}: {result.candidate.candidate_id} score={result.report.score:.4f}")
-    return 0 if result.status == "promoted" else 1
 
 
 def _rollback_skill(args: argparse.Namespace) -> int:

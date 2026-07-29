@@ -6,10 +6,20 @@ import hashlib
 from datetime import datetime
 from typing import TYPE_CHECKING, Callable
 
-from skill.evolution.service import AutomaticEvolutionService
+from skill.evolution.evidence import summarize_evaluation_evidence
+from skill.evolution.recommendations import recommend_skill_revisions
+from skill.evolution.state import (
+    list_skill_evolutions,
+    read_skill_evolution,
+    record_skill_evolution_failure,
+    record_skill_evolution_monitoring,
+)
 from skill.evolution.values import (
     SkillEvolutionState,
-    candidate_evaluation_to_dict,
+    SkillRevision,
+    skill_evolution_to_dict,
+    skill_revision_from_dict,
+    skill_revision_to_dict,
 )
 from core.models import RunIdentity
 from skill.evolution.records import (
@@ -26,17 +36,161 @@ from skill.state.events import EventStore
 from core.models import RunLearningResult
 from skill.task.model_calls import list_model_routing_stats
 from skill.evolution.freshness import calculate_skill_freshness
-from skill.evolution.change.revision import (
-    SkillRevision,
-    skill_revision_from_dict,
-    skill_revision_to_dict,
-)
+from skill.evolution.change.evaluation import EvaluationCase
 
 if TYPE_CHECKING:
     from skill.evolution.change.manager import SkillEvolutionManager
 
 
 LEARNING_COMPLETED_EVENT = "learning.completed"
+MONITORING_MINIMUM_SAMPLES = 3
+MONITORING_MINIMUM_SCORE = 0.75
+MAX_AUTOMATIC_EVALUATION_CASES = 3
+
+
+class AutomaticSkillEvolution:
+    """Run explicit pending, monitoring, and rollback stages during learning."""
+
+    def __init__(self, store: EventStore, manager: SkillEvolutionManager) -> None:
+        self.store = store
+        self.manager = manager
+
+    def run_pending_skill_evolution_stages(
+        self,
+        revisions: list[SkillRevision],
+    ) -> list[SkillEvolutionState]:
+        revisions_by_identity = {revision.identity: revision for revision in revisions}
+        changed = self._monitor_promoted_revisions(revisions_by_identity)
+        rolled_back = {
+            state.candidate_revision.identity
+            for state in changed
+            if state.status == "rolled_back" and state.candidate_revision is not None
+        }
+        active = [
+            revision
+            for identity, revision in revisions_by_identity.items()
+            if identity not in rolled_back
+        ]
+        changed.extend(recommend_skill_revisions(self.store, active))
+        pending = [
+            state
+            for state in list_skill_evolutions(self.store)
+            if state.status in {
+                "candidate_recommended",
+                "candidate_created",
+                "evaluated",
+            }
+            and _state_source_identity(state) in revisions_by_identity
+        ]
+        for state in reversed(pending):
+            changed.append(self._run_pending_stages(state))
+        return changed
+
+    def _run_pending_stages(
+        self,
+        state: SkillEvolutionState,
+    ) -> SkillEvolutionState:
+        evolution_id = state.evolution_id
+        try:
+            if state.status == "candidate_recommended":
+                self.manager.create_recommended_skill_candidate(state)
+                state = read_skill_evolution(self.store, evolution_id)
+            if state.status == "candidate_created":
+                self.manager.evaluate_skill_candidate(
+                    state.candidate_id,
+                    self._build_evaluation_cases(state),
+                )
+                state = read_skill_evolution(self.store, evolution_id)
+            if state.status == "evaluated":
+                self.manager.promote_skill_candidate(state.candidate_id)
+                state = read_skill_evolution(self.store, evolution_id)
+            if state.status not in {"rejected", "promoted"}:
+                raise RuntimeError(f"unexpected Skill evolution status: {state.status}")
+            return state
+        except Exception as error:
+            latest = read_skill_evolution(self.store, evolution_id)
+            if latest.status in {"candidate_recommended", "candidate_created"}:
+                record_skill_evolution_failure(self.store, evolution_id, error)
+            raise
+
+    def _build_evaluation_cases(
+        self,
+        state: SkillEvolutionState,
+    ) -> list[EvaluationCase]:
+        selected_ids = set(state.evidence_record_ids)
+        records = [
+            record
+            for record in read_evaluation_records(self.store, source_type="agent_run")
+            if record.record_id in selected_ids and record.source.run_id
+        ]
+        cases: list[EvaluationCase] = []
+        seen_run_ids: set[str] = set()
+        for record in reversed(records):
+            run_id = record.source.run_id
+            if run_id in seen_run_ids:
+                continue
+            seen_run_ids.add(run_id)
+            try:
+                snapshot = self.store.read_run(run_id)
+            except KeyError:
+                continue
+            if snapshot.prompt.strip():
+                cases.append(
+                    EvaluationCase(
+                        name=f"evidence-{len(cases) + 1}",
+                        prompt=snapshot.prompt,
+                    )
+                )
+            if len(cases) == MAX_AUTOMATIC_EVALUATION_CASES:
+                break
+        return cases or [EvaluationCase(name="evolution-goal", prompt=state.goal)]
+
+    def _monitor_promoted_revisions(
+        self,
+        revisions: dict[tuple[str, str, str], SkillRevision],
+    ) -> list[SkillEvolutionState]:
+        changed: list[SkillEvolutionState] = []
+        for state in list_skill_evolutions(self.store, "promoted"):
+            candidate = state.candidate_revision
+            if candidate is None or (revision := revisions.get(candidate.identity)) is None:
+                continue
+            records = self._read_revision_records(revision)
+            if not records:
+                continue
+            summary = summarize_evaluation_evidence(records)[0]
+            if summary.failure_count or (
+                summary.sample_count >= MONITORING_MINIMUM_SAMPLES
+                and summary.average_score < MONITORING_MINIMUM_SCORE
+            ):
+                self.manager.rollback_skill(revision.key)
+                changed.append(read_skill_evolution(self.store, state.evolution_id))
+            elif summary.sample_count >= MONITORING_MINIMUM_SAMPLES:
+                changed.append(
+                    record_skill_evolution_monitoring(
+                        self.store,
+                        state.evolution_id,
+                        "stable",
+                        _monitoring_detail(
+                            summary.sample_count,
+                            summary.average_score,
+                        ),
+                    )
+                )
+        return changed
+
+    def _read_revision_records(
+        self,
+        revision: SkillRevision,
+    ) -> list[EvaluationRecord]:
+        return [
+            record
+            for record in read_evaluation_records(
+                self.store,
+                skill_key=revision.key,
+                source_type="agent_run",
+            )
+            if record.revision.identity == revision.identity
+        ]
 
 
 def learn_from_run(
@@ -92,11 +246,11 @@ def learn_from_run(
 
         stage = "skill_evolution"
         updates = [
-            _skill_update_to_dict(state)
-            for state in AutomaticEvolutionService(
+            skill_evolution_to_dict(state)
+            for state in AutomaticSkillEvolution(
                 store,
                 create_skill_updater(),
-            ).review_and_evolve(revisions)
+            ).run_pending_skill_evolution_stages(revisions)
         ]
         store.append_run_event(
             identity,
@@ -322,18 +476,14 @@ def _require_same_evaluation(
         raise ValueError(f"run evaluation record conflicts: {stored.record_id}")
 
 
-def _skill_update_to_dict(state: SkillEvolutionState) -> dict[str, object]:
-    return {
-        "evolution_id": state.evolution_id,
-        "skill_key": state.skill_key,
-        "status": state.status,
-        "detail": state.detail,
-        "evaluation": (
-            None
-            if state.evaluation is None
-            else candidate_evaluation_to_dict(state.evaluation)
-        ),
-    }
+def _state_source_identity(
+    state: SkillEvolutionState,
+) -> tuple[str, str, str] | None:
+    return None if state.source_revision is None else state.source_revision.identity
+
+
+def _monitoring_detail(sample_count: int, average_score: float) -> str:
+    return f"samples={sample_count}, average_score={average_score:.4f}"
 
 
 def _parse_event_time(value: str) -> datetime:

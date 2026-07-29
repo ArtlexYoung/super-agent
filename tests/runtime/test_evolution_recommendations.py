@@ -28,10 +28,10 @@ from skill.evolution.state import (
 )
 from skill.evolution.recommendations import recommend_skill_revisions
 from skill.evolution.evidence import summarize_evaluation_evidence
-from skill.evolution.service import AutomaticEvolutionService
+from skill.evolution.learning import AutomaticSkillEvolution
 from skill.evolution.insights import explain_run_with_insight
 from skill.state.events import create_local_event_store
-from skill.evolution.change.revision import SkillRevision, create_indexed_skill_revision
+from skill.evolution.values import SkillRevision, create_indexed_skill_revision
 from support import write_workflow_skill
 
 
@@ -232,7 +232,8 @@ class SkillRevisionEvolutionTests(unittest.TestCase):
 
             result = agent.run("echo this")
             with patch(
-                "skill.evolution.learning.AutomaticEvolutionService.review_and_evolve",
+                "skill.evolution.learning."
+                "AutomaticSkillEvolution.run_pending_skill_evolution_stages",
                 side_effect=RuntimeError("recommendation unavailable"),
             ), self.assertRaisesRegex(RuntimeError, "recommendation unavailable"):
                 agent.learn_from_run(result.run_id)
@@ -270,9 +271,10 @@ class SkillRevisionEvolutionTests(unittest.TestCase):
             )
             store = agent.runtime.create_event_store("alice")
             append_evaluation_records(store, [_record(revision, success=False)])
-            updated = AutomaticEvolutionService(store, manager).review_and_evolve(
-                [revision]
-            )
+            updated = AutomaticSkillEvolution(
+                store,
+                manager,
+            ).run_pending_skill_evolution_stages([revision])
 
             completed = next(item for item in updated if item.status == "promoted")
             self.assertTrue(completed.candidate_id)

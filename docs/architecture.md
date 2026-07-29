@@ -220,7 +220,9 @@ Learning evidence, records, recommendations, and state live directly in
 explicit `skill/evolution/change` subdomain. Preparing a candidate or evaluation never
 activates it; only `promote_skill_candidate` applies a checked directory replacement.
 Evaluation records are projected by `evolution.records` over generic scoped events rather
-than methods added to the general event store.
+than methods added to the general event store. Shared revision and state values live in
+`evolution.values`; explicit post-run learning owns automatic stage scheduling. There is no
+one-call manual API that creates, evaluates, and activates a Skill.
 
 ## Invariants
 

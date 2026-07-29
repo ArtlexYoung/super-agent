@@ -93,7 +93,8 @@ super-agent evolution list --config agent.toml --user-id alice
 super-agent evolution show --config agent.toml --user-id alice --evolution-id <id> --output json
 ```
 
-Manual candidate commands use the same lifecycle:
+Manual candidate commands expose each lifecycle stage separately. `propose` and `evaluate`
+never activate a Skill; only an explicit `promote` command can replace the active revision:
 
 ```bash
 super-agent skills propose --config agent.toml --name prompt:concise --goal "make it clearer"

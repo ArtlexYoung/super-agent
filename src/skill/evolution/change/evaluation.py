@@ -23,7 +23,7 @@ from skill.state.events import EventStore
 from skill.disclosure import DisclosedSkillFile, ProgressiveDisclosureCore
 from skill.evolution.change.candidate import SkillCandidate
 from skill.manifest import Skill, SkillManifest, calculate_skill_directory_sha256
-from skill.evolution.change.revision import SkillRevision, create_manifest_skill_revision
+from skill.evolution.values import SkillRevision, create_manifest_skill_revision
 from skill.ecosystem.validation import validate_skill_directory
 
 
@@ -62,14 +62,6 @@ class EvaluationReport:
     baseline_score: float | None = None
     baseline_case_results: list[EvaluationCaseResult] = field(default_factory=list)
     no_regression: bool = True
-
-
-@dataclass(frozen=True)
-class EvolutionResult:
-    candidate: SkillCandidate
-    report: EvaluationReport
-    status: str
-    promoted_manifest: SkillManifest | None = None
 
 
 @dataclass(frozen=True)

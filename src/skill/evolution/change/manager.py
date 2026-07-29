@@ -14,13 +14,17 @@ from skill.evolution.state import (
     record_skill_candidate_evaluation,
     record_skill_candidate_promoted,
     record_skill_evolution_candidate,
-    record_skill_evolution_failure,
     record_skill_evolution_monitoring,
     read_skill_evolution,
     require_skill_candidate_can_promote,
     start_manual_skill_evolution,
 )
-from skill.evolution.values import CandidateEvaluation, SkillEvolutionState
+from skill.evolution.values import (
+    CandidateEvaluation,
+    SkillEvolutionState,
+    SkillRevision,
+    create_manifest_skill_revision,
+)
 from skill.task.model_calls import TextModel
 from skill.state.events import EventStore
 from skill.evolution.change.candidate import (
@@ -38,7 +42,6 @@ from skill.ecosystem.directory import (
 from skill.evolution.change.evaluation import (
     EvaluationCase,
     EvaluationReport,
-    EvolutionResult,
     SkillCandidateEvaluationRequest,
     create_report_id,
     evaluate_candidate,
@@ -57,10 +60,6 @@ from skill.evolution.change.artifacts import (
 )
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.manifest import SkillManifest, calculate_skill_directory_sha256
-from skill.evolution.change.revision import (
-    SkillRevision,
-    create_manifest_skill_revision,
-)
 from skill.evolution.freshness import calculate_skill_freshness
 from skill.evolution.records import read_evaluation_records
 from skill.ecosystem.validation import validate_skill_directory, validate_skill_replacement
@@ -498,71 +497,10 @@ class SkillEvolutionManager:
             raise ValueError(f"Skill rollback revision does not match state: {revision_id}")
         return target, current_revision, revision
 
-    def continue_skill_evolution(
-        self,
-        evolution_id: str,
-        cases: list[EvaluationCase],
-    ) -> SkillEvolutionState:
-        state = read_skill_evolution(self.store, evolution_id)
-        if state.status in {"rejected", "promoted", "stable", "rolled_back"}:
-            return state
-        if state.status == "failed":
-            raise ValueError(f"Skill evolution already failed: {evolution_id}")
-        try:
-            if state.status == "candidate_recommended":
-                state = self._create_recommended_candidate(state)
-            if state.status == "candidate_created":
-                self.evaluate_skill_candidate(state.candidate_id, cases)
-                state = read_skill_evolution(self.store, evolution_id)
-            if state.status == "rejected":
-                return state
-            if state.status == "evaluated":
-                self.promote_skill_candidate(state.candidate_id)
-                state = read_skill_evolution(self.store, evolution_id)
-            if state.status != "promoted":
-                raise RuntimeError(f"unexpected Skill evolution status: {state.status}")
-            return state
-        except Exception as error:
-            latest = read_skill_evolution(self.store, evolution_id)
-            if latest.status in {"candidate_recommended", "candidate_created"}:
-                record_skill_evolution_failure(self.store, evolution_id, error)
-            raise
-
-    def evolve_skill(
-        self,
-        name: str,
-        goal: str,
-        cases: list[EvaluationCase],
-        *,
-        skill_type: str | None = None,
-    ) -> EvolutionResult:
-        candidate = self.create_skill_candidate(name, goal, skill_type=skill_type)
-        state = self.continue_skill_evolution(candidate.candidate_id, cases)
-        if state.evaluation is None:
-            raise RuntimeError("Skill evolution completed without an evaluation")
-        report = read_recorded_skill_evaluation_report(
-            self.evolution_root,
-            candidate.candidate_id,
-            state.evaluation,
-        )
-        if state.status == "rejected":
-            return EvolutionResult(candidate=candidate, report=report, status="rejected")
-        if state.status != "promoted":
-            raise RuntimeError(f"unexpected Skill evolution status: {state.status}")
-        manifest = self._read_active_manifest(candidate.name, candidate.skill_type)
-        if manifest is None:
-            raise RuntimeError(f"promoted Skill is not active: {candidate.key}")
-        return EvolutionResult(
-            candidate=candidate,
-            report=report,
-            status="promoted",
-            promoted_manifest=manifest,
-        )
-
-    def _create_recommended_candidate(
+    def create_recommended_skill_candidate(
         self,
         state: SkillEvolutionState,
-    ) -> SkillEvolutionState:
+    ) -> SkillCandidate:
         source = state.source_revision
         if source is None:
             raise ValueError("automatic Skill evolution requires a source revision")
@@ -572,12 +510,11 @@ class SkillEvolutionManager:
             source.content_sha256,
         ):
             raise ValueError(f"Skill revision changed after recommendation: {source.key}")
-        self.create_skill_candidate(
+        return self.create_skill_candidate(
             source.key,
             state.goal,
             evolution_id=state.evolution_id,
         )
-        return read_skill_evolution(self.store, state.evolution_id)
 
     def list_skill_history(
         self,

@@ -146,7 +146,8 @@ class RuntimeEventSubscriberTests(unittest.TestCase):
 
             result = agent.run("hello")
             with patch(
-                "skill.evolution.learning.AutomaticEvolutionService.review_and_evolve",
+                "skill.evolution.learning."
+                "AutomaticSkillEvolution.run_pending_skill_evolution_stages",
                 side_effect=RuntimeError("evolution unavailable"),
             ), self.assertRaisesRegex(RuntimeError, "evolution unavailable"):
                 agent.learn_from_run(result.run_id)

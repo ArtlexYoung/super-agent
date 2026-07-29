@@ -19,7 +19,7 @@ from skill.evolution.records import (
 from skill.state.events import create_local_event_store
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.evolution.freshness import calculate_skill_freshness
-from skill.evolution.change.revision import SkillRevision
+from skill.evolution.values import SkillRevision
 from support import write_memory_skill, write_workflow_skill
 
 

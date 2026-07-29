@@ -12,9 +12,8 @@ from skill.evolution.state import (
     require_skill_candidate_can_promote,
     start_manual_skill_evolution,
 )
-from skill.evolution.values import CandidateEvaluation
+from skill.evolution.values import CandidateEvaluation, SkillRevision
 from skill.state.events import create_local_event_store
-from skill.evolution.change.revision import SkillRevision
 
 
 class SkillRevisionEvolutionStateTests(unittest.TestCase):

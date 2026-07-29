@@ -15,7 +15,7 @@ from skill.evolution.state import (
     recommend_skill_evolution,
 )
 from skill.state.events import EventStore
-from skill.evolution.change.revision import SkillRevision
+from skill.evolution.values import SkillRevision
 from skill.evolution.records import read_evaluation_records
 
 

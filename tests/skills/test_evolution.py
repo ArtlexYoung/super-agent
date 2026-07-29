@@ -613,7 +613,7 @@ class SkillEvolutionTests(unittest.TestCase):
             active = manager.user_skill_root / "prompt" / "writer" / "SKILL.md"
             self.assertEqual("Candidate instructions.\n", active.read_text())
 
-    def test_evolve_skill_runs_one_complete_lifecycle(self) -> None:
+    def test_candidate_and_evaluation_do_not_activate_until_explicit_promotion(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_prompt_skill(root, "writer", "Original instructions.")
@@ -626,9 +626,12 @@ class SkillEvolutionTests(unittest.TestCase):
                 ],
             )
 
-            result = manager.evolve_skill(
+            candidate = manager.create_skill_candidate(
                 "writer",
                 "improve output",
+            )
+            report = manager.evaluate_skill_candidate(
+                candidate.candidate_id,
                 [
                     EvaluationCase(
                         name="required",
@@ -638,8 +641,11 @@ class SkillEvolutionTests(unittest.TestCase):
                 ],
             )
 
-            self.assertEqual("promoted", result.status)
-            self.assertIsNotNone(result.promoted_manifest)
+            self.assertTrue(report.passed)
+            self.assertFalse(
+                (manager.user_skill_root / "prompt" / "writer").exists()
+            )
+            manager.promote_skill_candidate(candidate.candidate_id)
             self.assertEqual(
                 "Candidate instructions.\n",
                 (

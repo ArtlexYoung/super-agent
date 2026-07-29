@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 from skill.evolution.records import EvaluationRecord, evaluation_record_to_dict
-from skill.evolution.change.revision import SkillRevision
+from skill.evolution.values import SkillRevision
 
 
 FOLLOWUP_WINDOW_MINUTES = 10

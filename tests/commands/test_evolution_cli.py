@@ -19,7 +19,7 @@ from skill.evolution.records import (
     create_evaluation_record,
 )
 from skill.evolution.recommendations import recommend_skill_revisions
-from skill.evolution.change.revision import SkillRevision
+from skill.evolution.values import SkillRevision
 
 
 class EvolutionCliTests(unittest.TestCase):

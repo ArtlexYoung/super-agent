@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from skill.evolution.change.revision import (
+from skill.evolution.values import (
     SkillRevision,
     skill_revision_from_dict,
     skill_revision_to_dict,
