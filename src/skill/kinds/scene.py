@@ -14,7 +14,7 @@ from uuid import uuid4
 from core.actions import ActionEffect
 from skill.disclosure import ProgressiveDisclosureCore, SkillDisclosure, SkillIndex
 from skill.disclosure.models import SkillReference
-from skill.runners.loaded import ScenePolicy, SkillAction, SkillTool
+from skill.runners.loaded import SkillAction, SkillTool
 
 if TYPE_CHECKING:
     from core.state.store import RuntimeStore
@@ -51,7 +51,11 @@ class CreatedSkillScene:
         }
 
 
-def create_scene_policy_from_skill(disclosure: SkillDisclosure) -> ScenePolicy:
+def read_scene_included_skills(
+    disclosure: SkillDisclosure,
+) -> tuple[SkillReference, ...]:
+    """Read and validate the ordinary Skills included by one scene Skill."""
+
     manifest = disclosure.read_manifest()
     if manifest.skill_type != "scene":
         raise ValueError(f"skill does not use the scene Skill type: {manifest.name}")
@@ -63,7 +67,7 @@ def create_scene_policy_from_skill(disclosure: SkillDisclosure) -> ScenePolicy:
         )
     references = _read_scene_references(data.get("skills"))
     _validate_scene_skill_types(references)
-    return ScenePolicy(manifest.name, references, manifest.is_default)
+    return references
 
 
 def create_scene_creation_tool(

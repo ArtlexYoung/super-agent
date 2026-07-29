@@ -8,7 +8,6 @@ from typing import Callable, Mapping, cast
 from skill.runners.loaded import (
     LoadedSkill,
     PlanningPolicy,
-    ScenePolicy,
     TaskPolicy,
 )
 from skill.runners.registry import SkillRunners
@@ -228,10 +227,12 @@ def _select_run_skills(
         unavailable_scenes=_list_unavailable_scenes(session),
     )
     scene_contribution = _load_skill(session, scene_reference)
-    scene_policy = scene_contribution.scene_policy
-    if scene_policy is None:
-        raise TypeError("scene SkillRunner did not provide a scene policy")
-    enabled = _merge_scene_and_configured_skills(session, scene_policy)
+    if not scene_contribution.included_skills:
+        raise TypeError("scene SkillRunner did not include any Skills")
+    enabled = _merge_included_and_configured_skills(
+        session,
+        scene_contribution.included_skills,
+    )
     allowed_types = {
         entry.descriptor.skill_type
         for entry in session.skill_runners.list_skill_runners()
@@ -240,7 +241,7 @@ def _select_run_skills(
     unsupported_types = sorted(
         {
             reference.skill_type
-            for reference in scene_policy.skills
+            for reference in scene_contribution.included_skills
             if reference.skill_type not in allowed_types
         }
     )
@@ -527,9 +528,9 @@ def _selected_entries(
     ]
 
 
-def _merge_scene_and_configured_skills(
+def _merge_included_and_configured_skills(
     session: Run,
-    scene_policy: ScenePolicy,
+    included_skills: tuple[SkillReference, ...],
 ) -> list[str]:
     index = session.skill_index
     configured = [
@@ -545,7 +546,7 @@ def _merge_scene_and_configured_skills(
     overridden_types = configured_types & {"memory", "planner", "workflow"}
     scene_keys = [
         reference.key
-        for reference in scene_policy.skills
+        for reference in included_skills
         if reference.skill_type not in overridden_types
     ]
     return [*scene_keys, *configured]

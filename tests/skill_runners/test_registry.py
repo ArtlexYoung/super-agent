@@ -5,7 +5,13 @@ from pathlib import Path
 
 from core.agent import Agent
 from core.provider.chat import MockProvider
-from skill.runners.registry import SkillRunners, describe_skill_runner
+from skill.disclosure import ProgressiveDisclosureCore, SkillReference
+from skill.runners.loaded import LoadedSkill
+from skill.runners.registry import (
+    SkillLoadRequest,
+    SkillRunners,
+    describe_skill_runner,
+)
 from core.config import AgentConfig
 
 
@@ -29,7 +35,7 @@ class SkillRunnersTests(unittest.TestCase):
             self.assertTrue(all(item["type"] for item in locked))
             self.assertTrue(all(len(item["content_sha256"]) == 64 for item in locked))
             memory = next(item for item in locked if item["type"] == "memory")
-            self.assertEqual(8, memory["schema_version"])
+            self.assertEqual(9, memory["schema_version"])
             self.assertEqual(["storage", "text_model"], memory["required_services"])
 
     def test_registry_rejects_missing_and_cyclic_dependencies(self) -> None:
@@ -61,6 +67,30 @@ class SkillRunnersTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "type does not match"):
             registry.add_skill_runner(runner, descriptor)
 
+    def test_registry_validates_the_shared_included_skill_contract(self) -> None:
+        reference = SkillReference("prompt", "common")
+        request = SkillLoadRequest(
+            ProgressiveDisclosureCore([]),
+            SkillReference("group", "test"),
+        )
+
+        valid = SkillRunners()
+        valid.add_skill_runner(_LoadedSkillRunner((reference,)))
+        self.assertEqual(
+            (reference,),
+            valid.load_skill(request).included_skills,
+        )
+
+        invalid_type = SkillRunners()
+        invalid_type.add_skill_runner(_LoadedSkillRunner(("prompt:common",)))
+        with self.assertRaisesRegex(TypeError, "tuple of SkillReference"):
+            invalid_type.load_skill(request)
+
+        duplicate = SkillRunners()
+        duplicate.add_skill_runner(_LoadedSkillRunner((reference, reference)))
+        with self.assertRaisesRegex(ValueError, "cannot contain duplicates"):
+            duplicate.load_skill(request)
+
 
 class _SkillRunner:
     name = "test"
@@ -77,3 +107,16 @@ class _SkillRunner:
 
     def load_skill(self, request: object) -> object:
         return request
+
+
+class _LoadedSkillRunner:
+    name = "included-skill-test"
+    version = "1"
+    skill_type = "group"
+    adds_model_context = False
+
+    def __init__(self, included_skills: tuple[object, ...]) -> None:
+        self.included_skills = included_skills
+
+    def load_skill(self, request: object) -> LoadedSkill:
+        return LoadedSkill(included_skills=self.included_skills)  # type: ignore[arg-type]

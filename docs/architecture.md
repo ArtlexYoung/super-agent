@@ -101,7 +101,7 @@ one loading method:
 loaded = runner.load_skill(request)
 ```
 
-`LoadedSkill` may contribute model context, prompt context, tools, a scene policy, a task
+`LoadedSkill` may contribute model context, prompt context, tools, included Skills, a task
 policy, a planning policy, and a completion callback. Core consumes this one shape for
 every type. Scene, prompt, MCP, memory, workflow, and planner behavior therefore requires
 no separate loader path in Core.

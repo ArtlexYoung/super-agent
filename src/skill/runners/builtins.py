@@ -146,14 +146,14 @@ class SceneSkillRunner:
     adds_model_context = False
 
     def load_skill(self, request: SkillLoadRequest) -> LoadedSkill:
-        from skill.kinds.scene import create_scene_policy_from_skill
+        from skill.kinds.scene import read_scene_included_skills
 
         opened = request.disclosure.open_skill(
             request.reference.name,
             self.skill_type,
         )
         return LoadedSkill(
-            scene_policy=create_scene_policy_from_skill(opened),
+            included_skills=read_scene_included_skills(opened),
         )
 
 

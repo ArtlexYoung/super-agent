@@ -38,13 +38,6 @@ class PlanningPolicy:
 
 
 @dataclass(frozen=True)
-class ScenePolicy:
-    name: str
-    skills: tuple[SkillReference, ...]
-    is_default: bool
-
-
-@dataclass(frozen=True)
 class SkillAction:
     effects: tuple[ActionEffect, ...]
     resource: str
@@ -105,12 +98,14 @@ class SkillTool:
 
 @dataclass(frozen=True)
 class LoadedSkill:
+    """One uniform result for every trusted Skill loading mechanism."""
+
     model_context: Skill | None = None
     build_prompt_context: Callable[[str], str] | None = None
     tools: tuple[SkillTool, ...] = ()
     task_policy: TaskPolicy | None = None
     planning_policy: PlanningPolicy | None = None
-    scene_policy: ScenePolicy | None = None
+    included_skills: tuple[SkillReference, ...] = ()
     record_task_completed: Callable[[str, list[str]], None] | None = None
     task_completed_action: SkillAction | None = None
 

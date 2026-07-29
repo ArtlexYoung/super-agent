@@ -129,6 +129,8 @@ There are no separate memory, workflow, MCP, or planning engines. They are ordin
 Skill types loaded by registered SkillRunners. The progressive-disclosure core can also
 be used independently for read-only discovery, with cache and history writes enabled
 only when the caller asks for them.
+Every runner returns the same `LoadedSkill` result. A scene includes its task-specific
+Skills through that result instead of introducing a second scene execution interface.
 
 ## Task Scenes
 

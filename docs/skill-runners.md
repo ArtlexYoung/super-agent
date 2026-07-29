@@ -104,7 +104,7 @@ without matching code registration fails preflight.
 - Model instruction content.
 - Prompt context built for the current task.
 - Model-callable tools.
-- A scene policy containing task-specific Skill references.
+- Other Skill references through the same `included_skills` field used by scene Skills.
 - Workflow or planning rules.
 - A task-completed callback with a declared action.
 

@@ -12,7 +12,7 @@ from skill.kinds.model import (
     model_connection_fields,
 )
 from skill.kinds.planner import create_planning_policy_from_skill
-from skill.kinds.scene import create_scene_policy_from_skill
+from skill.kinds.scene import read_scene_included_skills
 from skill.kinds.workflow import create_workflow_policy_from_skill
 from skill.manifest import SkillManifest
 
@@ -84,7 +84,7 @@ def _validate_skill_type(
     elif skill_type == "planner":
         create_planning_policy_from_skill(disclosure)
     elif skill_type == "scene":
-        create_scene_policy_from_skill(disclosure)
+        read_scene_included_skills(disclosure)
 
 
 def _validate_prompt_skill(disclosure: SkillDisclosure) -> None:

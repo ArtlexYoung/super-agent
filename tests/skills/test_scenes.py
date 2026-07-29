@@ -9,7 +9,7 @@ from core.config import AgentConfig
 from core.provider.chat import MockProvider, ModelResponse, ToolCall
 from skill.kinds.scene import (
     SkillSceneInput,
-    create_scene_policy_from_skill,
+    read_scene_included_skills,
 )
 from skill.runners.defaults import create_progressive_skill_disclosure
 
@@ -137,7 +137,7 @@ class SkillSceneTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "exactly one default scene"):
                 disclosure.select_skill_scene_for_prompt("hello")
 
-    def test_scene_policy_rejects_incomplete_or_nested_chains(self) -> None:
+    def test_scene_includes_reject_incomplete_or_nested_chains(self) -> None:
         cases = {
             "missing-workflow": (["prompt:common"], "missing required Skill types"),
             "nested-scene": (
@@ -164,7 +164,7 @@ class SkillSceneTests(unittest.TestCase):
 
             for name, (_, message) in cases.items():
                 with self.subTest(name=name), self.assertRaisesRegex(ValueError, message):
-                    create_scene_policy_from_skill(
+                    read_scene_included_skills(
                         disclosure.open_skill(name, expected_type="scene")
                     )
 

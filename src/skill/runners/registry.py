@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Protocol
 
 from skill.runners.loaded import (
-    ScenePolicy,
     SkillAction,
     SkillTool,
     LoadedSkill,
@@ -23,7 +22,7 @@ from skill.disclosure import ProgressiveDisclosureCore, SkillReference
 if TYPE_CHECKING:
     from core.state.store import RuntimeStore
 
-SKILL_RUNNER_SCHEMA_VERSION = 8
+SKILL_RUNNER_SCHEMA_VERSION = 9
 _NAME_PATTERN = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}")
 
 
@@ -261,11 +260,16 @@ def _validate_loaded_skill(loaded: LoadedSkill) -> None:
     has_action = loaded.task_completed_action is not None
     if has_callback != has_action:
         raise TypeError("A Skill completion callback must declare one SkillAction")
-    if loaded.scene_policy is not None and not isinstance(
-        loaded.scene_policy,
-        ScenePolicy,
+    if not isinstance(loaded.included_skills, tuple) or not all(
+        isinstance(reference, SkillReference)
+        for reference in loaded.included_skills
     ):
-        raise TypeError("LoadedSkill.scene_policy must be a ScenePolicy")
+        raise TypeError(
+            "LoadedSkill.included_skills must be a tuple of SkillReference values"
+        )
+    keys = [reference.key for reference in loaded.included_skills]
+    if len(keys) != len(set(keys)):
+        raise ValueError("LoadedSkill.included_skills cannot contain duplicates")
 
 
 def _clean_skill_type(value: str) -> str:

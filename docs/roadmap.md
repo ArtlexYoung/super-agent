@@ -240,6 +240,19 @@ Status: implemented.
 - Keep stateful, stateless, subagent, learning, and management paths on the same Runtime
   owner without changing the public `Agent` entry point.
 
+## v0.0.80: One Skill Loading Result
+
+Status: implemented.
+
+- Make every trusted runner return the same validated `LoadedSkill` result for model
+  context, prompt context, tools, rules, callbacks, and included Skills.
+- Replace the scene-only policy result with the generic `included_skills` field; scene
+  Skills remain ordinary composition content rather than a second execution mechanism.
+- Keep scene selection in central progressive disclosure and keep composition, explicit
+  Agent overrides, dependency expansion, and runner checks in one Core path.
+- Reject malformed and duplicate included references at the runner boundary and remove
+  the old scene policy function and names without compatibility aliases.
+
 ## Release Gate
 
 The project will not move to `0.1.x` because of feature count. The gate is a reproducible
