@@ -125,7 +125,6 @@ default_scope = "agent"
 recall_limit = 20
 include_in_prompt = true
 include_usage_habits = true
-organize_on_recall = true
 ```
 
 Each item has one explicit `memory_type`:
@@ -140,10 +139,12 @@ The model receives two unambiguous write tools: `add_temporary_memory` and
 the methods with the same names; the CLI defaults manual additions to `long-term` for
 convenience.
 
-Recall first organizes temporary candidates inside the current conversation. Long-term
-organization can then inspect the relevant temporary items as read-only context and return
-a validated `promote` operation. Promotion creates an abstract long-term item while leaving
-its temporary sources unchanged. The long-term event records the source item IDs and source
+Recall only filters and ranks memory. It never calls a model or changes an item. The model
+can explicitly call `prepare_memory_organization` to produce a validated, immutable plan,
+inspect that plan, and then call `apply_memory_organization` by ID. Preparing a long-term
+plan can inspect relevant temporary items from the current conversation and propose a
+`promote` operation. Promotion creates an abstract long-term item while leaving its
+temporary sources unchanged. The long-term event records the source item IDs and source
 conversation, and previously promoted source IDs cannot be promoted again.
 
 Other merge, supersede, archive, and forget operations remain inside one type, conversation,
@@ -151,8 +152,8 @@ and scope. Replacement items preserve that boundary. Every mutation uses the sam
 action boundary as other Runtime changes.
 
 Archived and forgotten items disappear from the active view while canonical events remain
-append-only. Invalid or failed model organization is an explicit recall failure; Runtime
-does not silently return the unorganized result.
+append-only. Applying a plan first verifies that every source is still current. Invalid,
+failed, missing, or stale plans fail explicitly without changing normal recall results.
 
 ```bash
 super-agent memory list --config agent.toml --type long-term

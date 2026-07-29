@@ -19,7 +19,7 @@ Versions `v0.0.25` through `v0.0.61` established the current foundation:
   decisions.
 - Deterministic Skill freshness plus candidate, evaluation, promotion, monitoring, and
   rollback for Agent-owned Skills.
-- Explicit action declarations, passive Skill isolation, recall-time memory organization,
+- Explicit action declarations, passive Skill isolation, staged memory organization,
   AG-UI, and the React Web client.
 
 Reproducible snapshots remain under [experiments](experiments/README.md).
@@ -252,6 +252,19 @@ Status: implemented.
   Agent overrides, dependency expansion, and runner checks in one Core path.
 - Reject malformed and duplicate included references at the runner boundary and remove
   the old scene policy function and names without compatibility aliases.
+
+## v0.0.81: Explicit Reads and Changes
+
+Status: implemented.
+
+- Make every Skill `read_*` operation pure; cache and history writes happen only through
+  matching `disclose_*` operations.
+- Separate model-side Skill disclosure from `activate_skill`, which alone loads runner
+  output, attaches tools, records use, and contributes task-completion behavior.
+- Make memory recall a pure ranked read and replace recall-time organization with an
+  immutable prepare-and-apply plan that rejects stale sources.
+- Disclose selected model Skills through the same center and remove old tool names,
+  events, and memory settings without compatibility behavior.
 
 ## Release Gate
 

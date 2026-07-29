@@ -131,6 +131,8 @@ be used independently for read-only discovery, with cache and history writes ena
 only when the caller asks for them.
 Every runner returns the same `LoadedSkill` result. A scene includes its task-specific
 Skills through that result instead of introducing a second scene execution interface.
+Reading Skill source is pure. Cache disclosure, runner activation, memory organization,
+and every other state change are separate explicit operations.
 
 ## Task Scenes
 

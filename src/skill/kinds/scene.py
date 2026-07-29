@@ -277,7 +277,6 @@ def _create_scene_documents(request: SkillSceneInput) -> dict[str, dict[str, str
                     "recall_limit": 20,
                     "include_in_prompt": True,
                     "include_usage_habits": True,
-                    "organize_on_recall": True,
                 },
             )
         },

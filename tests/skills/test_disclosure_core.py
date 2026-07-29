@@ -184,10 +184,10 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
             core.prepare_skill_index()
             skill = core.open_skill("echo", expected_type="prompt")
 
-            manifest = skill.read_manifest()
-            first = skill.read_instructions()
-            second = skill.read_instructions()
-            configuration = skill.read_configuration()
+            manifest = skill.disclose_manifest()
+            first = skill.disclose_instructions()
+            second = skill.disclose_instructions()
+            configuration = skill.disclose_configuration()
             history = core.read_disclosure_history()
 
             self.assertEqual("echo", manifest.name)
@@ -201,6 +201,29 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
             self.assertFalse(history[2].cache_hit)
             self.assertTrue(history[3].cache_hit)
             self.assertEqual(first.content, core.read_disclosed_content(first.cache_path))
+
+    def test_read_stages_do_not_write_cache_or_history(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_prompt_skill(root, "echo", instruction="Answer briefly.")
+            core = _create_recording_core(root)
+            index = core.prepare_skill_index()
+            skill = core.open_skill("echo", expected_type="prompt")
+
+            self.assertEqual("echo", skill.read_manifest().name)
+            self.assertEqual("Answer briefly.", skill.read_instructions().content)
+            self.assertEqual({}, skill.read_configuration().content)
+            self.assertTrue(skill.read_skill_files().files)
+
+            entry = index.entries[0]
+            self.assertFalse(entry.manifest_cache_path.exists())
+            self.assertFalse(entry.instructions_cache_path.exists())
+            self.assertFalse(entry.configuration_cache_path.exists())
+            self.assertFalse(entry.files_cache_path.exists())
+            self.assertEqual(
+                ["index"],
+                [event.stage for event in core.read_disclosure_history()],
+            )
 
     def test_selected_skill_discloses_complete_directory_through_one_cache(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -216,7 +239,10 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
             core = _create_recording_core(root)
             index = core.prepare_skill_index()
 
-            disclosed = core.open_skill("echo", "prompt").read_skill_files()
+            disclosed = core.open_skill(
+                "echo",
+                "prompt",
+            ).disclose_skill_files()
 
             files = {item.relative_path: item for item in disclosed.files}
             self.assertEqual("example content", files["resources/example.txt"].content)

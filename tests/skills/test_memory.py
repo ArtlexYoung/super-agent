@@ -117,7 +117,7 @@ class MiniMemoryTests(unittest.TestCase):
             with self.assertRaisesRegex(KeyError, "current context"):
                 memory.forget_memory(beta.item_id)
 
-    def test_recall_organizes_each_memory_type_without_mixing_candidates(self) -> None:
+    def test_organization_prepares_each_memory_type_without_mixing_candidates(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             store = create_local_runtime_store(Path(tmp))
             seed = MiniMemory(store)
@@ -147,6 +147,18 @@ class MiniMemoryTests(unittest.TestCase):
             recalled = memory.recall_memory("Python")
 
             self.assertEqual(4, len(recalled))
+            self.assertEqual([], candidate_groups)
+            long_term_plan = memory.prepare_memory_organization(
+                "Python",
+                memory_type="long_term",
+            )
+            temporary_plan = memory.prepare_memory_organization(
+                "Python",
+                memory_type="temporary",
+            )
+
+            self.assertIsNotNone(long_term_plan)
+            self.assertIsNotNone(temporary_plan)
             self.assertEqual(2, len(candidate_groups))
             for candidates in candidate_groups:
                 self.assertEqual(1, len({item["memory_type"] for item in candidates}))
@@ -207,6 +219,21 @@ class MiniMemoryTests(unittest.TestCase):
 
             memory = _runtime_memory(store, "conversation-a", organize)
 
+            plan = memory.prepare_memory_organization(
+                "Python task",
+                memory_type="temporary",
+            )
+            self.assertIsNotNone(plan)
+            self.assertEqual(
+                2,
+                len(
+                    memory.recall_memory(
+                        "Python task",
+                        memory_type="temporary",
+                    )
+                ),
+            )
+            memory.apply_memory_organization(plan.plan_id)
             recalled = memory.recall_memory(
                 "Python task",
                 memory_type="temporary",
@@ -222,11 +249,12 @@ class MiniMemoryTests(unittest.TestCase):
                 _create_memory_promotion_scenario(Path(tmp))
             )
 
-            recalled = memory.recall_memory(
+            plan = memory.prepare_memory_organization(
                 "concise answers",
                 memory_type="long_term",
             )
 
+            self.assertIsNotNone(plan)
             self.assertEqual(1, len(payloads))
             self.assertEqual([], payloads[0]["candidates"])
             self.assertEqual(
@@ -236,6 +264,18 @@ class MiniMemoryTests(unittest.TestCase):
             self.assertEqual(
                 [source.item_id],
                 [item["item_id"] for item in payloads[0]["temporary_context"]],
+            )
+            self.assertEqual(
+                [],
+                memory.recall_memory(
+                    "concise answers",
+                    memory_type="long_term",
+                ),
+            )
+            memory.apply_memory_organization(plan.plan_id)
+            recalled = memory.recall_memory(
+                "concise answers",
+                memory_type="long_term",
             )
             self.assertEqual(
                 ["User habitually prefers concise answers."],
@@ -282,15 +322,22 @@ class MiniMemoryTests(unittest.TestCase):
             _, memory, source, payloads, _ = _create_memory_promotion_scenario(
                 Path(tmp)
             )
+            plan = memory.prepare_memory_organization(
+                "concise answers",
+                memory_type="long_term",
+            )
+            self.assertIsNotNone(plan)
+            memory.apply_memory_organization(plan.plan_id)
             recalled = memory.recall_memory(
                 "concise answers",
                 memory_type="long_term",
             )
             memory.forget_memory(recalled[0].item_id)
-            memory.recall_memory(
+            second_plan = memory.prepare_memory_organization(
                 "concise answers",
                 memory_type="long_term",
             )
+            self.assertIsNone(second_plan)
             self.assertEqual(1, len(payloads))
             self.assertEqual(
                 [],
@@ -393,7 +440,7 @@ class MiniMemoryTests(unittest.TestCase):
                 ValueError,
                 "unknown temporary context|only long-term organization",
             ):
-                memory.recall_memory(
+                memory.prepare_memory_organization(
                     "concise preference",
                     memory_type="temporary",
                 )
@@ -480,7 +527,7 @@ class MiniMemoryTests(unittest.TestCase):
                 len(memory.list_memory_items(conversation_id="conversation-a")),
             )
 
-    def test_recall_uses_model_to_supersede_archive_and_forget_memory(self) -> None:
+    def test_prepared_organization_requires_explicit_apply(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             store = create_local_runtime_store(root)
@@ -526,9 +573,23 @@ class MiniMemoryTests(unittest.TestCase):
                 execute_action=execute,
             )
 
-            recalled = memory.recall_memory("Python project", "project")
+            before = memory.recall_memory("Python project", "project")
+            plan = memory.prepare_memory_organization(
+                "Python project",
+                scope="project",
+                memory_type="long_term",
+            )
 
-            self.assertEqual(["Python project uses version 3.12."], [item.text for item in recalled])
+            self.assertIsNotNone(plan)
+            self.assertEqual(4, len(before))
+            self.assertEqual([], action_requests)
+            self.assertEqual(4, len(memory.recall_memory("Python project", "project")))
+            memory.apply_memory_organization(plan.plan_id)
+            recalled = memory.recall_memory("Python project", "project")
+            self.assertEqual(
+                ["Python project uses version 3.12."],
+                [item.text for item in recalled],
+            )
             self.assertTrue(all(item.memory_type == "long_term" for item in recalled))
             self.assertTrue(all(item.conversation_id is None for item in recalled))
             self.assertTrue(action_requests)
@@ -546,9 +607,48 @@ class MiniMemoryTests(unittest.TestCase):
             self.assertIn("memory.superseded", event_types)
             self.assertIn("memory.archived", event_types)
             self.assertIn("memory.forgotten", event_types)
-            self.assertEqual("memory.organization.completed", event_types[-1])
+            self.assertEqual("memory.organization.applied", event_types[-1])
 
-    def test_invalid_model_organization_fails_without_returning_unorganized_memory(self) -> None:
+    def test_applying_a_stale_organization_plan_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            store = create_local_runtime_store(Path(tmp))
+            seed = MiniMemory(store)
+            old = seed.add_long_term_memory("Python project uses version 3.11.")
+            current = seed.add_long_term_memory(
+                "Python project now uses version 3.12."
+            )
+
+            def organize(messages):
+                return json.dumps(
+                    {
+                        "operations": [
+                            {
+                                "type": "supersede",
+                                "source_item_ids": [old.item_id, current.item_id],
+                                "text": "Python project uses version 3.12.",
+                                "reason": "newer version wins",
+                            }
+                        ]
+                    }
+                )
+
+            memory = MiniMemory(store, send_text_model_messages=organize)
+            plan = memory.prepare_memory_organization(
+                "Python project",
+                memory_type="long_term",
+            )
+            self.assertIsNotNone(plan)
+            memory.forget_memory(old.item_id)
+
+            with self.assertRaisesRegex(RuntimeError, "candidates are stale"):
+                memory.apply_memory_organization(plan.plan_id)
+
+            self.assertEqual(
+                [current],
+                memory.list_memory_items(memory_type="long_term"),
+            )
+
+    def test_invalid_organization_plan_fails_without_changing_recall(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             memory = MiniMemory(
                 create_local_runtime_store(Path(tmp)),
@@ -557,8 +657,13 @@ class MiniMemoryTests(unittest.TestCase):
             memory.add_long_term_memory("Python preference one.")
             memory.add_long_term_memory("Python preference two.")
 
+            self.assertEqual(2, len(memory.recall_memory("Python")))
             with self.assertRaisesRegex(ValueError, "valid JSON"):
-                memory.recall_memory("Python")
+                memory.prepare_memory_organization(
+                    "Python",
+                    memory_type="long_term",
+                )
+            self.assertEqual(2, len(memory.recall_memory("Python")))
 
             events = memory.store.backend.read_events(
                 StorageEventQuery(
@@ -619,7 +724,7 @@ include_usage_habits = false
             self.assertIn("Long-term memory", provider.last_messages[0]["content"])
             self.assertIn("User likes concise answers.", provider.last_messages[0]["content"])
 
-    def test_agent_organizes_memory_before_main_model_response(self) -> None:
+    def test_agent_recall_does_not_organize_memory_implicitly(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             write_workflow_skill(root)
@@ -629,35 +734,21 @@ include_usage_habits = false
             )
             first = seed.add_long_term_memory("Python project uses 3.11.")
             second = seed.add_long_term_memory("Python project now uses 3.12.")
-            provider = _SequenceProvider(
-                [
-                    json.dumps(
-                        {
-                            "operations": [
-                                {
-                                    "type": "supersede",
-                                    "source_item_ids": [first.item_id, second.item_id],
-                                    "text": "Python project uses 3.12.",
-                                    "reason": "newer project state",
-                                }
-                            ]
-                        }
-                    ),
-                    "final answer",
-                ]
-            )
+            provider = MockProvider("final answer")
             agent = _make_agent(root, provider)
 
             result = agent.run("Which Python version does the project use?")
 
             self.assertEqual("final answer", result.text)
-            self.assertEqual(2, len(provider.requests))
             active = MiniMemory(agent.runtime.create_store()).list_memory_items()
-            self.assertEqual(["Python project uses 3.12."], [item.text for item in active])
+            self.assertEqual(
+                {first.item_id, second.item_id},
+                {item.item_id for item in active},
+            )
             event_types = [
                 event.event_type for event in agent.for_user("local").runs.read_trace(result.run_id).events
             ]
-            self.assertIn("action.checked", event_types)
+            self.assertNotIn("memory.organization.preparing", event_types)
 
     def test_memory_self_updates_usage_habits(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -788,20 +879,6 @@ def _runtime_memory(
         send_text_model_messages=organize,
         execute_action=execute or (lambda request, action: action()),
     )
-
-
-class _SequenceProvider(MockProvider):
-    def __init__(self, responses: list[str]) -> None:
-        super().__init__()
-        self.responses = list(responses)
-        self.requests: list[list[dict[str, object]]] = []
-
-    def send_chat_messages(self, messages, model):
-        self.requests.append(messages)
-        self.last_messages = messages
-        if not self.responses:
-            raise AssertionError("unexpected provider call")
-        return self.responses.pop(0)
 
 
 class _PromotionBarrierStorage:

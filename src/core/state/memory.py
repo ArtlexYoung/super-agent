@@ -15,8 +15,9 @@ TEMPORARY_MEMORY = "temporary"
 MEMORY_TYPES = frozenset({LONG_TERM_MEMORY, TEMPORARY_MEMORY})
 MEMORY_ORGANIZATION_EVENTS = frozenset(
     {
-        "memory.organization.started",
-        "memory.organization.completed",
+        "memory.organization.preparing",
+        "memory.organization.prepared",
+        "memory.organization.applied",
         "memory.organization.failed",
     }
 )

@@ -11,7 +11,12 @@ from core.actions import ActionEffect
 from core.provider.chat import Message
 from core.state.memory import LONG_TERM_MEMORY, TEMPORARY_MEMORY
 from core.state.store import RuntimeStore
-from skill.kinds.memory_models import MemoryItem, MemoryOperation, MemoryTextModel
+from skill.kinds.memory_models import (
+    MemoryItem,
+    MemoryOperation,
+    MemoryOrganizationPlan,
+    MemoryTextModel,
+)
 from skill.kinds.memory_support import (
     clean_item_id,
     clean_memory_text,
@@ -42,7 +47,7 @@ MemoryChangeRunner = Callable[
 
 
 class MemoryOrganizer:
-    """Apply deterministic and model-proposed changes to one memory boundary."""
+    """Prepare and explicitly apply changes within one memory boundary."""
 
     def __init__(
         self,
@@ -56,23 +61,22 @@ class MemoryOrganizer:
         self.read_source_run_id = read_source_run_id
         self.send_text_model_messages = send_text_model_messages
 
-    def organize_during_recall(
+    def prepare_organization(
         self,
         query: str,
         candidates: list[MemoryItem],
         *,
         target_memory_type: str,
         temporary_context: list[MemoryItem] | None = None,
-    ) -> None:
+    ) -> MemoryOrganizationPlan | None:
         temporary = list(temporary_context or [])
         if not candidates and not temporary:
-            return
-        normalized_candidates = self._merge_duplicate_candidates(candidates)
-        remaining = self._active_items(normalized_candidates)
+            return None
+        remaining = self._active_items(candidates)
         active_temporary = self._active_temporary_items(temporary)
         promotable_ids = self._promotable_temporary_item_ids(active_temporary)
         if not remaining and not promotable_ids:
-            return
+            return None
         should_use_model = (
             self.send_text_model_messages is not None
             and (
@@ -81,16 +85,20 @@ class MemoryOrganizer:
             )
         )
         if not should_use_model:
-            return
+            return None
+        conversation_id = self._organization_conversation_id(
+            target_memory_type,
+            remaining,
+        )
         self._record_event(
-            "memory.organization.started",
+            "memory.organization.preparing",
             {
                 "candidate_count": len(remaining),
                 "temporary_context_count": len(active_temporary),
                 "promotable_temporary_count": len(promotable_ids),
             },
             target_memory_type,
-            self._organization_conversation_id(target_memory_type, remaining),
+            conversation_id,
         )
         try:
             response = self.send_text_model_messages(
@@ -117,18 +125,46 @@ class MemoryOrganizer:
                     "message": str(error),
                 },
                 target_memory_type,
-                self._organization_conversation_id(target_memory_type, remaining),
+                conversation_id,
             )
             raise
-        self._apply_operations(operations, remaining, active_temporary)
+        plan = MemoryOrganizationPlan(
+            plan_id=f"memory-plan-{uuid4().hex}",
+            query=query,
+            target_memory_type=target_memory_type,
+            conversation_id=conversation_id,
+            candidates=tuple(remaining),
+            temporary_context=tuple(active_temporary),
+            operations=tuple(operations),
+        )
         self._record_event(
-            "memory.organization.completed",
+            "memory.organization.prepared",
             {
+                "plan_id": plan.plan_id,
                 "operation_count": len(operations),
                 "operations": [operation.operation for operation in operations],
             },
             target_memory_type,
-            self._organization_conversation_id(target_memory_type, remaining),
+            conversation_id,
+        )
+        return plan
+
+    def apply_organization(self, plan: MemoryOrganizationPlan) -> None:
+        self._require_plan_is_current(plan)
+        self._apply_operations(
+            list(plan.operations),
+            list(plan.candidates),
+            list(plan.temporary_context),
+        )
+        self._record_event(
+            "memory.organization.applied",
+            {
+                "plan_id": plan.plan_id,
+                "operation_count": len(plan.operations),
+                "operations": [operation.operation for operation in plan.operations],
+            },
+            plan.target_memory_type,
+            plan.conversation_id,
         )
 
     def merge_duplicate_items(
@@ -150,27 +186,6 @@ class MemoryOrganizer:
             ),
         )
         return replacement
-
-    def _merge_duplicate_candidates(
-        self,
-        candidates: list[MemoryItem],
-    ) -> list[MemoryItem]:
-        groups: dict[tuple[str, str | None, str, str], list[MemoryItem]] = {}
-        for item in candidates:
-            key = (*memory_boundary(item), normalize_memory_text(item.text))
-            groups.setdefault(key, []).append(item)
-        normalized: list[MemoryItem] = []
-        for sources in groups.values():
-            if len(sources) >= 2:
-                normalized.append(
-                    self.merge_duplicate_items(
-                        sources,
-                        "duplicate found during recall",
-                    )
-                )
-            else:
-                normalized.extend(sources)
-        return normalized
 
     def _active_items(self, candidates: list[MemoryItem]) -> list[MemoryItem]:
         if not candidates:
@@ -225,6 +240,28 @@ class MemoryOrganizer:
             conversation_id,
         )
         return selected - promoted
+
+    def _require_plan_is_current(self, plan: MemoryOrganizationPlan) -> None:
+        if not isinstance(plan, MemoryOrganizationPlan):
+            raise TypeError("memory organization plan is invalid")
+        current_candidates = self._active_items(list(plan.candidates))
+        current_temporary = self._active_temporary_items(
+            list(plan.temporary_context)
+        )
+        if current_candidates != list(plan.candidates):
+            raise RuntimeError("prepared memory organization candidates are stale")
+        if current_temporary != list(plan.temporary_context):
+            raise RuntimeError("prepared temporary memory context is stale")
+        promote_ids = {
+            item_id
+            for operation in plan.operations
+            if operation.operation == "promote"
+            for item_id in operation.source_item_ids
+        }
+        if promote_ids and not promote_ids <= self._promotable_temporary_item_ids(
+            current_temporary
+        ):
+            raise RuntimeError("prepared memory promotion is stale")
 
     @staticmethod
     def _organization_conversation_id(

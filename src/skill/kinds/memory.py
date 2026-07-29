@@ -18,6 +18,7 @@ from core.state.store import RuntimeStore
 from skill.disclosure import SkillDisclosure
 from skill.kinds.memory_models import (
     MemoryItem,
+    MemoryOrganizationPlan,
     MemoryPolicy,
     MemoryTextModel,
 )
@@ -63,6 +64,7 @@ class MiniMemory:
         self.usage_habits = MemoryUsageHabits(store.memory, execute_action)
         self.send_text_model_messages = send_text_model_messages
         self.execute_action = execute_action
+        self._prepared_organizations: dict[str, MemoryOrganizationPlan] = {}
         self.organizer = MemoryOrganizer(
             store,
             self._execute_memory_change,
@@ -137,15 +139,62 @@ class MiniMemory:
         selected_scope = clean_scope(scope)
         locations = self._resolve_memory_locations(memory_type, conversation_id)
         candidates = self._rank_memory(text, query_terms, selected_scope, locations)
-        if self.policy.organize_on_recall:
-            self._organize_memory_during_recall(
+        return candidates[:result_limit]
+
+    def prepare_memory_organization(
+        self,
+        query: str,
+        *,
+        memory_type: str,
+        scope: str = "agent",
+        conversation_id: str | None = None,
+    ) -> MemoryOrganizationPlan | None:
+        text = query.strip()
+        if not text:
+            raise ValueError("memory organization query cannot be empty")
+        selected_type = validate_memory_type(memory_type)
+        selected_scope = clean_scope(scope)
+        query_terms = Counter(tokenize_memory_text(text))
+        location = self._resolve_memory_locations(
+            selected_type,
+            conversation_id,
+        )[0]
+        candidates = self._rank_memory(
+            text,
+            query_terms,
+            selected_scope,
+            [location],
+        )[:MAX_ORGANIZATION_CANDIDATES]
+        temporary_context = (
+            self._temporary_context_for_long_term_organization(
                 text,
                 query_terms,
                 selected_scope,
-                locations,
+                self._current_temporary_location(),
             )
-            candidates = self._rank_memory(text, query_terms, selected_scope, locations)
-        return candidates[:result_limit]
+            if selected_type == LONG_TERM_MEMORY
+            else []
+        )
+        plan = self.organizer.prepare_organization(
+            text,
+            candidates,
+            target_memory_type=selected_type,
+            temporary_context=temporary_context,
+        )
+        if plan is not None:
+            self._prepared_organizations[plan.plan_id] = plan
+        return plan
+
+    def apply_memory_organization(self, plan_id: str) -> MemoryOrganizationPlan:
+        clean_id = plan_id.strip()
+        if not clean_id:
+            raise ValueError("memory organization plan_id cannot be empty")
+        plan = self._prepared_organizations.get(clean_id)
+        if plan is None:
+            raise KeyError(f"prepared memory organization not found: {clean_id}")
+        self.organizer.apply_organization(plan)
+        del self._prepared_organizations[clean_id]
+        return plan
 
     def forget_memory(
         self,
@@ -276,54 +325,6 @@ class MiniMemory:
             reverse=True,
         )
         return [item for _, item in ranked]
-
-    def _organize_memory_during_recall(
-        self,
-        query: str,
-        query_terms: Counter[str],
-        scope: str,
-        locations: list[MemoryLocation],
-    ) -> None:
-        temporary_locations = [
-            location for location in locations if location[0] == TEMPORARY_MEMORY
-        ]
-        for location in temporary_locations:
-            candidates = self._rank_memory(
-                query,
-                query_terms,
-                scope,
-                [location],
-            )[:MAX_ORGANIZATION_CANDIDATES]
-            self.organizer.organize_during_recall(
-                query,
-                candidates,
-                target_memory_type=TEMPORARY_MEMORY,
-            )
-        if not any(location[0] == LONG_TERM_MEMORY for location in locations):
-            return
-        long_term = self._rank_memory(
-            query,
-            query_terms,
-            scope,
-            [(LONG_TERM_MEMORY, None)],
-        )[:MAX_ORGANIZATION_CANDIDATES]
-        temporary_location = (
-            temporary_locations[0]
-            if temporary_locations
-            else self._current_temporary_location()
-        )
-        temporary_context = self._temporary_context_for_long_term_organization(
-            query,
-            query_terms,
-            scope,
-            temporary_location,
-        )
-        self.organizer.organize_during_recall(
-            query,
-            long_term,
-            target_memory_type=LONG_TERM_MEMORY,
-            temporary_context=temporary_context,
-        )
 
     def _temporary_context_for_long_term_organization(
         self,
@@ -486,4 +487,16 @@ def create_memory_policy_from_skill(
     manifest = disclosure.read_manifest()
     if manifest.skill_type != "memory":
         raise ValueError(f"skill does not use the memory skill: {manifest.name}")
-    return read_memory_policy(disclosure.read_configuration().content)
+    configuration = disclosure.read_configuration().content
+    allowed = {
+        "default_scope",
+        "recall_limit",
+        "include_in_prompt",
+        "include_usage_habits",
+    }
+    unknown = sorted(set(configuration) - allowed)
+    if unknown:
+        raise ValueError(
+            "unknown memory configuration fields: " + ", ".join(unknown)
+        )
+    return read_memory_policy(configuration)

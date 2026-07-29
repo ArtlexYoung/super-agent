@@ -52,8 +52,8 @@ evaluation, or evolution state. Other behavior is progressive:
 - No conversation ID means no conversation history is loaded or written.
 - No conversation ID means temporary memory is unavailable; long-term memory remains
   available when a memory Skill is selected.
-- With a conversation ID, long-term organization may inspect relevant temporary memory and
-  explicitly promote an abstraction without moving or deleting its temporary sources.
+- With a conversation ID, an explicitly prepared long-term organization plan may inspect
+  relevant temporary memory and promote an abstraction only after explicit apply.
 - No selected memory Skill means no memory is recalled or updated.
 - A scene may omit a planner; then no planning model call is available.
 - Every scene must select one workflow. A missing or conflicting workflow is an error.
@@ -62,7 +62,8 @@ evaluation, or evolution state. Other behavior is progressive:
   never reads a command, transport, or environment from Skill content.
 
 Missing optional parts do not trigger substitutes. A missing model, invalid Skill,
-failed memory organization, or failed Provider call is an explicit error.
+failed memory plan, or failed Provider call is an explicit error. Recall itself is a pure
+ranked read and never starts memory organization.
 
 ## Optional Event-Driven Learning
 

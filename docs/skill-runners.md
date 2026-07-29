@@ -108,9 +108,10 @@ without matching code registration fails preflight.
 - Workflow or planning rules.
 - A task-completed callback with a declared action.
 
-Tools are available only after their Skill is selected and loaded. A model can disclose
-another Skill during a tool loop; its runner output becomes available on the next model
-step.
+Tools are available only after their Skill is selected and loaded. Disclosing another
+Skill during a tool loop only exposes passive content. The model must call
+`activate_skill` before that Skill's runner output and tools become available on the next
+model step. Workflow, planner, and scene choices remain fixed in the preflighted RunPlan.
 
 Every tool and completion callback must declare a `SkillAction`. Core checks its effects
 and resource before calling trusted code and records the result. Missing action metadata

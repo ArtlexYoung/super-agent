@@ -63,7 +63,6 @@ def read_memory_policy(value: dict[str, object]) -> MemoryPolicy:
         ),
         include_in_prompt=_read_bool(value, "include_in_prompt", True),
         include_usage_habits=_read_bool(value, "include_usage_habits", True),
-        organize_on_recall=_read_bool(value, "organize_on_recall", True),
     )
 
 

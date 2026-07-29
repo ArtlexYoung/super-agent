@@ -19,6 +19,7 @@ from skill.manifest import Skill
 
 if TYPE_CHECKING:
     from skill.kinds.memory import MiniMemory
+    from skill.kinds.memory_models import MemoryOrganizationPlan
     from skill.runners.mcp import McpServers, RegisteredMcpServer
 
 
@@ -35,8 +36,8 @@ class PromptSkillRunner:
         )
         return LoadedSkill(
             model_context=Skill(
-                manifest=opened.read_manifest(),
-                instructions=opened.read_instructions().content,
+                manifest=opened.disclose_manifest(),
+                instructions=opened.disclose_instructions().content,
             )
         )
 
@@ -57,17 +58,18 @@ class McpSkillRunner:
             request.reference.name,
             self.skill_type,
         )
+        opened.disclose_configuration()
         settings = read_mcp_skill_settings(opened)
         registered = self.servers.require_mcp_server(settings.server_name)
         list_tool_name, run_tool_name = _mcp_tool_names(request.reference.name)
-        instructions = opened.read_instructions().content
+        instructions = opened.disclose_instructions().content
         runtime_context = (
             f"Registered MCP server: {registered.name}\n"
             f"Runtime tools: {list_tool_name}, {run_tool_name}"
         )
         return LoadedSkill(
             model_context=Skill(
-                manifest=opened.read_manifest(),
+                manifest=opened.disclose_manifest(),
                 instructions="\n\n".join(
                     part for part in (instructions, runtime_context) if part
                 ),
@@ -93,6 +95,8 @@ class MemorySkillRunner:
             request.reference.name,
             self.skill_type,
         )
+        opened.disclose_manifest()
+        opened.disclose_configuration()
         memory = create_memory_from_skill_disclosure(
             opened,
             request.require_store("memory Skill"),
@@ -116,6 +120,8 @@ class WorkflowSkillRunner:
             request.reference.name,
             self.skill_type,
         )
+        opened.disclose_manifest()
+        opened.disclose_configuration()
         return LoadedSkill(
             task_policy=create_workflow_policy_from_skill(opened),
         )
@@ -134,6 +140,9 @@ class PlannerSkillRunner:
             request.reference.name,
             self.skill_type,
         )
+        opened.disclose_manifest()
+        opened.disclose_configuration()
+        opened.disclose_instructions()
         return LoadedSkill(
             planning_policy=create_planning_policy_from_skill(opened),
         )
@@ -152,6 +161,8 @@ class SceneSkillRunner:
             request.reference.name,
             self.skill_type,
         )
+        opened.disclose_manifest()
+        opened.disclose_configuration()
         return LoadedSkill(
             included_skills=read_scene_included_skills(opened),
         )
@@ -171,7 +182,9 @@ class SceneManagerSkillRunner:
             request.reference.name,
             self.skill_type,
         )
-        instructions = opened.read_instructions().content
+        opened.disclose_manifest()
+        opened.disclose_configuration()
+        instructions = opened.disclose_instructions().content
         return LoadedSkill(
             build_prompt_context=lambda _prompt: instructions,
             tools=(
@@ -221,7 +234,7 @@ def _create_memory_tools(memory: MiniMemory) -> tuple[SkillTool, ...]:
         "enum": ["temporary", "long_term"],
         "description": "Use temporary for this conversation or long_term for durable knowledge.",
     }
-    return (
+    read_tools = (
         SkillTool(
             "list_memory_items",
             "List active long-term memory and temporary memory from this conversation.",
@@ -259,7 +272,7 @@ def _create_memory_tools(memory: MiniMemory) -> tuple[SkillTool, ...]:
         ),
         SkillTool(
             "recall_memory",
-            "Recall allowed memory; long-term organization can inspect and explicitly promote current temporary memory.",
+            "Read and rank allowed memory without changing it.",
             {
                 "query": {"type": "string"},
                 "scope": scope,
@@ -268,16 +281,52 @@ def _create_memory_tools(memory: MiniMemory) -> tuple[SkillTool, ...]:
             },
             lambda arguments: _recall_memory(memory, arguments),
             action=SkillAction(
-                (
-                    ActionEffect.READ,
-                    ActionEffect.CREATE,
-                    ActionEffect.UPDATE,
-                    ActionEffect.DELETE,
-                ),
+                (ActionEffect.READ,),
                 "memory:active",
                 "scope",
             ),
             required=("query",),
+        ),
+    )
+    return read_tools + _create_memory_change_tools(memory, scope, memory_type)
+
+
+def _create_memory_change_tools(
+    memory: MiniMemory,
+    scope: dict[str, object],
+    memory_type: dict[str, object],
+) -> tuple[SkillTool, ...]:
+    return (
+        SkillTool(
+            "prepare_memory_organization",
+            (
+                "Ask the memory model for a validated change plan without applying it. "
+                "Long-term plans may inspect and promote current temporary memory."
+            ),
+            {
+                "query": {"type": "string"},
+                "scope": scope,
+                "memory_type": memory_type,
+            },
+            lambda arguments: _prepare_memory_organization(memory, arguments),
+            action=SkillAction(
+                (ActionEffect.READ, ActionEffect.CREATE),
+                "memory:organization-plan",
+                "scope",
+            ),
+            required=("query", "memory_type"),
+        ),
+        SkillTool(
+            "apply_memory_organization",
+            "Explicitly apply one prepared memory organization plan by ID.",
+            {"plan_id": {"type": "string"}},
+            lambda arguments: _apply_memory_organization(memory, arguments),
+            action=SkillAction(
+                (ActionEffect.CREATE, ActionEffect.UPDATE, ActionEffect.DELETE),
+                "memory:organization-plan",
+                "plan_id",
+            ),
+            required=("plan_id",),
         ),
         SkillTool(
             "forget_memory",
@@ -355,6 +404,49 @@ def _recall_memory(
         memory_type=memory_type,
     )
     return {"items": [asdict(item) for item in items]}
+
+
+def _prepare_memory_organization(
+    memory: MiniMemory,
+    arguments: dict[str, object],
+) -> dict[str, object]:
+    plan = memory.prepare_memory_organization(
+        read_required_tool_string(arguments, "query"),
+        memory_type=read_required_tool_string(arguments, "memory_type"),
+        scope=(
+            read_optional_tool_string(arguments, "scope")
+            or memory.policy.default_scope
+        ),
+    )
+    return {
+        "plan": None if plan is None else _memory_organization_plan_to_dict(plan),
+        "applied": False,
+    }
+
+
+def _apply_memory_organization(
+    memory: MiniMemory,
+    arguments: dict[str, object],
+) -> dict[str, object]:
+    plan = memory.apply_memory_organization(
+        read_required_tool_string(arguments, "plan_id")
+    )
+    return {
+        "plan": _memory_organization_plan_to_dict(plan),
+        "applied": True,
+    }
+
+
+def _memory_organization_plan_to_dict(
+    plan: MemoryOrganizationPlan,
+) -> dict[str, object]:
+    value = asdict(plan)
+    return {
+        **value,
+        "candidates": list(value["candidates"]),
+        "temporary_context": list(value["temporary_context"]),
+        "operations": list(value["operations"]),
+    }
 
 
 def _forget_memory(

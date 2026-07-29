@@ -191,11 +191,14 @@ content-addressed cache entries under:
   skills/<type>/<name>/files.json
 ```
 
-The model always receives the compact index first. With a recorder, that index also
-contains stable cache paths, and `read_disclosed_content` can read a previously disclosed
-path without repeating selection. Every recorded run-time disclosure enters the canonical
-event stream; `history.json` is a rebuildable view. Offline listing, benchmarking, and
-validation have no storage side effects.
+The `read_*` methods verify and return source content without writing cache, history, usage,
+or freshness state. The matching `disclose_*` methods explicitly write cache and history
+when a recorder exists. The model always receives the compact index first and uses
+`disclose_skill_manifest`, `disclose_skill_instructions`, or
+`disclose_skill_configuration` when it needs more content. `read_disclosed_content` reads
+an already disclosed path without activating its Skill. `activate_skill` is the separate
+operation that loads a runner contribution, attaches its tools, and records actual use.
+Offline listing, benchmarking, validation, and ordinary reads have no storage side effects.
 
 ## Packages
 

@@ -399,6 +399,7 @@ def create_runtime_tools(
     request: TaskRequest,
     session: Run,
     contributions: list[LoadedSkill],
+    send_text_model_messages: Callable[[list[Message]], str],
 ) -> RuntimeTools:
     has_subagents = request.include_subagents and bool(request.subagents.list_subagents())
     collected_results: list[SubAgentResult] = []
@@ -413,6 +414,7 @@ def create_runtime_tools(
             session=session,
             list_subagents=request.subagents.list_subagents if has_subagents else None,
             run_subagent=run_subagent if has_subagents else None,
+            send_text_model_messages=send_text_model_messages,
         ),
         contributions=contributions,
         delegated_subagent_results=collected_results,

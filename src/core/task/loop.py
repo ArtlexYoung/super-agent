@@ -262,7 +262,17 @@ class AdaptiveTaskLoop:
             session,
             run_plan,
         )
-        tools = create_runtime_tools(request, session, combined)
+        organization_model = self.create_text_model(
+            session.store,
+            "memory_organization",
+            session.record_event,
+        )
+        tools = create_runtime_tools(
+            request,
+            session,
+            combined,
+            organization_model.send_messages,
+        )
         step_prompt = build_task_step_prompt(
             request.prompt,
             step,
@@ -301,6 +311,7 @@ class AdaptiveTaskLoop:
         progress.subagent_results.extend(step_subagents)
         progress.subagent_results.extend(tools.delegated_subagent_results)
         progress.contributions.extend(contributions)
+        progress.contributions.extend(tools.activated_contributions)
         return text, stop_reason
 
     def create_text_model(

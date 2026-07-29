@@ -84,13 +84,14 @@ All Skill types use `ProgressiveDisclosureCore`:
 2. Select exactly one task scene by request, Agent configuration, prompt trigger, or the
    unique default.
 3. Resolve the scene's ordinary Skill references through the same index.
-4. Read a manifest only for a selected reference.
-5. Read instructions, configuration, and resources only when its SkillRunner asks.
+4. Read and verify source content without changing cache, history, or usage state.
+5. Disclose instructions, configuration, and resources only through an explicit operation.
 6. Reuse content-addressed cache paths when Runtime explicitly enables recording.
 7. Store disclosure history in the same user-and-Agent event scope as the run.
 
-Offline discovery is read-only by default. Cache and history writes are explicit options,
-so inspecting available Skills has no hidden side effect.
+Offline discovery and ordinary reads are pure. Disclosure writes cache and history only
+when explicitly requested, while activation separately loads runner behavior and records
+actual Skill use. Inspecting available Skills has no hidden side effect.
 
 ## SkillRunners
 

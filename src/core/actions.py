@@ -281,6 +281,8 @@ _INTERNAL_RESOURCE_PREFIXES = (
     "conversation:",
     "memory:",
     "skill:candidate:",
+    "skill:active",
+    "skill:disclosure:",
     "skill:owned:",
 )
 

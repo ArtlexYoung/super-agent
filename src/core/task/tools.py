@@ -11,7 +11,7 @@ from skill.runners.loaded import (
     read_optional_tool_string,
     read_required_tool_string,
 )
-from core.provider.chat import ToolCall, ToolDefinition
+from core.provider.chat import Message, ToolCall, ToolDefinition
 from core.session import Run
 from core.actions import ActionRequest
 from core.actions import ActionEffect
@@ -26,6 +26,7 @@ class RuntimeToolsContext:
     session: Run
     list_subagents: Callable[[], list[dict[str, object]]] | None = None
     run_subagent: Callable[[str, str], dict[str, object]] | None = None
+    send_text_model_messages: Callable[[list[Message]], str] | None = None
 
 
 class RuntimeTools:
@@ -37,6 +38,8 @@ class RuntimeTools:
     ) -> None:
         self.context = context
         self.used_skill_names: list[str] = []
+        self._activated_skill_keys: set[str] = set()
+        self.activated_contributions: list[LoadedSkill] = []
         self.delegated_subagent_results = (
             []
             if delegated_subagent_results is None
@@ -103,24 +106,29 @@ class RuntimeTools:
     def _add_tools(
         self,
         tools: tuple[SkillTool, ...],
-        *,
-        allow_existing: bool = False,
     ) -> None:
+        self._validate_new_tools(tools)
+        self._tools.update({tool.name: tool for tool in tools})
+
+    def _validate_new_tools(self, tools: tuple[SkillTool, ...]) -> None:
+        names = [tool.name for tool in tools]
+        if len(names) != len(set(names)):
+            raise ValueError("Skill contribution contains duplicate tool names")
         for tool in tools:
             if not isinstance(tool.action, SkillAction):
                 raise TypeError(f"SkillRunner tool must declare an action: {tool.name}")
             if tool.name in self._tools:
-                if allow_existing:
-                    continue
                 raise ValueError(f"runtime tool name already exists: {tool.name}")
-            self._tools[tool.name] = tool
 
     def _list_skills(self, arguments: dict[str, object]) -> dict[str, object]:
         return skill_index_to_dict(self.context.session.skill_index)
 
-    def _read_skill_manifest(self, arguments: dict[str, object]) -> dict[str, object]:
+    def _disclose_skill_manifest(
+        self,
+        arguments: dict[str, object],
+    ) -> dict[str, object]:
         opened = self._open_requested_skill(arguments)
-        manifest = opened.read_manifest()
+        manifest = opened.disclose_manifest()
         return {
             "key": opened.index_entry.reference.key,
             "manifest": {
@@ -135,29 +143,25 @@ class RuntimeTools:
             "cache_path": _optional_path(opened.index_entry.manifest_cache_path),
         }
 
-    def _read_skill_instructions(self, arguments: dict[str, object]) -> dict[str, object]:
+    def _disclose_skill_instructions(
+        self,
+        arguments: dict[str, object],
+    ) -> dict[str, object]:
         opened = self._open_requested_skill(arguments)
-        disclosed = opened.read_instructions()
+        disclosed = opened.disclose_instructions()
         reference = opened.index_entry.reference
-        skill_type = self.context.session.skill_runners.find_skill_runner(
-            reference.skill_type
-        )
-        if skill_type is not None and skill_type.adds_model_context:
-            self._record_loaded_skill(reference)
-            contribution = self.context.session.load_skill(reference)
-            self._add_tools(contribution.tools, allow_existing=True)
         return {
             "key": reference.key,
             "instructions": disclosed.content,
             "cache_path": _optional_path(disclosed.cache_path),
         }
 
-    def _read_skill_configuration(
+    def _disclose_skill_configuration(
         self,
         arguments: dict[str, object],
     ) -> dict[str, object]:
         opened = self._open_requested_skill(arguments)
-        disclosed = opened.read_configuration()
+        disclosed = opened.disclose_configuration()
         return {
             "key": opened.index_entry.reference.key,
             "configuration": disclosed.content,
@@ -170,8 +174,47 @@ class RuntimeTools:
     ) -> dict[str, object]:
         path = read_required_tool_string(arguments, "cache_path")
         content = self.context.session.skill_disclosure.read_disclosed_content(path)
-        self._record_skill_used_for_cache_path(path)
         return {"cache_path": path, "content": content}
+
+    def _activate_skill(self, arguments: dict[str, object]) -> dict[str, object]:
+        opened = self._open_requested_skill(arguments)
+        reference = opened.index_entry.reference
+        runner = self.context.session.skill_runners.find_skill_runner(
+            reference.skill_type
+        )
+        if runner is None:
+            raise KeyError(
+                f"SkillRunner not found for Skill type: {reference.skill_type}"
+            )
+        if reference.key in self._activated_skill_keys:
+            return {"key": reference.key, "already_active": True, "tools": []}
+        contribution = self.context.session.load_skill(
+            reference,
+            self.context.send_text_model_messages,
+        )
+        if (
+            contribution.task_policy is not None
+            or contribution.planning_policy is not None
+            or contribution.included_skills
+        ):
+            raise ValueError(
+                f"Skill cannot be activated after the RunPlan is frozen: {reference.key}"
+            )
+        self._validate_new_tools(contribution.tools)
+        self._record_loaded_skill(reference)
+        self._tools.update({tool.name: tool for tool in contribution.tools})
+        self._activated_skill_keys.add(reference.key)
+        self.activated_contributions.append(contribution)
+        return {
+            "key": reference.key,
+            "already_active": False,
+            "model_context": (
+                None
+                if contribution.model_context is None
+                else contribution.model_context.instructions
+            ),
+            "tools": [tool.name for tool in contribution.tools],
+        }
 
     def list_subagents(self, arguments: dict[str, object]) -> dict[str, object]:
         if self.context.list_subagents is None:
@@ -193,7 +236,6 @@ class RuntimeTools:
             name,
             expected_type=skill_type,
         )
-        self.context.session.record_skill_used(opened.index_entry)
         return opened
 
     def _record_loaded_skill(self, reference: SkillReference) -> None:
@@ -211,25 +253,6 @@ class RuntimeTools:
         if reference.name not in self.used_skill_names:
             self.used_skill_names.append(reference.name)
 
-    def _record_skill_used_for_cache_path(self, cache_path: str) -> None:
-        requested = Path(cache_path).expanduser().resolve()
-        for entry in self.context.session.skill_index.entries:
-            disclosed_paths = {
-                path.resolve()
-                for path in (
-                    entry.manifest_cache_path,
-                    entry.instructions_cache_path,
-                    entry.configuration_cache_path,
-                )
-                if path is not None
-            }
-            if requested in disclosed_paths:
-                self.context.session.record_skill_used(entry)
-                if entry.reference.name not in self.used_skill_names:
-                    self.used_skill_names.append(entry.reference.name)
-                return
-
-
 def _create_disclosure_tools(
     runtime_tools: RuntimeTools,
     skill_index: SkillIndex,
@@ -237,6 +260,11 @@ def _create_disclosure_tools(
     include_cache_reader: bool,
 ) -> tuple[SkillTool, ...]:
     reference = _skill_reference_properties(skill_index)
+    disclosure_effects = (
+        (ActionEffect.READ, ActionEffect.CREATE, ActionEffect.UPDATE)
+        if include_cache_reader
+        else (ActionEffect.READ,)
+    )
     tools = [
         SkillTool(
             "list_skills",
@@ -246,27 +274,51 @@ def _create_disclosure_tools(
             action=SkillAction((ActionEffect.READ,), "skill:index"),
         ),
         SkillTool(
-            "read_skill_manifest",
+            "disclose_skill_manifest",
             "Disclose one skill manifest through the central cache.",
             reference,
-            runtime_tools._read_skill_manifest,
-            action=SkillAction((ActionEffect.READ,), "skill:manifest", "name"),
+            runtime_tools._disclose_skill_manifest,
+            action=SkillAction(
+                disclosure_effects,
+                "skill:disclosure:manifest",
+                "name",
+            ),
             required=("name",),
         ),
         SkillTool(
-            "read_skill_instructions",
+            "disclose_skill_instructions",
             "Disclose one skill's instructions through the central cache.",
             reference,
-            runtime_tools._read_skill_instructions,
-            action=SkillAction((ActionEffect.READ,), "skill:instructions", "name"),
+            runtime_tools._disclose_skill_instructions,
+            action=SkillAction(
+                disclosure_effects,
+                "skill:disclosure:instructions",
+                "name",
+            ),
             required=("name",),
         ),
         SkillTool(
-            "read_skill_configuration",
+            "disclose_skill_configuration",
             "Disclose one skill's skill_type configuration through the central cache.",
             reference,
-            runtime_tools._read_skill_configuration,
-            action=SkillAction((ActionEffect.READ,), "skill:configuration", "name"),
+            runtime_tools._disclose_skill_configuration,
+            action=SkillAction(
+                disclosure_effects,
+                "skill:disclosure:configuration",
+                "name",
+            ),
+            required=("name",),
+        ),
+        SkillTool(
+            "activate_skill",
+            "Explicitly activate one Skill and attach its registered Runtime tools.",
+            reference,
+            runtime_tools._activate_skill,
+            action=SkillAction(
+                (ActionEffect.READ, ActionEffect.CREATE, ActionEffect.UPDATE),
+                "skill:active",
+                "name",
+            ),
             required=("name",),
         ),
     ]

@@ -20,8 +20,19 @@ class ExecutableWorkflowTests(unittest.TestCase):
                         "",
                         [
                             ToolCall(
-                                "read-1",
-                                "read_skill_instructions",
+                                "disclose-1",
+                                "disclose_skill_instructions",
+                                {"name": "research", "type": "prompt"},
+                            )
+                        ],
+                        "tool_calls",
+                    ),
+                    ModelResponse(
+                        "",
+                        [
+                            ToolCall(
+                                "activate-1",
+                                "activate_skill",
                                 {"name": "research", "type": "prompt"},
                             )
                         ],
@@ -36,8 +47,8 @@ class ExecutableWorkflowTests(unittest.TestCase):
             self.assertEqual("final answer", result.text)
             self.assertEqual("model_finished", result.stop_reason)
             self.assertEqual(["common", "research"], result.skills)
-            self.assertEqual(2, len(provider.tool_requests))
-            tool_result = provider.tool_requests[1][0][-1]
+            self.assertEqual(3, len(provider.tool_requests))
+            tool_result = provider.tool_requests[2][0][-1]
             self.assertEqual("tool", tool_result["role"])
             self.assertIn("Research carefully.", tool_result["content"])
 

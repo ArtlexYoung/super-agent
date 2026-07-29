@@ -24,7 +24,10 @@ class ProgressiveDisclosureTests(unittest.TestCase):
             )
 
             index = disclosure.prepare_skill_index()
-            instruction = disclosure.open_skill("echo", "prompt").read_instructions()
+            instruction = disclosure.open_skill(
+                "echo",
+                "prompt",
+            ).disclose_instructions()
 
             index_data = json.loads(index.index_path.read_text(encoding="utf-8"))
             history = disclosure.read_disclosure_history()

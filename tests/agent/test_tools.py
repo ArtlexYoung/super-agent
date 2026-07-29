@@ -31,7 +31,7 @@ from skill.runners.mcp import McpServers, StdioMcpServer
 
 
 class SkillToolsTests(unittest.TestCase):
-    def test_model_can_list_and_read_one_skill_on_demand(self) -> None:
+    def test_model_discloses_then_activates_one_skill_on_demand(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_prompt_skill(root, "research")
@@ -44,13 +44,22 @@ class SkillToolsTests(unittest.TestCase):
             read = tools.run_tool_call(
                 ToolCall(
                     "call-2",
-                    "read_skill_instructions",
+                    "disclose_skill_instructions",
+                    {"name": "research", "type": "prompt"},
+                )
+            )
+            self.assertEqual([], tools.used_skill_names)
+            activated = tools.run_tool_call(
+                ToolCall(
+                    "call-3",
+                    "activate_skill",
                     {"name": "research", "type": "prompt"},
                 )
             )
 
             self.assertEqual("research", listed["skills"][0]["name"])
             self.assertEqual("Research carefully.", read["instructions"])
+            self.assertEqual("Research carefully.", activated["model_context"])
             self.assertEqual(["research"], tools.used_skill_names)
             event_types = [
                 event.event_type
@@ -62,14 +71,17 @@ class SkillToolsTests(unittest.TestCase):
             self.assertIn("tool.completed", event_types)
             self.assertIn("skill.disclosed", event_types)
 
-    def test_reading_a_cached_path_records_the_skill_as_used(self) -> None:
+    def test_reading_a_cached_path_does_not_activate_the_skill(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_prompt_skill(root, "research")
             session = _create_session(root)
             disclosure = _create_disclosure(session)
             index = session.skill_index
-            cached = disclosure.open_skill("research", "prompt").read_instructions()
+            cached = disclosure.open_skill(
+                "research",
+                "prompt",
+            ).disclose_instructions()
             tools = _create_tool_router(disclosure, index, session)
 
             tools.run_tool_call(
@@ -81,7 +93,8 @@ class SkillToolsTests(unittest.TestCase):
             )
 
             revisions = tools.context.session.list_used_skill_revisions()
-            self.assertEqual(["prompt:research"], [item.key for item in revisions])
+            self.assertEqual([], revisions)
+            self.assertEqual([], tools.used_skill_names)
 
     def test_unknown_builtin_tool_fails_with_trace_event(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -150,6 +163,8 @@ class SkillToolsTests(unittest.TestCase):
                     "add_temporary_memory",
                     "add_long_term_memory",
                     "recall_memory",
+                    "prepare_memory_organization",
+                    "apply_memory_organization",
                     "forget_memory",
                     "consolidate_memory",
                 }

@@ -316,14 +316,18 @@ class SkillDisclosure:
 
     def read_manifest(self) -> SkillManifest:
         self._verify_source_content()
+        return self.source.manifest
+
+    def disclose_manifest(self) -> SkillManifest:
+        manifest = self.read_manifest()
         if self.recorder is not None:
             self.recorder.write_json(
                 self.source.reference.key,
                 "manifest",
                 _require_cache_path(self.index_entry.manifest_cache_path),
-                skill_manifest_to_dict(self.source.manifest),
+                skill_manifest_to_dict(manifest),
             )
-        return self.source.manifest
+        return manifest
 
     def read_instructions(self) -> DisclosedText:
         instructions = self.source.manifest.entry.instructions
@@ -335,33 +339,56 @@ class SkillDisclosure:
                 raise FileNotFoundError(f"skill instructions not found: {path}")
             content = path.read_text(encoding="utf-8").strip()
         self._verify_source_content()
+        return DisclosedText(content=content, cache_path=None)
+
+    def disclose_instructions(self) -> DisclosedText:
+        disclosed = self.read_instructions()
         if self.recorder is not None:
             self.recorder.write_text(
                 self.source.reference.key,
                 "instructions",
                 _require_cache_path(self.index_entry.instructions_cache_path),
-                content,
+                disclosed.content,
             )
-        return DisclosedText(content=content, cache_path=self.index_entry.instructions_cache_path)
+        return DisclosedText(
+            content=disclosed.content,
+            cache_path=(
+                None
+                if self.recorder is None
+                else self.index_entry.instructions_cache_path
+            ),
+        )
 
     def read_configuration(self) -> DisclosedConfiguration:
         self._verify_source_content()
         content = dict(self.source.configuration)
+        return DisclosedConfiguration(content=content, cache_path=None)
+
+    def disclose_configuration(self) -> DisclosedConfiguration:
+        disclosed = self.read_configuration()
         if self.recorder is not None:
             self.recorder.write_json(
                 self.source.reference.key,
                 "configuration",
                 _require_cache_path(self.index_entry.configuration_cache_path),
-                content,
+                disclosed.content,
             )
         return DisclosedConfiguration(
-            content=content,
-            cache_path=self.index_entry.configuration_cache_path,
+            content=disclosed.content,
+            cache_path=(
+                None
+                if self.recorder is None
+                else self.index_entry.configuration_cache_path
+            ),
         )
 
     def read_skill_files(self) -> DisclosedSkillFiles:
         self._verify_source_content()
         files = _read_skill_directory_files(self.source.manifest.path)
+        return DisclosedSkillFiles(files=files, cache_path=None)
+
+    def disclose_skill_files(self) -> DisclosedSkillFiles:
+        disclosed = self.read_skill_files()
         if self.recorder is not None:
             self.recorder.write_json(
                 self.source.reference.key,
@@ -376,13 +403,15 @@ class SkillDisclosure:
                             "sha256": item.sha256,
                             "content": item.content,
                         }
-                        for item in files
+                        for item in disclosed.files
                     ],
                 },
             )
         return DisclosedSkillFiles(
-            files=files,
-            cache_path=self.index_entry.files_cache_path,
+            files=disclosed.files,
+            cache_path=(
+                None if self.recorder is None else self.index_entry.files_cache_path
+            ),
         )
 
     def _verify_source_content(self) -> None:

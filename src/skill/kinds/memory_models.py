@@ -17,7 +17,6 @@ class MemoryPolicy:
     recall_limit: int = 20
     include_in_prompt: bool = True
     include_usage_habits: bool = True
-    organize_on_recall: bool = True
 
 
 @dataclass(frozen=True)
@@ -37,3 +36,14 @@ class MemoryOperation:
     source_item_ids: tuple[str, ...]
     text: str = ""
     reason: str = ""
+
+
+@dataclass(frozen=True)
+class MemoryOrganizationPlan:
+    plan_id: str
+    query: str
+    target_memory_type: str
+    conversation_id: str | None
+    candidates: tuple[MemoryItem, ...]
+    temporary_context: tuple[MemoryItem, ...]
+    operations: tuple[MemoryOperation, ...]
