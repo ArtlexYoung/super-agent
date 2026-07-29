@@ -125,6 +125,7 @@ class ModelSkillTests(unittest.TestCase):
             agent = Agent(AgentConfig.create_default(root), provider=_FixedProvider())
 
             result = agent.run("summarize this")
+            agent.learn_from_run(result.run_id)
             store = agent.runtime.create_store()
             runtime_lock = store.read_runtime_lock(result.run_id)
             records = store.read_evaluation_records(source_type="agent_run")

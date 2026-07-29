@@ -26,11 +26,7 @@ from core.provider.chat import MockProvider
 with tempfile.TemporaryDirectory() as temporary_directory:
     config = AgentConfig.create_default(Path(temporary_directory))
     agent = Agent(config, provider=MockProvider("finished"))
-    result = agent.run(
-        "hello",
-        scene="stateless",
-        run_options=AgentRunOptions(learn_from_run=False),
-    )
+    result = agent.run("hello", scene="stateless")
 assert result.text == "finished"
 blocked = (
     "core.evolution",

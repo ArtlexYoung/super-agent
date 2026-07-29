@@ -54,6 +54,7 @@ class SkillSceneTests(unittest.TestCase):
                 agent = Agent(AgentConfig.create_default(tmp), provider=provider)
 
                 result = agent.run(prompt)
+                agent.learn_from_run(result.run_id)
 
                 store = agent.runtime.create_store()
                 selected = _event_data(store, result.run_id, "scene.selected")

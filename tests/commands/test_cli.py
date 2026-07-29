@@ -335,7 +335,11 @@ instructions = "SKILL.md"
         ):
             config = str(Path(tmp) / "agent.toml")
             main(["init", "--path", tmp])
-            main(["run", "--config", config, "echo hello"])
+            run_output = StringIO()
+            with patch("sys.stdout", run_output):
+                main(["run", "--output", "json", "--config", config, "echo hello"])
+            run_id = json.loads(run_output.getvalue())["run_id"]
+            main(["runs", "learn", "--config", config, "--run-id", run_id])
 
             output = StringIO()
             with patch("sys.stdout", output):

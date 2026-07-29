@@ -261,10 +261,9 @@ variables rather than TOML.
   user-scoped evidence before each model call.
 - Runtime events record the selected model, disclosed Skills, tools, subagents, token
   estimates, action decisions, result, and failure without storing secret values.
-- Post-run learning is event-driven and optional. Evaluation, freshness, routing evidence,
-  and evolution subscribe independently to immutable events. A requested subscriber
-  failure raises `RuntimeEventSubscriberError` with the completed task result attached;
-  continuing after such failures requires an explicit run option.
+- Every run records immutable learning evidence but does not update learned state. Call
+  `Agent.learn_from_run(run_id)` or `runs learn` to explicitly evaluate the run, refresh
+  routing and freshness evidence, and review eligible Skill evolution.
 - Skill freshness is computed without a model from usage, outcome, recency, frequency,
   token cost, and successful same-function replacements.
 - Agent-owned Skills with `agent_can_update = true` can create candidates, run
@@ -285,17 +284,18 @@ variables rather than TOML.
 Inspect the evidence directly:
 
 ```bash
+super-agent runs learn --run-id <run-id>
 super-agent runs explain --run-id <run-id>
 super-agent skills index --output json
 super-agent skills freshness
 super-agent evolution list
 ```
 
-Disable learning for one run with
-`AgentRunOptions(learn_from_run=False)`. Add application observers with
-`Agent.add_event_subscriber(...)`; failures are visible in
-`TaskResult.subscriber_failures`. Stateless runs skip all built-in learning and create no
-learning files.
+The explicit learning operation is idempotent. A failure records `learning.failed` with
+its exact stage and raises the original error; retrying reuses already recorded evidence.
+Application observers added with `Agent.add_event_subscriber(...)` remain part of the run
+stream, and their failures are visible in `TaskResult.subscriber_failures`. Stateless
+Agents can run but cannot learn because they have no persisted evidence store.
 
 ## Multiuser and Multi-Agent
 

@@ -14,7 +14,9 @@ from core.evolution.state import (
     record_skill_candidate_evaluation,
     record_skill_candidate_promoted,
     record_skill_evolution_candidate,
+    record_skill_evolution_failure,
     record_skill_evolution_monitoring,
+    read_skill_evolution,
     require_skill_candidate_can_promote,
     start_manual_skill_evolution,
 )
@@ -464,6 +466,36 @@ class SkillEvolutionManager:
             raise
         return restored
 
+    def continue_skill_evolution(
+        self,
+        evolution_id: str,
+        cases: list[EvaluationCase],
+    ) -> SkillEvolutionState:
+        state = read_skill_evolution(self.store, evolution_id)
+        if state.status in {"rejected", "promoted", "stable", "rolled_back"}:
+            return state
+        if state.status == "failed":
+            raise ValueError(f"Skill evolution already failed: {evolution_id}")
+        try:
+            if state.status == "candidate_recommended":
+                state = self._create_recommended_candidate(state)
+            if state.status == "candidate_created":
+                self.evaluate_skill_candidate(state.candidate_id, cases)
+                state = read_skill_evolution(self.store, evolution_id)
+            if state.status == "rejected":
+                return state
+            if state.status == "evaluated":
+                self.promote_skill_candidate(state.candidate_id)
+                state = read_skill_evolution(self.store, evolution_id)
+            if state.status != "promoted":
+                raise RuntimeError(f"unexpected Skill evolution status: {state.status}")
+            return state
+        except Exception as error:
+            latest = read_skill_evolution(self.store, evolution_id)
+            if latest.status in {"candidate_recommended", "candidate_created"}:
+                record_skill_evolution_failure(self.store, evolution_id, error)
+            raise
+
     def evolve_skill(
         self,
         name: str,
@@ -473,16 +505,43 @@ class SkillEvolutionManager:
         skill_type: str | None = None,
     ) -> EvolutionResult:
         candidate = self.create_skill_candidate(name, goal, skill_type=skill_type)
-        report = self.evaluate_skill_candidate(candidate.candidate_id, cases)
-        if not report.passed:
+        state = self.continue_skill_evolution(candidate.candidate_id, cases)
+        if state.evaluation is None:
+            raise RuntimeError("Skill evolution completed without an evaluation")
+        report = self._read_recorded_report(candidate.candidate_id, state.evaluation)
+        if state.status == "rejected":
             return EvolutionResult(candidate=candidate, report=report, status="rejected")
-        manifest = self.promote_skill_candidate(candidate.candidate_id)
+        if state.status != "promoted":
+            raise RuntimeError(f"unexpected Skill evolution status: {state.status}")
+        manifest = self._read_active_manifest(candidate.name, candidate.skill_type)
+        if manifest is None:
+            raise RuntimeError(f"promoted Skill is not active: {candidate.key}")
         return EvolutionResult(
             candidate=candidate,
             report=report,
             status="promoted",
             promoted_manifest=manifest,
         )
+
+    def _create_recommended_candidate(
+        self,
+        state: SkillEvolutionState,
+    ) -> SkillEvolutionState:
+        source = state.source_revision
+        if source is None:
+            raise ValueError("automatic Skill evolution requires a source revision")
+        entry = self.skill_disclosure.prepare_skill_index().require_skill(source.key)
+        if (entry.version, entry.content_sha256) != (
+            source.version,
+            source.content_sha256,
+        ):
+            raise ValueError(f"Skill revision changed after recommendation: {source.key}")
+        self.create_skill_candidate(
+            source.key,
+            state.goal,
+            evolution_id=state.evolution_id,
+        )
+        return read_skill_evolution(self.store, state.evolution_id)
 
     def list_skill_history(
         self,

@@ -60,6 +60,15 @@ def configure_runs_parser(parser: argparse.ArgumentParser) -> None:
         default="text",
     )
 
+    learn_parser = subparsers.add_parser(
+        "learn",
+        help="explicitly evaluate and improve Skills from one finished run",
+    )
+    _add_config_argument(learn_parser)
+    _add_user_argument(learn_parser)
+    learn_parser.add_argument("--run-id", required=True)
+    learn_parser.add_argument("--output", choices=["text", "json"], default="text")
+
 
 def run_runs_command(args: argparse.Namespace) -> int:
     command = args.runs_command or "status"
@@ -71,6 +80,8 @@ def run_runs_command(args: argparse.Namespace) -> int:
         return _export_run(args)
     if command == "feedback":
         return _record_run_feedback(args)
+    if command == "learn":
+        return _learn_from_run(args)
     raise ValueError(f"unknown runs command: {command}")
 
 
@@ -144,6 +155,24 @@ def _record_run_feedback(args: argparse.Namespace) -> int:
         print(json.dumps(asdict(event), ensure_ascii=False, indent=2, sort_keys=True))
     else:
         print(f"Recorded feedback: {event.run_id} score={args.score:.3f}")
+    return 0
+
+
+def _learn_from_run(args: argparse.Namespace) -> int:
+    config = (
+        AgentConfig.load_automatically()
+        if args.config is None
+        else AgentConfig.load_from_file(args.config)
+    )
+    result = Agent(config).for_user(args.user_id).runs.learn(args.run_id)
+    if args.output == "json":
+        print(json.dumps(asdict(result), ensure_ascii=False, indent=2, sort_keys=True))
+    else:
+        print(
+            f"Learned from run: {result.run_id} "
+            f"evaluations={len(result.evaluation_record_ids)} "
+            f"skill_updates={len(result.skill_updates)}"
+        )
     return 0
 
 

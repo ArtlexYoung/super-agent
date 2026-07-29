@@ -150,6 +150,7 @@ instructions = "SKILL.md"
             agent = Agent(AgentConfig.load_from_file(config_path), provider=MockProvider("useful answer"))
 
             result = agent.run("echo hello")
+            agent.learn_from_run(result.run_id)
 
             store = agent.runtime.create_store()
             records = store.read_evaluation_records()
@@ -187,7 +188,10 @@ instructions = "SKILL.md"
             with self.assertRaisesRegex(RuntimeError, "provider unavailable"):
                 agent.run("echo hello")
 
-            records = agent.runtime.create_store().read_evaluation_records(
+            store = agent.runtime.create_store()
+            run_id = store.list_runs(1)[0].run_id
+            agent.learn_from_run(run_id)
+            records = store.read_evaluation_records(
                 source_type="agent_run"
             )
             self.assertTrue(records)

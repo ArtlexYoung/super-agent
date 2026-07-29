@@ -84,10 +84,11 @@ def create_evaluation_record(
     result: EvaluationResult,
     *,
     created_at: datetime | None = None,
+    record_id: str | None = None,
 ) -> EvaluationRecord:
     record = EvaluationRecord(
         schema_version=EVALUATION_RECORD_SCHEMA_VERSION,
-        record_id=f"evaluation-{uuid4().hex}",
+        record_id=record_id or f"evaluation-{uuid4().hex}",
         created_at=_format_datetime(created_at or datetime.now(UTC)),
         revision=revision,
         source=source,

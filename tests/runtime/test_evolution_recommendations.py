@@ -30,7 +30,6 @@ from core.evolution.evidence import summarize_evaluation_evidence
 from core.evolution.service import AutomaticEvolutionService
 from core.state.insights import explain_run_with_insight
 from core.state.store import create_local_runtime_store
-from core.state.subscribers import RuntimeEventSubscriberError
 from skill.evolution.revision import SkillRevision, create_indexed_skill_revision
 from support import write_workflow_skill
 
@@ -175,6 +174,8 @@ class SkillRevisionEvolutionTests(unittest.TestCase):
 
             with self.assertRaisesRegex(RuntimeError, "task failed"):
                 agent.run("echo this")
+            failed_run = agent.runtime.create_store().list_runs(1)[0]
+            agent.learn_from_run(failed_run.run_id)
 
             evolutions = agent.for_user("local").skills.list_evolutions()
             self.assertEqual(["prompt:echo"], [item.skill_key for item in evolutions])
@@ -203,6 +204,7 @@ class SkillRevisionEvolutionTests(unittest.TestCase):
 
             store = agent.runtime.create_store()
             regression_run = store.list_runs(1)[0]
+            agent.learn_from_run(regression_run.run_id)
             monitored = agent.for_user("local").skills.list_evolutions()[0]
             regression_insight = explain_run_with_insight(store, regression_run.run_id)
             self.assertEqual("rolled_back", monitored.status)
@@ -225,25 +227,17 @@ class SkillRevisionEvolutionTests(unittest.TestCase):
                 provider=MockProvider("completed"),
             )
 
+            result = agent.run("echo this")
             with patch(
                 "core.state.learning.AutomaticEvolutionService.review_and_evolve",
                 side_effect=RuntimeError("recommendation unavailable"),
-            ):
-                with self.assertRaises(RuntimeEventSubscriberError) as caught:
-                    agent.run("echo this")
-
-            result = caught.exception.result
+            ), self.assertRaisesRegex(RuntimeError, "recommendation unavailable"):
+                agent.learn_from_run(result.run_id)
 
             events = agent.runtime.create_store().read_run_events(result.run_id)
             self.assertEqual("completed", result.text)
-            self.assertIn("runtime.subscriber.failed", [item.event_type for item in events])
-            self.assertTrue(
-                any(
-                    failure["subscriber"] == "evolution"
-                    and failure["message"] == "recommendation unavailable"
-                    for failure in result.subscriber_failures
-                )
-            )
+            self.assertEqual("learning.failed", events[-1].event_type)
+            self.assertEqual("skill_evolution", events[-1].data["stage"])
 
     def test_automatic_service_records_candidate_difference(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

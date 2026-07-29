@@ -115,6 +115,7 @@ rules as Agent runs.
 
 ```bash
 super-agent runs status --config agent.toml --user-id alice --output json
+super-agent runs learn --config agent.toml --user-id alice --run-id <run-id>
 super-agent runs explain --config agent.toml --user-id alice --run-id <run-id>
 super-agent runs export --config agent.toml --user-id alice \
   --run-id <run-id> --output run.json
@@ -125,10 +126,11 @@ super-agent storage copy --config agent.toml --to-backend sqlite \
   --to-path .super-agent-sqlite --user-id alice
 ```
 
-Explain includes scheduling reasons, model evidence, Skill freshness, and evolution
-results. Feedback must be between `0` and `1`. Storage copy skips identical event IDs
-and fails on conflicting content. Remote database URLs are read only from the environment
-name supplied with `--to-url-env`.
+`runs learn` explicitly evaluates one finished run and reviews eligible Skill updates;
+repeating a completed call is idempotent. Explain includes scheduling reasons, model
+evidence, Skill freshness, and evolution results. Feedback must be between `0` and `1`.
+Storage copy skips identical event IDs and fails on conflicting content. Remote database
+URLs are read only from the environment name supplied with `--to-url-env`.
 
 ## Web and AG-UI
 

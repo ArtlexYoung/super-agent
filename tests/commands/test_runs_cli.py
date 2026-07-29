@@ -41,6 +41,17 @@ class RunsCliTests(unittest.TestCase):
                     ]
                 )
             run_id = json.loads(run_output.getvalue())["run_id"]
+            with patch("sys.stdout", StringIO()):
+                learn_code = main(
+                    [
+                        "runs",
+                        "learn",
+                        "--config",
+                        str(config_path),
+                        "--run-id",
+                        run_id,
+                    ]
+                )
 
             status_output = StringIO()
             with patch("sys.stdout", status_output):
@@ -89,6 +100,7 @@ class RunsCliTests(unittest.TestCase):
             exported = json.loads(export_path.read_text(encoding="utf-8"))
 
             self.assertEqual(0, run_code)
+            self.assertEqual(0, learn_code)
             self.assertEqual(0, status_code)
             self.assertEqual(run_id, status["runs"][0]["run_id"])
             self.assertEqual("completed", status["runs"][0]["status"])
@@ -134,6 +146,17 @@ class RunsCliTests(unittest.TestCase):
                     ]
                 )
             run_id = json.loads(run_output.getvalue())["run_id"]
+            with patch("sys.stdout", StringIO()):
+                main(
+                    [
+                        "runs",
+                        "learn",
+                        "--config",
+                        str(config_path),
+                        "--run-id",
+                        run_id,
+                    ]
+                )
             explanation_output = StringIO()
 
             with patch("sys.stdout", explanation_output):

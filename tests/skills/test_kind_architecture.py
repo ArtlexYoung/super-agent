@@ -56,12 +56,13 @@ class SkillKindArchitectureTests(unittest.TestCase):
         for module_name in ["core.agent", "core.config", "core.provider"]:
             self.assertEqual(module_name, importlib.import_module(module_name).__name__)
 
-    def test_runtime_learning_is_owned_by_event_subscribers(self) -> None:
+    def test_runtime_learning_is_an_explicit_post_run_operation(self) -> None:
         engine_source = Path("src/core/engine.py").read_text(encoding="utf-8")
         learning_source = Path("src/core/state/learning.py").read_text(encoding="utf-8")
         self.assertNotIn("def _record_task_evaluation", engine_source)
-        self.assertIn("class EvaluationEventSubscriber", learning_source)
-        self.assertIn("class SkillEvolutionEventSubscriber", learning_source)
+        self.assertIn("def learn_from_run", learning_source)
+        self.assertNotIn("EventSubscriber", learning_source)
+        self.assertNotIn("learning.requested", engine_source)
         self.assertTrue(Path("src/core/state/evaluation.py").is_file())
         self.assertTrue(Path("src/core/state/subscribers.py").is_file())
         self.assertTrue(Path("src/core/session.py").is_file())

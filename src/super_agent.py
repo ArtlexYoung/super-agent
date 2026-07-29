@@ -22,7 +22,7 @@ from core.identity import LOCAL_USER_ID
 from core.state.models import Conversation
 from core.state.subscribers import RuntimeEventSubscriber, RuntimeEventSubscriberError
 from core.storage import StorageBackend
-from core.task.models import TaskResult, TaskTrace
+from core.task.models import RunLearningResult, TaskResult, TaskTrace
 from core.task.preflight import PreflightProblem, TaskPreflightError
 from skill.kinds.model import ModelProfile
 from skill.manifest import Skill, SkillManifest
@@ -48,6 +48,7 @@ __all__ = [
     "ProviderPool",
     "RuntimeEventSubscriber",
     "RuntimeEventSubscriberError",
+    "RunLearningResult",
     "PreflightProblem",
     "Skill",
     "SkillManifest",

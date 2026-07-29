@@ -36,7 +36,6 @@ class TaskRequest:
     purpose: str = "auto"
     required_features: tuple[str, ...] = ("text",)
     learn_from_conversation: bool = False
-    learn_from_run: bool = True
     allow_subscriber_failures: bool = False
     scene: str | None = None
 
@@ -51,9 +50,18 @@ class TaskResult:
     run_id: str = ""
     stop_reason: str = "completed"
     actions: list[dict[str, object]] | None = None
-    skill_updates: list[dict[str, object]] = field(default_factory=list)
     subscriber_failures: list[dict[str, object]] = field(default_factory=list)
     events: list[RunEvent] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class RunLearningResult:
+    run_id: str
+    evaluation_record_ids: list[str]
+    skill_freshness: list[dict[str, object]]
+    model_routing: list[dict[str, object]]
+    skill_updates: list[dict[str, object]]
+    events: list[RunEvent]
 
 
 @dataclass(frozen=True)

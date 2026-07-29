@@ -9,7 +9,6 @@ from core.evolution.state import (
     SkillEvolutionState,
     list_skill_evolutions,
     read_skill_evolution,
-    record_skill_evolution_failure,
     record_skill_evolution_monitoring,
 )
 from core.state.store import RuntimeStore
@@ -54,11 +53,20 @@ class AutomaticEvolutionService:
         pending = [
             state
             for state in list_skill_evolutions(self.store)
-            if state.status in {"candidate_recommended", "candidate_created"}
+            if state.status in {
+                "candidate_recommended",
+                "candidate_created",
+                "evaluated",
+            }
             and _state_source_identity(state) in revision_by_identity
         ]
         for state in reversed(pending):
-            changed.append(self._advance_evolution(state))
+            changed.append(
+                self.manager.continue_skill_evolution(
+                    state.evolution_id,
+                    self._build_evaluation_cases(state),
+                )
+            )
         return changed
 
     def list_skill_evolutions(
@@ -69,62 +77,6 @@ class AutomaticEvolutionService:
 
     def read_skill_evolution(self, evolution_id: str) -> SkillEvolutionState:
         return read_skill_evolution(self.store, evolution_id)
-
-    def _advance_evolution(
-        self,
-        state: SkillEvolutionState,
-    ) -> SkillEvolutionState:
-        try:
-            current = state
-            if current.status == "candidate_recommended":
-                current = self._create_candidate(current)
-            if current.status == "candidate_created":
-                self.manager.evaluate_skill_candidate(
-                    current.candidate_id,
-                    self._build_evaluation_cases(current),
-                )
-                current = read_skill_evolution(self.store, current.evolution_id)
-            if current.status == "rejected":
-                return current
-            if current.status == "evaluated":
-                self.manager.promote_skill_candidate(current.candidate_id)
-                current = read_skill_evolution(self.store, current.evolution_id)
-            if current.status != "promoted":
-                raise RuntimeError(f"unexpected Skill evolution status: {current.status}")
-            return current
-        except Exception as error:
-            latest = read_skill_evolution(self.store, state.evolution_id)
-            if latest.status in {"candidate_recommended", "candidate_created"}:
-                return record_skill_evolution_failure(
-                    self.store,
-                    state.evolution_id,
-                    error,
-                )
-            raise
-
-    def _create_candidate(
-        self,
-        state: SkillEvolutionState,
-    ) -> SkillEvolutionState:
-        source = state.source_revision
-        if source is None:
-            raise ValueError("automatic Skill evolution requires a source revision")
-        entry = self.manager.skill_disclosure.prepare_skill_index().require_skill(
-            source.key
-        )
-        if (entry.version, entry.content_sha256) != (
-            source.version,
-            source.content_sha256,
-        ):
-            raise ValueError(
-                f"Skill revision changed after recommendation: {source.key}"
-            )
-        self.manager.create_skill_candidate(
-            source.key,
-            state.goal,
-            evolution_id=state.evolution_id,
-        )
-        return read_skill_evolution(self.store, state.evolution_id)
 
     def _build_evaluation_cases(
         self,

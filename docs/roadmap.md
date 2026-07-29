@@ -159,7 +159,7 @@ Status: implemented.
   traces, and returned task events.
 - Lazily initialize disclosure, memory, evaluation, and state projections from
   `RuntimeStore` only when their operations need them.
-- Keep persistent tracing available when run learning is explicitly disabled.
+- Keep persistent tracing independent from optional learning state.
 - Prove that a persisted stateless scene can run without importing memory, evaluation, or
   evolution modules.
 
@@ -278,6 +278,19 @@ Status: implemented.
   from one immutable event read instead of independently rereading storage.
 - Keep cross-Agent run lookup inside the same user through one explicit `store_for_run`
   operation and reject ambiguous ownership.
+
+## v0.0.83: One Explicit Learning Phase
+
+Status: implemented.
+
+- Make ordinary runs record immutable evidence without changing evaluation, freshness,
+  routing, or Skill evolution state.
+- Add explicit, idempotent `learn_from_run` operations for Python and CLI users; record
+  the exact failing stage and raise instead of silently continuing.
+- Give manual and automatic Skill updates one `continue_skill_evolution` path through
+  candidate creation, evaluation, rejection, and promotion.
+- Use deterministic run-evaluation IDs so retries reuse completed work without duplicate
+  evidence or hidden fallback behavior.
 
 ## Release Gate
 

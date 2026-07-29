@@ -65,24 +65,23 @@ Missing optional parts do not trigger substitutes. A missing model, invalid Skil
 failed memory plan, or failed Provider call is an explicit error. Recall itself is a pure
 ranked read and never starts memory organization.
 
-## Optional Event-Driven Learning
+## Explicit Post-Run Learning
 
-Stateful runs enable post-run learning by default. After task execution, Runtime emits one
-immutable `learning.requested` event. Four named subscribers then work independently:
-evaluation persists revision evidence, freshness recalculates deterministic scores,
-routing evidence projects model outcomes, and evolution reviews eligible Agent-owned
-Skills. None of these services is inside the task loop.
-
-Disable all built-in learning for one run without changing task execution:
+Every run stores immutable evidence in its terminal event. It does not update evaluation,
+freshness, routing, or evolution state. A stateful caller starts those changes explicitly
+after inspecting the task result:
 
 ```python
-from super_agent import Agent, AgentRunOptions
+from super_agent import Agent
 
-result = Agent().run(
-    "Answer without updating learned evidence",
-    run_options=AgentRunOptions(learn_from_run=False),
-)
+agent = Agent()
+result = agent.run("Answer this")
+learning = agent.learn_from_run(result.run_id)
 ```
+
+`agent.for_user("alice").runs.learn(run_id)` binds the same operation to a user. The CLI
+equivalent is `super-agent runs learn --run-id <run-id>`. Completion is idempotent;
+failures record their exact stage and raise instead of returning a partial success.
 
 Applications can observe the same immutable events in code:
 
@@ -98,13 +97,13 @@ agent = Agent()
 agent.add_event_subscriber(AuditEvents())
 ```
 
-Subscriber names are unique and built-in names are reserved. A subscriber failure records
+Subscriber names are unique. A subscriber failure records
 `runtime.subscriber.failed` and raises `RuntimeEventSubscriberError` after preserving the
 completed result on `error.result`. Set
-`AgentRunOptions(allow_subscriber_failures=True)` only when best-effort post-run work is
-explicitly acceptable. `event_listener` remains the streaming interface and is not
-treated as a learning subscriber. Stateless runs record `learning.skipped` and create no
-evaluation or evolution state.
+`AgentRunOptions(allow_subscriber_failures=True)` only when best-effort observation is
+explicitly acceptable. `event_listener` remains the streaming interface. Stateless runs
+create no evaluation or evolution state, and explicit learning fails because storage is
+disabled.
 
 `RunEventLog` is the only run-event writer in both modes. Streaming listeners,
 `TaskResult.events`, subscribers, and persisted replay therefore observe the same order.

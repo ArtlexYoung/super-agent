@@ -164,6 +164,18 @@ class ConversationsCliTests(unittest.TestCase):
                     "json",
                 ]
             )
+            self._run_silently(
+                [
+                    "runs",
+                    "learn",
+                    "--config",
+                    config,
+                    "--user-id",
+                    "alpha",
+                    "--run-id",
+                    alpha_runs["runs"][0]["run_id"],
+                ]
+            )
             beta_runs = self._run_json(
                 [
                     "runs",

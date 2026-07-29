@@ -15,7 +15,7 @@ from core.identity import validate_user_id
 from core.state.models import Conversation, RunEvent
 from core.task.routing import ModelRoutingStats
 from core.actions import ActionEffect, ActionRequest
-from core.task.models import TaskResult, TaskTrace
+from core.task.models import RunLearningResult, TaskResult, TaskTrace
 from skill.kinds.model_management import ModelSkillManager
 from skill.kinds.scene import CreatedSkillScene, SkillSceneInput, SkillSceneManager
 from skill.runners.defaults import create_progressive_skill_disclosure
@@ -165,6 +165,12 @@ class UserRuns:
             run_id,
             score,
             reason,
+            user_id=self.user.user_id,
+        )
+
+    def learn(self, run_id: str) -> RunLearningResult:
+        return self.user.agent.runtime.learn_from_run(
+            run_id,
             user_id=self.user.user_id,
         )
 

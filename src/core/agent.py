@@ -20,6 +20,7 @@ from core.state.subscribers import RuntimeEventSubscriber
 from core.actions import ActionEffect, ActionRules
 from core.secrets import UserSecretLookup, UserSecretResolver
 from core.task.models import (
+    RunLearningResult,
     SubAgentResult,
     SubagentCallbacks,
     TaskRequest,
@@ -52,7 +53,6 @@ class AgentRunOptions:
     include_subagents: bool = True
     check_subagent_links_before_run: bool = True
     learn_from_conversation: bool = False
-    learn_from_run: bool = True
     allow_subscriber_failures: bool = False
     run_id: str | None = None
     event_listener: Callable[[RunEvent], None] | None = None
@@ -234,6 +234,9 @@ class Agent:
             run_options=self._run_options_for_scene(run_options, scene),
         )
 
+    def learn_from_run(self, run_id: str) -> RunLearningResult:
+        return self.runtime.learn_from_run(run_id)
+
     def _run_for_user(
         self,
         prompt: str,
@@ -244,8 +247,6 @@ class Agent:
         run_options: AgentRunOptions | None = None,
     ) -> TaskResult:
         options = run_options or AgentRunOptions()
-        if not isinstance(options.learn_from_run, bool):
-            raise TypeError("learn_from_run must be a boolean")
         warnings = (
             self._check_subagent_links()
             if options.include_subagents and options.check_subagent_links_before_run
@@ -257,7 +258,6 @@ class Agent:
             include_subagents=options.include_subagents,
             warning_messages=warnings,
             learn_from_conversation=options.learn_from_conversation,
-            learn_from_run=options.learn_from_run,
             allow_subscriber_failures=options.allow_subscriber_failures,
             scene=options.scene,
             subagents=SubagentCallbacks(
@@ -393,7 +393,6 @@ class Agent:
             messages=[],
             include_subagents=True,
             warning_messages=[],
-            learn_from_run=parent_session.learn_from_run,
             allow_subscriber_failures=parent_session.allow_subscriber_failures,
             subagents=SubagentCallbacks(
                 list_subagents=self._list_subagents_for_model,

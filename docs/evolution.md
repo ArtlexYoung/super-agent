@@ -4,11 +4,14 @@ Super Agent updates Skills from recorded evidence rather than intuition alone. T
 user-and-Agent-scoped event stream drives evaluation, freshness, recommendations,
 candidates, promotion, monitoring, and rollback.
 
-Task execution does not write learning state directly. A completed or failed task emits
-one immutable `learning.requested` event. Evaluation records evidence and emits a second
-event; freshness and evolution consume that result independently, while routing evidence
-subscribes to the original request. Disable the complete layer for one run with
-`AgentRunOptions(learn_from_run=False)`.
+Task execution writes immutable evidence into its terminal event but never updates learned
+state. Call `Agent.learn_from_run(run_id)`, `user.runs.learn(run_id)`, or `runs learn` to
+start the explicit post-run phase. That operation records evaluation, recalculates
+freshness, projects routing evidence, and reviews evolution in a fixed order.
+
+Learning is idempotent per run and Skill revision. A completed call returns the recorded
+result without writing again. A failed call records `learning.failed` with the exact stage,
+raises the original error, and can be retried without duplicating evaluation records.
 
 ## Evaluation Records
 
@@ -52,7 +55,7 @@ agent_can_update = true
 When `agent_can_update` is omitted, it defaults to `agent_created`. Human-created Skills
 are immutable by default.
 
-After each task evaluation, Core checks failures, sustained low scores, low freshness,
+During each explicit run evaluation, Core checks failures, sustained low scores, low freshness,
 same-function replacement, high token use, and high latency. Unchanged evidence produces
 the same recommendation ID, so repeated review is idempotent.
 
@@ -81,10 +84,11 @@ requires the history content hash to match the source revision stored in evoluti
 
 After promotion, any failed online sample rolls the Skill back. Three successful samples
 with an average score of at least `0.75` mark it stable; a lower average rolls it back.
-Automation errors are recorded as `runtime.subscriber.failed` and returned in
-`TaskResult.subscriber_failures`. They do not masquerade as successful Skill updates.
+Automation errors are recorded as `learning.failed` and raised directly. They do not
+masquerade as successful Skill updates.
 
 ```bash
+super-agent runs learn --config agent.toml --user-id alice --run-id <run-id>
 super-agent evolution list --config agent.toml --user-id alice
 super-agent evolution show --config agent.toml --user-id alice --evolution-id <id> --output json
 ```

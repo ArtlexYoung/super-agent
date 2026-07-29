@@ -77,8 +77,12 @@ class ConversationRuntimeTests(unittest.TestCase):
             agent = Agent(AgentConfig.create_default(tmp), provider=MockProvider("ok"))
             conversation_id = "shared-conversation-id"
 
-            agent.for_user("user-alpha").run("alpha secret", conversation_id=conversation_id)
-            agent.for_user("user-beta").run("beta secret", conversation_id=conversation_id)
+            alpha = agent.for_user("user-alpha")
+            beta = agent.for_user("user-beta")
+            alpha_result = alpha.run("alpha secret", conversation_id=conversation_id)
+            beta_result = beta.run("beta secret", conversation_id=conversation_id)
+            alpha.runs.learn(alpha_result.run_id)
+            beta.runs.learn(beta_result.run_id)
             alpha_store = agent.runtime.create_store("user-alpha")
             beta_store = agent.runtime.create_store("user-beta")
             MiniMemory(alpha_store).add_long_term_memory("alpha memory")

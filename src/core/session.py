@@ -28,7 +28,6 @@ from skill.runners.registry import SkillLoadRequest, SkillRunners
 
 if TYPE_CHECKING:
     from core.state.store import RuntimeStore
-    from skill.evolution.revision import SkillRevision
 
 
 @dataclass
@@ -42,14 +41,13 @@ class Run:
     store: RuntimeStore | None
     skill_disclosure: ProgressiveDisclosureCore
     skill_index: SkillIndex
-    learn_from_run: bool = True
     allow_subscriber_failures: bool = False
     action_rules: ActionRules = field(default_factory=ActionRules)
     event_subscribers: RuntimeEventSubscribers = field(
         default_factory=RuntimeEventSubscribers,
         repr=False,
     )
-    _used_skill_revisions: dict[tuple[str, str, str], SkillRevision] = field(
+    _used_skill_entries: dict[tuple[str, str, str], SkillIndexEntry] = field(
         default_factory=dict,
         init=False,
         repr=False,
@@ -152,15 +150,23 @@ class Run:
         self.provider = provider
 
     def record_skill_used(self, entry: SkillIndexEntry) -> None:
-        if self.store is None or not self.learn_from_run:
-            return
-        from skill.evolution.revision import create_indexed_skill_revision
+        identity = (entry.reference.key, entry.version, entry.content_sha256)
+        self._used_skill_entries[identity] = entry
 
-        revision = create_indexed_skill_revision(
-            entry,
-            evolution_supported=bool(self.config.paths.skills),
-        )
-        self._used_skill_revisions[revision.identity] = revision
-
-    def list_used_skill_revisions(self) -> list[SkillRevision]:
-        return list(self._used_skill_revisions.values())
+    def list_used_skill_evidence(self) -> list[dict[str, object]]:
+        return [
+            {
+                "schema_version": 1,
+                "key": entry.reference.key,
+                "type": entry.reference.skill_type,
+                "name": entry.reference.name,
+                "version": entry.version,
+                "content_sha256": entry.content_sha256,
+                "function_group": entry.function_group,
+                "agent_created": entry.agent_created,
+                "agent_can_update": entry.agent_can_update,
+                "evolution_supported": bool(self.config.paths.skills),
+                "freshness": entry.freshness,
+            }
+            for entry in self._used_skill_entries.values()
+        ]

@@ -18,6 +18,7 @@ class ZeroConfigurationPlanningTests(unittest.TestCase):
             agent = Agent(_write_config(root, "direct-agent"), provider=provider)
 
             result = agent.run("Answer this question")
+            agent.learn_from_run(result.run_id)
 
             self.assertEqual("direct answer", result.text)
             self.assertEqual(1, len(provider.requests))
@@ -110,6 +111,7 @@ class ZeroConfigurationPlanningTests(unittest.TestCase):
             result = main.run(
                 "Work step by step: research the options, compare them, and summarize."
             )
+            main.learn_from_run(result.run_id)
 
             self.assertEqual("final answer", result.text)
             self.assertEqual(["fast-model", "fast-model"], fast.models)
@@ -186,8 +188,9 @@ class PlanningSkillEvolutionTests(unittest.TestCase):
                 agent.run("Complete this step by step")
 
             store = agent.runtime.create_store()
-            evolution = agent.for_user("local").skills.list_evolutions()[0]
             run_id = store.list_runs(1)[0].run_id
+            agent.learn_from_run(run_id)
+            evolution = agent.for_user("local").skills.list_evolutions()[0]
             self.assertEqual("planner:default", evolution.skill_key)
             self.assertEqual("automatic", evolution.origin)
             self.assertEqual("promoted", evolution.status)
@@ -256,8 +259,9 @@ class PlanningSkillEvolutionTests(unittest.TestCase):
                 agent.run("Answer this question")
 
             store = agent.runtime.create_store()
-            evolution = agent.for_user("local").skills.list_evolutions()[0]
             run_id = store.list_runs(1)[0].run_id
+            agent.learn_from_run(run_id)
+            evolution = agent.for_user("local").skills.list_evolutions()[0]
             self.assertEqual("model:main", evolution.skill_key)
             self.assertEqual("automatic", evolution.origin)
             self.assertEqual("promoted", evolution.status)

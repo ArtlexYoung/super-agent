@@ -249,9 +249,9 @@ Skill，不是特殊的 Agent 字段；密钥只保存在环境变量中。
   调用前，根据这些声明和当前用户的真实证据选择已就绪模型。
 - Runtime 事件记录模型选择、Skill 披露、工具、子 Agent、token 估算、动作决定、结果和
   失败，但不保存密钥值。
-- 运行后的学习是可选的事件层。评价、保鲜度、路由证据和进化分别订阅不可变事件。请求的
-  订阅器失败时默认抛出 `RuntimeEventSubscriberError`，异常中保留已完成任务结果；只有显式
-  配置本轮允许订阅器失败时才会继续返回普通结果。
+- 每次运行只记录不可变的学习证据，不会更新学习状态。显式调用
+  `Agent.learn_from_run(run_id)` 或 `runs learn` 后，才会评价本轮运行、刷新路由与保鲜度证据，
+  并检查符合条件的 Skill 进化。
 - Skill 保鲜度不调用大模型，而是综合使用次数、结果、时间间隔、频率、token 成本以及同
   功能 Skill 的成功替代情况计算。
 - `agent_can_update = true` 的 Agent 自建 Skill 可以创建候选、执行不退化评价、晋升完整
@@ -268,15 +268,17 @@ Skill，不是特殊的 Agent 字段；密钥只保存在环境变量中。
 直接查看证据：
 
 ```bash
+super-agent runs learn --run-id <run-id>
 super-agent runs explain --run-id <run-id>
 super-agent skills index --output json
 super-agent skills freshness
 super-agent evolution list
 ```
 
-单次运行可通过 `AgentRunOptions(learn_from_run=False)` 关闭学习。应用可使用
-`Agent.add_event_subscriber(...)` 添加自己的观察器，失败信息会明确出现在
-`TaskResult.subscriber_failures`。无状态运行会跳过所有内置学习，也不会创建学习文件。
+显式学习操作是幂等的。失败时会记录包含准确阶段的 `learning.failed` 并抛出原始异常；重试会
+复用已经写入的证据。应用仍可通过 `Agent.add_event_subscriber(...)` 添加运行观察器，失败信息
+会明确出现在 `TaskResult.subscriber_failures`。无状态 Agent 可以运行，但由于没有持久化证据
+存储，不能执行学习。
 
 ## 多用户与多 Agent
 

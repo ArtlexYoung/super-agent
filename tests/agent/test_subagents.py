@@ -69,26 +69,26 @@ class SubAgentTests(unittest.TestCase):
             self.assertEqual([], result.subagent_results)
             self.assertEqual([], coder_provider.last_messages)
 
-    def test_disabled_learning_is_inherited_by_subagent_runs(self) -> None:
+    def test_subagent_runs_do_not_learn_until_explicitly_requested(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             main = _agent(root, "main", "main-result")
             coder = _agent(root, "coder", "coder-result")
             main.add_subagent(coder, name="coder", triggers=["code"])
 
-            result = main.run(
-                "write code",
-                run_options=AgentRunOptions(learn_from_run=False),
-            )
+            result = main.run("write code")
 
             child_run_id = result.subagent_results[0].run_id
             child_events = coder.runtime.create_store().read_run_events(child_run_id)
             self.assertEqual([], main.runtime.create_store().read_evaluation_records())
             self.assertEqual([], coder.runtime.create_store().read_evaluation_records())
-            self.assertIn(
-                "learning.skipped",
-                [event.event_type for event in child_events],
+            self.assertFalse(
+                any(event.event_type.startswith("learning.") for event in child_events)
             )
+
+            learned = coder.learn_from_run(child_run_id)
+
+            self.assertTrue(learned.evaluation_record_ids)
 
     def test_nested_subagents_can_run_without_depth_safety_stop(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

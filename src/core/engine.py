@@ -26,8 +26,8 @@ from core.storage.values import encode_storage_data
 from core.task.loop import AdaptiveTaskLoop, list_run_actions
 from core.task.run_plan import RunPlan
 from core.task.preparation import RuntimeLockInput, create_runtime_lock
-from core.task.preflight import TaskPreflightError
-from core.task.models import TaskRequest, TaskResult, TaskTrace
+from core.task.model_calls import estimate_text_tokens
+from core.task.models import RunLearningResult, TaskRequest, TaskResult, TaskTrace
 from skill.disclosure import ProgressiveDisclosureCore, SkillIndex
 from skill.kinds.model import (
     ModelProfile,
@@ -91,15 +91,6 @@ class AgentRuntime:
             parent_run_id=parent_run_id,
         )
         run, task_loop = self._create_run(request, identity, event_listener)
-        if run.store is not None and request.learn_from_run:
-            from core.state.learning import create_learning_event_subscribers
-
-            for subscriber in create_learning_event_subscribers(
-                run,
-                lambda: self.create_skill_updater(run.identity.user_id),
-            ):
-                run.add_event_subscriber(subscriber)
-        learning_recorded = False
         started_at = perf_counter()
         try:
             request = self._prepare_conversation_request(request, run)
@@ -116,17 +107,8 @@ class AgentRuntime:
                 run,
                 lambda run_plan: self._lock_task_context(run, run_plan),
             )
-            learning_recorded = True
-            _record_task_learning(
-                run,
-                enabled=request.learn_from_run,
-                prompt=request.prompt,
-                output=result.text,
-                started_at=started_at,
-            )
             result = replace(
                 result,
-                skill_updates=_list_skill_updates(run.list_recorded_events()),
                 subscriber_failures=run.list_subscriber_failures(),
             )
             if run.store is not None:
@@ -137,12 +119,17 @@ class AgentRuntime:
                     "workflow": result.workflow,
                     "used_skills": list(result.skills),
                     "stop_reason": result.stop_reason,
+                    "learning_evidence": _create_run_learning_evidence(
+                        run,
+                        request.prompt,
+                        result.text,
+                        started_at,
+                    ),
                 },
             )
             final_result = replace(
                 result,
                 actions=list_run_actions(run),
-                skill_updates=_list_skill_updates(run.list_recorded_events()),
                 subscriber_failures=run.list_subscriber_failures(),
                 events=_list_result_events(run),
             )
@@ -153,27 +140,20 @@ class AgentRuntime:
         except RuntimeEventSubscriberError:
             raise
         except Exception as error:
-            if not learning_recorded and not isinstance(error, TaskPreflightError):
-                learning_recorded = True
-                try:
-                    _record_task_learning(
-                        run,
-                        enabled=request.learn_from_run,
-                        prompt=request.prompt,
-                        output="",
-                        started_at=started_at,
-                        error=error,
-                    )
-                except Exception as learning_error:
-                    _add_recording_error_note(
-                        error,
-                        "record failed task learning",
-                        learning_error,
-                    )
             try:
                 run.record_event(
                     "run.failed",
-                    {"error_type": type(error).__name__, "message": str(error)},
+                    {
+                        "error_type": type(error).__name__,
+                        "message": str(error),
+                        "learning_evidence": _create_run_learning_evidence(
+                            run,
+                            request.prompt,
+                            "",
+                            started_at,
+                            error=error,
+                        ),
+                    },
                 )
             except Exception as recording_error:
                 _add_recording_error_note(
@@ -184,11 +164,7 @@ class AgentRuntime:
             raise
 
     def add_event_subscriber(self, subscriber: RuntimeEventSubscriber) -> None:
-        from core.state.learning import BUILTIN_LEARNING_SUBSCRIBER_NAMES
-
-        name = get_runtime_event_subscriber_name(subscriber)
-        if name in BUILTIN_LEARNING_SUBSCRIBER_NAMES:
-            raise ValueError(f"Runtime event subscriber name is reserved: {name}")
+        get_runtime_event_subscriber_name(subscriber)
         self.event_subscribers.add_subscriber(subscriber)
 
     def list_event_subscribers(self) -> tuple[RuntimeEventSubscriber, ...]:
@@ -246,6 +222,36 @@ class AgentRuntime:
             user_id=user_id,
             source="explicit",
         )
+
+    def learn_from_run(
+        self,
+        run_id: str,
+        *,
+        user_id: str = LOCAL_USER_ID,
+    ) -> RunLearningResult:
+        store = self.create_store(user_id)
+        snapshot = store.read_run(run_id)
+        if snapshot.agent_name != self.config.agent.name:
+            raise ValueError(f"run belongs to another Agent: {run_id}")
+
+        from core.state.learning import learn_from_run
+
+        result = self.execute_management_action(
+            user_id,
+            ActionRequest.create(
+                "user:run-learning",
+                f"run:{run_id}",
+                (ActionEffect.CREATE, ActionEffect.UPDATE),
+            ),
+            lambda: learn_from_run(
+                store,
+                run_id,
+                lambda: self.create_skill_updater(user_id),
+            ),
+        )
+        if not isinstance(result, RunLearningResult):
+            raise TypeError("run learning must return RunLearningResult")
+        return result
 
     def list_model_routing_stats(
         self,
@@ -314,7 +320,6 @@ class AgentRuntime:
             disclosure, index = self._create_disclosure(
                 store,
                 identity,
-                include_freshness=request.learn_from_run,
             )
             profiles = self._read_model_profiles(disclosure, index, identity.user_id)
             task_loop = self._create_task_loop(profiles, identity.user_id)
@@ -332,7 +337,6 @@ class AgentRuntime:
                 store=store,
                 skill_disclosure=disclosure,
                 skill_index=index,
-                learn_from_run=request.learn_from_run,
                 allow_subscriber_failures=request.allow_subscriber_failures,
                 action_rules=self.action_rules,
                 event_subscribers=RuntimeEventSubscribers(
@@ -371,14 +375,12 @@ class AgentRuntime:
         self,
         store: RuntimeStore | None,
         identity: RunIdentity | None = None,
-        *,
-        include_freshness: bool = False,
     ) -> tuple[ProgressiveDisclosureCore, SkillIndex]:
         disclosure = create_progressive_skill_disclosure(
             self.config,
             store=store,
             identity=identity if store is not None else None,
-            include_freshness=include_freshness,
+            include_freshness=False,
         )
         return disclosure, disclosure.prepare_skill_index()
 
@@ -581,43 +583,26 @@ def _add_recording_error_note(
     )
 
 
-def _record_task_learning(
+def _create_run_learning_evidence(
     run: Run,
-    *,
-    enabled: bool,
     prompt: str,
     output: str,
     started_at: float,
     error: Exception | None = None,
-) -> RunEvent:
-    if not enabled:
-        return run.record_event("learning.skipped", {"reason": "disabled"})
-    if run.store is None:
-        return run.record_event(
-            "learning.skipped",
-            {"reason": "storage_disabled"},
-        )
-    from core.state.learning import record_task_learning_event
-
-    return record_task_learning_event(
-        run,
-        enabled=True,
-        prompt=prompt,
-        output=output,
-        started_at=started_at,
-        error=error,
-    )
-
-
-def _list_skill_updates(events: list[RunEvent]) -> list[dict[str, object]]:
-    updates: list[dict[str, object]] = []
-    for event in events:
-        if event.event_type != "learning.evolution.reviewed":
-            continue
-        values = event.data.get("updates")
-        if not isinstance(values, list) or not all(
-            isinstance(item, dict) for item in values
-        ):
-            raise ValueError("learning evolution updates must contain an array of objects")
-        updates.extend(dict(item) for item in values)
-    return updates
+) -> dict[str, object]:
+    success = error is None
+    return {
+        "schema_version": 1,
+        "result": {
+            "success": success,
+            "score": 1.0 if success else 0.0,
+            "token_usage": {
+                "input_tokens": estimate_text_tokens(prompt),
+                "output_tokens": estimate_text_tokens(output),
+            },
+            "latency_ms": max(0, round((perf_counter() - started_at) * 1000)),
+            "error_type": "" if error is None else type(error).__name__,
+            "checks": ["pass:task_completed" if success else "fail:task_completed"],
+        },
+        "skill_revisions": run.list_used_skill_evidence(),
+    }

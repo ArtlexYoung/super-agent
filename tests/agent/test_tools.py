@@ -92,8 +92,8 @@ class SkillToolsTests(unittest.TestCase):
                 )
             )
 
-            revisions = tools.context.session.list_used_skill_revisions()
-            self.assertEqual([], revisions)
+            evidence = tools.context.session.list_used_skill_evidence()
+            self.assertEqual([], evidence)
             self.assertEqual([], tools.used_skill_names)
 
     def test_unknown_builtin_tool_fails_with_trace_event(self) -> None:

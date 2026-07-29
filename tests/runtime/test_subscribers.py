@@ -8,13 +8,12 @@ from unittest.mock import patch
 from core.agent import Agent, AgentRunOptions
 from core.config import AgentConfig
 from core.provider.chat import MockProvider
-from core.state.learning import EvaluationEventSubscriber
 from core.state.models import RunEvent
 from core.state.subscribers import RuntimeEventSubscriberError
 
 
 class RuntimeEventSubscriberTests(unittest.TestCase):
-    def test_subscriber_names_must_be_unique_and_cannot_replace_builtins(self) -> None:
+    def test_subscriber_names_must_be_unique(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             agent = Agent(
                 AgentConfig.create_default(Path(tmp)),
@@ -24,7 +23,8 @@ class RuntimeEventSubscriberTests(unittest.TestCase):
 
             with self.assertRaisesRegex(ValueError, "already exists: recording"):
                 agent.add_event_subscriber(_RecordingSubscriber())
-            with self.assertRaisesRegex(ValueError, "name is reserved: evaluation"):
+            agent.add_event_subscriber(_NamedSubscriber("evaluation"))
+            with self.assertRaisesRegex(ValueError, "already exists: evaluation"):
                 agent.add_event_subscriber(_NamedSubscriber("evaluation"))
             with self.assertRaisesRegex(ValueError, "name must be a non-empty string"):
                 agent.add_event_subscriber(_NamedSubscriber(" "))
@@ -97,70 +97,7 @@ class RuntimeEventSubscriberTests(unittest.TestCase):
             self.assertEqual("completed answer", result.text)
             self.assertTrue(result.subscriber_failures)
 
-    def test_evaluation_failure_fails_requested_learning_phase(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            agent = Agent(
-                AgentConfig.create_default(Path(tmp)),
-                provider=MockProvider("completed answer"),
-            )
-
-            with patch.object(
-                EvaluationEventSubscriber,
-                "handle_event",
-                _fail_evaluation_request,
-            ):
-                with self.assertRaises(RuntimeEventSubscriberError) as caught:
-                    agent.run("hello")
-
-            result = caught.exception.result
-
-            self.assertEqual("completed answer", result.text)
-            self.assertEqual(
-                [],
-                agent.runtime.create_store().read_evaluation_records(),
-            )
-            failures = [
-                failure
-                for failure in result.subscriber_failures
-                if failure["subscriber"] == "evaluation"
-            ]
-            self.assertEqual(1, len(failures))
-            self.assertEqual("evaluation unavailable", failures[0]["message"])
-
-    def test_learning_can_be_explicitly_disabled(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            agent = Agent(
-                AgentConfig.create_default(Path(tmp)),
-                provider=MockProvider("completed answer"),
-            )
-
-            result = agent.run(
-                "hello",
-                run_options=AgentRunOptions(learn_from_run=False),
-            )
-
-            self.assertEqual(
-                [],
-                agent.runtime.create_store().read_evaluation_records(),
-            )
-            skipped = [
-                event
-                for event in result.events
-                if event.event_type == "learning.skipped"
-            ]
-            self.assertEqual(1, len(skipped))
-            self.assertEqual("disabled", skipped[0].data["reason"])
-            self.assertFalse(
-                {
-                    "learning.evaluation.recorded",
-                    "learning.freshness.calculated",
-                    "learning.routing_evidence.updated",
-                    "learning.evolution.reviewed",
-                }
-                & {event.event_type for event in result.events}
-            )
-
-    def test_learning_services_publish_independent_results(self) -> None:
+    def test_run_records_evidence_without_starting_learning(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             agent = Agent(
                 AgentConfig.create_default(Path(tmp)),
@@ -169,24 +106,60 @@ class RuntimeEventSubscriberTests(unittest.TestCase):
 
             result = agent.run("hello")
 
-            event_types = {event.event_type for event in result.events}
-            self.assertTrue(
-                {
-                    "learning.requested",
-                    "learning.evaluation.recorded",
-                    "learning.freshness.calculated",
-                    "learning.routing_evidence.updated",
-                    "learning.evolution.reviewed",
-                }
-                <= event_types
+            self.assertEqual("completed answer", result.text)
+            self.assertEqual([], agent.runtime.create_store().read_evaluation_records())
+            self.assertFalse(
+                any(event.event_type.startswith("learning.") for event in result.events)
             )
-            self.assertTrue(
-                agent.runtime.create_store().read_evaluation_records(
-                    source_type="agent_run"
-                )
+            completed = result.events[-1]
+            self.assertEqual("run.completed", completed.event_type)
+            self.assertEqual(1, completed.data["learning_evidence"]["schema_version"])
+
+    def test_explicit_learning_is_idempotent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            agent = Agent(
+                AgentConfig.create_default(Path(tmp)),
+                provider=MockProvider("completed answer"),
             )
 
-    def test_stateless_run_has_no_learning_subscribers_or_files(self) -> None:
+            result = agent.run("hello")
+            first = agent.learn_from_run(result.run_id)
+            second = agent.learn_from_run(result.run_id)
+
+            self.assertEqual(first.evaluation_record_ids, second.evaluation_record_ids)
+            self.assertEqual(first.events, second.events)
+            self.assertEqual(
+                len(first.evaluation_record_ids),
+                len(agent.runtime.create_store().read_evaluation_records()),
+            )
+
+    def test_explicit_learning_failure_is_recorded_and_can_be_retried(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            agent = Agent(
+                AgentConfig.create_default(Path(tmp)),
+                provider=MockProvider("completed answer"),
+            )
+
+            result = agent.run("hello")
+            with patch(
+                "core.state.learning.AutomaticEvolutionService.review_and_evolve",
+                side_effect=RuntimeError("evolution unavailable"),
+            ), self.assertRaisesRegex(RuntimeError, "evolution unavailable"):
+                agent.learn_from_run(result.run_id)
+
+            failed_events = agent.runtime.create_store().read_run_events(result.run_id)
+            failure = next(
+                event for event in reversed(failed_events)
+                if event.event_type == "learning.failed"
+            )
+            self.assertEqual("skill_evolution", failure.data["stage"])
+            self.assertEqual("evolution unavailable", failure.data["message"])
+
+            learned = agent.learn_from_run(result.run_id)
+
+            self.assertEqual("learning.completed", learned.events[-1].event_type)
+
+    def test_stateless_run_stays_file_free_and_cannot_learn(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             config = AgentConfig.create_default(root)
@@ -195,14 +168,8 @@ class RuntimeEventSubscriberTests(unittest.TestCase):
             result = agent.run("hello")
 
             self.assertEqual([], result.subscriber_failures)
-            self.assertEqual(
-                ["storage_disabled"],
-                [
-                    event.data["reason"]
-                    for event in result.events
-                    if event.event_type == "learning.skipped"
-                ],
-            )
+            with self.assertRaisesRegex(RuntimeError, "storage is disabled"):
+                agent.learn_from_run(result.run_id)
             self.assertFalse(config.storage.path.exists())
 
 
@@ -229,14 +196,6 @@ class _NamedSubscriber:
 
     def handle_event(self, event: RunEvent) -> None:
         pass
-
-
-def _fail_evaluation_request(
-    subscriber: EvaluationEventSubscriber,
-    event: RunEvent,
-) -> None:
-    if event.event_type == "learning.requested":
-        raise RuntimeError("evaluation unavailable")
 
 
 if __name__ == "__main__":

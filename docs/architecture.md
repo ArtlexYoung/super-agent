@@ -40,8 +40,8 @@ Agent.run(...)
   -> one immutable RunPlan fixes scene, Skills, workflow, planner, and one model
   -> preflight validates the complete run before any model or subagent call
   -> SkillRunners load the run and one task loop executes it
-  -> one immutable event requests optional post-run learning
-  -> evaluation, freshness, routing evidence, and evolution subscribe independently
+  -> one terminal event keeps immutable learning evidence
+  -> an explicit post-run call evaluates evidence and reviews Skill evolution
 ```
 
 Direct tasks are one-step plans. Complex tasks are multi-step plans. Both use the same
@@ -69,12 +69,11 @@ event log uses memory without a backend and persists the same ordered records wh
 backend exists. Derived CLI and Web views are projected from canonical events, not from
 parallel mutable state.
 
-Post-run learning is an optional event layer, not part of task execution. Runtime emits
-`learning.requested`; named evaluation, freshness, routing-evidence, and evolution
-subscribers handle it independently. Every event payload is recursively read-only.
-Subscriber errors become `runtime.subscriber.failed` events. Runtime raises
-`RuntimeEventSubscriberError` with the completed `TaskResult` attached unless that run
-explicitly allows subscriber failures.
+Post-run learning is an explicit operation, not part of task execution. A completed or
+failed run carries immutable evidence but changes no learned state. `learn_from_run`
+applies evaluation, freshness, routing evidence, and Skill evolution in one visible phase;
+it records the failing stage and raises any error. Custom Runtime event subscribers remain
+separate observers of recursively read-only run events.
 
 ## Central Progressive Disclosure
 
@@ -154,8 +153,8 @@ and adapters are also imported only when their corresponding runner or service i
 A stateless task does not initialize those optional layers.
 
 `RuntimeStore` lazily creates disclosure and memory state and imports evaluation or view
-code only for the matching operation. Disabling run learning keeps persistent traces but
-does not initialize evaluation, freshness, or evolution services.
+code only for the matching operation. Ordinary runs keep persistent traces without
+initializing evaluation, freshness, or evolution services; explicit learning loads them.
 
 ## Explicit Side Effects
 
