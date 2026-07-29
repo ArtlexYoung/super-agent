@@ -212,6 +212,9 @@ variables rather than TOML.
   user-scoped evidence before each model call.
 - Runtime events record the selected model, disclosed Skills, tools, subagents, token
   estimates, action decisions, result, and failure without storing secret values.
+- Post-run learning is event-driven and optional. Evaluation, freshness, routing evidence,
+  and evolution subscribe independently to immutable events; one subscriber failure does
+  not replace a completed task result.
 - Skill freshness is computed without a model from usage, outcome, recency, frequency,
   token cost, and successful same-function replacements.
 - Agent-owned Skills with `agent_can_update = true` can create candidates, run
@@ -234,6 +237,12 @@ super-agent skills index --output json
 super-agent skills freshness
 super-agent evolution list
 ```
+
+Disable learning for one run with
+`AgentRunOptions(learn_from_run=False)`. Add application observers with
+`Agent.add_event_subscriber(...)`; failures are visible in
+`TaskResult.subscriber_failures`. Stateless runs skip all built-in learning and create no
+learning files.
 
 ## Multiuser and Multi-Agent
 

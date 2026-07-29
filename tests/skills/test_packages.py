@@ -188,6 +188,11 @@ def _write_skill(
     skill_type: str = "prompt",
 ) -> None:
     path.mkdir(parents=True, exist_ok=True)
+    configuration = (
+        ""
+        if skill_type == "prompt"
+        else '\n[configuration]\ndefault_scope = "agent"'
+    )
     (path / "skill.toml").write_text(
         f"""
 schema_version = 3
@@ -199,7 +204,7 @@ triggers = ["{name}"]
 
 [entry]
 instructions = "SKILL.md"
-{"" if skill_type == "prompt" else "\n[configuration]\ndefault_scope = \"agent\""}
+{configuration}
 """.strip(),
         encoding="utf-8",
     )

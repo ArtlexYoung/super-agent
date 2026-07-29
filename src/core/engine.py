@@ -12,16 +12,19 @@ from skill.runners.registry import SkillRunners
 from core.provider.chat import ChatProvider
 from core.provider.pool import ProviderPool
 from core.config import AgentConfig
-from core.state.evaluation import (
-    EvaluationResult,
-    EvaluationSource,
-    create_evaluation_record,
-    estimate_evaluation_token_usage,
-)
-from core.evolution.service import AutomaticEvolutionService
-from core.evolution.state_values import SkillEvolutionState
 from core.identity import LOCAL_USER_ID, RunIdentity
+from core.state.learning import (
+    BUILTIN_LEARNING_SUBSCRIBER_NAMES,
+    create_learning_event_subscribers,
+    list_skill_updates_from_events,
+    record_task_learning_event,
+)
 from core.state.models import Conversation, RunEvent
+from core.state.subscribers import (
+    RuntimeEventSubscriber,
+    RuntimeEventSubscribers,
+    get_runtime_event_subscriber_name,
+)
 from core.task.routing import (
     ModelRoutingStats,
     detect_implicit_conversation_feedback,
@@ -57,6 +60,7 @@ class RuntimeResources:
     user_secrets: UserSecretResolver
     code_model_profiles: tuple[ModelProfile, ...] = ()
     skill_change_listener: Callable[[SkillManifest, str], None] | None = None
+    event_subscribers: tuple[RuntimeEventSubscriber, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -75,6 +79,7 @@ class _RuntimeSessionInput:
     conversation_id: str | None
     parent_run_id: str | None
     event_listener: Callable[[RunEvent], None] | None
+    learn_from_run: bool
 
 
 @dataclass(frozen=True)
@@ -103,6 +108,9 @@ class AgentRuntime:
         self.user_secrets = resources.user_secrets
         self.code_model_profiles = resources.code_model_profiles
         self.skill_change_listener = resources.skill_change_listener
+        self.event_subscribers = RuntimeEventSubscribers()
+        for subscriber in resources.event_subscribers:
+            self.add_event_subscriber(subscriber)
 
     def run_task(
         self,
@@ -122,9 +130,10 @@ class AgentRuntime:
                 conversation_id=conversation_id,
                 parent_run_id=parent_run_id,
                 event_listener=event_listener,
+                learn_from_run=request.learn_from_run,
             )
         )
-        evaluation_attempted = False
+        learning_recorded = False
         started_at = perf_counter()
         try:
             request = self._prepare_conversation_request(request, session)
@@ -141,55 +150,79 @@ class AgentRuntime:
                 session,
                 lambda route_plan: self._lock_task_context(session, route_plan),
             )
+            learning_recorded = True
+            record_task_learning_event(
+                session,
+                enabled=request.learn_from_run,
+                prompt=request.prompt,
+                output=result.text,
+                started_at=started_at,
+            )
+            result = replace(
+                result,
+                skill_updates=list_skill_updates_from_events(
+                    session.list_recorded_events()
+                ),
+                subscriber_failures=session.list_subscriber_failures(),
+            )
             if session.store is not None:
-                evaluation_attempted = True
-                skill_updates = self._record_task_evaluation(
-                    session,
-                    EvaluationSource(source_type="agent_run", run_id=session.run_id),
-                    _create_task_evaluation(request.prompt, result.text, started_at),
-                )
-                result = replace(result, skill_updates=skill_updates)
                 self._record_conversation_result(session, result)
-                session.store.finish_run(
-                    session.identity,
-                    workflow=result.workflow,
-                    used_skills=result.skills,
-                    stop_reason=result.stop_reason,
-                )
-            else:
-                session.record_event(
-                    "run.completed",
-                    {
-                        "workflow": result.workflow,
-                        "used_skills": list(result.skills),
-                        "stop_reason": result.stop_reason,
-                    },
-                )
+            session.record_event(
+                "run.completed",
+                {
+                    "workflow": result.workflow,
+                    "used_skills": list(result.skills),
+                    "stop_reason": result.stop_reason,
+                },
+            )
             return replace(
                 result,
                 actions=list_run_actions(session),
+                skill_updates=list_skill_updates_from_events(
+                    session.list_recorded_events()
+                ),
+                subscriber_failures=session.list_subscriber_failures(),
                 events=_list_result_events(session),
             )
         except Exception as error:
-            if (
-                session.store is not None
-                and not evaluation_attempted
-                and not isinstance(error, TaskPreflightError)
-            ):
-                self._try_record_failed_task_evaluation(
-                    session,
-                    request.prompt,
-                    started_at,
-                    error,
-                )
-            if session.store is None:
+            if not learning_recorded and not isinstance(error, TaskPreflightError):
+                learning_recorded = True
+                try:
+                    record_task_learning_event(
+                        session,
+                        enabled=request.learn_from_run,
+                        prompt=request.prompt,
+                        output="",
+                        started_at=started_at,
+                        error=error,
+                    )
+                except Exception as learning_error:
+                    _add_recording_error_note(
+                        error,
+                        "record failed task learning",
+                        learning_error,
+                    )
+            try:
                 session.record_event(
                     "run.failed",
                     {"error_type": type(error).__name__, "message": str(error)},
                 )
-            else:
-                session.store.fail_run(session.identity, error)
+            except Exception as recording_error:
+                _add_recording_error_note(
+                    error,
+                    "record run failure",
+                    recording_error,
+                )
             raise
+
+    def add_event_subscriber(self, subscriber: RuntimeEventSubscriber) -> None:
+        name = get_runtime_event_subscriber_name(subscriber)
+        if name in BUILTIN_LEARNING_SUBSCRIBER_NAMES:
+            raise ValueError(f"Runtime event subscriber name is reserved: {name}")
+        self.event_subscribers.add_subscriber(subscriber)
+
+    def list_event_subscribers(self) -> tuple[RuntimeEventSubscriber, ...]:
+        return self.event_subscribers.list_subscribers()
 
     def create_store(self, user_id: str = LOCAL_USER_ID) -> RuntimeStore:
         if self.storage is None:
@@ -254,7 +287,7 @@ class AgentRuntime:
         self,
         user_id: str = LOCAL_USER_ID,
         on_skill_changed: Callable[[SkillManifest], None] | None = None,
-    ) -> object:
+    ) -> SkillEvolutionManager:
         store = self.create_store(user_id)
         change_handler = on_skill_changed
         if change_handler is None and self.skill_change_listener is not None:
@@ -310,8 +343,7 @@ class AgentRuntime:
                 request.event_listener,
             )
         )
-        if store is not None:
-            store.start_run(identity, request.prompt)
+        started_event = None if store is None else store.start_run(identity, request.prompt)
         try:
             user_runtime = self._create_user_model_runtime(
                 store,
@@ -329,10 +361,20 @@ class AgentRuntime:
                 skill_runners=self.skill_runners,
                 identity=identity,
                 store=store,
+                learn_from_run=request.learn_from_run,
                 action_rules=self.action_rules,
                 event_listener=request.event_listener,
+                event_subscribers=RuntimeEventSubscribers(
+                    self.event_subscribers.list_subscribers()
+                ),
             )
-            if store is None:
+            if store is not None:
+                for subscriber in create_learning_event_subscribers(
+                    session,
+                    lambda: self.create_skill_updater(identity.user_id),
+                ):
+                    session.add_event_subscriber(subscriber)
+            if started_event is None:
                 session.record_event(
                     "run.started",
                     {
@@ -341,7 +383,9 @@ class AgentRuntime:
                         "parent_run_id": identity.parent_run_id,
                     },
                 )
-                user_runtime.disclosure.set_event_writer(session.record_event)
+            else:
+                session.publish_existing_event(started_event)
+            user_runtime.disclosure.set_event_writer(session.record_event)
             session.set_skill_disclosure(
                 user_runtime.disclosure,
                 user_runtime.skill_index,
@@ -532,88 +576,6 @@ class AgentRuntime:
             ),
         )
 
-    def _record_task_evaluation(
-        self,
-        session: RuntimeSession,
-        source: EvaluationSource,
-        result: EvaluationResult,
-    ) -> list[dict[str, object]]:
-        store = session.require_store("task evaluation")
-        store.append_evaluation_records(
-            [
-                create_evaluation_record(revision, source, result)
-                for revision in session.list_used_skill_revisions()
-            ]
-        )
-        return self._run_automatic_evolution(session)
-
-    def _run_automatic_evolution(
-        self,
-        session: RuntimeSession,
-    ) -> list[dict[str, object]]:
-        store = session.require_store("automatic Skill evolution")
-        try:
-            manager = self.create_skill_updater(session.identity.user_id)
-            if not isinstance(manager, SkillEvolutionManager):
-                raise TypeError("skill updater must be SkillEvolutionManager")
-            states = AutomaticEvolutionService(store, manager).review_and_evolve(
-                session.list_used_skill_revisions()
-            )
-            return [_skill_update_to_dict(state) for state in states]
-        except Exception as error:
-            session.record_event(
-                "evolution.automation_failed",
-                {"error_type": type(error).__name__, "message": str(error)},
-            )
-            return [
-                {
-                    "status": "failed",
-                    "error_type": type(error).__name__,
-                    "message": str(error),
-                }
-            ]
-
-    def _try_record_failed_task_evaluation(
-        self,
-        session: RuntimeSession,
-        prompt: str,
-        started_at: float,
-        error: Exception,
-    ) -> None:
-        try:
-            self._record_task_evaluation(
-                session,
-                EvaluationSource(source_type="agent_run", run_id=session.run_id),
-                _create_task_evaluation(prompt, "", started_at, error=error),
-            )
-        except Exception as evaluation_error:
-            session.record_event(
-                "evaluation.failed",
-                {
-                    "error_type": type(evaluation_error).__name__,
-                    "message": str(evaluation_error),
-                },
-            )
-
-
-def _create_task_evaluation(
-    prompt: str,
-    output: str,
-    started_at: float,
-    *,
-    error: Exception | None = None,
-) -> EvaluationResult:
-    success = error is None
-    return EvaluationResult(
-        success=success,
-        score=1.0 if success else 0.0,
-        token_usage=estimate_evaluation_token_usage(prompt, output),
-        latency_ms=max(0, round((perf_counter() - started_at) * 1000)),
-        error_type="" if error is None else type(error).__name__,
-        checks=["pass:task_completed" if success else "fail:task_completed"],
-    )
-
-
 def _validate_feedback_score(value: float) -> float:
     if isinstance(value, bool) or not isinstance(value, int | float):
         raise TypeError("task feedback score must be a number")
@@ -621,16 +583,6 @@ def _validate_feedback_score(value: float) -> float:
     if not 0.0 <= score <= 1.0:
         raise ValueError("task feedback score must be between 0 and 1")
     return score
-
-
-def _skill_update_to_dict(state: SkillEvolutionState) -> dict[str, object]:
-    return {
-        "evolution_id": state.evolution_id,
-        "skill_key": state.skill_key,
-        "status": state.status,
-        "detail": state.detail,
-        "evaluation_score": state.evaluation_score,
-    }
 
 
 def _runtime_lock_to_dict(request: _RuntimeLockInput) -> dict[str, object]:
@@ -679,3 +631,13 @@ def _list_result_events(session: RuntimeSession) -> list[RunEvent]:
     if session.store is None:
         return session.list_recorded_events()
     return session.store.read_run_events(session.run_id)
+
+
+def _add_recording_error_note(
+    error: Exception,
+    operation: str,
+    recording_error: Exception,
+) -> None:
+    error.add_note(
+        f"Could not {operation}: {type(recording_error).__name__}: {recording_error}"
+    )

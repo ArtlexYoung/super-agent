@@ -12,6 +12,11 @@ from core.provider.chat import ChatProvider, Message
 from core.config import AgentConfig
 from core.identity import RunIdentity
 from core.state.models import RunEvent
+from core.state.subscribers import (
+    RuntimeEventSubscriber,
+    RuntimeEventSubscribers,
+    SubscriberFailure,
+)
 from core.actions import ActionRequest, ActionRunner, ActionRules
 from core.state.store import RuntimeStore
 from skill.disclosure import (
@@ -23,6 +28,7 @@ from skill.disclosure import (
 from skill.kinds.model import ModelProfile
 from skill.evolution.revision import SkillRevision, create_indexed_skill_revision
 
+
 @dataclass
 class RuntimeSession:
     config: AgentConfig
@@ -31,8 +37,13 @@ class RuntimeSession:
     skill_runners: SkillRunners
     identity: RunIdentity
     store: RuntimeStore | None
+    learn_from_run: bool = True
     action_rules: ActionRules = field(default_factory=ActionRules)
     event_listener: Callable[[RunEvent], None] | None = None
+    event_subscribers: RuntimeEventSubscribers = field(
+        default_factory=RuntimeEventSubscribers,
+        repr=False,
+    )
     skill_disclosure: ProgressiveDisclosureCore | None = None
     skill_index: SkillIndex | None = None
     _events: list[RunEvent] = field(default_factory=list, init=False, repr=False)
@@ -44,6 +55,11 @@ class RuntimeSession:
     _action_runner: ActionRunner = field(init=False, repr=False)
     _loaded_skills: dict[tuple[str, bool], LoadedSkill] = field(
         default_factory=dict,
+        init=False,
+        repr=False,
+    )
+    _subscriber_failures: list[SubscriberFailure] = field(
+        default_factory=list,
         init=False,
         repr=False,
     )
@@ -60,22 +76,52 @@ class RuntimeSession:
         event_type: str,
         data: dict[str, object] | None = None,
     ) -> RunEvent:
-        if self.store is not None:
-            event = self.store.append_run_event(self.identity, event_type, data)
-        else:
-            event = RunEvent(
-                run_id=self.run_id,
-                sequence=len(self._events) + 1,
-                event_type=event_type,
-                created_at=_utc_now_text(),
-                agent_name=self.identity.agent_name,
-                parent_run_id=self.identity.parent_run_id,
-                data=dict(data or {}),
-            )
-            if self.event_listener is not None:
-                self.event_listener(event)
+        event = self._append_event(event_type, data)
         self._events.append(event)
+        self._publish_event(event)
         return event
+
+    def publish_existing_event(self, event: RunEvent) -> None:
+        if event.run_id != self.run_id or event.agent_name != self.identity.agent_name:
+            raise ValueError("Runtime event does not belong to this session")
+        self._events.append(event)
+        self._publish_event(event)
+
+    def add_event_subscriber(self, subscriber: RuntimeEventSubscriber) -> None:
+        self.event_subscribers.add_subscriber(subscriber)
+
+    def list_subscriber_failures(self) -> list[dict[str, object]]:
+        return [failure.to_dict() for failure in self._subscriber_failures]
+
+    def _append_event(
+        self,
+        event_type: str,
+        data: dict[str, object] | None = None,
+    ) -> RunEvent:
+        if self.store is not None:
+            return self.store.append_run_event(self.identity, event_type, data)
+        event = RunEvent(
+            run_id=self.run_id,
+            sequence=len(self._events) + 1,
+            event_type=event_type,
+            created_at=_utc_now_text(),
+            agent_name=self.identity.agent_name,
+            parent_run_id=self.identity.parent_run_id,
+            data=dict(data or {}),
+        )
+        if self.event_listener is not None:
+            self.event_listener(event)
+        return event
+
+    def _publish_event(self, event: RunEvent) -> None:
+        failures = self.event_subscribers.publish_event(event)
+        self._subscriber_failures.extend(failures)
+        for failure in failures:
+            failure_event = self._append_event(
+                "runtime.subscriber.failed",
+                failure.to_dict(),
+            )
+            self._events.append(failure_event)
 
     def list_recorded_events(self) -> list[RunEvent]:
         return list(self._events)

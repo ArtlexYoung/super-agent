@@ -123,7 +123,7 @@ Status: implemented.
 
 ## v0.0.70: Optional Event-Driven Learning
 
-Status: planned.
+Status: implemented.
 
 - Publish immutable Runtime events without requiring evaluation or evolution services.
 - Let evaluation, freshness, routing evidence, and evolution subscribe independently.

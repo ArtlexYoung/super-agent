@@ -49,15 +49,7 @@ def create_progressive_skill_disclosure(
             if should_record and store is not None
             else None
         ),
-        record_event=(
-            None
-            if identity is None or store is None
-            else lambda event_type, data: store.append_run_event(
-                identity,
-                event_type,
-                data,
-            )
-        ),
+        record_event=None,
     )
 
 

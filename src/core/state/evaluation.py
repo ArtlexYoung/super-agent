@@ -119,17 +119,7 @@ def evaluation_record_to_dict(record: EvaluationRecord) -> dict[str, object]:
             "candidate_id": record.source.candidate_id,
             "case_name": record.source.case_name,
         },
-        "result": {
-            "success": record.result.success,
-            "score": record.result.score,
-            "token_usage": {
-                "input_tokens": record.result.token_usage.input_tokens,
-                "output_tokens": record.result.token_usage.output_tokens,
-            },
-            "latency_ms": record.result.latency_ms,
-            "error_type": record.result.error_type,
-            "checks": list(record.result.checks),
-        },
+        "result": evaluation_result_to_dict(record.result),
     }
 
 
@@ -146,7 +136,7 @@ def evaluation_record_from_dict(value: object) -> EvaluationRecord:
         created_at=_required_string(data, "created_at"),
         revision=skill_revision_from_dict(data["revision"]),
         source=_source_from_dict(data["source"]),
-        result=_result_from_dict(data["result"]),
+        result=evaluation_result_from_dict(data["result"]),
     )
     _validate_evaluation_record(record)
     return record
@@ -162,7 +152,22 @@ def _source_from_dict(value: object) -> EvaluationSource:
     )
 
 
-def _result_from_dict(value: object) -> EvaluationResult:
+def evaluation_result_to_dict(result: EvaluationResult) -> dict[str, object]:
+    _validate_result(result)
+    return {
+        "success": result.success,
+        "score": result.score,
+        "token_usage": {
+            "input_tokens": result.token_usage.input_tokens,
+            "output_tokens": result.token_usage.output_tokens,
+        },
+        "latency_ms": result.latency_ms,
+        "error_type": result.error_type,
+        "checks": list(result.checks),
+    }
+
+
+def evaluation_result_from_dict(value: object) -> EvaluationResult:
     data = _require_exact_object(value, EVALUATION_RESULT_FIELDS, "evaluation result")
     token_data = _require_exact_object(
         data["token_usage"],

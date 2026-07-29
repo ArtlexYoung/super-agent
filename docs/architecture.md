@@ -39,7 +39,8 @@ Agent.run(...)
   -> one immutable RoutePlan fixes scene, Skills, workflow, planner, and model
   -> preflight validates the complete route before any model or subagent call
   -> SkillRunners load the route and one task loop executes it
-  -> canonical events, evaluation, freshness, and evolution review
+  -> one immutable event requests optional post-run learning
+  -> evaluation, freshness, routing evidence, and evolution subscribe independently
 ```
 
 Direct tasks are one-step plans. Complex tasks are multi-step plans. Both use the same
@@ -59,9 +60,15 @@ tool handler, or subagent run. Execution reuses the checked Skill contributions.
 
 `RuntimeSession` is the only mutable run context. It carries the validated identity,
 optional store, Skill index, disclosure core, selected model state, SkillRunners, action
-runner, and evidence tracker. Without a store it keeps ordered events in memory and uses
-the same task loop. Derived CLI and Web views are projected from canonical events, not
-from parallel mutable state.
+runner, event subscribers, and evidence tracker. Without a store it keeps ordered events
+in memory and uses the same task loop. Derived CLI and Web views are projected from
+canonical events, not from parallel mutable state.
+
+Post-run learning is an optional event layer, not part of task execution. Runtime emits
+`learning.requested`; named evaluation, freshness, routing-evidence, and evolution
+subscribers handle it independently. Every event payload is recursively read-only.
+Subscriber errors become `runtime.subscriber.failed` events and
+`TaskResult.subscriber_failures`, while the completed task result remains unchanged.
 
 ## Central Progressive Disclosure
 
@@ -153,6 +160,8 @@ application code rather than downloadable Skill content.
 - One run has one Runtime session, disclosure core, task loop, and event stream; storage
   is one explicit optional service.
 - Every model execution reads one immutable RoutePlan created before that execution.
+- Evaluation and evolution never write directly from the task loop; they observe immutable
+  Runtime events and can be disabled without changing execution.
 - One run selects exactly one scene before loading memory, planning, workflow, and prompt
   content; the selected scene and reason are recorded.
 - Every Skill type uses the same index, cache, stable key, evidence, and evolution format.

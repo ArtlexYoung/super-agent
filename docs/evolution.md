@@ -4,6 +4,12 @@ Super Agent updates Skills from recorded evidence rather than intuition alone. T
 user-and-Agent-scoped event stream drives evaluation, freshness, recommendations,
 candidates, promotion, monitoring, and rollback.
 
+Task execution does not write learning state directly. A completed or failed task emits
+one immutable `learning.requested` event. Evaluation records evidence and emits a second
+event; freshness and evolution consume that result independently, while routing evidence
+subscribes to the original request. Disable the complete layer for one run with
+`AgentRunOptions(learn_from_run=False)`.
+
 ## Evaluation Records
 
 Every Skill revision that affects a run receives an `evaluation.recorded` event with:
@@ -65,8 +71,8 @@ built-in Skills are never overwritten.
 
 After promotion, any failed online sample rolls the Skill back. Three successful samples
 with an average score of at least `0.75` mark it stable; a lower average rolls it back.
-Automation errors are recorded in the task trace and returned in `TaskResult.skill_updates`.
-They do not masquerade as successful updates.
+Automation errors are recorded as `runtime.subscriber.failed` and returned in
+`TaskResult.subscriber_failures`. They do not masquerade as successful Skill updates.
 
 ```bash
 super-agent evolution list --config agent.toml --user-id alice

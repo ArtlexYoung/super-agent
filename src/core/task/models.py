@@ -36,6 +36,7 @@ class TaskRequest:
     purpose: str = "auto"
     required_features: tuple[str, ...] = ("text",)
     learn_from_conversation: bool = False
+    learn_from_run: bool = True
     scene: str | None = None
 
 
@@ -50,6 +51,7 @@ class TaskResult:
     stop_reason: str = "completed"
     actions: list[dict[str, object]] | None = None
     skill_updates: list[dict[str, object]] = field(default_factory=list)
+    subscriber_failures: list[dict[str, object]] = field(default_factory=list)
     events: list[RunEvent] = field(default_factory=list)
 
 

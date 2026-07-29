@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from core.agent import Agent
+from core.agent import Agent, AgentRunOptions
 from core.config import AgentConfig
 from core.provider.chat import MockProvider, ModelResponse, ToolCall
 from support import write_workflow_skill
@@ -68,6 +68,27 @@ class SubAgentTests(unittest.TestCase):
 
             self.assertEqual([], result.subagent_results)
             self.assertEqual([], coder_provider.last_messages)
+
+    def test_disabled_learning_is_inherited_by_subagent_runs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            main = _agent(root, "main", "main-result")
+            coder = _agent(root, "coder", "coder-result")
+            main.add_subagent(coder, name="coder", triggers=["code"])
+
+            result = main.run(
+                "write code",
+                run_options=AgentRunOptions(learn_from_run=False),
+            )
+
+            child_run_id = result.subagent_results[0].run_id
+            child_events = coder.runtime.create_store().read_run_events(child_run_id)
+            self.assertEqual([], main.runtime.create_store().read_evaluation_records())
+            self.assertEqual([], coder.runtime.create_store().read_evaluation_records())
+            self.assertIn(
+                "learning.skipped",
+                [event.event_type for event in child_events],
+            )
 
     def test_nested_subagents_can_run_without_depth_safety_stop(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -15,6 +15,7 @@ from core.config import AgentConfig
 from core.engine import AgentRuntime, RuntimeResources
 from core.identity import LOCAL_USER_ID
 from core.state.models import RunEvent
+from core.state.subscribers import RuntimeEventSubscriber
 from core.actions import ActionRules
 from core.secrets import UserSecretLookup, UserSecretResolver
 from core.task.models import (
@@ -51,6 +52,7 @@ class AgentRunOptions:
     include_subagents: bool = True
     check_subagent_links_before_run: bool = True
     learn_from_conversation: bool = False
+    learn_from_run: bool = True
     run_id: str | None = None
     event_listener: Callable[[RunEvent], None] | None = None
     scene: str | None = None
@@ -166,6 +168,9 @@ class Agent:
     def add_skill_runner(self, runner: SkillRunner) -> None:
         self.skill_runners.add_skill_runner(runner, replace=True)
 
+    def add_event_subscriber(self, subscriber: RuntimeEventSubscriber) -> None:
+        self.runtime.add_event_subscriber(subscriber)
+
     def add_model_provider(self, model_name: str, provider: ChatProvider) -> None:
         key = model_name.strip().lower()
         if not key.startswith("model:"):
@@ -238,6 +243,8 @@ class Agent:
         run_options: AgentRunOptions | None = None,
     ) -> TaskResult:
         options = run_options or AgentRunOptions()
+        if not isinstance(options.learn_from_run, bool):
+            raise TypeError("learn_from_run must be a boolean")
         if self.storage is None and options.scene is None:
             options = replace(options, scene="stateless")
         warnings = (
@@ -251,6 +258,7 @@ class Agent:
             include_subagents=options.include_subagents,
             warning_messages=warnings,
             learn_from_conversation=options.learn_from_conversation,
+            learn_from_run=options.learn_from_run,
             scene=options.scene,
             subagents=SubagentCallbacks(
                 list_subagents=self._list_subagents_for_model,
@@ -287,6 +295,7 @@ class Agent:
     ) -> None:
         if self.storage is not None and config.storage != self.config.storage:
             raise ValueError("changing storage requires restarting the Agent")
+        event_subscribers = self.runtime.list_event_subscribers()
         self.config = config
         self.runtime = AgentRuntime(
             self.config,
@@ -298,6 +307,7 @@ class Agent:
                 user_secrets=self.user_secrets,
                 code_model_profiles=self._code_model_profiles,
                 skill_change_listener=self._activate_changed_skill,
+                event_subscribers=event_subscribers,
             ),
         )
         self._reload_model_profiles(LOCAL_USER_ID)
@@ -377,6 +387,7 @@ class Agent:
             messages=[],
             include_subagents=True,
             warning_messages=[],
+            learn_from_run=parent_session.learn_from_run,
             subagents=SubagentCallbacks(
                 list_subagents=self._list_subagents_for_model,
                 run_named_subagent=self._run_named_subagent_for_model,

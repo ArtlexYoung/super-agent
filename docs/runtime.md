@@ -14,7 +14,8 @@ Agent.run(...)
   -> plan one or more task steps
   -> load and execute the planned route
   -> run model, tools, and subagents
-  -> record events, evaluation, freshness, and evolution review
+  -> emit an optional learning request after task execution
+  -> independent subscribers evaluate, refresh evidence, and review evolution
 ```
 
 A direct task is a one-step plan. A decomposed task uses the same step executor. There is
@@ -53,6 +54,45 @@ behavior is progressive:
 
 Missing optional parts do not trigger substitutes. A missing model, invalid Skill,
 failed memory organization, or failed Provider call is an explicit error.
+
+## Optional Event-Driven Learning
+
+Stateful runs enable post-run learning by default. After task execution, Runtime emits one
+immutable `learning.requested` event. Four named subscribers then work independently:
+evaluation persists revision evidence, freshness recalculates deterministic scores,
+routing evidence projects model outcomes, and evolution reviews eligible Agent-owned
+Skills. None of these services is inside the task loop.
+
+Disable all built-in learning for one run without changing task execution:
+
+```python
+from super_agent import Agent, AgentRunOptions
+
+result = Agent().run(
+    "Answer without updating learned evidence",
+    run_options=AgentRunOptions(learn_from_run=False),
+)
+```
+
+Applications can observe the same immutable events in code:
+
+```python
+class AuditEvents:
+    name = "audit"
+
+    def handle_event(self, event):
+        write_audit_record(event)
+
+
+agent = Agent()
+agent.add_event_subscriber(AuditEvents())
+```
+
+Subscriber names are unique. Built-in names are reserved. A subscriber failure records
+`runtime.subscriber.failed` and appears in `TaskResult.subscriber_failures`; it does not
+replace a completed result or the original task error. `event_listener` remains the
+streaming interface and is not treated as a learning subscriber. Stateless runs record
+`learning.skipped` and create no evaluation or evolution state.
 
 ## Conversations
 

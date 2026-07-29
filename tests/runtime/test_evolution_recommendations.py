@@ -225,14 +225,21 @@ class SkillRevisionEvolutionTests(unittest.TestCase):
             )
 
             with patch(
-                "core.engine.AutomaticEvolutionService.review_and_evolve",
+                "core.state.learning.AutomaticEvolutionService.review_and_evolve",
                 side_effect=RuntimeError("recommendation unavailable"),
             ):
                 result = agent.run("echo this")
 
             events = agent.runtime.create_store().read_run_events(result.run_id)
             self.assertEqual("completed", result.text)
-            self.assertIn("evolution.automation_failed", [item.event_type for item in events])
+            self.assertIn("runtime.subscriber.failed", [item.event_type for item in events])
+            self.assertTrue(
+                any(
+                    failure["subscriber"] == "evolution"
+                    and failure["message"] == "recommendation unavailable"
+                    for failure in result.subscriber_failures
+                )
+            )
 
     def test_automatic_service_records_candidate_difference(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

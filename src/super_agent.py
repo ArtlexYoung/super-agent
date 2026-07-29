@@ -21,6 +21,7 @@ from core.provider.pool import ProviderPool
 from core.config import AgentConfig
 from core.identity import LOCAL_USER_ID
 from core.state.models import Conversation
+from core.state.subscribers import RuntimeEventSubscriber
 from core.storage import (
     JsonlStorage,
     MySqlStorage,
@@ -58,6 +59,7 @@ __all__ = [
     "PostgreSqlStorage",
     "ProviderConnection",
     "ProviderPool",
+    "RuntimeEventSubscriber",
     "PreflightProblem",
     "Skill",
     "SkillSceneInput",

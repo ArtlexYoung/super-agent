@@ -30,6 +30,7 @@ class PublicApiTests(unittest.TestCase):
             "PostgreSqlStorage",
             "ProviderConnection",
             "ProviderPool",
+            "RuntimeEventSubscriber",
             "PreflightProblem",
             "Skill",
             "SkillSceneInput",
