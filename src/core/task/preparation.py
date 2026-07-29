@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Callable, Mapping, cast
 
 from skill.runners.loaded import (
@@ -10,7 +11,10 @@ from skill.runners.loaded import (
     ScenePolicy,
     TaskPolicy,
 )
-from core.provider.chat import Message
+from skill.runners.registry import SkillRunners
+from core.config import AgentConfig
+from core.provider.chat import ChatProvider, Message
+from core.storage import StorageBackend
 from core.task.planning import decide_task_planning
 from core.session import RuntimeSession
 from core.task.route_plan import (
@@ -23,8 +27,62 @@ from core.task.route_plan import (
 )
 from core.task.models import SubAgentResult, TaskRequest
 from core.task.tools import RuntimeTools, RuntimeToolsContext
-from skill.disclosure import SkillIndexEntry, SkillReference
-from skill.kinds.model import ModelProfile
+from skill.disclosure import SkillIndex, SkillIndexEntry, SkillReference
+from skill.kinds.model import ModelProfile, model_profile_to_dict
+
+
+@dataclass(frozen=True)
+class RuntimeLockInput:
+    config: AgentConfig
+    model_profile: ModelProfile
+    skill_runners: SkillRunners
+    skill_index: SkillIndex
+    provider: ChatProvider
+    storage: StorageBackend | None
+    route_plan: RoutePlan
+    environment: Mapping[str, str]
+
+
+def create_runtime_lock(request: RuntimeLockInput) -> dict[str, object]:
+    request.skill_runners.validate_dependencies()
+    return {
+        "schema_version": 16,
+        "agent": {
+            "name": request.config.agent.name,
+            "system": request.config.agent.system,
+            "skills": list(request.config.agent.skills),
+            "max_agent_chain_depth": request.config.agent.max_agent_chain_depth,
+            "disabled_skills": list(request.config.agent.disabled_skills),
+        },
+        "model": {
+            **model_profile_to_dict(request.model_profile, request.environment),
+            "implementation": (
+                f"{type(request.provider).__module__}."
+                f"{type(request.provider).__qualname__}"
+            ),
+        },
+        "route_plan": request.route_plan.to_dict(),
+        "storage": {
+            "enabled": request.storage is not None,
+            "backend": None if request.storage is None else request.storage.name,
+        },
+        "skill_runners": [
+            item.descriptor.to_dict()
+            for item in request.skill_runners.list_skill_runners()
+        ],
+        "skills": [
+            {
+                "key": entry.reference.key,
+                "name": entry.reference.name,
+                "type": entry.reference.skill_type,
+                "version": entry.version,
+                "content_sha256": entry.content_sha256,
+                "provides": list(entry.provides),
+                "requires": list(entry.requires),
+            }
+            for entry in request.skill_index.entries
+        ],
+    }
 
 
 def prepare_route_plan(

@@ -12,7 +12,7 @@ from skill.runners.registry import SkillRunner
 from core.provider.chat import ChatProvider, Message
 from core.provider.pool import ProviderPool
 from core.config import AgentConfig
-from core.engine import AgentRuntime, RuntimeResources
+from core.engine import AgentRuntime
 from core.identity import LOCAL_USER_ID
 from core.state.models import RunEvent
 from core.state.subscribers import RuntimeEventSubscriber
@@ -24,7 +24,7 @@ from core.task.models import (
     TaskRequest,
     TaskResult,
 )
-from core.session import RuntimeSession
+from core.session import RuntimeResources, RuntimeSession
 from core.storage import StorageBackend, create_storage_backend
 from core.state.store import RuntimeStore
 from skill.kinds.model import (

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 from pathlib import Path
 from typing import Callable
@@ -20,7 +19,6 @@ from core.state.models import Conversation, ConversationMessage, RunEvent, RunSn
 from core.storage import StorageBackend, StorageEvent, StorageEventQuery
 from core.storage.files import create_scope_digest, write_bytes_atomically
 from core.storage.jsonl import JsonlStorage
-from core.storage.values import encode_storage_data
 from core.state.views import (
     conversation_from_events,
     explain_run_from_views,
@@ -213,45 +211,6 @@ class RuntimeStore:
         if self.event_listener is not None:
             self.event_listener(event)
         return event
-
-    def save_runtime_lock(
-        self,
-        identity: RunIdentity,
-        runtime_lock: dict[str, object],
-    ) -> str:
-        content = encode_storage_data(runtime_lock)
-        digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
-        self.append_run_event(
-            identity,
-            "runtime.locked",
-            {"runtime_lock": runtime_lock, "runtime_lock_sha256": digest},
-        )
-        return digest
-
-    def finish_run(
-        self,
-        identity: RunIdentity,
-        *,
-        workflow: str,
-        used_skills: list[str],
-        stop_reason: str,
-    ) -> None:
-        self.append_run_event(
-            identity,
-            "run.completed",
-            {
-                "workflow": workflow,
-                "used_skills": list(used_skills),
-                "stop_reason": stop_reason,
-            },
-        )
-
-    def fail_run(self, identity: RunIdentity, error: Exception) -> None:
-        self.append_run_event(
-            identity,
-            "run.failed",
-            {"error_type": type(error).__name__, "message": str(error)},
-        )
 
     def read_run(self, run_id: str) -> RunSnapshot:
         events = self._read_storage_events("run", run_id)

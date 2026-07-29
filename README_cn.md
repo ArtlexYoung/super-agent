@@ -79,6 +79,23 @@ print(result.events)
 应用代码可以显式注入自己的 Provider、存储、动作规则、SkillRunner 和子 Agent。CLI 只是
 同一个 Python 内核的入口，不是另一套 Runtime。
 
+## 只增加需要的层
+
+零配置路径默认使用本地 JSONL，但更低或更高的层都不是必选项。每次选择都是显式的，并且
+始终复用同一个披露与执行核心：
+
+| 需求 | 选择 | 增加的行为 |
+| --- | --- | --- |
+| 只查看 Skill 数据 | 只读渐进式披露 | 不调用模型，不创建缓存、历史或存储 |
+| 运行一次隔离任务 | `Agent(provider=..., use_storage=False)` | Provider 执行与内存事件 |
+| 保留本地证据 | `Agent()` | JSONL 追踪、披露缓存、评价和保鲜度 |
+| 延续一次对话 | 传入 `conversation_id` | 隔离的消息，以及临时和长期记忆 Skill |
+| 增加行为 | `add_skill_runner(...)` 或 `add_subagent(...)` | 显式的自定义执行或委派 |
+| 进化私有 Skill | 允许更新的 Agent 自建 Skill | 候选、不退化检查、晋升、监控和回滚 |
+
+Runtime 会在第一次模型调用前检查所选层的全部要求。缺少服务或 runner 时会明确报错，不会
+偷偷删除用户请求的功能。
+
 ## 一个心智模型
 
 ```text

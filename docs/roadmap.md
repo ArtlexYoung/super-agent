@@ -132,12 +132,14 @@ Status: implemented.
 
 ## v0.0.71: Lean Core Release
 
-Status: planned.
+Status: implemented.
 
-- Delete superseded plans, duplicate data objects, unused helpers, and stale documentation.
+- Move session construction and immutable Runtime resources to their single owner; delete
+  duplicate data objects, storage wrappers, unused helpers, and stale version literals.
 - Keep the default path dependency-free, stateful, and zero-configuration.
 - Document the progressive opt-in layers from pure disclosure through full self-evolution.
-- Publish architecture and package checks for the reduced public surface.
+- Enforce dependency, version, source-size, fresh-import, removed-path, and wheel-layout
+  checks for the reduced public surface.
 
 ## Release Gate
 

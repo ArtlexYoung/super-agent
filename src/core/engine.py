@@ -3,14 +3,10 @@
 from __future__ import annotations
 
 import hashlib
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, replace
 from time import perf_counter
-from typing import Callable, Mapping
+from typing import Callable
 
-from skill.runners.defaults import create_progressive_skill_disclosure
-from skill.runners.registry import SkillRunners
-from core.provider.chat import ChatProvider
-from core.provider.pool import ProviderPool
 from core.config import AgentConfig
 from core.identity import LOCAL_USER_ID, RunIdentity
 from core.state.learning import (
@@ -30,68 +26,24 @@ from core.task.routing import (
     detect_implicit_conversation_feedback,
     list_model_routing_stats,
 )
-from core.actions import ActionEffect, ActionRequest, ActionRunner, ActionRules
-from core.secrets import UserSecretResolver
-from core.session import RuntimeSession
-from core.storage import StorageBackend
+from core.actions import ActionEffect, ActionRequest, ActionRunner
+from core.session import (
+    RuntimeResources,
+    RuntimeSession,
+    RuntimeSessionRequest,
+    create_runtime_session,
+    create_user_model_runtime,
+)
 from core.storage.values import encode_storage_data
 from core.state.store import RuntimeStore
 from core.task.route_plan import RoutePlan
+from core.task.preparation import RuntimeLockInput, create_runtime_lock
 from core.task.preflight import TaskPreflightError
-from core.task.loop import AdaptiveTaskLoop, list_run_actions
+from core.task.loop import list_run_actions
 from core.task.models import TaskRequest, TaskResult, TaskTrace
-from skill.disclosure import ProgressiveDisclosureCore, SkillIndex
-from skill.kinds.model import (
-    ModelProfile,
-    model_profile_to_dict,
-    read_model_profiles,
-    select_default_model_profile,
-)
+from skill.kinds.model import ModelProfile
 from skill.manifest import SkillManifest
 from skill.evolution.manager import EvolutionModels, SkillEvolutionManager
-
-
-@dataclass(frozen=True)
-class RuntimeResources:
-    provider_pool: ProviderPool
-    skill_runners: SkillRunners
-    storage: StorageBackend | None
-    action_rules: ActionRules
-    user_secrets: UserSecretResolver
-    code_model_profiles: tuple[ModelProfile, ...] = ()
-    skill_change_listener: Callable[[SkillManifest, str], None] | None = None
-    event_subscribers: tuple[RuntimeEventSubscriber, ...] = ()
-
-
-@dataclass(frozen=True)
-class _UserModelRuntime:
-    task_loop: AdaptiveTaskLoop
-    disclosure: ProgressiveDisclosureCore
-    skill_index: SkillIndex
-    profiles: list[ModelProfile]
-
-
-@dataclass(frozen=True)
-class _RuntimeSessionInput:
-    user_id: str
-    prompt: str
-    run_id: str | None
-    conversation_id: str | None
-    parent_run_id: str | None
-    event_listener: Callable[[RunEvent], None] | None
-    learn_from_run: bool
-
-
-@dataclass(frozen=True)
-class _RuntimeLockInput:
-    config: AgentConfig
-    model_profile: ModelProfile
-    skill_runners: SkillRunners
-    skill_index: SkillIndex
-    provider: ChatProvider
-    storage: StorageBackend | None
-    route_plan: RoutePlan
-    environment: Mapping[str, str]
 
 
 class AgentRuntime:
@@ -101,13 +53,7 @@ class AgentRuntime:
         resources: RuntimeResources,
     ) -> None:
         self.config = config
-        self.provider_pool = resources.provider_pool
-        self.skill_runners = resources.skill_runners
-        self.storage = resources.storage
-        self.action_rules = resources.action_rules
-        self.user_secrets = resources.user_secrets
-        self.code_model_profiles = resources.code_model_profiles
-        self.skill_change_listener = resources.skill_change_listener
+        self.resources = resources
         self.event_subscribers = RuntimeEventSubscribers()
         for subscriber in resources.event_subscribers:
             self.add_event_subscriber(subscriber)
@@ -122,8 +68,13 @@ class AgentRuntime:
         parent_run_id: str | None = None,
         event_listener: Callable[[RunEvent], None] | None = None,
     ) -> TaskResult:
-        session, task_loop = self._create_runtime_session(
-            _RuntimeSessionInput(
+        session, task_loop = create_runtime_session(
+            self.config,
+            replace(
+                self.resources,
+                event_subscribers=self.event_subscribers.list_subscribers(),
+            ),
+            RuntimeSessionRequest(
                 user_id=user_id,
                 prompt=request.prompt,
                 run_id=run_id,
@@ -133,6 +84,12 @@ class AgentRuntime:
                 learn_from_run=request.learn_from_run,
             )
         )
+        if session.store is not None:
+            for subscriber in create_learning_event_subscribers(
+                session,
+                lambda: self.create_skill_updater(session.identity.user_id),
+            ):
+                session.add_event_subscriber(subscriber)
         learning_recorded = False
         started_at = perf_counter()
         try:
@@ -225,10 +182,10 @@ class AgentRuntime:
         return self.event_subscribers.list_subscribers()
 
     def create_store(self, user_id: str = LOCAL_USER_ID) -> RuntimeStore:
-        if self.storage is None:
+        if self.resources.storage is None:
             raise RuntimeError("Runtime storage is disabled for this Agent")
         return RuntimeStore(
-            self.storage,
+            self.resources.storage,
             self.config.storage.path,
             user_id,
             self.config.agent.name,
@@ -242,7 +199,7 @@ class AgentRuntime:
     ) -> object:
         store = self.create_store(user_id)
         return ActionRunner(
-            self.action_rules,
+            self.resources.action_rules,
             store.append_management_action_event,
         ).execute_action(
             request,
@@ -290,12 +247,17 @@ class AgentRuntime:
     ) -> SkillEvolutionManager:
         store = self.create_store(user_id)
         change_handler = on_skill_changed
-        if change_handler is None and self.skill_change_listener is not None:
-            change_handler = lambda manifest: self.skill_change_listener(
+        if change_handler is None and self.resources.skill_change_listener is not None:
+            change_handler = lambda manifest: self.resources.skill_change_listener(
                 manifest,
                 user_id,
             )
-        user_runtime = self._create_user_model_runtime(store, user_id)
+        user_runtime = create_user_model_runtime(
+            self.config,
+            self.resources,
+            store=store,
+            user_id=user_id,
+        )
         return SkillEvolutionManager(
             skill_disclosure=user_runtime.disclosure,
             store=store,
@@ -310,114 +272,21 @@ class AgentRuntime:
                 ),
             ),
             on_skill_changed=change_handler,
-            action_rules=self.action_rules,
+            action_rules=self.resources.action_rules,
         )
 
     def read_model_profiles(self, user_id: str = LOCAL_USER_ID) -> list[ModelProfile]:
         return list(
-            self._create_user_model_runtime(
-                None if self.storage is None else self.create_store(user_id),
-                user_id,
+            create_user_model_runtime(
+                self.config,
+                self.resources,
+                store=(
+                    None
+                    if self.resources.storage is None
+                    else self.create_store(user_id)
+                ),
+                user_id=user_id,
             ).profiles
-        )
-
-    def _create_runtime_session(
-        self,
-        request: _RuntimeSessionInput,
-    ) -> tuple[RuntimeSession, AdaptiveTaskLoop]:
-        identity = RunIdentity.create(
-            request.user_id,
-            self.config.agent.name,
-            run_id=request.run_id,
-            conversation_id=request.conversation_id,
-            parent_run_id=request.parent_run_id,
-        )
-        store = (
-            None
-            if self.storage is None
-            else RuntimeStore(
-                self.storage,
-                self.config.storage.path,
-                identity.user_id,
-                identity.agent_name,
-                request.event_listener,
-            )
-        )
-        started_event = None if store is None else store.start_run(identity, request.prompt)
-        try:
-            user_runtime = self._create_user_model_runtime(
-                store,
-                identity.user_id,
-                identity,
-            )
-            default_profile = select_default_model_profile(user_runtime.profiles)
-            session = RuntimeSession(
-                config=self.config,
-                model_profile=default_profile,
-                provider=user_runtime.task_loop.provider_pool.get_chat_provider(
-                    default_profile.key,
-                    default_profile.connection,
-                ),
-                skill_runners=self.skill_runners,
-                identity=identity,
-                store=store,
-                learn_from_run=request.learn_from_run,
-                action_rules=self.action_rules,
-                event_listener=request.event_listener,
-                event_subscribers=RuntimeEventSubscribers(
-                    self.event_subscribers.list_subscribers()
-                ),
-            )
-            if store is not None:
-                for subscriber in create_learning_event_subscribers(
-                    session,
-                    lambda: self.create_skill_updater(identity.user_id),
-                ):
-                    session.add_event_subscriber(subscriber)
-            if started_event is None:
-                session.record_event(
-                    "run.started",
-                    {
-                        "prompt": request.prompt,
-                        "conversation_id": identity.conversation_id,
-                        "parent_run_id": identity.parent_run_id,
-                    },
-                )
-            else:
-                session.publish_existing_event(started_event)
-            user_runtime.disclosure.set_event_writer(session.record_event)
-            session.set_skill_disclosure(
-                user_runtime.disclosure,
-                user_runtime.skill_index,
-            )
-        except Exception as error:
-            if store is not None:
-                store.fail_run(identity, error)
-            raise
-        return session, user_runtime.task_loop
-
-    def _create_user_model_runtime(
-        self,
-        store: RuntimeStore | None,
-        user_id: str,
-        identity: RunIdentity | None = None,
-    ) -> _UserModelRuntime:
-        disclosure = create_progressive_skill_disclosure(
-            self.config,
-            store=store,
-            identity=identity if store is not None else None,
-        )
-        skill_index = disclosure.prepare_skill_index()
-        environment = self.user_secrets.get_environment_for_user(user_id)
-        profiles = read_model_profiles(disclosure, skill_index, environment)
-        if not profiles:
-            profiles = list(self.code_model_profiles)
-        user_pool = self.provider_pool.create_user_provider_pool(environment)
-        return _UserModelRuntime(
-            task_loop=AdaptiveTaskLoop(profiles, user_pool),
-            disclosure=disclosure,
-            skill_index=skill_index,
-            profiles=profiles,
         )
 
     def _lock_task_context(
@@ -425,23 +294,20 @@ class AgentRuntime:
         session: RuntimeSession,
         route_plan: RoutePlan,
     ) -> None:
-        runtime_lock = _runtime_lock_to_dict(
-            _RuntimeLockInput(
+        runtime_lock = create_runtime_lock(
+            RuntimeLockInput(
                 config=self.config,
                 model_profile=session.model_profile,
-                skill_runners=self.skill_runners,
+                skill_runners=self.resources.skill_runners,
                 skill_index=session.require_skill_index(),
                 provider=session.provider,
-                storage=self.storage,
+                storage=self.resources.storage,
                 route_plan=route_plan,
-                environment=self.user_secrets.get_environment_for_user(
+                environment=self.resources.user_secrets.get_environment_for_user(
                     session.identity.user_id
                 ),
             )
         )
-        if session.store is not None:
-            session.store.save_runtime_lock(session.identity, runtime_lock)
-            return
         content = encode_storage_data(runtime_lock)
         session.record_event(
             "runtime.locked",
@@ -583,48 +449,6 @@ def _validate_feedback_score(value: float) -> float:
     if not 0.0 <= score <= 1.0:
         raise ValueError("task feedback score must be between 0 and 1")
     return score
-
-
-def _runtime_lock_to_dict(request: _RuntimeLockInput) -> dict[str, object]:
-    request.skill_runners.validate_dependencies()
-    return {
-        "schema_version": 16,
-        "agent": {
-            "name": request.config.agent.name,
-            "system": request.config.agent.system,
-            "skills": list(request.config.agent.skills),
-            "max_agent_chain_depth": request.config.agent.max_agent_chain_depth,
-            "disabled_skills": list(request.config.agent.disabled_skills),
-        },
-        "model": {
-            **model_profile_to_dict(request.model_profile, request.environment),
-            "implementation": (
-                f"{type(request.provider).__module__}."
-                f"{type(request.provider).__qualname__}"
-            ),
-        },
-        "route_plan": request.route_plan.to_dict(),
-        "storage": {
-            "enabled": request.storage is not None,
-            "backend": None if request.storage is None else request.storage.name,
-        },
-        "skill_runners": [
-            item.descriptor.to_dict()
-            for item in request.skill_runners.list_skill_runners()
-        ],
-        "skills": [
-            {
-                "key": entry.reference.key,
-                "name": entry.reference.name,
-                "type": entry.reference.skill_type,
-                "version": entry.version,
-                "content_sha256": entry.content_sha256,
-                "provides": list(entry.provides),
-                "requires": list(entry.requires),
-            }
-            for entry in request.skill_index.entries
-        ],
-    }
 
 
 def _list_result_events(session: RuntimeSession) -> list[RunEvent]:

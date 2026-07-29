@@ -183,9 +183,19 @@ class SkillRunnerRuntimeTests(unittest.TestCase):
             ]
             self.assertEqual(sorted(ordered_steps), ordered_steps)
             self.assertFalse(hasattr(agent.runtime, "task_loop"))
-            self.assertTrue(hasattr(agent.runtime, "_create_user_model_runtime"))
+            self.assertFalse(hasattr(agent.runtime, "_create_user_model_runtime"))
             self.assertFalse(hasattr(agent.runtime, "task_scheduler"))
             self.assertFalse(hasattr(agent.runtime, "model_router"))
+            session_tree = ast.parse(
+                Path("src/core/session.py").read_text(encoding="utf-8")
+            )
+            session_functions = {
+                node.name
+                for node in session_tree.body
+                if isinstance(node, ast.FunctionDef)
+            }
+            self.assertIn("create_runtime_session", session_functions)
+            self.assertIn("create_user_model_runtime", session_functions)
             route_source = Path("src/core/task/route_plan.py").read_text(
                 encoding="utf-8"
             )

@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from core import __version__
 from skill.disclosure import SkillDisclosure
 
 
@@ -95,7 +96,7 @@ class _McpStdioSession:
                 {
                     "protocolVersion": MCP_PROTOCOL_VERSION,
                     "capabilities": {},
-                    "clientInfo": {"name": "super-agent", "version": "0.0.34"},
+                    "clientInfo": {"name": "super-agent", "version": __version__},
                 },
             )
             self.send_notification("notifications/initialized", {})

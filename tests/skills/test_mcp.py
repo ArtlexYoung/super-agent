@@ -4,6 +4,7 @@ import json
 import sys
 from pathlib import Path
 
+from core import __version__
 from core.agent import Agent
 from skill.runners.defaults import create_default_skill_runners
 from skill.runners.registry import SkillLoadRequest
@@ -42,6 +43,7 @@ class McpSkillTests(unittest.TestCase):
             self.assertEqual("add", tools[0]["name"])
             self.assertEqual(5, result["structuredContent"]["sum"])
             self.assertEqual("from-env", result["structuredContent"]["env"])
+            self.assertEqual(__version__, result["structuredContent"]["client_version"])
 
     def test_skill_loader_registers_mcp_server_as_skill(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -328,12 +330,14 @@ import json
 import os
 import sys
 
+client_version = None
 for line in sys.stdin:
     request = json.loads(line)
     method = request.get("method")
     if "id" not in request:
         continue
     if method == "initialize":
+        client_version = request["params"]["clientInfo"]["version"]
         result = {
             "protocolVersion": "2025-03-26",
             "skill_runners": {"tools": {}},
@@ -354,6 +358,7 @@ for line in sys.stdin:
             "structuredContent": {
                 "sum": arguments["left"] + arguments["right"],
                 "env": os.environ.get("MCP_TEST_VALUE"),
+                "client_version": client_version,
             },
         }
     else:

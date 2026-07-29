@@ -86,6 +86,23 @@ Application code may explicitly inject its own Provider, storage backend, action
 rules, SkillRunners, and subagents. The CLI uses this same library; it is not a second
 runtime.
 
+## Add Only the Layers You Need
+
+The zero-configuration path uses local JSONL, but neither lower nor higher layers are
+mandatory. Each choice is explicit and keeps the same disclosure and execution core:
+
+| Need | Choose | Added behavior |
+| --- | --- | --- |
+| Inspect Skill data | read-only progressive disclosure | No model, cache, history, or storage |
+| Run one isolated task | `Agent(provider=..., use_storage=False)` | Provider execution and in-memory events |
+| Keep local evidence | `Agent()` | JSONL traces, disclosure cache, evaluation, and freshness |
+| Continue a conversation | pass `conversation_id` | Isolated messages plus temporary and long-term memory Skills |
+| Add behavior | `add_skill_runner(...)` or `add_subagent(...)` | Explicit custom execution or delegation |
+| Evolve private Skills | Agent-owned Skill with updates enabled | Candidate, non-regression check, promotion, monitoring, and rollback |
+
+Runtime validates the requirements for the selected layer before the first model call.
+It reports a missing service or runner instead of silently removing the requested feature.
+
 ## One Mental Model
 
 ```text
