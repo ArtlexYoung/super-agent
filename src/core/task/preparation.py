@@ -17,7 +17,7 @@ from core.provider.chat import ChatProvider, Message
 from core.storage import StorageBackend
 from core.task.planning import decide_task_planning
 from core.task.routing import list_model_routing_stats
-from core.session import RuntimeSession
+from core.session import Run
 from core.task.run_plan import (
     ModelDecision,
     ModelSelectionRequest,
@@ -133,7 +133,7 @@ def _list_registered_code(
 
 def prepare_run(
     request: TaskRequest,
-    session: RuntimeSession,
+    session: Run,
     model_profiles: list[ModelProfile],
     *,
     environment: Mapping[str, str],
@@ -218,9 +218,9 @@ def prepare_run(
 
 def _select_run_skills(
     request: TaskRequest,
-    session: RuntimeSession,
+    session: Run,
 ) -> _SelectedRunSkills:
-    disclosure = session.require_skill_disclosure()
+    disclosure = session.skill_disclosure
     scene_reference = disclosure.select_skill_scene_for_prompt(
         request.prompt,
         session.config.agent.skills,
@@ -264,7 +264,7 @@ def _select_run_skills(
 
 
 def _list_unavailable_scenes(
-    session: RuntimeSession,
+    session: Run,
 ) -> dict[str, tuple[str, ...]]:
     available_services = {"event_stream", "text_model"}
     if session.store is not None:
@@ -273,8 +273,8 @@ def _list_unavailable_scenes(
         entry.descriptor.skill_type: entry.descriptor
         for entry in session.skill_runners.list_skill_runners()
     }
-    disclosure = session.require_skill_disclosure()
-    index = session.require_skill_index()
+    disclosure = session.skill_disclosure
+    index = session.skill_index
     unavailable: dict[str, tuple[str, ...]] = {}
     for scene in index.entries:
         if scene.reference.skill_type != "scene":
@@ -299,7 +299,7 @@ def _list_unavailable_scenes(
 
 def _choose_run_model(
     request: TaskRequest,
-    session: RuntimeSession,
+    session: Run,
     model_profiles: list[ModelProfile],
     *,
     environment: Mapping[str, str],
@@ -323,7 +323,7 @@ def _choose_run_model(
 
 
 def _load_run_workflow(
-    session: RuntimeSession,
+    session: Run,
     references: tuple[SkillReference, ...],
 ) -> tuple[SkillReference, TaskPolicy]:
     entries = _selected_entries(session, references, "workflow")
@@ -340,7 +340,7 @@ def _load_run_workflow(
 
 
 def _load_run_planner(
-    session: RuntimeSession,
+    session: Run,
     references: tuple[SkillReference, ...],
 ) -> tuple[SkillReference | None, PlanningPolicy | None, LoadedSkill | None]:
     entries = _selected_entries(session, references, "planner")
@@ -357,7 +357,7 @@ def _load_run_planner(
 
 
 def load_background_contributions(
-    session: RuntimeSession,
+    session: Run,
     prepared_run: PreparedRun,
     send_text_model_messages: Callable[[list[Message]], str],
 ) -> list[LoadedSkill]:
@@ -380,7 +380,7 @@ def load_background_contributions(
 
 
 def load_run_skill_contributions(
-    session: RuntimeSession,
+    session: Run,
     run_plan: RunPlan,
 ) -> list[LoadedSkill]:
     contributions: list[LoadedSkill] = []
@@ -396,7 +396,7 @@ def load_run_skill_contributions(
 
 def create_runtime_tools(
     request: TaskRequest,
-    session: RuntimeSession,
+    session: Run,
     contributions: list[LoadedSkill],
 ) -> RuntimeTools:
     has_subagents = request.include_subagents and bool(request.subagents.list_subagents())
@@ -420,7 +420,7 @@ def create_runtime_tools(
 
 def run_task_step_subagents(
     request: TaskRequest,
-    session: RuntimeSession,
+    session: Run,
     run_plan: RunPlan,
 ) -> list[SubAgentResult]:
     return [
@@ -437,14 +437,14 @@ def run_task_step_subagents(
 
 def select_model_context_skills(
     selected_skills: tuple[SkillReference, ...],
-    session: RuntimeSession,
+    session: Run,
 ) -> tuple[SkillReference, ...]:
     return _select_model_context_skills(selected_skills, session)
 
 
 def _select_model_context_skills(
     selected_skills: tuple[SkillReference, ...],
-    session: RuntimeSession,
+    session: Run,
 ) -> tuple[SkillReference, ...]:
     model_context_types = session.skill_runners.list_model_context_types()
     return tuple(
@@ -469,7 +469,7 @@ def _require_model_profile(
 
 def build_system_prompt(
     request: TaskRequest,
-    session: RuntimeSession,
+    session: Run,
     contributions: list[LoadedSkill],
     *,
     subagent_results: list[SubAgentResult],
@@ -488,7 +488,7 @@ def build_system_prompt(
             detail = f" ({item.description})" if item.description else ""
             lines.append(f"- {item.name}{detail}: {item.text}")
         untrusted_parts.append("\n".join(lines))
-    disclosure = session.require_skill_index().build_progressive_disclosure_prompt()
+    disclosure = session.skill_index.build_progressive_disclosure_prompt()
     if disclosure:
         untrusted_parts.append(disclosure)
     if untrusted_parts:
@@ -501,12 +501,12 @@ def build_system_prompt(
 
 
 def _load_skill(
-    session: RuntimeSession,
+    session: Run,
     reference: SkillReference,
     *,
     send_text_model_messages: Callable[[list[Message]], str] | None = None,
 ) -> LoadedSkill:
-    entry = session.require_skill_index().require_skill(
+    entry = session.skill_index.require_skill(
         reference.name,
         reference.skill_type,
     )
@@ -515,11 +515,11 @@ def _load_skill(
 
 
 def _selected_entries(
-    session: RuntimeSession,
+    session: Run,
     references: tuple[SkillReference, ...],
     skill_type: str,
 ) -> list[SkillIndexEntry]:
-    index = session.require_skill_index()
+    index = session.skill_index
     return [
         index.require_skill(reference.name, skill_type)
         for reference in references
@@ -528,10 +528,10 @@ def _selected_entries(
 
 
 def _merge_scene_and_configured_skills(
-    session: RuntimeSession,
+    session: Run,
     scene_policy: ScenePolicy,
 ) -> list[str]:
-    index = session.require_skill_index()
+    index = session.skill_index
     configured = [
         value
         for value in session.config.agent.skills

@@ -49,7 +49,7 @@ class PublicApiTests(unittest.TestCase):
             "AutonomousEvolutionScheduler",
             "SkillRunners",
             "ProgressiveDisclosureCore",
-            "RuntimeSession",
+            "Run",
             "RuntimeStore",
             "SkillEvolutionManager",
         }

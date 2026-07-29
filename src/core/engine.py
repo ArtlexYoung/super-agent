@@ -7,8 +7,13 @@ from dataclasses import asdict, replace
 from time import perf_counter
 from typing import TYPE_CHECKING, Callable
 
+from core.actions import ActionEffect, ActionRequest, ActionRunner, ActionRules
 from core.config import AgentConfig
 from core.identity import LOCAL_USER_ID, RunIdentity
+from core.provider.pool import ProviderPool
+from core.secrets import UserSecretResolver
+from core.session import Run
+from core.state.event_log import RunEventLog
 from core.state.models import Conversation, RunEvent
 from core.state.subscribers import (
     RuntimeEventSubscriberError,
@@ -16,22 +21,22 @@ from core.state.subscribers import (
     RuntimeEventSubscribers,
     get_runtime_event_subscriber_name,
 )
-from core.actions import ActionEffect, ActionRequest, ActionRunner
-from core.session import (
-    RuntimeResources,
-    RuntimeSession,
-    RuntimeSessionRequest,
-    create_runtime_session,
-    create_user_model_runtime,
-)
+from core.storage import StorageBackend
 from core.storage.values import encode_storage_data
+from core.task.loop import AdaptiveTaskLoop, list_run_actions
 from core.task.run_plan import RunPlan
 from core.task.preparation import RuntimeLockInput, create_runtime_lock
 from core.task.preflight import TaskPreflightError
-from core.task.loop import list_run_actions
 from core.task.models import TaskRequest, TaskResult, TaskTrace
-from skill.kinds.model import ModelProfile
+from skill.disclosure import ProgressiveDisclosureCore, SkillIndex
+from skill.kinds.model import (
+    ModelProfile,
+    read_model_profiles,
+    select_default_model_profile,
+)
 from skill.manifest import SkillManifest
+from skill.runners.defaults import create_progressive_skill_disclosure
+from skill.runners.registry import SkillRunners
 
 if TYPE_CHECKING:
     from core.state.store import RuntimeStore
@@ -43,13 +48,30 @@ class AgentRuntime:
     def __init__(
         self,
         config: AgentConfig,
-        resources: RuntimeResources,
+        provider_pool: ProviderPool,
+        skill_runners: SkillRunners,
+        storage: StorageBackend | None,
+        action_rules: ActionRules,
+        user_secrets: UserSecretResolver,
     ) -> None:
         self.config = config
-        self.resources = resources
+        self.provider_pool = provider_pool
+        self.skill_runners = skill_runners
+        self.storage = storage
+        self.action_rules = action_rules
+        self.user_secrets = user_secrets
+        self.code_model_profiles: tuple[ModelProfile, ...] = ()
+        self.skill_change_listener: Callable[[SkillManifest, str], None] | None = None
         self.event_subscribers = RuntimeEventSubscribers()
-        for subscriber in resources.event_subscribers:
-            self.add_event_subscriber(subscriber)
+
+    def set_code_model_profiles(self, profiles: tuple[ModelProfile, ...]) -> None:
+        self.code_model_profiles = profiles
+
+    def set_skill_change_listener(
+        self,
+        listener: Callable[[SkillManifest, str], None],
+    ) -> None:
+        self.skill_change_listener = listener
 
     def run_task(
         self,
@@ -61,36 +83,27 @@ class AgentRuntime:
         parent_run_id: str | None = None,
         event_listener: Callable[[RunEvent], None] | None = None,
     ) -> TaskResult:
-        session, task_loop = create_runtime_session(
-            self.config,
-            replace(
-                self.resources,
-                event_subscribers=self.event_subscribers.list_subscribers(),
-            ),
-            RuntimeSessionRequest(
-                user_id=user_id,
-                prompt=request.prompt,
-                run_id=run_id,
-                conversation_id=conversation_id,
-                parent_run_id=parent_run_id,
-                event_listener=event_listener,
-                learn_from_run=request.learn_from_run,
-                allow_subscriber_failures=request.allow_subscriber_failures,
-            )
+        identity = RunIdentity.create(
+            user_id,
+            self.config.agent.name,
+            run_id=run_id,
+            conversation_id=conversation_id,
+            parent_run_id=parent_run_id,
         )
-        if session.store is not None and request.learn_from_run:
+        run, task_loop = self._create_run(request, identity, event_listener)
+        if run.store is not None and request.learn_from_run:
             from core.state.learning import create_learning_event_subscribers
 
             for subscriber in create_learning_event_subscribers(
-                session,
-                lambda: self.create_skill_updater(session.identity.user_id),
+                run,
+                lambda: self.create_skill_updater(run.identity.user_id),
             ):
-                session.add_event_subscriber(subscriber)
+                run.add_event_subscriber(subscriber)
         learning_recorded = False
         started_at = perf_counter()
         try:
-            request = self._prepare_conversation_request(request, session)
-            session.record_event(
+            request = self._prepare_conversation_request(request, run)
+            run.record_event(
                 "task.started",
                 {
                     "purpose": request.purpose,
@@ -100,12 +113,12 @@ class AgentRuntime:
             )
             result = task_loop.run_task(
                 request,
-                session,
-                lambda run_plan: self._lock_task_context(session, run_plan),
+                run,
+                lambda run_plan: self._lock_task_context(run, run_plan),
             )
             learning_recorded = True
             _record_task_learning(
-                session,
+                run,
                 enabled=request.learn_from_run,
                 prompt=request.prompt,
                 output=result.text,
@@ -113,12 +126,12 @@ class AgentRuntime:
             )
             result = replace(
                 result,
-                skill_updates=_list_skill_updates(session.list_recorded_events()),
-                subscriber_failures=session.list_subscriber_failures(),
+                skill_updates=_list_skill_updates(run.list_recorded_events()),
+                subscriber_failures=run.list_subscriber_failures(),
             )
-            if session.store is not None:
-                self._record_conversation_result(session, result)
-            session.record_event(
+            if run.store is not None:
+                self._record_conversation_result(run, result)
+            run.record_event(
                 "run.completed",
                 {
                     "workflow": result.workflow,
@@ -128,12 +141,12 @@ class AgentRuntime:
             )
             final_result = replace(
                 result,
-                actions=list_run_actions(session),
-                skill_updates=_list_skill_updates(session.list_recorded_events()),
-                subscriber_failures=session.list_subscriber_failures(),
-                events=_list_result_events(session),
+                actions=list_run_actions(run),
+                skill_updates=_list_skill_updates(run.list_recorded_events()),
+                subscriber_failures=run.list_subscriber_failures(),
+                events=_list_result_events(run),
             )
-            failures = session.list_subscriber_failures()
+            failures = run.list_subscriber_failures()
             if failures and not request.allow_subscriber_failures:
                 raise RuntimeEventSubscriberError(failures, final_result)
             return final_result
@@ -144,7 +157,7 @@ class AgentRuntime:
                 learning_recorded = True
                 try:
                     _record_task_learning(
-                        session,
+                        run,
                         enabled=request.learn_from_run,
                         prompt=request.prompt,
                         output="",
@@ -158,7 +171,7 @@ class AgentRuntime:
                         learning_error,
                     )
             try:
-                session.record_event(
+                run.record_event(
                     "run.failed",
                     {"error_type": type(error).__name__, "message": str(error)},
                 )
@@ -182,12 +195,12 @@ class AgentRuntime:
         return self.event_subscribers.list_subscribers()
 
     def create_store(self, user_id: str = LOCAL_USER_ID) -> RuntimeStore:
-        if self.resources.storage is None:
+        if self.storage is None:
             raise RuntimeError("Runtime storage is disabled for this Agent")
         from core.state.store import RuntimeStore
 
         return RuntimeStore(
-            self.resources.storage,
+            self.storage,
             self.config.storage.path,
             user_id,
             self.config.agent.name,
@@ -201,7 +214,7 @@ class AgentRuntime:
     ) -> object:
         store = self.create_store(user_id)
         return ActionRunner(
-            self.resources.action_rules,
+            self.action_rules,
             store.append_management_action_event,
         ).execute_action(
             request,
@@ -253,69 +266,164 @@ class AgentRuntime:
 
         store = self.create_store(user_id)
         change_handler = on_skill_changed
-        if change_handler is None and self.resources.skill_change_listener is not None:
-            change_handler = lambda manifest: self.resources.skill_change_listener(
+        if change_handler is None and self.skill_change_listener is not None:
+            change_handler = lambda manifest: self.skill_change_listener(
                 manifest,
                 user_id,
             )
-        user_runtime = create_user_model_runtime(
-            self.config,
-            self.resources,
-            store=store,
-            user_id=user_id,
-        )
+        disclosure, index = self._create_disclosure(store)
+        profiles = self._read_model_profiles(disclosure, index, user_id)
+        task_loop = self._create_task_loop(profiles, user_id)
         return SkillEvolutionManager(
-            skill_disclosure=user_runtime.disclosure,
+            skill_disclosure=disclosure,
             store=store,
             models=EvolutionModels(
-                candidate=user_runtime.task_loop.create_text_model(
+                candidate=task_loop.create_text_model(
                     store,
                     "skill_evolution",
                 ),
-                evaluation=user_runtime.task_loop.create_text_model(
+                evaluation=task_loop.create_text_model(
                     store,
                     "skill_evaluation",
                 ),
             ),
             on_skill_changed=change_handler,
-            action_rules=self.resources.action_rules,
+            action_rules=self.action_rules,
         )
 
     def read_model_profiles(self, user_id: str = LOCAL_USER_ID) -> list[ModelProfile]:
-        return list(
-            create_user_model_runtime(
-                self.config,
-                self.resources,
-                store=(
-                    None
-                    if self.resources.storage is None
-                    else self.create_store(user_id)
+        disclosure, index = self._create_disclosure(
+            None if self.storage is None else self.create_store(user_id)
+        )
+        return self._read_model_profiles(disclosure, index, user_id)
+
+    def _create_run(
+        self,
+        request: TaskRequest,
+        identity: RunIdentity,
+        event_listener: Callable[[RunEvent], None] | None,
+    ) -> tuple[Run, AdaptiveTaskLoop]:
+        event_log = RunEventLog(
+            identity,
+            backend=self.storage,
+            event_listener=event_listener,
+        )
+        store = self._create_run_store(identity, event_log)
+        event_log.start_run(request.prompt)
+        try:
+            disclosure, index = self._create_disclosure(
+                store,
+                identity,
+                include_freshness=request.learn_from_run,
+            )
+            profiles = self._read_model_profiles(disclosure, index, identity.user_id)
+            task_loop = self._create_task_loop(profiles, identity.user_id)
+            default_profile = select_default_model_profile(profiles)
+            run = Run(
+                config=self.config,
+                model_profile=default_profile,
+                provider=task_loop.provider_pool.get_chat_provider(
+                    default_profile.key,
+                    default_profile.connection,
                 ),
-                user_id=user_id,
-            ).profiles
+                skill_runners=self.skill_runners,
+                identity=identity,
+                event_log=event_log,
+                store=store,
+                skill_disclosure=disclosure,
+                skill_index=index,
+                learn_from_run=request.learn_from_run,
+                allow_subscriber_failures=request.allow_subscriber_failures,
+                action_rules=self.action_rules,
+                event_subscribers=RuntimeEventSubscribers(
+                    self.event_subscribers.list_subscribers()
+                ),
+            )
+            for event in event_log.list_events():
+                run.publish_existing_event(event)
+            disclosure.set_event_writer(run.record_event)
+            return run, task_loop
+        except Exception as error:
+            event_log.append_event(
+                "run.failed",
+                {"error_type": type(error).__name__, "message": str(error)},
+            )
+            raise
+
+    def _create_run_store(
+        self,
+        identity: RunIdentity,
+        event_log: RunEventLog,
+    ) -> RuntimeStore | None:
+        if self.storage is None:
+            return None
+        from core.state.store import RuntimeStore
+
+        return RuntimeStore(
+            self.storage,
+            self.config.storage.path,
+            identity.user_id,
+            identity.agent_name,
+            run_event_log=event_log,
+        )
+
+    def _create_disclosure(
+        self,
+        store: RuntimeStore | None,
+        identity: RunIdentity | None = None,
+        *,
+        include_freshness: bool = False,
+    ) -> tuple[ProgressiveDisclosureCore, SkillIndex]:
+        disclosure = create_progressive_skill_disclosure(
+            self.config,
+            store=store,
+            identity=identity if store is not None else None,
+            include_freshness=include_freshness,
+        )
+        return disclosure, disclosure.prepare_skill_index()
+
+    def _read_model_profiles(
+        self,
+        disclosure: ProgressiveDisclosureCore,
+        index: SkillIndex,
+        user_id: str,
+    ) -> list[ModelProfile]:
+        environment = self.user_secrets.get_environment_for_user(user_id)
+        profiles = read_model_profiles(disclosure, index, environment)
+        return profiles or list(self.code_model_profiles)
+
+    def _create_task_loop(
+        self,
+        profiles: list[ModelProfile],
+        user_id: str,
+    ) -> AdaptiveTaskLoop:
+        environment = self.user_secrets.get_environment_for_user(user_id)
+        return AdaptiveTaskLoop(
+            profiles,
+            self.provider_pool.create_user_provider_pool(environment),
         )
 
     def _lock_task_context(
         self,
-        session: RuntimeSession,
+        run: Run,
         run_plan: RunPlan,
     ) -> None:
         runtime_lock = create_runtime_lock(
             RuntimeLockInput(
                 config=self.config,
-                model_profile=session.model_profile,
-                skill_runners=self.resources.skill_runners,
-                skill_index=session.require_skill_index(),
-                provider=session.provider,
-                storage=self.resources.storage,
+                model_profile=run.model_profile,
+                skill_runners=self.skill_runners,
+                skill_index=run.skill_index,
+                provider=run.provider,
+                storage=self.storage,
                 run_plan=run_plan,
-                environment=self.resources.user_secrets.get_environment_for_user(
-                    session.identity.user_id
+                environment=self.user_secrets.get_environment_for_user(
+                    run.identity.user_id
                 ),
             )
         )
         content = encode_storage_data(runtime_lock)
-        session.record_event(
+        run.record_event(
             "runtime.locked",
             {
                 "runtime_lock": runtime_lock,
@@ -326,15 +434,15 @@ class AgentRuntime:
     def _prepare_conversation_request(
         self,
         request: TaskRequest,
-        session: RuntimeSession,
+        run: Run,
     ) -> TaskRequest:
-        conversation_id = session.identity.conversation_id
-        if conversation_id is None or session.identity.parent_run_id is not None:
+        conversation_id = run.identity.conversation_id
+        if conversation_id is None or run.identity.parent_run_id is not None:
             return request
-        store = session.require_store("conversation history")
+        store = run.require_store("conversation history")
         if request.messages:
             raise ValueError("conversation_id cannot be combined with explicit messages")
-        conversation = session.execute_action(
+        conversation = run.execute_action(
             ActionRequest.create(
                 "agent:conversation",
                 f"conversation:{conversation_id}",
@@ -348,12 +456,12 @@ class AgentRuntime:
         if not isinstance(conversation, Conversation):
             raise TypeError("conversation storage must return Conversation")
         if request.learn_from_conversation:
-            self._record_conversation_feedback(conversation, request.prompt, session)
+            self._record_conversation_feedback(conversation, request.prompt, run)
         messages = [
             {"role": message.role, "content": message.content}
             for message in conversation.messages
         ]
-        session.execute_action(
+        run.execute_action(
             ActionRequest.create(
                 "agent:conversation",
                 f"conversation:{conversation_id}",
@@ -363,7 +471,7 @@ class AgentRuntime:
                 conversation_id,
                 "user",
                 request.prompt,
-                run_id=session.run_id,
+                run_id=run.run_id,
             ),
         )
         return replace(request, messages=messages)
@@ -372,7 +480,7 @@ class AgentRuntime:
         self,
         conversation: Conversation,
         prompt: str,
-        session: RuntimeSession,
+        run: Run,
     ) -> None:
         from core.task.routing import detect_implicit_conversation_feedback
 
@@ -380,7 +488,7 @@ class AgentRuntime:
         if feedback is None:
             return
         task_id, score, reason = feedback
-        session.execute_action(
+        run.execute_action(
             ActionRequest.create(
                 "agent:conversation-feedback",
                 f"conversation:{conversation.conversation_id}",
@@ -390,7 +498,7 @@ class AgentRuntime:
                 task_id,
                 score,
                 reason=reason,
-                user_id=session.identity.user_id,
+                user_id=run.identity.user_id,
                 source="implicit",
             ),
         )
@@ -428,14 +536,14 @@ class AgentRuntime:
 
     @staticmethod
     def _record_conversation_result(
-        session: RuntimeSession,
+        run: Run,
         result: TaskResult,
     ) -> None:
-        conversation_id = session.identity.conversation_id
-        if conversation_id is None or session.identity.parent_run_id is not None:
+        conversation_id = run.identity.conversation_id
+        if conversation_id is None or run.identity.parent_run_id is not None:
             return
-        store = session.require_store("conversation history")
-        session.execute_action(
+        store = run.require_store("conversation history")
+        run.execute_action(
             ActionRequest.create(
                 "agent:conversation",
                 f"conversation:{conversation_id}",
@@ -445,7 +553,7 @@ class AgentRuntime:
                 conversation_id,
                 "assistant",
                 result.text,
-                run_id=session.run_id,
+                run_id=run.run_id,
                 run_result=asdict(result),
             ),
         )
@@ -459,8 +567,8 @@ def _validate_feedback_score(value: float) -> float:
     return score
 
 
-def _list_result_events(session: RuntimeSession) -> list[RunEvent]:
-    return session.list_recorded_events()
+def _list_result_events(run: Run) -> list[RunEvent]:
+    return run.list_recorded_events()
 
 
 def _add_recording_error_note(
@@ -474,7 +582,7 @@ def _add_recording_error_note(
 
 
 def _record_task_learning(
-    session: RuntimeSession,
+    run: Run,
     *,
     enabled: bool,
     prompt: str,
@@ -483,16 +591,16 @@ def _record_task_learning(
     error: Exception | None = None,
 ) -> RunEvent:
     if not enabled:
-        return session.record_event("learning.skipped", {"reason": "disabled"})
-    if session.store is None:
-        return session.record_event(
+        return run.record_event("learning.skipped", {"reason": "disabled"})
+    if run.store is None:
+        return run.record_event(
             "learning.skipped",
             {"reason": "storage_disabled"},
         )
     from core.state.learning import record_task_learning_event
 
     return record_task_learning_event(
-        session,
+        run,
         enabled=True,
         prompt=prompt,
         output=output,

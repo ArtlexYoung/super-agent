@@ -194,8 +194,13 @@ class SkillRunnerRuntimeTests(unittest.TestCase):
                 for node in session_tree.body
                 if isinstance(node, ast.FunctionDef)
             }
-            self.assertIn("create_runtime_session", session_functions)
-            self.assertIn("create_user_model_runtime", session_functions)
+            self.assertEqual(set(), session_functions)
+            session_classes = {
+                node.name
+                for node in session_tree.body
+                if isinstance(node, ast.ClassDef)
+            }
+            self.assertEqual({"Run"}, session_classes)
             run_plan_source = Path("src/core/task/run_plan.py").read_text(
                 encoding="utf-8"
             )

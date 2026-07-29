@@ -227,6 +227,19 @@ Status: implemented.
 - Raise requested subscriber and learning failures by default while preserving the
   completed task result; best-effort behavior is an explicit per-run choice.
 
+## v0.0.79: One Complete Run Context
+
+Status: implemented.
+
+- Make `Run` the only mutable per-run context and require its disclosure core and Skill
+  index at construction time.
+- Let `AgentRuntime` directly construct identity, event log, optional store, models, task
+  loop, and Run from its explicit dependencies.
+- Delete the resource container, session-request object, user-model wrapper, two factory
+  functions, late disclosure setter, and all compatibility names.
+- Keep stateful, stateless, subagent, learning, and management paths on the same Runtime
+  owner without changing the public `Agent` entry point.
+
 ## Release Gate
 
 The project will not move to `0.1.x` because of feature count. The gate is a reproducible

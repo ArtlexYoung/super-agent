@@ -19,7 +19,7 @@ from core.provider.chat import MockProvider
 from core.task.tools import RuntimeTools, RuntimeToolsContext
 from core.config import AgentConfig
 from core.identity import RunIdentity
-from core.session import RuntimeSession
+from core.session import Run
 from core.actions import ActionConfirmationRequired, ActionEffect
 from core.state.event_log import RunEventLog
 from core.state.store import RuntimeStore
@@ -36,8 +36,8 @@ class SkillToolsTests(unittest.TestCase):
             root = Path(tmp)
             _write_prompt_skill(root, "research")
             session = _create_session(root)
-            disclosure = _create_disclosure(root, session)
-            index = disclosure.prepare_skill_index()
+            disclosure = _create_disclosure(session)
+            index = session.skill_index
             tools = _create_tool_router(disclosure, index, session)
 
             listed = tools.run_tool_call(ToolCall("call-1", "list_skills", {}))
@@ -67,8 +67,8 @@ class SkillToolsTests(unittest.TestCase):
             root = Path(tmp)
             _write_prompt_skill(root, "research")
             session = _create_session(root)
-            disclosure = _create_disclosure(root, session)
-            index = disclosure.prepare_skill_index()
+            disclosure = _create_disclosure(session)
+            index = session.skill_index
             cached = disclosure.open_skill("research", "prompt").read_instructions()
             tools = _create_tool_router(disclosure, index, session)
 
@@ -87,8 +87,8 @@ class SkillToolsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             session = _create_session(root)
-            disclosure = _create_disclosure(root, session)
-            index = disclosure.prepare_skill_index()
+            disclosure = _create_disclosure(session)
+            index = session.skill_index
             tools = _create_tool_router(disclosure, index, session)
 
             with self.assertRaisesRegex(KeyError, "unknown runtime tool"):
@@ -103,8 +103,8 @@ class SkillToolsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             session = _create_session(root, conversation_id="conversation-a")
-            disclosure = _create_disclosure(root, session)
-            index = disclosure.prepare_skill_index()
+            disclosure = _create_disclosure(session)
+            index = session.skill_index
             memory = MiniMemory(
                 session.store,
                 session.identity,
@@ -169,8 +169,8 @@ class SkillToolsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             session = _create_session(root)
-            disclosure = _create_disclosure(root, session)
-            index = disclosure.prepare_skill_index()
+            disclosure = _create_disclosure(session)
+            index = session.skill_index
             called = False
 
             def run_external(arguments: dict[str, object]) -> dict[str, object]:
@@ -178,7 +178,6 @@ class SkillToolsTests(unittest.TestCase):
                 called = True
                 return {"ok": True}
 
-            session.set_skill_disclosure(disclosure, index)
             tools = RuntimeTools(
                 RuntimeToolsContext(session=session),
                 contributions=[
@@ -231,8 +230,8 @@ class SkillToolsTests(unittest.TestCase):
                 effects=(ActionEffect.EXECUTE, ActionEffect.NETWORK),
             )
             session = _create_session(root, mcp_servers=mcp_servers)
-            disclosure = _create_disclosure(root, session)
-            index = disclosure.prepare_skill_index()
+            disclosure = _create_disclosure(session)
+            index = session.skill_index
             contribution = session.skill_runners.load_skill(
                 SkillLoadRequest(
                     disclosure,
@@ -242,7 +241,6 @@ class SkillToolsTests(unittest.TestCase):
                     execute_action=session.execute_action,
                 )
             )
-            session.set_skill_disclosure(disclosure, index)
             tools = RuntimeTools(
                 RuntimeToolsContext(session=session),
                 contributions=[contribution],
@@ -303,23 +301,18 @@ server = "untrusted"
     )
 
 
-def _create_disclosure(root: Path, session: RuntimeSession) -> ProgressiveDisclosureCore:
-    return ProgressiveDisclosureCore(
-        [root / "skills"],
-        recorder=create_runtime_disclosure_recorder(
-            session.store,
-            session.identity,
-        ),
-    )
+def _create_disclosure(session: Run) -> ProgressiveDisclosureCore:
+    return session.skill_disclosure
 
 
 def _create_tool_router(
     disclosure: ProgressiveDisclosureCore,
     index,
-    session: RuntimeSession,
+    session: Run,
     memory: MiniMemory | None = None,
 ) -> RuntimeTools:
-    session.set_skill_disclosure(disclosure, index)
+    if disclosure is not session.skill_disclosure or index is not session.skill_index:
+        raise ValueError("tool router must use the Run Skill snapshot")
     return RuntimeTools(
         RuntimeToolsContext(
             session=session,
@@ -337,7 +330,7 @@ def _create_session(
     conversation_id: str | None = None,
     *,
     mcp_servers: McpServers | None = None,
-) -> RuntimeSession:
+) -> Run:
     config = AgentConfig.create_default(root)
     provider = MockProvider()
     identity = RunIdentity.create(
@@ -355,7 +348,12 @@ def _create_session(
         run_event_log=event_log,
     )
     event_log.start_run("question")
-    return RuntimeSession(
+    disclosure = ProgressiveDisclosureCore(
+        [root / "skills"],
+        recorder=create_runtime_disclosure_recorder(store, identity),
+    )
+    index = disclosure.prepare_skill_index()
+    return Run(
         config=config,
         model_profile=create_direct_provider_profile(),
         provider=provider,
@@ -363,4 +361,6 @@ def _create_session(
         identity=identity,
         event_log=event_log,
         store=store,
+        skill_disclosure=disclosure,
+        skill_index=index,
     )

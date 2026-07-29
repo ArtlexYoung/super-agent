@@ -55,17 +55,19 @@ Core creates the plan before the matching execution and records that same object
 task event and Runtime lock. Planned steps use the same contract. There are no candidate
 lists or partial selection objects to reconcile later.
 
-Preflight loads each planned Skill once into the Runtime session and aggregates missing
+Preflight loads each planned Skill once into the Run and aggregates missing
 runners, declared services, invalid tools, the selected Provider, and subagents into one
 report. A failed report raises `TaskPreflightError` before the Runtime lock, model call,
 tool handler, or subagent run. Execution reuses the checked Skill contributions.
 
-`RuntimeSession` is the only mutable run context. It carries the validated identity, one
-small `RunEventLog`, optional store, Skill index, disclosure core, selected model state,
-SkillRunners, action runner, event subscribers, and evidence tracker. The event log uses
-memory without a backend and persists the same ordered records when a backend exists.
-Derived CLI and Web views are projected from canonical events, not from parallel mutable
-state.
+`Run` is the only mutable per-run context. It is complete when constructed and carries the
+validated identity, one small `RunEventLog`, optional store, Skill index, disclosure core,
+selected model state, SkillRunners, action runner, event subscribers, and evidence tracker.
+`AgentRuntime` constructs it directly from explicit dependencies; no resource container,
+session request, user-model wrapper, factory shell, or late disclosure setter exists. The
+event log uses memory without a backend and persists the same ordered records when a
+backend exists. Derived CLI and Web views are projected from canonical events, not from
+parallel mutable state.
 
 Post-run learning is an optional event layer, not part of task execution. Runtime emits
 `learning.requested`; named evaluation, freshness, routing-evidence, and evolution
@@ -175,7 +177,7 @@ installation and updates reuse the same verified directory switch.
 
 ## Invariants
 
-- One run has one Runtime session, disclosure core, task loop, and event stream; storage
+- One task has one complete Run, disclosure core, task loop, and event stream; storage
   is one explicit optional service.
 - Every model execution reads one immutable RunPlan created before that execution.
 - Evaluation and evolution never write directly from the task loop; they observe immutable

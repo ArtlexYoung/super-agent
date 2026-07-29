@@ -7,7 +7,7 @@ from typing import Callable
 
 from core.provider.chat import Message
 from core.provider.pool import ProviderPool
-from core.session import RuntimeSession
+from core.session import Run
 from core.task.models import TaskRequest
 from core.task.run_plan import RunPlan
 from core.task.tools import RuntimeTools, RuntimeToolsContext
@@ -41,7 +41,7 @@ class TaskPreflightError(RuntimeError):
 
 def check_run_before_execution(
     request: TaskRequest,
-    session: RuntimeSession,
+    session: Run,
     run_plan: RunPlan,
     *,
     provider_pool: ProviderPool,
@@ -83,7 +83,7 @@ def check_run_before_execution(
 
 
 def _check_runner_dependencies(
-    session: RuntimeSession,
+    session: Run,
     problems: list[PreflightProblem],
 ) -> None:
     try:
@@ -93,7 +93,7 @@ def _check_runner_dependencies(
 
 
 def _load_planned_skills(
-    session: RuntimeSession,
+    session: Run,
     run_plan: RunPlan,
     *,
     registrations: dict[str, SkillRunnerEntry],
@@ -140,7 +140,7 @@ def _load_planned_skills(
 
 def _check_runtime_tools(
     request: TaskRequest,
-    session: RuntimeSession,
+    session: Run,
     contributions: list[LoadedSkill],
     *,
     problems: list[PreflightProblem],
@@ -213,7 +213,7 @@ def _planned_references(run_plan: RunPlan) -> tuple[SkillReference, ...]:
 
 def _missing_services(
     registration: SkillRunnerEntry,
-    session: RuntimeSession,
+    session: Run,
 ) -> list[str]:
     available = {"event_stream", "text_model"}
     if session.store is not None:

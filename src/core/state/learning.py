@@ -29,7 +29,7 @@ from skill.evolution.revision import (
 )
 
 if TYPE_CHECKING:
-    from core.session import RuntimeSession
+    from core.session import Run
 
 
 LEARNING_REQUESTED_EVENT = "learning.requested"
@@ -43,7 +43,7 @@ BUILTIN_LEARNING_SUBSCRIBER_NAMES = frozenset(
 class EvaluationEventSubscriber:
     name = "evaluation"
 
-    def __init__(self, session: RuntimeSession) -> None:
+    def __init__(self, session: Run) -> None:
         self._session = session
 
     def handle_event(self, event: RunEvent) -> None:
@@ -71,7 +71,7 @@ class EvaluationEventSubscriber:
 class FreshnessEventSubscriber:
     name = "freshness"
 
-    def __init__(self, session: RuntimeSession) -> None:
+    def __init__(self, session: Run) -> None:
         self._session = session
 
     def handle_event(self, event: RunEvent) -> None:
@@ -96,7 +96,7 @@ class FreshnessEventSubscriber:
 class RoutingEvidenceEventSubscriber:
     name = "routing_evidence"
 
-    def __init__(self, session: RuntimeSession) -> None:
+    def __init__(self, session: Run) -> None:
         self._session = session
 
     def handle_event(self, event: RunEvent) -> None:
@@ -127,7 +127,7 @@ class SkillEvolutionEventSubscriber:
 
     def __init__(
         self,
-        session: RuntimeSession,
+        session: Run,
         create_skill_updater: Callable[[], SkillEvolutionManager],
     ) -> None:
         self._session = session
@@ -151,7 +151,7 @@ class SkillEvolutionEventSubscriber:
 
 
 def create_learning_event_subscribers(
-    session: RuntimeSession,
+    session: Run,
     create_skill_updater: Callable[[], SkillEvolutionManager],
 ) -> tuple[
     EvaluationEventSubscriber,
@@ -168,7 +168,7 @@ def create_learning_event_subscribers(
 
 
 def record_task_learning_event(
-    session: RuntimeSession,
+    session: Run,
     *,
     enabled: bool,
     prompt: str,

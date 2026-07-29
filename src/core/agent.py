@@ -25,7 +25,7 @@ from core.task.models import (
     TaskRequest,
     TaskResult,
 )
-from core.session import RuntimeResources, RuntimeSession
+from core.session import Run
 from skill.kinds.model import (
     ModelProfile,
     create_direct_provider_profile,
@@ -126,18 +126,7 @@ class Agent:
         self.action_rules = action_rules or ActionRules()
         for runner in skill_runners or []:
             self.skill_runners.add_skill_runner(runner, replace=True)
-        self.runtime = AgentRuntime(
-            self.config,
-            RuntimeResources(
-                provider_pool=self.provider_pool,
-                skill_runners=self.skill_runners,
-                storage=self.storage,
-                action_rules=self.action_rules,
-                user_secrets=self.user_secrets,
-                code_model_profiles=self._code_model_profiles,
-                skill_change_listener=self._activate_changed_skill,
-            ),
-        )
+        self.runtime = self._create_runtime()
         self._subagents: list[SubAgent] = []
 
     def add_subagent(
@@ -308,20 +297,26 @@ class Agent:
             raise ValueError("changing storage requires restarting the Agent")
         event_subscribers = self.runtime.list_event_subscribers()
         self.config = config
-        self.runtime = AgentRuntime(
-            self.config,
-            RuntimeResources(
-                provider_pool=self.provider_pool,
-                skill_runners=self.skill_runners,
-                storage=self.storage,
-                action_rules=self.action_rules,
-                user_secrets=self.user_secrets,
-                code_model_profiles=self._code_model_profiles,
-                skill_change_listener=self._activate_changed_skill,
-                event_subscribers=event_subscribers,
-            ),
-        )
+        self.runtime = self._create_runtime(event_subscribers)
         self._reload_model_profiles(LOCAL_USER_ID)
+
+    def _create_runtime(
+        self,
+        event_subscribers: tuple[RuntimeEventSubscriber, ...] = (),
+    ) -> AgentRuntime:
+        runtime = AgentRuntime(
+            self.config,
+            self.provider_pool,
+            self.skill_runners,
+            self.storage,
+            self.action_rules,
+            self.user_secrets,
+        )
+        runtime.set_code_model_profiles(self._code_model_profiles)
+        runtime.set_skill_change_listener(self._activate_changed_skill)
+        for subscriber in event_subscribers:
+            runtime.add_event_subscriber(subscriber)
+        return runtime
 
     def _make_next_subagent_name(self) -> str:
         index = 1
@@ -348,7 +343,7 @@ class Agent:
         self,
         name: str,
         prompt: str,
-        session: RuntimeSession,
+        session: Run,
     ) -> dict[str, object]:
         subagent = next((item for item in self._subagents if item.name == name), None)
         if subagent is None:
@@ -359,7 +354,7 @@ class Agent:
         self,
         subagent: SubAgent,
         prompt: str,
-        parent_session: RuntimeSession,
+        parent_session: Run,
     ) -> SubAgentResult:
         parent_session.record_event(
             "subagent.started",
@@ -391,7 +386,7 @@ class Agent:
     def _run_as_subagent(
         self,
         prompt: str,
-        parent_session: RuntimeSession,
+        parent_session: Run,
     ) -> TaskResult:
         request = TaskRequest(
             prompt=prompt,

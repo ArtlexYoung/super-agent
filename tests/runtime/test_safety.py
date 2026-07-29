@@ -15,10 +15,11 @@ from core.actions import (
     ActionRunner,
     ActionRules,
 )
-from core.session import RuntimeSession
+from core.session import Run
 from core.state.event_log import RunEventLog
 from core.state.store import RuntimeStore
 from core.storage import JsonlStorage
+from skill.disclosure import ProgressiveDisclosureCore
 from skill.kinds.model import create_direct_provider_profile
 
 
@@ -178,7 +179,7 @@ class RuntimeSafetyTests(unittest.TestCase):
 def _create_session(
     root: Path,
     action_rules: ActionRules | None = None,
-) -> RuntimeSession:
+) -> Run:
     config = AgentConfig.create_default(root)
     identity = RunIdentity.create("local", config.agent.name)
     backend = JsonlStorage(root / "state")
@@ -191,7 +192,9 @@ def _create_session(
         run_event_log=event_log,
     )
     event_log.start_run("question")
-    return RuntimeSession(
+    disclosure = ProgressiveDisclosureCore([])
+    index = disclosure.prepare_skill_index()
+    return Run(
         config=config,
         model_profile=create_direct_provider_profile(),
         provider=MockProvider(),
@@ -199,5 +202,7 @@ def _create_session(
         identity=identity,
         event_log=event_log,
         store=store,
+        skill_disclosure=disclosure,
+        skill_index=index,
         action_rules=action_rules or ActionRules(),
     )

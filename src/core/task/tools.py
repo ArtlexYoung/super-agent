@@ -12,7 +12,7 @@ from skill.runners.loaded import (
     read_required_tool_string,
 )
 from core.provider.chat import ToolCall, ToolDefinition
-from core.session import RuntimeSession
+from core.session import Run
 from core.actions import ActionRequest
 from core.actions import ActionEffect
 from skill.disclosure import SkillDisclosure, SkillIndex, SkillReference, skill_index_to_dict
@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class RuntimeToolsContext:
-    session: RuntimeSession
+    session: Run
     list_subagents: Callable[[], list[dict[str, object]]] | None = None
     run_subagent: Callable[[str, str], dict[str, object]] | None = None
 
@@ -43,11 +43,11 @@ class RuntimeTools:
             else delegated_subagent_results
         )
         self._tools: dict[str, SkillTool] = {}
-        disclosure = context.session.require_skill_disclosure()
+        disclosure = context.session.skill_disclosure
         self._add_tools(
             _create_disclosure_tools(
                 self,
-                context.session.require_skill_index(),
+                context.session.skill_index,
                 include_cache_reader=disclosure.recorder is not None,
             )
         )
@@ -116,7 +116,7 @@ class RuntimeTools:
             self._tools[tool.name] = tool
 
     def _list_skills(self, arguments: dict[str, object]) -> dict[str, object]:
-        return skill_index_to_dict(self.context.session.require_skill_index())
+        return skill_index_to_dict(self.context.session.skill_index)
 
     def _read_skill_manifest(self, arguments: dict[str, object]) -> dict[str, object]:
         opened = self._open_requested_skill(arguments)
@@ -169,7 +169,7 @@ class RuntimeTools:
         arguments: dict[str, object],
     ) -> dict[str, object]:
         path = read_required_tool_string(arguments, "cache_path")
-        content = self.context.session.require_skill_disclosure().read_disclosed_content(path)
+        content = self.context.session.skill_disclosure.read_disclosed_content(path)
         self._record_skill_used_for_cache_path(path)
         return {"cache_path": path, "content": content}
 
@@ -189,7 +189,7 @@ class RuntimeTools:
     def _open_requested_skill(self, arguments: dict[str, object]) -> SkillDisclosure:
         name = read_required_tool_string(arguments, "name")
         skill_type = read_optional_tool_string(arguments, "type")
-        opened = self.context.session.require_skill_disclosure().open_skill(
+        opened = self.context.session.skill_disclosure.open_skill(
             name,
             expected_type=skill_type,
         )
@@ -197,7 +197,7 @@ class RuntimeTools:
         return opened
 
     def _record_loaded_skill(self, reference: SkillReference) -> None:
-        entry = self.context.session.require_skill_index().require_skill(
+        entry = self.context.session.skill_index.require_skill(
             reference.name,
             reference.skill_type,
         )
@@ -213,7 +213,7 @@ class RuntimeTools:
 
     def _record_skill_used_for_cache_path(self, cache_path: str) -> None:
         requested = Path(cache_path).expanduser().resolve()
-        for entry in self.context.session.require_skill_index().entries:
+        for entry in self.context.session.skill_index.entries:
             disclosed_paths = {
                 path.resolve()
                 for path in (

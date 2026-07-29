@@ -26,7 +26,7 @@ from core.task.planning import (
 )
 from core.task.preflight import check_run_before_execution
 from core.actions import ActionRequest
-from core.session import RuntimeSession
+from core.session import Run
 from core.task.run_plan import (
     RunPlan,
     create_task_step_run_plan,
@@ -56,7 +56,7 @@ RunPlanListener = Callable[[RunPlan], None]
 @dataclass(frozen=True)
 class _TaskExecutionContext:
     request: TaskRequest
-    session: RuntimeSession
+    session: Run
     prepared_run: PreparedRun
     background_contributions: list[LoadedSkill]
 
@@ -91,7 +91,7 @@ class AdaptiveTaskLoop:
     def run_task(
         self,
         request: TaskRequest,
-        session: RuntimeSession,
+        session: Run,
         before_model_calls: RunPlanListener,
     ) -> TaskResult:
         prepared_run = prepare_run(
@@ -313,7 +313,7 @@ class AdaptiveTaskLoop:
 
     def _run_model_loop(
         self,
-        session: RuntimeSession,
+        session: Run,
         prepared_run: PreparedRun,
         tools: RuntimeTools,
         *,
@@ -396,7 +396,7 @@ class AdaptiveTaskLoop:
 
     def _select_run_model(
         self,
-        session: RuntimeSession,
+        session: Run,
         prepared_run: PreparedRun,
     ) -> None:
         decision = prepared_run.run_plan.model
@@ -412,20 +412,20 @@ class AdaptiveTaskLoop:
         )
 
 def _record_disclosed_skills(
-    session: RuntimeSession,
+    session: Run,
     skills: list[Skill],
 ) -> None:
     session.record_event(
         "skills.disclosed",
         {
             "names": [skill.manifest.name for skill in skills],
-            "index_path": _optional_path(session.require_skill_index().index_path),
+            "index_path": _optional_path(session.skill_index.index_path),
         },
     )
 
 
 def _record_model_step(
-    session: RuntimeSession,
+    session: Run,
     step: int,
     response: ModelResponse,
 ) -> None:
@@ -441,7 +441,7 @@ def _record_model_step(
 
 
 def _record_task_completed(
-    session: RuntimeSession,
+    session: Run,
     result: TaskResult,
     contributions: list[LoadedSkill],
 ) -> None:
@@ -472,7 +472,7 @@ def _record_task_completed(
             )
 
 
-def list_run_actions(session: RuntimeSession) -> list[dict[str, object]]:
+def list_run_actions(session: Run) -> list[dict[str, object]]:
     terminal = {
         "action.applied": "applied",
         "action.blocked": "blocked",

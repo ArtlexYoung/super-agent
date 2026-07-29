@@ -2,8 +2,10 @@
 
 ## One Task Path
 
-Every `Agent.run(...)` call creates one task request, Runtime session, event log, Skill
-index, and adaptive task loop. The log stays in memory or writes through the selected
+Every `Agent.run(...)` call creates one task request, complete `Run`, event log, Skill
+index, and adaptive task loop. `AgentRuntime` is the only owner of that construction;
+there is no resource wrapper, request wrapper, or second user-model Runtime. The log
+stays in memory or writes through the selected
 backend; domain state is attached only when storage is enabled:
 
 ```text

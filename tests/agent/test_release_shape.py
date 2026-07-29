@@ -72,7 +72,7 @@ class ReleaseShapeTests(unittest.TestCase):
                     "-c",
                     "from super_agent import Agent; "
                     "from adapter.ag_ui_adapter import AGUIEventMapper; "
-                    "from core.session import RuntimeSession; "
+                    "from core.session import Run; "
                     "from skill.manifest import SkillManifest",
                 ],
                 cwd=tmp,

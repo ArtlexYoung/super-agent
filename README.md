@@ -117,7 +117,7 @@ Every task follows one path:
 
 ```text
 Agent.run
-  -> Core creates one run session
+  -> Core creates one complete Run context
   -> progressive disclosure selects one task scene and its Skills
   -> Core creates one RunPlan with exactly one model decision
   -> preflight checks every planned runner, service, tool, Provider, and subagent
