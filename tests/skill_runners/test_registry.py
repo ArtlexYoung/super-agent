@@ -16,7 +16,8 @@ class SkillRunnersTests(unittest.TestCase):
             result = agent.run("hello")
             runtime_lock = agent.runtime.create_store().read_runtime_lock(result.run_id)
 
-            self.assertEqual(17, runtime_lock["schema_version"])
+            self.assertEqual(18, runtime_lock["schema_version"])
+            self.assertEqual([], runtime_lock["registered_code"])
             locked = runtime_lock["skill_runners"]
             self.assertEqual(
                 [

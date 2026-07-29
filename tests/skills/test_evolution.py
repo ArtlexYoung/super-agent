@@ -347,7 +347,7 @@ class SkillEvolutionTests(unittest.TestCase):
         configurations = {
             "memory": ("recall_limit = 3", "recall_limit = 7"),
             "workflow": ('mode = "direct"', 'mode = "plan"'),
-            "mcp": ('command = "echo"', 'command = "printf"'),
+            "mcp": ('server = "echo"', 'server = "printf"'),
         }
         for skill_type, (original_config, candidate_config) in configurations.items():
             with self.subTest(skill_type=skill_type), tempfile.TemporaryDirectory() as tmp:

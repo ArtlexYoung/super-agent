@@ -54,6 +54,8 @@ behavior is progressive:
 - A scene may omit a planner; then no planning model call is available.
 - Every scene must select one workflow. A missing or conflicting workflow is an error.
 - No selected MCP or custom tool Skill means no corresponding tools are exposed.
+- A selected MCP Skill requires a matching code registration before execution; Runtime
+  never reads a command, transport, or environment from Skill content.
 
 Missing optional parts do not trigger substitutes. A missing model, invalid Skill,
 failed memory organization, or failed Provider call is an explicit error.
@@ -189,8 +191,9 @@ appended to:
 ```
 
 The `runtime.locked` event records the effective Agent settings, model profile and
-Provider implementation, RunPlan, storage backend, SkillRunner hashes, and exact
-Skill revisions. Secret values are never stored.
+Provider implementation, RunPlan, storage backend, SkillRunner hashes, code-registered
+MCP implementation and settings hashes, declared effects, and exact Skill revisions.
+Secret and environment values are never stored.
 
 ```bash
 super-agent runs status --config agent.toml

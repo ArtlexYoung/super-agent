@@ -1,7 +1,7 @@
 # Skills and Progressive Disclosure
 
 A Skill is passive content that describes something an Agent can use. Task scenes,
-prompts, MCP servers, memory rules, workflows, planners, model profiles, and custom types
+prompts, MCP tool guidance, memory rules, workflows, planners, model profiles, and custom types
 all use the same manifest, identity, source order, disclosure cache, evidence, and update
 lifecycle.
 
@@ -50,7 +50,7 @@ Common types are:
 
 - `scene`: references the Skill set for one kind of task.
 - `prompt`: model instructions.
-- `mcp`: an MCP server declaration and tool guidance.
+- `mcp`: tool guidance and the name of a server registered in application code.
 - `memory`: recall, organization, and forgetting rules.
 - `workflow`: direct, plan, react, or loop task rules.
 - `planner`: task decomposition rules.
@@ -59,6 +59,27 @@ Common types are:
 Custom type names are allowed. Register a matching SkillRunner in Python when the type
 needs executable behavior. The manifest type `runner` is reserved because executable
 code cannot come from a Skill directory.
+
+An MCP Skill has no executable connection settings:
+
+```toml
+schema_version = 3
+name = "filesystem"
+type = "mcp"
+description = "Filesystem tools"
+version = "0.1.0"
+triggers = ["filesystem", "files"]
+
+[entry]
+instructions = "SKILL.md"
+
+[configuration]
+server = "filesystem"
+```
+
+`server` defaults to the Skill name. Fields such as `command`, `arguments`, `environment`,
+and `transport` are rejected because a Skill is untrusted passive content. The matching
+implementation and its effects are attached to an Agent in code.
 
 ## Identity and Selection
 

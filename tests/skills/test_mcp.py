@@ -5,16 +5,19 @@ import sys
 from pathlib import Path
 
 from core import __version__
+from core.actions import ActionEffect
 from core.agent import Agent
 from skill.runners.defaults import create_default_skill_runners
 from skill.runners.registry import SkillLoadRequest
 from core.config import AgentConfig
 from core.state.store import create_local_runtime_store
 from core.provider.chat import MockProvider
+from core.task.preflight import TaskPreflightError
 from skill.disclosure import ProgressiveDisclosureCore, SkillReference
-from skill.kinds.mcp import create_mcp_server_from_skill_disclosure
+from skill.kinds.mcp import read_mcp_skill_settings
 from skill.kinds.memory import MiniMemory
 from skill.manifest import Skill
+from skill.runners.mcp import McpServers, StdioMcpServer
 from support import write_memory_skill, write_workflow_skill
 
 
@@ -24,17 +27,10 @@ class McpSkillTests(unittest.TestCase):
             root = Path(tmp)
             server_script = root / "fake_mcp.py"
             _write_fake_mcp_server(server_script)
-            _write_mcp_server(
-                root,
-                "calculator",
-                "Calculator MCP",
+            server = StdioMcpServer(
                 sys.executable,
-                [str(server_script)],
-                env={"MCP_TEST_VALUE": "from-env"},
-            )
-            disclosure = _prepare_disclosure(root)
-            server = create_mcp_server_from_skill_disclosure(
-                disclosure.open_skill("calculator", "mcp")
+                arguments=(str(server_script),),
+                environment={"MCP_TEST_VALUE": "from-env"},
             )
 
             tools = server.list_tools()
@@ -45,34 +41,38 @@ class McpSkillTests(unittest.TestCase):
             self.assertEqual("from-env", result["structuredContent"]["env"])
             self.assertEqual(__version__, result["structuredContent"]["client_version"])
 
-    def test_skill_loader_registers_mcp_server_as_skill(self) -> None:
+    def test_skill_loader_uses_only_a_code_registered_mcp_server(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            _write_mcp_server(root, "filesystem", "Filesystem MCP", "npx", ["-y", "@mcp/server-filesystem"])
+            _write_mcp_skill(root, "filesystem", "Filesystem MCP")
+            servers = _registered_servers("filesystem")
 
             disclosure = _prepare_disclosure(root)
             selected = disclosure.select_skill_references_for_prompt(
                 "please inspect filesystem",
                 allowed_types={"prompt", "mcp"},
             )
-            skill = _load_model_context(disclosure, selected[0])
+            skill = _load_model_context(disclosure, selected[0], servers)
 
             self.assertEqual("filesystem", skill.manifest.name)
             self.assertEqual("mcp", skill.manifest.skill_type)
-            self.assertIn("Protocol: mcp", skill.instructions)
-            self.assertIn("Command: npx -y @mcp/server-filesystem", skill.instructions)
+            self.assertIn("Use this MCP Skill when needed.", skill.instructions)
+            self.assertIn("Registered MCP server: filesystem", skill.instructions)
+            self.assertNotIn("Command:", skill.instructions)
             self.assertEqual(["mcp:filesystem"], [item.key for item in selected])
 
-    def test_mcp_skill_instruction_lists_env_names_without_values(self) -> None:
+    def test_mcp_skill_does_not_disclose_registered_command_or_environment(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            _write_mcp_server(
-                root,
+            _write_mcp_skill(root, "github", "GitHub MCP")
+            servers = McpServers()
+            servers.add_mcp_server(
                 "github",
-                "GitHub MCP",
-                "npx",
-                ["-y", "@mcp/server-github"],
-                env={"GITHUB_TOKEN": "secret-token"},
+                StdioMcpServer(
+                    "private-command",
+                    environment={"GITHUB_TOKEN": "secret-token"},
+                ),
+                effects=(ActionEffect.EXECUTE, ActionEffect.NETWORK),
             )
 
             disclosure = _prepare_disclosure(root)
@@ -81,19 +81,25 @@ class McpSkillTests(unittest.TestCase):
                 disclosure.prepare_skill_index().require_skill(
                     "github", "mcp"
                 ).reference,
+                servers,
             )
 
-            self.assertIn("Environment variables: GITHUB_TOKEN", skill.instructions)
+            self.assertNotIn("private-command", skill.instructions)
+            self.assertNotIn("GITHUB_TOKEN", skill.instructions)
             self.assertNotIn("secret-token", skill.instructions)
+            locked = servers.list_code_registrations()[0]
+            self.assertEqual(["execute", "network"], locked["effects"])
+            self.assertNotIn("secret-token", str(locked))
 
     def test_mcp_tools_are_loaded_with_their_specific_skill(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            _write_mcp_server(root, "alpha", "Alpha MCP", "echo", [])
-            _write_mcp_server(root, "beta", "Beta MCP", "echo", [])
+            _write_mcp_skill(root, "alpha", "Alpha MCP")
+            _write_mcp_skill(root, "beta", "Beta MCP")
             disclosure = _prepare_disclosure(root)
             index = disclosure.prepare_skill_index()
-            registry = create_default_skill_runners()
+            servers = _registered_servers("alpha", "beta")
+            registry = create_default_skill_runners(servers)
 
             alpha = registry.load_skill(
                 SkillLoadRequest(
@@ -114,8 +120,12 @@ class McpSkillTests(unittest.TestCase):
             self.assertEqual({"mcp_beta_list", "mcp_beta_run"}, beta_names)
             self.assertFalse(alpha_names & beta_names)
             self.assertIn("mcp_alpha_run", alpha.model_context.instructions)
+            self.assertEqual(
+                (ActionEffect.EXECUTE,),
+                alpha.tools[0].action.effects,
+            )
 
-    def test_mcp_skill_runner_requires_command_configuration(self) -> None:
+    def test_mcp_skill_runner_requires_matching_code_registration(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             server_dir = root / "skills" / "mcp" / "bad"
@@ -137,17 +147,43 @@ instructions = "SKILL.md"
 
             disclosure = _prepare_disclosure(root)
 
-            with self.assertRaisesRegex(ValueError, "configuration.command cannot be empty"):
-                create_mcp_server_from_skill_disclosure(
-                    disclosure.open_skill("bad", "mcp")
+            with self.assertRaisesRegex(KeyError, "not registered in code"):
+                create_default_skill_runners().load_skill(
+                    SkillLoadRequest(
+                        disclosure,
+                        disclosure.prepare_skill_index().require_skill(
+                            "bad", "mcp"
+                        ).reference,
+                    )
                 )
 
-    def test_mcp_configuration_rejects_invalid_types_without_starting_server(self) -> None:
+    def test_missing_mcp_registration_fails_preflight_before_model_call(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_workflow_skill(root)
+            _write_mcp_skill(root, "missing", "Missing MCP registration")
+            config = AgentConfig.load_from_file(
+                _write_agent_config(root, skills=["mcp:missing"])
+            )
+            provider = MockProvider("must not run")
+
+            with self.assertRaises(TaskPreflightError) as raised:
+                Agent(config, provider=provider).run("use missing")
+
+            self.assertEqual([], provider.last_messages)
+            problem = next(
+                item for item in raised.exception.problems if item.target == "mcp:missing"
+            )
+            self.assertEqual("skill_invalid", problem.code)
+            self.assertIn("not registered in code", problem.message)
+
+    def test_mcp_skill_rejects_executable_connection_settings(self) -> None:
         invalid_configurations = {
-            "transport": ('transport = "http"\ncommand = "echo"', "transport"),
-            "command": ("command = 1", "command must be a string"),
-            "args": ('command = "echo"\nargs = "bad"', "args must be a string array"),
-            "env": ('command = "echo"\nenv = ["bad"]', "env must be a table"),
+            "transport": ('transport = "stdio"', "unknown MCP Skill settings"),
+            "command": ('command = "echo"', "unknown MCP Skill settings"),
+            "arguments": ('arguments = ["bad"]', "unknown MCP Skill settings"),
+            "environment": ('environment = { TOKEN = "secret" }', "unknown MCP Skill settings"),
+            "server": ("server = 1", "server must be a non-empty string"),
         }
         for name, (configuration, message) in invalid_configurations.items():
             with self.subTest(name=name), tempfile.TemporaryDirectory() as tmp:
@@ -156,15 +192,39 @@ instructions = "SKILL.md"
                 disclosure = _prepare_disclosure(root)
 
                 with self.assertRaisesRegex(ValueError, message):
-                    create_mcp_server_from_skill_disclosure(
+                    read_mcp_skill_settings(
                         disclosure.open_skill(name, "mcp")
                     )
+
+    def test_runtime_lock_records_registered_mcp_code_and_effects(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_workflow_skill(root)
+            _write_mcp_skill(root, "calculator", "Calculator MCP")
+            config = AgentConfig.load_from_file(
+                _write_agent_config(root, skills=["mcp:calculator"])
+            )
+            agent = Agent(config, provider=MockProvider("ok"))
+            agent.add_mcp_server(
+                "calculator",
+                _FakeMcpServer(),
+                effects=(ActionEffect.EXECUTE,),
+            )
+
+            result = agent.run("use calculator")
+
+            runtime_lock = agent.runtime.create_store().read_runtime_lock(result.run_id)
+            registered = runtime_lock["registered_code"]
+            self.assertEqual(18, runtime_lock["schema_version"])
+            self.assertEqual("calculator", registered[0]["name"])
+            self.assertEqual(["execute"], registered[0]["effects"])
+            self.assertEqual("mcp_server", registered[0]["kind"])
 
     def test_config_can_disable_whole_mcp_feature_by_name_list(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             write_workflow_skill(root)
-            _write_mcp_server(root, "github", "GitHub MCP", "npx", ["-y", "@mcp/server-github"])
+            _write_mcp_skill(root, "github", "GitHub MCP")
             config_path = _write_agent_config(root, disabled_skills=["mcp"])
             provider = MockProvider("ok")
 
@@ -179,7 +239,7 @@ instructions = "SKILL.md"
             write_workflow_skill(root)
             write_memory_skill(root)
             _write_skill(root, "echo", "Echo helper", "Use echo skill.")
-            _write_mcp_server(root, "github", "GitHub MCP", "npx", ["-y", "@mcp/server-github"])
+            _write_mcp_skill(root, "github", "GitHub MCP")
             memory = MiniMemory(
                 create_local_runtime_store(root / ".super-agent", agent_name="demo")
             )
@@ -201,21 +261,19 @@ instructions = "SKILL.md"
             self.assertEqual(0, memory.usage_habits.read_usage_habits()["total_runs"])
 
 
-def _write_mcp_server(
+def _write_mcp_skill(
     root: Path,
     name: str,
     description: str,
-    command: str,
-    args: list[str],
-    env: dict[str, str] | None = None,
+    server_name: str | None = None,
 ) -> None:
     server_dir = root / "skills" / "mcp" / name
     server_dir.mkdir(parents=True)
-    args_text = ", ".join(f'"{item}"' for item in args)
-    env_text = ""
-    if env:
-        env_lines = "\n".join(f'{key} = "{value}"' for key, value in env.items())
-        env_text = f"\n[configuration.env]\n{env_lines}"
+    configuration = (
+        ""
+        if server_name is None
+        else f'\n[configuration]\nserver = "{server_name}"'
+    )
     (server_dir / "skill.toml").write_text(
         f"""
 schema_version = 3
@@ -228,15 +286,14 @@ triggers = ["{name}"]
 [entry]
 instructions = "SKILL.md"
 
-[configuration]
-transport = "stdio"
-command = "{command}"
-args = [{args_text}]
-{env_text}
+{configuration}
 """.strip(),
         encoding="utf-8",
     )
-    (server_dir / "SKILL.md").write_text("Use this MCP skill when needed.", encoding="utf-8")
+    (server_dir / "SKILL.md").write_text(
+        "Use this MCP Skill when needed.",
+        encoding="utf-8",
+    )
 
 
 def _write_raw_mcp_configuration(root: Path, name: str, configuration: str) -> None:
@@ -314,13 +371,37 @@ def _toml_list(items: list[str]) -> str:
 def _load_model_context(
     disclosure: ProgressiveDisclosureCore,
     reference: SkillReference,
+    servers: McpServers,
 ) -> Skill:
-    contribution = create_default_skill_runners().load_skill(
+    contribution = create_default_skill_runners(servers).load_skill(
         SkillLoadRequest(disclosure, reference)
     )
     if contribution.model_context is None:
         raise AssertionError("MCP SkillRunner did not provide model context")
     return contribution.model_context
+
+
+class _FakeMcpServer:
+    def list_tools(self) -> list[dict[str, object]]:
+        return [{"name": "fake", "inputSchema": {"type": "object"}}]
+
+    def call_tool(
+        self,
+        name: str,
+        arguments: dict[str, object],
+    ) -> dict[str, object]:
+        return {"name": name, "arguments": arguments}
+
+
+def _registered_servers(*names: str) -> McpServers:
+    servers = McpServers()
+    for name in names:
+        servers.add_mcp_server(
+            name,
+            _FakeMcpServer(),
+            effects=(ActionEffect.EXECUTE,),
+        )
+    return servers
 
 
 def _write_fake_mcp_server(path: Path) -> None:

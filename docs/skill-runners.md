@@ -70,6 +70,33 @@ The runner declares `name`, `version`, `skill_type`, `adds_model_context`, optio
 before execution. Adding a runner for an existing type explicitly replaces that Agent's
 current runner.
 
+MCP servers use a smaller registration surface because their passive SkillRunner is
+already built in:
+
+```python
+from super_agent import ActionEffect, Agent, StdioMcpServer
+
+agent = Agent()
+agent.add_mcp_server(
+    "filesystem",
+    StdioMcpServer(
+        "npx",
+        arguments=("-y", "@modelcontextprotocol/server-filesystem"),
+    ),
+    effects=(
+        ActionEffect.READ,
+        ActionEffect.CREATE,
+        ActionEffect.UPDATE,
+        ActionEffect.DELETE,
+        ActionEffect.EXECUTE,
+    ),
+)
+```
+
+Effects are mandatory and must include `execute`. Add `network` when the server can access
+the network; the standard action rules then require confirmation. A selected MCP Skill
+without matching code registration fails preflight.
+
 ## LoadedSkill
 
 `load_skill` returns one `LoadedSkill`. It may provide:
@@ -95,3 +122,5 @@ Core never imports, compiles, or executes Python from a Skill directory. Skills 
 the content and configuration consumed by a runner, but executable runner changes remain
 ordinary reviewed application-code changes. The Runtime lock stores each registered
 runner's implementation name, version, dependencies, required services, and source hash.
+Registered MCP code also contributes implementation and settings hashes plus declared
+effects, never environment values.

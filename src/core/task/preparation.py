@@ -67,7 +67,7 @@ class _SelectedRunSkills:
 def create_runtime_lock(request: RuntimeLockInput) -> dict[str, object]:
     request.skill_runners.validate_dependencies()
     return {
-        "schema_version": 17,
+        "schema_version": 18,
         "agent": {
             "name": request.config.agent.name,
             "system": request.config.agent.system,
@@ -91,6 +91,7 @@ def create_runtime_lock(request: RuntimeLockInput) -> dict[str, object]:
             item.descriptor.to_dict()
             for item in request.skill_runners.list_skill_runners()
         ],
+        "registered_code": _list_registered_code(request.skill_runners),
         "skills": [
             {
                 "key": entry.reference.key,
@@ -104,6 +105,30 @@ def create_runtime_lock(request: RuntimeLockInput) -> dict[str, object]:
             for entry in request.skill_index.entries
         ],
     }
+
+
+def _list_registered_code(
+    skill_runners: SkillRunners,
+) -> list[dict[str, object]]:
+    registrations: list[dict[str, object]] = []
+    for entry in skill_runners.list_skill_runners():
+        list_registrations = getattr(
+            entry.implementation,
+            "list_code_registrations",
+            None,
+        )
+        if not callable(list_registrations):
+            continue
+        values = list_registrations()
+        if not isinstance(values, list) or not all(
+            isinstance(value, dict) for value in values
+        ):
+            raise TypeError("SkillRunner code registrations must be a list of objects")
+        registrations.extend(dict(value) for value in values)
+    return sorted(
+        registrations,
+        key=lambda value: (str(value.get("kind", "")), str(value.get("name", ""))),
+    )
 
 
 def prepare_run(

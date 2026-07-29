@@ -7,6 +7,7 @@ from pathlib import Path
 from core.agent import Agent
 from skill.runners.defaults import create_progressive_skill_disclosure
 from skill.runners.builtins import create_builtin_skill_runners
+from skill.runners.mcp import McpServers
 from core.config import AgentConfig
 from core.identity import LOCAL_USER_ID
 from core.storage import create_storage_backend
@@ -352,7 +353,7 @@ def _load_package_manager(config_path: Path, user_id: str) -> SkillPackageManage
 def _default_model_context_types() -> set[str]:
     return {
         runner.skill_type
-        for runner in create_builtin_skill_runners()
+        for runner in create_builtin_skill_runners(McpServers())
         if runner.adds_model_context
     }
 

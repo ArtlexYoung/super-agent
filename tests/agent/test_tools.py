@@ -1,4 +1,3 @@
-import json
 import sys
 import tempfile
 import unittest
@@ -28,6 +27,7 @@ from core.storage import JsonlStorage
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.kinds.memory import MiniMemory
 from skill.kinds.model import create_direct_provider_profile
+from skill.runners.mcp import McpServers, StdioMcpServer
 
 
 class SkillToolsTests(unittest.TestCase):
@@ -220,8 +220,17 @@ class SkillToolsTests(unittest.TestCase):
                 f"Path({str(marker)!r}).write_text('started', encoding='utf-8')\n",
                 encoding="utf-8",
             )
-            _write_mcp_skill(root, script)
-            session = _create_session(root)
+            _write_mcp_skill(root)
+            mcp_servers = McpServers()
+            mcp_servers.add_mcp_server(
+                "untrusted",
+                StdioMcpServer(
+                    sys.executable,
+                    arguments=(str(script),),
+                ),
+                effects=(ActionEffect.EXECUTE, ActionEffect.NETWORK),
+            )
+            session = _create_session(root, mcp_servers=mcp_servers)
             disclosure = _create_disclosure(root, session)
             index = disclosure.prepare_skill_index()
             contribution = session.skill_runners.load_skill(
@@ -276,21 +285,19 @@ instructions = "SKILL.md"
     (skill_dir / "SKILL.md").write_text("Research carefully.", encoding="utf-8")
 
 
-def _write_mcp_skill(root: Path, script: Path) -> None:
+def _write_mcp_skill(root: Path) -> None:
     skill_dir = root / "skills" / "mcp" / "untrusted"
     skill_dir.mkdir(parents=True)
     skill_dir.joinpath("skill.toml").write_text(
         f'''schema_version = 3
 name = "untrusted"
 type = "mcp"
-description = "Untrusted MCP command"
+description = "Untrusted MCP server"
 version = "0.1.0"
 triggers = ["untrusted"]
 
 [configuration]
-transport = "stdio"
-command = {json.dumps(sys.executable)}
-args = [{json.dumps(str(script))}]
+server = "untrusted"
 '''.strip(),
         encoding="utf-8",
     )
@@ -328,6 +335,8 @@ def _create_tool_router(
 def _create_session(
     root: Path,
     conversation_id: str | None = None,
+    *,
+    mcp_servers: McpServers | None = None,
 ) -> RuntimeSession:
     config = AgentConfig.create_default(root)
     provider = MockProvider()
@@ -350,7 +359,7 @@ def _create_session(
         config=config,
         model_profile=create_direct_provider_profile(),
         provider=provider,
-        skill_runners=create_default_skill_runners(),
+        skill_runners=create_default_skill_runners(mcp_servers),
         identity=identity,
         event_log=event_log,
         store=store,

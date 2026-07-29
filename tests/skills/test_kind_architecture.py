@@ -6,7 +6,8 @@ import unittest
 from pathlib import Path
 
 from skill.disclosure import ProgressiveDisclosureCore
-from skill.kinds.mcp import McpServer
+from skill.kinds.mcp import McpSkillSettings
+from skill.runners.mcp import McpServer
 from skill.kinds.memory import MiniMemory
 from core.task.models import SubAgentResult, TaskResult
 from skill.kinds.workflow import create_workflow_policy
@@ -36,6 +37,7 @@ class SkillKindArchitectureTests(unittest.TestCase):
 
     def test_skill_kinds_are_loaded_from_unified_skill_package(self) -> None:
         self.assertEqual("McpServer", McpServer.__name__)
+        self.assertEqual("McpSkillSettings", McpSkillSettings.__name__)
         self.assertEqual("MiniMemory", MiniMemory.__name__)
         self.assertEqual("TaskResult", TaskResult.__name__)
         self.assertEqual("SubAgentResult", SubAgentResult.__name__)

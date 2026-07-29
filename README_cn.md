@@ -184,6 +184,33 @@ instructions = "SKILL.md"
 自定义类型只需在代码中调用匹配的 `Agent.add_skill_runner(...)`；Core 没有写死 Skill
 类型列表。
 
+可执行的 MCP 实现只放在可信应用代码中。被动 MCP Skill 只包含说明和可选的
+`[configuration].server` 名称；Skill 内容中的命令、参数、环境、传输方式和副作用字段都会
+被拒绝：
+
+```python
+from super_agent import ActionEffect, Agent, StdioMcpServer
+
+agent = Agent()
+agent.add_mcp_server(
+    "filesystem",
+    StdioMcpServer(
+        "npx",
+        arguments=("-y", "@modelcontextprotocol/server-filesystem"),
+    ),
+    effects=(
+        ActionEffect.READ,
+        ActionEffect.CREATE,
+        ActionEffect.UPDATE,
+        ActionEffect.DELETE,
+        ActionEffect.EXECUTE,
+    ),
+)
+```
+
+缺少代码注册时，预检会在调用模型或启动进程前失败。Runtime 会先检查完整副作用声明，并在
+运行锁中记录代码和设置哈希，但不会记录环境变量值。
+
 需要一个可编辑示例项目时再运行 `super-agent init --path my-agent`。初始化是可选工具，
 不是使用前提。
 

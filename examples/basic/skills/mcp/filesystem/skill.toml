@@ -1,7 +1,7 @@
 schema_version = 3
 name = "filesystem"
 type = "mcp"
-description = "Example stdio MCP server"
+description = "Example filesystem MCP tools"
 version = "0.1.0"
 triggers = ["filesystem", "files"]
 
@@ -9,6 +9,4 @@ triggers = ["filesystem", "files"]
 instructions = "SKILL.md"
 
 [configuration]
-transport = "stdio"
-command = "npx"
-args = ["-y", "@modelcontextprotocol/server-filesystem"]
+server = "filesystem"

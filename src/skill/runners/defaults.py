@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from skill.runners.registry import SkillRunners
 from skill.runners.builtins import create_builtin_skill_runners
+from skill.runners.mcp import McpServers
 from core.config import AgentConfig
 from core.identity import RunIdentity
 from skill.disclosure import DisclosureRecorder, ProgressiveDisclosureCore
@@ -15,9 +16,12 @@ if TYPE_CHECKING:
     from core.state.store import RuntimeStore
 
 
-def create_default_skill_runners() -> SkillRunners:
+def create_default_skill_runners(
+    mcp_servers: McpServers | None = None,
+) -> SkillRunners:
     runners = SkillRunners()
-    for runner in create_builtin_skill_runners():
+    servers = mcp_servers or McpServers()
+    for runner in create_builtin_skill_runners(servers):
         runners.add_skill_runner(runner)
     return runners
 

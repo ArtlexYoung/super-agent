@@ -176,6 +176,18 @@ Status: implemented.
 - Raise Provider failures directly without retry labels, alternate candidates, or hidden
   model switching.
 
+## v0.0.75: Explicit Code Registration and Effects
+
+Status: implemented.
+
+- Keep MCP Skills passive: they contain only tool guidance and an optional registered
+  server name, never commands, arguments, environment, transport, or executable authority.
+- Register each MCP implementation and its complete effects explicitly in Agent code.
+- Reject missing registrations during preflight and check effects before a process or
+  handler starts.
+- Record implementation and settings hashes plus effects in the Runtime lock without
+  recording environment values.
+
 ## Release Gate
 
 The project will not move to `0.1.x` because of feature count. The gate is a reproducible

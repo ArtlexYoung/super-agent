@@ -104,8 +104,10 @@ every type. Scene, prompt, MCP, memory, workflow, and planner behavior therefore
 no separate loader path in Core.
 
 Downloaded Skill directories are always passive. Runtime never imports Python from them.
-Custom executable behavior is added explicitly with `Agent.add_skill_runner(...)`, and
-the exact implementation hash is written to the Runtime lock.
+Custom executable behavior is added explicitly with `Agent.add_skill_runner(...)`. MCP
+servers use `Agent.add_mcp_server(...)`; the Skill stores only a registered name while
+trusted code owns the command, environment, transport, and declared effects. The Runtime
+lock records implementation and settings hashes without environment values.
 
 ## Providers and Model Skills
 

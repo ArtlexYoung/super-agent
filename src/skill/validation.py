@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from skill.disclosure import ProgressiveDisclosureCore, SkillDisclosure
-from skill.kinds.mcp import create_mcp_server_from_skill_disclosure
+from skill.kinds.mcp import read_mcp_skill_settings
 from skill.kinds.memory import create_memory_policy_from_skill
 from skill.kinds.model import (
     create_model_profile_from_skill_disclosure,
@@ -78,7 +78,7 @@ def _validate_skill_type(
     elif skill_type == "workflow":
         create_workflow_policy_from_skill(disclosure)
     elif skill_type == "mcp":
-        create_mcp_server_from_skill_disclosure(disclosure)
+        read_mcp_skill_settings(disclosure)
     elif skill_type == "model":
         create_model_profile_from_skill_disclosure(disclosure)
     elif skill_type == "planner":

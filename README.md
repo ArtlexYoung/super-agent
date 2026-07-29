@@ -194,6 +194,33 @@ The stable key is `type:name`, such as `prompt:concise`, `memory:default`, or
 `model:fast`. Custom types need only a matching `Agent.add_skill_runner(...)` call; Core
 does not contain a fixed list of Skill types.
 
+Executable MCP implementations stay in trusted application code. The passive MCP Skill
+contains only instructions and an optional `[configuration].server` name; command,
+arguments, environment, transport, and effects are rejected in Skill content:
+
+```python
+from super_agent import ActionEffect, Agent, StdioMcpServer
+
+agent = Agent()
+agent.add_mcp_server(
+    "filesystem",
+    StdioMcpServer(
+        "npx",
+        arguments=("-y", "@modelcontextprotocol/server-filesystem"),
+    ),
+    effects=(
+        ActionEffect.READ,
+        ActionEffect.CREATE,
+        ActionEffect.UPDATE,
+        ActionEffect.DELETE,
+        ActionEffect.EXECUTE,
+    ),
+)
+```
+
+Missing registrations fail preflight before a model call or process start. Runtime checks
+the declared effects first and records code/settings hashes without environment values.
+
 Run `super-agent init --path my-agent` when you want an editable example project. It is
 optional, not a prerequisite.
 

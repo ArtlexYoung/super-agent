@@ -53,10 +53,12 @@ Skill manifests, instructions, resources, memory, tool output, and subagent outp
 untrusted data. Core wraps them as untrusted model context and never interprets Skill files
 as Python or shell code. The reserved Skill type `runner` is rejected.
 
-Custom executable behavior must be registered with `Agent.add_skill_runner(...)`. MCP is
-an explicit process and network boundary: its command remains passive configuration until
-the MCP SkillRunner is invoked, and both discovery and calls declare their effects before
-a process can start.
+Custom executable behavior must be registered with `Agent.add_skill_runner(...)`. MCP
+implementations use the narrower `Agent.add_mcp_server(...)` API. Commands, arguments,
+environment values, transports, and effects live only in trusted application code; an MCP
+Skill can select only a registered server name. Preflight rejects a selected MCP Skill when
+that registration is absent, and every discovery or tool call is checked before code or a
+process can start.
 
 Package validation also rejects symlinks and paths outside a Skill directory. Candidate
 Skills remain outside active roots until validation and no-regression evaluation pass.

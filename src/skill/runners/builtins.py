@@ -18,8 +18,8 @@ from core.actions import ActionEffect
 from skill.manifest import Skill
 
 if TYPE_CHECKING:
-    from skill.kinds.mcp import McpServer
     from skill.kinds.memory import MiniMemory
+    from skill.runners.mcp import McpServers, RegisteredMcpServer
 
 
 class PromptSkillRunner:
@@ -42,30 +42,41 @@ class PromptSkillRunner:
 
 
 class McpSkillRunner:
-    name = "mcp-stdio"
-    version = "1"
+    name = "registered-mcp"
+    version = "2"
     skill_type = "mcp"
     adds_model_context = True
 
+    def __init__(self, servers: McpServers) -> None:
+        self.servers = servers
+
     def load_skill(self, request: SkillLoadRequest) -> LoadedSkill:
-        from skill.kinds.mcp import create_mcp_server_from_skill_disclosure
+        from skill.kinds.mcp import read_mcp_skill_settings
 
         opened = request.disclosure.open_skill(
             request.reference.name,
             self.skill_type,
         )
-        server = create_mcp_server_from_skill_disclosure(opened)
-        list_tool_name, run_tool_name = _mcp_tool_names(server.name)
+        settings = read_mcp_skill_settings(opened)
+        registered = self.servers.require_mcp_server(settings.server_name)
+        list_tool_name, run_tool_name = _mcp_tool_names(request.reference.name)
+        instructions = opened.read_instructions().content
+        runtime_context = (
+            f"Registered MCP server: {registered.name}\n"
+            f"Runtime tools: {list_tool_name}, {run_tool_name}"
+        )
         return LoadedSkill(
             model_context=Skill(
                 manifest=opened.read_manifest(),
-                instructions=(
-                    server.build_skill_instructions()
-                    + f"\nRuntime tools: {list_tool_name}, {run_tool_name}"
+                instructions="\n\n".join(
+                    part for part in (instructions, runtime_context) if part
                 ),
             ),
-            tools=_create_mcp_tools(server, list_tool_name, run_tool_name),
+            tools=_create_mcp_tools(registered, list_tool_name, run_tool_name),
         )
+
+    def list_code_registrations(self) -> list[dict[str, object]]:
+        return self.servers.list_code_registrations()
 
 
 class MemorySkillRunner:
@@ -160,10 +171,12 @@ class SceneSkillRunner:
         )
 
 
-def create_builtin_skill_runners() -> tuple[SkillRunner, ...]:
+def create_builtin_skill_runners(
+    mcp_servers: McpServers,
+) -> tuple[SkillRunner, ...]:
     return (
         PromptSkillRunner(),
-        McpSkillRunner(),
+        McpSkillRunner(mcp_servers),
         MemorySkillRunner(),
         WorkflowSkillRunner(),
         PlannerSkillRunner(),
@@ -354,27 +367,30 @@ def _consolidate_memory(
 
 
 def _create_mcp_tools(
-    server: McpServer,
+    registered: RegisteredMcpServer,
     list_tool_name: str,
     run_tool_name: str,
 ) -> tuple[SkillTool, ...]:
     action = SkillAction(
-        (ActionEffect.EXECUTE, ActionEffect.NETWORK),
-        f"mcp:{server.name}",
+        registered.effects,
+        f"skill:registered:mcp:{registered.name}",
     )
     return (
         SkillTool(
             list_tool_name,
-            f"List tools exposed by the {server.name} MCP Skill.",
+            f"List tools exposed by the {registered.name} MCP server.",
             {},
-            lambda arguments: {"name": server.name, "tools": server.list_tools()},
+            lambda arguments: {
+                "name": registered.name,
+                "tools": registered.server.list_tools(),
+            },
             action=action,
         ),
         SkillTool(
             run_tool_name,
-            f"Call one tool from the {server.name} MCP Skill.",
+            f"Call one tool from the {registered.name} MCP server.",
             {"tool": {"type": "string"}, "arguments": {"type": "object"}},
-            lambda arguments: _run_mcp_tool(server, arguments),
+            lambda arguments: _run_mcp_tool(registered, arguments),
             action=action,
             required=("tool", "arguments"),
         ),
@@ -382,15 +398,15 @@ def _create_mcp_tools(
 
 
 def _run_mcp_tool(
-    server: McpServer,
+    registered: RegisteredMcpServer,
     arguments: dict[str, object],
 ) -> dict[str, object]:
     tool = read_required_tool_string(arguments, "tool")
-    result = server.call_tool(
+    result = registered.server.call_tool(
         tool,
         read_tool_object(arguments, "arguments"),
     )
-    return {"name": server.name, "tool": tool, "result": result}
+    return {"name": registered.name, "tool": tool, "result": result}
 
 
 def _mcp_tool_names(skill_name: str) -> tuple[str, str]:

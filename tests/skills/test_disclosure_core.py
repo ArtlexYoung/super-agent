@@ -315,7 +315,7 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
             self.assertIn("leaves skill directory", issues[0].message)
 
     def test_kind_factories_only_accept_center_disclosure(self) -> None:
-        from skill.kinds.mcp import create_mcp_server_from_skill_disclosure
+        from skill.kinds.mcp import read_mcp_skill_settings
         from skill.kinds.memory import create_memory_from_skill_disclosure
         from skill.kinds.workflow import create_workflow_policy_from_skill
 
@@ -325,7 +325,7 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
             core = _create_core(root)
             core.prepare_skill_index()
 
-            server = create_mcp_server_from_skill_disclosure(
+            mcp_settings = read_mcp_skill_settings(
                 core.open_skill("filesystem", expected_type="mcp")
             )
             memory = create_memory_from_skill_disclosure(
@@ -336,7 +336,7 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
                 core.open_skill("direct", expected_type="workflow")
             )
 
-            self.assertEqual("example-mcp", server.command)
+            self.assertEqual("example-mcp", mcp_settings.server_name)
             self.assertEqual("agent", memory.policy.default_scope)
             self.assertEqual("direct", workflow.mode)
 
@@ -435,9 +435,7 @@ def _write_mcp_skill(root: Path, name: str) -> None:
     skill_dir.mkdir(parents=True)
     _write_manifest(skill_dir, name, "mcp", triggers=[name], include_entry=True, extra="""
 [configuration]
-transport = "stdio"
-command = "example-mcp"
-args = []
+server = "example-mcp"
 """)
     (skill_dir / "SKILL.md").write_text("Use MCP tools.", encoding="utf-8")
 

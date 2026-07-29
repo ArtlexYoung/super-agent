@@ -9,6 +9,7 @@ from skill.runners.defaults import (
     create_progressive_skill_disclosure,
 )
 from skill.runners.registry import SkillRunner
+from skill.runners.mcp import McpServer, McpServers
 from core.provider.chat import ChatProvider, Message
 from core.provider.pool import ProviderPool
 from core.config import AgentConfig
@@ -16,7 +17,7 @@ from core.engine import AgentRuntime
 from core.identity import LOCAL_USER_ID
 from core.state.models import RunEvent
 from core.state.subscribers import RuntimeEventSubscriber
-from core.actions import ActionRules
+from core.actions import ActionEffect, ActionRules
 from core.secrets import UserSecretLookup, UserSecretResolver
 from core.task.models import (
     SubAgentResult,
@@ -119,7 +120,8 @@ class Agent:
         )
         if provider is not None and self.model_profile is not None:
             self.provider_pool.add_chat_provider(self.model_profile.key, provider)
-        self.skill_runners = create_default_skill_runners()
+        self.mcp_servers = McpServers()
+        self.skill_runners = create_default_skill_runners(self.mcp_servers)
         self.action_rules = action_rules or ActionRules()
         for runner in skill_runners or []:
             self.skill_runners.add_skill_runner(runner, replace=True)
@@ -167,6 +169,15 @@ class Agent:
 
     def add_skill_runner(self, runner: SkillRunner) -> None:
         self.skill_runners.add_skill_runner(runner, replace=True)
+
+    def add_mcp_server(
+        self,
+        name: str,
+        server: McpServer,
+        *,
+        effects: tuple[ActionEffect, ...],
+    ) -> None:
+        self.mcp_servers.add_mcp_server(name, server, effects=effects)
 
     def add_event_subscriber(self, subscriber: RuntimeEventSubscriber) -> None:
         self.runtime.add_event_subscriber(subscriber)

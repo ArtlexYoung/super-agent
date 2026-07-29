@@ -159,15 +159,37 @@ backend or copy data explicitly with `super-agent storage copy`.
 Options with behavior or authority stay in readable Python code rather than TOML:
 
 ```python
-from super_agent import ActionMode, ActionRules, Agent
+from super_agent import (
+    ActionEffect,
+    ActionMode,
+    ActionRules,
+    Agent,
+    StdioMcpServer,
+)
 
 agent = Agent(
     action_rules=ActionRules(ActionMode.READ_ONLY),
     secret_lookup=lambda user_id, name: lookup_secret(user_id, name),
 )
 agent.add_skill_runner(custom_runner)
+agent.add_mcp_server(
+    "filesystem",
+    StdioMcpServer(
+        "npx",
+        arguments=("-y", "@modelcontextprotocol/server-filesystem"),
+    ),
+    effects=(
+        ActionEffect.READ,
+        ActionEffect.CREATE,
+        ActionEffect.UPDATE,
+        ActionEffect.DELETE,
+        ActionEffect.EXECUTE,
+    ),
+)
 agent.add_subagent(worker, name="worker")
 ```
 
-Provider instances, custom SkillRunners, action authority, secret lookup, storage object
-injection, and subagent graphs are deliberately code-first.
+Provider instances, custom SkillRunners, MCP implementations, action authority, secret
+lookup, storage object injection, and subagent graphs are deliberately code-first. An MCP
+Skill contains only optional `[configuration].server`; executable settings in Skill TOML
+are rejected.
