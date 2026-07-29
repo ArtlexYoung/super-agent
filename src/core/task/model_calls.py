@@ -19,8 +19,11 @@ from core.provider.chat import (
 )
 from core.provider.pool import ProviderPool
 from core.task.routing import list_model_routing_stats
-from core.session import RuntimeSession
-from core.task.route_plan import ModelChoice, rank_model_choices
+from core.task.run_plan import (
+    ModelDecision,
+    ModelSelectionRequest,
+    choose_model as choose_model_decision,
+)
 from core.task.models import TaskRequest
 from skill.kinds.model import ModelProfile
 from skill.manifest import Skill
@@ -54,8 +57,7 @@ class ModelCallContext:
 
 @dataclass(frozen=True)
 class _ModelCallEvidence:
-    choice: ModelChoice
-    attempt: int
+    decision: ModelDecision
     purpose: str
     input_tokens: int
 
@@ -87,13 +89,14 @@ class AdaptiveModelCalls:
             operation_id=f"model-operation-{uuid4().hex}",
         )
 
-    def choose_models(
+    def choose_model(
         self,
         store: RuntimeStore | None,
         purpose: str,
         prompt: str,
+        *,
         required_features: tuple[str, ...] = ("text",),
-    ) -> tuple[ModelChoice, ...]:
+    ) -> ModelDecision:
         evidence = (
             {}
             if store is None
@@ -102,65 +105,95 @@ class AdaptiveModelCalls:
                 for item in list_model_routing_stats(store, purpose)
             }
         )
-        return rank_model_choices(
+        return choose_model_decision(
             self.model_profiles,
             self.provider_pool.environment,
-            purpose=purpose,
-            required_features=required_features,
-            prompt=prompt,
+            ModelSelectionRequest(purpose, required_features, prompt),
             evidence=evidence,
         )
 
     def call_model(
         self,
         messages: list[Message],
-        choices: tuple[ModelChoice, ...],
+        decision: ModelDecision,
         context: ModelCallContext,
         *,
         tools: list[ToolDefinition] | None = None,
     ) -> ModelResponse:
-        if not choices:
-            raise RuntimeError("RoutePlan contains no model choices")
-        choice = choices[0]
-        provider = self._prepare_model_attempt(choice, 1, context)
-        evidence = _create_call_evidence(choice, 1, context, messages, tools)
+        provider = self._prepare_model_call(decision, context)
+        evidence = _create_call_evidence(
+            decision,
+            context,
+            messages,
+            tools=tools,
+        )
         started_at = perf_counter()
         try:
             response = _send_provider_request(
                 provider,
-                choice.profile.model,
+                decision.model,
                 messages,
-                tools,
+                tools=tools,
             )
         except Exception as error:
-            _record_model_failure(context, evidence, error, False, started_at)
+            _record_model_failure(
+                context,
+                evidence,
+                error,
+                started_at=started_at,
+            )
             raise
-        _record_model_completion(context, evidence, response, started_at)
+        _record_model_completion(
+            context,
+            evidence,
+            response,
+            started_at=started_at,
+        )
         return response
 
-    def _prepare_model_attempt(
+    def require_model_profile(self, decision: ModelDecision) -> ModelProfile:
+        profile = next(
+            (
+                item
+                for item in self.model_profiles
+                if item.key == decision.profile_key
+            ),
+            None,
+        )
+        if profile is None:
+            raise RuntimeError(
+                f"selected model profile is unavailable: {decision.profile_key}"
+            )
+        if profile.model != decision.model or profile.connection != decision.connection:
+            raise RuntimeError(
+                f"selected model decision no longer matches profile: {decision.profile_key}"
+            )
+        return profile
+
+    def _prepare_model_call(
         self,
-        choice: ModelChoice,
-        attempt: int,
+        decision: ModelDecision,
         context: ModelCallContext,
     ) -> ChatProvider:
-        profile = choice.profile
-        provider = self.provider_pool.get_chat_provider(profile.key, profile.connection)
+        profile = self.require_model_profile(decision)
+        provider = self.provider_pool.get_chat_provider(
+            decision.profile_key,
+            decision.connection,
+        )
         if context.select_model is not None:
             context.select_model(profile, provider)
         context.record_event(
             "model.call.selected",
             {
-                "attempt": attempt,
-                "profile": profile.key,
-                "model": profile.model,
+                "profile": decision.profile_key,
+                "model": decision.model,
                 "purpose": context.purpose,
-                "score": choice.score,
-                "confidence": choice.confidence,
-                "evidence_calls": choice.evidence_calls,
-                "evidence_sufficient": choice.evidence_sufficient,
-                "selection": choice.selection,
-                "reasons": list(choice.reasons),
+                "score": decision.score,
+                "confidence": decision.confidence,
+                "evidence_calls": decision.evidence_calls,
+                "evidence_sufficient": decision.evidence_sufficient,
+                "selection": decision.selection,
+                "reasons": list(decision.reasons),
             },
         )
         return provider
@@ -183,10 +216,10 @@ class _AdaptiveTextModel:
             ),
             "",
         )
-        choices = self.model_calls.choose_models(self.store, self.purpose, prompt)
+        decision = self.model_calls.choose_model(self.store, self.purpose, prompt)
         response = self.model_calls.call_model(
             messages,
-            choices,
+            decision,
             ModelCallContext(self.purpose, self._record_event),
         )
         return response.text
@@ -203,6 +236,7 @@ def build_model_messages(
     request: TaskRequest,
     workflow: TaskPolicy,
     skills: list[Skill],
+    *,
     system: str,
 ) -> list[Message]:
     system_parts = [system, UNTRUSTED_CONTEXT_POLICY]
@@ -262,6 +296,7 @@ def _send_provider_request(
     provider: ChatProvider,
     model: str,
     messages: list[Message],
+    *,
     tools: list[ToolDefinition] | None,
 ) -> ModelResponse:
     if tools is None:
@@ -270,10 +305,10 @@ def _send_provider_request(
 
 
 def _create_call_evidence(
-    choice: ModelChoice,
-    attempt: int,
+    decision: ModelDecision,
     context: ModelCallContext,
     messages: list[Message],
+    *,
     tools: list[ToolDefinition] | None,
 ) -> _ModelCallEvidence:
     input_text = json.dumps(
@@ -282,8 +317,7 @@ def _create_call_evidence(
         sort_keys=True,
     )
     return _ModelCallEvidence(
-        choice,
-        attempt,
+        decision,
         context.purpose,
         estimate_text_tokens(input_text),
     )
@@ -293,6 +327,7 @@ def _record_model_completion(
     context: ModelCallContext,
     evidence: _ModelCallEvidence,
     response: ModelResponse,
+    *,
     started_at: float,
 ) -> None:
     output = response.text if not response.tool_calls else _model_response_text(response)
@@ -306,7 +341,7 @@ def _record_model_failure(
     context: ModelCallContext,
     evidence: _ModelCallEvidence,
     error: Exception,
-    will_retry: bool,
+    *,
     started_at: float,
 ) -> None:
     context.record_event(
@@ -315,7 +350,6 @@ def _record_model_failure(
             **_model_call_metrics(evidence, "", started_at),
             "error_type": type(error).__name__,
             "message": str(error),
-            "will_retry": will_retry,
         },
     )
 
@@ -325,14 +359,13 @@ def _model_call_metrics(
     output: str,
     started_at: float,
 ) -> dict[str, object]:
-    profile = evidence.choice.profile
+    decision = evidence.decision
     output_tokens = estimate_text_tokens(output)
-    input_cost = evidence.input_tokens * (profile.routing.input_cost_per_million or 0.0)
-    output_cost = output_tokens * (profile.routing.output_cost_per_million or 0.0)
+    input_cost = evidence.input_tokens * (decision.input_cost_per_million or 0.0)
+    output_cost = output_tokens * (decision.output_cost_per_million or 0.0)
     return {
-        "attempt": evidence.attempt,
-        "profile": profile.key,
-        "model": profile.model,
+        "profile": decision.profile_key,
+        "model": decision.model,
         "purpose": evidence.purpose,
         "latency_ms": max(0, round((perf_counter() - started_at) * 1000)),
         "input_tokens": evidence.input_tokens,

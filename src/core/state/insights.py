@@ -16,15 +16,15 @@ from skill.evolution.freshness import calculate_skill_freshness
 def explain_run_with_insight(store: RuntimeStore, run_id: str) -> dict[str, object]:
     explanation = store.explain_run(run_id)
     events = store.read_run_events(run_id)
-    route_plan = _latest_event_data(events, "task.scheduled")
+    run_plan = _latest_event_data(events, "task.scheduled")
     purposes = _model_purposes_for_run(events)
     explanation.update(
         {
-            "schema_version": 6,
-            "route_plan": route_plan,
+            "schema_version": 7,
+            "run_plan": run_plan,
             "task_plan": _latest_event_data(events, "task.plan.created"),
             "task_steps": project_task_steps(events),
-            "model_calls": project_model_call_attempts(events),
+            "model_calls": project_model_calls(events),
             "routing_evidence": [
                 item.to_dict()
                 for item in list_model_routing_stats(store)
@@ -51,9 +51,8 @@ def project_task_steps(events: list[RunEvent]) -> list[dict[str, object]]:
     return [steps[number] for number in sorted(steps)]
 
 
-def project_model_call_attempts(events: list[RunEvent]) -> list[dict[str, object]]:
+def project_model_calls(events: list[RunEvent]) -> list[dict[str, object]]:
     calls: list[dict[str, object]] = []
-    # An attempt number restarts for each model step, so event order defines call identity.
     for event in events:
         event_type = event.event_type
         if event_type not in {
@@ -63,12 +62,10 @@ def project_model_call_attempts(events: list[RunEvent]) -> list[dict[str, object
         }:
             continue
         data = dict(event.data)
-        attempt = _positive_attempt(data.get("attempt"))
         if event_type == "model.call.selected":
             calls.append(
                 {
                     "call_id": len(calls) + 1,
-                    "attempt": attempt,
                     "status": "selected",
                     **data,
                 }
@@ -78,15 +75,12 @@ def project_model_call_attempts(events: list[RunEvent]) -> list[dict[str, object
             (
                 call
                 for call in reversed(calls)
-                if call["attempt"] == attempt and call["status"] == "selected"
+                if call["status"] == "selected"
             ),
             None,
         )
         if projected is None:
-            projected = {
-                "call_id": len(calls) + 1,
-                "attempt": attempt,
-            }
+            projected = {"call_id": len(calls) + 1}
             calls.append(projected)
         projected.update(data)
         if event_type == "model.call.completed":
@@ -165,10 +159,6 @@ def _model_purposes_for_run(events: list[RunEvent]) -> set[str]:
     return purposes or {"answer"}
 
 
-def _positive_attempt(value: object) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-        raise ValueError("model call attempt must be a positive integer")
-    return value
 
 
 def _positive_step_number(value: object) -> int:

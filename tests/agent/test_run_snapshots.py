@@ -41,8 +41,8 @@ class RunSnapshotTests(unittest.TestCase):
                 "prompt:echo",
                 {item["key"] for item in runtime_lock["skills"]},
             )
-            self.assertEqual(1, runtime_lock["route_plan"]["schema_version"])
-            self.assertEqual("scene:common", runtime_lock["route_plan"]["scene"])
+            self.assertEqual(1, runtime_lock["run_plan"]["schema_version"])
+            self.assertEqual("scene:common", runtime_lock["run_plan"]["scene"])
             self.assertNotIn("task_schedule", runtime_lock)
             self.assertIn(
                 {

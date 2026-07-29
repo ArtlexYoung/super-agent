@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Callable
 
-from skill.runners.loaded import LoadedSkill, TaskPolicy
+from skill.runners.loaded import LoadedSkill
 from core.provider.chat import Message, ModelResponse
 from core.provider.pool import ProviderPool
 from core.task.model_calls import (
@@ -22,22 +22,25 @@ from core.task.planning import (
     build_task_step_prompt,
     build_task_planning_messages,
     create_direct_task_plan,
+    create_task_step_policy,
     read_task_plan,
 )
-from core.task.preflight import check_route_before_execution
+from core.task.preflight import check_run_before_execution
 from core.actions import ActionRequest
 from core.session import RuntimeSession
-from core.task.route_plan import (
-    RoutePlan,
-    create_task_step_route_plan,
+from core.task.run_plan import (
+    RunPlan,
+    create_task_step_run_plan,
 )
 from core.task.preparation import (
+    PreparedRun,
     build_system_prompt,
     create_runtime_tools,
     load_background_contributions,
-    load_route_skill_contributions,
-    prepare_route_plan,
+    load_run_skill_contributions,
+    prepare_run,
     run_task_step_subagents,
+    select_model_context_skills,
 )
 from core.task.models import SubAgentResult, TaskRequest, TaskResult
 from core.task.tools import RuntimeTools
@@ -48,14 +51,14 @@ if TYPE_CHECKING:
     from core.state.store import RuntimeStore
 
 
-RoutePlanListener = Callable[[RoutePlan], None]
+RunPlanListener = Callable[[RunPlan], None]
 
 
 @dataclass(frozen=True)
 class _TaskExecutionContext:
     request: TaskRequest
     session: RuntimeSession
-    route_plan: RoutePlan
+    prepared_run: PreparedRun
     background_contributions: list[LoadedSkill]
 
 
@@ -90,50 +93,51 @@ class AdaptiveTaskLoop:
         self,
         request: TaskRequest,
         session: RuntimeSession,
-        before_model_calls: RoutePlanListener,
+        before_model_calls: RunPlanListener,
     ) -> TaskResult:
-        route_plan = prepare_route_plan(
+        prepared_run = prepare_run(
             request,
             session,
             self.model_profiles,
-            self.provider_pool.environment,
+            environment=self.provider_pool.environment,
         )
-        session.record_event("task.scheduled", route_plan.to_dict())
+        run_plan = prepared_run.run_plan
+        session.record_event("task.scheduled", run_plan.to_dict())
         organization_model = self.create_text_model(
             session.store,
             "memory_organization",
             session.record_event,
         )
-        check_route_before_execution(
+        check_run_before_execution(
             request,
             session,
-            route_plan,
-            self.provider_pool,
-            organization_model.send_messages,
+            run_plan,
+            provider_pool=self.provider_pool,
+            send_text_model_messages=organization_model.send_messages,
         )
-        self._select_primary_model(session, route_plan)
-        before_model_calls(route_plan)
+        self._select_run_model(session, prepared_run)
+        before_model_calls(run_plan)
 
         background = load_background_contributions(
             session,
-            route_plan,
+            prepared_run,
             organization_model.send_messages,
         )
         context = _TaskExecutionContext(
             request,
             session,
-            route_plan,
+            prepared_run,
             background,
         )
-        if route_plan.planning_required:
-            if route_plan.planner_policy is None:
+        if run_plan.planning_required:
+            if prepared_run.planner_policy is None:
                 raise RuntimeError("task requires planning but no Planner Skill is available")
             plan = self._create_planner_task_plan(context)
             return self._run_task_plan(context, plan)
         plan = create_direct_task_plan(
             request.prompt,
-            route_plan.purpose,
-            route_plan.required_features,
+            run_plan.purpose,
+            run_plan.required_features,
         )
         session.record_event(
             "task.plan.created",
@@ -143,7 +147,7 @@ class AdaptiveTaskLoop:
                 **plan.to_dict(),
             },
         )
-        return self._run_task_plan(context, plan, route_plan)
+        return self._run_task_plan(context, plan, prepared_run)
 
     def _create_planner_task_plan(
         self,
@@ -151,9 +155,10 @@ class AdaptiveTaskLoop:
     ) -> TaskPlan:
         request = context.request
         session = context.session
-        route_plan = context.route_plan
-        planner_policy = route_plan.planner_policy
-        if planner_policy is None or route_plan.planner is None:
+        prepared_run = context.prepared_run
+        run_plan = prepared_run.run_plan
+        planner_policy = prepared_run.planner_policy
+        if planner_policy is None or run_plan.planner is None:
             raise RuntimeError("task requires planning but no Planner Skill is available")
         subagents = (
             request.subagents.list_subagents() if request.include_subagents else []
@@ -165,7 +170,7 @@ class AdaptiveTaskLoop:
                 subagents=subagents,
                 model_profiles=self.model_profiles,
             ),
-            route_plan.model_choices,
+            run_plan.model,
             ModelCallContext("planning", session.record_event, session.select_model),
         )
         plan = read_task_plan(
@@ -176,8 +181,8 @@ class AdaptiveTaskLoop:
         session.record_event(
             "task.plan.created",
             {
-                "planner": route_plan.planner.key,
-                "reasons": list(route_plan.planning_reasons),
+                "planner": run_plan.planner.key,
+                "reasons": list(run_plan.planning_reasons),
                 **plan.to_dict(),
             },
         )
@@ -187,7 +192,7 @@ class AdaptiveTaskLoop:
         self,
         context: _TaskExecutionContext,
         plan: TaskPlan,
-        direct_route_plan: RoutePlan | None = None,
+        direct_prepared_run: PreparedRun | None = None,
     ) -> TaskResult:
         progress = _TaskProgress(
             completed_results=[],
@@ -201,14 +206,14 @@ class AdaptiveTaskLoop:
                 context,
                 step,
                 step_number,
-                progress,
-                direct_route_plan,
+                progress=progress,
+                prepared_run=direct_prepared_run,
             )
             progress.completed_results.append(text)
-            direct_route_plan = None
+            direct_prepared_run = None
         result = TaskResult(
             text=progress.completed_results[-1],
-            workflow=context.route_plan.workflow_policy.name,
+            workflow=context.prepared_run.workflow_policy.name,
             skills=_used_skill_names(progress.skills, progress.tools),
             subagent_results=progress.subagent_results,
             warning_messages=context.request.warning_messages,
@@ -223,30 +228,28 @@ class AdaptiveTaskLoop:
         context: _TaskExecutionContext,
         step: TaskStep,
         step_number: int,
+        *,
         progress: _TaskProgress,
-        route_plan: RoutePlan | None,
+        prepared_run: PreparedRun | None,
     ) -> tuple[str, str]:
         request = context.request
         session = context.session
-        selected_route = route_plan or create_task_step_route_plan(
+        selected_run = prepared_run or self._prepare_task_step_run(
+            context,
             step,
-            request,
-            session,
-            context.route_plan,
-            self.model_profiles,
-            self.provider_pool.environment,
         )
+        run_plan = selected_run.run_plan
         session.record_event(
             "task.step.scheduled",
             {
                 "step": step_number,
                 "instruction": step.instruction,
-                **selected_route.to_dict(),
+                **run_plan.to_dict(),
             },
         )
-        contributions = load_route_skill_contributions(
+        contributions = load_run_skill_contributions(
             session,
-            selected_route,
+            run_plan,
         )
         combined = context.background_contributions + contributions
         skills = [
@@ -258,7 +261,7 @@ class AdaptiveTaskLoop:
         step_subagents = run_task_step_subagents(
             delegation_request,
             session,
-            selected_route,
+            run_plan,
         )
         tools = create_runtime_tools(request, session, combined)
         step_prompt = build_task_step_prompt(
@@ -276,20 +279,19 @@ class AdaptiveTaskLoop:
             step_request,
             session,
             combined,
-            step_subagents,
+            subagent_results=step_subagents,
         )
         messages = build_model_messages(
             step_request,
-            selected_route.workflow_policy,
+            selected_run.workflow_policy,
             skills,
-            system,
+            system=system,
         )
         text, stop_reason = self._run_model_loop(
             session,
-            selected_route.workflow_policy,
-            selected_route,
+            selected_run,
             tools,
-            messages,
+            messages=messages,
         )
         session.record_event(
             "task.step.completed",
@@ -313,20 +315,22 @@ class AdaptiveTaskLoop:
     def _run_model_loop(
         self,
         session: RuntimeSession,
-        workflow: TaskPolicy,
-        route_plan: RoutePlan,
+        prepared_run: PreparedRun,
         tools: RuntimeTools,
+        *,
         messages: list[Message],
     ) -> tuple[str, str]:
+        workflow = prepared_run.workflow_policy
+        run_plan = prepared_run.run_plan
         context = ModelCallContext(
-            purpose=route_plan.purpose,
+            purpose=run_plan.purpose,
             record_event=session.record_event,
             select_model=session.select_model,
         )
         if not workflow.uses_tools:
             response = self.model_calls.call_model(
                 messages,
-                route_plan.model_choices,
+                run_plan.model,
                 context,
             )
             return response.text, "completed"
@@ -334,7 +338,7 @@ class AdaptiveTaskLoop:
         for step in range(1, workflow.max_steps + 1):
             response = self.model_calls.call_model(
                 messages,
-                route_plan.model_choices,
+                run_plan.model,
                 context,
                 tools=tools.get_tool_definitions(),
             )
@@ -349,15 +353,59 @@ class AdaptiveTaskLoop:
                 messages.append(tool_result_message(call, tools.run_tool_call(call)))
         return last_text, "max_steps"
 
-    def _select_primary_model(
+    def _prepare_task_step_run(
+        self,
+        context: _TaskExecutionContext,
+        step: TaskStep,
+    ) -> PreparedRun:
+        request = context.request
+        session = context.session
+        parent = context.prepared_run
+        required_features = tuple(
+            sorted(
+                set(request.required_features)
+                | set(step.required_features)
+                | {"text"}
+            )
+        )
+        model = self.model_calls.choose_model(
+            session.store,
+            step.purpose,
+            step.instruction,
+            required_features=required_features,
+        )
+        run_plan = create_task_step_run_plan(
+            step,
+            request,
+            parent.run_plan,
+            model=model,
+            model_context_skills=select_model_context_skills(
+                parent.run_plan.skills,
+                session,
+            ),
+        )
+        return replace(
+            parent,
+            run_plan=run_plan,
+            model_profile=self.model_calls.require_model_profile(model),
+            workflow_policy=create_task_step_policy(parent.workflow_policy, step),
+        )
+
+    def _select_run_model(
         self,
         session: RuntimeSession,
-        route_plan: RoutePlan,
+        prepared_run: PreparedRun,
     ) -> None:
-        profile = route_plan.selected_model
+        decision = prepared_run.run_plan.model
+        profile = self.model_calls.require_model_profile(decision)
+        if profile != prepared_run.model_profile:
+            raise RuntimeError("prepared model profile does not match RunPlan")
         session.select_model(
             profile,
-            self.provider_pool.get_chat_provider(profile.key, profile.connection),
+            self.provider_pool.get_chat_provider(
+                decision.profile_key,
+                decision.connection,
+            ),
         )
 
 def _record_disclosed_skills(

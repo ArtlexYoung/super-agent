@@ -10,10 +10,10 @@ backend; domain state is attached only when storage is enabled:
 Agent.run(...)
   -> AgentRuntime.run_task(...)
   -> prepare one progressive Skill index
-  -> create one RoutePlan for scene, Skills, workflow, planner, and model
+  -> create one RunPlan with exactly one model decision
   -> preflight the planned Skills, services, tools, Provider, and subagents
   -> plan one or more task steps
-  -> load and execute the planned route
+  -> load and execute the prepared run
   -> run model, tools, and subagents
   -> emit an optional learning request after task execution
   -> independent subscribers evaluate, refresh evidence, and review evolution
@@ -22,17 +22,19 @@ Agent.run(...)
 A direct task is a one-step plan. A decomposed task uses the same step executor. There is
 no separate controller for workflows, memory, subagents, CLI, or Web requests.
 
-`RoutePlan` is immutable and is the only routing result. It separates all selected Skills
-from the smaller model-context Skill set, and includes the exact workflow, optional
-planner, model ranking, features, and subagents. Missing, ambiguous, or incompatible
-choices fail while this plan is created. Core records the same plan in `task.scheduled`
-and the Runtime lock instead of rebuilding routing state for each consumer.
+`RunPlan` is immutable, serializable, and contains only decisions. It separates all
+selected Skills from the smaller model-context Skill set and includes the exact workflow,
+optional planner, one `ModelDecision`, features, and subagents. Loaded policies and
+callbacks stay in the internal `PreparedRun`; they never enter the plan. Missing,
+ambiguous, or incompatible choices fail while the plan is created. Core records the same
+plan in `task.scheduled` and the Runtime lock instead of rebuilding decisions for each
+consumer.
 
 After scheduling, preflight loads each planned Skill once and aggregates every detected
 problem. `task.preflight.completed` is recorded before the first model or subagent call.
 On failure, `TaskPreflightError.problems` contains all detected codes, targets, and
 messages; Runtime records `task.preflight.failed` and does not lock or partially execute
-the route.
+the run.
 
 ## Optional Parts
 
@@ -164,12 +166,12 @@ and nested work.
 
 Model Skills describe purpose, supported features, expected quality, latency, cost, and
 Provider connection metadata. Before a call, Core combines those declared traits with
-user-and-Agent-scoped run evidence and a bounded exploration score. The chosen model and
-reasons are written to the RoutePlan.
+user-and-Agent-scoped run evidence and a bounded exploration score. Candidate ranking is
+a pure input-to-output operation; only the final `ModelDecision` enters the `RunPlan`.
 
-A Provider failure is recorded with `will_retry = false` and raised. Core does not switch
-to another model after a failed call. Choosing another model is a new, visible scheduling
-decision before execution, never a hidden fallback.
+A Provider failure is recorded and raised without a retry marker or another model call.
+Choosing another model requires a new, visible `RunPlan` before execution; it is never a
+hidden fallback.
 
 ```python
 result = alice.run("Summarize this")
@@ -187,7 +189,7 @@ appended to:
 ```
 
 The `runtime.locked` event records the effective Agent settings, model profile and
-Provider implementation, RoutePlan, storage backend, SkillRunner hashes, and exact
+Provider implementation, RunPlan, storage backend, SkillRunner hashes, and exact
 Skill revisions. Secret values are never stored.
 
 ```bash

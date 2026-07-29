@@ -112,9 +112,9 @@ Agent        用清晰的 Python 代码组合一切
 Agent.run
   -> Core 创建唯一运行会话
   -> 渐进式披露选择一个任务场景及其 Skill
-  -> Core 为场景、Skill、工作流、规划器和模型创建唯一 RoutePlan
+  -> Core 创建唯一 RunPlan，其中只包含一个模型决定
   -> 预检一次检查所有计划中的 runner、服务、工具、Provider 和子 Agent
-  -> SkillRunner 加载计划中的 Skill，Core 执行该路由
+  -> SkillRunner 加载计划中的 Skill，Core 执行本次运行
   -> 唯一事件日志记录运行，已启用的学习层消费其中的事件
 ```
 

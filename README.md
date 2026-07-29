@@ -119,9 +119,9 @@ Every task follows one path:
 Agent.run
   -> Core creates one run session
   -> progressive disclosure selects one task scene and its Skills
-  -> Core creates one RoutePlan for scene, Skills, workflow, planner, and model
+  -> Core creates one RunPlan with exactly one model decision
   -> preflight checks every planned runner, service, tool, Provider, and subagent
-  -> SkillRunners load the planned Skills and Core executes the route
+  -> SkillRunners load the planned Skills and Core executes the run
   -> one event log records the run; enabled learning layers consume its events
 ```
 

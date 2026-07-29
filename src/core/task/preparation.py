@@ -16,14 +16,16 @@ from core.config import AgentConfig
 from core.provider.chat import ChatProvider, Message
 from core.storage import StorageBackend
 from core.task.planning import decide_task_planning
+from core.task.routing import list_model_routing_stats
 from core.session import RuntimeSession
-from core.task.route_plan import (
-    RoutePlan,
-    choose_models_for_route,
+from core.task.run_plan import (
+    ModelDecision,
+    ModelSelectionRequest,
+    RunPlan,
+    choose_model,
     choose_subagents,
     resolve_required_features,
     resolve_task_purpose,
-    select_model_context_skills,
 )
 from core.task.models import SubAgentResult, TaskRequest
 from core.task.tools import RuntimeTools, RuntimeToolsContext
@@ -39,14 +41,33 @@ class RuntimeLockInput:
     skill_index: SkillIndex
     provider: ChatProvider
     storage: StorageBackend | None
-    route_plan: RoutePlan
+    run_plan: RunPlan
     environment: Mapping[str, str]
+
+
+@dataclass(frozen=True)
+class PreparedRun:
+    """Loaded mechanisms paired with one pure RunPlan."""
+
+    run_plan: RunPlan
+    model_profile: ModelProfile
+    workflow_policy: TaskPolicy
+    scene_contribution: LoadedSkill
+    planner_policy: PlanningPolicy | None
+    planner_contribution: LoadedSkill | None
+
+
+@dataclass(frozen=True)
+class _SelectedRunSkills:
+    scene_reference: SkillReference
+    scene_contribution: LoadedSkill
+    references: tuple[SkillReference, ...]
 
 
 def create_runtime_lock(request: RuntimeLockInput) -> dict[str, object]:
     request.skill_runners.validate_dependencies()
     return {
-        "schema_version": 16,
+        "schema_version": 17,
         "agent": {
             "name": request.config.agent.name,
             "system": request.config.agent.system,
@@ -61,7 +82,7 @@ def create_runtime_lock(request: RuntimeLockInput) -> dict[str, object]:
                 f"{type(request.provider).__qualname__}"
             ),
         },
-        "route_plan": request.route_plan.to_dict(),
+        "run_plan": request.run_plan.to_dict(),
         "storage": {
             "enabled": request.storage is not None,
             "backend": None if request.storage is None else request.storage.name,
@@ -85,12 +106,85 @@ def create_runtime_lock(request: RuntimeLockInput) -> dict[str, object]:
     }
 
 
-def prepare_route_plan(
+def prepare_run(
     request: TaskRequest,
     session: RuntimeSession,
     model_profiles: list[ModelProfile],
+    *,
     environment: Mapping[str, str],
-) -> RoutePlan:
+) -> PreparedRun:
+    selected = _select_run_skills(request, session)
+    references = selected.references
+    workflow_reference, workflow_policy = _load_run_workflow(session, references)
+    planner_reference, planner_policy, planner_contribution = _load_run_planner(
+        session,
+        references,
+    )
+    planning = decide_task_planning(
+        planner_policy,
+        request.prompt,
+        workflow_mode=workflow_policy.mode,
+        required_features=request.required_features,
+    )
+    purpose = resolve_task_purpose(
+        model_profiles,
+        "planning" if planning.should_plan else request.purpose,
+        request.prompt,
+    )
+    required_features = resolve_required_features(
+        request,
+        uses_tools=workflow_policy.uses_tools,
+    )
+    model = _choose_run_model(
+        request,
+        session,
+        model_profiles,
+        environment=environment,
+        purpose=purpose,
+        required_features=required_features,
+    )
+    available_subagents = (
+        request.subagents.list_subagents() if request.include_subagents else []
+    )
+    subagent_names, subagent_reasons = choose_subagents(
+        request.prompt,
+        available_subagents,
+    )
+    run_plan = RunPlan(
+        purpose=purpose,
+        required_features=required_features,
+        model=model,
+        scene=selected.scene_reference,
+        skills=references,
+        workflow=workflow_reference,
+        planner=planner_reference,
+        model_context_skills=(
+            ()
+            if planning.should_plan
+            else _select_model_context_skills(references, session)
+        ),
+        subagent_names=() if planning.should_plan else tuple(subagent_names),
+        subagent_reasons=() if planning.should_plan else tuple(subagent_reasons),
+        mode="planning" if planning.should_plan else "direct",
+        planning_required=planning.should_plan,
+        planning_reasons=(
+            planning.reasons if planning.should_plan else ("direct one-step plan",)
+        ),
+    )
+    return PreparedRun(
+        run_plan=run_plan,
+        model_profile=_require_model_profile(model_profiles, model.profile_key),
+        workflow_policy=workflow_policy,
+        scene_contribution=selected.scene_contribution,
+        planner_policy=planner_policy,
+        planner_contribution=planner_contribution,
+    )
+
+
+def _select_run_skills(
+    request: TaskRequest,
+    session: RuntimeSession,
+) -> _SelectedRunSkills:
     disclosure = session.require_skill_disclosure()
     scene_reference = disclosure.select_skill_scene_for_prompt(
         request.prompt,
@@ -126,66 +220,39 @@ def prepare_route_plan(
             allowed_types,
         )
     )
-    workflow_reference, workflow_policy = _load_route_workflow(session, references)
-    planner_reference, planner_policy, planner_contribution = _load_route_planner(
-        session,
+    return _SelectedRunSkills(
+        scene_reference,
+        scene_contribution,
         references,
     )
-    planning = decide_task_planning(
-        planner_policy,
-        request.prompt,
-        workflow_mode=workflow_policy.mode,
-        required_features=request.required_features,
+
+
+def _choose_run_model(
+    request: TaskRequest,
+    session: RuntimeSession,
+    model_profiles: list[ModelProfile],
+    *,
+    environment: Mapping[str, str],
+    purpose: str,
+    required_features: tuple[str, ...],
+) -> ModelDecision:
+    evidence = (
+        {}
+        if session.store is None
+        else {
+            item.profile_key: item
+            for item in list_model_routing_stats(session.store, purpose)
+        }
     )
-    purpose = resolve_task_purpose(
-        model_profiles,
-        "planning" if planning.should_plan else request.purpose,
-        request.prompt,
-    )
-    required_features = resolve_required_features(request, workflow_policy)
-    model_choices = choose_models_for_route(
-        session,
+    return choose_model(
         model_profiles,
         environment,
-        purpose,
-        required_features,
-        request.prompt,
-    )
-    available_subagents = (
-        request.subagents.list_subagents() if request.include_subagents else []
-    )
-    subagent_names, subagent_reasons = choose_subagents(
-        request.prompt,
-        available_subagents,
-    )
-    return RoutePlan(
-        purpose=purpose,
-        required_features=required_features,
-        model_choices=model_choices,
-        scene=scene_reference,
-        skills=references,
-        workflow=workflow_reference,
-        planner=planner_reference,
-        model_context_skills=(
-            ()
-            if planning.should_plan
-            else select_model_context_skills(references, session)
-        ),
-        subagent_names=() if planning.should_plan else tuple(subagent_names),
-        subagent_reasons=() if planning.should_plan else tuple(subagent_reasons),
-        mode="planning" if planning.should_plan else "direct",
-        planning_required=planning.should_plan,
-        planning_reasons=(
-            planning.reasons if planning.should_plan else ("direct one-step plan",)
-        ),
-        workflow_policy=workflow_policy,
-        scene_contribution=scene_contribution,
-        planner_policy=planner_policy,
-        planner_contribution=planner_contribution,
+        ModelSelectionRequest(purpose, required_features, request.prompt),
+        evidence=evidence,
     )
 
 
-def _load_route_workflow(
+def _load_run_workflow(
     session: RuntimeSession,
     references: tuple[SkillReference, ...],
 ) -> tuple[SkillReference, TaskPolicy]:
@@ -202,7 +269,7 @@ def _load_route_workflow(
     return entry.reference, contribution.task_policy
 
 
-def _load_route_planner(
+def _load_run_planner(
     session: RuntimeSession,
     references: tuple[SkillReference, ...],
 ) -> tuple[SkillReference | None, PlanningPolicy | None, LoadedSkill | None]:
@@ -221,28 +288,29 @@ def _load_route_planner(
 
 def load_background_contributions(
     session: RuntimeSession,
-    route_plan: RoutePlan,
+    prepared_run: PreparedRun,
     send_text_model_messages: Callable[[list[Message]], str],
 ) -> list[LoadedSkill]:
-    contributions = [route_plan.scene_contribution] + [
+    run_plan = prepared_run.run_plan
+    contributions = [prepared_run.scene_contribution] + [
         _load_skill(
             session,
             entry.reference,
             send_text_model_messages=send_text_model_messages,
         )
-        for entry in _selected_entries(session, route_plan.skills, "memory")
+        for entry in _selected_entries(session, run_plan.skills, "memory")
     ]
-    if route_plan.planner_contribution is not None:
-        contributions.append(route_plan.planner_contribution)
+    if prepared_run.planner_contribution is not None:
+        contributions.append(prepared_run.planner_contribution)
     return contributions
 
 
-def load_route_skill_contributions(
+def load_run_skill_contributions(
     session: RuntimeSession,
-    route_plan: RoutePlan,
+    run_plan: RunPlan,
 ) -> list[LoadedSkill]:
     contributions: list[LoadedSkill] = []
-    for reference in route_plan.model_context_skills:
+    for reference in run_plan.model_context_skills:
         contribution = _load_skill(session, reference)
         if contribution.model_context is None:
             raise ValueError(
@@ -279,7 +347,7 @@ def create_runtime_tools(
 def run_task_step_subagents(
     request: TaskRequest,
     session: RuntimeSession,
-    route_plan: RoutePlan,
+    run_plan: RunPlan,
 ) -> list[SubAgentResult]:
     return [
         _subagent_result_from_dict(
@@ -289,14 +357,47 @@ def run_task_step_subagents(
                 session,
             )
         )
-        for name in route_plan.subagent_names
+        for name in run_plan.subagent_names
     ]
+
+
+def select_model_context_skills(
+    selected_skills: tuple[SkillReference, ...],
+    session: RuntimeSession,
+) -> tuple[SkillReference, ...]:
+    return _select_model_context_skills(selected_skills, session)
+
+
+def _select_model_context_skills(
+    selected_skills: tuple[SkillReference, ...],
+    session: RuntimeSession,
+) -> tuple[SkillReference, ...]:
+    model_context_types = session.skill_runners.list_model_context_types()
+    return tuple(
+        reference
+        for reference in selected_skills
+        if reference.skill_type in model_context_types
+    )
+
+
+def _require_model_profile(
+    model_profiles: list[ModelProfile],
+    profile_key: str,
+) -> ModelProfile:
+    profile = next(
+        (item for item in model_profiles if item.key == profile_key),
+        None,
+    )
+    if profile is None:
+        raise RuntimeError(f"selected model profile is unavailable: {profile_key}")
+    return profile
 
 
 def build_system_prompt(
     request: TaskRequest,
     session: RuntimeSession,
     contributions: list[LoadedSkill],
+    *,
     subagent_results: list[SubAgentResult],
 ) -> str:
     parts = [session.config.agent.system]

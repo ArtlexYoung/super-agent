@@ -24,7 +24,7 @@ from core.session import (
     create_user_model_runtime,
 )
 from core.storage.values import encode_storage_data
-from core.task.route_plan import RoutePlan
+from core.task.run_plan import RunPlan
 from core.task.preparation import RuntimeLockInput, create_runtime_lock
 from core.task.preflight import TaskPreflightError
 from core.task.loop import list_run_actions
@@ -99,7 +99,7 @@ class AgentRuntime:
             result = task_loop.run_task(
                 request,
                 session,
-                lambda route_plan: self._lock_task_context(session, route_plan),
+                lambda run_plan: self._lock_task_context(session, run_plan),
             )
             learning_recorded = True
             _record_task_learning(
@@ -290,7 +290,7 @@ class AgentRuntime:
     def _lock_task_context(
         self,
         session: RuntimeSession,
-        route_plan: RoutePlan,
+        run_plan: RunPlan,
     ) -> None:
         runtime_lock = create_runtime_lock(
             RuntimeLockInput(
@@ -300,7 +300,7 @@ class AgentRuntime:
                 skill_index=session.require_skill_index(),
                 provider=session.provider,
                 storage=self.resources.storage,
-                route_plan=route_plan,
+                run_plan=run_plan,
                 environment=self.resources.user_secrets.get_environment_for_user(
                     session.identity.user_id
                 ),

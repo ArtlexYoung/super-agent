@@ -240,7 +240,7 @@ def _print_run_explanation(explanation: dict[str, object]) -> None:
                 f"disclosure\t{data.get('skill_key', '')}\t{data.get('stage', '')}"
                 f"\tcache_hit={str(data.get('cache_hit', False)).lower()}"
             )
-    _print_route_plan_insight(explanation.get("route_plan"))
+    _print_run_plan_insight(explanation.get("run_plan"))
     _print_task_plan_insight(
         explanation.get("task_plan"),
         explanation.get("task_steps"),
@@ -251,17 +251,18 @@ def _print_run_explanation(explanation: dict[str, object]) -> None:
     _print_evolution_insight(explanation.get("evolution"))
 
 
-def _print_route_plan_insight(value: object) -> None:
+def _print_run_plan_insight(value: object) -> None:
     if not isinstance(value, dict):
         return
     print(
-        f"route-plan\tpurpose={value.get('purpose', '')}"
+        f"run-plan\tpurpose={value.get('purpose', '')}"
         f"\tworkflow={value.get('workflow', '')}"
         f"\tfeatures={','.join(_string_items(value.get('required_features')))}"
     )
-    for model in _object_items(value.get("models")):
+    model = value.get("model")
+    if isinstance(model, dict):
         print(
-            f"route-model\t{model.get('key', '')}"
+            f"run-model\t{model.get('key', '')}"
             f"\tscore={model.get('score', '')}"
             f"\treasons={'; '.join(_string_items(model.get('reasons')))}"
         )
@@ -275,8 +276,8 @@ def _print_task_plan_insight(plan_value: object, steps_value: object) -> None:
         f"\treasons={'; '.join(_string_items(plan_value.get('reasons')))}"
     )
     for step in _object_items(steps_value):
-        models = _object_items(step.get("models"))
-        model_key = "" if not models else str(models[0].get("key", ""))
+        model = step.get("model")
+        model_key = "" if not isinstance(model, dict) else str(model.get("key", ""))
         print(
             f"planned-step\t{step.get('step', '')}"
             f"\tpurpose={step.get('purpose', '')}"

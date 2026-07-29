@@ -4,8 +4,10 @@ from dataclasses import replace
 from pathlib import Path
 
 from core.agent import Agent, AgentRunOptions
-from core.provider.chat import MockProvider, ModelResponse
 from core.config import AgentConfig
+from core.provider.chat import MockProvider, ModelResponse, ProviderConnection
+from core.task.run_plan import ModelSelectionRequest, choose_model
+from skill.kinds.model import ModelProfile, ModelRoutingTraits
 from support import write_workflow_skill
 
 
@@ -31,15 +33,25 @@ class AdaptiveTaskLoopTests(unittest.TestCase):
             self.assertEqual([], general.models)
             self.assertEqual(["summary-model"], summary.models)
             schedule = _scheduled_event(agent, result.run_id)
-            self.assertEqual("model:summary", schedule["models"][0]["key"])
+            self.assertEqual("model:summary", schedule["model"]["key"])
             self.assertGreaterEqual(schedule["routing"]["confidence"], 0.55)
             self.assertFalse(schedule["routing"]["evidence_sufficient"])
             self.assertEqual("ranked", schedule["routing"]["selection"])
             self.assertTrue(schedule["routing"]["uncertainty"])
             self.assertIn(
                 "prompt matches purpose: summary",
-                schedule["models"][0]["reasons"],
+                schedule["model"]["reasons"],
             )
+            runtime_lock = agent.runtime.create_store().read_runtime_lock(result.run_id)
+            self.assertEqual(schedule["model"], runtime_lock["run_plan"]["model"])
+            selected = next(
+                event.data
+                for event in agent.for_user("local").runs.read_trace(result.run_id).events
+                if event.event_type == "model.call.selected"
+            )
+            self.assertEqual(schedule["model"]["key"], selected["profile"])
+            self.assertEqual(schedule["model"]["model"], summary.models[0])
+            self.assertNotIn("models", schedule)
 
     def test_failed_selected_model_does_not_silently_switch_provider(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -74,7 +86,7 @@ class AdaptiveTaskLoopTests(unittest.TestCase):
                 if event.event_type == "model.call.completed"
             ]
             self.assertEqual(["model:summary"], selected)
-            self.assertFalse(failed[0].data["will_retry"])
+            self.assertNotIn("will_retry", failed[0].data)
             self.assertEqual("model:summary", failed[0].data["profile"])
             self.assertEqual("summary", failed[0].data["purpose"])
             self.assertGreater(failed[0].data["input_tokens"], 0)
@@ -111,7 +123,7 @@ class AdaptiveTaskLoopTests(unittest.TestCase):
             self.assertEqual("tool result", result.text)
             schedule = _scheduled_event(agent, result.run_id)
             self.assertEqual(["text", "tools"], schedule["required_features"])
-            self.assertEqual("model:tools", schedule["models"][0]["key"])
+            self.assertEqual("model:tools", schedule["model"]["key"])
             self.assertEqual(1, len(tools.tool_requests))
 
     def test_feedback_learning_is_isolated_by_user_agent_and_purpose(self) -> None:
@@ -149,7 +161,7 @@ class AdaptiveTaskLoopTests(unittest.TestCase):
             explored_schedule = _scheduled_event(agent, explored.run_id, "user-a")
             self.assertIn(
                 "bounded exploration: untried model",
-                explored_schedule["models"][0]["reasons"],
+                explored_schedule["model"]["reasons"],
             )
             stats = user_a.runs.list_model_routing_stats(purpose="summary")
             by_profile = {item.profile_key: item for item in stats}
@@ -206,7 +218,7 @@ class AdaptiveTaskLoopTests(unittest.TestCase):
             schedule = _scheduled_event(agent, first.run_id, "cold-a")
             self.assertNotIn(
                 "bounded exploration: untried model",
-                schedule["models"][0]["reasons"],
+                schedule["model"]["reasons"],
             )
 
     def test_low_confidence_model_escalates_to_evidence_backed_model(self) -> None:
@@ -229,13 +241,34 @@ class AdaptiveTaskLoopTests(unittest.TestCase):
             self.assertEqual("stable-alpha", result.text)
             self.assertEqual([], beta.models)
             schedule = _scheduled_event(agent, result.run_id)
-            self.assertEqual("model:alpha", schedule["models"][0]["key"])
+            self.assertEqual("model:alpha", schedule["model"]["key"])
             self.assertEqual("confidence_escalation", schedule["routing"]["selection"])
             self.assertTrue(schedule["routing"]["evidence_sufficient"])
             self.assertIn(
                 "confidence escalation replaced model:beta",
-                schedule["models"][0]["reasons"],
+                schedule["model"]["reasons"],
             )
+
+    def test_model_decision_is_deterministic_and_has_no_runtime_dependency(self) -> None:
+        profile = ModelProfile(
+            name="only",
+            description="Pure selection test",
+            version="1",
+            model="only-model",
+            connection=ProviderConnection("mock"),
+            routing=ModelRoutingTraits(["text"], ["answer"], []),
+            default=True,
+            source="test",
+            skill_key="model:only",
+        )
+        request = ModelSelectionRequest("answer", ("text",), "hello")
+
+        first = choose_model([profile], {}, request)
+        second = choose_model([profile], {}, request)
+
+        self.assertEqual(first, second)
+        self.assertEqual("model:only", first.profile_key)
+        self.assertNotIn("retry", str(first.to_dict()).lower())
 
 
 class _RecordingProvider:

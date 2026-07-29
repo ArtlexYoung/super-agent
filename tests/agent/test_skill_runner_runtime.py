@@ -196,11 +196,13 @@ class SkillRunnerRuntimeTests(unittest.TestCase):
             }
             self.assertIn("create_runtime_session", session_functions)
             self.assertIn("create_user_model_runtime", session_functions)
-            route_source = Path("src/core/task/route_plan.py").read_text(
+            run_plan_source = Path("src/core/task/run_plan.py").read_text(
                 encoding="utf-8"
             )
-            self.assertNotIn("TaskSchedule", route_source)
-            self.assertNotIn("TaskSkillSelection", route_source)
+            self.assertNotIn("TaskSchedule", run_plan_source)
+            self.assertNotIn("TaskSkillSelection", run_plan_source)
+            self.assertNotIn("RoutePlan", run_plan_source)
+            self.assertFalse(Path("src/core/task/route_plan.py").exists())
             self.assertFalse(Path("src/core/task/decisions.py").exists())
 
     def test_core_exposes_one_task_entry_method(self) -> None:
@@ -214,7 +216,7 @@ class SkillRunnerRuntimeTests(unittest.TestCase):
     def test_runtime_does_not_import_concrete_skill_kinds(self) -> None:
         for path in (
             Path("src/core/task/loop.py"),
-            Path("src/core/task/route_plan.py"),
+            Path("src/core/task/run_plan.py"),
             Path("src/core/task/tools.py"),
         ):
             source = path.read_text(encoding="utf-8")

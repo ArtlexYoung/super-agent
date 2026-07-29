@@ -111,7 +111,7 @@ print(json.dumps(sorted(name for name in sys.modules if name.startswith(blocked)
                 for event in result.events
                 if event.event_type == "runtime.locked"
             )
-            self.assertEqual("scene:stateless", locked["route_plan"]["scene"])
+            self.assertEqual("scene:stateless", locked["run_plan"]["scene"])
             self.assertEqual({"enabled": False, "backend": None}, locked["storage"])
 
     def test_stateless_conversation_fails_instead_of_creating_storage(self) -> None:

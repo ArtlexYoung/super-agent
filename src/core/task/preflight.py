@@ -1,4 +1,4 @@
-"""Aggregate route problems before the first model or subagent call."""
+"""Aggregate run problems before the first model or subagent call."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from core.provider.chat import Message
 from core.provider.pool import ProviderPool
 from core.session import RuntimeSession
 from core.task.models import TaskRequest
-from core.task.route_plan import RoutePlan
+from core.task.run_plan import RunPlan
 from core.task.tools import RuntimeTools, RuntimeToolsContext
 from skill.disclosure import SkillReference
 from skill.runners.loaded import LoadedSkill
@@ -39,14 +39,15 @@ class TaskPreflightError(RuntimeError):
         super().__init__(f"task preflight found {len(self.problems)} problem(s): {detail}")
 
 
-def check_route_before_execution(
+def check_run_before_execution(
     request: TaskRequest,
     session: RuntimeSession,
-    route_plan: RoutePlan,
+    run_plan: RunPlan,
+    *,
     provider_pool: ProviderPool,
     send_text_model_messages: Callable[[list[Message]], str],
 ) -> None:
-    """Validate one frozen route without invoking a model, tool, or subagent."""
+    """Validate one frozen run without invoking a model, tool, or subagent."""
     problems: list[PreflightProblem] = []
     registrations = {
         entry.descriptor.skill_type: entry
@@ -55,18 +56,23 @@ def check_route_before_execution(
     _check_runner_dependencies(session, problems)
     contributions = _load_planned_skills(
         session,
-        route_plan,
-        registrations,
-        send_text_model_messages,
-        problems,
+        run_plan,
+        registrations=registrations,
+        send_text_model_messages=send_text_model_messages,
+        problems=problems,
     )
-    tool_names = _check_runtime_tools(request, session, contributions, problems)
-    _check_selected_provider(route_plan, provider_pool, problems)
-    _check_subagents(request, route_plan, problems)
+    tool_names = _check_runtime_tools(
+        request,
+        session,
+        contributions,
+        problems=problems,
+    )
+    _check_selected_provider(run_plan, provider_pool, problems)
+    _check_subagents(request, run_plan, problems)
     data = {
-        "scene": route_plan.scene.key,
-        "skills": [reference.key for reference in _planned_references(route_plan)],
-        "provider": route_plan.selected_model.key,
+        "scene": run_plan.scene.key,
+        "skills": [reference.key for reference in _planned_references(run_plan)],
+        "provider": run_plan.model.profile_key,
         "tools": tool_names,
         "problems": [problem.to_dict() for problem in problems],
     }
@@ -88,13 +94,14 @@ def _check_runner_dependencies(
 
 def _load_planned_skills(
     session: RuntimeSession,
-    route_plan: RoutePlan,
+    run_plan: RunPlan,
+    *,
     registrations: dict[str, SkillRunnerEntry],
     send_text_model_messages: Callable[[list[Message]], str],
     problems: list[PreflightProblem],
 ) -> list[LoadedSkill]:
     loaded: list[LoadedSkill] = []
-    for reference in _planned_references(route_plan):
+    for reference in _planned_references(run_plan):
         registration = registrations.get(reference.skill_type)
         if registration is None:
             problems.append(
@@ -135,6 +142,7 @@ def _check_runtime_tools(
     request: TaskRequest,
     session: RuntimeSession,
     contributions: list[LoadedSkill],
+    *,
     problems: list[PreflightProblem],
 ) -> list[str]:
     try:
@@ -158,20 +166,25 @@ def _check_runtime_tools(
 
 
 def _check_selected_provider(
-    route_plan: RoutePlan,
+    run_plan: RunPlan,
     provider_pool: ProviderPool,
     problems: list[PreflightProblem],
 ) -> None:
-    profile = route_plan.selected_model
+    decision = run_plan.model
     try:
-        provider_pool.get_chat_provider(profile.key, profile.connection)
+        provider_pool.get_chat_provider(
+            decision.profile_key,
+            decision.connection,
+        )
     except Exception as error:
-        problems.append(_problem("provider_unavailable", profile.key, error))
+        problems.append(
+            _problem("provider_unavailable", decision.profile_key, error)
+        )
 
 
 def _check_subagents(
     request: TaskRequest,
-    route_plan: RoutePlan,
+    run_plan: RunPlan,
     problems: list[PreflightProblem],
 ) -> None:
     try:
@@ -182,7 +195,7 @@ def _check_subagents(
     except Exception as error:
         problems.append(_problem("subagents_unavailable", "subagents", error))
         return
-    for name in route_plan.subagent_names:
+    for name in run_plan.subagent_names:
         if name not in available:
             problems.append(
                 PreflightProblem(
@@ -193,8 +206,8 @@ def _check_subagents(
             )
 
 
-def _planned_references(route_plan: RoutePlan) -> tuple[SkillReference, ...]:
-    values = (route_plan.scene, *route_plan.skills)
+def _planned_references(run_plan: RunPlan) -> tuple[SkillReference, ...]:
+    values = (run_plan.scene, *run_plan.skills)
     return tuple(dict.fromkeys(values))
 
 

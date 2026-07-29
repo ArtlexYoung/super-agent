@@ -37,9 +37,9 @@ Agent.run(...)
   -> AgentRuntime.run_task(TaskRequest)
   -> RuntimeSession with one RunEventLog and an optional RuntimeStore
   -> progressive index selects one scene and its Skill references
-  -> one immutable RoutePlan fixes scene, Skills, workflow, planner, and model
-  -> preflight validates the complete route before any model or subagent call
-  -> SkillRunners load the route and one task loop executes it
+  -> one immutable RunPlan fixes scene, Skills, workflow, planner, and one model
+  -> preflight validates the complete run before any model or subagent call
+  -> SkillRunners load the run and one task loop executes it
   -> one immutable event requests optional post-run learning
   -> evaluation, freshness, routing evidence, and evolution subscribe independently
 ```
@@ -48,11 +48,12 @@ Direct tasks are one-step plans. Complex tasks are multi-step plans. Both use th
 loop, event stream, model routing, tool registry, and stopping checks. There is no second
 controller for workflows, memory, planning, or subagents.
 
-`RoutePlan` is the only routing result. It contains stable scene, Skill, workflow, and
-planner references, model choices with reasons, required features, and subagent choices.
-Core creates it before the matching execution and records that same object in the task
-event and Runtime lock. Planned steps use the same contract. There are no partial scene,
-Skill-selection, or schedule objects to reconcile later.
+`RunPlan` is the only execution decision object. It contains stable scene, Skill,
+workflow, and planner references, exactly one model decision with reasons, required
+features, and subagent choices. Loaded policies and callbacks live only in `PreparedRun`.
+Core creates the plan before the matching execution and records that same object in the
+task event and Runtime lock. Planned steps use the same contract. There are no candidate
+lists or partial selection objects to reconcile later.
 
 Preflight loads each planned Skill once into the Runtime session and aggregates missing
 runners, declared services, invalid tools, the selected Provider, and subagents into one
@@ -114,8 +115,8 @@ ordinary model Skills. `ProviderPool` creates a connection lazily after Core sel
 ready model profile.
 
 There is no implicit Mock Provider and no model-failure fallback. A failed selected call
-records `will_retry = false` and raises the original error. Explicit routing decisions
-occur before a call and are visible in the trace.
+records the error and raises it without a retry marker. The exact `ModelDecision` is fixed
+before a call and is visible in the plan, Runtime lock, selection event, and Provider call.
 
 ## State and Isolation
 
@@ -168,7 +169,7 @@ application code rather than downloadable Skill content.
 
 - One run has one Runtime session, disclosure core, task loop, and event stream; storage
   is one explicit optional service.
-- Every model execution reads one immutable RoutePlan created before that execution.
+- Every model execution reads one immutable RunPlan created before that execution.
 - Evaluation and evolution never write directly from the task loop; they observe immutable
   Runtime events and can be disabled without changing execution.
 - One run selects exactly one scene before loading memory, planning, workflow, and prompt

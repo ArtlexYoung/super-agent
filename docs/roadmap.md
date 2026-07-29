@@ -96,7 +96,7 @@ Status: implemented.
 
 Status: implemented.
 
-- Represent scene, Skill, workflow, and model choices in one immutable `RoutePlan`.
+- Represent scene, Skill, workflow, and model decisions in one immutable plan.
 - Produce the plan once before execution and record the same object without rebuilding it.
 - Reject missing, ambiguous, or incompatible choices while planning.
 - Remove parallel selection result objects and adapter-specific routing logic.
@@ -162,6 +162,19 @@ Status: implemented.
 - Keep persistent tracing available when run learning is explicitly disabled.
 - Prove that a persisted stateless scene can run without importing memory, evaluation, or
   evolution modules.
+
+## v0.0.74: Pure Run Plan and One Model Decision
+
+Status: implemented.
+
+- Replace the mixed routing object with an immutable, serializable `RunPlan` and keep
+  loaded policies and callbacks in an internal `PreparedRun`.
+- Put exactly one `ModelDecision` in each executable plan; candidate ranking remains a
+  pure deterministic function and never reaches execution.
+- Use the same model decision for preflight, the Runtime lock, selection events, and the
+  Provider call.
+- Raise Provider failures directly without retry labels, alternate candidates, or hidden
+  model switching.
 
 ## Release Gate
 
