@@ -146,6 +146,7 @@ class SkillSceneTests(unittest.TestCase):
             agent = Agent(
                 AgentConfig.create_default(tmp),
                 provider=MockProvider("finished"),
+                use_storage=True,
             )
 
             direct = agent.run("hello", use_scenes=False)
@@ -162,7 +163,7 @@ class SkillSceneTests(unittest.TestCase):
                 if event.event_type == "task.scheduled"
             )
             self.assertIsNone(direct_plan["scene"])
-            self.assertEqual("scene:stateless", automatic_plan["scene"])
+            self.assertEqual("scene:common", automatic_plan["scene"])
             with self.assertRaisesRegex(ValueError, "scenes are disabled"):
                 agent.run("hello", scene="code", use_scenes=False)
 
@@ -206,7 +207,6 @@ class SkillSceneTests(unittest.TestCase):
 
     def test_scene_includes_reject_incomplete_or_nested_chains(self) -> None:
         cases = {
-            "missing-workflow": (["prompt:common"], "missing required Skill types"),
             "nested-scene": (
                 ["scene:common", "workflow:direct"],
                 "cannot include another scene",
@@ -234,6 +234,33 @@ class SkillSceneTests(unittest.TestCase):
                     read_scene_included_skills(
                         disclosure.open_skill(name, expected_type="scene")
                     )
+
+    def test_scene_can_select_content_without_a_workflow(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_scene_skill(root, "answer", ["prompt:common"], [])
+            disclosure = create_progressive_skill_disclosure(
+                AgentConfig.create_default(root)
+            )
+            disclosure.prepare_skill_index()
+
+            references = read_scene_included_skills(
+                disclosure.open_skill("answer", expected_type="scene")
+            )
+            self.assertEqual(["prompt:common"], [item.key for item in references])
+
+            result = Agent(
+                AgentConfig.create_default(root),
+                provider=MockProvider("finished"),
+            ).run("hello", scene="answer")
+            plan = next(
+                event.data
+                for event in result.events
+                if event.event_type == "task.scheduled"
+            )
+            self.assertEqual("scene:answer", plan["scene"])
+            self.assertIsNone(plan["workflow"])
+            self.assertEqual("direct", result.workflow)
 
     def test_missing_scene_reference_fails_without_fallback(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

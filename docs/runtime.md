@@ -45,13 +45,11 @@ action, so a pure stateless model call does not initialize the action layer.
 
 ## Optional Parts
 
-The smallest run needs an Agent, a model source, and one valid scene. The shipped
-`common` scene satisfies an explicitly stateful path without further configuration. The
-Python library is storage-free by default. When storage is disabled, Runtime evaluates
-scene service requirements before freezing the
-plan. The shipped `stateless` scene is selected because it is the only compatible
-candidate; the reason and excluded candidates are recorded. An explicitly requested
-incompatible scene fails instead of being replaced. Stateless execution keeps ordered
+The smallest run needs only an Agent and a model source. The Python library is storage-free
+by default. Runtime evaluates scene service requirements before freezing the Plan. If no
+compatible scene exists, the Scheduler explicitly selects direct mode and records
+`scene=null`, `workflow=null`, the reason, and excluded candidates. An explicitly requested
+or Agent-restricted incompatible scene still fails. Storage-free execution keeps ordered
 events in `RunResult.events` and creates no backend, cache, conversation, memory,
 evaluation, or evolution state. Other behavior is progressive:
 
@@ -62,7 +60,8 @@ evaluation, or evolution state. Other behavior is progressive:
   relevant temporary memory and promote an abstraction only after explicit apply.
 - No selected memory Skill means no memory is recalled or updated.
 - A scene may omit a planner; then no planning model call is available.
-- Every scene must select one workflow. A missing or conflicting workflow is an error.
+- A scene may omit a workflow; Runtime then performs one direct model call. Requesting
+  tools without a selected tool-using workflow is an error.
 - No selected MCP or custom tool Skill means no corresponding tools are exposed.
 - A selected MCP Skill requires a matching code registration before execution; Runtime
   never reads a command, transport, or environment from Skill content.

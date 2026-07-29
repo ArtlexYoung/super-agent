@@ -25,7 +25,6 @@ SCENE_REFERENCE_PATTERN = re.compile(
     r"(?P<type>[a-z0-9][a-z0-9_-]{0,63}):"
     r"(?P<name>[a-z0-9][a-z0-9_-]{0,63})"
 )
-REQUIRED_SCENE_SKILL_TYPES = frozenset({"workflow"})
 SINGLE_SCENE_SKILL_TYPES = frozenset({"planner", "workflow"})
 
 
@@ -217,9 +216,6 @@ def _validate_scene_skill_types(references: tuple[SkillReference, ...]) -> None:
     types = [reference.skill_type for reference in references]
     if "scene" in types:
         raise ValueError("a scene cannot include another scene")
-    missing = sorted(REQUIRED_SCENE_SKILL_TYPES - set(types))
-    if missing:
-        raise ValueError("scene is missing required Skill types: " + ", ".join(missing))
     for skill_type in SINGLE_SCENE_SKILL_TYPES:
         count = types.count(skill_type)
         if count > 1:

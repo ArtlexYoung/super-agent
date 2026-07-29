@@ -435,6 +435,18 @@ Status: implemented.
 - Record scene allowlists and explicit no-scene choices in the immutable Plan and event
   stream; unavailable, ambiguous, or policy-excluded scenes fail before execution.
 
+## v0.0.95: Optional Scenes and Workflows
+
+Status: implemented.
+
+- Remove the synthetic `scene:stateless`; storage-free direct execution is a Runtime mode,
+  not a task domain.
+- Allow a scene to compose any non-scene Skills without requiring a workflow.
+- Record `scene=null` and `workflow=null` when no compatible scene or workflow is selected,
+  while returning the stable public workflow label `direct` for the base model call.
+- Fail explicit incompatible scene policies and tool requests without a tool-using
+  workflow instead of silently changing the requested behavior.
+
 ## Release Gate
 
 The project will not move to `0.1.x` because of feature count. The gate is a reproducible

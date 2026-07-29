@@ -26,7 +26,7 @@ from core.provider.chat import MockProvider
 with tempfile.TemporaryDirectory() as temporary_directory:
     config = AgentConfig.create_default(Path(temporary_directory))
     agent = Agent(config, provider=MockProvider("finished"), use_storage=True)
-    result = agent.run("hello", scene="stateless")
+    result = agent.run("hello", use_scenes=False)
 assert result.text == "finished"
 blocked = (
     "skill.evolution.records",
@@ -101,14 +101,15 @@ print(json.dumps(sorted(name for name in sys.modules if name.startswith(blocked)
                 for event in result.events
                 if event.event_type == "runtime.locked"
             )
-            self.assertEqual("scene:stateless", locked["plan"]["scene"])
+            self.assertIsNone(locked["plan"]["scene"])
+            self.assertIsNone(locked["plan"]["workflow"])
             self.assertEqual({"enabled": False, "backend": None}, locked["storage"])
             selected = next(
                 event.data
                 for event in result.events
                 if event.event_type == "scene.selected"
             )
-            self.assertIn("only scene compatible", selected["reason"])
+            self.assertIn("no compatible scene", selected["reason"])
             self.assertEqual(
                 ["storage"],
                 selected["unavailable_candidates"]["scene:common"],

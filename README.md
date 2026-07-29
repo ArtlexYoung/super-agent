@@ -85,7 +85,7 @@ Every run uses one path:
 ```text
 Agent.run
   -> build one complete Run
-  -> select one task scene and progressively disclose its Skills
+  -> optionally select one task scene and progressively disclose its Skills
   -> use one Scheduler Skill to create one Plan with one model decision
   -> preflight every SkillLoader, service, tool, Provider, and subagent
   -> execute and emit one ordered event stream
@@ -118,11 +118,12 @@ src/skill/builtin/
   scene/code/     repository task Skill composition
 ```
 
-Runtime selects one scene from an explicit request or prompt triggers. Each Agent can use
-all scenes, call `use_only_scenes(...)`, or call `disable_scenes()` independently. Scene
-specialization is configured in Python, never TOML. Ambiguity is an error. Applications
-can add any Skill type by registering a loader with `Agent.add_skill_loader(...)`; Core
-does not contain a fixed type list.
+Runtime may select one scene from an explicit request or prompt triggers. Each Agent can
+use all scenes, call `use_only_scenes(...)`, or call `disable_scenes()` independently. If
+no compatible scene exists, the Plan records `scene=null` and uses the Runtime's direct
+model mechanism; this is a visible mode, not a fallback. Scene specialization is
+configured in Python, never TOML. Ambiguity is an error. Applications can add any Skill
+type by registering a loader with `Agent.add_skill_loader(...)`.
 
 Use `super-agent init --path my-agent` only when you want an editable example. Model
 profiles are model Skills, while API keys remain in environment variables. See

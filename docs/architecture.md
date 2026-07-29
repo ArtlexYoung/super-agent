@@ -43,7 +43,7 @@ Every run enters one kernel:
 Agent.run(...)
   -> Runtime.run_task(Task)
   -> Run with one RunEventLog and an optional EventStore
-  -> progressive index selects one scene and its Skill references
+  -> progressive index optionally selects one scene and its Skill references
   -> one Scheduler Skill fixes scene, Skills, workflow, planner, model, and subagents
   -> one immutable Plan records those decisions
   -> preflight validates the complete run before any model or subagent call
@@ -221,8 +221,8 @@ than methods added to the general event store.
 - Every task uses one selected Scheduler Skill; ambiguous choices never use list order.
 - Evaluation and evolution never write directly from the task loop; they observe immutable
   Runtime events and can be disabled without changing execution.
-- One run selects exactly one scene before loading memory, planning, workflow, and prompt
-  content; the selected scene and reason are recorded.
+- One run records either one selected scene or explicit direct mode before loading memory,
+  planning, workflow, and prompt content.
 - Every Skill type uses the same index, cache, stable key, evidence, and evolution format.
 - Core has no hard-coded list of custom Skill types.
 - Provider failures, memory organization failures, and invalid evolution candidates are

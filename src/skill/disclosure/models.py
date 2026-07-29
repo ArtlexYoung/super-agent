@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Mapping
 
 from skill.manifest import SkillManifest
 
@@ -281,3 +283,111 @@ def _find_required_entry(
         keys = ", ".join(item.reference.key for item in matches)
         raise ValueError(f"ambiguous Skill type {skill_type}: {keys}")
     return matches[0]
+
+
+def select_scene_entry(
+    index: SkillIndex,
+    scenes: list[SkillIndexEntry],
+    prompt: str,
+    requested_scene: str | None,
+    allowed_scenes: tuple[str, ...],
+    unavailable_scenes: Mapping[str, tuple[str, ...]],
+) -> tuple[SkillIndexEntry | None, str]:
+    allowed = _resolve_allowed_scene_entries(index, scenes, allowed_scenes)
+    if requested_scene is not None:
+        entry = _require_scene_entry(index, requested_scene)
+        if entry not in allowed:
+            raise ValueError(
+                f"requested scene is outside the Agent scene policy: {entry.reference.key}"
+            )
+        _require_scene_available(entry, unavailable_scenes)
+        return entry, "selected by task request"
+    prompt_text = prompt.lower()
+    triggered = [
+        entry
+        for entry in allowed
+        if any(_scene_trigger_matches(prompt_text, trigger) for trigger in entry.triggers)
+    ]
+    if len(triggered) > 1:
+        keys = ", ".join(entry.reference.key for entry in triggered)
+        raise ValueError(f"task matches multiple scene Skills: {keys}")
+    if triggered:
+        _require_scene_available(triggered[0], unavailable_scenes)
+        trigger = next(
+            value
+            for value in triggered[0].triggers
+            if _scene_trigger_matches(prompt_text, value)
+        )
+        return triggered[0], f"matched trigger: {trigger}"
+    if allowed_scenes and len(allowed) == 1:
+        _require_scene_available(allowed[0], unavailable_scenes)
+        return allowed[0], "selected as the only scene allowed by Agent"
+    return _select_default_scene(allowed, allowed_scenes, unavailable_scenes)
+
+
+def _select_default_scene(
+    allowed: list[SkillIndexEntry],
+    allowed_names: tuple[str, ...],
+    unavailable: Mapping[str, tuple[str, ...]],
+) -> tuple[SkillIndexEntry | None, str]:
+    available = [entry for entry in allowed if entry.reference.key not in unavailable]
+    defaults = [entry for entry in available if entry.is_default]
+    if not defaults and len(available) == 1:
+        reason = "selected as the only scene compatible with available Runtime services"
+        return available[0], reason
+    if len(defaults) != 1:
+        if not defaults and not available and not allowed_names:
+            return None, "no compatible scene is available; direct mode selected"
+        if not defaults and not available:
+            keys = ", ".join(entry.reference.key for entry in allowed)
+            raise RuntimeError(f"Agent scene policy has no compatible scene: {keys}")
+        keys = ", ".join(entry.reference.key for entry in defaults) or "none"
+        raise ValueError(f"expected exactly one default scene Skill; found: {keys}")
+    return defaults[0], "selected as the default scene"
+
+
+def _require_scene_available(
+    entry: SkillIndexEntry,
+    unavailable_scenes: Mapping[str, tuple[str, ...]],
+) -> None:
+    missing = unavailable_scenes.get(entry.reference.key)
+    if missing:
+        raise RuntimeError(
+            f"{entry.reference.key} requires unavailable Runtime services: "
+            + ", ".join(missing)
+        )
+
+
+def _require_scene_entry(index: SkillIndex, value: str) -> SkillIndexEntry:
+    clean = value.strip().lower()
+    if not clean:
+        raise ValueError("requested scene cannot be empty")
+    if ":" in clean:
+        skill_type, name = clean.split(":", 1)
+        if skill_type != "scene":
+            raise ValueError(f"requested scene must use scene:name: {value}")
+        return index.require_skill(name, "scene")
+    return index.require_skill(clean, "scene")
+
+
+def _resolve_allowed_scene_entries(
+    index: SkillIndex,
+    scenes: list[SkillIndexEntry],
+    allowed_names: tuple[str, ...],
+) -> list[SkillIndexEntry]:
+    if not allowed_names:
+        return scenes
+    entries = [_require_scene_entry(index, name) for name in allowed_names]
+    keys = [entry.reference.key for entry in entries]
+    if len(keys) != len(set(keys)):
+        raise ValueError("Agent scene policy contains duplicate scenes")
+    return entries
+
+
+def _scene_trigger_matches(prompt: str, trigger: str) -> bool:
+    if not trigger:
+        return False
+    if not trigger.isascii():
+        return trigger in prompt
+    escaped = re.escape(trigger)
+    return re.search(rf"(?<![a-z0-9]){escaped}(?![a-z0-9])", prompt) is not None

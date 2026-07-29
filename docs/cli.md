@@ -20,8 +20,9 @@ JSON request containing `prompt`, optional messages, `user_id`, `conversation_id
 `scene`. `chat --scene` fixes one scene for that interactive session. Initialization
 writes only missing files.
 
-When `--scene` is omitted, Runtime selects one scene from Agent configuration, prompt
-triggers, or the unique default. Unknown or ambiguous scenes are errors.
+When `--scene` is omitted, Runtime selects from prompt triggers or the unique compatible
+default. If none is compatible, the Plan records direct mode. Unknown, incompatible, or
+ambiguous explicitly requested scenes are errors.
 
 ## Models
 

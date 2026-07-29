@@ -94,7 +94,7 @@ model:fast
 search:adaptive
 ```
 
-A bare name is accepted only when it identifies one Skill. Core first selects one scene,
+A bare name is accepted only when it identifies one Skill. Core may first select one scene,
 then selects Skills from that scene, `agent.skills`, prompt trigger matches, and
 dependencies declared by `requires`.
 Dependency resolution is deterministic and fails on missing providers, ambiguous
@@ -134,7 +134,7 @@ skills = [
 ]
 ```
 
-Every scene currently references a workflow. A scene cannot reference another scene and may
+Scenes may reference any non-scene Skills. A scene cannot reference another scene and may
 reference at most one planner and one workflow. Every referenced custom type needs a
 registered SkillLoader. Missing references, missing loaders, and conflicts are errors;
 Runtime does not substitute another scene or workflow.

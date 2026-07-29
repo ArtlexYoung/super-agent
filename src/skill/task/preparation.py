@@ -153,7 +153,6 @@ def prepare_run(
         session,
         references,
         scheduler,
-        required=selected.scene_reference is not None,
     )
     planner_reference, planner_policy, planner_contribution = _load_planner(
         session,
@@ -166,13 +165,10 @@ def prepare_run(
         workflow_mode=workflow_policy.mode,
         required_features=request.required_features,
     )
+    _require_workflow_for_features(request, workflow_reference, workflow_policy)
     if planning.should_plan and planner_policy is None:
         raise RuntimeError(
-            "task requires planning but the selected scene has no planner Skill"
-        )
-    if "tools" in request.required_features and not workflow_policy.uses_tools:
-        raise ValueError(
-            "task requires tools but the selected workflow does not allow tools"
+            "task requires planning but no planner Skill was selected"
         )
     purpose = scheduler.resolve_purpose(
         model_profiles,
@@ -234,6 +230,19 @@ def prepare_run(
         planner_contribution=planner_contribution,
         scheduler=scheduler,
     )
+
+
+def _require_workflow_for_features(
+    request: Task,
+    reference: SkillReference | None,
+    policy: TaskPolicy,
+) -> None:
+    if "tools" not in request.required_features:
+        return
+    if reference is None:
+        raise ValueError("task requires tools but no workflow Skill was selected")
+    if not policy.uses_tools:
+        raise ValueError("task requires tools but the selected workflow does not allow tools")
 
 
 def _select_run_skills(
@@ -364,10 +373,8 @@ def _load_run_workflow(
     session: Run,
     references: tuple[SkillReference, ...],
     scheduler: Scheduler,
-    *,
-    required: bool,
 ) -> tuple[SkillReference | None, TaskPolicy]:
-    reference = scheduler.select_one_skill(references, "workflow", required=required)
+    reference = scheduler.select_one_skill(references, "workflow", required=False)
     if reference is None:
         return None, TaskPolicy("direct", "direct", max_steps=1)
     contribution = _load_skill(session, reference)
