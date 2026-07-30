@@ -17,8 +17,11 @@ skills/<type>/<name>/
 ```
 
 Core scans Skill roots recursively, so the directory names are organizational. The
-`type` and `name` in `skill.toml` define the stable identity. Only `skill.toml` is
-required. Configuration-only Skills may omit `SKILL.md`.
+`type` and `name` in `skill.toml` define the stable identity. Only `skill.toml` is required
+by the shared manifest format. A Skill type may require instructions or configuration
+fields when those values own its behavior. In particular, memory and workflow Skills
+require `SKILL.md`; missing behavior fails during validation instead of using Runtime
+defaults.
 
 ## Manifest
 
@@ -54,6 +57,9 @@ Common types are:
 - `workflow`: direct, plan, react, or loop task rules.
 - `planner`: task decomposition rules.
 - `model`: Provider connection metadata and routing traits.
+- `feedback`: model instructions for judging conversation feedback.
+- `evolution`: deterministic freshness, recommendation, evaluation, and monitoring policy.
+- `scene_manager`: templates used to create complete user-owned task scenes.
 
 Custom type names are allowed. Register a matching SkillLoader in Python when the type
 needs executable behavior. The manifest type `runner` is reserved because executable
@@ -161,6 +167,12 @@ User-private scenes can be created with `UserSkills.create_scene(...)` or by the
 memory, planner, and workflow set with `agent_created = true` and
 `agent_can_update = true`. It never replaces an existing key. The current run keeps its
 prepared index, and the created scene is visible on the next run only.
+
+The selected `scene_manager` Skill owns the generated prompt, memory, planner, and workflow
+instructions plus their limits. The selected `feedback` and `evolution` Skills similarly
+own feedback judgment and learning policy. Exactly one explicitly configured Skill of each
+support type is used; otherwise Core requires exactly one `default = true`. Ambiguity and
+missing defaults are errors.
 
 ## One Disclosure Core
 

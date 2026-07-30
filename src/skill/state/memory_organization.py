@@ -64,11 +64,13 @@ class MemoryOrganizer:
         store: EventStore,
         run_memory_change: MemoryChangeRunner,
         read_source_run_id: Callable[[], str],
+        instructions: str = "",
         send_text_model_messages: MemoryTextModel | None = None,
     ) -> None:
         self.store = store
         self.run_memory_change = run_memory_change
         self.read_source_run_id = read_source_run_id
+        self.instructions = instructions.strip()
         self.send_text_model_messages = send_text_model_messages
 
     def prepare_organization(
@@ -115,6 +117,7 @@ class MemoryOrganizer:
                 build_memory_organization_messages(
                     query,
                     remaining,
+                    self.instructions,
                     target_memory_type=target_memory_type,
                     temporary_context=active_temporary,
                     promotable_temporary_item_ids=promotable_ids,

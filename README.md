@@ -11,6 +11,11 @@ format. A central progressive-disclosure core finds the relevant content; one Ru
 plans and executes the task. Optional storage, memory, learning, and evolution layers use
 that same path instead of introducing separate engines.
 
+Runtime keeps only validated protocols and trusted execution boundaries. Workflow rules,
+memory organization, feedback judgment, freshness and evolution policy, and generated
+scene templates live in ordinary Skills. Selecting a different Skill changes that behavior
+without adding another engine or hardcoded branch.
+
 At the start of each run, one routing-model call reads compact descriptions and returns one
 structured decision for the scene, Skills, planning mode, purpose, execution model, and
 subagents. Runtime contains no keyword matching or hidden local fallback. Explicit caller
@@ -131,6 +136,7 @@ The React client, CopilotKit example, and AG-UI endpoint are served at
 - **Explicit:** reads do not write; missing requirements fail before model execution.
 - **Isolated:** users and Agents do not share conversations, memory, evidence, or overlays.
 - **Evolvable:** every change is evaluated, recorded, promoted explicitly, and reversible.
+- **Skill-owned:** behavioral policy is disclosed from Skills; Runtime owns mechanisms.
 - **Passive by default:** Skill content cannot grant itself code execution or permissions.
 
 ## Documentation

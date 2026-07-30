@@ -63,7 +63,13 @@ class ReleaseShapeTests(unittest.TestCase):
     def test_builtin_skill_resources_are_complete_and_packaged(self) -> None:
         root = Path("src/skill/builtin")
         expected = {
+            "evolution/default/SKILL.md",
+            "evolution/default/skill.toml",
+            "feedback/conversation/SKILL.md",
+            "feedback/conversation/skill.toml",
+            "memory/code/SKILL.md",
             "memory/code/skill.toml",
+            "memory/default/SKILL.md",
             "memory/default/skill.toml",
             "planner/code/SKILL.md",
             "planner/code/skill.toml",
@@ -79,7 +85,9 @@ class ReleaseShapeTests(unittest.TestCase):
             "scene_manager/default/skill.toml",
             "scheduler/default/SKILL.md",
             "scheduler/default/skill.toml",
+            "workflow/code/SKILL.md",
             "workflow/code/skill.toml",
+            "workflow/direct/SKILL.md",
             "workflow/direct/skill.toml",
         }
         packaged = {

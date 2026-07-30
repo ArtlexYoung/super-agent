@@ -18,6 +18,7 @@ from skill.evolution.values import SkillRevision
 from skill.loaders.defaults import create_runtime_disclosure_recorder
 from skill.skills import Skills
 from skill.task.run import Run
+from support import load_default_evolution_policy
 
 
 class ProgressiveDisclosureCoreTests(unittest.TestCase):
@@ -417,7 +418,8 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
             entry = ProgressiveDisclosureCore(
                 [root / "skills"],
                 freshness_stats=calculate_skill_freshness(
-                    read_evaluation_records(store, source_type="agent_run")
+                    read_evaluation_records(store, source_type="agent_run"),
+                    load_default_evolution_policy(root),
                 ),
             ).prepare_skill_index().require_skill("research", "prompt")
 
@@ -479,19 +481,29 @@ server = "example-mcp"
 def _write_memory_skill(root: Path, name: str) -> None:
     skill_dir = root / "skills" / "memory" / name
     skill_dir.mkdir(parents=True)
-    _write_manifest(skill_dir, name, "memory", extra="""
+    _write_manifest(skill_dir, name, "memory", include_entry=True, extra="""
 [configuration]
 default_scope = "agent"
+organization_candidate_limit = 20
 """)
+    (skill_dir / "SKILL.md").write_text(
+        "Organize memory into concise, durable knowledge.",
+        encoding="utf-8",
+    )
 
 
 def _write_workflow_skill(root: Path, name: str) -> None:
     skill_dir = root / "skills" / "workflow" / name
     skill_dir.mkdir(parents=True)
-    _write_manifest(skill_dir, name, "workflow", extra="""
+    _write_manifest(skill_dir, name, "workflow", include_entry=True, extra="""
 [configuration]
 mode = "direct"
+max_steps = 8
 """)
+    (skill_dir / "SKILL.md").write_text(
+        "Complete the task directly and return the result.",
+        encoding="utf-8",
+    )
 
 
 def _write_manifest(

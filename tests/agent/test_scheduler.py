@@ -185,6 +185,7 @@ class AdaptiveTaskLoopTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_model_skill(root, "general", default=True)
+            _write_feedback_skill(root, "review", "Custom feedback policy marker.")
             feedback_response = json.dumps(
                 {
                     "is_feedback": True,
@@ -192,12 +193,13 @@ class AdaptiveTaskLoopTests(unittest.TestCase):
                     "reason": "model judged the turn as corrective feedback",
                 }
             )
+            provider = RecordingProvider(
+                "response",
+                feedback=feedback_response,
+            )
             agent = Agent(
-                _write_config(root),
-                provider=RecordingProvider(
-                    "response",
-                    feedback=feedback_response,
-                ),
+                _write_config(root, feedback="review"),
+                provider=provider,
                 use_storage=True,
             )
             user = agent.for_user("correcting-user")
@@ -221,6 +223,15 @@ class AdaptiveTaskLoopTests(unittest.TestCase):
             self.assertEqual(1, len(feedback))
             self.assertEqual("implicit", feedback[0].data["source"])
             self.assertEqual(0.2, feedback[0].data["score"])
+            feedback_request = next(
+                request
+                for request in provider.structured_requests
+                if request[0]["content"] == "Custom feedback policy marker."
+            )
+            self.assertEqual(
+                "Custom feedback policy marker.",
+                feedback_request[0]["content"],
+            )
 
     def test_route_payload_contains_traits_evidence_and_no_triggers(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -335,14 +346,20 @@ class AdaptiveTaskLoopTests(unittest.TestCase):
         self.assertNotIn("retry", str(first.to_dict()).lower())
 
 
-def _write_config(root: Path, workflow: str = "direct") -> AgentConfig:
+def _write_config(
+    root: Path,
+    workflow: str = "direct",
+    *,
+    feedback: str | None = None,
+) -> AgentConfig:
     write_workflow_skill(root, name=workflow, mode=workflow)
+    configured_feedback = "" if feedback is None else f', "feedback:{feedback}"'
     path = root / "agent.toml"
     path.write_text(
         f'''[agent]
 name = "scheduler-test"
 system = "Test scheduler."
-skills = ["workflow:{workflow}", "memory:default"]
+skills = ["workflow:{workflow}", "memory:default"{configured_feedback}]
 
 [paths]
 skills = ["skills"]
@@ -354,6 +371,24 @@ path = ".super-agent"
         encoding="utf-8",
     )
     return AgentConfig.load_from_file(path)
+
+
+def _write_feedback_skill(root: Path, name: str, instruction: str) -> None:
+    path = root / "skills" / "feedback" / name
+    path.mkdir(parents=True)
+    path.joinpath("skill.toml").write_text(
+        f'''schema_version = 3
+name = "{name}"
+type = "feedback"
+description = "Conversation feedback policy"
+version = "0.1.0"
+
+[entry]
+instructions = "SKILL.md"
+'''.strip(),
+        encoding="utf-8",
+    )
+    path.joinpath("SKILL.md").write_text(instruction, encoding="utf-8")
 
 
 def _write_model_skill(

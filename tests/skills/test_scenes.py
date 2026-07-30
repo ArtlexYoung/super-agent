@@ -1,6 +1,8 @@
 import json
 import tempfile
+import tomllib
 import unittest
+from dataclasses import replace
 from pathlib import Path
 
 from super_agent import Agent
@@ -342,6 +344,60 @@ class SkillSceneTests(unittest.TestCase):
             with self.assertRaisesRegex(KeyError, "scene:audit"):
                 agent.for_user("bob").run("hello", scene="audit")
 
+    def test_scene_creation_uses_configured_scene_manager_template(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_custom_scene_manager(root)
+            default_config = AgentConfig.create_default(root)
+            config = replace(
+                default_config,
+                agent=replace(
+                    default_config.agent,
+                    skills=["scene_manager:custom"],
+                ),
+            )
+            agent = Agent(
+                config,
+                provider=MockProvider("finished"),
+                use_storage=True,
+            )
+
+            agent.for_user("alice").skills.create_scene(
+                SkillSceneInput(
+                    name="audit",
+                    description="Review records",
+                )
+            )
+
+            skill_root = (
+                agent.runtime.create_event_store("alice").private_root / "skills"
+            )
+            workflow = tomllib.loads(
+                (skill_root / "workflow" / "audit" / "skill.toml").read_text(
+                    encoding="utf-8"
+                )
+            )
+            memory = tomllib.loads(
+                (skill_root / "memory" / "audit" / "skill.toml").read_text(
+                    encoding="utf-8"
+                )
+            )
+            prompt = (skill_root / "prompt" / "audit" / "SKILL.md").read_text(
+                encoding="utf-8"
+            )
+
+            self.assertEqual("9.8.7", workflow["version"])
+            self.assertEqual(
+                {"mode": "plan", "max_steps": 2},
+                workflow["configuration"],
+            )
+            self.assertEqual(4, memory["configuration"]["recall_limit"])
+            self.assertEqual(
+                3,
+                memory["configuration"]["organization_candidate_limit"],
+            )
+            self.assertEqual("Custom audit: Review records\n", prompt)
+
     def test_model_can_create_scene_without_hot_reloading_current_run(self) -> None:
         provider = MockProvider(
             "finished",
@@ -403,6 +459,38 @@ def _event_data(store, run_id: str, event_type: str) -> dict[str, object]:
         event.data
         for event in store.read_run_events(run_id)
         if event.event_type == event_type
+    )
+
+
+def _write_custom_scene_manager(root: Path) -> None:
+    source = Path("src/skill/builtin/scene_manager/default")
+    target = root / "skills" / "scene_manager" / "custom"
+    target.mkdir(parents=True)
+    replacements = {
+        "name": 'name = "custom"',
+        "created_skill_version": 'created_skill_version = "9.8.7"',
+        "prompt_instruction": (
+            'prompt_instruction = "Custom {name}: {description}"'
+        ),
+        "planner_max_steps": "planner_max_steps = 3",
+        "memory_recall_limit": "memory_recall_limit = 4",
+        "memory_organization_candidate_limit": (
+            "memory_organization_candidate_limit = 3"
+        ),
+        "workflow_mode": 'workflow_mode = "plan"',
+        "workflow_max_steps": "workflow_max_steps = 2",
+    }
+    lines = []
+    for line in (source / "skill.toml").read_text(encoding="utf-8").splitlines():
+        key = line.partition("=")[0].strip()
+        lines.append(replacements.get(key, line))
+    (target / "skill.toml").write_text(
+        "\n".join(lines) + "\n",
+        encoding="utf-8",
+    )
+    (target / "SKILL.md").write_text(
+        (source / "SKILL.md").read_text(encoding="utf-8"),
+        encoding="utf-8",
     )
 
 

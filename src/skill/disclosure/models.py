@@ -107,6 +107,42 @@ class SkillIndex:
             raise KeyError(f"skill not found: {type_text}{name}")
         return entry
 
+    def select_one_configured_or_default_skill(
+        self,
+        skill_type: str,
+        configured_skills: list[str],
+    ) -> SkillIndexEntry:
+        """Select one support Skill without interpreting task text."""
+        selected_type = _clean_name(skill_type)
+        entries = [
+            entry
+            for entry in self.entries
+            if entry.reference.skill_type == selected_type
+        ]
+        configured = [
+            self.require_skill(value)
+            for value in configured_skills
+            if value.strip().lower().startswith(f"{selected_type}:")
+        ]
+        if len(configured) > 1:
+            keys = ", ".join(entry.reference.key for entry in configured)
+            raise ValueError(
+                f"select only one configured {selected_type} Skill: {keys}"
+            )
+        defaults = [entry for entry in entries if entry.is_default]
+        if configured:
+            selected = configured[0]
+            if selected.reference.skill_type != selected_type:
+                raise ValueError(f"configured Skill must use type {selected_type}")
+            return selected
+        if len(defaults) == 1:
+            return defaults[0]
+        keys = ", ".join(entry.reference.key for entry in defaults or entries)
+        raise ValueError(
+            f"select exactly one default {selected_type} Skill"
+            + (f": {keys}" if keys else "")
+        )
+
     def resolve_skill_dependencies(self, names: list[str]) -> list[SkillIndexEntry]:
         requested = sorted({_clean_name(name) for name in names})
         if not requested:

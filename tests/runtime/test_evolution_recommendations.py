@@ -32,7 +32,11 @@ from skill.evolution.learning import AutomaticSkillEvolution
 from skill.evolution.insights import explain_run_with_insight
 from skill.state.events import create_local_event_store
 from skill.evolution.values import SkillRevision, create_indexed_skill_revision
-from support import SequenceProvider, write_workflow_skill
+from support import (
+    SequenceProvider,
+    load_default_evolution_policy,
+    write_workflow_skill,
+)
 
 
 class SkillRevisionEvolutionTests(unittest.TestCase):
@@ -65,6 +69,7 @@ class SkillRevisionEvolutionTests(unittest.TestCase):
                 evolutions = recommend_skill_revisions(
                     store,
                     [_evolvable_revision(revision, freshness=freshness)],
+                    load_default_evolution_policy(Path(tmp)),
                 )
 
                 self.assertEqual(1, len(evolutions))
@@ -83,15 +88,43 @@ class SkillRevisionEvolutionTests(unittest.TestCase):
             locked = recommend_skill_revisions(
                 store,
                 [_evolvable_revision(revision, can_update=False)],
+                load_default_evolution_policy(Path(tmp)),
             )
             unsupported = recommend_skill_revisions(
                 store,
                 [_evolvable_revision(revision, supports_evolution=False)],
+                load_default_evolution_policy(Path(tmp)),
             )
 
             self.assertEqual([], locked)
             self.assertEqual([], unsupported)
             self.assertEqual([], list_skill_evolutions(store))
+
+    def test_recommendation_thresholds_come_from_evolution_policy(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            revision = _target()
+            store = create_local_event_store(root)
+            append_evaluation_records(store, [_record(revision)])
+            default_policy = load_default_evolution_policy(root)
+            low_token_threshold = replace(default_policy, high_average_tokens=1.0)
+
+            self.assertEqual(
+                [],
+                recommend_skill_revisions(
+                    store,
+                    [_evolvable_revision(revision)],
+                    default_policy,
+                ),
+            )
+            recommended = recommend_skill_revisions(
+                store,
+                [_evolvable_revision(revision)],
+                low_token_threshold,
+            )
+
+            self.assertEqual(1, len(recommended))
+            self.assertIn("token_cost", recommended[0].reason_codes)
 
     def test_same_evidence_creates_one_evolution_and_new_evidence_creates_another(
         self,
@@ -101,11 +134,12 @@ class SkillRevisionEvolutionTests(unittest.TestCase):
             store = create_local_event_store(Path(tmp))
             append_evaluation_records(store, [_record(revision, success=False, sequence=1)])
             evolvable = _evolvable_revision(revision)
+            policy = load_default_evolution_policy(Path(tmp))
 
-            first = recommend_skill_revisions(store, [evolvable])
-            duplicate = recommend_skill_revisions(store, [evolvable])
+            first = recommend_skill_revisions(store, [evolvable], policy)
+            duplicate = recommend_skill_revisions(store, [evolvable], policy)
             append_evaluation_records(store, [_record(revision, success=False, sequence=2)])
-            second = recommend_skill_revisions(store, [evolvable])
+            second = recommend_skill_revisions(store, [evolvable], policy)
 
             self.assertEqual(1, len(first))
             self.assertEqual([], duplicate)
@@ -124,6 +158,7 @@ class SkillRevisionEvolutionTests(unittest.TestCase):
             created = recommend_skill_revisions(
                 alpha_store,
                 [_evolvable_revision(revision)],
+                load_default_evolution_policy(root),
             )[0]
 
             self.assertEqual("candidate_recommended", created.status)
@@ -208,7 +243,11 @@ class SkillRevisionEvolutionTests(unittest.TestCase):
             regression_run = store.list_runs(1)[0]
             agent.learn_from_run(regression_run.run_id)
             monitored = agent.for_user("local").skills.list_evolutions()[0]
-            regression_insight = explain_run_with_insight(store, regression_run.run_id)
+            regression_insight = explain_run_with_insight(
+                store,
+                regression_run.run_id,
+                load_default_evolution_policy(root),
+            )
             self.assertEqual("rolled_back", monitored.status)
             self.assertEqual(
                 ["rolled_back"],
@@ -274,6 +313,7 @@ class SkillRevisionEvolutionTests(unittest.TestCase):
             updated = AutomaticSkillEvolution(
                 store,
                 manager,
+                load_default_evolution_policy(root),
             ).run_pending_skill_evolution_stages([revision])
 
             completed = next(item for item in updated if item.status == "promoted")

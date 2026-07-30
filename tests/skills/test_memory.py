@@ -21,6 +21,7 @@ from skill.state.memory_service import (
     MiniMemory,
     create_memory_from_skill_disclosure,
 )
+from skill.state.memory_models import MemoryPolicy
 from support import write_memory_skill, write_workflow_skill
 
 
@@ -555,6 +556,7 @@ class MiniMemoryTests(unittest.TestCase):
 
             memory = MiniMemory(
                 store,
+                policy=MemoryPolicy(instructions="Organize test memory."),
                 send_text_model_messages=organize,
                 execute_action=execute,
             )
@@ -612,7 +614,11 @@ class MiniMemoryTests(unittest.TestCase):
                     }
                 )
 
-            memory = MiniMemory(store, send_text_model_messages=organize)
+            memory = MiniMemory(
+                store,
+                policy=MemoryPolicy(instructions="Organize test memory."),
+                send_text_model_messages=organize,
+            )
             plan = memory.prepare_memory_organization(
                 "Python project",
                 memory_type="long_term",
@@ -632,6 +638,7 @@ class MiniMemoryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             memory = MiniMemory(
                 create_local_event_store(Path(tmp)),
+                policy=MemoryPolicy(instructions="Organize test memory."),
                 send_text_model_messages=lambda messages: "not-json",
             )
             memory.add_long_term_memory("Python preference one.")
@@ -661,25 +668,56 @@ type = "memory"
 description = "Project memory"
 version = "0.1.0"
 
+[entry]
+instructions = "SKILL.md"
+
 [configuration]
 default_scope = "project"
 recall_limit = 3
+organization_candidate_limit = 7
 include_in_prompt = true
 include_usage_habits = false
 """.strip(),
                 encoding="utf-8",
             )
+            (skill_dir / "SKILL.md").write_text(
+                "Keep durable project knowledge concise.",
+                encoding="utf-8",
+            )
             store = create_local_event_store(root / "state")
             disclosure = ProgressiveDisclosureCore([root / "skills"])
             disclosure.prepare_skill_index()
+            model_messages: list[list[dict[str, object]]] = []
+
+            def organize(messages):
+                model_messages.append(messages)
+                return json.dumps({"operations": []})
+
             memory = create_memory_from_skill_disclosure(
                 disclosure.open_skill("project", "memory"),
                 store,
+                send_text_model_messages=organize,
             )
 
             self.assertEqual("project", memory.policy.default_scope)
             self.assertEqual(3, memory.policy.recall_limit)
+            self.assertEqual(7, memory.policy.organization_candidate_limit)
+            self.assertEqual(
+                "Keep durable project knowledge concise.",
+                memory.policy.instructions,
+            )
             self.assertFalse(memory.policy.include_usage_habits)
+            memory.add_long_term_memory("Project uses Python 3.11.", "project")
+            memory.add_long_term_memory("Project uses Python 3.12.", "project")
+            memory.prepare_memory_organization(
+                "Project Python version",
+                scope="project",
+                memory_type="long_term",
+            )
+            self.assertIn(
+                "Keep durable project knowledge concise.",
+                model_messages[0][0]["content"],
+            )
 
     def test_agent_includes_recalled_memory_in_system_prompt(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -853,6 +891,7 @@ def _runtime_memory(
     return MiniMemory(
         store,
         identity,
+        policy=MemoryPolicy(instructions="Organize test memory."),
         send_text_model_messages=organize,
         execute_action=execute or (lambda request, action: action()),
     )

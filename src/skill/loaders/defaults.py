@@ -15,6 +15,7 @@ from skill.skills import Skills
 
 if TYPE_CHECKING:
     from skill.state.events import EventStore
+    from skill.evolution.policy import EvolutionPolicy
 
 
 def create_default_skill_loaders(
@@ -36,12 +37,30 @@ def create_progressive_skill_disclosure(
     include_freshness: bool = True,
 ) -> ProgressiveDisclosureCore:
     freshness_stats = {}
-    if store is not None and include_freshness:
+    if (
+        store is not None
+        and include_freshness
+        and "evolution" not in config.agent.disabled_skills
+    ):
         from skill.evolution.freshness import calculate_skill_freshness
+        from skill.evolution.policy import load_evolution_policy
         from skill.evolution.records import read_evaluation_records
 
+        policy_disclosure = create_progressive_skill_disclosure(
+            config,
+            store=store,
+            record_disclosures=False,
+            include_freshness=False,
+        )
+        policy_disclosure.prepare_skill_index()
+        policy = load_evolution_policy(
+            policy_disclosure,
+            config.agent.skills,
+            disclose=False,
+        )
         freshness_stats = calculate_skill_freshness(
-            read_evaluation_records(store, source_type="agent_run")
+            read_evaluation_records(store, source_type="agent_run"),
+            policy,
         )
     disabled = set(config.agent.disabled_skills)
     roots = [] if "skill" in disabled else config.paths.skills
@@ -61,6 +80,37 @@ def create_progressive_skill_disclosure(
         ),
         record_event=None,
     )
+
+
+def load_configured_evolution_policy(
+    config: AgentConfig,
+    *,
+    store: EventStore | None = None,
+) -> EvolutionPolicy:
+    """Load the Agent's evolution Skill through the same disclosure core."""
+    if "evolution" in config.agent.disabled_skills:
+        raise ValueError("evolution Skills are disabled for this Agent")
+    from skill.evolution.policy import load_evolution_policy
+
+    disclosure = create_progressive_skill_disclosure(
+        config,
+        store=store,
+        record_disclosures=False,
+        include_freshness=False,
+    )
+    disclosure.prepare_skill_index()
+    return load_evolution_policy(disclosure, config.agent.skills, disclose=False)
+
+
+def load_configured_evolution_policy_if_enabled(
+    config: AgentConfig,
+    *,
+    store: EventStore | None = None,
+) -> EvolutionPolicy | None:
+    """Load the selected evolution policy, or return None when its type is disabled."""
+    if "evolution" in config.agent.disabled_skills:
+        return None
+    return load_configured_evolution_policy(config, store=store)
 
 
 def create_skills(

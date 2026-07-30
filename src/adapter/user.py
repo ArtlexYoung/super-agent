@@ -240,7 +240,20 @@ class UserSkills:
             store=store,
         )
         index = disclosure.prepare_skill_index()
-        manager = SkillSceneManager(store, index)
+        manager_entry = index.select_one_configured_or_default_skill(
+            "scene_manager",
+            self.user.agent.config.agent.skills,
+        )
+        from skill.ecosystem.scenes import read_skill_scene_template
+
+        template = read_skill_scene_template(
+            disclosure.open_skill(
+                manager_entry.reference.name,
+                manager_entry.reference.skill_type,
+            ),
+            manager_entry.reference.key,
+        )
+        manager = SkillSceneManager(store, index, template)
         return cast(
             CreatedSkillScene,
             runtime.execute_management_action(

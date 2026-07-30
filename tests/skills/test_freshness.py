@@ -19,8 +19,13 @@ from skill.evolution.records import (
 from skill.state.events import create_local_event_store
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.evolution.freshness import calculate_skill_freshness
+from skill.evolution.policy import load_evolution_policy
 from skill.evolution.values import SkillRevision
-from support import write_memory_skill, write_workflow_skill
+from support import (
+    load_default_evolution_policy,
+    write_memory_skill,
+    write_workflow_skill,
+)
 
 
 class SkillFreshnessTests(unittest.TestCase):
@@ -79,8 +84,10 @@ instructions = "SKILL.md"
             append_evaluation_records(store, [run_record, candidate_record])
 
             records = read_evaluation_records(store)
+            policy = load_default_evolution_policy(root)
             stats = calculate_skill_freshness(
                 read_evaluation_records(store, source_type="agent_run"),
+                policy,
                 called_at,
             )["prompt:research"]
             self.assertEqual(1, stats["call_count"])
@@ -88,6 +95,50 @@ instructions = "SKILL.md"
             self.assertEqual("prompt:research", records[0].revision.key)
             self.assertEqual(2, len(records))
             self.assertFalse((root / "skill_events.jsonl").exists())
+
+    def test_custom_evolution_skill_changes_freshness_calculation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = Path("src/skill/builtin/evolution/default")
+            target = root / "skills" / "evolution" / "conservative"
+            target.mkdir(parents=True)
+            manifest = (source / "skill.toml").read_text(encoding="utf-8")
+            manifest = manifest.replace('name = "default"', 'name = "conservative"', 1)
+            manifest = manifest.replace("default = true", "default = false", 1)
+            manifest = manifest.replace("initial = 70.0", "initial = 10.0", 1)
+            (target / "skill.toml").write_text(manifest, encoding="utf-8")
+            (target / "SKILL.md").write_text(
+                (source / "SKILL.md").read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+            disclosure = ProgressiveDisclosureCore([root / "skills"])
+            disclosure.prepare_skill_index()
+            custom_policy = load_evolution_policy(
+                disclosure,
+                ["evolution:conservative"],
+            )
+            called_at = datetime(2026, 7, 7, 12, tzinfo=UTC)
+            records = [
+                _skill_evaluation_record(
+                    "prompt:research",
+                    "search",
+                    called_at,
+                )
+            ]
+
+            default_score = calculate_skill_freshness(
+                records,
+                load_default_evolution_policy(root),
+                called_at,
+            )["prompt:research"]["freshness"]
+            custom_score = calculate_skill_freshness(
+                records,
+                custom_policy,
+                called_at,
+            )["prompt:research"]["freshness"]
+
+            self.assertEqual(10.0, custom_policy.initial_freshness)
+            self.assertLess(custom_score, default_score)
 
     def test_same_function_successful_followup_reduces_previous_skill_freshness(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -100,8 +151,10 @@ instructions = "SKILL.md"
                 store,
                 [_skill_evaluation_record("prompt:old-search", "search", first_time)]
             )
+            policy = load_default_evolution_policy(root)
             before = calculate_skill_freshness(
                 read_evaluation_records(store, source_type="agent_run"),
+                policy,
                 first_time,
             )["prompt:old-search"]["freshness"]
             append_evaluation_records(
@@ -111,6 +164,7 @@ instructions = "SKILL.md"
 
             old_stats = calculate_skill_freshness(
                 read_evaluation_records(store, source_type="agent_run"),
+                policy,
                 second_time,
             )["prompt:old-search"]
             self.assertEqual(1, old_stats["same_function_followups"])
@@ -163,7 +217,8 @@ instructions = "SKILL.md"
             store = agent.runtime.create_event_store()
             records = read_evaluation_records(store)
             stats = calculate_skill_freshness(
-                read_evaluation_records(store, source_type="agent_run")
+                read_evaluation_records(store, source_type="agent_run"),
+                load_default_evolution_policy(root),
             )
             self.assertEqual(1, stats["prompt:echo"]["call_count"])
             self.assertGreater(stats["prompt:echo"]["freshness"], 70)

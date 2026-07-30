@@ -1,7 +1,9 @@
 import json
 from pathlib import Path
 
+from core.config import AgentConfig
 from core.provider.chat import MockProvider
+from skill.loaders.defaults import load_configured_evolution_policy
 
 
 def route_response(
@@ -93,6 +95,11 @@ class SequenceProvider(RecordingProvider):
         return selected
 
 
+def load_default_evolution_policy(root: Path):
+    """Load the built-in evolution policy through central Skill disclosure."""
+    return load_configured_evolution_policy(AgentConfig.create_default(root))
+
+
 def write_memory_skill(root: Path, name: str = "default") -> None:
     skill_dir = root / "skills" / "memory" / name
     skill_dir.mkdir(parents=True, exist_ok=True)
@@ -104,8 +111,16 @@ type = "memory"
 description = "Default memory"
 version = "0.1.0"
 
+[entry]
+instructions = "SKILL.md"
+
 [configuration]
+organization_candidate_limit = 20
 """.strip(),
+        encoding="utf-8",
+    )
+    (skill_dir / "SKILL.md").write_text(
+        "Keep temporary memory local to this conversation and keep only durable abstractions in long-term memory.",
         encoding="utf-8",
     )
 
@@ -121,8 +136,16 @@ type = "workflow"
 description = "{name} workflow"
 version = "0.1.0"
 
+[entry]
+instructions = "SKILL.md"
+
 [configuration]
 mode = "{mode}"
+max_steps = 8
 """.strip(),
+        encoding="utf-8",
+    )
+    (skill_dir / "SKILL.md").write_text(
+        "Complete the selected workflow and return text when finished.",
         encoding="utf-8",
     )

@@ -10,28 +10,37 @@ from core.provider.chat import MockProvider
 from core.config import AgentConfig
 from skill.evolution.change.evaluation import EvaluationCase, require_report_allows_promotion
 from skill.evolution.records import read_evaluation_records
+from skill.evolution.policy import read_evolution_policy
+from skill.disclosure import ProgressiveDisclosureCore
 from skill.manifest import calculate_skill_directory_sha256
 from support import write_workflow_skill
 
 
 class SkillEvolutionTests(unittest.TestCase):
-    def test_invalid_minimum_score_is_rejected_before_model_use(self) -> None:
+    def test_invalid_evolution_skill_score_is_rejected_before_model_use(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            provider = SequenceProvider([])
-            manager = _make_agent(root, provider).for_user(
-                "local"
-            ).skills.create_evolution_manager()
+            source = Path("src/skill/builtin/evolution/default")
+            target = root / "skills" / "evolution" / "invalid"
+            target.mkdir(parents=True)
+            manifest = (source / "skill.toml").read_text(encoding="utf-8")
+            manifest = manifest.replace('name = "default"', 'name = "invalid"', 1)
+            manifest = manifest.replace(
+                "minimum_candidate_score = 0.80",
+                "minimum_candidate_score = nan",
+            )
+            (target / "skill.toml").write_text(manifest, encoding="utf-8")
+            (target / "SKILL.md").write_text(
+                (source / "SKILL.md").read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+            disclosure = ProgressiveDisclosureCore([root / "skills"])
+            disclosure.prepare_skill_index()
 
-            with self.assertRaisesRegex(ValueError, "between 0 and 1"):
-                type(manager)(
-                    skill_disclosure=manager.skill_disclosure,
-                    store=manager.store,
-                    models=manager.models,
-                    minimum_score=float("nan"),
+            with self.assertRaisesRegex(ValueError, "must be finite"):
+                read_evolution_policy(
+                    disclosure.open_skill("invalid", "evolution")
                 )
-
-            self.assertEqual([], provider.responses)
 
     def test_candidate_does_not_change_active_skill_before_promotion(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -711,7 +720,10 @@ class SkillEvolutionTests(unittest.TestCase):
                 active = manager.user_skill_root / skill_type / "adaptive"
                 self.assertTrue(report.passed)
                 self.assertEqual(skill_type, promoted.skill_type)
-                self.assertFalse((candidate.skill_path / "SKILL.md").exists())
+                self.assertEqual(
+                    skill_type in {"memory", "workflow"},
+                    (candidate.skill_path / "SKILL.md").exists(),
+                )
                 self.assertEqual("new resource", (active / "resources/new.txt").read_text())
                 self.assertFalse((active / "resources/old.txt").exists())
                 self.assertIn(candidate_config, (active / "skill.toml").read_text())
@@ -727,7 +739,7 @@ class SkillEvolutionTests(unittest.TestCase):
                 self.assertTrue((active / "resources/old.txt").is_file())
                 self.assertFalse((active / "resources/new.txt").exists())
 
-    def test_agent_can_create_configuration_only_memory_skill(self) -> None:
+    def test_agent_can_create_complete_memory_skill(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             manifest = _configuration_manifest(
@@ -738,7 +750,12 @@ class SkillEvolutionTests(unittest.TestCase):
             manager = _make_manager(
                 root,
                 [
-                    _file_changes({"skill.toml": manifest}),
+                    _file_changes(
+                        {
+                            "skill.toml": manifest,
+                            "SKILL.md": "Keep durable project knowledge concise.\n",
+                        }
+                    ),
                     "required output",
                 ],
             )
@@ -764,7 +781,7 @@ class SkillEvolutionTests(unittest.TestCase):
             self.assertEqual("memory:project-memory", candidate.key)
             self.assertEqual("memory", promoted.skill_type)
             self.assertTrue((target / "skill.toml").is_file())
-            self.assertFalse((target / "SKILL.md").exists())
+            self.assertTrue((target / "SKILL.md").is_file())
 
     def test_same_name_in_multiple_types_requires_explicit_identity(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -855,6 +872,11 @@ def _write_configuration_skill(
         _configuration_manifest(skill_type, name, configuration),
         encoding="utf-8",
     )
+    if skill_type in {"memory", "workflow"}:
+        (skill_dir / "SKILL.md").write_text(
+            "Use the configured Skill behavior and return the final result.",
+            encoding="utf-8",
+        )
     (skill_dir / "resources" / "old.txt").write_text("old resource", encoding="utf-8")
 
 
@@ -882,6 +904,16 @@ def _configuration_manifest(
     name: str,
     configuration: str,
 ) -> str:
+    entry = (
+        '\n[entry]\ninstructions = "SKILL.md"\n'
+        if skill_type in {"memory", "workflow"}
+        else ""
+    )
+    required_configuration = configuration
+    if skill_type == "memory" and "organization_candidate_limit" not in configuration:
+        required_configuration += "\norganization_candidate_limit = 20"
+    if skill_type == "workflow" and "max_steps" not in configuration:
+        required_configuration += "\nmax_steps = 8"
     return f"""
 schema_version = 3
 name = "{name}"
@@ -890,9 +922,10 @@ description = "{name} {skill_type} helper"
 version = "0.1.0"
 agent_created = true
 agent_can_update = true
+{entry}
 
 [configuration]
-{configuration}
+{required_configuration}
 """.strip()
 
 

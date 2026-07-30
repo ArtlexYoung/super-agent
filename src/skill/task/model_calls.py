@@ -291,8 +291,10 @@ def list_model_routing_stats(
 def infer_conversation_feedback_with_model(
     conversation: Conversation,
     prompt: str,
+    instructions: str,
     send_messages: Callable[[list[Message]], str],
 ) -> tuple[str, float, str] | None:
+    policy = _required_feedback_instructions(instructions)
     previous_assistant_index = next(
         (
             index
@@ -327,11 +329,7 @@ def infer_conversation_feedback_with_model(
         [
             {
                 "role": "system",
-                "content": (
-                    "Judge whether the follow-up evaluates or corrects the previous "
-                    "response. Return only one JSON object matching the contract. Do "
-                    "not infer feedback from a fixed vocabulary."
-                ),
+                "content": policy,
             },
             {
                 "role": "user",
@@ -366,6 +364,13 @@ def infer_conversation_feedback_with_model(
         raise ValueError("conversation feedback reason cannot be empty")
     previous_run_id = conversation.messages[previous_assistant_index].run_id
     return previous_run_id, float(score), reason.strip()
+
+
+def _required_feedback_instructions(value: str) -> str:
+    instructions = value.strip()
+    if not instructions:
+        raise ValueError("feedback Skill instructions cannot be empty")
+    return instructions
 
 
 def _finish_stats(

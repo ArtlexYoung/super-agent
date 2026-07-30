@@ -2,7 +2,7 @@ schema_version = 3
 name = "code"
 type = "workflow"
 description = "Iterative repository tool loop with explicit verification and completion"
-version = "0.0.100"
+version = "0.0.101"
 agent_created = false
 agent_can_update = false
 freshness = 70
@@ -14,4 +14,6 @@ default = false
 [configuration]
 mode = "loop"
 max_steps = 20
-instruction = "Inspect before editing, keep changes focused, run relevant verification, review the resulting diff, and finish with text only after the requested coding outcome is complete or a concrete blocker is identified."
+
+[entry]
+instructions = "SKILL.md"

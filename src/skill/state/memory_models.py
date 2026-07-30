@@ -15,8 +15,10 @@ MemoryTextModel = Callable[[list[Message]], str]
 class MemoryPolicy:
     default_scope: str = "agent"
     recall_limit: int = 20
+    organization_candidate_limit: int = 20
     include_in_prompt: bool = True
     include_usage_habits: bool = True
+    instructions: str = ""
 
 
 @dataclass(frozen=True)

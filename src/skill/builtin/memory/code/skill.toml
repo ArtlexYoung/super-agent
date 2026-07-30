@@ -2,7 +2,7 @@ schema_version = 3
 name = "code"
 type = "memory"
 description = "Temporary repository context and durable project conventions for coding tasks"
-version = "0.0.100"
+version = "0.0.101"
 agent_created = false
 agent_can_update = false
 freshness = 70
@@ -14,5 +14,9 @@ default = false
 [configuration]
 default_scope = "project"
 recall_limit = 24
+organization_candidate_limit = 24
 include_in_prompt = true
 include_usage_habits = true
+
+[entry]
+instructions = "SKILL.md"

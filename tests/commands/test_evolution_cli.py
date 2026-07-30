@@ -20,6 +20,7 @@ from skill.evolution.records import (
 )
 from skill.evolution.recommendations import recommend_skill_revisions
 from skill.evolution.values import SkillRevision
+from support import load_default_evolution_policy
 
 
 class EvolutionCliTests(unittest.TestCase):
@@ -58,7 +59,11 @@ class EvolutionCliTests(unittest.TestCase):
                     )
                 ]
             )
-            evolution = recommend_skill_revisions(store, [revision])[0]
+            evolution = recommend_skill_revisions(
+                store,
+                [revision],
+                load_default_evolution_policy(Path(tmp)),
+            )[0]
 
             listed = _run_json_cli(
                 [

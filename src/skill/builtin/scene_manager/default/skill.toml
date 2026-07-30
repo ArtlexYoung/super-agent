@@ -2,14 +2,29 @@ schema_version = 3
 name = "default"
 type = "scene_manager"
 description = "Explicitly create a private task scene for the current user"
-version = "0.0.100"
+version = "0.0.101"
 agent_created = false
 agent_can_update = false
 freshness = 70
 function_group = "scene-management"
 provides = ["scene-management"]
 requires = []
-default = false
+default = true
 
 [entry]
 instructions = "SKILL.md"
+
+[configuration]
+created_skill_version = "0.1.0"
+prompt_instruction = "Work within the {name} task scene. {description} Inspect relevant context, act explicitly, verify the result, and report evidence."
+planner_instruction = "Create the fewest independently executable and verifiable steps needed to complete the task. Return only one JSON object with a steps array. Every step must contain exactly instruction, purpose, required_features, and subagent. Include text in required_features and include tools only when the step needs Runtime tools. Set subagent to one available name or null. The final step must verify and produce the user-facing result."
+planner_max_steps = 8
+memory_default_scope = "agent"
+memory_recall_limit = 20
+memory_organization_candidate_limit = 20
+memory_include_in_prompt = true
+memory_include_usage_habits = true
+memory_instruction = "Treat temporary memory as conversation-local context. Keep long-term memory only when it is abstract, critical, important, stable, or habitual. Use temporary memory as read-only evidence during long-term organization and promote only durable abstractions without changing the temporary sources. Merge redundant items, supersede outdated items, archive inactive information that may remain useful, and forget useless information."
+workflow_mode = "loop"
+workflow_max_steps = 12
+workflow_instruction = "Use Runtime tools iteratively until the scene goal is complete. Verify the result and finish by returning text without a tool call."

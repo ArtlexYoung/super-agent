@@ -163,16 +163,19 @@ type = "workflow"
 description = "Tool-using workflow"
 version = "0.1.0"
 
+[entry]
+instructions = "SKILL.md"
+
 [configuration]
 mode = "react"
 max_steps = 8
-instruction = "Finish when the task is complete."
 ```
 
 The supported modes are `direct`, `plan`, `react`, and `loop`. React and loop
 workflows let the model use currently loaded disclosure, MCP, memory, and subagent tools.
-The workflow's maximum steps and completion conditions provide an explicit exit from tool
-and nested work.
+`mode`, `max_steps`, and non-empty `SKILL.md` instructions are required. The instructions
+own completion conditions, while the step limit provides an explicit exit from tool and
+nested work. Runtime does not append mode-specific instructions or a default step limit.
 
 ## Model Scheduling
 

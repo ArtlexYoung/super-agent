@@ -11,27 +11,31 @@ from skill.evolution.evidence import (
     EvaluationEvidenceSummary,
     summarize_evaluation_evidence,
 )
-from skill.manifest import DEFAULT_SKILL_FRESHNESS
+from skill.evolution.policy import EvolutionPolicy
 
 
 def calculate_skill_freshness(
     records: list[EvaluationRecord],
+    policy: EvolutionPolicy,
     current_time: datetime | None = None,
 ) -> dict[str, dict[str, Any]]:
     now = current_time or datetime.now(UTC)
     stats_by_skill: dict[str, dict[str, Any]] = {}
     for summary in summarize_evaluation_evidence(records, combine_versions=True):
-        stats = _stats_from_evidence(summary)
-        _update_freshness(stats, now)
+        stats = _stats_from_evidence(summary, policy)
+        _update_freshness(stats, now, policy)
         stats_by_skill[summary.revision.key] = stats
     return stats_by_skill
 
 
-def _stats_from_evidence(summary: EvaluationEvidenceSummary) -> dict[str, Any]:
+def _stats_from_evidence(
+    summary: EvaluationEvidenceSummary,
+    policy: EvolutionPolicy,
+) -> dict[str, Any]:
     return {
         "skill": summary.revision.key,
         "function_group": summary.revision.function_group,
-        "freshness": DEFAULT_SKILL_FRESHNESS,
+        "freshness": policy.initial_freshness,
         "freshness_updated_at": "",
         "call_count": summary.sample_count,
         "success_count": summary.success_count,
@@ -51,23 +55,31 @@ def _stats_from_evidence(summary: EvaluationEvidenceSummary) -> dict[str, Any]:
     }
 
 
-def _update_freshness(stats: dict[str, Any], now: datetime) -> None:
-    scores = _score_components(stats, now)
+def _update_freshness(
+    stats: dict[str, Any],
+    now: datetime,
+    policy: EvolutionPolicy,
+) -> None:
+    scores = _score_components(stats, now, policy)
     base = (
-        0.30 * scores["quality"]
-        + 0.20 * scores["recency"]
-        + 0.15 * scores["frequency"]
-        + 0.15 * scores["efficiency"]
-        + 0.10 * scores["reliability"]
-        + 0.10 * scores["replacement"]
+        policy.quality_weight * scores["quality"]
+        + policy.recency_weight * scores["recency"]
+        + policy.frequency_weight * scores["frequency"]
+        + policy.efficiency_weight * scores["efficiency"]
+        + policy.reliability_weight * scores["reliability"]
+        + policy.replacement_weight * scores["replacement"]
     )
     confidence = scores["confidence"] / 100
-    freshness = confidence * base + (1 - confidence) * DEFAULT_SKILL_FRESHNESS
+    freshness = confidence * base + (1 - confidence) * policy.initial_freshness
     stats["freshness"] = round(_clamp(freshness, 0, 100), 2)
     stats["freshness_updated_at"] = _format_datetime(now)
 
 
-def _score_components(stats: dict[str, Any], now: datetime) -> dict[str, float]:
+def _score_components(
+    stats: dict[str, Any],
+    now: datetime,
+    policy: EvolutionPolicy,
+) -> dict[str, float]:
     call_count = int(stats["call_count"])
     first_used_at = _parse_datetime(str(stats["first_used_at"] or stats["last_used_at"]))
     last_used_at = _parse_datetime(str(stats["last_used_at"]))
@@ -80,31 +92,66 @@ def _score_components(stats: dict[str, Any], now: datetime) -> dict[str, float]:
     calls_per_week = call_count / days_active * 7
     return {
         "quality": float(stats["success_ewma"]) * 100,
-        "recency": math.exp(-days_since_last_used / 7) * 100,
-        "frequency": _clamp(calls_per_week * 20, 0, 100),
-        "efficiency": _efficiency_score(stats, average_tokens),
-        "reliability": _reliability_score(stats),
+        "recency": math.exp(-days_since_last_used / policy.recency_decay_days) * 100,
+        "frequency": _clamp(
+            calls_per_week / policy.full_frequency_calls_per_week * 100,
+            0,
+            100,
+        ),
+        "efficiency": _efficiency_score(stats, average_tokens, policy),
+        "reliability": _reliability_score(stats, policy),
         "replacement": 100 if followups == 0 else 100 * (1 - successful_followups / followups),
-        "confidence": 100 * call_count / (call_count + 8),
+        "confidence": 100 * call_count / (call_count + policy.confidence_sample_count),
     }
 
 
-def _efficiency_score(stats: dict[str, Any], average_tokens: float) -> float:
-    token_score = _clamp(100 - max(0, average_tokens - 1500) / 85, 0, 100)
+def _efficiency_score(
+    stats: dict[str, Any],
+    average_tokens: float,
+    policy: EvolutionPolicy,
+) -> float:
+    token_score = _clamp(
+        100
+        - max(0, average_tokens - policy.token_free_budget)
+        / policy.tokens_per_penalty_point,
+        0,
+        100,
+    )
     latency_samples = int(stats["latency_sample_count"])
     if latency_samples == 0:
         return token_score
     average_latency = int(stats["total_latency_ms"]) / latency_samples
-    latency_score = _clamp(100 - max(0, average_latency - 1000) / 90, 0, 100)
-    return 0.7 * token_score + 0.3 * latency_score
+    latency_score = _clamp(
+        100
+        - max(0, average_latency - policy.latency_free_ms)
+        / policy.latency_per_penalty_point,
+        0,
+        100,
+    )
+    return (
+        policy.token_efficiency_weight * token_score
+        + (1 - policy.token_efficiency_weight) * latency_score
+    )
 
 
-def _reliability_score(stats: dict[str, Any]) -> float:
+def _reliability_score(
+    stats: dict[str, Any],
+    policy: EvolutionPolicy,
+) -> float:
     call_count = max(int(stats["call_count"]), 1)
     success_rate = int(stats["success_count"]) / call_count
     empty_rate = int(stats["empty_output_count"]) / call_count
     error_rate = int(stats["error_count"]) / call_count
-    return _clamp((success_rate - 0.3 * empty_rate - 0.5 * error_rate) * 100, 0, 100)
+    return _clamp(
+        (
+            success_rate
+            - policy.empty_output_penalty * empty_rate
+            - policy.error_penalty * error_rate
+        )
+        * 100,
+        0,
+        100,
+    )
 
 
 def _parse_datetime(value: str) -> datetime:

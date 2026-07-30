@@ -245,14 +245,26 @@ class Runtime:
         from skill.task.model_calls import infer_conversation_feedback_with_model
 
         store = self.create_event_store(user_id)
+        skills = self._create_skills(store)
+        feedback_entry = skills.index.select_one_configured_or_default_skill(
+            "feedback",
+            self.config.agent.skills,
+        )
+        feedback_skill = skills.open(feedback_entry.reference)
+        feedback_skill.disclose_manifest()
+        feedback_skill.disclose_configuration()
+        instructions = feedback_skill.disclose_instructions().content
+        if feedback_skill.read_configuration().content:
+            raise ValueError("feedback Skill configuration must be empty")
         task_loop = self._create_task_loop(
-            self.read_model_profiles(user_id),
+            self._read_model_profiles(skills, user_id),
             user_id,
         )
         model = task_loop.create_text_model(store, "conversation_feedback")
         feedback = infer_conversation_feedback_with_model(
             conversation,
             prompt,
+            instructions,
             model.send_messages,
         )
         if feedback is None:
@@ -277,6 +289,9 @@ class Runtime:
             raise ValueError(f"run belongs to another Agent: {run_id}")
 
         from skill.evolution.learning import learn_from_run
+        from skill.loaders.defaults import load_configured_evolution_policy
+
+        policy = load_configured_evolution_policy(self.config, store=store)
 
         result = self.execute_management_action(
             user_id,
@@ -289,6 +304,7 @@ class Runtime:
                 store,
                 run_id,
                 lambda: self.create_skill_updater(user_id),
+                policy,
             ),
         )
         if not isinstance(result, RunLearningResult):
@@ -320,6 +336,9 @@ class Runtime:
                 user_id,
             )
         skills = self._create_skills(store)
+        from skill.loaders.defaults import load_configured_evolution_policy
+
+        policy = load_configured_evolution_policy(self.config, store=store)
         profiles = self._read_model_profiles(skills, user_id)
         task_loop = self._create_task_loop(profiles, user_id)
         return SkillEvolutionManager(
@@ -335,6 +354,7 @@ class Runtime:
                     "skill_evaluation",
                 ),
             ),
+            policy=policy,
             on_skill_changed=change_handler,
             action_rules=self._get_action_rules(),
         )

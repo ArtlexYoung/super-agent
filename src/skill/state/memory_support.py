@@ -58,14 +58,21 @@ class MemoryUsageHabits:
         return "Usage habits:\n" + "\n".join(lines)
 
 
-def read_memory_policy(value: dict[str, object]) -> MemoryPolicy:
+def read_memory_policy(
+    value: dict[str, object],
+    instructions: str = "",
+) -> MemoryPolicy:
     return MemoryPolicy(
         default_scope=clean_scope(_read_string(value, "default_scope", "agent")),
         recall_limit=read_positive_limit(
             value.get("recall_limit", DEFAULT_RECALL_LIMIT)
         ),
+        organization_candidate_limit=read_positive_limit(
+            value["organization_candidate_limit"]
+        ),
         include_in_prompt=_read_bool(value, "include_in_prompt", True),
         include_usage_habits=_read_bool(value, "include_usage_habits", True),
+        instructions=instructions.strip(),
     )
 
 
@@ -91,6 +98,7 @@ def memory_boundary(item: MemoryItem) -> tuple[str, str | None, str]:
 def build_memory_organization_messages(
     query: str,
     candidates: list[MemoryItem],
+    instructions: str,
     *,
     target_memory_type: str,
     temporary_context: list[MemoryItem] | None = None,
@@ -104,16 +112,11 @@ def build_memory_organization_messages(
         temporary,
         promotable_ids,
     )
-    purpose = (
-        "Keep long-term memory only when it is abstract, critical, important, stable, "
-        "or habitual. Current-conversation temporary_context is read-only evidence. "
-        "Use promote to create an abstract long-term item from temporary source IDs; "
-        "promotion leaves those temporary items unchanged."
-        if target_memory_type == LONG_TERM_MEMORY
-        else "Temporary memory belongs only to this conversation."
-    )
-    schema = (
-        f"{purpose} Return only JSON with an operations array. Each operation has type, "
+    policy = instructions.strip()
+    if not policy:
+        raise ValueError("memory organization requires non-empty memory Skill instructions")
+    contract = (
+        "Return only JSON with an operations array. Each operation has type, "
         "source_item_ids, reason, and text. type is merge, supersede, archive, or "
         "forget; long-term organization also allows promote. merge needs at least two "
         "candidate IDs. merge and supersede require replacement text. promote requires "
@@ -128,7 +131,7 @@ def build_memory_organization_messages(
         "promotable_temporary_item_ids": sorted(promotable_ids),
     }
     return [
-        {"role": "system", "content": schema},
+        {"role": "system", "content": f"{policy}\n\n{contract}"},
         {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
     ]
 

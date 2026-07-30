@@ -10,7 +10,7 @@ from skill.loaders.mcp import McpSkillSettings
 from skill.loaders.mcp import McpServer
 from skill.state.memory_service import MiniMemory
 from core.models import SubAgentResult, RunResult
-from skill.loaders.workflow import create_workflow_policy
+from skill.loaders.workflow import create_workflow_policy_from_skill
 from skill.manifest import SkillManifest
 
 
@@ -43,7 +43,10 @@ class SkillArchitectureTests(unittest.TestCase):
         self.assertEqual("MiniMemory", MiniMemory.__name__)
         self.assertEqual("RunResult", RunResult.__name__)
         self.assertEqual("SubAgentResult", SubAgentResult.__name__)
-        self.assertEqual("direct", create_workflow_policy("direct").name)
+        self.assertEqual(
+            "create_workflow_policy_from_skill",
+            create_workflow_policy_from_skill.__name__,
+        )
         self.assertEqual("ProgressiveDisclosureCore", ProgressiveDisclosureCore.__name__)
         self.assertEqual("SkillManifest", SkillManifest.__name__)
         self.assertFalse(Path("src/skill/loader.py").exists())

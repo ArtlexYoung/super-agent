@@ -5,15 +5,7 @@ from __future__ import annotations
 from skill.loaders.loaded import TaskPolicy
 from skill.disclosure import SkillDisclosure
 
-DEFAULT_WORKFLOW_MAX_STEPS = 8
-
-
-def create_workflow_policy(name: str) -> TaskPolicy:
-    key = name.strip().lower()
-    instruction = _instruction_for_mode(key)
-    if instruction is None:
-        raise ValueError(f"unknown workflow: {name}")
-    return TaskPolicy(key, key, instruction, DEFAULT_WORKFLOW_MAX_STEPS)
+WORKFLOW_MODES = {"direct", "plan", "react", "loop"}
 
 
 def create_workflow_policy_from_skill(
@@ -23,25 +15,22 @@ def create_workflow_policy_from_skill(
     if manifest.skill_type != "workflow":
         raise ValueError(f"skill does not use the workflow skill: {manifest.name}")
     data = disclosure.read_configuration().content
-    mode = str(data.get("mode", manifest.name)).strip().lower()
-    base_instruction = _instruction_for_mode(mode)
-    if base_instruction is None:
+    missing = sorted({"mode", "max_steps"} - set(data))
+    if missing:
+        raise ValueError(
+            "missing workflow Skill settings: " + ", ".join(missing)
+        )
+    mode = str(data["mode"]).strip().lower()
+    if mode not in WORKFLOW_MODES:
         raise ValueError(f"unknown workflow mode: {mode}")
-    custom_instruction = str(data.get("instruction", "")).strip()
-    instruction = "\n".join(
-        part for part in [base_instruction, custom_instruction] if part
-    )
-    max_steps = _read_max_steps(data.get("max_steps", DEFAULT_WORKFLOW_MAX_STEPS))
+    unknown = sorted(set(data) - {"mode", "max_steps"})
+    if unknown:
+        raise ValueError("unknown workflow Skill settings: " + ", ".join(unknown))
+    instruction = disclosure.read_instructions().content.strip()
+    if not instruction:
+        raise ValueError("workflow Skill instructions cannot be empty")
+    max_steps = _read_max_steps(data["max_steps"])
     return TaskPolicy(manifest.name, mode, instruction, max_steps)
-
-
-def _instruction_for_mode(mode: str) -> str | None:
-    return {
-        "direct": "",
-        "plan": "Execute the current planned step and return its useful result.",
-        "react": "Use runtime tools to inspect and execute skills. Finish by returning text without a tool call.",
-        "loop": "Use runtime tools iteratively until the goal is complete. Finish by returning text without a tool call.",
-    }.get(mode)
 
 
 def _read_max_steps(value: object) -> int:

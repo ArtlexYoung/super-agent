@@ -88,6 +88,7 @@ class MemorySkillLoader:
         opened = request.open_skill()
         opened.disclose_manifest()
         opened.disclose_configuration()
+        opened.disclose_instructions()
         memory = create_memory_from_skill_disclosure(
             opened,
             request.require_store("memory Skill"),
@@ -110,6 +111,7 @@ class WorkflowSkillLoader:
         opened = request.open_skill()
         opened.disclose_manifest()
         opened.disclose_configuration()
+        opened.disclose_instructions()
         return LoadedSkill(
             task_policy=create_workflow_policy_from_skill(opened),
         )
@@ -176,18 +178,23 @@ class SceneManagerSkillLoader:
     required_services = ("storage",)
 
     def load_skill(self, request: SkillLoadRequest) -> LoadedSkill:
-        from skill.ecosystem.scenes import create_scene_creation_tool
+        from skill.ecosystem.scenes import (
+            create_scene_creation_tool,
+            read_skill_scene_template,
+        )
 
         opened = request.open_skill()
         opened.disclose_manifest()
         opened.disclose_configuration()
         instructions = opened.disclose_instructions().content
+        template = read_skill_scene_template(opened, request.reference.key)
         return LoadedSkill(
             build_prompt_context=lambda _prompt: instructions,
             tools=(
                 create_scene_creation_tool(
                     request.require_store("scene manager Skill"),
                     request.disclosure,
+                    template,
                 ),
             ),
         )

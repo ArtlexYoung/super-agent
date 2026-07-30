@@ -27,7 +27,9 @@ freshness reads online `agent_run` evidence only.
 
 ## Freshness Without a Model
 
-Freshness is recalculated when the central Skill index is prepared. It uses:
+Freshness is recalculated when the central Skill index is prepared. The selected
+`evolution` Skill supplies the initial value, weights, scaling values, penalties, and
+thresholds. The deterministic calculator uses:
 
 - Exponentially weighted quality.
 - Time since the last use.
@@ -37,7 +39,10 @@ Freshness is recalculated when the central Skill index is prepared. It uses:
 - Successful follow-up use of another Skill in the same function group.
 - Sample confidence that keeps sparse evidence near the default score.
 
-The result is deterministic and never calls a model.
+The result is deterministic and never calls a model. Recommendation thresholds, evidence
+limits, candidate score, automatic evaluation case count, and post-promotion monitoring
+rules come from the same Skill. Missing, unknown, non-finite, or out-of-range values fail
+when the policy is disclosed; Runtime does not substitute built-in constants.
 
 ```bash
 super-agent skills freshness --config agent.toml
@@ -82,8 +87,8 @@ restored, and the unused history snapshot is removed. A failed evaluation-state 
 likewise removes its unrecorded report. Rollback applies the same rules in reverse and
 requires the history content hash to match the source revision stored in evolution state.
 
-After promotion, any failed online sample rolls the Skill back. Three successful samples
-with an average score of at least `0.75` mark it stable; a lower average rolls it back.
+After promotion, any failed online sample rolls the Skill back. The configured sample and
+score thresholds decide when successful evidence marks it stable or rolls it back.
 Automation errors are recorded as `learning.failed` and raised directly. They do not
 masquerade as successful Skill updates.
 
@@ -124,12 +129,21 @@ type = "memory"
 description = "Default memory behavior"
 version = "0.1.0"
 
+[entry]
+instructions = "SKILL.md"
+
 [configuration]
 default_scope = "agent"
 recall_limit = 20
+organization_candidate_limit = 20
 include_in_prompt = true
 include_usage_habits = true
 ```
+
+`SKILL.md` tells the organizing model what belongs in temporary and long-term memory and
+how to merge, supersede, archive, forget, or promote evidence. The candidate limit is
+explicit because it controls what the model may inspect. Both are required for memory
+Skills; there is no hidden organization prompt or limit in Runtime.
 
 Each item has one explicit `memory_type`:
 

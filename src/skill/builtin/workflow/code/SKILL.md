@@ -1,0 +1,1 @@
+Inspect the repository before editing. Keep changes focused, run relevant verification, and review the resulting diff. Use Runtime tools iteratively until the requested coding outcome is complete or a concrete blocker is identified. Finish by returning text without a tool call.

@@ -37,23 +37,27 @@ from core.models import RunLearningResult
 from skill.task.model_calls import list_model_routing_stats
 from skill.evolution.freshness import calculate_skill_freshness
 from skill.evolution.change.evaluation import EvaluationCase
+from skill.evolution.policy import EvolutionPolicy
 
 if TYPE_CHECKING:
     from skill.evolution.change.manager import SkillEvolutionManager
 
 
 LEARNING_COMPLETED_EVENT = "learning.completed"
-MONITORING_MINIMUM_SAMPLES = 3
-MONITORING_MINIMUM_SCORE = 0.75
-MAX_AUTOMATIC_EVALUATION_CASES = 3
 
 
 class AutomaticSkillEvolution:
     """Run explicit pending, monitoring, and rollback stages during learning."""
 
-    def __init__(self, store: EventStore, manager: SkillEvolutionManager) -> None:
+    def __init__(
+        self,
+        store: EventStore,
+        manager: SkillEvolutionManager,
+        policy: EvolutionPolicy,
+    ) -> None:
         self.store = store
         self.manager = manager
+        self.policy = policy
 
     def run_pending_skill_evolution_stages(
         self,
@@ -71,7 +75,7 @@ class AutomaticSkillEvolution:
             for identity, revision in revisions_by_identity.items()
             if identity not in rolled_back
         ]
-        changed.extend(recommend_skill_revisions(self.store, active))
+        changed.extend(recommend_skill_revisions(self.store, active, self.policy))
         pending = [
             state
             for state in list_skill_evolutions(self.store)
@@ -141,7 +145,7 @@ class AutomaticSkillEvolution:
                         prompt=snapshot.prompt,
                     )
                 )
-            if len(cases) == MAX_AUTOMATIC_EVALUATION_CASES:
+            if len(cases) == self.policy.max_automatic_evaluation_cases:
                 break
         return cases or [EvaluationCase(name="evolution-goal", prompt=state.goal)]
 
@@ -159,12 +163,12 @@ class AutomaticSkillEvolution:
                 continue
             summary = summarize_evaluation_evidence(records)[0]
             if summary.failure_count or (
-                summary.sample_count >= MONITORING_MINIMUM_SAMPLES
-                and summary.average_score < MONITORING_MINIMUM_SCORE
+                summary.sample_count >= self.policy.monitoring_minimum_samples
+                and summary.average_score < self.policy.monitoring_minimum_score
             ):
                 self.manager.rollback_skill(revision.key)
                 changed.append(read_skill_evolution(self.store, state.evolution_id))
-            elif summary.sample_count >= MONITORING_MINIMUM_SAMPLES:
+            elif summary.sample_count >= self.policy.monitoring_minimum_samples:
                 changed.append(
                     record_skill_evolution_monitoring(
                         self.store,
@@ -197,6 +201,7 @@ def learn_from_run(
     store: EventStore,
     run_id: str,
     create_skill_updater: Callable[[], SkillEvolutionManager],
+    policy: EvolutionPolicy,
 ) -> RunLearningResult:
     """Apply every learning stage to one persisted terminal run."""
     events = store.read_run_events(run_id)
@@ -229,7 +234,7 @@ def learn_from_run(
         )
 
         stage = "freshness"
-        freshness = _calculate_current_freshness(store, revisions)
+        freshness = _calculate_current_freshness(store, revisions, policy)
         store.append_run_event(
             identity,
             "learning.freshness.calculated",
@@ -250,6 +255,7 @@ def learn_from_run(
             for state in AutomaticSkillEvolution(
                 store,
                 create_skill_updater(),
+                policy,
             ).run_pending_skill_evolution_stages(revisions)
         ]
         store.append_run_event(
@@ -325,9 +331,11 @@ def _record_run_evaluations(
 def _calculate_current_freshness(
     store: EventStore,
     revisions: list[SkillRevision],
+    policy: EvolutionPolicy,
 ) -> list[dict[str, object]]:
     by_skill = calculate_skill_freshness(
-        read_evaluation_records(store, source_type="agent_run")
+        read_evaluation_records(store, source_type="agent_run"),
+        policy,
     )
     return [
         dict(by_skill[key])

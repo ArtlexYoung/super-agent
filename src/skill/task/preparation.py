@@ -419,7 +419,7 @@ def _load_run_workflow(
 ) -> tuple[SkillReference | None, TaskPolicy]:
     reference = scheduler.select_one_skill(references, "workflow", required=False)
     if reference is None:
-        return None, TaskPolicy("direct", "direct", max_steps=1)
+        return None, TaskPolicy("direct", "direct", "", 1)
     contribution = _load_skill(session, reference)
     if contribution.task_policy is None:
         raise TypeError("workflow Skill loader did not provide task rules")

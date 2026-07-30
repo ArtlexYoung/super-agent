@@ -10,6 +10,7 @@ from core.models import LOCAL_USER_ID
 from skill.evolution.insights import explain_run_with_insight
 from core.state.models import RunSnapshot
 from skill.state.events import EventStore
+from skill.loaders.defaults import load_configured_evolution_policy_if_enabled
 
 
 def configure_runs_parser(parser: argparse.ArgumentParser) -> None:
@@ -112,13 +113,15 @@ def _show_run_status(args: argparse.Namespace) -> int:
 
 
 def _explain_run(args: argparse.Namespace) -> int:
-    store = _load_run_snapshot_store(args.config, args.user_id)
+    agent = load_agent(args.config)
+    store = agent.runtime.create_event_store(args.user_id)
     run_id = _resolve_run_id(store, args.run_id)
     if run_id is None:
         print("No run snapshots yet.")
         return 1
     store = _find_run_store(store, run_id)
-    explanation = explain_run_with_insight(store, run_id)
+    policy = load_configured_evolution_policy_if_enabled(agent.config, store=store)
+    explanation = explain_run_with_insight(store, run_id, policy)
     if args.output == "json":
         print(json.dumps(explanation, ensure_ascii=False, indent=2, sort_keys=True))
         return 0

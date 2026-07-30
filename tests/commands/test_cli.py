@@ -91,6 +91,8 @@ class CliTests(unittest.TestCase):
             self.assertEqual(6, data["schema_version"])
             self.assertEqual(
                 {
+                    "evolution",
+                    "feedback",
                     "memory",
                     "planner",
                     "prompt",
@@ -411,7 +413,7 @@ instructions = "SKILL.md"
                 validation_code = main(["skills", "validate", "--config", config])
 
             self.assertEqual(0, validation_code)
-            self.assertIn("13 valid skills", validation_output.getvalue())
+            self.assertIn("15 valid skills", validation_output.getvalue())
 
     def test_skills_graph_and_lock_resolve_configured_skill_dependencies(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

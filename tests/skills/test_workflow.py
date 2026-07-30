@@ -89,10 +89,17 @@ type = "workflow"
 description = "Executable {mode} workflow"
 version = "0.1.0"
 
+[entry]
+instructions = "SKILL.md"
+
 [configuration]
 mode = "{mode}"
 max_steps = {max_steps}
 """.strip(),
+        encoding="utf-8",
+    )
+    (workflow_dir / "SKILL.md").write_text(
+        "Run the configured workflow until a final answer is ready.",
         encoding="utf-8",
     )
     config_path = root / "agent.toml"

@@ -95,8 +95,16 @@ type = "memory"
 description = "Default memory"
 version = "0.1.0"
 
+[entry]
+instructions = "SKILL.md"
+
 [configuration]
+organization_candidate_limit = 20
 """.strip(),
+        encoding="utf-8",
+    )
+    (skill_dir / "SKILL.md").write_text(
+        "Keep temporary memory local and preserve only durable long-term knowledge.",
         encoding="utf-8",
     )
 
@@ -104,7 +112,6 @@ version = "0.1.0"
 def _write_workflow_skill(root: Path, name: str, mode: str, *, instruction: str = "") -> None:
     skill_dir = root / "skills" / "workflow" / name
     skill_dir.mkdir(parents=True)
-    instruction_line = f'instruction = "{instruction}"' if instruction else ""
     (skill_dir / "skill.toml").write_text(
         f"""
 schema_version = 3
@@ -113,10 +120,17 @@ type = "workflow"
 description = "{name} workflow"
 version = "0.1.0"
 
+[entry]
+instructions = "SKILL.md"
+
 [configuration]
 mode = "{mode}"
-{instruction_line}
+max_steps = 8
 """.strip(),
+        encoding="utf-8",
+    )
+    (skill_dir / "SKILL.md").write_text(
+        instruction or "Complete the workflow and return the final result.",
         encoding="utf-8",
     )
 

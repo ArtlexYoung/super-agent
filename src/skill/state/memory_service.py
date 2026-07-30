@@ -41,8 +41,6 @@ from skill.state.memory_support import (
 )
 
 
-MAX_ORGANIZATION_CANDIDATES = 20
-
 MemoryLocation = tuple[str, str | None]
 
 
@@ -69,6 +67,7 @@ class MiniMemory:
             store,
             self._execute_memory_change,
             lambda: self._source_run_id(""),
+            self.policy.instructions,
             send_text_model_messages,
         )
 
@@ -164,7 +163,7 @@ class MiniMemory:
             query_terms,
             selected_scope,
             [location],
-        )[:MAX_ORGANIZATION_CANDIDATES]
+        )[: self.policy.organization_candidate_limit]
         temporary_context = (
             self._temporary_context_for_long_term_organization(
                 text,
@@ -340,7 +339,7 @@ class MiniMemory:
             query_terms,
             scope,
             [location],
-        )[:MAX_ORGANIZATION_CANDIDATES]
+        )[: self.policy.organization_candidate_limit]
 
     def _current_temporary_location(self) -> MemoryLocation | None:
         conversation_id = self._available_conversation_id(None)
@@ -488,9 +487,14 @@ def create_memory_policy_from_skill(
     if manifest.skill_type != "memory":
         raise ValueError(f"skill does not use the memory skill: {manifest.name}")
     configuration = disclosure.read_configuration().content
+    if "organization_candidate_limit" not in configuration:
+        raise ValueError(
+            "missing memory Skill setting: organization_candidate_limit"
+        )
     allowed = {
         "default_scope",
         "recall_limit",
+        "organization_candidate_limit",
         "include_in_prompt",
         "include_usage_habits",
     }
@@ -499,4 +503,7 @@ def create_memory_policy_from_skill(
         raise ValueError(
             "unknown memory configuration fields: " + ", ".join(unknown)
         )
-    return read_memory_policy(configuration)
+    instructions = disclosure.read_instructions().content.strip()
+    if not instructions:
+        raise ValueError("memory Skill instructions cannot be empty")
+    return read_memory_policy(configuration, instructions)

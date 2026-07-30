@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import math
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
@@ -62,6 +61,7 @@ from skill.disclosure import ProgressiveDisclosureCore
 from skill.manifest import SkillManifest, calculate_skill_directory_sha256
 from skill.evolution.freshness import calculate_skill_freshness
 from skill.evolution.records import read_evaluation_records
+from skill.evolution.policy import EvolutionPolicy
 from skill.ecosystem.validation import validate_skill_directory, validate_skill_replacement
 
 
@@ -78,31 +78,27 @@ class SkillEvolutionManager:
         skill_disclosure: ProgressiveDisclosureCore,
         store: EventStore,
         models: EvolutionModels,
-        minimum_score: float = 0.8,
+        policy: EvolutionPolicy,
         on_skill_changed: Callable[[SkillManifest], None] | None = None,
         action_rules: ActionRules | None = None,
     ) -> None:
-        if (
-            isinstance(minimum_score, bool)
-            or not isinstance(minimum_score, int | float)
-            or not math.isfinite(float(minimum_score))
-            or not 0 <= minimum_score <= 1
-        ):
-            raise ValueError("minimum evaluation score must be between 0 and 1")
+        if not isinstance(policy, EvolutionPolicy):
+            raise TypeError("Skill evolution requires an EvolutionPolicy")
         self.skill_disclosure = ProgressiveDisclosureCore(
             skill_disclosure.skill_roots,
             user_skill_roots=skill_disclosure.user_skill_roots,
             builtin_skill_roots=skill_disclosure.builtin_skill_roots,
             disabled_names=skill_disclosure.disabled_names,
             freshness_stats=calculate_skill_freshness(
-                read_evaluation_records(store, source_type="agent_run")
+                read_evaluation_records(store, source_type="agent_run"),
+                policy,
             ),
         )
         self.user_skill_root = store.private_root / "skills"
         self.evolution_root = store.private_root / "evolution"
         self.store = store
         self.models = models
-        self.minimum_score = float(minimum_score)
+        self.minimum_score = policy.minimum_candidate_score
         self.on_skill_changed = on_skill_changed
         self.actions = ActionRunner(
             action_rules or ActionRules(),

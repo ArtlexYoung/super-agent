@@ -7,7 +7,12 @@ from super_agent import Agent
 from core.config import AgentConfig
 from skill.evolution.insights import explain_run_with_insight
 from skill.evolution.records import read_evaluation_records
-from support import SequenceProvider, route_response, write_workflow_skill
+from support import (
+    SequenceProvider,
+    load_default_evolution_policy,
+    route_response,
+    write_workflow_skill,
+)
 
 
 class ZeroConfigurationPlanningTests(unittest.TestCase):
@@ -186,6 +191,7 @@ class ZeroConfigurationPlanningTests(unittest.TestCase):
             insight = explain_run_with_insight(
                 main.runtime.create_event_store(),
                 result.run_id,
+                load_default_evolution_policy(root),
             )
             self.assertEqual("planner:default", insight["task_plan"]["planner"])
             self.assertEqual("planner", insight["task_plan"]["origin"])
@@ -193,6 +199,12 @@ class ZeroConfigurationPlanningTests(unittest.TestCase):
                 ["completed", "completed", "completed"],
                 [step["status"] for step in insight["steps"]],
             )
+            insight_without_evolution = explain_run_with_insight(
+                main.runtime.create_event_store(),
+                result.run_id,
+                None,
+            )
+            self.assertEqual([], insight_without_evolution["skill_freshness"])
             used_keys = {
                 record.revision.key
                 for record in read_evaluation_records(main.runtime.create_event_store())

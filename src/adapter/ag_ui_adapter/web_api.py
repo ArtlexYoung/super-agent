@@ -12,7 +12,10 @@ from adapter.ag_ui_adapter.configuration import (
     agent_configuration_to_dict,
     update_agent_configuration,
 )
-from skill.loaders.defaults import create_skills
+from skill.loaders.defaults import (
+    create_skills,
+    load_configured_evolution_policy_if_enabled,
+)
 from core.config import AgentConfig
 from skill.evolution.insights import explain_run_with_insight
 from core.checks import ActionEffect, ActionRequest
@@ -119,7 +122,9 @@ class WebAPI:
 
     def _read_run(self, run_id: str) -> dict[str, object]:
         agent = _find_agent_for_run(self.agent, self.user_id, run_id, set())
-        return explain_run_with_insight(agent.runtime.create_event_store(self.user_id), run_id)
+        store = agent.runtime.create_event_store(self.user_id)
+        policy = load_configured_evolution_policy_if_enabled(agent.config, store=store)
+        return explain_run_with_insight(store, run_id, policy)
 
     def _forget_memory(self, item_id: str) -> None:
         store = self.agent.runtime.create_event_store(self.user_id)

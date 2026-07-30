@@ -23,8 +23,8 @@ ToolHandler = Callable[[ToolArguments], ToolResult]
 class TaskPolicy:
     name: str
     mode: str
-    instruction: str = ""
-    max_steps: int = 8
+    instruction: str
+    max_steps: int
 
     @property
     def uses_tools(self) -> bool:

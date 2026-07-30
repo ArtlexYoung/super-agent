@@ -49,6 +49,24 @@ class CreatedSkillScene:
         }
 
 
+@dataclass(frozen=True)
+class SkillSceneTemplate:
+    manager_skill_key: str
+    created_skill_version: str
+    prompt_instruction: str
+    planner_instruction: str
+    planner_max_steps: int
+    memory_default_scope: str
+    memory_recall_limit: int
+    memory_organization_candidate_limit: int
+    memory_include_in_prompt: bool
+    memory_include_usage_habits: bool
+    memory_instruction: str
+    workflow_mode: str
+    workflow_max_steps: int
+    workflow_instruction: str
+
+
 def read_scene_included_skills(
     disclosure: SkillDisclosure,
 ) -> tuple[SkillReference, ...]:
@@ -71,10 +89,12 @@ def read_scene_included_skills(
 def create_scene_creation_tool(
     store: EventStore,
     disclosure: ProgressiveDisclosureCore,
+    template: SkillSceneTemplate,
 ) -> SkillTool:
     manager = SkillSceneManager(
         store,
         disclosure.require_prepared_skill_index(),
+        template,
     )
     return SkillTool(
         name="create_skill_scene",
@@ -102,14 +122,20 @@ def create_scene_creation_tool(
 class SkillSceneManager:
     """Create complete user-owned scenes without mutating a prepared run index."""
 
-    def __init__(self, store: EventStore, current_index: SkillIndex) -> None:
+    def __init__(
+        self,
+        store: EventStore,
+        current_index: SkillIndex,
+        template: SkillSceneTemplate,
+    ) -> None:
         self.store = store
         self.current_index = current_index
+        self.template = template
         self.user_skill_root = store.private_root / "skills"
 
     def create_skill_scene(self, request: SkillSceneInput) -> CreatedSkillScene:
         clean = validate_skill_scene_input(request)
-        documents = _create_scene_documents(clean)
+        documents = _create_scene_documents(clean, self.template)
         skill_keys = tuple(f"{skill_type}:{clean.name}" for skill_type in documents)
         self._reject_existing_skills(skill_keys)
         targets = {
@@ -180,6 +206,62 @@ def validate_skill_scene_input(request: SkillSceneInput) -> SkillSceneInput:
     )
 
 
+def read_skill_scene_template(
+    disclosure: SkillDisclosure,
+    manager_skill_key: str,
+) -> SkillSceneTemplate:
+    manifest = disclosure.read_manifest()
+    if manifest.skill_type != "scene_manager":
+        raise ValueError(f"skill does not use the scene_manager type: {manifest.name}")
+    data = disclosure.read_configuration().content
+    expected = {
+        "created_skill_version",
+        "prompt_instruction",
+        "planner_instruction",
+        "planner_max_steps",
+        "memory_default_scope",
+        "memory_recall_limit",
+        "memory_organization_candidate_limit",
+        "memory_include_in_prompt",
+        "memory_include_usage_habits",
+        "memory_instruction",
+        "workflow_mode",
+        "workflow_max_steps",
+        "workflow_instruction",
+    }
+    if set(data) != expected:
+        missing = sorted(expected - set(data))
+        unknown = sorted(set(data) - expected)
+        details = []
+        if missing:
+            details.append("missing " + ", ".join(missing))
+        if unknown:
+            details.append("unknown " + ", ".join(unknown))
+        raise ValueError("scene manager settings do not match schema: " + "; ".join(details))
+    return SkillSceneTemplate(
+        manager_skill_key=manager_skill_key,
+        created_skill_version=_required_config_text(data, "created_skill_version"),
+        prompt_instruction=_required_config_text(data, "prompt_instruction"),
+        planner_instruction=_required_config_text(data, "planner_instruction"),
+        planner_max_steps=_required_config_integer(data, "planner_max_steps"),
+        memory_default_scope=_required_config_text(data, "memory_default_scope"),
+        memory_recall_limit=_required_config_integer(data, "memory_recall_limit"),
+        memory_organization_candidate_limit=_required_config_integer(
+            data,
+            "memory_organization_candidate_limit",
+        ),
+        memory_include_in_prompt=_required_config_bool(data, "memory_include_in_prompt"),
+        memory_include_usage_habits=_required_config_bool(
+            data,
+            "memory_include_usage_habits",
+        ),
+        memory_instruction=_required_config_text(data, "memory_instruction"),
+        workflow_mode=_required_config_text(data, "workflow_mode").lower(),
+        workflow_max_steps=_required_config_integer(data, "workflow_max_steps"),
+        workflow_instruction=_required_config_text(data, "workflow_instruction"),
+    )
+
+
 def _read_scene_references(value: object) -> tuple[SkillReference, ...]:
     if not isinstance(value, list) or not value:
         raise ValueError("scene skills must be a non-empty TOML string array")
@@ -207,25 +289,21 @@ def _validate_scene_skill_types(references: tuple[SkillReference, ...]) -> None:
             raise ValueError(f"scene can include only one {skill_type} Skill")
 
 
-def _create_scene_documents(request: SkillSceneInput) -> dict[str, dict[str, str]]:
+def _create_scene_documents(
+    request: SkillSceneInput,
+    template: SkillSceneTemplate,
+) -> dict[str, dict[str, str]]:
     name = request.name
-    prompt = request.instructions or (
-        f"Work within the {name} task scene. {request.description} "
-        "Inspect relevant context, act explicitly, verify the result, and report evidence."
-    )
-    planner = (
-        "Decompose the task into the fewest independently verifiable steps. Return only "
-        "one JSON object with a `steps` array. Every step must contain exactly "
-        "`instruction`, `purpose`, `required_features`, and `subagent`. Include `text` in "
-        "required_features and use `tools` only when needed. Set `subagent` to an "
-        "available name or null. The final step must produce the user-facing result."
+    prompt = request.instructions or template.prompt_instruction.format(
+        name=name,
+        description=request.description,
     )
     scene_skills = [
         f"prompt:{name}",
         f"memory:{name}",
         f"planner:{name}",
         f"workflow:{name}",
-        "scene_manager:default",
+        template.manager_skill_key,
     ]
     return {
         "scene": {
@@ -233,6 +311,7 @@ def _create_scene_documents(request: SkillSceneInput) -> dict[str, dict[str, str
                 name,
                 "scene",
                 request.description,
+                version=template.created_skill_version,
                 configuration={"skills": scene_skills},
             )
         },
@@ -241,6 +320,7 @@ def _create_scene_documents(request: SkillSceneInput) -> dict[str, dict[str, str
                 name,
                 "prompt",
                 f"Prompt rules for the {name} scene",
+                version=template.created_skill_version,
                 instructions="SKILL.md",
             ),
             "SKILL.md": prompt.rstrip() + "\n",
@@ -250,31 +330,44 @@ def _create_scene_documents(request: SkillSceneInput) -> dict[str, dict[str, str
                 name,
                 "memory",
                 f"Conversation and long-term memory for the {name} scene",
+                version=template.created_skill_version,
+                instructions="SKILL.md",
                 configuration={
-                    "default_scope": "agent",
-                    "recall_limit": 20,
-                    "include_in_prompt": True,
-                    "include_usage_habits": True,
+                    "default_scope": template.memory_default_scope,
+                    "recall_limit": template.memory_recall_limit,
+                    "organization_candidate_limit": (
+                        template.memory_organization_candidate_limit
+                    ),
+                    "include_in_prompt": template.memory_include_in_prompt,
+                    "include_usage_habits": template.memory_include_usage_habits,
                 },
-            )
+            ),
+            "SKILL.md": template.memory_instruction.rstrip() + "\n",
         },
         "planner": {
             "skill.toml": _manifest_text(
                 name,
                 "planner",
                 f"Task planner for the {name} scene",
+                version=template.created_skill_version,
                 instructions="SKILL.md",
-                configuration={"max_steps": 8},
+                configuration={"max_steps": template.planner_max_steps},
             ),
-            "SKILL.md": planner + "\n",
+            "SKILL.md": template.planner_instruction.rstrip() + "\n",
         },
         "workflow": {
             "skill.toml": _manifest_text(
                 name,
                 "workflow",
                 f"Tool loop for the {name} scene",
-                configuration={"mode": "loop", "max_steps": 12},
-            )
+                version=template.created_skill_version,
+                instructions="SKILL.md",
+                configuration={
+                    "mode": template.workflow_mode,
+                    "max_steps": template.workflow_max_steps,
+                },
+            ),
+            "SKILL.md": template.workflow_instruction.rstrip() + "\n",
         },
     }
 
@@ -306,6 +399,7 @@ def _manifest_text(
     skill_type: str,
     description: str,
     *,
+    version: str,
     instructions: str | None = None,
     configuration: dict[str, object] | None = None,
 ) -> str:
@@ -314,7 +408,7 @@ def _manifest_text(
         f"name = {_toml_value(name)}",
         f"type = {_toml_value(skill_type)}",
         f"description = {_toml_value(description)}",
-        'version = "0.1.0"',
+        f"version = {_toml_value(version)}",
         "agent_created = true",
         "agent_can_update = true",
         "freshness = 70",
@@ -357,3 +451,24 @@ def _optional_text(value: object, name: str) -> str:
     if not isinstance(value, str):
         raise TypeError(f"Skill scene {name} must be a string")
     return value.strip()
+
+
+def _required_config_text(value: dict[str, object], name: str) -> str:
+    selected = value[name]
+    if not isinstance(selected, str) or not selected.strip():
+        raise ValueError(f"scene manager {name} must be non-empty text")
+    return selected.strip()
+
+
+def _required_config_integer(value: dict[str, object], name: str) -> int:
+    selected = value[name]
+    if isinstance(selected, bool) or not isinstance(selected, int) or selected <= 0:
+        raise ValueError(f"scene manager {name} must be a positive integer")
+    return selected
+
+
+def _required_config_bool(value: dict[str, object], name: str) -> bool:
+    selected = value[name]
+    if not isinstance(selected, bool):
+        raise TypeError(f"scene manager {name} must be a boolean")
+    return selected

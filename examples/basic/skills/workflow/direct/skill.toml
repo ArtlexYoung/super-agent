@@ -4,5 +4,9 @@ type = "workflow"
 description = "Direct workflow"
 version = "0.1.0"
 
+[entry]
+instructions = "SKILL.md"
+
 [configuration]
 mode = "direct"
+max_steps = 8

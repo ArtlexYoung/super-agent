@@ -515,6 +515,22 @@ Status: implemented.
 - Record routing calls and `task.route.decided` separately from preflight-protected model
   execution, and expose no routing field in Skill, model, CLI, Web, or example manifests.
 
+## v0.0.101: Skill-Owned Behavior
+
+Status: implemented.
+
+- Move workflow instructions, memory organization rules, feedback judgment, freshness and
+  evolution settings, and generated-scene templates out of Python constants into Skills.
+- Select scheduler, feedback, evolution, and scene-manager policies through one central
+  configured-or-default Skill rule with no duplicate selection code.
+- Require workflow limits, memory organization limits, and behavior instructions
+  explicitly; reject old fields and incomplete Skills instead of applying hidden defaults.
+- Make freshness and evolution deterministic but configurable, while keeping protocol
+  schemas, validation, trusted execution, atomic persistence, and Provider wire formats in
+  Python.
+- Prove custom behavior reaches model calls and changes calculations or generated Skill
+  directories through focused regression tests.
+
 ## Release Gate
 
 The project will not move to `0.1.x` because of feature count. The gate is a reproducible

@@ -214,28 +214,10 @@ def load_scheduler(
     enabled_skills: list[str],
     load_skill: Callable[[SkillReference], LoadedSkill],
 ) -> SelectedScheduler:
-    entries = [
-        entry for entry in index.entries if entry.reference.skill_type == "scheduler"
-    ]
-    configured = [
-        index.require_skill(value)
-        for value in enabled_skills
-        if value.strip().lower().startswith("scheduler:")
-    ]
-    if len(configured) > 1:
-        keys = ", ".join(entry.reference.key for entry in configured)
-        raise ValueError(f"select only one configured scheduler Skill: {keys}")
-    defaults = [entry for entry in entries if entry.is_default]
-    if configured:
-        selected = configured[0]
-    elif len(defaults) == 1:
-        selected = defaults[0]
-    else:
-        keys = ", ".join(entry.reference.key for entry in defaults or entries)
-        raise ValueError(
-            "select exactly one default scheduler Skill"
-            + (f": {keys}" if keys else "")
-        )
+    selected = index.select_one_configured_or_default_skill(
+        "scheduler",
+        enabled_skills,
+    )
     contribution = load_skill(selected.reference)
     if contribution.scheduling_policy is None:
         raise TypeError("scheduler Skill loader did not provide scheduling rules")

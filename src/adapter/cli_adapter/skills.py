@@ -5,7 +5,10 @@ import json
 from pathlib import Path
 
 from adapter.cli_adapter import load_agent, load_agent_config, load_event_store
-from skill.loaders.defaults import create_progressive_skill_disclosure
+from skill.loaders.defaults import (
+    create_progressive_skill_disclosure,
+    load_configured_evolution_policy,
+)
 from core.config import AgentConfig
 from core.models import LOCAL_USER_ID
 from core.checks import ActionRules
@@ -157,8 +160,10 @@ def _rollback_skill(args: argparse.Namespace) -> int:
 def _show_skill_freshness(config_path: Path, user_id: str) -> int:
     config = load_agent_config(config_path)
     store = load_event_store(config, user_id)
+    policy = load_configured_evolution_policy(config, store=store)
     stats = calculate_skill_freshness(
-        read_evaluation_records(store, source_type="agent_run")
+        read_evaluation_records(store, source_type="agent_run"),
+        policy,
     )
     if not stats:
         print("No skill freshness stats yet.")

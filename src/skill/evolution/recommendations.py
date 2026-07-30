@@ -17,22 +17,13 @@ from skill.evolution.state import (
 from skill.state.events import EventStore
 from skill.evolution.values import SkillRevision
 from skill.evolution.records import read_evaluation_records
-
-
-LOW_SCORE_MINIMUM_SAMPLES = 3
-LOW_SCORE_THRESHOLD = 0.75
-LOW_FRESHNESS_MINIMUM_SAMPLES = 2
-LOW_FRESHNESS_THRESHOLD = 45.0
-REPLACEMENT_MINIMUM_FOLLOWUPS = 2
-REPLACEMENT_RATE_THRESHOLD = 0.5
-HIGH_AVERAGE_TOKENS = 12_000
-HIGH_AVERAGE_LATENCY_MS = 10_000
-MAX_STORED_EVIDENCE_RECORD_IDS = 100
+from skill.evolution.policy import EvolutionPolicy
 
 
 def recommend_skill_revisions(
     store: EventStore,
     revisions: list[SkillRevision],
+    policy: EvolutionPolicy,
 ) -> list[SkillEvolutionState]:
     """Create one recommendation for each unchanged evidence snapshot."""
     summaries = summarize_evaluation_evidence(
@@ -51,6 +42,7 @@ def recommend_skill_revisions(
         reason_codes, reasons = _identify_evolution_reasons(
             summary,
             revision.freshness,
+            policy,
         )
         if not reasons:
             continue
@@ -65,12 +57,12 @@ def recommend_skill_revisions(
                 SkillEvolutionRecommendation(
                     evidence_sha256=summary.evidence_sha256,
                     evidence_record_ids=list(
-                        summary.record_ids[-MAX_STORED_EVIDENCE_RECORD_IDS:]
+                        summary.record_ids[-policy.max_evidence_records:]
                     ),
                     metrics=_evolution_metrics(summary, revision.freshness),
                     reason_codes=reason_codes,
                     reasons=reasons,
-                    goal=_build_evolution_goal(revision, reason_codes),
+                    goal=_build_evolution_goal(revision, reason_codes, policy),
                 ),
             )
         )
@@ -88,6 +80,7 @@ def _can_evolve(revision: SkillRevision) -> bool:
 def _identify_evolution_reasons(
     summary: EvaluationEvidenceSummary,
     freshness: float | None,
+    policy: EvolutionPolicy,
 ) -> tuple[list[str], list[str]]:
     findings: list[tuple[str, str]] = []
     if summary.failure_count:
@@ -95,19 +88,19 @@ def _identify_evolution_reasons(
             ("failures", f"{summary.failure_count} of {summary.sample_count} runs failed")
         )
     if (
-        summary.sample_count >= LOW_SCORE_MINIMUM_SAMPLES
-        and summary.average_score < LOW_SCORE_THRESHOLD
+        summary.sample_count >= policy.low_score_minimum_samples
+        and summary.average_score < policy.low_score_threshold
     ):
         findings.append(("low_score", f"average score is {summary.average_score:.4f}"))
     if (
         freshness is not None
-        and summary.sample_count >= LOW_FRESHNESS_MINIMUM_SAMPLES
-        and freshness < LOW_FRESHNESS_THRESHOLD
+        and summary.sample_count >= policy.low_freshness_minimum_samples
+        and freshness < policy.low_freshness_threshold
     ):
         findings.append(("low_freshness", f"freshness is {freshness:.2f}"))
     if (
-        summary.same_function_followups >= REPLACEMENT_MINIMUM_FOLLOWUPS
-        and summary.replacement_rate >= REPLACEMENT_RATE_THRESHOLD
+        summary.same_function_followups >= policy.replacement_minimum_followups
+        and summary.replacement_rate >= policy.replacement_rate_threshold
     ):
         findings.append(
             (
@@ -115,13 +108,13 @@ def _identify_evolution_reasons(
                 f"successful replacement rate is {summary.replacement_rate:.2%}",
             )
         )
-    if summary.average_tokens >= HIGH_AVERAGE_TOKENS:
+    if summary.average_tokens >= policy.high_average_tokens:
         findings.append(
             ("token_cost", f"average token cost is {summary.average_tokens:.2f}")
         )
     if (
         summary.average_latency_ms is not None
-        and summary.average_latency_ms >= HIGH_AVERAGE_LATENCY_MS
+        and summary.average_latency_ms >= policy.high_average_latency_ms
     ):
         findings.append(
             ("latency", f"average latency is {summary.average_latency_ms:.2f} ms")
@@ -132,17 +125,10 @@ def _identify_evolution_reasons(
 def _build_evolution_goal(
     revision: SkillRevision,
     reason_codes: list[str],
+    policy: EvolutionPolicy,
 ) -> str:
-    actions = {
-        "failures": "reduce execution failures",
-        "low_score": "improve output quality",
-        "low_freshness": "restore useful current behavior",
-        "replacement": "reduce replacement by equivalent mechanisms",
-        "token_cost": "reduce token cost",
-        "latency": "reduce execution latency",
-    }
-    requested = "; ".join(actions[code] for code in reason_codes)
-    return f"Improve {revision.key}: {requested}."
+    signals = ", ".join(reason_codes)
+    return f"Improve {revision.key} for these measured signals: {signals}.\n\n{policy.instructions}"
 
 
 def _evolution_metrics(

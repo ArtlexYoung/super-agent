@@ -12,9 +12,14 @@ from skill.task.model_calls import list_model_routing_stats
 from skill.state.events import EventStore
 from skill.evolution.freshness import calculate_skill_freshness
 from skill.evolution.records import read_evaluation_records
+from skill.evolution.policy import EvolutionPolicy
 
 
-def explain_run_with_insight(store: EventStore, run_id: str) -> dict[str, object]:
+def explain_run_with_insight(
+    store: EventStore,
+    run_id: str,
+    policy: EvolutionPolicy | None,
+) -> dict[str, object]:
     explanation = store.explain_run(run_id)
     events = store.read_run_events(run_id)
     plan = _latest_event_data(events, "task.scheduled")
@@ -31,7 +36,7 @@ def explain_run_with_insight(store: EventStore, run_id: str) -> dict[str, object
                 for item in list_model_routing_stats(store)
                 if item.purpose in purposes
             ],
-            "skill_freshness": _skill_freshness_for_run(store, run_id),
+            "skill_freshness": _skill_freshness_for_run(store, run_id, policy),
             "evolution": _evolution_for_run(store, run_id),
         }
     )
@@ -126,7 +131,10 @@ def _skill_evolution_matches_run(
 def _skill_freshness_for_run(
     store: EventStore,
     run_id: str,
+    policy: EvolutionPolicy | None,
 ) -> list[dict[str, object]]:
+    if policy is None:
+        return []
     run_records = [
         record
         for record in read_evaluation_records(store, source_type="agent_run")
@@ -136,7 +144,8 @@ def _skill_freshness_for_run(
     if not run_skill_keys:
         return []
     current = calculate_skill_freshness(
-        read_evaluation_records(store, source_type="agent_run")
+        read_evaluation_records(store, source_type="agent_run"),
+        policy,
     )
     return [current[key] for key in sorted(run_skill_keys) if key in current]
 
