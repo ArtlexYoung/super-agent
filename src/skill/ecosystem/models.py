@@ -31,7 +31,6 @@ class ModelSkillInput:
     supports: list[str]
     purposes: list[str]
     strengths: list[str]
-    triggers: list[str]
     default: bool
     agent_can_update: bool
     agent_can_update_connection: bool
@@ -220,7 +219,6 @@ def model_skill_input_from_dict(value: object) -> ModelSkillInput:
             supports=_text_list(value.get("supports", ["text"]), "supports"),
             purposes=_text_list(value.get("purposes", []), "purposes"),
             strengths=_text_list(value.get("strengths", []), "strengths"),
-            triggers=_text_list(value.get("triggers", []), "triggers"),
             default=_boolean(value.get("default", False), "default"),
             agent_can_update=_boolean(
                 value.get("agent_can_update", False),
@@ -263,7 +261,6 @@ def validate_model_skill_input(request: ModelSkillInput) -> ModelSkillInput:
         supports=_normalized_text_list(request.supports, "supports", required=True),
         purposes=_normalized_text_list(request.purposes, "purposes"),
         strengths=_normalized_text_list(request.strengths, "strengths"),
-        triggers=_normalized_text_list(request.triggers, "triggers"),
         quality_score=_optional_number(request.quality_score, "quality_score", 1),
         expected_latency_ms=_optional_integer(
             request.expected_latency_ms,
@@ -290,7 +287,6 @@ def _create_model_skill_document(
             name=request.name,
             description=request.description,
             version=version,
-            triggers=request.triggers,
             entry=SkillEntry(),
             path=Path("."),
             skill_type="model",
@@ -306,7 +302,6 @@ def _create_model_skill_document(
             name=request.name,
             description=request.description,
             version=version,
-            triggers=request.triggers,
             agent_can_update=request.agent_can_update,
             provides=[
                 request.name if item == current.manifest.name else item
@@ -469,7 +464,6 @@ def _model_skill_toml(document: _ModelSkillDocument) -> str:
         'type = "model"',
         f"description = {_quote(manifest.description)}",
         f"version = {_quote(manifest.version)}",
-        f"triggers = {_array(manifest.triggers)}",
         f"agent_created = {str(manifest.agent_created).lower()}",
         f"agent_can_update = {str(manifest.agent_can_update).lower()}",
         f"freshness = {manifest.freshness:g}",

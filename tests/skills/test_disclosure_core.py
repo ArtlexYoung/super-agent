@@ -53,7 +53,7 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
     def test_same_name_in_different_kinds_requires_explicit_kind(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            _write_prompt_skill(root, "default", triggers=["default"])
+            _write_prompt_skill(root, "default")
             _write_memory_skill(root, "default")
             core = _create_core(root)
             core.prepare_skill_index()
@@ -139,16 +139,14 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
             _write_prompt_skill(
                 root,
                 "research",
-                triggers=["research"],
                 provides=["facts"],
                 requires=["http"],
             )
             core = _create_core(root)
             core.prepare_skill_index()
 
-            selected = core.select_skill_references_for_prompt(
-                "research this topic",
-                enabled_names=[],
+            selected = core.select_skill_references(
+                selected_names=["research"],
                 allowed_types={"prompt", "mcp"},
             )
 
@@ -164,9 +162,8 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
             )
             core.prepare_skill_index()
 
-            selected = core.select_skill_references_for_prompt(
-                "filesystem",
-                enabled_names=["filesystem"],
+            selected = core.select_skill_references(
+                selected_names=["filesystem"],
                 allowed_types={"prompt", "mcp"},
             )
 
@@ -183,9 +180,8 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
             )
             core.prepare_skill_index()
 
-            selected = core.select_skill_references_for_prompt(
-                "unrelated",
-                enabled_names=["shared"],
+            selected = core.select_skill_references(
+                selected_names=["shared"],
                 allowed_types={"prompt", "mcp"},
             )
 
@@ -194,7 +190,7 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
     def test_disclosure_stages_share_cache_and_record_cache_hits(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            _write_prompt_skill(root, "echo", triggers=["echo"], instruction="Answer briefly.")
+            _write_prompt_skill(root, "echo", instruction="Answer briefly.")
             core = _create_recording_core(root)
             core.prepare_skill_index()
             skill = core.open_skill("echo", expected_type="prompt")
@@ -384,7 +380,7 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
     def test_index_centrally_merges_runtime_freshness_stats(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            _write_prompt_skill(root, "research", triggers=["research"])
+            _write_prompt_skill(root, "research")
             store = create_local_event_store(root / "state")
             append_evaluation_records(
                 store,
@@ -443,7 +439,7 @@ def _create_recording_core(root: Path) -> ProgressiveDisclosureCore:
 
 
 def _write_all_skill_kinds(root: Path) -> None:
-    _write_prompt_skill(root, "echo", triggers=["echo"])
+    _write_prompt_skill(root, "echo")
     _write_mcp_skill(root, "filesystem")
     _write_memory_skill(root, "default")
     _write_workflow_skill(root, "direct")
@@ -453,7 +449,6 @@ def _write_prompt_skill(
     root: Path,
     name: str,
     *,
-    triggers: list[str] | None = None,
     provides: list[str] | None = None,
     requires: list[str] | None = None,
     instruction: str = "Use this skill.",
@@ -464,7 +459,6 @@ def _write_prompt_skill(
         skill_dir,
         name,
         "prompt",
-        triggers=triggers,
         provides=provides,
         requires=requires,
         include_entry=True,
@@ -475,7 +469,7 @@ def _write_prompt_skill(
 def _write_mcp_skill(root: Path, name: str) -> None:
     skill_dir = root / "skills" / "mcp" / name
     skill_dir.mkdir(parents=True)
-    _write_manifest(skill_dir, name, "mcp", triggers=[name], include_entry=True, extra="""
+    _write_manifest(skill_dir, name, "mcp", include_entry=True, extra="""
 [configuration]
 server = "example-mcp"
 """)
@@ -505,7 +499,6 @@ def _write_manifest(
     name: str,
     skill_type: str,
     *,
-    triggers: list[str] | None = None,
     provides: list[str] | None = None,
     requires: list[str] | None = None,
     include_entry: bool = False,
@@ -517,7 +510,6 @@ def _write_manifest(
         f'type = "{skill_type}"',
         f'description = "{name} skill"',
         'version = "0.1.0"',
-        f"triggers = {_toml_array(triggers or [])}",
         f"provides = {_toml_array(provides or [name])}",
         f"requires = {_toml_array(requires or [])}",
     ]

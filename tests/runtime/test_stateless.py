@@ -107,7 +107,7 @@ print(json.dumps(sorted(name for name in sys.modules if name.startswith(blocked)
                 for event in result.events
                 if event.event_type == "scene.selected"
             )
-            self.assertIn("no compatible scene", selected["reason"])
+            self.assertEqual("model selected direct mode", selected["reason"])
             self.assertEqual(
                 ["storage"],
                 selected["unavailable_candidates"]["scene:common"],

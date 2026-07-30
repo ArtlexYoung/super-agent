@@ -88,7 +88,6 @@ name = "{mode}"
 type = "workflow"
 description = "Executable {mode} workflow"
 version = "0.1.0"
-triggers = []
 
 [configuration]
 mode = "{mode}"
@@ -126,7 +125,6 @@ name = "{name}"
 type = "prompt"
 description = "Research helper"
 version = "0.1.0"
-triggers = ["never-match"]
 
 [entry]
 instructions = "SKILL.md"

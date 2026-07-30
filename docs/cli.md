@@ -20,9 +20,9 @@ JSON request containing `prompt`, optional messages, `user_id`, `conversation_id
 `scene`. `chat --scene` fixes one scene for that interactive session. Initialization
 writes only missing files.
 
-When `--scene` is omitted, Runtime selects from prompt triggers or the unique compatible
-default. If none is compatible, the Plan records direct mode. Unknown, incompatible, or
-ambiguous explicitly requested scenes are errors.
+When `--scene` is omitted, the routing model selects from compact scene descriptions or
+chooses direct mode. Unknown, unavailable, or policy-excluded choices are errors. Runtime
+does not replace an invalid model decision with a default scene.
 
 ## Models
 
@@ -46,7 +46,6 @@ Inspect the shared progressive index:
 super-agent skills list --config agent.toml --user-id alice
 super-agent skills index --config agent.toml --user-id alice --output json
 super-agent skills validate --config agent.toml --user-id alice
-super-agent skills explain --config agent.toml --user-id alice --prompt "research this"
 super-agent skills freshness --config agent.toml --user-id alice
 super-agent skills graph --config agent.toml --user-id alice --name prompt:research
 super-agent skills lock --config agent.toml --user-id alice \

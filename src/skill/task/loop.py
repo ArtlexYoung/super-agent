@@ -11,6 +11,7 @@ from core.provider.pool import ProviderPool
 from skill.task.model_calls import (
     AdaptiveModelCalls,
     ModelCallContext,
+    ModelDecision,
     TextModel,
     assistant_tool_call_message,
     build_model_messages,
@@ -32,6 +33,10 @@ from skill.task.plan import (
     create_step_plan,
 )
 from skill.task.scheduler import Scheduler
+from skill.task.scheduler import (
+    create_routing_model_decision,
+    select_routing_model_profile,
+)
 from skill.task.preparation import (
     RunContext,
     build_system_prompt,
@@ -92,6 +97,10 @@ class AdaptiveTaskLoop:
             session,
             self.model_profiles,
             environment=self.provider_pool.environment,
+            send_routing_messages=lambda messages: self._send_routing_messages(
+                session,
+                messages,
+            ),
         )
         plan = context.plan
         session.record_event("task.scheduled", plan.to_dict())
@@ -99,7 +108,7 @@ class AdaptiveTaskLoop:
             session.store,
             "memory_organization",
             session.record_event,
-            scheduler=context.scheduler,
+            decision=context.plan.model,
         )
         check_run_before_execution(
             request,
@@ -135,6 +144,22 @@ class AdaptiveTaskLoop:
         )
         return self._run_task_plan(context, plan, background)
 
+    def _send_routing_messages(
+        self,
+        session: Run,
+        messages: list[Message],
+    ) -> str:
+        profile = select_routing_model_profile(
+            self.model_profiles,
+            self.provider_pool.environment,
+        )
+        response = self.model_calls.call_model(
+            messages,
+            create_routing_model_decision(profile),
+            ModelCallContext("routing", session.record_event),
+        )
+        return response.text
+
     def _create_planner_task_plan(
         self,
         context: RunContext,
@@ -145,9 +170,16 @@ class AdaptiveTaskLoop:
         planner_policy = context.planner_policy
         if planner_policy is None or plan.planner is None:
             raise RuntimeError("task requires planning but no Planner Skill is available")
-        subagents = (
-            request.subagents.list_subagents() if request.include_subagents else []
-        )
+        selected_names = set(context.plan.subagent_names)
+        subagents = [
+            item
+            for item in (
+                request.subagents.list_subagents()
+                if request.include_subagents
+                else []
+            )
+            if str(item.get("name", "")) in selected_names
+        ]
         response = self.model_calls.call_model(
             build_task_planning_messages(
                 planner_policy,
@@ -272,7 +304,7 @@ class AdaptiveTaskLoop:
             session.store,
             "memory_organization",
             session.record_event,
-            scheduler=step_context.scheduler,
+            decision=step_context.plan.model,
         )
         tools = create_runtime_tools(
             request,
@@ -327,13 +359,20 @@ class AdaptiveTaskLoop:
         purpose: str,
         record_event: Callable[[str, dict[str, object]], object] | None = None,
         *,
-        scheduler: Scheduler,
+        decision: ModelDecision | None = None,
     ) -> TextModel:
+        selected = decision
+        if selected is None:
+            profile = select_routing_model_profile(
+                self.model_profiles,
+                self.provider_pool.environment,
+            )
+            selected = create_routing_model_decision(profile)
         return self.model_calls.create_text_model(
             store,
             purpose,
+            selected,
             record_event,
-            scheduler=scheduler,
         )
 
     def _run_model_loop(
@@ -395,18 +434,11 @@ class AdaptiveTaskLoop:
                 | {"text"}
             )
         )
-        model = self.model_calls.choose_model(
-            session.store,
-            step.purpose,
-            step.instruction,
-            scheduler=context.scheduler,
-            required_features=required_features,
-        )
         plan = create_step_plan(
             step,
             request,
             context.plan,
-            model=model,
+            model=context.plan.model,
             model_context_skills=select_model_context_skills(
                 context.plan.skills,
                 session,

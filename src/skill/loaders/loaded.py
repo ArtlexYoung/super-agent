@@ -36,8 +36,6 @@ class PlanningPolicy:
     name: str
     instruction: str
     max_steps: int
-    minimum_prompt_characters: int
-    planning_terms: tuple[str, ...]
 
 
 @dataclass(frozen=True)

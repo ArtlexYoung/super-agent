@@ -48,8 +48,8 @@ class McpSkillTests(unittest.TestCase):
             servers = _registered_servers("filesystem")
 
             disclosure = _prepare_disclosure(root)
-            selected = disclosure.select_skill_references_for_prompt(
-                "please inspect filesystem",
+            selected = disclosure.select_skill_references(
+                ["mcp:filesystem"],
                 allowed_types={"prompt", "mcp"},
             )
             skill = _load_model_context(disclosure, selected[0], servers)
@@ -137,7 +137,6 @@ name = "bad"
 type = "mcp"
 description = "Missing mcp table"
 version = "0.1.0"
-triggers = ["bad"]
 
 [entry]
 instructions = "SKILL.md"
@@ -170,7 +169,8 @@ instructions = "SKILL.md"
             with self.assertRaises(TaskPreflightError) as raised:
                 Agent(config, provider=provider).run("use missing")
 
-            self.assertEqual([], provider.last_messages)
+            self.assertIn("response_contract", provider.last_messages[-1]["content"])
+            self.assertEqual([], provider.tool_requests)
             problem = next(
                 item for item in raised.exception.problems if item.target == "mcp:missing"
             )
@@ -289,7 +289,6 @@ name = "{name}"
 type = "mcp"
 description = "{description}"
 version = "0.1.0"
-triggers = ["{name}"]
 
 [entry]
 instructions = "SKILL.md"
@@ -314,7 +313,6 @@ name = "{name}"
 type = "mcp"
 description = "Invalid MCP configuration"
 version = "0.1.0"
-triggers = ["{name}"]
 
 [configuration]
 {configuration}
@@ -333,7 +331,6 @@ name = "{name}"
 type = "prompt"
 description = "{description}"
 version = "0.1.0"
-triggers = ["{name}"]
 
 [entry]
 instructions = "SKILL.md"

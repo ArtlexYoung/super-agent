@@ -8,6 +8,7 @@ from core.config import AgentConfig
 from skill.state.events import create_local_event_store
 from core.provider.chat import MockProvider
 from skill.state.memory_service import MiniMemory
+from support import SequenceProvider, route_response
 
 
 class MemoryWorkflowSkillLoaderTests(unittest.TestCase):
@@ -48,7 +49,13 @@ class MemoryWorkflowSkillLoaderTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_workflow_skill(root, "careful", "plan", instruction="Workflow SkillLoader marker.")
-            provider = _SequenceProvider([json.dumps(_one_step_plan()), "ok"])
+            provider = SequenceProvider(
+                [json.dumps(_one_step_plan()), "ok"],
+                route=route_response(
+                    scene="scene:common",
+                    planning=True,
+                ),
+            )
 
             result = Agent(
                 AgentConfig.load_from_file(_write_config(root, workflow="careful")),
@@ -62,20 +69,6 @@ class MemoryWorkflowSkillLoaderTests(unittest.TestCase):
                 "Workflow SkillLoader marker.",
                 provider.requests[1][0]["content"],
             )
-
-
-class _SequenceProvider(MockProvider):
-    def __init__(self, responses: list[str]) -> None:
-        super().__init__()
-        self.responses = list(responses)
-        self.requests: list[list[dict[str, object]]] = []
-
-    def send_chat_messages(self, messages, model):
-        self.last_messages = messages
-        self.requests.append(messages)
-        if not self.responses:
-            raise AssertionError("unexpected model call")
-        return self.responses.pop(0)
 
 
 def _one_step_plan() -> dict[str, object]:
@@ -101,7 +94,6 @@ name = "{name}"
 type = "memory"
 description = "Default memory"
 version = "0.1.0"
-triggers = []
 
 [configuration]
 """.strip(),
@@ -120,7 +112,6 @@ name = "{name}"
 type = "workflow"
 description = "{name} workflow"
 version = "0.1.0"
-triggers = []
 
 [configuration]
 mode = "{mode}"

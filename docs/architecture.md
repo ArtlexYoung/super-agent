@@ -100,8 +100,8 @@ separate observers of recursively read-only run events.
 All Skill types use one central `Skills` object. Its internal progressive reader:
 
 1. Scan user, project, and shipped scene sources into one compact index.
-2. Select exactly one task scene by request, Agent configuration, prompt trigger, or the
-   unique default.
+2. Ask the routing model to select the scene, Skills, planning mode, purpose, execution
+   model, and subagents from compact descriptions and explicit caller constraints.
 3. Resolve the scene's ordinary Skill references through the same index.
 4. Read and verify source content without changing cache, history, or usage state.
 5. Disclose instructions, configuration, and resources only through an explicit operation.

@@ -66,7 +66,6 @@ class SubAgent:
     name: str
     agent: "Agent"
     description: str
-    triggers: list[str]
     created_by_agent: bool = False
 
 
@@ -156,7 +155,6 @@ class Agent:
         *,
         name: str | None = None,
         description: str = "",
-        triggers: list[str] | None = None,
         created_by_agent: bool = False,
     ) -> str:
         subagent_name = self._make_next_subagent_name() if name is None else name.strip()
@@ -169,7 +167,6 @@ class Agent:
                 name=subagent_name,
                 agent=agent,
                 description=description,
-                triggers=[item.lower() for item in triggers or []],
                 created_by_agent=created_by_agent,
             )
         )
@@ -354,16 +351,9 @@ class Agent:
         prompt: str,
         user_id: str,
     ) -> None:
-        from skill.task.model_calls import detect_implicit_conversation_feedback
-
-        feedback = detect_implicit_conversation_feedback(conversation, prompt)
-        if feedback is None:
-            return
-        run_id, score, reason = feedback
-        self.runtime.record_inferred_task_feedback(
-            run_id,
-            score,
-            reason,
+        self.runtime.infer_and_record_conversation_feedback(
+            conversation,
+            prompt,
             user_id=user_id,
         )
 
@@ -514,7 +504,6 @@ class Agent:
             {
                 "name": subagent.name,
                 "description": subagent.description,
-                "triggers": subagent.triggers,
                 "created_by_agent": subagent.created_by_agent,
                 "agent_name": subagent.agent.config.agent.name,
             }

@@ -32,7 +32,7 @@ from skill.evolution.learning import AutomaticSkillEvolution
 from skill.evolution.insights import explain_run_with_insight
 from skill.state.events import create_local_event_store
 from skill.evolution.values import SkillRevision, create_indexed_skill_revision
-from support import write_workflow_skill
+from support import SequenceProvider, write_workflow_skill
 
 
 class SkillRevisionEvolutionTests(unittest.TestCase):
@@ -162,7 +162,7 @@ class SkillRevisionEvolutionTests(unittest.TestCase):
             )
             agent = Agent(
                 AgentConfig.load_from_file(config_path),
-                provider=_SequenceProvider(
+                provider=SequenceProvider(
                     [
                         RuntimeError("task failed"),
                         candidate_response,
@@ -255,7 +255,7 @@ class SkillRevisionEvolutionTests(unittest.TestCase):
             )
             agent = Agent(
                 AgentConfig.load_from_file(config_path),
-                provider=_SequenceProvider(
+                provider=SequenceProvider(
                     [response, "candidate evaluation output", "baseline evaluation output"]
                 ),
                 use_storage=True,
@@ -372,20 +372,6 @@ def _evolvable_revision(
     )
 
 
-class _SequenceProvider(MockProvider):
-    def __init__(self, responses: list[str | Exception]) -> None:
-        super().__init__()
-        self.responses = list(responses)
-
-    def send_chat_messages(self, messages, model):
-        if not self.responses:
-            raise AssertionError("unexpected provider call")
-        response = self.responses.pop(0)
-        if isinstance(response, Exception):
-            raise response
-        return response
-
-
 def _write_agent_project(root: Path, *, agent_can_update: bool = False) -> Path:
     write_workflow_skill(root)
     skill = root / "skills" / "prompt" / "echo"
@@ -397,7 +383,6 @@ name = "echo"
 type = "prompt"
 description = "Echo helper"
 version = "0.1.0"
-triggers = ["echo"]
 agent_created = {str(agent_can_update).lower()}
 agent_can_update = {str(agent_can_update).lower()}
 freshness = 70

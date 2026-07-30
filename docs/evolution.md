@@ -123,7 +123,6 @@ name = "default"
 type = "memory"
 description = "Default memory behavior"
 version = "0.1.0"
-triggers = []
 
 [configuration]
 default_scope = "agent"

@@ -165,7 +165,6 @@ description = "{name} skill"
 version = "0.1.0"
 provides = {provided}
 requires = {required}
-triggers = []
 
 [entry]
 instructions = "SKILL.md"

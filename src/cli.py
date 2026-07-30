@@ -333,7 +333,6 @@ freshness = 70
 function_group = "general"
 provides = ["echo"]
 requires = []
-triggers = ["echo", "brief"]
 
 [entry]
 instructions = "SKILL.md"

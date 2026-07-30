@@ -289,7 +289,6 @@ name = "{name}"
 type = "prompt"
 description = "Research helper"
 version = "0.1.0"
-triggers = ["never-match"]
 
 [entry]
 instructions = "SKILL.md"
@@ -308,7 +307,6 @@ name = "untrusted"
 type = "mcp"
 description = "Untrusted MCP server"
 version = "0.1.0"
-triggers = ["untrusted"]
 
 [configuration]
 server = "untrusted"

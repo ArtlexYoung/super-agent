@@ -11,6 +11,7 @@ from super_agent import Agent
 from cli import main
 from core.provider.chat import MockProvider
 from core.config import AgentConfig
+from support import route_response
 
 
 class RunsCliTests(unittest.TestCase):
@@ -249,8 +250,15 @@ class RunsCliTests(unittest.TestCase):
             config_path = root / "agent.toml"
             main(["init", "--path", tmp])
             config = AgentConfig.load_from_file(config_path)
+            parent_provider = MockProvider("parent result")
             parent = Agent(
-                config, provider=MockProvider("parent result"), use_storage=True
+                config,
+                provider=parent_provider,
+                use_storage=True,
+            )
+            parent_provider.route_response = route_response(
+                model=parent.model_profile.key,
+                subagents=["worker"],
             )
             child_config = replace(
                 config,

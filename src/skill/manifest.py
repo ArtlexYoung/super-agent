@@ -13,7 +13,6 @@ SKILL_MANIFEST_FIELDS = {
     "type",
     "description",
     "version",
-    "triggers",
     "entry",
     "configuration",
     "agent_created",
@@ -37,7 +36,6 @@ class SkillManifest:
     name: str
     description: str
     version: str
-    triggers: list[str]
     entry: SkillEntry
     path: Path
     schema_version: int = SKILL_SCHEMA_VERSION
@@ -62,7 +60,6 @@ def skill_manifest_from_dict(data: dict[str, object], path: Path) -> SkillManife
         name=name,
         description=_read_required_string(data, "description"),
         version=_read_required_string(data, "version"),
-        triggers=[item.lower() for item in _read_string_array(data, "triggers")],
         entry=entry,
         path=path.parent,
         schema_version=schema_version,
@@ -185,13 +182,6 @@ def _read_optional_string(data: dict[str, object], name: str, default: str) -> s
     return value
 
 
-def _read_string_array(data: dict[str, object], name: str) -> list[str]:
-    value = data.get(name)
-    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
-        raise ValueError(f"skill {name} must be a TOML string array")
-    return list(value)
-
-
 def skill_manifest_to_dict(manifest: SkillManifest) -> dict[str, object]:
     if manifest.schema_version != SKILL_SCHEMA_VERSION:
         raise ValueError(
@@ -204,7 +194,6 @@ def skill_manifest_to_dict(manifest: SkillManifest) -> dict[str, object]:
         "type": manifest.skill_type,
         "description": manifest.description,
         "version": manifest.version,
-        "triggers": list(manifest.triggers),
         "agent_created": manifest.agent_created,
         "agent_can_update": manifest.agent_can_update,
         "freshness": manifest.freshness,

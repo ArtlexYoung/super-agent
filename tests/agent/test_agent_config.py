@@ -137,7 +137,6 @@ name = "echo"
 type = "prompt"
 description = "Echo helper"
 version = "0.1.0"
-triggers = ["repeat", "echo"]
 
 [entry]
 instructions = "SKILL.md"
@@ -151,8 +150,7 @@ instructions = "SKILL.md"
             )
             disclosure.prepare_skill_index()
             loaded = disclosure.open_skill("echo", expected_type="prompt")
-            selected = disclosure.select_skill_references_for_prompt(
-                "please repeat this",
+            selected = disclosure.select_skill_references(
                 ["echo"],
                 allowed_types={"prompt", "mcp"},
             )
@@ -174,7 +172,6 @@ name = "echo"
 type = "prompt"
 description = "Echo helper"
 version = "0.1.0"
-triggers = ["echo"]
 
 [entry]
 instructions = "SKILL.md"

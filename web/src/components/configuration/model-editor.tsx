@@ -217,14 +217,6 @@ export function ModelEditor(props: ModelEditorProps) {
                       update("strengths", commaSeparated(value))
                     }
                   />
-                  <ConfigInput
-                    label="触发词"
-                    help="任务文本命中这些词时，提高该模型的初始匹配度。"
-                    value={model.triggers.join(", ")}
-                    onChange={(value) =>
-                      update("triggers", commaSeparated(value))
-                    }
-                  />
                   <div className="grid gap-4 sm:grid-cols-2">
                     <NumberInput
                       label="初始质量"

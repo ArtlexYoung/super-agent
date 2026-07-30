@@ -48,11 +48,18 @@ class TaskPreflightTests(unittest.TestCase):
                 {"alpha:one", "beta:two"},
                 {problem.target for problem in raised.exception.problems},
             )
-            self.assertEqual([], provider.last_messages)
+            self.assertIn("response_contract", provider.last_messages[-1]["content"])
             event_types = [event.event_type for event in events]
             self.assertIn("task.preflight.failed", event_types)
             self.assertNotIn("runtime.locked", event_types)
-            self.assertNotIn("model.call.selected", event_types)
+            self.assertEqual(
+                ["routing"],
+                [
+                    event.data["purpose"]
+                    for event in events
+                    if event.event_type == "model.call.selected"
+                ],
+            )
 
     def test_successful_preflight_precedes_model_and_lists_tools(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -66,7 +73,13 @@ class TaskPreflightTests(unittest.TestCase):
 
             event_types = [event.event_type for event in result.events]
             preflight_index = event_types.index("task.preflight.completed")
-            self.assertLess(preflight_index, event_types.index("model.call.selected"))
+            execution_index = next(
+                index
+                for index, event in enumerate(result.events)
+                if event.event_type == "model.call.selected"
+                and event.data["purpose"] == "answer"
+            )
+            self.assertLess(preflight_index, execution_index)
             preflight = result.events[preflight_index]
             self.assertEqual([], preflight.data["problems"])
             self.assertIn("list_skills", preflight.data["tools"])
@@ -102,7 +115,8 @@ class TaskPreflightTests(unittest.TestCase):
             )
             self.assertIn("tool:run_remote", problem.target)
             self.assertIn("skill:task-completed", problem.target)
-            self.assertEqual([], provider.last_messages)
+            self.assertIn("response_contract", provider.last_messages[-1]["content"])
+            self.assertEqual([], provider.tool_requests)
 
     def test_tool_request_without_workflow_fails_before_provider_call(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -128,7 +142,7 @@ class TaskPreflightTests(unittest.TestCase):
             ):
                 agent.runtime.run_task(request)
 
-            self.assertEqual(0, provider.call_count)
+            self.assertEqual(1, provider.call_count)
 
 
 class _ServiceSkillLoader:
@@ -200,7 +214,6 @@ name = "{name}"
 type = "{skill_type}"
 description = "Requires a test Runtime service"
 version = "0.1.0"
-triggers = []
 '''.strip(),
         encoding="utf-8",
     )

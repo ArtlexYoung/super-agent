@@ -21,32 +21,7 @@ TASK_PLAN_STEP_FIELDS = {
     "subagent",
 }
 DEFAULT_PLANNING_MAX_STEPS = 6
-DEFAULT_MINIMUM_PROMPT_CHARACTERS = 320
-DEFAULT_PLANNING_TERMS = (
-    "step by step",
-    "first, then",
-    "first and then",
-    "then finally",
-    "in stages",
-    "multiple steps",
-    "逐步",
-    "分步骤",
-    "先完成",
-    "然后再",
-    "最后再",
-    "分阶段",
-)
-PLANNER_CONFIGURATION_FIELDS = {
-    "max_steps",
-    "minimum_prompt_characters",
-    "planning_terms",
-}
-
-
-@dataclass(frozen=True)
-class TaskPlanningDecision:
-    should_plan: bool
-    reasons: tuple[str, ...]
+PLANNER_CONFIGURATION_FIELDS = {"max_steps"}
 
 
 @dataclass(frozen=True)
@@ -75,40 +50,6 @@ class TaskPlan:
             "origin": self.origin,
             "steps": [step.to_dict() for step in self.steps],
         }
-
-
-def decide_task_planning(
-    policy: PlanningPolicy | None,
-    prompt: str,
-    *,
-    workflow_mode: str,
-    required_features: tuple[str, ...],
-) -> TaskPlanningDecision:
-    reasons: list[str] = []
-    if workflow_mode == "plan":
-        reasons.append("workflow requests planning")
-    extra_features = sorted(set(required_features) - {"text"})
-    if extra_features:
-        reasons.append("task requests features: " + ", ".join(extra_features))
-    if policy is None:
-        if reasons:
-            reasons.append("planner Skill is unavailable")
-        return TaskPlanningDecision(bool(reasons), tuple(reasons))
-    clean_prompt = prompt.strip().lower()
-    matched_term = next(
-        (term for term in policy.planning_terms if term in clean_prompt),
-        None,
-    )
-    if matched_term is not None:
-        reasons.append(f"prompt matched planning term: {matched_term}")
-    if len(prompt) >= policy.minimum_prompt_characters:
-        reasons.append(
-            "prompt length reached planner threshold: "
-            f"{len(prompt)} >= {policy.minimum_prompt_characters}"
-        )
-    if _count_structured_task_lines(prompt) >= 3:
-        reasons.append("prompt contains at least three structured task lines")
-    return TaskPlanningDecision(bool(reasons), tuple(reasons))
 
 
 def build_task_planning_messages(
@@ -254,13 +195,6 @@ def _required_text(value: object, name: str) -> str:
     return value.strip()
 
 
-def _count_structured_task_lines(prompt: str) -> int:
-    return sum(
-        bool(re.match(r"^\s*(?:[-*]|\d+[.)])\s+\S", line))
-        for line in prompt.splitlines()
-    )
-
-
 def create_planning_policy_from_skill(
     disclosure: SkillDisclosure,
 ) -> PlanningPolicy:
@@ -283,16 +217,6 @@ def create_planning_policy_from_skill(
             data.get("max_steps", DEFAULT_PLANNING_MAX_STEPS),
             "max_steps",
         ),
-        minimum_prompt_characters=_read_positive_integer(
-            data.get(
-                "minimum_prompt_characters",
-                DEFAULT_MINIMUM_PROMPT_CHARACTERS,
-            ),
-            "minimum_prompt_characters",
-        ),
-        planning_terms=_read_planning_terms(
-            data.get("planning_terms", list(DEFAULT_PLANNING_TERMS))
-        ),
     )
 
 
@@ -300,18 +224,3 @@ def _read_positive_integer(value: object, name: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
         raise ValueError(f"planner {name} must be a positive integer")
     return value
-
-
-def _read_planning_terms(value: object) -> tuple[str, ...]:
-    if not isinstance(value, list):
-        raise TypeError("planner planning_terms must be an array")
-    terms = tuple(
-        item.strip().lower()
-        for item in value
-        if isinstance(item, str) and item.strip()
-    )
-    if len(terms) != len(value):
-        raise ValueError("planner planning_terms must contain non-empty strings")
-    if len(terms) != len(set(terms)):
-        raise ValueError("planner planning_terms must be unique")
-    return terms

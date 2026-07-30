@@ -136,10 +136,10 @@ explicit.
 
 ## Task Scenes
 
-Scene selection happens once before task scheduling. The order is the request's explicit
-scene, the Agent's code-level allowlist, one prompt-trigger match, and the unique default.
-Core records `scene.selected` with the stable key or `null` and its reason, then resolves
-the selected Skill references through the central progressive index.
+Scene selection happens once before task scheduling. The routing model chooses from the
+Agent's code-level allowlist and compact scene descriptions while preserving an explicit
+request scene. Core records `scene.selected` with the stable key or `null` and its reason,
+then resolves the selected Skill references through the central progressive index.
 
 `common` selects general prompt, memory, planner, and direct workflow Skills. `code`
 selects repository-specific versions and a bounded tool loop. A project can add scene
@@ -162,7 +162,6 @@ name = "react"
 type = "workflow"
 description = "Tool-using workflow"
 version = "0.1.0"
-triggers = []
 
 [configuration]
 mode = "react"
@@ -178,15 +177,17 @@ and nested work.
 ## Model Scheduling
 
 Model Skills describe purpose, supported features, expected quality, latency, cost, and
-Provider connection metadata. The selected Scheduler Skill combines those declared traits
-with user-and-Agent-scoped run evidence and a bounded exploration score. Candidate ranking
-is a pure input-to-output operation; only the final `ModelDecision` enters the `Plan`.
+Provider connection metadata. The selected Scheduler Skill supplies model instructions for
+one structured routing call. That call receives compact scene and Skill descriptions,
+model traits, scoped run evidence, available subagents, and explicit caller constraints.
+It returns the scene, Skills, planning mode, purpose, execution model, and subagents that
+enter the immutable `Plan`.
 
-The built-in `scheduler:default` needs no user configuration. An equal top score or more
-than one automatically inferred purpose is an error, not a name-order fallback. For a
-multi-step plan, all Step model decisions are fixed and recorded before any Step executes.
-Custom Scheduler and model Skills use the same ownership and evolution rules as every
-other passive Skill.
+The built-in `scheduler:default` needs no user configuration. Runtime validates every key,
+required feature, and explicit selection in the model response. Invalid output is an error;
+there is no keyword matcher, local score ranking, retry, or default substitution. One
+execution model is fixed for the task before preflight and execution. Custom Scheduler and
+model Skills use the same ownership and evolution rules as every other passive Skill.
 
 A Provider failure is recorded and raised without a retry marker or another model call.
 Choosing another model requires a new, visible `Plan` before execution; it is never a
@@ -237,17 +238,16 @@ main.add_subagent(
     coder,
     name="coder",
     description="Implements code and tests",
-    triggers=["code", "implement"],
 )
 main.add_subagent(
     reviewer,
     description="Reviews behavior and risks",
-    triggers=["review"],
 )
 ```
 
 Omitting `name` creates `subagent01`, `subagent02`, and so on. Each child keeps its
-own configuration, Provider set, Skills, storage scope, and child graph.
+own configuration, Provider set, Skills, storage scope, and child graph. The routing model
+uses descriptions to choose delegation; Agent names and task text are not matched locally.
 
 Before execution, Core reports complete cycle paths such as
 `main -> coder -> reviewer -> main` and paths deeper than

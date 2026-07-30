@@ -7,7 +7,7 @@ from super_agent import Agent
 from core.config import AgentConfig
 from skill.evolution.insights import explain_run_with_insight
 from skill.evolution.records import read_evaluation_records
-from support import write_workflow_skill
+from support import SequenceProvider, route_response, write_workflow_skill
 
 
 class ZeroConfigurationPlanningTests(unittest.TestCase):
@@ -15,7 +15,13 @@ class ZeroConfigurationPlanningTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_model_skill(root, "fast", default=True, purposes=["answer"])
-            provider = _SequenceProvider(["direct answer"])
+            provider = SequenceProvider(
+                ["direct answer"],
+                route=route_response(
+                    model="model:fast",
+                    scene="scene:common",
+                ),
+            )
             agent = Agent(
                 _write_config(root, "direct-agent"), provider=provider, use_storage=True
             )
@@ -98,22 +104,37 @@ class ZeroConfigurationPlanningTests(unittest.TestCase):
                     },
                 ]
             }
-            fast = _SequenceProvider([json.dumps(plan), "research result"])
-            deep = _SequenceProvider(["analysis result", "final answer"])
+            fast = SequenceProvider(
+                [],
+                route=route_response(
+                    model="model:deep",
+                    scene="scene:common",
+                    planning=True,
+                    subagents=["researcher"],
+                    reasons=["model chose planning and the research specialist"],
+                ),
+            )
+            deep = SequenceProvider(
+                [
+                    json.dumps(plan),
+                    "research result",
+                    "analysis result",
+                    "final answer",
+                ]
+            )
             main = Agent(
                 _write_config(root, "planning-agent"), provider=fast, use_storage=True
             )
             main.add_model_provider("deep", deep)
             researcher = Agent(
                 _write_config(root, "research-agent"),
-                provider=_SequenceProvider(["subagent facts"]),
+                provider=SequenceProvider(["subagent facts"]),
                 use_storage=True,
             )
             main.add_subagent(
                 researcher,
                 name="researcher",
                 description="Collects source facts",
-                triggers=["research"],
             )
 
             result = main.run(
@@ -122,10 +143,10 @@ class ZeroConfigurationPlanningTests(unittest.TestCase):
             main.learn_from_run(result.run_id)
 
             self.assertEqual("final answer", result.text)
-            self.assertEqual(["fast-model", "fast-model"], fast.models)
-            self.assertEqual(["deep-model", "deep-model"], deep.models)
+            self.assertEqual([], fast.models)
+            self.assertEqual(["deep-model"] * 4, deep.models)
             self.assertEqual(["researcher"], [item.name for item in result.subagent_results or []])
-            self.assertIn("subagent facts", str(fast.requests[1]))
+            self.assertIn("subagent facts", str(deep.requests[1]))
             events = main.for_user("local").runs.read_trace(result.run_id).events
             plan = next(
                 event.data for event in events if event.event_type == "task.scheduled"
@@ -140,7 +161,7 @@ class ZeroConfigurationPlanningTests(unittest.TestCase):
                 if event.event_type == "task.step.scheduled"
             ]
             self.assertEqual(
-                ["model:fast", "model:deep", "model:deep"],
+                ["model:deep", "model:deep", "model:deep"],
                 step_models,
             )
             self.assertTrue(
@@ -159,7 +180,7 @@ class ZeroConfigurationPlanningTests(unittest.TestCase):
                 index
                 for index, event in enumerate(events)
                 if event.event_type == "model.call.selected"
-                and event.data["purpose"] != "planning"
+                and event.data["purpose"] in {"research", "analysis", "synthesis"}
             ]
             self.assertLess(max(scheduled_indexes), min(execution_indexes))
             insight = explain_run_with_insight(
@@ -177,7 +198,7 @@ class ZeroConfigurationPlanningTests(unittest.TestCase):
                 for record in read_evaluation_records(main.runtime.create_event_store())
             }
             self.assertTrue(
-                {"planner:default", "model:fast", "model:deep"} <= used_keys
+                {"planner:default", "model:deep"} <= used_keys
             )
 
 
@@ -187,7 +208,7 @@ class PlanningSkillEvolutionTests(unittest.TestCase):
             root = Path(tmp)
             _write_model_skill(root, "main", default=True, purposes=["answer"])
             _write_planner_skill(root)
-            provider = _SequenceProvider(
+            provider = SequenceProvider(
                 [
                     "invalid plan",
                     json.dumps(
@@ -200,7 +221,12 @@ class PlanningSkillEvolutionTests(unittest.TestCase):
                     ),
                     "candidate evaluation output",
                     "baseline evaluation output",
-                ]
+                ],
+                route=route_response(
+                    model="model:main",
+                    scene="scene:common",
+                    planning=True,
+                ),
             )
             agent = Agent(
                 _write_config(root, "planner-evolution"),
@@ -265,7 +291,7 @@ class PlanningSkillEvolutionTests(unittest.TestCase):
                 description="Improved routing model",
                 agent_can_update=True,
             )
-            provider = _SequenceProvider(
+            provider = SequenceProvider(
                 [
                     RuntimeError("model unavailable"),
                     json.dumps(
@@ -276,7 +302,11 @@ class PlanningSkillEvolutionTests(unittest.TestCase):
                     ),
                     "candidate evaluation output",
                     "baseline evaluation output",
-                ]
+                ],
+                route=route_response(
+                    model="model:main",
+                    scene="scene:common",
+                ),
             )
             agent = Agent(
                 _write_config(root, "model-evolution"),
@@ -321,23 +351,6 @@ class PlanningSkillEvolutionTests(unittest.TestCase):
             self.assertEqual("Improved routing model", profile.description)
             self.assertEqual("main-model", profile.model)
             self.assertFalse(profile.agent_can_update_connection)
-
-
-class _SequenceProvider:
-    def __init__(self, responses: list[str | Exception]) -> None:
-        self.responses = list(responses)
-        self.models: list[str] = []
-        self.requests: list[list[dict[str, object]]] = []
-
-    def send_chat_messages(self, messages, model):
-        self.models.append(model)
-        self.requests.append(messages)
-        if not self.responses:
-            raise AssertionError("unexpected model call")
-        response = self.responses.pop(0)
-        if isinstance(response, Exception):
-            raise response
-        return response
 
 
 def _write_config(root: Path, agent_name: str) -> AgentConfig:
@@ -397,7 +410,6 @@ name = "{name}"
 type = "model"
 description = "{description}"
 version = "0.1.0"
-triggers = []
 agent_created = {str(agent_can_update).lower()}
 agent_can_update = {str(agent_can_update).lower()}
 
@@ -421,7 +433,6 @@ name = "default"
 type = "planner"
 description = "Agent-owned planning policy"
 version = "0.1.0"
-triggers = []
 agent_created = true
 agent_can_update = true
 function_group = "task-planning"
@@ -431,8 +442,6 @@ instructions = "SKILL.md"
 
 [configuration]
 max_steps = 4
-minimum_prompt_characters = 320
-planning_terms = ["step by step"]
 '''.strip(),
         encoding="utf-8",
     )

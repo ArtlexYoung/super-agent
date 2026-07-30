@@ -52,7 +52,6 @@ export interface SkillState {
   type: string
   description: string
   version: string
-  triggers: string[]
   provides: string[]
   requires: string[]
   content_sha256: string
@@ -81,7 +80,6 @@ export interface ModelProfile {
   supports: string[]
   purposes: string[]
   strengths: string[]
-  triggers: string[]
   default: boolean
   quality_score: number
   expected_latency_ms: number
@@ -106,7 +104,6 @@ export interface ModelSkillInput {
   supports: string[]
   purposes: string[]
   strengths: string[]
-  triggers: string[]
   default: boolean
   agent_can_update: boolean
   agent_can_update_connection: boolean

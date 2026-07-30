@@ -15,7 +15,7 @@ from core.models import LOCAL_USER_ID, RunIdentity
 from core.provider.pool import ProviderPool
 from core.provider.secrets import UserSecretResolver
 from core.state.event_log import RunEventLog
-from core.state.models import RunEvent
+from core.state.models import Conversation, RunEvent
 from core.state.subscribers import (
     RuntimeEventSubscriberError,
     RuntimeEventSubscriber,
@@ -25,7 +25,7 @@ from core.state.subscribers import (
 from core.events import StorageBackend
 from skill.task.loop import AdaptiveTaskLoop, list_run_actions
 from skill.task.plan import Plan
-from skill.task.preparation import create_runtime_lock
+from skill.task.plan import create_runtime_lock
 from skill.task.model_calls import estimate_text_tokens
 from core.models import RunLearningResult, Task, RunResult, TaskTrace
 from skill.skills import Skills
@@ -235,6 +235,36 @@ class Runtime:
             source="implicit",
         )
 
+    def infer_and_record_conversation_feedback(
+        self,
+        conversation: Conversation,
+        prompt: str,
+        *,
+        user_id: str = LOCAL_USER_ID,
+    ) -> RunEvent | None:
+        from skill.task.model_calls import infer_conversation_feedback_with_model
+
+        store = self.create_event_store(user_id)
+        task_loop = self._create_task_loop(
+            self.read_model_profiles(user_id),
+            user_id,
+        )
+        model = task_loop.create_text_model(store, "conversation_feedback")
+        feedback = infer_conversation_feedback_with_model(
+            conversation,
+            prompt,
+            model.send_messages,
+        )
+        if feedback is None:
+            return None
+        run_id, score, reason = feedback
+        return self.record_inferred_task_feedback(
+            run_id,
+            score,
+            reason,
+            user_id=user_id,
+        )
+
     def learn_from_run(
         self,
         run_id: str,
@@ -292,13 +322,6 @@ class Runtime:
         skills = self._create_skills(store)
         profiles = self._read_model_profiles(skills, user_id)
         task_loop = self._create_task_loop(profiles, user_id)
-        from skill.task.scheduler import load_scheduler
-
-        scheduler = load_scheduler(
-            skills.index,
-            self.config.agent.skills,
-            skills.load,
-        ).scheduler
         return SkillEvolutionManager(
             skill_disclosure=skills.disclosure,
             store=store,
@@ -306,12 +329,10 @@ class Runtime:
                 candidate=task_loop.create_text_model(
                     store,
                     "skill_evolution",
-                    scheduler=scheduler,
                 ),
                 evaluation=task_loop.create_text_model(
                     store,
                     "skill_evaluation",
-                    scheduler=scheduler,
                 ),
             ),
             on_skill_changed=change_handler,

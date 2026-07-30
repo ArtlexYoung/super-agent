@@ -38,7 +38,6 @@ version = "0.1.0"
 freshness = 83.5
 function_group = "search"
 freshness_updated_at = "2026-07-07T12:00:00Z"
-triggers = ["research"]
 
 [entry]
 instructions = "SKILL.md"
@@ -263,7 +262,6 @@ description = "{name} helper"
 version = "0.1.0"
 freshness = 70
 function_group = "{function_group}"
-triggers = ["{name}"]
 
 [entry]
 instructions = "SKILL.md"

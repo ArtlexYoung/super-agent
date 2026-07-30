@@ -77,6 +77,7 @@ class ReleaseShapeTests(unittest.TestCase):
             "scene/common/skill.toml",
             "scene_manager/default/SKILL.md",
             "scene_manager/default/skill.toml",
+            "scheduler/default/SKILL.md",
             "scheduler/default/skill.toml",
             "workflow/code/skill.toml",
             "workflow/direct/skill.toml",

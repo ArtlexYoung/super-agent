@@ -1,6 +1,7 @@
 import json
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
@@ -14,8 +15,13 @@ class RunSnapshotTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_prompt_skill(root)
+            config = AgentConfig.create_default(root)
+            config = replace(
+                config,
+                agent=replace(config.agent, skills=["prompt:echo"]),
+            )
             agent = Agent(
-                AgentConfig.create_default(root),
+                config,
                 provider=MockProvider("finished"),
                 use_storage=True,
             )
@@ -69,7 +75,7 @@ class RunSnapshotTests(unittest.TestCase):
                 {
                     "skill_key": "prompt:echo",
                     "selected": True,
-                    "reason": "matched trigger: echo",
+                    "reason": "selected explicitly",
                 },
                 explanation["selection_decisions"],
             )
@@ -162,7 +168,6 @@ name = "echo"
 type = "prompt"
 description = "Echo helper"
 version = "0.1.0"
-triggers = ["echo"]
 
 [entry]
 instructions = "SKILL.md"

@@ -68,8 +68,8 @@ Status: implemented.
   `type/name` keys, with no external package-data path or compatibility loader.
 - Add one ordinary `scene` Skill type that references prompt, memory, planner, workflow,
   and other task-specific Skills through the central progressive index.
-- Select exactly one scene by explicit request, Agent configuration, prompt triggers, or
-  one default; reject every ambiguity and missing workflow.
+- Select exactly one scene through an explicit request or the central model route; reject
+  unknown, unavailable, policy-excluded, and incomplete selections.
 - Provide a general task chain informed by public Hermes and OpenClaw patterns and a full
   coding chain informed by public Codex source plus Claude Code's public plugins, SDK, and
   documentation.
@@ -391,10 +391,10 @@ Status: implemented.
   purpose, model, and subagent choices through its central `Scheduler` mechanism.
 - Keep model descriptions and Scheduler policy as ordinary inspectable, replaceable, and
   evolvable Skill content rather than fixed Provider or Runtime configuration.
-- Reject model-score ties, multiple automatic purposes, conflicting single selections,
-  and one-subagent policy ambiguity instead of using list or name order.
-- Freeze and record every planned Step's one model decision before executing any Step, so
-  evidence produced earlier in a plan cannot silently reroute its later work.
+- Validate the model's selected scene, Skills, purpose, execution model, and subagents
+  instead of using list or name order.
+- Freeze and record one execution model before running the task so evidence produced during
+  a plan cannot silently reroute later work.
 - Remove the old `routing` module and initial model preselection; no Provider is obtained
   before the Scheduler has made an unambiguous decision.
 
@@ -501,6 +501,19 @@ Status: implemented.
   paths while moving internal details to focused documentation.
 - Require the full Python tests, bytecode compilation, Web lint, typecheck, production
   build, and package artifact inspection before the release tag is created.
+
+## v0.0.100: Model-Decided Routing
+
+Status: implemented.
+
+- Replace prompt keywords, manifest triggers, local model scoring, planning thresholds,
+  subagent matching, and correction markers with one structured routing-model decision.
+- Let that decision choose scene, Skills, planning, purpose, execution model, and subagents
+  from progressively disclosed descriptions, model traits, and scoped evidence.
+- Preserve explicit caller choices as strict constraints and fail unknown, unavailable, or
+  incompatible model output without retries or default substitution.
+- Record routing calls and `task.route.decided` separately from preflight-protected model
+  execution, and expose no routing field in Skill, model, CLI, Web, or example manifests.
 
 ## Release Gate
 

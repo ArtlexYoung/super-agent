@@ -3,7 +3,6 @@ name = "filesystem"
 type = "mcp"
 description = "Example filesystem MCP tools"
 version = "0.1.0"
-triggers = ["filesystem", "files"]
 
 [entry]
 instructions = "SKILL.md"

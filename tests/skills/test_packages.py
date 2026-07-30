@@ -200,7 +200,6 @@ name = "{name}"
 type = "{skill_type}"
 description = "Packaged skill"
 version = "{version}"
-triggers = ["{name}"]
 
 [entry]
 instructions = "SKILL.md"

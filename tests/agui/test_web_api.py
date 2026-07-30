@@ -155,7 +155,6 @@ def _model_request() -> dict[str, object]:
         "supports": ["text", "tools"],
         "purposes": ["answer"],
         "strengths": ["speed"],
-        "triggers": ["fast"],
         "default": True,
         "agent_can_update": True,
         "agent_can_update_connection": False,

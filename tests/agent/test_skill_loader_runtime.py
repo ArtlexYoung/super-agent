@@ -82,7 +82,10 @@ class SkillLoaderRuntimeTests(unittest.TestCase):
             _write_prompt_skill(root)
             provider = MockProvider("finished")
             loader = _RecordingPromptSkillLoader()
-            agent = Agent(AgentConfig.create_default(root), provider=provider)
+            agent = Agent(
+                _config_with_skills(root, ["prompt:echo"]),
+                provider=provider,
+            )
             agent.add_skill_loader(loader)
 
             result = agent.run("please echo this")
@@ -101,7 +104,7 @@ class SkillLoaderRuntimeTests(unittest.TestCase):
             provider = MockProvider("finished")
             loader = _TransformSkillLoader()
             agent = Agent(
-                AgentConfig.create_default(root),
+                _config_with_skills(root, ["transform:echo"]),
                 provider=provider,
                 skill_loaders=[loader],
             )
@@ -127,7 +130,7 @@ class SkillLoaderRuntimeTests(unittest.TestCase):
                 ]
             )
             agent = Agent(
-                _config_with_skills(root, ["workflow:react"]),
+                _config_with_skills(root, ["workflow:react", "transform:echo"]),
                 provider=provider,
                 skill_loaders=[_TransformSkillLoader()],
             )
@@ -148,7 +151,7 @@ class SkillLoaderRuntimeTests(unittest.TestCase):
             _write_prompt_skill(root, skill_type="unsafe")
             provider = MockProvider("must not run")
             agent = Agent(
-                AgentConfig.create_default(root),
+                _config_with_skills(root, ["unsafe:echo"]),
                 provider=provider,
                 skill_loaders=[_MissingActionSkillLoader()],
             )
@@ -156,7 +159,8 @@ class SkillLoaderRuntimeTests(unittest.TestCase):
             with self.assertRaisesRegex(TaskPreflightError, "action"):
                 agent.run("please echo this")
 
-            self.assertEqual([], provider.last_messages)
+            self.assertEqual([], provider.tool_requests)
+            self.assertIn("response_contract", provider.last_messages[-1]["content"])
 
     def test_task_trace_uses_one_runtime_task_path(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -172,15 +176,25 @@ class SkillLoaderRuntimeTests(unittest.TestCase):
             self.assertEqual(result.run_id, trace.task_id)
             self.assertIsNone(trace.parent_task_id)
             event_types = [event.event_type for event in trace.events]
+            execution_selected = next(
+                index
+                for index, event in enumerate(trace.events)
+                if event.event_type == "model.call.selected"
+                and event.data["purpose"] == "answer"
+            )
+            execution_completed = next(
+                index
+                for index, event in enumerate(trace.events)
+                if event.event_type == "model.call.completed"
+                and event.data["purpose"] == "answer"
+            )
             ordered_steps = [
-                event_types.index(name)
-                for name in (
-                    "task.started",
-                    "task.scheduled",
-                    "model.call.selected",
-                    "model.call.completed",
-                    "task.completed",
-                )
+                event_types.index("task.started"),
+                event_types.index("task.route.decided"),
+                event_types.index("task.scheduled"),
+                execution_selected,
+                execution_completed,
+                event_types.index("task.completed"),
             ]
             self.assertEqual(sorted(ordered_steps), ordered_steps)
             self.assertFalse(hasattr(agent.runtime, "task_loop"))
@@ -318,7 +332,6 @@ name = "echo"
 type = "{skill_type}"
 description = "Echo helper"
 version = "0.1.0"
-triggers = ["echo"]
 
 [entry]
 instructions = "SKILL.md"

@@ -2,8 +2,7 @@ schema_version = 3
 name = "default"
 type = "planner"
 description = "Default minimal evidence-oriented planner for multi-step tasks"
-version = "0.0.65"
-triggers = []
+version = "0.0.100"
 agent_created = false
 agent_can_update = false
 freshness = 70
@@ -17,18 +16,3 @@ instructions = "SKILL.md"
 
 [configuration]
 max_steps = 8
-minimum_prompt_characters = 320
-planning_terms = [
-  "step by step",
-  "first, then",
-  "first and then",
-  "then finally",
-  "in stages",
-  "multiple steps",
-  "逐步",
-  "分步骤",
-  "先完成",
-  "然后再",
-  "最后再",
-  "分阶段",
-]

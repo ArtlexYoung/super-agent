@@ -660,7 +660,6 @@ name = "project"
 type = "memory"
 description = "Project memory"
 version = "0.1.0"
-triggers = []
 
 [configuration]
 default_scope = "project"

@@ -8,8 +8,8 @@ def main() -> None:
     coder = Agent("examples/basic/agent.toml")
     reviewer = Agent("examples/basic/agent.toml")
 
-    master.add_subagent(coder, name="coder", description="writes code", triggers=["code"])
-    master.add_subagent(reviewer, description="reviews risks", triggers=["review"])
+    master.add_subagent(coder, name="coder", description="writes code")
+    master.add_subagent(reviewer, description="reviews risks")
 
     result = master.run("please write code and review the result")
     print(result.text)

@@ -6,7 +6,7 @@ from super_agent import Agent, AgentRunOptions
 from core.config import AgentConfig
 from core.provider.chat import MockProvider, ModelResponse, ToolCall
 from skill.evolution.records import read_evaluation_records
-from support import write_workflow_skill
+from support import route_response, write_workflow_skill
 
 
 class SubAgentTests(unittest.TestCase):
@@ -35,11 +35,17 @@ class SubAgentTests(unittest.TestCase):
     def test_main_agent_includes_matching_subagent_result_before_final_answer(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            main_provider = MockProvider("main-final")
+            main_provider = MockProvider(
+                "main-final",
+                route_response=route_response(
+                    subagents=["coder"],
+                    reasons=["model selected the coding specialist"],
+                ),
+            )
             coder_provider = MockProvider("coder-result")
             main = _agent(root, "main", provider=main_provider)
             coder = _agent(root, "coder", provider=coder_provider)
-            main.add_subagent(coder, name="coder", description="writes code", triggers=["code"])
+            main.add_subagent(coder, name="coder", description="writes code")
 
             result = main.run("please write code")
 
@@ -54,7 +60,10 @@ class SubAgentTests(unittest.TestCase):
                 if event.event_type == "task.scheduled"
             )
             self.assertEqual(["coder"], schedule["subagents"])
-            self.assertEqual(["coder: matched trigger code"], schedule["subagent_reasons"])
+            self.assertEqual(
+                ["model selected the coding specialist"],
+                schedule["subagent_reasons"],
+            )
 
     def test_main_agent_skips_unmatched_subagents_by_default(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -63,7 +72,7 @@ class SubAgentTests(unittest.TestCase):
             coder_provider = MockProvider("coder-result")
             main = _agent(root, "main", provider=main_provider)
             coder = _agent(root, "coder", provider=coder_provider)
-            main.add_subagent(coder, name="coder", triggers=["code"])
+            main.add_subagent(coder, name="coder")
 
             result = main.run("summarize this")
 
@@ -73,11 +82,21 @@ class SubAgentTests(unittest.TestCase):
     def test_subagent_keeps_its_own_scene_policy(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            main = _agent(root, "main", "main-result")
+            main = _agent(
+                root,
+                "main",
+                provider=MockProvider(
+                    "main-result",
+                    route_response=route_response(
+                        scene="scene:common",
+                        subagents=["coder"],
+                    ),
+                ),
+            )
             coder = _agent(root, "coder", "coder-result")
             main.use_only_scenes("common")
             coder.use_only_scenes("code")
-            main.add_subagent(coder, name="coder", triggers=["code"])
+            main.add_subagent(coder, name="coder")
 
             result = main.run("write code")
 
@@ -100,9 +119,16 @@ class SubAgentTests(unittest.TestCase):
     def test_subagent_runs_do_not_learn_until_explicitly_requested(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            main = _agent(root, "main", "main-result")
+            main = _agent(
+                root,
+                "main",
+                provider=MockProvider(
+                    "main-result",
+                    route_response=route_response(subagents=["coder"]),
+                ),
+            )
             coder = _agent(root, "coder", "coder-result")
-            main.add_subagent(coder, name="coder", triggers=["code"])
+            main.add_subagent(coder, name="coder")
 
             result = main.run("write code")
 
@@ -121,8 +147,14 @@ class SubAgentTests(unittest.TestCase):
     def test_nested_subagents_can_run_without_depth_safety_stop(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            main_provider = MockProvider("main-final")
-            coder_provider = MockProvider("coder-result")
+            main_provider = MockProvider(
+                "main-final",
+                route_response=route_response(subagents=["coder"]),
+            )
+            coder_provider = MockProvider(
+                "coder-result",
+                route_response=route_response(subagents=["reviewer"]),
+            )
             reviewer_provider = MockProvider("reviewer-result")
             main = _agent(root, "main", provider=main_provider)
             coder = _agent(root, "coder", provider=coder_provider)
@@ -156,7 +188,15 @@ class SubAgentTests(unittest.TestCase):
     def test_agent_run_returns_depth_warning_without_stopping_execution(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            main = _agent(root, "main", "main-ok", max_agent_chain_depth=1)
+            main = _agent(
+                root,
+                "main",
+                max_agent_chain_depth=1,
+                provider=MockProvider(
+                    "main-ok",
+                    route_response=route_response(subagents=["coder"]),
+                ),
+            )
             coder = _agent(root, "coder", "coder-ok")
             main.add_subagent(coder, name="coder")
 
@@ -194,8 +234,22 @@ class SubAgentTests(unittest.TestCase):
     def test_subagent_result_keeps_created_flag_and_child_results(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            main = _agent(root, "main", "main-ok")
-            coder = _agent(root, "coder", "coder-ok")
+            main = _agent(
+                root,
+                "main",
+                provider=MockProvider(
+                    "main-ok",
+                    route_response=route_response(subagents=["coder"]),
+                ),
+            )
+            coder = _agent(
+                root,
+                "coder",
+                provider=MockProvider(
+                    "coder-ok",
+                    route_response=route_response(subagents=["helper"]),
+                ),
+            )
             helper = _agent(root, "helper", "helper-ok")
             main.add_subagent(coder, name="coder", created_by_agent=True)
             coder.add_subagent(helper, name="helper", created_by_agent=True)
@@ -234,7 +288,7 @@ class SubAgentTests(unittest.TestCase):
             )
             main = _agent(root, "main", provider=main_provider, workflow="react")
             coder = _agent(root, "coder", provider=MockProvider("coder-result"))
-            main.add_subagent(coder, name="coder", description="writes code", triggers=["model-only"])
+            main.add_subagent(coder, name="coder", description="writes code")
 
             result = main.run("delegate coding")
 

@@ -11,6 +11,11 @@ format. A central progressive-disclosure core finds the relevant content; one Ru
 plans and executes the task. Optional storage, memory, learning, and evolution layers use
 that same path instead of introducing separate engines.
 
+At the start of each run, one routing-model call reads compact descriptions and returns one
+structured decision for the scene, Skills, planning mode, purpose, execution model, and
+subagents. Runtime contains no keyword matching or hidden local fallback. Explicit caller
+choices are constraints, and unknown or incompatible model choices fail visibly.
+
 Super Agent is experimental and remains in `0.0.x`. Breaking changes are made directly;
 old imports and silent compatibility behavior are not retained.
 
@@ -79,13 +84,15 @@ main = Agent()
 coder = Agent()
 coder.use_only_scenes("code")
 
-main.add_subagent(coder, name="coder", triggers=["code", "implement"])
+main.add_subagent(coder, name="coder")
 result = main.run("Implement and test this change")
 ```
 
-Use `disable_scenes()` for direct model execution. Use `super-agent init --path my-agent`
-only when you want editable Skill examples. Prompts, tools, memory, workflows, planners,
-scenes, and model descriptions all use the same progressively disclosed Skill format.
+The routing model decides whether to delegate and which subagent to use from their natural
+language descriptions. No keyword or trigger list is involved. Use `disable_scenes()` for
+direct model execution. Use `super-agent init --path my-agent` only when you want editable
+Skill examples. Prompts, tools, memory, workflows, planners, scenes, and model descriptions
+all use the same progressively disclosed Skill format.
 
 ## Opt In to State and Learning
 
@@ -120,6 +127,7 @@ The React client, CopilotKit example, and AG-UI endpoint are served at
 ## Design Guarantees
 
 - **Progressive:** only relevant Skill content is loaded.
+- **Model-decided:** one structured model route selects every optional task component.
 - **Explicit:** reads do not write; missing requirements fail before model execution.
 - **Isolated:** users and Agents do not share conversations, memory, evidence, or overlays.
 - **Evolvable:** every change is evaluated, recorded, promoted explicitly, and reversible.

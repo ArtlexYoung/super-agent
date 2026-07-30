@@ -19,7 +19,6 @@ from skill.disclosure.models import (
     SkillSource,
     SkillSourceScan,
     SkillValidationIssue,
-    select_scene_entry,
     skill_index_to_dict,
 )
 from skill.disclosure.source import read_skill_sources
@@ -114,33 +113,42 @@ class ProgressiveDisclosureCore:
             )
         return self._index
 
-    def select_skill_scene_for_prompt(
+    def select_skill_scene(
         self,
-        prompt: str,
-        requested_scene: str | None = None,
+        selected_scene: str | None,
         *,
+        requested_scene: str | None = None,
         use_scenes: bool = True,
         allowed_scenes: tuple[str, ...] = (),
         unavailable_scenes: Mapping[str, tuple[str, ...]] | None = None,
     ) -> SkillReference | None:
         index = self.require_prepared_skill_index()
-        scenes = [entry for entry in index.entries if entry.reference.skill_type == "scene"]
+        scenes = [
+            entry
+            for entry in index.entries
+            if entry.reference.skill_type == "scene"
+        ]
         if not use_scenes:
-            if requested_scene is not None:
+            if requested_scene is not None or selected_scene is not None:
                 raise ValueError("scene cannot be requested when scenes are disabled")
             selected = None
             reason = "scenes disabled by Agent"
-        elif not scenes and requested_scene is None and not allowed_scenes:
+        elif selected_scene is None:
             selected = None
-            reason = "no scene Skills are available; direct mode selected"
+            reason = "model selected direct mode"
         else:
-            selected, reason = select_scene_entry(
-                index,
-                scenes,
-                prompt,
-                requested_scene,
-                allowed_scenes,
-                unavailable_scenes or {},
+            selected = _require_scene_entry(index, selected_scene)
+            allowed = _resolve_allowed_scene_entries(index, scenes, allowed_scenes)
+            if selected not in allowed:
+                raise ValueError(
+                    "selected scene is outside the Agent scene policy: "
+                    + selected.reference.key
+                )
+            _require_scene_available(selected, unavailable_scenes or {})
+            reason = (
+                "selected by explicit task request"
+                if requested_scene is not None
+                else "selected by model judgment"
             )
         if self.record_event is not None:
             self.record_event(
@@ -168,15 +176,13 @@ class ProgressiveDisclosureCore:
         )
         return dict(self._sources_by_key[reference.key].configuration)
 
-    def select_skill_references_for_prompt(
+    def select_skill_references(
         self,
-        prompt: str,
-        enabled_names: list[str] | None = None,
+        selected_names: list[str] | None = None,
         allowed_types: set[str] | None = None,
     ) -> list[SkillReference]:
-        decisions = self.explain_skill_selection_for_prompt(
-            prompt,
-            enabled_names,
+        decisions = self.explain_skill_selection(
+            selected_names,
             allowed_types,
         )
         selected = [decision.reference for decision in decisions if decision.selected]
@@ -197,10 +203,9 @@ class ProgressiveDisclosureCore:
             )
         return selected
 
-    def explain_skill_selection_for_prompt(
+    def explain_skill_selection(
         self,
-        prompt: str,
-        enabled_names: list[str] | None = None,
+        selected_names: list[str] | None = None,
         allowed_types: set[str] | None = None,
     ) -> list[SkillSelectionDecision]:
         index = self.require_prepared_skill_index()
@@ -209,13 +214,7 @@ class ProgressiveDisclosureCore:
             if allowed_types is None
             else {name.lower() for name in allowed_types}
         )
-        requested = self._remove_disabled_skill_names(enabled_names or [])
-        prompt_text = prompt.lower()
-        for entry in index.entries:
-            if skill_loaders is not None and entry.reference.skill_type not in skill_loaders:
-                continue
-            if any(trigger and trigger in prompt_text for trigger in entry.triggers):
-                requested.append(entry.reference.key)
+        requested = self._remove_disabled_skill_names(selected_names or [])
         resolved = index.resolve_skill_dependencies(requested)
         if skill_loaders is not None:
             resolved = [
@@ -224,14 +223,13 @@ class ProgressiveDisclosureCore:
                 if entry.reference.skill_type in skill_loaders
             ]
         selected_keys = {entry.reference.key for entry in resolved}
-        configured_names = {name.strip().lower() for name in enabled_names or []}
+        configured_names = {name.strip().lower() for name in selected_names or []}
         return [
             SkillSelectionDecision(
                 reference=entry.reference,
                 selected=entry.reference.key in selected_keys,
                 reason=_explain_selection(
                     entry,
-                    prompt_text,
                     configured_names,
                     selected_keys,
                     skill_loaders,
@@ -448,7 +446,6 @@ def _build_index_entry(
         reference=source.reference,
         description=manifest.description,
         version=manifest.version,
-        triggers=list(manifest.triggers),
         provides=list(manifest.provides),
         requires=list(manifest.requires),
         manifest_cache_path=None if skill_root is None else skill_root / "manifest.json",
@@ -508,18 +505,52 @@ def _require_cache_path(path: Path | None) -> Path:
 
 def _explain_selection(
     entry: SkillIndexEntry,
-    prompt: str,
     configured_names: set[str],
     selected_keys: set[str],
     allowed_types: set[str] | None,
 ) -> str:
     if allowed_types is not None and entry.reference.skill_type not in allowed_types:
         return "not eligible for model context"
-    trigger = next((value for value in entry.triggers if value and value in prompt), None)
-    if trigger is not None:
-        return f"matched trigger: {trigger}"
     if entry.reference.name in configured_names or entry.reference.key in configured_names:
-        return "enabled by agent config"
+        return "selected explicitly"
     if entry.reference.key in selected_keys:
         return "selected as dependency"
-    return "no trigger or configuration matched"
+    return "not selected"
+
+
+def _require_scene_entry(index: SkillIndex, value: str) -> SkillIndexEntry:
+    clean = value.strip().lower()
+    if not clean:
+        raise ValueError("selected scene cannot be empty")
+    if ":" in clean:
+        skill_type, name = clean.split(":", 1)
+        if skill_type != "scene":
+            raise ValueError(f"selected scene must use scene:name: {value}")
+        return index.require_skill(name, "scene")
+    return index.require_skill(clean, "scene")
+
+
+def _resolve_allowed_scene_entries(
+    index: SkillIndex,
+    scenes: list[SkillIndexEntry],
+    allowed_names: tuple[str, ...],
+) -> list[SkillIndexEntry]:
+    if not allowed_names:
+        return scenes
+    entries = [_require_scene_entry(index, name) for name in allowed_names]
+    keys = [entry.reference.key for entry in entries]
+    if len(keys) != len(set(keys)):
+        raise ValueError("Agent scene policy contains duplicate scenes")
+    return entries
+
+
+def _require_scene_available(
+    entry: SkillIndexEntry,
+    unavailable_scenes: Mapping[str, tuple[str, ...]],
+) -> None:
+    missing = unavailable_scenes.get(entry.reference.key)
+    if missing:
+        raise RuntimeError(
+            f"{entry.reference.key} requires unavailable Runtime services: "
+            + ", ".join(missing)
+        )

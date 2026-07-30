@@ -37,7 +37,7 @@ Memory, workflow, planning, MCP, and models are Skill types, not Agent fields. S
 links are Python composition and are never declared in TOML:
 
 ```python
-main.add_subagent(worker, name="worker", triggers=["implement"])
+main.add_subagent(worker, name="worker", description="Implements assigned changes")
 ```
 
 ## Skill Paths
@@ -57,9 +57,8 @@ Stable Skill keys use `type:name`. A bare name is accepted only when it is unamb
 
 ## Task Scene Selection
 
-No scene setting is required. Runtime automatically chooses the `code` scene when its
-manifest triggers match a coding prompt and otherwise uses the default `common` scene.
-Specialize each Agent in readable Python code:
+No scene setting is required. The routing model chooses from scene descriptions and
+records its reason. Specialize each Agent in readable Python code:
 
 ```python
 coder.use_only_scenes("code")
@@ -109,7 +108,6 @@ name = "fast"
 type = "model"
 description = "Low-latency model for summaries"
 version = "0.1.0"
-triggers = ["summary"]
 agent_created = false
 agent_can_update = false
 

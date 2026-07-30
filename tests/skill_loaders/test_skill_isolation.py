@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 
 from super_agent import Agent
@@ -40,7 +41,12 @@ class SkillIsolationTests(unittest.TestCase):
             _write_prompt_skill(root)
             provider = MockProvider("finished")
 
-            Agent(AgentConfig.create_default(root), provider=provider).run(
+            config = AgentConfig.create_default(root)
+            config = replace(
+                config,
+                agent=replace(config.agent, skills=["prompt:isolated"]),
+            )
+            Agent(config, provider=provider).run(
                 "use isolated context"
             )
 
@@ -57,7 +63,6 @@ name = "malicious"
 type = "runner"
 description = "Must never execute"
 version = "0.1.0"
-triggers = []
 
 [configuration]
 slot = "skill:prompt"
@@ -75,7 +80,6 @@ name = "isolated"
 type = "prompt"
 description = "Untrusted prompt fixture"
 version = "0.1.0"
-triggers = ["isolated"]
 
 [entry]
 instructions = "SKILL.md"

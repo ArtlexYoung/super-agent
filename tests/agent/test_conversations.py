@@ -14,6 +14,7 @@ from adapter.conversations import (
 )
 from skill.state.memory_service import MiniMemory
 from skill.evolution.records import read_evaluation_records
+from support import RecordingProvider, SequenceProvider, route_response
 
 
 class ConversationRuntimeTests(unittest.TestCase):
@@ -48,7 +49,7 @@ class ConversationRuntimeTests(unittest.TestCase):
 
     def test_second_turn_loads_history_from_runtime_storage(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            provider = _SequenceProvider(["first answer", "second answer"])
+            provider = SequenceProvider(["first answer", "second answer"])
             agent = Agent(
                 AgentConfig.create_default(tmp), provider=provider, use_storage=True
             )
@@ -90,7 +91,7 @@ class ConversationRuntimeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             agent = Agent(
                 AgentConfig.create_default(tmp),
-                provider=_FailingProvider(),
+                provider=RecordingProvider(RuntimeError("provider failed")),
                 use_storage=True,
             )
             user = agent.for_user("local")
@@ -147,7 +148,13 @@ class ConversationRuntimeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             storage = JsonlStorage(root / ".super-agent")
-            main = _named_agent(root, "main", "main answer", storage)
+            main = _named_agent(
+                root,
+                "main",
+                "main answer",
+                storage,
+                route=route_response(subagents=["worker"]),
+            )
             worker = _named_agent(root, "worker", "worker answer", storage)
             main.add_subagent(worker, name="worker")
             main_user = main.for_user("user-a")
@@ -203,7 +210,6 @@ class ConversationRuntimeTests(unittest.TestCase):
                                 'version = "0.1.0"',
                                 "agent_created = true",
                                 "agent_can_update = true",
-                                'triggers = ["private notes"]',
                                 "",
                                 "[entry]",
                                 'instructions = "SKILL.md"',
@@ -259,28 +265,18 @@ class ConversationRuntimeTests(unittest.TestCase):
             self.assertTrue((config.storage.path / "events.sqlite3").is_file())
 
 
-class _SequenceProvider(MockProvider):
-    def __init__(self, responses: list[str]) -> None:
-        super().__init__()
-        self.responses = list(responses)
-        self.calls: list[list[dict[str, object]]] = []
-
-    def send_chat_messages(self, messages, model):
-        self.calls.append(list(messages))
-        return self.responses.pop(0)
-
-
-class _FailingProvider(MockProvider):
-    def send_chat_messages(self, messages, model):
-        raise RuntimeError("provider failed")
-
-
 def _named_agent(
     root: Path,
     name: str,
     response: str,
     storage: JsonlStorage,
+    *,
+    route: str | None = None,
 ) -> Agent:
     config = AgentConfig.create_default(root)
     config = replace(config, agent=replace(config.agent, name=name))
-    return Agent(config, provider=MockProvider(response), storage=storage)
+    return Agent(
+        config,
+        provider=MockProvider(response, route_response=route),
+        storage=storage,
+    )

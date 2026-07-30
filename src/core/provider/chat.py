@@ -55,14 +55,25 @@ class MockProvider:
         response: str = "Mock response",
         *,
         tool_responses: list[ModelResponse] | None = None,
+        route_response: str | None = None,
+        feedback_response: str | None = None,
     ) -> None:
         self.response = response
         self.last_messages: list[Message] = []
         self.tool_responses = list(tool_responses or [])
         self.tool_requests: list[tuple[list[Message], list[ToolDefinition]]] = []
+        self.route_response = route_response
+        self.feedback_response = feedback_response
 
     def send_chat_messages(self, messages: list[Message], model: str) -> str:
         self.last_messages = messages
+        structured = _mock_structured_response(
+            messages,
+            self.route_response,
+            self.feedback_response,
+        )
+        if structured is not None:
+            return structured
         return self.response
 
     def send_chat_messages_with_tools(
@@ -183,6 +194,83 @@ def normalize_provider_connection(
             else "ANTHROPIC_API_KEY"
         )
     return ProviderConnection(provider, base_url, api_key_env)
+
+
+def _mock_structured_response(
+    messages: list[Message],
+    route_response: str | None,
+    feedback_response: str | None,
+) -> str | None:
+    if not messages:
+        return None
+    try:
+        payload = json.loads(str(messages[-1].get("content", "")))
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    contract = payload.get("response_contract")
+    if not isinstance(contract, dict):
+        return None
+    if set(contract) == {
+        "scene",
+        "skills",
+        "planning",
+        "purpose",
+        "model",
+        "subagents",
+        "confidence",
+        "reasons",
+    }:
+        return route_response or _default_mock_route(payload)
+    if set(contract) == {"is_feedback", "score", "reason"}:
+        return feedback_response or json.dumps(
+            {"is_feedback": False, "score": None, "reason": "no feedback"}
+        )
+    return None
+
+
+def _default_mock_route(payload: dict[str, object]) -> str:
+    scenes = payload.get("available_scenes", [])
+    models = payload.get("available_models", [])
+    explicit = payload.get("explicit", {})
+    if not isinstance(scenes, list) or not isinstance(models, list) or not models:
+        raise ValueError("Mock routing requires available model candidates")
+    if not isinstance(explicit, dict):
+        raise TypeError("Mock routing explicit selections must be an object")
+    explicit_scene = explicit.get("scene")
+    scene = None
+    if explicit_scene is not None:
+        clean = str(explicit_scene).strip().lower()
+        scene = clean if ":" in clean else f"scene:{clean}"
+    elif scenes:
+        defaults = [item for item in scenes if isinstance(item, dict) and item.get("default")]
+        selected = defaults[0] if len(defaults) == 1 else scenes[0]
+        if isinstance(selected, dict):
+            scene = str(selected.get("key", "")) or None
+    model = next(
+        (
+            item
+            for item in models
+            if isinstance(item, dict) and item.get("default")
+        ),
+        models[0],
+    )
+    if not isinstance(model, dict) or not model.get("key"):
+        raise ValueError("Mock routing model candidate must contain a key")
+    purpose = explicit.get("purpose") or "answer"
+    return json.dumps(
+        {
+            "scene": scene,
+            "skills": [],
+            "planning": False,
+            "purpose": purpose,
+            "model": model["key"],
+            "subagents": [],
+            "confidence": 1.0,
+            "reasons": ["mock model judgment"],
+        }
+    )
 
 
 def _read_openai_tool_call(data: dict[str, Any]) -> ToolCall:

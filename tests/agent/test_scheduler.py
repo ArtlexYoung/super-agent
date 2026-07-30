@@ -1,19 +1,18 @@
+import json
 import tempfile
 import unittest
-from dataclasses import replace
 from pathlib import Path
 
 from super_agent import Agent, AgentRunOptions
 from core.config import AgentConfig
 from core.provider.chat import MockProvider, ModelResponse, ProviderConnection
-from skill.task.model_calls import ModelSelectionRequest
-from skill.task.scheduler import Scheduler, SchedulingPolicy
+from skill.task.scheduler import Scheduler, SchedulingPolicy, TaskRoute
 from skill.loaders.models import ModelProfile, ModelRoutingTraits
-from support import write_workflow_skill
+from support import RecordingProvider, route_response, write_workflow_skill
 
 
 class AdaptiveTaskLoopTests(unittest.TestCase):
-    def test_prompt_purpose_selects_the_matching_model_skill(self) -> None:
+    def test_routing_model_selects_the_execution_model(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_model_skill(root, "general", default=True, quality=0.9)
@@ -23,8 +22,17 @@ class AdaptiveTaskLoopTests(unittest.TestCase):
                 purposes=["summary"],
                 quality=0.7,
             )
-            general = _RecordingProvider("general")
-            summary = _RecordingProvider("summary")
+            general = RecordingProvider(
+                "general",
+                route=route_response(
+                    model="model:summary",
+                    scene="scene:common",
+                    purpose="summary",
+                    confidence=0.87,
+                    reasons=["model judged the summary profile appropriate"],
+                ),
+            )
+            summary = RecordingProvider("summary")
             agent = Agent(_write_config(root), provider=general, use_storage=True)
             agent.add_model_provider("summary", summary)
 
@@ -35,12 +43,9 @@ class AdaptiveTaskLoopTests(unittest.TestCase):
             self.assertEqual(["summary-model"], summary.models)
             schedule = _scheduled_event(agent, result.run_id)
             self.assertEqual("model:summary", schedule["model"]["key"])
-            self.assertGreaterEqual(schedule["routing"]["confidence"], 0.55)
-            self.assertFalse(schedule["routing"]["evidence_sufficient"])
-            self.assertEqual("ranked", schedule["routing"]["selection"])
-            self.assertTrue(schedule["routing"]["uncertainty"])
+            self.assertEqual("model_judgment", schedule["routing"]["selection"])
             self.assertIn(
-                "prompt matches purpose: summary",
+                "model judged the summary profile appropriate",
                 schedule["model"]["reasons"],
             )
             runtime_lock = agent.runtime.create_event_store().read_runtime_lock(result.run_id)
@@ -49,10 +54,18 @@ class AdaptiveTaskLoopTests(unittest.TestCase):
                 event.data
                 for event in agent.for_user("local").runs.read_trace(result.run_id).events
                 if event.event_type == "model.call.selected"
+                and event.data["purpose"] == "summary"
             )
             self.assertEqual(schedule["model"]["key"], selected["profile"])
             self.assertEqual(schedule["model"]["model"], summary.models[0])
-            self.assertNotIn("models", schedule)
+            event_types = [
+                event.event_type
+                for event in agent.for_user("local").runs.read_trace(result.run_id).events
+            ]
+            self.assertLess(
+                event_types.index("task.route.decided"),
+                event_types.index("task.scheduled"),
+            )
 
     def test_failed_selected_model_does_not_silently_switch_provider(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -64,9 +77,19 @@ class AdaptiveTaskLoopTests(unittest.TestCase):
                 purposes=["summary"],
                 quality=0.7,
             )
-            general = _RecordingProvider("unused")
+            general = RecordingProvider(
+                "unused",
+                route=route_response(
+                    model="model:summary",
+                    scene="scene:common",
+                    purpose="summary",
+                ),
+            )
             agent = Agent(_write_config(root), provider=general, use_storage=True)
-            agent.add_model_provider("summary", _FailingProvider())
+            agent.add_model_provider(
+                "summary",
+                RecordingProvider(RuntimeError("primary unavailable")),
+            )
 
             with self.assertRaisesRegex(RuntimeError, "primary unavailable"):
                 agent.run("summarize this report")
@@ -77,6 +100,7 @@ class AdaptiveTaskLoopTests(unittest.TestCase):
                 event.data["profile"]
                 for event in events
                 if event.event_type == "model.call.selected"
+                and event.data["purpose"] != "routing"
             ]
             failed = [
                 event for event in events if event.event_type == "model.call.failed"
@@ -85,6 +109,7 @@ class AdaptiveTaskLoopTests(unittest.TestCase):
                 event
                 for event in events
                 if event.event_type == "model.call.completed"
+                and event.data["purpose"] != "routing"
             ]
             self.assertEqual(["model:summary"], selected)
             self.assertNotIn("will_retry", failed[0].data)
@@ -100,7 +125,7 @@ class AdaptiveTaskLoopTests(unittest.TestCase):
             self.assertNotIn("model:general", stats)
             self.assertEqual([], general.models)
 
-    def test_tool_workflow_filters_models_by_required_features(self) -> None:
+    def test_routing_model_selects_a_tool_capable_model(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_model_skill(root, "general", default=True, quality=1.0)
@@ -115,7 +140,13 @@ class AdaptiveTaskLoopTests(unittest.TestCase):
             )
             agent = Agent(
                 _write_config(root, workflow="react"),
-                provider=_RecordingProvider("general"),
+                provider=RecordingProvider(
+                    "general",
+                    route=route_response(
+                        model="model:tools",
+                        scene="scene:common",
+                    ),
+                ),
                 use_storage=True,
             )
             agent.add_model_provider("tools", tools)
@@ -128,61 +159,45 @@ class AdaptiveTaskLoopTests(unittest.TestCase):
             self.assertEqual("model:tools", schedule["model"]["key"])
             self.assertEqual(1, len(tools.tool_requests))
 
-    def test_feedback_learning_is_isolated_by_user_agent_and_purpose(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            _write_model_skill(
-                root,
-                "alpha",
-                purposes=["summary"],
-                quality=0.0,
-                default=True,
-            )
-            _write_model_skill(root, "beta", purposes=["summary"], quality=0.5)
-            config = _write_config(root)
-            alpha = _RecordingProvider("alpha")
-            beta = _RecordingProvider("beta")
-            agent = Agent(config, provider=alpha, use_storage=True)
-            agent.add_model_provider("beta", beta)
-
-            user_a = agent.for_user("user-a")
-            first = user_a.run("summarize this")
-            user_a.runs.record_feedback(first.run_id, 0.0, "poor result")
-            answer = user_a.run("answer this question")
-            other_user = agent.for_user("user-b").run("summarize this")
-            explored = user_a.run("summarize this")
-
-            other_config = replace(
-                config,
-                agent=replace(config.agent, name="other-agent"),
-            )
-            other_alpha = _RecordingProvider("other-alpha")
-            other_agent = Agent(other_config, provider=other_alpha, use_storage=True)
-            other_agent.add_model_provider("beta", _RecordingProvider("other-beta"))
-            other_scope = other_agent.for_user("user-a").run("summarize this")
-
-            self.assertEqual("alpha", first.text)
-            self.assertEqual("alpha", answer.text)
-            self.assertEqual("alpha", other_user.text)
-            self.assertEqual("beta", explored.text)
-            self.assertEqual("other-alpha", other_scope.text)
-            explored_schedule = _scheduled_event(agent, explored.run_id, "user-a")
-            self.assertIn(
-                "bounded exploration: untried model",
-                explored_schedule["model"]["reasons"],
-            )
-            stats = user_a.runs.list_model_routing_stats(purpose="summary")
-            by_profile = {item.profile_key: item for item in stats}
-            self.assertEqual(0.0, by_profile["model:alpha"].average_quality)
-            self.assertEqual(1.0, by_profile["model:beta"].average_quality)
-
-    def test_conversation_correction_records_implicit_feedback(self) -> None:
+    def test_incompatible_model_selection_fails_without_fallback(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_model_skill(root, "general", default=True)
+            provider = RecordingProvider(
+                "must not execute",
+                route=route_response(
+                    model="model:general",
+                    scene="scene:common",
+                ),
+            )
+            agent = Agent(
+                _write_config(root, workflow="react"),
+                provider=provider,
+                use_storage=True,
+            )
+
+            with self.assertRaisesRegex(ValueError, "does not support required features"):
+                agent.run("Use the configured tools")
+
+            self.assertEqual([], provider.models)
+
+    def test_model_judges_conversation_feedback_without_fixed_markers(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_model_skill(root, "general", default=True)
+            feedback_response = json.dumps(
+                {
+                    "is_feedback": True,
+                    "score": 0.2,
+                    "reason": "model judged the turn as corrective feedback",
+                }
+            )
             agent = Agent(
                 _write_config(root),
-                provider=_RecordingProvider("response"),
+                provider=RecordingProvider(
+                    "response",
+                    feedback=feedback_response,
+                ),
                 use_storage=True,
             )
             user = agent.for_user("correcting-user")
@@ -193,7 +208,7 @@ class AdaptiveTaskLoopTests(unittest.TestCase):
                 conversation_id=conversation.conversation_id,
             )
             user.run(
-                "不对，请重新回答",
+                "Could you revisit the previous answer?",
                 conversation_id=conversation.conversation_id,
                 run_options=AgentRunOptions(learn_from_conversation=True),
             )
@@ -206,63 +221,38 @@ class AdaptiveTaskLoopTests(unittest.TestCase):
             self.assertEqual(1, len(feedback))
             self.assertEqual("implicit", feedback[0].data["source"])
             self.assertEqual(0.2, feedback[0].data["score"])
-            user.runs.record_feedback(
-                first.run_id,
-                0.9,
-                "explicit override",
-            )
-            stats = user.runs.list_model_routing_stats(purpose="answer")
-            self.assertAlmostEqual(0.95, stats[0].average_quality)
 
-    def test_cold_start_model_score_tie_is_explicit(self) -> None:
+    def test_route_payload_contains_traits_evidence_and_no_triggers(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            _write_model_skill(root, "alpha", quality=0.5)
-            _write_model_skill(root, "beta", quality=0.5)
-            alpha = _RecordingProvider("alpha")
-            beta = _RecordingProvider("beta")
-            agent = Agent(_write_config(root), provider=alpha, use_storage=True)
-            agent.add_model_provider("beta", beta)
-
-            with self.assertRaisesRegex(ValueError, "model selection is tied"):
-                agent.for_user("cold-a").run("ordinary task")
-
-            self.assertEqual([], alpha.models)
-            self.assertEqual([], beta.models)
-
-    def test_automatic_purpose_rejects_multiple_matches(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            _write_model_skill(
-                root,
-                "summary",
-                purposes=["summary"],
-                default=True,
-            )
-            _write_model_skill(root, "analysis", purposes=["analysis"])
-            agent = Agent(
-                _write_config(root),
-                provider=_RecordingProvider("unused"),
-                use_storage=True,
-            )
-            agent.add_model_provider("analysis", _RecordingProvider("unused"))
-
-            with self.assertRaisesRegex(ValueError, "task purpose is ambiguous"):
-                agent.run("summarize this analysis")
-
-    def test_configured_scheduler_skill_controls_subagent_ambiguity(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            _write_scheduler_skill(root, "single", subagent_mode="one_match")
-            config = _write_config(root)
-            config = replace(
-                config,
-                agent=replace(
-                    config.agent,
-                    skills=[*config.agent.skills, "scheduler:single"],
+            _write_model_skill(root, "general", default=True, purposes=["answer"])
+            provider = RecordingProvider(
+                "answer",
+                route=route_response(
+                    model="model:general",
+                    scene="scene:common",
                 ),
             )
-            provider = _RecordingProvider("main")
+            agent = Agent(_write_config(root), provider=provider, use_storage=True)
+
+            first = agent.run("First task")
+            agent.for_user("local").runs.record_feedback(first.run_id, 0.8)
+            agent.run("Second task")
+
+            payload = json.loads(provider.structured_requests[-1][-1]["content"])
+            model = payload["available_models"][0]
+            self.assertEqual(["answer"], model["purposes"])
+            self.assertGreaterEqual(model["evidence"]["call_count"], 1)
+            self.assertNotIn("trigger", json.dumps(payload).lower())
+
+    def test_configured_scheduler_supplies_model_routing_instructions(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            instruction = "Choose one complete route from the supplied options."
+            _write_scheduler_skill(root, "single", instruction)
+            config = _write_config(root)
+            config.agent.skills.append("scheduler:single")
+            provider = RecordingProvider("main")
             agent = Agent(config, provider=provider, use_storage=True)
 
             result = agent.run("hello")
@@ -271,55 +261,46 @@ class AdaptiveTaskLoopTests(unittest.TestCase):
                 "scheduler:single",
                 _scheduled_event(agent, result.run_id)["scheduler"],
             )
-            first = Agent(
-                _write_config(root),
-                provider=_RecordingProvider("first"),
-                use_storage=True,
+            self.assertEqual(
+                instruction,
+                provider.structured_requests[0][0]["content"],
             )
-            second = Agent(
-                _write_config(root),
-                provider=_RecordingProvider("second"),
-                use_storage=True,
-            )
-            agent.add_subagent(first, name="first")
-            agent.add_subagent(second, name="second")
 
-            with self.assertRaisesRegex(ValueError, "multiple subagents"):
-                agent.run("delegate this")
-
-            self.assertEqual(["provided"], provider.models)
-
-    def test_low_confidence_model_escalates_to_evidence_backed_model(self) -> None:
+    def test_unknown_model_or_skill_selection_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            _write_model_skill(root, "alpha", purposes=["summary"], quality=0.0)
-            config = _write_config(root)
-            trainer = Agent(
-                config,
-                provider=_RecordingProvider("trained-alpha"),
-                use_storage=True,
+            _write_model_skill(root, "general", default=True)
+            unknown_model = RecordingProvider(
+                "unused",
+                route=route_response(model="model:missing"),
             )
-            for _ in range(4):
-                trainer.run("summarize this report")
+            agent = Agent(_write_config(root), provider=unknown_model, use_storage=True)
+            with self.assertRaisesRegex(ValueError, "unknown model"):
+                agent.run("ordinary task")
 
-            _write_model_skill(root, "beta", purposes=["summary"], quality=1.0)
-            alpha = _RecordingProvider("stable-alpha")
-            beta = _RecordingProvider("untried-beta")
-            agent = Agent(config, provider=alpha, use_storage=True)
-            agent.add_model_provider("beta", beta)
-
-            result = agent.run("summarize this report")
-
-            self.assertEqual("stable-alpha", result.text)
-            self.assertEqual([], beta.models)
-            schedule = _scheduled_event(agent, result.run_id)
-            self.assertEqual("model:alpha", schedule["model"]["key"])
-            self.assertEqual("confidence_escalation", schedule["routing"]["selection"])
-            self.assertTrue(schedule["routing"]["evidence_sufficient"])
-            self.assertIn(
-                "confidence escalation replaced model:beta",
-                schedule["model"]["reasons"],
+            unknown_skill = RecordingProvider(
+                "unused",
+                route=route_response(
+                    model="model:general",
+                    skills=["prompt:missing"],
+                ),
             )
+            agent = Agent(_write_config(root), provider=unknown_skill, use_storage=True)
+            with self.assertRaisesRegex(ValueError, "unknown Skill"):
+                agent.run("ordinary task")
+
+    def test_explicit_scene_cannot_be_rewritten_by_model(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_model_skill(root, "general", default=True)
+            provider = RecordingProvider(
+                "unused",
+                route=route_response(model="model:general", scene=None),
+            )
+            agent = Agent(_write_config(root), provider=provider, use_storage=True)
+
+            with self.assertRaisesRegex(ValueError, "preserve explicitly requested scene"):
+                agent.run("ordinary task", scene="common")
 
     def test_model_decision_is_deterministic_and_has_no_runtime_dependency(self) -> None:
         profile = ModelProfile(
@@ -333,34 +314,25 @@ class AdaptiveTaskLoopTests(unittest.TestCase):
             source="test",
             skill_key="model:only",
         )
-        request = ModelSelectionRequest("answer", ("text",), "hello")
-        scheduler = Scheduler(SchedulingPolicy("test"))
+        route = TaskRoute(
+            None,
+            (),
+            False,
+            "answer",
+            "model:only",
+            (),
+            0.9,
+            ("model selected this profile",),
+        )
+        scheduler = Scheduler(SchedulingPolicy("test", "Select a route."))
 
-        first = scheduler.choose_model([profile], {}, request)
-        second = scheduler.choose_model([profile], {}, request)
+        first = scheduler.choose_selected_model([profile], {}, ("text",), route)
+        second = scheduler.choose_selected_model([profile], {}, ("text",), route)
 
         self.assertEqual(first, second)
         self.assertEqual("model:only", first.profile_key)
+        self.assertEqual("model_judgment", first.selection)
         self.assertNotIn("retry", str(first.to_dict()).lower())
-
-
-class _RecordingProvider:
-    def __init__(self, response: str) -> None:
-        self.response = response
-        self.models: list[str] = []
-
-    def send_chat_messages(self, messages, model):
-        self.models.append(model)
-        return self.response
-
-
-class _FailingProvider(_RecordingProvider):
-    def __init__(self) -> None:
-        super().__init__("")
-
-    def send_chat_messages(self, messages, model):
-        self.models.append(model)
-        raise RuntimeError("primary unavailable")
 
 
 def _write_config(root: Path, workflow: str = "direct") -> AgentConfig:
@@ -403,7 +375,6 @@ name = "{name}"
 type = "model"
 description = "Model used by scheduler tests"
 version = "0.1.0"
-triggers = []
 
 [configuration]
 provider = "mock"
@@ -420,8 +391,7 @@ quality_score = {quality}
 def _write_scheduler_skill(
     root: Path,
     name: str,
-    *,
-    subagent_mode: str,
+    instruction: str,
 ) -> None:
     path = root / "skills" / "scheduler" / name
     path.mkdir(parents=True, exist_ok=True)
@@ -431,15 +401,15 @@ name = "{name}"
 type = "scheduler"
 description = "Scheduler used by tests"
 version = "0.1.0"
-triggers = []
+
+[entry]
+instructions = "SKILL.md"
 
 [configuration]
-default_purpose = "answer"
-model_score_tie_tolerance = 0.000001
-subagent_mode = "{subagent_mode}"
 '''.strip(),
         encoding="utf-8",
     )
+    path.joinpath("SKILL.md").write_text(instruction, encoding="utf-8")
 
 
 def _scheduled_event(

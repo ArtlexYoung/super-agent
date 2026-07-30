@@ -28,7 +28,6 @@ name = "research"
 type = "prompt"
 description = "Research with explicit sources"
 version = "0.1.0"
-triggers = ["research", "source"]
 agent_created = false
 agent_can_update = false
 freshness = 70
@@ -68,7 +67,6 @@ name = "filesystem"
 type = "mcp"
 description = "Filesystem tools"
 version = "0.1.0"
-triggers = ["filesystem", "files"]
 
 [entry]
 instructions = "SKILL.md"
@@ -94,14 +92,14 @@ model:fast
 search:adaptive
 ```
 
-A bare name is accepted only when it identifies one Skill. Core may first select one scene,
-then selects Skills from that scene, `agent.skills`, prompt trigger matches, and
-dependencies declared by `requires`.
+A bare name is accepted only when it identifies one Skill. The routing model may select
+one scene and additional Skill keys from compact descriptions. Core combines those choices
+with `agent.skills` and dependencies declared by `requires`.
 Dependency resolution is deterministic and fails on missing providers, ambiguous
 providers, or cycles.
 
 ```bash
-super-agent skills explain --config agent.toml --prompt "research this"
+super-agent skills index --config agent.toml --output json
 super-agent skills graph --config agent.toml --name prompt:research
 super-agent skills lock --config agent.toml --name prompt:research --output skill.lock
 ```
@@ -122,7 +120,6 @@ name = "review"
 type = "scene"
 description = "Code review task chain"
 version = "0.1.0"
-triggers = ["review code", "代码审查"]
 default = false
 
 [configuration]
@@ -146,18 +143,18 @@ src/skill/builtin/scene/common/   zero-configuration general task composition
 src/skill/builtin/scene/code/     optional repository task composition
 ```
 
-Scene selection precedence is explicit:
+Scene selection is constrained explicitly:
 
 1. `Agent.run(..., scene="name")`, `super-agent run --scene name`, or AG-UI
-   `forwardedProps.scene`.
-2. The scenes allowed by `Agent.use_only_scenes(...)`, when configured in code.
-3. One allowed scene whose manifest trigger matches the prompt.
-4. The single allowed scene with `default = true`.
+   `forwardedProps.scene` fixes the selected scene.
+2. `Agent.use_only_scenes(...)` limits the candidates visible to the routing model.
+3. Without an explicit scene, the routing model chooses one candidate or direct mode from
+   natural-language descriptions and the full task context.
 
-Multiple trigger matches or multiple defaults fail clearly. `Agent.disable_scenes()` and
+Unknown, unavailable, or policy-excluded choices fail clearly. `Agent.disable_scenes()` and
 `Agent.run(..., use_scenes=False)` select no scene and record that choice in the Plan.
 Pinned memory, planner, or workflow Skills replace the same type from the selected scene;
-other configured or triggered Skills are added normally.
+other configured or model-selected Skills are added normally.
 
 User-private scenes can be created with `UserSkills.create_scene(...)` or by the model's
 `create_skill_scene` tool in a tool-using scene. Creation writes a complete scene, prompt,

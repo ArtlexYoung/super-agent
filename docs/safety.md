@@ -1,6 +1,6 @@
 # Explicit Actions and Skill Isolation
 
-Super Agent checks one action contract before model-triggered tools and management side
+Super Agent checks one action contract before model-requested tools and management side
 effects. Trusted code declares what an operation can do. Skill text may request an
 operation, but it cannot choose its actor, effects, resource, or rules.
 

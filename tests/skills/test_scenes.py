@@ -52,7 +52,10 @@ class SkillSceneTests(unittest.TestCase):
         ]
         for prompt, scene, workflow, skill, instruction, expected_keys in cases:
             with self.subTest(scene=scene), tempfile.TemporaryDirectory() as tmp:
-                provider = MockProvider("finished")
+                provider = MockProvider(
+                    "finished",
+                    route_response=_route_response(scene),
+                )
                 agent = Agent(
                     AgentConfig.create_default(tmp),
                     provider=provider,
@@ -74,7 +77,7 @@ class SkillSceneTests(unittest.TestCase):
                 self.assertEqual(expected_keys, evaluated)
                 self.assertIn(instruction, provider.last_messages[0]["content"])
 
-    def test_explicit_and_configured_scene_selection_precede_triggers(self) -> None:
+    def test_explicit_and_configured_scene_selection_are_preserved(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             provider = MockProvider("finished")
@@ -91,7 +94,7 @@ class SkillSceneTests(unittest.TestCase):
             )
             self.assertEqual("direct", result.workflow)
             self.assertEqual("scene:common", selected["scene_key"])
-            self.assertEqual("selected by task request", selected["reason"])
+            self.assertEqual("selected by explicit task request", selected["reason"])
 
             configured_agent = Agent(
                 AgentConfig.create_default(root),
@@ -106,10 +109,7 @@ class SkillSceneTests(unittest.TestCase):
                 "scene.selected",
             )
             self.assertEqual("direct", configured_result.workflow)
-            self.assertEqual(
-                "selected as the only scene allowed by Agent",
-                configured_event["reason"],
-            )
+            self.assertEqual("selected by model judgment", configured_event["reason"])
 
     def test_agent_can_restrict_or_disable_scenes_in_code(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -141,7 +141,7 @@ class SkillSceneTests(unittest.TestCase):
             self.assertIsNone(direct_plan["scene"])
             self.assertIsNone(direct_plan["workflow"])
             self.assertEqual("direct", direct.workflow)
-            self.assertEqual(2, provider.call_count)
+            self.assertEqual(4, provider.call_count)
 
     def test_run_can_disable_scenes_without_changing_agent_policy(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -169,27 +169,30 @@ class SkillSceneTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "scenes are disabled"):
                 agent.run("hello", scene="code", use_scenes=False)
 
-    def test_scene_selection_rejects_ambiguous_inputs(self) -> None:
+    def test_scene_selection_rejects_invalid_policy_inputs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             disclosure = create_progressive_skill_disclosure(
                 AgentConfig.create_default(tmp)
             )
             disclosure.prepare_skill_index()
             with self.assertRaisesRegex(ValueError, "duplicate scenes"):
-                disclosure.select_skill_scene_for_prompt(
-                    "hello",
+                disclosure.select_skill_scene(
+                    "scene:common",
                     allowed_scenes=("common", "common"),
                 )
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            _write_scene_skill(root, "overlap", ["workflow:direct"], ["code"])
+            _write_scene_skill(root, "overlap", ["workflow:direct"])
             disclosure = create_progressive_skill_disclosure(
                 AgentConfig.create_default(root)
             )
             disclosure.prepare_skill_index()
-            with self.assertRaisesRegex(ValueError, "multiple scene Skills"):
-                disclosure.select_skill_scene_for_prompt("write code")
+            with self.assertRaisesRegex(ValueError, "outside the Agent scene policy"):
+                disclosure.select_skill_scene(
+                    "scene:overlap",
+                    allowed_scenes=("common",),
+                )
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -197,15 +200,13 @@ class SkillSceneTests(unittest.TestCase):
                 root,
                 "another-default",
                 ["workflow:direct"],
-                [],
                 is_default=True,
             )
             disclosure = create_progressive_skill_disclosure(
                 AgentConfig.create_default(root)
             )
             disclosure.prepare_skill_index()
-            with self.assertRaisesRegex(ValueError, "exactly one default scene"):
-                disclosure.select_skill_scene_for_prompt("hello")
+            self.assertIsNone(disclosure.select_skill_scene(None))
 
     def test_scene_includes_reject_incomplete_or_nested_chains(self) -> None:
         cases = {
@@ -225,7 +226,7 @@ class SkillSceneTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             for name, (skills, _) in cases.items():
-                _write_scene_skill(root, name, skills, [])
+                _write_scene_skill(root, name, skills)
             disclosure = create_progressive_skill_disclosure(
                 AgentConfig.create_default(root)
             )
@@ -240,7 +241,7 @@ class SkillSceneTests(unittest.TestCase):
     def test_scene_can_select_content_without_a_workflow(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            _write_scene_skill(root, "answer", ["prompt:common"], [])
+            _write_scene_skill(root, "answer", ["prompt:common"])
             disclosure = create_progressive_skill_disclosure(
                 AgentConfig.create_default(root)
             )
@@ -264,12 +265,12 @@ class SkillSceneTests(unittest.TestCase):
             self.assertEqual("scene:answer", plan["scene"])
             self.assertIsNone(plan["workflow"])
             self.assertEqual("direct", result.workflow)
-            self.assertEqual(1, provider.call_count)
+            self.assertEqual(2, provider.call_count)
 
     def test_missing_scene_reference_fails_without_fallback(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            _write_scene_skill(root, "broken", ["workflow:not-there"], [])
+            _write_scene_skill(root, "broken", ["workflow:not-there"])
             provider = _CountingProvider("unused")
             agent = Agent(
                 AgentConfig.create_default(root),
@@ -278,7 +279,7 @@ class SkillSceneTests(unittest.TestCase):
 
             with self.assertRaisesRegex(KeyError, "workflow:not-there"):
                 agent.run("hello", scene="broken")
-            self.assertEqual(0, provider.call_count)
+            self.assertEqual(1, provider.call_count)
 
     def test_scene_reference_without_registered_loader_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -287,7 +288,6 @@ class SkillSceneTests(unittest.TestCase):
                 root,
                 "unsupported",
                 ["workflow:direct", "search:private"],
-                [],
             )
             agent = Agent(
                 AgentConfig.create_default(root),
@@ -311,7 +311,6 @@ class SkillSceneTests(unittest.TestCase):
             request = SkillSceneInput(
                 name="audit",
                 description="Review financial records",
-                triggers=["ledger review"],
                 instructions="Check evidence before reporting anomalies.",
             )
 
@@ -332,7 +331,7 @@ class SkillSceneTests(unittest.TestCase):
             with self.assertRaisesRegex(FileExistsError, "replace existing Skills"):
                 alice.skills.create_scene(request)
 
-            result = alice.run("Perform a ledger review")
+            result = alice.run("Perform a ledger review", scene="audit")
             selected = _event_data(
                 agent.runtime.create_event_store("alice"),
                 result.run_id,
@@ -346,6 +345,7 @@ class SkillSceneTests(unittest.TestCase):
     def test_model_can_create_scene_without_hot_reloading_current_run(self) -> None:
         provider = MockProvider(
             "finished",
+            route_response=_route_response("scene:code"),
             tool_responses=[
                 ModelResponse(
                     "",
@@ -356,7 +356,6 @@ class SkillSceneTests(unittest.TestCase):
                             {
                                 "name": "research",
                                 "description": "Investigate cited sources",
-                                "triggers": ["source investigation"],
                             },
                         )
                     ],
@@ -391,6 +390,7 @@ class SkillSceneTests(unittest.TestCase):
             self.assertEqual("code", result.workflow)
             self.assertNotIn("scene:research", listed_keys)
 
+            provider.route_response = _route_response("scene:research")
             next_result = agent.for_user("alice").run(
                 "Investigate this source",
                 scene="research",
@@ -410,7 +410,6 @@ def _write_scene_skill(
     root: Path,
     name: str,
     skills: list[str],
-    triggers: list[str],
     *,
     is_default: bool = False,
 ) -> None:
@@ -424,7 +423,6 @@ def _write_scene_skill(
                 'type = "scene"',
                 f"description = {json.dumps(name + ' task scene')}",
                 'version = "0.1.0"',
-                f"triggers = {json.dumps(triggers)}",
                 f"default = {str(is_default).lower()}",
                 "",
                 "[configuration]",
@@ -448,6 +446,20 @@ class _CountingProvider(MockProvider):
         self.call_count += 1
         return super().send_chat_messages_with_tools(messages, model, tools)
 
+
+def _route_response(scene: str | None) -> str:
+    return json.dumps(
+        {
+            "scene": scene,
+            "skills": [],
+            "planning": False,
+            "purpose": "answer",
+            "model": "model:provided",
+            "subagents": [],
+            "confidence": 1.0,
+            "reasons": ["scene fits the task"],
+        }
+    )
 
 if __name__ == "__main__":
     unittest.main()

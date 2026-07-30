@@ -159,7 +159,6 @@ def _model_request(name: str, *, default: bool) -> dict[str, object]:
         "supports": ["text"],
         "purposes": ["answer"],
         "strengths": [name],
-        "triggers": [name],
         "default": default,
         "agent_can_update": True,
         "agent_can_update_connection": False,

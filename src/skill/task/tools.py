@@ -138,7 +138,6 @@ class RuntimeTools:
                 "type": manifest.skill_type,
                 "description": manifest.description,
                 "version": manifest.version,
-                "triggers": manifest.triggers,
                 "provides": manifest.provides,
                 "requires": manifest.requires,
             },

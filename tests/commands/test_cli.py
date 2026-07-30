@@ -256,7 +256,6 @@ description = "Compact note writer"
 version = "0.1.0"
 agent_created = true
 agent_can_update = true
-triggers = ["note"]
 
 [entry]
 instructions = "SKILL.md"
@@ -402,22 +401,17 @@ instructions = "SKILL.md"
             self.assertEqual("code", data["workflow"])
             self.assertEqual(["code"], data["skills"])
 
-    def test_skills_validate_and_explain_have_explicit_commands(self) -> None:
+    def test_skills_validate_has_an_explicit_command(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             main(["init", "--path", tmp])
             config = str(Path(tmp) / "agent.toml")
             validation_output = StringIO()
-            explanation_output = StringIO()
 
             with patch("sys.stdout", validation_output):
                 validation_code = main(["skills", "validate", "--config", config])
-            with patch("sys.stdout", explanation_output):
-                explanation_code = main(["skills", "explain", "--config", config, "--prompt", "echo hello"])
 
             self.assertEqual(0, validation_code)
             self.assertIn("13 valid skills", validation_output.getvalue())
-            self.assertEqual(0, explanation_code)
-            self.assertIn("echo\tselected\tmatched trigger: echo", explanation_output.getvalue())
 
     def test_skills_graph_and_lock_resolve_configured_skill_dependencies(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -467,7 +461,6 @@ name = "echo"
 type = "prompt"
 description = "Updated echo"
 version = "0.2.0"
-triggers = ["echo"]
 
 [entry]
 instructions = "SKILL.md"
@@ -540,7 +533,7 @@ instructions = "SKILL.md"
                 and line["event"]["event_type"] == "scene.selected"
             )
             self.assertEqual("scene:code", selected["data"]["scene_key"])
-            self.assertEqual("selected by task request", selected["data"]["reason"])
+            self.assertEqual("selected by explicit task request", selected["data"]["reason"])
             self.assertEqual("result", lines[-1]["type"])
             self.assertEqual("code", lines[-1]["result"]["workflow"])
             self.assertEqual(lines[0]["event"]["run_id"], lines[-1]["result"]["run_id"])

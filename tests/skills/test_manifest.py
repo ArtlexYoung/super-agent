@@ -118,21 +118,20 @@ class SkillManifestContractTests(unittest.TestCase):
             self.assertEqual(1, len(issues))
             self.assertIn("unknown skill manifest fields: memory", issues[0].message)
 
-    def test_core_selects_triggered_and_explicitly_enabled_skills(self) -> None:
+    def test_core_selects_only_explicitly_enabled_skills(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            _write_skill(root, name="echo", triggers=["echo"])
-            _write_skill(root, name="always", triggers=[])
+            _write_skill(root, name="echo")
+            _write_skill(root, name="always")
 
             disclosure = _create_disclosure(root)
             disclosure.prepare_skill_index()
-            selections = disclosure.select_skill_references_for_prompt(
-                "please echo",
-                enabled_names=["always"],
+            selections = disclosure.select_skill_references(
+                selected_names=["always"],
                 allowed_types={"prompt", "mcp"},
             )
 
-            self.assertEqual({"prompt:echo", "prompt:always"}, {item.key for item in selections})
+            self.assertEqual({"prompt:always"}, {item.key for item in selections})
 
 
 def _write_skill(
@@ -141,11 +140,9 @@ def _write_skill(
     name: str = "demo",
     schema_version: int = 3,
     skill_type: str = "prompt",
-    triggers: list[str] | None = None,
 ) -> Path:
     skill_dir = root / name
     skill_dir.mkdir(parents=True)
-    trigger_text = ", ".join(f'"{item}"' for item in triggers or [])
     manifest_path = skill_dir / "skill.toml"
     manifest_path.write_text(
         f"""
@@ -154,7 +151,6 @@ name = "{name}"
 type = "{skill_type}"
 description = "{name} skill"
 version = "0.1.0"
-triggers = [{trigger_text}]
 
 [entry]
 instructions = "SKILL.md"

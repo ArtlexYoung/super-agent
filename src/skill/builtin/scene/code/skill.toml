@@ -2,31 +2,7 @@ schema_version = 3
 name = "code"
 type = "scene"
 description = "Repository coding scene for exploration, implementation, tests, review, and evidence"
-version = "0.0.65"
-triggers = [
-  "code",
-  "coding",
-  "implement",
-  "implementation",
-  "bug",
-  "debug",
-  "refactor",
-  "repository",
-  "source file",
-  "test suite",
-  "create scene",
-  "new scene",
-  "编程",
-  "代码",
-  "实现",
-  "修复",
-  "调试",
-  "重构",
-  "仓库",
-  "测试",
-  "创建场景",
-  "新建场景",
-]
+version = "0.0.100"
 agent_created = false
 agent_can_update = false
 freshness = 70

@@ -24,6 +24,7 @@ from skill.ecosystem.models import model_skill_input_from_dict
 from skill.ecosystem.validation import validate_skill_replacement
 from skill.evolution.change.evaluation import EvaluationCase
 from skill.evolution.records import read_evaluation_records
+from support import RecordingProvider, SequenceProvider, route_response
 
 
 class ModelSkillTests(unittest.TestCase):
@@ -248,9 +249,20 @@ class ModelSkillTests(unittest.TestCase):
             )
 
             with patch("core.provider.chat._send_json_post_request") as send:
-                send.side_effect = lambda _url, _payload, api_key: {
-                    "choices": [{"message": {"content": api_key}}]
-                }
+                def respond(_url, payload, api_key):
+                    content = payload["messages"][-1]["content"]
+                    try:
+                        parsed = json.loads(content)
+                    except json.JSONDecodeError:
+                        parsed = {}
+                    text = (
+                        route_response(model="model:remote")
+                        if "response_contract" in parsed
+                        else api_key
+                    )
+                    return {"choices": [{"message": {"content": text}}]}
+
+                send.side_effect = respond
                 alice = agent.for_user("alice").run("hello")
                 bob = agent.for_user("bob").run("hello")
 
@@ -262,7 +274,7 @@ class ModelSkillTests(unittest.TestCase):
             self.assertEqual("alice-secret", alice.text)
             self.assertEqual("bob-secret", bob.text)
             self.assertEqual(
-                ["alice-secret", "bob-secret"],
+                ["alice-secret", "alice-secret", "bob-secret", "bob-secret"],
                 [call.args[2] for call in send.call_args_list],
             )
             assert alice_lock is not None and bob_lock is not None
@@ -332,19 +344,13 @@ class ModelSkillTests(unittest.TestCase):
             self.assertEqual(0.75, agent.model_profile.routing.quality_score)
 
 
-class _FixedProvider:
-    def send_chat_messages(self, messages: list[dict[str, object]], model: str) -> str:
-        return "fixed"
+class _FixedProvider(RecordingProvider):
+    def __init__(self) -> None:
+        super().__init__("fixed")
 
 
-class _SequenceProvider(_FixedProvider):
-    def __init__(self, responses: list[str]) -> None:
-        self.responses = list(responses)
-
-    def send_chat_messages(self, messages: list[dict[str, object]], model: str) -> str:
-        if not self.responses:
-            raise AssertionError("unexpected provider call")
-        return self.responses.pop(0)
+class _SequenceProvider(SequenceProvider):
+    pass
 
 
 def _write_agent_config(root: Path, name: str) -> Path:
@@ -380,7 +386,6 @@ name = "{name}"
 type = "model"
 description = "Fast model for concise summaries"
 version = "0.1.0"
-triggers = ["fast", "summary"]
 agent_can_update = true
 
 [configuration]

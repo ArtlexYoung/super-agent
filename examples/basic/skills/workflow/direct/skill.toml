@@ -3,7 +3,6 @@ name = "direct"
 type = "workflow"
 description = "Direct workflow"
 version = "0.1.0"
-triggers = []
 
 [configuration]
 mode = "direct"

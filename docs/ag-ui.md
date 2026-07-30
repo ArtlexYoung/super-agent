@@ -43,9 +43,9 @@ message becomes the task prompt.
 ```
 
 `forwardedProps.scene` is optional and selects one scene for this run. It accepts a scene
-name such as `code` or a stable key such as `scene:code`. When omitted, Core uses the same
-configuration, trigger, and default selection path as Python and CLI. It cannot select a
-user or change action authority.
+name such as `code` or a stable key such as `scene:code`. When omitted, the routing model
+chooses from the same scene descriptions exposed to Python and CLI. It cannot select a
+user, override an explicit scene, or change action authority.
 
 The response uses `text/event-stream` and official SSE framing:
 

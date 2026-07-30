@@ -32,7 +32,6 @@ SINGLE_SCENE_SKILL_TYPES = frozenset({"planner", "workflow"})
 class SkillSceneInput:
     name: str
     description: str
-    triggers: list[str]
     instructions: str = ""
 
 
@@ -86,13 +85,9 @@ def create_scene_creation_tool(
         properties={
             "name": {"type": "string"},
             "description": {"type": "string"},
-            "triggers": {
-                "type": "array",
-                "items": {"type": "string"},
-            },
             "instructions": {"type": "string"},
         },
-        required=("name", "description", "triggers"),
+        required=("name", "description"),
         handler=lambda arguments: manager.create_skill_scene(
             skill_scene_input_from_dict(arguments)
         ).to_dict(),
@@ -159,20 +154,14 @@ class SkillSceneManager:
 def skill_scene_input_from_dict(value: object) -> SkillSceneInput:
     if not isinstance(value, dict):
         raise TypeError("Skill scene input must be a JSON object")
-    allowed = {"name", "description", "triggers", "instructions"}
+    allowed = {"name", "description", "instructions"}
     unknown = sorted(set(value) - allowed)
     if unknown:
         raise ValueError("unknown Skill scene input fields: " + ", ".join(unknown))
-    triggers = value.get("triggers")
-    if not isinstance(triggers, list) or not all(
-        isinstance(item, str) for item in triggers
-    ):
-        raise TypeError("Skill scene triggers must be a string array")
     return validate_skill_scene_input(
         SkillSceneInput(
             name=_required_text(value.get("name"), "name"),
             description=_required_text(value.get("description"), "description"),
-            triggers=list(triggers),
             instructions=_optional_text(value.get("instructions"), "instructions"),
         )
     )
@@ -184,13 +173,9 @@ def validate_skill_scene_input(request: SkillSceneInput) -> SkillSceneInput:
         raise ValueError(
             "Skill scene name must use lowercase letters, numbers, '-' or '_'"
         )
-    triggers = [_required_text(item, "trigger").lower() for item in request.triggers]
-    if len(triggers) != len(set(triggers)):
-        raise ValueError("Skill scene triggers must be unique")
     return SkillSceneInput(
         name=name,
         description=_required_text(request.description, "description"),
-        triggers=triggers,
         instructions=_optional_text(request.instructions, "instructions"),
     )
 
@@ -248,7 +233,6 @@ def _create_scene_documents(request: SkillSceneInput) -> dict[str, dict[str, str
                 name,
                 "scene",
                 request.description,
-                request.triggers,
                 configuration={"skills": scene_skills},
             )
         },
@@ -257,7 +241,6 @@ def _create_scene_documents(request: SkillSceneInput) -> dict[str, dict[str, str
                 name,
                 "prompt",
                 f"Prompt rules for the {name} scene",
-                [],
                 instructions="SKILL.md",
             ),
             "SKILL.md": prompt.rstrip() + "\n",
@@ -267,7 +250,6 @@ def _create_scene_documents(request: SkillSceneInput) -> dict[str, dict[str, str
                 name,
                 "memory",
                 f"Conversation and long-term memory for the {name} scene",
-                [],
                 configuration={
                     "default_scope": "agent",
                     "recall_limit": 20,
@@ -281,20 +263,8 @@ def _create_scene_documents(request: SkillSceneInput) -> dict[str, dict[str, str
                 name,
                 "planner",
                 f"Task planner for the {name} scene",
-                [],
                 instructions="SKILL.md",
-                configuration={
-                    "max_steps": 8,
-                    "minimum_prompt_characters": 320,
-                    "planning_terms": [
-                        "step by step",
-                        "in stages",
-                        "multiple steps",
-                        "逐步",
-                        "分步骤",
-                        "分阶段",
-                    ],
-                },
+                configuration={"max_steps": 8},
             ),
             "SKILL.md": planner + "\n",
         },
@@ -303,7 +273,6 @@ def _create_scene_documents(request: SkillSceneInput) -> dict[str, dict[str, str
                 name,
                 "workflow",
                 f"Tool loop for the {name} scene",
-                [],
                 configuration={"mode": "loop", "max_steps": 12},
             )
         },
@@ -336,7 +305,6 @@ def _manifest_text(
     name: str,
     skill_type: str,
     description: str,
-    triggers: list[str],
     *,
     instructions: str | None = None,
     configuration: dict[str, object] | None = None,
@@ -347,7 +315,6 @@ def _manifest_text(
         f"type = {_toml_value(skill_type)}",
         f"description = {_toml_value(description)}",
         'version = "0.1.0"',
-        f"triggers = {_toml_value(triggers)}",
         "agent_created = true",
         "agent_can_update = true",
         "freshness = 70",

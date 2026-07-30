@@ -871,7 +871,6 @@ description = "{name} helper"
 version = "{version}"
 agent_created = true
 agent_can_update = {str(allow_agent_update).lower()}
-triggers = ["{name}"]
 
 [entry]
 instructions = "SKILL.md"
@@ -891,7 +890,6 @@ description = "{name} {skill_type} helper"
 version = "0.1.0"
 agent_created = true
 agent_can_update = true
-triggers = []
 
 [configuration]
 {configuration}

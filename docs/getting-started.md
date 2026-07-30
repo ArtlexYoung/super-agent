@@ -56,8 +56,8 @@ This keeps development behavior from being mistaken for a successful real model 
 
 ## Automatic Task Scenes
 
-No scene configuration is required. General prompts use the included `common` chain;
-repository coding prompts select the optional `code` chain from manifest triggers.
+No scene configuration is required. The routing model sees compact descriptions of the
+included `common` and `code` chains and chooses one when it improves the task.
 
 ```bash
 super-agent "Summarize these notes"
@@ -65,8 +65,9 @@ super-agent "Implement this repository change"
 super-agent run --scene code "Inspect the current source"
 ```
 
-The selected key and reason are recorded as `scene.selected`. An explicit `--scene`
-always precedes trigger matching. Ambiguous matches fail instead of silently choosing one.
+The selected key and model reason are recorded as `scene.selected`. An explicit `--scene`
+is a strict constraint. Unknown, unavailable, or policy-excluded model choices fail
+instead of silently selecting another scene.
 
 ## Chat and Web
 

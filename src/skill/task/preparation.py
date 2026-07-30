@@ -10,25 +10,24 @@ from skill.loaders.loaded import (
     PlanningPolicy,
     TaskPolicy,
 )
-from skill.loaders.registry import SkillLoaders
 from core.provider.chat import Message
-from core.events import StorageBackend
-from skill.task.planning import decide_task_planning
 from skill.task.run import Run
 from skill.task.model_calls import (
     ModelDecision,
-    ModelSelectionRequest,
+    ModelRoutingStats,
     list_model_routing_stats,
 )
 from skill.task.plan import Plan
 from skill.task.scheduler import (
     Scheduler,
+    TaskRoute,
+    TaskRouteCandidates,
     load_scheduler,
 )
 from core.models import SubAgentResult, Task
 from skill.task.tools import RuntimeTools, RuntimeToolsContext
 from skill.disclosure import SkillIndex, SkillIndexEntry, SkillReference
-from skill.loaders.models import ModelProfile, model_profile_to_dict
+from skill.loaders.models import ModelProfile, model_profile_is_ready
 
 
 @dataclass(frozen=True)
@@ -52,87 +51,21 @@ class _SelectedRunSkills:
     references: tuple[SkillReference, ...]
 
 
-def create_runtime_lock(
-    run: Run,
-    plan: Plan,
-    *,
-    storage: StorageBackend | None,
-    environment: Mapping[str, str],
-) -> dict[str, object]:
-    if run.model_profile is None or run.provider is None:
-        raise RuntimeError("task model must be selected before Runtime lock")
-    run.skills.validate_loaders()
-    return {
-        "schema_version": 18,
-        "agent": {
-            "name": run.config.agent.name,
-            "system": run.config.agent.system,
-            "skills": list(run.config.agent.skills),
-            "max_agent_chain_depth": run.config.agent.max_agent_chain_depth,
-            "disabled_skills": list(run.config.agent.disabled_skills),
-        },
-        "model": {
-            **model_profile_to_dict(run.model_profile, environment),
-            "implementation": (
-                f"{type(run.provider).__module__}."
-                f"{type(run.provider).__qualname__}"
-            ),
-        },
-        "plan": plan.to_dict(),
-        "storage": {
-            "enabled": storage is not None,
-            "backend": None if storage is None else storage.name,
-        },
-        "skill_loaders": [
-            item.descriptor.to_dict()
-            for item in run.skills.list_loaders()
-        ],
-        "registered_code": _list_registered_code(run.skills.loaders),
-        "skills": [
-            {
-                "key": entry.reference.key,
-                "name": entry.reference.name,
-                "type": entry.reference.skill_type,
-                "version": entry.version,
-                "content_sha256": entry.content_sha256,
-                "provides": list(entry.provides),
-                "requires": list(entry.requires),
-            }
-            for entry in run.skills.index.entries
-        ],
-    }
-
-
-def _list_registered_code(
-    skill_loaders: SkillLoaders,
-) -> list[dict[str, object]]:
-    registrations: list[dict[str, object]] = []
-    for entry in skill_loaders.list_skill_loaders():
-        list_registrations = getattr(
-            entry.implementation,
-            "list_code_registrations",
-            None,
-        )
-        if not callable(list_registrations):
-            continue
-        values = list_registrations()
-        if not isinstance(values, list) or not all(
-            isinstance(value, dict) for value in values
-        ):
-            raise TypeError("SkillLoader code registrations must be a list of objects")
-        registrations.extend(dict(value) for value in values)
-    return sorted(
-        registrations,
-        key=lambda value: (str(value.get("kind", "")), str(value.get("name", ""))),
-    )
-
-
+@dataclass(frozen=True)
+class _RunPlanParts:
+    scheduler: SkillReference
+    workflow: SkillReference | None
+    workflow_policy: TaskPolicy
+    planner: SkillReference | None
+    model: ModelDecision
+    required_features: tuple[str, ...]
 def prepare_run(
     request: Task,
     session: Run,
     model_profiles: list[ModelProfile],
     *,
     environment: Mapping[str, str],
+    send_routing_messages: Callable[[list[Message]], str],
 ) -> RunContext:
     selected_scheduler = load_scheduler(
         session.skills.index,
@@ -140,7 +73,31 @@ def prepare_run(
         lambda reference: _load_skill(session, reference),
     )
     scheduler = selected_scheduler.scheduler
-    selected = _select_run_skills(request, session, scheduler)
+    candidates = _create_route_candidates(
+        request,
+        session,
+        model_profiles,
+        environment,
+    )
+    route = scheduler.decide_task_route(
+        request,
+        candidates,
+        send_routing_messages,
+    )
+    session.record_event(
+        "task.route.decided",
+        {
+            "scene": route.scene,
+            "skills": list(route.skills),
+            "planning": route.planning,
+            "purpose": route.purpose,
+            "model": route.model,
+            "subagents": list(route.subagents),
+            "confidence": route.confidence,
+            "reasons": list(route.reasons),
+        },
+    )
+    selected = _select_run_skills(request, session, route)
     references = selected.references
     workflow_reference, workflow_policy = _load_run_workflow(
         session,
@@ -152,64 +109,36 @@ def prepare_run(
         references,
         scheduler,
     )
-    planning = decide_task_planning(
-        planner_policy,
-        request.prompt,
-        workflow_mode=workflow_policy.mode,
-        required_features=request.required_features,
-    )
     _require_workflow_for_features(request, workflow_reference, workflow_policy)
-    if planning.should_plan and planner_policy is None:
+    if workflow_policy.mode == "plan" and not route.planning:
+        raise ValueError("model route must enable planning for a plan workflow")
+    if route.planning and planner_policy is None:
         raise RuntimeError(
-            "task requires planning but no planner Skill was selected"
+            "model route requires planning but no planner Skill was selected"
         )
-    purpose = scheduler.resolve_purpose(
-        model_profiles,
-        "planning" if planning.should_plan else request.purpose,
-        request.prompt,
-    )
     required_features = scheduler.resolve_required_features(
         request,
         uses_tools=workflow_policy.uses_tools,
     )
     model = _choose_run_model(
-        request,
         session,
         model_profiles,
         environment=environment,
-        purpose=purpose,
         required_features=required_features,
         scheduler=scheduler,
+        route=route,
     )
-    available_subagents = (
-        request.subagents.list_subagents() if request.include_subagents else []
-    )
-    subagent_names, subagent_reasons = scheduler.choose_subagents(
-        request.prompt,
-        available_subagents,
-    )
-    plan = Plan(
-        purpose=purpose,
-        required_features=required_features,
-        model=model,
-        scheduler=selected_scheduler.reference,
-        scene=selected.scene_reference,
-        skills=references,
-        workflow=workflow_reference,
-        workflow_mode=workflow_policy.mode,
-        max_model_steps=workflow_policy.max_steps,
-        planner=planner_reference,
-        model_context_skills=(
-            ()
-            if planning.should_plan
-            else select_model_context_skills(references, session)
-        ),
-        subagent_names=() if planning.should_plan else tuple(subagent_names),
-        subagent_reasons=() if planning.should_plan else tuple(subagent_reasons),
-        mode="planning" if planning.should_plan else "direct",
-        planning_required=planning.should_plan,
-        planning_reasons=(
-            planning.reasons if planning.should_plan else ("direct one-step plan",)
+    plan = _create_run_plan(
+        session,
+        route,
+        selected,
+        _RunPlanParts(
+            selected_scheduler.reference,
+            workflow_reference,
+            workflow_policy,
+            planner_reference,
+            model,
+            required_features,
         ),
     )
     return RunContext(
@@ -222,6 +151,127 @@ def prepare_run(
         planner_contribution=planner_contribution,
         scheduler=scheduler,
     )
+
+
+def _create_run_plan(
+    session: Run,
+    route: TaskRoute,
+    selected: _SelectedRunSkills,
+    parts: _RunPlanParts,
+) -> Plan:
+    return Plan(
+        purpose=route.purpose,
+        required_features=parts.required_features,
+        model=parts.model,
+        scheduler=parts.scheduler,
+        scene=selected.scene_reference,
+        skills=selected.references,
+        workflow=parts.workflow,
+        workflow_mode=parts.workflow_policy.mode,
+        max_model_steps=parts.workflow_policy.max_steps,
+        planner=parts.planner,
+        model_context_skills=(
+            ()
+            if route.planning
+            else select_model_context_skills(selected.references, session)
+        ),
+        subagent_names=route.subagents,
+        subagent_reasons=route.reasons if route.subagents else (),
+        mode="planning" if route.planning else "direct",
+        planning_required=route.planning,
+        planning_reasons=route.reasons,
+    )
+
+
+def _create_route_candidates(
+    request: Task,
+    session: Run,
+    model_profiles: list[ModelProfile],
+    environment: Mapping[str, str],
+) -> TaskRouteCandidates:
+    loader_types = {
+        entry.descriptor.skill_type
+        for entry in session.skills.loaders.list_skill_loaders()
+    }
+    selectable_types = loader_types - {"model", "scene", "scheduler"}
+    ready_models = tuple(
+        profile
+        for profile in model_profiles
+        if model_profile_is_ready(profile, environment)
+    )
+    evidence = _latest_model_evidence(session)
+    return TaskRouteCandidates(
+        scenes=_list_route_scene_candidates(request, session),
+        skills=tuple(
+            entry
+            for entry in session.skills.index.entries
+            if entry.reference.skill_type in selectable_types
+        ),
+        fixed_skills=tuple(_configured_non_scene_skills(session)),
+        models=ready_models,
+        subagents=tuple(
+            request.subagents.list_subagents()
+            if request.include_subagents
+            else []
+        ),
+        model_evidence=evidence,
+    )
+
+
+def _list_route_scene_candidates(
+    request: Task,
+    session: Run,
+) -> tuple[SkillIndexEntry, ...]:
+    if not request.use_scenes:
+        if request.scene is not None:
+            raise ValueError("scene cannot be requested when scenes are disabled")
+        return ()
+    index = session.skills.index
+    scenes = [
+        entry for entry in index.entries if entry.reference.skill_type == "scene"
+    ]
+    if request.allowed_scenes:
+        allowed = [index.require_skill(name, "scene") for name in request.allowed_scenes]
+        keys = [entry.reference.key for entry in allowed]
+        if len(keys) != len(set(keys)):
+            raise ValueError("Agent scene policy contains duplicate scenes")
+        scenes = allowed
+    unavailable = _list_unavailable_scenes(session)
+    if request.scene is not None:
+        selected = index.require_skill(request.scene, "scene")
+        if selected not in scenes:
+            raise ValueError(
+                "requested scene is outside the Agent scene policy: "
+                + selected.reference.key
+            )
+        _require_route_scene_available(selected, unavailable)
+        return (selected,)
+    return tuple(
+        entry for entry in scenes if entry.reference.key not in unavailable
+    )
+
+
+def _require_route_scene_available(
+    entry: SkillIndexEntry,
+    unavailable: Mapping[str, tuple[str, ...]],
+) -> None:
+    missing = unavailable.get(entry.reference.key)
+    if missing:
+        raise RuntimeError(
+            f"{entry.reference.key} requires unavailable Runtime services: "
+            + ", ".join(missing)
+        )
+
+
+def _latest_model_evidence(session: Run) -> dict[str, ModelRoutingStats]:
+    if session.store is None:
+        return {}
+    selected: dict[str, ModelRoutingStats] = {}
+    for item in list_model_routing_stats(session.store):
+        current = selected.get(item.profile_key)
+        if current is None or item.call_count > current.call_count:
+            selected[item.profile_key] = item
+    return selected
 
 
 def _require_workflow_for_features(
@@ -240,24 +290,25 @@ def _require_workflow_for_features(
 def _select_run_skills(
     request: Task,
     session: Run,
-    scheduler: Scheduler,
+    route: TaskRoute,
 ) -> _SelectedRunSkills:
     disclosure = session.skills.disclosure
-    scene_reference = scheduler.select_scene(
-        disclosure,
-        request,
-        _list_unavailable_scenes(session),
+    scene_reference = disclosure.select_skill_scene(
+        route.scene,
+        requested_scene=request.scene,
+        use_scenes=request.use_scenes,
+        allowed_scenes=request.allowed_scenes,
+        unavailable_scenes=_list_unavailable_scenes(session),
     )
     if scene_reference is None:
-        enabled = _configured_non_scene_skills(session)
+        enabled = [*_configured_non_scene_skills(session), *route.skills]
         allowed_types = {
             entry.descriptor.skill_type
             for entry in session.skills.loaders.list_skill_loaders()
             if entry.descriptor.skill_type not in {"scene", "scheduler"}
         }
         references = tuple(
-            disclosure.select_skill_references_for_prompt(
-                request.prompt,
+            disclosure.select_skill_references(
                 enabled,
                 allowed_types,
             )
@@ -270,6 +321,7 @@ def _select_run_skills(
         session,
         scene_contribution.included_skills,
     )
+    enabled.extend(route.skills)
     allowed_types = {
         entry.descriptor.skill_type
         for entry in session.skills.loaders.list_skill_loaders()
@@ -288,8 +340,7 @@ def _select_run_skills(
             + ", ".join(unsupported_types)
         )
     references = tuple(
-        disclosure.select_skill_references_for_prompt(
-            request.prompt,
+        disclosure.select_skill_references(
             enabled,
             allowed_types,
         )
@@ -336,27 +387,27 @@ def _list_unavailable_scenes(
 
 
 def _choose_run_model(
-    request: Task,
     session: Run,
     model_profiles: list[ModelProfile],
     *,
     environment: Mapping[str, str],
-    purpose: str,
     required_features: tuple[str, ...],
     scheduler: Scheduler,
+    route: TaskRoute,
 ) -> ModelDecision:
     evidence = (
         {}
         if session.store is None
         else {
             item.profile_key: item
-            for item in list_model_routing_stats(session.store, purpose)
+            for item in list_model_routing_stats(session.store, route.purpose)
         }
     )
-    return scheduler.choose_model(
+    return scheduler.choose_selected_model(
         model_profiles,
         environment,
-        ModelSelectionRequest(purpose, required_features, request.prompt),
+        required_features,
+        route,
         evidence=evidence,
     )
 

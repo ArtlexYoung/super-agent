@@ -145,6 +145,7 @@ class SchedulerSkillLoader:
         opened = request.open_skill()
         opened.disclose_manifest()
         opened.disclose_configuration()
+        opened.disclose_instructions()
         return LoadedSkill(
             scheduling_policy=read_scheduling_policy(opened),
         )

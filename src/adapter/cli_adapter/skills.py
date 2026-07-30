@@ -6,8 +6,6 @@ from pathlib import Path
 
 from adapter.cli_adapter import load_agent, load_agent_config, load_event_store
 from skill.loaders.defaults import create_progressive_skill_disclosure
-from skill.loaders.builtins import create_builtin_skill_loaders
-from skill.loaders.mcp import McpServers
 from core.config import AgentConfig
 from core.models import LOCAL_USER_ID
 from core.checks import ActionRules
@@ -42,9 +40,6 @@ def configure_skills_parser(parser: argparse.ArgumentParser) -> None:
     freshness_parser.add_argument("--config", default="agent.toml")
     validate_parser = subparsers.add_parser("validate", help="validate every skill manifest")
     validate_parser.add_argument("--config", default="agent.toml")
-    explain_parser = subparsers.add_parser("explain", help="explain skill selection for one prompt")
-    explain_parser.add_argument("--config", default="agent.toml")
-    explain_parser.add_argument("--prompt", required=True)
     graph_parser = subparsers.add_parser("graph", help="resolve a skill dependency graph")
     _add_composition_arguments(graph_parser)
     lock_parser = subparsers.add_parser("lock", help="write a deterministic skill lock")
@@ -71,7 +66,6 @@ def configure_skills_parser(parser: argparse.ArgumentParser) -> None:
         rollback_parser,
         freshness_parser,
         validate_parser,
-        explain_parser,
         graph_parser,
         lock_parser,
         pack_parser,
@@ -92,7 +86,6 @@ def run_skills_command(args: argparse.Namespace) -> int:
         "rollback": lambda: _rollback_skill(args),
         "freshness": lambda: _show_skill_freshness(Path(args.config), args.user_id),
         "validate": lambda: _validate_skills(Path(args.config), args.user_id),
-        "explain": lambda: _explain_skills(Path(args.config), args.user_id, args.prompt),
         "graph": lambda: _show_skill_graph(args),
         "lock": lambda: _write_skill_lock(args),
         "pack": lambda: _pack_skill(args),
@@ -190,30 +183,6 @@ def _validate_skills(config_path: Path, user_id: str) -> int:
         return 1
     print(f"{len(disclosure.prepare_skill_index().entries)} valid skills")
     return 0
-
-
-def _explain_skills(config_path: Path, user_id: str, prompt: str) -> int:
-    config = load_agent_config(config_path)
-    disclosure = create_progressive_skill_disclosure(
-        config,
-        store=load_event_store(config, user_id),
-    )
-    disclosure.prepare_skill_index()
-    decisions = disclosure.explain_skill_selection_for_prompt(
-        prompt,
-        config.agent.skills,
-        allowed_types=_default_model_context_types(),
-    )
-    for decision in decisions:
-        state = _selection_state(decision.selected, decision.reason)
-        print(f"{decision.reference.name}\t{state}\t{decision.reason}")
-    return 0
-
-
-def _selection_state(selected: bool, reason: str) -> str:
-    if reason == "not eligible for model context":
-        return "not_applicable"
-    return "selected" if selected else "skipped"
 
 
 def _show_skill_graph(args: argparse.Namespace) -> int:
@@ -316,14 +285,6 @@ def _load_package_manager(config_path: Path, user_id: str) -> SkillPackageManage
         store,
         ActionRules(),
     )
-
-
-def _default_model_context_types() -> set[str]:
-    return {
-        loader.skill_type
-        for loader in create_builtin_skill_loaders(McpServers())
-        if loader.adds_model_context
-    }
 
 
 def _add_evolution_name_arguments(parser: argparse.ArgumentParser) -> None:
