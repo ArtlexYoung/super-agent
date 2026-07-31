@@ -13,6 +13,7 @@ from adapter.cli_adapter.conversations import (
     run_conversations_command,
 )
 from adapter.cli_adapter import load_agent
+from adapter.cli_adapter.check import configure_check_parser, run_check_command
 from adapter.cli_adapter.memory import configure_memory_parser, run_memory_command
 from adapter.cli_adapter.models import configure_models_parser, run_models_command
 from adapter.cli_adapter.runs import configure_runs_parser, run_runs_command
@@ -25,7 +26,7 @@ from core.state.models import RunEvent
 from core.models import RunResult
 
 
-CLI_COMMANDS = frozenset({"data", "init", "run", "serve", "skills"})
+CLI_COMMANDS = frozenset({"check", "data", "init", "run", "serve", "skills"})
 REMOVED_COMMANDS = frozenset(
     {"chat", "conversations", "memory", "models", "runs", "storage"}
 )
@@ -61,6 +62,8 @@ def _run_parsed_command(
         return _run_chat_command(None, LOCAL_USER_ID, None, None)
     if args.command == "init":
         return _run_init_command(Path(args.path))
+    if args.command == "check":
+        return run_check_command(args)
     if args.command == "run":
         return _run_command(args)
     if args.command == "skills":
@@ -103,6 +106,12 @@ def _build_parser() -> argparse.ArgumentParser:
 
     init_parser = subparsers.add_parser("init", help="create a minimal agent project")
     init_parser.add_argument("--path", default=".", help="target directory")
+
+    check_parser = subparsers.add_parser(
+        "check",
+        help="check configuration, Skills, and the default model",
+    )
+    configure_check_parser(check_parser)
 
     run_parser = subparsers.add_parser("run", help="run one prompt")
     run_parser.add_argument("prompt", nargs="*")
@@ -209,6 +218,7 @@ def _run_prompt_command(config_path: Path | None, request: CliRequest, output: s
     for warning in result.warning_messages or []:
         print(f"Warning: {warning}")
     print(result.text)
+    _print_run_summary(result)
     return 0
 
 
@@ -248,6 +258,24 @@ def run_result_to_dict(result: RunResult) -> dict[str, Any]:
 
 def _print_run_event(event: RunEvent) -> None:
     print(json.dumps({"type": "event", "event": asdict(event)}, ensure_ascii=False), flush=True)
+
+
+def _print_run_summary(result: RunResult) -> None:
+    selected_models = []
+    for event in result.events:
+        if event.event_type != "model.call.selected":
+            continue
+        label = f"{event.data.get('profile', 'unknown')} ({event.data.get('model', 'unknown')})"
+        if label not in selected_models:
+            selected_models.append(label)
+    scene = next((name for name in result.skills if name.startswith("scene:")), "direct")
+    print()
+    print(f"Run: {result.run_id}")
+    print(f"Model: {', '.join(selected_models) if selected_models else 'none'}")
+    print(f"Scene: {scene}")
+    print(f"Workflow: {result.workflow}")
+    print(f"Skills: {', '.join(result.skills) if result.skills else 'none'}")
+    print(f"Stop: {result.stop_reason}")
 
 
 def _read_runtime_request_from_args(args: argparse.Namespace) -> CliRequest:

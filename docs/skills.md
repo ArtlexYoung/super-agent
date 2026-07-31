@@ -1,94 +1,91 @@
 # Skills
 
 A Skill is passive content with one manifest. Prompts, workflows, memory behavior, MCP
-descriptions, model profiles, task scenes, feedback, and evolution policy all use this
-format.
+descriptions, model profiles, task scenes, feedback rules, and freshness rules all use the
+same source and disclosure path.
 
-## Layout
+## Smallest Skill
 
 ```text
-skills/
-  prompt/
-    research/
-      skill.toml
-      SKILL.md
-      resources/
+skills/prompt/research/
+  skill.toml
+  SKILL.md
 ```
 
 ```toml
 description = "Research a question and report cited findings"
 ```
 
-The directory supplies `name`, `type` defaults to `prompt`, `version` defaults to `0.1.0`,
-and an existing `SKILL.md` supplies instructions. Unknown fields fail validation. Stable
-references use `type:name`; a bare name is accepted only when unique.
+The directory supplies `name`, `type` defaults to `prompt`, and `version` defaults to
+`0.1.0`. An existing `SKILL.md` supplies instructions. Unknown fields fail validation.
+Stable references use `type:name`; a bare name is accepted only when unique.
+
+Add a root in TOML or code:
+
+```toml
+[paths]
+skills = ["skills", "team-skills"]
+```
+
+```python
+agent.add_skill_path("team-skills")
+```
 
 ## One Disclosure Path
 
-Runtime first exposes only compact index data. The model may then call:
+Runtime first gives the model compact index entries. The model can then use:
 
-- `list_skills`
-- `disclose_skill_manifest`
-- `disclose_skill_instructions`
-- `disclose_skill_configuration`
-- `read_disclosed_content` for a path already cached in this user scope
-- `activate_skill` to load registered behavior
+- `list_skills` to inspect the index;
+- `disclose_skill_manifest`, `disclose_skill_instructions`, and
+  `disclose_skill_configuration` to open one stage;
+- `read_disclosed_content` to reuse a storage-backed cached path;
+- `activate_skill` to ask Runtime to load registered behavior.
 
-Manifest, instruction, configuration, and resource reads all use the same core. Cache paths
-are hashes of source identity and content, so a changed Skill cannot reuse stale content.
-Reads do not count as activation or use.
+Manifest, instruction, configuration, and resource reads all pass through
+`ProgressiveDisclosureCore`. Cache paths include source identity and content hashes, so
+changed content cannot reuse stale results. Reading does not activate or count as use.
 
-There are no trigger words. Descriptions and current task context are given to the model,
-which chooses what to inspect and activate during its normal turn.
+There are no trigger words. The model receives descriptions and current task context and
+makes its choice during the normal model turn.
 
-## Skill Types and Loaders
+## Built-In Types
 
-The manifest accepts a clear lowercase type. Built-in loaders understand:
+- `prompt` contributes model instructions.
+- `workflow` defines the tool-loop policy and maximum turns.
+- `memory` contributes optional long-term memory context and tools.
+- `mcp` selects an MCP server registered in trusted code.
+- `scene` groups ordinary Skills for one task type.
+- `model`, `feedback`, and `freshness` configure their owning Core services.
 
-- `prompt`: model instructions.
-- `workflow`: tool-loop policy and maximum turns.
-- `memory`: long-term memory context and tools.
-- `mcp`: passive selection of an MCP server registered in code.
-- `scene`: a named group of other Skills.
-
-`model`, `feedback`, and `evolution` Skills are read by their owning services through the
-same index and disclosure core. Applications can add another type with an explicit
-`Agent.add_skill_loader()` call.
-
-A SkillLoader is trusted application code. A Skill directory cannot contain or activate a
-Python runner. Packages with symlinks, traversal, unexpected hashes, or identity changes
-are rejected.
+Skill directories cannot contain executable Python or shell runners. Runtime setup owns
+trusted loaders, while ordinary Agent users add passive content and registered MCP tools.
 
 ## Scenes
 
-A scene manifest contains references to ordinary Skills. Built-in `common` and `code`
-scenes reuse the same `memory:default`; they do not copy shared content.
-
-The model can activate an available scene like any other Skill. Callers can also select a
-scene explicitly for one run. Each Agent controls visibility in code:
+A scene contains references to ordinary Skills. Built-in `common` and `code` scenes reuse
+shared Skills rather than copying them. The model can activate any available scene, or a
+caller can make one explicit for a single run:
 
 ```python
-agent.use_only_scenes("code")
-agent.disable_scenes()
-agent.select_scenes_automatically()
+result = agent.run("Inspect this change", scene="code")
+result = agent.run("Answer directly", use_scenes=False)
 ```
 
-Scene access outside that policy fails. No TOML subagent or scene policy graph is created.
+An explicit scene restricts scene activation for that run. Omitting it leaves selection to
+model judgment. Neither option changes the Agent or later runs.
 
-## Ownership and Evolution
+## Ownership and Freshness
 
 Ownership and update permission come from trusted source metadata, never Skill-controlled
-TOML. Built-ins are read-only, project Skills are user-authorized, and Agent-created user
-overlays are marked by the Runtime. Model connection fields have a separate permission
-because they may affect secret and network boundaries.
+TOML. Built-ins are read-only, project Skills are user-authorized, and applied user
+overlays are marked by Runtime.
 
-Freshness is deterministic. It combines call outcomes, token use, time since use, frequency,
-and successful same-function follow-ups. The model does not assign the freshness number.
-Learning can use it to recommend a candidate, but evaluation and explicit promotion remain
-separate.
+Freshness is deterministic. It combines outcomes, token use, time since use, frequency,
+latency, and successful same-function follow-ups. The model does not assign the number.
+Explicit learning updates evidence; explicit Skill change commands handle content changes.
 
 ## Packages
 
 `skills pack`, `install`, `update`, and `remove` operate on passive packages. Install and
 update write only the selected user's Skill overlay. `--expected-sha256` pins external
-content. Git and ZIP input is staged and fully validated before one final replacement.
+content. Git and ZIP input is staged and validated before one final replacement.

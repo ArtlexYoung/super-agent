@@ -1,41 +1,51 @@
 # Source Tour
 
-Follow one ordinary call through these files:
+Read one ordinary call in this order:
 
-1. `src/super_agent.py`: `Agent.run()` composes the optional dependencies.
-2. `src/core/runtime/runtime.py`: `Runtime.run_task()` owns one run and its visible events.
-3. `src/core/runtime/loop.py`: `ModelLoop` gives the model the Skill index and checked tools.
-4. `src/core/runtime/model_calls.py`: `ModelCalls` resolves a configured model and records use.
-5. `src/core/provider/chat.py`: `call_chat_model()` measures one Provider call.
-6. `src/skill/disclosure.py`: the shared index, disclosure, and cache path.
+1. `src/super_agent.py` exports the small public `Agent` facade.
+2. `src/core/runtime/agent.py` composes configuration, optional state, Skills, Providers,
+   and subagents.
+3. `src/core/runtime/runtime.py` owns one run identity, event log, result, and failure.
+4. `src/core/runtime/loop.py` gives the model selected context and checked tools.
+5. `src/skill/disclosure.py` builds the shared Skill index and opens requested content.
+6. `src/core/provider/chat.py` makes and measures the selected Provider call.
 
-The active execution path is:
+The short execution path is:
 
 ```text
-Agent.run
+super_agent.Agent
+  -> Agent.run
   -> Runtime.run_task
   -> ModelLoop.run_task
-  -> ModelCalls.call_model
-  -> call_chat_model
-  -> ChatProvider.send_chat_messages[_with_tools]
-  -> final text or checked tool calls
+  -> Skill disclosure and activation
+  -> Provider call
+  -> final text or checked tool actions
 ```
 
-A simple task can finish on its first model turn. Storage, memory, conversations, safety
-checks, subagents, learning, and evolution are attached only when requested or selected.
+There is one task loop. Python does not route with trigger words, run a separate planner,
+or start hidden fallback engines. The model sees descriptions, opens useful Skill content,
+and either returns text or requests a registered action.
 
-The model receives descriptions, not a trigger-word decision made by Python. It can open
-more Skill content, activate a Skill, call an exposed Skill tool, recall or update
-long-term memory, delegate to a registered subagent, or give one subtask to another
-configured model. Every side effect goes through an explicit action request.
+A stateless run imports no storage, memory, or learning implementation. Optional layers
+enter only at a visible boundary:
 
-For a subsystem, start at its one public owner:
+- `Agent(use_storage=True)` enables configured storage.
+- `Agent.for_user(id)` exposes scoped conversations, runs, memory, and Skill updates.
+- A selected memory Skill adds long-term memory tools.
+- `Agent.add_subagent(...)` adds explicit model delegation.
+- `Agent.add_tool(...)` binds passive MCP Skill content to trusted code.
+- `user.runs.learn(run_id)` records evidence after a completed run.
 
-- Skill discovery: `core.skill_use.skills.Skills`.
-- Skill disclosure: `skill.disclosure.ProgressiveDisclosureCore`.
-- Provider connections: `core.provider.pool.ProviderPool`.
+For a subsystem, start at its owner:
+
+- Skill index and disclosure: `skill.disclosure.ProgressiveDisclosureCore`.
+- Skill loading: `core.skill_use.skills.Skills`.
+- Provider selection: `core.provider.pool.ProviderPool`.
 - Stored user access: `adapter.user.UserAgent`.
-- Action checks: `core.checks.ActionRunner`.
+- Side-effect checks: `core.checks.ActionRunner`.
 - Run events: `core.state.event_log.RunEventLog`.
+- Explicit Skill changes: `core.skill_use.update.SkillUpdater`.
 
-There are no compatibility modules. Import an advanced type from the file that owns it.
+`src/cli.py` and `src/adapter/` are external interfaces. They may compose Core but do not
+own task execution. There are no compatibility modules; import an advanced type from the
+file that owns it.

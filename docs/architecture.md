@@ -22,8 +22,8 @@ src/
 ```
 
 `core` owns execution and may read passive Skill definitions. `skill` does not own the
-Runtime. `adapter` connects external interfaces and durable backends. `super_agent.py` is
-the composition root and common API.
+Runtime. `adapter` connects external interfaces and durable backends. `super_agent.py` is a
+five-line facade; `core/runtime/agent.py` owns composition and the `Agent` implementation.
 
 ## One Task Path
 
@@ -68,7 +68,7 @@ an explicit backend:
 
 - Conversations persist ordered user and assistant messages as short-term context.
 - Memory Skills persist abstract long-term items and usage habits.
-- Run learning records evaluations, freshness evidence, and Skill candidates.
+- Run learning records evaluations, freshness evidence, and model use.
 - Disclosure caches preserve paths previously opened by the model.
 
 Every persisted stream includes a trusted user ID and Agent name. An unavailable optional
@@ -85,9 +85,9 @@ Provider calls, model selection, Skill disclosure, tool calls, subagent calls, a
 changes are visible in the run event stream. Errors are propagated after Runtime attempts
 to record the failure.
 
-## Evolution
+## Skill Changes
 
-Learning is outside the task's implicit completion path. A caller starts it explicitly with
-`user.runs.learn(run_id)`. Agent-owned or user-authorized Skills move through candidate,
-evaluation, promotion, monitoring, and rollback records. Candidate creation and evaluation
-do not modify the active Skill.
+Learning is outside the task's implicit completion path. A caller starts it explicitly
+with `user.runs.learn(run_id)`, and it never changes active content. Agent-owned or
+user-authorized Skills can be proposed, tested, applied, and undone through four separate
+operations. Proposal and testing do not modify the active Skill.

@@ -32,7 +32,7 @@ chat renderers.
 
 Configuration writes are validated by Python and saved atomically to `agent.toml` or a
 user model Skill. The selected storage backend remains authoritative for conversations,
-runs, memory, and evolution. Skill lists come from the central progressive index and group
+runs, memory, and explicit Skill changes. Skill lists come from the central progressive index and group
 by their actual `type`, including custom types.
 
 Task scenes appear in their own group. Choosing one fixes that scene and clears any other

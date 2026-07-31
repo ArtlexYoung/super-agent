@@ -89,8 +89,8 @@ rejected; use `data storage copy` and restart.
 
 ## Code-First Integration
 
-Provider objects, action authority, custom SkillLoaders, MCP implementations, secret
-lookup, storage injection, scene policy, and subagent graphs are Python choices:
+Provider objects, action authority, MCP implementations, secret lookup, storage injection,
+and subagent graphs are Python choices. Scene selection belongs to each run:
 
 ```python
 from core.checks import ActionEffect, ActionMode, ActionRules
@@ -98,12 +98,13 @@ from core.skill_use.mcp import StdioMcpServer
 from super_agent import Agent
 
 agent = Agent(action_rules=ActionRules(ActionMode.READ_ONLY))
-agent.add_mcp_server(
+agent.add_tool(
     "filesystem",
     StdioMcpServer("npx", arguments=("-y", "@modelcontextprotocol/server-filesystem")),
     effects=(ActionEffect.READ,),
 )
 agent.add_subagent(Agent(), name="worker")
+agent.run("Inspect this repository", scene="code")
 ```
 
 An MCP Skill names a code-registered server; executable commands in Skill TOML are

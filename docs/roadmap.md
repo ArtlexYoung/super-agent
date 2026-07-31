@@ -595,6 +595,57 @@ Status: implemented.
 - Keep scenes as ordinary readable Skill groups and update CLI, Web, docs, and release
   checks to the single active execution path.
 
+## v0.0.109: Core-Owned Execution
+
+Status: implemented.
+
+- Move task execution decisions into one Core model loop and remove adapter-owned behavior.
+- Keep every Provider call, Skill action, and failure visible in the run event stream.
+- Preserve stateless execution without importing optional persistence or learning layers.
+
+## v0.0.110: Passive Skill Layer
+
+Status: implemented.
+
+- Make Skill content passive data and require trusted Runtime registration for execution.
+- Reject executable runner content instead of converting or loading it.
+- Keep discovery, validation, and disclosure independent from optional state.
+
+## v0.0.111: Minimal Skill Manifests
+
+Status: implemented.
+
+- Infer Skill name and type from clear directory structure when fields are omitted.
+- Keep ownership, update authority, freshness, and Runtime evidence outside editable TOML.
+- Reject unknown fields rather than maintaining old manifest conversions.
+
+## v0.0.112: Explicit Skill Changes
+
+Status: implemented.
+
+- Remove the automatic evolution state machine and its recommendation and monitoring layers.
+- Separate Skill proposal, testing, application, and undo into four visible operations.
+- Make learning record evaluation, freshness, and model use without changing active Skills.
+
+## v0.0.113: Small Agent Facade
+
+Status: implemented.
+
+- Move Agent composition into `core/runtime/agent.py` and keep `super_agent.py` as a small
+  public facade.
+- Reduce the common Agent actions to `run`, `for_user`, `add_subagent`, `add_skill_path`,
+  `add_tool`, and `add_model`.
+- Make scene selection a per-run choice and remove persistent scene policy methods.
+
+## v0.0.114: Explainable First Run
+
+Status: implemented.
+
+- Add a read-only `super-agent check` command for configuration, Skills, and model readiness.
+- Print the actual model, scene, workflow, Skills, stop reason, and run ID after text runs.
+- Rewrite the first-run path and source tour around the current facade, Runtime, disclosure,
+  Provider, and explicit Skill-change boundaries.
+
 ## Release Gate
 
 The project will not move to `0.1.x` because of feature count. The gate is a reproducible

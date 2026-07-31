@@ -14,8 +14,11 @@ from core.models import SubAgentResult, RunResult
 
 
 class CliTests(unittest.TestCase):
-    def test_cli_has_five_clear_top_level_commands(self) -> None:
-        self.assertEqual({"init", "run", "skills", "data", "serve"}, CLI_COMMANDS)
+    def test_cli_has_six_clear_top_level_commands(self) -> None:
+        self.assertEqual(
+            {"check", "init", "run", "skills", "data", "serve"},
+            CLI_COMMANDS,
+        )
         self.assertTrue(REMOVED_COMMANDS.isdisjoint(CLI_COMMANDS))
         for command in REMOVED_COMMANDS:
             self.assertFalse(_is_direct_prompt([command]))
@@ -62,6 +65,40 @@ class CliTests(unittest.TestCase):
                 list(root.joinpath("skills").rglob("skill.toml")),
             )
             self.assertFalse((root / "mcp").exists())
+
+    def test_check_is_read_only_and_reports_ready_model(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, chdir(tmp), patch.dict(
+            os.environ,
+            {"SUPER_AGENT_PROVIDER": "mock"},
+            clear=True,
+        ):
+            output = StringIO()
+            with patch("sys.stdout", output):
+                code = main(["check", "--output", "json"])
+
+            data = json.loads(output.getvalue())
+            self.assertEqual(0, code)
+            self.assertTrue(data["ok"])
+            self.assertEqual(
+                ["configuration", "skills", "model"],
+                [item["name"] for item in data["checks"]],
+            )
+            self.assertFalse(Path(".super-agent").exists())
+
+    def test_check_explains_missing_model_without_running_one(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, chdir(tmp), patch.dict(
+            os.environ,
+            {},
+            clear=True,
+        ):
+            output = StringIO()
+            with patch("sys.stdout", output):
+                code = main(["check"])
+
+            self.assertEqual(1, code)
+            self.assertIn("FAIL  model: RuntimeError: No model is configured", output.getvalue())
+            self.assertIn("super-agent check", output.getvalue())
+            self.assertFalse(Path(".super-agent").exists())
 
     def test_skills_list_prints_available_skills(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -122,6 +159,9 @@ class CliTests(unittest.TestCase):
 
             self.assertEqual(0, code)
             self.assertIn("Mock response", output.getvalue())
+            self.assertIn("Model: model:environment (mock)", output.getvalue())
+            self.assertIn("Skills: prompt:echo", output.getvalue())
+            self.assertIn("Stop: completed", output.getvalue())
 
     def test_memory_habits_prints_self_updated_usage(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, patch.dict(

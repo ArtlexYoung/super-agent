@@ -1,20 +1,26 @@
 # CLI Reference
 
-The CLI has five top-level groups: `init`, `run`, `skills`, `data`, and `serve`. A bare
-prompt is a short form of `run`; no arguments starts interactive chat.
+The CLI has six top-level commands: `check`, `init`, `run`, `skills`, `data`, and `serve`.
+A bare prompt is short for `run`; no arguments start interactive chat.
 
-## Run
+## Check and Run
 
 ```bash
+super-agent check
+super-agent check --config agent.toml --output json
 super-agent "hello"
 super-agent run --config agent.toml --user-id alice "hello"
 super-agent run --chat --config agent.toml --user-id alice
 super-agent run --scene code --output json "inspect this repository"
 ```
 
-`--output` accepts `text`, `json`, or event-streaming `jsonl`. `--request-stdin` reads one
+`check` is read-only. It validates configuration, the central Skill index, configured
+references, and default model readiness without opening storage or calling a model.
+
+`run --output` accepts `text`, `json`, or streaming `jsonl`. Text output explains the
+actual model, scene, workflow, Skills, stop reason, and run ID. `--request-stdin` reads a
 JSON object with `prompt` and optional `messages`, `user_id`, `conversation_id`, and
-`scene`. Unknown scenes and missing model requirements fail visibly.
+`scene`.
 
 ## Skills
 
@@ -26,27 +32,34 @@ super-agent skills graph --config agent.toml --name prompt:research
 super-agent skills freshness --config agent.toml
 ```
 
-Package commands are `pack`, `install`, `update`, and `remove`. Candidate evolution uses
-`propose`, `evaluate`, `promote`, and `rollback`. These commands never execute Python from
-a Skill package.
+Passive package commands are `pack`, `install`, `update`, and `remove`. They validate
+paths, identities, and hashes and never execute Python from a Skill package.
 
-Models are Skills and therefore live below the same group:
+Models are Skills and live under the same group:
 
 ```bash
 super-agent skills models list --output json
 super-agent skills models resolve
-printf '%s' '<model-skill-json>' | \
-  super-agent skills models save --config agent.toml --request-stdin
+super-agent skills models save --config agent.toml --request-stdin < model.json
 super-agent skills models remove --config agent.toml --name fast
 ```
 
-Saved model Skills contain an environment-variable name, never a secret value. Skill
-revision records are available through `skills evolution list` and
-`skills evolution show --evolution-id <id>`.
+Saved model Skills name an environment variable; they never contain its secret value.
+
+Skill content changes use separate operations:
+
+```bash
+super-agent skills propose-change --name prompt:research --goal "make it clearer"
+super-agent skills test-change --change-id <id> --cases cases.json
+super-agent skills apply-change --change-id <id>
+super-agent skills undo-change --change-id <id>
+super-agent skills list-changes
+```
+
+Proposal and testing do not activate content. Application requires the latest matching
+test to pass. Undo restores or removes the exact user overlay created by that change.
 
 ## Data
-
-All persisted user data is under one group:
 
 ```bash
 super-agent data conversations list --user-id alice
@@ -60,8 +73,8 @@ super-agent data runs learn --run-id <id>
 ```
 
 Conversation commands also provide `show`, `rename`, `clear`, and `delete`. Long-term
-memory provides `add` and `forget`. Run data provides `export`. All commands are scoped by
-user and Agent.
+memory provides `add` and `forget`. Run data provides `export`. Every operation is scoped
+by user and Agent.
 
 Copy selected users between explicit storage backends with:
 
@@ -70,7 +83,7 @@ super-agent data storage copy --to-backend sqlite \
   --to-path .super-agent-copy --user-id alice
 ```
 
-Existing identical events are skipped; conflicting event content fails.
+Identical events are skipped; conflicting content fails.
 
 ## Web
 
@@ -80,5 +93,5 @@ super-agent serve --host 127.0.0.1 --port 9000 --user-id alice
 ```
 
 The Web app is at `/`, AG-UI is at `POST /ag-ui`, and management routes are under
-`/api/*`. The built-in server has no authentication or TLS; keep it on loopback or place
-an authenticated TLS proxy in front of it.
+`/api/*`. The built-in server has no authentication or TLS; keep it on loopback or use an
+authenticated TLS proxy.

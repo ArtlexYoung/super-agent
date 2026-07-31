@@ -6,42 +6,68 @@
 
 > Skill is all you need.
 
-Super Agent gives one model a small Skill index. The model opens only the Skills it needs,
-uses their tools and instructions, and returns a result. Prompts, tools, memory, workflows,
-task scenes, and model descriptions all use the same Skill format and the same progressive
-disclosure path.
+Super Agent gives a model a compact Skill index. The model decides what it needs, opens
+only that content, and runs the selected instructions or registered tools. Prompts,
+workflows, memory behavior, tools, task scenes, and model descriptions all use the same
+Skill format and the same progressive disclosure path.
 
-The default Python runtime has no third-party dependencies. Storage, conversations,
-memory, safety rules, MCP, learning, and evolution are optional. If an enabled feature is
-missing a requirement, the run fails clearly instead of silently using something else.
+The default Python install has no third-party runtime dependencies. A basic `Agent()` is
+stateless and writes no files. Storage, conversations, memory, Skill updates, MCP, and Web
+are optional layers that fail clearly when their requirements are missing.
 
-Super Agent is experimental and remains in `0.0.x`; breaking changes do not keep old
-imports or compatibility wrappers.
+Super Agent is experimental `0.0.x` software. Breaking changes do not keep compatibility
+aliases or migration wrappers.
 
-## Start
+## Start in One Minute
 
 Python 3.11 or newer is required.
 
 ```bash
 python3 -m pip install -e .
 export OPENAI_API_KEY="..."
+super-agent check
 super-agent "Explain this repository"
 ```
 
-Run `super-agent` with no arguments for an interactive conversation. OpenAI-compatible,
-Anthropic-compatible, and Ollama environment settings are discovered automatically. An
-offline smoke test must select the mock Provider explicitly:
+`check` only reads configuration, Skills, and model settings. It does not create storage
+or call a model. OpenAI-compatible, Anthropic-compatible, and Ollama settings can be
+discovered from the environment. An offline smoke test must be explicit:
 
 ```bash
+SUPER_AGENT_PROVIDER=mock super-agent check
 SUPER_AGENT_PROVIDER=mock super-agent "hello"
 ```
 
-No `agent.toml` is required. Run `super-agent init --path my-agent` only when you want an
-editable project and example Skill.
+Run `super-agent` without arguments for an interactive conversation. Create editable
+project files only when you need them:
 
-## Python
+```bash
+super-agent init --path my-agent
+cd my-agent
+super-agent check
+```
 
-The common API contains one class:
+## Add a Skill
+
+A Skill can be only a directory, a compact manifest, and optional instructions:
+
+```text
+skills/prompt/research/
+  skill.toml
+  SKILL.md
+```
+
+```toml
+description = "Research a question and report cited findings"
+```
+
+The directory name becomes the Skill name, and `type` defaults to `prompt`. There are no
+trigger words. The model sees descriptions and decides which Skills to disclose or
+activate during its normal turn.
+
+## Use Python
+
+The common module exports one class:
 
 ```python
 from super_agent import Agent
@@ -51,109 +77,94 @@ result = agent.run("Explain progressive Skill disclosure")
 print(result.text)
 ```
 
-`Agent()` starts without storage and creates no files. Advanced integrations use their
-real modules so the source of each contract remains visible:
+`Agent` has six direct actions: `run`, `for_user`, `add_subagent`, `add_skill_path`,
+`add_tool`, and `add_model`. Advanced contracts are imported from the module that owns
+them.
 
-```python
-from core.provider.chat import MockProvider
-from super_agent import Agent
-
-agent = Agent(provider=MockProvider("offline result"))
-print(agent.run("Classify this text").text)
-```
-
-## Skills
-
-A Skill starts with a compact `skill.toml`. Instructions and resources are opened only
-after the model chooses them.
-
-```toml
-description = "Research a question and report cited findings"
-```
-
-The directory name is the Skill name, `type` defaults to `prompt`, and an existing
-`SKILL.md` is used automatically. Runtime ownership and freshness never live in this file.
-
-There are no trigger words. The model selects Skills and task scenes from their
-descriptions during its normal turn. A scene is just a named Skill group, so different
-Agents can specialize without another execution system:
+Compose specialized Agents in code. Scene selection belongs to one run and does not
+silently change later runs:
 
 ```python
 from super_agent import Agent
 
 main = Agent()
 coder = Agent()
-coder.use_only_scenes("code")
 main.add_subagent(coder, name="coder", description="Implements and verifies code changes")
+result = coder.run("Fix the failing test", scene="code")
 ```
 
-Model descriptions are Skills too. Mark one model Skill as the default; any other ready
-model is exposed to it through `use_model(model, prompt, reason)`. The default model can
-then assign an explicit subtask using each model's declared support and strengths. A
-delegated call never changes the main loop and never falls back to another Provider.
-
-## Optional State
-
-The CLI and Web server explicitly use the configured storage. Embedded Python opts in:
+## Add State Only When Needed
 
 ```python
 agent = Agent(use_storage=True)
 alice = agent.for_user("alice")
-result = alice.run("Remember that I prefer concise answers")
-learning = alice.runs.learn(result.run_id)
+conversation = alice.conversations.create("Project")
+result = alice.run("Remember my response style", conversation_id=conversation.conversation_id)
+alice.runs.learn(result.run_id)
 ```
 
-Conversation messages are short-term context. Long-term memory stores only durable,
-important information and can be reviewed, organized, or forgotten by model actions.
-Users and Agents have separate conversations, memory, run evidence, and Skill overlays.
+Conversation messages are short-term context. Long-term memory stores durable facts,
+preferences, and abstractions, and can be explicitly organized or forgotten. User and
+Agent scopes isolate conversations, memory, runs, and Skill overlays.
 
-Local JSONL is the default backend. SQLite also uses the standard library; MySQL and
+JSONL is the readable default backend. SQLite also uses the standard library. MySQL and
 PostgreSQL drivers are optional extras.
+
+## Update a Skill Explicitly
+
+Learning records evaluation, freshness, and model-use evidence. It never changes a Skill.
+Skill changes use four visible steps:
+
+```bash
+super-agent skills propose-change --name prompt:research --goal "make citations clearer"
+super-agent skills test-change --change-id <id> --cases cases.json
+super-agent skills apply-change --change-id <id>
+super-agent skills undo-change --change-id <id>
+```
+
+Proposal and testing cannot activate a candidate. Only `apply-change` changes the user
+overlay, and failed tests block it.
 
 ## CLI and Web
 
-The CLI has five top-level groups:
-
 ```bash
-super-agent init --path my-agent
-super-agent run "one prompt"
-super-agent run --chat --user-id alice
+super-agent check
+super-agent run "one task"
+super-agent run --scene code "inspect this repository"
 super-agent skills list
 super-agent data runs status
 super-agent serve
 ```
 
-`skills models` manages model Skills and `skills evolution` shows Skill revisions.
-`data` contains conversations, long-term memory, saved runs, and storage copy commands.
-The React client, CopilotKit example, and AG-UI endpoint are served at
-`http://127.0.0.1:8765/`.
+Text runs print the answer plus the actual model, scene, workflow, Skills, stop reason,
+and run ID. Use `--output json` or `--output jsonl` for integrations. The React client,
+CopilotKit example, and AG-UI endpoint are served at `http://127.0.0.1:8765/`.
 
 ## Guarantees
 
-- One central progressive disclosure path for every Skill type.
-- No keyword matching, hidden Provider switch, mock substitution, or storage fallback.
-- Reads do not write; state changes pass through explicit checked actions.
-- Skill content is passive unless application code registers an executable tool.
-- Candidate Skill changes are evaluated before explicit promotion and can be rolled back.
-- A basic run does not require storage, memory, conversations, safety, or evolution.
+- Every Skill type uses one central progressive disclosure path.
+- Routing is model judgment, not keyword matching.
+- Reads do not write, and state changes are explicit checked actions.
+- Skill content is passive and cannot register code, permissions, or secrets.
+- Provider, storage, and optional-feature failures are visible; there is no hidden fallback.
+- A basic run does not require storage, memory, conversations, safety rules, or learning.
 
-## Documentation
+## Read Next
 
 - [Getting started](docs/getting-started.md)
-- [Architecture](docs/architecture.md)
 - [Source tour](docs/source-tour.md)
 - [Skills](docs/skills.md)
 - [Configuration](docs/configuration.md)
 - [Runtime](docs/runtime.md)
 - [CLI](docs/cli.md)
-- [Memory and evolution](docs/evolution.md)
+- [Learning, memory, and Skill changes](docs/evolution.md)
 - [Safety](docs/safety.md)
 - [Web](docs/web.md) and [AG-UI](docs/ag-ui.md)
 
-## Development
+## Verify the Repository
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src:tests python3 -m unittest discover -s tests -p 'test_*.py'
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src:tests python3 -m unittest discover -s tests
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src python3 -m compileall -q src
 pnpm --dir web typecheck
 pnpm --dir web lint

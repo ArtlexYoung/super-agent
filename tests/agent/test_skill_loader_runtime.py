@@ -44,7 +44,8 @@ class SkillLoaderRuntimeTests(unittest.TestCase):
                 code = main(["run", "hello"])
 
             self.assertEqual(0, code)
-            self.assertEqual("Mock response", output.getvalue().strip())
+            self.assertTrue(output.getvalue().startswith("Mock response\n\nRun: run-"))
+            self.assertIn("Model: model:environment (mock)", output.getvalue())
 
     def test_cli_accepts_a_prompt_with_an_environment_provider(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, chdir(tmp), patch.dict(
@@ -57,7 +58,8 @@ class SkillLoaderRuntimeTests(unittest.TestCase):
                 code = main(["hello", "there"])
 
             self.assertEqual(0, code)
-            self.assertEqual("Mock response", output.getvalue().strip())
+            self.assertTrue(output.getvalue().startswith("Mock response\n\nRun: run-"))
+            self.assertIn("Stop: completed", output.getvalue())
 
     def test_bare_cli_starts_chat_with_an_environment_provider(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, chdir(tmp), patch.dict(

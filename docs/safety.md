@@ -54,19 +54,17 @@ Skill manifests, instructions, resources, memory, tool output, and subagent outp
 untrusted data. Core wraps them as untrusted model context and never interprets Skill files
 as Python or shell code. The reserved Skill type `runner` is rejected.
 
-Custom executable behavior must be registered with `Agent.add_skill_loader(...)`. MCP
-implementations use the narrower `Agent.add_mcp_server(...)` API. Commands, arguments,
-environment values, transports, and effects live only in trusted application code; an MCP
-Skill can select only a registered server name. Activation rejects an MCP Skill when that
-registration is absent, and every discovery or tool call is checked before code or a
-process can start.
+Custom executable behavior must be registered by trusted Runtime setup, never a Skill
+directory. MCP implementations use the narrower `Agent.add_tool(...)` API. Commands,
+arguments, environment values, transports, and effects live only in trusted application
+code; an MCP Skill can select only a registered server name. Activation rejects an MCP
+Skill when that registration is absent, and every discovery or tool call is checked before
+code or a process can start.
 
-Package validation also rejects symlinks and paths outside a Skill directory. Candidate
-Skills remain outside active roots until validation and no-regression evaluation pass.
-Promotion reads only the report bound into evolution state and verifies its file hash,
-case-set hash, candidate hash, and baseline hash. Changed or unrecorded reports cannot
-authorize a write. The copied candidate and current target are checked again before the
-atomic switch. Failed Runtime refresh, state publication, or rollback restores the prior
-verified directory; a conflicting third state is reported rather than overwritten.
-Provider failures, memory-organization failures, invalid candidates, and blocked actions
-surface as errors rather than alternate behavior.
+Package validation also rejects symlinks and paths outside a Skill directory. Proposed
+Skill changes remain outside active roots. Testing binds the candidate and baseline hashes;
+only a matching passing report permits `apply-change`. The candidate and active target are
+checked again before replacement. A failed Runtime refresh restores the prior verified
+directory, while `undo-change` is a separate explicit action. Provider failures,
+memory-organization failures, invalid changes, and blocked actions surface as errors rather
+than alternate behavior.

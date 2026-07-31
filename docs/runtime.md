@@ -103,7 +103,8 @@ main.add_subagent(worker, name="worker", description="Handles repository changes
 
 Omit `name` to receive `subagent01`, `subagent02`, and so on. The model can list and call
 registered subagents through explicit tools. Each child owns its configuration, model,
-Skills, storage scope, and scene policy.
+Skills, and storage scope. Scene selection belongs to each run and does not mutate later
+runs.
 
 Cycles are allowed. Before execution, Agent can report a cycle chain or a configured depth
 warning; these are warnings, not execution limits. Workflow instructions and the model's
@@ -115,6 +116,6 @@ completion result provide the stopping mechanism.
 learning = user.runs.learn(result.run_id)
 ```
 
-Learning is explicit and idempotent for a completed run. It evaluates recorded evidence,
-updates freshness metrics, and may create a Skill candidate under the configured evolution
-policy. Promotion remains a separate checked action.
+Learning is explicit and idempotent for a completed run. It records evaluations, updates
+freshness metrics, and summarizes model use. It never proposes, applies, or undoes a Skill
+change; those are separate user operations.

@@ -1,21 +1,23 @@
 # Getting Started
 
-## Install
+## Install and Check
 
-Super Agent requires Python 3.11 or newer. Its default install has no runtime dependencies.
+Super Agent requires Python 3.11 or newer. The default runtime has no dependencies beyond
+the standard library.
 
 ```bash
 python3 -m pip install -e .
-```
-
-Configure one model source. The shortest hosted setup is:
-
-```bash
 export OPENAI_API_KEY="..."
+super-agent check
 ```
 
-You can instead use `ANTHROPIC_API_KEY`, `OLLAMA_HOST`, a model Skill, or a Provider passed
-in Python. Missing configuration and Provider errors are returned directly.
+`check` validates the selected configuration, central Skill index, configured Skill
+references, and default model readiness. It does not open storage or call a model. A failed
+item names the exact layer to fix.
+
+Use `ANTHROPIC_API_KEY`, `OLLAMA_HOST`, an explicit model Skill, or a Provider object in
+Python when those fit better. Missing configuration and Provider failures are not replaced
+with another implementation.
 
 ## Run
 
@@ -24,14 +26,16 @@ super-agent "Summarize this directory"
 super-agent
 ```
 
-The first command runs one task. The second starts an interactive stored conversation.
-Use `SUPER_AGENT_PROVIDER=mock` only for an explicit offline smoke test.
+The first command runs one task. Its text output includes the answer and an actual run
+summary. The second starts an interactive stored conversation. Use
+`SUPER_AGENT_PROVIDER=mock` only for an explicit offline test.
 
-No project files are needed. To create an editable example:
+No project files are required. Create an editable example when needed:
 
 ```bash
 super-agent init --path my-agent
 cd my-agent
+super-agent check
 super-agent "Use the local Skill"
 ```
 
@@ -42,12 +46,11 @@ Initialization writes `agent.toml` and `skills/prompt/echo/` only when they do n
 ```python
 from super_agent import Agent
 
-agent = Agent()
-result = agent.run("Return three test cases")
+result = Agent().run("Return three test cases")
 print(result.text)
 ```
 
-This path is stateless and creates no files. To use a known Provider object:
+This path is stateless and creates no files. A known Provider can be passed directly:
 
 ```python
 from core.provider.chat import MockProvider
@@ -56,12 +59,30 @@ from super_agent import Agent
 agent = Agent(provider=MockProvider("offline response"))
 ```
 
-Advanced types intentionally live in `core`, `skill`, or `adapter`; the common
-`super_agent` module exports only `Agent`.
+The common `super_agent` facade exports only `Agent`. Advanced contracts live in `core`,
+`skill`, or `adapter` so their ownership remains visible.
+
+## Add Skills and Agents
+
+Add a shared Skill root without editing TOML:
+
+```python
+agent.add_skill_path("team-skills")
+```
+
+Compose Agents in code:
+
+```python
+main = Agent()
+worker = Agent()
+main.add_subagent(worker, name="worker", description="Works on repository changes")
+result = worker.run("Inspect this change", scene="code")
+```
+
+Omit `scene` to let the model judge available scenes. Pass `use_scenes=False` to disable
+scene activation for one run. These choices do not mutate the Agent or later calls.
 
 ## Add State
-
-Storage is an explicit Python choice:
 
 ```python
 agent = Agent(use_storage=True)
@@ -72,30 +93,12 @@ user.runs.learn(result.run_id)
 ```
 
 The default backend is readable JSONL under `.super-agent/`. Conversation messages are
-short-term context; memory Skills expose durable long-term memory. Stateful features fail
-if storage is disabled.
-
-## Add Skills and Agents
-
-Project Skills live under any root listed in `[paths].skills`. Runtime indexes their
-manifests first and opens full content only when selected.
-
-```python
-from super_agent import Agent
-
-main = Agent()
-worker = Agent()
-worker.use_only_scenes("code")
-main.add_subagent(worker, name="worker", description="Works on repository changes")
-```
-
-The model sees descriptions and chooses during its normal tool loop. Super Agent contains
-no trigger-word table. `disable_scenes()` opts one Agent out of scenes;
-`use_only_scenes("code")` limits its available scenes.
+short-term context; a selected memory Skill exposes durable long-term memory. Stateful
+features fail if storage is disabled.
 
 ## Next
 
-- [Skills](skills.md) explains manifests and progressive disclosure.
+- [Source tour](source-tour.md) follows one run through the implementation.
+- [Skills](skills.md) explains the shared manifest and disclosure path.
 - [Configuration](configuration.md) lists the small optional TOML surface.
-- [Runtime](runtime.md) covers state, actions, model calls, and subagents.
-- [Source tour](source-tour.md) gives the shortest code-reading path.
+- [Runtime](runtime.md) covers events, models, actions, and subagents.
