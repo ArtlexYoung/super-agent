@@ -584,7 +584,7 @@ Status: implemented.
 
 Status: implemented.
 
-- Keep `skill.task.runtime.Runtime` as the only task lifecycle owner and move one measured
+- Keep `core.runtime.runtime.Runtime` as the only task lifecycle owner and move one measured
   Provider call into `core.provider.chat`.
 - Expose configured non-default model Skills through one explicit `use_model` tool; keep
   the default model in control of later turns and propagate delegated failures unchanged.

@@ -14,16 +14,16 @@ The repository has three internal roots plus two entry files:
 
 ```text
 src/
-  core/       configuration, Provider contracts, action checks, event values
-  skill/      disclosure, loaders, task loop, state, and evolution
+  core/       Runtime, Provider contracts, configuration, checks, and events
+  skill/      passive Skill content, disclosure, loading, state, and evolution
   adapter/    CLI, Web, AG-UI, storage, and user-facing state access
   super_agent.py
   cli.py
 ```
 
-`core` never imports `skill`. It defines stable protocols and plain values. `skill` builds
-the Agent behavior on those protocols. `adapter` connects external interfaces and durable
-backends. `super_agent.py` is the composition root and common API.
+`core` owns execution and may read passive Skill definitions. `skill` does not own the
+Runtime. `adapter` connects external interfaces and durable backends. `super_agent.py` is
+the composition root and common API.
 
 ## One Task Path
 

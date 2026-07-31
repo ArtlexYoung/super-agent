@@ -30,7 +30,7 @@ from skill.loaders.models import (
     model_profile_to_dict,
     select_default_model_profile,
 )
-from skill.task.model_calls import (
+from core.runtime.model_calls import (
     ModelCalls,
     ModelCallContext,
     SelectedModel,
@@ -39,8 +39,8 @@ from skill.task.model_calls import (
     assistant_tool_call_message,
     tool_result_message,
 )
-from skill.task.run import Run
-from skill.task.tools import RuntimeTools, RuntimeToolsContext
+from core.runtime.run import Run
+from core.runtime.tools import RuntimeTools, RuntimeToolsContext
 
 if TYPE_CHECKING:
     from skill.state.events import EventStore

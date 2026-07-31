@@ -17,7 +17,7 @@ from skill.evolution.metrics import calculate_skill_freshness
 from skill.evolution.models import SkillRevision
 from skill.loaders.defaults import create_runtime_disclosure_recorder
 from skill.skills import Skills
-from skill.task.run import Run
+from core.runtime.run import Run
 from support import load_default_evolution_policy
 
 

@@ -3,9 +3,9 @@
 Follow one ordinary call through these files:
 
 1. `src/super_agent.py`: `Agent.run()` composes the optional dependencies.
-2. `src/skill/task/runtime.py`: `Runtime.run_task()` owns one run and its visible events.
-3. `src/skill/task/loop.py`: `ModelLoop` gives the model the Skill index and checked tools.
-4. `src/skill/task/model_calls.py`: `ModelCalls` resolves a configured model and records use.
+2. `src/core/runtime/runtime.py`: `Runtime.run_task()` owns one run and its visible events.
+3. `src/core/runtime/loop.py`: `ModelLoop` gives the model the Skill index and checked tools.
+4. `src/core/runtime/model_calls.py`: `ModelCalls` resolves a configured model and records use.
 5. `src/core/provider/chat.py`: `call_chat_model()` measures one Provider call.
 6. `src/skill/disclosure/core.py`: the shared index, disclosure, and cache path.
 

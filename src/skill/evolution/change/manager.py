@@ -24,7 +24,7 @@ from skill.evolution.models import (
     create_skill_candidate_difference,
     create_manifest_skill_revision,
 )
-from skill.task.model_calls import TextModel
+from core.runtime.model_calls import TextModel
 from skill.state.events import EventStore
 from skill.evolution.change.candidate import (
     SkillCandidate,

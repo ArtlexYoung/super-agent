@@ -12,7 +12,7 @@ from skill.loaders.loaded import (
     read_required_tool_string,
 )
 from core.provider.chat import Message, ToolCall, ToolDefinition
-from skill.task.run import Run
+from core.runtime.run import Run
 from core.checks import ActionEffect, ActionRequest
 from skill.disclosure import SkillDisclosure, SkillIndex, SkillReference, skill_index_to_dict
 

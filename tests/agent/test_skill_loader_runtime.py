@@ -222,20 +222,20 @@ class SkillLoaderRuntimeTests(unittest.TestCase):
             }
             self.assertIn("RunIdentity", identity_classes)
             run_tree = ast.parse(
-                Path("src/skill/task/run.py").read_text(encoding="utf-8")
+                Path("src/core/runtime/run.py").read_text(encoding="utf-8")
             )
             run_classes = {
                 node.name for node in run_tree.body if isinstance(node, ast.ClassDef)
             }
             self.assertEqual({"Run"}, run_classes)
             self.assertFalse(Path("src/core/session.py").exists())
-            self.assertFalse(Path("src/skill/task/plan.py").exists())
-            self.assertFalse(Path("src/skill/task/scheduler.py").exists())
+            self.assertFalse(Path("src/core/runtime/plan.py").exists())
+            self.assertFalse(Path("src/core/runtime/scheduler.py").exists())
             self.assertFalse(Path("src/core/task/route_plan.py").exists())
             self.assertFalse(Path("src/core/task/decisions.py").exists())
 
     def test_core_exposes_one_task_entry_method(self) -> None:
-        tree = ast.parse(Path("src/skill/task/runtime.py").read_text(encoding="utf-8"))
+        tree = ast.parse(Path("src/core/runtime/runtime.py").read_text(encoding="utf-8"))
         method_names = {
             node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
         }
@@ -244,8 +244,8 @@ class SkillLoaderRuntimeTests(unittest.TestCase):
 
     def test_runtime_does_not_import_concrete_skill_kinds(self) -> None:
         for path in (
-            Path("src/skill/task/loop.py"),
-            Path("src/skill/task/tools.py"),
+            Path("src/core/runtime/loop.py"),
+            Path("src/core/runtime/tools.py"),
         ):
             source = path.read_text(encoding="utf-8")
             self.assertNotIn("skill.state.memory_service", source)

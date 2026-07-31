@@ -18,7 +18,7 @@ from skill.evolution.records import (
     create_evaluation_record,
     estimate_evaluation_token_usage,
 )
-from skill.task.model_calls import TextModel
+from core.runtime.model_calls import TextModel
 from skill.state.events import EventStore
 from skill.disclosure import DisclosedSkillFile, ProgressiveDisclosureCore
 from skill.evolution.change.candidate import SkillCandidate

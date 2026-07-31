@@ -14,7 +14,7 @@ from skill.evolution.models import (
     skill_revision_to_dict,
     validate_skill_revision,
 )
-from skill.task.model_calls import estimate_text_tokens
+from core.runtime.model_calls import estimate_text_tokens
 
 if TYPE_CHECKING:
     from skill.state.events import EventStore

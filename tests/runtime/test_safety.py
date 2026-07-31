@@ -7,7 +7,7 @@ from skill.skills import Skills
 from skill.loaders.loaded import SkillAction
 from core.provider.chat import MockProvider
 from core.config import AgentConfig
-from skill.task.run import Run
+from core.runtime.run import Run
 from core.models import RunIdentity
 from core.checks import (
     ActionConfirmationRequired,

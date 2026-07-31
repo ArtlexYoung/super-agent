@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Callable
 
 from core.checks import ActionEffect, ActionRequest, ActionRunner, ActionRules
 from core.config import AgentConfig
-from skill.task.run import Run
+from core.runtime.run import Run
 from core.models import LOCAL_USER_ID, RunIdentity
 from core.provider.pool import ProviderPool
 from core.provider.secrets import UserSecretResolver
@@ -21,8 +21,8 @@ from core.state.subscribers import (
     get_runtime_event_subscriber_name,
 )
 from core.events import StorageBackend
-from skill.task.loop import ModelLoop, list_run_actions
-from skill.task.model_calls import estimate_text_tokens
+from core.runtime.loop import ModelLoop, list_run_actions
+from core.runtime.model_calls import estimate_text_tokens
 from core.models import RunLearningResult, Task, RunResult, TaskTrace
 from skill.skills import Skills
 from skill.loaders.models import (
@@ -35,7 +35,7 @@ from skill.loaders.registry import SkillLoaders
 
 if TYPE_CHECKING:
     from skill.state.events import EventStore
-    from skill.task.model_calls import ModelUsageStats
+    from core.runtime.model_calls import ModelUsageStats
     from skill.evolution.change.manager import SkillEvolutionManager
 
 
@@ -234,7 +234,7 @@ class Runtime:
         *,
         user_id: str = LOCAL_USER_ID,
     ) -> RunEvent | None:
-        from skill.task.model_calls import infer_conversation_feedback_with_model
+        from core.runtime.model_calls import infer_conversation_feedback_with_model
 
         store = self.create_event_store(user_id)
         skills = self._create_skills(store)
@@ -309,7 +309,7 @@ class Runtime:
         user_id: str = LOCAL_USER_ID,
         purpose: str | None = None,
     ) -> list[ModelUsageStats]:
-        from skill.task.model_calls import list_model_usage_stats
+        from core.runtime.model_calls import list_model_usage_stats
 
         return list_model_usage_stats(self.create_event_store(user_id), purpose)
 

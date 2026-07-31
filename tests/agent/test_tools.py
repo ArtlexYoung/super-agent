@@ -17,9 +17,9 @@ from skill.loaders.loaded import (
 from skill.loaders.builtins import create_memory_skill_contribution
 from core.provider.chat import ToolCall
 from core.provider.chat import MockProvider
-from skill.task.tools import RuntimeTools, RuntimeToolsContext
+from core.runtime.tools import RuntimeTools, RuntimeToolsContext
 from core.config import AgentConfig
-from skill.task.run import Run
+from core.runtime.run import Run
 from core.models import RunIdentity
 from core.checks import ActionConfirmationRequired, ActionEffect, ActionRules
 from core.state.event_log import RunEventLog

@@ -62,7 +62,7 @@ class SkillArchitectureTests(unittest.TestCase):
             self.assertEqual(module_name, importlib.import_module(module_name).__name__)
 
     def test_runtime_learning_is_an_explicit_post_run_operation(self) -> None:
-        engine_source = Path("src/skill/task/runtime.py").read_text(encoding="utf-8")
+        engine_source = Path("src/core/runtime/runtime.py").read_text(encoding="utf-8")
         learning_source = Path(
             "src/skill/evolution/learning.py"
         ).read_text(encoding="utf-8")
@@ -75,7 +75,7 @@ class SkillArchitectureTests(unittest.TestCase):
         )
         self.assertFalse(Path("src/skill/evolution/tracking").exists())
         self.assertTrue(Path("src/core/state/subscribers.py").is_file())
-        self.assertTrue(Path("src/skill/task/run.py").is_file())
+        self.assertTrue(Path("src/core/runtime/run.py").is_file())
         self.assertFalse(Path("src/core/session.py").exists())
         self.assertTrue(Path("src/skill/state/events.py").is_file())
         self.assertTrue(Path("src/core/events.py").is_file())

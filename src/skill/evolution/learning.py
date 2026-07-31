@@ -34,7 +34,7 @@ from skill.evolution.records import (
 from core.state.models import RunEvent
 from skill.state.events import EventStore
 from core.models import RunLearningResult
-from skill.task.model_calls import list_model_usage_stats
+from core.runtime.model_calls import list_model_usage_stats
 from skill.evolution.metrics import calculate_skill_freshness
 from skill.evolution.change.evaluation import EvaluationCase
 from skill.evolution.policy import EvolutionPolicy

@@ -147,7 +147,7 @@ class ReleaseShapeTests(unittest.TestCase):
                     "-c",
                     "from super_agent import Agent; "
                     "from adapter.ag_ui_adapter import AGUIEventMapper; "
-                    "from skill.task.run import Run; "
+                    "from core.runtime.run import Run; "
                     "from skill.manifest import SkillManifest",
                 ],
                 cwd=tmp,
@@ -181,22 +181,10 @@ class ReleaseShapeTests(unittest.TestCase):
 
                     self.assertNotEqual(0, completed.returncode)
 
-    def test_core_never_imports_skill_implementations(self) -> None:
-        violations = {}
-        for path in Path("src/core").rglob("*.py"):
-            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-            imports = []
-            for node in ast.walk(tree):
-                if isinstance(node, ast.ImportFrom) and (node.module or "").startswith("skill"):
-                    imports.append(node.module)
-                if isinstance(node, ast.Import):
-                    imports.extend(
-                        name.name for name in node.names if name.name.startswith("skill")
-                    )
-            if imports:
-                violations[str(path)] = sorted(set(imports))
-
-        self.assertEqual({}, violations)
+    def test_core_owns_runtime_and_skill_does_not(self) -> None:
+        self.assertTrue(Path("src/core/runtime/runtime.py").is_file())
+        self.assertTrue(Path("src/core/runtime/loop.py").is_file())
+        self.assertFalse(Path("src/skill/task").exists())
 
     def test_removed_coupled_core_domains_do_not_return(self) -> None:
         removed = [
@@ -213,12 +201,11 @@ class ReleaseShapeTests(unittest.TestCase):
 
     def test_removed_task_controllers_do_not_return(self) -> None:
         removed = [
-            "src/core/runtime.py",
-            "src/skill/task/plan.py",
-            "src/skill/task/planning.py",
-            "src/skill/task/preflight.py",
-            "src/skill/task/preparation.py",
-            "src/skill/task/scheduler.py",
+            "src/core/runtime/plan.py",
+            "src/core/runtime/planning.py",
+            "src/core/runtime/preflight.py",
+            "src/core/runtime/preparation.py",
+            "src/core/runtime/scheduler.py",
         ]
 
         self.assertEqual([], [path for path in removed if Path(path).exists()])

@@ -5,7 +5,7 @@ from __future__ import annotations
 from skill.evolution.models import SkillEvolutionState, skill_evolution_to_dict
 from skill.evolution.state import list_skill_evolutions
 from core.state.models import RunEvent
-from skill.task.model_calls import list_model_usage_stats
+from core.runtime.model_calls import list_model_usage_stats
 from skill.state.events import EventStore
 from skill.evolution.metrics import calculate_skill_freshness
 from skill.evolution.records import read_evaluation_records

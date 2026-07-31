@@ -17,8 +17,8 @@ from core.provider.chat import (
 )
 from core.provider.pool import ProviderPool
 from core.config import AgentConfig
-from skill.task.runtime import Runtime
-from skill.task.run import Run
+from core.runtime.runtime import Runtime
+from core.runtime.run import Run
 from core.models import LOCAL_USER_ID
 from core.state.models import RunEvent
 from core.state.subscribers import RuntimeEventSubscriber, RuntimeEventSubscribers
