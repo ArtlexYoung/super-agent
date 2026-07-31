@@ -6,7 +6,7 @@ from pathlib import Path
 from super_agent import Agent
 from core.provider.chat import MockProvider
 from core.config import AgentConfig
-from core.evolution.records import (
+from core.evaluation.records import (
     EvaluationResult,
     EvaluationSource,
     EvaluationTokenUsage,
@@ -18,11 +18,11 @@ from core.evolution.records import (
 )
 from core.state.events import create_local_event_store
 from skill.disclosure import ProgressiveDisclosureCore
-from core.evolution.metrics import calculate_skill_freshness
-from core.evolution.policy import load_evolution_policy
-from core.evolution.models import SkillRevision
+from core.evaluation.freshness import calculate_skill_freshness
+from core.evaluation.rules import load_freshness_rules
+from core.evaluation.models import SkillRevision
 from support import (
-    load_default_evolution_policy,
+    load_default_freshness_rules,
     write_memory_skill,
     write_workflow_skill,
 )
@@ -61,22 +61,11 @@ description = "Research helper"
                 "search",
                 called_at,
             )
-            candidate_record = create_evaluation_record(
-                run_record.revision,
-                EvaluationSource(
-                    source_type="candidate_evaluation",
-                    candidate_id="candidate-1",
-                    case_name="research case",
-                ),
-                run_record.result,
-                created_at=called_at,
-            )
-
             store = create_local_event_store(root)
-            append_evaluation_records(store, [run_record, candidate_record])
+            append_evaluation_records(store, [run_record])
 
             records = read_evaluation_records(store)
-            policy = load_default_evolution_policy(root)
+            policy = load_default_freshness_rules(root)
             stats = calculate_skill_freshness(
                 read_evaluation_records(store, source_type="agent_run"),
                 policy,
@@ -85,29 +74,23 @@ description = "Research helper"
             self.assertEqual(1, stats["call_count"])
             self.assertEqual(1, stats["success_count"])
             self.assertEqual("prompt:research", records[0].revision.key)
-            self.assertEqual(2, len(records))
+            self.assertEqual(1, len(records))
             self.assertFalse((root / "skill_events.jsonl").exists())
 
-    def test_custom_evolution_skill_changes_freshness_calculation(self) -> None:
+    def test_custom_freshness_skill_changes_calculation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            source = Path("src/skill/builtin/evolution/default")
-            target = root / "skills" / "evolution" / "conservative"
+            source = Path("src/skill/builtin/freshness/default")
+            target = root / "skills" / "freshness" / "conservative"
             target.mkdir(parents=True)
             manifest = (source / "skill.toml").read_text(encoding="utf-8")
-            manifest = manifest.replace('name = "default"', 'name = "conservative"', 1)
-            manifest = manifest.replace("default = true", "default = false", 1)
             manifest = manifest.replace("initial = 70.0", "initial = 10.0", 1)
             (target / "skill.toml").write_text(manifest, encoding="utf-8")
-            (target / "SKILL.md").write_text(
-                (source / "SKILL.md").read_text(encoding="utf-8"),
-                encoding="utf-8",
-            )
             disclosure = ProgressiveDisclosureCore([root / "skills"])
             disclosure.prepare_skill_index()
-            custom_policy = load_evolution_policy(
+            custom_rules = load_freshness_rules(
                 disclosure,
-                ["evolution:conservative"],
+                ["freshness:conservative"],
             )
             called_at = datetime(2026, 7, 7, 12, tzinfo=UTC)
             records = [
@@ -120,16 +103,16 @@ description = "Research helper"
 
             default_score = calculate_skill_freshness(
                 records,
-                load_default_evolution_policy(root),
+                load_default_freshness_rules(root),
                 called_at,
             )["prompt:research"]["freshness"]
             custom_score = calculate_skill_freshness(
                 records,
-                custom_policy,
+                custom_rules,
                 called_at,
             )["prompt:research"]["freshness"]
 
-            self.assertEqual(10.0, custom_policy.initial_freshness)
+            self.assertEqual(10.0, custom_rules.initial_freshness)
             self.assertLess(custom_score, default_score)
 
     def test_same_function_successful_followup_reduces_previous_skill_freshness(self) -> None:
@@ -143,7 +126,7 @@ description = "Research helper"
                 store,
                 [_skill_evaluation_record("prompt:old-search", "search", first_time)]
             )
-            policy = load_default_evolution_policy(root)
+            policy = load_default_freshness_rules(root)
             before = calculate_skill_freshness(
                 read_evaluation_records(store, source_type="agent_run"),
                 policy,
@@ -187,7 +170,7 @@ description = "Research helper"
                 evaluation_record_from_dict(payload)
             payload = evaluation_record_to_dict(record)
             payload["schema_version"] = 1
-            with self.assertRaisesRegex(ValueError, "schema_version must be 2"):
+            with self.assertRaisesRegex(ValueError, "schema_version must be 3"):
                 evaluation_record_from_dict(payload)
 
     def test_agent_run_records_skill_freshness_stats(self) -> None:
@@ -210,7 +193,7 @@ description = "Research helper"
             records = read_evaluation_records(store)
             stats = calculate_skill_freshness(
                 read_evaluation_records(store, source_type="agent_run"),
-                load_default_evolution_policy(root),
+                load_default_freshness_rules(root),
             )
             self.assertEqual(1, stats["prompt:echo"]["call_count"])
             self.assertGreater(stats["prompt:echo"]["freshness"], 70)
@@ -271,7 +254,6 @@ def _skill_evaluation_record(
             function_group=function_group,
             agent_created=True,
             agent_can_update=True,
-            evolution_supported=True,
             freshness=70.0,
         ),
         source=EvaluationSource(source_type="agent_run", run_id=run_id),

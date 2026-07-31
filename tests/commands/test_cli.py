@@ -97,7 +97,7 @@ class CliTests(unittest.TestCase):
             self.assertEqual(6, data["schema_version"])
             self.assertEqual(
                 {
-                    "evolution",
+                    "freshness",
                     "feedback",
                     "memory",
                     "prompt",
@@ -183,7 +183,7 @@ class CliTests(unittest.TestCase):
             self.assertEqual("Remember Python.", json.loads(recall_output.getvalue())["text"])
             self.assertEqual(item["item_id"], json.loads(list_output.getvalue())["item_id"])
 
-    def test_skills_propose_evaluate_and_promote_candidate(self) -> None:
+    def test_skills_propose_test_and_apply_change(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, patch.dict(
             os.environ,
             {"SUPER_AGENT_PROVIDER": "mock"},
@@ -226,7 +226,7 @@ description = "Compact note writer"
                     propose_code = main(
                         [
                             "skills",
-                            "propose",
+                            "propose-change",
                             "--config",
                             config,
                             "--name",
@@ -235,34 +235,34 @@ description = "Compact note writer"
                             "write compact notes",
                         ]
                     )
-                candidate_id = propose_output.getvalue().strip().split(": ", 1)[1]
-                evaluate_code = main(
+                change_id = propose_output.getvalue().strip().split(": ", 1)[1]
+                test_code = main(
                     [
                         "skills",
-                        "evaluate",
+                        "test-change",
                         "--config",
                         config,
-                        "--candidate-id",
-                        candidate_id,
+                        "--change-id",
+                        change_id,
                         "--cases",
                         str(cases_path),
                     ]
                 )
-                promote_code = main(
+                apply_code = main(
                     [
                         "skills",
-                        "promote",
+                        "apply-change",
                         "--config",
                         config,
-                        "--candidate-id",
-                        candidate_id,
+                        "--change-id",
+                        change_id,
                     ]
                 )
 
             root = Path(tmp)
             self.assertEqual(0, propose_code)
-            self.assertEqual(0, evaluate_code)
-            self.assertEqual(0, promote_code)
+            self.assertEqual(0, test_code)
+            self.assertEqual(0, apply_code)
             user_skill = _find_user_skill(root, "prompt", "agent-note")
             self.assertNotIn(
                 "agent_created",

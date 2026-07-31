@@ -63,8 +63,7 @@ class ReleaseShapeTests(unittest.TestCase):
     def test_builtin_skill_resources_are_complete_and_packaged(self) -> None:
         root = Path("src/skill/builtin")
         expected = {
-            "evolution/default/SKILL.md",
-            "evolution/default/skill.toml",
+            "freshness/default/skill.toml",
             "feedback/conversation/SKILL.md",
             "feedback/conversation/skill.toml",
             "memory/default/SKILL.md",
@@ -90,31 +89,22 @@ class ReleaseShapeTests(unittest.TestCase):
         wheel = self.project["tool"]["hatch"]["build"]["targets"]["wheel"]
         self.assertIn("src/skill", wheel["only-include"])
 
-    def test_removed_evolution_shells_do_not_return(self) -> None:
-        removed = [
-            "src/core/evolution/evidence.py",
-            "src/core/evolution/freshness.py",
-            "src/core/evolution/service.py",
-            "src/core/evolution/values.py",
-            "src/core/evolution/change/revision.py",
-        ]
-        self.assertEqual([], [path for path in removed if Path(path).exists()])
-        self.assertTrue(Path("src/core/evolution/metrics.py").is_file())
-        self.assertTrue(Path("src/core/evolution/models.py").is_file())
-        source = Path("src/core/evolution/change/manager.py").read_text(
-            encoding="utf-8"
-        )
+    def test_automatic_evolution_state_machine_is_removed(self) -> None:
+        self.assertFalse(Path("src/core/evolution").exists())
+        self.assertTrue(Path("src/core/evaluation/learning.py").is_file())
+        self.assertTrue(Path("src/core/skill_use/update.py").is_file())
+        source = Path("src/core/skill_use/update.py").read_text(encoding="utf-8")
         cli_source = Path("src/adapter/cli_adapter/skills.py").read_text(
             encoding="utf-8"
         )
-        self.assertNotIn("def evolve_skill", source)
-        self.assertNotIn('add_parser("evolve"', cli_source)
+        for operation in ("propose_skill_change", "test_skill_change", "apply_skill_change", "undo_skill_change"):
+            self.assertIn(f"def {operation}", source)
+        self.assertNotIn('add_parser("promote"', cli_source)
 
-    def test_evolution_models_have_one_import_path(self) -> None:
-        from core.evolution import state
+    def test_skill_change_has_one_import_path(self) -> None:
+        from core.skill_use.update import SkillUpdater
 
-        self.assertFalse(hasattr(state, "SkillEvolutionState"))
-        self.assertFalse(hasattr(state, "SkillRevision"))
+        self.assertEqual("SkillUpdater", SkillUpdater.__name__)
 
     def test_removed_source_layouts_do_not_return(self) -> None:
         removed_paths = [

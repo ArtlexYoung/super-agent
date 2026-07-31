@@ -289,7 +289,7 @@ _INTERNAL_EFFECTS = {
 _INTERNAL_RESOURCE_PREFIXES = (
     "conversation:",
     "memory:",
-    "skill:candidate:",
+    "skill:change:",
     "skill:active",
     "skill:disclosure:",
     "skill:owned:",

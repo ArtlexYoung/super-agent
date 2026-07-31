@@ -13,10 +13,6 @@ from adapter.cli_adapter.conversations import (
     run_conversations_command,
 )
 from adapter.cli_adapter import load_agent
-from adapter.cli_adapter.evolution import (
-    configure_evolution_parser,
-    run_evolution_command,
-)
 from adapter.cli_adapter.memory import configure_memory_parser, run_memory_command
 from adapter.cli_adapter.models import configure_models_parser, run_models_command
 from adapter.cli_adapter.runs import configure_runs_parser, run_runs_command
@@ -31,7 +27,7 @@ from core.models import RunResult
 
 CLI_COMMANDS = frozenset({"data", "init", "run", "serve", "skills"})
 REMOVED_COMMANDS = frozenset(
-    {"chat", "conversations", "evolution", "memory", "models", "runs", "storage"}
+    {"chat", "conversations", "memory", "models", "runs", "storage"}
 )
 
 
@@ -134,8 +130,6 @@ def _build_parser() -> argparse.ArgumentParser:
 def _configure_skill_extensions(subparsers: argparse._SubParsersAction) -> None:
     models_parser = subparsers.add_parser("models", help="manage model skills")
     configure_models_parser(models_parser)
-    evolution_parser = subparsers.add_parser("evolution", help="inspect skill evolution")
-    configure_evolution_parser(evolution_parser)
 
 
 def _configure_data_parser(parser: argparse.ArgumentParser) -> None:
@@ -153,8 +147,6 @@ def _configure_data_parser(parser: argparse.ArgumentParser) -> None:
 def _run_skills_command(args: argparse.Namespace) -> int:
     if args.skill_command == "models":
         return run_models_command(args)
-    if args.skill_command == "evolution":
-        return run_evolution_command(args)
     return run_skills_command(args)
 
 

@@ -6,8 +6,6 @@ from typing import TYPE_CHECKING, cast
 
 from core.provider.chat import Message
 from core.config import AgentConfig
-from core.evolution.models import SkillEvolutionState
-from core.evolution.state import list_skill_evolutions, read_skill_evolution
 from core.models import validate_user_id
 from core.state.models import Conversation, RunEvent
 from adapter.conversations import (
@@ -26,7 +24,7 @@ from core.skill_use.files.models import ModelSkillManager
 if TYPE_CHECKING:
     from super_agent import Agent
     from core.models import AgentRunOptions
-    from core.evolution.change.manager import SkillEvolutionManager
+    from core.skill_use.update import SkillUpdater
 
 
 class UserAgent:
@@ -196,14 +194,14 @@ class UserRuns:
 
 
 class UserSkills:
-    """Manage Skill evolution and model Skills for one user."""
+    """Manage explicit Skill changes and model Skills for one user."""
 
     def __init__(self, user: UserAgent) -> None:
         self.user = user
 
-    def create_evolution_manager(self) -> "SkillEvolutionManager":
+    def create_skill_updater(self) -> "SkillUpdater":
         return cast(
-            "SkillEvolutionManager",
+            "SkillUpdater",
             self.user.agent.runtime.create_skill_updater(
                 self.user.user_id,
                 lambda manifest: self.user.agent._activate_changed_skill(
@@ -212,14 +210,6 @@ class UserSkills:
                 ),
             ),
         )
-
-    def list_evolutions(self, status: str | None = None) -> list[SkillEvolutionState]:
-        store = self.user.agent.runtime.create_event_store(self.user.user_id)
-        return list_skill_evolutions(store, status)
-
-    def read_evolution(self, evolution_id: str) -> SkillEvolutionState:
-        store = self.user.agent.runtime.create_event_store(self.user.user_id)
-        return read_skill_evolution(store, evolution_id)
 
     def create_model_manager(self) -> ModelSkillManager:
         return ModelSkillManager(

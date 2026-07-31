@@ -2,7 +2,7 @@ from pathlib import Path
 
 from core.config import AgentConfig
 from core.provider.chat import MockProvider, ModelResponse
-from core.skill_use.defaults import load_configured_evolution_policy
+from core.skill_use.defaults import load_configured_freshness_rules
 
 
 class RecordingProvider(MockProvider):
@@ -84,9 +84,9 @@ class SequenceProvider(RecordingProvider):
         return ModelResponse(selected, [], "model_finished")
 
 
-def load_default_evolution_policy(root: Path):
-    """Load the built-in evolution policy through central Skill disclosure."""
-    return load_configured_evolution_policy(AgentConfig.create_default(root))
+def load_default_freshness_rules(root: Path):
+    """Load built-in freshness rules through central Skill disclosure."""
+    return load_configured_freshness_rules(AgentConfig.create_default(root))
 
 
 def write_memory_skill(root: Path, name: str = "default") -> None:

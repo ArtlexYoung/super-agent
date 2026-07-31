@@ -10,7 +10,7 @@ from core.config import AgentConfig
 from core.provider.chat import MockProvider
 from core.state.models import RunEvent
 from core.state.subscribers import RuntimeEventSubscriberError
-from core.evolution.records import read_evaluation_records
+from core.evaluation.records import read_evaluation_records
 
 
 class RuntimeEventSubscriberTests(unittest.TestCase):
@@ -115,7 +115,7 @@ class RuntimeEventSubscriberTests(unittest.TestCase):
             )
             completed = result.events[-1]
             self.assertEqual("run.completed", completed.event_type)
-            self.assertEqual(1, completed.data["learning_evidence"]["schema_version"])
+            self.assertEqual(2, completed.data["learning_evidence"]["schema_version"])
 
     def test_explicit_learning_is_idempotent(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -135,34 +135,6 @@ class RuntimeEventSubscriberTests(unittest.TestCase):
                 len(first.evaluation_record_ids),
                 len(read_evaluation_records(agent.runtime.create_event_store())),
             )
-
-    def test_explicit_learning_failure_is_recorded_and_can_be_retried(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            agent = Agent(
-                AgentConfig.create_default(Path(tmp)),
-                provider=MockProvider("completed answer"),
-                use_storage=True,
-            )
-
-            result = agent.run("hello")
-            with patch(
-                "core.evolution.learning."
-                "AutomaticSkillEvolution.run_pending_skill_evolution_stages",
-                side_effect=RuntimeError("evolution unavailable"),
-            ), self.assertRaisesRegex(RuntimeError, "evolution unavailable"):
-                agent.for_user("local").runs.learn(result.run_id)
-
-            failed_events = agent.runtime.create_event_store().read_run_events(result.run_id)
-            failure = next(
-                event for event in reversed(failed_events)
-                if event.event_type == "learning.failed"
-            )
-            self.assertEqual("skill_evolution", failure.data["stage"])
-            self.assertEqual("evolution unavailable", failure.data["message"])
-
-            learned = agent.for_user("local").runs.learn(result.run_id)
-
-            self.assertEqual("learning.completed", learned.events[-1].event_type)
 
     def test_stateless_run_stays_file_free_and_cannot_learn(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -3,7 +3,7 @@ import unittest
 from dataclasses import fields
 from pathlib import Path
 
-from core.evolution.records import (
+from core.evaluation.records import (
     EvaluationResult,
     EvaluationSource,
     EvaluationTokenUsage,
@@ -13,12 +13,12 @@ from core.evolution.records import (
 )
 from core.state.events import create_local_event_store
 from skill.disclosure import ProgressiveDisclosureCore
-from core.evolution.metrics import calculate_skill_freshness
-from core.evolution.models import SkillRevision
+from core.evaluation.freshness import calculate_skill_freshness
+from core.evaluation.models import SkillRevision
 from core.skill_use.defaults import create_runtime_disclosure_recorder
 from core.skill_use.skills import Skills
 from core.runtime.run import Run
-from support import load_default_evolution_policy
+from support import load_default_freshness_rules
 
 
 class ProgressiveDisclosureCoreTests(unittest.TestCase):
@@ -394,7 +394,6 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
                             function_group="research",
                             agent_created=True,
                             agent_can_update=True,
-                            evolution_supported=True,
                             freshness=70.0,
                         ),
                         source=EvaluationSource(
@@ -417,7 +416,7 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
                 [root / "skills"],
                 freshness_stats=calculate_skill_freshness(
                     read_evaluation_records(store, source_type="agent_run"),
-                    load_default_evolution_policy(root),
+                    load_default_freshness_rules(root),
                 ),
             ).prepare_skill_index().require_skill("research", "prompt")
 

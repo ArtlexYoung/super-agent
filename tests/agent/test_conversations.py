@@ -13,7 +13,7 @@ from adapter.conversations import (
     read_conversation,
 )
 from core.state.memory import Memory
-from core.evolution.records import read_evaluation_records
+from core.evaluation.records import read_evaluation_records
 from support import RecordingProvider, SequenceProvider
 
 
@@ -216,7 +216,7 @@ class ConversationRuntimeTests(unittest.TestCase):
                 [item.content for item in loaded.messages],
             )
 
-    def test_skill_evolution_workspaces_are_isolated_by_user(self) -> None:
+    def test_skill_change_workspaces_are_isolated_by_user(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             response = json.dumps(
                 {
@@ -237,15 +237,15 @@ class ConversationRuntimeTests(unittest.TestCase):
                 provider=MockProvider(response),
                 use_storage=True,
             )
-            alpha = agent.for_user("alpha").skills.create_evolution_manager()
-            beta = agent.for_user("beta").skills.create_evolution_manager()
+            alpha = agent.for_user("alpha").skills.create_skill_updater()
+            beta = agent.for_user("beta").skills.create_skill_updater()
 
-            candidate = alpha.create_skill_candidate("private-note", "write private notes")
+            change = alpha.propose_skill_change("private-note", "write private notes")
 
-            self.assertNotEqual(alpha.evolution_root, beta.evolution_root)
-            self.assertTrue(candidate.skill_path.is_dir())
-            with self.assertRaisesRegex(KeyError, "skill candidate not found"):
-                beta.evaluate_skill_candidate(candidate.candidate_id, [])
+            self.assertNotEqual(alpha.root, beta.root)
+            self.assertTrue(change.candidate_path.is_dir())
+            with self.assertRaisesRegex(KeyError, "record not found"):
+                beta.read_skill_change(change.change_id)
 
     def test_sqlite_backend_replays_conversations_across_agent_instances(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

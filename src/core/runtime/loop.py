@@ -48,8 +48,8 @@ if TYPE_CHECKING:
 
 DEFAULT_MAX_STEPS = 8
 NON_EXECUTION_SKILL_TYPES = {
-    "evolution",
     "feedback",
+    "freshness",
     "model",
 }
 

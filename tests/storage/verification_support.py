@@ -8,7 +8,6 @@ from pathlib import Path
 from time import perf_counter
 from uuid import uuid4
 
-from core.evolution.state import list_skill_evolutions, start_manual_skill_evolution
 from adapter.conversations import (
     append_conversation_turn,
     create_conversation,
@@ -17,7 +16,6 @@ from adapter.conversations import (
 from core.events import StorageBackend, StorageEventQuery
 from core.state.events import EventStore
 from core.state.memory import Memory
-from core.evolution.models import SkillRevision
 
 
 STORAGE_BACKEND_NAMES = ("jsonl", "sqlite", "mysql", "postgresql")
@@ -216,8 +214,8 @@ def _run_multiuser_isolation_checks(
                 _require_memory_isolation(store_b, "bob"),
                 _require_habit_isolation(store_a, "alice-skill"),
                 _require_habit_isolation(store_b, "bob-skill"),
-                _require_evolution_isolation(store_a, "alice-skill"),
-                _require_evolution_isolation(store_b, "bob-skill"),
+                _require_skill_change_isolation(store_a, "alice-skill"),
+                _require_skill_change_isolation(store_b, "bob-skill"),
                 _require_disclosure_isolation(store_a, "alice-skill"),
                 _require_disclosure_isolation(store_b, "bob-skill"),
                 _require_private_roots_differ(store_a, store_b),
@@ -245,12 +243,11 @@ def _write_isolated_domain_state(store: EventStore, marker: str) -> None:
     )
     Memory(store).remember_long_term(f"{marker}-only")
     store.memory.record_usage_habits("direct", [f"{marker}-skill"])
-    start_manual_skill_evolution(
-        store,
-        f"candidate-{marker}",
-        None,
-        _verification_skill_revision(f"{marker}-skill", marker),
-        f"improve {marker}",
+    store.append_event(
+        "skill_change",
+        f"change-{marker}",
+        "skill_change.proposed",
+        data={"skill_key": f"prompt:{marker}-skill"},
     )
     store.disclosure.write_text(
         None,
@@ -286,11 +283,11 @@ def _require_habit_isolation(store: EventStore, skill_name: str) -> str:
     return "skill_usage_user_isolation"
 
 
-def _require_evolution_isolation(store: EventStore, skill_name: str) -> str:
-    states = list_skill_evolutions(store)
-    if [state.skill_key for state in states] != [f"prompt:{skill_name}"]:
-        raise AssertionError("Skill evolution user isolation failed")
-    return "skill_evolution_user_isolation"
+def _require_skill_change_isolation(store: EventStore, skill_name: str) -> str:
+    events = store.read_events("skill_change")
+    if [event.data["skill_key"] for event in events] != [f"prompt:{skill_name}"]:
+        raise AssertionError("Skill change user isolation failed")
+    return "skill_change_user_isolation"
 
 
 def _require_disclosure_isolation(store: EventStore, skill_name: str) -> str:
@@ -321,22 +318,6 @@ def _require_agent_isolation(
     if "subagent-only" in main_texts or subagent_texts != ["subagent-only"]:
         raise AssertionError("Agent storage isolation failed")
     return "agent_scope_isolation"
-
-
-def _verification_skill_revision(name: str, marker: str) -> SkillRevision:
-    digest_character = "a" if marker == "alice" else "b"
-    return SkillRevision(
-        key=f"prompt:{name}",
-        skill_type="prompt",
-        name=name,
-        version="0.1.0",
-        content_sha256=digest_character * 64,
-        function_group=name,
-        agent_created=True,
-        agent_can_update=True,
-        evolution_supported=True,
-        freshness=70.0,
-    )
 
 
 def _delete_verification_events(

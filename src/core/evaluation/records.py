@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from core.evolution.models import (
+from core.evaluation.models import (
     SkillRevision,
     skill_revision_from_dict,
     skill_revision_to_dict,
@@ -20,8 +20,7 @@ if TYPE_CHECKING:
     from core.state.events import EventStore
 
 
-EVALUATION_RECORD_SCHEMA_VERSION = 2
-EVALUATION_SOURCE_TYPES = frozenset({"agent_run", "candidate_evaluation"})
+EVALUATION_RECORD_SCHEMA_VERSION = 3
 EVALUATION_RECORD_FIELDS = {
     "schema_version",
     "record_id",
@@ -30,12 +29,7 @@ EVALUATION_RECORD_FIELDS = {
     "source",
     "result",
 }
-EVALUATION_SOURCE_FIELDS = {
-    "source_type",
-    "run_id",
-    "candidate_id",
-    "case_name",
-}
+EVALUATION_SOURCE_FIELDS = {"source_type", "run_id"}
 EVALUATION_RESULT_FIELDS = {
     "success",
     "score",
@@ -51,8 +45,6 @@ EVALUATION_TOKEN_USAGE_FIELDS = {"input_tokens", "output_tokens"}
 class EvaluationSource:
     source_type: str
     run_id: str = ""
-    candidate_id: str = ""
-    case_name: str = ""
 
 
 @dataclass(frozen=True)
@@ -157,8 +149,6 @@ def evaluation_record_to_dict(record: EvaluationRecord) -> dict[str, object]:
         "source": {
             "source_type": record.source.source_type,
             "run_id": record.source.run_id,
-            "candidate_id": record.source.candidate_id,
-            "case_name": record.source.case_name,
         },
         "result": evaluation_result_to_dict(record.result),
     }
@@ -188,8 +178,6 @@ def _source_from_dict(value: object) -> EvaluationSource:
     return EvaluationSource(
         source_type=_required_string(data, "source_type"),
         run_id=_string_value(data, "run_id"),
-        candidate_id=_string_value(data, "candidate_id"),
-        case_name=_string_value(data, "case_name"),
     )
 
 
@@ -265,26 +253,13 @@ def _validate_evaluation_record(record: EvaluationRecord) -> None:
 
 
 def _validate_source(source: EvaluationSource) -> None:
-    for name, value in {
-        "source_type": source.source_type,
-        "run_id": source.run_id,
-        "candidate_id": source.candidate_id,
-        "case_name": source.case_name,
-    }.items():
+    for name, value in {"source_type": source.source_type, "run_id": source.run_id}.items():
         if not isinstance(value, str):
             raise ValueError(f"evaluation source {name} must be a string")
-    if source.source_type not in EVALUATION_SOURCE_TYPES:
+    if source.source_type != "agent_run":
         raise ValueError(f"unknown evaluation source_type: {source.source_type}")
-    if source.source_type == "agent_run":
-        if not source.run_id.strip():
-            raise ValueError("agent_run evaluation source requires run_id")
-        if source.candidate_id or source.case_name:
-            raise ValueError("agent_run evaluation source cannot contain candidate fields")
-        return
-    if not source.candidate_id.strip() or not source.case_name.strip():
-        raise ValueError("candidate_evaluation source requires candidate_id and case_name")
-    if source.run_id:
-        raise ValueError("candidate_evaluation source cannot contain run_id")
+    if not source.run_id.strip():
+        raise ValueError("agent_run evaluation source requires run_id")
 
 
 def _validate_result(result: EvaluationResult) -> None:
@@ -316,7 +291,7 @@ def _require_exact_object(
     extra = set(value) - fields
     if missing or extra:
         raise ValueError(
-            f"{label} schema fields do not match v2: "
+            f"{label} schema fields do not match v3: "
             f"missing={sorted(missing)}, extra={sorted(extra)}"
         )
     return value

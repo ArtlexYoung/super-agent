@@ -250,22 +250,6 @@ class EventStore:
         )
         return path
 
-    def append_skill_evolution_event(
-        self,
-        evolution_id: str,
-        event_type: str,
-        data: dict[str, object],
-        *,
-        event_id: str | None = None,
-    ) -> StorageEvent:
-        return self.append_event(
-            "skill_evolution",
-            _required_text(evolution_id, "Skill evolution_id"),
-            _required_text(event_type, "Skill evolution event_type"),
-            data=dict(data),
-            event_id=event_id,
-        )
-
     def append_model_call_event(
         self,
         operation_id: str,
@@ -290,16 +274,6 @@ class EventStore:
             event_type,
             data=data,
         )
-
-    def read_skill_evolution_events(
-        self,
-        evolution_id: str | None = None,
-    ) -> list[StorageEvent]:
-        selected_id = None if evolution_id is None else _required_text(
-            evolution_id,
-            "Skill evolution_id",
-        )
-        return self.read_events("skill_evolution", selected_id)
 
     def _require_identity_scope(self, identity: RunIdentity) -> None:
         if identity.user_id != self.user_id or identity.agent_name != self.agent_name:

@@ -117,7 +117,7 @@ class RunsCliTests(unittest.TestCase):
                 "model:environment",
                 explanation["model_calls"][0]["profile"],
             )
-            self.assertEqual([], explanation["evolution"])
+            self.assertNotIn("evolution", explanation)
             self.assertEqual(1, explanation["model_usage"][0]["call_count"])
             self.assertTrue(explanation["skill_freshness"])
             self.assertTrue(

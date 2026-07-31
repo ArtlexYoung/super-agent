@@ -25,8 +25,8 @@ from core.skill_use.models import (
 )
 from core.skill_use.files.models import model_skill_input_from_dict
 from core.skill_use.files.validation import validate_skill_replacement
-from core.evolution.change.evaluation import EvaluationCase
-from core.evolution.records import read_evaluation_records
+from core.skill_use.update import SkillChangeCase
+from core.evaluation.records import read_evaluation_records
 from support import RecordingProvider, SequenceProvider
 
 
@@ -391,7 +391,7 @@ class ModelSkillTests(unittest.TestCase):
             with self.assertRaisesRegex(PermissionError, "does not allow Agent connection"):
                 validate_skill_replacement(current, proposed)
 
-    def test_model_skill_promotion_and_rollback_refresh_the_current_agent(self) -> None:
+    def test_model_skill_apply_and_undo_refresh_the_current_agent(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             skill_path = _write_model_skill(root, name="fast", default=True)
@@ -415,28 +415,28 @@ class ModelSkillTests(unittest.TestCase):
                 provider=provider,
                 use_storage=True,
             )
-            manager = agent.for_user("local").skills.create_evolution_manager()
+            updater = agent.for_user("local").skills.create_skill_updater()
 
-            candidate = manager.create_skill_candidate(
+            change = updater.propose_skill_change(
                 "model:fast",
                 "improve model metadata",
             )
-            manager.evaluate_skill_candidate(
-                candidate.candidate_id,
+            updater.test_skill_change(
+                change.change_id,
                 [
-                    EvaluationCase(
+                    SkillChangeCase(
                         name="required",
                         prompt="check model profile",
                         expected_output_contains=["required"],
                     )
                 ],
             )
-            manager.promote_skill_candidate(candidate.candidate_id)
+            updater.apply_skill_change(change.change_id)
 
             self.assertEqual("0.1.1", agent.model_profile.version)
             self.assertEqual(0.95, agent.model_profile.traits.quality_score)
 
-            manager.rollback_skill("model:fast")
+            updater.undo_skill_change(change.change_id)
 
             self.assertEqual("0.1.0", agent.model_profile.version)
             self.assertEqual(0.75, agent.model_profile.traits.quality_score)

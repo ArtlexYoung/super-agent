@@ -15,7 +15,7 @@ from core.skill_use.skills import Skills
 
 if TYPE_CHECKING:
     from core.state.events import EventStore
-    from core.evolution.policy import EvolutionPolicy
+    from core.evaluation.rules import FreshnessRules
 
 
 def create_default_skill_loaders(
@@ -40,11 +40,11 @@ def create_progressive_skill_disclosure(
     if (
         store is not None
         and include_freshness
-        and "evolution" not in config.agent.disabled_skills
+        and "freshness" not in config.agent.disabled_skills
     ):
-        from core.evolution.metrics import calculate_skill_freshness
-        from core.evolution.policy import load_evolution_policy
-        from core.evolution.records import read_evaluation_records
+        from core.evaluation.freshness import calculate_skill_freshness
+        from core.evaluation.rules import load_freshness_rules
+        from core.evaluation.records import read_evaluation_records
 
         policy_disclosure = create_progressive_skill_disclosure(
             config,
@@ -53,14 +53,14 @@ def create_progressive_skill_disclosure(
             include_freshness=False,
         )
         policy_disclosure.prepare_skill_index()
-        policy = load_evolution_policy(
+        rules = load_freshness_rules(
             policy_disclosure,
             config.agent.skills,
             disclose=False,
         )
         freshness_stats = calculate_skill_freshness(
             read_evaluation_records(store, source_type="agent_run"),
-            policy,
+            rules,
         )
     disabled = set(config.agent.disabled_skills)
     roots = [] if "skill" in disabled else config.paths.skills
@@ -82,15 +82,15 @@ def create_progressive_skill_disclosure(
     )
 
 
-def load_configured_evolution_policy(
+def load_configured_freshness_rules(
     config: AgentConfig,
     *,
     store: EventStore | None = None,
-) -> EvolutionPolicy:
-    """Load the Agent's evolution Skill through the same disclosure core."""
-    if "evolution" in config.agent.disabled_skills:
-        raise ValueError("evolution Skills are disabled for this Agent")
-    from core.evolution.policy import load_evolution_policy
+) -> FreshnessRules:
+    """Load deterministic freshness settings through central disclosure."""
+    if "freshness" in config.agent.disabled_skills:
+        raise ValueError("freshness Skills are disabled for this Agent")
+    from core.evaluation.rules import load_freshness_rules
 
     disclosure = create_progressive_skill_disclosure(
         config,
@@ -99,18 +99,18 @@ def load_configured_evolution_policy(
         include_freshness=False,
     )
     disclosure.prepare_skill_index()
-    return load_evolution_policy(disclosure, config.agent.skills, disclose=False)
+    return load_freshness_rules(disclosure, config.agent.skills, disclose=False)
 
 
-def load_configured_evolution_policy_if_enabled(
+def load_configured_freshness_rules_if_enabled(
     config: AgentConfig,
     *,
     store: EventStore | None = None,
-) -> EvolutionPolicy | None:
-    """Load the selected evolution policy, or return None when its type is disabled."""
-    if "evolution" in config.agent.disabled_skills:
+) -> FreshnessRules | None:
+    """Load selected freshness rules, or None when explicitly disabled."""
+    if "freshness" in config.agent.disabled_skills:
         return None
-    return load_configured_evolution_policy(config, store=store)
+    return load_configured_freshness_rules(config, store=store)
 
 
 def create_skills(

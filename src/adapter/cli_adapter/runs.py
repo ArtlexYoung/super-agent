@@ -7,10 +7,10 @@ from pathlib import Path
 
 from adapter.cli_adapter import load_agent, load_event_store
 from core.models import LOCAL_USER_ID
-from core.evolution.insights import explain_run_with_insight
+from core.evaluation.insight import explain_run_with_insight
 from core.state.models import RunSnapshot
 from core.state.events import EventStore
-from core.skill_use.defaults import load_configured_evolution_policy_if_enabled
+from core.skill_use.defaults import load_configured_freshness_rules_if_enabled
 
 
 def configure_runs_parser(parser: argparse.ArgumentParser) -> None:
@@ -120,8 +120,8 @@ def _explain_run(args: argparse.Namespace) -> int:
         print("No run snapshots yet.")
         return 1
     store = _find_run_store(store, run_id)
-    policy = load_configured_evolution_policy_if_enabled(agent.config, store=store)
-    explanation = explain_run_with_insight(store, run_id, policy)
+    rules = load_configured_freshness_rules_if_enabled(agent.config, store=store)
+    explanation = explain_run_with_insight(store, run_id, rules)
     if args.output == "json":
         print(json.dumps(explanation, ensure_ascii=False, indent=2, sort_keys=True))
         return 0
@@ -162,7 +162,6 @@ def _learn_from_run(args: argparse.Namespace) -> int:
         print(
             f"Learned from run: {result.run_id} "
             f"evaluations={len(result.evaluation_record_ids)} "
-            f"skill_updates={len(result.skill_updates)}"
         )
     return 0
 
@@ -222,7 +221,6 @@ def _print_run_explanation(explanation: dict[str, object]) -> None:
     _print_model_call_insight(explanation.get("model_calls"))
     _print_model_usage_insight(explanation.get("model_usage"))
     _print_freshness_insight(explanation.get("skill_freshness"))
-    _print_evolution_insight(explanation.get("evolution"))
 
 
 def _print_plan_insight(value: object) -> None:
@@ -274,18 +272,6 @@ def _print_freshness_insight(value: object) -> None:
             f"\tcalls={skill.get('call_count', '')}"
             f"\tsuccess={skill.get('success_count', '')}"
             f"\treplacements={skill.get('same_function_successful_followups', '')}"
-        )
-
-
-def _print_evolution_insight(value: object) -> None:
-    for evolution in _object_items(value):
-        evaluation = evolution.get("evaluation")
-        score = evaluation.get("score", "") if isinstance(evaluation, dict) else ""
-        print(
-            f"evolution\t{evolution.get('skill_key', '')}"
-            f"\tstatus={evolution.get('status', '')}"
-            f"\tscore={score}"
-            f"\treasons={'; '.join(_string_items(evolution.get('reasons')))}"
         )
 
 

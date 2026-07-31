@@ -14,10 +14,10 @@ from adapter.ag_ui_adapter.configuration import (
 )
 from core.skill_use.defaults import (
     create_skills,
-    load_configured_evolution_policy_if_enabled,
+    load_configured_freshness_rules_if_enabled,
 )
 from core.config import AgentConfig
-from core.evolution.insights import explain_run_with_insight
+from core.evaluation.insight import explain_run_with_insight
 from core.checks import ActionEffect, ActionRequest
 from skill.disclosure import skill_index_to_dict
 from core.skill_use.models import model_profile_to_dict, read_model_profiles
@@ -123,8 +123,8 @@ class WebAPI:
     def _read_run(self, run_id: str) -> dict[str, object]:
         agent = _find_agent_for_run(self.agent, self.user_id, run_id, set())
         store = agent.runtime.create_event_store(self.user_id)
-        policy = load_configured_evolution_policy_if_enabled(agent.config, store=store)
-        return explain_run_with_insight(store, run_id, policy)
+        rules = load_configured_freshness_rules_if_enabled(agent.config, store=store)
+        return explain_run_with_insight(store, run_id, rules)
 
     def _forget_memory(self, item_id: str) -> None:
         store = self.agent.runtime.create_event_store(self.user_id)

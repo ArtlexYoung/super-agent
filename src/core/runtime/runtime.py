@@ -36,7 +36,7 @@ from core.skill_use.registry import SkillLoaders
 if TYPE_CHECKING:
     from core.state.events import EventStore
     from core.runtime.model_calls import ModelUsageStats
-    from core.evolution.change.manager import SkillEvolutionManager
+    from core.skill_use.update import SkillUpdater
 
 
 class Runtime:
@@ -280,10 +280,10 @@ class Runtime:
         if snapshot.agent_name != self.config.agent.name:
             raise ValueError(f"run belongs to another Agent: {run_id}")
 
-        from core.evolution.learning import learn_from_run
-        from core.skill_use.defaults import load_configured_evolution_policy
+        from core.evaluation.learning import learn_from_run
+        from core.skill_use.defaults import load_configured_freshness_rules
 
-        policy = load_configured_evolution_policy(self.config, store=store)
+        rules = load_configured_freshness_rules(self.config, store=store)
 
         result = self.execute_management_action(
             user_id,
@@ -292,12 +292,7 @@ class Runtime:
                 f"run:{run_id}",
                 (ActionEffect.CREATE, ActionEffect.UPDATE),
             ),
-            lambda: learn_from_run(
-                store,
-                run_id,
-                lambda: self.create_skill_updater(user_id),
-                policy,
-            ),
+            lambda: learn_from_run(store, run_id, rules),
         )
         if not isinstance(result, RunLearningResult):
             raise TypeError("run learning must return RunLearningResult")
@@ -317,8 +312,8 @@ class Runtime:
         self,
         user_id: str = LOCAL_USER_ID,
         on_skill_changed: Callable[[SkillManifest], None] | None = None,
-    ) -> SkillEvolutionManager:
-        from core.evolution.change.manager import EvolutionModels, SkillEvolutionManager
+    ) -> SkillUpdater:
+        from core.skill_use.update import SkillUpdater
 
         store = self.create_event_store(user_id)
         change_handler = on_skill_changed
@@ -328,25 +323,13 @@ class Runtime:
                 user_id,
             )
         skills = self._create_skills(store)
-        from core.skill_use.defaults import load_configured_evolution_policy
-
-        policy = load_configured_evolution_policy(self.config, store=store)
         profiles = self._read_model_profiles(skills, user_id)
         task_loop = self._create_task_loop(profiles, user_id)
-        return SkillEvolutionManager(
-            skill_disclosure=skills.disclosure,
+        return SkillUpdater(
+            skills.disclosure,
             store=store,
-            models=EvolutionModels(
-                candidate=task_loop.create_text_model(
-                    store,
-                    "skill_evolution",
-                ),
-                evaluation=task_loop.create_text_model(
-                    store,
-                    "skill_evaluation",
-                ),
-            ),
-            policy=policy,
+            propose_model=task_loop.create_text_model(store, "skill_change_proposal"),
+            test_model=task_loop.create_text_model(store, "skill_change_test"),
             on_skill_changed=change_handler,
             action_rules=self._get_action_rules(),
         )
@@ -523,7 +506,7 @@ def _create_run_learning_evidence(
 ) -> dict[str, object]:
     success = error is None
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "result": {
             "success": success,
             "score": 1.0 if success else 0.0,

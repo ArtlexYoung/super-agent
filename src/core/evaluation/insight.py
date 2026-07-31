@@ -2,20 +2,18 @@
 
 from __future__ import annotations
 
-from core.evolution.models import SkillEvolutionState, skill_evolution_to_dict
-from core.evolution.state import list_skill_evolutions
 from core.state.models import RunEvent
 from core.runtime.model_calls import list_model_usage_stats
 from core.state.events import EventStore
-from core.evolution.metrics import calculate_skill_freshness
-from core.evolution.records import read_evaluation_records
-from core.evolution.policy import EvolutionPolicy
+from core.evaluation.freshness import calculate_skill_freshness
+from core.evaluation.records import read_evaluation_records
+from core.evaluation.rules import FreshnessRules
 
 
 def explain_run_with_insight(
     store: EventStore,
     run_id: str,
-    policy: EvolutionPolicy | None,
+    policy: FreshnessRules | None,
 ) -> dict[str, object]:
     explanation = store.explain_run(run_id)
     events = store.read_run_events(run_id)
@@ -23,7 +21,7 @@ def explain_run_with_insight(
     purposes = _model_purposes_for_run(events)
     explanation.update(
         {
-            "schema_version": 8,
+            "schema_version": 9,
             "plan": plan,
             "model_calls": project_model_calls(events),
             "model_usage": [
@@ -32,7 +30,6 @@ def explain_run_with_insight(
                 if item.purpose in purposes
             ],
             "skill_freshness": _skill_freshness_for_run(store, run_id, policy),
-            "evolution": _evolution_for_run(store, run_id),
         }
     )
     return explanation
@@ -77,42 +74,10 @@ def project_model_calls(events: list[RunEvent]) -> list[dict[str, object]]:
     return calls
 
 
-def _evolution_for_run(store: EventStore, run_id: str) -> list[dict[str, object]]:
-    run_records = [
-        record
-        for record in read_evaluation_records(store, source_type="agent_run")
-        if record.source.run_id == run_id
-    ]
-    if not run_records:
-        return []
-    record_ids = {record.record_id for record in run_records}
-    revision_identities = {record.revision.identity for record in run_records}
-    return [
-        skill_evolution_to_dict(evolution)
-        for evolution in list_skill_evolutions(store)
-        if _skill_evolution_matches_run(
-            evolution,
-            record_ids,
-            revision_identities,
-        )
-    ]
-
-
-def _skill_evolution_matches_run(
-    evolution: SkillEvolutionState,
-    record_ids: set[str],
-    revision_identities: set[tuple[str, str, str]],
-) -> bool:
-    if record_ids.intersection(evolution.evidence_record_ids):
-        return True
-    candidate = evolution.candidate_revision
-    return candidate is not None and candidate.identity in revision_identities
-
-
 def _skill_freshness_for_run(
     store: EventStore,
     run_id: str,
-    policy: EvolutionPolicy | None,
+    policy: FreshnessRules | None,
 ) -> list[dict[str, object]]:
     if policy is None:
         return []

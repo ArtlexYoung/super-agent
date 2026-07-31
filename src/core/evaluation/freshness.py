@@ -9,9 +9,9 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from core.evolution.records import EvaluationRecord, evaluation_record_to_dict
-from core.evolution.models import SkillRevision
-from core.evolution.policy import EvolutionPolicy
+from core.evaluation.records import EvaluationRecord, evaluation_record_to_dict
+from core.evaluation.models import SkillRevision
+from core.evaluation.rules import FreshnessRules
 
 
 FOLLOWUP_WINDOW_MINUTES = 10
@@ -251,7 +251,7 @@ def _parse_datetime(value: str) -> datetime:
 
 def calculate_skill_freshness(
     records: list[EvaluationRecord],
-    policy: EvolutionPolicy,
+    policy: FreshnessRules,
     current_time: datetime | None = None,
 ) -> dict[str, dict[str, Any]]:
     now = current_time or datetime.now(UTC)
@@ -265,7 +265,7 @@ def calculate_skill_freshness(
 
 def _stats_from_evidence(
     summary: EvaluationEvidenceSummary,
-    policy: EvolutionPolicy,
+    policy: FreshnessRules,
 ) -> dict[str, Any]:
     return {
         "skill": summary.revision.key,
@@ -293,7 +293,7 @@ def _stats_from_evidence(
 def _update_freshness(
     stats: dict[str, Any],
     now: datetime,
-    policy: EvolutionPolicy,
+    policy: FreshnessRules,
 ) -> None:
     scores = _score_components(stats, now, policy)
     base = (
@@ -313,7 +313,7 @@ def _update_freshness(
 def _score_components(
     stats: dict[str, Any],
     now: datetime,
-    policy: EvolutionPolicy,
+    policy: FreshnessRules,
 ) -> dict[str, float]:
     call_count = int(stats["call_count"])
     first_used_at = _parse_datetime(str(stats["first_used_at"] or stats["last_used_at"]))
@@ -343,7 +343,7 @@ def _score_components(
 def _efficiency_score(
     stats: dict[str, Any],
     average_tokens: float,
-    policy: EvolutionPolicy,
+    policy: FreshnessRules,
 ) -> float:
     token_score = _clamp(
         100
@@ -371,7 +371,7 @@ def _efficiency_score(
 
 def _reliability_score(
     stats: dict[str, Any],
-    policy: EvolutionPolicy,
+    policy: FreshnessRules,
 ) -> float:
     call_count = max(int(stats["call_count"]), 1)
     success_rate = int(stats["success_count"]) / call_count

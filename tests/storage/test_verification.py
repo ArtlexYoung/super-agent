@@ -24,7 +24,7 @@ class StorageIsolationVerificationTests(unittest.TestCase):
         self.assertEqual(["passed", "passed"], [item["status"] for item in data["backends"]])
         for item in data["backends"]:
             self.assertIn("temporary_state_cleanup", item["checks"])
-            self.assertIn("skill_evolution_user_isolation", item["checks"])
+            self.assertIn("skill_change_user_isolation", item["checks"])
             self.assertIn("skill_disclosure_user_isolation", item["checks"])
 
     def test_unconfigured_remote_backends_are_reported_as_unavailable(self) -> None:

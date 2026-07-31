@@ -7,16 +7,16 @@ from pathlib import Path
 from adapter.cli_adapter import load_agent, load_agent_config, load_event_store
 from core.skill_use.defaults import (
     create_progressive_skill_disclosure,
-    load_configured_evolution_policy,
+    load_configured_freshness_rules,
 )
 from core.config import AgentConfig
 from core.models import LOCAL_USER_ID
 from core.checks import ActionRules
 from skill.disclosure import ProgressiveDisclosureCore, skill_index_to_dict
 from core.skill_use.files.package import SkillPackageManager
-from core.evolution.change.evaluation import EvaluationCase
-from core.evolution.metrics import calculate_skill_freshness
-from core.evolution.records import read_evaluation_records
+from core.skill_use.update import SkillChangeCase
+from core.evaluation.freshness import calculate_skill_freshness
+from core.evaluation.records import read_evaluation_records
 from core.skill_use.files.lock import write_skill_lock_file
 from skill.manifest import SkillManifest
 
@@ -30,17 +30,17 @@ def configure_skills_parser(
     index_parser = subparsers.add_parser("index", help="print the central skill index as JSON")
     index_parser.add_argument("--config", default="agent.toml")
     index_parser.add_argument("--output", choices=["json"], default="json")
-    propose_parser = subparsers.add_parser("propose", help="create an isolated skill candidate")
-    _add_evolution_name_arguments(propose_parser)
-    evaluate_parser = subparsers.add_parser("evaluate", help="evaluate a skill candidate")
-    _add_evolution_candidate_arguments(evaluate_parser)
-    evaluate_parser.add_argument("--cases", required=True)
-    promote_parser = subparsers.add_parser("promote", help="promote a passing skill candidate")
-    _add_evolution_candidate_arguments(promote_parser)
-    rollback_parser = subparsers.add_parser("rollback", help="restore the previous skill revision")
-    rollback_parser.add_argument("--config", default="agent.toml")
-    rollback_parser.add_argument("--name", required=True)
-    rollback_parser.add_argument("--type", dest="skill_type")
+    propose_parser = subparsers.add_parser("propose-change", help="propose an isolated Skill change")
+    _add_change_name_arguments(propose_parser)
+    test_parser = subparsers.add_parser("test-change", help="test a Skill change without applying it")
+    _add_change_id_arguments(test_parser)
+    test_parser.add_argument("--cases", required=True)
+    apply_parser = subparsers.add_parser("apply-change", help="apply a passing Skill change")
+    _add_change_id_arguments(apply_parser)
+    undo_parser = subparsers.add_parser("undo-change", help="undo an applied Skill change")
+    _add_change_id_arguments(undo_parser)
+    changes_parser = subparsers.add_parser("list-changes", help="list proposed Skill changes")
+    changes_parser.add_argument("--config", default="agent.toml")
     freshness_parser = subparsers.add_parser("freshness", help="show runtime skill freshness stats")
     freshness_parser.add_argument("--config", default="agent.toml")
     validate_parser = subparsers.add_parser("validate", help="validate every skill manifest")
@@ -66,9 +66,10 @@ def configure_skills_parser(
         list_parser,
         index_parser,
         propose_parser,
-        evaluate_parser,
-        promote_parser,
-        rollback_parser,
+        test_parser,
+        apply_parser,
+        undo_parser,
+        changes_parser,
         freshness_parser,
         validate_parser,
         graph_parser,
@@ -86,10 +87,11 @@ def run_skills_command(args: argparse.Namespace) -> int:
     handlers = {
         "list": lambda: _list_skills(Path(args.config), args.user_id),
         "index": lambda: _print_skill_index(Path(args.config), args.user_id),
-        "propose": lambda: _propose_skill(args),
-        "evaluate": lambda: _evaluate_skill(args),
-        "promote": lambda: _promote_skill(args),
-        "rollback": lambda: _rollback_skill(args),
+        "propose-change": lambda: _propose_skill_change(args),
+        "test-change": lambda: _test_skill_change(args),
+        "apply-change": lambda: _apply_skill_change(args),
+        "undo-change": lambda: _undo_skill_change(args),
+        "list-changes": lambda: _list_skill_changes(args),
         "freshness": lambda: _show_skill_freshness(Path(args.config), args.user_id),
         "validate": lambda: _validate_skills(Path(args.config), args.user_id),
         "graph": lambda: _show_skill_graph(args),
@@ -127,46 +129,54 @@ def _print_skill_index(config_path: Path, user_id: str) -> int:
     return 0
 
 
-def _propose_skill(args: argparse.Namespace) -> int:
-    manager = load_agent(args.config).for_user(args.user_id).skills.create_evolution_manager()
-    candidate = manager.create_skill_candidate(
+def _propose_skill_change(args: argparse.Namespace) -> int:
+    updater = load_agent(args.config).for_user(args.user_id).skills.create_skill_updater()
+    change = updater.propose_skill_change(
         args.name,
         args.goal,
         skill_type=args.skill_type,
     )
-    print(f"Proposed candidate: {candidate.candidate_id}")
+    print(f"Proposed Skill change: {change.change_id}")
     return 0
 
 
-def _evaluate_skill(args: argparse.Namespace) -> int:
-    manager = load_agent(args.config).for_user(args.user_id).skills.create_evolution_manager()
-    report = manager.evaluate_skill_candidate(args.candidate_id, _read_evaluation_cases(Path(args.cases)))
-    state = "passed" if report.passed else "rejected"
-    print(f"Evaluation {report.report_id}: {state} score={report.score:.4f}")
+def _test_skill_change(args: argparse.Namespace) -> int:
+    updater = load_agent(args.config).for_user(args.user_id).skills.create_skill_updater()
+    report = updater.test_skill_change(args.change_id, _read_change_cases(Path(args.cases)))
+    state = "passed" if report.passed else "failed"
+    print(f"Skill change test {report.report_id}: {state} score={report.score:.4f}")
     return 0
 
 
-def _promote_skill(args: argparse.Namespace) -> int:
-    manager = load_agent(args.config).for_user(args.user_id).skills.create_evolution_manager()
-    manifest = manager.promote_skill_candidate(args.candidate_id)
-    print(f"Promoted skill: {manifest.skill_type}:{manifest.name}@{manifest.version}")
+def _apply_skill_change(args: argparse.Namespace) -> int:
+    updater = load_agent(args.config).for_user(args.user_id).skills.create_skill_updater()
+    manifest = updater.apply_skill_change(args.change_id)
+    print(f"Applied Skill change: {manifest.skill_type}:{manifest.name}@{manifest.version}")
     return 0
 
 
-def _rollback_skill(args: argparse.Namespace) -> int:
-    manager = load_agent(args.config).for_user(args.user_id).skills.create_evolution_manager()
-    manifest = manager.rollback_skill(args.name, skill_type=args.skill_type)
-    print(f"Rolled back skill: {manifest.skill_type}:{manifest.name}@{manifest.version}")
+def _undo_skill_change(args: argparse.Namespace) -> int:
+    updater = load_agent(args.config).for_user(args.user_id).skills.create_skill_updater()
+    manifest = updater.undo_skill_change(args.change_id)
+    restored = "removed" if manifest is None else f"restored {manifest.skill_type}:{manifest.name}@{manifest.version}"
+    print(f"Undid Skill change: {args.change_id} ({restored})")
+    return 0
+
+
+def _list_skill_changes(args: argparse.Namespace) -> int:
+    updater = load_agent(args.config).for_user(args.user_id).skills.create_skill_updater()
+    for change in updater.list_skill_changes():
+        print(f"{change.change_id}\t{change.key}\t{change.goal}")
     return 0
 
 
 def _show_skill_freshness(config_path: Path, user_id: str) -> int:
     config = load_agent_config(config_path)
     store = load_event_store(config, user_id)
-    policy = load_configured_evolution_policy(config, store=store)
+    rules = load_configured_freshness_rules(config, store=store)
     stats = calculate_skill_freshness(
         read_evaluation_records(store, source_type="agent_run"),
-        policy,
+        rules,
     )
     if not stats:
         print("No skill freshness stats yet.")
@@ -295,16 +305,16 @@ def _load_package_manager(config_path: Path, user_id: str) -> SkillPackageManage
     )
 
 
-def _add_evolution_name_arguments(parser: argparse.ArgumentParser) -> None:
+def _add_change_name_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--config", default="agent.toml")
     parser.add_argument("--name", required=True)
     parser.add_argument("--goal", required=True)
     parser.add_argument("--type", dest="skill_type")
 
 
-def _add_evolution_candidate_arguments(parser: argparse.ArgumentParser) -> None:
+def _add_change_id_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--config", default="agent.toml")
-    parser.add_argument("--candidate-id", required=True)
+    parser.add_argument("--change-id", required=True)
 
 
 def _add_composition_arguments(parser: argparse.ArgumentParser) -> None:
@@ -318,21 +328,20 @@ def _add_package_source_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--expected-sha256", default="")
 
 
-def _read_evaluation_cases(path: Path) -> list[EvaluationCase]:
+def _read_change_cases(path: Path) -> list[SkillChangeCase]:
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, list):
         raise ValueError("evaluation cases file must contain a JSON array")
-    cases: list[EvaluationCase] = []
+    cases: list[SkillChangeCase] = []
     for item in data:
         if not isinstance(item, dict):
             raise ValueError("each evaluation case must be a JSON object")
         cases.append(
-            EvaluationCase(
+            SkillChangeCase(
                 name=_read_json_string(item, "name", required=True),
                 prompt=_read_json_string(item, "prompt", required=True),
                 expected_output_contains=_read_string_list(item, "expected_output_contains"),
                 forbidden_output_contains=_read_string_list(item, "forbidden_output_contains"),
-                evaluator_instruction=_read_json_string(item, "evaluator_instruction"),
             )
         )
     return cases

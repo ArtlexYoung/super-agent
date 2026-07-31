@@ -172,7 +172,7 @@ class Run:
     def list_used_skill_evidence(self) -> list[dict[str, object]]:
         return [
             {
-                "schema_version": 1,
+                "schema_version": 2,
                 "key": entry.reference.key,
                 "type": entry.reference.skill_type,
                 "name": entry.reference.name,
@@ -181,7 +181,6 @@ class Run:
                 "function_group": entry.function_group,
                 "agent_created": entry.agent_created,
                 "agent_can_update": entry.agent_can_update,
-                "evolution_supported": bool(self.config.paths.skills),
                 "freshness": entry.freshness,
             }
             for entry in self._used_skill_entries.values()
