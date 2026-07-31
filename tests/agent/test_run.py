@@ -15,6 +15,20 @@ from support import write_workflow_skill
 
 
 class EventStoreTests(unittest.TestCase):
+    def test_simple_prompt_finishes_with_one_provider_call(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            provider = MockProvider("finished")
+            agent = Agent(
+                AgentConfig.create_default(Path(tmp)),
+                provider=provider,
+                use_storage=False,
+            )
+
+            result = agent.run("hello")
+
+            self.assertEqual("finished", result.text)
+            self.assertEqual(1, len(provider.tool_requests))
+
     def test_run_event_log_orders_memory_events_and_notifies_explicit_observers(self) -> None:
         identity = RunIdentity.create("local", "main")
         listened = []

@@ -251,8 +251,8 @@ class RuntimeTools:
                 f"SkillLoader not found for Skill type: {reference.skill_type}"
             )
         self.context.session.record_skill_used(entry)
-        if reference.name not in self.used_skill_names:
-            self.used_skill_names.append(reference.name)
+        if reference.key not in self.used_skill_names:
+            self.used_skill_names.append(reference.key)
 
 def _create_disclosure_tools(
     runtime_tools: RuntimeTools,

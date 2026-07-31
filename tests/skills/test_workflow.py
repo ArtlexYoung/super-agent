@@ -49,8 +49,11 @@ class ExecutableWorkflowTests(unittest.TestCase):
             ).run("unrelated question")
 
             self.assertEqual("final answer", result.text)
-            self.assertEqual("model_finished", result.stop_reason)
-            self.assertEqual(["common", "research"], result.skills)
+            self.assertEqual("completed", result.stop_reason)
+            self.assertEqual(
+                ["memory:default", "workflow:react", "prompt:research"],
+                result.skills,
+            )
             self.assertEqual(3, len(provider.tool_requests))
             tool_result = provider.tool_requests[2][0][-1]
             self.assertEqual("tool", tool_result["role"])

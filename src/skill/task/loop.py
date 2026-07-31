@@ -1,76 +1,59 @@
-"""The single adaptive model, tool, Skill, and subagent task loop."""
+"""One model and action loop for every Agent task."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable
 
-from skill.loaders.loaded import LoadedSkill
-from core.provider.chat import Message, ModelResponse
+from core.checks import ActionRequest
+from core.models import RunResult, SubAgentResult, Task
+from core.provider.chat import Message, ModelResponse, ToolCall
 from core.provider.pool import ProviderPool
+from core.runtime import Actions, Final, read_model_turn
+from skill.loaders.loaded import LoadedSkill, TaskPolicy
+from skill.loaders.models import (
+    ModelProfile,
+    model_profile_is_ready,
+    select_default_model_profile,
+)
 from skill.task.model_calls import (
     AdaptiveModelCalls,
     ModelCallContext,
     ModelDecision,
     TextModel,
+    UNTRUSTED_CONTEXT_POLICY,
     assistant_tool_call_message,
-    build_model_messages,
     tool_result_message,
 )
-from skill.task.planning import (
-    TaskPlan,
-    Step,
-    build_step_prompt,
-    build_task_planning_messages,
-    create_direct_task_plan,
-    read_task_plan,
-)
-from skill.task.preflight import check_run_before_execution
 from skill.task.run import Run
-from core.checks import ActionRequest
-from skill.task.plan import (
-    Plan,
-    create_step_plan,
-)
-from skill.task.scheduler import Scheduler
-from skill.task.scheduler import (
-    create_routing_model_decision,
-    select_routing_model_profile,
-)
-from skill.task.preparation import (
-    RunContext,
-    build_system_prompt,
-    create_subagent_result,
-    create_runtime_tools,
-    load_background_contributions,
-    load_run_skill_contributions,
-    prepare_run,
-    select_model_context_skills,
-)
-from core.models import SubAgentResult, Task, RunResult
-from skill.task.tools import RuntimeTools
-from skill.loaders.models import ModelProfile
-from skill.manifest import Skill
+from skill.task.tools import RuntimeTools, RuntimeToolsContext
 
 if TYPE_CHECKING:
     from skill.state.events import EventStore
 
 
-PlanListener = Callable[[Plan], None]
+DEFAULT_MAX_STEPS = 8
+NON_EXECUTION_SKILL_TYPES = {
+    "evolution",
+    "feedback",
+    "model",
+    "planner",
+    "scheduler",
+}
 
 
 @dataclass
-class _TaskProgress:
-    completed_results: list[str]
-    skills: list[Skill]
-    tools: list[RuntimeTools]
-    subagent_results: list[SubAgentResult]
+class _LoopState:
     contributions: list[LoadedSkill]
-    stop_reason: str = "completed"
+    tools: RuntimeTools
+    messages: list[Message]
+    workflow: TaskPolicy
+    selected_skill_names: list[str]
+    last_text: str = ""
 
 
-class AdaptiveTaskLoop:
-    """Advance one task through decisions and executed steps until completion."""
+class ModelLoop:
+    """Let one selected model finish directly or request checked actions."""
 
     def __init__(
         self,
@@ -86,272 +69,22 @@ class AdaptiveTaskLoop:
         self.provider_pool = provider_pool
         self.model_calls = AdaptiveModelCalls(self.model_profiles, provider_pool)
 
-    def run_task(
-        self,
-        request: Task,
-        session: Run,
-        before_model_calls: PlanListener,
-    ) -> RunResult:
-        context = prepare_run(
-            request,
-            session,
-            self.model_profiles,
-            environment=self.provider_pool.environment,
-            send_routing_messages=lambda messages: self._send_routing_messages(
-                session,
-                messages,
-            ),
-        )
-        plan = context.plan
-        session.record_event("task.scheduled", plan.to_dict())
-        organization_model = self.create_text_model(
-            session.store,
-            "memory_organization",
-            session.record_event,
-            decision=context.plan.model,
-        )
-        check_run_before_execution(
-            request,
-            session,
-            plan,
-            provider_pool=self.provider_pool,
-            send_text_model_messages=organization_model.send_messages,
-        )
-        self._select_run_model(session, context)
-        before_model_calls(plan)
-
-        background = load_background_contributions(
-            context,
-            organization_model.send_messages,
-        )
-        if plan.planning_required:
-            if context.planner_policy is None:
-                raise RuntimeError("task requires planning but no Planner Skill is available")
-            plan = self._create_planner_task_plan(context)
-            return self._run_task_plan(context, plan, background)
-        plan = create_direct_task_plan(
-            request.prompt,
-            plan.purpose,
-            plan.required_features,
-        )
-        session.record_event(
-            "task.plan.created",
+    def run_task(self, request: Task, run: Run) -> RunResult:
+        decision = self._select_default_model()
+        self._select_run_model(run, decision)
+        state = self._prepare_loop(request, run, decision)
+        run.record_event(
+            "task.scheduled",
             {
-                "planner": None,
-                "reasons": ["direct one-step plan"],
-                **plan.to_dict(),
+                "model": decision.to_dict(),
+                "skills": list(state.selected_skill_names),
+                "workflow": state.workflow.name,
+                "selection": "model_loop",
             },
         )
-        return self._run_task_plan(context, plan, background)
-
-    def _send_routing_messages(
-        self,
-        session: Run,
-        messages: list[Message],
-    ) -> str:
-        profile = select_routing_model_profile(
-            self.model_profiles,
-            self.provider_pool.environment,
-        )
-        response = self.model_calls.call_model(
-            messages,
-            create_routing_model_decision(profile),
-            ModelCallContext("routing", session.record_event),
-        )
-        return response.text
-
-    def _create_planner_task_plan(
-        self,
-        context: RunContext,
-    ) -> TaskPlan:
-        request = context.task
-        session = context.run
-        plan = context.plan
-        planner_policy = context.planner_policy
-        if planner_policy is None or plan.planner is None:
-            raise RuntimeError("task requires planning but no Planner Skill is available")
-        selected_names = set(context.plan.subagent_names)
-        subagents = [
-            item
-            for item in (
-                request.subagents.list_subagents()
-                if request.include_subagents
-                else []
-            )
-            if str(item.get("name", "")) in selected_names
-        ]
-        response = self.model_calls.call_model(
-            build_task_planning_messages(
-                planner_policy,
-                request,
-                subagents=subagents,
-                model_profiles=self.model_profiles,
-            ),
-            plan.model,
-            ModelCallContext("planning", session.record_event, session.select_model),
-        )
-        task_plan = read_task_plan(
-            response.text,
-            planner_policy,
-            {str(item.get("name", "")) for item in subagents},
-        )
-        session.record_event(
-            "task.plan.created",
-            {
-                "planner": plan.planner.key,
-                "reasons": list(plan.planning_reasons),
-                **task_plan.to_dict(),
-            },
-        )
-        return task_plan
-
-    def _run_task_plan(
-        self,
-        context: RunContext,
-        plan: TaskPlan,
-        background_contributions: list[LoadedSkill],
-    ) -> RunResult:
-        progress = _TaskProgress(
-            completed_results=[],
-            skills=[],
-            tools=[],
-            subagent_results=[],
-            contributions=list(background_contributions),
-        )
-        step_contexts = self._schedule_steps(context, plan)
-        for step_number, (step, step_context) in enumerate(
-            zip(plan.steps, step_contexts, strict=True),
-            start=1,
-        ):
-            text, progress.stop_reason = self._run_step(
-                step_context,
-                step,
-                step_number,
-                progress=progress,
-                background_contributions=background_contributions,
-            )
-            progress.completed_results.append(text)
-        result = RunResult(
-            text=progress.completed_results[-1],
-            workflow=context.workflow_policy.name,
-            skills=_used_skill_names(progress.skills, progress.tools),
-            subagent_results=progress.subagent_results,
-            warning_messages=context.task.warning_messages,
-            run_id=context.run.run_id,
-            stop_reason=progress.stop_reason,
-        )
-        _record_task_completed(context.run, result, progress.contributions)
-        return replace(result, actions=list_run_actions(context.run))
-
-    def _schedule_steps(
-        self,
-        context: RunContext,
-        plan: TaskPlan,
-    ) -> list[RunContext]:
-        if not context.plan.planning_required and len(plan.steps) != 1:
-            raise ValueError("direct task plan must contain exactly one step")
-        scheduled: list[RunContext] = []
-        for step_number, step in enumerate(plan.steps, start=1):
-            selected = (
-                self._prepare_step_context(context, step)
-                if context.plan.planning_required
-                else context
-            )
-            context.run.record_event(
-                "task.step.scheduled",
-                {
-                    "step": step_number,
-                    "instruction": step.instruction,
-                    **selected.plan.to_dict(),
-                },
-            )
-            scheduled.append(selected)
-        return scheduled
-
-    def _run_step(
-        self,
-        step_context: RunContext,
-        step: Step,
-        step_number: int,
-        *,
-        progress: _TaskProgress,
-        background_contributions: list[LoadedSkill],
-    ) -> tuple[str, str]:
-        request = step_context.task
-        session = step_context.run
-        plan = step_context.plan
-        contributions = load_run_skill_contributions(
-            session,
-            plan,
-        )
-        combined = [*background_contributions, *contributions]
-        skills = [
-            contribution.model_context
-            for contribution in contributions
-            if contribution.model_context is not None
-        ]
-        step_subagents = [
-            create_subagent_result(
-                request.subagents.run_named_subagent(
-                    name,
-                    step.instruction,
-                    session,
-                )
-            )
-            for name in plan.subagent_names
-        ]
-        organization_model = self.create_text_model(
-            session.store,
-            "memory_organization",
-            session.record_event,
-            decision=step_context.plan.model,
-        )
-        tools = create_runtime_tools(
-            request,
-            session,
-            combined,
-            organization_model.send_messages,
-        )
-        step_prompt = build_step_prompt(
-            request.prompt,
-            step,
-            progress.completed_results,
-        )
-        _record_disclosed_skills(session, skills)
-        step_request = replace(
-            request,
-            prompt=step_prompt,
-            required_features=step.required_features,
-        )
-        system = build_system_prompt(
-            step_request,
-            session,
-            combined,
-            subagent_results=step_subagents,
-        )
-        messages = build_model_messages(
-            step_request,
-            step_context.workflow_policy,
-            skills,
-            system=system,
-        )
-        text, stop_reason = self._run_model_loop(
-            session,
-            step_context,
-            tools,
-            messages=messages,
-        )
-        session.record_event(
-            "task.step.completed",
-            {"step": step_number, "text": text, "stop_reason": stop_reason},
-        )
-        progress.skills.extend(skills)
-        progress.tools.append(tools)
-        progress.subagent_results.extend(step_subagents)
-        progress.subagent_results.extend(tools.delegated_subagent_results)
-        progress.contributions.extend(contributions)
-        progress.contributions.extend(tools.activated_contributions)
-        return text, stop_reason
+        result = self._run_model_turns(request, run, decision, state)
+        _record_task_completed(run, result, state.contributions)
+        return result
 
     def create_text_model(
         self,
@@ -361,13 +94,7 @@ class AdaptiveTaskLoop:
         *,
         decision: ModelDecision | None = None,
     ) -> TextModel:
-        selected = decision
-        if selected is None:
-            profile = select_routing_model_profile(
-                self.model_profiles,
-                self.provider_pool.environment,
-            )
-            selected = create_routing_model_decision(profile)
+        selected = decision or self._select_default_model()
         return self.model_calls.create_text_model(
             store,
             purpose,
@@ -375,127 +102,315 @@ class AdaptiveTaskLoop:
             record_event,
         )
 
-    def _run_model_loop(
+    def _prepare_loop(
         self,
-        session: Run,
-        context: RunContext,
-        tools: RuntimeTools,
-        *,
-        messages: list[Message],
-    ) -> tuple[str, str]:
-        workflow = context.workflow_policy
-        plan = context.plan
-        call_context = ModelCallContext(
-            purpose=plan.purpose,
-            record_event=session.record_event,
-            select_model=session.select_model,
+        request: Task,
+        run: Run,
+        decision: ModelDecision,
+    ) -> _LoopState:
+        text_model = self.create_text_model(
+            run.store,
+            "skill_context",
+            run.record_event,
+            decision=decision,
         )
-        if not workflow.uses_tools:
-            response = self.model_calls.call_model(
-                messages,
-                plan.model,
-                call_context,
-            )
-            return response.text, "completed"
-        last_text = ""
-        for step in range(1, workflow.max_steps + 1):
-            response = self.model_calls.call_model(
-                messages,
-                plan.model,
-                call_context,
-                tools=tools.get_tool_definitions(),
-            )
-            last_text = response.text or last_text
-            _record_model_step(session, step, response)
-            if not response.tool_calls:
-                return response.text, response.stop_reason or "model_finished"
-            messages.append(
-                assistant_tool_call_message(response.text, response.tool_calls)
-            )
-            for call in response.tool_calls:
-                messages.append(tool_result_message(call, tools.run_tool_call(call)))
-        return last_text, "max_steps"
-
-    def _prepare_step_context(
-        self,
-        context: RunContext,
-        step: Step,
-    ) -> RunContext:
-        request = context.task
-        session = context.run
-        if "tools" in step.required_features and not context.workflow_policy.uses_tools:
-            raise ValueError(
-                "planned step requires tools but the selected workflow does not allow tools"
-            )
-        required_features = tuple(
-            sorted(
-                set(request.required_features)
-                | set(step.required_features)
-                | {"text"}
-            )
-        )
-        plan = create_step_plan(
-            step,
+        contributions, selected_names = _load_configured_skills(
             request,
-            context.plan,
-            model=context.plan.model,
-            model_context_skills=select_model_context_skills(
-                context.plan.skills,
-                session,
-            ),
+            run,
+            text_model.send_messages,
         )
-        return replace(context, plan=plan)
+        run.record_event(
+            "skills.disclosed",
+            {
+                "names": list(selected_names),
+                "index_path": (
+                    None
+                    if run.skills.index.index_path is None
+                    else str(run.skills.index.index_path)
+                ),
+            },
+        )
+        workflow = _select_workflow(contributions)
+        if "tools" in request.required_features and not workflow.uses_tools:
+            raise ValueError("task requires tools but the configured workflow is direct")
+        tools = _create_runtime_tools(
+            request,
+            run,
+            contributions,
+            text_model.send_messages,
+        )
+        return _LoopState(
+            contributions,
+            tools,
+            _build_messages(request, run, contributions, workflow),
+            workflow,
+            selected_names,
+        )
 
-    def _select_run_model(
+    def _run_model_turns(
         self,
-        session: Run,
-        context: RunContext,
-    ) -> None:
-        decision = context.plan.model
-        profile = self.model_calls.require_model_profile(decision)
-        session.select_model(
-            profile,
-            self.provider_pool.get_chat_provider(
-                decision.profile_key,
-                decision.connection,
-            ),
+        request: Task,
+        run: Run,
+        decision: ModelDecision,
+        state: _LoopState,
+    ) -> RunResult:
+        supports_tools = "tools" in self.model_calls.require_model_profile(
+            decision
+        ).routing.supports
+        if "tools" in request.required_features and not supports_tools:
+            raise ValueError(f"model {decision.profile_key} does not support tools")
+        definitions = (
+            state.tools.get_tool_definitions()
+            if state.workflow.uses_tools and supports_tools
+            else None
+        )
+        for step in range(1, state.workflow.max_steps + 1):
+            response = self.model_calls.call_model(
+                state.messages,
+                decision,
+                ModelCallContext(request.purpose, run.record_event, run.select_model),
+                tools=definitions,
+            )
+            turn = read_model_turn(response)
+            state.last_text = response.text or state.last_text
+            _record_model_turn(run, step, response)
+            if isinstance(turn, Final):
+                return _create_result(request, run, state, turn.text, response.stop_reason)
+            if definitions is None:
+                raise RuntimeError("model requested actions when actions are unavailable")
+            self._run_actions(state, turn)
+            definitions = state.tools.get_tool_definitions()
+        return _create_result(request, run, state, state.last_text, "max_steps")
+
+    @staticmethod
+    def _run_actions(state: _LoopState, turn: Actions) -> None:
+        calls = [ToolCall(item.call_id, item.name, item.arguments) for item in turn.items]
+        state.messages.append(assistant_tool_call_message(turn.text, calls))
+        for call in calls:
+            state.messages.append(
+                tool_result_message(call, state.tools.run_tool_call(call))
+            )
+        state.contributions.extend(state.tools.activated_contributions)
+
+    def _select_default_model(self) -> ModelDecision:
+        profile = select_default_model_profile(self.model_profiles)
+        if not model_profile_is_ready(profile, self.provider_pool.environment):
+            requirement = profile.connection.api_key_env or "provider connection"
+            raise RuntimeError(
+                f"default model {profile.key} is not ready; configure {requirement}"
+            )
+        return ModelDecision(
+            profile_key=profile.key,
+            model=profile.model,
+            connection=profile.connection,
+            score=0.0,
+            reasons=("explicit default model",),
+            confidence=1.0,
+            selection="default_model",
+            input_cost_per_million=profile.routing.input_cost_per_million,
+            output_cost_per_million=profile.routing.output_cost_per_million,
         )
 
-def _record_disclosed_skills(
-    session: Run,
-    skills: list[Skill],
+    def _select_run_model(self, run: Run, decision: ModelDecision) -> None:
+        profile = self.model_calls.require_model_profile(decision)
+        provider = self.provider_pool.get_chat_provider(
+            decision.profile_key,
+            decision.connection,
+        )
+        run.select_model(profile, provider)
+
+
+def _load_configured_skills(
+    request: Task,
+    run: Run,
+    send_text_model_messages: Callable[[list[Message]], str],
+) -> tuple[list[LoadedSkill], list[str]]:
+    configured = list(run.config.agent.skills)
+    scene_contribution: LoadedSkill | None = None
+    if request.scene is not None:
+        scene_entry = run.skills.index.require_skill(request.scene, "scene")
+        allowed = {f"scene:{name}" for name in request.allowed_scenes}
+        if allowed and scene_entry.reference.key not in allowed:
+            raise ValueError(
+                "requested scene is outside the Agent scene policy: "
+                + scene_entry.reference.key
+            )
+        scene_contribution = run.load_skill(scene_entry.reference)
+        run.record_skill_used(scene_entry)
+        _require_scene_services(run, scene_entry.reference.key, scene_contribution)
+        configured = [
+            *(reference.key for reference in scene_contribution.included_skills),
+            *configured,
+        ]
+    loader_types = {
+        item.descriptor.skill_type
+        for item in run.skills.loaders.list_skill_loaders()
+        if item.descriptor.skill_type not in NON_EXECUTION_SKILL_TYPES | {"scene"}
+    }
+    references = run.skills.disclosure.select_skill_references(
+        [
+            item
+            for item in configured
+            if not _has_skill_type(item, NON_EXECUTION_SKILL_TYPES | {"scene"})
+        ],
+        loader_types,
+    )
+    contributions: list[LoadedSkill] = []
+    names: list[str] = []
+    if scene_contribution is not None:
+        contributions.append(scene_contribution)
+    for reference in references:
+        entry = run.skills.index.require_skill(reference.name, reference.skill_type)
+        contribution = run.load_skill(entry.reference, send_text_model_messages)
+        run.record_skill_used(entry)
+        contributions.append(contribution)
+        names.append(entry.reference.key)
+    return contributions, names
+
+
+def _has_skill_type(value: str, skill_types: set[str]) -> bool:
+    clean = value.strip().lower()
+    return ":" in clean and clean.split(":", 1)[0] in skill_types
+
+
+def _require_scene_services(
+    run: Run,
+    scene_key: str,
+    contribution: LoadedSkill,
 ) -> None:
-    session.record_event(
-        "skills.disclosed",
-        {
-            "names": [skill.manifest.name for skill in skills],
-            "index_path": _optional_path(session.skills.index.index_path),
-        },
+    available = {"event_stream", "text_model"}
+    if run.store is not None:
+        available.add("storage")
+    required: set[str] = set()
+    for reference in contribution.included_skills:
+        loader = run.skills.loaders.find_skill_loader(reference.skill_type)
+        if loader is None:
+            raise ValueError(
+                f"{scene_key} references Skill type without a registered loader: "
+                f"{reference.skill_type}"
+            )
+        required.update(loader.required_services)
+    missing = sorted(required - available)
+    if missing:
+        raise RuntimeError(
+            f"{scene_key} requires unavailable Runtime services: "
+            + ", ".join(missing)
+        )
+
+
+def _select_workflow(contributions: list[LoadedSkill]) -> TaskPolicy:
+    policies = [item.task_policy for item in contributions if item.task_policy is not None]
+    if len(policies) > 1:
+        raise ValueError("configure at most one workflow Skill")
+    return policies[0] if policies else TaskPolicy("model-loop", "loop", "", DEFAULT_MAX_STEPS)
+
+
+def _create_runtime_tools(
+    request: Task,
+    run: Run,
+    contributions: list[LoadedSkill],
+    send_text_model_messages: Callable[[list[Message]], str],
+) -> RuntimeTools:
+    results: list[SubAgentResult] = []
+    has_subagents = request.include_subagents and bool(request.subagents.list_subagents())
+
+    def run_subagent(name: str, prompt: str) -> dict[str, object]:
+        value = request.subagents.run_named_subagent(name, prompt, run)
+        results.append(_read_subagent_result(value))
+        return value
+
+    return RuntimeTools(
+        RuntimeToolsContext(
+            session=run,
+            list_subagents=request.subagents.list_subagents if has_subagents else None,
+            run_subagent=run_subagent if has_subagents else None,
+            send_text_model_messages=send_text_model_messages,
+        ),
+        contributions,
+        results,
     )
 
 
-def _record_model_step(
-    session: Run,
-    step: int,
-    response: ModelResponse,
-) -> None:
-    session.record_event(
-        "model.step.completed",
+def _build_messages(
+    request: Task,
+    run: Run,
+    contributions: list[LoadedSkill],
+    workflow: TaskPolicy,
+) -> list[Message]:
+    trusted = [run.config.agent.system, UNTRUSTED_CONTEXT_POLICY]
+    untrusted: list[str] = []
+    if workflow.instruction:
+        untrusted.append(workflow.instruction)
+    for contribution in contributions:
+        if contribution.model_context is not None:
+            skill = contribution.model_context
+            untrusted.append(
+                f'<skill key="{skill.manifest.skill_type}:{skill.manifest.name}">\n'
+                f"{skill.instructions}\n</skill>"
+            )
+        if contribution.build_prompt_context is not None:
+            context = contribution.build_prompt_context(request.prompt)
+            if context:
+                untrusted.append(context)
+    index = run.skills.index.build_progressive_disclosure_prompt()
+    if index:
+        untrusted.append(index)
+    if untrusted:
+        trusted.append(
+            "<untrusted_runtime_context>\n"
+            + "\n\n".join(untrusted)
+            + "\n</untrusted_runtime_context>"
+        )
+    messages: list[Message] = [{"role": "system", "content": "\n\n".join(trusted)}]
+    messages.extend(
+        {"role": str(item["role"]), "content": str(item.get("content", ""))}
+        for item in request.messages
+        if item.get("role") in {"user", "assistant"}
+    )
+    if messages[-1].get("role") != "user" or messages[-1].get("content") != request.prompt:
+        messages.append({"role": "user", "content": request.prompt})
+    return messages
+
+
+def _create_result(
+    request: Task,
+    run: Run,
+    state: _LoopState,
+    text: str,
+    stop_reason: str,
+) -> RunResult:
+    names = list(dict.fromkeys([*state.selected_skill_names, *state.tools.used_skill_names]))
+    return RunResult(
+        text=text,
+        workflow=state.workflow.name,
+        skills=names,
+        subagent_results=state.tools.delegated_subagent_results,
+        warning_messages=request.warning_messages,
+        run_id=run.run_id,
+        stop_reason=("completed" if stop_reason == "model_finished" else stop_reason)
+        or "completed",
+        actions=list_run_actions(run),
+    )
+
+
+def _record_model_turn(run: Run, step: int, response: ModelResponse) -> None:
+    run.record_event(
+        "model.turn.completed",
         {
             "step": step,
             "text": response.text,
-            "tool_calls": [call.name for call in response.tool_calls],
+            "actions": [call.name for call in response.tool_calls],
             "stop_reason": response.stop_reason,
         },
     )
 
 
 def _record_task_completed(
-    session: Run,
+    run: Run,
     result: RunResult,
     contributions: list[LoadedSkill],
 ) -> None:
-    session.record_event(
+    run.record_event(
         "task.completed",
         {
             "text": result.text,
@@ -504,25 +419,45 @@ def _record_task_completed(
             "stop_reason": result.stop_reason,
         },
     )
+    seen: set[int] = set()
     for contribution in contributions:
-        if contribution.record_task_completed is not None:
-            action = contribution.task_completed_action
-            if action is None:
-                raise TypeError("A Skill completion callback must declare one SkillAction")
-            session.execute_action(
-                ActionRequest.create(
-                    "skill:task-completed",
-                    action.resource,
-                    action.effects,
-                ),
-                lambda callback=contribution.record_task_completed: callback(
-                    result.workflow,
-                    result.skills,
-                ),
-            )
+        if id(contribution) in seen or contribution.record_task_completed is None:
+            continue
+        seen.add(id(contribution))
+        action = contribution.task_completed_action
+        if action is None:
+            raise TypeError("a Skill completion callback must declare one SkillAction")
+        run.execute_action(
+            ActionRequest.create(
+                "skill:task-completed",
+                action.resource,
+                action.effects,
+            ),
+            lambda callback=contribution.record_task_completed: callback(
+                result.workflow,
+                result.skills,
+            ),
+        )
 
 
-def list_run_actions(session: Run) -> list[dict[str, object]]:
+def _read_subagent_result(value: dict[str, object]) -> SubAgentResult:
+    nested = value.get("subagent_results")
+    return SubAgentResult(
+        name=str(value["name"]),
+        description=str(value["description"]),
+        text=str(value["text"]),
+        prompt=str(value.get("prompt", "")),
+        created_by_agent=bool(value.get("created_by_agent", False)),
+        subagent_results=(
+            [_read_subagent_result(item) for item in nested if isinstance(item, dict)]
+            if isinstance(nested, list)
+            else None
+        ),
+        run_id=str(value.get("run_id", "")),
+    )
+
+
+def list_run_actions(run: Run) -> list[dict[str, object]]:
     terminal = {
         "action.applied": "applied",
         "action.blocked": "blocked",
@@ -536,22 +471,6 @@ def list_run_actions(session: Run) -> list[dict[str, object]]:
             "status": terminal[event.event_type],
             "reason": event.data.get("reason", ""),
         }
-        for event in session.list_recorded_events()
+        for event in run.list_recorded_events()
         if event.event_type in terminal
     ]
-
-
-def _optional_path(path: object | None) -> str | None:
-    return None if path is None else str(path)
-
-
-def _used_skill_names(
-    skills: list[Skill],
-    tools: list[RuntimeTools],
-) -> list[str]:
-    names = list(dict.fromkeys(skill.manifest.name for skill in skills))
-    for runtime_tools in tools:
-        for name in runtime_tools.used_skill_names:
-            if name not in names:
-                names.append(name)
-    return names

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
-import json
 from dataclasses import replace
 from time import perf_counter
 from typing import TYPE_CHECKING, Callable
@@ -23,9 +21,7 @@ from core.state.subscribers import (
     get_runtime_event_subscriber_name,
 )
 from core.events import StorageBackend
-from skill.task.loop import AdaptiveTaskLoop, list_run_actions
-from skill.task.plan import Plan
-from skill.task.plan import create_runtime_lock
+from skill.task.loop import ModelLoop, list_run_actions
 from skill.task.model_calls import estimate_text_tokens
 from core.models import RunLearningResult, Task, RunResult, TaskTrace
 from skill.skills import Skills
@@ -100,11 +96,7 @@ class Runtime:
                     "requested_scene": request.scene,
                 },
             )
-            result = task_loop.run_task(
-                request,
-                run,
-                lambda plan: self._lock_task_context(run, plan),
-            )
+            result = task_loop.run_task(request, run)
             result = replace(
                 result,
                 subscriber_failures=run.list_subscriber_failures(),
@@ -370,7 +362,7 @@ class Runtime:
         request: Task,
         identity: RunIdentity,
         event_listener: Callable[[RunEvent], None] | None,
-    ) -> tuple[Run, AdaptiveTaskLoop]:
+    ) -> tuple[Run, ModelLoop]:
         event_log = RunEventLog(
             identity,
             backend=self.storage,
@@ -461,40 +453,11 @@ class Runtime:
         self,
         profiles: list[ModelProfile],
         user_id: str,
-    ) -> AdaptiveTaskLoop:
+    ) -> ModelLoop:
         environment = self.user_secrets.get_environment_for_user(user_id)
-        return AdaptiveTaskLoop(
+        return ModelLoop(
             profiles,
             self.provider_pool.create_user_provider_pool(environment),
-        )
-
-    def _lock_task_context(
-        self,
-        run: Run,
-        plan: Plan,
-    ) -> None:
-        if run.model_profile is None or run.provider is None:
-            raise RuntimeError("task model must be selected before Runtime lock")
-        runtime_lock = create_runtime_lock(
-            run,
-            plan,
-            storage=self.storage,
-            environment=self.user_secrets.get_environment_for_user(
-                run.identity.user_id
-            ),
-        )
-        content = json.dumps(
-            runtime_lock,
-            ensure_ascii=False,
-            separators=(",", ":"),
-            sort_keys=True,
-        )
-        run.record_event(
-            "runtime.locked",
-            {
-                "runtime_lock": runtime_lock,
-                "runtime_lock_sha256": hashlib.sha256(content.encode()).hexdigest(),
-            },
         )
 
     def _record_task_feedback(
