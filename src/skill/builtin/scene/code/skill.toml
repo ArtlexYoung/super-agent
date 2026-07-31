@@ -1,8 +1,8 @@
 schema_version = 3
 name = "code"
 type = "scene"
-description = "Repository coding scene for exploration, implementation, tests, review, and evidence"
-version = "0.0.100"
+description = "Repository coding Skill group for implementation and verification"
+version = "0.0.104"
 agent_created = false
 agent_can_update = false
 freshness = 70
@@ -15,7 +15,5 @@ default = false
 skills = [
   "prompt:code",
   "memory:code",
-  "planner:code",
   "workflow:code",
-  "scene_manager:default",
 ]

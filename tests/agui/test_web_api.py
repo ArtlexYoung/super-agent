@@ -49,7 +49,7 @@ class WebAPIContractTests(unittest.TestCase):
             self.assertEqual("super-agent", _body_dict(body["agent"])["name"])
             skills = _body_list(body["skills"])
             self.assertTrue(
-                {"memory", "planner", "scene", "workflow"}.issubset(
+                {"memory", "scene", "workflow"}.issubset(
                     {item["type"] for item in skills}
                 )
             )

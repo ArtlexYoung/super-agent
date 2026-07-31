@@ -787,7 +787,10 @@ include_usage_habits = false
             memory = MiniMemory(agent.runtime.create_event_store())
 
             self.assertEqual(2, memory.usage_habits.read_usage_habits()["total_runs"])
-            self.assertIn("workflow direct used 1 times", provider.last_messages[0]["content"])
+            self.assertIn(
+                "workflow model-loop used 1 times",
+                provider.last_messages[0]["content"],
+            )
             checked_resources = [
                 event.data["resource"]
                 for event in agent.for_user("local").runs.read_trace(second.run_id).events

@@ -71,20 +71,12 @@ class ReleaseShapeTests(unittest.TestCase):
             "memory/code/skill.toml",
             "memory/default/SKILL.md",
             "memory/default/skill.toml",
-            "planner/code/SKILL.md",
-            "planner/code/skill.toml",
-            "planner/default/SKILL.md",
-            "planner/default/skill.toml",
             "prompt/code/SKILL.md",
             "prompt/code/skill.toml",
             "prompt/common/SKILL.md",
             "prompt/common/skill.toml",
             "scene/code/skill.toml",
             "scene/common/skill.toml",
-            "scene_manager/default/SKILL.md",
-            "scene_manager/default/skill.toml",
-            "scheduler/default/SKILL.md",
-            "scheduler/default/skill.toml",
             "workflow/code/SKILL.md",
             "workflow/code/skill.toml",
             "workflow/direct/SKILL.md",
@@ -203,6 +195,17 @@ class ReleaseShapeTests(unittest.TestCase):
             "src/core/state/store.py",
             "src/core/task",
             "src/core/user.py",
+        ]
+
+        self.assertEqual([], [path for path in removed if Path(path).exists()])
+
+    def test_removed_task_controllers_do_not_return(self) -> None:
+        removed = [
+            "src/skill/task/plan.py",
+            "src/skill/task/planning.py",
+            "src/skill/task/preflight.py",
+            "src/skill/task/preparation.py",
+            "src/skill/task/scheduler.py",
         ]
 
         self.assertEqual([], [path for path in removed if Path(path).exists()])

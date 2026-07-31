@@ -137,12 +137,14 @@ class ModelSkillTests(unittest.TestCase):
             result = agent.run("summarize this")
             agent.learn_from_run(result.run_id)
             store = agent.runtime.create_event_store()
-            runtime_lock = store.read_runtime_lock(result.run_id)
+            scheduled = next(
+                event.data
+                for event in store.read_run_events(result.run_id)
+                if event.event_type == "task.scheduled"
+            )
             records = read_evaluation_records(store, source_type="agent_run")
 
-            self.assertIsNotNone(runtime_lock)
-            assert runtime_lock is not None
-            self.assertEqual("model:fast", runtime_lock["model"]["skill_key"])
+            self.assertEqual("model:fast", scheduled["model"]["key"])
             self.assertIn("model:fast", {record.revision.key for record in records})
 
     def test_multiple_default_model_skills_are_rejected(self) -> None:
@@ -214,16 +216,11 @@ class ModelSkillTests(unittest.TestCase):
 
             alice_result = agent.for_user("alice").run("hello")
             bob_result = agent.for_user("bob").run("hello")
-            alice_lock = agent.runtime.create_event_store("alice").read_runtime_lock(
-                alice_result.run_id
-            )
-            bob_lock = agent.runtime.create_event_store("bob").read_runtime_lock(
-                bob_result.run_id
-            )
+            alice_model = _scheduled_model(alice_result)
+            bob_model = _scheduled_model(bob_result)
 
-            assert alice_lock is not None and bob_lock is not None
-            self.assertEqual("alice-model", alice_lock["model"]["model"])
-            self.assertEqual("unit-model", bob_lock["model"]["model"])
+            self.assertEqual("alice-model", alice_model["model"])
+            self.assertEqual("unit-model", bob_model["model"])
             self.assertEqual("unit-model", agent.model_profile.model)
 
     def test_agent_resolves_the_same_secret_name_per_user(self) -> None:
@@ -266,22 +263,14 @@ class ModelSkillTests(unittest.TestCase):
                 alice = agent.for_user("alice").run("hello")
                 bob = agent.for_user("bob").run("hello")
 
-            alice_lock = agent.runtime.create_event_store("alice").read_runtime_lock(
-                alice.run_id
-            )
-            bob_lock = agent.runtime.create_event_store("bob").read_runtime_lock(bob.run_id)
-
             self.assertEqual("alice-secret", alice.text)
             self.assertEqual("bob-secret", bob.text)
             self.assertEqual(
-                ["alice-secret", "alice-secret", "bob-secret", "bob-secret"],
+                ["alice-secret", "bob-secret"],
                 [call.args[2] for call in send.call_args_list],
             )
-            assert alice_lock is not None and bob_lock is not None
-            self.assertTrue(alice_lock["model"]["ready"])
-            self.assertTrue(bob_lock["model"]["ready"])
-            self.assertNotIn("alice-secret", str(alice_lock))
-            self.assertNotIn("bob-secret", str(bob_lock))
+            self.assertNotIn("alice-secret", str(_scheduled_model(alice)))
+            self.assertNotIn("bob-secret", str(_scheduled_model(bob)))
 
     def test_agent_cannot_change_user_owned_model_connection(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -342,6 +331,14 @@ class ModelSkillTests(unittest.TestCase):
 
             self.assertEqual("0.1.0", agent.model_profile.version)
             self.assertEqual(0.75, agent.model_profile.routing.quality_score)
+
+
+def _scheduled_model(result) -> dict[str, object]:
+    return next(
+        event.data["model"]
+        for event in result.events
+        if event.event_type == "task.scheduled"
+    )
 
 
 class _FixedProvider(RecordingProvider):

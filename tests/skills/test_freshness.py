@@ -226,12 +226,7 @@ instructions = "SKILL.md"
             self.assertEqual(
                 {
                     "memory:default",
-                    "planner:default",
-                    "prompt:common",
                     "prompt:echo",
-                    "scheduler:default",
-                    "scene:common",
-                    "scene_manager:default",
                     "workflow:direct",
                 },
                 skill_keys,

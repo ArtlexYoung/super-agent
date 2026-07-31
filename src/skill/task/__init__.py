@@ -1,1 +1,1 @@
-"""Task scheduling and execution."""
+"""The single model and action execution path."""

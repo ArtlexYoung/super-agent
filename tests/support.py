@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 from core.config import AgentConfig
-from core.provider.chat import MockProvider
+from core.provider.chat import MockProvider, ModelResponse
 from skill.loaders.defaults import load_configured_evolution_policy
 
 
@@ -65,6 +65,14 @@ class RecordingProvider(MockProvider):
             raise self.execution_response
         return self.execution_response
 
+    def send_chat_messages_with_tools(self, messages, model, tools):
+        self.models.append(model)
+        self.requests.append(list(messages))
+        self.tool_requests.append((list(messages), list(tools)))
+        if isinstance(self.execution_response, Exception):
+            raise self.execution_response
+        return ModelResponse(self.execution_response, [], "model_finished")
+
 
 class SequenceProvider(RecordingProvider):
     """Return explicit execution responses without consuming routing responses."""
@@ -93,6 +101,17 @@ class SequenceProvider(RecordingProvider):
         if isinstance(selected, Exception):
             raise selected
         return selected
+
+    def send_chat_messages_with_tools(self, messages, model, tools):
+        self.models.append(model)
+        self.requests.append(list(messages))
+        self.tool_requests.append((list(messages), list(tools)))
+        if not self.responses:
+            raise AssertionError("unexpected execution model call")
+        selected = self.responses.pop(0)
+        if isinstance(selected, Exception):
+            raise selected
+        return ModelResponse(selected, [], "model_finished")
 
 
 def load_default_evolution_policy(root: Path):

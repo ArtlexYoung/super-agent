@@ -117,42 +117,6 @@ class WorkflowSkillLoader:
         )
 
 
-class PlannerSkillLoader:
-    name = "task-planner"
-    version = "1"
-    skill_type = "planner"
-    adds_model_context = False
-
-    def load_skill(self, request: SkillLoadRequest) -> LoadedSkill:
-        from skill.task.planning import create_planning_policy_from_skill
-
-        opened = request.open_skill()
-        opened.disclose_manifest()
-        opened.disclose_configuration()
-        opened.disclose_instructions()
-        return LoadedSkill(
-            planning_policy=create_planning_policy_from_skill(opened),
-        )
-
-
-class SchedulerSkillLoader:
-    name = "task-scheduler"
-    version = "1"
-    skill_type = "scheduler"
-    adds_model_context = False
-
-    def load_skill(self, request: SkillLoadRequest) -> LoadedSkill:
-        from skill.task.scheduler import read_scheduling_policy
-
-        opened = request.open_skill()
-        opened.disclose_manifest()
-        opened.disclose_configuration()
-        opened.disclose_instructions()
-        return LoadedSkill(
-            scheduling_policy=read_scheduling_policy(opened),
-        )
-
-
 class SceneSkillLoader:
     name = "task-scene"
     version = "1"
@@ -170,36 +134,6 @@ class SceneSkillLoader:
         )
 
 
-class SceneManagerSkillLoader:
-    name = "private-scene-manager"
-    version = "1"
-    skill_type = "scene_manager"
-    adds_model_context = False
-    required_services = ("storage",)
-
-    def load_skill(self, request: SkillLoadRequest) -> LoadedSkill:
-        from skill.ecosystem.scenes import (
-            create_scene_creation_tool,
-            read_skill_scene_template,
-        )
-
-        opened = request.open_skill()
-        opened.disclose_manifest()
-        opened.disclose_configuration()
-        instructions = opened.disclose_instructions().content
-        template = read_skill_scene_template(opened, request.reference.key)
-        return LoadedSkill(
-            build_prompt_context=lambda _prompt: instructions,
-            tools=(
-                create_scene_creation_tool(
-                    request.require_store("scene manager Skill"),
-                    request.disclosure,
-                    template,
-                ),
-            ),
-        )
-
-
 def create_builtin_skill_loaders(
     mcp_servers: McpServers,
 ) -> tuple[SkillLoader, ...]:
@@ -208,10 +142,7 @@ def create_builtin_skill_loaders(
         McpSkillLoader(mcp_servers),
         MemorySkillLoader(),
         WorkflowSkillLoader(),
-        PlannerSkillLoader(),
-        SchedulerSkillLoader(),
         SceneSkillLoader(),
-        SceneManagerSkillLoader(),
     )
 
 

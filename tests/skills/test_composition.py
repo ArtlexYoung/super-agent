@@ -132,7 +132,13 @@ path = ".super-agent"
             result = agent.run("build an unrelated output")
 
             self.assertEqual(
-                {"common", "report", "research", "transport"},
+                {
+                    "memory:default",
+                    "workflow:direct",
+                    "prompt:report",
+                    "prompt:research",
+                    "prompt:transport",
+                },
                 set(result.skills),
             )
             index = json.loads(

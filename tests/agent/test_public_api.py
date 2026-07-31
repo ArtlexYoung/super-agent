@@ -28,7 +28,6 @@ class PublicApiTests(unittest.TestCase):
             "RuntimeEventSubscriber",
             "RuntimeEventSubscriberError",
             "RunLearningResult",
-            "PreflightProblem",
             "Skill",
             "SkillManifest",
             "LoadedSkill",
@@ -36,7 +35,6 @@ class PublicApiTests(unittest.TestCase):
             "StorageBackend",
             "StdioMcpServer",
             "RunResult",
-            "TaskPreflightError",
             "TaskTrace",
             "ToolCall",
         }

@@ -77,6 +77,8 @@ class ModelLoop:
             "task.scheduled",
             {
                 "model": decision.to_dict(),
+                "purpose": request.purpose,
+                "required_features": list(request.required_features),
                 "skills": list(state.selected_skill_names),
                 "workflow": state.workflow.name,
                 "selection": "model_loop",
@@ -259,6 +261,7 @@ def _load_configured_skills(
     names: list[str] = []
     if scene_contribution is not None:
         contributions.append(scene_contribution)
+        names.append(f"scene:{request.scene}")
     for reference in references:
         entry = run.skills.index.require_skill(reference.name, reference.skill_type)
         contribution = run.load_skill(entry.reference, send_text_model_messages)
@@ -289,7 +292,7 @@ def _require_scene_services(
                 f"{scene_key} references Skill type without a registered loader: "
                 f"{reference.skill_type}"
             )
-        required.update(loader.required_services)
+        required.update(getattr(loader, "required_services", ()))
     missing = sorted(required - available)
     if missing:
         raise RuntimeError(
@@ -325,6 +328,8 @@ def _create_runtime_tools(
             list_subagents=request.subagents.list_subagents if has_subagents else None,
             run_subagent=run_subagent if has_subagents else None,
             send_text_model_messages=send_text_model_messages,
+            use_scenes=request.use_scenes,
+            allowed_scenes=request.allowed_scenes,
         ),
         contributions,
         results,

@@ -48,7 +48,6 @@ from core.models import (
 from core.state.models import Conversation
 from core.state.subscribers import RuntimeEventSubscriberError
 from core.events import StorageBackend
-from skill.task.preflight import PreflightProblem, TaskPreflightError
 from skill.loaders.models import (
     ModelProfile,
     create_direct_provider_profile,
@@ -638,7 +637,6 @@ __all__ = [
     "RuntimeEventSubscriber",
     "RuntimeEventSubscriberError",
     "RunLearningResult",
-    "PreflightProblem",
     "Skill",
     "SkillManifest",
     "LoadedSkill",
@@ -646,7 +644,6 @@ __all__ = [
     "StorageBackend",
     "StdioMcpServer",
     "RunResult",
-    "TaskPreflightError",
     "TaskTrace",
     "ToolCall",
 ]

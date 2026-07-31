@@ -19,7 +19,6 @@ from cli import main
 from core.provider.chat import MockProvider, ModelResponse, ToolCall
 from core.config import AgentConfig
 from core.checks import ActionEffect
-from skill.task.preflight import TaskPreflightError
 from skill.manifest import Skill
 from support import write_workflow_skill
 
@@ -143,7 +142,7 @@ class SkillLoaderRuntimeTests(unittest.TestCase):
             }
             self.assertEqual("finished", result.text)
             self.assertIn("uppercase_text", tool_names)
-            self.assertIn("echo", result.skills)
+            self.assertIn("transform:echo", result.skills)
 
     def test_skill_loader_tool_without_action_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -156,11 +155,10 @@ class SkillLoaderRuntimeTests(unittest.TestCase):
                 skill_loaders=[_MissingActionSkillLoader()],
             )
 
-            with self.assertRaisesRegex(TaskPreflightError, "action"):
+            with self.assertRaisesRegex(TypeError, "missing.*action"):
                 agent.run("please echo this")
 
             self.assertEqual([], provider.tool_requests)
-            self.assertIn("response_contract", provider.last_messages[-1]["content"])
 
     def test_task_trace_uses_one_runtime_task_path(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -180,17 +178,16 @@ class SkillLoaderRuntimeTests(unittest.TestCase):
                 index
                 for index, event in enumerate(trace.events)
                 if event.event_type == "model.call.selected"
-                and event.data["purpose"] == "answer"
+                and event.data["purpose"] == "auto"
             )
             execution_completed = next(
                 index
                 for index, event in enumerate(trace.events)
                 if event.event_type == "model.call.completed"
-                and event.data["purpose"] == "answer"
+                and event.data["purpose"] == "auto"
             )
             ordered_steps = [
                 event_types.index("task.started"),
-                event_types.index("task.route.decided"),
                 event_types.index("task.scheduled"),
                 execution_selected,
                 execution_completed,
@@ -232,12 +229,8 @@ class SkillLoaderRuntimeTests(unittest.TestCase):
             }
             self.assertEqual({"Run"}, run_classes)
             self.assertFalse(Path("src/core/session.py").exists())
-            plan_source = Path("src/skill/task/plan.py").read_text(
-                encoding="utf-8"
-            )
-            self.assertNotIn("TaskSchedule", plan_source)
-            self.assertNotIn("TaskSkillSelection", plan_source)
-            self.assertNotIn("RoutePlan", plan_source)
+            self.assertFalse(Path("src/skill/task/plan.py").exists())
+            self.assertFalse(Path("src/skill/task/scheduler.py").exists())
             self.assertFalse(Path("src/core/task/route_plan.py").exists())
             self.assertFalse(Path("src/core/task/decisions.py").exists())
 
@@ -252,7 +245,6 @@ class SkillLoaderRuntimeTests(unittest.TestCase):
     def test_runtime_does_not_import_concrete_skill_kinds(self) -> None:
         for path in (
             Path("src/skill/task/loop.py"),
-            Path("src/skill/task/plan.py"),
             Path("src/skill/task/tools.py"),
         ):
             source = path.read_text(encoding="utf-8")

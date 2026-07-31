@@ -3,8 +3,6 @@ import unittest
 from dataclasses import replace
 from pathlib import Path
 
-from super_agent import Agent
-from core.provider.chat import MockProvider
 from skill.disclosure import ProgressiveDisclosureCore, SkillReference
 from skill.loaders.loaded import LoadedSkill
 from skill.loaders.registry import (
@@ -12,35 +10,21 @@ from skill.loaders.registry import (
     SkillLoaders,
     describe_skill_loader,
 )
-from core.config import AgentConfig
+from skill.loaders.defaults import create_default_skill_loaders
 
 
 class SkillLoadersTests(unittest.TestCase):
-    def test_runtime_lock_contains_only_skill_loader_descriptions(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            agent = Agent(
-                AgentConfig.create_default(tmp),
-                provider=MockProvider(),
-                use_storage=True,
-            )
-            result = agent.run("hello")
-            runtime_lock = agent.runtime.create_event_store().read_runtime_lock(result.run_id)
+    def test_default_registry_has_only_executable_skill_types(self) -> None:
+        loaders = create_default_skill_loaders()
+        descriptions = [item.descriptor for item in loaders.list_skill_loaders()]
 
-            self.assertEqual(18, runtime_lock["schema_version"])
-            self.assertEqual([], runtime_lock["registered_code"])
-            locked = runtime_lock["skill_loaders"]
-            self.assertEqual(
-                [
-                    item.descriptor.to_dict()
-                    for item in agent.skill_loaders.list_skill_loaders()
-                ],
-                locked,
-            )
-            self.assertTrue(all(item["type"] for item in locked))
-            self.assertTrue(all(len(item["content_sha256"]) == 64 for item in locked))
-            memory = next(item for item in locked if item["type"] == "memory")
-            self.assertEqual(9, memory["schema_version"])
-            self.assertEqual(["storage", "text_model"], memory["required_services"])
+        self.assertEqual(
+            ["mcp", "memory", "prompt", "scene", "workflow"],
+            [item.skill_type for item in descriptions],
+        )
+        self.assertTrue(all(len(item.content_sha256) == 64 for item in descriptions))
+        memory = next(item for item in descriptions if item.skill_type == "memory")
+        self.assertEqual(("storage", "text_model"), memory.required_services)
 
     def test_registry_rejects_missing_and_cyclic_dependencies(self) -> None:
         missing = SkillLoaders()

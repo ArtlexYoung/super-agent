@@ -3,16 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable
+from typing import Callable
 
 from core.provider.chat import ToolDefinition
 from core.checks import ActionEffect
 from skill.disclosure.models import SkillReference
 from skill.manifest import Skill
-
-if TYPE_CHECKING:
-    from skill.task.scheduler import SchedulingPolicy
-
 
 ToolArguments = dict[str, object]
 ToolResult = dict[str, object]
@@ -29,13 +25,6 @@ class TaskPolicy:
     @property
     def uses_tools(self) -> bool:
         return self.mode in {"react", "loop"}
-
-
-@dataclass(frozen=True)
-class PlanningPolicy:
-    name: str
-    instruction: str
-    max_steps: int
 
 
 @dataclass(frozen=True)
@@ -105,8 +94,6 @@ class LoadedSkill:
     build_prompt_context: Callable[[str], str] | None = None
     tools: tuple[SkillTool, ...] = ()
     task_policy: TaskPolicy | None = None
-    planning_policy: PlanningPolicy | None = None
-    scheduling_policy: SchedulingPolicy | None = None
     included_skills: tuple[SkillReference, ...] = ()
     record_task_completed: Callable[[str, list[str]], None] | None = None
     task_completed_action: SkillAction | None = None

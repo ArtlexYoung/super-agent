@@ -63,7 +63,10 @@ class ProgressiveDisclosureTests(unittest.TestCase):
             result = agent.run("echo hello")
 
             content = provider.last_messages[0]["content"]
-            self.assertEqual(["common", "echo"], result.skills)
+            self.assertEqual(
+                ["memory:default", "prompt:echo", "workflow:direct"],
+                result.skills,
+            )
             self.assertIn("Progressive skill disclosure", content)
             self.assertIn("history.json", content)
             self.assertIn("skills/prompt/echo/manifest.json", content)

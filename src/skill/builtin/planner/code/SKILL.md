@@ -1,3 +1,0 @@
-Create the fewest repository-aware steps that can be executed and verified independently.
-
-Return only one JSON object with a `steps` array. Every step must contain exactly `instruction`, `purpose`, `required_features`, and `subagent`. Use short lowercase purposes such as `explore`, `implement`, `test`, `review`, or `document`. Include `text` in every `required_features` array and add `tools` when repository inspection, editing, or verification tools are needed. Set `subagent` to one available name or null. Put discovery before edits, dependency changes before consumers, focused checks after the related edit, and final diff review before the user-facing synthesis. Do not plan actions that available tools cannot perform.

@@ -668,7 +668,7 @@ class SkillEvolutionTests(unittest.TestCase):
     def test_configuration_skill_kinds_share_evaluation_promotion_and_rollback(self) -> None:
         configurations = {
             "memory": ("recall_limit = 3", "recall_limit = 7"),
-            "workflow": ('mode = "direct"', 'mode = "plan"'),
+            "workflow": ('mode = "direct"', 'mode = "loop"'),
             "mcp": ('server = "echo"', 'server = "printf"'),
         }
         for skill_type, (original_config, candidate_config) in configurations.items():

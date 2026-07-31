@@ -1,1 +1,1 @@
-Complete the task in one model response. Return the useful result directly and do not request Runtime tools.
+Decide the fewest useful reasoning steps internally, verify the answer against the request, and return the result in one model response. Do not request Runtime actions.

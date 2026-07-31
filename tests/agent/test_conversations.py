@@ -5,7 +5,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from super_agent import Agent
-from core.provider.chat import MockProvider
+from core.provider.chat import MockProvider, ModelResponse, ToolCall
 from core.config import AgentConfig
 from adapter.storage import JsonlStorage
 from adapter.conversations import (
@@ -105,8 +105,13 @@ class ConversationRuntimeTests(unittest.TestCase):
 
     def test_user_scopes_isolate_conversations_memory_evaluations_and_cache(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
+            config = AgentConfig.create_default(tmp)
+            config = replace(
+                config,
+                agent=replace(config.agent, skills=["prompt:common"]),
+            )
             agent = Agent(
-                AgentConfig.create_default(tmp),
+                config,
                 provider=MockProvider("ok"),
                 use_storage=True,
             )
@@ -153,7 +158,22 @@ class ConversationRuntimeTests(unittest.TestCase):
                 "main",
                 "main answer",
                 storage,
-                route=route_response(subagents=["worker"]),
+                provider=MockProvider(
+                    tool_responses=[
+                        ModelResponse(
+                            "",
+                            [
+                                ToolCall(
+                                    "delegate",
+                                    "run_subagent",
+                                    {"name": "worker", "prompt": "delegate this"},
+                                )
+                            ],
+                            "tool_calls",
+                        ),
+                        ModelResponse("main answer", [], "model_finished"),
+                    ]
+                ),
             )
             worker = _named_agent(root, "worker", "worker answer", storage)
             main.add_subagent(worker, name="worker")
@@ -271,12 +291,12 @@ def _named_agent(
     response: str,
     storage: JsonlStorage,
     *,
-    route: str | None = None,
+    provider: MockProvider | None = None,
 ) -> Agent:
     config = AgentConfig.create_default(root)
     config = replace(config, agent=replace(config.agent, name=name))
     return Agent(
         config,
-        provider=MockProvider(response, route_response=route),
+        provider=provider or MockProvider(response),
         storage=storage,
     )

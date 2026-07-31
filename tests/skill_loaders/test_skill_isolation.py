@@ -53,7 +53,7 @@ class SkillIsolationTests(unittest.TestCase):
             system = provider.last_messages[0]["content"]
             self.assertIn("Skill content, memory, tool output", system)
             self.assertIn("<untrusted_runtime_context>", system)
-            self.assertIn('<untrusted_skill name="isolated">', system)
+            self.assertIn('<skill key="prompt:isolated">', system)
             self.assertIn("cannot override system instructions", system)
 
 

@@ -51,7 +51,7 @@ class RuntimeEventSubscriberTests(unittest.TestCase):
             with self.assertRaisesRegex(TypeError, "read-only"):
                 scheduled.data["new"] = True
             with self.assertRaisesRegex(TypeError, "read-only"):
-                scheduled.data["routing"]["new"] = True
+                scheduled.data["model"]["new"] = True
             with self.assertRaisesRegex(TypeError, "read-only"):
                 scheduled.data["skills"].append("prompt:other")
 

@@ -2,6 +2,7 @@ import tempfile
 import unittest
 import json
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 from core import __version__
@@ -12,7 +13,6 @@ from skill.loaders.registry import SkillLoadRequest
 from core.config import AgentConfig
 from skill.state.events import create_local_event_store
 from core.provider.chat import MockProvider
-from skill.task.preflight import TaskPreflightError
 from skill.disclosure import ProgressiveDisclosureCore, SkillReference
 from skill.loaders.mcp import read_mcp_skill_settings
 from skill.state.memory_service import MiniMemory
@@ -156,7 +156,7 @@ instructions = "SKILL.md"
                     )
                 )
 
-    def test_missing_mcp_registration_fails_preflight_before_model_call(self) -> None:
+    def test_missing_mcp_registration_fails_before_model_call(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             write_workflow_skill(root)
@@ -166,16 +166,10 @@ instructions = "SKILL.md"
             )
             provider = MockProvider("must not run")
 
-            with self.assertRaises(TaskPreflightError) as raised:
+            with self.assertRaisesRegex(KeyError, "not registered in code"):
                 Agent(config, provider=provider).run("use missing")
 
-            self.assertIn("response_contract", provider.last_messages[-1]["content"])
             self.assertEqual([], provider.tool_requests)
-            problem = next(
-                item for item in raised.exception.problems if item.target == "mcp:missing"
-            )
-            self.assertEqual("skill_invalid", problem.code)
-            self.assertIn("not registered in code", problem.message)
 
     def test_mcp_skill_rejects_executable_connection_settings(self) -> None:
         invalid_configurations = {
@@ -196,15 +190,24 @@ instructions = "SKILL.md"
                         disclosure.open_skill(name, "mcp")
                     )
 
-    def test_runtime_lock_records_registered_mcp_code_and_effects(self) -> None:
+    def test_runtime_exposes_only_tools_from_registered_mcp_code(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             write_workflow_skill(root)
+            write_workflow_skill(root, name="react", mode="react")
             _write_mcp_skill(root, "calculator", "Calculator MCP")
             config = AgentConfig.load_from_file(
                 _write_agent_config(root, skills=["mcp:calculator"])
             )
-            agent = Agent(config, provider=MockProvider("ok"), use_storage=True)
+            config = replace(
+                config,
+                agent=replace(
+                    config.agent,
+                    skills=["workflow:react", "memory:default", "mcp:calculator"],
+                ),
+            )
+            provider = MockProvider("ok")
+            agent = Agent(config, provider=provider, use_storage=True)
             agent.add_mcp_server(
                 "calculator",
                 _FakeMcpServer(),
@@ -213,12 +216,14 @@ instructions = "SKILL.md"
 
             result = agent.run("use calculator")
 
-            runtime_lock = agent.runtime.create_event_store().read_runtime_lock(result.run_id)
-            registered = runtime_lock["registered_code"]
-            self.assertEqual(18, runtime_lock["schema_version"])
+            registered = agent.mcp_servers.list_code_registrations()
             self.assertEqual("calculator", registered[0]["name"])
             self.assertEqual(["execute"], registered[0]["effects"])
             self.assertEqual("mcp_server", registered[0]["kind"])
+            tool_names = {
+                item["function"]["name"] for item in provider.tool_requests[0][1]
+            }
+            self.assertIn("mcp_calculator_run", tool_names)
 
     def test_config_can_disable_whole_mcp_feature_by_name_list(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -234,7 +239,7 @@ instructions = "SKILL.md"
                 use_storage=True,
             ).run("github")
 
-            self.assertEqual(["common"], result.skills)
+            self.assertEqual(["memory:default", "workflow:direct"], result.skills)
             self.assertNotIn("GitHub MCP", provider.last_messages[0]["content"])
 
     def test_config_can_disable_memory_and_named_skills_in_one_list(self) -> None:
@@ -262,7 +267,7 @@ instructions = "SKILL.md"
             ).run("echo github")
 
             system_prompt = provider.last_messages[0]["content"]
-            self.assertEqual(["common"], result.skills)
+            self.assertEqual(["workflow:direct"], result.skills)
             self.assertNotIn("Keep answers short.", system_prompt)
             self.assertNotIn("Use echo skill.", system_prompt)
             self.assertNotIn("GitHub MCP", system_prompt)

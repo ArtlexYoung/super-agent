@@ -11,7 +11,6 @@ from skill.loaders.models import (
     create_model_profile_from_skill_disclosure,
     model_connection_fields,
 )
-from skill.task.planning import create_planning_policy_from_skill
 from skill.ecosystem.scenes import read_scene_included_skills
 from skill.loaders.workflow import create_workflow_policy_from_skill
 from skill.manifest import SkillManifest
@@ -81,8 +80,6 @@ def _validate_skill_type(
         read_mcp_skill_settings(disclosure)
     elif skill_type == "model":
         create_model_profile_from_skill_disclosure(disclosure)
-    elif skill_type == "planner":
-        create_planning_policy_from_skill(disclosure)
     elif skill_type == "scene":
         read_scene_included_skills(disclosure)
 

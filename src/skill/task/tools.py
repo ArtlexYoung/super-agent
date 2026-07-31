@@ -26,6 +26,8 @@ class RuntimeToolsContext:
     list_subagents: Callable[[], list[dict[str, object]]] | None = None
     run_subagent: Callable[[str, str], dict[str, object]] | None = None
     send_text_model_messages: Callable[[list[Message]], str] | None = None
+    use_scenes: bool = True
+    allowed_scenes: tuple[str, ...] = ()
 
 
 class RuntimeTools:
@@ -37,7 +39,9 @@ class RuntimeTools:
     ) -> None:
         self.context = context
         self.used_skill_names: list[str] = []
-        self._activated_skill_keys: set[str] = set()
+        self._activated_skill_keys = {
+            str(item["key"]) for item in context.session.list_used_skill_evidence()
+        }
         self.activated_contributions: list[LoadedSkill] = []
         self.delegated_subagent_results = (
             []
@@ -180,42 +184,76 @@ class RuntimeTools:
     def _activate_skill(self, arguments: dict[str, object]) -> dict[str, object]:
         opened = self._open_requested_skill(arguments)
         reference = opened.index_entry.reference
-        loader = self.context.session.skills.loaders.find_skill_loader(
-            reference.skill_type
+        self._check_scene_access(reference)
+        if reference.key in self._activated_skill_keys:
+            return {"key": reference.key, "already_active": True, "tools": []}
+        loaded = self._activate_reference(reference)
+        return {
+            "key": reference.key,
+            "already_active": False,
+            "activated": [item.key for item, _contribution in loaded],
+            "instructions": _activation_instructions(loaded),
+            "tools": [
+                tool.name
+                for _item, contribution in loaded
+                for tool in contribution.tools
+            ],
+        }
+
+    def _activate_reference(
+        self,
+        reference: SkillReference,
+    ) -> list[tuple[SkillReference, LoadedSkill]]:
+        loaded = self._load_reference_tree(reference, set())
+        new_tools = tuple(
+            tool for _item, item in loaded for tool in item.tools
         )
-        if loader is None:
+        self._validate_new_tools(new_tools)
+        self._tools.update({tool.name: tool for tool in new_tools})
+        for item, loaded_contribution in loaded:
+            self._record_loaded_skill(item)
+            self._activated_skill_keys.add(item.key)
+            self.activated_contributions.append(loaded_contribution)
+        return loaded
+
+    def _load_reference_tree(
+        self,
+        reference: SkillReference,
+        loading: set[str],
+    ) -> list[tuple[SkillReference, LoadedSkill]]:
+        if reference.key in self._activated_skill_keys:
+            return []
+        if reference.key in loading:
+            raise ValueError(f"Skill activation cycle: {reference.key}")
+        if self.context.session.skills.loaders.find_skill_loader(
+            reference.skill_type
+        ) is None:
             raise KeyError(
                 f"SkillLoader not found for Skill type: {reference.skill_type}"
             )
-        if reference.key in self._activated_skill_keys:
-            return {"key": reference.key, "already_active": True, "tools": []}
         contribution = self.context.session.load_skill(
             reference,
             self.context.send_text_model_messages,
         )
+        loaded = [(reference, contribution)]
+        next_loading = loading | {reference.key}
+        for child in contribution.included_skills:
+            self._check_scene_access(child)
+            loaded.extend(self._load_reference_tree(child, next_loading))
+        return loaded
+
+    def _check_scene_access(self, reference: SkillReference) -> None:
+        if reference.skill_type != "scene":
+            return
+        if not self.context.use_scenes:
+            raise PermissionError("scene Skills are disabled for this Agent")
         if (
-            contribution.task_policy is not None
-            or contribution.planning_policy is not None
-            or contribution.included_skills
+            self.context.allowed_scenes
+            and reference.name not in self.context.allowed_scenes
         ):
-            raise ValueError(
-                f"Skill cannot be activated after the Plan is frozen: {reference.key}"
+            raise PermissionError(
+                f"scene is outside this Agent's allowed scenes: {reference.key}"
             )
-        self._validate_new_tools(contribution.tools)
-        self._record_loaded_skill(reference)
-        self._tools.update({tool.name: tool for tool in contribution.tools})
-        self._activated_skill_keys.add(reference.key)
-        self.activated_contributions.append(contribution)
-        return {
-            "key": reference.key,
-            "already_active": False,
-            "model_context": (
-                None
-                if contribution.model_context is None
-                else contribution.model_context.instructions
-            ),
-            "tools": [tool.name for tool in contribution.tools],
-        }
 
     def list_subagents(self, arguments: dict[str, object]) -> dict[str, object]:
         if self.context.list_subagents is None:
@@ -316,7 +354,7 @@ def _create_disclosure_tools(
             reference,
             runtime_tools._activate_skill,
             action=SkillAction(
-                (ActionEffect.READ, ActionEffect.CREATE, ActionEffect.UPDATE),
+                (ActionEffect.READ,),
                 "skill:active",
                 "name",
             ),
@@ -374,3 +412,19 @@ def _create_subagent_tools(runtime_tools: RuntimeTools) -> tuple[SkillTool, ...]
             required=("name", "prompt"),
         ),
     )
+
+
+def _activation_instructions(
+    loaded: list[tuple[SkillReference, LoadedSkill]],
+) -> list[dict[str, str]]:
+    instructions: list[dict[str, str]] = []
+    for reference, contribution in loaded:
+        if contribution.model_context is not None:
+            instructions.append(
+                {"key": reference.key, "content": contribution.model_context.instructions}
+            )
+        if contribution.task_policy is not None and contribution.task_policy.instruction:
+            instructions.append(
+                {"key": reference.key, "content": contribution.task_policy.instruction}
+            )
+    return instructions

@@ -48,14 +48,8 @@ class MemoryWorkflowSkillLoaderTests(unittest.TestCase):
     def test_agent_loads_workflow_from_workflow_skill(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            _write_workflow_skill(root, "careful", "plan", instruction="Workflow SkillLoader marker.")
-            provider = SequenceProvider(
-                [json.dumps(_one_step_plan()), "ok"],
-                route=route_response(
-                    scene="scene:common",
-                    planning=True,
-                ),
-            )
+            _write_workflow_skill(root, "careful", "loop", instruction="Workflow SkillLoader marker.")
+            provider = MockProvider("ok")
 
             result = Agent(
                 AgentConfig.load_from_file(_write_config(root, workflow="careful")),
@@ -64,10 +58,10 @@ class MemoryWorkflowSkillLoaderTests(unittest.TestCase):
             ).run("hello")
 
             self.assertEqual("careful", result.workflow)
-            self.assertEqual(2, len(provider.requests))
+            self.assertEqual(1, len(provider.tool_requests))
             self.assertIn(
                 "Workflow SkillLoader marker.",
-                provider.requests[1][0]["content"],
+                provider.tool_requests[0][0][0]["content"],
             )
 
 

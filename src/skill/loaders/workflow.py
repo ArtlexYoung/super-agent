@@ -5,7 +5,7 @@ from __future__ import annotations
 from skill.loaders.loaded import TaskPolicy
 from skill.disclosure import SkillDisclosure
 
-WORKFLOW_MODES = {"direct", "plan", "react", "loop"}
+WORKFLOW_MODES = {"direct", "react", "loop"}
 
 
 def create_workflow_policy_from_skill(

@@ -60,7 +60,15 @@ class SkillToolsTests(unittest.TestCase):
 
             self.assertEqual("research", listed["skills"][0]["name"])
             self.assertEqual("Research carefully.", read["instructions"])
-            self.assertEqual("Research carefully.", activated["model_context"])
+            self.assertEqual(
+                [
+                    {
+                        "key": "prompt:research",
+                        "content": "Research carefully.",
+                    }
+                ],
+                activated["instructions"],
+            )
             self.assertEqual(["prompt:research"], tools.used_skill_names)
             event_types = [
                 event.event_type

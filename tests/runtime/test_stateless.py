@@ -85,7 +85,7 @@ print(json.dumps(sorted(name for name in sys.modules if name.startswith(blocked)
             )
 
             self.assertEqual("finished", result.text)
-            self.assertEqual("direct", result.workflow)
+            self.assertEqual("model-loop", result.workflow)
             self.assertFalse(config.storage.path.exists())
             self.assertEqual(received, result.events)
             self.assertEqual(
@@ -94,24 +94,14 @@ print(json.dumps(sorted(name for name in sys.modules if name.startswith(blocked)
             )
             self.assertEqual("run.started", result.events[0].event_type)
             self.assertEqual("run.completed", result.events[-1].event_type)
-            locked = next(
-                event.data["runtime_lock"]
-                for event in result.events
-                if event.event_type == "runtime.locked"
-            )
-            self.assertIsNone(locked["plan"]["scene"])
-            self.assertIsNone(locked["plan"]["workflow"])
-            self.assertEqual({"enabled": False, "backend": None}, locked["storage"])
-            selected = next(
+            scheduled = next(
                 event.data
                 for event in result.events
-                if event.event_type == "scene.selected"
+                if event.event_type == "task.scheduled"
             )
-            self.assertEqual("model selected direct mode", selected["reason"])
-            self.assertEqual(
-                ["storage"],
-                selected["unavailable_candidates"]["scene:common"],
-            )
+            self.assertEqual("model_loop", scheduled["selection"])
+            self.assertEqual([], scheduled["skills"])
+            self.assertNotIn("runtime.locked", [event.event_type for event in result.events])
 
     def test_pure_model_run_does_not_create_action_rules(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

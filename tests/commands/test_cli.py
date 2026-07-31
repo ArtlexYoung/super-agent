@@ -94,11 +94,8 @@ class CliTests(unittest.TestCase):
                     "evolution",
                     "feedback",
                     "memory",
-                    "planner",
                     "prompt",
-                    "scheduler",
                     "scene",
-                    "scene_manager",
                     "workflow",
                 },
                 {item["type"] for item in data["skills"]},
@@ -137,7 +134,7 @@ class CliTests(unittest.TestCase):
 
             self.assertEqual(0, code)
             self.assertIn("total runs: 1", output.getvalue())
-            self.assertIn("workflow direct used 1 times", output.getvalue())
+            self.assertIn("workflow model-loop used 1 times", output.getvalue())
 
     def test_memory_commands_add_recall_list_forget_and_consolidate_items(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -401,7 +398,10 @@ instructions = "SKILL.md"
             data = json.loads(output.getvalue())
             self.assertEqual(0, code)
             self.assertEqual("code", data["workflow"])
-            self.assertEqual(["code"], data["skills"])
+            self.assertEqual(
+                ["scene:code", "memory:code", "prompt:code", "workflow:code"],
+                data["skills"],
+            )
 
     def test_skills_validate_has_an_explicit_command(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -413,7 +413,7 @@ instructions = "SKILL.md"
                 validation_code = main(["skills", "validate", "--config", config])
 
             self.assertEqual(0, validation_code)
-            self.assertIn("15 valid skills", validation_output.getvalue())
+            self.assertIn("11 valid skills", validation_output.getvalue())
 
     def test_skills_graph_and_lock_resolve_configured_skill_dependencies(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -532,10 +532,10 @@ instructions = "SKILL.md"
                 line["event"]
                 for line in lines
                 if line.get("type") == "event"
-                and line["event"]["event_type"] == "scene.selected"
+                and line["event"]["event_type"] == "task.scheduled"
             )
-            self.assertEqual("scene:code", selected["data"]["scene_key"])
-            self.assertEqual("selected by explicit task request", selected["data"]["reason"])
+            self.assertIn("scene:code", selected["data"]["skills"])
+            self.assertEqual("model_loop", selected["data"]["selection"])
             self.assertEqual("result", lines[-1]["type"])
             self.assertEqual("code", lines[-1]["result"]["workflow"])
             self.assertEqual(lines[0]["event"]["run_id"], lines[-1]["result"]["run_id"])

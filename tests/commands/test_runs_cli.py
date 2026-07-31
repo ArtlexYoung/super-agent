@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 from super_agent import Agent
 from cli import main
-from core.provider.chat import MockProvider
+from core.provider.chat import MockProvider, ModelResponse, ToolCall
 from core.config import AgentConfig
 from support import route_response
 
@@ -107,7 +107,7 @@ class RunsCliTests(unittest.TestCase):
             self.assertEqual("completed", status["runs"][0]["status"])
             self.assertEqual(0, explanation_code)
             self.assertEqual(run_id, explanation["snapshot"]["run_id"])
-            self.assertEqual("answer", explanation["plan"]["purpose"])
+            self.assertEqual("auto", explanation["plan"]["purpose"])
             self.assertEqual("completed", explanation["model_calls"][0]["status"])
             self.assertEqual(1, explanation["model_calls"][0]["call_id"])
             self.assertEqual(
@@ -128,7 +128,7 @@ class RunsCliTests(unittest.TestCase):
             self.assertEqual(0, export_code)
             self.assertEqual(run_id, exported["snapshot"]["run_id"])
             self.assertTrue(exported["events"])
-            self.assertTrue(exported["runtime_lock"]["skills"])
+            self.assertIsNone(exported["runtime_lock"])
 
     def test_text_explain_prints_task_and_evidence_insight(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -174,7 +174,7 @@ class RunsCliTests(unittest.TestCase):
 
             explanation = explanation_output.getvalue()
             self.assertEqual(0, code)
-            self.assertIn("run-plan\tpurpose=answer", explanation)
+            self.assertIn("run-plan\tpurpose=auto", explanation)
             self.assertIn("model-call\t1\tprofile=model:environment", explanation)
             self.assertIn("freshness\t", explanation)
 
@@ -250,15 +250,26 @@ class RunsCliTests(unittest.TestCase):
             config_path = root / "agent.toml"
             main(["init", "--path", tmp])
             config = AgentConfig.load_from_file(config_path)
-            parent_provider = MockProvider("parent result")
+            parent_provider = MockProvider(
+                tool_responses=[
+                    ModelResponse(
+                        "",
+                        [
+                            ToolCall(
+                                "delegate",
+                                "run_subagent",
+                                {"name": "worker", "prompt": "delegate this"},
+                            )
+                        ],
+                        "tool_calls",
+                    ),
+                    ModelResponse("parent result", [], "model_finished"),
+                ]
+            )
             parent = Agent(
                 config,
                 provider=parent_provider,
                 use_storage=True,
-            )
-            parent_provider.route_response = route_response(
-                model=parent.model_profile.key,
-                subagents=["worker"],
             )
             child_config = replace(
                 config,
