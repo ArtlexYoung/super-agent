@@ -46,7 +46,7 @@ explicitly merge, replace, or forget recalled items while handling the conversat
 
 The browser stores no raw Provider secret. Model configuration records an environment
 variable name such as `OPENAI_API_KEY`; only the server process resolves its value.
-Secrets do not enter TOML, Web storage, events, or Runtime locks.
+Secrets do not enter TOML, Web storage, or events.
 
 ## Develop and Build
 

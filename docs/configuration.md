@@ -69,6 +69,12 @@ Secrets never belong in a Skill. If model Skills exist, they are the complete co
 set; environment discovery is not mixed in. At most one can be the default. Failure never
 causes an implicit switch to another profile.
 
+The default model owns the task loop. Every ready non-default model is available through
+the checked `use_model` tool, including its description, `supports`, `purposes`, and
+`strengths`. The default model chooses whether to delegate and must provide the target,
+subtask prompt, and reason explicitly. Delegation returns a tool result; it does not change
+the model used by later task turns.
+
 ## Storage
 
 ```toml

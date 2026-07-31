@@ -35,7 +35,7 @@ from skill.loaders.registry import SkillLoaders
 
 if TYPE_CHECKING:
     from skill.state.events import EventStore
-    from skill.task.model_calls import ModelRoutingStats
+    from skill.task.model_calls import ModelUsageStats
     from skill.evolution.change.manager import SkillEvolutionManager
 
 
@@ -303,15 +303,15 @@ class Runtime:
             raise TypeError("run learning must return RunLearningResult")
         return result
 
-    def list_model_routing_stats(
+    def list_model_usage_stats(
         self,
         *,
         user_id: str = LOCAL_USER_ID,
         purpose: str | None = None,
-    ) -> list[ModelRoutingStats]:
-        from skill.task.model_calls import list_model_routing_stats
+    ) -> list[ModelUsageStats]:
+        from skill.task.model_calls import list_model_usage_stats
 
-        return list_model_routing_stats(self.create_event_store(user_id), purpose)
+        return list_model_usage_stats(self.create_event_store(user_id), purpose)
 
     def create_skill_updater(
         self,

@@ -40,11 +40,6 @@ const knownGroups = [
     title: "工作流",
     help: "工作流承载执行策略和结束条件，Runtime 负责实际调度。",
   },
-  {
-    type: "planner",
-    title: "规划",
-    help: "复杂任务按需加载 Planner Skill；简单任务保持直接执行。",
-  },
 ]
 
 export function SkillConfiguration(props: SkillConfigurationProps) {

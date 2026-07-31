@@ -213,6 +213,7 @@ class ReleaseShapeTests(unittest.TestCase):
 
     def test_removed_task_controllers_do_not_return(self) -> None:
         removed = [
+            "src/core/runtime.py",
             "src/skill/task/plan.py",
             "src/skill/task/planning.py",
             "src/skill/task/preflight.py",
@@ -221,6 +222,20 @@ class ReleaseShapeTests(unittest.TestCase):
         ]
 
         self.assertEqual([], [path for path in removed if Path(path).exists()])
+
+    def test_removed_runtime_contracts_do_not_return(self) -> None:
+        source = "\n".join(
+            path.read_text(encoding="utf-8")
+            for path in Path("src").rglob("*.py")
+        )
+
+        self.assertNotIn("runtime_lock", source)
+        self.assertNotIn("task.step.scheduled", source)
+        self.assertNotIn("task.step.completed", source)
+        self.assertNotIn("SkillSceneManager", source)
+        self.assertNotIn("route_response", source)
+        self.assertNotIn("ModelRouting", source)
+        self.assertNotIn("routing_evidence", source)
 
     def test_temporary_memory_and_secondary_organizer_do_not_return(self) -> None:
         removed = [

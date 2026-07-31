@@ -36,6 +36,8 @@ class RuntimeTools:
         context: RuntimeToolsContext,
         contributions: list[LoadedSkill] | None = None,
         delegated_subagent_results: list[SubAgentResult] | None = None,
+        *,
+        extra_tools: tuple[SkillTool, ...] = (),
     ) -> None:
         self.context = context
         self.used_skill_names: list[str] = []
@@ -59,6 +61,7 @@ class RuntimeTools:
         )
         for contribution in contributions or []:
             self._add_tools(contribution.tools)
+        self._add_tools(extra_tools)
         if context.list_subagents is not None and context.run_subagent is not None:
             self._add_tools(_create_subagent_tools(self))
 

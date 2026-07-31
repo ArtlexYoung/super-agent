@@ -153,14 +153,17 @@ class Run:
         return loaded
 
     def select_model(self, profile: ModelProfile, provider: ChatProvider) -> None:
+        self.record_model_used(profile)
+        self.model_profile = profile
+        self.provider = provider
+
+    def record_model_used(self, profile: ModelProfile) -> None:
         entry = self.skills.index.find_skill(profile.key)
         if entry is not None and entry.reference.skill_type == "model":
             opened = self.skills.open(entry.reference)
             opened.disclose_manifest()
             opened.disclose_configuration()
             self.record_skill_used(entry)
-        self.model_profile = profile
-        self.provider = provider
 
     def record_skill_used(self, entry: SkillIndexEntry) -> None:
         identity = (entry.reference.key, entry.version, entry.content_sha256)

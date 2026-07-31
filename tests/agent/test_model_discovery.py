@@ -8,8 +8,11 @@ from unittest.mock import patch
 
 from super_agent import Agent
 from core.provider.chat import (
+    MockProvider,
+    ModelResponse,
     OpenAICompatibleProvider,
     ProviderConnection,
+    ToolCall,
     create_chat_provider,
 )
 from core.provider.pool import ProviderPool
@@ -24,7 +27,7 @@ from skill.ecosystem.models import model_skill_input_from_dict
 from skill.ecosystem.validation import validate_skill_replacement
 from skill.evolution.change.evaluation import EvaluationCase
 from skill.evolution.records import read_evaluation_records
-from support import RecordingProvider, SequenceProvider, route_response
+from support import RecordingProvider, SequenceProvider
 
 
 class ModelSkillTests(unittest.TestCase):
@@ -82,7 +85,7 @@ class ModelSkillTests(unittest.TestCase):
         self.assertEqual("openai-compatible", profile.connection.provider)
         self.assertEqual("gpt-4.1-mini", profile.model)
         self.assertEqual("OPENAI_API_KEY", profile.connection.api_key_env)
-        self.assertEqual(["text", "tools"], profile.routing.supports)
+        self.assertEqual(["text", "tools"], profile.traits.supports)
         self.assertTrue(model_profile_is_ready(profile, environment))
         self.assertNotIn("secret-value", str(model_profile_to_dict(profile, environment)))
 
@@ -100,9 +103,9 @@ class ModelSkillTests(unittest.TestCase):
         self.assertEqual("qwen3:8b", selected.model)
         self.assertEqual("http://127.0.0.1:11434/v1", selected.connection.base_url)
         self.assertIsNone(selected.connection.api_key_env)
-        self.assertEqual(["text"], selected.routing.supports)
+        self.assertEqual(["text"], selected.traits.supports)
 
-    def test_model_skill_wins_over_environment_and_carries_routing_traits(self) -> None:
+    def test_model_skill_wins_over_environment_and_carries_traits(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, patch.dict(
             os.environ,
             {"OPENAI_API_KEY": "unused"},
@@ -120,11 +123,11 @@ class ModelSkillTests(unittest.TestCase):
             self.assertEqual(1, len(agent.model_profiles))
             self.assertEqual("model:fast", agent.model_profile.key)
             self.assertEqual("unit-model", agent.model_profile.model)
-            self.assertEqual(["summary"], agent.model_profile.routing.purposes)
-            self.assertEqual(0.75, agent.model_profile.routing.quality_score)
+            self.assertEqual(["summary"], agent.model_profile.traits.purposes)
+            self.assertEqual(0.75, agent.model_profile.traits.quality_score)
             self.assertEqual("skill", agent.model_profile.source)
 
-    def test_selected_model_skill_is_locked_and_evaluated_as_used(self) -> None:
+    def test_selected_model_skill_is_recorded_and_evaluated_as_used(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_model_skill(root, name="fast", default=True)
@@ -188,6 +191,122 @@ class ModelSkillTests(unittest.TestCase):
             pool.get_chat_provider("model:override", ProviderConnection("mock")),
         )
 
+    def test_model_can_give_a_subtask_to_another_configured_model(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_model_skill(
+                root,
+                name="main",
+                model="main-model",
+                default=True,
+                supports=("text", "tools"),
+            )
+            _write_model_skill(
+                root,
+                name="specialist",
+                model="specialist-model",
+                default=False,
+            )
+            primary = MockProvider(
+                tool_responses=[
+                    ModelResponse(
+                        "",
+                        [
+                            ToolCall(
+                                "use-specialist",
+                                "use_model",
+                                {
+                                    "model": "model:specialist",
+                                    "prompt": "Analyze this subtask",
+                                    "reason": "Configured for careful analysis",
+                                },
+                            )
+                        ],
+                        "tool_calls",
+                    ),
+                    ModelResponse("combined result", [], "model_finished"),
+                ]
+            )
+            specialist = RecordingProvider("specialist result")
+            agent = Agent(
+                AgentConfig.create_default(root),
+                provider=primary,
+                use_storage=True,
+            )
+            agent.add_model_provider("specialist", specialist)
+
+            result = agent.run("Solve this task")
+
+            selected_profiles = [
+                event.data["profile"]
+                for event in result.events
+                if event.event_type == "model.call.selected"
+            ]
+            self.assertEqual("combined result", result.text)
+            self.assertEqual(["specialist-model"], specialist.models)
+            self.assertEqual("Analyze this subtask", specialist.requests[0][-1]["content"])
+            self.assertEqual(
+                ["model:main", "model:specialist", "model:main"],
+                selected_profiles,
+            )
+            self.assertIn(
+                "use_model",
+                {
+                    tool["function"]["name"]
+                    for tool in primary.tool_requests[0][1]
+                },
+            )
+
+    def test_use_model_failure_does_not_fall_back_to_the_default_model(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_model_skill(
+                root,
+                name="main",
+                model="main-model",
+                default=True,
+                supports=("text", "tools"),
+            )
+            _write_model_skill(
+                root,
+                name="specialist",
+                model="specialist-model",
+                default=False,
+            )
+            primary = MockProvider(
+                tool_responses=[
+                    ModelResponse(
+                        "",
+                        [
+                            ToolCall(
+                                "use-specialist",
+                                "use_model",
+                                {
+                                    "model": "model:specialist",
+                                    "prompt": "Analyze this subtask",
+                                    "reason": "Use the configured specialist",
+                                },
+                            )
+                        ],
+                        "tool_calls",
+                    )
+                ]
+            )
+            agent = Agent(
+                AgentConfig.create_default(root),
+                provider=primary,
+                use_storage=True,
+            )
+            agent.add_model_provider(
+                "specialist",
+                RecordingProvider(ConnectionError("specialist offline")),
+            )
+
+            with self.assertRaisesRegex(ConnectionError, "specialist offline"):
+                agent.run("Solve this task")
+
+            self.assertEqual(1, len(primary.tool_requests))
+
     def test_user_model_overlay_does_not_change_another_users_model(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -247,17 +366,7 @@ class ModelSkillTests(unittest.TestCase):
 
             with patch("core.provider.chat._send_json_post_request") as send:
                 def respond(_url, payload, api_key):
-                    content = payload["messages"][-1]["content"]
-                    try:
-                        parsed = json.loads(content)
-                    except json.JSONDecodeError:
-                        parsed = {}
-                    text = (
-                        route_response(model="model:remote")
-                        if "response_contract" in parsed
-                        else api_key
-                    )
-                    return {"choices": [{"message": {"content": text}}]}
+                    return {"choices": [{"message": {"content": api_key}}]}
 
                 send.side_effect = respond
                 alice = agent.for_user("alice").run("hello")
@@ -310,7 +419,7 @@ class ModelSkillTests(unittest.TestCase):
 
             candidate = manager.create_skill_candidate(
                 "model:fast",
-                "improve routing metadata",
+                "improve model metadata",
             )
             manager.evaluate_skill_candidate(
                 candidate.candidate_id,
@@ -325,12 +434,12 @@ class ModelSkillTests(unittest.TestCase):
             manager.promote_skill_candidate(candidate.candidate_id)
 
             self.assertEqual("0.1.1", agent.model_profile.version)
-            self.assertEqual(0.95, agent.model_profile.routing.quality_score)
+            self.assertEqual(0.95, agent.model_profile.traits.quality_score)
 
             manager.rollback_skill("model:fast")
 
             self.assertEqual("0.1.0", agent.model_profile.version)
-            self.assertEqual(0.75, agent.model_profile.routing.quality_score)
+            self.assertEqual(0.75, agent.model_profile.traits.quality_score)
 
 
 def _scheduled_model(result) -> dict[str, object]:
@@ -362,9 +471,22 @@ name = "{name}"
     return path
 
 
-def _write_model_skill(root: Path, *, name: str, default: bool) -> Path:
+def _write_model_skill(
+    root: Path,
+    *,
+    name: str,
+    default: bool,
+    model: str = "unit-model",
+    supports: tuple[str, ...] = ("text", "json"),
+) -> Path:
     path = root / "skills" / "model" / name
-    _write_model_skill_directory(path, name=name, default=default)
+    _write_model_skill_directory(
+        path,
+        name=name,
+        model=model,
+        default=default,
+        supports=supports,
+    )
     return path
 
 
@@ -374,6 +496,7 @@ def _write_model_skill_directory(
     name: str = "fast",
     model: str = "unit-model",
     default: bool = False,
+    supports: tuple[str, ...] = ("text", "json"),
 ) -> None:
     path.mkdir(parents=True)
     path.joinpath("skill.toml").write_text(
@@ -388,7 +511,7 @@ agent_can_update = true
 [configuration]
 provider = "mock"
 model = "{model}"
-supports = ["text", "json"]
+supports = {json.dumps(supports)}
 purposes = ["summary"]
 strengths = ["low-latency"]
 default = {str(default).lower()}

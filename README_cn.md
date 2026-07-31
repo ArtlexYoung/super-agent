@@ -86,6 +86,10 @@ coder.use_only_scenes("code")
 main.add_subagent(coder, name="coder", description="实现并验证代码修改")
 ```
 
+模型说明本身也是 Skill。一个模型 Skill 标记为默认模型；其他已就绪模型会通过
+`use_model(model, prompt, reason)` 提供给默认模型。默认模型可以根据各模型声明的支持项和
+特长显式分配子任务。被委派的调用不会替换主循环，也不会在失败后切换到其他 Provider。
+
 ## 可选状态
 
 CLI 和 Web 会明确使用配置的存储；嵌入式 Python 需要主动启用：
@@ -122,7 +126,7 @@ super-agent serve
 ## 保证
 
 - 所有 Skill 类型共享一个渐进式披露路径。
-- 不使用关键词路由，不隐藏切换 Provider、Mock 或存储实现。
+- 不使用关键词匹配，不隐藏切换 Provider、Mock 或存储实现。
 - 读取不会写入；状态修改必须经过显式、受检查的动作。
 - Skill 内容默认是被动数据，只有应用代码注册后才能执行工具。
 - Skill 候选修改必须先评估，再明确提升，并可回滚。

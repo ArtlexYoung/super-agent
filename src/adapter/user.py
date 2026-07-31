@@ -18,12 +18,10 @@ from adapter.conversations import (
     read_conversation,
     rename_conversation,
 )
-from skill.task.model_calls import ModelRoutingStats
+from skill.task.model_calls import ModelUsageStats
 from core.checks import ActionEffect, ActionRequest
 from core.models import RunLearningResult, RunResult, TaskTrace
 from skill.ecosystem.models import ModelSkillManager
-from skill.ecosystem.scenes import CreatedSkillScene, SkillSceneInput, SkillSceneManager
-from skill.loaders.defaults import create_progressive_skill_disclosure
 
 if TYPE_CHECKING:
     from super_agent import Agent
@@ -187,11 +185,11 @@ class UserRuns:
             user_id=self.user.user_id,
         )
 
-    def list_model_routing_stats(
+    def list_model_usage_stats(
         self,
         purpose: str | None = None,
-    ) -> list[ModelRoutingStats]:
-        return self.user.agent.runtime.list_model_routing_stats(
+    ) -> list[ModelUsageStats]:
+        return self.user.agent.runtime.list_model_usage_stats(
             user_id=self.user.user_id,
             purpose=purpose,
         )
@@ -228,41 +226,6 @@ class UserSkills:
             self.user.agent.config,
             self.user.agent.runtime.create_event_store(self.user.user_id),
             self.user.agent.action_rules,
-        )
-
-    def create_scene(self, request: SkillSceneInput) -> CreatedSkillScene:
-        runtime = self.user.agent.runtime
-        store = runtime.create_event_store(self.user.user_id)
-        disclosure = create_progressive_skill_disclosure(
-            self.user.agent.config,
-            store=store,
-        )
-        index = disclosure.prepare_skill_index()
-        manager_entry = index.select_one_configured_or_default_skill(
-            "scene_manager",
-            self.user.agent.config.agent.skills,
-        )
-        from skill.ecosystem.scenes import read_skill_scene_template
-
-        template = read_skill_scene_template(
-            disclosure.open_skill(
-                manager_entry.reference.name,
-                manager_entry.reference.skill_type,
-            ),
-            manager_entry.reference.key,
-        )
-        manager = SkillSceneManager(store, index, template)
-        return cast(
-            CreatedSkillScene,
-            runtime.execute_management_action(
-                self.user.user_id,
-                ActionRequest.create(
-                    "user:skill-scene",
-                    f"skill:owned:scene:{request.name}",
-                    (ActionEffect.CREATE,),
-                ),
-                lambda: manager.create_skill_scene(request),
-            ),
         )
 
     def reload_models(self) -> None:

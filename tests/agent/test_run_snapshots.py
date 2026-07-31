@@ -8,7 +8,7 @@ from super_agent import Agent
 
 
 class RunSnapshotTests(unittest.TestCase):
-    def test_completed_run_replays_events_without_a_parallel_runtime_lock(self) -> None:
+    def test_completed_run_replays_the_canonical_event_stream(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             agent = Agent(
                 AgentConfig.create_default(tmp),
@@ -23,8 +23,8 @@ class RunSnapshotTests(unittest.TestCase):
 
             self.assertEqual("completed", snapshot.status)
             self.assertEqual("run.completed", snapshot.last_event_type)
-            self.assertIsNone(snapshot.runtime_lock_sha256)
-            self.assertIsNone(explanation["runtime_lock"])
+            self.assertNotIn("runtime_lock_sha256", explanation["snapshot"])
+            self.assertNotIn("runtime_lock", explanation)
             self.assertEqual(result.run_id, explanation["snapshot"]["run_id"])
             self.assertEqual(
                 1,

@@ -177,7 +177,7 @@ class RunLearningResult:
     run_id: str
     evaluation_record_ids: list[str]
     skill_freshness: list[dict[str, object]]
-    model_routing: list[dict[str, object]]
+    model_usage: list[dict[str, object]]
     skill_updates: list[dict[str, object]]
     events: list[RunEvent]
 

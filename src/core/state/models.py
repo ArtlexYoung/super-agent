@@ -95,7 +95,6 @@ class RunSnapshot:
     finished_at: str | None
     event_count: int
     last_event_type: str
-    runtime_lock_sha256: str | None
     workflow: str | None
     used_skills: list[str]
     stop_reason: str | None

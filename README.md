@@ -93,6 +93,11 @@ coder.use_only_scenes("code")
 main.add_subagent(coder, name="coder", description="Implements and verifies code changes")
 ```
 
+Model descriptions are Skills too. Mark one model Skill as the default; any other ready
+model is exposed to it through `use_model(model, prompt, reason)`. The default model can
+then assign an explicit subtask using each model's declared support and strengths. A
+delegated call never changes the main loop and never falls back to another Provider.
+
 ## Optional State
 
 The CLI and Web server explicitly use the configured storage. Embedded Python opts in:
@@ -132,7 +137,7 @@ The React client, CopilotKit example, and AG-UI endpoint are served at
 ## Guarantees
 
 - One central progressive disclosure path for every Skill type.
-- No keyword routing, hidden Provider switch, mock substitution, or storage fallback.
+- No keyword matching, hidden Provider switch, mock substitution, or storage fallback.
 - Reads do not write; state changes pass through explicit checked actions.
 - Skill content is passive unless application code registers an executable tool.
 - Candidate Skill changes are evaluated before explicit promotion and can be rolled back.

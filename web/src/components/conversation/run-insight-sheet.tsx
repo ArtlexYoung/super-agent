@@ -1,4 +1,4 @@
-import { Activity, BrainCircuit, Clock3, Route, Sparkles } from "lucide-react"
+import { Activity, BrainCircuit, Clock3, Sparkles } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
@@ -57,36 +57,6 @@ function RunInsightContent({ insight }: { insight: RunInsight }) {
         <p className="mt-3 rounded-md bg-muted/60 p-3 text-sm leading-6">
           {snapshot.prompt}
         </p>
-      </section>
-
-      <section>
-        <SectionTitle icon={Route} title="任务路径" />
-        {insight.steps.length ? (
-          <div className="space-y-2">
-            {insight.steps.map((step, index) => (
-              <div key={index} className="insight-row">
-                <span className="insight-index">{index + 1}</span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">
-                    {textValue(step.description) ||
-                      textValue(step.prompt) ||
-                      "任务步骤"}
-                  </p>
-                  <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                    {textValue(step.model) ||
-                      textValue(step.profile) ||
-                      "自动路由"}
-                  </p>
-                </div>
-                <Badge variant="outline">
-                  {textValue(step.status) || "scheduled"}
-                </Badge>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <EmptyInsight label="直接执行，无拆分步骤" />
-        )}
       </section>
 
       <section>

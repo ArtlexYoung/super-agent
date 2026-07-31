@@ -326,8 +326,6 @@ function runtimeEventLabel(eventName: string): string {
     "task.started": "正在理解任务",
     "scene.selected": "正在选择任务场景",
     "task.scheduled": "正在调度能力",
-    "task.plan.created": "计划已生成",
-    "task.step.scheduled": "正在执行任务步骤",
     "model.call.selected": "正在选择模型",
     "model.call.completed": "模型响应完成",
     "tool.requested": "正在调用工具",

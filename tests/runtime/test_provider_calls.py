@@ -2,14 +2,22 @@ from __future__ import annotations
 
 import unittest
 
-from core.provider.chat import MockProvider, ModelResponse, ToolCall
-from core.runtime import Actions, Final, ModelCall, Runtime, read_model_turn
+from core.provider.chat import (
+    ActionTurn,
+    FinalTurn,
+    MockProvider,
+    ModelResponse,
+    ProviderCall,
+    ToolCall,
+    call_chat_model,
+    read_model_turn,
+)
 
 
-class CoreRuntimeTests(unittest.TestCase):
+class ProviderCallTests(unittest.TestCase):
     def test_provider_text_becomes_one_final_turn(self) -> None:
         self.assertEqual(
-            Final("finished"),
+            FinalTurn("finished"),
             read_model_turn(ModelResponse("finished", [], "completed")),
         )
 
@@ -22,16 +30,8 @@ class CoreRuntimeTests(unittest.TestCase):
             )
         )
 
-        self.assertEqual(
-            Actions(
-                (
-                    # Provider-specific calls stop at this normalized boundary.
-                    turn.items[0],
-                ),
-                "I will inspect the Skill.",
-            ),
-            turn,
-        )
+        self.assertIsInstance(turn, ActionTurn)
+        self.assertEqual("I will inspect the Skill.", turn.text)
         self.assertEqual("read_skill", turn.items[0].name)
         self.assertEqual({"skill_id": "prompt:common"}, turn.items[0].arguments)
 
@@ -39,16 +39,16 @@ class CoreRuntimeTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "neither final text nor actions"):
             read_model_turn(ModelResponse("", [], "completed"))
 
-    def test_runtime_calls_provider_without_skill_or_state_objects(self) -> None:
+    def test_call_uses_only_provider_values(self) -> None:
         events: list[tuple[str, dict[str, object]]] = []
-        call = ModelCall(
+        call = ProviderCall(
             profile_key="model:test",
             model="test",
             purpose="answer",
             messages=({"role": "user", "content": "hello"},),
         )
 
-        response = Runtime().call_model(
+        response = call_chat_model(
             call,
             MockProvider("finished"),
             lambda event_type, data: events.append((event_type, data)),
@@ -68,8 +68,8 @@ class CoreRuntimeTests(unittest.TestCase):
                 raise ConnectionError("offline")
 
         with self.assertRaisesRegex(ConnectionError, "offline"):
-            Runtime().call_model(
-                ModelCall(
+            call_chat_model(
+                ProviderCall(
                     "model:test",
                     "test",
                     "answer",

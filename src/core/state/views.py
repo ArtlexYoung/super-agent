@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
-import json
 from dataclasses import asdict
 
 from core.events import StorageEvent
@@ -17,7 +15,6 @@ def run_snapshot_from_events(user_id: str, events: list[StorageEvent]) -> RunSna
         (event for event in reversed(ordered) if event.event_type in {"run.completed", "run.failed"}),
         None,
     )
-    lock = next((event for event in reversed(ordered) if event.event_type == "runtime.locked"), None)
     status = "running" if terminal is None else terminal.event_type.removeprefix("run.")
     data = {} if terminal is None else terminal.data
     error = None
@@ -38,9 +35,6 @@ def run_snapshot_from_events(user_id: str, events: list[StorageEvent]) -> RunSna
         finished_at=None if terminal is None else terminal.created_at,
         event_count=len(ordered),
         last_event_type=ordered[-1].event_type,
-        runtime_lock_sha256=(
-            None if lock is None else str(lock.data.get("runtime_lock_sha256", ""))
-        ),
         workflow=optional_string(data.get("workflow")),
         used_skills=string_list(data.get("used_skills", [])),
         stop_reason=optional_string(data.get("stop_reason")),
@@ -81,49 +75,15 @@ def _latest_selection_decisions(events: list[RunEvent]) -> list[object]:
     return []
 
 
-def runtime_lock_from_events(
-    run_id: str,
-    events: list[StorageEvent],
-) -> dict[str, object] | None:
-    if not events:
-        return None
-    ordered = _ordered_run_events(events)
-    lock_event = next(
-        (
-            event
-            for event in reversed(ordered)
-            if event.event_type == "runtime.locked"
-        ),
-        None,
-    )
-    if lock_event is None:
-        return None
-    runtime_lock = lock_event.data.get("runtime_lock")
-    if not isinstance(runtime_lock, dict):
-        raise ValueError(f"runtime lock is invalid: {run_id}")
-    digest = str(lock_event.data.get("runtime_lock_sha256", ""))
-    content = json.dumps(
-        runtime_lock,
-        ensure_ascii=False,
-        separators=(",", ":"),
-        sort_keys=True,
-    )
-    if hashlib.sha256(content.encode("utf-8")).hexdigest() != digest:
-        raise ValueError(f"runtime lock hash does not match run: {run_id}")
-    return dict(runtime_lock)
-
-
 def explain_run_from_events(
     user_id: str,
     stored_events: list[StorageEvent],
 ) -> dict[str, object]:
     snapshot = run_snapshot_from_events(user_id, stored_events)
     events = run_events_from_storage(stored_events)
-    runtime_lock = runtime_lock_from_events(snapshot.run_id, stored_events)
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "snapshot": asdict(snapshot),
-        "runtime_lock": runtime_lock,
         "selection_decisions": _latest_selection_decisions(events),
         "disclosure_path": [
             asdict(event) for event in events if event.event_type == "skill.disclosed"

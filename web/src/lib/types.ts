@@ -39,7 +39,6 @@ export interface RunSnapshot {
   finished_at: string | null
   event_count: number
   last_event_type: string
-  runtime_lock_sha256: string | null
   workflow: string | null
   used_skills: string[]
   stop_reason: string | null
@@ -149,10 +148,8 @@ export interface RunInsight {
   schema_version: number
   snapshot: RunSnapshot
   plan: Record<string, unknown>
-  task_plan: Record<string, unknown>
-  steps: Array<Record<string, unknown>>
   model_calls: Array<Record<string, unknown>>
-  routing_evidence: Array<Record<string, unknown>>
+  model_usage: Array<Record<string, unknown>>
   skill_freshness: Array<Record<string, unknown>>
   evolution: Array<Record<string, unknown>>
   events: Array<Record<string, unknown>>

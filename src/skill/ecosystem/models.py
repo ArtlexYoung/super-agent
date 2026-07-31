@@ -293,7 +293,7 @@ def _create_model_skill_document(
             agent_created=False,
             agent_can_update=request.agent_can_update,
             freshness=DEFAULT_SKILL_FRESHNESS,
-            function_group="model-routing",
+            function_group="model-choice",
             provides=[request.name],
         )
     else:

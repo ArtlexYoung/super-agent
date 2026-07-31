@@ -232,11 +232,11 @@ class SkillRevisionEvolutionTests(unittest.TestCase):
             )
             self.assertEqual(
                 1,
-                agent.for_user("local").runs.list_model_routing_stats(purpose="skill_evolution")[0].call_count,
+                agent.for_user("local").runs.list_model_usage_stats(purpose="skill_evolution")[0].call_count,
             )
             self.assertEqual(
                 2,
-                agent.for_user("local").runs.list_model_routing_stats(purpose="skill_evaluation")[0].call_count,
+                agent.for_user("local").runs.list_model_usage_stats(purpose="skill_evaluation")[0].call_count,
             )
 
             with self.assertRaisesRegex(RuntimeError, "promoted regression"):

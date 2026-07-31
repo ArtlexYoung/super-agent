@@ -14,7 +14,7 @@ from adapter.conversations import (
 )
 from skill.state.memory import Memory
 from skill.evolution.records import read_evaluation_records
-from support import RecordingProvider, SequenceProvider, route_response
+from support import RecordingProvider, SequenceProvider
 
 
 class ConversationRuntimeTests(unittest.TestCase):

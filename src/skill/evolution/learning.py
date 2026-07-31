@@ -1,4 +1,4 @@
-"""Explicit post-run evaluation, freshness, routing, and Skill evolution."""
+"""Explicit post-run evaluation, freshness, model usage, and Skill evolution."""
 
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ from skill.evolution.records import (
 from core.state.models import RunEvent
 from skill.state.events import EventStore
 from core.models import RunLearningResult
-from skill.task.model_calls import list_model_routing_stats
+from skill.task.model_calls import list_model_usage_stats
 from skill.evolution.metrics import calculate_skill_freshness
 from skill.evolution.change.evaluation import EvaluationCase
 from skill.evolution.policy import EvolutionPolicy
@@ -241,12 +241,12 @@ def learn_from_run(
             {"schema_version": 1, "skills": freshness},
         )
 
-        stage = "model_routing"
-        model_routing = _read_run_model_routing(store, run_id)
+        stage = "model_usage"
+        model_usage = _read_run_model_usage(store, run_id)
         store.append_run_event(
             identity,
-            "learning.routing_evidence.updated",
-            {"schema_version": 1, "models": model_routing},
+            "learning.model_usage.updated",
+            {"schema_version": 1, "models": model_usage},
         )
 
         stage = "skill_evolution"
@@ -271,7 +271,7 @@ def learn_from_run(
                 "schema_version": 1,
                 "evaluation_record_ids": record_ids,
                 "skill_freshness": freshness,
-                "model_routing": model_routing,
+                "model_usage": model_usage,
                 "skill_updates": updates,
             },
         )
@@ -344,7 +344,7 @@ def _calculate_current_freshness(
     ]
 
 
-def _read_run_model_routing(
+def _read_run_model_usage(
     store: EventStore,
     run_id: str,
 ) -> list[dict[str, object]]:
@@ -358,7 +358,7 @@ def _read_run_model_routing(
     }
     return [
         stats.to_dict()
-        for stats in list_model_routing_stats(store)
+        for stats in list_model_usage_stats(store)
         if (stats.profile_key, stats.purpose) in observed
     ]
 
@@ -389,7 +389,7 @@ def _result_from_completed_event(
         "schema_version",
         "evaluation_record_ids",
         "skill_freshness",
-        "model_routing",
+        "model_usage",
         "skill_updates",
     }
     if set(completed.data) != expected or completed.data.get("schema_version") != 1:
@@ -404,9 +404,9 @@ def _result_from_completed_event(
             completed.data.get("skill_freshness"),
             "skill_freshness",
         ),
-        model_routing=_object_list(
-            completed.data.get("model_routing"),
-            "model_routing",
+        model_usage=_object_list(
+            completed.data.get("model_usage"),
+            "model_usage",
         ),
         skill_updates=_object_list(
             completed.data.get("skill_updates"),

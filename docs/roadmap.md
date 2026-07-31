@@ -580,6 +580,21 @@ Status: implemented.
 - Remove the redundant `Agent.learn_from_run` shortcut; user-scoped learning remains
   explicit through `agent.for_user(...).runs.learn(...)`.
 
+## v0.0.108: One Runtime and Explicit Model Use
+
+Status: implemented.
+
+- Keep `skill.task.runtime.Runtime` as the only task lifecycle owner and move one measured
+  Provider call into `core.provider.chat`.
+- Expose configured non-default model Skills through one explicit `use_model` tool; keep
+  the default model in control of later turns and propagate delegated failures unchanged.
+- Replace score-shaped routing records with selected-model reasons and measured model-use
+  statistics.
+- Delete the old Mock routing contract, generated-scene manager, task-step projections,
+  and empty Runtime-lock output instead of preserving compatibility fields.
+- Keep scenes as ordinary readable Skill groups and update CLI, Web, docs, and release
+  checks to the single active execution path.
+
 ## Release Gate
 
 The project will not move to `0.1.x` because of feature count. The gate is a reproducible

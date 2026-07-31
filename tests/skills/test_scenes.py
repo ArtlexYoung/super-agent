@@ -34,7 +34,7 @@ class SkillSceneTests(unittest.TestCase):
                 [item.key for item in code],
             )
 
-    def test_explicit_scene_loads_its_group_without_a_routing_call(self) -> None:
+    def test_explicit_scene_loads_its_group_without_an_extra_model_call(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             provider = MockProvider("finished")
             result = Agent(

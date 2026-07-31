@@ -1,4 +1,3 @@
-import json
 from pathlib import Path
 
 from core.config import AgentConfig
@@ -6,34 +5,8 @@ from core.provider.chat import MockProvider, ModelResponse
 from skill.loaders.defaults import load_configured_evolution_policy
 
 
-def route_response(
-    *,
-    model: str = "model:provided",
-    scene: str | None = None,
-    skills: list[str] | None = None,
-    planning: bool = False,
-    purpose: str = "answer",
-    subagents: list[str] | None = None,
-    confidence: float = 1.0,
-    reasons: list[str] | None = None,
-) -> str:
-    """Build one strict Scheduler response without text-matching behavior."""
-    return json.dumps(
-        {
-            "scene": scene,
-            "skills": skills or [],
-            "planning": planning,
-            "purpose": purpose,
-            "model": model,
-            "subagents": subagents or [],
-            "confidence": confidence,
-            "reasons": reasons or ["model selected this route"],
-        }
-    )
-
-
 class RecordingProvider(MockProvider):
-    """Record execution calls while letting MockProvider answer model contracts."""
+    """Record execution calls while letting MockProvider answer feedback contracts."""
 
     _EXECUTION = "__test_execution_response__"
 
@@ -41,12 +14,10 @@ class RecordingProvider(MockProvider):
         self,
         response: str | Exception,
         *,
-        route: str | None = None,
         feedback: str | None = None,
     ) -> None:
         super().__init__(
             self._EXECUTION,
-            route_response=route,
             feedback_response=feedback,
         )
         self.execution_response = response
@@ -75,16 +46,15 @@ class RecordingProvider(MockProvider):
 
 
 class SequenceProvider(RecordingProvider):
-    """Return explicit execution responses without consuming routing responses."""
+    """Return explicit execution responses without consuming feedback responses."""
 
     def __init__(
         self,
         responses: list[str | Exception],
         *,
-        route: str | None = None,
         feedback: str | None = None,
     ) -> None:
-        super().__init__("", route=route, feedback=feedback)
+        super().__init__("", feedback=feedback)
         self.responses = list(responses)
         self.calls = self.requests
 

@@ -68,21 +68,21 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
     def test_project_skill_source_overrides_builtin_with_the_same_key(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            primary = root / "primary" / "planner" / "default"
-            builtin = root / "builtin" / "planner" / "default"
+            primary = root / "primary" / "guide" / "default"
+            builtin = root / "builtin" / "guide" / "default"
             primary.mkdir(parents=True)
             builtin.mkdir(parents=True)
-            _write_manifest(primary, "default", "planner")
-            _write_manifest(builtin, "default", "planner")
+            _write_manifest(primary, "default", "guide")
+            _write_manifest(builtin, "default", "guide")
             core = ProgressiveDisclosureCore(
                 [root / "primary"],
                 builtin_skill_roots=[root / "builtin"],
             )
 
             index = core.prepare_skill_index()
-            manifest = core.open_skill("default", "planner").read_manifest()
+            manifest = core.open_skill("default", "guide").read_manifest()
 
-            self.assertEqual(["planner:default"], [entry.reference.key for entry in index.entries])
+            self.assertEqual(["guide:default"], [entry.reference.key for entry in index.entries])
             self.assertEqual(primary, manifest.path)
             self.assertEqual("project", index.entries[0].source)
 

@@ -11,7 +11,6 @@ from super_agent import Agent
 from cli import main
 from core.provider.chat import MockProvider, ModelResponse, ToolCall
 from core.config import AgentConfig
-from support import route_response
 
 
 class RunsCliTests(unittest.TestCase):
@@ -119,7 +118,7 @@ class RunsCliTests(unittest.TestCase):
                 explanation["model_calls"][0]["profile"],
             )
             self.assertEqual([], explanation["evolution"])
-            self.assertEqual(1, explanation["routing_evidence"][0]["call_count"])
+            self.assertEqual(1, explanation["model_usage"][0]["call_count"])
             self.assertTrue(explanation["skill_freshness"])
             self.assertTrue(
                 all(item["call_count"] >= 1 for item in explanation["skill_freshness"])
@@ -132,7 +131,7 @@ class RunsCliTests(unittest.TestCase):
             self.assertEqual(0, export_code)
             self.assertEqual(run_id, exported["snapshot"]["run_id"])
             self.assertTrue(exported["events"])
-            self.assertIsNone(exported["runtime_lock"])
+            self.assertNotIn("runtime_lock", exported)
 
     def test_text_explain_prints_task_and_evidence_insight(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

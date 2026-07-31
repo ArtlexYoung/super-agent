@@ -64,10 +64,6 @@ class AGUIEventMapper:
             return [self._run_started(event)]
         if event_type == "task.started":
             return [{"type": "STEP_STARTED", "stepName": "task"}]
-        if event_type == "task.step.scheduled":
-            return [{"type": "STEP_STARTED", "stepName": _step_name(event)}]
-        if event_type == "task.step.completed":
-            return [{"type": "STEP_FINISHED", "stepName": _step_name(event)}]
         if event_type == "tool.requested":
             return _tool_call_started_events(event)
         if event_type in {"tool.completed", "tool.failed"}:
@@ -169,11 +165,6 @@ def _custom_runtime_event(event: RunEvent) -> dict[str, object]:
             "data": event.data,
         },
     }
-
-
-def _step_name(event: RunEvent) -> str:
-    step = event.data.get("step", event.sequence)
-    return f"step-{step}"
 
 
 def _tool_call_started_events(event: RunEvent) -> list[dict[str, object]]:

@@ -8,7 +8,6 @@ from core.config import AgentConfig
 from skill.state.events import create_local_event_store
 from core.provider.chat import MockProvider
 from skill.state.memory import Memory
-from support import SequenceProvider, route_response
 
 
 class MemoryWorkflowSkillLoaderTests(unittest.TestCase):
@@ -63,19 +62,6 @@ class MemoryWorkflowSkillLoaderTests(unittest.TestCase):
                 "Workflow SkillLoader marker.",
                 provider.tool_requests[0][0][0]["content"],
             )
-
-
-def _one_step_plan() -> dict[str, object]:
-    return {
-        "steps": [
-            {
-                "instruction": "Answer the request",
-                "purpose": "answer",
-                "required_features": ["text"],
-                "subagent": None,
-            }
-        ]
-    }
 
 
 def _write_memory_skill(root: Path, name: str) -> None:

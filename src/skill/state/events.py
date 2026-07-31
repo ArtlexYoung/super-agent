@@ -224,14 +224,6 @@ class EventStore:
             raise KeyError(f"run not found: {run_id}")
         return run_events_from_storage(events)
 
-    def read_runtime_lock(self, run_id: str) -> dict[str, object] | None:
-        from core.state.views import runtime_lock_from_events
-
-        return runtime_lock_from_events(
-            run_id,
-            self.read_events("run", run_id),
-        )
-
     def explain_run(self, run_id: str) -> dict[str, object]:
         from core.state.views import explain_run_from_events
 
@@ -245,9 +237,8 @@ class EventStore:
 
         explanation = self.explain_run(run_id)
         document = {
-            "schema_version": 1,
+            "schema_version": 2,
             "snapshot": explanation["snapshot"],
-            "runtime_lock": explanation["runtime_lock"],
             "events": explanation["events"],
         }
         write_bytes_atomically(

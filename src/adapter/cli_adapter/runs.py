@@ -28,7 +28,7 @@ def configure_runs_parser(parser: argparse.ArgumentParser) -> None:
 
     explain_parser = subparsers.add_parser(
         "explain",
-        help="explain one run from its lock and ordered events",
+        help="explain one run from its ordered events",
     )
     _add_config_argument(explain_parser)
     _add_user_argument(explain_parser)
@@ -37,7 +37,7 @@ def configure_runs_parser(parser: argparse.ArgumentParser) -> None:
 
     export_parser = subparsers.add_parser(
         "export",
-        help="export one run snapshot, lock, and event stream",
+        help="export one run snapshot and event stream",
     )
     _add_config_argument(export_parser)
     _add_user_argument(export_parser)
@@ -201,16 +201,6 @@ def _print_run_explanation(explanation: dict[str, object]) -> None:
         f"run\t{snapshot['run_id']}\tstatus={snapshot['status']}"
         f"\tagent={snapshot['agent_name']}\tevents={snapshot['event_count']}"
     )
-    runtime_lock = explanation.get("runtime_lock")
-    if isinstance(runtime_lock, dict):
-        model = _required_object(runtime_lock, "model")
-        print(
-            f"model\t{model['provider']}\t{model['model']}"
-            f"\tbase_url={model.get('base_url') or ''}"
-        )
-        skill_loaders = runtime_lock.get("skill_loaders", [])
-        skills = runtime_lock.get("skills", [])
-        print(f"lock\thandlers={len(skill_loaders)}\tskills={len(skills)}")
     for decision in explanation.get("selection_decisions", []):
         if isinstance(decision, dict):
             reason = str(decision.get("reason", ""))
@@ -229,12 +219,8 @@ def _print_run_explanation(explanation: dict[str, object]) -> None:
                 f"\tcache_hit={str(data.get('cache_hit', False)).lower()}"
             )
     _print_plan_insight(explanation.get("plan"))
-    _print_task_plan_insight(
-        explanation.get("task_plan"),
-        explanation.get("steps"),
-    )
     _print_model_call_insight(explanation.get("model_calls"))
-    _print_routing_insight(explanation.get("routing_evidence"))
+    _print_model_usage_insight(explanation.get("model_usage"))
     _print_freshness_insight(explanation.get("skill_freshness"))
     _print_evolution_insight(explanation.get("evolution"))
 
@@ -251,27 +237,8 @@ def _print_plan_insight(value: object) -> None:
     if isinstance(model, dict):
         print(
             f"run-model\t{model.get('key', '')}"
-            f"\tscore={model.get('score', '')}"
-            f"\treasons={'; '.join(_string_items(model.get('reasons')))}"
-        )
-
-
-def _print_task_plan_insight(plan_value: object, steps_value: object) -> None:
-    if not isinstance(plan_value, dict) or not plan_value:
-        return
-    print(
-        f"plan\tplanner={plan_value.get('planner', '')}"
-        f"\treasons={'; '.join(_string_items(plan_value.get('reasons')))}"
-    )
-    for step in _object_items(steps_value):
-        model = step.get("model")
-        model_key = "" if not isinstance(model, dict) else str(model.get("key", ""))
-        print(
-            f"planned-step\t{step.get('step', '')}"
-            f"\tpurpose={step.get('purpose', '')}"
-            f"\tmodel={model_key}"
-            f"\tsubagents={','.join(_string_items(step.get('subagents')))}"
-            f"\tstatus={step.get('status', '')}"
+            f"\tselected_by={model.get('selected_by', '')}"
+            f"\treason={model.get('reason', '')}"
         )
 
 
@@ -288,10 +255,10 @@ def _print_model_call_insight(value: object) -> None:
         )
 
 
-def _print_routing_insight(value: object) -> None:
+def _print_model_usage_insight(value: object) -> None:
     for evidence in _object_items(value):
         print(
-            f"routing\t{evidence.get('profile_key', '')}"
+            f"model-usage\t{evidence.get('profile_key', '')}"
             f"\tpurpose={evidence.get('purpose', '')}"
             f"\tcalls={evidence.get('call_count', '')}"
             f"\treliability={evidence.get('reliability', '')}"

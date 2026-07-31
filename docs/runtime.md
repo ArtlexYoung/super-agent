@@ -16,6 +16,12 @@ print(result.run_id)
 The default model is resolved once and must be ready before its first call. Runtime does
 not retry another Provider or substitute Mock after failure.
 
+If multiple model Skills are configured, Runtime gives the default model one `use_model`
+tool. Its candidates include each non-default model's description, support, strengths, and
+readiness. The default model may explicitly delegate a subtask and receives the target
+model's final text as a tool result. The delegated call cannot replace the default model,
+request its own tools, or fall back after failure.
+
 The model receives:
 
 - The Agent's small system instruction.

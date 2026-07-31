@@ -2,24 +2,38 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable
 
-from core.checks import ActionRequest
+from core.checks import ActionEffect, ActionRequest
 from core.models import RunResult, SubAgentResult, Task
-from core.provider.chat import Message, ModelResponse, ToolCall
+from core.provider.chat import (
+    ActionTurn,
+    FinalTurn,
+    Message,
+    ModelResponse,
+    ToolCall,
+    read_model_turn,
+)
 from core.provider.pool import ProviderPool
-from core.runtime import Actions, Final, read_model_turn
-from skill.loaders.loaded import LoadedSkill, TaskPolicy
+from skill.loaders.loaded import (
+    LoadedSkill,
+    SkillAction,
+    SkillTool,
+    TaskPolicy,
+    read_required_tool_string,
+)
 from skill.loaders.models import (
     ModelProfile,
     model_profile_is_ready,
+    model_profile_to_dict,
     select_default_model_profile,
 )
 from skill.task.model_calls import (
-    AdaptiveModelCalls,
+    ModelCalls,
     ModelCallContext,
-    ModelDecision,
+    SelectedModel,
     TextModel,
     UNTRUSTED_CONTEXT_POLICY,
     assistant_tool_call_message,
@@ -37,8 +51,6 @@ NON_EXECUTION_SKILL_TYPES = {
     "evolution",
     "feedback",
     "model",
-    "planner",
-    "scheduler",
 }
 
 
@@ -50,6 +62,93 @@ class _LoopState:
     workflow: TaskPolicy
     selected_skill_names: list[str]
     last_text: str = ""
+
+
+@dataclass(frozen=True)
+class _ConfiguredModelTool:
+    profiles: tuple[ModelProfile, ...]
+    model_calls: ModelCalls
+    provider_pool: ProviderPool
+    run: Run
+    purpose: str
+    default_model_key: str
+
+    def create_tool(self) -> SkillTool | None:
+        candidates = [
+            profile
+            for profile in self.profiles
+            if profile.key != self.default_model_key
+        ]
+        if not candidates:
+            return None
+        candidate_data = [
+            model_profile_to_dict(profile, self.provider_pool.environment)
+            for profile in candidates
+        ]
+        return SkillTool(
+            name="use_model",
+            description=(
+                "Give one explicit subtask to another configured model. "
+                "Available models: "
+                + json.dumps(candidate_data, ensure_ascii=False, sort_keys=True)
+            ),
+            properties={
+                "model": {
+                    "type": "string",
+                    "enum": [profile.key for profile in candidates],
+                },
+                "prompt": {"type": "string"},
+                "reason": {"type": "string"},
+            },
+            handler=self.use_model,
+            action=SkillAction(
+                (ActionEffect.READ,),
+                "model:configured",
+                "model",
+            ),
+            required=("model", "prompt", "reason"),
+        )
+
+    def use_model(self, arguments: dict[str, object]) -> dict[str, object]:
+        model_key = read_required_tool_string(arguments, "model").lower()
+        prompt = read_required_tool_string(arguments, "prompt")
+        reason = read_required_tool_string(arguments, "reason")
+        profile = self._require_other_model(model_key)
+        selected = _selected_model(profile, "model_action", reason)
+        response = self.model_calls.call_model(
+            [{"role": "user", "content": prompt}],
+            selected,
+            ModelCallContext(
+                self.purpose,
+                self.run.record_event,
+                lambda used, _provider: self.run.record_model_used(used),
+            ),
+        )
+        turn = read_model_turn(response)
+        if not isinstance(turn, FinalTurn):
+            raise ValueError("use_model target returned actions without receiving tools")
+        self.run.record_event(
+            "model.used",
+            {
+                "model": selected.to_dict(),
+                "reason": reason,
+            },
+        )
+        return {"model": model_key, "text": turn.text}
+
+    def _require_other_model(self, model_key: str) -> ModelProfile:
+        profile = next(
+            (item for item in self.profiles if item.key == model_key),
+            None,
+        )
+        if profile is None or profile.key == self.default_model_key:
+            raise KeyError(f"configured non-default model not found: {model_key}")
+        if not model_profile_is_ready(profile, self.provider_pool.environment):
+            requirement = profile.connection.api_key_env or "provider connection"
+            raise RuntimeError(
+                f"model {profile.key} is not ready; configure {requirement}"
+            )
+        return profile
 
 
 class ModelLoop:
@@ -67,7 +166,7 @@ class ModelLoop:
             )
         self.model_profiles = list(model_profiles)
         self.provider_pool = provider_pool
-        self.model_calls = AdaptiveModelCalls(self.model_profiles, provider_pool)
+        self.model_calls = ModelCalls(self.model_profiles, provider_pool)
 
     def run_task(self, request: Task, run: Run) -> RunResult:
         decision = self._select_default_model()
@@ -94,7 +193,7 @@ class ModelLoop:
         purpose: str,
         record_event: Callable[[str, dict[str, object]], object] | None = None,
         *,
-        decision: ModelDecision | None = None,
+        decision: SelectedModel | None = None,
     ) -> TextModel:
         selected = decision or self._select_default_model()
         return self.model_calls.create_text_model(
@@ -108,7 +207,7 @@ class ModelLoop:
         self,
         request: Task,
         run: Run,
-        decision: ModelDecision,
+        decision: SelectedModel,
     ) -> _LoopState:
         text_model = self.create_text_model(
             run.store,
@@ -140,6 +239,14 @@ class ModelLoop:
             run,
             contributions,
             text_model.send_messages,
+            _ConfiguredModelTool(
+                tuple(self.model_profiles),
+                self.model_calls,
+                self.provider_pool,
+                run,
+                request.purpose,
+                decision.profile_key,
+            ).create_tool(),
         )
         return _LoopState(
             contributions,
@@ -153,12 +260,12 @@ class ModelLoop:
         self,
         request: Task,
         run: Run,
-        decision: ModelDecision,
+        decision: SelectedModel,
         state: _LoopState,
     ) -> RunResult:
         supports_tools = "tools" in self.model_calls.require_model_profile(
             decision
-        ).routing.supports
+        ).traits.supports
         if "tools" in request.required_features and not supports_tools:
             raise ValueError(f"model {decision.profile_key} does not support tools")
         definitions = (
@@ -176,7 +283,7 @@ class ModelLoop:
             turn = read_model_turn(response)
             state.last_text = response.text or state.last_text
             _record_model_turn(run, step, response)
-            if isinstance(turn, Final):
+            if isinstance(turn, FinalTurn):
                 return _create_result(request, run, state, turn.text, response.stop_reason)
             if definitions is None:
                 raise RuntimeError("model requested actions when actions are unavailable")
@@ -185,7 +292,7 @@ class ModelLoop:
         return _create_result(request, run, state, state.last_text, "max_steps")
 
     @staticmethod
-    def _run_actions(state: _LoopState, turn: Actions) -> None:
+    def _run_actions(state: _LoopState, turn: ActionTurn) -> None:
         calls = [ToolCall(item.call_id, item.name, item.arguments) for item in turn.items]
         state.messages.append(assistant_tool_call_message(turn.text, calls))
         for call in calls:
@@ -194,26 +301,16 @@ class ModelLoop:
             )
         state.contributions.extend(state.tools.activated_contributions)
 
-    def _select_default_model(self) -> ModelDecision:
+    def _select_default_model(self) -> SelectedModel:
         profile = select_default_model_profile(self.model_profiles)
         if not model_profile_is_ready(profile, self.provider_pool.environment):
             requirement = profile.connection.api_key_env or "provider connection"
             raise RuntimeError(
                 f"default model {profile.key} is not ready; configure {requirement}"
             )
-        return ModelDecision(
-            profile_key=profile.key,
-            model=profile.model,
-            connection=profile.connection,
-            score=0.0,
-            reasons=("explicit default model",),
-            confidence=1.0,
-            selection="default_model",
-            input_cost_per_million=profile.routing.input_cost_per_million,
-            output_cost_per_million=profile.routing.output_cost_per_million,
-        )
+        return _selected_model(profile, "default", "configured default model")
 
-    def _select_run_model(self, run: Run, decision: ModelDecision) -> None:
+    def _select_run_model(self, run: Run, decision: SelectedModel) -> None:
         profile = self.model_calls.require_model_profile(decision)
         provider = self.provider_pool.get_chat_provider(
             decision.profile_key,
@@ -313,6 +410,7 @@ def _create_runtime_tools(
     run: Run,
     contributions: list[LoadedSkill],
     send_text_model_messages: Callable[[list[Message]], str],
+    model_tool: SkillTool | None,
 ) -> RuntimeTools:
     results: list[SubAgentResult] = []
     has_subagents = request.include_subagents and bool(request.subagents.list_subagents())
@@ -333,6 +431,23 @@ def _create_runtime_tools(
         ),
         contributions,
         results,
+        extra_tools=() if model_tool is None else (model_tool,),
+    )
+
+
+def _selected_model(
+    profile: ModelProfile,
+    selected_by: str,
+    reason: str,
+) -> SelectedModel:
+    return SelectedModel(
+        profile_key=profile.key,
+        model=profile.model,
+        connection=profile.connection,
+        selected_by=selected_by,
+        reason=reason,
+        input_cost_per_million=profile.traits.input_cost_per_million,
+        output_cost_per_million=profile.traits.output_cost_per_million,
     )
 
 

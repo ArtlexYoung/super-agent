@@ -39,7 +39,7 @@ MODEL_CONFIGURATION_FIELDS = {
 
 
 @dataclass(frozen=True)
-class ModelRoutingTraits:
+class ModelTraits:
     supports: list[str]
     purposes: list[str]
     strengths: list[str]
@@ -56,7 +56,7 @@ class ModelProfile:
     version: str
     model: str
     connection: ProviderConnection
-    routing: ModelRoutingTraits
+    traits: ModelTraits
     default: bool
     source: str
     skill_key: str
@@ -95,7 +95,7 @@ def create_model_profile_from_skill_disclosure(
         version=manifest.version,
         model=_required_string(configuration, "model"),
         connection=connection,
-        routing=ModelRoutingTraits(
+        traits=ModelTraits(
             supports=_string_list(configuration, "supports", ["text"]),
             purposes=_string_list(configuration, "purposes", []),
             strengths=_string_list(configuration, "strengths", []),
@@ -221,7 +221,7 @@ def create_direct_provider_profile() -> ModelProfile:
         version="code",
         model="provided",
         connection=ProviderConnection(MOCK_PROVIDER),
-        routing=ModelRoutingTraits(["text", "tools"], [], []),
+        traits=ModelTraits(["text", "tools"], [], []),
         default=True,
         source="code",
         skill_key="model:provided",
@@ -241,7 +241,7 @@ def model_profile_to_dict(
     profile: ModelProfile,
     environment: Mapping[str, str] | None = None,
 ) -> dict[str, object]:
-    routing = profile.routing
+    traits = profile.traits
     return {
         "key": profile.key,
         "name": profile.name,
@@ -251,14 +251,14 @@ def model_profile_to_dict(
         "model": profile.model,
         "base_url": profile.connection.base_url,
         "api_key_env": profile.connection.api_key_env,
-        "supports": list(routing.supports),
-        "purposes": list(routing.purposes),
-        "strengths": list(routing.strengths),
+        "supports": list(traits.supports),
+        "purposes": list(traits.purposes),
+        "strengths": list(traits.strengths),
         "default": profile.default,
-        "quality_score": routing.quality_score,
-        "expected_latency_ms": routing.expected_latency_ms,
-        "input_cost_per_million": routing.input_cost_per_million,
-        "output_cost_per_million": routing.output_cost_per_million,
+        "quality_score": traits.quality_score,
+        "expected_latency_ms": traits.expected_latency_ms,
+        "input_cost_per_million": traits.input_cost_per_million,
+        "output_cost_per_million": traits.output_cost_per_million,
         "source": profile.source,
         "skill_key": profile.skill_key or None,
         "content_sha256": profile.content_sha256 or None,
@@ -320,7 +320,7 @@ def _create_ephemeral_profile(
         version="ephemeral",
         model=model,
         connection=normalize_provider_connection(connection),
-        routing=ModelRoutingTraits(list(supports or ["text"]), [], []),
+        traits=ModelTraits(list(supports or ["text"]), [], []),
         default=False,
         source=source,
         skill_key="",

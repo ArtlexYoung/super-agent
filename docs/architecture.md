@@ -33,13 +33,20 @@ Agent.run
   -> Skills builds one central index
   -> ModelLoop selects the configured default model
   -> model receives the prompt, selected context, and Skill index
-  -> model returns final text or checked tool calls
+  -> ModelCalls sends one measured call through core Provider adapters
+  -> model returns final text or checked tool calls, including explicit use_model delegation
   -> Runtime records completion or the exact failure
 ```
 
 There is no keyword router, separate planner engine, or preflight controller. Planning is
 ordinary Skill instruction. A task scene is an ordinary Skill group. The model can inspect
 or activate either through the same tools it uses for every other Skill.
+
+The configured default model owns the task loop. When other model Skills exist, Runtime
+adds one `use_model` tool containing their descriptions, support, strengths, and readiness.
+The default model may send one explicit subtask to one of them and receives the result as a
+tool result. That call does not replace the default model for later turns, and failure is
+propagated without a fallback call.
 
 ## Progressive Disclosure
 
