@@ -5,12 +5,12 @@ from pathlib import Path
 from unittest.mock import patch
 
 from super_agent import Agent
-from skill.loaders.defaults import create_progressive_skill_disclosure
+from core.skill_use.defaults import create_progressive_skill_disclosure
 from core.provider.chat import MockProvider
 from core.config import AgentConfig
-from skill.evolution.change.evaluation import EvaluationCase, require_report_allows_promotion
-from skill.evolution.records import read_evaluation_records
-from skill.evolution.policy import read_evolution_policy
+from core.evolution.change.evaluation import EvaluationCase, require_report_allows_promotion
+from core.evolution.records import read_evaluation_records
+from core.evolution.policy import read_evolution_policy
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.manifest import calculate_skill_directory_sha256
 from support import write_workflow_skill
@@ -362,7 +362,7 @@ class SkillEvolutionTests(unittest.TestCase):
                 )
 
             with patch(
-                "skill.evolution.change.manager.require_report_allows_promotion",
+                "core.evolution.change.manager.require_report_allows_promotion",
                 side_effect=change_after_report_check,
             ), self.assertRaisesRegex(ValueError, "source changed"):
                 manager.promote_skill_candidate(candidate.candidate_id)

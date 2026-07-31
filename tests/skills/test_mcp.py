@@ -8,16 +8,16 @@ from pathlib import Path
 from core import __version__
 from core.checks import ActionEffect
 from super_agent import Agent
-from skill.loaders.defaults import create_default_skill_loaders
-from skill.loaders.registry import SkillLoadRequest
+from core.skill_use.defaults import create_default_skill_loaders
+from core.skill_use.registry import SkillLoadRequest
 from core.config import AgentConfig
-from skill.state.events import create_local_event_store
+from core.state.events import create_local_event_store
 from core.provider.chat import MockProvider
 from skill.disclosure import ProgressiveDisclosureCore, SkillReference
-from skill.loaders.mcp import read_mcp_skill_settings
-from skill.state.memory import Memory
+from core.skill_use.mcp import read_mcp_skill_settings
+from core.state.memory import Memory
 from skill.manifest import Skill
-from skill.loaders.mcp import McpServers, StdioMcpServer
+from core.skill_use.mcp import McpServers, StdioMcpServer
 from support import write_memory_skill, write_workflow_skill
 
 

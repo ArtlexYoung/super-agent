@@ -19,12 +19,12 @@ if TYPE_CHECKING:
     from core.provider.chat import ChatProvider, Message
     from core.state.event_log import RunEventLog
     from core.state.models import RunEvent
-    from skill.state.events import EventStore
+    from core.state.events import EventStore
     from core.state.subscribers import RuntimeEventSubscriber, SubscriberFailure
     from skill.disclosure import SkillIndexEntry, SkillReference
-    from skill.loaders.models import ModelProfile
-    from skill.loaders.loaded import LoadedSkill
-    from skill.skills import Skills
+    from core.skill_use.models import ModelProfile
+    from core.skill_use.loaded import LoadedSkill
+    from core.skill_use.skills import Skills
 
 
 @dataclass
@@ -138,7 +138,7 @@ class Run:
         key = (reference.key, send_text_model_messages is not None)
         loaded = self._loaded_skills.get(key)
         if loaded is None:
-            from skill.skills import SkillServices
+            from core.skill_use.skills import SkillServices
 
             loaded = self.skills.load(
                 reference,

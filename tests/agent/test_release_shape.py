@@ -92,16 +92,16 @@ class ReleaseShapeTests(unittest.TestCase):
 
     def test_removed_evolution_shells_do_not_return(self) -> None:
         removed = [
-            "src/skill/evolution/evidence.py",
-            "src/skill/evolution/freshness.py",
-            "src/skill/evolution/service.py",
-            "src/skill/evolution/values.py",
-            "src/skill/evolution/change/revision.py",
+            "src/core/evolution/evidence.py",
+            "src/core/evolution/freshness.py",
+            "src/core/evolution/service.py",
+            "src/core/evolution/values.py",
+            "src/core/evolution/change/revision.py",
         ]
         self.assertEqual([], [path for path in removed if Path(path).exists()])
-        self.assertTrue(Path("src/skill/evolution/metrics.py").is_file())
-        self.assertTrue(Path("src/skill/evolution/models.py").is_file())
-        source = Path("src/skill/evolution/change/manager.py").read_text(
+        self.assertTrue(Path("src/core/evolution/metrics.py").is_file())
+        self.assertTrue(Path("src/core/evolution/models.py").is_file())
+        source = Path("src/core/evolution/change/manager.py").read_text(
             encoding="utf-8"
         )
         cli_source = Path("src/adapter/cli_adapter/skills.py").read_text(
@@ -111,7 +111,7 @@ class ReleaseShapeTests(unittest.TestCase):
         self.assertNotIn('add_parser("evolve"', cli_source)
 
     def test_evolution_models_have_one_import_path(self) -> None:
-        from skill.evolution import state
+        from core.evolution import state
 
         self.assertFalse(hasattr(state, "SkillEvolutionState"))
         self.assertFalse(hasattr(state, "SkillRevision"))
@@ -190,7 +190,6 @@ class ReleaseShapeTests(unittest.TestCase):
         removed = [
             "src/core/agent.py",
             "src/core/engine.py",
-            "src/core/evolution",
             "src/core/run.py",
             "src/core/state/store.py",
             "src/core/task",

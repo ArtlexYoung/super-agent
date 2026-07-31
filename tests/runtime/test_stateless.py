@@ -29,11 +29,11 @@ with tempfile.TemporaryDirectory() as temporary_directory:
     result = agent.run("hello", use_scenes=False)
 assert result.text == "finished"
 blocked = (
-    "skill.evolution.records",
-    "skill.evolution.learning",
-    "skill.state.memory",
-    "skill.evolution",
-    "skill.state.memory_service",
+    "core.evolution.records",
+    "core.evolution.learning",
+    "core.state.memory",
+    "core.evolution",
+    "core.state.memory_service",
 )
 print(json.dumps(sorted(name for name in sys.modules if name.startswith(blocked))))
 """
@@ -58,13 +58,13 @@ with tempfile.TemporaryDirectory() as temporary_directory:
     result = Agent(config, provider=MockProvider("finished")).run("hello")
 assert result.text == "finished"
 blocked = (
-    "skill.evolution.records",
-    "skill.evolution.learning",
-    "skill.state.memory",
-    "skill.state.events",
+    "core.evolution.records",
+    "core.evolution.learning",
+    "core.state.memory",
+    "core.state.events",
     "adapter.storage",
-    "skill.evolution",
-    "skill.state.memory_service",
+    "core.evolution",
+    "core.state.memory_service",
 )
 print(json.dumps(sorted(name for name in sys.modules if name.startswith(blocked))))
 """

@@ -7,7 +7,7 @@ Follow one ordinary call through these files:
 3. `src/core/runtime/loop.py`: `ModelLoop` gives the model the Skill index and checked tools.
 4. `src/core/runtime/model_calls.py`: `ModelCalls` resolves a configured model and records use.
 5. `src/core/provider/chat.py`: `call_chat_model()` measures one Provider call.
-6. `src/skill/disclosure/core.py`: the shared index, disclosure, and cache path.
+6. `src/skill/disclosure.py`: the shared index, disclosure, and cache path.
 
 The active execution path is:
 
@@ -31,7 +31,7 @@ configured model. Every side effect goes through an explicit action request.
 
 For a subsystem, start at its one public owner:
 
-- Skill discovery: `skill.skills.Skills`.
+- Skill discovery: `core.skill_use.skills.Skills`.
 - Skill disclosure: `skill.disclosure.ProgressiveDisclosureCore`.
 - Provider connections: `core.provider.pool.ProviderPool`.
 - Stored user access: `adapter.user.UserAgent`.

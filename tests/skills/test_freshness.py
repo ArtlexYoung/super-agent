@@ -6,7 +6,7 @@ from pathlib import Path
 from super_agent import Agent
 from core.provider.chat import MockProvider
 from core.config import AgentConfig
-from skill.evolution.records import (
+from core.evolution.records import (
     EvaluationResult,
     EvaluationSource,
     EvaluationTokenUsage,
@@ -16,11 +16,11 @@ from skill.evolution.records import (
     evaluation_record_to_dict,
     read_evaluation_records,
 )
-from skill.state.events import create_local_event_store
+from core.state.events import create_local_event_store
 from skill.disclosure import ProgressiveDisclosureCore
-from skill.evolution.metrics import calculate_skill_freshness
-from skill.evolution.policy import load_evolution_policy
-from skill.evolution.models import SkillRevision
+from core.evolution.metrics import calculate_skill_freshness
+from core.evolution.policy import load_evolution_policy
+from core.evolution.models import SkillRevision
 from support import (
     load_default_evolution_policy,
     write_memory_skill,

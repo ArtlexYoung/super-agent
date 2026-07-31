@@ -5,9 +5,9 @@ from pathlib import Path
 
 from super_agent import Agent
 from core.config import AgentConfig
-from skill.state.events import create_local_event_store
+from core.state.events import create_local_event_store
 from core.provider.chat import MockProvider
-from skill.state.memory import Memory
+from core.state.memory import Memory
 
 
 class MemoryWorkflowSkillLoaderTests(unittest.TestCase):

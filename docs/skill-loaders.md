@@ -12,8 +12,8 @@ task tools.
 
 ```python
 from core.checks import ActionEffect
-from skill.loaders.loaded import LoadedSkill, SkillAction, SkillTool
-from skill.loaders.registry import SkillLoadRequest
+from core.skill_use.loaded import LoadedSkill, SkillAction, SkillTool
+from core.skill_use.registry import SkillLoadRequest
 from skill.manifest import Skill
 from super_agent import Agent
 
@@ -66,7 +66,7 @@ MCP has a built-in loader but requires a code-registered implementation:
 
 ```python
 from core.checks import ActionEffect
-from skill.loaders.mcp import StdioMcpServer
+from core.skill_use.mcp import StdioMcpServer
 from super_agent import Agent
 
 agent = Agent()

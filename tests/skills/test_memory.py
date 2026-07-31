@@ -5,8 +5,8 @@ from pathlib import Path
 from core.checks import ActionRequest
 from core.models import RunIdentity
 from skill.disclosure import ProgressiveDisclosureCore
-from skill.state.events import create_local_event_store
-from skill.state.memory import Memory, MemorySettings, create_memory_from_skill
+from core.state.events import create_local_event_store
+from core.state.memory import Memory, MemorySettings, create_memory_from_skill
 
 
 class MemoryTests(unittest.TestCase):

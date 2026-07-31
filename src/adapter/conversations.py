@@ -13,7 +13,7 @@ from core.models import RunResult
 from core.state.models import Conversation, ConversationMessage
 
 if TYPE_CHECKING:
-    from skill.state.events import EventStore
+    from core.state.events import EventStore
 
 
 @dataclass(frozen=True)

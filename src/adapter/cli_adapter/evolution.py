@@ -6,7 +6,7 @@ import argparse
 import json
 
 from adapter.cli_adapter import load_agent
-from skill.evolution.models import SkillEvolutionState, skill_evolution_to_dict
+from core.evolution.models import SkillEvolutionState, skill_evolution_to_dict
 from core.models import LOCAL_USER_ID
 
 

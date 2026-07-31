@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 from adapter.cli_adapter import load_agent, load_agent_config, load_event_store
-from skill.loaders.defaults import (
+from core.skill_use.defaults import (
     create_progressive_skill_disclosure,
     load_configured_evolution_policy,
 )
@@ -13,11 +13,11 @@ from core.config import AgentConfig
 from core.models import LOCAL_USER_ID
 from core.checks import ActionRules
 from skill.disclosure import ProgressiveDisclosureCore, skill_index_to_dict
-from skill.ecosystem.package import SkillPackageManager
-from skill.evolution.change.evaluation import EvaluationCase
-from skill.evolution.metrics import calculate_skill_freshness
-from skill.evolution.records import read_evaluation_records
-from skill.ecosystem.lock import write_skill_lock_file
+from core.skill_use.files.package import SkillPackageManager
+from core.evolution.change.evaluation import EvaluationCase
+from core.evolution.metrics import calculate_skill_freshness
+from core.evolution.records import read_evaluation_records
+from core.skill_use.files.lock import write_skill_lock_file
 from skill.manifest import SkillManifest
 
 

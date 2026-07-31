@@ -5,9 +5,9 @@ import unittest
 import zipfile
 from pathlib import Path
 
-from skill.state.events import create_local_event_store
+from core.state.events import create_local_event_store
 from skill.disclosure import ProgressiveDisclosureCore
-from skill.ecosystem.package import SkillPackageManager
+from core.skill_use.files.package import SkillPackageManager
 
 
 class SkillPackageManagerTests(unittest.TestCase):

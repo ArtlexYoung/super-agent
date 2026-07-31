@@ -5,15 +5,15 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from skill.evolution.change.files import apply_directory_file_changes, read_directory_file_changes
-from skill.evolution.state import (
+from core.evolution.change.files import apply_directory_file_changes, read_directory_file_changes
+from core.evolution.state import (
     record_skill_candidate_evaluation,
     record_skill_candidate_promoted,
     require_skill_candidate_can_promote,
     start_manual_skill_evolution,
 )
-from skill.evolution.models import CandidateEvaluation, SkillRevision
-from skill.state.events import create_local_event_store
+from core.evolution.models import CandidateEvaluation, SkillRevision
+from core.state.events import create_local_event_store
 
 
 class SkillRevisionEvolutionStateTests(unittest.TestCase):

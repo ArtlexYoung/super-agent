@@ -2,9 +2,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from skill.loaders.defaults import create_default_skill_loaders
-from skill.skills import Skills
-from skill.loaders.loaded import SkillAction
+from core.skill_use.defaults import create_default_skill_loaders
+from core.skill_use.skills import Skills
+from core.skill_use.loaded import SkillAction
 from core.provider.chat import MockProvider
 from core.config import AgentConfig
 from core.runtime.run import Run
@@ -18,10 +18,10 @@ from core.checks import (
     ActionRules,
 )
 from core.state.event_log import RunEventLog
-from skill.state.events import EventStore
+from core.state.events import EventStore
 from adapter.storage import JsonlStorage
 from skill.disclosure import ProgressiveDisclosureCore
-from skill.loaders.models import create_direct_provider_profile
+from core.skill_use.models import create_direct_provider_profile
 
 
 class RuntimeSafetyTests(unittest.TestCase):

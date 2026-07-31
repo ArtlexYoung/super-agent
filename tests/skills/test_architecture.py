@@ -6,11 +6,11 @@ import unittest
 from pathlib import Path
 
 from skill.disclosure import ProgressiveDisclosureCore
-from skill.loaders.mcp import McpSkillSettings
-from skill.loaders.mcp import McpServer
-from skill.state.memory import Memory
+from core.skill_use.mcp import McpSkillSettings
+from core.skill_use.mcp import McpServer
+from core.state.memory import Memory
 from core.models import SubAgentResult, RunResult
-from skill.loaders.workflow import create_workflow_policy_from_skill
+from core.skill_use.workflow import create_workflow_policy_from_skill
 from skill.manifest import SkillManifest
 
 
@@ -64,23 +64,35 @@ class SkillArchitectureTests(unittest.TestCase):
     def test_runtime_learning_is_an_explicit_post_run_operation(self) -> None:
         engine_source = Path("src/core/runtime/runtime.py").read_text(encoding="utf-8")
         learning_source = Path(
-            "src/skill/evolution/learning.py"
+            "src/core/evolution/learning.py"
         ).read_text(encoding="utf-8")
         self.assertNotIn("def _record_task_evaluation", engine_source)
         self.assertIn("def learn_from_run", learning_source)
         self.assertNotIn("EventSubscriber", learning_source)
         self.assertNotIn("learning.requested", engine_source)
         self.assertTrue(
-            Path("src/skill/evolution/records.py").is_file()
+            Path("src/core/evolution/records.py").is_file()
         )
-        self.assertFalse(Path("src/skill/evolution/tracking").exists())
+        self.assertFalse(Path("src/core/evolution/tracking").exists())
         self.assertTrue(Path("src/core/state/subscribers.py").is_file())
         self.assertTrue(Path("src/core/runtime/run.py").is_file())
         self.assertFalse(Path("src/core/session.py").exists())
-        self.assertTrue(Path("src/skill/state/events.py").is_file())
+        self.assertTrue(Path("src/core/state/events.py").is_file())
         self.assertTrue(Path("src/core/events.py").is_file())
         self.assertTrue(Path("src/adapter/storage/jsonl.py").is_file())
         self.assertFalse(Path("src/core/storage").exists())
+
+    def test_skill_package_is_passive_and_small(self) -> None:
+        sources = list(Path("src/skill").glob("*.py"))
+        self.assertLessEqual(len(sources), 5)
+        line_count = sum(
+            len(path.read_text(encoding="utf-8").splitlines()) for path in sources
+        )
+        self.assertLessEqual(line_count, 1500)
+        for path in sources:
+            source = path.read_text(encoding="utf-8")
+            self.assertNotIn("from core", source)
+            self.assertNotIn("from adapter", source)
 
     def test_only_center_source_parser_reads_skill_toml(self) -> None:
         python_sources = list(Path("src").rglob("*.py"))
@@ -91,14 +103,14 @@ class SkillArchitectureTests(unittest.TestCase):
             and '"skill.toml"' in path.read_text(encoding="utf-8")
         ]
 
-        self.assertEqual([Path("src/skill/disclosure/source.py")], direct_parsers)
+        self.assertEqual([Path("src/skill/source.py")], direct_parsers)
 
     def test_only_super_agent_aggregates_public_api(self) -> None:
         for module_name, attribute_name in [
             ("core", "Agent"),
             ("skill", "SkillManifest"),
-            ("skill.ecosystem", "SkillPackageManager"),
-            ("skill.evolution", "SkillEvolutionManager"),
+            ("core.skill_use.files", "SkillPackageManager"),
+            ("core.evolution", "SkillEvolutionManager"),
         ]:
             module = importlib.import_module(module_name)
             self.assertFalse(hasattr(module, attribute_name))
@@ -113,7 +125,7 @@ class SkillArchitectureTests(unittest.TestCase):
                 sys.executable,
                 "-c",
                 "from skill.manifest import SkillManifest; "
-                "from skill.evolution.change.manager import SkillEvolutionManager; "
+                "from core.evolution.change.manager import SkillEvolutionManager; "
                 "from super_agent import Agent",
             ],
             check=False,

@@ -24,19 +24,19 @@ from core.events import StorageBackend
 from core.runtime.loop import ModelLoop, list_run_actions
 from core.runtime.model_calls import estimate_text_tokens
 from core.models import RunLearningResult, Task, RunResult, TaskTrace
-from skill.skills import Skills
-from skill.loaders.models import (
+from core.skill_use.skills import Skills
+from core.skill_use.models import (
     ModelProfile,
     read_model_profiles,
 )
 from skill.manifest import SkillManifest
-from skill.loaders.defaults import create_skills
-from skill.loaders.registry import SkillLoaders
+from core.skill_use.defaults import create_skills
+from core.skill_use.registry import SkillLoaders
 
 if TYPE_CHECKING:
-    from skill.state.events import EventStore
+    from core.state.events import EventStore
     from core.runtime.model_calls import ModelUsageStats
-    from skill.evolution.change.manager import SkillEvolutionManager
+    from core.evolution.change.manager import SkillEvolutionManager
 
 
 class Runtime:
@@ -161,7 +161,7 @@ class Runtime:
     def create_event_store(self, user_id: str = LOCAL_USER_ID) -> EventStore:
         if self.storage is None:
             raise RuntimeError("Runtime storage is disabled for this Agent")
-        from skill.state.events import EventStore
+        from core.state.events import EventStore
 
         return EventStore(
             self.storage,
@@ -280,8 +280,8 @@ class Runtime:
         if snapshot.agent_name != self.config.agent.name:
             raise ValueError(f"run belongs to another Agent: {run_id}")
 
-        from skill.evolution.learning import learn_from_run
-        from skill.loaders.defaults import load_configured_evolution_policy
+        from core.evolution.learning import learn_from_run
+        from core.skill_use.defaults import load_configured_evolution_policy
 
         policy = load_configured_evolution_policy(self.config, store=store)
 
@@ -318,7 +318,7 @@ class Runtime:
         user_id: str = LOCAL_USER_ID,
         on_skill_changed: Callable[[SkillManifest], None] | None = None,
     ) -> SkillEvolutionManager:
-        from skill.evolution.change.manager import EvolutionModels, SkillEvolutionManager
+        from core.evolution.change.manager import EvolutionModels, SkillEvolutionManager
 
         store = self.create_event_store(user_id)
         change_handler = on_skill_changed
@@ -328,7 +328,7 @@ class Runtime:
                 user_id,
             )
         skills = self._create_skills(store)
-        from skill.loaders.defaults import load_configured_evolution_policy
+        from core.skill_use.defaults import load_configured_evolution_policy
 
         policy = load_configured_evolution_policy(self.config, store=store)
         profiles = self._read_model_profiles(skills, user_id)
@@ -409,7 +409,7 @@ class Runtime:
     ) -> EventStore | None:
         if self.storage is None:
             return None
-        from skill.state.events import EventStore
+        from core.state.events import EventStore
 
         return EventStore(
             self.storage,

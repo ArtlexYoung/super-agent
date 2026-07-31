@@ -5,7 +5,7 @@ Super Agent separates five responsibilities:
 ```text
 Provider supplies model intelligence
 Runtime owns one task lifecycle
-SkillLoader turns trusted Skill types into instructions and tools
+Runtime turns selected Skill content into checked instructions and tools
 Skill stores passive content and configuration
 Agent composes Providers, Skills, storage, rules, and subagents
 ```
@@ -15,7 +15,7 @@ The repository has three internal roots plus two entry files:
 ```text
 src/
   core/       Runtime, Provider contracts, configuration, checks, and events
-  skill/      passive Skill content, disclosure, loading, state, and evolution
+  skill/      passive Skill manifests, source discovery, index, and disclosure
   adapter/    CLI, Web, AG-UI, storage, and user-facing state access
   super_agent.py
   cli.py
@@ -56,7 +56,7 @@ propagated without a fallback call.
 2. Expose names, types, descriptions, versions, hashes, and features.
 3. Open a selected manifest, instructions, or configuration on demand.
 4. Return a stable cache path when storage-backed disclosure is enabled.
-5. Activate executable behavior only through a registered SkillLoader.
+5. Pass selected content to Runtime; disclosure itself never activates behavior.
 
 Reading disclosed content does not activate a Skill. Activating a Skill does not grant new
 authority: every tool carries explicit effects and still passes through action rules.

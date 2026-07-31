@@ -5,8 +5,8 @@ from pathlib import Path
 
 from core.config import AgentConfig
 from core.provider.chat import MockProvider, ModelResponse, ToolCall
-from skill.ecosystem.scenes import read_scene_included_skills
-from skill.loaders.defaults import create_progressive_skill_disclosure
+from core.skill_use.files.scenes import read_scene_included_skills
+from core.skill_use.defaults import create_progressive_skill_disclosure
 from super_agent import Agent
 
 

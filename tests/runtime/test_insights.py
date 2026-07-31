@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from skill.evolution.insights import project_model_calls
+from core.evolution.insights import project_model_calls
 from core.state.models import RunEvent
 
 

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable, Protocol
 from uuid import uuid4
 
-from skill.loaders.loaded import TaskPolicy
+from core.skill_use.loaded import TaskPolicy
 from core.provider.chat import (
     ChatProvider,
     Message,
@@ -22,11 +22,11 @@ from core.provider.chat import (
 from core.provider.pool import ProviderPool
 from core.state.models import Conversation
 from core.models import Task
-from skill.loaders.models import ModelProfile
+from core.skill_use.models import ModelProfile
 from skill.manifest import Skill
 
 if TYPE_CHECKING:
-    from skill.state.events import EventStore
+    from core.state.events import EventStore
 
 
 EventWriter = Callable[[str, dict[str, object]], object]

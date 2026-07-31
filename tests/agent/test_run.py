@@ -10,7 +10,7 @@ from core.models import RunIdentity
 from core.state.event_log import RunEventLog
 from adapter.storage import JsonlStorage
 from core.events import StorageEventQuery
-from skill.state.events import EventStore, create_local_event_store
+from core.state.events import EventStore, create_local_event_store
 from support import write_workflow_skill
 
 

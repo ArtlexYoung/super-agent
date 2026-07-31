@@ -17,14 +17,14 @@ from core.provider.chat import (
     read_model_turn,
 )
 from core.provider.pool import ProviderPool
-from skill.loaders.loaded import (
+from core.skill_use.loaded import (
     LoadedSkill,
     SkillAction,
     SkillTool,
     TaskPolicy,
     read_required_tool_string,
 )
-from skill.loaders.models import (
+from core.skill_use.models import (
     ModelProfile,
     model_profile_is_ready,
     model_profile_to_dict,
@@ -43,7 +43,7 @@ from core.runtime.run import Run
 from core.runtime.tools import RuntimeTools, RuntimeToolsContext
 
 if TYPE_CHECKING:
-    from skill.state.events import EventStore
+    from core.state.events import EventStore
 
 
 DEFAULT_MAX_STEPS = 8

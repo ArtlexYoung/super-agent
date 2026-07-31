@@ -13,7 +13,7 @@ from unittest.mock import patch
 from super_agent import Agent
 from core.provider.chat import MockProvider
 from core.config import AgentConfig
-from skill.evolution.records import (
+from core.evolution.records import (
     EvaluationResult,
     EvaluationRecord,
     EvaluationSource,
@@ -21,16 +21,16 @@ from skill.evolution.records import (
     append_evaluation_records,
     create_evaluation_record,
 )
-from skill.evolution.change.files import compare_directory_versions
-from skill.evolution.state import (
+from core.evolution.change.files import compare_directory_versions
+from core.evolution.state import (
     list_skill_evolutions,
 )
-from skill.evolution.recommendations import recommend_skill_revisions
-from skill.evolution.metrics import summarize_evaluation_evidence
-from skill.evolution.learning import AutomaticSkillEvolution
-from skill.evolution.insights import explain_run_with_insight
-from skill.state.events import create_local_event_store
-from skill.evolution.models import (
+from core.evolution.recommendations import recommend_skill_revisions
+from core.evolution.metrics import summarize_evaluation_evidence
+from core.evolution.learning import AutomaticSkillEvolution
+from core.evolution.insights import explain_run_with_insight
+from core.state.events import create_local_event_store
+from core.evolution.models import (
     SkillRevision,
     create_indexed_skill_revision,
     skill_evolution_to_dict,
@@ -274,7 +274,7 @@ class SkillRevisionEvolutionTests(unittest.TestCase):
 
             result = agent.run("echo this")
             with patch(
-                "skill.evolution.learning."
+                "core.evolution.learning."
                 "AutomaticSkillEvolution.run_pending_skill_evolution_stages",
                 side_effect=RuntimeError("recommendation unavailable"),
             ), self.assertRaisesRegex(RuntimeError, "recommendation unavailable"):

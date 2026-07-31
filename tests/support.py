@@ -2,7 +2,7 @@ from pathlib import Path
 
 from core.config import AgentConfig
 from core.provider.chat import MockProvider, ModelResponse
-from skill.loaders.defaults import load_configured_evolution_policy
+from core.skill_use.defaults import load_configured_evolution_policy
 
 
 class RecordingProvider(MockProvider):

@@ -7,7 +7,7 @@ from pathlib import Path
 from super_agent import Agent
 from core.config import AgentConfig
 from core.models import LOCAL_USER_ID
-from skill.state.events import EventStore
+from core.state.events import EventStore
 
 
 AgentConfigSource = AgentConfig | str | Path | None

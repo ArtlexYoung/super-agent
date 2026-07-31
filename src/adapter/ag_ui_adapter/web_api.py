@@ -12,16 +12,16 @@ from adapter.ag_ui_adapter.configuration import (
     agent_configuration_to_dict,
     update_agent_configuration,
 )
-from skill.loaders.defaults import (
+from core.skill_use.defaults import (
     create_skills,
     load_configured_evolution_policy_if_enabled,
 )
 from core.config import AgentConfig
-from skill.evolution.insights import explain_run_with_insight
+from core.evolution.insights import explain_run_with_insight
 from core.checks import ActionEffect, ActionRequest
 from skill.disclosure import skill_index_to_dict
-from skill.loaders.models import model_profile_to_dict, read_model_profiles
-from skill.ecosystem.models import model_skill_input_from_dict
+from core.skill_use.models import model_profile_to_dict, read_model_profiles
+from core.skill_use.files.models import model_skill_input_from_dict
 
 
 @dataclass(frozen=True)

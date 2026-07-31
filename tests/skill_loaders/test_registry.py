@@ -4,13 +4,13 @@ from dataclasses import replace
 from pathlib import Path
 
 from skill.disclosure import ProgressiveDisclosureCore, SkillReference
-from skill.loaders.loaded import LoadedSkill
-from skill.loaders.registry import (
+from core.skill_use.loaded import LoadedSkill
+from core.skill_use.registry import (
     SkillLoadRequest,
     SkillLoaders,
     describe_skill_loader,
 )
-from skill.loaders.defaults import create_default_skill_loaders
+from core.skill_use.defaults import create_default_skill_loaders
 
 
 class SkillLoadersTests(unittest.TestCase):

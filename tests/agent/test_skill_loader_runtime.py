@@ -9,8 +9,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 from super_agent import Agent
-from skill.loaders.registry import SkillLoadRequest
-from skill.loaders.loaded import (
+from core.skill_use.registry import SkillLoadRequest
+from core.skill_use.loaded import (
     SkillAction,
     SkillTool,
     LoadedSkill,
@@ -248,9 +248,9 @@ class SkillLoaderRuntimeTests(unittest.TestCase):
             Path("src/core/runtime/tools.py"),
         ):
             source = path.read_text(encoding="utf-8")
-            self.assertNotIn("skill.state.memory_service", source)
-            self.assertNotIn("skill.loaders.mcp", source)
-            self.assertNotIn("skill.loaders.workflow", source)
+            self.assertNotIn("core.state.memory_service", source)
+            self.assertNotIn("core.skill_use.mcp", source)
+            self.assertNotIn("core.skill_use.workflow", source)
 
 
 class _RecordingPromptSkillLoader:

@@ -12,8 +12,8 @@ from adapter.conversations import (
     append_conversation_turn,
     read_conversation,
 )
-from skill.state.memory import Memory
-from skill.evolution.records import read_evaluation_records
+from core.state.memory import Memory
+from core.evolution.records import read_evaluation_records
 from support import RecordingProvider, SequenceProvider
 
 

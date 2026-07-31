@@ -8,16 +8,16 @@ from pathlib import Path
 from time import perf_counter
 from uuid import uuid4
 
-from skill.evolution.state import list_skill_evolutions, start_manual_skill_evolution
+from core.evolution.state import list_skill_evolutions, start_manual_skill_evolution
 from adapter.conversations import (
     append_conversation_turn,
     create_conversation,
     read_conversation,
 )
 from core.events import StorageBackend, StorageEventQuery
-from skill.state.events import EventStore
-from skill.state.memory import Memory
-from skill.evolution.models import SkillRevision
+from core.state.events import EventStore
+from core.state.memory import Memory
+from core.evolution.models import SkillRevision
 
 
 STORAGE_BACKEND_NAMES = ("jsonl", "sqlite", "mysql", "postgresql")

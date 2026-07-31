@@ -11,15 +11,15 @@ from pathlib import Path
 from super_agent import Agent
 from cli import main
 from core.config import AgentConfig
-from skill.evolution.records import (
+from core.evolution.records import (
     EvaluationResult,
     EvaluationSource,
     EvaluationTokenUsage,
     append_evaluation_records,
     create_evaluation_record,
 )
-from skill.evolution.recommendations import recommend_skill_revisions
-from skill.evolution.models import SkillRevision
+from core.evolution.recommendations import recommend_skill_revisions
+from core.evolution.models import SkillRevision
 from support import load_default_evolution_policy
 
 

@@ -7,10 +7,10 @@ from pathlib import Path
 
 from adapter.cli_adapter import load_agent, load_event_store
 from core.models import LOCAL_USER_ID
-from skill.evolution.insights import explain_run_with_insight
+from core.evolution.insights import explain_run_with_insight
 from core.state.models import RunSnapshot
-from skill.state.events import EventStore
-from skill.loaders.defaults import load_configured_evolution_policy_if_enabled
+from core.state.events import EventStore
+from core.skill_use.defaults import load_configured_evolution_policy_if_enabled
 
 
 def configure_runs_parser(parser: argparse.ArgumentParser) -> None:

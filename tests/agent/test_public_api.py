@@ -13,7 +13,7 @@ class PublicApiTests(unittest.TestCase):
         from core.checks import ActionRules
         from core.models import AgentRunOptions
         from core.provider.chat import MockProvider
-        from skill.loaders.registry import SkillLoader
+        from core.skill_use.registry import SkillLoader
 
         self.assertIsNotNone(ActionRules)
         self.assertIsNotNone(AgentRunOptions)

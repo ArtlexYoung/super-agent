@@ -10,7 +10,7 @@ from core.config import AgentConfig
 from core.provider.chat import MockProvider
 from core.state.models import RunEvent
 from core.state.subscribers import RuntimeEventSubscriberError
-from skill.evolution.records import read_evaluation_records
+from core.evolution.records import read_evaluation_records
 
 
 class RuntimeEventSubscriberTests(unittest.TestCase):
@@ -146,7 +146,7 @@ class RuntimeEventSubscriberTests(unittest.TestCase):
 
             result = agent.run("hello")
             with patch(
-                "skill.evolution.learning."
+                "core.evolution.learning."
                 "AutomaticSkillEvolution.run_pending_skill_evolution_stages",
                 side_effect=RuntimeError("evolution unavailable"),
             ), self.assertRaisesRegex(RuntimeError, "evolution unavailable"):

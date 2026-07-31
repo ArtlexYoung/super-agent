@@ -8,7 +8,7 @@ from super_agent import Agent
 from core.config import AgentConfig
 from core.provider.chat import MockProvider
 from skill.disclosure import ProgressiveDisclosureCore
-from skill.ecosystem.lock import write_skill_lock_file
+from core.skill_use.files.lock import write_skill_lock_file
 from support import write_workflow_skill
 
 

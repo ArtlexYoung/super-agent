@@ -10,8 +10,8 @@ from adapter.cli_adapter import load_agent_config, load_event_store
 from core.checks import ActionEffect, ActionRequest, ActionRunner, ActionRules
 from core.config import AgentConfig
 from core.models import LOCAL_USER_ID
-from skill.loaders.defaults import create_progressive_skill_disclosure
-from skill.state.memory import Memory, MemoryItem, create_memory_from_skill
+from core.skill_use.defaults import create_progressive_skill_disclosure
+from core.state.memory import Memory, MemoryItem, create_memory_from_skill
 
 
 def configure_memory_parser(parser: argparse.ArgumentParser) -> None:

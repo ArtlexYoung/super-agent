@@ -5,12 +5,12 @@ from pathlib import Path
 from threading import RLock
 from typing import TYPE_CHECKING, Callable
 
-from skill.loaders.defaults import (
+from core.skill_use.defaults import (
     create_default_skill_loaders,
     create_skills,
 )
-from skill.loaders.registry import SkillLoader, SkillLoaders
-from skill.loaders.mcp import McpServer, McpServers
+from core.skill_use.registry import SkillLoader, SkillLoaders
+from core.skill_use.mcp import McpServer, McpServers
 from core.provider.chat import (
     ChatProvider,
     Message,
@@ -39,7 +39,7 @@ from core.models import (
 )
 from core.state.models import Conversation
 from core.events import StorageBackend
-from skill.loaders.models import (
+from core.skill_use.models import (
     ModelProfile,
     create_direct_provider_profile,
     read_model_profiles,
@@ -440,7 +440,7 @@ class Agent:
     ) -> "EventStore | None":
         if storage is None:
             return None
-        from skill.state.events import EventStore
+        from core.state.events import EventStore
 
         return EventStore(
             storage,

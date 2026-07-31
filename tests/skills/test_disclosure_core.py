@@ -3,7 +3,7 @@ import unittest
 from dataclasses import fields
 from pathlib import Path
 
-from skill.evolution.records import (
+from core.evolution.records import (
     EvaluationResult,
     EvaluationSource,
     EvaluationTokenUsage,
@@ -11,12 +11,12 @@ from skill.evolution.records import (
     create_evaluation_record,
     read_evaluation_records,
 )
-from skill.state.events import create_local_event_store
+from core.state.events import create_local_event_store
 from skill.disclosure import ProgressiveDisclosureCore
-from skill.evolution.metrics import calculate_skill_freshness
-from skill.evolution.models import SkillRevision
-from skill.loaders.defaults import create_runtime_disclosure_recorder
-from skill.skills import Skills
+from core.evolution.metrics import calculate_skill_freshness
+from core.evolution.models import SkillRevision
+from core.skill_use.defaults import create_runtime_disclosure_recorder
+from core.skill_use.skills import Skills
 from core.runtime.run import Run
 from support import load_default_evolution_policy
 
@@ -353,9 +353,9 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
             self.assertIn("leaves skill directory", issues[0].message)
 
     def test_kind_factories_only_accept_center_disclosure(self) -> None:
-        from skill.loaders.mcp import read_mcp_skill_settings
-        from skill.state.memory import create_memory_from_skill
-        from skill.loaders.workflow import create_workflow_policy_from_skill
+        from core.skill_use.mcp import read_mcp_skill_settings
+        from core.state.memory import create_memory_from_skill
+        from core.skill_use.workflow import create_workflow_policy_from_skill
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

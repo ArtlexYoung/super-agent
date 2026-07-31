@@ -99,7 +99,7 @@ lookup, storage injection, scene policy, and subagent graphs are Python choices:
 
 ```python
 from core.checks import ActionEffect, ActionMode, ActionRules
-from skill.loaders.mcp import StdioMcpServer
+from core.skill_use.mcp import StdioMcpServer
 from super_agent import Agent
 
 agent = Agent(action_rules=ActionRules(ActionMode.READ_ONLY))
