@@ -114,7 +114,7 @@ def _show_run_status(args: argparse.Namespace) -> int:
 
 def _explain_run(args: argparse.Namespace) -> int:
     agent = load_agent(args.config)
-    store = agent.runtime.create_event_store(args.user_id)
+    store = agent._create_event_store(args.user_id)
     run_id = _resolve_run_id(store, args.run_id)
     if run_id is None:
         print("No run snapshots yet.")

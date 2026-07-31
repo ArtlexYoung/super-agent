@@ -71,10 +71,10 @@ class UserConversations:
         *,
         conversation_id: str | None = None,
     ) -> Conversation:
-        runtime = self.user.agent.runtime
+        state = self.user.agent._get_state_access()
         return cast(
             Conversation,
-            runtime.execute_management_action(
+            state.execute_action(
                 self.user.user_id,
                 ActionRequest.create(
                     "user:conversation",
@@ -82,7 +82,7 @@ class UserConversations:
                     (ActionEffect.CREATE,),
                 ),
                 lambda: create_conversation(
-                    runtime.create_event_store(self.user.user_id),
+                    state.create_event_store(self.user.user_id),
                     title,
                     conversation_id=conversation_id,
                 ),
@@ -90,18 +90,18 @@ class UserConversations:
         )
 
     def list(self) -> list[Conversation]:
-        store = self.user.agent.runtime.create_event_store(self.user.user_id)
+        store = self.user.agent._create_event_store(self.user.user_id)
         return list_conversations(store)
 
     def read(self, conversation_id: str) -> Conversation:
-        store = self.user.agent.runtime.create_event_store(self.user.user_id)
+        store = self.user.agent._create_event_store(self.user.user_id)
         return read_conversation(store, conversation_id)
 
     def rename(self, conversation_id: str, title: str) -> Conversation:
-        runtime = self.user.agent.runtime
+        state = self.user.agent._get_state_access()
         return cast(
             Conversation,
-            runtime.execute_management_action(
+            state.execute_action(
                 self.user.user_id,
                 ActionRequest.create(
                     "user:conversation",
@@ -109,7 +109,7 @@ class UserConversations:
                     (ActionEffect.UPDATE,),
                 ),
                 lambda: rename_conversation(
-                    runtime.create_event_store(self.user.user_id),
+                    state.create_event_store(self.user.user_id),
                     conversation_id,
                     title,
                 ),
@@ -117,10 +117,10 @@ class UserConversations:
         )
 
     def clear(self, conversation_id: str) -> Conversation:
-        runtime = self.user.agent.runtime
+        state = self.user.agent._get_state_access()
         return cast(
             Conversation,
-            runtime.execute_management_action(
+            state.execute_action(
                 self.user.user_id,
                 ActionRequest.create(
                     "user:conversation",
@@ -128,15 +128,15 @@ class UserConversations:
                     (ActionEffect.DELETE,),
                 ),
                 lambda: clear_conversation(
-                    runtime.create_event_store(self.user.user_id),
+                    state.create_event_store(self.user.user_id),
                     conversation_id
                 ),
             ),
         )
 
     def delete(self, conversation_id: str) -> None:
-        runtime = self.user.agent.runtime
-        runtime.execute_management_action(
+        state = self.user.agent._get_state_access()
+        state.execute_action(
             self.user.user_id,
             ActionRequest.create(
                 "user:conversation",
@@ -144,7 +144,7 @@ class UserConversations:
                 (ActionEffect.DELETE,),
             ),
             lambda: delete_conversation(
-                runtime.create_event_store(self.user.user_id),
+                state.create_event_store(self.user.user_id),
                 conversation_id
             ),
         )
@@ -157,9 +157,9 @@ class UserRuns:
         self.user = user
 
     def read_trace(self, run_id: str) -> TaskTrace:
-        return self.user.agent.runtime.read_task_trace(
+        return self.user.agent._get_state_access().read_task_trace(
+            self.user.user_id,
             run_id,
-            user_id=self.user.user_id,
         )
 
     def record_feedback(
@@ -168,26 +168,48 @@ class UserRuns:
         score: float,
         reason: str = "",
     ) -> RunEvent:
-        return self.user.agent.runtime.record_task_feedback(
+        return self.user.agent._get_state_access().record_task_feedback(
+            self.user.user_id,
             run_id,
-            score,
-            reason,
-            user_id=self.user.user_id,
+            score=score,
+            reason=reason,
+            source="explicit",
         )
 
     def learn(self, run_id: str) -> RunLearningResult:
-        return self.user.agent.runtime.learn_from_run(
-            run_id,
-            user_id=self.user.user_id,
+        store = self.user.agent._create_event_store(self.user.user_id)
+        snapshot = store.read_run(run_id)
+        if snapshot.agent_name != self.user.agent.config.agent.name:
+            raise ValueError(f"run belongs to another Agent: {run_id}")
+        from core.evaluation.learning import learn_from_run
+        from core.skill_use.defaults import load_configured_freshness_rules
+
+        rules = load_configured_freshness_rules(
+            self.user.agent.config,
+            store=store,
         )
+        result = self.user.agent._get_state_access().execute_action(
+            self.user.user_id,
+            ActionRequest.create(
+                "user:run-learning",
+                f"run:{run_id}",
+                (ActionEffect.CREATE, ActionEffect.UPDATE),
+            ),
+            lambda: learn_from_run(store, run_id, rules),
+        )
+        if not isinstance(result, RunLearningResult):
+            raise TypeError("run learning must return RunLearningResult")
+        return result
 
     def list_model_usage_stats(
         self,
         purpose: str | None = None,
     ) -> list[ModelUsageStats]:
-        return self.user.agent.runtime.list_model_usage_stats(
-            user_id=self.user.user_id,
-            purpose=purpose,
+        from core.runtime.model_calls import list_model_usage_stats
+
+        return list_model_usage_stats(
+            self.user.agent._create_event_store(self.user.user_id),
+            purpose,
         )
 
 
@@ -200,19 +222,13 @@ class UserSkills:
     def create_skill_updater(self) -> "SkillUpdater":
         return cast(
             "SkillUpdater",
-            self.user.agent.runtime.create_skill_updater(
-                self.user.user_id,
-                lambda manifest: self.user.agent._activate_changed_skill(
-                    manifest,
-                    self.user.user_id,
-                ),
-            ),
+            _create_skill_updater(self.user),
         )
 
     def create_model_manager(self) -> ModelSkillManager:
         return ModelSkillManager(
             self.user.agent.config,
-            self.user.agent.runtime.create_event_store(self.user.user_id),
+            self.user.agent._create_event_store(self.user.user_id),
             self.user.agent._create_action_rules(),
         )
 
@@ -227,3 +243,29 @@ class UserConfiguration:
 
     def replace(self, config: AgentConfig) -> None:
         self.user.agent._replace_configuration(config)
+
+
+def _create_skill_updater(user: UserAgent) -> "SkillUpdater":
+    from core.skill_use.defaults import create_skills
+    from core.skill_use.update import SkillUpdater
+
+    agent = user.agent
+    store = agent._create_event_store(user.user_id)
+    skills = create_skills(
+        agent.config,
+        handlers=agent._skill_handlers,
+        store=store,
+        include_freshness=False,
+    )
+    task_loop = agent._create_task_loop(user.user_id, skills)
+    return SkillUpdater(
+        skills.disclosure,
+        store=store,
+        propose_model=task_loop.create_text_model(store, "skill_change_proposal"),
+        test_model=task_loop.create_text_model(store, "skill_change_test"),
+        on_skill_changed=lambda manifest: agent._activate_changed_skill(
+            manifest,
+            user.user_id,
+        ),
+        action_rules=agent._get_state_access().require_action_rules(),
+    )

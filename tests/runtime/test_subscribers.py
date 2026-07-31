@@ -110,7 +110,7 @@ class RuntimeEventSubscriberTests(unittest.TestCase):
             result = agent.run("hello")
 
             self.assertEqual("completed answer", result.text)
-            self.assertEqual([], read_evaluation_records(agent.runtime.create_event_store()))
+            self.assertEqual([], read_evaluation_records(agent._create_event_store()))
             self.assertFalse(
                 any(event.event_type.startswith("learning.") for event in result.events)
             )
@@ -134,7 +134,7 @@ class RuntimeEventSubscriberTests(unittest.TestCase):
             self.assertEqual(first.events, second.events)
             self.assertEqual(
                 len(first.evaluation_record_ids),
-                len(read_evaluation_records(agent.runtime.create_event_store())),
+                len(read_evaluation_records(agent._create_event_store())),
             )
 
     def test_stateless_run_stays_file_free_and_cannot_learn(self) -> None:

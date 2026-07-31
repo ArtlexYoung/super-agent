@@ -14,6 +14,7 @@ from core.state.models import Conversation, ConversationMessage
 
 if TYPE_CHECKING:
     from core.state.events import EventStore
+    from core.runtime.agent import Agent
 
 
 @dataclass(frozen=True)
@@ -76,6 +77,55 @@ def complete_conversation_turn(
             run_result=asdict(result),
         ),
     )
+
+
+def infer_conversation_feedback(
+    agent: Agent,
+    conversation: Conversation,
+    prompt: str,
+    *,
+    user_id: str,
+) -> None:
+    """Ask the active model whether one follow-up is feedback for the prior run."""
+    from core.runtime.model_calls import infer_conversation_feedback_with_model
+    from core.skill_use.defaults import create_skills
+
+    store = agent._create_event_store(user_id)
+    skills = create_skills(
+        agent.config,
+        handlers=agent._skill_handlers,
+        store=store,
+        include_freshness=False,
+    )
+    entry = skills.index.select_one_configured_or_default_skill(
+        "feedback",
+        agent.config.agent.skills,
+    )
+    feedback_skill = skills.open(entry.reference)
+    feedback_skill.disclose_manifest()
+    feedback_skill.disclose_configuration()
+    instructions = feedback_skill.disclose_instructions().content
+    if feedback_skill.read_configuration().content:
+        raise ValueError("feedback Skill configuration must be empty")
+    model = agent._create_task_loop(user_id, skills).create_text_model(
+        store,
+        "conversation_feedback",
+    )
+    feedback = infer_conversation_feedback_with_model(
+        conversation,
+        prompt,
+        instructions,
+        model.send_messages,
+    )
+    if feedback is not None:
+        run_id, score, reason = feedback
+        agent._get_state_access().record_task_feedback(
+            user_id,
+            run_id,
+            score=score,
+            reason=reason,
+            source="implicit",
+        )
 
 
 def create_conversation(

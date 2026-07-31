@@ -98,7 +98,7 @@ class EventStoreTests(unittest.TestCase):
 
             result = agent.run("hello")
 
-            events = agent.runtime.create_event_store().read_run_events(result.run_id)
+            events = agent._create_event_store().read_run_events(result.run_id)
             self.assertEqual(result.events, events)
             self.assertEqual("completed", result.stop_reason)
             event_types = [event.event_type for event in events]
@@ -125,8 +125,8 @@ class EventStoreTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "provider failed"):
                 agent.run("hello")
 
-            runs = agent.runtime.create_event_store().list_runs()
-            events = agent.runtime.create_event_store().read_run_events(runs[0].run_id)
+            runs = agent._create_event_store().list_runs()
+            events = agent._create_event_store().read_run_events(runs[0].run_id)
             self.assertEqual("run.failed", events[-1].event_type)
             self.assertEqual("RuntimeError", events[-1].data["error_type"])
 

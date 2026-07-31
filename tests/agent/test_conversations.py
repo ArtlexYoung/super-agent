@@ -25,7 +25,7 @@ class ConversationRuntimeTests(unittest.TestCase):
             )
             conversations = agent.for_user("local").conversations
             conversation = conversations.create("Original")
-            store = agent.runtime.create_event_store()
+            store = agent._create_event_store()
 
             append_conversation_turn(
                 store,
@@ -123,8 +123,8 @@ class ConversationRuntimeTests(unittest.TestCase):
             beta_result = beta.run("beta secret", conversation_id=conversation_id)
             alpha.runs.learn(alpha_result.run_id)
             beta.runs.learn(beta_result.run_id)
-            alpha_store = agent.runtime.create_event_store("user-alpha")
-            beta_store = agent.runtime.create_event_store("user-beta")
+            alpha_store = agent._create_event_store("user-alpha")
+            beta_store = agent._create_event_store("user-beta")
             Memory(alpha_store).remember_long_term("alpha memory")
 
             self.assertEqual(
@@ -186,7 +186,7 @@ class ConversationRuntimeTests(unittest.TestCase):
             )
 
             stored = main_user.conversations.read(conversation.conversation_id)
-            child_run = worker.runtime.create_event_store("user-a").read_run(
+            child_run = worker._create_event_store("user-a").read_run(
                 result.subagent_results[0].run_id
             )
             self.assertEqual(2, len(stored.messages))

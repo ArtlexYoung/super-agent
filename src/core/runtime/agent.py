@@ -18,9 +18,12 @@ from core.provider.chat import (
 from core.provider.pool import ProviderPool
 from core.config import AgentConfig
 from core.runtime.runtime import Runtime
+from core.runtime.context import RuntimeContext
 from core.runtime.run import Run
+from core.runtime.team import find_cycle_chains, find_longest_agent_chain
 from core.models import LOCAL_USER_ID
 from core.state.models import RunEvent
+from core.state.access import StateAccess
 from core.state.subscribers import RuntimeEventSubscriber, RuntimeEventSubscribers
 from core.checks import (
     ActionEffect,
@@ -72,7 +75,12 @@ class Agent:
             raise TypeError("use_storage must be a boolean or None")
         if storage is not None and use_storage is False:
             raise ValueError("storage cannot be combined with use_storage=False")
-        self.config = _load_agent_config(config)
+        if config is None:
+            self.config = AgentConfig.load_automatically()
+        elif isinstance(config, AgentConfig):
+            self.config = config
+        else:
+            self.config = AgentConfig.load_from_file(config)
         self._action_rules = action_rules
         self.user_secrets = UserSecretResolver(secret_lookup)
         self._use_storage = storage is not None if use_storage is None else use_storage
@@ -80,6 +88,7 @@ class Agent:
         self._provided_provider = provider
         self._storage: StorageBackend | None = None
         self._runtime: Runtime | None = None
+        self._state_access: StateAccess | None = None
         self._provider_pool: ProviderPool | None = None
         self._model_profiles: list[ModelProfile] = []
         self._model_profile: ModelProfile | None = None
@@ -171,10 +180,7 @@ class Agent:
 
     def _add_event_subscriber(self, subscriber: RuntimeEventSubscriber) -> None:
         with self._initialization_lock:
-            if self._runtime is None:
-                self._pending_event_subscribers.add_subscriber(subscriber)
-            else:
-                self._runtime.add_event_subscriber(subscriber)
+            self._pending_event_subscribers.add_subscriber(subscriber)
 
     def add_model(self, model_name: str, provider: ChatProvider) -> None:
         key = model_name.strip().lower()
@@ -200,11 +206,11 @@ class Agent:
     def _check_subagent_links(self) -> list[str]:
         warnings: list[str] = []
         root_chain = [self.config.agent.name]
-        for chain in _find_cycle_chains(self, root_chain, set()):
+        for chain in find_cycle_chains(self, root_chain, set()):
             warnings.append(f"Agent chain has cycle: {' -> '.join(chain)}")
         max_depth = self.config.agent.max_agent_chain_depth
         if max_depth is not None:
-            longest_chain = _find_longest_agent_chain(self, root_chain, set())
+            longest_chain = find_longest_agent_chain(self, root_chain, set())
             if len(longest_chain) > max_depth:
                 warnings.append(
                     "Agent chain depth is "
@@ -248,12 +254,13 @@ class Agent:
                 raise ValueError(
                     "conversation_id cannot be combined with explicit messages"
                 )
-            if self.runtime.storage is None:
+            state = self._get_state_access()
+            if state.storage is None:
                 raise RuntimeError("conversation history requires Runtime storage")
             from adapter.conversations import prepare_conversation_turn
 
             prepared_messages, pending_turn = prepare_conversation_turn(
-                self.runtime.create_event_store(user_id),
+                state.create_event_store(user_id),
                 self._create_action_rules(),
                 conversation_id,
                 prompt,
@@ -302,11 +309,9 @@ class Agent:
         prompt: str,
         user_id: str,
     ) -> None:
-        self.runtime.infer_and_record_conversation_feedback(
-            conversation,
-            prompt,
-            user_id=user_id,
-        )
+        from adapter.conversations import infer_conversation_feedback
+
+        infer_conversation_feedback(self, conversation, prompt, user_id=user_id)
 
     def _activate_changed_skill(
         self,
@@ -317,7 +322,14 @@ class Agent:
             self._reload_model_profiles(user_id)
 
     def _reload_model_profiles(self, user_id: str = LOCAL_USER_ID) -> None:
-        profiles = self.runtime.read_model_profiles(user_id)
+        store = None if self._storage is None else self._create_event_store(user_id)
+        skills = create_skills(
+            self.config,
+            handlers=self._skill_handlers,
+            store=store,
+            include_freshness=False,
+        )
+        profiles = self._read_model_profiles_for_user(skills, user_id)
         if user_id == LOCAL_USER_ID:
             self._model_profiles = profiles
             self._model_profile = (
@@ -340,12 +352,23 @@ class Agent:
                 self.provider_pool,
                 self._storage,
                 self._code_model_profiles,
-                self._runtime.list_event_subscribers(),
             )
-            profiles = runtime.read_model_profiles(LOCAL_USER_ID)
+            store = self._create_bootstrap_store(self._storage, config=config)
+            skills = create_skills(
+                config,
+                handlers=self._skill_handlers,
+                store=store,
+                include_freshness=False,
+            )
+            profiles = self._read_model_profiles_for_user(skills, LOCAL_USER_ID)
             profile = select_default_model_profile(profiles) if profiles else None
             self.config = config
             self._runtime = runtime
+            self._state_access = StateAccess(
+                config,
+                self._storage,
+                self._create_action_rules,
+            )
             self._model_profiles = profiles
             self._model_profile = profile
 
@@ -378,13 +401,17 @@ class Agent:
                 provider_pool,
                 storage,
                 code_profiles,
-                self._pending_event_subscribers.list_subscribers(),
             )
             self._storage = storage
             self._provider_pool = provider_pool
             self._model_profiles = profiles
             self._model_profile = profile
             self._code_model_profiles = code_profiles
+            self._state_access = StateAccess(
+                self.config,
+                storage,
+                self._create_action_rules,
+            )
             self._runtime = runtime
 
     def _create_configured_storage(self) -> StorageBackend | None:
@@ -401,6 +428,8 @@ class Agent:
     def _create_bootstrap_store(
         self,
         storage: StorageBackend | None,
+        *,
+        config: AgentConfig | None = None,
     ) -> "EventStore | None":
         if storage is None:
             return None
@@ -408,9 +437,9 @@ class Agent:
 
         return EventStore(
             storage,
-            self.config.storage.path,
+            (config or self.config).storage.path,
             LOCAL_USER_ID,
-            self.config.agent.name,
+            (config or self.config).agent.name,
         )
 
     def _build_runtime(
@@ -419,21 +448,47 @@ class Agent:
         provider_pool: ProviderPool,
         storage: StorageBackend | None,
         code_profiles: tuple[ModelProfile, ...],
-        event_subscribers: tuple[RuntimeEventSubscriber, ...],
     ) -> Runtime:
-        runtime = Runtime(
-            config,
-            provider_pool,
-            self._skill_handlers,
-            storage,
-            self._create_action_rules,
-            self.user_secrets,
+        return Runtime(
+            RuntimeContext(
+                config,
+                provider_pool,
+                self._skill_handlers,
+                storage,
+                self._create_action_rules,
+                self.user_secrets,
+                code_model_profiles=code_profiles,
+                event_subscribers=self._pending_event_subscribers,
+            )
         )
-        runtime.set_code_model_profiles(code_profiles)
-        runtime.set_skill_change_listener(self._activate_changed_skill)
-        for subscriber in event_subscribers:
-            runtime.add_event_subscriber(subscriber)
-        return runtime
+
+    def _get_state_access(self) -> StateAccess:
+        self._ensure_initialized()
+        if self._state_access is None:
+            raise RuntimeError("Agent initialization did not create state access")
+        return self._state_access
+
+    def _create_event_store(self, user_id: str = LOCAL_USER_ID):
+        return self._get_state_access().create_event_store(user_id)
+
+    def _read_model_profiles_for_user(
+        self,
+        skills,
+        user_id: str,
+    ) -> list[ModelProfile]:
+        environment = self.user_secrets.get_environment_for_user(user_id)
+        profiles = read_model_profiles(skills, environment)
+        return profiles or list(self._code_model_profiles)
+
+    def _create_task_loop(self, user_id: str, skills):
+        from core.runtime.loop import ModelLoop
+
+        profiles = self._read_model_profiles_for_user(skills, user_id)
+        environment = self.user_secrets.get_environment_for_user(user_id)
+        return ModelLoop(
+            profiles,
+            self.provider_pool.create_user_provider_pool(environment),
+        )
 
     def _create_action_rules(self) -> ActionRules:
         with self._initialization_lock:
@@ -527,39 +582,3 @@ class Agent:
             conversation_id=parent_session.identity.conversation_id,
             parent_run_id=parent_session.run_id,
         )
-
-
-def _find_cycle_chains(agent: Agent, chain: list[str], seen_ids: set[int]) -> list[list[str]]:
-    agent_id = id(agent)
-    if agent_id in seen_ids:
-        return [chain]
-    next_seen_ids = seen_ids | {agent_id}
-    cycles: list[list[str]] = []
-    for subagent in agent.subagents:
-        cycles.extend(_find_cycle_chains(subagent.agent, chain + [subagent.name], next_seen_ids))
-    return cycles
-
-
-def _find_longest_agent_chain(agent: Agent, chain: list[str], seen_ids: set[int]) -> list[str]:
-    agent_id = id(agent)
-    if agent_id in seen_ids:
-        return chain
-    longest = chain
-    next_seen_ids = seen_ids | {agent_id}
-    for subagent in agent.subagents:
-        child_chain = _find_longest_agent_chain(
-            subagent.agent,
-            chain + [subagent.name],
-            next_seen_ids,
-        )
-        if len(child_chain) > len(longest):
-            longest = child_chain
-    return longest
-
-
-def _load_agent_config(config: AgentConfig | str | Path | None) -> AgentConfig:
-    if config is None:
-        return AgentConfig.load_automatically()
-    if isinstance(config, AgentConfig):
-        return config
-    return AgentConfig.load_from_file(config)

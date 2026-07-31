@@ -258,7 +258,7 @@ class LazyAgentInitializationTests(unittest.TestCase):
             runtime = agent.runtime
 
             self.assertIs(runtime, agent.runtime)
-            self.assertIsNotNone(agent.runtime.storage)
+            self.assertIsNotNone(agent._storage)
             self.assertEqual("model:provided", agent.model_profiles[0].key)
             self.assertEqual(1, build_skills.call_count)
             self.assertEqual(1, discover_models.call_count)
@@ -305,8 +305,9 @@ class LazyAgentInitializationTests(unittest.TestCase):
                 storage=storage,
             )
             agent._add_skill_handler(handler)
+            _ = agent.runtime
 
-            self.assertIs(storage, agent.runtime.storage)
+            self.assertIs(storage, agent._storage)
             self.assertIs(
                 handler,
                 agent._skill_handlers.find("unused"),

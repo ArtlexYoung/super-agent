@@ -17,7 +17,7 @@ class RunSnapshotTests(unittest.TestCase):
             )
 
             result = agent.run("hello")
-            store = agent.runtime.create_event_store()
+            store = agent._create_event_store()
             snapshot = store.read_run(result.run_id)
             explanation = store.explain_run(result.run_id)
 
@@ -48,7 +48,7 @@ class RunSnapshotTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "provider failed"):
                 agent.run("hello")
 
-            snapshot = agent.runtime.create_event_store().list_runs()[0]
+            snapshot = agent._create_event_store().list_runs()[0]
             self.assertEqual("failed", snapshot.status)
             self.assertEqual("RuntimeError", snapshot.error["error_type"])
             self.assertEqual("provider failed", snapshot.error["message"])
@@ -62,7 +62,7 @@ class RunSnapshotTests(unittest.TestCase):
             )
 
             result = agent.run("hello")
-            store = agent.runtime.create_event_store()
+            store = agent._create_event_store()
             snapshot = store.read_run(result.run_id)
             events = store.read_run_events(result.run_id)
 

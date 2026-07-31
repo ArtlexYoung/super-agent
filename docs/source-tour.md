@@ -42,6 +42,7 @@ For a subsystem, start at its owner:
 - Skill handling: `core.skill_use.handlers.SkillCollection` and `SkillHandlers`.
 - Provider selection: `core.provider.pool.ProviderPool`.
 - Stored user access: `adapter.user.UserAgent`.
+- Scoped state access: `core.state.access.StateAccess`.
 - Side-effect checks: `core.checks.ActionRunner`.
 - Run events: `core.state.event_log.RunEventLog`.
 - Explicit Skill changes: `core.skill_use.update.SkillUpdater`.

@@ -83,7 +83,7 @@ class WebAPI:
         return WebAPIResponse(HTTPStatus.NOT_FOUND, {"error": "route not found"})
 
     def _read_bootstrap(self) -> dict[str, object]:
-        store = self.agent.runtime.create_event_store(self.user_id)
+        store = self.agent._create_event_store(self.user_id)
         config = self.agent.config
         all_skills_config = replace(
             config,
@@ -122,12 +122,12 @@ class WebAPI:
 
     def _read_run(self, run_id: str) -> dict[str, object]:
         agent = _find_agent_for_run(self.agent, self.user_id, run_id, set())
-        store = agent.runtime.create_event_store(self.user_id)
+        store = agent._create_event_store(self.user_id)
         rules = load_configured_freshness_rules_if_enabled(agent.config, store=store)
         return explain_run_with_insight(store, run_id, rules)
 
     def _forget_memory(self, item_id: str) -> None:
-        store = self.agent.runtime.create_event_store(self.user_id)
+        store = self.agent._create_event_store(self.user_id)
         item = next(
             (
                 candidate
@@ -138,7 +138,7 @@ class WebAPI:
         )
         if item is None:
             raise KeyError(f"active memory item not found: {item_id}")
-        self.agent.runtime.execute_management_action(
+        self.agent._get_state_access().execute_action(
             self.user_id,
             ActionRequest.create(
                 "user:web-memory",
@@ -153,7 +153,7 @@ class WebAPI:
 
     def _update_configuration(self, body: object | None) -> None:
         request = AgentConfigurationInput.from_dict(body)
-        updated = self.agent.runtime.execute_management_action(
+        updated = self.agent._get_state_access().execute_action(
             self.user_id,
             ActionRequest.create(
                 "user:web-configuration",
@@ -220,7 +220,7 @@ def _find_agent_for_run(
         raise KeyError(f"run not found: {run_id}")
     seen.add(id(agent))
     try:
-        agent.runtime.create_event_store(user_id).read_run(run_id)
+        agent._create_event_store(user_id).read_run(run_id)
         return agent
     except KeyError:
         pass
@@ -244,7 +244,7 @@ def _subagent_tree(
     nodes: list[dict[str, object]] = []
     for subagent in agent.subagents:
         child_path = [*path, subagent.name]
-        child_store = subagent.agent.runtime.create_event_store(user_id)
+        child_store = subagent.agent._create_event_store(user_id)
         nodes.append(
             {
                 "name": subagent.name,

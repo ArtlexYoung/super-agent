@@ -189,7 +189,7 @@ description = "Research helper"
             result = agent.run("echo hello")
             agent.for_user("local").runs.learn(result.run_id)
 
-            store = agent.runtime.create_event_store()
+            store = agent._create_event_store()
             records = read_evaluation_records(store)
             stats = calculate_skill_freshness(
                 read_evaluation_records(store, source_type="agent_run"),
@@ -223,7 +223,7 @@ description = "Research helper"
             with self.assertRaisesRegex(RuntimeError, "provider unavailable"):
                 agent.run("echo hello")
 
-            store = agent.runtime.create_event_store()
+            store = agent._create_event_store()
             run_id = store.list_runs(1)[0].run_id
             agent.for_user("local").runs.learn(run_id)
             records = read_evaluation_records(

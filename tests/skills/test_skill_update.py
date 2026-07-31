@@ -41,7 +41,7 @@ class SkillUpdateTests(unittest.TestCase):
             self.assertEqual("Original instructions.\n", skill.joinpath("SKILL.md").read_text())
             with self.assertRaisesRegex(ValueError, "did not pass"):
                 updater.apply_skill_change(change.change_id)
-            self.assertFalse((agent.runtime.create_event_store("alice").private_root / "skills").exists())
+            self.assertFalse((agent._create_event_store("alice").private_root / "skills").exists())
 
     def test_apply_and_undo_restore_project_skill(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -68,7 +68,7 @@ class SkillUpdateTests(unittest.TestCase):
             )
 
             applied = updater.apply_skill_change(change.change_id)
-            user_path = agent.runtime.create_event_store("alice").private_root / "skills" / "prompt" / "writer"
+            user_path = agent._create_event_store("alice").private_root / "skills" / "prompt" / "writer"
             restored = updater.undo_skill_change(change.change_id)
 
             self.assertTrue(report.passed)
@@ -79,7 +79,7 @@ class SkillUpdateTests(unittest.TestCase):
             self.assertEqual("Original instructions.\n", skill.joinpath("SKILL.md").read_text())
             event_types = [
                 event.event_type
-                for event in agent.runtime.create_event_store("alice").read_events("skill_change")
+                for event in agent._create_event_store("alice").read_events("skill_change")
             ]
             self.assertEqual(
                 [
@@ -90,7 +90,7 @@ class SkillUpdateTests(unittest.TestCase):
                 ],
                 event_types,
             )
-            action_events = agent.runtime.create_event_store("alice").read_events("action")
+            action_events = agent._create_event_store("alice").read_events("action")
             self.assertEqual(4, len([item for item in action_events if item.event_type == "action.applied"]))
 
 

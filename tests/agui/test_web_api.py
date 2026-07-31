@@ -34,7 +34,7 @@ class WebAPIContractTests(unittest.TestCase):
             )
             agent.add_subagent(child, name="research", created_by_agent=True)
             child_result = child.for_user("web-user").run("inspect")
-            memory = Memory(agent.runtime.create_event_store("web-user"))
+            memory = Memory(agent._create_event_store("web-user"))
             memory.remember_long_term("Stable preference.")
 
             response = WebAPI(agent, "web-user").handle("GET", "/api/bootstrap")
@@ -85,7 +85,7 @@ class WebAPIContractTests(unittest.TestCase):
                 {"title": "Renamed"},
             )
             run = api.handle("GET", f"/api/runs/{result.run_id}")
-            memory = Memory(agent.runtime.create_event_store("web-user"))
+            memory = Memory(agent._create_event_store("web-user"))
             item = memory.remember_long_term("Forget this note.")
             forgotten = api.handle("DELETE", f"/api/memory/{item.item_id}")
 

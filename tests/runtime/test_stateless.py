@@ -142,6 +142,7 @@ print(json.dumps(sorted(name for name in sys.modules if name.startswith(blocked)
         with tempfile.TemporaryDirectory() as tmp:
             config = AgentConfig.create_default(Path(tmp))
             stateful = Agent(config, provider=MockProvider(), use_storage=True)
+            _ = stateful.runtime
 
             with self.assertRaisesRegex(
                 ValueError,
@@ -150,7 +151,7 @@ print(json.dumps(sorted(name for name in sys.modules if name.startswith(blocked)
                 Agent(
                     config,
                     provider=MockProvider(),
-                    storage=stateful.runtime.storage,
+                    storage=stateful._storage,
                     use_storage=False,
                 )
 

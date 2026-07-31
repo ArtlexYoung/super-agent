@@ -1,6 +1,6 @@
 [project]
 name = "super-agent"
-version = "0.0.117"
+version = "0.0.118"
 description = "A simple, lightweight, self-evolving, skill-first agent runtime."
 readme = "README.md"
 requires-python = ">=3.11"

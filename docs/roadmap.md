@@ -677,6 +677,18 @@ Status: implemented.
 - Collapse the old registry, loaded-value, and Skills wrapper modules into one handler owner.
 - Remove all old loader names, imports, files, and documentation without aliases.
 
+## v0.0.118: Task-Only Runtime
+
+Status: implemented.
+
+- Give Runtime one public operation, `run_task`, and move user data, feedback, learning,
+  model usage, and Skill update management to their owning interfaces.
+- Pass execution dependencies in one `RuntimeContext` instead of mutating Runtime after
+  construction.
+- Separate user-scoped storage and checked management actions into `StateAccess`.
+- Keep the direct path `super_agent.Agent -> Runtime.run_task -> ModelLoop` visible in the
+  source tour and release tests.
+
 ## Release Gate
 
 The project will not move to `0.1.x` because of feature count. The gate is a reproducible

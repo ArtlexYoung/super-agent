@@ -39,8 +39,8 @@ Agent.run
 ```
 
 There is no keyword router, separate planner engine, or preflight controller. Planning is
-ordinary Skill instruction. A task Skill combines instructions with one run policy. The model can inspect
-or activate either through the same tools it uses for every other Skill.
+ordinary Skill instruction. A task Skill combines instructions with one run policy. The
+model can inspect or activate either through the same tools it uses for every other Skill.
 
 The configured default model owns the task loop. When other model Skills exist, Runtime
 adds one `use_model` tool containing their descriptions, support, strengths, and readiness.

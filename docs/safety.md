@@ -39,7 +39,7 @@ autonomous = Agent(action_rules=ActionRules(ActionMode.AUTONOMOUS))
 The presets are:
 
 - `standard`: the default; allows declared reads, registered code, subagent delegation,
-  scoped Runtime state, and Agent-owned Skill updates. External execution, network access,
+  scoped Agent state, and Agent-owned Skill updates. External execution, network access,
   and deletion require explicit authorization and are blocked before execution.
 - `read_only`: allows only actions whose sole effect is `read`.
 - `autonomous`: allows every declared action. Scope and input validation still apply.

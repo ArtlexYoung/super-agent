@@ -35,7 +35,7 @@ class AGUIServerTests(unittest.TestCase):
             stored = agent.for_user("browser-user").conversations.read("thread-browser-1")
             self.assertEqual(["user", "assistant"], [item.role for item in stored.messages])
             self.assertEqual("run-browser-1", stored.messages[-1].run_id)
-            snapshot = agent.runtime.create_event_store("browser-user").read_run("run-browser-1")
+            snapshot = agent._create_event_store("browser-user").read_run("run-browser-1")
             self.assertEqual("thread-browser-1", snapshot.conversation_id)
 
     def test_http_server_rejects_unlisted_browser_origin(self) -> None:
@@ -53,7 +53,7 @@ class AGUIServerTests(unittest.TestCase):
 
             self.assertEqual(403, status)
             self.assertEqual("origin is not allowed", json.loads(body)["error"])
-            self.assertEqual([], agent.runtime.create_event_store("browser-user").list_runs())
+            self.assertEqual([], agent._create_event_store("browser-user").list_runs())
 
     def test_health_route_is_dependency_free_json(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

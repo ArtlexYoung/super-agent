@@ -260,6 +260,18 @@ class SkillHandlerRuntimeTests(unittest.TestCase):
         }
         self.assertIn("run_task", method_names)
         self.assertNotIn("run_agent", method_names)
+        runtime = ast.parse(Path("src/core/runtime/runtime.py").read_text(encoding="utf-8"))
+        runtime_class = next(
+            node
+            for node in runtime.body
+            if isinstance(node, ast.ClassDef) and node.name == "Runtime"
+        )
+        public_methods = {
+            node.name
+            for node in runtime_class.body
+            if isinstance(node, ast.FunctionDef) and not node.name.startswith("_")
+        }
+        self.assertEqual({"run_task"}, public_methods)
 
     def test_runtime_does_not_import_concrete_skill_kinds(self) -> None:
         for path in (
