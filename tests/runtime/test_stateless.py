@@ -6,8 +6,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from super_agent import Agent, AgentRunOptions
+from super_agent import Agent
 from core.config import AgentConfig
+from core.models import AgentRunOptions
 from core.provider.chat import MockProvider
 
 
@@ -19,8 +20,9 @@ import json
 import sys
 import tempfile
 from pathlib import Path
-from super_agent import Agent, AgentRunOptions
+from super_agent import Agent
 from core.config import AgentConfig
+from core.models import AgentRunOptions
 from core.provider.chat import MockProvider
 
 with tempfile.TemporaryDirectory() as temporary_directory:
@@ -151,7 +153,7 @@ print(json.dumps(sorted(name for name in sys.modules if name.startswith(blocked)
                 Agent(
                     config,
                     provider=MockProvider(),
-                    storage=stateful.storage,
+                    storage=stateful.runtime.storage,
                     use_storage=False,
                 )
 

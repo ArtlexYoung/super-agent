@@ -53,21 +53,10 @@ def resolve_agent_run_options(
     return replace(resolved, scene=scene_value, use_scenes=use_value)
 
 
-def normalize_scene_names(names: tuple[str, ...]) -> tuple[str, ...]:
-    if not names:
-        raise ValueError("use_only_scenes requires at least one scene")
-    normalized = tuple(name.strip().lower() for name in names)
-    if any(not name for name in normalized):
-        raise ValueError("scene names cannot be empty")
-    if len(normalized) != len(set(normalized)):
-        raise ValueError("scene names cannot contain duplicates")
-    return normalized
-
-
 def require_scenes_configured_in_code(skills: list[str]) -> None:
     if any(name.strip().lower().startswith("scene:") for name in skills):
         raise ValueError(
-            "configure Agent scenes in code with use_only_scenes(), not agent.skills"
+            "select scenes per run with Agent.run(scene=...), not agent.skills"
         )
 
 

@@ -196,9 +196,27 @@ skills = ["skills"]
 
 
 class LazyAgentInitializationTests(unittest.TestCase):
+    def test_add_skill_path_is_explicit_and_idempotent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            agent = Agent(
+                AgentConfig.create_default(root),
+                provider=MockProvider("ready"),
+            )
+            shared = root / "shared-skills"
+
+            agent.add_skill_path(shared)
+            agent.add_skill_path(shared)
+
+            self.assertEqual(
+                [root / "skills", shared.absolute()],
+                agent.config.paths.skills,
+            )
+            self.assertIsNone(agent._runtime)
+
     def test_construction_and_registration_do_not_initialize_runtime_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, patch(
-            "super_agent.create_skills"
+            "core.runtime.agent.create_skills"
         ) as build_skills, patch(
             "adapter.storage.create_storage_backend"
         ) as create_storage:
@@ -207,25 +225,25 @@ class LazyAgentInitializationTests(unittest.TestCase):
             child = Agent(config, provider=MockProvider("child"), use_storage=False)
 
             agent.add_subagent(child)
-            agent.add_skill_loader(_UnusedSkillLoader())
-            agent.add_mcp_server(
+            agent._add_skill_loader(_UnusedSkillLoader())
+            agent.add_tool(
                 "example",
                 _UnusedMcpServer(),
                 effects=(ActionEffect.EXECUTE,),
             )
-            agent.add_event_subscriber(_RecordingSubscriber())
+            agent._add_event_subscriber(_RecordingSubscriber())
 
             build_skills.assert_not_called()
             create_storage.assert_not_called()
             self.assertIsNone(agent._runtime)
-            self.assertEqual("subagent01", agent.list_subagents()[0].name)
+            self.assertEqual("subagent01", agent.subagents[0].name)
 
     def test_first_runtime_access_initializes_everything_once(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, patch(
-            "super_agent.create_skills",
+            "core.runtime.agent.create_skills",
             wraps=create_skills,
         ) as build_skills, patch(
-            "super_agent.read_model_profiles",
+            "core.runtime.agent.read_model_profiles",
             wraps=read_model_profiles,
         ) as discover_models, patch(
             "adapter.storage.create_storage_backend",
@@ -240,7 +258,7 @@ class LazyAgentInitializationTests(unittest.TestCase):
             runtime = agent.runtime
 
             self.assertIs(runtime, agent.runtime)
-            self.assertIsNotNone(agent.storage)
+            self.assertIsNotNone(agent.runtime.storage)
             self.assertEqual("model:provided", agent.model_profiles[0].key)
             self.assertEqual(1, build_skills.call_count)
             self.assertEqual(1, discover_models.call_count)
@@ -257,7 +275,7 @@ class LazyAgentInitializationTests(unittest.TestCase):
             return read_model_profiles(*args, **kwargs)
 
         with tempfile.TemporaryDirectory() as tmp, patch(
-            "super_agent.read_model_profiles",
+            "core.runtime.agent.read_model_profiles",
             side_effect=discover_models_once_ready,
         ):
             agent = Agent(
@@ -285,13 +303,13 @@ class LazyAgentInitializationTests(unittest.TestCase):
                 config,
                 provider=provider,
                 storage=storage,
-                skill_loaders=[loader],
             )
+            agent._add_skill_loader(loader)
 
-            self.assertIs(storage, agent.storage)
+            self.assertIs(storage, agent.runtime.storage)
             self.assertIs(
                 loader,
-                agent.skill_loaders.find_skill_loader("unused"),
+                agent._skill_loaders.find_skill_loader("unused"),
             )
             self.assertIs(
                 provider,

@@ -187,7 +187,7 @@ class McpServers:
         if registered is None:
             raise KeyError(
                 f"MCP server is not registered in code: {clean_name}; "
-                "call Agent.add_mcp_server(...) before running"
+                "call Agent.add_tool(...) before running"
             )
         return registered
 

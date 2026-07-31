@@ -22,7 +22,7 @@ from core.models import RunLearningResult, RunResult, TaskTrace
 from core.skill_use.files.models import ModelSkillManager
 
 if TYPE_CHECKING:
-    from super_agent import Agent
+    from core.runtime.agent import Agent
     from core.models import AgentRunOptions
     from core.skill_use.update import SkillUpdater
 
@@ -215,7 +215,7 @@ class UserSkills:
         return ModelSkillManager(
             self.user.agent.config,
             self.user.agent.runtime.create_event_store(self.user.user_id),
-            self.user.agent.action_rules,
+            self.user.agent._create_action_rules(),
         )
 
     def reload_models(self) -> None:

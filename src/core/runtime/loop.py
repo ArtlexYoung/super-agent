@@ -413,7 +413,10 @@ def _create_runtime_tools(
     model_tool: SkillTool | None,
 ) -> RuntimeTools:
     results: list[SubAgentResult] = []
-    has_subagents = request.include_subagents and bool(request.subagents.list_subagents())
+    has_subagents = (
+        request.include_subagents
+        and bool(request.subagents.list_subagents())
+    )
 
     def run_subagent(name: str, prompt: str) -> dict[str, object]:
         value = request.subagents.run_named_subagent(name, prompt, run)

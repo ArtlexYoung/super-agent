@@ -203,7 +203,7 @@ description = "Missing mcp table"
             )
             provider = MockProvider("ok")
             agent = Agent(config, provider=provider, use_storage=True)
-            agent.add_mcp_server(
+            agent.add_tool(
                 "calculator",
                 _FakeMcpServer(),
                 effects=(ActionEffect.EXECUTE,),
@@ -211,7 +211,7 @@ description = "Missing mcp table"
 
             result = agent.run("use calculator")
 
-            registered = agent.mcp_servers.list_code_registrations()
+            registered = agent._mcp_servers.list_code_registrations()
             self.assertEqual("calculator", registered[0]["name"])
             self.assertEqual(["execute"], registered[0]["effects"])
             self.assertEqual("mcp_server", registered[0]["kind"])

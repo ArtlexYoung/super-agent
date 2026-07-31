@@ -99,7 +99,6 @@ class SubAgentTests(unittest.TestCase):
                 _delegate_provider("coder", "code this", "main-final"),
             )
             coder = _agent(root, "coder", child_provider)
-            coder.use_only_scenes("code")
             main.add_subagent(coder, name="coder")
 
             result = main.run("delegate")

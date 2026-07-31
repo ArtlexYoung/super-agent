@@ -233,7 +233,7 @@ class ModelSkillTests(unittest.TestCase):
                 provider=primary,
                 use_storage=True,
             )
-            agent.add_model_provider("specialist", specialist)
+            agent.add_model("specialist", specialist)
 
             result = agent.run("Solve this task")
 
@@ -297,7 +297,7 @@ class ModelSkillTests(unittest.TestCase):
                 provider=primary,
                 use_storage=True,
             )
-            agent.add_model_provider(
+            agent.add_model(
                 "specialist",
                 RecordingProvider(ConnectionError("specialist offline")),
             )

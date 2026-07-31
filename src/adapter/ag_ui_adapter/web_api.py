@@ -224,7 +224,7 @@ def _find_agent_for_run(
         return agent
     except KeyError:
         pass
-    for subagent in agent.list_subagents():
+    for subagent in agent.subagents:
         try:
             return _find_agent_for_run(subagent.agent, user_id, run_id, seen)
         except KeyError:
@@ -242,7 +242,7 @@ def _subagent_tree(
         return []
     next_seen = seen | {id(agent)}
     nodes: list[dict[str, object]] = []
-    for subagent in agent.list_subagents():
+    for subagent in agent.subagents:
         child_path = [*path, subagent.name]
         child_store = subagent.agent.runtime.create_event_store(user_id)
         nodes.append(

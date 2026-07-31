@@ -74,8 +74,6 @@ class SkillSceneTests(unittest.TestCase):
                 provider=provider,
                 use_storage=True,
             )
-            agent.use_only_scenes("code")
-
             result = agent.run("Handle this repository task")
 
             self.assertEqual("implemented", result.text)
@@ -102,10 +100,8 @@ class SkillSceneTests(unittest.TestCase):
                 provider=provider,
                 use_storage=True,
             )
-            agent.use_only_scenes("code")
-
-            with self.assertRaisesRegex(PermissionError, "outside.*allowed scenes"):
-                agent.run("Choose a scene")
+            with self.assertRaisesRegex(PermissionError, "disabled"):
+                agent.run("Choose a scene", use_scenes=False)
 
     def test_scene_with_storage_skill_fails_explicitly_when_stateless(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

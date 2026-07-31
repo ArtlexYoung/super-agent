@@ -85,7 +85,7 @@ class SkillLoaderRuntimeTests(unittest.TestCase):
                 _config_with_skills(root, ["prompt:echo"]),
                 provider=provider,
             )
-            agent.add_skill_loader(loader)
+            agent._add_skill_loader(loader)
 
             result = agent.run("please echo this")
 
@@ -105,8 +105,8 @@ class SkillLoaderRuntimeTests(unittest.TestCase):
             agent = Agent(
                 _config_with_skills(root, ["transform:echo"]),
                 provider=provider,
-                skill_loaders=[loader],
             )
+            agent._add_skill_loader(loader)
 
             result = agent.run("please echo this")
 
@@ -131,8 +131,8 @@ class SkillLoaderRuntimeTests(unittest.TestCase):
             agent = Agent(
                 _config_with_skills(root, ["workflow:react", "transform:echo"]),
                 provider=provider,
-                skill_loaders=[_TransformSkillLoader()],
             )
+            agent._add_skill_loader(_TransformSkillLoader())
 
             result = agent.run("please echo this")
 
@@ -152,8 +152,8 @@ class SkillLoaderRuntimeTests(unittest.TestCase):
             agent = Agent(
                 _config_with_skills(root, ["unsafe:echo"]),
                 provider=provider,
-                skill_loaders=[_MissingActionSkillLoader()],
             )
+            agent._add_skill_loader(_MissingActionSkillLoader())
 
             with self.assertRaisesRegex(TypeError, "missing.*action"):
                 agent.run("please echo this")

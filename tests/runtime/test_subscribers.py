@@ -5,8 +5,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from super_agent import Agent, AgentRunOptions
+from super_agent import Agent
 from core.config import AgentConfig
+from core.models import AgentRunOptions
 from core.provider.chat import MockProvider
 from core.state.models import RunEvent
 from core.state.subscribers import RuntimeEventSubscriberError
@@ -20,15 +21,15 @@ class RuntimeEventSubscriberTests(unittest.TestCase):
                 AgentConfig.create_default(Path(tmp)),
                 provider=MockProvider("finished"),
             )
-            agent.add_event_subscriber(_RecordingSubscriber())
+            agent._add_event_subscriber(_RecordingSubscriber())
 
             with self.assertRaisesRegex(ValueError, "already exists: recording"):
-                agent.add_event_subscriber(_RecordingSubscriber())
-            agent.add_event_subscriber(_NamedSubscriber("evaluation"))
+                agent._add_event_subscriber(_RecordingSubscriber())
+            agent._add_event_subscriber(_NamedSubscriber("evaluation"))
             with self.assertRaisesRegex(ValueError, "already exists: evaluation"):
-                agent.add_event_subscriber(_NamedSubscriber("evaluation"))
+                agent._add_event_subscriber(_NamedSubscriber("evaluation"))
             with self.assertRaisesRegex(ValueError, "name must be a non-empty string"):
-                agent.add_event_subscriber(_NamedSubscriber(" "))
+                agent._add_event_subscriber(_NamedSubscriber(" "))
 
     def test_custom_subscriber_receives_recursively_read_only_events(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -37,7 +38,7 @@ class RuntimeEventSubscriberTests(unittest.TestCase):
                 AgentConfig.create_default(Path(tmp)),
                 provider=MockProvider("finished"),
             )
-            agent.add_event_subscriber(subscriber)
+            agent._add_event_subscriber(subscriber)
 
             result = agent.run("hello")
 
@@ -61,7 +62,7 @@ class RuntimeEventSubscriberTests(unittest.TestCase):
                 AgentConfig.create_default(Path(tmp)),
                 provider=MockProvider("completed answer"),
             )
-            agent.add_event_subscriber(_FailingSubscriber())
+            agent._add_event_subscriber(_FailingSubscriber())
 
             with self.assertRaises(RuntimeEventSubscriberError) as caught:
                 agent.run("hello")
@@ -88,7 +89,7 @@ class RuntimeEventSubscriberTests(unittest.TestCase):
                 AgentConfig.create_default(Path(tmp)),
                 provider=MockProvider("completed answer"),
             )
-            agent.add_event_subscriber(_FailingSubscriber())
+            agent._add_event_subscriber(_FailingSubscriber())
 
             result = agent.run(
                 "hello",
