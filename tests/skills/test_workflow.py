@@ -86,14 +86,9 @@ def _write_config(root: Path, *, mode: str, max_steps: int) -> Path:
     workflow_dir.mkdir(parents=True)
     (workflow_dir / "skill.toml").write_text(
         f"""
-schema_version = 3
-name = "{mode}"
 type = "workflow"
 description = "Executable {mode} workflow"
-version = "0.1.0"
 
-[entry]
-instructions = "SKILL.md"
 
 [configuration]
 mode = "{mode}"
@@ -130,14 +125,9 @@ def _write_prompt_skill(root: Path, name: str) -> None:
     skill_dir.mkdir(parents=True)
     (skill_dir / "skill.toml").write_text(
         f"""
-schema_version = 3
-name = "{name}"
 type = "prompt"
 description = "Research helper"
-version = "0.1.0"
 
-[entry]
-instructions = "SKILL.md"
 """.strip(),
         encoding="utf-8",
     )

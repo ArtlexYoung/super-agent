@@ -62,17 +62,11 @@ print(agent.run("对文本进行分类").text)
 一个 Skill 从精简的 `skill.toml` 开始。只有模型选择它以后，指令和资源才会被打开。
 
 ```toml
-schema_version = 3
-name = "research"
-type = "prompt"
 description = "研究一个问题并给出带引用的结论"
-version = "0.1.0"
-agent_created = false
-agent_can_update = false
-
-[entry]
-instructions = "SKILL.md"
 ```
+
+目录名就是 Skill 名称，`type` 默认是 `prompt`，同目录存在 `SKILL.md` 时会自动读取。
+所有权、更新权限和保鲜度都属于可信运行状态，不写入这个文件。
 
 系统没有预设触发词。模型在正常调用中根据描述选择 Skill 和任务场景。场景只是具名的
 Skill 组合，因此不同 Agent 可以各有专长，不需要另一套执行系统：

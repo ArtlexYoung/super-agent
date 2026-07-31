@@ -1,15 +1,5 @@
-schema_version = 3
-name = "code"
 type = "scene"
 description = "Repository coding Skill group for implementation and verification"
-version = "0.0.105"
-agent_created = false
-agent_can_update = false
-freshness = 70
-function_group = "scene-selection"
-provides = ["code-scene"]
-requires = []
-default = false
 
 [configuration]
 skills = [

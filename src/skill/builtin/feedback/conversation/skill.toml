@@ -1,15 +1,2 @@
-schema_version = 3
-name = "conversation"
 type = "feedback"
 description = "Model judgment of whether a follow-up evaluates the previous response"
-version = "0.0.101"
-agent_created = false
-agent_can_update = false
-freshness = 70
-function_group = "conversation-feedback"
-provides = ["conversation-feedback"]
-requires = []
-default = true
-
-[entry]
-instructions = "SKILL.md"

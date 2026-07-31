@@ -42,7 +42,7 @@ class ProgressiveDisclosureTests(unittest.TestCase):
             self.assertEqual(6, index_data["schema_version"])
             self.assertEqual("project", index_data["skills"][0]["source"])
             self.assertFalse(index_data["skills"][0]["agent_created"])
-            self.assertFalse(index_data["skills"][0]["agent_can_update"])
+            self.assertTrue(index_data["skills"][0]["agent_can_update"])
             self.assertEqual(70.0, index_data["skills"][0]["freshness"])
             self.assertEqual("echo", index_data["skills"][0]["function_group"])
             self.assertEqual(["index", "instructions"], [item.stage for item in history])
@@ -82,14 +82,9 @@ def _write_skill(root: Path, name: str, description: str, instruction: str) -> N
     skill_dir.mkdir(parents=True)
     (skill_dir / "skill.toml").write_text(
         f"""
-schema_version = 3
-name = "{name}"
 type = "prompt"
 description = "{description}"
-version = "0.1.0"
 
-[entry]
-instructions = "SKILL.md"
 """.strip(),
         encoding="utf-8",
     )

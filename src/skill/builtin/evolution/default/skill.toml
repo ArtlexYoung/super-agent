@@ -1,18 +1,5 @@
-schema_version = 3
-name = "default"
 type = "evolution"
 description = "Deterministic freshness, recommendation, evaluation, and monitoring settings"
-version = "0.0.101"
-agent_created = false
-agent_can_update = false
-freshness = 70
-function_group = "skill-evolution"
-provides = ["skill-evolution"]
-requires = []
-default = true
-
-[entry]
-instructions = "SKILL.md"
 
 [configuration.freshness]
 initial = 70.0

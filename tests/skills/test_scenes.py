@@ -146,11 +146,8 @@ def _write_scene(root: Path, name: str, skills: list[str]) -> None:
     path.joinpath("skill.toml").write_text(
         "\n".join(
             [
-                "schema_version = 3",
-                f"name = {json.dumps(name)}",
                 'type = "scene"',
                 f"description = {json.dumps(name + ' scene')}",
-                'version = "0.1.0"',
                 "",
                 "[configuration]",
                 f"skills = {json.dumps(skills)}",

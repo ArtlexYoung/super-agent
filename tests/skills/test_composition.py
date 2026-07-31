@@ -1,4 +1,3 @@
-import json
 import tempfile
 import tomllib
 import unittest
@@ -13,71 +12,71 @@ from support import write_workflow_skill
 
 
 class SkillCompositionTests(unittest.TestCase):
-    def test_manifest_reads_provided_and_required_types(self) -> None:
+    def test_manifest_does_not_embed_a_dependency_graph(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = _write_skill(
                 Path(tmp),
                 "research",
-                provides=["facts"],
-                requires=["http"],
             )
 
             disclosure, index = _prepare_disclosure(Path(tmp))
             manifest = disclosure.open_skill("research", "prompt").read_manifest()
 
-            self.assertEqual(["facts"], manifest.provides)
-            self.assertEqual(["http"], manifest.requires)
+            self.assertEqual(["research"], manifest.provides)
+            self.assertEqual([], manifest.requires)
 
-    def test_resolver_orders_dependencies_before_requested_skill(self) -> None:
+    def test_resolver_returns_only_explicitly_requested_skills(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            _write_skill(root, "transport", provides=["http"])
-            _write_skill(root, "research", provides=["facts"], requires=["http"])
-            _write_skill(root, "report", requires=["facts"])
+            _write_skill(root, "transport")
+            _write_skill(root, "research")
+            _write_skill(root, "report")
             _, index = _prepare_disclosure(root)
 
             resolved = index.resolve_skill_dependencies(["report"])
 
             self.assertEqual(
-                ["transport", "research", "report"],
+                ["report"],
                 [item.reference.name for item in resolved],
             )
 
-    def test_resolver_rejects_missing_dependency(self) -> None:
+    def test_resolver_rejects_missing_requested_skill(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            _write_skill(root, "report", requires=["missing-skill_type"])
+            _write_skill(root, "report")
             _, index = _prepare_disclosure(root)
 
-            with self.assertRaisesRegex(KeyError, "missing Skill type: missing-skill_type"):
-                index.resolve_skill_dependencies(["report"])
+            with self.assertRaisesRegex(KeyError, "skill not found: missing"):
+                index.resolve_skill_dependencies(["missing"])
 
-    def test_resolver_reports_dependency_cycle_chain(self) -> None:
+    def test_resolver_keeps_requested_order_deterministic(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            _write_skill(root, "alpha", requires=["beta"])
-            _write_skill(root, "beta", requires=["alpha"])
+            _write_skill(root, "alpha")
+            _write_skill(root, "beta")
             _, index = _prepare_disclosure(root)
 
-            with self.assertRaisesRegex(ValueError, "prompt:alpha -> prompt:beta -> prompt:alpha"):
-                index.resolve_skill_dependencies(["alpha"])
+            resolved = index.resolve_skill_dependencies(["beta", "alpha"])
 
-    def test_resolver_rejects_ambiguous_type_provider(self) -> None:
+            self.assertEqual(["alpha", "beta"], [item.reference.name for item in resolved])
+
+    def test_resolver_accepts_same_type_without_provider_indirection(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            _write_skill(root, "first-http", provides=["http"])
-            _write_skill(root, "second-http", provides=["http"])
-            _write_skill(root, "research", requires=["http"])
+            _write_skill(root, "first-http")
+            _write_skill(root, "second-http")
+            _write_skill(root, "research")
             _, index = _prepare_disclosure(root)
 
-            with self.assertRaisesRegex(ValueError, "ambiguous Skill type http"):
-                index.resolve_skill_dependencies(["research"])
+            resolved = index.resolve_skill_dependencies(["research"])
+
+            self.assertEqual(["research"], [item.reference.name for item in resolved])
 
     def test_lock_is_deterministic_and_does_not_store_absolute_paths(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            _write_skill(root, "transport", provides=["http"])
-            _write_skill(root, "research", requires=["http"])
+            _write_skill(root, "transport")
+            _write_skill(root, "research")
             disclosure, index = _prepare_disclosure(root)
             resolved = index.resolve_skill_dependencies(["research"])
             manifests = [
@@ -96,15 +95,15 @@ class SkillCompositionTests(unittest.TestCase):
             self.assertNotIn(str(root), first)
             self.assertIn('name = "research"', first)
             self.assertIn("sha256 = ", first)
-            self.assertEqual(["research", "transport"], [item["name"] for item in lock_data["skills"]])
+            self.assertEqual(["research"], [item["name"] for item in lock_data["skills"]])
 
     def test_agent_loads_dependencies_of_configured_skill(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             skill_root = root / "skills"
-            _write_skill(skill_root, "transport", provides=["http"])
-            _write_skill(skill_root, "research", provides=["facts"], requires=["http"])
-            _write_skill(skill_root, "report", requires=["facts"])
+            _write_skill(skill_root, "transport")
+            _write_skill(skill_root, "research")
+            _write_skill(skill_root, "report")
             write_workflow_skill(root)
             config_path = root / "agent.toml"
             config_path.write_text(
@@ -136,53 +135,27 @@ path = ".super-agent"
                     "memory:default",
                     "workflow:direct",
                     "prompt:report",
-                    "prompt:research",
-                    "prompt:transport",
                 },
                 set(result.skills),
             )
-            index = json.loads(
-                agent.runtime.create_event_store()
-                .disclosure.cache_root.joinpath("index.json")
-                .read_text()
-            )
-            indexed = {item["name"]: item for item in index["skills"]}
-            self.assertEqual(["facts"], indexed["research"]["provides"])
-            self.assertEqual(["http"], indexed["research"]["requires"])
 
 
 def _write_skill(
     root: Path,
     name: str,
-    *,
-    provides: list[str] | None = None,
-    requires: list[str] | None = None,
 ) -> Path:
     skill_dir = root / name
     skill_dir.mkdir(parents=True)
-    provided = _toml_array(provides if provides is not None else [name])
-    required = _toml_array(requires or [])
     (skill_dir / "skill.toml").write_text(
         f"""
-schema_version = 3
-name = "{name}"
 type = "prompt"
 description = "{name} skill"
-version = "0.1.0"
-provides = {provided}
-requires = {required}
 
-[entry]
-instructions = "SKILL.md"
 """.strip(),
         encoding="utf-8",
     )
     (skill_dir / "SKILL.md").write_text(f"Use {name}.", encoding="utf-8")
     return skill_dir
-
-
-def _toml_array(values: list[str]) -> str:
-    return "[" + ", ".join(f'"{value}"' for value in values) + "]"
 
 
 def _prepare_disclosure(root: Path):

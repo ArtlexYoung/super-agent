@@ -69,14 +69,9 @@ def _write_memory_skill(root: Path, name: str) -> None:
     skill_dir.mkdir(parents=True)
     (skill_dir / "skill.toml").write_text(
         f"""
-schema_version = 3
-name = "{name}"
 type = "memory"
 description = "Default memory"
-version = "0.1.0"
 
-[entry]
-instructions = "SKILL.md"
 
 [configuration]
 recall_limit = 20
@@ -94,14 +89,9 @@ def _write_workflow_skill(root: Path, name: str, mode: str, *, instruction: str 
     skill_dir.mkdir(parents=True)
     (skill_dir / "skill.toml").write_text(
         f"""
-schema_version = 3
-name = "{name}"
 type = "workflow"
 description = "{name} workflow"
-version = "0.1.0"
 
-[entry]
-instructions = "SKILL.md"
 
 [configuration]
 mode = "{mode}"

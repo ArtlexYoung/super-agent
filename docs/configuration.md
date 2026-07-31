@@ -44,13 +44,8 @@ The explicit generic form uses `SUPER_AGENT_PROVIDER`, `SUPER_AGENT_MODEL`,
 For persistent model metadata, create a model Skill:
 
 ```toml
-schema_version = 3
-name = "fast"
 type = "model"
 description = "Low-latency model for summaries"
-version = "0.1.0"
-agent_created = false
-agent_can_update = false
 
 [configuration]
 provider = "openai-compatible"

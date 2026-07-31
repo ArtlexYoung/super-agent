@@ -54,10 +54,7 @@ class WebAPIContractTests(unittest.TestCase):
                 {"common", "code"},
                 {item["name"] for item in scenes},
             )
-            self.assertEqual(
-                ["common"],
-                [item["name"] for item in scenes if item["default"]],
-            )
+            self.assertEqual([], [item["name"] for item in scenes if item["default"]])
             self.assertNotIn("manifest_cache_path", skills[0])
             memory_items = _body_list(body["memory"])
             self.assertEqual(["Stable preference."], [item["text"] for item in memory_items])

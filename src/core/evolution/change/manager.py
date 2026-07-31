@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import shutil
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Callable, cast
 
@@ -155,10 +155,14 @@ class SkillEvolutionManager:
                 expected_name=candidate.name,
             )
             parent = self._candidate_parent_revision(candidate)
-            candidate_revision = create_manifest_skill_revision(
-                manifest,
-                evolution_supported=True,
-                content_sha256=candidate.candidate_sha256,
+            candidate_revision = replace(
+                create_manifest_skill_revision(
+                    manifest,
+                    evolution_supported=True,
+                    content_sha256=candidate.candidate_sha256,
+                ),
+                agent_created=True,
+                agent_can_update=True,
             )
             if evolution_id is None:
                 start_manual_skill_evolution(

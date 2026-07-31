@@ -206,14 +206,9 @@ class MemoryTests(unittest.TestCase):
             skill.mkdir(parents=True)
             (skill / "skill.toml").write_text(
                 """
-schema_version = 3
-name = "project"
 type = "memory"
 description = "Project memory"
-version = "1.0.0"
 
-[entry]
-instructions = "SKILL.md"
 
 [configuration]
 default_scope = "project"

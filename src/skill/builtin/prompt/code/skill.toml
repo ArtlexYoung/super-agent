@@ -1,15 +1,1 @@
-schema_version = 3
-name = "code"
-type = "prompt"
 description = "End-to-end repository coding instructions"
-version = "0.0.100"
-agent_created = false
-agent_can_update = false
-freshness = 70
-function_group = "code-task"
-provides = ["code-task-guidance"]
-requires = []
-default = false
-
-[entry]
-instructions = "SKILL.md"

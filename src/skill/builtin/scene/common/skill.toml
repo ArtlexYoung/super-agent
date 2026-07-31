@@ -1,15 +1,5 @@
-schema_version = 3
-name = "common"
 type = "scene"
 description = "General task Skill group with memory and direct completion rules"
-version = "0.0.105"
-agent_created = false
-agent_can_update = false
-freshness = 70
-function_group = "scene-selection"
-provides = ["common-scene"]
-requires = []
-default = true
 
 [configuration]
 skills = [

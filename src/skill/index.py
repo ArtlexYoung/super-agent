@@ -137,6 +137,11 @@ class SkillIndex:
             return selected
         if len(defaults) == 1:
             return defaults[0]
+        conventional = [entry for entry in entries if entry.reference.name == "default"]
+        if not defaults and len(conventional) == 1:
+            return conventional[0]
+        if not defaults and len(entries) == 1:
+            return entries[0]
         keys = ", ".join(entry.reference.key for entry in defaults or entries)
         raise ValueError(
             f"select exactly one default {selected_type} Skill"

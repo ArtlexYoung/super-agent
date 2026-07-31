@@ -297,7 +297,7 @@ def save_skill_history_revision(
     )
     staging_path = final_path.parent / f".{revision_id}.tmp"
     try:
-        skill_path = staging_path / "skill"
+        skill_path = staging_path / manifest.name
         shutil.copytree(manifest.path, skill_path)
         revision = SkillHistoryRevision(
             revision_id=revision_id,
@@ -308,7 +308,7 @@ def save_skill_history_revision(
             created_at=utc_now_text(),
             previous_revision_id=previous_revision_id,
             sha256=expected_sha256,
-            skill_path=final_path / "skill",
+            skill_path=final_path / manifest.name,
             metadata_path=final_path / "revision.json",
         )
         require_skill_directory_matches(skill_path, expected_sha256, "history copy")
@@ -399,7 +399,7 @@ def read_skill_history_revision(
         created_at=_read_non_empty_text(data["created_at"], "created_at", metadata_path),
         previous_revision_id=previous_revision_id,
         sha256=_read_sha256(data["sha256"], "sha256", metadata_path),
-        skill_path=metadata_path.parent / "skill",
+        skill_path=metadata_path.parent / stored_name,
         metadata_path=metadata_path,
     )
     actual_sha256 = calculate_skill_directory_sha256(revision.skill_path)

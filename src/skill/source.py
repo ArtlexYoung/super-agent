@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import tomllib
+from dataclasses import replace
 from pathlib import Path
 
 from skill.index import (
@@ -84,6 +85,10 @@ def _read_source_group(
 def _read_skill_source(path: Path, source_layer: str) -> SkillSource:
     data = tomllib.loads(path.read_text(encoding="utf-8"))
     manifest = skill_manifest_from_dict(data, path)
+    if source_layer == "project":
+        manifest = replace(manifest, agent_can_update=True)
+    elif source_layer == "user":
+        manifest = replace(manifest, agent_created=True, agent_can_update=True)
     if manifest.entry.instructions is not None:
         _validate_instructions_path(manifest.path, manifest.entry.instructions)
     configuration = _read_configuration(data, path)

@@ -66,19 +66,13 @@ class SkillEvolutionTests(unittest.TestCase):
             metadata = json.loads(candidate.metadata_path.read_text(encoding="utf-8"))
             self.assertEqual(2, metadata["schema_version"])
 
-    def test_locked_skill_cannot_create_evolution_candidate(self) -> None:
+    def test_builtin_skill_cannot_create_evolution_candidate(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            _write_prompt_skill(
-                root,
-                "locked",
-                "Keep this.",
-                allow_agent_update=False,
-            )
             manager = _make_manager(root, [_file_changes({"SKILL.md": "unused"})])
 
             with self.assertRaises(PermissionError):
-                manager.create_skill_candidate("locked", "change it")
+                manager.create_skill_candidate("prompt:common", "change it")
 
     def test_old_instruction_only_model_response_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -89,17 +83,21 @@ class SkillEvolutionTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "file-change JSON"):
                 manager.create_skill_candidate("writer", "change it")
 
-    def test_candidate_cannot_change_skill_identity(self) -> None:
+    def test_candidate_cannot_change_skill_type(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_prompt_skill(root, "writer", "Original instructions.")
-            changed_manifest = _prompt_manifest("other", "0.1.0")
+            changed_manifest = _configuration_manifest(
+                "workflow",
+                "writer",
+                'mode = "direct"',
+            )
             manager = _make_manager(
                 root,
                 [_file_changes({"skill.toml": changed_manifest})],
             )
 
-            with self.assertRaisesRegex(ValueError, "changed skill name"):
+            with self.assertRaisesRegex(ValueError, "changed Skill type"):
                 manager.create_skill_candidate("writer", "change identity")
 
     def test_weak_candidate_is_rejected_without_changing_active_skill(self) -> None:
@@ -886,16 +884,9 @@ def _prompt_manifest(
     allow_agent_update: bool = True,
 ) -> str:
     return f"""
-schema_version = 3
-name = "{name}"
 type = "prompt"
 description = "{name} helper"
-version = "{version}"
-agent_created = true
-agent_can_update = {str(allow_agent_update).lower()}
 
-[entry]
-instructions = "SKILL.md"
 """.strip()
 
 
@@ -904,25 +895,14 @@ def _configuration_manifest(
     name: str,
     configuration: str,
 ) -> str:
-    entry = (
-        '\n[entry]\ninstructions = "SKILL.md"\n'
-        if skill_type in {"memory", "workflow"}
-        else ""
-    )
     required_configuration = configuration
     if skill_type == "memory" and "recall_limit" not in configuration:
         required_configuration += "\nrecall_limit = 20"
     if skill_type == "workflow" and "max_steps" not in configuration:
         required_configuration += "\nmax_steps = 8"
     return f"""
-schema_version = 3
-name = "{name}"
 type = "{skill_type}"
 description = "{name} {skill_type} helper"
-version = "0.1.0"
-agent_created = true
-agent_can_update = true
-{entry}
 
 [configuration]
 {required_configuration}

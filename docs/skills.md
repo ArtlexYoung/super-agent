@@ -16,24 +16,12 @@ skills/
 ```
 
 ```toml
-schema_version = 3
-name = "research"
-type = "prompt"
 description = "Research a question and report cited findings"
-version = "0.1.0"
-agent_created = false
-agent_can_update = false
-freshness = 70
-function_group = "research"
-provides = ["research"]
-requires = []
-
-[entry]
-instructions = "SKILL.md"
 ```
 
-Unknown fields and unsupported schema versions fail validation. Stable references use
-`type:name`; a bare name is accepted only when unique.
+The directory supplies `name`, `type` defaults to `prompt`, `version` defaults to `0.1.0`,
+and an existing `SKILL.md` supplies instructions. Unknown fields fail validation. Stable
+references use `type:name`; a bare name is accepted only when unique.
 
 ## One Disclosure Path
 
@@ -89,9 +77,10 @@ Scene access outside that policy fails. No TOML subagent or scene policy graph i
 
 ## Ownership and Evolution
 
-`agent_created` records who created the Skill. `agent_can_update` is the explicit update
-permission; it defaults to `true` only for Agent-created Skills. Model connection fields
-have a separate update permission because they may affect secret and network boundaries.
+Ownership and update permission come from trusted source metadata, never Skill-controlled
+TOML. Built-ins are read-only, project Skills are user-authorized, and Agent-created user
+overlays are marked by the Runtime. Model connection fields have a separate permission
+because they may affect secret and network boundaries.
 
 Freshness is deterministic. It combines call outcomes, token use, time since use, frequency,
 and successful same-function follow-ups. The model does not assign the freshness number.

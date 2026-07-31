@@ -50,15 +50,9 @@ super-agent skills freshness --config agent.toml
 
 ## Automatic Skill Updates
 
-Only an Agent-owned Skill with `agent_can_update = true` is eligible:
-
-```toml
-agent_created = true
-agent_can_update = true
-```
-
-When `agent_can_update` is omitted, it defaults to `agent_created`. Human-created Skills
-are immutable by default.
+Update authority comes from trusted source metadata rather than editable Skill content.
+Built-ins are immutable, project Skills are user-authorized, and Runtime marks a promoted
+Agent-created user overlay as Agent-owned.
 
 During each explicit run evaluation, Core checks failures, sustained low scores, low freshness,
 same-function replacement, high token use, and high latency. Unchanged evidence produces
@@ -124,14 +118,8 @@ skills = ["memory:default"]
 A memory Skill defines behavior:
 
 ```toml
-schema_version = 3
-name = "default"
 type = "memory"
 description = "Default memory behavior"
-version = "0.1.0"
-
-[entry]
-instructions = "SKILL.md"
 
 [configuration]
 default_scope = "agent"

@@ -133,7 +133,7 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
             self.assertEqual(1, len(issues))
             self.assertIn("skill name must use lowercase", issues[0].message)
 
-    def test_selection_resolves_dependencies_in_topological_order(self) -> None:
+    def test_selection_does_not_expand_hidden_dependencies(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_prompt_skill(root, "http", provides=["http"])
@@ -151,7 +151,7 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
                 allowed_types={"prompt", "mcp"},
             )
 
-            self.assertEqual(["prompt:http", "prompt:research"], [item.key for item in selected])
+            self.assertEqual(["prompt:research"], [item.key for item in selected])
 
     def test_selection_ignores_configured_skill_disabled_by_kind(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -332,7 +332,7 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
             self.assertEqual([], issues)
             self.assertEqual({}, core.open_skill("broken", "memory").read_configuration().content)
 
-    def test_validation_rejects_instruction_path_outside_skill_directory(self) -> None:
+    def test_validation_rejects_removed_instruction_entry(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             skill_dir = root / "skills" / "broken"
@@ -340,17 +340,15 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
             _write_manifest(skill_dir, "broken", "prompt", include_entry=True)
             manifest_path = skill_dir / "skill.toml"
             manifest_path.write_text(
-                manifest_path.read_text(encoding="utf-8").replace(
-                    'instructions = "SKILL.md"',
-                    'instructions = "../outside.md"',
-                ),
+                manifest_path.read_text(encoding="utf-8")
+                + '\n[entry]\ninstructions = "../outside.md"\n',
                 encoding="utf-8",
             )
 
             issues = _create_core(root).validate_skill_sources()
 
             self.assertEqual(1, len(issues))
-            self.assertIn("leaves skill directory", issues[0].message)
+            self.assertIn("unknown skill manifest fields: entry", issues[0].message)
 
     def test_kind_factories_only_accept_center_disclosure(self) -> None:
         from core.skill_use.mcp import read_mcp_skill_settings
@@ -517,16 +515,9 @@ def _write_manifest(
     extra: str = "",
 ) -> None:
     lines = [
-        "schema_version = 3",
-        f'name = "{name}"',
         f'type = "{skill_type}"',
         f'description = "{name} skill"',
-        'version = "0.1.0"',
-        f"provides = {_toml_array(provides or [name])}",
-        f"requires = {_toml_array(requires or [])}",
     ]
-    if include_entry:
-        lines.extend(["", "[entry]", 'instructions = "SKILL.md"'])
     if extra.strip():
         lines.extend(["", extra.strip()])
     (skill_dir / "skill.toml").write_text("\n".join(lines) + "\n", encoding="utf-8")

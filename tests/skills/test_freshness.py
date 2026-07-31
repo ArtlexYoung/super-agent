@@ -29,23 +29,15 @@ from support import (
 
 
 class SkillFreshnessTests(unittest.TestCase):
-    def test_manifest_reads_freshness_and_function_group(self) -> None:
+    def test_manifest_uses_derived_freshness_defaults(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             skill_dir = Path(tmp) / "skills" / "research"
             skill_dir.mkdir(parents=True)
             (skill_dir / "skill.toml").write_text(
                 """
-schema_version = 3
-name = "research"
 type = "prompt"
 description = "Research helper"
-version = "0.1.0"
-freshness = 83.5
-function_group = "search"
-freshness_updated_at = "2026-07-07T12:00:00Z"
 
-[entry]
-instructions = "SKILL.md"
 """.strip(),
                 encoding="utf-8",
             )
@@ -56,9 +48,9 @@ instructions = "SKILL.md"
             disclosure.prepare_skill_index()
             manifest = disclosure.open_skill("research", "prompt").read_manifest()
 
-            self.assertEqual(83.5, manifest.freshness)
-            self.assertEqual("search", manifest.function_group)
-            self.assertEqual("2026-07-07T12:00:00Z", manifest.freshness_updated_at)
+            self.assertEqual(70.0, manifest.freshness)
+            self.assertEqual("research", manifest.function_group)
+            self.assertEqual("", manifest.freshness_updated_at)
 
     def test_freshness_store_records_success_and_updates_score_without_model(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -305,16 +297,9 @@ def _write_skill(root: Path, name: str, function_group: str) -> None:
     skill_dir.mkdir(parents=True)
     (skill_dir / "skill.toml").write_text(
         f"""
-schema_version = 3
-name = "{name}"
 type = "prompt"
 description = "{name} helper"
-version = "0.1.0"
-freshness = 70
-function_group = "{function_group}"
 
-[entry]
-instructions = "SKILL.md"
 """.strip(),
         encoding="utf-8",
     )

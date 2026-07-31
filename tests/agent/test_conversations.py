@@ -223,16 +223,8 @@ class ConversationRuntimeTests(unittest.TestCase):
                     "write_files": {
                         "skill.toml": "\n".join(
                             [
-                                "schema_version = 3",
-                                'name = "private-note"',
                                 'type = "prompt"',
                                 'description = "Private notes"',
-                                'version = "0.1.0"',
-                                "agent_created = true",
-                                "agent_can_update = true",
-                                "",
-                                "[entry]",
-                                'instructions = "SKILL.md"',
                             ]
                         ),
                         "SKILL.md": "Write private notes.",

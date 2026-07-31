@@ -195,16 +195,9 @@ class CliTests(unittest.TestCase):
                 {
                     "write_files": {
                         "skill.toml": """
-schema_version = 3
-name = "agent-note"
 type = "prompt"
 description = "Compact note writer"
-version = "0.1.0"
-agent_created = true
-agent_can_update = true
 
-[entry]
-instructions = "SKILL.md"
 """.strip(),
                         "SKILL.md": "Answer compactly.\n",
                     },
@@ -271,8 +264,8 @@ instructions = "SKILL.md"
             self.assertEqual(0, evaluate_code)
             self.assertEqual(0, promote_code)
             user_skill = _find_user_skill(root, "prompt", "agent-note")
-            self.assertIn(
-                "agent_created = true",
+            self.assertNotIn(
+                "agent_created",
                 user_skill.joinpath("skill.toml").read_text(encoding="utf-8"),
             )
             self.assertEqual(
@@ -401,18 +394,13 @@ instructions = "SKILL.md"
             )
             with self.assertRaisesRegex(PermissionError, "cannot remove shared Skill"):
                 main(["skills", "remove", "--config", config, "--name", "echo"])
-            update_source = root / "updated-echo"
-            update_source.mkdir()
+            update_source = root / "updates" / "echo"
+            update_source.mkdir(parents=True)
             (update_source / "skill.toml").write_text(
                 """
-schema_version = 3
-name = "echo"
 type = "prompt"
 description = "Updated echo"
-version = "0.2.0"
 
-[entry]
-instructions = "SKILL.md"
 """.strip(),
                 encoding="utf-8",
             )

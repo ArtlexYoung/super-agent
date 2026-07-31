@@ -384,8 +384,8 @@ class ModelSkillTests(unittest.TestCase):
     def test_agent_cannot_change_user_owned_model_connection(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            current = root / "current"
-            proposed = root / "proposed"
+            current = root / "current" / "fast"
+            proposed = root / "proposed" / "fast"
             _write_model_skill_directory(current, model="first")
             _write_model_skill_directory(proposed, model="second")
             with self.assertRaisesRegex(PermissionError, "does not allow Agent connection"):
@@ -501,12 +501,8 @@ def _write_model_skill_directory(
     path.mkdir(parents=True)
     path.joinpath("skill.toml").write_text(
         f"""
-schema_version = 3
-name = "{name}"
 type = "model"
 description = "Fast model for concise summaries"
-version = "0.1.0"
-agent_can_update = true
 
 [configuration]
 provider = "mock"

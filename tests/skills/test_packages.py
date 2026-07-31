@@ -74,7 +74,7 @@ class SkillPackageManagerTests(unittest.TestCase):
     def test_install_rejects_unexpected_content_hash(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            source = root / "source"
+            source = root / "hash-demo"
             _write_skill(source, "hash-demo", "0.1.0", "Hash me.")
             target = root / "skills"
 
@@ -88,7 +88,7 @@ class SkillPackageManagerTests(unittest.TestCase):
             root = Path(tmp)
             skill_root = root / "skills"
             current = skill_root / "demo"
-            source = root / "updated"
+            source = root / "updated" / "demo"
             _write_skill(current, "demo", "0.1.0", "Old instructions.")
             _write_skill(source, "demo", "0.2.0", "New instructions.")
             manager = _manager(skill_root)
@@ -128,7 +128,7 @@ class SkillPackageManagerTests(unittest.TestCase):
             root = Path(tmp)
             skill_root = root / "skills"
             current = skill_root / "memory" / "shared"
-            source = root / "updated"
+            source = root / "updated" / "shared"
             _write_skill(current, "shared", "0.1.0", "Memory instructions.", skill_type="memory")
             _write_skill(source, "shared", "0.2.0", "Prompt instructions.")
 
@@ -153,21 +153,19 @@ class SkillPackageManagerTests(unittest.TestCase):
 
             self.assertFalse((root / "outside.txt").exists())
 
-    def test_install_rejects_manifest_instruction_path_traversal(self) -> None:
+    def test_install_rejects_removed_entry_configuration(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             source = root / "source"
             _write_skill(source, "unsafe", "0.1.0", "Unsafe.")
             manifest_path = source / "skill.toml"
             manifest_path.write_text(
-                manifest_path.read_text(encoding="utf-8").replace(
-                    'instructions = "SKILL.md"',
-                    'instructions = "../../outside.txt"',
-                ),
+                manifest_path.read_text(encoding="utf-8")
+                + '\n[entry]\ninstructions = "../../outside.txt"\n',
                 encoding="utf-8",
             )
 
-            with self.assertRaisesRegex(ValueError, "instruction path leaves skill directory"):
+            with self.assertRaisesRegex(ValueError, "unknown skill manifest fields: entry"):
                 _manager(root / "skills").install_skill(str(source))
 
 
@@ -198,14 +196,10 @@ def _write_skill(
     )
     (path / "skill.toml").write_text(
         f"""
-schema_version = 3
-name = "{name}"
 type = "{skill_type}"
 description = "Packaged skill"
 version = "{version}"
 
-[entry]
-instructions = "SKILL.md"
 {configuration}
 """.strip(),
         encoding="utf-8",

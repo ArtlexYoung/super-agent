@@ -1,11 +1,5 @@
-schema_version = 3
-name = "direct"
 type = "workflow"
 description = "Direct workflow"
-version = "0.1.0"
-
-[entry]
-instructions = "SKILL.md"
 
 [configuration]
 mode = "direct"

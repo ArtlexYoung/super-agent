@@ -132,14 +132,9 @@ model = "mock"
             skill_dir.mkdir(parents=True)
             (skill_dir / "skill.toml").write_text(
                 """
-schema_version = 3
-name = "echo"
 type = "prompt"
 description = "Echo helper"
-version = "0.1.0"
 
-[entry]
-instructions = "SKILL.md"
 """.strip(),
                 encoding="utf-8",
             )
@@ -167,14 +162,9 @@ instructions = "SKILL.md"
             skill_dir.mkdir(parents=True)
             (skill_dir / "skill.toml").write_text(
                 """
-schema_version = 3
-name = "echo"
 type = "prompt"
 description = "Echo helper"
-version = "0.1.0"
 
-[entry]
-instructions = "SKILL.md"
 """.strip(),
                 encoding="utf-8",
             )

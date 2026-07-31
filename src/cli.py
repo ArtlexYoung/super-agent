@@ -345,20 +345,7 @@ path = ".super-agent"
 
 def _default_skill_manifest() -> str:
     return """
-schema_version = 3
-name = "echo"
-type = "prompt"
 description = "Minimal example skill"
-version = "0.1.0"
-agent_created = false
-agent_can_update = false
-freshness = 70
-function_group = "general"
-provides = ["echo"]
-requires = []
-
-[entry]
-instructions = "SKILL.md"
 """.lstrip()
 
 

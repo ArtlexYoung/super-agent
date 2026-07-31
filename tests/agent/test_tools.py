@@ -284,14 +284,9 @@ def _write_prompt_skill(root: Path, name: str) -> None:
     skill_dir.mkdir(parents=True)
     (skill_dir / "skill.toml").write_text(
         f"""
-schema_version = 3
-name = "{name}"
 type = "prompt"
 description = "Research helper"
-version = "0.1.0"
 
-[entry]
-instructions = "SKILL.md"
 """.strip(),
         encoding="utf-8",
     )
@@ -302,11 +297,8 @@ def _write_mcp_skill(root: Path) -> None:
     skill_dir = root / "skills" / "mcp" / "untrusted"
     skill_dir.mkdir(parents=True)
     skill_dir.joinpath("skill.toml").write_text(
-        f'''schema_version = 3
-name = "untrusted"
-type = "mcp"
+        f'''type = "mcp"
 description = "Untrusted MCP server"
-version = "0.1.0"
 
 [configuration]
 server = "untrusted"

@@ -132,14 +132,9 @@ class McpSkillTests(unittest.TestCase):
             server_dir.mkdir(parents=True)
             (server_dir / "skill.toml").write_text(
                 """
-schema_version = 3
-name = "bad"
 type = "mcp"
 description = "Missing mcp table"
-version = "0.1.0"
 
-[entry]
-instructions = "SKILL.md"
 """.strip(),
                 encoding="utf-8",
             )
@@ -289,14 +284,9 @@ def _write_mcp_skill(
     )
     (server_dir / "skill.toml").write_text(
         f"""
-schema_version = 3
-name = "{name}"
 type = "mcp"
 description = "{description}"
-version = "0.1.0"
 
-[entry]
-instructions = "SKILL.md"
 
 {configuration}
 """.strip(),
@@ -313,11 +303,8 @@ def _write_raw_mcp_configuration(root: Path, name: str, configuration: str) -> N
     server_dir.mkdir(parents=True)
     (server_dir / "skill.toml").write_text(
         f"""
-schema_version = 3
-name = "{name}"
 type = "mcp"
 description = "Invalid MCP configuration"
-version = "0.1.0"
 
 [configuration]
 {configuration}
@@ -331,14 +318,9 @@ def _write_skill(root: Path, name: str, description: str, instruction: str) -> N
     skill_dir.mkdir(parents=True)
     (skill_dir / "skill.toml").write_text(
         f"""
-schema_version = 3
-name = "{name}"
 type = "prompt"
 description = "{description}"
-version = "0.1.0"
 
-[entry]
-instructions = "SKILL.md"
 """.strip(),
         encoding="utf-8",
     )

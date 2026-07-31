@@ -188,77 +188,24 @@ class SkillRevisionEvolutionTests(unittest.TestCase):
             self.assertEqual(["modified.txt"], difference.modified_files)
             self.assertEqual(["deleted.txt"], difference.deleted_files)
 
-    def test_failed_run_automatically_promotes_then_rolls_back_regression(self) -> None:
+    def test_failed_run_does_not_change_active_skill(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             config_path = _write_agent_project(root, agent_can_update=True)
-            candidate_response = json.dumps(
-                {
-                    "write_files": {"SKILL.md": "Improved instructions.\n"},
-                    "delete_files": [],
-                }
-            )
             agent = Agent(
                 AgentConfig.load_from_file(config_path),
-                provider=SequenceProvider(
-                    [
-                        RuntimeError("task failed"),
-                        candidate_response,
-                        "candidate evaluation output",
-                        "baseline evaluation output",
-                        RuntimeError("promoted regression"),
-                    ]
-                ),
+                provider=SequenceProvider([RuntimeError("task failed")]),
                 use_storage=True,
             )
 
             with self.assertRaisesRegex(RuntimeError, "task failed"):
                 agent.run("echo this")
-            failed_run = agent.runtime.create_event_store().list_runs(1)[0]
-            agent.for_user("local").runs.learn(failed_run.run_id)
 
             evolutions = agent.for_user("local").skills.list_evolutions()
-            self.assertEqual(["prompt:echo"], [item.skill_key for item in evolutions])
-            self.assertIn("failures", evolutions[0].reason_codes)
-            self.assertEqual("promoted", evolutions[0].status)
-            self.assertTrue(evolutions[0].candidate_id)
-            self.assertEqual(
-                "Improved instructions.\n",
-                agent.runtime.create_event_store().private_root.joinpath(
-                    "skills/prompt/echo/SKILL.md"
-                ).read_text(
-                    encoding="utf-8"
-                ),
-            )
-            self.assertEqual(
-                1,
-                agent.for_user("local").runs.list_model_usage_stats(purpose="skill_evolution")[0].call_count,
-            )
-            self.assertEqual(
-                2,
-                agent.for_user("local").runs.list_model_usage_stats(purpose="skill_evaluation")[0].call_count,
-            )
-
-            with self.assertRaisesRegex(RuntimeError, "promoted regression"):
-                agent.run("echo this again")
-
-            store = agent.runtime.create_event_store()
-            regression_run = store.list_runs(1)[0]
-            agent.for_user("local").runs.learn(regression_run.run_id)
-            monitored = agent.for_user("local").skills.list_evolutions()[0]
-            regression_insight = explain_run_with_insight(
-                store,
-                regression_run.run_id,
-                load_default_evolution_policy(root),
-            )
-            self.assertEqual("rolled_back", monitored.status)
-            self.assertEqual(
-                ["rolled_back"],
-                [item["status"] for item in regression_insight["evolution"]],
-            )
+            self.assertEqual([], evolutions)
             self.assertEqual(
                 "Use echo instructions.\n",
-                store.private_root.joinpath("skills/prompt/echo/SKILL.md").read_text(
+                (root / "skills" / "prompt" / "echo" / "SKILL.md").read_text(
                     encoding="utf-8"
                 ),
             )
@@ -310,6 +257,11 @@ class SkillRevisionEvolutionTests(unittest.TestCase):
             revision = create_indexed_skill_revision(
                 entry,
                 evolution_supported=True,
+            )
+            revision = replace(
+                revision,
+                agent_created=True,
+                agent_can_update=True,
             )
             store = agent.runtime.create_event_store("alice")
             append_evaluation_records(store, [_record(revision, success=False)])
@@ -421,18 +373,9 @@ def _write_agent_project(root: Path, *, agent_can_update: bool = False) -> Path:
     skill.mkdir(parents=True)
     (skill / "skill.toml").write_text(
         f"""
-schema_version = 3
-name = "echo"
 type = "prompt"
 description = "Echo helper"
-version = "0.1.0"
-agent_created = {str(agent_can_update).lower()}
-agent_can_update = {str(agent_can_update).lower()}
-freshness = 70
-function_group = "general"
 
-[entry]
-instructions = "SKILL.md"
 """.strip(),
         encoding="utf-8",
     )

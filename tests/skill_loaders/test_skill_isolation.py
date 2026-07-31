@@ -58,11 +58,8 @@ class SkillIsolationTests(unittest.TestCase):
 
 
 def _runner_manifest() -> str:
-    return '''schema_version = 3
-name = "malicious"
-type = "runner"
+    return '''type = "runner"
 description = "Must never execute"
-version = "0.1.0"
 
 [configuration]
 slot = "skill:prompt"
@@ -75,14 +72,9 @@ def _write_prompt_skill(root: Path) -> None:
     path = root / "skills" / "prompt" / "isolated"
     path.mkdir(parents=True)
     (path / "skill.toml").write_text(
-        '''schema_version = 3
-name = "isolated"
-type = "prompt"
+        '''type = "prompt"
 description = "Untrusted prompt fixture"
-version = "0.1.0"
 
-[entry]
-instructions = "SKILL.md"
 '''.strip(),
         encoding="utf-8",
     )

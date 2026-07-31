@@ -423,8 +423,9 @@ def _restore_model_skill_directories(
 
 def _remove_model_skill_stages(stages: list[tuple[Path, Path]]) -> None:
     for _, stage in stages:
-        if stage.exists():
-            shutil.rmtree(stage)
+        stage_root = stage.parent
+        if stage_root.exists():
+            shutil.rmtree(stage_root)
 
 
 def _stage_model_skill(
@@ -434,7 +435,9 @@ def _stage_model_skill(
     store: EventStore,
 ) -> tuple[Path, Path]:
     target.parent.mkdir(parents=True, exist_ok=True)
-    stage = target.parent / f".{target.name}.model-stage-{uuid4().hex}"
+    stage_root = target.parent / f".{target.name}.model-stage-{uuid4().hex}"
+    stage = stage_root / target.name
+    stage_root.mkdir()
     if source is None:
         stage.mkdir()
     else:
@@ -450,8 +453,8 @@ def _stage_model_skill(
             expected_name=document.manifest.name,
         )
     except Exception:
-        if stage.exists():
-            shutil.rmtree(stage)
+        if stage_root.exists():
+            shutil.rmtree(stage_root)
         raise
     return target, stage
 
@@ -459,21 +462,10 @@ def _stage_model_skill(
 def _model_skill_toml(document: _ModelSkillDocument) -> str:
     manifest = document.manifest
     lines = [
-        f"schema_version = {manifest.schema_version}",
-        f"name = {_quote(manifest.name)}",
         'type = "model"',
         f"description = {_quote(manifest.description)}",
         f"version = {_quote(manifest.version)}",
-        f"agent_created = {str(manifest.agent_created).lower()}",
-        f"agent_can_update = {str(manifest.agent_can_update).lower()}",
-        f"freshness = {manifest.freshness:g}",
-        f"function_group = {_quote(manifest.function_group)}",
-        f"freshness_updated_at = {_quote(manifest.freshness_updated_at)}",
-        f"provides = {_array(manifest.provides)}",
-        f"requires = {_array(manifest.requires)}",
     ]
-    if manifest.entry.instructions is not None:
-        lines.extend(["", "[entry]", f"instructions = {_quote(manifest.entry.instructions)}"])
     lines.extend(["", "[configuration]"])
     for name in (
         "provider",

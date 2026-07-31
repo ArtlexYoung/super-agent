@@ -68,17 +68,11 @@ A Skill starts with a compact `skill.toml`. Instructions and resources are opene
 after the model chooses them.
 
 ```toml
-schema_version = 3
-name = "research"
-type = "prompt"
 description = "Research a question and report cited findings"
-version = "0.1.0"
-agent_created = false
-agent_can_update = false
-
-[entry]
-instructions = "SKILL.md"
 ```
+
+The directory name is the Skill name, `type` defaults to `prompt`, and an existing
+`SKILL.md` is used automatically. Runtime ownership and freshness never live in this file.
 
 There are no trigger words. The model selects Skills and task scenes from their
 descriptions during its normal turn. A scene is just a named Skill group, so different

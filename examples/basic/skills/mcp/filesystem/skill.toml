@@ -1,11 +1,5 @@
-schema_version = 3
-name = "filesystem"
 type = "mcp"
 description = "Example filesystem MCP tools"
-version = "0.1.0"
-
-[entry]
-instructions = "SKILL.md"
 
 [configuration]
 server = "filesystem"

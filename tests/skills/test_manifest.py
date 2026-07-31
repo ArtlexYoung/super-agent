@@ -1,6 +1,5 @@
 import tempfile
 import unittest
-from dataclasses import replace
 from pathlib import Path
 
 from skill.disclosure import ProgressiveDisclosureCore
@@ -27,75 +26,73 @@ class SkillManifestContractTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "cannot contain symlinks"):
                 calculate_skill_directory_sha256(skill_link)
 
-    def test_manifest_reads_supported_schema_version(self) -> None:
+    def test_manifest_uses_directory_name_and_defaults(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            _write_skill(Path(tmp), schema_version=3)
+            _write_skill(Path(tmp))
 
             manifest = _read_manifest(Path(tmp), "demo")
 
-            self.assertEqual(3, manifest.schema_version)
+            self.assertEqual("demo", manifest.name)
+            self.assertEqual("prompt", manifest.skill_type)
+            self.assertEqual("0.1.0", manifest.version)
+            self.assertEqual("SKILL.md", manifest.entry.instructions)
 
-    def test_manifest_rejects_unsupported_schema_version(self) -> None:
+    def test_manifest_rejects_removed_schema_field(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            _write_skill(Path(tmp), schema_version=2)
+            manifest_path = _write_skill(Path(tmp))
+            manifest_path.write_text(
+                'schema_version = 3\ndescription = "demo skill"\n',
+                encoding="utf-8",
+            )
 
-            with self.assertRaisesRegex(ValueError, "unsupported.*schema_version.*3"):
+            with self.assertRaisesRegex(ValueError, "unknown skill manifest fields: schema_version"):
                 _create_disclosure(Path(tmp)).prepare_skill_index()
 
-    def test_manifest_requires_explicit_schema_version(self) -> None:
+    def test_manifest_rejects_removed_name_field(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            manifest_path = _write_skill(Path(tmp), schema_version=3)
-            text = manifest_path.read_text(encoding="utf-8").replace("schema_version = 3\n", "")
-            manifest_path.write_text(text, encoding="utf-8")
+            manifest_path = _write_skill(Path(tmp))
+            manifest_path.write_text(
+                'name = "demo"\ndescription = "demo skill"\n',
+                encoding="utf-8",
+            )
 
-            with self.assertRaisesRegex(ValueError, "missing schema_version.*schema_version = 3"):
+            with self.assertRaisesRegex(ValueError, "unknown skill manifest fields: name"):
                 _create_disclosure(Path(tmp)).prepare_skill_index()
 
-    def test_manifest_rejects_wrong_field_type_in_schema_v3(self) -> None:
+    def test_manifest_rejects_wrong_description_type(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            manifest_path = _write_skill(Path(tmp), schema_version=3)
-            text = manifest_path.read_text(encoding="utf-8").replace('name = "demo"', "name = 123")
-            manifest_path.write_text(text, encoding="utf-8")
+            manifest_path = _write_skill(Path(tmp))
+            manifest_path.write_text("description = 123\n", encoding="utf-8")
 
-            with self.assertRaisesRegex(ValueError, "skill name must be a string"):
+            with self.assertRaisesRegex(ValueError, "skill description must be a non-empty string"):
                 _create_disclosure(Path(tmp)).prepare_skill_index()
 
-    def test_manifest_serializer_emits_normalized_schema_v3_without_local_path(self) -> None:
+    def test_manifest_serializer_emits_derived_values_without_runtime_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            _write_skill(Path(tmp), schema_version=3)
+            _write_skill(Path(tmp))
             manifest = _read_manifest(Path(tmp), "demo")
 
             data = skill_manifest_to_dict(manifest)
 
-            self.assertEqual(3, data["schema_version"])
             self.assertEqual("prompt", data["type"])
-            self.assertNotIn("kind", data)
             self.assertEqual("demo", data["name"])
-            self.assertEqual(["demo"], data["provides"])
-            self.assertNotIn("path", data)
-
-    def test_manifest_serializer_rejects_unsupported_schema(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            _write_skill(Path(tmp), schema_version=3)
-            manifest = _read_manifest(Path(tmp), "demo")
-
-            with self.assertRaisesRegex(
-                ValueError,
-                "unsupported skill schema_version: 2; expected 3",
-            ):
-                skill_manifest_to_dict(replace(manifest, schema_version=2))
+            self.assertEqual(
+                {"name", "type", "description", "version"},
+                set(data),
+            )
 
     def test_core_reports_invalid_manifests_without_hiding_valid_ones(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            _write_skill(root, name="valid", schema_version=3)
-            _write_skill(root, name="invalid", schema_version=2)
+            _write_skill(root, name="valid")
+            invalid = _write_skill(root, name="invalid")
+            invalid.write_text("schema_version = 3\ndescription = \"invalid\"\n")
 
             issues = _create_disclosure(root).validate_skill_sources()
 
             self.assertEqual(1, len(issues))
             self.assertEqual("invalid", issues[0].path.parent.name)
-            self.assertIn("unsupported skill schema_version", issues[0].message)
+            self.assertIn("unknown skill manifest fields", issues[0].message)
 
     def test_core_discovers_a_custom_skill_type_without_a_supported_list(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -138,23 +135,13 @@ def _write_skill(
     root: Path,
     *,
     name: str = "demo",
-    schema_version: int = 3,
     skill_type: str = "prompt",
 ) -> Path:
     skill_dir = root / name
     skill_dir.mkdir(parents=True)
     manifest_path = skill_dir / "skill.toml"
     manifest_path.write_text(
-        f"""
-schema_version = {schema_version}
-name = "{name}"
-type = "{skill_type}"
-description = "{name} skill"
-version = "0.1.0"
-
-[entry]
-instructions = "SKILL.md"
-""".strip(),
+        f'type = "{skill_type}"\ndescription = "{name} skill"\n',
         encoding="utf-8",
     )
     (skill_dir / "SKILL.md").write_text(f"Use {name}.", encoding="utf-8")

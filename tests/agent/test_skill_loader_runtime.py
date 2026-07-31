@@ -319,14 +319,9 @@ def _write_prompt_skill(root: Path, skill_type: str = "prompt") -> None:
     skill_root = root / "skills" / "echo"
     skill_root.mkdir(parents=True)
     (skill_root / "skill.toml").write_text(
-        f'''schema_version = 3
-name = "echo"
-type = "{skill_type}"
+        f'''type = "{skill_type}"
 description = "Echo helper"
-version = "0.1.0"
 
-[entry]
-instructions = "SKILL.md"
 '''.strip(),
         encoding="utf-8",
     )

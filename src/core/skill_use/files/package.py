@@ -209,7 +209,7 @@ def _stage_skill_source(source: str, temporary_root: Path) -> Path:
         return _stage_git_source(value[4:], temporary_root)
     path = Path(value).expanduser()
     if path.is_dir():
-        copied = temporary_root / "local-source"
+        copied = temporary_root / path.name
         _copy_skill_tree(path, copied)
         return _locate_skill_directory(copied)
     if path.is_file() and zipfile.is_zipfile(path):
@@ -238,7 +238,7 @@ def _stage_git_source(source: str, temporary_root: Path) -> Path:
         raise RuntimeError(f"Git skill clone failed: {message}")
     selected = _resolve_git_subdirectory(clone_path, unquote(fragment) if separator else "")
     located = _locate_skill_directory(selected)
-    copied = temporary_root / "git-source"
+    copied = temporary_root / located.name
     _copy_skill_tree(located, copied)
     return copied
 
