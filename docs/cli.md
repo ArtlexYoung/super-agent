@@ -1,6 +1,6 @@
 # CLI Reference
 
-The CLI has six top-level commands: `check`, `init`, `run`, `skills`, `data`, and `serve`.
+The CLI has six top-level commands: `setup`, `check`, `run`, `skills`, `data`, and `serve`.
 A bare prompt is short for `run`; no arguments start interactive chat.
 
 ## Check and Run
@@ -10,7 +10,7 @@ super-agent check
 super-agent check --config agent.toml --output json
 super-agent "hello"
 super-agent run --config agent.toml --user-id alice "hello"
-super-agent run --chat --config agent.toml --user-id alice
+super-agent run --chat --save --config agent.toml --user-id alice
 super-agent run --scene code --output json "inspect this repository"
 ```
 
@@ -20,7 +20,8 @@ references, and default model readiness without opening storage or calling a mod
 `run --output` accepts `text`, `json`, or streaming `jsonl`. Text output explains the
 actual model, scene, workflow, Skills, stop reason, and run ID. `--request-stdin` reads a
 JSON object with `prompt` and optional `messages`, `user_id`, `conversation_id`, and
-`scene`.
+`scene`. One-shot runs and chat are file-free by default. `--save` explicitly enables the
+configured storage; supplying a conversation ID also makes that requirement explicit.
 
 ## Skills
 

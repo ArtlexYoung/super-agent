@@ -646,6 +646,16 @@ Status: implemented.
 - Rewrite the first-run path and source tour around the current facade, Runtime, disclosure,
   Provider, and explicit Skill-change boundaries.
 
+## v0.0.115: Explicit CLI State
+
+Status: implemented.
+
+- Replace `init` with `setup` and add optional model presets.
+- Keep one-shot runs and ordinary interactive chat file-free unless `--save` or a
+  conversation ID explicitly requests persistence.
+- Catch CLI failures at one boundary, print a direct fix hint, and reserve tracebacks for
+  explicit `--debug` runs.
+
 ## Release Gate
 
 The project will not move to `0.1.x` because of feature count. The gate is a reproducible

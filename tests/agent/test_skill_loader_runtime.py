@@ -46,6 +46,7 @@ class SkillLoaderRuntimeTests(unittest.TestCase):
             self.assertEqual(0, code)
             self.assertTrue(output.getvalue().startswith("Mock response\n\nRun: run-"))
             self.assertIn("Model: model:environment (mock)", output.getvalue())
+            self.assertFalse(Path(tmp, ".super-agent").exists())
 
     def test_cli_accepts_a_prompt_with_an_environment_provider(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, chdir(tmp), patch.dict(
@@ -76,6 +77,22 @@ class SkillLoaderRuntimeTests(unittest.TestCase):
 
             self.assertEqual(0, code)
             self.assertIn("Agent: Mock response", output.getvalue())
+            self.assertFalse(Path(tmp, ".super-agent").exists())
+
+    def test_cli_returns_a_clear_error_without_a_traceback(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, chdir(tmp), patch.dict(
+            os.environ,
+            {},
+            clear=True,
+        ):
+            error = StringIO()
+            with patch("sys.stderr", error):
+                code = main(["hello"])
+
+            self.assertEqual(1, code)
+            self.assertIn("Error: No model is configured", error.getvalue())
+            self.assertIn("super-agent setup", error.getvalue())
+            self.assertNotIn("Traceback", error.getvalue())
 
     def test_agent_can_replace_one_skill_loader(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

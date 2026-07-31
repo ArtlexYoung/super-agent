@@ -16,7 +16,7 @@ class ModelsCliTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             config_path = root / "agent.toml"
-            main(["init", "--path", tmp])
+            main(["setup", "--path", tmp])
 
             first = _save_model(config_path, _model_request("fast", default=True))
             second = _save_model(config_path, _model_request("deep", default=True))
@@ -62,7 +62,7 @@ class ModelsCliTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             config_path = root / "agent.toml"
-            main(["init", "--path", tmp])
+            main(["setup", "--path", tmp])
             request = _model_request("remote", default=True)
             request["provider"] = "openai-compatible"
             request["api_key_env"] = "OPENAI_API_KEY"
@@ -79,7 +79,7 @@ class ModelsCliTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             config_path = root / "agent.toml"
-            main(["init", "--path", tmp])
+            main(["setup", "--path", tmp])
 
             _save_model(
                 config_path,

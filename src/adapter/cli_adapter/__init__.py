@@ -21,8 +21,12 @@ def load_agent_config(source: AgentConfigSource = None) -> AgentConfig:
     return AgentConfig.load_from_file(source)
 
 
-def load_agent(source: AgentConfigSource = None) -> Agent:
-    return Agent(load_agent_config(source), use_storage=True)
+def load_agent(
+    source: AgentConfigSource = None,
+    *,
+    use_storage: bool = True,
+) -> Agent:
+    return Agent(load_agent_config(source), use_storage=use_storage)
 
 
 def load_event_store(

@@ -26,20 +26,22 @@ super-agent "Summarize this directory"
 super-agent
 ```
 
-The first command runs one task. Its text output includes the answer and an actual run
-summary. The second starts an interactive stored conversation. Use
+The first command runs one stateless task. Its text output includes the answer and an
+actual run summary. The second starts an in-process conversation without saving it. Add
+`run --chat --save` when conversation history should survive a restart. Use
 `SUPER_AGENT_PROVIDER=mock` only for an explicit offline test.
 
 No project files are required. Create an editable example when needed:
 
 ```bash
-super-agent init --path my-agent
+super-agent setup --path my-agent
 cd my-agent
 super-agent check
 super-agent "Use the local Skill"
 ```
 
-Initialization writes `agent.toml` and `skills/prompt/echo/` only when they do not exist.
+Setup writes `agent.toml` and `skills/prompt/echo/` only when they do not exist. Pass
+`--provider openai`, `anthropic`, `ollama`, or `mock` to create a model Skill from a preset.
 
 ## Embed
 

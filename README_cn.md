@@ -37,7 +37,7 @@ SUPER_AGENT_PROVIDER=mock super-agent "你好"
 不带参数运行 `super-agent` 会进入交互对话。只有需要可编辑项目文件时才初始化：
 
 ```bash
-super-agent init --path my-agent
+super-agent setup --path my-agent
 cd my-agent
 super-agent check
 ```
@@ -124,8 +124,9 @@ super-agent data runs status
 super-agent serve
 ```
 
-文本运行会在答案后显示真实使用的模型、场景、工作流、Skill、结束原因和运行 ID。集成程序可使用
-`--output json` 或 `--output jsonl`。React 页面、CopilotKit 示例和 AG-UI 接口默认位于
+单次运行默认无状态，只有显式传入 `--save` 或会话 ID 才会保存。文本运行会在答案后显示真实
+使用的模型、场景、工作流、Skill、结束原因和运行 ID。集成程序可使用 `--output json` 或
+`--output jsonl`。React 页面、CopilotKit 示例和 AG-UI 接口默认位于
 `http://127.0.0.1:8765/`。
 
 ## 保证

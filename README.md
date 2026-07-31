@@ -42,7 +42,7 @@ Run `super-agent` without arguments for an interactive conversation. Create edit
 project files only when you need them:
 
 ```bash
-super-agent init --path my-agent
+super-agent setup --path my-agent
 cd my-agent
 super-agent check
 ```
@@ -136,8 +136,9 @@ super-agent data runs status
 super-agent serve
 ```
 
-Text runs print the answer plus the actual model, scene, workflow, Skills, stop reason,
-and run ID. Use `--output json` or `--output jsonl` for integrations. The React client,
+One-shot runs are stateless unless `--save` or a conversation ID is explicit. Text runs
+print the answer plus the actual model, scene, workflow, Skills, stop reason, and run ID.
+Use `--output json` or `--output jsonl` for integrations. The React client,
 CopilotKit example, and AG-UI endpoint are served at `http://127.0.0.1:8765/`.
 
 ## Guarantees

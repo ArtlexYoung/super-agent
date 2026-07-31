@@ -24,12 +24,13 @@ class StorageCliTests(unittest.TestCase):
             root = Path(tmp)
             config = root / "agent.toml"
             with patch("sys.stdout", StringIO()):
-                self.assertEqual(0, main(["init", "--path", tmp]))
+                self.assertEqual(0, main(["setup", "--path", tmp]))
                 self.assertEqual(
                     0,
                     main(
                         [
                             "run",
+                            "--save",
                             "--config",
                             str(config),
                             "--user-id",
@@ -42,7 +43,7 @@ class StorageCliTests(unittest.TestCase):
                 )
                 self.assertEqual(
                     0,
-                    main(["run", "--config", str(config), "--user-id", "beta", "echo beta"]),
+                    main(["run", "--save", "--config", str(config), "--user-id", "beta", "echo beta"]),
                 )
 
             first = self._run_json(
@@ -118,13 +119,14 @@ class StorageCliTests(unittest.TestCase):
     def test_copy_accepts_remote_backend_and_custom_url_environment(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             with patch("sys.stdout", StringIO()):
-                self.assertEqual(0, main(["init", "--path", tmp]))
+                self.assertEqual(0, main(["setup", "--path", tmp]))
             with patch(
                 "adapter.storage.sql.postgresql.import_module",
                 side_effect=ModuleNotFoundError("psycopg is missing"),
             ):
-                with self.assertRaisesRegex(RuntimeError, r"super-agent\[postgresql\]"):
-                    main(
+                error = StringIO()
+                with patch("sys.stderr", error):
+                    code = main(
                         [
                             "data",
                             "storage",
@@ -139,6 +141,8 @@ class StorageCliTests(unittest.TestCase):
                             "alpha",
                         ]
                     )
+                self.assertEqual(1, code)
+                self.assertIn("super-agent[postgresql]", error.getvalue())
 
     @staticmethod
     def _write_sqlite_config(root: Path, source: Path) -> Path:

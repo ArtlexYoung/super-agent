@@ -33,6 +33,7 @@ class ConversationsCliTests(unittest.TestCase):
             self._run_silently(
                 [
                     "run",
+                    "--save",
                     "--config",
                     config,
                     "--user-id",
@@ -45,6 +46,7 @@ class ConversationsCliTests(unittest.TestCase):
             self._run_silently(
                 [
                     "run",
+                    "--save",
                     "--config",
                     config,
                     "--user-id",
@@ -106,6 +108,7 @@ class ConversationsCliTests(unittest.TestCase):
                 code = main(
                     [
                         "run",
+                        "--save",
                         "--config",
                         config,
                         "--request-stdin",
@@ -137,7 +140,7 @@ class ConversationsCliTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             config = self._initialize_project(tmp)
             self._run_silently(
-                ["run", "--config", config, "--user-id", "alpha", "echo alpha"]
+                ["run", "--save", "--config", config, "--user-id", "alpha", "echo alpha"]
             )
             self._run_silently(
                 [
@@ -215,7 +218,7 @@ class ConversationsCliTests(unittest.TestCase):
     @staticmethod
     def _initialize_project(root: str) -> str:
         with patch("sys.stdout", StringIO()):
-            code = main(["init", "--path", root])
+            code = main(["setup", "--path", root])
         if code != 0:
             raise AssertionError(f"project initialization failed: {code}")
         return str(Path(root) / "agent.toml")

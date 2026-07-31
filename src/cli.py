@@ -26,9 +26,9 @@ from core.state.models import RunEvent
 from core.models import RunResult
 
 
-CLI_COMMANDS = frozenset({"check", "data", "init", "run", "serve", "skills"})
+CLI_COMMANDS = frozenset({"check", "data", "run", "serve", "setup", "skills"})
 REMOVED_COMMANDS = frozenset(
-    {"chat", "conversations", "memory", "models", "runs", "storage"}
+    {"chat", "conversations", "init", "memory", "models", "runs", "storage"}
 )
 
 
@@ -43,15 +43,24 @@ class CliRequest:
 
 def main(argv: Sequence[str] | None = None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
-    if _is_direct_prompt(arguments):
-        return _run_prompt_command(
-            None,
-            CliRequest(prompt=" ".join(arguments), messages=[]),
-            "text",
-        )
-    parser = _build_parser()
-    args = parser.parse_args(arguments)
-    return _run_parsed_command(parser, args)
+    debug = "--debug" in arguments
+    arguments = [value for value in arguments if value != "--debug"]
+    try:
+        if _is_direct_prompt(arguments):
+            return _run_prompt_command(
+                None,
+                CliRequest(prompt=" ".join(arguments), messages=[]),
+                "text",
+                save=False,
+            )
+        parser = _build_parser()
+        args = parser.parse_args(arguments)
+        return _run_parsed_command(parser, args)
+    except Exception as error:
+        if debug:
+            raise
+        _print_cli_error(error)
+        return 1
 
 
 def _run_parsed_command(
@@ -59,9 +68,9 @@ def _run_parsed_command(
     args: argparse.Namespace,
 ) -> int:
     if args.command is None:
-        return _run_chat_command(None, LOCAL_USER_ID, None, None)
-    if args.command == "init":
-        return _run_init_command(Path(args.path))
+        return _run_chat_command(None, LOCAL_USER_ID, None, None, save=False)
+    if args.command == "setup":
+        return _run_setup_command(Path(args.path), args.provider)
     if args.command == "check":
         return run_check_command(args)
     if args.command == "run":
@@ -88,13 +97,14 @@ def _run_command(args: argparse.Namespace) -> int:
             args.user_id,
             args.conversation_id,
             args.scene,
+            save=args.save,
         )
     request = (
         _read_runtime_request_from_stdin()
         if args.request_stdin
         else _read_runtime_request_from_args(args)
     )
-    return _run_prompt_command(config_path, request, args.output)
+    return _run_prompt_command(config_path, request, args.output, save=args.save)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -104,8 +114,14 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command")
 
-    init_parser = subparsers.add_parser("init", help="create a minimal agent project")
-    init_parser.add_argument("--path", default=".", help="target directory")
+    setup_parser = subparsers.add_parser("setup", help="create a minimal agent project")
+    setup_parser.add_argument("--path", default=".", help="target directory")
+    setup_parser.add_argument(
+        "--provider",
+        choices=("environment", "openai", "anthropic", "ollama", "mock"),
+        default="environment",
+        help="optional model configuration to create",
+    )
 
     check_parser = subparsers.add_parser(
         "check",
@@ -121,6 +137,11 @@ def _build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--user-id", default=LOCAL_USER_ID)
     run_parser.add_argument("--conversation-id")
     run_parser.add_argument("--scene", help="explicit scene name or scene:name key")
+    run_parser.add_argument(
+        "--save",
+        action="store_true",
+        help="save run events or chat messages using configured storage",
+    )
     run_parser.add_argument("--chat", action="store_true", help="start an interactive conversation")
 
     skills_parser = subparsers.add_parser("skills", help="manage skills")
@@ -180,19 +201,32 @@ def _is_direct_prompt(arguments: list[str]) -> bool:
     )
 
 
-def _run_init_command(root: Path) -> int:
+def _run_setup_command(root: Path, provider: str) -> int:
     root.mkdir(parents=True, exist_ok=True)
     skill_dir = root / "skills" / "prompt" / "echo"
     skill_dir.mkdir(parents=True, exist_ok=True)
     _write_file_if_missing(root / "agent.toml", _default_agent_config())
     _write_file_if_missing(skill_dir / "skill.toml", _default_skill_manifest())
     _write_file_if_missing(skill_dir / "SKILL.md", "Answer briefly and clearly.\n")
-    print(f"Initialized super-agent project at {root}")
+    model_content = _model_skill_for_provider(provider)
+    if model_content is not None:
+        model_dir = root / "skills" / "model" / "default"
+        model_dir.mkdir(parents=True, exist_ok=True)
+        _write_file_if_missing(model_dir / "skill.toml", model_content)
+    print(f"Set up super-agent project at {root}")
+    print("Next: super-agent check")
     return 0
 
 
-def _run_prompt_command(config_path: Path | None, request: CliRequest, output: str) -> int:
-    agent = load_agent(config_path)
+def _run_prompt_command(
+    config_path: Path | None,
+    request: CliRequest,
+    output: str,
+    *,
+    save: bool,
+) -> int:
+    use_storage = save or request.conversation_id is not None
+    agent = load_agent(config_path, use_storage=use_storage)
     user = agent.for_user(request.user_id)
     if output == "jsonl":
         result = user.run(
@@ -227,14 +261,20 @@ def _run_chat_command(
     user_id: str,
     conversation_id: str | None,
     scene: str | None,
+    *,
+    save: bool,
 ) -> int:
-    agent = load_agent(config_path)
+    use_storage = save or conversation_id is not None
+    agent = load_agent(config_path, use_storage=use_storage)
     user = agent.for_user(user_id)
-    conversation = (
-        user.conversations.create()
-        if conversation_id is None
-        else user.conversations.read(conversation_id)
-    )
+    conversation = None
+    if use_storage:
+        conversation = (
+            user.conversations.create()
+            if conversation_id is None
+            else user.conversations.read(conversation_id)
+        )
+    messages: list[Message] = []
     while True:
         try:
             prompt = input("You: ").strip()
@@ -244,11 +284,18 @@ def _run_chat_command(
             continue
         if prompt.lower() in {"exit", "quit"}:
             return 0
-        result = user.run(
-            prompt,
-            conversation_id=conversation.conversation_id,
-            scene=scene,
+        result = (
+            user.run(prompt, conversation_id=conversation.conversation_id, scene=scene)
+            if conversation is not None
+            else user.run(prompt, messages=messages, scene=scene)
         )
+        if conversation is None:
+            messages.extend(
+                [
+                    {"role": "user", "content": prompt},
+                    {"role": "assistant", "content": result.text},
+                ]
+            )
         print(f"Agent: {result.text}")
 
 
@@ -346,6 +393,19 @@ def _write_file_if_missing(path: Path, content: str) -> None:
         path.write_text(content, encoding="utf-8")
 
 
+def _print_cli_error(error: Exception) -> None:
+    print(f"Error: {error}", file=sys.stderr)
+    message = str(error)
+    if "No model is configured" in message:
+        print(
+            "Hint: set a model environment variable or run `super-agent setup`.",
+            file=sys.stderr,
+        )
+    elif isinstance(error, FileNotFoundError):
+        print("Hint: check the path or run `super-agent setup`.", file=sys.stderr)
+    print("Run again with --debug to show the Python traceback.", file=sys.stderr)
+
+
 def _default_agent_config() -> str:
     return """
 [agent]
@@ -367,6 +427,38 @@ def _default_skill_manifest() -> str:
     return """
 description = "Minimal example skill"
 """.lstrip()
+
+
+def _model_skill_for_provider(provider: str) -> str | None:
+    settings = {
+        "openai": ("openai-compatible", "gpt-4.1-mini", "OPENAI_API_KEY", None),
+        "anthropic": (
+            "anthropic-compatible",
+            "claude-sonnet-4",
+            "ANTHROPIC_API_KEY",
+            None,
+        ),
+        "ollama": ("openai-compatible", "llama3.2", None, "http://127.0.0.1:11434/v1"),
+        "mock": ("mock", "mock", None, None),
+    }
+    if provider == "environment":
+        return None
+    provider_name, model, api_key_env, base_url = settings[provider]
+    lines = [
+        'type = "model"',
+        'description = "Default model created by super-agent setup"',
+        "",
+        "[configuration]",
+        f'provider = "{provider_name}"',
+        f'model = "{model}"',
+        "default = true",
+        'supports = ["text", "tools"]',
+    ]
+    if api_key_env is not None:
+        lines.append(f'api_key_env = "{api_key_env}"')
+    if base_url is not None:
+        lines.append(f'base_url = "{base_url}"')
+    return "\n".join(lines) + "\n"
 
 
 if __name__ == "__main__":

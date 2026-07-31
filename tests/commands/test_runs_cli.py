@@ -27,12 +27,13 @@ class RunsCliTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             config_path = root / "agent.toml"
-            main(["init", "--path", tmp])
+            main(["setup", "--path", tmp])
             run_output = StringIO()
             with patch("sys.stdout", run_output):
                 run_code = main(
                     [
                         "run",
+                        "--save",
                         "--config",
                         str(config_path),
                         "--output",
@@ -136,12 +137,13 @@ class RunsCliTests(unittest.TestCase):
     def test_text_explain_prints_task_and_evidence_insight(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             config_path = Path(tmp) / "agent.toml"
-            main(["init", "--path", tmp])
+            main(["setup", "--path", tmp])
             run_output = StringIO()
             with patch("sys.stdout", run_output):
                 main(
                     [
                         "run",
+                        "--save",
                         "--config",
                         str(config_path),
                         "--output",
@@ -186,7 +188,7 @@ class RunsCliTests(unittest.TestCase):
     def test_status_without_runs_is_a_successful_empty_result(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            main(["init", "--path", tmp])
+            main(["setup", "--path", tmp])
             output = StringIO()
 
             with patch("sys.stdout", output):
@@ -209,12 +211,13 @@ class RunsCliTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             config_path = root / "agent.toml"
-            main(["init", "--path", tmp])
+            main(["setup", "--path", tmp])
             run_output = StringIO()
             with patch("sys.stdout", run_output):
                 main(
                     [
                         "run",
+                        "--save",
                         "--config",
                         str(config_path),
                         "--output",
@@ -255,7 +258,7 @@ class RunsCliTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             config_path = root / "agent.toml"
-            main(["init", "--path", tmp])
+            main(["setup", "--path", tmp])
             config = AgentConfig.load_from_file(config_path)
             parent_provider = MockProvider(
                 tool_responses=[
