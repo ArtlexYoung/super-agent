@@ -7,13 +7,19 @@ from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
-from cli import main
+from cli import CLI_COMMANDS, REMOVED_COMMANDS, _is_direct_prompt, main
 from cli import run_result_to_dict
 from core.provider.chat import MockProvider
 from core.models import SubAgentResult, RunResult
 
 
 class CliTests(unittest.TestCase):
+    def test_cli_has_five_clear_top_level_commands(self) -> None:
+        self.assertEqual({"init", "run", "skills", "data", "serve"}, CLI_COMMANDS)
+        self.assertTrue(REMOVED_COMMANDS.isdisjoint(CLI_COMMANDS))
+        for command in REMOVED_COMMANDS:
+            self.assertFalse(_is_direct_prompt([command]))
+
     def test_models_list_reports_discovered_models_without_secret_values(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, chdir(tmp):
             output = StringIO()
@@ -21,7 +27,7 @@ class CliTests(unittest.TestCase):
                 "sys.stdout",
                 output,
             ):
-                code = main(["models", "list", "--output", "json"])
+                code = main(["skills", "models", "list", "--output", "json"])
 
         data = json.loads(output.getvalue())
         self.assertEqual(0, code)
@@ -40,7 +46,7 @@ class CliTests(unittest.TestCase):
 
             with self.assertRaisesRegex(RuntimeError, "No model is configured"):
                 with patch("sys.stdout", output):
-                    main(["models", "resolve", "--output", "json"])
+                    main(["skills", "models", "resolve", "--output", "json"])
 
     def test_init_creates_config_and_example_skill(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -130,7 +136,7 @@ class CliTests(unittest.TestCase):
 
             output = StringIO()
             with patch("sys.stdout", output):
-                code = main(["memory", "habits", "--config", config])
+                code = main(["data", "memory", "habits", "--config", config])
 
             self.assertEqual(0, code)
             self.assertIn("total runs: 1", output.getvalue())
@@ -144,6 +150,7 @@ class CliTests(unittest.TestCase):
             with patch("sys.stdout", add_output):
                 add_code = main(
                     [
+                        "data",
                         "memory",
                         "add",
                         "--config",
@@ -158,13 +165,13 @@ class CliTests(unittest.TestCase):
             recall_output = StringIO()
             with patch("sys.stdout", recall_output):
                 recall_code = main(
-                    ["memory", "recall", "--config", config, "--query", "Python", "--scope", "project"]
+                    ["data", "memory", "recall", "--config", config, "--query", "Python", "--scope", "project"]
                 )
             list_output = StringIO()
             with patch("sys.stdout", list_output):
-                list_code = main(["memory", "list", "--config", config, "--scope", "project"])
+                list_code = main(["data", "memory", "list", "--config", config, "--scope", "project"])
             forget_code = main(
-                ["memory", "forget", "--config", config, "--item-id", item["item_id"]]
+                ["data", "memory", "forget", "--config", config, "--item-id", item["item_id"]]
             )
 
             self.assertEqual(0, add_code)
@@ -285,7 +292,7 @@ instructions = "SKILL.md"
             with patch("sys.stdout", run_output):
                 main(["run", "--output", "json", "--config", config, "echo hello"])
             run_id = json.loads(run_output.getvalue())["run_id"]
-            main(["runs", "learn", "--config", config, "--run-id", run_id])
+            main(["data", "runs", "learn", "--config", config, "--run-id", run_id])
 
             output = StringIO()
             with patch("sys.stdout", output):

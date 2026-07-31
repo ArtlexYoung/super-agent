@@ -1,12 +1,10 @@
 # Configuration
 
-Configuration is optional. `Agent()` checks `SUPER_AGENT_CONFIG`, then `agent.toml` in
-the current directory, then uses an in-memory default. Missing model configuration is not
-silently replaced: a model source must come from the environment or application code.
-The Python library does not open storage unless `use_storage=True` or `storage=` is
-supplied. CLI and Web entry points explicitly enable the configured backend.
+Configuration is optional. `Agent()` checks `SUPER_AGENT_CONFIG`, then `agent.toml`, then
+uses an in-memory default. Model configuration still must come from the environment, a
+model Skill, or Python.
 
-## Minimal `agent.toml`
+## Minimal File
 
 ```toml
 [agent]
@@ -25,84 +23,27 @@ path = ".super-agent"
 
 Unknown tables and fields are rejected. There is no migration or old-field conversion.
 
-## Agent Fields
+`agent.skills` pins ordinary Skills to every run. `disabled_skills` excludes a type or a
+specific `type:name`. Scene visibility and subagent links are configured in Python because
+code is clearer for dynamic composition.
 
-- `name`: stable Agent name used in run and storage scopes.
-- `system`: smallest instruction shared by every task. Put specialized behavior in Skills.
-- `skills`: non-scene Skill keys or unambiguous names pinned to every task.
-- `disabled_skills`: types, keys, or unambiguous names excluded from selection.
-- `max_agent_chain_depth`: optional positive warning threshold. Omit it for no threshold.
+## Models
 
-Memory, workflow, planning, MCP, and models are Skill types, not Agent fields. Subagent
-links are Python composition and are never declared in TOML:
-
-```python
-main.add_subagent(worker, name="worker", description="Implements assigned changes")
-```
-
-## Skill Paths
-
-`[paths].skills` is an array of project Skill roots relative to `agent.toml`. Core scans
-them recursively. User overlays and built-in Skills are added centrally; they do not need
-extra path entries.
-
-```toml
-[paths]
-skills = ["skills", "../shared-skills"]
-```
-
-Stable Skill keys use `type:name`. A bare name is accepted only when it is unambiguous.
-`disabled_skills = ["mcp"]` disables a whole type, while
-`disabled_skills = ["memory:default"]` disables one Skill.
-
-## Task Scene Selection
-
-No scene setting is required. The routing model chooses from scene descriptions and
-records its reason. Specialize each Agent in readable Python code:
-
-```python
-coder.use_only_scenes("code")
-researcher.disable_scenes()
-main.add_subagent(coder, name="coder")
-main.add_subagent(researcher, name="researcher")
-```
-
-For a one-run override, use `Agent.run(..., scene="code")` or CLI `--scene code` instead
-of changing the Agent policy. `Agent.run(..., use_scenes=False)` explicitly bypasses scene
-composition for one run. Explicitly pinned memory, planner, or workflow Skills replace
-that type from the selected scene. A `scene:*` entry in `agent.skills` is rejected.
-
-## Model Environment
-
-The shortest real-model setup uses one recognized environment source:
+The shortest model setup uses environment variables:
 
 ```text
-OLLAMA_HOST and optional OLLAMA_MODEL
 OPENAI_API_KEY and optional SUPER_AGENT_MODEL
 ANTHROPIC_API_KEY and optional SUPER_AGENT_MODEL
+OLLAMA_HOST and optional OLLAMA_MODEL
 ```
 
-The generic explicit form is:
+The explicit generic form uses `SUPER_AGENT_PROVIDER`, `SUPER_AGENT_MODEL`,
+`SUPER_AGENT_BASE_URL`, and `SUPER_AGENT_API_KEY_ENV`. Provider names are `mock`,
+`openai-compatible`, and `anthropic-compatible`.
 
-```text
-SUPER_AGENT_PROVIDER=mock|openai-compatible|anthropic-compatible
-SUPER_AGENT_MODEL=<model name>
-SUPER_AGENT_BASE_URL=<optional URL>
-SUPER_AGENT_API_KEY_ENV=<optional environment variable name>
-```
-
-`SUPER_AGENT_PROVIDER=mock` is the only environment path to the built-in Mock Provider.
-OpenAI, Anthropic, and explicit Mock profiles declare their implemented text and tool
-protocols. An automatically discovered Ollama profile declares text only because local
-model tool support cannot be inferred. No model is created when all model sources are
-absent.
-
-## Model Skill
-
-Use a model Skill for a persistent description and routing traits:
+For persistent model metadata, create a model Skill:
 
 ```toml
-# skills/model/fast/skill.toml
 schema_version = 3
 name = "fast"
 type = "model"
@@ -115,82 +56,54 @@ agent_can_update = false
 provider = "openai-compatible"
 model = "gpt-4.1-mini"
 api_key_env = "OPENAI_API_KEY"
-supports = ["text", "tools", "json"]
+supports = ["text", "tools"]
 purposes = ["summary"]
 strengths = ["low-latency"]
 default = true
 quality_score = 0.8
 expected_latency_ms = 500
-input_cost_per_million = 0.4
-output_cost_per_million = 1.6
 agent_can_update_connection = false
 ```
 
-`provider` and `model` are required. Supported Provider names are `mock`,
-`openai-compatible`, and `anthropic-compatible`. `base_url` and `api_key_env` are
-optional when defaults are valid. Secret values never belong in a Skill.
-
-If any enabled model Skill exists, those Skills are the complete model set; ephemeral
-environment profiles are not mixed in. At most one model Skill may set `default = true`.
-That flag is a cold-start preference, not permission to switch after a failed call.
-
-`agent_can_update` controls ordinary Skill evolution. Model connection fields remain
-user-owned unless `agent_can_update_connection = true` was already granted.
+Secrets never belong in a Skill. If model Skills exist, they are the complete configured
+set; environment discovery is not mixed in. At most one can be the default. Failure never
+causes an implicit switch to another profile.
 
 ## Storage
 
 ```toml
 [storage]
-backend = "jsonl" # jsonl, sqlite, mysql, or postgresql
+backend = "jsonl" # jsonl, sqlite, mysql, postgresql
 path = ".super-agent"
-# url_env = "MY_DATABASE_URL"
+# url_env = "DATABASE_URL"
 ```
 
-- `jsonl`: default, readable files, no dependency.
-- `sqlite`: `.super-agent/events.sqlite3`, standard library, WAL mode.
-- `mysql`: install `super-agent[mysql]`.
-- `postgresql`: install `super-agent[postgresql]`.
+JSONL is the readable, dependency-free default. SQLite uses the standard library. Install
+`super-agent[mysql]` or `super-agent[postgresql]` only for those backends. Remote URLs are
+read from the named environment variable.
 
-Remote connection strings are read from `url_env`. When omitted, the backend-specific
-default is used. Changing storage on a running Agent is rejected; restart with the new
-backend or copy data explicitly with `super-agent storage copy`.
+The Python library ignores storage until `use_storage=True` or `storage=` is passed. CLI
+and Web adapters enable it explicitly. Changing a live Agent's storage configuration is
+rejected; use `data storage copy` and restart.
 
-## Code-Only Runtime Options
+## Code-First Integration
 
-Options with behavior or authority stay in readable Python code rather than TOML:
+Provider objects, action authority, custom SkillLoaders, MCP implementations, secret
+lookup, storage injection, scene policy, and subagent graphs are Python choices:
 
 ```python
-from super_agent import (
-    ActionEffect,
-    ActionMode,
-    ActionRules,
-    Agent,
-    StdioMcpServer,
-)
+from core.checks import ActionEffect, ActionMode, ActionRules
+from skill.loaders.mcp import StdioMcpServer
+from super_agent import Agent
 
-agent = Agent(
-    action_rules=ActionRules(ActionMode.READ_ONLY),
-    secret_lookup=lambda user_id, name: lookup_secret(user_id, name),
-)
-agent.add_skill_loader(custom_loader)
+agent = Agent(action_rules=ActionRules(ActionMode.READ_ONLY))
 agent.add_mcp_server(
     "filesystem",
-    StdioMcpServer(
-        "npx",
-        arguments=("-y", "@modelcontextprotocol/server-filesystem"),
-    ),
-    effects=(
-        ActionEffect.READ,
-        ActionEffect.CREATE,
-        ActionEffect.UPDATE,
-        ActionEffect.DELETE,
-        ActionEffect.EXECUTE,
-    ),
+    StdioMcpServer("npx", arguments=("-y", "@modelcontextprotocol/server-filesystem")),
+    effects=(ActionEffect.READ,),
 )
-agent.add_subagent(worker, name="worker")
+agent.add_subagent(Agent(), name="worker")
 ```
 
-Provider instances, custom SkillLoaders, MCP implementations, action authority, secret
-lookup, storage object injection, and subagent graphs are deliberately code-first. An MCP
-Skill contains only optional `[configuration].server`; executable settings in Skill TOML
-are rejected.
+An MCP Skill names a code-registered server; executable commands in Skill TOML are
+rejected. This keeps untrusted content separate from process and network authority.

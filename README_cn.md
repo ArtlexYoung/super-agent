@@ -6,24 +6,18 @@
 
 > Skill is all you need.
 
-提示、工具、记忆、工作流、规划器和模型说明都使用同一种 Skill 格式。统一的渐进式披露
-核心负责找到相关内容，一套 Runtime 负责规划和执行任务。存储、记忆、学习与进化都是可选
-层，启用后仍走同一条链路，不会各自建立一套引擎。
+Super Agent 只给模型一份精简的 Skill 索引。模型按需打开 Skill，使用其中的工具和指令，
+最后返回结果。提示、工具、记忆、工作流、任务场景和模型说明都使用同一种 Skill 格式，
+也都经过同一个渐进式披露核心。
 
-Runtime 只保留经过校验的协议与可信执行边界。工作流规则、记忆整理、反馈判断、保鲜度与
-进化策略、场景生成模板都放在普通 Skill 中。切换 Skill 就能改变这些行为，不需要新增引擎
-或硬编码分支。
+默认 Python 运行时没有第三方依赖。存储、对话、记忆、安全规则、MCP、学习和进化均可选。
+启用的功能缺少必要条件时会明确失败，不会偷偷切换实现或降低能力。
 
-每轮运行开始时，路由模型会读取精简描述，通过一次结构化调用同时选择场景、Skill、规划
-模式、任务目的、执行模型和从 Agent。Runtime 不包含关键词匹配或隐藏的本地降级。调用方
-明确指定的内容属于强约束，模型选择未知或不兼容的内容会直接报错。
+Super Agent 仍处于实验性的 `0.0.x` 阶段；破坏性修改不会保留旧导入和兼容薄壳。
 
-Super Agent 仍处于实验性的 `0.0.x` 阶段。破坏性修改会直接完成，不保留旧导入或隐式兼容
-行为。
+## 开始使用
 
-## 60 秒开始使用
-
-需要 Python 3.11 或更高版本。默认 Python Runtime 没有第三方依赖。
+需要 Python 3.11 或更高版本。
 
 ```bash
 python3 -m pip install -e .
@@ -31,49 +25,57 @@ export OPENAI_API_KEY="..."
 super-agent "解释这个仓库"
 ```
 
-这就是默认使用所需的全部设置。也会自动发现 `ANTHROPIC_API_KEY` 和 `OLLAMA_HOST`，无需
-初始化项目或创建 `agent.toml`。离线冒烟检查需要明确选择 Mock Provider：
+不带参数运行 `super-agent` 即可进入交互对话。OpenAI 兼容接口、Anthropic 兼容接口和
+Ollama 的环境配置会被自动发现。离线测试必须明确选择 Mock Provider：
 
 ```bash
 SUPER_AGENT_PROVIDER=mock super-agent "你好"
 ```
 
-没有可用模型时，运行会返回配置错误。Provider 调用失败会原样抛出，Runtime 不会偷偷切换
-模型或替换成 Mock。
+默认不需要 `agent.toml`。只有希望获得可编辑项目和示例 Skill 时，才运行
+`super-agent init --path my-agent`。
 
-不带提示词运行 `super-agent` 可以进入终端对话。
+## Python 用法
 
-## 作为 Python 库使用
+常用 API 只有一个类：
 
 ```python
 from super_agent import Agent
 
 agent = Agent()
-result = agent.run("解释渐进式 Skill 披露")
-
+result = agent.run("解释 Skill 的渐进式披露")
 print(result.text)
-print(result.run_id)
 ```
 
-`Agent()` 使用惰性初始化，首次使用时才发现模型和相关 Skill。只有应用明确要求时才会打开
-存储。
-
-Python 库默认不启用存储，适合不需要会话、记忆、缓存或持久化证据的嵌入式任务：
+`Agent()` 默认不启用存储，也不会创建文件。高级集成从类型所属模块导入，依赖边界更加直观：
 
 ```python
-from super_agent import Agent, MockProvider
+from core.provider.chat import MockProvider
+from super_agent import Agent
 
 agent = Agent(provider=MockProvider("离线结果"))
-result = agent.run("对这段文本分类")
-print(result.events)
+print(agent.run("对文本进行分类").text)
 ```
 
-这个模式下请求依赖存储的功能会直接报错。Runtime 不会为了继续运行而删除功能、重试其他
-模型或替换成 Mock。
+## Skill
 
-## 在代码中添加专业能力
+一个 Skill 从精简的 `skill.toml` 开始。只有模型选择它以后，指令和资源才会被打开。
 
-场景是可选的任务领域 Skill 集合。Runtime 可以自动选择，每个 Agent 也可以独立限定范围：
+```toml
+schema_version = 3
+name = "research"
+type = "prompt"
+description = "研究一个问题并给出带引用的结论"
+version = "0.1.0"
+agent_created = false
+agent_can_update = false
+
+[entry]
+instructions = "SKILL.md"
+```
+
+系统没有预设触发词。模型在正常调用中根据描述选择 Skill 和任务场景。场景只是具名的
+Skill 组合，因此不同 Agent 可以各有专长，不需要另一套执行系统：
 
 ```python
 from super_agent import Agent
@@ -81,78 +83,70 @@ from super_agent import Agent
 main = Agent()
 coder = Agent()
 coder.use_only_scenes("code")
-
-main.add_subagent(coder, name="coder")
-result = main.run("实现并测试这个改动")
+main.add_subagent(coder, name="coder", description="实现并验证代码修改")
 ```
 
-路由模型会根据自然语言描述判断是否委派以及选择哪个从 Agent，不依赖关键词或触发词列表。
-使用 `disable_scenes()` 可直接调用模型。只有需要可编辑 Skill 示例时才运行
-`super-agent init --path my-agent`。提示、工具、记忆、工作流、规划器、场景和模型说明都使用
-同一种渐进披露 Skill 格式。
+## 可选状态
 
-## 按需启用状态与学习
-
-CLI 与 Web 使用 `.super-agent/` 下可直接阅读的本地 JSONL。Python 库通过
-`Agent(use_storage=True)` 启用。SQLite 无第三方依赖；MySQL 与 PostgreSQL 驱动只在明确
-选择后加载。所有有状态记录都按用户和 Agent 隔离。
+CLI 和 Web 会明确使用配置的存储；嵌入式 Python 需要主动启用：
 
 ```python
 agent = Agent(use_storage=True)
 alice = agent.for_user("alice")
-result = alice.run("记住我偏好的回答风格")
+result = alice.run("记住我偏好简洁回答")
 learning = alice.runs.learn(result.run_id)
 ```
 
-`learn_from_run` 是评价与进化的显式边界。允许更新的 Agent 自建 Skill 会分别经过候选、
-不退化评价、晋升、监控和回滚阶段。准备或评价候选不会激活它。
+对话消息就是本轮短期上下文。长期记忆只保存持久、关键的信息，并允许模型回忆、整理和遗忘。
+不同用户和 Agent 的对话、记忆、运行证据及 Skill 覆盖层彼此隔离。
 
-## Web 与运行检查
+默认存储是本地 JSONL。SQLite 同样只用标准库；MySQL 和 PostgreSQL 驱动是可选依赖。
+
+## CLI 与 Web
+
+CLI 只有五个顶层命令组：
 
 ```bash
+super-agent init --path my-agent
+super-agent run "执行一次任务"
+super-agent run --chat --user-id alice
+super-agent skills list
+super-agent data runs status
 super-agent serve
-super-agent run --scene code "检查这个改动"
-super-agent runs explain --run-id <run-id>
-super-agent skills index --output json
 ```
 
-React 客户端、CopilotKit 示例与 AG-UI 接口位于 `http://127.0.0.1:8765/`。
+`skills models` 管理模型 Skill，`skills evolution` 查看 Skill 迭代。`data` 统一包含对话、
+长期记忆、运行记录和存储复制。React 页面、CopilotKit 示例和 AG-UI 接口默认位于
+`http://127.0.0.1:8765/`。
 
-## 设计保证
+## 保证
 
-- **渐进式：** 只加载相关 Skill 内容。
-- **模型决策：** 一次结构化模型路由选择本轮所有可选组件。
-- **显式：** 读取不写入，缺少条件时在模型执行前失败。
-- **隔离：** 用户和 Agent 不共享会话、记忆、证据或覆盖层。
-- **可进化：** 每项变更都经过评价、记录、显式晋升并可回滚。
-- **行为归 Skill：** 行为策略从 Skill 渐进披露，Runtime 只负责执行机制。
-- **默认被动：** Skill 内容不能给自己授予代码执行或操作权限。
+- 所有 Skill 类型共享一个渐进式披露路径。
+- 不使用关键词路由，不隐藏切换 Provider、Mock 或存储实现。
+- 读取不会写入；状态修改必须经过显式、受检查的动作。
+- Skill 内容默认是被动数据，只有应用代码注册后才能执行工具。
+- Skill 候选修改必须先评估，再明确提升，并可回滚。
+- 基础运行不依赖存储、记忆、对话、安全或进化。
 
 ## 文档
 
 - [快速开始](docs/getting-started.md)
 - [架构](docs/architecture.md)
-- [五文件源码导览](docs/source-tour.md)
-- [Skill 与渐进式披露](docs/skills.md)
-- [Skill loader 与 MCP](docs/skill-loaders.md)
-- [配置与存储](docs/configuration.md)
-- [Runtime、追踪、用户与子 Agent](docs/runtime.md)
-- [记忆、评价、保鲜度与进化](docs/evolution.md)
-- [动作规则](docs/safety.md)
-- [CLI 参考](docs/cli.md)
-- [Web 客户端](docs/web.md)
-- [AG-UI](docs/ag-ui.md)
-- [路线图](docs/roadmap.md)
+- [源码阅读路径](docs/source-tour.md)
+- [Skill](docs/skills.md)
+- [配置](docs/configuration.md)
+- [运行时](docs/runtime.md)
+- [CLI](docs/cli.md)
+- [记忆与进化](docs/evolution.md)
+- [安全](docs/safety.md)
+- [Web](docs/web.md) 与 [AG-UI](docs/ag-ui.md)
 
-## 开发
+## 开发验证
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src:tests python3 -m unittest discover -s tests -v
-PYTHONDONTWRITEBYTECODE=1 python3 -m compileall -q src tests
-pnpm --dir web lint
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src:tests python3 -m unittest discover -s tests -p 'test_*.py'
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src python3 -m compileall -q src
 pnpm --dir web typecheck
+pnpm --dir web lint
 pnpm --dir web build
 ```
-
-发布测试会约束源码布局、导入边界、函数与文件大小、控制流和目录子项数量。`0.0.x` 阶段
-不提供内部导入兼容层。

@@ -141,6 +141,7 @@ class ConversationsCliTests(unittest.TestCase):
             )
             self._run_silently(
                 [
+                    "data",
                     "memory",
                     "add",
                     "--config",
@@ -154,6 +155,7 @@ class ConversationsCliTests(unittest.TestCase):
 
             alpha_runs = self._run_json(
                 [
+                    "data",
                     "runs",
                     "status",
                     "--config",
@@ -166,6 +168,7 @@ class ConversationsCliTests(unittest.TestCase):
             )
             self._run_silently(
                 [
+                    "data",
                     "runs",
                     "learn",
                     "--config",
@@ -178,6 +181,7 @@ class ConversationsCliTests(unittest.TestCase):
             )
             beta_runs = self._run_json(
                 [
+                    "data",
                     "runs",
                     "status",
                     "--config",
@@ -189,10 +193,10 @@ class ConversationsCliTests(unittest.TestCase):
                 ]
             )
             alpha_memory = self._run_text(
-                ["memory", "list", "--config", config, "--user-id", "alpha"]
+                ["data", "memory", "list", "--config", config, "--user-id", "alpha"]
             )
             beta_memory = self._run_text(
-                ["memory", "list", "--config", config, "--user-id", "beta"]
+                ["data", "memory", "list", "--config", config, "--user-id", "beta"]
             )
             alpha_freshness = self._run_text(
                 ["skills", "freshness", "--config", config, "--user-id", "alpha"]
@@ -231,9 +235,9 @@ class ConversationsCliTests(unittest.TestCase):
     ) -> dict[str, object]:
         common = ["--config", config, "--user-id", user_id]
         arguments = (
-            ["conversations", *common, command]
+            ["data", "conversations", *common, command]
             if common_arguments_first
-            else ["conversations", command, *common]
+            else ["data", "conversations", command, *common]
         )
         if conversation_id is not None:
             arguments.extend(["--conversation-id", conversation_id])

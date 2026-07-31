@@ -26,7 +26,8 @@ from skill.ecosystem.scenes import CreatedSkillScene, SkillSceneInput, SkillScen
 from skill.loaders.defaults import create_progressive_skill_disclosure
 
 if TYPE_CHECKING:
-    from super_agent import Agent, AgentRunOptions
+    from super_agent import Agent
+    from core.models import AgentRunOptions
     from skill.evolution.change.manager import SkillEvolutionManager
 
 

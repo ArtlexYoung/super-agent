@@ -1,36 +1,38 @@
 # Source Tour
 
-Read one ordinary run through these five files, in order:
+Follow one ordinary call through these files:
 
-1. `src/super_agent.py` exposes `Agent.run()` and composes optional dependencies.
-2. `src/core/runtime.py` owns the Provider-neutral `Final` or `Actions` turn contract.
-3. `src/core/provider/chat.py` converts each model API into `ModelResponse`.
-4. `src/skill/disclosure/core.py` owns Skill discovery, disclosure, and cache paths.
-5. `src/skill/task/loop.py` executes selected actions until the model returns `Final`.
+1. `src/super_agent.py`: `Agent.run()` composes the optional dependencies.
+2. `src/skill/task/runtime.py`: `Runtime.run_task()` owns one run and its visible events.
+3. `src/skill/task/loop.py`: `ModelLoop` gives the model the Skill index and checked tools.
+4. `src/skill/disclosure/core.py`: the shared index, disclosure, and cache path.
+5. `src/core/provider/chat.py`: Provider implementations return one `ModelResponse`.
 
-The target call chain is deliberately short:
+The active execution path is:
 
 ```text
 Agent.run
-  -> Runtime.run
-  -> Provider.next_turn
-  -> Final or checked Actions
+  -> Runtime.run_task
+  -> ModelLoop.run_task
+  -> Provider.complete
+  -> final text or checked tool calls
 ```
 
-Runtime may ask the model to read a Skill, run a Skill tool, switch to a configured model,
-or call a registered subagent. It does not route by keywords. A simple request can return
-`Final` from the first model call without loading planning, memory, storage, or evolution.
+A simple task can finish on its first model turn. Storage, memory, conversations, safety
+checks, subagents, learning, and evolution are attached only when requested or selected.
 
-## Release Gates
+The model receives descriptions, not a trigger-word decision made by Python. It can open
+more Skill content, activate a Skill, call an exposed Skill tool, recall or update
+long-term memory, or delegate to a registered subagent. Every side effect goes through an
+explicit action request.
 
-- One model call for a simple prompt.
-- No files created by a default Python run.
-- No hidden Provider, Skill, model, or storage fallback.
-- At most five common CLI command groups.
-- At most five source files to follow an ordinary run.
-- At most four owned business calls in the main execution chain.
-- No Python source file above 500 non-import lines.
-- Between 40 and 50 Python source files and fewer than 15,000 source lines.
+For a subsystem, start at its one public owner:
 
-These are release conditions, not documentation goals. Tests enforce them as each old
-execution path is deleted.
+- Skill discovery: `skill.skills.Skills`.
+- Skill disclosure: `skill.disclosure.ProgressiveDisclosureCore`.
+- Provider connections: `core.provider.pool.ProviderPool`.
+- Stored user access: `adapter.user.UserAgent`.
+- Action checks: `core.checks.ActionRunner`.
+- Run events: `core.state.event_log.RunEventLog`.
+
+There are no compatibility modules. Import an advanced type from the file that owns it.

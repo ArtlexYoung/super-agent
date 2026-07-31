@@ -215,7 +215,7 @@ class SkillRevisionEvolutionTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "task failed"):
                 agent.run("echo this")
             failed_run = agent.runtime.create_event_store().list_runs(1)[0]
-            agent.learn_from_run(failed_run.run_id)
+            agent.for_user("local").runs.learn(failed_run.run_id)
 
             evolutions = agent.for_user("local").skills.list_evolutions()
             self.assertEqual(["prompt:echo"], [item.skill_key for item in evolutions])
@@ -244,7 +244,7 @@ class SkillRevisionEvolutionTests(unittest.TestCase):
 
             store = agent.runtime.create_event_store()
             regression_run = store.list_runs(1)[0]
-            agent.learn_from_run(regression_run.run_id)
+            agent.for_user("local").runs.learn(regression_run.run_id)
             monitored = agent.for_user("local").skills.list_evolutions()[0]
             regression_insight = explain_run_with_insight(
                 store,
@@ -278,7 +278,7 @@ class SkillRevisionEvolutionTests(unittest.TestCase):
                 "AutomaticSkillEvolution.run_pending_skill_evolution_stages",
                 side_effect=RuntimeError("recommendation unavailable"),
             ), self.assertRaisesRegex(RuntimeError, "recommendation unavailable"):
-                agent.learn_from_run(result.run_id)
+                agent.for_user("local").runs.learn(result.run_id)
 
             events = agent.runtime.create_event_store().read_run_events(result.run_id)
             self.assertEqual("completed", result.text)

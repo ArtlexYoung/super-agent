@@ -126,8 +126,8 @@ class RuntimeEventSubscriberTests(unittest.TestCase):
             )
 
             result = agent.run("hello")
-            first = agent.learn_from_run(result.run_id)
-            second = agent.learn_from_run(result.run_id)
+            first = agent.for_user("local").runs.learn(result.run_id)
+            second = agent.for_user("local").runs.learn(result.run_id)
 
             self.assertEqual(first.evaluation_record_ids, second.evaluation_record_ids)
             self.assertEqual(first.events, second.events)
@@ -150,7 +150,7 @@ class RuntimeEventSubscriberTests(unittest.TestCase):
                 "AutomaticSkillEvolution.run_pending_skill_evolution_stages",
                 side_effect=RuntimeError("evolution unavailable"),
             ), self.assertRaisesRegex(RuntimeError, "evolution unavailable"):
-                agent.learn_from_run(result.run_id)
+                agent.for_user("local").runs.learn(result.run_id)
 
             failed_events = agent.runtime.create_event_store().read_run_events(result.run_id)
             failure = next(
@@ -160,7 +160,7 @@ class RuntimeEventSubscriberTests(unittest.TestCase):
             self.assertEqual("skill_evolution", failure.data["stage"])
             self.assertEqual("evolution unavailable", failure.data["message"])
 
-            learned = agent.learn_from_run(result.run_id)
+            learned = agent.for_user("local").runs.learn(result.run_id)
 
             self.assertEqual("learning.completed", learned.events[-1].event_type)
 
@@ -174,7 +174,7 @@ class RuntimeEventSubscriberTests(unittest.TestCase):
 
             self.assertEqual([], result.subscriber_failures)
             with self.assertRaisesRegex(RuntimeError, "storage is disabled"):
-                agent.learn_from_run(result.run_id)
+                agent.for_user("local").runs.learn(result.run_id)
             self.assertFalse(config.storage.path.exists())
 
 

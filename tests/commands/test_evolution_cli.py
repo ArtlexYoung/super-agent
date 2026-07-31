@@ -67,6 +67,7 @@ class EvolutionCliTests(unittest.TestCase):
 
             listed = _run_json_cli(
                 [
+                    "skills",
                     "evolution",
                     "list",
                     "--config",
@@ -79,6 +80,7 @@ class EvolutionCliTests(unittest.TestCase):
             )
             isolated = _run_json_cli(
                 [
+                    "skills",
                     "evolution",
                     "list",
                     "--config",
@@ -91,6 +93,7 @@ class EvolutionCliTests(unittest.TestCase):
             )
             shown = _run_json_cli(
                 [
+                    "skills",
                     "evolution",
                     "show",
                     "--config",

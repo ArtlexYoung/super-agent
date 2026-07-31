@@ -29,7 +29,8 @@ is an error before its handler runs.
 Action authority is deliberately not a TOML field. Select it where the Agent is created:
 
 ```python
-from super_agent import ActionMode, ActionRules, Agent
+from core.checks import ActionMode, ActionRules
+from super_agent import Agent
 
 read_only = Agent(action_rules=ActionRules(ActionMode.READ_ONLY))
 autonomous = Agent(action_rules=ActionRules(ActionMode.AUTONOMOUS))
@@ -56,8 +57,8 @@ as Python or shell code. The reserved Skill type `runner` is rejected.
 Custom executable behavior must be registered with `Agent.add_skill_loader(...)`. MCP
 implementations use the narrower `Agent.add_mcp_server(...)` API. Commands, arguments,
 environment values, transports, and effects live only in trusted application code; an MCP
-Skill can select only a registered server name. Preflight rejects a selected MCP Skill when
-that registration is absent, and every discovery or tool call is checked before code or a
+Skill can select only a registered server name. Activation rejects an MCP Skill when that
+registration is absent, and every discovery or tool call is checked before code or a
 process can start.
 
 Package validation also rejects symlinks and paths outside a Skill directory. Candidate

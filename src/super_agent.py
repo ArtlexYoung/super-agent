@@ -9,16 +9,11 @@ from skill.loaders.defaults import (
     create_default_skill_loaders,
     create_skills,
 )
-from skill.loaders.registry import SkillLoadRequest, SkillLoader, SkillLoaders
-from skill.loaders.mcp import McpServer, McpServers, StdioMcpServer
-from skill.loaders.loaded import LoadedSkill, SkillAction, SkillTool
+from skill.loaders.registry import SkillLoader, SkillLoaders
+from skill.loaders.mcp import McpServer, McpServers
 from core.provider.chat import (
     ChatProvider,
     Message,
-    MockProvider,
-    ModelResponse,
-    ProviderConnection,
-    ToolCall,
 )
 from core.provider.pool import ProviderPool
 from core.config import AgentConfig
@@ -29,24 +24,20 @@ from core.state.models import RunEvent
 from core.state.subscribers import RuntimeEventSubscriber, RuntimeEventSubscribers
 from core.checks import (
     ActionEffect,
-    ActionMode,
     ActionRules,
 )
 from core.provider.secrets import UserSecretLookup, UserSecretResolver
 from core.models import (
     AgentRunOptions,
-    RunLearningResult,
     SubAgentResult,
     SubagentCallbacks,
     Task,
     RunResult,
-    TaskTrace,
     normalize_scene_names,
     require_scenes_configured_in_code,
     resolve_agent_run_options,
 )
 from core.state.models import Conversation
-from core.state.subscribers import RuntimeEventSubscriberError
 from core.events import StorageBackend
 from skill.loaders.models import (
     ModelProfile,
@@ -54,7 +45,7 @@ from skill.loaders.models import (
     read_model_profiles,
     select_default_model_profile,
 )
-from skill.manifest import Skill, SkillManifest
+from skill.manifest import SkillManifest
 
 if TYPE_CHECKING:
     from adapter.user import UserAgent
@@ -270,9 +261,6 @@ class Agent:
             conversation_id=conversation_id,
             run_options=self._resolve_run_options(run_options, scene, use_scenes),
         )
-
-    def learn_from_run(self, run_id: str) -> RunLearningResult:
-        return self.runtime.learn_from_run(run_id)
 
     def _run_for_user(
         self,
@@ -615,35 +603,4 @@ def _load_agent_config(config: AgentConfig | str | Path | None) -> AgentConfig:
     return AgentConfig.load_from_file(config)
 
 
-__all__ = [
-    "Agent",
-    "AgentConfig",
-    "AgentRunOptions",
-    "ActionEffect",
-    "ActionMode",
-    "ActionRules",
-    "ChatProvider",
-    "SkillLoader",
-    "SkillAction",
-    "SkillTool",
-    "Conversation",
-    "LOCAL_USER_ID",
-    "MockProvider",
-    "McpServer",
-    "ModelProfile",
-    "ModelResponse",
-    "ProviderConnection",
-    "ProviderPool",
-    "RuntimeEventSubscriber",
-    "RuntimeEventSubscriberError",
-    "RunLearningResult",
-    "Skill",
-    "SkillManifest",
-    "LoadedSkill",
-    "SkillLoadRequest",
-    "StorageBackend",
-    "StdioMcpServer",
-    "RunResult",
-    "TaskTrace",
-    "ToolCall",
-]
+__all__ = ["Agent"]

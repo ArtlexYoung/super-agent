@@ -11,7 +11,8 @@ from threading import RLock
 from typing import cast
 from urllib.parse import unquote, urlsplit
 
-from super_agent import Agent, AgentRunOptions
+from super_agent import Agent
+from core.models import AgentRunOptions
 from adapter.ag_ui_adapter.protocol import AGUIEventMapper, AGUIRunInput, encode_sse_event
 from adapter.ag_ui_adapter.web_api import WebAPI, WebAPIResponse
 from core.models import LOCAL_USER_ID, validate_user_id

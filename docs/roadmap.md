@@ -568,6 +568,18 @@ Status: implemented.
 - Merge evidence aggregation and freshness calculation into one `metrics` data path.
 - Remove old module paths and state-machine re-exports instead of keeping import shims.
 
+## v0.0.107: Five User Entry Points
+
+Status: implemented.
+
+- Export only `Agent` from the common Python module; advanced contracts use their owning
+  modules.
+- Keep five CLI groups: `init`, `run`, `skills`, `data`, and `serve`.
+- Put models and evolution under Skills, and persisted user operations under data.
+- Rewrite the user path and source tour around the active single model loop.
+- Remove the redundant `Agent.learn_from_run` shortcut; user-scoped learning remains
+  explicit through `agent.for_user(...).runs.learn(...)`.
+
 ## Release Gate
 
 The project will not move to `0.1.x` because of feature count. The gate is a reproducible

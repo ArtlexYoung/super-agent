@@ -45,6 +45,7 @@ class RunsCliTests(unittest.TestCase):
             with patch("sys.stdout", StringIO()):
                 learn_code = main(
                     [
+                        "data",
                         "runs",
                         "learn",
                         "--config",
@@ -58,6 +59,7 @@ class RunsCliTests(unittest.TestCase):
             with patch("sys.stdout", status_output):
                 status_code = main(
                     [
+                        "data",
                         "runs",
                         "status",
                         "--config",
@@ -72,6 +74,7 @@ class RunsCliTests(unittest.TestCase):
             with patch("sys.stdout", explanation_output):
                 explanation_code = main(
                     [
+                        "data",
                         "runs",
                         "explain",
                         "--config",
@@ -88,6 +91,7 @@ class RunsCliTests(unittest.TestCase):
             with patch("sys.stdout", StringIO()):
                 export_code = main(
                     [
+                        "data",
                         "runs",
                         "export",
                         "--config",
@@ -150,6 +154,7 @@ class RunsCliTests(unittest.TestCase):
             with patch("sys.stdout", StringIO()):
                 main(
                     [
+                        "data",
                         "runs",
                         "learn",
                         "--config",
@@ -163,6 +168,7 @@ class RunsCliTests(unittest.TestCase):
             with patch("sys.stdout", explanation_output):
                 code = main(
                     [
+                        "data",
                         "runs",
                         "explain",
                         "--config",
@@ -187,6 +193,7 @@ class RunsCliTests(unittest.TestCase):
             with patch("sys.stdout", output):
                 code = main(
                     [
+                        "data",
                         "runs",
                         "status",
                         "--config",
@@ -222,6 +229,7 @@ class RunsCliTests(unittest.TestCase):
             with patch("sys.stdout", feedback_output):
                 code = main(
                     [
+                        "data",
                         "runs",
                         "feedback",
                         "--config",
@@ -286,6 +294,7 @@ class RunsCliTests(unittest.TestCase):
             with patch("sys.stdout", output):
                 code = main(
                     [
+                        "data",
                         "runs",
                         "explain",
                         "--config",

@@ -43,9 +43,10 @@ message becomes the task prompt.
 ```
 
 `forwardedProps.scene` is optional and selects one scene for this run. It accepts a scene
-name such as `code` or a stable key such as `scene:code`. When omitted, the routing model
-chooses from the same scene descriptions exposed to Python and CLI. It cannot select a
-user, override an explicit scene, or change action authority.
+name such as `code` or a stable key such as `scene:code`. When omitted, available scene
+descriptions remain in the central Skill index and the model may activate one during its
+normal turn. It cannot select a user, override an explicit scene, or change action
+authority.
 
 The response uses `text/event-stream` and official SSE framing:
 
@@ -59,8 +60,7 @@ data: {"type":"RUN_STARTED","threadId":"project-a","runId":"run-001"}
 | Runtime event | AG-UI event |
 | --- | --- |
 | `run.started` | `RUN_STARTED` |
-| `task.started`, `task.step.scheduled` | `STEP_STARTED` |
-| `task.step.completed` | `STEP_FINISHED` |
+| `task.started` | `STEP_STARTED` |
 | `tool.requested` | `TOOL_CALL_START`, `TOOL_CALL_ARGS`, `TOOL_CALL_END` |
 | `tool.completed`, `tool.failed` | `TOOL_CALL_RESULT` |
 | `task.completed` | `TEXT_MESSAGE_START`, `TEXT_MESSAGE_CONTENT`, `TEXT_MESSAGE_END` |
@@ -68,8 +68,8 @@ data: {"type":"RUN_STARTED","threadId":"project-a","runId":"run-001"}
 | `run.failed` | `RUN_ERROR` |
 | every canonical event | `CUSTOM` with sequence and payload |
 
-Provider calls are currently non-streaming. Task progress arrives live, while final
-assistant text is emitted after the selected model call completes. Events are forwarded
+Provider calls are currently non-streaming. Tool progress arrives live, while final
+assistant text is emitted after the model loop completes. Events are forwarded
 from the active run and are not reconstructed from logs.
 
 ## Python and CopilotKit

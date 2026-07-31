@@ -6,7 +6,7 @@ import sys
 from dataclasses import asdict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Sequence
+from typing import Any, Sequence
 
 from adapter.cli_adapter.conversations import (
     configure_conversations_parser,
@@ -23,25 +23,16 @@ from adapter.cli_adapter.runs import configure_runs_parser, run_runs_command
 from adapter.cli_adapter.serve import configure_serve_parser, run_serve_command
 from adapter.cli_adapter.skills import configure_skills_parser, run_skills_command
 from adapter.cli_adapter.storage import configure_storage_parser, run_storage_command
-from super_agent import AgentRunOptions
 from core.provider.chat import Message
-from core.models import LOCAL_USER_ID
+from core.models import AgentRunOptions, LOCAL_USER_ID
 from core.state.models import RunEvent
 from core.models import RunResult
 
 
-COMMAND_HANDLERS: dict[str, Callable[[argparse.Namespace], int]] = {
-    "conversations": run_conversations_command,
-    "evolution": run_evolution_command,
-    "memory": run_memory_command,
-    "models": run_models_command,
-    "runs": run_runs_command,
-    "serve": run_serve_command,
-    "skills": run_skills_command,
-    "storage": run_storage_command,
-}
-SPECIAL_COMMANDS = frozenset({"chat", "init", "run"})
-CLI_COMMANDS = frozenset(COMMAND_HANDLERS) | SPECIAL_COMMANDS
+CLI_COMMANDS = frozenset({"data", "init", "run", "serve", "skills"})
+REMOVED_COMMANDS = frozenset(
+    {"chat", "conversations", "evolution", "memory", "models", "runs", "storage"}
+)
 
 
 @dataclass(frozen=True)
@@ -75,22 +66,36 @@ def _run_parsed_command(
     if args.command == "init":
         return _run_init_command(Path(args.path))
     if args.command == "run":
-        request = _read_runtime_request_from_stdin() if args.request_stdin else _read_runtime_request_from_args(args)
-        config_path = None if args.config is None else Path(args.config)
-        return _run_prompt_command(config_path, request, args.output)
-    if args.command == "chat":
-        config_path = None if args.config is None else Path(args.config)
+        return _run_command(args)
+    if args.command == "skills":
+        return _run_skills_command(args)
+    if args.command == "data":
+        return _run_data_command(args)
+    if args.command == "serve":
+        return run_serve_command(args)
+    parser.print_help()
+    return 1
+
+
+def _run_command(args: argparse.Namespace) -> int:
+    config_path = None if args.config is None else Path(args.config)
+    if args.chat:
+        if args.prompt or args.request_stdin or args.output != "text":
+            raise ValueError(
+                "run --chat cannot include a prompt, stdin request, or output mode"
+            )
         return _run_chat_command(
             config_path,
             args.user_id,
             args.conversation_id,
             args.scene,
         )
-    handler = COMMAND_HANDLERS.get(args.command)
-    if handler is not None:
-        return handler(args)
-    parser.print_help()
-    return 1
+    request = (
+        _read_runtime_request_from_stdin()
+        if args.request_stdin
+        else _read_runtime_request_from_args(args)
+    )
+    return _run_prompt_command(config_path, request, args.output)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -111,35 +116,13 @@ def _build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--user-id", default=LOCAL_USER_ID)
     run_parser.add_argument("--conversation-id")
     run_parser.add_argument("--scene", help="explicit scene name or scene:name key")
-
-    chat_parser = subparsers.add_parser("chat", help="start an interactive conversation")
-    chat_parser.add_argument("--config")
-    chat_parser.add_argument("--user-id", default=LOCAL_USER_ID)
-    chat_parser.add_argument("--conversation-id")
-    chat_parser.add_argument("--scene", help="explicit scene name or scene:name key")
-
-    conversations_parser = subparsers.add_parser(
-        "conversations",
-        help="manage stored conversations",
-    )
-    configure_conversations_parser(conversations_parser)
+    run_parser.add_argument("--chat", action="store_true", help="start an interactive conversation")
 
     skills_parser = subparsers.add_parser("skills", help="manage skills")
-    configure_skills_parser(skills_parser)
-
-    memory_parser = subparsers.add_parser("memory", help="inspect memory")
-    configure_memory_parser(memory_parser)
-    models_parser = subparsers.add_parser("models", help="inspect model Skills and defaults")
-    configure_models_parser(models_parser)
-    runs_parser = subparsers.add_parser("runs", help="inspect and export run snapshots")
-    configure_runs_parser(runs_parser)
-    storage_parser = subparsers.add_parser("storage", help="manage runtime storage")
-    configure_storage_parser(storage_parser)
-    evolution_parser = subparsers.add_parser(
-        "evolution",
-        help="manage autonomous evolution recommendations",
-    )
-    configure_evolution_parser(evolution_parser)
+    skill_commands = configure_skills_parser(skills_parser)
+    _configure_skill_extensions(skill_commands)
+    data_parser = subparsers.add_parser("data", help="manage conversations and saved data")
+    _configure_data_parser(data_parser)
     serve_parser = subparsers.add_parser(
         "serve",
         help="serve the Agent over the AG-UI protocol",
@@ -148,10 +131,50 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _configure_skill_extensions(subparsers: argparse._SubParsersAction) -> None:
+    models_parser = subparsers.add_parser("models", help="manage model skills")
+    configure_models_parser(models_parser)
+    evolution_parser = subparsers.add_parser("evolution", help="inspect skill evolution")
+    configure_evolution_parser(evolution_parser)
+
+
+def _configure_data_parser(parser: argparse.ArgumentParser) -> None:
+    subparsers = parser.add_subparsers(dest="data_command")
+    conversations = subparsers.add_parser("conversations", help="manage conversations")
+    configure_conversations_parser(conversations)
+    memory = subparsers.add_parser("memory", help="manage long-term memory")
+    configure_memory_parser(memory)
+    runs = subparsers.add_parser("runs", help="inspect saved runs")
+    configure_runs_parser(runs)
+    storage = subparsers.add_parser("storage", help="copy stored data")
+    configure_storage_parser(storage)
+
+
+def _run_skills_command(args: argparse.Namespace) -> int:
+    if args.skill_command == "models":
+        return run_models_command(args)
+    if args.skill_command == "evolution":
+        return run_evolution_command(args)
+    return run_skills_command(args)
+
+
+def _run_data_command(args: argparse.Namespace) -> int:
+    handlers = {
+        "conversations": run_conversations_command,
+        "memory": run_memory_command,
+        "runs": run_runs_command,
+        "storage": run_storage_command,
+    }
+    handler = handlers.get(args.data_command)
+    if handler is None:
+        raise ValueError("data command is required")
+    return handler(args)
+
+
 def _is_direct_prompt(arguments: list[str]) -> bool:
     return bool(
         arguments
-        and arguments[0] not in CLI_COMMANDS
+        and arguments[0] not in CLI_COMMANDS | REMOVED_COMMANDS
         and not arguments[0].startswith("-")
     )
 

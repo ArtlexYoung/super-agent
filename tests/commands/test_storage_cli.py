@@ -47,6 +47,7 @@ class StorageCliTests(unittest.TestCase):
 
             first = self._run_json(
                 [
+                    "data",
                     "storage",
                     "copy",
                     "--config",
@@ -63,6 +64,7 @@ class StorageCliTests(unittest.TestCase):
             )
             second = self._run_json(
                 [
+                    "data",
                     "storage",
                     "copy",
                     "--config",
@@ -80,6 +82,7 @@ class StorageCliTests(unittest.TestCase):
             sqlite_config = self._write_sqlite_config(root, config)
             alpha = self._run_json(
                 [
+                    "data",
                     "conversations",
                     "list",
                     "--config",
@@ -90,6 +93,7 @@ class StorageCliTests(unittest.TestCase):
             )
             beta = self._run_json(
                 [
+                    "data",
                     "runs",
                     "status",
                     "--config",
@@ -122,6 +126,7 @@ class StorageCliTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, r"super-agent\[postgresql\]"):
                     main(
                         [
+                            "data",
                             "storage",
                             "copy",
                             "--config",

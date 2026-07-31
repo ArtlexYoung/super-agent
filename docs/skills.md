@@ -1,225 +1,105 @@
-# Skills and Progressive Disclosure
+# Skills
 
-A Skill is passive content that describes something an Agent can use. Task scenes,
-prompts, MCP tool guidance, memory rules, workflows, planners, model profiles, and custom types
-all use the same manifest, identity, source order, disclosure cache, evidence, and update
-lifecycle.
+A Skill is passive content with one manifest. Prompts, workflows, memory behavior, MCP
+descriptions, model profiles, task scenes, feedback, and evolution policy all use this
+format.
 
-## Directory Format
-
-The recommended layout is:
+## Layout
 
 ```text
-skills/<type>/<name>/
-  skill.toml
-  SKILL.md
-  additional resources...
+skills/
+  prompt/
+    research/
+      skill.toml
+      SKILL.md
+      resources/
 ```
-
-Core scans Skill roots recursively, so the directory names are organizational. The
-`type` and `name` in `skill.toml` define the stable identity. Only `skill.toml` is required
-by the shared manifest format. A Skill type may require instructions or configuration
-fields when those values own its behavior. In particular, memory and workflow Skills
-require `SKILL.md`; missing behavior fails during validation instead of using Runtime
-defaults.
-
-## Manifest
 
 ```toml
 schema_version = 3
 name = "research"
 type = "prompt"
-description = "Research with explicit sources"
+description = "Research a question and report cited findings"
 version = "0.1.0"
 agent_created = false
 agent_can_update = false
 freshness = 70
 function_group = "research"
-provides = ["facts"]
-requires = ["http"]
+provides = ["research"]
+requires = []
 
 [entry]
 instructions = "SKILL.md"
-
-[configuration]
-style = "concise"
 ```
 
-Schema 3 rejects unknown fields. Every Skill type uses the same `[configuration]` table;
-the code that consumes that type validates its contents.
+Unknown fields and unsupported schema versions fail validation. Stable references use
+`type:name`; a bare name is accepted only when unique.
 
-Common types are:
+## One Disclosure Path
 
-- `scene`: references the Skill set for one kind of task.
+Runtime first exposes only compact index data. The model may then call:
+
+- `list_skills`
+- `disclose_skill_manifest`
+- `disclose_skill_instructions`
+- `disclose_skill_configuration`
+- `read_disclosed_content` for a path already cached in this user scope
+- `activate_skill` to load registered behavior
+
+Manifest, instruction, configuration, and resource reads all use the same core. Cache paths
+are hashes of source identity and content, so a changed Skill cannot reuse stale content.
+Reads do not count as activation or use.
+
+There are no trigger words. Descriptions and current task context are given to the model,
+which chooses what to inspect and activate during its normal turn.
+
+## Skill Types and Loaders
+
+The manifest accepts a clear lowercase type. Built-in loaders understand:
+
 - `prompt`: model instructions.
-- `mcp`: tool guidance and the name of a server registered in application code.
-- `memory`: recall, organization, and forgetting rules.
-- `workflow`: direct, plan, react, or loop task rules.
-- `planner`: task decomposition rules.
-- `model`: Provider connection metadata and routing traits.
-- `feedback`: model instructions for judging conversation feedback.
-- `evolution`: deterministic freshness, recommendation, evaluation, and monitoring policy.
-- `scene_manager`: templates used to create complete user-owned task scenes.
+- `workflow`: tool-loop policy and maximum turns.
+- `memory`: long-term memory context and tools.
+- `mcp`: passive selection of an MCP server registered in code.
+- `scene`: a named group of other Skills.
 
-Custom type names are allowed. Register a matching SkillLoader in Python when the type
-needs executable behavior. The manifest type `runner` is reserved because executable
-code cannot come from a Skill directory.
+`model`, `feedback`, and `evolution` Skills are read by their owning services through the
+same index and disclosure core. Applications can add another type with an explicit
+`Agent.add_skill_loader()` call.
 
-An MCP Skill has no executable connection settings:
+A SkillLoader is trusted application code. A Skill directory cannot contain or activate a
+Python runner. Packages with symlinks, traversal, unexpected hashes, or identity changes
+are rejected.
 
-```toml
-schema_version = 3
-name = "filesystem"
-type = "mcp"
-description = "Filesystem tools"
-version = "0.1.0"
+## Scenes
 
-[entry]
-instructions = "SKILL.md"
+A scene manifest contains references to ordinary Skills. Built-in `common` and `code`
+scenes reuse the same `memory:default`; they do not copy shared content.
 
-[configuration]
-server = "filesystem"
+The model can activate an available scene like any other Skill. Callers can also select a
+scene explicitly for one run. Each Agent controls visibility in code:
+
+```python
+agent.use_only_scenes("code")
+agent.disable_scenes()
+agent.select_scenes_automatically()
 ```
 
-`server` defaults to the Skill name. Fields such as `command`, `arguments`, `environment`,
-and `transport` are rejected because a Skill is untrusted passive content. The matching
-implementation and its effects are attached to an Agent in code.
+Scene access outside that policy fails. No TOML subagent or scene policy graph is created.
 
-## Identity and Selection
+## Ownership and Evolution
 
-A Skill key is always `type:name`, for example:
+`agent_created` records who created the Skill. `agent_can_update` is the explicit update
+permission; it defaults to `true` only for Agent-created Skills. Model connection fields
+have a separate update permission because they may affect secret and network boundaries.
 
-```text
-scene:code
-prompt:concise
-memory:default
-workflow:react
-model:fast
-search:adaptive
-```
-
-A bare name is accepted only when it identifies one Skill. The routing model may select
-one scene and additional Skill keys from compact descriptions. Core combines those choices
-with `agent.skills` and dependencies declared by `requires`.
-Dependency resolution is deterministic and fails on missing providers, ambiguous
-providers, or cycles.
-
-```bash
-super-agent skills index --config agent.toml --output json
-super-agent skills graph --config agent.toml --name prompt:research
-super-agent skills lock --config agent.toml --name prompt:research --output skill.lock
-```
-
-Core resolves one source hierarchy in `user > project > builtin` order, where `builtin`
-is the source label for content under package-level `src/skill/builtin`. User Skills live inside
-the current user's private Agent scope and override matching shared Skills. Invalid lower
-layers are still reported instead of being silently ignored.
-
-## Task Scenes
-
-A scene is an ordinary configuration-only Skill whose `[configuration].skills` field
-contains stable `type:name` references:
-
-```toml
-schema_version = 3
-name = "review"
-type = "scene"
-description = "Code review task chain"
-version = "0.1.0"
-default = false
-
-[configuration]
-skills = [
-  "prompt:review",
-  "memory:review",
-  "planner:review",
-  "workflow:review",
-]
-```
-
-Scenes may reference any non-scene Skills. A scene cannot reference another scene and may
-reference at most one planner and one workflow. Every referenced custom type needs a
-registered SkillLoader. Missing references, missing loaders, and conflicts are errors;
-Runtime does not substitute another scene or workflow.
-
-The shipped roots are:
-
-```text
-src/skill/builtin/scene/common/   zero-configuration general task composition
-src/skill/builtin/scene/code/     optional repository task composition
-```
-
-Scene selection is constrained explicitly:
-
-1. `Agent.run(..., scene="name")`, `super-agent run --scene name`, or AG-UI
-   `forwardedProps.scene` fixes the selected scene.
-2. `Agent.use_only_scenes(...)` limits the candidates visible to the routing model.
-3. Without an explicit scene, the routing model chooses one candidate or direct mode from
-   natural-language descriptions and the full task context.
-
-Unknown, unavailable, or policy-excluded choices fail clearly. `Agent.disable_scenes()` and
-`Agent.run(..., use_scenes=False)` select no scene and record that choice in the Plan.
-Pinned memory, planner, or workflow Skills replace the same type from the selected scene;
-other configured or model-selected Skills are added normally.
-
-User-private scenes can be created with `UserSkills.create_scene(...)` or by the model's
-`create_skill_scene` tool in a tool-using scene. Creation writes a complete scene, prompt,
-memory, planner, and workflow set with `agent_created = true` and
-`agent_can_update = true`. It never replaces an existing key. The current run keeps its
-prepared index, and the created scene is visible on the next run only.
-
-The selected `scene_manager` Skill owns the generated prompt, memory, planner, and workflow
-instructions plus their limits. The selected `feedback` and `evolution` Skills similarly
-own feedback judgment and learning policy. Exactly one explicitly configured Skill of each
-support type is used; otherwise Core requires exactly one `default = true`. Ambiguity and
-missing defaults are errors.
-
-## One Disclosure Core
-
-`Skills` is the only Skill read, loading, and scene-selection path. Constructing
-it with Skill roots is read-only: it does not create a storage backend, cache directory,
-or history. Freshness data and recording are explicit inputs. It provides five disclosure
-stages:
-
-1. `index`: compact identities, summaries, freshness, hashes, and cache paths.
-2. `manifest`: normalized metadata for one selected Skill.
-3. `instructions`: instruction text for that Skill.
-4. `configuration`: its generic configuration table.
-5. `files`: the full inventory; UTF-8 files include content and binary files include size
-   and SHA-256 only.
-
-When Runtime explicitly attaches a disclosure recorder, disclosure writes
-content-addressed cache entries under:
-
-```text
-.super-agent/users/<user-hash>/agents/<agent-hash>/cache/
-  index.json
-  history.json
-  skills/<type>/<name>/manifest.json
-  skills/<type>/<name>/instructions.md
-  skills/<type>/<name>/configuration.json
-  skills/<type>/<name>/files.json
-```
-
-The `read_*` methods verify and return source content without writing cache, history, usage,
-or freshness state. The matching `disclose_*` methods explicitly write cache and history
-when a recorder exists. The model always receives the compact index first and uses
-`disclose_skill_manifest`, `disclose_skill_instructions`, or
-`disclose_skill_configuration` when it needs more content. `read_disclosed_content` reads
-an already disclosed path without activating its Skill. `activate_skill` is the separate
-operation that loads a loader contribution, attaches its tools, and records actual use.
-Offline listing, validation, and ordinary reads have no storage side effects.
+Freshness is deterministic. It combines call outcomes, token use, time since use, frequency,
+and successful same-function follow-ups. The model does not assign the freshness number.
+Learning can use it to recommend a candidate, but evaluation and explicit promotion remain
+separate.
 
 ## Packages
 
-```bash
-super-agent skills pack --config agent.toml --name prompt:research --output research.zip
-super-agent skills install --config agent.toml --source ./research.zip
-super-agent skills update --config agent.toml --name prompt:research --source ./new-research
-super-agent skills remove --config agent.toml --name prompt:research
-```
-
-Local directories, ZIP files, and `git+...#subdirectory` sources are supported. Install
-and update write only the selected user's overlay. Package validation rejects symlinks,
-path traversal, identity changes, and unexpected content hashes. Packages contain passive
-Skill data only; executable extensions are always registered in application code.
+`skills pack`, `install`, `update`, and `remove` operate on passive packages. Install and
+update write only the selected user's Skill overlay. `--expected-sha256` pins external
+content. Git and ZIP input is staged and fully validated before one final replacement.

@@ -1,7 +1,7 @@
 schema_version = 3
 name = "default"
 type = "memory"
-description = "Default conversation-scoped temporary and abstract long-term memory"
+description = "Default abstract and durable long-term memory"
 version = "0.0.105"
 agent_created = false
 agent_can_update = false

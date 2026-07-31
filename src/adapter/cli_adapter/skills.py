@@ -21,7 +21,9 @@ from skill.ecosystem.lock import write_skill_lock_file
 from skill.manifest import SkillManifest
 
 
-def configure_skills_parser(parser: argparse.ArgumentParser) -> None:
+def configure_skills_parser(
+    parser: argparse.ArgumentParser,
+) -> argparse._SubParsersAction:
     subparsers = parser.add_subparsers(dest="skill_command")
     list_parser = subparsers.add_parser("list", help="list available skills")
     list_parser.add_argument("--config", default="agent.toml")
@@ -77,6 +79,7 @@ def configure_skills_parser(parser: argparse.ArgumentParser) -> None:
         remove_parser,
     ):
         command_parser.add_argument("--user-id", default=LOCAL_USER_ID)
+    return subparsers
 
 
 def run_skills_command(args: argparse.Namespace) -> int:

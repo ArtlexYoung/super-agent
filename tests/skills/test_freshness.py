@@ -212,7 +212,7 @@ instructions = "SKILL.md"
             )
 
             result = agent.run("echo hello")
-            agent.learn_from_run(result.run_id)
+            agent.for_user("local").runs.learn(result.run_id)
 
             store = agent.runtime.create_event_store()
             records = read_evaluation_records(store)
@@ -250,7 +250,7 @@ instructions = "SKILL.md"
 
             store = agent.runtime.create_event_store()
             run_id = store.list_runs(1)[0].run_id
-            agent.learn_from_run(run_id)
+            agent.for_user("local").runs.learn(run_id)
             records = read_evaluation_records(
                 store,
                 source_type="agent_run"

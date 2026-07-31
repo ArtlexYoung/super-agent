@@ -5,9 +5,9 @@ user-and-Agent-scoped event stream drives evaluation, freshness, recommendations
 candidates, promotion, monitoring, and rollback.
 
 Task execution writes immutable evidence into its terminal event but never updates learned
-state. Call `Agent.learn_from_run(run_id)`, `user.runs.learn(run_id)`, or `runs learn` to
-start the explicit post-run phase. That operation records evaluation, recalculates
-freshness, projects routing evidence, and reviews evolution in a fixed order.
+state. Call `user.runs.learn(run_id)` or `data runs learn` to start the explicit post-run
+phase. That operation records evaluation, recalculates freshness, summarizes model use,
+and reviews evolution in a fixed order.
 
 Learning is idempotent per run and Skill revision. A completed call returns the recorded
 result without writing again. A failed call records `learning.failed` with the exact stage,
@@ -93,9 +93,10 @@ Automation errors are recorded as `learning.failed` and raised directly. They do
 masquerade as successful Skill updates.
 
 ```bash
-super-agent runs learn --config agent.toml --user-id alice --run-id <run-id>
-super-agent evolution list --config agent.toml --user-id alice
-super-agent evolution show --config agent.toml --user-id alice --evolution-id <id> --output json
+super-agent data runs learn --config agent.toml --user-id alice --run-id <run-id>
+super-agent skills evolution list --config agent.toml --user-id alice
+super-agent skills evolution show --config agent.toml --user-id alice \
+  --evolution-id <id> --output json
 ```
 
 Manual candidate commands expose each lifecycle stage separately. `propose` and `evaluate`
@@ -157,11 +158,11 @@ cannot combine scopes. Invalid IDs, reused items, cross-scope merges, and old te
 memory streams fail visibly.
 
 ```bash
-super-agent memory list --config agent.toml
-super-agent memory add --config agent.toml \
+super-agent data memory list --config agent.toml
+super-agent data memory add --config agent.toml \
   --text "Prefer concise answers." --scope agent
-super-agent memory recall --config agent.toml --query "response style"
-super-agent memory forget --config agent.toml --item-id <memory-id>
+super-agent data memory recall --config agent.toml --query "response style"
+super-agent data memory forget --config agent.toml --item-id <memory-id>
 ```
 
 Successful tasks can also update workflow and Skill usage habits. All memory items, habits,
