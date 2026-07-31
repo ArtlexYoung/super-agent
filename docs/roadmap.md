@@ -689,6 +689,17 @@ Status: implemented.
 - Keep the direct path `super_agent.Agent -> Runtime.run_task -> ModelLoop` visible in the
   source tour and release tests.
 
+## v0.0.119: Optional Management Domains
+
+Status: implemented.
+
+- Keep memory, evaluation, model management, and Skill updates outside the basic Agent
+  import and stateless execution graph.
+- Load each management domain only when its explicit user-scoped operation is called.
+- Preserve the visible Skill update stages: propose, test, apply, and undo.
+- Prove in fresh processes that creating an Agent, binding a user, and running without
+  state do not load optional management modules.
+
 ## Release Gate
 
 The project will not move to `0.1.x` because of feature count. The gate is a reproducible

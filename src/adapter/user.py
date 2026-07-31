@@ -16,14 +16,14 @@ from adapter.conversations import (
     read_conversation,
     rename_conversation,
 )
-from core.runtime.model_calls import ModelUsageStats
 from core.checks import ActionEffect, ActionRequest
-from core.models import RunLearningResult, RunResult, TaskTrace
-from core.skill_use.files.models import ModelSkillManager
+from core.models import RunResult, TaskTrace
 
 if TYPE_CHECKING:
     from core.runtime.agent import Agent
-    from core.models import AgentRunOptions
+    from core.models import AgentRunOptions, RunLearningResult
+    from core.runtime.model_calls import ModelUsageStats
+    from core.skill_use.files.models import ModelSkillManager
     from core.skill_use.update import SkillUpdater
 
 
@@ -176,12 +176,13 @@ class UserRuns:
             source="explicit",
         )
 
-    def learn(self, run_id: str) -> RunLearningResult:
+    def learn(self, run_id: str) -> "RunLearningResult":
         store = self.user.agent._create_event_store(self.user.user_id)
         snapshot = store.read_run(run_id)
         if snapshot.agent_name != self.user.agent.config.agent.name:
             raise ValueError(f"run belongs to another Agent: {run_id}")
         from core.evaluation.learning import learn_from_run
+        from core.models import RunLearningResult
         from core.skill_use.defaults import load_configured_freshness_rules
 
         rules = load_configured_freshness_rules(
@@ -204,7 +205,7 @@ class UserRuns:
     def list_model_usage_stats(
         self,
         purpose: str | None = None,
-    ) -> list[ModelUsageStats]:
+    ) -> list["ModelUsageStats"]:
         from core.runtime.model_calls import list_model_usage_stats
 
         return list_model_usage_stats(
@@ -225,7 +226,9 @@ class UserSkills:
             _create_skill_updater(self.user),
         )
 
-    def create_model_manager(self) -> ModelSkillManager:
+    def create_model_manager(self) -> "ModelSkillManager":
+        from core.skill_use.files.models import ModelSkillManager
+
         return ModelSkillManager(
             self.user.agent.config,
             self.user.agent._create_event_store(self.user.user_id),

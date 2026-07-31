@@ -13,6 +13,28 @@ from core.provider.chat import MockProvider
 
 
 class StatelessRuntimeTests(unittest.TestCase):
+    def test_user_binding_does_not_import_optional_management_domains(self) -> None:
+        repository_root = Path(__file__).resolve().parents[2]
+        script = """
+import json
+import sys
+from super_agent import Agent
+
+user = Agent().for_user("alice")
+assert user.user_id == "alice"
+blocked = (
+    "core.evaluation",
+    "core.state.memory",
+    "core.skill_use.update",
+    "core.skill_use.files.models",
+)
+print(json.dumps(sorted(name for name in sys.modules if name.startswith(blocked))))
+"""
+        completed = _run_fresh_process(repository_root, script)
+
+        self.assertEqual(0, completed.returncode, completed.stderr)
+        self.assertEqual([], json.loads(completed.stdout))
+
     def test_persistent_event_log_does_not_require_optional_domain_state(self) -> None:
         repository_root = Path(__file__).resolve().parents[2]
         script = """
