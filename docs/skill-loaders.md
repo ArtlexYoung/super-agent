@@ -7,7 +7,7 @@ A trusted SkillLoader turns one passive Skill type into model context, tools, a 
 policy, included Skills, or a completion callback. It runs inside the single Runtime task
 path and opens content through the central disclosure snapshot.
 
-Built-in Runtime setup registers loaders for prompt, scene, MCP, memory, and workflow
+Built-in Runtime setup registers loaders for task, prompt, MCP, memory, and workflow
 Skills. Model, feedback, and freshness services read their Skills through the same
 disclosure core without adding task tools.
 

@@ -82,7 +82,7 @@ from super_agent import Agent
 main = Agent()
 coder = Agent()
 main.add_subagent(coder, name="coder", description="实现并验证代码修改")
-result = coder.run("修复失败的测试", scene="code")
+result = coder.run("修复失败的测试", skill="code")
 ```
 
 ## 按需添加状态
@@ -118,7 +118,7 @@ super-agent skills undo-change --change-id <id>
 ```bash
 super-agent check
 super-agent run "执行一次任务"
-super-agent run --scene code "检查这个仓库"
+super-agent run --skill code "检查这个仓库"
 super-agent skills list
 super-agent data runs status
 super-agent serve

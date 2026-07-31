@@ -108,7 +108,7 @@ class ConversationRuntimeTests(unittest.TestCase):
             config = AgentConfig.create_default(tmp)
             config = replace(
                 config,
-                agent=replace(config.agent, skills=["prompt:common"]),
+                agent=replace(config.agent, skills=["task:common"]),
             )
             agent = Agent(
                 config,

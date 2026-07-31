@@ -61,10 +61,10 @@ class CliTests(unittest.TestCase):
             root = Path(tmp)
             self.assertEqual(0, code)
             self.assertTrue((root / "agent.toml").exists())
-            self.assertTrue((root / "skills" / "prompt" / "echo" / "skill.toml").exists())
-            self.assertTrue((root / "skills" / "prompt" / "echo" / "SKILL.md").exists())
+            self.assertTrue((root / "skills" / "task" / "default" / "skill.toml").exists())
+            self.assertTrue((root / "skills" / "task" / "default" / "SKILL.md").exists())
             self.assertEqual(
-                [root / "skills" / "prompt" / "echo" / "skill.toml"],
+                [root / "skills" / "task" / "default" / "skill.toml"],
                 list(root.joinpath("skills").rglob("skill.toml")),
             )
             self.assertFalse((root / "mcp").exists())
@@ -127,7 +127,7 @@ class CliTests(unittest.TestCase):
                 code = main(["skills", "list", "--config", str(Path(tmp) / "agent.toml")])
 
             self.assertEqual(0, code)
-            self.assertIn("echo", output.getvalue())
+            self.assertIn("default\ttask", output.getvalue())
             self.assertIn("default\tmemory", output.getvalue())
 
     def test_skills_index_prints_all_kinds_from_central_disclosure(self) -> None:
@@ -155,9 +155,7 @@ class CliTests(unittest.TestCase):
                     "freshness",
                     "feedback",
                     "memory",
-                    "prompt",
-                    "scene",
-                    "workflow",
+                    "task",
                 },
                 {item["type"] for item in data["skills"]},
             )
@@ -178,7 +176,7 @@ class CliTests(unittest.TestCase):
             self.assertEqual(0, code)
             self.assertIn("Mock response", output.getvalue())
             self.assertIn("Model: model:environment (mock)", output.getvalue())
-            self.assertIn("Skills: prompt:echo", output.getvalue())
+            self.assertIn("Skills: task:default", output.getvalue())
             self.assertIn("Stop: completed", output.getvalue())
             self.assertFalse(Path(tmp, ".super-agent").exists())
 
@@ -190,7 +188,7 @@ class CliTests(unittest.TestCase):
         ):
             config = str(Path(tmp) / "agent.toml")
             main(["setup", "--path", tmp])
-            _select_skills(Path(config), ["prompt:echo", "memory:default"])
+            _select_skills(Path(config), ["task:default", "memory:default"])
             main(["run", "--save", "--config", config, "hello"])
 
             output = StringIO()
@@ -199,7 +197,7 @@ class CliTests(unittest.TestCase):
 
             self.assertEqual(0, code)
             self.assertIn("total runs: 1", output.getvalue())
-            self.assertIn("workflow model-loop used 1 times", output.getvalue())
+            self.assertIn("workflow default used 1 times", output.getvalue())
 
     def test_memory_commands_add_recall_list_and_forget_long_term_items(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -351,7 +349,7 @@ description = "Compact note writer"
                 code = main(["skills", "freshness", "--config", config])
 
             self.assertEqual(0, code)
-            self.assertIn("echo", output.getvalue())
+            self.assertIn("default", output.getvalue())
             self.assertIn("calls=1", output.getvalue())
             self.assertIn("freshness=", output.getvalue())
 
@@ -375,7 +373,7 @@ description = "Compact note writer"
             self.assertEqual("completed", data["stop_reason"])
             self.assertTrue(data["run_id"])
 
-    def test_run_accepts_explicit_scene(self) -> None:
+    def test_run_accepts_explicit_task_skill(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, chdir(tmp), patch.dict(
             os.environ,
             {"SUPER_AGENT_PROVIDER": "mock"},
@@ -387,7 +385,7 @@ description = "Compact note writer"
                     [
                         "run",
                         "--save",
-                        "--scene",
+                        "--skill",
                         "code",
                         "--output",
                         "json",
@@ -398,10 +396,7 @@ description = "Compact note writer"
             data = json.loads(output.getvalue())
             self.assertEqual(0, code)
             self.assertEqual("code", data["workflow"])
-            self.assertEqual(
-                ["scene:code", "memory:default", "prompt:code", "workflow:code"],
-                data["skills"],
-            )
+            self.assertEqual(["task:code"], data["skills"])
 
     def test_skills_validate_has_an_explicit_command(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -413,7 +408,7 @@ description = "Compact note writer"
                 validation_code = main(["skills", "validate", "--config", config])
 
             self.assertEqual(0, validation_code)
-            self.assertIn("10 valid skills", validation_output.getvalue())
+            self.assertIn("6 valid skills", validation_output.getvalue())
 
     def test_skills_graph_and_lock_resolve_configured_skill_dependencies(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -423,7 +418,7 @@ description = "Compact note writer"
             graph_output = StringIO()
 
             with patch("sys.stdout", graph_output):
-                graph_code = main(["skills", "graph", "--config", config, "--name", "echo"])
+                graph_code = main(["skills", "graph", "--config", config, "--name", "task:default"])
             lock_code = main(
                 [
                     "skills",
@@ -431,7 +426,7 @@ description = "Compact note writer"
                     "--config",
                     config,
                     "--name",
-                    "echo",
+                    "task:default",
                     "--output",
                     str(lock_path),
                 ]
@@ -439,37 +434,41 @@ description = "Compact note writer"
 
             self.assertEqual(0, graph_code)
             self.assertEqual(0, lock_code)
-            self.assertIn("echo", graph_output.getvalue())
-            self.assertIn('name = "echo"', lock_path.read_text(encoding="utf-8"))
+            self.assertIn("default\tprovides=default", graph_output.getvalue())
+            self.assertIn('name = "default"', lock_path.read_text(encoding="utf-8"))
 
     def test_skills_pack_update_and_remove_manage_user_overlay(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             main(["setup", "--path", tmp])
             config = str(root / "agent.toml")
-            package_path = root / "echo.zip"
+            package_path = root / "default.zip"
 
             pack_code = main(
-                ["skills", "pack", "--config", config, "--name", "echo", "--output", str(package_path)]
+                ["skills", "pack", "--config", config, "--name", "task:default", "--output", str(package_path)]
             )
             error = StringIO()
             with patch("sys.stderr", error):
                 remove_shared_code = main(
-                    ["skills", "remove", "--config", config, "--name", "echo"]
+                    ["skills", "remove", "--config", config, "--name", "task:default"]
                 )
             self.assertEqual(1, remove_shared_code)
             self.assertIn("cannot remove shared Skill", error.getvalue())
-            update_source = root / "updates" / "echo"
+            update_source = root / "updates" / "default"
             update_source.mkdir(parents=True)
             (update_source / "skill.toml").write_text(
                 """
-type = "prompt"
-description = "Updated echo"
+type = "task"
+description = "Updated default task"
+
+[configuration]
+mode = "direct"
+max_steps = 8
 
 """.strip(),
                 encoding="utf-8",
             )
-            (update_source / "SKILL.md").write_text("Updated echo.", encoding="utf-8")
+            (update_source / "SKILL.md").write_text("Updated task.", encoding="utf-8")
             update_code = main(
                 [
                     "skills",
@@ -477,7 +476,7 @@ description = "Updated echo"
                     "--config",
                     config,
                     "--name",
-                    "echo",
+                    "task:default",
                     "--source",
                     str(update_source),
                 ]
@@ -485,15 +484,15 @@ description = "Updated echo"
 
             self.assertEqual(0, pack_code)
             self.assertEqual(0, update_code)
-            installed = _find_user_skill(root, "prompt", "echo")
+            installed = _find_user_skill(root, "task", "default")
             self.assertEqual(
-                "Updated echo.",
+                "Updated task.",
                 (installed / "SKILL.md").read_text(encoding="utf-8"),
             )
-            remove_code = main(["skills", "remove", "--config", config, "--name", "echo"])
+            remove_code = main(["skills", "remove", "--config", config, "--name", "task:default"])
             self.assertEqual(0, remove_code)
             self.assertFalse(installed.exists())
-            self.assertTrue((root / "skills" / "prompt" / "echo").is_dir())
+            self.assertTrue((root / "skills" / "task" / "default").is_dir())
 
     def test_run_reads_stdin_request_and_streams_jsonl_events(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, patch.dict(
@@ -504,7 +503,7 @@ description = "Updated echo"
             main(["setup", "--path", tmp])
             request = {
                 "prompt": "latest question",
-                "scene": "code",
+                "skill": "code",
                 "messages": [
                     {"role": "user", "content": "earlier question"},
                     {"role": "assistant", "content": "earlier answer"},
@@ -535,7 +534,7 @@ description = "Updated echo"
                 if line.get("type") == "event"
                 and line["event"]["event_type"] == "task.scheduled"
             )
-            self.assertIn("scene:code", selected["data"]["skills"])
+            self.assertIn("task:code", selected["data"]["skills"])
             self.assertEqual("model_loop", selected["data"]["selection"])
             self.assertEqual("result", lines[-1]["type"])
             self.assertEqual("code", lines[-1]["result"]["workflow"])
@@ -590,6 +589,6 @@ def _select_skills(config_path: Path, skills: list[str]) -> None:
     content = config_path.read_text(encoding="utf-8")
     selected = ", ".join(json.dumps(item) for item in skills)
     config_path.write_text(
-        content.replace('skills = ["prompt:echo"]', f"skills = [{selected}]"),
+        content.replace('skills = ["task:default"]', f"skills = [{selected}]"),
         encoding="utf-8",
     )

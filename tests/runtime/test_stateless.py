@@ -28,7 +28,7 @@ from core.provider.chat import MockProvider
 with tempfile.TemporaryDirectory() as temporary_directory:
     config = AgentConfig.create_default(Path(temporary_directory))
     agent = Agent(config, provider=MockProvider("finished"), use_storage=True)
-    result = agent.run("hello", use_scenes=False)
+    result = agent.run("hello")
 assert result.text == "finished"
 blocked = (
     "core.evaluation.records",
@@ -128,17 +128,14 @@ print(json.dumps(sorted(name for name in sys.modules if name.startswith(blocked)
 
             self.assertFalse(config.storage.path.exists())
 
-    def test_storage_dependent_scene_fails_without_substitution(self) -> None:
+    def test_task_skill_runs_without_storage_or_substitution(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             config = AgentConfig.create_default(Path(tmp))
-            agent = Agent(config, provider=MockProvider(), use_storage=False)
+            agent = Agent(config, provider=MockProvider("ok"), use_storage=False)
 
-            with self.assertRaisesRegex(
-                RuntimeError,
-                "scene:common.*storage",
-            ):
-                agent.run("hello", scene="common")
+            result = agent.run("hello", skill="common")
 
+            self.assertEqual(["task:common"], result.skills)
             self.assertFalse(config.storage.path.exists())
 
     def test_explicit_backend_conflicts_with_disabled_storage(self) -> None:

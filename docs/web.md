@@ -19,7 +19,7 @@ The left navigation contains:
 - `对话`: conversation management, streamed tasks, and main/subagent run trees.
 - `CopilotKit`: a lazy-loaded headless integration example using the official CopilotKit
   React context and `@ag-ui/client` against the same `POST /ag-ui` endpoint.
-- `配置`: Chinese visual editing for Agent fields, model Skills, task scenes, all other
+- `配置`: Chinese visual editing for Agent fields, model Skills, task Skills, all other
   Skill types, ownership/update permission, freshness, memory, and storage-backed state.
 
 The CopilotKit page reuses the selected persisted conversation ID. If no conversation
@@ -35,8 +35,8 @@ user model Skill. The selected storage backend remains authoritative for convers
 runs, memory, and explicit Skill changes. Skill lists come from the central progressive index and group
 by their actual `type`, including custom types.
 
-Task scenes appear in their own group. Choosing one fixes that scene and clears any other
-fixed scene; leaving every scene unchecked keeps automatic selection. The default badge
+Task Skills appear in their own group. Choosing one fixes that task Skill and clears any other
+fixed task Skill; leaving every task Skill unchecked keeps model selection. The default badge
 describes fallback selection and does not silently write configuration.
 
 Memory management shows only durable long-term items. Current conversation messages are

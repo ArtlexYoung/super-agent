@@ -14,7 +14,7 @@ class AGUIRunInput:
     thread_id: str
     run_id: str
     prompt: str
-    scene: str | None = None
+    skill: str | None = None
 
     @classmethod
     def from_dict(cls, value: object) -> "AGUIRunInput":
@@ -29,8 +29,8 @@ class AGUIRunInput:
         forwarded = value.get("forwardedProps", {})
         if not isinstance(forwarded, dict):
             raise ValueError("AG-UI forwardedProps must be an object")
-        scene = _read_optional_scene(forwarded.get("scene"))
-        return cls(thread_id, run_id, prompt, scene)
+        skill = _read_optional_skill(forwarded.get("skill"))
+        return cls(thread_id, run_id, prompt, skill)
 
 
 class AGUIEventMapper:
@@ -118,14 +118,14 @@ def _read_identifier(data: dict[str, object], name: str) -> str:
     return clean
 
 
-def _read_optional_scene(value: object) -> str | None:
+def _read_optional_skill(value: object) -> str | None:
     if value is None:
         return None
     if not isinstance(value, str) or not value.strip():
-        raise ValueError("AG-UI forwardedProps.scene must be a non-empty string")
+        raise ValueError("AG-UI forwardedProps.skill must be a non-empty string")
     clean = value.strip().lower()
     if len(clean) > 129 or any(ord(character) < 32 for character in clean):
-        raise ValueError("AG-UI forwardedProps.scene is invalid")
+        raise ValueError("AG-UI forwardedProps.skill is invalid")
     return clean
 
 

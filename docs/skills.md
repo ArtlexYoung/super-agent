@@ -1,7 +1,7 @@
 # Skills
 
 A Skill is passive content with one manifest. Prompts, workflows, memory behavior, MCP
-descriptions, model profiles, task scenes, feedback rules, and freshness rules all use the
+descriptions, model profiles, task instructions, feedback rules, and freshness rules all use the
 same source and disclosure path.
 
 ## Smallest Skill
@@ -54,24 +54,23 @@ makes its choice during the normal model turn.
 - `workflow` defines the tool-loop policy and maximum turns.
 - `memory` contributes optional long-term memory context and tools.
 - `mcp` selects an MCP server registered in trusted code.
-- `scene` groups ordinary Skills for one task type.
+- `task` combines task instructions, run mode, and stop limit.
 - `model`, `feedback`, and `freshness` configure their owning Core services.
 
 Skill directories cannot contain executable Python or shell runners. Runtime setup owns
 trusted loaders, while ordinary Agent users add passive content and registered MCP tools.
 
-## Scenes
+## Task Skills
 
-A scene contains references to ordinary Skills. Built-in `common` and `code` scenes reuse
-shared Skills rather than copying them. The model can activate any available scene, or a
+A task Skill directly carries its model instructions and run policy. Built-in `common` and
+`code` tasks need no memory or storage. The model can activate an available task Skill, or a
 caller can make one explicit for a single run:
 
 ```python
-result = agent.run("Inspect this change", scene="code")
-result = agent.run("Answer directly", use_scenes=False)
+result = agent.run("Inspect this change", skill="code")
 ```
 
-An explicit scene restricts scene activation for that run. Omitting it leaves selection to
+An explicit task Skill restricts task Skill activation for that run. Omitting it leaves selection to
 model judgment. Neither option changes the Agent or later runs.
 
 ## Ownership and Freshness

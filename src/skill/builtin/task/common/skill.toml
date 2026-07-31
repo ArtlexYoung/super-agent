@@ -1,0 +1,6 @@
+type = "task"
+description = "General task instructions and direct run policy"
+
+[configuration]
+mode = "direct"
+max_steps = 8

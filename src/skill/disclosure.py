@@ -113,58 +113,6 @@ class ProgressiveDisclosureCore:
             )
         return self._index
 
-    def select_skill_scene(
-        self,
-        selected_scene: str | None,
-        *,
-        requested_scene: str | None = None,
-        use_scenes: bool = True,
-        allowed_scenes: tuple[str, ...] = (),
-        unavailable_scenes: Mapping[str, tuple[str, ...]] | None = None,
-    ) -> SkillReference | None:
-        index = self.require_prepared_skill_index()
-        scenes = [
-            entry
-            for entry in index.entries
-            if entry.reference.skill_type == "scene"
-        ]
-        if not use_scenes:
-            if requested_scene is not None or selected_scene is not None:
-                raise ValueError("scene cannot be requested when scenes are disabled")
-            selected = None
-            reason = "scenes disabled by Agent"
-        elif selected_scene is None:
-            selected = None
-            reason = "model selected direct mode"
-        else:
-            selected = _require_scene_entry(index, selected_scene)
-            allowed = _resolve_allowed_scene_entries(index, scenes, allowed_scenes)
-            if selected not in allowed:
-                raise ValueError(
-                    "selected scene is outside the Agent scene policy: "
-                    + selected.reference.key
-                )
-            _require_scene_available(selected, unavailable_scenes or {})
-            reason = (
-                "selected by explicit task request"
-                if requested_scene is not None
-                else "selected by model judgment"
-            )
-        if self.record_event is not None:
-            self.record_event(
-                "scene.selected",
-                {
-                    "scene_key": None if selected is None else selected.reference.key,
-                    "reason": reason,
-                    "allowed_scenes": list(allowed_scenes),
-                    "unavailable_candidates": {
-                        key: list(services)
-                        for key, services in sorted((unavailable_scenes or {}).items())
-                    },
-                },
-            )
-        return None if selected is None else selected.reference
-
     def inspect_skill_configuration(
         self,
         reference: SkillReference,
@@ -516,41 +464,3 @@ def _explain_selection(
     if entry.reference.key in selected_keys:
         return "selected as dependency"
     return "not selected"
-
-
-def _require_scene_entry(index: SkillIndex, value: str) -> SkillIndexEntry:
-    clean = value.strip().lower()
-    if not clean:
-        raise ValueError("selected scene cannot be empty")
-    if ":" in clean:
-        skill_type, name = clean.split(":", 1)
-        if skill_type != "scene":
-            raise ValueError(f"selected scene must use scene:name: {value}")
-        return index.require_skill(name, "scene")
-    return index.require_skill(clean, "scene")
-
-
-def _resolve_allowed_scene_entries(
-    index: SkillIndex,
-    scenes: list[SkillIndexEntry],
-    allowed_names: tuple[str, ...],
-) -> list[SkillIndexEntry]:
-    if not allowed_names:
-        return scenes
-    entries = [_require_scene_entry(index, name) for name in allowed_names]
-    keys = [entry.reference.key for entry in entries]
-    if len(keys) != len(set(keys)):
-        raise ValueError("Agent scene policy contains duplicate scenes")
-    return entries
-
-
-def _require_scene_available(
-    entry: SkillIndexEntry,
-    unavailable_scenes: Mapping[str, tuple[str, ...]],
-) -> None:
-    missing = unavailable_scenes.get(entry.reference.key)
-    if missing:
-        raise RuntimeError(
-            f"{entry.reference.key} requires unavailable Runtime services: "
-            + ", ".join(missing)
-        )

@@ -21,43 +21,22 @@ class AgentRunOptions:
     allow_subscriber_failures: bool = False
     run_id: str | None = None
     event_listener: Callable[[RunEvent], None] | None = None
-    scene: str | None = None
-    use_scenes: bool | None = None
+    skill: str | None = None
 
 
 def resolve_agent_run_options(
     options: AgentRunOptions | None,
-    scene: str | None,
-    use_scenes: bool | None,
+    skill: str | None,
 ) -> AgentRunOptions | None:
-    if scene is None and use_scenes is None:
+    if skill is None:
         return options
     resolved = options or AgentRunOptions()
-    clean_scene = None if scene is None else scene.strip().lower()
-    if scene is not None and not clean_scene:
-        raise ValueError("scene cannot be empty")
-    if resolved.scene is not None and clean_scene not in {None, resolved.scene.lower()}:
-        raise ValueError("scene conflicts with AgentRunOptions.scene")
-    if use_scenes is not None and not isinstance(use_scenes, bool):
-        raise TypeError("use_scenes must be a boolean or None")
-    if (
-        resolved.use_scenes is not None
-        and use_scenes is not None
-        and resolved.use_scenes != use_scenes
-    ):
-        raise ValueError("use_scenes conflicts with AgentRunOptions.use_scenes")
-    scene_value = resolved.scene if clean_scene is None else clean_scene
-    use_value = resolved.use_scenes if use_scenes is None else use_scenes
-    if scene_value is not None and use_value is False:
-        raise ValueError("scene cannot be requested when scenes are disabled")
-    return replace(resolved, scene=scene_value, use_scenes=use_value)
-
-
-def require_scenes_configured_in_code(skills: list[str]) -> None:
-    if any(name.strip().lower().startswith("scene:") for name in skills):
-        raise ValueError(
-            "select scenes per run with Agent.run(scene=...), not agent.skills"
-        )
+    clean_skill = skill.strip().lower()
+    if not clean_skill:
+        raise ValueError("skill cannot be empty")
+    if resolved.skill is not None and clean_skill != resolved.skill.lower():
+        raise ValueError("skill conflicts with AgentRunOptions.skill")
+    return replace(resolved, skill=clean_skill)
 
 
 @dataclass(frozen=True)
@@ -142,9 +121,8 @@ class Task:
     required_features: tuple[str, ...] = ("text",)
     learn_from_conversation: bool = False
     allow_subscriber_failures: bool = False
-    scene: str | None = None
-    use_scenes: bool = True
-    allowed_scenes: tuple[str, ...] = ()
+    skill: str | None = None
+    allowed_task_skills: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

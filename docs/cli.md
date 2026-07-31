@@ -11,16 +11,16 @@ super-agent check --config agent.toml --output json
 super-agent "hello"
 super-agent run --config agent.toml --user-id alice "hello"
 super-agent run --chat --save --config agent.toml --user-id alice
-super-agent run --scene code --output json "inspect this repository"
+super-agent run --skill code --output json "inspect this repository"
 ```
 
 `check` is read-only. It validates configuration, the central Skill index, configured
 references, and default model readiness without opening storage or calling a model.
 
 `run --output` accepts `text`, `json`, or streaming `jsonl`. Text output explains the
-actual model, scene, workflow, Skills, stop reason, and run ID. `--request-stdin` reads a
+actual model, task Skill, workflow, Skills, stop reason, and run ID. `--request-stdin` reads a
 JSON object with `prompt` and optional `messages`, `user_id`, `conversation_id`, and
-`scene`. One-shot runs and chat are file-free by default. `--save` explicitly enables the
+`skill`. One-shot runs and chat are file-free by default. `--save` explicitly enables the
 configured storage; supplying a conversation ID also makes that requirement explicit.
 
 ## Skills

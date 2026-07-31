@@ -325,41 +325,51 @@ def _load_configured_skills(
     send_text_model_messages: Callable[[list[Message]], str],
 ) -> tuple[list[LoadedSkill], list[str]]:
     configured = list(run.config.agent.skills)
-    scene_contribution: LoadedSkill | None = None
-    if request.scene is not None:
-        scene_entry = run.skills.index.require_skill(request.scene, "scene")
-        allowed = {f"scene:{name}" for name in request.allowed_scenes}
-        if allowed and scene_entry.reference.key not in allowed:
+    task_contribution: LoadedSkill | None = None
+    if request.skill is not None:
+        task_entry = run.skills.index.require_skill(request.skill, "task")
+        allowed = {f"task:{name}" for name in request.allowed_task_skills}
+        if allowed and task_entry.reference.key not in allowed:
             raise ValueError(
-                "requested scene is outside the Agent scene policy: "
-                + scene_entry.reference.key
+                "requested task Skill is outside the run policy: "
+                + task_entry.reference.key
             )
-        scene_contribution = run.load_skill(scene_entry.reference)
-        run.record_skill_used(scene_entry)
-        _require_scene_services(run, scene_entry.reference.key, scene_contribution)
+        task_contribution = run.load_skill(
+            task_entry.reference,
+            send_text_model_messages,
+        )
+        run.record_skill_used(task_entry)
         configured = [
-            *(reference.key for reference in scene_contribution.included_skills),
-            *configured,
+            task_entry.reference.key,
+            *[item for item in configured if not _has_skill_type(item, {"task"})],
         ]
     loader_types = {
         item.descriptor.skill_type
         for item in run.skills.loaders.list_skill_loaders()
-        if item.descriptor.skill_type not in NON_EXECUTION_SKILL_TYPES | {"scene"}
+        if item.descriptor.skill_type not in NON_EXECUTION_SKILL_TYPES
     }
     references = run.skills.disclosure.select_skill_references(
         [
             item
             for item in configured
-            if not _has_skill_type(item, NON_EXECUTION_SKILL_TYPES | {"scene"})
+            if not _has_skill_type(item, NON_EXECUTION_SKILL_TYPES)
         ],
         loader_types,
     )
+    if request.skill is not None:
+        references = [
+            reference
+            for reference in references
+            if reference.skill_type != "task"
+            or reference.name == task_entry.reference.name
+        ]
     contributions: list[LoadedSkill] = []
     names: list[str] = []
-    if scene_contribution is not None:
-        contributions.append(scene_contribution)
-        names.append(f"scene:{request.scene}")
     for reference in references:
+        if task_contribution is not None and reference.skill_type == "task":
+            contributions.append(task_contribution)
+            names.append(reference.key)
+            continue
         entry = run.skills.index.require_skill(reference.name, reference.skill_type)
         contribution = run.load_skill(entry.reference, send_text_model_messages)
         run.record_skill_used(entry)
@@ -373,35 +383,10 @@ def _has_skill_type(value: str, skill_types: set[str]) -> bool:
     return ":" in clean and clean.split(":", 1)[0] in skill_types
 
 
-def _require_scene_services(
-    run: Run,
-    scene_key: str,
-    contribution: LoadedSkill,
-) -> None:
-    available = {"event_stream", "text_model"}
-    if run.store is not None:
-        available.add("storage")
-    required: set[str] = set()
-    for reference in contribution.included_skills:
-        loader = run.skills.loaders.find_skill_loader(reference.skill_type)
-        if loader is None:
-            raise ValueError(
-                f"{scene_key} references Skill type without a registered loader: "
-                f"{reference.skill_type}"
-            )
-        required.update(getattr(loader, "required_services", ()))
-    missing = sorted(required - available)
-    if missing:
-        raise RuntimeError(
-            f"{scene_key} requires unavailable Runtime services: "
-            + ", ".join(missing)
-        )
-
-
 def _select_workflow(contributions: list[LoadedSkill]) -> TaskPolicy:
     policies = [item.task_policy for item in contributions if item.task_policy is not None]
     if len(policies) > 1:
-        raise ValueError("configure at most one workflow Skill")
+        raise ValueError("configure at most one task or workflow Skill")
     return policies[0] if policies else TaskPolicy("model-loop", "loop", "", DEFAULT_MAX_STEPS)
 
 
@@ -429,8 +414,7 @@ def _create_runtime_tools(
             list_subagents=request.subagents.list_subagents if has_subagents else None,
             run_subagent=run_subagent if has_subagents else None,
             send_text_model_messages=send_text_model_messages,
-            use_scenes=request.use_scenes,
-            allowed_scenes=request.allowed_scenes,
+            allowed_task_skills=request.allowed_task_skills,
         ),
         contributions,
         results,

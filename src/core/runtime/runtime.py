@@ -93,7 +93,7 @@ class Runtime:
                 {
                     "purpose": request.purpose,
                     "required_features": list(request.required_features),
-                    "requested_scene": request.scene,
+                    "requested_skill": request.skill,
                 },
             )
             result = task_loop.run_task(request, run)

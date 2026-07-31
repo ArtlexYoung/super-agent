@@ -38,14 +38,14 @@ message becomes the task prompt.
   ],
   "tools": [],
   "context": [],
-  "forwardedProps": {"scene": "code"}
+  "forwardedProps": {"skill": "code"}
 }
 ```
 
-`forwardedProps.scene` is optional and selects one scene for this run. It accepts a scene
-name such as `code` or a stable key such as `scene:code`. When omitted, available scene
+`forwardedProps.skill` is optional and selects one task Skill for this run. It accepts a
+name such as `code` or a stable key such as `task:code`. When omitted, available task Skill
 descriptions remain in the central Skill index and the model may activate one during its
-normal turn. It cannot select a user, override an explicit scene, or change action
+normal turn. It cannot select a user, override an explicit task Skill, or change action
 authority.
 
 The response uses `text/event-stream` and official SSE framing:

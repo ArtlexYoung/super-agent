@@ -104,7 +104,7 @@ agent.add_tool(
     effects=(ActionEffect.READ,),
 )
 agent.add_subagent(Agent(), name="worker")
-agent.run("Inspect this repository", scene="code")
+agent.run("Inspect this repository", skill="code")
 ```
 
 An MCP Skill names a code-registered server; executable commands in Skill TOML are

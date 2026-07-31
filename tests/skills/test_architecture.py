@@ -33,8 +33,8 @@ class SkillArchitectureTests(unittest.TestCase):
             entries,
         )
         builtin_root = Path("src/skill/builtin")
-        self.assertTrue((builtin_root / "scene/common").is_dir())
-        self.assertTrue((builtin_root / "scene/code").is_dir())
+        self.assertTrue((builtin_root / "task/common").is_dir())
+        self.assertTrue((builtin_root / "task/code").is_dir())
         self.assertFalse(Path("skill_scenes").exists())
 
     def test_skill_mechanisms_have_clear_owners(self) -> None:

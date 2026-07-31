@@ -1,9 +1,0 @@
-type = "scene"
-description = "Repository coding Skill group for implementation and verification"
-
-[configuration]
-skills = [
-  "prompt:code",
-  "memory:default",
-  "workflow:code",
-]

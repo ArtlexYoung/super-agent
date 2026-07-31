@@ -128,7 +128,7 @@ class RunsCliTests(unittest.TestCase):
                 item["skill_key"]: item
                 for item in explanation["selection_decisions"]
             }
-            self.assertTrue(decisions["prompt:echo"]["selected"])
+            self.assertTrue(decisions["task:default"]["selected"])
             self.assertEqual(0, export_code)
             self.assertEqual(run_id, exported["snapshot"]["run_id"])
             self.assertTrue(exported["events"])

@@ -115,20 +115,22 @@ class WorkflowSkillLoader:
         )
 
 
-class SceneSkillLoader:
-    name = "task-scene"
+class TaskSkillLoader:
+    name = "task"
     version = "1"
-    skill_type = "scene"
-    adds_model_context = False
+    skill_type = "task"
+    adds_model_context = True
 
     def load_skill(self, request: SkillLoadRequest) -> LoadedSkill:
-        from core.skill_use.files.scenes import read_scene_included_skills
+        from core.skill_use.workflow import create_task_policy_from_skill
 
         opened = request.open_skill()
-        opened.disclose_manifest()
+        manifest = opened.disclose_manifest()
         opened.disclose_configuration()
+        instructions = opened.disclose_instructions().content
         return LoadedSkill(
-            included_skills=read_scene_included_skills(opened),
+            model_context=Skill(manifest=manifest, instructions=instructions),
+            task_policy=create_task_policy_from_skill(opened),
         )
 
 
@@ -140,7 +142,7 @@ def create_builtin_skill_loaders(
         McpSkillLoader(mcp_servers),
         MemorySkillLoader(),
         WorkflowSkillLoader(),
-        SceneSkillLoader(),
+        TaskSkillLoader(),
     )
 
 

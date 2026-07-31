@@ -656,6 +656,16 @@ Status: implemented.
 - Catch CLI failures at one boundary, print a direct fix hint, and reserve tracebacks for
   explicit `--debug` runs.
 
+## v0.0.116: Task Skills
+
+Status: implemented.
+
+- Replace task scenes and their duplicated prompt/workflow groups with one `task` Skill.
+- Let a task Skill carry both progressively disclosed instructions and a Runtime run policy.
+- Select a task Skill with `Agent.run(skill=...)`, `--skill`, or AG-UI `forwardedProps.skill`.
+- Keep memory optional so built-in `common` and `code` tasks run without storage.
+- Reject activating a second task Skill after one is explicitly selected.
+
 ## Release Gate
 
 The project will not move to `0.1.x` because of feature count. The gate is a reproducible

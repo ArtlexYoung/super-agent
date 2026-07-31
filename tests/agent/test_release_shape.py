@@ -68,16 +68,10 @@ class ReleaseShapeTests(unittest.TestCase):
             "feedback/conversation/skill.toml",
             "memory/default/SKILL.md",
             "memory/default/skill.toml",
-            "prompt/code/SKILL.md",
-            "prompt/code/skill.toml",
-            "prompt/common/SKILL.md",
-            "prompt/common/skill.toml",
-            "scene/code/skill.toml",
-            "scene/common/skill.toml",
-            "workflow/code/SKILL.md",
-            "workflow/code/skill.toml",
-            "workflow/direct/SKILL.md",
-            "workflow/direct/skill.toml",
+            "task/code/SKILL.md",
+            "task/code/skill.toml",
+            "task/common/SKILL.md",
+            "task/common/skill.toml",
         }
         packaged = {
             str(path.relative_to(root))

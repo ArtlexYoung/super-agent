@@ -33,7 +33,6 @@ from core.models import (
     SubagentCallbacks,
     Task,
     RunResult,
-    require_scenes_configured_in_code,
     resolve_agent_run_options,
 )
 from core.state.models import Conversation
@@ -74,7 +73,6 @@ class Agent:
         if storage is not None and use_storage is False:
             raise ValueError("storage cannot be combined with use_storage=False")
         self.config = _load_agent_config(config)
-        require_scenes_configured_in_code(self.config.agent.skills)
         self._action_rules = action_rules
         self.user_secrets = UserSecretResolver(secret_lookup)
         self._use_storage = storage is not None if use_storage is None else use_storage
@@ -195,10 +193,9 @@ class Agent:
     def _resolve_run_options(
         self,
         run_options: AgentRunOptions | None,
-        scene: str | None,
-        use_scenes: bool | None,
+        skill: str | None,
     ) -> AgentRunOptions | None:
-        return resolve_agent_run_options(run_options, scene, use_scenes)
+        return resolve_agent_run_options(run_options, skill)
 
     def _check_subagent_links(self) -> list[str]:
         warnings: list[str] = []
@@ -223,8 +220,7 @@ class Agent:
         *,
         messages: list[Message] | None = None,
         conversation_id: str | None = None,
-        scene: str | None = None,
-        use_scenes: bool | None = None,
+        skill: str | None = None,
         run_options: AgentRunOptions | None = None,
     ) -> RunResult:
         return self._run_for_user(
@@ -232,7 +228,7 @@ class Agent:
             LOCAL_USER_ID,
             messages=messages,
             conversation_id=conversation_id,
-            run_options=self._resolve_run_options(run_options, scene, use_scenes),
+            run_options=self._resolve_run_options(run_options, skill),
         )
 
     def _run_for_user(
@@ -280,9 +276,8 @@ class Agent:
             warning_messages=warnings,
             learn_from_conversation=options.learn_from_conversation,
             allow_subscriber_failures=options.allow_subscriber_failures,
-            scene=options.scene,
-            use_scenes=True if options.use_scenes is None else options.use_scenes,
-            allowed_scenes=() if options.scene is None else (options.scene,),
+            skill=options.skill,
+            allowed_task_skills=() if options.skill is None else (options.skill,),
             subagents=SubagentCallbacks(
                 list_subagents=self._list_subagents_for_model,
                 run_named_subagent=self._run_named_subagent_for_model,
@@ -521,8 +516,6 @@ class Agent:
             include_subagents=True,
             warning_messages=[],
             allow_subscriber_failures=parent_session.allow_subscriber_failures,
-            use_scenes=True,
-            allowed_scenes=(),
             subagents=SubagentCallbacks(
                 list_subagents=self._list_subagents_for_model,
                 run_named_subagent=self._run_named_subagent_for_model,

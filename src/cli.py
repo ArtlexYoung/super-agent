@@ -38,7 +38,7 @@ class CliRequest:
     messages: list[Message]
     user_id: str = LOCAL_USER_ID
     conversation_id: str | None = None
-    scene: str | None = None
+    skill: str | None = None
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -96,7 +96,7 @@ def _run_command(args: argparse.Namespace) -> int:
             config_path,
             args.user_id,
             args.conversation_id,
-            args.scene,
+            args.skill,
             save=args.save,
         )
     request = (
@@ -136,7 +136,7 @@ def _build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--request-stdin", action="store_true")
     run_parser.add_argument("--user-id", default=LOCAL_USER_ID)
     run_parser.add_argument("--conversation-id")
-    run_parser.add_argument("--scene", help="explicit scene name or scene:name key")
+    run_parser.add_argument("--skill", help="explicit task Skill name or task:name key")
     run_parser.add_argument(
         "--save",
         action="store_true",
@@ -203,7 +203,7 @@ def _is_direct_prompt(arguments: list[str]) -> bool:
 
 def _run_setup_command(root: Path, provider: str) -> int:
     root.mkdir(parents=True, exist_ok=True)
-    skill_dir = root / "skills" / "prompt" / "echo"
+    skill_dir = root / "skills" / "task" / "default"
     skill_dir.mkdir(parents=True, exist_ok=True)
     _write_file_if_missing(root / "agent.toml", _default_agent_config())
     _write_file_if_missing(skill_dir / "skill.toml", _default_skill_manifest())
@@ -235,7 +235,7 @@ def _run_prompt_command(
             conversation_id=request.conversation_id,
             run_options=AgentRunOptions(
                 event_listener=_print_run_event,
-                scene=request.scene,
+                skill=request.skill,
             ),
         )
         print(json.dumps({"type": "result", "result": run_result_to_dict(result)}, ensure_ascii=False))
@@ -244,7 +244,7 @@ def _run_prompt_command(
         request.prompt,
         messages=request.messages,
         conversation_id=request.conversation_id,
-        scene=request.scene,
+        skill=request.skill,
     )
     if output == "json":
         print(json.dumps(run_result_to_dict(result), ensure_ascii=False))
@@ -260,7 +260,7 @@ def _run_chat_command(
     config_path: Path | None,
     user_id: str,
     conversation_id: str | None,
-    scene: str | None,
+    skill: str | None,
     *,
     save: bool,
 ) -> int:
@@ -285,9 +285,9 @@ def _run_chat_command(
         if prompt.lower() in {"exit", "quit"}:
             return 0
         result = (
-            user.run(prompt, conversation_id=conversation.conversation_id, scene=scene)
+            user.run(prompt, conversation_id=conversation.conversation_id, skill=skill)
             if conversation is not None
-            else user.run(prompt, messages=messages, scene=scene)
+            else user.run(prompt, messages=messages, skill=skill)
         )
         if conversation is None:
             messages.extend(
@@ -315,11 +315,11 @@ def _print_run_summary(result: RunResult) -> None:
         label = f"{event.data.get('profile', 'unknown')} ({event.data.get('model', 'unknown')})"
         if label not in selected_models:
             selected_models.append(label)
-    scene = next((name for name in result.skills if name.startswith("scene:")), "direct")
+    task_skill = next((name for name in result.skills if name.startswith("task:")), "none")
     print()
     print(f"Run: {result.run_id}")
     print(f"Model: {', '.join(selected_models) if selected_models else 'none'}")
-    print(f"Scene: {scene}")
+    print(f"Task Skill: {task_skill}")
     print(f"Workflow: {result.workflow}")
     print(f"Skills: {', '.join(result.skills) if result.skills else 'none'}")
     print(f"Stop: {result.stop_reason}")
@@ -334,7 +334,7 @@ def _read_runtime_request_from_args(args: argparse.Namespace) -> CliRequest:
         messages=[],
         user_id=args.user_id,
         conversation_id=args.conversation_id,
-        scene=args.scene,
+        skill=args.skill,
     )
 
 
@@ -353,7 +353,7 @@ def _read_runtime_request_from_stdin() -> CliRequest:
             data.get("conversation_id"),
             "conversation_id",
         ),
-        scene=_read_optional_runtime_id(data.get("scene"), "scene"),
+        skill=_read_optional_runtime_id(data.get("skill"), "skill"),
     )
 
 
@@ -411,7 +411,7 @@ def _default_agent_config() -> str:
 [agent]
 name = "super-agent"
 system = "You are a concise, helpful agent."
-skills = ["prompt:echo"]
+skills = ["task:default"]
 disabled_skills = []
 
 [paths]
@@ -425,7 +425,12 @@ path = ".super-agent"
 
 def _default_skill_manifest() -> str:
     return """
+type = "task"
 description = "Minimal example skill"
+
+[configuration]
+mode = "loop"
+max_steps = 8
 """.lstrip()
 
 

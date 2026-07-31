@@ -80,12 +80,12 @@ class SubAgentTests(unittest.TestCase):
             self.assertTrue(coder_result.created_by_agent)
             self.assertTrue(reviewer_result.created_by_agent)
 
-    def test_subagent_keeps_its_own_scene_scope(self) -> None:
+    def test_subagent_selects_its_own_task_skill(self) -> None:
         child_provider = MockProvider(
             tool_responses=[
                 ModelResponse(
                     "",
-                    [ToolCall("scene", "activate_skill", {"name": "code", "type": "scene"})],
+                    [ToolCall("task", "activate_skill", {"name": "code", "type": "task"})],
                     "tool_calls",
                 ),
                 ModelResponse("coded", [], "model_finished"),
@@ -109,7 +109,7 @@ class SubAgentTests(unittest.TestCase):
                 event for event in child_events if event.event_type == "task.completed"
             )
 
-            self.assertIn("scene:code", completed.data["skills"])
+            self.assertIn("task:code", completed.data["skills"])
 
     def test_agent_chain_checks_warn_without_blocking_registration(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

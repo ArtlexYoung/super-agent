@@ -16,9 +16,9 @@ interface SkillConfigurationProps {
 
 const knownGroups = [
   {
-    type: "scene",
-    title: "任务场景",
-    help: "Runtime 会按对话内容自动选择一套 Skill；固定场景后将覆盖自动识别。",
+    type: "task",
+    title: "任务 Skill",
+    help: "任务 Skill 同时提供模型指令和执行方式；每次运行最多使用一个。",
   },
   {
     type: "prompt",
@@ -128,7 +128,7 @@ function SkillRow({
 
   function setSelected(nextSelected: boolean): void {
     const removable = new Set(
-      (skill.type === "scene" ? sameTypeSkills : [skill]).flatMap((item) => [
+      (skill.type === "task" ? sameTypeSkills : [skill]).flatMap((item) => [
         item.key,
         item.name,
       ])
@@ -149,7 +149,7 @@ function SkillRow({
           <span className="skill-name">{skill.name}</span>
           <Badge variant="outline">v{skill.version}</Badge>
           <Badge variant="outline">{skill.type}</Badge>
-          {skill.type === "scene" && skill.default ? (
+          {skill.type === "task" && skill.default ? (
             <Badge variant="secondary">默认</Badge>
           ) : null}
           {skill.agent_created ? (
@@ -187,11 +187,11 @@ function SkillRow({
             disabled={!enabled}
             onCheckedChange={(checked) => setSelected(checked === true)}
           />
-          {skill.type === "scene" ? "固定场景" : "固定使用"}
+          {skill.type === "task" ? "固定任务" : "固定使用"}
           <HelpTooltip
             label={
-              skill.type === "scene"
-                ? "固定后每次任务使用此场景；不固定时根据对话自动识别。"
+              skill.type === "task"
+                ? "固定后每次运行使用此任务 Skill；不固定时由模型按内容选择。"
                 : "固定后每次任务都会加载；未固定时由渐进式披露按任务选择。"
             }
           />

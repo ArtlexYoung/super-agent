@@ -26,8 +26,7 @@ class RuntimeToolsContext:
     list_subagents: Callable[[], list[dict[str, object]]] | None = None
     run_subagent: Callable[[str, str], dict[str, object]] | None = None
     send_text_model_messages: Callable[[list[Message]], str] | None = None
-    use_scenes: bool = True
-    allowed_scenes: tuple[str, ...] = ()
+    allowed_task_skills: tuple[str, ...] = ()
 
 
 class RuntimeTools:
@@ -44,6 +43,14 @@ class RuntimeTools:
         self._activated_skill_keys = {
             str(item["key"]) for item in context.session.list_used_skill_evidence()
         }
+        self._active_task_skill = next(
+            (
+                key
+                for key in self._activated_skill_keys
+                if key.startswith("task:")
+            ),
+            None,
+        )
         self.activated_contributions: list[LoadedSkill] = []
         self.delegated_subagent_results = (
             []
@@ -187,7 +194,7 @@ class RuntimeTools:
     def _activate_skill(self, arguments: dict[str, object]) -> dict[str, object]:
         opened = self._open_requested_skill(arguments)
         reference = opened.index_entry.reference
-        self._check_scene_access(reference)
+        self._check_task_skill_access(reference)
         if reference.key in self._activated_skill_keys:
             return {"key": reference.key, "already_active": True, "tools": []}
         loaded = self._activate_reference(reference)
@@ -216,6 +223,8 @@ class RuntimeTools:
         for item, loaded_contribution in loaded:
             self._record_loaded_skill(item)
             self._activated_skill_keys.add(item.key)
+            if item.skill_type == "task":
+                self._active_task_skill = item.key
             self.activated_contributions.append(loaded_contribution)
         return loaded
 
@@ -241,21 +250,24 @@ class RuntimeTools:
         loaded = [(reference, contribution)]
         next_loading = loading | {reference.key}
         for child in contribution.included_skills:
-            self._check_scene_access(child)
+            self._check_task_skill_access(child)
             loaded.extend(self._load_reference_tree(child, next_loading))
         return loaded
 
-    def _check_scene_access(self, reference: SkillReference) -> None:
-        if reference.skill_type != "scene":
+    def _check_task_skill_access(self, reference: SkillReference) -> None:
+        if reference.skill_type != "task":
             return
-        if not self.context.use_scenes:
-            raise PermissionError("scene Skills are disabled for this Agent")
         if (
-            self.context.allowed_scenes
-            and reference.name not in self.context.allowed_scenes
+            self.context.allowed_task_skills
+            and reference.name not in self.context.allowed_task_skills
         ):
             raise PermissionError(
-                f"scene is outside this Agent's allowed scenes: {reference.key}"
+                f"task Skill is outside this run's allowed Skills: {reference.key}"
+            )
+        if self._active_task_skill not in {None, reference.key}:
+            raise PermissionError(
+                "only one task Skill can be active in a run: "
+                f"{self._active_task_skill}, {reference.key}"
             )
 
     def list_subagents(self, arguments: dict[str, object]) -> dict[str, object]:

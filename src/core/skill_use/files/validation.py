@@ -11,8 +11,10 @@ from core.skill_use.models import (
     create_model_profile_from_skill_disclosure,
     model_connection_fields,
 )
-from core.skill_use.files.scenes import read_scene_included_skills
-from core.skill_use.workflow import create_workflow_policy_from_skill
+from core.skill_use.workflow import (
+    create_task_policy_from_skill,
+    create_workflow_policy_from_skill,
+)
 from skill.manifest import SkillManifest
 
 
@@ -76,12 +78,12 @@ def _validate_skill_type(
         read_memory_settings_from_skill(disclosure)
     elif skill_type == "workflow":
         create_workflow_policy_from_skill(disclosure)
+    elif skill_type == "task":
+        create_task_policy_from_skill(disclosure)
     elif skill_type == "mcp":
         read_mcp_skill_settings(disclosure)
     elif skill_type == "model":
         create_model_profile_from_skill_disclosure(disclosure)
-    elif skill_type == "scene":
-        read_scene_included_skills(disclosure)
 
 
 def _validate_prompt_skill(disclosure: SkillDisclosure) -> None:

@@ -1,6 +1,0 @@
-type = "workflow"
-description = "Iterative repository tool loop with explicit verification and completion"
-
-[configuration]
-mode = "loop"
-max_steps = 20

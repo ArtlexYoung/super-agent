@@ -1,6 +1,0 @@
-type = "workflow"
-description = "Default direct workflow for lightweight text tasks"
-
-[configuration]
-mode = "direct"
-max_steps = 8

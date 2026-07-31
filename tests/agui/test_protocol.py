@@ -26,23 +26,23 @@ class AGUIProtocolTests(unittest.TestCase):
                 "state": {},
                 "tools": [],
                 "context": [],
-                "forwardedProps": {"scene": "Code"},
+                "forwardedProps": {"skill": "Code"},
             }
         )
 
         self.assertEqual("thread-1", request.thread_id)
         self.assertEqual("run-1", request.run_id)
         self.assertEqual("first\nsecond", request.prompt)
-        self.assertEqual("code", request.scene)
+        self.assertEqual("code", request.skill)
 
-    def test_run_input_rejects_invalid_scene(self) -> None:
-        with self.assertRaisesRegex(ValueError, "forwardedProps.scene"):
+    def test_run_input_rejects_invalid_skill(self) -> None:
+        with self.assertRaisesRegex(ValueError, "forwardedProps.skill"):
             AGUIRunInput.from_dict(
                 {
                     "threadId": "thread-1",
                     "runId": "run-1",
                     "messages": [{"role": "user", "content": "hello"}],
-                    "forwardedProps": {"scene": ""},
+                    "forwardedProps": {"skill": ""},
                 }
             )
 

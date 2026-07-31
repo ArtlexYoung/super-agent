@@ -19,7 +19,7 @@ class SkillLoadersTests(unittest.TestCase):
         descriptions = [item.descriptor for item in loaders.list_skill_loaders()]
 
         self.assertEqual(
-            ["mcp", "memory", "prompt", "scene", "workflow"],
+            ["mcp", "memory", "prompt", "task", "workflow"],
             [item.skill_type for item in descriptions],
         )
         self.assertTrue(all(len(item.content_sha256) == 64 for item in descriptions))

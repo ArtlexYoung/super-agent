@@ -1,9 +1,0 @@
-type = "scene"
-description = "General task Skill group with memory and direct completion rules"
-
-[configuration]
-skills = [
-  "prompt:common",
-  "memory:default",
-  "workflow:direct",
-]

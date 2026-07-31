@@ -78,11 +78,11 @@ Compose Agents in code:
 main = Agent()
 worker = Agent()
 main.add_subagent(worker, name="worker", description="Works on repository changes")
-result = worker.run("Inspect this change", scene="code")
+result = worker.run("Inspect this change", skill="code")
 ```
 
-Omit `scene` to let the model judge available scenes. Pass `use_scenes=False` to disable
-scene activation for one run. These choices do not mutate the Agent or later calls.
+Omit `skill` to let the model judge available task Skills. An explicit task Skill limits
+the run to that task mechanism. This choice does not mutate the Agent or later calls.
 
 ## Add State
 

@@ -8,7 +8,7 @@
 
 Super Agent gives a model a compact Skill index. The model decides what it needs, opens
 only that content, and runs the selected instructions or registered tools. Prompts,
-workflows, memory behavior, tools, task scenes, and model descriptions all use the same
+task instructions, run policies, memory behavior, tools, and model descriptions all use the same
 Skill format and the same progressive disclosure path.
 
 The default Python install has no third-party runtime dependencies. A basic `Agent()` is
@@ -90,7 +90,7 @@ from super_agent import Agent
 main = Agent()
 coder = Agent()
 main.add_subagent(coder, name="coder", description="Implements and verifies code changes")
-result = coder.run("Fix the failing test", scene="code")
+result = coder.run("Fix the failing test", skill="code")
 ```
 
 ## Add State Only When Needed
@@ -130,14 +130,14 @@ overlay, and failed tests block it.
 ```bash
 super-agent check
 super-agent run "one task"
-super-agent run --scene code "inspect this repository"
+super-agent run --skill code "inspect this repository"
 super-agent skills list
 super-agent data runs status
 super-agent serve
 ```
 
 One-shot runs are stateless unless `--save` or a conversation ID is explicit. Text runs
-print the answer plus the actual model, scene, workflow, Skills, stop reason, and run ID.
+print the answer plus the actual model, task Skill, workflow, Skills, stop reason, and run ID.
 Use `--output json` or `--output jsonl` for integrations. The React client,
 CopilotKit example, and AG-UI endpoint are served at `http://127.0.0.1:8765/`.
 
