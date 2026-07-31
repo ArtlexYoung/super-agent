@@ -116,13 +116,13 @@ Learning records evaluation, freshness, and model-use evidence. It never changes
 Skill changes use four visible steps:
 
 ```bash
-super-agent skills propose-change --name prompt:research --goal "make citations clearer"
-super-agent skills test-change --change-id <id> --cases cases.json
-super-agent skills apply-change --change-id <id>
-super-agent skills undo-change --change-id <id>
+super-agent manage skill-changes propose --name prompt:research --goal "make citations clearer"
+super-agent manage skill-changes test --change-id <id> --cases cases.json
+super-agent manage skill-changes apply --change-id <id>
+super-agent manage skill-changes undo --change-id <id>
 ```
 
-Proposal and testing cannot activate a candidate. Only `apply-change` changes the user
+Proposal and testing cannot activate a candidate. Only `apply` changes the user
 overlay, and failed tests block it.
 
 ## CLI and Web

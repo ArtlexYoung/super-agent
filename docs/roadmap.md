@@ -700,6 +700,15 @@ Status: implemented.
 - Prove in fresh processes that creating an Agent, binding a user, and running without
   state do not load optional management modules.
 
+## v0.0.120: Progressive CLI
+
+Status: implemented.
+
+- Keep setup, checks, runs, Skill inspection, saved data, and serving at shallow paths.
+- Group advanced Skill changes, Skill packages, and model Skills under `manage`.
+- Name the four Skill update stages directly as `propose`, `test`, `apply`, and `undo`.
+- Remove the old command paths without aliases or hidden forwarding behavior.
+
 ## Release Gate
 
 The project will not move to `0.1.x` because of feature count. The gate is a reproducible

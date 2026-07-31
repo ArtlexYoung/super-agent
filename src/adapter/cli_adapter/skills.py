@@ -30,80 +30,100 @@ def configure_skills_parser(
     index_parser = subparsers.add_parser("index", help="print the central skill index as JSON")
     index_parser.add_argument("--config", default="agent.toml")
     index_parser.add_argument("--output", choices=["json"], default="json")
-    propose_parser = subparsers.add_parser("propose-change", help="propose an isolated Skill change")
-    _add_change_name_arguments(propose_parser)
-    test_parser = subparsers.add_parser("test-change", help="test a Skill change without applying it")
-    _add_change_id_arguments(test_parser)
-    test_parser.add_argument("--cases", required=True)
-    apply_parser = subparsers.add_parser("apply-change", help="apply a passing Skill change")
-    _add_change_id_arguments(apply_parser)
-    undo_parser = subparsers.add_parser("undo-change", help="undo an applied Skill change")
-    _add_change_id_arguments(undo_parser)
-    changes_parser = subparsers.add_parser("list-changes", help="list proposed Skill changes")
-    changes_parser.add_argument("--config", default="agent.toml")
     freshness_parser = subparsers.add_parser("freshness", help="show runtime skill freshness stats")
     freshness_parser.add_argument("--config", default="agent.toml")
     validate_parser = subparsers.add_parser("validate", help="validate every skill manifest")
     validate_parser.add_argument("--config", default="agent.toml")
     graph_parser = subparsers.add_parser("graph", help="resolve a skill dependency graph")
     _add_composition_arguments(graph_parser)
-    lock_parser = subparsers.add_parser("lock", help="write a deterministic skill lock")
-    _add_composition_arguments(lock_parser)
-    lock_parser.add_argument("--output", default="skill.lock")
-    pack_parser = subparsers.add_parser("pack", help="pack one skill as a deterministic ZIP")
-    pack_parser.add_argument("--config", default="agent.toml")
-    pack_parser.add_argument("--name", required=True)
-    pack_parser.add_argument("--output", required=True)
-    install_parser = subparsers.add_parser("install", help="install a local, ZIP, or Git skill")
-    _add_package_source_arguments(install_parser)
-    update_parser = subparsers.add_parser("update", help="replace an installed skill from a source")
-    _add_package_source_arguments(update_parser)
-    update_parser.add_argument("--name", required=True)
-    remove_parser = subparsers.add_parser("remove", help="remove one installed skill")
-    remove_parser.add_argument("--config", default="agent.toml")
-    remove_parser.add_argument("--name", required=True)
     for command_parser in (
         list_parser,
         index_parser,
-        propose_parser,
-        test_parser,
-        apply_parser,
-        undo_parser,
-        changes_parser,
         freshness_parser,
         validate_parser,
         graph_parser,
-        lock_parser,
-        pack_parser,
-        install_parser,
-        update_parser,
-        remove_parser,
     ):
         command_parser.add_argument("--user-id", default=LOCAL_USER_ID)
     return subparsers
+
+
+def configure_skill_changes_parser(parser: argparse.ArgumentParser) -> None:
+    subparsers = parser.add_subparsers(dest="skill_change_command")
+    propose = subparsers.add_parser("propose", help="propose an isolated Skill change")
+    _add_change_name_arguments(propose)
+    test = subparsers.add_parser("test", help="test a change without applying it")
+    _add_change_id_arguments(test)
+    test.add_argument("--cases", required=True)
+    apply = subparsers.add_parser("apply", help="apply a passing Skill change")
+    _add_change_id_arguments(apply)
+    undo = subparsers.add_parser("undo", help="undo an applied Skill change")
+    _add_change_id_arguments(undo)
+    list_changes = subparsers.add_parser("list", help="list proposed Skill changes")
+    list_changes.add_argument("--config", default="agent.toml")
+    for command_parser in (propose, test, apply, undo, list_changes):
+        command_parser.add_argument("--user-id", default=LOCAL_USER_ID)
+
+
+def configure_skill_packages_parser(parser: argparse.ArgumentParser) -> None:
+    subparsers = parser.add_subparsers(dest="skill_package_command")
+    lock = subparsers.add_parser("lock", help="write a deterministic Skill lock")
+    _add_composition_arguments(lock)
+    lock.add_argument("--output", default="skill.lock")
+    pack = subparsers.add_parser("pack", help="pack one Skill as a deterministic ZIP")
+    pack.add_argument("--config", default="agent.toml")
+    pack.add_argument("--name", required=True)
+    pack.add_argument("--output", required=True)
+    install = subparsers.add_parser("install", help="install a local, ZIP, or Git Skill")
+    _add_package_source_arguments(install)
+    update = subparsers.add_parser("update", help="replace an installed Skill")
+    _add_package_source_arguments(update)
+    update.add_argument("--name", required=True)
+    remove = subparsers.add_parser("remove", help="remove one installed Skill")
+    remove.add_argument("--config", default="agent.toml")
+    remove.add_argument("--name", required=True)
+    for command_parser in (lock, pack, install, update, remove):
+        command_parser.add_argument("--user-id", default=LOCAL_USER_ID)
 
 
 def run_skills_command(args: argparse.Namespace) -> int:
     handlers = {
         "list": lambda: _list_skills(Path(args.config), args.user_id),
         "index": lambda: _print_skill_index(Path(args.config), args.user_id),
-        "propose-change": lambda: _propose_skill_change(args),
-        "test-change": lambda: _test_skill_change(args),
-        "apply-change": lambda: _apply_skill_change(args),
-        "undo-change": lambda: _undo_skill_change(args),
-        "list-changes": lambda: _list_skill_changes(args),
         "freshness": lambda: _show_skill_freshness(Path(args.config), args.user_id),
         "validate": lambda: _validate_skills(Path(args.config), args.user_id),
         "graph": lambda: _show_skill_graph(args),
+    }
+    handler = handlers.get(args.skill_command)
+    if handler is None:
+        raise ValueError("skills command is required")
+    return handler()
+
+
+def run_skill_changes_command(args: argparse.Namespace) -> int:
+    handlers = {
+        "propose": lambda: _propose_skill_change(args),
+        "test": lambda: _test_skill_change(args),
+        "apply": lambda: _apply_skill_change(args),
+        "undo": lambda: _undo_skill_change(args),
+        "list": lambda: _list_skill_changes(args),
+    }
+    handler = handlers.get(args.skill_change_command)
+    if handler is None:
+        raise ValueError("skill-changes command is required")
+    return handler()
+
+
+def run_skill_packages_command(args: argparse.Namespace) -> int:
+    handlers = {
         "lock": lambda: _write_skill_lock(args),
         "pack": lambda: _pack_skill(args),
         "install": lambda: _install_skill(args),
         "update": lambda: _update_skill(args),
         "remove": lambda: _remove_skill(args),
     }
-    handler = handlers.get(args.skill_command)
+    handler = handlers.get(args.skill_package_command)
     if handler is None:
-        raise ValueError("skills command is required")
+        raise ValueError("skill-packages command is required")
     return handler()
 
 

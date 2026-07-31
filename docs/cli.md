@@ -39,10 +39,10 @@ paths, identities, and hashes and never execute Python from a Skill package.
 Models are Skills and live under the same group:
 
 ```bash
-super-agent skills models list --output json
-super-agent skills models resolve
-super-agent skills models save --config agent.toml --request-stdin < model.json
-super-agent skills models remove --config agent.toml --name fast
+super-agent manage models list --output json
+super-agent manage models resolve
+super-agent manage models save --config agent.toml --request-stdin < model.json
+super-agent manage models remove --config agent.toml --name fast
 ```
 
 Saved model Skills name an environment variable; they never contain its secret value.
@@ -50,11 +50,11 @@ Saved model Skills name an environment variable; they never contain its secret v
 Skill content changes use separate operations:
 
 ```bash
-super-agent skills propose-change --name prompt:research --goal "make it clearer"
-super-agent skills test-change --change-id <id> --cases cases.json
-super-agent skills apply-change --change-id <id>
-super-agent skills undo-change --change-id <id>
-super-agent skills list-changes
+super-agent manage skill-changes propose --name prompt:research --goal "make it clearer"
+super-agent manage skill-changes test --change-id <id> --cases cases.json
+super-agent manage skill-changes apply --change-id <id>
+super-agent manage skill-changes undo --change-id <id>
+super-agent manage skill-changes list
 ```
 
 Proposal and testing do not activate content. Application requires the latest matching

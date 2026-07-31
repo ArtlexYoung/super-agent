@@ -42,16 +42,16 @@ propose -> test -> apply -> optional undo
 ```
 
 ```bash
-super-agent skills propose-change --name prompt:concise --goal "make it clearer"
-super-agent skills test-change --change-id <id> --cases cases.json
-super-agent skills apply-change --change-id <id>
-super-agent skills undo-change --change-id <id>
+super-agent manage skill-changes propose --name prompt:concise --goal "make it clearer"
+super-agent manage skill-changes test --change-id <id> --cases cases.json
+super-agent manage skill-changes apply --change-id <id>
+super-agent manage skill-changes undo --change-id <id>
 ```
 
-`propose-change` writes a complete candidate outside active Skill roots. `test-change`
+`propose` writes a complete candidate outside active Skill roots. `test`
 runs explicit cases against that candidate and, when present, its baseline. Neither can
-activate the candidate. `apply-change` is the only activation operation and requires a
-matching passing report with no regression. `undo-change` restores the prior user overlay
+activate the candidate. `apply` is the only activation operation and requires a
+matching passing report with no regression. `undo` restores the prior user overlay
 or removes the newly created one.
 
 Built-in Skills are immutable. Project and user Skill update authority comes from trusted

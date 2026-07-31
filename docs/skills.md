@@ -85,6 +85,7 @@ Explicit learning updates evidence; explicit Skill change commands handle conten
 
 ## Packages
 
-`skills pack`, `install`, `update`, and `remove` operate on passive packages. Install and
+`manage skill-packages pack`, `install`, `update`, and `remove` operate on passive
+packages. Install and
 update write only the selected user's Skill overlay. `--expected-sha256` pins external
 content. Git and ZIP input is staged and validated before one final replacement.

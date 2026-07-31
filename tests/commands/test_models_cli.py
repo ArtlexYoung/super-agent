@@ -40,7 +40,7 @@ class ModelsCliTests(unittest.TestCase):
             with redirect_stdout(removed):
                 code = main(
                     [
-                        "skills",
+                        "manage",
                         "models",
                         "remove",
                         "--config",
@@ -109,7 +109,7 @@ def _save_model(
     with patch("sys.stdin", StringIO(json.dumps(request))), redirect_stdout(output):
         code = main(
             [
-                "skills",
+                "manage",
                 "models",
                 "save",
                 "--config",
@@ -135,7 +135,7 @@ def _list_models(
     with redirect_stdout(output):
         code = main(
             [
-                "skills",
+                "manage",
                 "models",
                 "list",
                 "--config",
