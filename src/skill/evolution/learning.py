@@ -6,7 +6,7 @@ import hashlib
 from datetime import datetime
 from typing import TYPE_CHECKING, Callable
 
-from skill.evolution.evidence import summarize_evaluation_evidence
+from skill.evolution.metrics import summarize_evaluation_evidence
 from skill.evolution.recommendations import recommend_skill_revisions
 from skill.evolution.state import (
     list_skill_evolutions,
@@ -14,7 +14,7 @@ from skill.evolution.state import (
     record_skill_evolution_failure,
     record_skill_evolution_monitoring,
 )
-from skill.evolution.values import (
+from skill.evolution.models import (
     SkillEvolutionState,
     SkillRevision,
     skill_evolution_to_dict,
@@ -35,7 +35,7 @@ from core.state.models import RunEvent
 from skill.state.events import EventStore
 from core.models import RunLearningResult
 from skill.task.model_calls import list_model_routing_stats
-from skill.evolution.freshness import calculate_skill_freshness
+from skill.evolution.metrics import calculate_skill_freshness
 from skill.evolution.change.evaluation import EvaluationCase
 from skill.evolution.policy import EvolutionPolicy
 

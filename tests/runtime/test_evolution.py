@@ -12,7 +12,7 @@ from skill.evolution.state import (
     require_skill_candidate_can_promote,
     start_manual_skill_evolution,
 )
-from skill.evolution.values import CandidateEvaluation, SkillRevision
+from skill.evolution.models import CandidateEvaluation, SkillRevision
 from skill.state.events import create_local_event_store
 
 

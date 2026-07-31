@@ -560,6 +560,14 @@ Status: implemented.
 - Remove temporary memory streams, promotion history, and the secondary organizer model.
 - Let the main model submit explicit, validated, atomic long-term memory changes.
 
+## v0.0.106: One Evolution Model and Metrics Path
+
+Status: implemented.
+
+- Replace the vague evolution `values` module with one explicit `models` owner.
+- Merge evidence aggregation and freshness calculation into one `metrics` data path.
+- Remove old module paths and state-machine re-exports instead of keeping import shims.
+
 ## Release Gate
 
 The project will not move to `0.1.x` because of feature count. The gate is a reproducible

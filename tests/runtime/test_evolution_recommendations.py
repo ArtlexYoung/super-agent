@@ -24,14 +24,17 @@ from skill.evolution.records import (
 from skill.evolution.change.files import compare_directory_versions
 from skill.evolution.state import (
     list_skill_evolutions,
-    skill_evolution_to_dict,
 )
 from skill.evolution.recommendations import recommend_skill_revisions
-from skill.evolution.evidence import summarize_evaluation_evidence
+from skill.evolution.metrics import summarize_evaluation_evidence
 from skill.evolution.learning import AutomaticSkillEvolution
 from skill.evolution.insights import explain_run_with_insight
 from skill.state.events import create_local_event_store
-from skill.evolution.values import SkillRevision, create_indexed_skill_revision
+from skill.evolution.models import (
+    SkillRevision,
+    create_indexed_skill_revision,
+    skill_evolution_to_dict,
+)
 from support import (
     SequenceProvider,
     load_default_evolution_policy,

@@ -19,7 +19,7 @@ from skill.evolution.records import (
     create_evaluation_record,
 )
 from skill.evolution.recommendations import recommend_skill_revisions
-from skill.evolution.values import SkillRevision
+from skill.evolution.models import SkillRevision
 from support import load_default_evolution_policy
 
 

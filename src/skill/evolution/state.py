@@ -5,29 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, replace
 
-from skill.evolution.values import (
-    SKILL_EVOLUTION_SCHEMA_VERSION,
-    CandidateEvaluation,
-    SkillCandidateDifference,
-    SkillEvolutionMetrics,
-    SkillEvolutionRecommendation,
-    SkillEvolutionState,
-    SkillRevision,
-    candidate_evaluation_from_dict,
-    candidate_evaluation_to_dict,
-    create_skill_candidate_difference,
-    optional_skill_evolution_metrics_from_dict,
-    skill_candidate_difference_from_dict,
-    skill_candidate_difference_to_dict,
-    skill_evolution_metrics_to_dict,
-    skill_evolution_to_dict,
-    validate_candidate_evaluation,
-    validate_skill_candidate_difference,
-    validate_skill_evolution_recommendation,
-    skill_revision_from_dict,
-    skill_revision_to_dict,
-    validate_skill_revision,
-)
+from skill.evolution import models as _models
 from core.events import StorageEvent
 from skill.state.events import EventStore
 
@@ -49,25 +27,25 @@ SKILL_EVOLUTION_STATUSES = frozenset(
 @dataclass(frozen=True)
 class _SkillEvolutionStart:
     origin: str
-    source_revision: SkillRevision | None
+    source_revision: _models.SkillRevision | None
     goal: str
     status: str
     evidence_sha256: str = ""
     evidence_record_ids: tuple[str, ...] = ()
-    metrics: SkillEvolutionMetrics | None = None
+    metrics: _models.SkillEvolutionMetrics | None = None
     reason_codes: tuple[str, ...] = ()
     reasons: tuple[str, ...] = ()
     candidate_id: str = ""
-    candidate_revision: SkillRevision | None = None
+    candidate_revision: _models.SkillRevision | None = None
 
 
 def start_manual_skill_evolution(
     store: EventStore,
     candidate_id: str,
-    source_revision: SkillRevision | None,
-    candidate_revision: SkillRevision,
+    source_revision: _models.SkillRevision | None,
+    candidate_revision: _models.SkillRevision,
     goal: str,
-) -> SkillEvolutionState:
+) -> _models.SkillEvolutionState:
     _validate_candidate_revisions(source_revision, candidate_revision)
     evolution_id = _clean_evolution_id(candidate_id)
     return _start_skill_evolution(
@@ -87,17 +65,17 @@ def start_manual_skill_evolution(
 def recommend_skill_evolution(
     store: EventStore,
     evolution_id: str,
-    revision: SkillRevision,
-    recommendation: SkillEvolutionRecommendation,
-) -> SkillEvolutionState:
-    validate_skill_revision(revision)
+    revision: _models.SkillRevision,
+    recommendation: _models.SkillEvolutionRecommendation,
+) -> _models.SkillEvolutionState:
+    _models.validate_skill_revision(revision)
     if not (
         revision.agent_created
         and revision.agent_can_update
         and revision.evolution_supported
     ):
         raise PermissionError(f"Skill revision cannot evolve: {revision.key}")
-    validate_skill_evolution_recommendation(recommendation)
+    _models.validate_skill_evolution_recommendation(recommendation)
     return _start_skill_evolution(
         store,
         _clean_evolution_id(evolution_id),
@@ -119,22 +97,22 @@ def record_skill_evolution_candidate(
     store: EventStore,
     evolution_id: str,
     candidate_id: str,
-    candidate_revision: SkillRevision,
-    difference: SkillCandidateDifference,
-) -> SkillEvolutionState:
+    candidate_revision: _models.SkillRevision,
+    difference: _models.SkillCandidateDifference,
+) -> _models.SkillEvolutionState:
     state = read_skill_evolution(store, evolution_id)
     _require_status(state, {"candidate_recommended"})
     _validate_candidate_revisions(state.source_revision, candidate_revision)
-    validate_skill_candidate_difference(difference)
+    _models.validate_skill_candidate_difference(difference)
     return _append_and_apply(
         store,
         state,
         "skill_evolution.candidate_created",
         {
-            "schema_version": SKILL_EVOLUTION_SCHEMA_VERSION,
+            "schema_version": _models.SKILL_EVOLUTION_SCHEMA_VERSION,
             "candidate_id": _required_text(candidate_id, "candidate_id"),
-            "candidate_revision": skill_revision_to_dict(candidate_revision),
-            "candidate_difference": skill_candidate_difference_to_dict(difference),
+            "candidate_revision": _models.skill_revision_to_dict(candidate_revision),
+            "candidate_difference": _models.skill_candidate_difference_to_dict(difference),
             "status": "candidate_created",
         },
     )
@@ -143,18 +121,18 @@ def record_skill_evolution_candidate(
 def record_skill_candidate_evaluation(
     store: EventStore,
     candidate_id: str,
-    evaluation: CandidateEvaluation,
-) -> SkillEvolutionState:
+    evaluation: _models.CandidateEvaluation,
+) -> _models.SkillEvolutionState:
     state = find_candidate_skill_evolution(store, candidate_id)
     _require_status(state, {"candidate_created", "evaluated", "rejected"})
-    validate_candidate_evaluation(evaluation)
+    _models.validate_candidate_evaluation(evaluation)
     return _append_and_apply(
         store,
         state,
         "skill_evolution.candidate_evaluated",
         {
-            "schema_version": SKILL_EVOLUTION_SCHEMA_VERSION,
-            "evaluation": candidate_evaluation_to_dict(evaluation),
+            "schema_version": _models.SKILL_EVOLUTION_SCHEMA_VERSION,
+            "evaluation": _models.candidate_evaluation_to_dict(evaluation),
             "status": "evaluated" if evaluation.passed else "rejected",
         },
     )
@@ -163,8 +141,8 @@ def record_skill_candidate_evaluation(
 def require_skill_candidate_can_promote(
     store: EventStore,
     candidate_id: str,
-    current_revision: SkillRevision | None,
-) -> SkillEvolutionState:
+    current_revision: _models.SkillRevision | None,
+) -> _models.SkillEvolutionState:
     state = find_candidate_skill_evolution(store, candidate_id)
     _require_status(state, {"evaluated"})
     if state.evaluation is None or not (
@@ -178,10 +156,10 @@ def require_skill_candidate_can_promote(
 def record_skill_candidate_promoted(
     store: EventStore,
     candidate_id: str,
-    active_revision: SkillRevision,
-    current_revision: SkillRevision | None,
+    active_revision: _models.SkillRevision,
+    current_revision: _models.SkillRevision | None,
     rollback_revision_id: str,
-) -> SkillEvolutionState:
+) -> _models.SkillEvolutionState:
     state = require_skill_candidate_can_promote(store, candidate_id, current_revision)
     if state.candidate_revision is None:
         raise ValueError("Skill evolution has no candidate revision")
@@ -192,8 +170,8 @@ def record_skill_candidate_promoted(
         state,
         "skill_evolution.candidate_promoted",
         {
-            "schema_version": SKILL_EVOLUTION_SCHEMA_VERSION,
-            "active_revision": skill_revision_to_dict(active_revision),
+            "schema_version": _models.SKILL_EVOLUTION_SCHEMA_VERSION,
+            "active_revision": _models.skill_revision_to_dict(active_revision),
             "rollback_revision_id": _optional_text(
                 rollback_revision_id,
                 "rollback_revision_id",
@@ -207,7 +185,7 @@ def record_skill_evolution_failure(
     store: EventStore,
     evolution_id: str,
     error: Exception,
-) -> SkillEvolutionState:
+) -> _models.SkillEvolutionState:
     state = read_skill_evolution(store, evolution_id)
     _require_status(state, {"candidate_recommended", "candidate_created"})
     return _append_and_apply(
@@ -215,7 +193,7 @@ def record_skill_evolution_failure(
         state,
         "skill_evolution.failed",
         {
-            "schema_version": SKILL_EVOLUTION_SCHEMA_VERSION,
+            "schema_version": _models.SKILL_EVOLUTION_SCHEMA_VERSION,
             "detail": f"{type(error).__name__}: {error}",
             "status": "failed",
         },
@@ -229,7 +207,7 @@ def record_skill_evolution_monitoring(
     detail: str,
     *,
     rollback_revision_id: str | None = None,
-) -> SkillEvolutionState:
+) -> _models.SkillEvolutionState:
     state = read_skill_evolution(store, evolution_id)
     _require_status(state, {"promoted", "stable"})
     if status not in {"stable", "rolled_back"}:
@@ -239,7 +217,7 @@ def record_skill_evolution_monitoring(
         state,
         "skill_evolution.monitored",
         {
-            "schema_version": SKILL_EVOLUTION_SCHEMA_VERSION,
+            "schema_version": _models.SKILL_EVOLUTION_SCHEMA_VERSION,
             "detail": _required_text(detail, "monitoring detail"),
             "rollback_revision_id": (
                 state.rollback_revision_id
@@ -254,7 +232,7 @@ def record_skill_evolution_monitoring(
 def read_skill_evolution(
     store: EventStore,
     evolution_id: str,
-) -> SkillEvolutionState:
+) -> _models.SkillEvolutionState:
     clean_id = _clean_evolution_id(evolution_id)
     events = store.read_skill_evolution_events(clean_id)
     if not events:
@@ -265,7 +243,7 @@ def read_skill_evolution(
 def list_skill_evolutions(
     store: EventStore,
     status: str | None = None,
-) -> list[SkillEvolutionState]:
+) -> list[_models.SkillEvolutionState]:
     grouped: dict[str, list[StorageEvent]] = {}
     for event in store.read_skill_evolution_events():
         grouped.setdefault(event.stream_id, []).append(event)
@@ -287,7 +265,7 @@ def list_skill_evolutions(
 def find_candidate_skill_evolution(
     store: EventStore,
     candidate_id: str,
-) -> SkillEvolutionState:
+) -> _models.SkillEvolutionState:
     clean_id = _required_text(candidate_id, "candidate_id")
     matches = [
         state for state in list_skill_evolutions(store) if state.candidate_id == clean_id
@@ -302,7 +280,7 @@ def find_candidate_skill_evolution(
 def replay_skill_evolution(
     evolution_id: str,
     events: list[StorageEvent],
-) -> SkillEvolutionState:
+) -> _models.SkillEvolutionState:
     if not events:
         raise ValueError(f"Skill evolution has no events: {evolution_id}")
     state = _state_from_started_event(evolution_id, events[0])
@@ -315,11 +293,11 @@ def _start_skill_evolution(
     store: EventStore,
     evolution_id: str,
     start: _SkillEvolutionStart,
-) -> SkillEvolutionState:
+) -> _models.SkillEvolutionState:
     if store.read_skill_evolution_events(evolution_id):
         raise ValueError(f"Skill evolution already exists: {evolution_id}")
     data = {
-        "schema_version": SKILL_EVOLUTION_SCHEMA_VERSION,
+        "schema_version": _models.SKILL_EVOLUTION_SCHEMA_VERSION,
         "origin": start.origin,
         "source_revision": _optional_revision_to_dict(start.source_revision),
         "goal": _required_text(start.goal, "goal"),
@@ -329,7 +307,7 @@ def _start_skill_evolution(
         "metrics": (
             None
             if start.metrics is None
-            else skill_evolution_metrics_to_dict(start.metrics)
+            else _models.skill_evolution_metrics_to_dict(start.metrics)
         ),
         "reason_codes": list(start.reason_codes),
         "reasons": list(start.reasons),
@@ -349,7 +327,7 @@ def _start_skill_evolution(
 def _state_from_started_event(
     evolution_id: str,
     event: StorageEvent,
-) -> SkillEvolutionState:
+) -> _models.SkillEvolutionState:
     fields = {
         "schema_version",
         "origin",
@@ -373,7 +351,7 @@ def _state_from_started_event(
     expected = "candidate_created" if origin == "manual" else "candidate_recommended"
     if status != expected:
         raise ValueError(f"Skill evolution origin {origin} requires status {expected}")
-    return SkillEvolutionState(
+    return _models.SkillEvolutionState(
         evolution_id=evolution_id,
         origin=origin,
         source_revision=_optional_revision_from_dict(event.data["source_revision"]),
@@ -381,7 +359,7 @@ def _state_from_started_event(
         status=status,
         evidence_sha256=_optional_sha256(event.data["evidence_sha256"], "evidence_sha256"),
         evidence_record_ids=_text_list(event.data["evidence_record_ids"], "evidence_record_ids"),
-        metrics=optional_skill_evolution_metrics_from_dict(event.data["metrics"]),
+        metrics=_models.optional_skill_evolution_metrics_from_dict(event.data["metrics"]),
         reason_codes=_text_list(event.data["reason_codes"], "reason_codes"),
         reasons=_text_list(event.data["reasons"], "reasons"),
         candidate_id=_optional_text(event.data["candidate_id"], "candidate_id"),
@@ -396,9 +374,9 @@ def _state_from_started_event(
 
 
 def _apply_skill_evolution_event(
-    state: SkillEvolutionState,
+    state: _models.SkillEvolutionState,
     event: StorageEvent,
-) -> SkillEvolutionState:
+) -> _models.SkillEvolutionState:
     if event.event_type == "skill_evolution.candidate_created":
         return _apply_candidate_created(state, event)
     if event.event_type == "skill_evolution.candidate_evaluated":
@@ -411,9 +389,9 @@ def _apply_skill_evolution_event(
 
 
 def _apply_candidate_created(
-    state: SkillEvolutionState,
+    state: _models.SkillEvolutionState,
     event: StorageEvent,
-) -> SkillEvolutionState:
+) -> _models.SkillEvolutionState:
     _require_status(state, {"candidate_recommended"})
     _require_event(
         event,
@@ -424,8 +402,8 @@ def _apply_candidate_created(
         state,
         status=_read_status(event.data["status"]),
         candidate_id=_required_text(event.data["candidate_id"], "candidate_id"),
-        candidate_revision=skill_revision_from_dict(event.data["candidate_revision"]),
-        candidate_difference=skill_candidate_difference_from_dict(
+        candidate_revision=_models.skill_revision_from_dict(event.data["candidate_revision"]),
+        candidate_difference=_models.skill_candidate_difference_from_dict(
             event.data["candidate_difference"]
         ),
         updated_at=event.created_at,
@@ -433,16 +411,16 @@ def _apply_candidate_created(
 
 
 def _apply_candidate_evaluated(
-    state: SkillEvolutionState,
+    state: _models.SkillEvolutionState,
     event: StorageEvent,
-) -> SkillEvolutionState:
+) -> _models.SkillEvolutionState:
     _require_status(state, {"candidate_created", "evaluated", "rejected"})
     _require_event(
         event,
         event.event_type,
         {"schema_version", "evaluation", "status"},
     )
-    evaluation = candidate_evaluation_from_dict(event.data["evaluation"])
+    evaluation = _models.candidate_evaluation_from_dict(event.data["evaluation"])
     status = _read_status(event.data["status"])
     if status != ("evaluated" if evaluation.passed else "rejected"):
         raise ValueError("Skill candidate evaluation status does not match result")
@@ -455,16 +433,16 @@ def _apply_candidate_evaluated(
 
 
 def _apply_candidate_promoted(
-    state: SkillEvolutionState,
+    state: _models.SkillEvolutionState,
     event: StorageEvent,
-) -> SkillEvolutionState:
+) -> _models.SkillEvolutionState:
     _require_status(state, {"evaluated"})
     _require_event(
         event,
         event.event_type,
         {"schema_version", "active_revision", "rollback_revision_id", "status"},
     )
-    active = skill_revision_from_dict(event.data["active_revision"])
+    active = _models.skill_revision_from_dict(event.data["active_revision"])
     if state.candidate_revision is None or active.identity != state.candidate_revision.identity:
         raise ValueError("promoted Skill revision changed candidate identity")
     return replace(
@@ -479,9 +457,9 @@ def _apply_candidate_promoted(
 
 
 def _apply_evolution_result(
-    state: SkillEvolutionState,
+    state: _models.SkillEvolutionState,
     event: StorageEvent,
-) -> SkillEvolutionState:
+) -> _models.SkillEvolutionState:
     failed = event.event_type == "skill_evolution.failed"
     _require_status(
         state,
@@ -508,24 +486,24 @@ def _apply_evolution_result(
 
 def _append_and_apply(
     store: EventStore,
-    state: SkillEvolutionState,
+    state: _models.SkillEvolutionState,
     event_type: str,
     data: dict[str, object],
-) -> SkillEvolutionState:
+) -> _models.SkillEvolutionState:
     event = store.append_skill_evolution_event(state.evolution_id, event_type, data)
     return _apply_skill_evolution_event(state, event)
 
 
 def _validate_candidate_revisions(
-    source: SkillRevision | None,
-    candidate: SkillRevision,
+    source: _models.SkillRevision | None,
+    candidate: _models.SkillRevision,
 ) -> None:
-    validate_skill_revision(candidate)
+    _models.validate_skill_revision(candidate)
     if source is None:
         if not candidate.agent_created or not candidate.agent_can_update:
             raise PermissionError("new Skill revisions must allow Agent-owned updates")
         return
-    validate_skill_revision(source)
+    _models.validate_skill_revision(source)
     if source.key != candidate.key:
         raise ValueError("Skill candidate cannot change Skill identity")
     if not source.agent_can_update or not source.evolution_supported:
@@ -533,8 +511,8 @@ def _validate_candidate_revisions(
 
 
 def _require_same_revision(
-    expected: SkillRevision | None,
-    current: SkillRevision | None,
+    expected: _models.SkillRevision | None,
+    current: _models.SkillRevision | None,
     key: str,
 ) -> None:
     if expected is None:
@@ -550,11 +528,11 @@ def _require_same_revision(
 def _require_event(event: StorageEvent, event_type: str, fields: set[str]) -> None:
     if event.event_type != event_type or set(event.data) != fields:
         raise ValueError(f"Skill evolution event does not match schema: {event.event_type}")
-    if event.data["schema_version"] != SKILL_EVOLUTION_SCHEMA_VERSION:
+    if event.data["schema_version"] != _models.SKILL_EVOLUTION_SCHEMA_VERSION:
         raise ValueError(f"unsupported Skill evolution schema: {event.event_type}")
 
 
-def _require_status(state: SkillEvolutionState, allowed: set[str]) -> None:
+def _require_status(state: _models.SkillEvolutionState, allowed: set[str]) -> None:
     if state.status not in allowed:
         raise ValueError(
             f"Skill evolution cannot transition from {state.status}: {state.evolution_id}"
@@ -568,12 +546,12 @@ def _read_status(value: object) -> str:
     return status
 
 
-def _optional_revision_to_dict(value: SkillRevision | None) -> dict[str, object] | None:
-    return None if value is None else skill_revision_to_dict(value)
+def _optional_revision_to_dict(value: _models.SkillRevision | None) -> dict[str, object] | None:
+    return None if value is None else _models.skill_revision_to_dict(value)
 
 
-def _optional_revision_from_dict(value: object) -> SkillRevision | None:
-    return None if value is None else skill_revision_from_dict(value)
+def _optional_revision_from_dict(value: object) -> _models.SkillRevision | None:
+    return None if value is None else _models.skill_revision_from_dict(value)
 
 
 def _text_list(value: object, name: str) -> list[str]:

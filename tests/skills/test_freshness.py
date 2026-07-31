@@ -18,9 +18,9 @@ from skill.evolution.records import (
 )
 from skill.state.events import create_local_event_store
 from skill.disclosure import ProgressiveDisclosureCore
-from skill.evolution.freshness import calculate_skill_freshness
+from skill.evolution.metrics import calculate_skill_freshness
 from skill.evolution.policy import load_evolution_policy
-from skill.evolution.values import SkillRevision
+from skill.evolution.models import SkillRevision
 from support import (
     load_default_evolution_policy,
     write_memory_skill,

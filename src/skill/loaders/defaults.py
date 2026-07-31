@@ -42,7 +42,7 @@ def create_progressive_skill_disclosure(
         and include_freshness
         and "evolution" not in config.agent.disabled_skills
     ):
-        from skill.evolution.freshness import calculate_skill_freshness
+        from skill.evolution.metrics import calculate_skill_freshness
         from skill.evolution.policy import load_evolution_policy
         from skill.evolution.records import read_evaluation_records
 

@@ -6,11 +6,8 @@ from typing import TYPE_CHECKING, cast
 
 from core.provider.chat import Message
 from core.config import AgentConfig
-from skill.evolution.state import (
-    SkillEvolutionState,
-    list_skill_evolutions,
-    read_skill_evolution,
-)
+from skill.evolution.models import SkillEvolutionState
+from skill.evolution.state import list_skill_evolutions, read_skill_evolution
 from core.models import validate_user_id
 from core.state.models import Conversation, RunEvent
 from adapter.conversations import (

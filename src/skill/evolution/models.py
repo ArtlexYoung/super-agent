@@ -1,4 +1,4 @@
-"""Validated values stored by the Skill evolution state machine."""
+"""Validated models stored by the Skill evolution state machine."""
 
 from __future__ import annotations
 

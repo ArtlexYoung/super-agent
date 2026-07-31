@@ -8,7 +8,6 @@ from typing import Callable, cast
 from core.checks import ActionEffect, ActionRequest, ActionRunner, ActionRules
 from skill.evolution.change.files import compare_directory_versions
 from skill.evolution.state import (
-    create_skill_candidate_difference,
     list_skill_evolutions,
     record_skill_candidate_evaluation,
     record_skill_candidate_promoted,
@@ -18,10 +17,11 @@ from skill.evolution.state import (
     require_skill_candidate_can_promote,
     start_manual_skill_evolution,
 )
-from skill.evolution.values import (
+from skill.evolution.models import (
     CandidateEvaluation,
     SkillEvolutionState,
     SkillRevision,
+    create_skill_candidate_difference,
     create_manifest_skill_revision,
 )
 from skill.task.model_calls import TextModel
@@ -59,7 +59,7 @@ from skill.evolution.change.artifacts import (
 )
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.manifest import SkillManifest, calculate_skill_directory_sha256
-from skill.evolution.freshness import calculate_skill_freshness
+from skill.evolution.metrics import calculate_skill_freshness
 from skill.evolution.records import read_evaluation_records
 from skill.evolution.policy import EvolutionPolicy
 from skill.ecosystem.validation import validate_skill_directory, validate_skill_replacement

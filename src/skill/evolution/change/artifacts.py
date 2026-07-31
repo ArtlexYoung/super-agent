@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
-from skill.evolution.values import CandidateEvaluation
+from skill.evolution.models import CandidateEvaluation
 from skill.ecosystem.directory import require_skill_directory_matches
 from skill.evolution.change.candidate import clean_record_id
 from skill.evolution.change.evaluation import (

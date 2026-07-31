@@ -15,7 +15,7 @@ from core.checks import ActionRules
 from skill.disclosure import ProgressiveDisclosureCore, skill_index_to_dict
 from skill.ecosystem.package import SkillPackageManager
 from skill.evolution.change.evaluation import EvaluationCase
-from skill.evolution.freshness import calculate_skill_freshness
+from skill.evolution.metrics import calculate_skill_freshness
 from skill.evolution.records import read_evaluation_records
 from skill.ecosystem.lock import write_skill_lock_file
 from skill.manifest import SkillManifest

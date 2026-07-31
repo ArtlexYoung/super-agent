@@ -91,8 +91,16 @@ class ReleaseShapeTests(unittest.TestCase):
         self.assertIn("src/skill", wheel["only-include"])
 
     def test_removed_evolution_shells_do_not_return(self) -> None:
-        self.assertFalse(Path("src/skill/evolution/service.py").exists())
-        self.assertFalse(Path("src/skill/evolution/change/revision.py").exists())
+        removed = [
+            "src/skill/evolution/evidence.py",
+            "src/skill/evolution/freshness.py",
+            "src/skill/evolution/service.py",
+            "src/skill/evolution/values.py",
+            "src/skill/evolution/change/revision.py",
+        ]
+        self.assertEqual([], [path for path in removed if Path(path).exists()])
+        self.assertTrue(Path("src/skill/evolution/metrics.py").is_file())
+        self.assertTrue(Path("src/skill/evolution/models.py").is_file())
         source = Path("src/skill/evolution/change/manager.py").read_text(
             encoding="utf-8"
         )
@@ -101,6 +109,12 @@ class ReleaseShapeTests(unittest.TestCase):
         )
         self.assertNotIn("def evolve_skill", source)
         self.assertNotIn('add_parser("evolve"', cli_source)
+
+    def test_evolution_models_have_one_import_path(self) -> None:
+        from skill.evolution import state
+
+        self.assertFalse(hasattr(state, "SkillEvolutionState"))
+        self.assertFalse(hasattr(state, "SkillRevision"))
 
     def test_removed_source_layouts_do_not_return(self) -> None:
         removed_paths = [

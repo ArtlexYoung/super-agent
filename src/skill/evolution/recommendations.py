@@ -4,18 +4,18 @@ from __future__ import annotations
 
 import hashlib
 
-from skill.evolution.evidence import (
+from skill.evolution.metrics import (
     EvaluationEvidenceSummary,
     summarize_evaluation_evidence,
 )
-from skill.evolution.state import (
+from skill.evolution.models import (
     SkillEvolutionMetrics,
     SkillEvolutionRecommendation,
     SkillEvolutionState,
-    recommend_skill_evolution,
+    SkillRevision,
 )
+from skill.evolution.state import recommend_skill_evolution
 from skill.state.events import EventStore
-from skill.evolution.values import SkillRevision
 from skill.evolution.records import read_evaluation_records
 from skill.evolution.policy import EvolutionPolicy
 
