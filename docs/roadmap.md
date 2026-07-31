@@ -719,6 +719,16 @@ Status: implemented.
 - Run all three examples offline in the release tests.
 - Remove stale current terminology without rewriting the historical roadmap.
 
+## v0.0.122: Reproducible Release Gate
+
+Status: implemented.
+
+- Verify multi-user isolation on every dependency-free persistent backend.
+- Verify stateless execution has no hidden writes or optional-domain imports.
+- Verify Provider and storage failures never trigger hidden fallback behavior.
+- Verify Skill updates retain separate propose, test, apply, and undo stages.
+- Enforce a lower Python source file and line count than `v0.0.114` before release.
+
 ## Release Gate
 
 The project will not move to `0.1.x` because of feature count. The gate is a reproducible

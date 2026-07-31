@@ -17,6 +17,8 @@ MAX_FUNCTION_LINES = 100
 MAX_CONTROL_FLOW_COMPLEXITY = 10
 MAX_SOURCE_LINES = 600
 MAX_DIRECTORY_CHILDREN = 10
+V0_0_114_PYTHON_FILES = 82
+V0_0_114_PYTHON_LINES = 16_325
 CONTROL_FLOW_NODES = (
     ast.If,
     ast.For,
@@ -212,6 +214,15 @@ class ReleaseShapeTests(unittest.TestCase):
         ]
 
         self.assertEqual([], [path for path in removed if Path(path).exists()])
+
+    def test_release_reduces_python_source_shape_since_v0_0_114(self) -> None:
+        sources = list(Path("src").rglob("*.py"))
+        line_count = sum(
+            len(path.read_text(encoding="utf-8").splitlines()) for path in sources
+        )
+
+        self.assertLess(len(sources), V0_0_114_PYTHON_FILES)
+        self.assertLess(line_count, V0_0_114_PYTHON_LINES)
 
     def test_removed_runtime_contracts_do_not_return(self) -> None:
         source = "\n".join(

@@ -2,17 +2,21 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, field, replace
 from time import perf_counter
 from typing import Callable
 
+from core.checks import ActionRules
+from core.config import AgentConfig
+from core.events import StorageBackend
 from core.models import LOCAL_USER_ID, RunIdentity, RunResult, Task
-from core.runtime.context import RuntimeContext
+from core.provider.pool import ProviderPool
+from core.provider.secrets import UserSecretResolver
 from core.runtime.loop import ModelLoop, list_run_actions
 from core.runtime.model_calls import estimate_text_tokens
 from core.runtime.run import Run
 from core.skill_use.defaults import create_skills
-from core.skill_use.handlers import SkillCollection
+from core.skill_use.handlers import SkillCollection, SkillHandlers
 from core.skill_use.models import ModelProfile, read_model_profiles
 from core.state.event_log import RunEventLog
 from core.state.models import RunEvent
@@ -20,6 +24,22 @@ from core.state.subscribers import (
     RuntimeEventSubscriberError,
     RuntimeEventSubscribers,
 )
+
+
+@dataclass
+class RuntimeContext:
+    """Dependencies shared by one Agent and its task Runtime."""
+
+    config: AgentConfig
+    provider_pool: ProviderPool
+    skill_handlers: SkillHandlers
+    storage: StorageBackend | None
+    create_action_rules: Callable[[], ActionRules] | None
+    user_secrets: UserSecretResolver
+    code_model_profiles: tuple[ModelProfile, ...] = ()
+    event_subscribers: RuntimeEventSubscribers = field(
+        default_factory=RuntimeEventSubscribers
+    )
 
 
 class Runtime:

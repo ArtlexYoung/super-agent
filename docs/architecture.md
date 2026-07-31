@@ -91,3 +91,15 @@ Learning is outside the task's implicit completion path. A caller starts it expl
 with `user.runs.learn(run_id)`, and it never changes active content. Agent-owned or
 user-authorized Skills can be proposed, tested, applied, and undone through four separate
 operations. Proposal and testing do not modify the active Skill.
+
+## v0.0.122 Release Gate
+
+The release suite verifies the claims above as behavior:
+
+- JSONL and SQLite pass the same conversation, memory, run, disclosure, and Skill change
+  isolation checks for multiple users and Agents.
+- Stateless runs do not create storage or import optional state and update modules.
+- Disabled storage and failed Providers raise their original errors without substitution.
+- Skill changes remain four separate propose, test, apply, and undo operations.
+- Python source has fewer files and lines than `v0.0.114`, while file, function,
+  complexity, and directory-size limits remain enforced.
