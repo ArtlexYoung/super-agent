@@ -132,6 +132,7 @@ React 客户端、CopilotKit 示例与 AG-UI 接口位于 `http://127.0.0.1:8765
 
 - [快速开始](docs/getting-started.md)
 - [架构](docs/architecture.md)
+- [五文件源码导览](docs/source-tour.md)
 - [Skill 与渐进式披露](docs/skills.md)
 - [Skill loader 与 MCP](docs/skill-loaders.md)
 - [配置与存储](docs/configuration.md)

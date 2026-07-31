@@ -143,6 +143,7 @@ The React client, CopilotKit example, and AG-UI endpoint are served at
 
 - [Getting started](docs/getting-started.md)
 - [Architecture](docs/architecture.md)
+- [Five-file source tour](docs/source-tour.md)
 - [Skills and progressive disclosure](docs/skills.md)
 - [Skill loaders and MCP](docs/skill-loaders.md)
 - [Configuration and storage](docs/configuration.md)

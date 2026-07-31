@@ -2,11 +2,43 @@ from __future__ import annotations
 
 import unittest
 
-from core.provider.chat import MockProvider
-from core.runtime import ModelCall, Runtime
+from core.provider.chat import MockProvider, ModelResponse, ToolCall
+from core.runtime import Actions, Final, ModelCall, Runtime, read_model_turn
 
 
 class CoreRuntimeTests(unittest.TestCase):
+    def test_provider_text_becomes_one_final_turn(self) -> None:
+        self.assertEqual(
+            Final("finished"),
+            read_model_turn(ModelResponse("finished", [], "completed")),
+        )
+
+    def test_provider_tool_calls_become_explicit_actions(self) -> None:
+        turn = read_model_turn(
+            ModelResponse(
+                "I will inspect the Skill.",
+                [ToolCall("call-1", "read_skill", {"skill_id": "prompt:common"})],
+                "tool_calls",
+            )
+        )
+
+        self.assertEqual(
+            Actions(
+                (
+                    # Provider-specific calls stop at this normalized boundary.
+                    turn.items[0],
+                ),
+                "I will inspect the Skill.",
+            ),
+            turn,
+        )
+        self.assertEqual("read_skill", turn.items[0].name)
+        self.assertEqual({"skill_id": "prompt:common"}, turn.items[0].arguments)
+
+    def test_empty_provider_turn_fails_instead_of_degrading(self) -> None:
+        with self.assertRaisesRegex(ValueError, "neither final text nor actions"):
+            read_model_turn(ModelResponse("", [], "completed"))
+
     def test_runtime_calls_provider_without_skill_or_state_objects(self) -> None:
         events: list[tuple[str, dict[str, object]]] = []
         call = ModelCall(

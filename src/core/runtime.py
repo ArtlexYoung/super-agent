@@ -20,6 +20,41 @@ EventWriter = Callable[[str, dict[str, object]], object]
 
 
 @dataclass(frozen=True)
+class Action:
+    """One explicit action selected by a model."""
+
+    call_id: str
+    name: str
+    arguments: dict[str, object]
+
+    def __post_init__(self) -> None:
+        if not self.name.strip():
+            raise ValueError("model action name cannot be empty")
+
+
+@dataclass(frozen=True)
+class Final:
+    """A model turn that completes the run."""
+
+    text: str
+
+
+@dataclass(frozen=True)
+class Actions:
+    """A model turn that requests one or more explicit actions."""
+
+    items: tuple[Action, ...]
+    text: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.items:
+            raise ValueError("model action turn cannot be empty")
+
+
+ModelTurn = Final | Actions
+
+
+@dataclass(frozen=True)
 class ModelCall:
     """Everything the Runtime needs for exactly one Provider call."""
 
@@ -94,6 +129,22 @@ class Runtime:
 
 def estimate_text_tokens(text: str) -> int:
     return 0 if not text else math.ceil(len(text) / 4)
+
+
+def read_model_turn(response: ModelResponse) -> ModelTurn:
+    """Normalize every Provider response into the Runtime turn contract."""
+
+    if response.tool_calls:
+        return Actions(
+            tuple(
+                Action(call.id, call.name, dict(call.arguments))
+                for call in response.tool_calls
+            ),
+            response.text,
+        )
+    if not response.text.strip():
+        raise ValueError("model returned neither final text nor actions")
+    return Final(response.text)
 
 
 def _call_metrics(
