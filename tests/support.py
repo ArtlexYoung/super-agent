@@ -134,12 +134,12 @@ version = "0.1.0"
 instructions = "SKILL.md"
 
 [configuration]
-organization_candidate_limit = 20
+recall_limit = 20
 """.strip(),
         encoding="utf-8",
     )
     (skill_dir / "SKILL.md").write_text(
-        "Keep temporary memory local to this conversation and keep only durable abstractions in long-term memory.",
+        "Use conversation messages as short-term memory and persist only durable abstractions.",
         encoding="utf-8",
     )
 

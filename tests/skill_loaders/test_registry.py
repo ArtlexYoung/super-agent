@@ -24,7 +24,7 @@ class SkillLoadersTests(unittest.TestCase):
         )
         self.assertTrue(all(len(item.content_sha256) == 64 for item in descriptions))
         memory = next(item for item in descriptions if item.skill_type == "memory")
-        self.assertEqual(("storage", "text_model"), memory.required_services)
+        self.assertEqual(("storage",), memory.required_services)
 
     def test_registry_rejects_missing_and_cyclic_dependencies(self) -> None:
         missing = SkillLoaders()

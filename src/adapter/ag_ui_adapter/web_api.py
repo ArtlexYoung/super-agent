@@ -111,7 +111,7 @@ class WebAPI:
                 asdict(item) for item in self.user.conversations.list()
             ],
             "runs": [asdict(item) for item in store.list_runs(50)],
-            "memory": store.memory.list_all_memory_items(),
+            "memory": store.memory.list_items(),
             "subagents": _subagent_tree(
                 self.agent,
                 self.user_id,
@@ -131,28 +131,23 @@ class WebAPI:
         item = next(
             (
                 candidate
-                for candidate in store.memory.list_all_memory_items()
+                for candidate in store.memory.list_items()
                 if candidate["item_id"] == item_id
             ),
             None,
         )
         if item is None:
             raise KeyError(f"active memory item not found: {item_id}")
-        conversation_id = item["conversation_id"]
         self.agent.runtime.execute_management_action(
             self.user_id,
             ActionRequest.create(
                 "user:web-memory",
-                f"memory:active:{item_id}",
+                f"memory:long-term:{item_id}",
                 (ActionEffect.DELETE,),
             ),
-            lambda: store.memory.forget_memory_items(
+            lambda: store.memory.forget_items(
                 [item_id],
                 "forgotten from web interface",
-                memory_type=str(item["memory_type"]),
-                conversation_id=(
-                    conversation_id if isinstance(conversation_id, str) else None
-                ),
             ),
         )
 

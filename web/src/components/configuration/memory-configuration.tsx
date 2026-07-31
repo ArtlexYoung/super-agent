@@ -1,4 +1,4 @@
-import { Brain, Clock3, MessagesSquare, Trash2 } from "lucide-react"
+import { Brain, Clock3, Trash2 } from "lucide-react"
 
 import { HelpTooltip } from "@/components/shared/help-tooltip"
 import {
@@ -15,22 +15,10 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty"
-import type { Conversation, MemoryItem } from "@/lib/types"
+import type { MemoryItem } from "@/lib/types"
 
 interface MemoryConfigurationProps {
   memory: MemoryItem[]
-  conversations: Conversation[]
-  busy: boolean
-  onForget: (itemId: string) => void
-}
-
-interface MemoryGroupProps {
-  memoryType: MemoryItem["memory_type"]
-  title: string
-  description: string
-  help: string
-  items: MemoryItem[]
-  conversations: Map<string, string>
   busy: boolean
   onForget: (itemId: string) => void
 }
@@ -44,92 +32,27 @@ const dateFormatter = new Intl.DateTimeFormat("zh-CN", {
 })
 
 export function MemoryConfiguration(props: MemoryConfigurationProps) {
-  const temporary = props.memory.filter(
-    (item) => item.memory_type === "temporary",
-  )
-  const longTerm = props.memory.filter(
-    (item) => item.memory_type === "long_term",
-  )
-  const conversations = new Map(
-    props.conversations.map((item) => [
-      item.conversation_id,
-      item.title || "未命名会话",
-    ]),
-  )
-
   return (
     <section className="configuration-section">
       <div className="configuration-section-header">
         <div>
-          <h2>活动记忆</h2>
-          <p>{props.memory.length} 条当前可管理内容</p>
+          <h2>长期记忆</h2>
+          <p>{props.memory.length} 条可在后续会话中回忆的内容</p>
         </div>
-        <HelpTooltip label="临时记忆与会话严格绑定。整理长期记忆时可以查看当前会话的临时内容，并通过显式操作提升其中的抽象信息。" />
+        <HelpTooltip label="当前会话消息就是短期记忆，不写入记忆存储。这里只保存抽象、关键、稳定或习惯性的长期信息。模型可在回忆时显式整理或遗忘它们。" />
       </div>
-      <div className="flex flex-col gap-10">
-        <MemoryGroup
-          memoryType="temporary"
-          title="临时记忆"
-          description={`${temporary.length} 条，仅用于各自所属的当前会话`}
-          help="用于任务细节和当前上下文。其他会话无法访问；长期整理器可以读取当前会话内容并显式提升抽象信息，原临时条目仍会保留。"
-          items={temporary}
-          conversations={conversations}
-          busy={props.busy}
-          onForget={props.onForget}
-        />
-        <MemoryGroup
-          memoryType="long_term"
-          title="长期记忆"
-          description={`${longTerm.length} 条，可在后续会话中回忆`}
-          help="只应保存抽象、关键、重要、稳定或习惯性的内容。整理时可查看当前会话的临时记忆，并显式提升、合并、替换、归档或遗忘。"
-          items={longTerm}
-          conversations={conversations}
-          busy={props.busy}
-          onForget={props.onForget}
-        />
-      </div>
-    </section>
-  )
-}
-
-function MemoryGroup(props: MemoryGroupProps) {
-  const temporary = props.memoryType === "temporary"
-  const Icon = temporary ? MessagesSquare : Brain
-
-  return (
-    <div>
-      <div className="mb-3 flex items-start justify-between gap-4">
-        <div>
-          <h3 className="text-sm font-semibold">{props.title}</h3>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {props.description}
-          </p>
-        </div>
-        <HelpTooltip label={props.help} />
-      </div>
-      {props.items.length ? (
+      {props.memory.length ? (
         <div className="memory-list">
-          {props.items.map((item) => (
+          {props.memory.map((item) => (
             <article key={item.item_id} className="memory-row">
               <div className="memory-icon">
-                <Icon />
+                <Brain />
               </div>
               <div className="min-w-0 flex-1">
                 <p className="text-sm leading-6">{item.text}</p>
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                  <Badge variant="outline">
-                    {item.memory_type === "temporary" ? "临时" : "长期"}
-                  </Badge>
+                  <Badge variant="outline">长期</Badge>
                   <Badge variant="outline">{scopeLabel(item.scope)}</Badge>
-                  {item.conversation_id ? (
-                    <span>
-                      会话：
-                      {conversationLabel(
-                        item.conversation_id,
-                        props.conversations,
-                      )}
-                    </span>
-                  ) : null}
                   <span className="inline-flex items-center gap-1">
                     <Clock3 className="size-3" />
                     {formatDate(item.created_at)}
@@ -152,11 +75,11 @@ function MemoryGroup(props: MemoryGroupProps) {
       ) : (
         <Empty className="min-h-28 border border-dashed">
           <EmptyHeader>
-            <EmptyTitle>暂无{props.title}</EmptyTitle>
+            <EmptyTitle>暂无长期记忆</EmptyTitle>
           </EmptyHeader>
         </Empty>
       )}
-    </div>
+    </section>
   )
 }
 
@@ -209,21 +132,11 @@ function scopeLabel(scope: string): string {
   return labels[scope] || scope
 }
 
-function conversationLabel(
-  conversationId: string,
-  conversations: Map<string, string>,
-): string {
-  const title = conversations.get(conversationId)
-  return title
-    ? `${title} · ${shortId(conversationId)}`
-    : shortId(conversationId)
-}
-
 function formatDate(value: string): string {
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? value : dateFormatter.format(date)
 }
 
 function shortId(value: string): string {
-  return value.length > 12 ? value.slice(0, 12) : value
+  return value.length > 14 ? `${value.slice(0, 8)}...${value.slice(-4)}` : value
 }

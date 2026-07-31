@@ -16,7 +16,7 @@ from adapter.conversations import (
 )
 from core.events import StorageBackend, StorageEventQuery
 from skill.state.events import EventStore
-from skill.state.memory_service import MiniMemory
+from skill.state.memory import Memory
 from skill.evolution.values import SkillRevision
 
 
@@ -205,7 +205,7 @@ def _run_multiuser_isolation_checks(
 
     _write_isolated_domain_state(store_a, "alice")
     _write_isolated_domain_state(store_b, "bob")
-    MiniMemory(subagent_store).add_long_term_memory("subagent-only")
+    Memory(subagent_store).remember_long_term("subagent-only")
 
     checks = list(
         dict.fromkeys(
@@ -243,7 +243,7 @@ def _write_isolated_domain_state(store: EventStore, marker: str) -> None:
         run_id=f"{marker}-run",
         run_result={"run_id": f"{marker}-run"},
     )
-    MiniMemory(store).add_long_term_memory(f"{marker}-only")
+    Memory(store).remember_long_term(f"{marker}-only")
     store.memory.record_usage_habits("direct", [f"{marker}-skill"])
     start_manual_skill_evolution(
         store,
@@ -272,7 +272,7 @@ def _require_conversation_isolation(store: EventStore, marker: str) -> str:
 
 
 def _require_memory_isolation(store: EventStore, marker: str) -> str:
-    if [item.text for item in MiniMemory(store).list_memory_items()] != [
+    if [item.text for item in Memory(store).list_long_term()] != [
         f"{marker}-only"
     ]:
         raise AssertionError("memory user isolation failed")
@@ -314,9 +314,9 @@ def _require_agent_isolation(
     main_store: EventStore,
     subagent_store: EventStore,
 ) -> str:
-    main_texts = [item.text for item in MiniMemory(main_store).list_memory_items()]
+    main_texts = [item.text for item in Memory(main_store).list_long_term()]
     subagent_texts = [
-        item.text for item in MiniMemory(subagent_store).list_memory_items()
+        item.text for item in Memory(subagent_store).list_long_term()
     ]
     if "subagent-only" in main_texts or subagent_texts != ["subagent-only"]:
         raise AssertionError("Agent storage isolation failed")

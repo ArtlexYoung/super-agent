@@ -1,238 +1,98 @@
-"""Event-backed memory storage with strict lifetime boundaries."""
+"""Long-term memory with explicit, event-backed changes."""
 
 from __future__ import annotations
 
-import hashlib
+import re
+from collections import Counter
 from collections.abc import Iterable
-from typing import TYPE_CHECKING
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Callable
+from uuid import uuid4
 
+from core.checks import ActionEffect, ActionRequest
+from core.models import RunIdentity
 from core.state.views import usage_habits_from_events
 from core.events import StorageEvent
+from skill.disclosure import SkillDisclosure
 
 if TYPE_CHECKING:
     from skill.state.events import EventStore
 
 
-LONG_TERM_MEMORY = "long_term"
-TEMPORARY_MEMORY = "temporary"
-MEMORY_TYPES = frozenset({LONG_TERM_MEMORY, TEMPORARY_MEMORY})
-MEMORY_ORGANIZATION_EVENTS = frozenset(
-    {
-        "memory.organization.preparing",
-        "memory.organization.prepared",
-        "memory.organization.applied",
-        "memory.organization.failed",
-    }
-)
+MEMORY_STREAM = "long-term"
+DEFAULT_RECALL_LIMIT = 20
+MemoryActionRunner = Callable[[ActionRequest, Callable[[], object]], object]
+
+
+@dataclass(frozen=True)
+class MemorySettings:
+    default_scope: str = "agent"
+    recall_limit: int = DEFAULT_RECALL_LIMIT
+    include_in_prompt: bool = True
+    include_usage_habits: bool = True
+    instructions: str = ""
+
+
+@dataclass(frozen=True)
+class MemoryItem:
+    item_id: str
+    text: str
+    scope: str
+    source_run_id: str
+    created_at: str
 
 
 class RuntimeMemoryStore:
-    """Own active memory views while preserving immutable events."""
+    """Rebuild the active long-term memory view from immutable events."""
 
     def __init__(self, store: EventStore) -> None:
         self._store = store
-        self._known_streams_checked = False
 
-    def add_memory_item(self, item: dict[str, object]) -> None:
-        self._require_known_memory_streams()
-        validated = _validate_memory_item(item)
-        stream_id = _memory_stream_id_for_item(validated)
+    def add_item(self, item: dict[str, object]) -> None:
+        validated = _validate_stored_item(item)
         self._store.append_event(
             "memory",
-            stream_id,
-            "memory.added",
+            MEMORY_STREAM,
+            "memory.remembered",
             data={"item": validated},
         )
 
-    def list_memory_items(
-        self,
-        memory_type: str,
-        conversation_id: str | None = None,
-        *,
-        scope: str | None = None,
-    ) -> list[dict[str, object]]:
-        self._require_known_memory_streams()
-        stream_id = memory_stream_id(memory_type, conversation_id)
-        active = _replay_memory(
-            self._store.read_events("memory", stream_id),
-            stream_id,
-        )
-        return _sort_memory_items(
+    def list_items(self, scope: str | None = None) -> list[dict[str, object]]:
+        active = _replay_memory(self._events())
+        return _sort_items(
             item
             for item in active.values()
             if scope is None or item["scope"] == scope
         )
 
-    def list_all_memory_items(self) -> list[dict[str, object]]:
-        self._require_known_memory_streams()
-        grouped: dict[str, list[StorageEvent]] = {}
-        for event in self._store.read_events("memory"):
-            grouped.setdefault(event.stream_id, []).append(event)
-        active: list[dict[str, object]] = []
-        for stream_id, events in grouped.items():
-            active.extend(_replay_memory(events, stream_id).values())
-        return _sort_memory_items(active)
-
-    def forget_memory_items(
-        self,
-        item_ids: list[str],
-        reason: str = "",
-        *,
-        memory_type: str,
-        conversation_id: str | None = None,
-    ) -> None:
-        self._require_known_memory_streams()
-        stream_id = memory_stream_id(memory_type, conversation_id)
-        selected = self._require_active_memory_items(item_ids, stream_id)
+    def forget_items(self, item_ids: list[str], reason: str = "") -> None:
+        selected = self._require_active_items(item_ids)
         self._store.append_event(
             "memory",
-            stream_id,
+            MEMORY_STREAM,
             "memory.forgotten",
             data={"item_ids": selected, "reason": reason.strip()},
         )
 
-    def merge_memory_items(
+    def organize_items(
         self,
-        source_item_ids: list[str],
-        replacement: dict[str, object],
-        reason: str = "",
-    ) -> None:
-        self._replace_memory_items(
-            "memory.merged",
-            source_item_ids,
-            replacement,
-            reason,
+        operations: list[dict[str, object]],
+        source_run_id: str,
+    ) -> list[dict[str, object]]:
+        active = _replay_memory(self._events())
+        changes, replacements = _prepare_organization(
+            operations,
+            active,
+            source_run_id,
         )
-
-    def supersede_memory_items(
-        self,
-        source_item_ids: list[str],
-        replacement: dict[str, object],
-        reason: str = "",
-    ) -> None:
-        self._replace_memory_items(
-            "memory.superseded",
-            source_item_ids,
-            replacement,
-            reason,
-        )
-
-    def promote_temporary_memory_items_to_long_term(
-        self,
-        source_item_ids: list[str],
-        source_conversation_id: str,
-        replacement: dict[str, object],
-        reason: str = "",
-    ) -> None:
-        self._require_known_memory_streams()
-        conversation_id = _required_conversation_id(source_conversation_id)
-        source_stream = memory_stream_id(TEMPORARY_MEMORY, conversation_id)
-        selected = sorted(
-            self._require_active_memory_items(source_item_ids, source_stream)
-        )
-        source_items = _replay_memory(
-            self._store.read_events("memory", source_stream),
-            source_stream,
-        )
-        validated = _validate_memory_item(replacement)
-        if _memory_stream_id_for_item(validated) != LONG_TERM_MEMORY:
-            raise ValueError("promoted memory must be long-term memory")
-        if {source_items[item_id]["scope"] for item_id in selected} != {
-            validated["scope"]
-        }:
-            raise ValueError("promoted memory must preserve the temporary memory scope")
-        already_promoted = self.find_already_promoted_temporary_item_ids(
-            selected,
-            conversation_id,
-        )
-        if already_promoted:
-            names = ", ".join(sorted(already_promoted))
-            raise ValueError(f"temporary memory was already promoted: {names}")
-        event_data = {
-            "source_item_ids": selected,
-            "source_conversation_id": conversation_id,
-            "item": validated,
-            "reason": reason.strip(),
-        }
-        event_id = _promotion_event_id(
-            self._store.agent_name,
-            conversation_id,
-            selected,
-        )
-        event = self._store.append_event(
-            "memory",
-            LONG_TERM_MEMORY,
-            "memory.promoted",
-            data=event_data,
-            event_id=event_id,
-        )
-        if (
-            event.event_id != event_id
-            or event.agent_name != self._store.agent_name
-            or event.stream_id != LONG_TERM_MEMORY
-            or event.event_type != "memory.promoted"
-            or event.data != event_data
-        ):
-            raise ValueError(
-                "conflicting long-term promotion for temporary memory sources"
-            )
-
-    def find_already_promoted_temporary_item_ids(
-        self,
-        item_ids: list[str],
-        conversation_id: str,
-    ) -> set[str]:
-        self._require_known_memory_streams()
-        selected = set(item_ids)
-        if not selected:
-            return set()
-        source_conversation_id = _required_conversation_id(conversation_id)
-        promoted: set[str] = set()
-        for event in self._store.read_events("memory", LONG_TERM_MEMORY):
-            if event.event_type != "memory.promoted":
-                continue
-            source_ids, recorded_conversation_id, _ = _validate_memory_promotion(
-                event.data
-            )
-            if recorded_conversation_id == source_conversation_id:
-                promoted.update(selected.intersection(source_ids))
-        return promoted
-
-    def archive_memory_items(
-        self,
-        item_ids: list[str],
-        reason: str = "",
-        *,
-        memory_type: str,
-        conversation_id: str | None = None,
-    ) -> None:
-        self._require_known_memory_streams()
-        stream_id = memory_stream_id(memory_type, conversation_id)
-        selected = self._require_active_memory_items(item_ids, stream_id)
         self._store.append_event(
             "memory",
-            stream_id,
-            "memory.archived",
-            data={"item_ids": selected, "reason": reason.strip()},
+            MEMORY_STREAM,
+            "memory.organized",
+            data={"operations": changes},
         )
-
-    def record_memory_organization(
-        self,
-        event_type: str,
-        data: dict[str, object],
-        *,
-        memory_type: str,
-        conversation_id: str | None = None,
-    ) -> None:
-        self._require_known_memory_streams()
-        if event_type not in MEMORY_ORGANIZATION_EVENTS:
-            raise ValueError(f"unknown memory organization event: {event_type}")
-        self._store.append_event(
-            "memory",
-            memory_stream_id(memory_type, conversation_id),
-            event_type,
-            data=data,
-        )
+        return replacements
 
     def record_usage_habits(self, workflow: str, skills: list[str]) -> None:
         self._store.append_event(
@@ -243,226 +103,450 @@ class RuntimeMemoryStore:
         )
 
     def read_usage_habits(self) -> dict[str, object]:
-        return usage_habits_from_events(
-            self._store.read_events("habit", "usage")
-        )
+        return usage_habits_from_events(self._store.read_events("habit", "usage"))
 
-    def _replace_memory_items(
-        self,
-        event_type: str,
-        source_item_ids: list[str],
-        replacement: dict[str, object],
-        reason: str,
-    ) -> None:
-        self._require_known_memory_streams()
-        validated = _validate_memory_item(replacement)
-        stream_id = _memory_stream_id_for_item(validated)
-        selected = self._require_active_memory_items(source_item_ids, stream_id)
-        self._store.append_event(
-            "memory",
-            stream_id,
-            event_type,
-            data={
-                "source_item_ids": selected,
-                "item": validated,
-                "reason": reason.strip(),
-            },
-        )
+    def _events(self) -> list[StorageEvent]:
+        events = self._store.read_events("memory")
+        unknown = sorted({event.stream_id for event in events if event.stream_id != MEMORY_STREAM})
+        if unknown:
+            raise ValueError("unknown memory streams: " + ", ".join(unknown))
+        return events
 
-    def _require_active_memory_items(
-        self,
-        item_ids: list[str],
-        stream_id: str,
-    ) -> list[str]:
-        selected = list(dict.fromkeys(item_ids))
-        if not selected:
-            raise ValueError("memory operation requires at least one item")
-        active = _replay_memory(
-            self._store.read_events("memory", stream_id),
-            stream_id,
-        )
+    def _require_active_items(self, item_ids: list[str]) -> list[str]:
+        selected = _clean_item_ids(item_ids)
+        active = _replay_memory(self._events())
         missing = sorted(set(selected) - set(active))
         if missing:
-            raise KeyError(f"active memory items not found: {', '.join(missing)}")
+            raise KeyError("active long-term memory not found: " + ", ".join(missing))
         return selected
 
-    def _require_known_memory_streams(self) -> None:
-        if self._known_streams_checked:
+
+class UsageHabits:
+    def __init__(
+        self,
+        store: RuntimeMemoryStore,
+        execute_action: MemoryActionRunner | None,
+    ) -> None:
+        self.store = store
+        self.execute_action = execute_action
+
+    def record_agent_run(self, workflow: str, skills: list[str]) -> None:
+        change = lambda: self.store.record_usage_habits(workflow, skills)
+        if self.execute_action is None:
+            change()
             return
-        for event in self._store.read_events("memory"):
-            _validate_memory_stream_id(event.stream_id)
-        self._known_streams_checked = True
+        self.execute_action(
+            ActionRequest.create(
+                "agent:memory",
+                "memory:habits",
+                (ActionEffect.UPDATE,),
+                argument_names=("workflow", "skills"),
+            ),
+            change,
+        )
+
+    def read_usage_habits(self) -> dict[str, object]:
+        return self.store.read_usage_habits()
+
+    def build_prompt_instruction(self) -> str:
+        data = self.read_usage_habits()
+        if int(data["total_runs"]) == 0:
+            return ""
+        lines = [f"- total runs: {data['total_runs']}"]
+        lines.extend(_count_lines("workflow", data["workflows"]))
+        lines.extend(_count_lines("skill", data["skills"]))
+        return "Usage habits:\n" + "\n".join(lines)
 
 
-def validate_memory_type(value: str) -> str:
-    if not isinstance(value, str):
-        raise TypeError("memory_type must be a string")
-    selected = value.strip().lower()
-    if selected not in MEMORY_TYPES:
-        names = ", ".join(sorted(MEMORY_TYPES))
-        raise ValueError(f"memory_type must be one of: {names}")
-    return selected
+class Memory:
+    """Expose only durable memory; conversation messages are short-term memory."""
+
+    def __init__(
+        self,
+        store: EventStore,
+        identity: RunIdentity | None = None,
+        settings: MemorySettings | None = None,
+        *,
+        execute_action: MemoryActionRunner | None = None,
+    ) -> None:
+        if identity is not None and execute_action is None:
+            raise ValueError("Runtime memory requires an action executor")
+        self.store = store
+        self.identity = identity
+        self.settings = settings or MemorySettings()
+        self.usage_habits = UsageHabits(store.memory, execute_action)
+        self.execute_action = execute_action
+
+    def remember_long_term(
+        self,
+        text: str,
+        scope: str | None = None,
+        source_run_id: str = "",
+    ) -> MemoryItem:
+        item = MemoryItem(
+            item_id=f"memory-{uuid4().hex}",
+            text=_clean_text(text),
+            scope=_clean_scope(scope or self.settings.default_scope),
+            source_run_id=self._source_run_id(source_run_id),
+            created_at=_utc_now(),
+        )
+        self._run_change(
+            (ActionEffect.CREATE,),
+            [item.item_id],
+            lambda: self.store.memory.add_item(asdict(item)),
+        )
+        return item
+
+    def list_long_term(self, scope: str | None = None) -> list[MemoryItem]:
+        selected_scope = None if scope is None else _clean_scope(scope)
+        return [
+            _item_from_dict(item)
+            for item in self.store.memory.list_items(selected_scope)
+        ]
+
+    def recall_long_term(
+        self,
+        query: str,
+        scope: str | None = None,
+        limit: int | None = None,
+    ) -> list[MemoryItem]:
+        text = _clean_text(query)
+        selected_scope = _clean_scope(scope or self.settings.default_scope)
+        result_limit = self.settings.recall_limit if limit is None else _positive_limit(limit)
+        query_terms = Counter(_tokenize(text))
+        ranked = [
+            (_score_text(text, query_terms, item.text), item)
+            for item in self.list_long_term(selected_scope)
+        ]
+        ranked = [pair for pair in ranked if pair[0] > 0]
+        ranked.sort(
+            key=lambda pair: (pair[0], pair[1].created_at, pair[1].item_id),
+            reverse=True,
+        )
+        return [item for _, item in ranked[:result_limit]]
+
+    def organize_long_term(
+        self,
+        operations: list[dict[str, object]],
+    ) -> list[MemoryItem]:
+        item_ids = _organization_item_ids(operations)
+        replacements = self._run_change(
+            (ActionEffect.CREATE, ActionEffect.UPDATE, ActionEffect.DELETE),
+            item_ids,
+            lambda: self.store.memory.organize_items(
+                operations,
+                self._source_run_id(""),
+            ),
+        )
+        return [_item_from_dict(item) for item in replacements]
+
+    def forget_long_term(self, item_id: str, reason: str = "") -> None:
+        selected = _clean_item_id(item_id)
+        self._run_change(
+            (ActionEffect.DELETE,),
+            [selected],
+            lambda: self.store.memory.forget_items([selected], reason),
+        )
+
+    def build_prompt_instruction(self, query: str = "") -> str:
+        sections = [self.settings.instructions]
+        if self.settings.include_in_prompt:
+            items = (
+                self.recall_long_term(query)
+                if query.strip()
+                else self.list_long_term(self.settings.default_scope)[: self.settings.recall_limit]
+            )
+            if items:
+                sections.append("Long-term memory:\n" + "\n".join(f"- {item.text}" for item in items))
+        if self.settings.include_usage_habits:
+            sections.append(self.usage_habits.build_prompt_instruction())
+        return "\n\n".join(section for section in sections if section)
+
+    def _run_change(
+        self,
+        effects: tuple[ActionEffect, ...],
+        item_ids: list[str],
+        change: Callable[[], object],
+    ) -> object:
+        if self.execute_action is None:
+            return change()
+        return self.execute_action(
+            ActionRequest.create(
+                "agent:memory",
+                "memory:long-term:" + ",".join(item_ids),
+                effects,
+                argument_names=("item_ids",),
+            ),
+            change,
+        )
+
+    def _source_run_id(self, source_run_id: str) -> str:
+        selected = source_run_id.strip()
+        if selected:
+            return selected
+        return "" if self.identity is None else self.identity.run_id
 
 
-def memory_stream_id(memory_type: str, conversation_id: str | None = None) -> str:
-    selected_type = validate_memory_type(memory_type)
-    if selected_type == LONG_TERM_MEMORY:
-        if conversation_id is not None:
-            raise ValueError("long-term memory cannot have a conversation_id")
-        return LONG_TERM_MEMORY
-    return f"{TEMPORARY_MEMORY}:{_required_conversation_id(conversation_id)}"
-
-
-def _memory_stream_id_for_item(item: dict[str, object]) -> str:
-    conversation_id = item["conversation_id"]
-    return memory_stream_id(
-        str(item["memory_type"]),
-        conversation_id if isinstance(conversation_id, str) else None,
+def create_memory_from_skill(
+    disclosure: SkillDisclosure,
+    store: EventStore,
+    identity: RunIdentity | None = None,
+    *,
+    execute_action: MemoryActionRunner | None = None,
+) -> Memory:
+    return Memory(
+        store,
+        identity,
+        read_memory_settings_from_skill(disclosure),
+        execute_action=execute_action,
     )
 
 
-def _replay_memory(
-    events: list[StorageEvent],
-    stream_id: str,
-) -> dict[str, dict[str, object]]:
-    _validate_memory_stream_id(stream_id)
+def read_memory_settings_from_skill(disclosure: SkillDisclosure) -> MemorySettings:
+    manifest = disclosure.read_manifest()
+    if manifest.skill_type != "memory":
+        raise ValueError(f"skill is not memory: {manifest.name}")
+    configuration = disclosure.read_configuration().content
+    allowed = {"default_scope", "recall_limit", "include_in_prompt", "include_usage_habits"}
+    unknown = sorted(set(configuration) - allowed)
+    if unknown:
+        raise ValueError("unknown memory configuration fields: " + ", ".join(unknown))
+    instructions = disclosure.read_instructions().content.strip()
+    if not instructions:
+        raise ValueError("memory Skill instructions cannot be empty")
+    return MemorySettings(
+        default_scope=_clean_scope(_read_string(configuration, "default_scope", "agent")),
+        recall_limit=_positive_limit(configuration.get("recall_limit", DEFAULT_RECALL_LIMIT)),
+        include_in_prompt=_read_bool(configuration, "include_in_prompt", True),
+        include_usage_habits=_read_bool(configuration, "include_usage_habits", True),
+        instructions=instructions,
+    )
+
+
+def _prepare_organization(
+    operations: list[dict[str, object]],
+    active: dict[str, dict[str, object]],
+    source_run_id: str,
+) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+    if not isinstance(operations, list) or not operations:
+        raise ValueError("memory organization requires at least one operation")
+    used: set[str] = set()
+    changes: list[dict[str, object]] = []
+    replacements: list[dict[str, object]] = []
+    for operation in operations:
+        change, replacement = _prepare_operation(operation, active, used, source_run_id)
+        changes.append(change)
+        if replacement is not None:
+            replacements.append(replacement)
+    return changes, replacements
+
+
+def _prepare_operation(
+    value: dict[str, object],
+    active: dict[str, dict[str, object]],
+    used: set[str],
+    source_run_id: str,
+) -> tuple[dict[str, object], dict[str, object] | None]:
+    if not isinstance(value, dict) or set(value) - {"operation", "item_ids", "text", "reason"}:
+        raise ValueError("memory organization operation has invalid fields")
+    operation = value.get("operation")
+    if operation not in {"merge", "replace", "forget"}:
+        raise ValueError("memory operation must be merge, replace, or forget")
+    item_ids = _clean_item_ids(value.get("item_ids"))
+    if operation == "merge" and len(item_ids) < 2:
+        raise ValueError("memory merge requires at least two items")
+    missing = sorted(set(item_ids) - set(active))
+    if missing:
+        raise KeyError("active long-term memory not found: " + ", ".join(missing))
+    if used.intersection(item_ids):
+        raise ValueError("memory organization cannot reuse an item")
+    used.update(item_ids)
+    reason = value.get("reason", "")
+    if not isinstance(reason, str):
+        raise ValueError("memory organization reason must be a string")
+    replacement = None
+    if operation != "forget":
+        scopes = {str(active[item_id]["scope"]) for item_id in item_ids}
+        if len(scopes) != 1:
+            raise ValueError("memory organization cannot combine scopes")
+        replacement = _new_stored_item(
+            _clean_text(value.get("text")),
+            scopes.pop(),
+            source_run_id,
+        )
+    return {
+        "operation": operation,
+        "item_ids": item_ids,
+        "reason": reason.strip(),
+        "replacement": replacement,
+    }, replacement
+
+
+def _replay_memory(events: list[StorageEvent]) -> dict[str, dict[str, object]]:
     active: dict[str, dict[str, object]] = {}
     for event in sorted(events, key=lambda item: item.position):
-        if event.stream_id != stream_id:
-            raise ValueError("memory replay cannot combine event streams")
-        if event.event_type == "memory.added":
-            item = _validate_memory_item(event.data.get("item"))
-            _require_item_stream(item, stream_id)
-            active[str(item["item_id"])] = item
-        elif event.event_type == "memory.promoted":
-            _, _, item = _validate_memory_promotion(event.data)
-            _require_item_stream(item, stream_id)
+        if event.stream_id != MEMORY_STREAM:
+            raise ValueError(f"unknown memory stream: {event.stream_id}")
+        if event.event_type == "memory.remembered":
+            item = _validate_stored_item(event.data.get("item"))
             active[str(item["item_id"])] = item
         elif event.event_type == "memory.forgotten":
-            _remove_memory_items(active, event.data.get("item_ids", []))
-        elif event.event_type in {"memory.merged", "memory.superseded"}:
-            _remove_memory_items(active, event.data.get("source_item_ids", []))
-            item = _validate_memory_item(event.data.get("item"))
-            _require_item_stream(item, stream_id)
-            active[str(item["item_id"])] = item
-        elif event.event_type == "memory.archived":
-            _remove_memory_items(active, event.data.get("item_ids", []))
-        elif event.event_type not in MEMORY_ORGANIZATION_EVENTS:
+            _remove_items(active, event.data.get("item_ids"))
+        elif event.event_type == "memory.organized":
+            _replay_organization(active, event.data.get("operations"))
+        else:
             raise ValueError(f"unknown memory event type: {event.event_type}")
     return active
 
 
-def _validate_memory_item(value: object) -> dict[str, object]:
-    if not isinstance(value, dict):
-        raise ValueError("stored memory item must be an object")
-    string_fields = {
-        "item_id",
-        "text",
-        "scope",
-        "source_run_id",
-        "created_at",
-        "memory_type",
-    }
-    expected_fields = string_fields | {"conversation_id"}
-    if set(value) != expected_fields:
-        raise ValueError("stored memory item fields do not match schema")
-    if any(not isinstance(value.get(name), str) for name in string_fields):
-        raise ValueError("stored memory item string fields must be strings")
-    conversation_id = value.get("conversation_id")
-    if conversation_id is not None and not isinstance(conversation_id, str):
-        raise ValueError("stored memory conversation_id must be a string or null")
-    item = {name: value[name] for name in expected_fields}
-    if validate_memory_type(str(item["memory_type"])) != item["memory_type"]:
-        raise ValueError("stored memory_type must use its canonical value")
-    _memory_stream_id_for_item(item)
+def _replay_organization(active: dict[str, dict[str, object]], value: object) -> None:
+    if not isinstance(value, list):
+        raise ValueError("stored memory operations must be an array")
+    for value in value:
+        operation, item_ids, replacement = _validate_stored_operation(value)
+        missing = sorted(set(item_ids) - set(active))
+        if missing:
+            raise ValueError("stored memory operation references inactive items")
+        _remove_items(active, item_ids)
+        if replacement is not None:
+            active[str(replacement["item_id"])] = replacement
+
+
+def _validate_stored_operation(
+    value: object,
+) -> tuple[str, list[str], dict[str, object] | None]:
+    fields = {"operation", "item_ids", "reason", "replacement"}
+    if not isinstance(value, dict) or set(value) != fields:
+        raise ValueError("stored memory operation fields do not match schema")
+    operation = value.get("operation")
+    if operation not in {"merge", "replace", "forget"}:
+        raise ValueError("stored memory operation type is invalid")
+    if not isinstance(value.get("reason"), str):
+        raise ValueError("stored memory operation reason must be a string")
+    item_ids = _clean_item_ids(value.get("item_ids"))
+    replacement_value = value.get("replacement")
+    if (operation == "forget") != (replacement_value is None):
+        raise ValueError("stored memory replacement does not match operation")
+    replacement = (
+        None
+        if replacement_value is None
+        else _validate_stored_item(replacement_value)
+    )
+    return str(operation), item_ids, replacement
+
+
+def _validate_stored_item(value: object) -> dict[str, object]:
+    fields = {"item_id", "text", "scope", "source_run_id", "created_at"}
+    if not isinstance(value, dict) or set(value) != fields:
+        raise ValueError("stored long-term memory fields do not match schema")
+    if any(not isinstance(value.get(name), str) for name in fields):
+        raise ValueError("stored long-term memory fields must be strings")
+    item = {name: value[name] for name in fields}
+    _clean_item_id(str(item["item_id"]))
+    _clean_text(item["text"])
+    _clean_scope(str(item["scope"]))
     return item
 
 
-def _validate_memory_promotion(
-    value: object,
-) -> tuple[list[str], str, dict[str, object]]:
-    if not isinstance(value, dict):
-        raise ValueError("stored memory promotion must be an object")
-    expected_fields = {
-        "source_item_ids",
-        "source_conversation_id",
-        "item",
-        "reason",
-    }
-    if set(value) != expected_fields:
-        raise ValueError("stored memory promotion fields do not match schema")
-    source_ids = _string_list(value["source_item_ids"])
-    if not source_ids:
-        raise ValueError("stored memory promotion requires source item IDs")
-    conversation_id = _required_conversation_id(
-        value.get("source_conversation_id")
-        if isinstance(value.get("source_conversation_id"), str)
-        else None
+def _new_stored_item(text: str, scope: str, source_run_id: str) -> dict[str, object]:
+    return asdict(
+        MemoryItem(
+            f"memory-{uuid4().hex}",
+            text,
+            scope,
+            source_run_id,
+            _utc_now(),
+        )
     )
-    if not isinstance(value.get("reason"), str):
-        raise ValueError("stored memory promotion reason must be a string")
-    item = _validate_memory_item(value.get("item"))
-    if _memory_stream_id_for_item(item) != LONG_TERM_MEMORY:
-        raise ValueError("stored promoted memory must be long-term memory")
-    return source_ids, conversation_id, item
 
 
-def _validate_memory_stream_id(stream_id: str) -> None:
-    if stream_id == LONG_TERM_MEMORY:
-        return
-    prefix = f"{TEMPORARY_MEMORY}:"
-    if stream_id.startswith(prefix):
-        _required_conversation_id(stream_id[len(prefix) :])
-        return
-    raise ValueError(f"unknown memory stream: {stream_id}")
+def _item_from_dict(item: dict[str, object]) -> MemoryItem:
+    return MemoryItem(**{name: str(value) for name, value in item.items()})
 
 
-def _require_item_stream(item: dict[str, object], stream_id: str) -> None:
-    if _memory_stream_id_for_item(item) != stream_id:
-        raise ValueError("stored memory item does not match its event stream")
-
-
-def _required_conversation_id(value: str | None) -> str:
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError("temporary memory requires a conversation_id")
-    selected = value.strip()
-    if selected != value:
-        raise ValueError("conversation_id cannot have surrounding whitespace")
-    if len(selected) > 200 or any(ord(character) < 32 for character in selected):
-        raise ValueError("conversation_id must be at most 200 printable characters")
+def _clean_item_ids(value: object) -> list[str]:
+    if not isinstance(value, list):
+        raise ValueError("memory item_ids must be an array")
+    selected = list(dict.fromkeys(_clean_item_id(item) for item in value))
+    if not selected:
+        raise ValueError("memory operation requires at least one item")
     return selected
 
 
-def _remove_memory_items(
-    active: dict[str, dict[str, object]],
-    value: object,
-) -> None:
-    for item_id in _string_list(value):
+def _organization_item_ids(operations: object) -> list[str]:
+    if not isinstance(operations, list) or not operations:
+        raise ValueError("memory organization requires at least one operation")
+    item_ids: list[str] = []
+    for operation in operations:
+        if not isinstance(operation, dict):
+            raise ValueError("memory organization operations must be objects")
+        item_ids.extend(_clean_item_ids(operation.get("item_ids")))
+    return item_ids
+
+
+def _clean_item_id(value: object) -> str:
+    if not isinstance(value, str) or not re.fullmatch(r"memory-[0-9a-f]{32}", value.strip()):
+        raise ValueError("invalid memory item id")
+    return value.strip()
+
+
+def _clean_text(value: object) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("memory text cannot be empty")
+    return value.strip()
+
+
+def _clean_scope(value: str) -> str:
+    selected = value.strip().lower()
+    if not re.fullmatch(r"[a-z0-9][a-z0-9_.:-]{0,63}", selected):
+        raise ValueError("memory scope must use letters, numbers, '.', '_', ':' or '-'")
+    return selected
+
+
+def _tokenize(text: str) -> list[str]:
+    return re.findall(r"[a-z0-9_]+|[\u4e00-\u9fff]", text.lower())
+
+
+def _score_text(query: str, query_terms: Counter[str], text: str) -> float:
+    item_terms = Counter(_tokenize(text))
+    overlap = sum(min(count, item_terms[term]) for term, count in query_terms.items())
+    return (1.0 if query.lower() in text.lower() else 0.0) + overlap / max(sum(query_terms.values()), 1)
+
+
+def _positive_limit(value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError("memory recall limit must be a positive integer")
+    return value
+
+
+def _read_string(data: dict[str, object], name: str, default: str) -> str:
+    value = data.get(name, default)
+    if not isinstance(value, str):
+        raise ValueError(f"memory {name} must be a string")
+    return value
+
+
+def _read_bool(data: dict[str, object], name: str, default: bool) -> bool:
+    value = data.get(name, default)
+    if not isinstance(value, bool):
+        raise ValueError(f"memory {name} must be a boolean")
+    return value
+
+
+def _remove_items(active: dict[str, dict[str, object]], value: object) -> None:
+    for item_id in _clean_item_ids(value):
         active.pop(item_id, None)
 
 
-def _string_list(value: object) -> list[str]:
-    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
-        raise ValueError("stored memory item IDs must be a string array")
-    return list(value)
+def _sort_items(items: Iterable[dict[str, object]]) -> list[dict[str, object]]:
+    return sorted(items, key=lambda item: (str(item["created_at"]), str(item["item_id"])), reverse=True)
 
 
-def _sort_memory_items(
-    items: Iterable[dict[str, object]],
-) -> list[dict[str, object]]:
-    return sorted(
-        items,
-        key=lambda item: (str(item["created_at"]), str(item["item_id"])),
-        reverse=True,
-    )
+def _count_lines(label: str, counts: object) -> list[str]:
+    if not isinstance(counts, dict):
+        return []
+    return [f"- {label} {name} used {count} times" for name, count in sorted(counts.items())]
 
 
-def _promotion_event_id(
-    namespace: str,
-    conversation_id: str,
-    source_item_ids: list[str],
-) -> str:
-    value = "\0".join(
-        [namespace, conversation_id, *sorted(source_item_ids)]
-    ).encode("utf-8")
-    return f"memory-promotion-{hashlib.sha256(value).hexdigest()}"
+def _utc_now() -> str:
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")

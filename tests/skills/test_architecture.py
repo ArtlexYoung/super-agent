@@ -8,7 +8,7 @@ from pathlib import Path
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.loaders.mcp import McpSkillSettings
 from skill.loaders.mcp import McpServer
-from skill.state.memory_service import MiniMemory
+from skill.state.memory import Memory
 from core.models import SubAgentResult, RunResult
 from skill.loaders.workflow import create_workflow_policy_from_skill
 from skill.manifest import SkillManifest
@@ -40,7 +40,7 @@ class SkillArchitectureTests(unittest.TestCase):
     def test_skill_mechanisms_have_clear_owners(self) -> None:
         self.assertEqual("McpServer", McpServer.__name__)
         self.assertEqual("McpSkillSettings", McpSkillSettings.__name__)
-        self.assertEqual("MiniMemory", MiniMemory.__name__)
+        self.assertEqual("Memory", Memory.__name__)
         self.assertEqual("RunResult", RunResult.__name__)
         self.assertEqual("SubAgentResult", SubAgentResult.__name__)
         self.assertEqual(

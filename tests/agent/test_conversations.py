@@ -12,7 +12,7 @@ from adapter.conversations import (
     append_conversation_turn,
     read_conversation,
 )
-from skill.state.memory_service import MiniMemory
+from skill.state.memory import Memory
 from skill.evolution.records import read_evaluation_records
 from support import RecordingProvider, SequenceProvider, route_response
 
@@ -125,7 +125,7 @@ class ConversationRuntimeTests(unittest.TestCase):
             beta.runs.learn(beta_result.run_id)
             alpha_store = agent.runtime.create_event_store("user-alpha")
             beta_store = agent.runtime.create_event_store("user-beta")
-            MiniMemory(alpha_store).add_long_term_memory("alpha memory")
+            Memory(alpha_store).remember_long_term("alpha memory")
 
             self.assertEqual(
                 ["alpha secret", "ok"],
@@ -141,7 +141,7 @@ class ConversationRuntimeTests(unittest.TestCase):
                     for item in read_conversation(beta_store, conversation_id).messages
                 ],
             )
-            self.assertEqual([], MiniMemory(beta_store).list_memory_items())
+            self.assertEqual([], Memory(beta_store).list_long_term())
             self.assertTrue(read_evaluation_records(alpha_store))
             self.assertTrue(read_evaluation_records(beta_store))
             self.assertNotEqual(

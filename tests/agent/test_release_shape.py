@@ -67,8 +67,6 @@ class ReleaseShapeTests(unittest.TestCase):
             "evolution/default/skill.toml",
             "feedback/conversation/SKILL.md",
             "feedback/conversation/skill.toml",
-            "memory/code/SKILL.md",
-            "memory/code/skill.toml",
             "memory/default/SKILL.md",
             "memory/default/skill.toml",
             "prompt/code/SKILL.md",
@@ -206,6 +204,17 @@ class ReleaseShapeTests(unittest.TestCase):
             "src/skill/task/preflight.py",
             "src/skill/task/preparation.py",
             "src/skill/task/scheduler.py",
+        ]
+
+        self.assertEqual([], [path for path in removed if Path(path).exists()])
+
+    def test_temporary_memory_and_secondary_organizer_do_not_return(self) -> None:
+        removed = [
+            "src/skill/state/memory_models.py",
+            "src/skill/state/memory_organization.py",
+            "src/skill/state/memory_service.py",
+            "src/skill/state/memory_support.py",
+            "src/skill/builtin/memory/code",
         ]
 
         self.assertEqual([], [path for path in removed if Path(path).exists()])

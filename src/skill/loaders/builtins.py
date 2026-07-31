@@ -18,8 +18,7 @@ from core.checks import ActionEffect
 from skill.manifest import Skill
 
 if TYPE_CHECKING:
-    from skill.state.memory_service import MiniMemory
-    from skill.state.memory_models import MemoryOrganizationPlan
+    from skill.state.memory import Memory
     from skill.loaders.mcp import McpServers, RegisteredMcpServer
 
 
@@ -76,24 +75,23 @@ class McpSkillLoader:
 
 
 class MemorySkillLoader:
-    name = "event-memory"
-    version = "4"
+    name = "long-term-memory"
+    version = "5"
     skill_type = "memory"
     adds_model_context = False
-    required_services = ("storage", "text_model")
+    required_services = ("storage",)
 
     def load_skill(self, request: SkillLoadRequest) -> LoadedSkill:
-        from skill.state.memory_service import create_memory_from_skill_disclosure
+        from skill.state.memory import create_memory_from_skill
 
         opened = request.open_skill()
         opened.disclose_manifest()
         opened.disclose_configuration()
         opened.disclose_instructions()
-        memory = create_memory_from_skill_disclosure(
+        memory = create_memory_from_skill(
             opened,
             request.require_store("memory Skill"),
             request.identity,
-            send_text_model_messages=request.send_text_model_messages,
             execute_action=request.require_action_executor(),
         )
         return create_memory_skill_contribution(memory)
@@ -146,9 +144,7 @@ def create_builtin_skill_loaders(
     )
 
 
-def create_memory_skill_contribution(
-    memory: MiniMemory,
-) -> LoadedSkill:
+def create_memory_skill_contribution(memory: Memory) -> LoadedSkill:
     return LoadedSkill(
         build_prompt_context=memory.build_prompt_instruction,
         tools=_create_memory_tools(memory),
@@ -160,251 +156,159 @@ def create_memory_skill_contribution(
     )
 
 
-def _create_memory_tools(memory: MiniMemory) -> tuple[SkillTool, ...]:
+def _create_memory_tools(memory: Memory) -> tuple[SkillTool, ...]:
     scope = {
         "type": "string",
         "description": "Memory scope such as agent, user, or project.",
     }
-    memory_type = {
-        "type": "string",
-        "enum": ["temporary", "long_term"],
-        "description": "Use temporary for this conversation or long_term for durable knowledge.",
-    }
-    read_tools = (
+    return (
         SkillTool(
-            "list_memory_items",
-            "List active long-term memory and temporary memory from this conversation.",
-            {"scope": scope, "memory_type": memory_type},
-            lambda arguments: _list_memory_items(memory, arguments),
+            "list_long_term_memory",
+            "List durable memory. Conversation messages are the short-term memory.",
+            {"scope": scope},
+            lambda arguments: _list_long_term_memory(memory, arguments),
             action=SkillAction(
                 (ActionEffect.READ,),
-                "memory:active",
+                "memory:long-term",
                 "scope",
             ),
         ),
         SkillTool(
-            "add_temporary_memory",
-            "Store a detail for this conversation; long-term organization may later promote an abstraction.",
+            "remember_long_term",
+            "Remember abstract, critical, stable, or habitual knowledge for future conversations.",
             {"text": {"type": "string"}, "scope": scope},
-            lambda arguments: _add_temporary_memory(memory, arguments),
+            lambda arguments: _remember_long_term(memory, arguments),
             action=SkillAction(
                 (ActionEffect.CREATE,),
-                "memory:temporary",
+                "memory:long-term",
                 "scope",
             ),
             required=("text",),
         ),
         SkillTool(
-            "add_long_term_memory",
-            "Store only abstract, critical, important, stable, or habitual knowledge for future conversations.",
-            {"text": {"type": "string"}, "scope": scope},
-            lambda arguments: _add_long_term_memory(memory, arguments),
-            action=SkillAction(
-                (ActionEffect.CREATE,),
-                "memory:long_term",
-                "scope",
-            ),
-            required=("text",),
-        ),
-        SkillTool(
-            "recall_memory",
-            "Read and rank allowed memory without changing it.",
+            "recall_long_term_memory",
+            "Read and rank durable memory without changing it.",
             {
                 "query": {"type": "string"},
                 "scope": scope,
-                "memory_type": memory_type,
                 "limit": {"type": "integer", "minimum": 1},
             },
-            lambda arguments: _recall_memory(memory, arguments),
+            lambda arguments: _recall_long_term_memory(memory, arguments),
             action=SkillAction(
                 (ActionEffect.READ,),
-                "memory:active",
+                "memory:long-term",
                 "scope",
             ),
             required=("query",),
         ),
-    )
-    return read_tools + _create_memory_change_tools(memory, scope, memory_type)
-
-
-def _create_memory_change_tools(
-    memory: MiniMemory,
-    scope: dict[str, object],
-    memory_type: dict[str, object],
-) -> tuple[SkillTool, ...]:
-    return (
         SkillTool(
-            "prepare_memory_organization",
-            (
-                "Ask the memory model for a validated change plan without applying it. "
-                "Long-term plans may inspect and promote current temporary memory."
-            ),
+            "organize_long_term_memory",
+            "Explicitly merge, replace, or forget recalled long-term items in one checked action.",
             {
-                "query": {"type": "string"},
-                "scope": scope,
-                "memory_type": memory_type,
+                "operations": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "operation": {
+                                "type": "string",
+                                "enum": ["merge", "replace", "forget"],
+                            },
+                            "item_ids": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                            },
+                            "text": {"type": "string"},
+                            "reason": {"type": "string"},
+                        },
+                        "required": ["operation", "item_ids"],
+                        "additionalProperties": False,
+                    },
+                },
             },
-            lambda arguments: _prepare_memory_organization(memory, arguments),
-            action=SkillAction(
-                (ActionEffect.READ, ActionEffect.CREATE),
-                "memory:organization-plan",
-                "scope",
-            ),
-            required=("query", "memory_type"),
-        ),
-        SkillTool(
-            "apply_memory_organization",
-            "Explicitly apply one prepared memory organization plan by ID.",
-            {"plan_id": {"type": "string"}},
-            lambda arguments: _apply_memory_organization(memory, arguments),
+            lambda arguments: _organize_long_term_memory(memory, arguments),
             action=SkillAction(
                 (ActionEffect.CREATE, ActionEffect.UPDATE, ActionEffect.DELETE),
-                "memory:organization-plan",
-                "plan_id",
+                "memory:long-term",
             ),
-            required=("plan_id",),
+            required=("operations",),
         ),
         SkillTool(
-            "forget_memory",
-            "Forget one active memory item by ID.",
-            {"item_id": {"type": "string"}},
-            lambda arguments: _forget_memory(memory, arguments),
+            "forget_long_term_memory",
+            "Explicitly forget one durable memory item by ID.",
+            {"item_id": {"type": "string"}, "reason": {"type": "string"}},
+            lambda arguments: _forget_long_term_memory(memory, arguments),
             action=SkillAction(
                 (ActionEffect.DELETE,),
-                "memory:active",
+                "memory:long-term",
                 "item_id",
             ),
             required=("item_id",),
         ),
-        SkillTool(
-            "consolidate_memory",
-            "Merge exact duplicates without combining memory types or conversations.",
-            {"memory_type": memory_type},
-            lambda arguments: _consolidate_memory(memory, arguments),
-            action=SkillAction(
-                (ActionEffect.UPDATE, ActionEffect.DELETE),
-                "memory:active",
-            ),
-        ),
     )
 
 
-def _list_memory_items(
-    memory: MiniMemory,
+def _list_long_term_memory(
+    memory: Memory,
     arguments: dict[str, object],
 ) -> dict[str, object]:
     scope = read_optional_tool_string(arguments, "scope")
-    memory_type = read_optional_tool_string(arguments, "memory_type")
     return {
         "items": [
             asdict(item)
-            for item in memory.list_memory_items(scope, memory_type=memory_type)
+            for item in memory.list_long_term(scope)
         ]
     }
 
 
-def _add_temporary_memory(
-    memory: MiniMemory,
+def _remember_long_term(
+    memory: Memory,
     arguments: dict[str, object],
 ) -> dict[str, object]:
-    scope = read_optional_tool_string(arguments, "scope") or memory.policy.default_scope
-    item = memory.add_temporary_memory(
+    scope = read_optional_tool_string(arguments, "scope") or memory.settings.default_scope
+    item = memory.remember_long_term(
         read_required_tool_string(arguments, "text"),
         scope=scope,
     )
     return {"item": asdict(item)}
 
 
-def _add_long_term_memory(
-    memory: MiniMemory,
+def _recall_long_term_memory(
+    memory: Memory,
     arguments: dict[str, object],
 ) -> dict[str, object]:
-    scope = read_optional_tool_string(arguments, "scope") or memory.policy.default_scope
-    item = memory.add_long_term_memory(
-        read_required_tool_string(arguments, "text"),
-        scope=scope,
-    )
-    return {"item": asdict(item)}
-
-
-def _recall_memory(
-    memory: MiniMemory,
-    arguments: dict[str, object],
-) -> dict[str, object]:
-    scope = read_optional_tool_string(arguments, "scope") or memory.policy.default_scope
-    memory_type = read_optional_tool_string(arguments, "memory_type")
-    items = memory.recall_memory(
+    scope = read_optional_tool_string(arguments, "scope") or memory.settings.default_scope
+    items = memory.recall_long_term(
         read_required_tool_string(arguments, "query"),
         scope=scope,
         limit=read_optional_positive_tool_integer(arguments, "limit"),
-        memory_type=memory_type,
     )
     return {"items": [asdict(item) for item in items]}
 
 
-def _prepare_memory_organization(
-    memory: MiniMemory,
+def _organize_long_term_memory(
+    memory: Memory,
     arguments: dict[str, object],
 ) -> dict[str, object]:
-    plan = memory.prepare_memory_organization(
-        read_required_tool_string(arguments, "query"),
-        memory_type=read_required_tool_string(arguments, "memory_type"),
-        scope=(
-            read_optional_tool_string(arguments, "scope")
-            or memory.policy.default_scope
-        ),
-    )
-    return {
-        "plan": None if plan is None else _memory_organization_plan_to_dict(plan),
-        "applied": False,
-    }
+    operations = arguments.get("operations")
+    if not isinstance(operations, list) or not all(
+        isinstance(item, dict) for item in operations
+    ):
+        raise ValueError("tool argument 'operations' must be an array of objects")
+    items = memory.organize_long_term(operations)
+    return {"items": [asdict(item) for item in items], "applied": True}
 
 
-def _apply_memory_organization(
-    memory: MiniMemory,
-    arguments: dict[str, object],
-) -> dict[str, object]:
-    plan = memory.apply_memory_organization(
-        read_required_tool_string(arguments, "plan_id")
-    )
-    return {
-        "plan": _memory_organization_plan_to_dict(plan),
-        "applied": True,
-    }
-
-
-def _memory_organization_plan_to_dict(
-    plan: MemoryOrganizationPlan,
-) -> dict[str, object]:
-    value = asdict(plan)
-    return {
-        **value,
-        "candidates": list(value["candidates"]),
-        "temporary_context": list(value["temporary_context"]),
-        "operations": list(value["operations"]),
-    }
-
-
-def _forget_memory(
-    memory: MiniMemory,
+def _forget_long_term_memory(
+    memory: Memory,
     arguments: dict[str, object],
 ) -> dict[str, object]:
     item_id = read_required_tool_string(arguments, "item_id")
-    memory.forget_memory(item_id)
+    memory.forget_long_term(
+        item_id,
+        read_optional_tool_string(arguments, "reason") or "",
+    )
     return {"item_id": item_id, "forgotten": True}
-
-
-def _consolidate_memory(
-    memory: MiniMemory,
-    arguments: dict[str, object],
-) -> dict[str, object]:
-    memory_type = read_optional_tool_string(arguments, "memory_type")
-    return {
-        "items": [
-            asdict(item)
-            for item in memory.consolidate_memory(memory_type=memory_type)
-        ]
-    }
 
 
 def _create_mcp_tools(

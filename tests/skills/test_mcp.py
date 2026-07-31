@@ -15,7 +15,7 @@ from skill.state.events import create_local_event_store
 from core.provider.chat import MockProvider
 from skill.disclosure import ProgressiveDisclosureCore, SkillReference
 from skill.loaders.mcp import read_mcp_skill_settings
-from skill.state.memory_service import MiniMemory
+from skill.state.memory import Memory
 from skill.manifest import Skill
 from skill.loaders.mcp import McpServers, StdioMcpServer
 from support import write_memory_skill, write_workflow_skill
@@ -249,10 +249,10 @@ instructions = "SKILL.md"
             write_memory_skill(root)
             _write_skill(root, "echo", "Echo helper", "Use echo skill.")
             _write_mcp_skill(root, "github", "GitHub MCP")
-            memory = MiniMemory(
+            memory = Memory(
                 create_local_event_store(root / ".super-agent", agent_name="demo")
             )
-            memory.add_long_term_memory("Keep answers short.")
+            memory.remember_long_term("Keep answers short.")
             config_path = _write_agent_config(
                 root,
                 skills=["echo", "github"],

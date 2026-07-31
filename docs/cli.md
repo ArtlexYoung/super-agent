@@ -94,22 +94,19 @@ super-agent conversations clear --config agent.toml --user-id alice --conversati
 super-agent conversations delete --config agent.toml --user-id alice --conversation-id <id>
 
 super-agent memory habits --config agent.toml --user-id alice
-super-agent memory list --config agent.toml --user-id alice --type long-term
+super-agent memory list --config agent.toml --user-id alice
 super-agent memory add --config agent.toml --user-id alice \
-  --type long-term --text "Prefer concise answers" --scope agent
-super-agent memory add --config agent.toml --user-id alice \
-  --type temporary --conversation-id <id> --text "This task uses Python 3.12"
+  --text "Prefer concise answers" --scope agent
 super-agent memory recall --config agent.toml --user-id alice \
-  --type temporary --conversation-id <id> --query "Python" --limit 5
+  --query "response style" --limit 5
 super-agent memory forget --config agent.toml --user-id alice \
-  --conversation-id <id> --item-id <memory-id>
-super-agent memory consolidate --config agent.toml --user-id alice --type long-term
+  --item-id <memory-id> --reason "outdated"
 ```
 
 Conversation history is owned by the conversation Adapter. Do not combine a conversation ID with an explicit
-message list. `memory add` defaults to `long-term`; `temporary` operations require a
-conversation ID. Memory commands require an enabled memory Skill and use the same action
-rules as Agent runs.
+message list. Conversation messages are short-term context; memory commands manage only
+durable long-term items. They require an enabled memory Skill and use the same action rules
+as Agent runs.
 
 ## Runs and Storage
 

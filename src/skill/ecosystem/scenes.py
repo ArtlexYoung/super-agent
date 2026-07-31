@@ -58,7 +58,6 @@ class SkillSceneTemplate:
     planner_max_steps: int
     memory_default_scope: str
     memory_recall_limit: int
-    memory_organization_candidate_limit: int
     memory_include_in_prompt: bool
     memory_include_usage_habits: bool
     memory_instruction: str
@@ -221,7 +220,6 @@ def read_skill_scene_template(
         "planner_max_steps",
         "memory_default_scope",
         "memory_recall_limit",
-        "memory_organization_candidate_limit",
         "memory_include_in_prompt",
         "memory_include_usage_habits",
         "memory_instruction",
@@ -246,10 +244,6 @@ def read_skill_scene_template(
         planner_max_steps=_required_config_integer(data, "planner_max_steps"),
         memory_default_scope=_required_config_text(data, "memory_default_scope"),
         memory_recall_limit=_required_config_integer(data, "memory_recall_limit"),
-        memory_organization_candidate_limit=_required_config_integer(
-            data,
-            "memory_organization_candidate_limit",
-        ),
         memory_include_in_prompt=_required_config_bool(data, "memory_include_in_prompt"),
         memory_include_usage_habits=_required_config_bool(
             data,
@@ -335,9 +329,6 @@ def _create_scene_documents(
                 configuration={
                     "default_scope": template.memory_default_scope,
                     "recall_limit": template.memory_recall_limit,
-                    "organization_candidate_limit": (
-                        template.memory_organization_candidate_limit
-                    ),
                     "include_in_prompt": template.memory_include_in_prompt,
                     "include_usage_habits": template.memory_include_usage_habits,
                 },

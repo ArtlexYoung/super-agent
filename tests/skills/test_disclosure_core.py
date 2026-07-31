@@ -354,7 +354,7 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
 
     def test_kind_factories_only_accept_center_disclosure(self) -> None:
         from skill.loaders.mcp import read_mcp_skill_settings
-        from skill.state.memory_service import create_memory_from_skill_disclosure
+        from skill.state.memory import create_memory_from_skill
         from skill.loaders.workflow import create_workflow_policy_from_skill
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -366,7 +366,7 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
             mcp_settings = read_mcp_skill_settings(
                 core.open_skill("filesystem", expected_type="mcp")
             )
-            memory = create_memory_from_skill_disclosure(
+            memory = create_memory_from_skill(
                 core.open_skill("default", expected_type="memory"),
                 create_local_event_store(root / "state"),
             )
@@ -375,7 +375,7 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
             )
 
             self.assertEqual("example-mcp", mcp_settings.server_name)
-            self.assertEqual("agent", memory.policy.default_scope)
+            self.assertEqual("agent", memory.settings.default_scope)
             self.assertEqual("direct", workflow.mode)
 
     def test_index_centrally_merges_runtime_freshness_stats(self) -> None:
@@ -484,7 +484,7 @@ def _write_memory_skill(root: Path, name: str) -> None:
     _write_manifest(skill_dir, name, "memory", include_entry=True, extra="""
 [configuration]
 default_scope = "agent"
-organization_candidate_limit = 20
+recall_limit = 20
 """)
     (skill_dir / "SKILL.md").write_text(
         "Organize memory into concise, durable knowledge.",

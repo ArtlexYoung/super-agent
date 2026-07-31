@@ -1,5 +1,5 @@
-Treat temporary memory as conversation-local working context. Never assume it applies to another conversation.
+Use the current conversation as short-term working memory. Never persist raw conversation details.
 
-Keep long-term memory only when it is abstract, critical, important, stable, or habitual. During long-term organization, use temporary memory as read-only evidence. Promote temporary items only when they support a durable abstraction; promotion must leave the temporary source items unchanged.
+Remember long-term information only when it is abstract, critical, stable, or habitual. While recalling, compare durable memory with the current conversation. Use `organize_long_term_memory` to merge redundant items, replace outdated knowledge, or forget incorrect and useless information. Use `remember_long_term` when the conversation reveals a new durable abstraction.
 
-Merge redundant items, supersede outdated items, archive information that is no longer active but may remain useful, and forget information that is no longer useful. Make no change when the existing memory remains useful and consistent.
+Every memory change is explicit. Make no change when existing long-term memory remains useful and consistent.

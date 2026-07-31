@@ -6,7 +6,7 @@ from pathlib import Path
 
 from skill.disclosure import ProgressiveDisclosureCore, SkillDisclosure
 from skill.loaders.mcp import read_mcp_skill_settings
-from skill.state.memory_service import create_memory_policy_from_skill
+from skill.state.memory import read_memory_settings_from_skill
 from skill.loaders.models import (
     create_model_profile_from_skill_disclosure,
     model_connection_fields,
@@ -73,7 +73,7 @@ def _validate_skill_type(
     if skill_type == "prompt":
         _validate_prompt_skill(disclosure)
     elif skill_type == "memory":
-        create_memory_policy_from_skill(disclosure)
+        read_memory_settings_from_skill(disclosure)
     elif skill_type == "workflow":
         create_workflow_policy_from_skill(disclosure)
     elif skill_type == "mcp":

@@ -122,7 +122,7 @@ class RuntimeSafetyTests(unittest.TestCase):
 
         memory = policy.check_action(
             ActionRequest.create(
-                "tool:add_long_term_memory",
+                "tool:remember_long_term",
                 "memory:long_term:agent",
                 (ActionEffect.CREATE,),
             )

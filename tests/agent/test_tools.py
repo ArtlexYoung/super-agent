@@ -26,7 +26,7 @@ from core.state.event_log import RunEventLog
 from skill.state.events import EventStore
 from adapter.storage import JsonlStorage
 from skill.disclosure import ProgressiveDisclosureCore
-from skill.state.memory_service import MiniMemory
+from skill.state.memory import Memory
 from skill.loaders.models import create_direct_provider_profile
 from skill.loaders.mcp import McpServers, StdioMcpServer
 
@@ -121,13 +121,13 @@ class SkillToolsTests(unittest.TestCase):
                 session.store.read_run_events(session.run_id)[-1].event_type,
             )
 
-    def test_model_uses_explicit_temporary_and_long_term_memory_tools(self) -> None:
+    def test_model_uses_explicit_long_term_memory_tools(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             session = _create_session(root, conversation_id="conversation-a")
             disclosure = _create_disclosure(session)
             index = session.skills.index
-            memory = MiniMemory(
+            memory = Memory(
                 session.store,
                 session.identity,
                 execute_action=session.execute_action,
@@ -137,57 +137,49 @@ class SkillToolsTests(unittest.TestCase):
             definitions = {
                 item["function"]["name"] for item in tools.get_tool_definitions()
             }
-            temporary = tools.run_tool_call(
-                ToolCall(
-                    "add-temporary",
-                    "add_temporary_memory",
-                    {"text": "Python note for this conversation.", "scope": "agent"},
-                )
-            )
             long_term = tools.run_tool_call(
                 ToolCall(
                     "add-long-term",
-                    "add_long_term_memory",
+                    "remember_long_term",
                     {"text": "User prefers Python.", "scope": "agent"},
                 )
             )
             recalled = tools.run_tool_call(
                 ToolCall(
                     "recall",
-                    "recall_memory",
+                    "recall_long_term_memory",
                     {"query": "Python", "scope": "agent"},
                 )
             )
             tools.run_tool_call(
                 ToolCall(
                     "forget",
-                    "forget_memory",
-                    {"item_id": temporary["item"]["item_id"]},
+                    "forget_long_term_memory",
+                    {"item_id": long_term["item"]["item_id"]},
                 )
             )
 
-            self.assertTrue(
-                {
-                    "list_memory_items",
-                    "add_temporary_memory",
-                    "add_long_term_memory",
-                    "recall_memory",
-                    "prepare_memory_organization",
-                    "apply_memory_organization",
-                    "forget_memory",
-                    "consolidate_memory",
-                }
-                <= definitions
-            )
-            self.assertEqual(2, len(recalled["items"]))
             self.assertEqual(
-                ["User prefers Python."],
-                [item.text for item in memory.list_memory_items()],
+                {
+                    "list_long_term_memory",
+                    "remember_long_term",
+                    "recall_long_term_memory",
+                    "organize_long_term_memory",
+                    "forget_long_term_memory",
+                },
+                definitions.intersection(
+                    {
+                        "list_long_term_memory",
+                        "remember_long_term",
+                        "recall_long_term_memory",
+                        "organize_long_term_memory",
+                        "forget_long_term_memory",
+                    }
+                ),
             )
-            self.assertEqual("temporary", temporary["item"]["memory_type"])
-            self.assertEqual("conversation-a", temporary["item"]["conversation_id"])
-            self.assertEqual("long_term", long_term["item"]["memory_type"])
-            self.assertEqual(session.run_id, temporary["item"]["source_run_id"])
+            self.assertEqual(1, len(recalled["items"]))
+            self.assertEqual([], memory.list_long_term())
+            self.assertEqual(session.run_id, long_term["item"]["source_run_id"])
 
     def test_standard_policy_blocks_external_tool_before_handler_runs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -331,7 +323,7 @@ def _create_tool_router(
     disclosure: ProgressiveDisclosureCore,
     index,
     session: Run,
-    memory: MiniMemory | None = None,
+    memory: Memory | None = None,
 ) -> RuntimeTools:
     if disclosure is not session.skills.disclosure or index is not session.skills.index:
         raise ValueError("tool router must use the Run Skill snapshot")

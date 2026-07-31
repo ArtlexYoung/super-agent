@@ -30,7 +30,7 @@ class SkillSceneTests(unittest.TestCase):
                 [item.key for item in common],
             )
             self.assertEqual(
-                ["prompt:code", "memory:code", "workflow:code"],
+                ["prompt:code", "memory:default", "workflow:code"],
                 [item.key for item in code],
             )
 
@@ -80,7 +80,7 @@ class SkillSceneTests(unittest.TestCase):
 
             self.assertEqual("implemented", result.text)
             self.assertEqual(
-                {"scene:code", "prompt:code", "memory:code", "workflow:code"},
+                {"scene:code", "prompt:code", "memory:default", "workflow:code"},
                 set(result.skills),
             )
             activation_result = provider.last_messages[-1]["content"]

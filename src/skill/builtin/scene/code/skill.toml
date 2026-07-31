@@ -2,7 +2,7 @@ schema_version = 3
 name = "code"
 type = "scene"
 description = "Repository coding Skill group for implementation and verification"
-version = "0.0.104"
+version = "0.0.105"
 agent_created = false
 agent_can_update = false
 freshness = 70
@@ -14,6 +14,6 @@ default = false
 [configuration]
 skills = [
   "prompt:code",
-  "memory:code",
+  "memory:default",
   "workflow:code",
 ]

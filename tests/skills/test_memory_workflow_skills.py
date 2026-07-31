@@ -7,7 +7,7 @@ from super_agent import Agent
 from core.config import AgentConfig
 from skill.state.events import create_local_event_store
 from core.provider.chat import MockProvider
-from skill.state.memory_service import MiniMemory
+from skill.state.memory import Memory
 from support import SequenceProvider, route_response
 
 
@@ -93,12 +93,12 @@ version = "0.1.0"
 instructions = "SKILL.md"
 
 [configuration]
-organization_candidate_limit = 20
+recall_limit = 20
 """.strip(),
         encoding="utf-8",
     )
     (skill_dir / "SKILL.md").write_text(
-        "Keep temporary memory local and preserve only durable long-term knowledge.",
+        "Use conversation messages as short-term memory and preserve only durable knowledge.",
         encoding="utf-8",
     )
 
@@ -130,9 +130,9 @@ max_steps = 8
 
 
 def _write_memory_item(root: Path, text: str) -> None:
-    MiniMemory(
+    Memory(
         create_local_event_store(root / ".super-agent", agent_name="demo")
-    ).add_long_term_memory(text)
+    ).remember_long_term(text)
 
 
 def _write_config(

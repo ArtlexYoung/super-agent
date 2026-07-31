@@ -9,7 +9,7 @@ from super_agent import Agent
 from adapter.ag_ui_adapter.web_api import WebAPI
 from core.provider.chat import MockProvider
 from core.config import AgentConfig
-from skill.state.memory_service import MiniMemory
+from skill.state.memory import Memory
 
 
 class WebAPIContractTests(unittest.TestCase):
@@ -34,12 +34,8 @@ class WebAPIContractTests(unittest.TestCase):
             )
             agent.add_subagent(child, name="research", created_by_agent=True)
             child_result = child.for_user("web-user").run("inspect")
-            memory = MiniMemory(agent.runtime.create_event_store("web-user"))
-            memory.add_long_term_memory("Stable preference.")
-            memory.add_temporary_memory(
-                "Current conversation detail.",
-                conversation_id="conversation-a",
-            )
+            memory = Memory(agent.runtime.create_event_store("web-user"))
+            memory.remember_long_term("Stable preference.")
 
             response = WebAPI(agent, "web-user").handle("GET", "/api/bootstrap")
 
@@ -64,14 +60,9 @@ class WebAPIContractTests(unittest.TestCase):
             )
             self.assertNotIn("manifest_cache_path", skills[0])
             memory_items = _body_list(body["memory"])
-            self.assertEqual(
-                {"long_term", "temporary"},
-                {item["memory_type"] for item in memory_items},
-            )
-            temporary = next(
-                item for item in memory_items if item["memory_type"] == "temporary"
-            )
-            self.assertEqual("conversation-a", temporary["conversation_id"])
+            self.assertEqual(["Stable preference."], [item["text"] for item in memory_items])
+            self.assertNotIn("memory_type", memory_items[0])
+            self.assertNotIn("conversation_id", memory_items[0])
             child_node = _body_list(body["subagents"])[0]
             self.assertEqual(["super-agent", "research"], child_node["path"])
             self.assertEqual(child_result.run_id, child_node["runs"][0]["run_id"])
@@ -97,8 +88,8 @@ class WebAPIContractTests(unittest.TestCase):
                 {"title": "Renamed"},
             )
             run = api.handle("GET", f"/api/runs/{result.run_id}")
-            memory = MiniMemory(agent.runtime.create_event_store("web-user"))
-            item = memory.add_long_term_memory("Forget this note.")
+            memory = Memory(agent.runtime.create_event_store("web-user"))
+            item = memory.remember_long_term("Forget this note.")
             forgotten = api.handle("DELETE", f"/api/memory/{item.item_id}")
 
             self.assertEqual(201, created.status)

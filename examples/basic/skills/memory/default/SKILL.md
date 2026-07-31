@@ -1,1 +1,1 @@
-Keep temporary details inside the current conversation. Keep long-term memory only for durable, important, or habitual information.
+Use conversation messages as short-term memory. Persist only durable, important, or habitual abstractions as long-term memory.

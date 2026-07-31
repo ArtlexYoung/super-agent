@@ -910,8 +910,8 @@ def _configuration_manifest(
         else ""
     )
     required_configuration = configuration
-    if skill_type == "memory" and "organization_candidate_limit" not in configuration:
-        required_configuration += "\norganization_candidate_limit = 20"
+    if skill_type == "memory" and "recall_limit" not in configuration:
+        required_configuration += "\nrecall_limit = 20"
     if skill_type == "workflow" and "max_steps" not in configuration:
         required_configuration += "\nmax_steps = 8"
     return f"""

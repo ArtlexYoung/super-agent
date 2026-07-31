@@ -193,7 +193,7 @@ def _write_skill(
         if skill_type == "prompt"
         else (
             '\n[configuration]\ndefault_scope = "agent"\n'
-            "organization_candidate_limit = 20"
+            "recall_limit = 20"
         )
     )
     (path / "skill.toml").write_text(

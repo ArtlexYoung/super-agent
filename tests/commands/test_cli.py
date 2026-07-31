@@ -136,7 +136,7 @@ class CliTests(unittest.TestCase):
             self.assertIn("total runs: 1", output.getvalue())
             self.assertIn("workflow model-loop used 1 times", output.getvalue())
 
-    def test_memory_commands_add_recall_list_forget_and_consolidate_items(self) -> None:
+    def test_memory_commands_add_recall_list_and_forget_long_term_items(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             config = str(Path(tmp) / "agent.toml")
             main(["init", "--path", tmp])
@@ -152,8 +152,6 @@ class CliTests(unittest.TestCase):
                         "Remember Python.",
                         "--scope",
                         "project",
-                        "--type",
-                        "long-term",
                     ]
                 )
             item = json.loads(add_output.getvalue())
@@ -168,73 +166,15 @@ class CliTests(unittest.TestCase):
             forget_code = main(
                 ["memory", "forget", "--config", config, "--item-id", item["item_id"]]
             )
-            consolidate_code = main(["memory", "consolidate", "--config", config])
 
             self.assertEqual(0, add_code)
             self.assertEqual(0, recall_code)
             self.assertEqual(0, list_code)
             self.assertEqual(0, forget_code)
-            self.assertEqual(0, consolidate_code)
-            self.assertEqual("long_term", item["memory_type"])
-            self.assertIsNone(item["conversation_id"])
+            self.assertNotIn("memory_type", item)
+            self.assertNotIn("conversation_id", item)
             self.assertEqual("Remember Python.", json.loads(recall_output.getvalue())["text"])
             self.assertEqual(item["item_id"], json.loads(list_output.getvalue())["item_id"])
-
-    def test_temporary_memory_cli_requires_and_filters_conversation_id(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            config = str(Path(tmp) / "agent.toml")
-            main(["init", "--path", tmp])
-
-            with self.assertRaisesRegex(ValueError, "current conversation"):
-                main(
-                    [
-                        "memory",
-                        "add",
-                        "--config",
-                        config,
-                        "--text",
-                        "Temporary Python detail.",
-                        "--type",
-                        "temporary",
-                    ]
-                )
-
-            add_output = StringIO()
-            with patch("sys.stdout", add_output):
-                main(
-                    [
-                        "memory",
-                        "add",
-                        "--config",
-                        config,
-                        "--text",
-                        "Temporary Python detail.",
-                        "--type",
-                        "temporary",
-                        "--conversation-id",
-                        "conversation-a",
-                    ]
-                )
-            item = json.loads(add_output.getvalue())
-
-            other_output = StringIO()
-            with patch("sys.stdout", other_output):
-                main(
-                    [
-                        "memory",
-                        "list",
-                        "--config",
-                        config,
-                        "--type",
-                        "temporary",
-                        "--conversation-id",
-                        "conversation-b",
-                    ]
-                )
-
-            self.assertEqual("temporary", item["memory_type"])
-            self.assertEqual("conversation-a", item["conversation_id"])
-            self.assertEqual("", other_output.getvalue())
 
     def test_skills_propose_evaluate_and_promote_candidate(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, patch.dict(
@@ -399,7 +339,7 @@ instructions = "SKILL.md"
             self.assertEqual(0, code)
             self.assertEqual("code", data["workflow"])
             self.assertEqual(
-                ["scene:code", "memory:code", "prompt:code", "workflow:code"],
+                ["scene:code", "memory:default", "prompt:code", "workflow:code"],
                 data["skills"],
             )
 
@@ -413,7 +353,7 @@ instructions = "SKILL.md"
                 validation_code = main(["skills", "validate", "--config", config])
 
             self.assertEqual(0, validation_code)
-            self.assertIn("11 valid skills", validation_output.getvalue())
+            self.assertIn("10 valid skills", validation_output.getvalue())
 
     def test_skills_graph_and_lock_resolve_configured_skill_dependencies(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

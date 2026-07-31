@@ -531,6 +531,35 @@ Status: implemented.
 - Prove custom behavior reaches model calls and changes calculations or generated Skill
   directories through focused regression tests.
 
+## v0.0.102: Explicit Model Turns
+
+Status: implemented.
+
+- Normalize Provider output into explicit final answers or action requests.
+- Keep Provider wire differences out of the task loop and document a short source tour.
+
+## v0.0.103: One Model Loop
+
+Status: implemented.
+
+- Replace route-then-execute with one model loop for direct answers and checked actions.
+- Let simple prompts finish in one model call without a hidden routing call.
+
+## v0.0.104: Ordinary Scene Groups
+
+Status: implemented.
+
+- Delete scheduler, planner, preflight, and preparation controllers.
+- Activate scenes as ordinary Skill groups through the same progressive action path.
+
+## v0.0.105: Conversation Context and Long-Term Memory
+
+Status: implemented.
+
+- Use conversation messages as the only short-term memory and persist only durable items.
+- Remove temporary memory streams, promotion history, and the secondary organizer model.
+- Let the main model submit explicit, validated, atomic long-term memory changes.
+
 ## Release Gate
 
 The project will not move to `0.1.x` because of feature count. The gate is a reproducible
