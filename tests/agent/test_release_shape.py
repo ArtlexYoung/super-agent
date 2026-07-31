@@ -146,6 +146,20 @@ class ReleaseShapeTests(unittest.TestCase):
 
         self.assertEqual(0, completed.returncode, completed.stderr)
 
+    def test_documented_examples_run_offline(self) -> None:
+        environment = dict(os.environ)
+        environment["PYTHONPATH"] = str(Path("src").resolve())
+        for example in ("minimal.py", "custom_skill.py", "team.py"):
+            with self.subTest(example=example):
+                completed = subprocess.run(
+                    [sys.executable, str(Path("examples") / example)],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                    env=environment,
+                )
+                self.assertEqual(0, completed.returncode, completed.stderr)
+
     def test_removed_core_modules_cannot_be_imported(self) -> None:
         environment = dict(os.environ)
         environment["PYTHONPATH"] = str(Path("src").resolve())

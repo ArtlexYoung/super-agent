@@ -24,8 +24,8 @@ path = ".super-agent"
 Unknown tables and fields are rejected. There is no migration or old-field conversion.
 
 `agent.skills` pins ordinary Skills to every run. `disabled_skills` excludes a type or a
-specific `type:name`. Scene visibility and subagent links are configured in Python because
-code is clearer for dynamic composition.
+specific `type:name`. Task selection is per run, while subagent links are configured in
+Python because code is clearer for dynamic composition.
 
 ## Models
 
@@ -90,7 +90,7 @@ rejected; use `data storage copy` and restart.
 ## Code-First Integration
 
 Provider objects, action authority, MCP implementations, secret lookup, storage injection,
-and subagent graphs are Python choices. Scene selection belongs to each run:
+and subagent graphs are Python choices. Task Skill selection belongs to each run:
 
 ```python
 from core.checks import ActionEffect, ActionMode, ActionRules

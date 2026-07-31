@@ -26,11 +26,12 @@ There is one task loop. Python does not route with trigger words, run a separate
 or start hidden fallback engines. The model sees descriptions, opens useful Skill content,
 and either returns text or requests a registered action.
 
-A stateless run imports no storage, memory, or learning implementation. Optional layers
+A stateless run imports no storage, memory, evaluation, or Skill update implementation.
+Optional layers
 enter only at a visible boundary:
 
 - `Agent(use_storage=True)` enables configured storage.
-- `Agent.for_user(id)` exposes scoped conversations, runs, memory, and Skill updates.
+- `Agent.for_user(id)` exposes scoped conversations, runs, model Skills, and Skill updates.
 - A selected memory Skill adds long-term memory tools.
 - `Agent.add_subagent(...)` adds explicit model delegation.
 - `Agent.add_tool(...)` binds passive MCP Skill content to trusted code.

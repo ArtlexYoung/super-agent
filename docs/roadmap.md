@@ -709,6 +709,16 @@ Status: implemented.
 - Name the four Skill update stages directly as `propose`, `test`, `apply`, and `undo`.
 - Remove the old command paths without aliases or hidden forwarding behavior.
 
+## v0.0.121: Readable Source and Examples
+
+Status: implemented.
+
+- Correct current documentation so task Skills, setup output, and optional boundaries
+  match the source exactly.
+- Replace the mixed legacy example project with minimal, custom Skill, and team examples.
+- Run all three examples offline in the release tests.
+- Remove stale current terminology without rewriting the historical roadmap.
+
 ## Release Gate
 
 The project will not move to `0.1.x` because of feature count. The gate is a reproducible

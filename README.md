@@ -81,8 +81,8 @@ print(result.text)
 `add_tool`, and `add_model`. Advanced contracts are imported from the module that owns
 them.
 
-Compose specialized Agents in code. Scene selection belongs to one run and does not
-silently change later runs:
+Compose specialized Agents in code. A task Skill selection belongs to one run and does
+not silently change later runs:
 
 ```python
 from super_agent import Agent
@@ -161,6 +161,9 @@ CopilotKit example, and AG-UI endpoint are served at `http://127.0.0.1:8765/`.
 - [Learning, memory, and Skill changes](docs/evolution.md)
 - [Safety](docs/safety.md)
 - [Web](docs/web.md) and [AG-UI](docs/ag-ui.md)
+
+Runnable examples are in `examples/minimal.py`, `examples/custom_skill.py`, and
+`examples/team.py`.
 
 ## Verify the Repository
 

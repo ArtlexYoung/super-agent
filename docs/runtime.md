@@ -103,8 +103,8 @@ main.add_subagent(worker, name="worker", description="Handles repository changes
 
 Omit `name` to receive `subagent01`, `subagent02`, and so on. The model can list and call
 registered subagents through explicit tools. Each child owns its configuration, model,
-Skills, and storage scope. Scene selection belongs to each run and does not mutate later
-runs.
+Skills, and storage scope. Task Skill selection belongs to each run and does not mutate
+later runs.
 
 Cycles are allowed. Before execution, Agent can report a cycle chain or a configured depth
 warning; these are warnings, not execution limits. Workflow instructions and the model's

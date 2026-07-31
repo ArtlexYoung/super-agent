@@ -40,7 +40,7 @@ super-agent check
 super-agent "Use the local Skill"
 ```
 
-Setup writes `agent.toml` and `skills/prompt/echo/` only when they do not exist. Pass
+Setup writes `agent.toml` and `skills/task/default/` only when they do not exist. Pass
 `--provider openai`, `anthropic`, `ollama`, or `mock` to create a model Skill from a preset.
 
 ## Embed
@@ -99,6 +99,14 @@ short-term context; a selected memory Skill exposes durable long-term memory. St
 features fail if storage is disabled.
 
 ## Next
+
+Run the small offline examples from the repository root:
+
+```bash
+PYTHONPATH=src python3 examples/minimal.py
+PYTHONPATH=src python3 examples/custom_skill.py
+PYTHONPATH=src python3 examples/team.py
+```
 
 - [Source tour](source-tour.md) follows one run through the implementation.
 - [Skills](skills.md) explains the shared manifest and disclosure path.

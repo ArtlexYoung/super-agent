@@ -7,7 +7,7 @@
 > Skill is all you need.
 
 Super Agent 只给模型一份精简的 Skill 索引。模型自行判断需要什么，按需打开内容，再执行选中的
-指令或已注册工具。提示、工作流、记忆行为、工具、任务场景和模型说明使用同一种 Skill 格式，
+指令或已注册工具。提示、运行策略、记忆行为、工具、任务指令和模型说明使用同一种 Skill 格式，
 也经过同一条渐进式披露路径。
 
 默认 Python 安装没有第三方运行依赖。基础 `Agent()` 无状态且不写文件。存储、对话、记忆、
@@ -74,7 +74,7 @@ print(result.text)
 `Agent` 只有六个直白操作：`run`、`for_user`、`add_subagent`、`add_skill_path`、
 `add_tool` 和 `add_model`。高级类型从其所属模块导入。
 
-专用 Agent 在代码中组合。场景只属于本次运行，不会偷偷改变后续运行：
+专用 Agent 在代码中组合。任务 Skill 只属于本次运行，不会偷偷改变后续运行：
 
 ```python
 from super_agent import Agent
@@ -105,13 +105,13 @@ JSONL 是可直接阅读的默认存储。SQLite 同样只用标准库；MySQL �
 学习只记录评价、保鲜度和模型使用证据，不会修改 Skill。Skill 更新包含四个可见步骤：
 
 ```bash
-super-agent skills propose-change --name prompt:research --goal "让引用更清晰"
-super-agent skills test-change --change-id <id> --cases cases.json
-super-agent skills apply-change --change-id <id>
-super-agent skills undo-change --change-id <id>
+super-agent manage skill-changes propose --name prompt:research --goal "让引用更清晰"
+super-agent manage skill-changes test --change-id <id> --cases cases.json
+super-agent manage skill-changes apply --change-id <id>
+super-agent manage skill-changes undo --change-id <id>
 ```
 
-提案和测试都不能启用候选内容。只有 `apply-change` 会修改用户覆盖层，测试失败时禁止应用。
+提案和测试都不能启用候选内容。只有 `apply` 会修改用户覆盖层，测试失败时禁止应用。
 
 ## CLI 与 Web
 
@@ -125,7 +125,7 @@ super-agent serve
 ```
 
 单次运行默认无状态，只有显式传入 `--save` 或会话 ID 才会保存。文本运行会在答案后显示真实
-使用的模型、场景、工作流、Skill、结束原因和运行 ID。集成程序可使用 `--output json` 或
+使用的模型、任务 Skill、工作流、Skill、结束原因和运行 ID。集成程序可使用 `--output json` 或
 `--output jsonl`。React 页面、CopilotKit 示例和 AG-UI 接口默认位于
 `http://127.0.0.1:8765/`。
 
@@ -149,6 +149,9 @@ super-agent serve
 - [学习、记忆与 Skill 更新](docs/evolution.md)
 - [安全](docs/safety.md)
 - [Web](docs/web.md) 与 [AG-UI](docs/ag-ui.md)
+
+可直接运行的示例位于 `examples/minimal.py`、`examples/custom_skill.py` 和
+`examples/team.py`。
 
 ## 验证仓库
 

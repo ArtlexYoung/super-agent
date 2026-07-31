@@ -1,6 +1,0 @@
-type = "workflow"
-description = "Direct workflow"
-
-[configuration]
-mode = "direct"
-max_steps = 8

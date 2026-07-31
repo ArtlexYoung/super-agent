@@ -1,5 +1,0 @@
-type = "mcp"
-description = "Example filesystem MCP tools"
-
-[configuration]
-server = "filesystem"
