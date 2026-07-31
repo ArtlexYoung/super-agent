@@ -9,11 +9,11 @@ from pathlib import Path
 from unittest.mock import patch
 
 from super_agent import Agent
-from core.skill_use.registry import SkillLoadRequest
-from core.skill_use.loaded import (
+from core.skill_use.handlers import (
+    SkillContext,
     SkillAction,
     SkillTool,
-    LoadedSkill,
+    SkillResult,
 )
 from cli import main
 from core.provider.chat import MockProvider, ModelResponse, ToolCall
@@ -23,7 +23,7 @@ from skill.manifest import Skill
 from support import write_workflow_skill
 
 
-class SkillLoaderRuntimeTests(unittest.TestCase):
+class SkillHandlerRuntimeTests(unittest.TestCase):
     def test_agent_reports_missing_model_in_an_empty_directory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, chdir(tmp), patch.dict(
             os.environ,
@@ -94,43 +94,43 @@ class SkillLoaderRuntimeTests(unittest.TestCase):
             self.assertIn("super-agent setup", error.getvalue())
             self.assertNotIn("Traceback", error.getvalue())
 
-    def test_agent_can_replace_one_skill_loader(self) -> None:
+    def test_agent_can_replace_one_skill_handler(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_prompt_skill(root)
             provider = MockProvider("finished")
-            loader = _RecordingPromptSkillLoader()
+            handler = _RecordingPromptSkillHandler()
             agent = Agent(
                 _config_with_skills(root, ["prompt:echo"]),
                 provider=provider,
             )
-            agent._add_skill_loader(loader)
+            agent._add_skill_handler(handler)
 
             result = agent.run("please echo this")
 
             self.assertEqual("finished", result.text)
-            self.assertEqual(1, loader.load_count)
+            self.assertEqual(1, handler.handle_count)
             self.assertIn(
-                "Loaded by custom SkillLoader.",
+                "Loaded by custom SkillHandler.",
                 provider.last_messages[0]["content"],
             )
 
-    def test_registered_custom_skill_loader_is_used(self) -> None:
+    def test_registered_custom_skill_handler_is_used(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_prompt_skill(root, skill_type="transform")
             provider = MockProvider("finished")
-            loader = _TransformSkillLoader()
+            handler = _TransformSkillHandler()
             agent = Agent(
                 _config_with_skills(root, ["transform:echo"]),
                 provider=provider,
             )
-            agent._add_skill_loader(loader)
+            agent._add_skill_handler(handler)
 
             result = agent.run("please echo this")
 
             self.assertEqual("finished", result.text)
-            self.assertEqual(1, loader.load_count)
+            self.assertEqual(1, handler.handle_count)
 
     def test_selected_skill_contributes_tools_without_runtime_changes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -151,7 +151,7 @@ class SkillLoaderRuntimeTests(unittest.TestCase):
                 _config_with_skills(root, ["workflow:react", "transform:echo"]),
                 provider=provider,
             )
-            agent._add_skill_loader(_TransformSkillLoader())
+            agent._add_skill_handler(_TransformSkillHandler())
 
             result = agent.run("please echo this")
 
@@ -163,7 +163,7 @@ class SkillLoaderRuntimeTests(unittest.TestCase):
             self.assertIn("uppercase_text", tool_names)
             self.assertIn("transform:echo", result.skills)
 
-    def test_skill_loader_tool_without_action_fails_closed(self) -> None:
+    def test_skill_handler_tool_without_action_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_prompt_skill(root, skill_type="unsafe")
@@ -172,7 +172,7 @@ class SkillLoaderRuntimeTests(unittest.TestCase):
                 _config_with_skills(root, ["unsafe:echo"]),
                 provider=provider,
             )
-            agent._add_skill_loader(_MissingActionSkillLoader())
+            agent._add_skill_handler(_MissingActionSkillHandler())
 
             with self.assertRaisesRegex(TypeError, "missing.*action"):
                 agent.run("please echo this")
@@ -272,35 +272,33 @@ class SkillLoaderRuntimeTests(unittest.TestCase):
             self.assertNotIn("core.skill_use.workflow", source)
 
 
-class _RecordingPromptSkillLoader:
-    name = "recording-prompt"
-    version = "1"
+class _RecordingPromptSkillHandler:
     skill_type = "prompt"
     adds_model_context = True
 
     def __init__(self) -> None:
-        self.load_count = 0
+        self.handle_count = 0
 
-    def load_skill(self, request: SkillLoadRequest) -> LoadedSkill:
-        self.load_count += 1
-        opened = request.disclosure.open_skill(
-            request.reference.name,
+    def handle_skill(self, context: SkillContext) -> SkillResult:
+        self.handle_count += 1
+        opened = context.disclosure.open_skill(
+            context.reference.name,
             self.skill_type,
         )
-        return LoadedSkill(
+        return SkillResult(
             model_context=Skill(
                 manifest=opened.read_manifest(),
-                instructions="Loaded by custom SkillLoader.",
+                instructions="Loaded by custom SkillHandler.",
             )
         )
 
 
-class _TransformSkillLoader(_RecordingPromptSkillLoader):
+class _TransformSkillHandler(_RecordingPromptSkillHandler):
     skill_type = "transform"
 
-    def load_skill(self, request: SkillLoadRequest) -> LoadedSkill:
-        contribution = super().load_skill(request)
-        return LoadedSkill(
+    def handle_skill(self, context: SkillContext) -> SkillResult:
+        contribution = super().handle_skill(context)
+        return SkillResult(
             model_context=contribution.model_context,
             tools=(
                 SkillTool(
@@ -318,11 +316,11 @@ class _TransformSkillLoader(_RecordingPromptSkillLoader):
         )
 
 
-class _MissingActionSkillLoader(_RecordingPromptSkillLoader):
+class _MissingActionSkillHandler(_RecordingPromptSkillHandler):
     skill_type = "unsafe"
 
-    def load_skill(self, request: SkillLoadRequest) -> LoadedSkill:
-        return LoadedSkill(
+    def handle_skill(self, context: SkillContext) -> SkillResult:
+        return SkillResult(
             tools=(
                 SkillTool(  # type: ignore[call-arg]
                     "unsafe_tool",

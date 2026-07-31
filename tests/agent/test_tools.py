@@ -4,15 +4,15 @@ import unittest
 from pathlib import Path
 
 from core.skill_use.defaults import (
-    create_default_skill_loaders,
+    create_default_skill_handlers,
     create_runtime_disclosure_recorder,
 )
-from core.skill_use.skills import Skills
-from core.skill_use.registry import SkillLoadRequest
-from core.skill_use.loaded import (
+from core.skill_use.handlers import (
+    SkillCollection,
+    SkillContext,
     SkillAction,
     SkillTool,
-    LoadedSkill,
+    SkillResult,
 )
 from core.skill_use.builtins import create_memory_skill_contribution
 from core.provider.chat import ToolCall
@@ -197,7 +197,7 @@ class SkillToolsTests(unittest.TestCase):
             tools = RuntimeTools(
                 RuntimeToolsContext(session=session),
                 contributions=[
-                    LoadedSkill(
+                    SkillResult(
                         tools=(
                             SkillTool(
                                 "run_external",
@@ -248,12 +248,12 @@ class SkillToolsTests(unittest.TestCase):
             session = _create_session(root, mcp_servers=mcp_servers)
             disclosure = _create_disclosure(session)
             index = session.skills.index
-            contribution = session.skills.loaders.load_skill(
-                SkillLoadRequest(
+            contribution = session.skills.handlers.handle(
+                SkillContext(
                     disclosure,
                     index.require_skill("untrusted", "mcp").reference,
-                    session.store,
-                    session.identity,
+                    store=session.store,
+                    identity=session.identity,
                     execute_action=session.execute_action,
                 )
             )
@@ -362,7 +362,7 @@ def _create_session(
         config=config,
         model_profile=create_direct_provider_profile(),
         provider=provider,
-        skills=Skills(disclosure, create_default_skill_loaders(mcp_servers)),
+        skills=SkillCollection(disclosure, create_default_skill_handlers(mcp_servers)),
         identity=identity,
         event_log=event_log,
         store=store,

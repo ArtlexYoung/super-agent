@@ -157,18 +157,18 @@ class ProgressiveDisclosureCore:
         allowed_types: set[str] | None = None,
     ) -> list[SkillSelectionDecision]:
         index = self.require_prepared_skill_index()
-        skill_loaders = (
+        handled_types = (
             None
             if allowed_types is None
             else {name.lower() for name in allowed_types}
         )
         requested = self._remove_disabled_skill_names(selected_names or [])
         resolved = index.resolve_skill_dependencies(requested)
-        if skill_loaders is not None:
+        if handled_types is not None:
             resolved = [
                 entry
                 for entry in resolved
-                if entry.reference.skill_type in skill_loaders
+                if entry.reference.skill_type in handled_types
             ]
         selected_keys = {entry.reference.key for entry in resolved}
         configured_names = {name.strip().lower() for name in selected_names or []}
@@ -180,7 +180,7 @@ class ProgressiveDisclosureCore:
                     entry,
                     configured_names,
                     selected_keys,
-                    skill_loaders,
+                    handled_types,
                 ),
             )
             for entry in index.entries

@@ -23,8 +23,7 @@ if TYPE_CHECKING:
     from core.state.subscribers import RuntimeEventSubscriber, SubscriberFailure
     from skill.disclosure import SkillIndexEntry, SkillReference
     from core.skill_use.models import ModelProfile
-    from core.skill_use.loaded import LoadedSkill
-    from core.skill_use.skills import Skills
+    from core.skill_use.handlers import SkillCollection, SkillResult
 
 
 @dataclass
@@ -32,7 +31,7 @@ class Run:
     config: AgentConfig
     model_profile: ModelProfile | None
     provider: ChatProvider | None
-    skills: Skills
+    skills: SkillCollection
     identity: RunIdentity
     event_log: RunEventLog
     store: EventStore | None
@@ -51,7 +50,7 @@ class Run:
         repr=False,
     )
     _action_runner: ActionRunner | None = field(default=None, init=False, repr=False)
-    _loaded_skills: dict[tuple[str, bool], LoadedSkill] = field(
+    _loaded_skills: dict[tuple[str, bool], SkillResult] = field(
         default_factory=dict,
         init=False,
         repr=False,
@@ -134,20 +133,21 @@ class Run:
         self,
         reference: SkillReference,
         send_text_model_messages: Callable[[list[Message]], str] | None = None,
-    ) -> LoadedSkill:
+    ) -> SkillResult:
         key = (reference.key, send_text_model_messages is not None)
         loaded = self._loaded_skills.get(key)
         if loaded is None:
-            from core.skill_use.skills import SkillServices
+            from core.skill_use.handlers import SkillContext
 
-            loaded = self.skills.load(
-                reference,
-                SkillServices(
-                    self.store,
-                    self.identity,
-                    send_text_model_messages,
-                    self.execute_action,
-                ),
+            loaded = self.skills.handlers.handle(
+                SkillContext(
+                    self.skills.disclosure,
+                    reference,
+                    store=self.store,
+                    identity=self.identity,
+                    send_text_model_messages=send_text_model_messages,
+                    execute_action=self.execute_action,
+                )
             )
             self._loaded_skills[key] = loaded
         return loaded

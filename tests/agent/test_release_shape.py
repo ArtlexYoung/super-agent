@@ -117,6 +117,9 @@ class ReleaseShapeTests(unittest.TestCase):
             "src/core/identity.py",
             "src/core/secrets.py",
             "src/core/session.py",
+            "src/core/skill_use/loaded.py",
+            "src/core/skill_use/registry.py",
+            "src/core/skill_use/skills.py",
         ]
 
         self.assertEqual([], [path for path in removed_paths if Path(path).exists()])
@@ -152,6 +155,9 @@ class ReleaseShapeTests(unittest.TestCase):
                 "core.identity",
                 "core.secrets",
                 "core.session",
+                "core.skill_use.loaded",
+                "core.skill_use.registry",
+                "core.skill_use.skills",
             ):
                 with self.subTest(module_name=module_name):
                     completed = subprocess.run(

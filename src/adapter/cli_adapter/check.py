@@ -8,7 +8,7 @@ import os
 from pathlib import Path
 
 from adapter.cli_adapter import load_agent_config
-from core.skill_use.defaults import create_default_skill_loaders, create_skills
+from core.skill_use.defaults import create_default_skill_handlers, create_skills
 from core.skill_use.models import (
     model_profile_is_ready,
     read_model_profiles,
@@ -34,10 +34,9 @@ def run_check_command(args: argparse.Namespace) -> int:
         stage = "skills"
         skills = create_skills(
             config,
-            loaders=create_default_skill_loaders(),
+            handlers=create_default_skill_handlers(),
             include_freshness=False,
         )
-        skills.validate_loaders()
         selected = skills.index.resolve_skill_dependencies(config.agent.skills)
         checks.append(
             _check(

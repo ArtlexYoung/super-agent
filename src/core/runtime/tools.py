@@ -4,10 +4,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
 
-from core.skill_use.loaded import (
+from core.skill_use.handlers import (
     SkillAction,
     SkillTool,
-    LoadedSkill,
+    SkillResult,
     read_optional_tool_string,
     read_required_tool_string,
 )
@@ -33,7 +33,7 @@ class RuntimeTools:
     def __init__(
         self,
         context: RuntimeToolsContext,
-        contributions: list[LoadedSkill] | None = None,
+        contributions: list[SkillResult] | None = None,
         delegated_subagent_results: list[SubAgentResult] | None = None,
         *,
         extra_tools: tuple[SkillTool, ...] = (),
@@ -51,7 +51,7 @@ class RuntimeTools:
             ),
             None,
         )
-        self.activated_contributions: list[LoadedSkill] = []
+        self.activated_contributions: list[SkillResult] = []
         self.delegated_subagent_results = (
             []
             if delegated_subagent_results is None
@@ -132,7 +132,7 @@ class RuntimeTools:
             raise ValueError("Skill contribution contains duplicate tool names")
         for tool in tools:
             if not isinstance(tool.action, SkillAction):
-                raise TypeError(f"SkillLoader tool must declare an action: {tool.name}")
+                raise TypeError(f"Skill tool must declare an action: {tool.name}")
             if tool.name in self._tools:
                 raise ValueError(f"runtime tool name already exists: {tool.name}")
 
@@ -213,7 +213,7 @@ class RuntimeTools:
     def _activate_reference(
         self,
         reference: SkillReference,
-    ) -> list[tuple[SkillReference, LoadedSkill]]:
+    ) -> list[tuple[SkillReference, SkillResult]]:
         loaded = self._load_reference_tree(reference, set())
         new_tools = tuple(
             tool for _item, item in loaded for tool in item.tools
@@ -232,16 +232,14 @@ class RuntimeTools:
         self,
         reference: SkillReference,
         loading: set[str],
-    ) -> list[tuple[SkillReference, LoadedSkill]]:
+    ) -> list[tuple[SkillReference, SkillResult]]:
         if reference.key in self._activated_skill_keys:
             return []
         if reference.key in loading:
             raise ValueError(f"Skill activation cycle: {reference.key}")
-        if self.context.session.skills.loaders.find_skill_loader(
-            reference.skill_type
-        ) is None:
+        if self.context.session.skills.handlers.find(reference.skill_type) is None:
             raise KeyError(
-                f"SkillLoader not found for Skill type: {reference.skill_type}"
+                f"Skill handler not found for Skill type: {reference.skill_type}"
             )
         contribution = self.context.session.load_skill(
             reference,
@@ -297,11 +295,9 @@ class RuntimeTools:
             reference.name,
             reference.skill_type,
         )
-        if self.context.session.skills.loaders.find_skill_loader(
-            reference.skill_type
-        ) is None:
+        if self.context.session.skills.handlers.find(reference.skill_type) is None:
             raise KeyError(
-                f"SkillLoader not found for Skill type: {reference.skill_type}"
+                f"Skill handler not found for Skill type: {reference.skill_type}"
             )
         self.context.session.record_skill_used(entry)
         if reference.key not in self.used_skill_names:
@@ -393,12 +389,12 @@ def _create_disclosure_tools(
 def _skill_reference_properties(
     skill_index: SkillIndex,
 ) -> dict[str, dict[str, object]]:
-    skill_loaders = sorted(
+    skill_types = sorted(
         {entry.reference.skill_type for entry in skill_index.entries}
     )
     return {
         "name": {"type": "string"},
-        "type": {"type": "string", "enum": skill_loaders},
+        "type": {"type": "string", "enum": skill_types},
     }
 
 
@@ -430,7 +426,7 @@ def _create_subagent_tools(runtime_tools: RuntimeTools) -> tuple[SkillTool, ...]
 
 
 def _activation_instructions(
-    loaded: list[tuple[SkillReference, LoadedSkill]],
+    loaded: list[tuple[SkillReference, SkillResult]],
 ) -> list[dict[str, str]]:
     instructions: list[dict[str, str]] = []
     for reference, contribution in loaded:

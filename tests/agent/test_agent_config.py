@@ -225,7 +225,7 @@ class LazyAgentInitializationTests(unittest.TestCase):
             child = Agent(config, provider=MockProvider("child"), use_storage=False)
 
             agent.add_subagent(child)
-            agent._add_skill_loader(_UnusedSkillLoader())
+            agent._add_skill_handler(_UnusedSkillHandler())
             agent.add_tool(
                 "example",
                 _UnusedMcpServer(),
@@ -292,24 +292,24 @@ class LazyAgentInitializationTests(unittest.TestCase):
             self.assertIsNotNone(agent.runtime)
             self.assertEqual(2, attempts)
 
-    def test_supplied_storage_provider_and_loader_keep_their_identity(self) -> None:
+    def test_supplied_storage_provider_and_handler_keep_their_identity(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             config = AgentConfig.create_default(root)
             storage = create_storage_backend("jsonl", str(root / "state"))
             provider = MockProvider("ready")
-            loader = _UnusedSkillLoader()
+            handler = _UnusedSkillHandler()
             agent = Agent(
                 config,
                 provider=provider,
                 storage=storage,
             )
-            agent._add_skill_loader(loader)
+            agent._add_skill_handler(handler)
 
             self.assertIs(storage, agent.runtime.storage)
             self.assertIs(
-                loader,
-                agent._skill_loaders.find_skill_loader("unused"),
+                handler,
+                agent._skill_handlers.find("unused"),
             )
             self.assertIs(
                 provider,
@@ -320,16 +320,12 @@ class LazyAgentInitializationTests(unittest.TestCase):
             )
 
 
-class _UnusedSkillLoader:
+class _UnusedSkillHandler:
     skill_type = "unused"
-    name = "unused-test-loader"
-    version = "1"
     adds_model_context = False
-    dependencies: tuple[str, ...] = ()
-    required_services: tuple[str, ...] = ()
 
-    def load_skill(self, request: object) -> object:
-        raise AssertionError(f"unused loader was called: {request}")
+    def handle_skill(self, context: object) -> object:
+        raise AssertionError(f"unused handler was called: {context}")
 
 
 class _UnusedMcpServer:

@@ -24,14 +24,13 @@ from core.events import StorageBackend
 from core.runtime.loop import ModelLoop, list_run_actions
 from core.runtime.model_calls import estimate_text_tokens
 from core.models import RunLearningResult, Task, RunResult, TaskTrace
-from core.skill_use.skills import Skills
+from core.skill_use.handlers import SkillCollection, SkillHandlers
 from core.skill_use.models import (
     ModelProfile,
     read_model_profiles,
 )
 from skill.manifest import SkillManifest
 from core.skill_use.defaults import create_skills
-from core.skill_use.registry import SkillLoaders
 
 if TYPE_CHECKING:
     from core.state.events import EventStore
@@ -44,14 +43,14 @@ class Runtime:
         self,
         config: AgentConfig,
         provider_pool: ProviderPool,
-        skill_loaders: SkillLoaders,
+        skill_handlers: SkillHandlers,
         storage: StorageBackend | None,
         create_action_rules: Callable[[], ActionRules] | None,
         user_secrets: UserSecretResolver,
     ) -> None:
         self.config = config
         self.provider_pool = provider_pool
-        self.skill_loaders = skill_loaders
+        self.skill_handlers = skill_handlers
         self.storage = storage
         self.create_action_rules = create_action_rules
         self.user_secrets = user_secrets
@@ -414,10 +413,10 @@ class Runtime:
         self,
         store: EventStore | None,
         identity: RunIdentity | None = None,
-    ) -> Skills:
+    ) -> SkillCollection:
         return create_skills(
             self.config,
-            loaders=self.skill_loaders,
+            handlers=self.skill_handlers,
             store=store,
             identity=identity if store is not None else None,
             include_freshness=False,
@@ -425,7 +424,7 @@ class Runtime:
 
     def _read_model_profiles(
         self,
-        skills: Skills,
+        skills: SkillCollection,
         user_id: str,
     ) -> list[ModelProfile]:
         environment = self.user_secrets.get_environment_for_user(user_id)

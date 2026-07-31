@@ -39,7 +39,7 @@ enter only at a visible boundary:
 For a subsystem, start at its owner:
 
 - Skill index and disclosure: `skill.disclosure.ProgressiveDisclosureCore`.
-- Skill loading: `core.skill_use.skills.Skills`.
+- Skill handling: `core.skill_use.handlers.SkillCollection` and `SkillHandlers`.
 - Provider selection: `core.provider.pool.ProviderPool`.
 - Stored user access: `adapter.user.UserAgent`.
 - Side-effect checks: `core.checks.ActionRunner`.

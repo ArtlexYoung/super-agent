@@ -17,8 +17,8 @@ from core.provider.chat import (
     read_model_turn,
 )
 from core.provider.pool import ProviderPool
-from core.skill_use.loaded import (
-    LoadedSkill,
+from core.skill_use.handlers import (
+    SkillResult,
     SkillAction,
     SkillTool,
     TaskPolicy,
@@ -56,7 +56,7 @@ NON_EXECUTION_SKILL_TYPES = {
 
 @dataclass
 class _LoopState:
-    contributions: list[LoadedSkill]
+    contributions: list[SkillResult]
     tools: RuntimeTools
     messages: list[Message]
     workflow: TaskPolicy
@@ -323,9 +323,9 @@ def _load_configured_skills(
     request: Task,
     run: Run,
     send_text_model_messages: Callable[[list[Message]], str],
-) -> tuple[list[LoadedSkill], list[str]]:
+) -> tuple[list[SkillResult], list[str]]:
     configured = list(run.config.agent.skills)
-    task_contribution: LoadedSkill | None = None
+    task_contribution: SkillResult | None = None
     if request.skill is not None:
         task_entry = run.skills.index.require_skill(request.skill, "task")
         allowed = {f"task:{name}" for name in request.allowed_task_skills}
@@ -344,9 +344,9 @@ def _load_configured_skills(
             *[item for item in configured if not _has_skill_type(item, {"task"})],
         ]
     loader_types = {
-        item.descriptor.skill_type
-        for item in run.skills.loaders.list_skill_loaders()
-        if item.descriptor.skill_type not in NON_EXECUTION_SKILL_TYPES
+        handler.skill_type
+        for handler in run.skills.handlers.list()
+        if handler.skill_type not in NON_EXECUTION_SKILL_TYPES
     }
     references = run.skills.disclosure.select_skill_references(
         [
@@ -363,7 +363,7 @@ def _load_configured_skills(
             if reference.skill_type != "task"
             or reference.name == task_entry.reference.name
         ]
-    contributions: list[LoadedSkill] = []
+    contributions: list[SkillResult] = []
     names: list[str] = []
     for reference in references:
         if task_contribution is not None and reference.skill_type == "task":
@@ -383,7 +383,7 @@ def _has_skill_type(value: str, skill_types: set[str]) -> bool:
     return ":" in clean and clean.split(":", 1)[0] in skill_types
 
 
-def _select_workflow(contributions: list[LoadedSkill]) -> TaskPolicy:
+def _select_workflow(contributions: list[SkillResult]) -> TaskPolicy:
     policies = [item.task_policy for item in contributions if item.task_policy is not None]
     if len(policies) > 1:
         raise ValueError("configure at most one task or workflow Skill")
@@ -393,7 +393,7 @@ def _select_workflow(contributions: list[LoadedSkill]) -> TaskPolicy:
 def _create_runtime_tools(
     request: Task,
     run: Run,
-    contributions: list[LoadedSkill],
+    contributions: list[SkillResult],
     send_text_model_messages: Callable[[list[Message]], str],
     model_tool: SkillTool | None,
 ) -> RuntimeTools:
@@ -441,7 +441,7 @@ def _selected_model(
 def _build_messages(
     request: Task,
     run: Run,
-    contributions: list[LoadedSkill],
+    contributions: list[SkillResult],
     workflow: TaskPolicy,
 ) -> list[Message]:
     trusted = [run.config.agent.system, UNTRUSTED_CONTEXT_POLICY]
@@ -515,7 +515,7 @@ def _record_model_turn(run: Run, step: int, response: ModelResponse) -> None:
 def _record_task_completed(
     run: Run,
     result: RunResult,
-    contributions: list[LoadedSkill],
+    contributions: list[SkillResult],
 ) -> None:
     run.record_event(
         "task.completed",

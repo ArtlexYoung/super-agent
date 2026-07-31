@@ -6,10 +6,10 @@ from threading import RLock
 from typing import TYPE_CHECKING, Callable
 
 from core.skill_use.defaults import (
-    create_default_skill_loaders,
+    create_default_skill_handlers,
     create_skills,
 )
-from core.skill_use.registry import SkillLoader
+from core.skill_use.handlers import SkillHandler
 from core.skill_use.mcp import McpServer, McpServers
 from core.provider.chat import (
     ChatProvider,
@@ -85,7 +85,7 @@ class Agent:
         self._model_profile: ModelProfile | None = None
         self._code_model_profiles: tuple[ModelProfile, ...] = ()
         self._mcp_servers = McpServers()
-        self._skill_loaders = create_default_skill_loaders(self._mcp_servers)
+        self._skill_handlers = create_default_skill_handlers(self._mcp_servers)
         self._pending_event_subscribers = RuntimeEventSubscribers()
         self._initialization_lock = RLock()
         self._subagents: list[SubAgent] = []
@@ -155,9 +155,9 @@ class Agent:
         )
         self._replace_configuration(config)
 
-    def _add_skill_loader(self, loader: SkillLoader) -> None:
+    def _add_skill_handler(self, handler: SkillHandler) -> None:
         with self._initialization_lock:
-            self._skill_loaders.add_skill_loader(loader, replace=True)
+            self._skill_handlers.add(handler, replace=True)
 
     def add_tool(
         self,
@@ -359,7 +359,7 @@ class Agent:
             store = self._create_bootstrap_store(storage)
             skills = create_skills(
                 self.config,
-                loaders=self._skill_loaders,
+                handlers=self._skill_handlers,
                 store=store,
                 include_freshness=False,
             )
@@ -424,7 +424,7 @@ class Agent:
         runtime = Runtime(
             config,
             provider_pool,
-            self._skill_loaders,
+            self._skill_handlers,
             storage,
             self._create_action_rules,
             self.user_secrets,

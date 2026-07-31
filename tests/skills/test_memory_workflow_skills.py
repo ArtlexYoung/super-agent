@@ -10,23 +10,23 @@ from core.provider.chat import MockProvider
 from core.state.memory import Memory
 
 
-class MemoryWorkflowSkillLoaderTests(unittest.TestCase):
+class MemoryWorkflowSkillHandlerTests(unittest.TestCase):
     def test_agent_loads_memory_from_memory_skill(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_workflow_skill(root, "direct", "direct")
             _write_memory_skill(root, "default")
-            _write_memory_item(root, "Remember via Skill SkillLoader.")
+            _write_memory_item(root, "Remember via Skill handler.")
             provider = MockProvider("ok")
 
             result = Agent(
                 AgentConfig.load_from_file(_write_config(root)),
                 provider=provider,
                 use_storage=True,
-            ).run("remember via Skill SkillLoader")
+            ).run("remember via Skill handler")
 
             self.assertEqual("ok", result.text)
-            self.assertIn("Remember via Skill SkillLoader.", provider.last_messages[0]["content"])
+            self.assertIn("Remember via Skill handler.", provider.last_messages[0]["content"])
 
     def test_agent_can_disable_named_memory_skill(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -47,7 +47,7 @@ class MemoryWorkflowSkillLoaderTests(unittest.TestCase):
     def test_agent_loads_workflow_from_workflow_skill(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            _write_workflow_skill(root, "careful", "loop", instruction="Workflow SkillLoader marker.")
+            _write_workflow_skill(root, "careful", "loop", instruction="Workflow SkillHandler marker.")
             provider = MockProvider("ok")
 
             result = Agent(
@@ -59,7 +59,7 @@ class MemoryWorkflowSkillLoaderTests(unittest.TestCase):
             self.assertEqual("careful", result.workflow)
             self.assertEqual(1, len(provider.tool_requests))
             self.assertIn(
-                "Workflow SkillLoader marker.",
+                "Workflow SkillHandler marker.",
                 provider.tool_requests[0][0][0]["content"],
             )
 

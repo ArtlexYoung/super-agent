@@ -2,9 +2,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from core.skill_use.defaults import create_default_skill_loaders
-from core.skill_use.skills import Skills
-from core.skill_use.loaded import SkillAction
+from core.skill_use.defaults import create_default_skill_handlers
+from core.skill_use.handlers import SkillAction, SkillCollection
 from core.provider.chat import MockProvider
 from core.config import AgentConfig
 from core.runtime.run import Run
@@ -228,7 +227,7 @@ def _create_session(
         config=config,
         model_profile=create_direct_provider_profile(),
         provider=MockProvider(),
-        skills=Skills(disclosure, create_default_skill_loaders()),
+        skills=SkillCollection(disclosure, create_default_skill_handlers()),
         identity=identity,
         event_log=event_log,
         store=store,
@@ -245,9 +244,9 @@ def _create_session_without_action_checker() -> Run:
         config=config,
         model_profile=create_direct_provider_profile(),
         provider=MockProvider(),
-        skills=Skills(
+        skills=SkillCollection(
             ProgressiveDisclosureCore([]),
-            create_default_skill_loaders(),
+            create_default_skill_handlers(),
         ),
         identity=identity,
         event_log=event_log,

@@ -4,11 +4,12 @@ import hashlib
 from dataclasses import asdict
 from typing import TYPE_CHECKING
 
-from core.skill_use.registry import SkillLoader, SkillLoadRequest
-from core.skill_use.loaded import (
+from core.skill_use.handlers import (
+    SkillContext,
+    SkillHandler,
     SkillAction,
     SkillTool,
-    LoadedSkill,
+    SkillResult,
     read_optional_positive_tool_integer,
     read_optional_tool_string,
     read_required_tool_string,
@@ -22,15 +23,13 @@ if TYPE_CHECKING:
     from core.skill_use.mcp import McpServers, RegisteredMcpServer
 
 
-class PromptSkillLoader:
-    name = "prompt-context"
-    version = "1"
+class PromptSkillHandler:
     skill_type = "prompt"
     adds_model_context = True
 
-    def load_skill(self, request: SkillLoadRequest) -> LoadedSkill:
-        opened = request.open_skill()
-        return LoadedSkill(
+    def handle_skill(self, context: SkillContext) -> SkillResult:
+        opened = context.open_skill()
+        return SkillResult(
             model_context=Skill(
                 manifest=opened.disclose_manifest(),
                 instructions=opened.disclose_instructions().content,
@@ -38,29 +37,27 @@ class PromptSkillLoader:
         )
 
 
-class McpSkillLoader:
-    name = "registered-mcp"
-    version = "2"
+class McpSkillHandler:
     skill_type = "mcp"
     adds_model_context = True
 
     def __init__(self, servers: McpServers) -> None:
         self.servers = servers
 
-    def load_skill(self, request: SkillLoadRequest) -> LoadedSkill:
+    def handle_skill(self, context: SkillContext) -> SkillResult:
         from core.skill_use.mcp import read_mcp_skill_settings
 
-        opened = request.open_skill()
+        opened = context.open_skill()
         opened.disclose_configuration()
         settings = read_mcp_skill_settings(opened)
         registered = self.servers.require_mcp_server(settings.server_name)
-        list_tool_name, run_tool_name = _mcp_tool_names(request.reference.name)
+        list_tool_name, run_tool_name = _mcp_tool_names(context.reference.name)
         instructions = opened.disclose_instructions().content
         runtime_context = (
             f"Registered MCP server: {registered.name}\n"
             f"Runtime tools: {list_tool_name}, {run_tool_name}"
         )
-        return LoadedSkill(
+        return SkillResult(
             model_context=Skill(
                 manifest=opened.disclose_manifest(),
                 instructions="\n\n".join(
@@ -74,80 +71,73 @@ class McpSkillLoader:
         return self.servers.list_code_registrations()
 
 
-class MemorySkillLoader:
-    name = "long-term-memory"
-    version = "5"
+class MemorySkillHandler:
     skill_type = "memory"
     adds_model_context = False
-    required_services = ("storage",)
 
-    def load_skill(self, request: SkillLoadRequest) -> LoadedSkill:
+    def handle_skill(self, context: SkillContext) -> SkillResult:
         from core.state.memory import create_memory_from_skill
 
-        opened = request.open_skill()
+        opened = context.open_skill()
         opened.disclose_manifest()
         opened.disclose_configuration()
         opened.disclose_instructions()
         memory = create_memory_from_skill(
             opened,
-            request.require_store("memory Skill"),
-            request.identity,
-            execute_action=request.require_action_executor(),
+            context.require_store("memory Skill"),
+            context.identity,
+            execute_action=context.require_action_executor(),
         )
         return create_memory_skill_contribution(memory)
 
 
-class WorkflowSkillLoader:
-    name = "tool-loop"
-    version = "1"
+class WorkflowSkillHandler:
     skill_type = "workflow"
     adds_model_context = False
 
-    def load_skill(self, request: SkillLoadRequest) -> LoadedSkill:
+    def handle_skill(self, context: SkillContext) -> SkillResult:
         from core.skill_use.workflow import create_workflow_policy_from_skill
 
-        opened = request.open_skill()
+        opened = context.open_skill()
         opened.disclose_manifest()
         opened.disclose_configuration()
         opened.disclose_instructions()
-        return LoadedSkill(
+        return SkillResult(
             task_policy=create_workflow_policy_from_skill(opened),
         )
 
 
-class TaskSkillLoader:
-    name = "task"
-    version = "1"
+class TaskSkillHandler:
     skill_type = "task"
     adds_model_context = True
 
-    def load_skill(self, request: SkillLoadRequest) -> LoadedSkill:
+    def handle_skill(self, context: SkillContext) -> SkillResult:
         from core.skill_use.workflow import create_task_policy_from_skill
 
-        opened = request.open_skill()
+        opened = context.open_skill()
         manifest = opened.disclose_manifest()
         opened.disclose_configuration()
         instructions = opened.disclose_instructions().content
-        return LoadedSkill(
+        return SkillResult(
             model_context=Skill(manifest=manifest, instructions=instructions),
             task_policy=create_task_policy_from_skill(opened),
         )
 
 
-def create_builtin_skill_loaders(
+def create_builtin_skill_handlers(
     mcp_servers: McpServers,
-) -> tuple[SkillLoader, ...]:
+) -> tuple[SkillHandler, ...]:
     return (
-        PromptSkillLoader(),
-        McpSkillLoader(mcp_servers),
-        MemorySkillLoader(),
-        WorkflowSkillLoader(),
-        TaskSkillLoader(),
+        PromptSkillHandler(),
+        McpSkillHandler(mcp_servers),
+        MemorySkillHandler(),
+        WorkflowSkillHandler(),
+        TaskSkillHandler(),
     )
 
 
-def create_memory_skill_contribution(memory: Memory) -> LoadedSkill:
-    return LoadedSkill(
+def create_memory_skill_contribution(memory: Memory) -> SkillResult:
+    return SkillResult(
         build_prompt_context=memory.build_prompt_instruction,
         tools=_create_memory_tools(memory),
         record_task_completed=memory.usage_habits.record_agent_run,

@@ -8,8 +8,8 @@ from pathlib import Path
 from core import __version__
 from core.checks import ActionEffect
 from super_agent import Agent
-from core.skill_use.defaults import create_default_skill_loaders
-from core.skill_use.registry import SkillLoadRequest
+from core.skill_use.defaults import create_default_skill_handlers
+from core.skill_use.handlers import SkillContext
 from core.config import AgentConfig
 from core.state.events import create_local_event_store
 from core.provider.chat import MockProvider
@@ -99,16 +99,16 @@ class McpSkillTests(unittest.TestCase):
             disclosure = _prepare_disclosure(root)
             index = disclosure.prepare_skill_index()
             servers = _registered_servers("alpha", "beta")
-            registry = create_default_skill_loaders(servers)
+            handlers = create_default_skill_handlers(servers)
 
-            alpha = registry.load_skill(
-                SkillLoadRequest(
+            alpha = handlers.handle(
+                SkillContext(
                     disclosure,
                     index.require_skill("alpha", "mcp").reference,
                 )
             )
-            beta = registry.load_skill(
-                SkillLoadRequest(
+            beta = handlers.handle(
+                SkillContext(
                     disclosure,
                     index.require_skill("beta", "mcp").reference,
                 )
@@ -142,8 +142,8 @@ description = "Missing mcp table"
             disclosure = _prepare_disclosure(root)
 
             with self.assertRaisesRegex(KeyError, "not registered in code"):
-                create_default_skill_loaders().load_skill(
-                    SkillLoadRequest(
+                create_default_skill_handlers().handle(
+                    SkillContext(
                         disclosure,
                         disclosure.prepare_skill_index().require_skill(
                             "bad", "mcp"
@@ -365,11 +365,11 @@ def _load_model_context(
     reference: SkillReference,
     servers: McpServers,
 ) -> Skill:
-    contribution = create_default_skill_loaders(servers).load_skill(
-        SkillLoadRequest(disclosure, reference)
+    contribution = create_default_skill_handlers(servers).handle(
+        SkillContext(disclosure, reference)
     )
     if contribution.model_context is None:
-        raise AssertionError("MCP SkillLoader did not provide model context")
+        raise AssertionError("MCP SkillHandler did not provide model context")
     return contribution.model_context
 
 
@@ -413,7 +413,7 @@ for line in sys.stdin:
         client_version = request["params"]["clientInfo"]["version"]
         result = {
             "protocolVersion": "2025-03-26",
-            "skill_loaders": {"tools": {}},
+            "capabilities": {"tools": {}},
             "serverInfo": {"name": "fake", "version": "1"},
         }
     elif method == "tools/list":

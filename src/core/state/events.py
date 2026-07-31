@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
 
 class EventStore:
-    """Expose domain operations while keeping backend details out of skill_loaders."""
+    """Expose domain operations while keeping backend details out of Skill handlers."""
 
     def __init__(
         self,

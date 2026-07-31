@@ -72,7 +72,7 @@ def _read_skill_type(data: dict[str, object]) -> str:
         raise ValueError("skill type must use lowercase letters, numbers, '-' or '_'")
     if skill_type == "runner":
         raise ValueError(
-            "executable SkillLoader code must be registered inside Runtime setup"
+            "executable SkillHandler code must be registered inside Runtime setup"
         )
     return skill_type
 

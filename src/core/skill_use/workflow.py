@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from core.skill_use.loaded import TaskPolicy
+from core.skill_use.handlers import TaskPolicy
 from skill.disclosure import SkillDisclosure
 
 WORKFLOW_MODES = {"direct", "react", "loop"}

@@ -36,12 +36,12 @@ class PublicApiTests(unittest.TestCase):
         from core.checks import ActionRules
         from core.models import AgentRunOptions
         from core.provider.chat import MockProvider
-        from core.skill_use.registry import SkillLoader
+        from core.skill_use.handlers import SkillHandler
 
         self.assertIsNotNone(ActionRules)
         self.assertIsNotNone(AgentRunOptions)
         self.assertIsNotNone(MockProvider)
-        self.assertIsNotNone(SkillLoader)
+        self.assertIsNotNone(SkillHandler)
 
     def test_removed_provider_aliases_fail_clearly(self) -> None:
         for provider in ["openai", "anthropic"]:

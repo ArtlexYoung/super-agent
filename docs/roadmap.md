@@ -666,6 +666,17 @@ Status: implemented.
 - Keep memory optional so built-in `common` and `code` tasks run without storage.
 - Reject activating a second task Skill after one is explicitly selected.
 
+## v0.0.117: Simple Skill Handlers
+
+Status: implemented.
+
+- Replace loader descriptors, code hashes, service declarations, and dependency graphs with
+  one `SkillHandler` map keyed by Skill type.
+- Keep handler registration explicit in trusted code and validate every `SkillResult` at the
+  execution boundary.
+- Collapse the old registry, loaded-value, and Skills wrapper modules into one handler owner.
+- Remove all old loader names, imports, files, and documentation without aliases.
+
 ## Release Gate
 
 The project will not move to `0.1.x` because of feature count. The gate is a reproducible

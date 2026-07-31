@@ -58,7 +58,7 @@ makes its choice during the normal model turn.
 - `model`, `feedback`, and `freshness` configure their owning Core services.
 
 Skill directories cannot contain executable Python or shell runners. Runtime setup owns
-trusted loaders, while ordinary Agent users add passive content and registered MCP tools.
+trusted handlers, while ordinary Agent users add passive content and registered MCP tools.
 
 ## Task Skills
 

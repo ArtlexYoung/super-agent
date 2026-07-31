@@ -1,4 +1,4 @@
-"""CLI command groups and their shared loaders."""
+"""CLI command groups and their shared readers."""
 
 from __future__ import annotations
 

@@ -14,7 +14,7 @@ from core.provider.chat import (
     normalize_provider_connection,
 )
 from skill.disclosure import SkillDisclosure
-from core.skill_use.skills import Skills
+from core.skill_use.handlers import SkillCollection
 from skill.manifest import calculate_skill_directory_sha256
 
 DEFAULT_OPENAI_MODEL = "gpt-4.1-mini"
@@ -128,7 +128,7 @@ def create_model_profile_from_skill_disclosure(
 
 
 def read_model_profiles(
-    skills: Skills,
+    skills: SkillCollection,
     environment: Mapping[str, str] | None = None,
 ) -> list[ModelProfile]:
     model_entries = [

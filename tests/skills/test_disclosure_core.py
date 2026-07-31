@@ -16,20 +16,20 @@ from skill.disclosure import ProgressiveDisclosureCore
 from core.evaluation.freshness import calculate_skill_freshness
 from core.evaluation.models import SkillRevision
 from core.skill_use.defaults import create_runtime_disclosure_recorder
-from core.skill_use.skills import Skills
+from core.skill_use.handlers import SkillCollection
 from core.runtime.run import Run
 from support import load_default_freshness_rules
 
 
 class ProgressiveDisclosureCoreTests(unittest.TestCase):
     def test_run_owns_one_central_skills_snapshot(self) -> None:
-        skills = Skills(ProgressiveDisclosureCore([]))
+        skills = SkillCollection(ProgressiveDisclosureCore([]))
         run_fields = {field.name for field in fields(Run)}
 
         self.assertIs(skills.index, skills.disclosure.require_prepared_skill_index())
         self.assertIn("skills", run_fields)
         self.assertFalse(
-            {"skill_disclosure", "skill_index", "skill_loaders"} & run_fields
+            {"skill_disclosure", "skill_index", "skill_handlers"} & run_fields
         )
 
     def test_read_only_index_contains_every_skill_type_without_writing(self) -> None:

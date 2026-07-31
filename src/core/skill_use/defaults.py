@@ -1,31 +1,30 @@
-"""Built-in Skill loaders and central progressive disclosure defaults."""
+"""Built-in Skill handlers and central progressive disclosure defaults."""
 
 from __future__ import annotations
 
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from core.skill_use.registry import SkillLoaders
-from core.skill_use.builtins import create_builtin_skill_loaders
+from core.skill_use.handlers import SkillCollection, SkillHandlers
+from core.skill_use.builtins import create_builtin_skill_handlers
 from core.skill_use.mcp import McpServers
 from core.config import AgentConfig
 from core.models import RunIdentity
 from skill.disclosure import DisclosureRecorder, ProgressiveDisclosureCore
-from core.skill_use.skills import Skills
 
 if TYPE_CHECKING:
     from core.state.events import EventStore
     from core.evaluation.rules import FreshnessRules
 
 
-def create_default_skill_loaders(
+def create_default_skill_handlers(
     mcp_servers: McpServers | None = None,
-) -> SkillLoaders:
-    loaders = SkillLoaders()
+) -> SkillHandlers:
+    handlers = SkillHandlers()
     servers = mcp_servers or McpServers()
-    for loader in create_builtin_skill_loaders(servers):
-        loaders.add_skill_loader(loader)
-    return loaders
+    for handler in create_builtin_skill_handlers(servers):
+        handlers.add(handler)
+    return handlers
 
 
 def create_progressive_skill_disclosure(
@@ -116,12 +115,12 @@ def load_configured_freshness_rules_if_enabled(
 def create_skills(
     config: AgentConfig,
     *,
-    loaders: SkillLoaders | None = None,
+    handlers: SkillHandlers | None = None,
     store: EventStore | None = None,
     identity: RunIdentity | None = None,
     record_disclosures: bool | None = None,
     include_freshness: bool = True,
-) -> Skills:
+) -> SkillCollection:
     """Build one complete Skill snapshot through the central entry point."""
     disclosure = create_progressive_skill_disclosure(
         config,
@@ -130,7 +129,7 @@ def create_skills(
         record_disclosures=record_disclosures,
         include_freshness=include_freshness,
     )
-    return Skills(disclosure, loaders)
+    return SkillCollection(disclosure, handlers)
 
 
 def create_runtime_disclosure_recorder(

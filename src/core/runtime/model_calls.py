@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable, Protocol
 from uuid import uuid4
 
-from core.skill_use.loaded import TaskPolicy
+from core.skill_use.handlers import TaskPolicy
 from core.provider.chat import (
     ChatProvider,
     Message,
