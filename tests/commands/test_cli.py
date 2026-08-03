@@ -2,17 +2,49 @@ import tempfile
 import unittest
 import json
 import os
+import subprocess
+import sys
 from contextlib import chdir
 from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
 from adapter.cli_adapter.commands import CLI_COMMANDS, _is_terminal_request, main
+from core import __version__
 from core.provider.chat import MockProvider
 from support import write_minimal_project
 
 
 class CliTests(unittest.TestCase):
+    def test_root_entry_supports_version_and_help_without_project_files(self) -> None:
+        environment = dict(os.environ)
+        environment["PYTHONPATH"] = str(Path("src").resolve())
+        repository_root = Path(__file__).resolve().parents[2]
+        with tempfile.TemporaryDirectory() as tmp:
+            version = subprocess.run(
+                [sys.executable, str(repository_root / "src/cli.py"), "--version"],
+                cwd=tmp,
+                env=environment,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            help_result = subprocess.run(
+                [sys.executable, str(repository_root / "src/cli.py"), "--help"],
+                cwd=tmp,
+                env=environment,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(0, version.returncode)
+            self.assertEqual(f"super-agent {__version__}\n", version.stdout)
+            self.assertEqual(0, help_result.returncode)
+            self.assertIn("Chat with an Agent", help_result.stdout)
+            self.assertIn("check", help_result.stdout)
+            self.assertFalse(Path(tmp, ".super-agent").exists())
+
     def test_cli_has_clear_top_level_commands(self) -> None:
         self.assertEqual(
             {

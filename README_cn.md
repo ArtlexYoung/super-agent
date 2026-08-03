@@ -168,3 +168,5 @@ pnpm --dir web typecheck
 pnpm --dir web lint
 pnpm --dir web build
 ```
+
+完整的本地发布检查（包括版本一致性和打包范围）见[本地发布流程](docs/releasing.md)。

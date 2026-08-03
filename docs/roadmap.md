@@ -819,6 +819,20 @@ Status: implemented.
 - Preserve the v0.0.129 command surface without aliases, forwarding commands, or runtime
   behavior changes.
 
+## v0.0.131: Reproducible CLI Release Gate
+
+Status: implemented.
+
+- Add CLI usability coverage for direct source-tree version/help entry points and the
+  no-project-file startup path.
+- Add a read-only standard-library release script that checks synchronized versions,
+  dependency-free defaults, source layout, wheel roots, README language link, and source
+  size thresholds.
+- Document the exact Homebrew Python 3.11, pnpm, test, build, commit, and tag commands for
+  a local release without remote or hidden migration actions.
+- Keep the release gate separate from Runtime behavior; failed checks stop the release
+  before commit and never silently reduce the tested surface.
+
 ## Release Gate
 
 The project will not move to `0.1.x` because of feature count. The gate is a reproducible

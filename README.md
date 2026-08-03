@@ -182,3 +182,6 @@ pnpm --dir web typecheck
 pnpm --dir web lint
 pnpm --dir web build
 ```
+
+For the complete local release gate, including version and package-shape checks, see
+[Local release](docs/releasing.md).
