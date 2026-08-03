@@ -117,8 +117,8 @@ super-agent manage skill-changes undo --change-id <id>
 
 ```bash
 super-agent check
-super-agent run "执行一次任务"
-super-agent run --skill code "检查这个仓库"
+super-agent "执行一次任务"
+super-agent --skill code "检查这个仓库"
 super-agent config show
 super-agent skills list
 super-agent data runs status

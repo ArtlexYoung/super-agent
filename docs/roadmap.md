@@ -761,6 +761,17 @@ Status: implemented.
 - Stop setup from generating model Skills; model ownership remains with model Skills and
   environment configuration.
 
+## v0.0.126: Direct Terminal Entry
+
+Status: implemented.
+
+- Make the root command the only terminal task entry: no arguments starts a conversation,
+  while a prompt runs one task.
+- Put task options directly on that entry and remove the duplicate `run` command without
+  an alias or forwarding path.
+- Keep management commands independent from optional CLI configuration.
+- Add an explicit version flag without creating files, state, or a first-run flow.
+
 ## Release Gate
 
 The project will not move to `0.1.x` because of feature count. The gate is a reproducible

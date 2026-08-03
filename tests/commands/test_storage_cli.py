@@ -29,7 +29,6 @@ class StorageCliTests(unittest.TestCase):
                     0,
                     main(
                         [
-                            "run",
                             "--save",
                             "--common-config",
                             str(config),
@@ -43,7 +42,7 @@ class StorageCliTests(unittest.TestCase):
                 )
                 self.assertEqual(
                     0,
-                    main(["run", "--save", "--common-config", str(config), "--user-id", "beta", "echo beta"]),
+                    main(["--save", "--common-config", str(config), "--user-id", "beta", "echo beta"]),
                 )
 
             first = self._run_json(

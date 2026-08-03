@@ -7,7 +7,7 @@ from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
-from cli import CLI_COMMANDS, REMOVED_COMMANDS, _is_direct_prompt, main
+from cli import CLI_COMMANDS, REMOVED_COMMANDS, _is_terminal_request, main
 from cli import run_result_to_dict
 from core.provider.chat import MockProvider
 from core.models import SubAgentResult, RunResult
@@ -20,7 +20,6 @@ class CliTests(unittest.TestCase):
                 "check",
                 "config",
                 "setup",
-                "run",
                 "skills",
                 "manage",
                 "data",
@@ -30,7 +29,9 @@ class CliTests(unittest.TestCase):
         )
         self.assertTrue(REMOVED_COMMANDS.isdisjoint(CLI_COMMANDS))
         for command in REMOVED_COMMANDS:
-            self.assertFalse(_is_direct_prompt([command]))
+            self.assertFalse(_is_terminal_request([command]))
+        self.assertTrue(_is_terminal_request([]))
+        self.assertTrue(_is_terminal_request(["--skill", "code", "inspect this"]))
 
     def test_models_list_reports_discovered_models_without_secret_values(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, chdir(tmp):
@@ -170,7 +171,7 @@ class CliTests(unittest.TestCase):
 
             output = StringIO()
             with patch("sys.stdout", output):
-                code = main(["run", "--common-config", str(Path(tmp) / "common.toml"), "hello"])
+                code = main(["--common-config", str(Path(tmp) / "common.toml"), "hello"])
 
             self.assertEqual(0, code)
             self.assertIn("Mock response", output.getvalue())
@@ -188,7 +189,7 @@ class CliTests(unittest.TestCase):
             config = str(Path(tmp) / "common.toml")
             main(["setup", "--path", tmp])
             _select_skills(Path(config), ["task:default", "memory:default"])
-            main(["run", "--save", "--common-config", config, "hello"])
+            main(["--save", "--common-config", config, "hello"])
 
             output = StringIO()
             with patch("sys.stdout", output):
@@ -342,7 +343,7 @@ description = "Compact note writer"
             main(["setup", "--path", tmp])
             run_output = StringIO()
             with patch("sys.stdout", run_output):
-                main(["run", "--save", "--output", "json", "--common-config", config, "echo hello"])
+                main(["--save", "--output", "json", "--common-config", config, "echo hello"])
             run_id = json.loads(run_output.getvalue())["run_id"]
             main(["data", "runs", "learn", "--common-config", config, "--run-id", run_id])
 
@@ -366,7 +367,7 @@ description = "Compact note writer"
 
             with patch("sys.stdout", output):
                 code = main(
-                    ["run", "--save", "--output", "json", "--common-config", str(Path(tmp) / "common.toml"), "hello"]
+                    ["--save", "--output", "json", "--common-config", str(Path(tmp) / "common.toml"), "hello"]
                 )
 
             data = json.loads(output.getvalue())
@@ -385,7 +386,6 @@ description = "Compact note writer"
             with patch("sys.stdout", output):
                 code = main(
                     [
-                        "run",
                         "--save",
                         "--skill",
                         "code",
@@ -518,7 +518,6 @@ max_steps = 8
             with patch("sys.stdin", StringIO(json.dumps(request))), patch("sys.stdout", output):
                 code = main(
                     [
-                        "run",
                         "--save",
                         "--request-stdin",
                         "--output",

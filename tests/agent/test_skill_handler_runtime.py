@@ -41,7 +41,7 @@ class SkillHandlerRuntimeTests(unittest.TestCase):
         ):
             output = StringIO()
             with patch("sys.stdout", output):
-                code = main(["run", "hello"])
+                code = main(["hello"])
 
             self.assertEqual(0, code)
             self.assertTrue(output.getvalue().startswith("Mock response\n\nRun: run-"))

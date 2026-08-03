@@ -129,8 +129,8 @@ overlay, and failed tests block it.
 
 ```bash
 super-agent check
-super-agent run "one task"
-super-agent run --skill code "inspect this repository"
+super-agent "one task"
+super-agent --skill code "inspect this repository"
 super-agent config show
 super-agent skills list
 super-agent data runs status

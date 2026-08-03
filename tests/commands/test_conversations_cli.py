@@ -32,7 +32,6 @@ class ConversationsCliTests(unittest.TestCase):
             )
             self._run_silently(
                 [
-                    "run",
                     "--save",
                     "--common-config",
                     config,
@@ -45,7 +44,6 @@ class ConversationsCliTests(unittest.TestCase):
             )
             self._run_silently(
                 [
-                    "run",
                     "--save",
                     "--common-config",
                     config,
@@ -107,7 +105,6 @@ class ConversationsCliTests(unittest.TestCase):
             with patch("sys.stdin", StringIO(json.dumps(request))), patch("sys.stdout", output):
                 code = main(
                     [
-                        "run",
                         "--save",
                         "--common-config",
                         config,
@@ -140,7 +137,7 @@ class ConversationsCliTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             config = self._initialize_project(tmp)
             self._run_silently(
-                ["run", "--save", "--common-config", config, "--user-id", "alpha", "echo alpha"]
+                ["--save", "--common-config", config, "--user-id", "alpha", "echo alpha"]
             )
             self._run_silently(
                 [

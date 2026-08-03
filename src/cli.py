@@ -34,6 +34,7 @@ from adapter.cli_adapter.skills import (
     run_skills_command,
 )
 from adapter.cli_adapter.storage import configure_storage_parser, run_storage_command
+from core import __version__
 from core.provider.chat import Message
 from core.models import AgentRunOptions, LOCAL_USER_ID
 from core.state.models import RunEvent
@@ -41,10 +42,10 @@ from core.models import RunResult
 
 
 CLI_COMMANDS = frozenset(
-    {"check", "config", "data", "manage", "run", "serve", "setup", "skills"}
+    {"check", "config", "data", "manage", "serve", "setup", "skills"}
 )
 REMOVED_COMMANDS = frozenset(
-    {"chat", "conversations", "init", "memory", "models", "runs", "storage"}
+    {"chat", "conversations", "init", "memory", "models", "run", "runs", "storage"}
 )
 
 
@@ -62,25 +63,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     debug = "--debug" in arguments
     arguments = [value for value in arguments if value != "--debug"]
     try:
-        if _is_direct_prompt(arguments):
-            cli_config = load_cli_config()
-            return _run_prompt_command(
-                None,
-                CliRequest(
-                    prompt=" ".join(arguments),
-                    messages=[],
-                    user_id=cli_config.user_id,
-                ),
-                cli_config.output,
-                save=cli_config.save,
-                show_summary=cli_config.show_summary,
-            )
+        if _is_terminal_request(arguments):
+            return _run_terminal(arguments)
         parser = _build_parser()
         args = parser.parse_args(arguments)
         if args.command == "config":
             return run_config_command(args)
-        cli_config = load_cli_config(getattr(args, "cli_config", None))
-        return _run_parsed_command(parser, args, cli_config)
+        return _run_parsed_command(parser, args)
     except Exception as error:
         if debug:
             raise
@@ -91,22 +80,11 @@ def main(argv: Sequence[str] | None = None) -> int:
 def _run_parsed_command(
     parser: argparse.ArgumentParser,
     args: argparse.Namespace,
-    cli_config: CliConfig,
 ) -> int:
-    if args.command is None:
-        return _run_chat_command(
-            None,
-            cli_config.user_id,
-            None,
-            None,
-            save=cli_config.save,
-        )
     if args.command == "setup":
         return _run_setup_command(Path(args.path))
     if args.command == "check":
         return run_check_command(args)
-    if args.command == "run":
-        return _run_command(args, cli_config)
     if args.command == "skills":
         return run_skills_command(args)
     if args.command == "manage":
@@ -119,7 +97,9 @@ def _run_parsed_command(
     return 1
 
 
-def _run_command(args: argparse.Namespace, cli_config: CliConfig) -> int:
+def _run_terminal(arguments: list[str]) -> int:
+    args = _build_terminal_parser().parse_args(arguments)
+    cli_config = load_cli_config(args.cli_config)
     common_config_path = (
         None if args.common_config is None else Path(args.common_config)
     )
@@ -132,11 +112,9 @@ def _run_command(args: argparse.Namespace, cli_config: CliConfig) -> int:
         if args.show_summary is None
         else args.show_summary
     )
-    if args.chat:
-        if args.prompt or args.request_stdin or output != "text":
-            raise ValueError(
-                "run --chat cannot include a prompt, stdin request, or output mode"
-            )
+    if not args.prompt and not args.request_stdin:
+        if args.output not in {None, "text"}:
+            raise ValueError("interactive conversation only supports text output")
         return _run_chat_command(
             common_config_path,
             user_id,
@@ -145,6 +123,8 @@ def _run_command(args: argparse.Namespace, cli_config: CliConfig) -> int:
             save=save,
             code_config_path=code_config_path,
         )
+    if args.prompt and args.request_stdin:
+        raise ValueError("prompt and --request-stdin cannot be used together")
     request = (
         _read_runtime_request_from_stdin(user_id)
         if args.request_stdin
@@ -165,6 +145,7 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="super-agent",
         description="Chat with an Agent, or pass a prompt directly without a command.",
     )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     subparsers = parser.add_subparsers(dest="command")
 
     setup_parser = subparsers.add_parser("setup", help="create a minimal agent project")
@@ -182,30 +163,6 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     configure_config_parser(config_parser)
 
-    run_parser = subparsers.add_parser("run", help="run one prompt")
-    run_parser.add_argument("prompt", nargs="*")
-    run_parser.add_argument("--common-config")
-    run_parser.add_argument("--cli-config")
-    run_parser.add_argument("--code-config")
-    run_parser.add_argument("--output", choices=["text", "json", "jsonl"])
-    run_parser.add_argument("--request-stdin", action="store_true")
-    run_parser.add_argument("--user-id")
-    run_parser.add_argument("--conversation-id")
-    run_parser.add_argument("--skill", help="explicit task Skill name or task:name key")
-    run_parser.add_argument(
-        "--save",
-        action=argparse.BooleanOptionalAction,
-        default=None,
-        help="save run events or chat messages using configured storage",
-    )
-    run_parser.add_argument(
-        "--show-summary",
-        action=argparse.BooleanOptionalAction,
-        default=None,
-        help="show model, Skill, workflow, and run details after text output",
-    )
-    run_parser.add_argument("--chat", action="store_true", help="start an interactive conversation")
-
     skills_parser = subparsers.add_parser("skills", help="manage skills")
     configure_skills_parser(skills_parser)
     manage_parser = subparsers.add_parser("manage", help="advanced Agent management")
@@ -217,6 +174,32 @@ def _build_parser() -> argparse.ArgumentParser:
         help="serve the Agent over the AG-UI protocol",
     )
     configure_serve_parser(serve_parser)
+    return parser
+
+
+def _build_terminal_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="super-agent", description="Chat or run one prompt.")
+    parser.add_argument("prompt", nargs="*")
+    parser.add_argument("--common-config")
+    parser.add_argument("--cli-config")
+    parser.add_argument("--code-config")
+    parser.add_argument("--output", choices=["text", "json", "jsonl"])
+    parser.add_argument("--request-stdin", action="store_true")
+    parser.add_argument("--user-id")
+    parser.add_argument("--conversation-id")
+    parser.add_argument("--skill", help="explicit task Skill name or task:name key")
+    parser.add_argument(
+        "--save",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="save run events or chat messages using configured storage",
+    )
+    parser.add_argument(
+        "--show-summary",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="show model, Skill, workflow, and run details after text output",
+    )
     return parser
 
 
@@ -267,12 +250,10 @@ def _run_data_command(args: argparse.Namespace) -> int:
     return handler(args)
 
 
-def _is_direct_prompt(arguments: list[str]) -> bool:
-    return bool(
-        arguments
-        and arguments[0] not in CLI_COMMANDS | REMOVED_COMMANDS
-        and not arguments[0].startswith("-")
-    )
+def _is_terminal_request(arguments: list[str]) -> bool:
+    if not arguments:
+        return True
+    return arguments[0] not in CLI_COMMANDS | REMOVED_COMMANDS | {"-h", "--help", "--version"}
 
 
 def _run_setup_command(root: Path) -> int:

@@ -1,7 +1,7 @@
 # CLI Reference
 
-The CLI keeps common actions shallow. A bare prompt is short for `run`; no arguments
-start interactive chat.
+The CLI keeps common actions shallow. A prompt runs one task directly; no arguments
+start an interactive conversation.
 
 CLI behavior is isolated in optional `cli.toml`; it is never merged with `common.toml`:
 
@@ -30,20 +30,20 @@ super-agent config validate --cli-config cli.toml
 super-agent check
 super-agent check --common-config common.toml --output json
 super-agent "hello"
-super-agent run --common-config common.toml --user-id alice "hello"
-super-agent run --chat --save --common-config common.toml --user-id alice
-super-agent run --skill code --code-config code.toml --output json "inspect this repository"
+super-agent --common-config common.toml --user-id alice "hello"
+super-agent --save --common-config common.toml --user-id alice
+super-agent --skill code --code-config code.toml --output json "inspect this repository"
 ```
 
 `check` is read-only. It validates configuration, the central Skill index, configured
 references, and default model readiness without opening storage or calling a model.
 
-`run --output` accepts `text`, `json`, or streaming `jsonl`. Text output explains the
+`--output` accepts `text`, `json`, or streaming `jsonl`. Text output explains the
 actual model, task Skill, workflow, Skills, stop reason, and run ID. `--request-stdin` reads a
 JSON object with `prompt` and optional `messages`, `user_id`, `conversation_id`, and
 `skill`. One-shot runs and chat are file-free by default. `--save` explicitly enables the
 configured storage; supplying a conversation ID also makes that requirement explicit.
-Run flags override `cli.toml`, including `--no-save` and `--no-show-summary`. Shared
+Terminal flags override `cli.toml`, including `--no-save` and `--no-show-summary`. Shared
 Runtime settings always use `--common-config`; the removed generic `--config` name has no
 compatibility alias. Code settings use `--code-config` and are loaded only if `task:code`
 is activated.

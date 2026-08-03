@@ -95,13 +95,12 @@ class CliConfigurationTests(unittest.TestCase):
             with patch.dict(os.environ, environment, clear=True), patch(
                 "sys.stdout", json_output
             ):
-                json_code = main(["run", "--cli-config", str(path), "hello"])
+                json_code = main(["--cli-config", str(path), "hello"])
             with patch.dict(os.environ, environment, clear=True), patch(
                 "sys.stdout", text_output
             ):
                 text_code = main(
                     [
-                        "run",
                         "--cli-config",
                         str(path),
                         "--output",
@@ -115,6 +114,24 @@ class CliConfigurationTests(unittest.TestCase):
             self.assertEqual("Mock response", json.loads(json_output.getvalue())["text"])
             self.assertEqual(0, text_code)
             self.assertEqual("Mock response\n", text_output.getvalue())
+
+    def test_management_command_does_not_load_cli_configuration(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            invalid = Path(tmp) / "cli.toml"
+            invalid.write_text('kind = "wrong"\n', encoding="utf-8")
+            output = io.StringIO()
+            environment = {
+                "SUPER_AGENT_CLI_CONFIG": str(invalid),
+                "SUPER_AGENT_PROVIDER": "mock",
+            }
+
+            with patch.dict(os.environ, environment, clear=True), patch(
+                "sys.stdout", output
+            ):
+                code = main(["check", "--output", "json"])
+
+            self.assertEqual(0, code)
+            self.assertTrue(json.loads(output.getvalue())["ok"])
 
 
 def _write_cli_config(

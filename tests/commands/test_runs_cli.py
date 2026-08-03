@@ -32,7 +32,6 @@ class RunsCliTests(unittest.TestCase):
             with patch("sys.stdout", run_output):
                 run_code = main(
                     [
-                        "run",
                         "--save",
                         "--common-config",
                         str(config_path),
@@ -142,7 +141,6 @@ class RunsCliTests(unittest.TestCase):
             with patch("sys.stdout", run_output):
                 main(
                     [
-                        "run",
                         "--save",
                         "--common-config",
                         str(config_path),
@@ -216,7 +214,6 @@ class RunsCliTests(unittest.TestCase):
             with patch("sys.stdout", run_output):
                 main(
                     [
-                        "run",
                         "--save",
                         "--common-config",
                         str(config_path),
