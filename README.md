@@ -47,6 +47,8 @@ cd my-agent
 super-agent check
 ```
 
+Inside a conversation, use `/help`, `/clear`, or `/exit` for terminal controls.
+
 ## Add a Skill
 
 A Skill can be only a directory, a compact manifest, and optional instructions:

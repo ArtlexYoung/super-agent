@@ -24,6 +24,9 @@ super-agent config show
 super-agent config validate --cli-config cli.toml
 ```
 
+Interactive conversations support `/help`, `/clear`, and `/exit`. Clearing starts a new
+conversation when saving is enabled; it never deletes the previous conversation.
+
 ## Check and Run
 
 ```bash

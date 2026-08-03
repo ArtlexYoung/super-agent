@@ -772,6 +772,15 @@ Status: implemented.
 - Keep management commands independent from optional CLI configuration.
 - Add an explicit version flag without creating files, state, or a first-run flow.
 
+## v0.0.127: Explicit Conversation Commands
+
+Status: implemented.
+
+- Add `/help`, `/clear`, and `/exit` to interactive terminal conversations.
+- Clear in-memory context or start a new saved conversation without deleting history.
+- Report unknown slash commands instead of passing them to the model.
+- Treat ordinary words such as `exit` and `quit` as user messages, not hidden controls.
+
 ## Release Gate
 
 The project will not move to `0.1.x` because of feature count. The gate is a reproducible

@@ -62,14 +62,15 @@ class SkillHandlerRuntimeTests(unittest.TestCase):
             self.assertTrue(output.getvalue().startswith("Mock response\n\nRun: run-"))
             self.assertIn("Stop: completed", output.getvalue())
 
-    def test_bare_cli_starts_chat_with_an_environment_provider(self) -> None:
+    def test_bare_cli_uses_explicit_slash_commands(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, chdir(tmp), patch.dict(
             os.environ,
             {"SUPER_AGENT_PROVIDER": "mock"},
             clear=True,
         ):
             output = StringIO()
-            with patch("builtins.input", side_effect=["hello", "quit"]), patch(
+            prompts = ["exit", "/help", "/clear", "/unknown", "/exit"]
+            with patch("builtins.input", side_effect=prompts), patch(
                 "sys.stdout",
                 output,
             ):
@@ -77,6 +78,9 @@ class SkillHandlerRuntimeTests(unittest.TestCase):
 
             self.assertEqual(0, code)
             self.assertIn("Agent: Mock response", output.getvalue())
+            self.assertIn("Commands: /help, /clear, /exit", output.getvalue())
+            self.assertIn("Conversation cleared.", output.getvalue())
+            self.assertIn("Unknown command: /unknown. Use /help.", output.getvalue())
             self.assertFalse(Path(tmp, ".super-agent").exists())
 
     def test_cli_returns_a_clear_error_without_a_traceback(self) -> None:

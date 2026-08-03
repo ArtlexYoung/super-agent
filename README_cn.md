@@ -42,6 +42,8 @@ cd my-agent
 super-agent check
 ```
 
+在对话中使用 `/help`、`/clear` 或 `/exit` 控制终端会话。
+
 ## 添加 Skill
 
 一个 Skill 可以只有目录、精简清单和可选指令：

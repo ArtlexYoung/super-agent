@@ -92,6 +92,25 @@ class ConversationsCliTests(unittest.TestCase):
             self.assertTrue(deleted["deleted"])
             self.assertEqual([], listed["conversations"])
 
+    def test_chat_clear_starts_a_new_conversation_without_deleting_history(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            config = self._initialize_project(tmp)
+            output = StringIO()
+            with patch("builtins.input", side_effect=["hello", "/clear", "/exit"]), patch(
+                "sys.stdout", output
+            ):
+                code = main(
+                    ["--save", "--common-config", config, "--user-id", "alpha"]
+                )
+
+            listed = self._run_conversation_command("list", config, "alpha")
+            message_counts = sorted(
+                len(item["messages"]) for item in listed["conversations"]
+            )
+            self.assertEqual(0, code)
+            self.assertEqual([0, 2], message_counts)
+            self.assertIn("Conversation cleared.", output.getvalue())
+
     def test_stdin_request_persists_runtime_conversation_identity(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             config = self._initialize_project(tmp)

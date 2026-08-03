@@ -6,7 +6,7 @@ import sys
 from dataclasses import asdict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Callable, Sequence
 
 from adapter.cli_adapter.conversations import (
     configure_conversations_parser,
@@ -69,7 +69,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         args = parser.parse_args(arguments)
         if args.command == "config":
             return run_config_command(args)
-        return _run_parsed_command(parser, args)
+        return _run_parsed_command(args)
     except Exception as error:
         if debug:
             raise
@@ -77,10 +77,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
 
 
-def _run_parsed_command(
-    parser: argparse.ArgumentParser,
-    args: argparse.Namespace,
-) -> int:
+def _run_parsed_command(args: argparse.Namespace) -> int:
     if args.command == "setup":
         return _run_setup_command(Path(args.path))
     if args.command == "check":
@@ -93,8 +90,7 @@ def _run_parsed_command(
         return _run_data_command(args)
     if args.command == "serve":
         return run_serve_command(args)
-    parser.print_help()
-    return 1
+    raise ValueError(f"unknown command: {args.command}")
 
 
 def _run_terminal(arguments: list[str]) -> int:
@@ -331,15 +327,25 @@ def _run_chat_command(
             else user.conversations.read(conversation_id)
         )
     messages: list[Message] = []
+
+    def clear_history() -> None:
+        nonlocal conversation
+        messages.clear()
+        if conversation is not None:
+            conversation = user.conversations.create()
+
     while True:
         try:
             prompt = input("You: ").strip()
-        except EOFError:
+        except (EOFError, KeyboardInterrupt):
             return 0
         if not prompt:
             continue
-        if prompt.lower() in {"exit", "quit"}:
-            return 0
+        handled = _handle_chat_command(prompt, clear_history)
+        if handled is not None:
+            if handled:
+                return 0
+            continue
         result = (
             user.run(prompt, conversation_id=conversation.conversation_id, skill=skill)
             if conversation is not None
@@ -353,6 +359,21 @@ def _run_chat_command(
                 ]
             )
         print(f"Agent: {result.text}")
+
+
+def _handle_chat_command(prompt: str, clear_history: Callable[[], None]) -> bool | None:
+    if not prompt.startswith("/"):
+        return None
+    if prompt == "/exit":
+        return True
+    messages = {
+        "/help": "Commands: /help, /clear, /exit",
+        "/clear": "Conversation cleared.",
+    }
+    if prompt == "/clear":
+        clear_history()
+    print(messages.get(prompt, f"Unknown command: {prompt}. Use /help."))
+    return False
 
 
 def run_result_to_dict(result: RunResult) -> dict[str, Any]:
