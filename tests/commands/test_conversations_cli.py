@@ -34,7 +34,7 @@ class ConversationsCliTests(unittest.TestCase):
                 [
                     "run",
                     "--save",
-                    "--config",
+                    "--common-config",
                     config,
                     "--user-id",
                     "alpha",
@@ -47,7 +47,7 @@ class ConversationsCliTests(unittest.TestCase):
                 [
                     "run",
                     "--save",
-                    "--config",
+                    "--common-config",
                     config,
                     "--user-id",
                     "beta",
@@ -109,7 +109,7 @@ class ConversationsCliTests(unittest.TestCase):
                     [
                         "run",
                         "--save",
-                        "--config",
+                        "--common-config",
                         config,
                         "--request-stdin",
                         "--output",
@@ -140,14 +140,14 @@ class ConversationsCliTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             config = self._initialize_project(tmp)
             self._run_silently(
-                ["run", "--save", "--config", config, "--user-id", "alpha", "echo alpha"]
+                ["run", "--save", "--common-config", config, "--user-id", "alpha", "echo alpha"]
             )
             self._run_silently(
                 [
                     "data",
                     "memory",
                     "add",
-                    "--config",
+                    "--common-config",
                     config,
                     "--user-id",
                     "alpha",
@@ -161,7 +161,7 @@ class ConversationsCliTests(unittest.TestCase):
                     "data",
                     "runs",
                     "status",
-                    "--config",
+                    "--common-config",
                     config,
                     "--user-id",
                     "alpha",
@@ -174,7 +174,7 @@ class ConversationsCliTests(unittest.TestCase):
                     "data",
                     "runs",
                     "learn",
-                    "--config",
+                    "--common-config",
                     config,
                     "--user-id",
                     "alpha",
@@ -187,7 +187,7 @@ class ConversationsCliTests(unittest.TestCase):
                     "data",
                     "runs",
                     "status",
-                    "--config",
+                    "--common-config",
                     config,
                     "--user-id",
                     "beta",
@@ -196,16 +196,16 @@ class ConversationsCliTests(unittest.TestCase):
                 ]
             )
             alpha_memory = self._run_text(
-                ["data", "memory", "list", "--config", config, "--user-id", "alpha"]
+                ["data", "memory", "list", "--common-config", config, "--user-id", "alpha"]
             )
             beta_memory = self._run_text(
-                ["data", "memory", "list", "--config", config, "--user-id", "beta"]
+                ["data", "memory", "list", "--common-config", config, "--user-id", "beta"]
             )
             alpha_freshness = self._run_text(
-                ["skills", "freshness", "--config", config, "--user-id", "alpha"]
+                ["skills", "freshness", "--common-config", config, "--user-id", "alpha"]
             )
             beta_freshness = self._run_text(
-                ["skills", "freshness", "--config", config, "--user-id", "beta"]
+                ["skills", "freshness", "--common-config", config, "--user-id", "beta"]
             )
 
             self.assertEqual(1, len(alpha_runs["runs"]))
@@ -236,7 +236,7 @@ class ConversationsCliTests(unittest.TestCase):
         title: str | None = None,
         common_arguments_first: bool = False,
     ) -> dict[str, object]:
-        common = ["--config", config, "--user-id", user_id]
+        common = ["--common-config", config, "--user-id", user_id]
         arguments = (
             ["data", "conversations", *common, command]
             if common_arguments_first

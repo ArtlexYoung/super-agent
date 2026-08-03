@@ -17,7 +17,7 @@ def configure_storage_parser(parser: argparse.ArgumentParser) -> None:
         "copy",
         help="copy selected user event streams to another backend",
     )
-    copy_parser.add_argument("--config")
+    copy_parser.add_argument("--common-config")
     copy_parser.add_argument(
         "--to-backend",
         choices=["jsonl", "sqlite", "mysql", "postgresql"],
@@ -32,7 +32,7 @@ def configure_storage_parser(parser: argparse.ArgumentParser) -> None:
 def run_storage_command(args: argparse.Namespace) -> int:
     if args.storage_command != "copy":
         raise ValueError("storage command is required")
-    config = load_common_config(args.config)
+    config = load_common_config(args.common_config)
     source = create_storage_backend(
         config.storage.backend,
         str(config.storage.path),

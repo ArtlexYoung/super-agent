@@ -85,7 +85,7 @@ def run_runs_command(args: argparse.Namespace) -> int:
 
 
 def _show_run_status(args: argparse.Namespace) -> int:
-    store = _load_run_snapshot_store(args.config, args.user_id)
+    store = _load_run_snapshot_store(args.common_config, args.user_id)
     snapshots = (
         [store.read_run(args.run_id)]
         if args.run_id
@@ -113,7 +113,7 @@ def _show_run_status(args: argparse.Namespace) -> int:
 
 
 def _explain_run(args: argparse.Namespace) -> int:
-    agent = load_agent(args.config)
+    agent = load_agent(args.common_config)
     store = agent._create_event_store(args.user_id)
     run_id = _resolve_run_id(store, args.run_id)
     if run_id is None:
@@ -130,7 +130,7 @@ def _explain_run(args: argparse.Namespace) -> int:
 
 
 def _export_run(args: argparse.Namespace) -> int:
-    store = _load_run_snapshot_store(args.config, args.user_id)
+    store = _load_run_snapshot_store(args.common_config, args.user_id)
     run_id = _resolve_run_id(store, args.run_id)
     if run_id is None:
         print("No run snapshots yet.")
@@ -142,7 +142,7 @@ def _export_run(args: argparse.Namespace) -> int:
 
 
 def _record_run_feedback(args: argparse.Namespace) -> int:
-    event = load_agent(args.config).for_user(args.user_id).runs.record_feedback(
+    event = load_agent(args.common_config).for_user(args.user_id).runs.record_feedback(
         args.run_id,
         args.score,
         args.reason,
@@ -155,7 +155,7 @@ def _record_run_feedback(args: argparse.Namespace) -> int:
 
 
 def _learn_from_run(args: argparse.Namespace) -> int:
-    result = load_agent(args.config).for_user(args.user_id).runs.learn(args.run_id)
+    result = load_agent(args.common_config).for_user(args.user_id).runs.learn(args.run_id)
     if args.output == "json":
         print(json.dumps(asdict(result), ensure_ascii=False, indent=2, sort_keys=True))
     else:
@@ -295,7 +295,7 @@ def _required_object(data: dict[str, object], name: str) -> dict[str, object]:
 
 
 def _add_config_argument(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--config")
+    parser.add_argument("--common-config")
 
 
 def _add_user_argument(parser: argparse.ArgumentParser) -> None:

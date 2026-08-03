@@ -131,6 +131,7 @@ overlay, and failed tests block it.
 super-agent check
 super-agent run "one task"
 super-agent run --skill code "inspect this repository"
+super-agent config show
 super-agent skills list
 super-agent data runs status
 super-agent serve
@@ -140,6 +141,11 @@ One-shot runs are stateless unless `--save` or a conversation ID is explicit. Te
 print the answer plus the actual model, task Skill, workflow, Skills, stop reason, and run ID.
 Use `--output json` or `--output jsonl` for integrations. The React client,
 CopilotKit example, and AG-UI endpoint are served at `http://127.0.0.1:8765/`.
+
+Optional `cli.toml` controls terminal defaults only. Shared Runtime settings stay in
+`common.toml`, coding workspace settings stay in `code.toml`, and model connections stay
+in model Skills or environment variables. These files are validated separately and are
+never deep-merged.
 
 ## Guarantees
 

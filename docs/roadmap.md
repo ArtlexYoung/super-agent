@@ -739,6 +739,16 @@ Status: implemented.
 - Reject cross-scope files, unknown fields, shell command strings, and old configuration
   names without compatibility readers.
 
+## v0.0.124: CLI-Owned Configuration
+
+Status: implemented.
+
+- Add a strict optional `cli.toml` for terminal defaults only.
+- Keep CLI, shared Runtime, coding workspace, and model settings in separate owners.
+- Replace the ambiguous `--config` option with `--common-config` without an alias.
+- Add read-only `config show` and `config validate` commands; never create configuration
+  automatically.
+
 ## Release Gate
 
 The project will not move to `0.1.x` because of feature count. The gate is a reproducible

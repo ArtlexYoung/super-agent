@@ -26,14 +26,14 @@ def configure_skills_parser(
 ) -> argparse._SubParsersAction:
     subparsers = parser.add_subparsers(dest="skill_command")
     list_parser = subparsers.add_parser("list", help="list available skills")
-    list_parser.add_argument("--config", default="common.toml")
+    list_parser.add_argument("--common-config", default="common.toml")
     index_parser = subparsers.add_parser("index", help="print the central skill index as JSON")
-    index_parser.add_argument("--config", default="common.toml")
+    index_parser.add_argument("--common-config", default="common.toml")
     index_parser.add_argument("--output", choices=["json"], default="json")
     freshness_parser = subparsers.add_parser("freshness", help="show runtime skill freshness stats")
-    freshness_parser.add_argument("--config", default="common.toml")
+    freshness_parser.add_argument("--common-config", default="common.toml")
     validate_parser = subparsers.add_parser("validate", help="validate every skill manifest")
-    validate_parser.add_argument("--config", default="common.toml")
+    validate_parser.add_argument("--common-config", default="common.toml")
     graph_parser = subparsers.add_parser("graph", help="resolve a skill dependency graph")
     _add_composition_arguments(graph_parser)
     for command_parser in (
@@ -59,7 +59,7 @@ def configure_skill_changes_parser(parser: argparse.ArgumentParser) -> None:
     undo = subparsers.add_parser("undo", help="undo an applied Skill change")
     _add_change_id_arguments(undo)
     list_changes = subparsers.add_parser("list", help="list proposed Skill changes")
-    list_changes.add_argument("--config", default="common.toml")
+    list_changes.add_argument("--common-config", default="common.toml")
     for command_parser in (propose, test, apply, undo, list_changes):
         command_parser.add_argument("--user-id", default=LOCAL_USER_ID)
 
@@ -70,7 +70,7 @@ def configure_skill_packages_parser(parser: argparse.ArgumentParser) -> None:
     _add_composition_arguments(lock)
     lock.add_argument("--output", default="skill.lock")
     pack = subparsers.add_parser("pack", help="pack one Skill as a deterministic ZIP")
-    pack.add_argument("--config", default="common.toml")
+    pack.add_argument("--common-config", default="common.toml")
     pack.add_argument("--name", required=True)
     pack.add_argument("--output", required=True)
     install = subparsers.add_parser("install", help="install a local, ZIP, or Git Skill")
@@ -79,7 +79,7 @@ def configure_skill_packages_parser(parser: argparse.ArgumentParser) -> None:
     _add_package_source_arguments(update)
     update.add_argument("--name", required=True)
     remove = subparsers.add_parser("remove", help="remove one installed Skill")
-    remove.add_argument("--config", default="common.toml")
+    remove.add_argument("--common-config", default="common.toml")
     remove.add_argument("--name", required=True)
     for command_parser in (lock, pack, install, update, remove):
         command_parser.add_argument("--user-id", default=LOCAL_USER_ID)
@@ -87,10 +87,10 @@ def configure_skill_packages_parser(parser: argparse.ArgumentParser) -> None:
 
 def run_skills_command(args: argparse.Namespace) -> int:
     handlers = {
-        "list": lambda: _list_skills(Path(args.config), args.user_id),
-        "index": lambda: _print_skill_index(Path(args.config), args.user_id),
-        "freshness": lambda: _show_skill_freshness(Path(args.config), args.user_id),
-        "validate": lambda: _validate_skills(Path(args.config), args.user_id),
+        "list": lambda: _list_skills(Path(args.common_config), args.user_id),
+        "index": lambda: _print_skill_index(Path(args.common_config), args.user_id),
+        "freshness": lambda: _show_skill_freshness(Path(args.common_config), args.user_id),
+        "validate": lambda: _validate_skills(Path(args.common_config), args.user_id),
         "graph": lambda: _show_skill_graph(args),
     }
     handler = handlers.get(args.skill_command)
@@ -150,7 +150,7 @@ def _print_skill_index(config_path: Path, user_id: str) -> int:
 
 
 def _propose_skill_change(args: argparse.Namespace) -> int:
-    updater = load_agent(args.config).for_user(args.user_id).skills.create_skill_updater()
+    updater = load_agent(args.common_config).for_user(args.user_id).skills.create_skill_updater()
     change = updater.propose_skill_change(
         args.name,
         args.goal,
@@ -161,7 +161,7 @@ def _propose_skill_change(args: argparse.Namespace) -> int:
 
 
 def _test_skill_change(args: argparse.Namespace) -> int:
-    updater = load_agent(args.config).for_user(args.user_id).skills.create_skill_updater()
+    updater = load_agent(args.common_config).for_user(args.user_id).skills.create_skill_updater()
     report = updater.test_skill_change(args.change_id, _read_change_cases(Path(args.cases)))
     state = "passed" if report.passed else "failed"
     print(f"Skill change test {report.report_id}: {state} score={report.score:.4f}")
@@ -169,14 +169,14 @@ def _test_skill_change(args: argparse.Namespace) -> int:
 
 
 def _apply_skill_change(args: argparse.Namespace) -> int:
-    updater = load_agent(args.config).for_user(args.user_id).skills.create_skill_updater()
+    updater = load_agent(args.common_config).for_user(args.user_id).skills.create_skill_updater()
     manifest = updater.apply_skill_change(args.change_id)
     print(f"Applied Skill change: {manifest.skill_type}:{manifest.name}@{manifest.version}")
     return 0
 
 
 def _undo_skill_change(args: argparse.Namespace) -> int:
-    updater = load_agent(args.config).for_user(args.user_id).skills.create_skill_updater()
+    updater = load_agent(args.common_config).for_user(args.user_id).skills.create_skill_updater()
     manifest = updater.undo_skill_change(args.change_id)
     restored = "removed" if manifest is None else f"restored {manifest.skill_type}:{manifest.name}@{manifest.version}"
     print(f"Undid Skill change: {args.change_id} ({restored})")
@@ -184,7 +184,7 @@ def _undo_skill_change(args: argparse.Namespace) -> int:
 
 
 def _list_skill_changes(args: argparse.Namespace) -> int:
-    updater = load_agent(args.config).for_user(args.user_id).skills.create_skill_updater()
+    updater = load_agent(args.common_config).for_user(args.user_id).skills.create_skill_updater()
     for change in updater.list_skill_changes():
         print(f"{change.change_id}\t{change.key}\t{change.goal}")
     return 0
@@ -224,7 +224,7 @@ def _validate_skills(config_path: Path, user_id: str) -> int:
 
 
 def _show_skill_graph(args: argparse.Namespace) -> int:
-    manifests = _resolve_skills(Path(args.config), args.user_id, args.name)
+    manifests = _resolve_skills(Path(args.common_config), args.user_id, args.name)
     for manifest in manifests:
         print(
             f"{manifest.name}\tprovides={','.join(manifest.provides)}"
@@ -234,7 +234,7 @@ def _show_skill_graph(args: argparse.Namespace) -> int:
 
 
 def _write_skill_lock(args: argparse.Namespace) -> int:
-    disclosure = _load_skill_disclosure(Path(args.config), args.user_id)
+    disclosure = _load_skill_disclosure(Path(args.common_config), args.user_id)
     index = disclosure.prepare_skill_index()
     entries = index.resolve_skill_dependencies(args.name)
     manifests = [
@@ -251,7 +251,7 @@ def _write_skill_lock(args: argparse.Namespace) -> int:
 
 
 def _pack_skill(args: argparse.Namespace) -> int:
-    package_path = _load_package_manager(Path(args.config), args.user_id).pack_skill(
+    package_path = _load_package_manager(Path(args.common_config), args.user_id).pack_skill(
         args.name,
         Path(args.output),
     )
@@ -260,7 +260,7 @@ def _pack_skill(args: argparse.Namespace) -> int:
 
 
 def _install_skill(args: argparse.Namespace) -> int:
-    manifest = _load_package_manager(Path(args.config), args.user_id).install_skill(
+    manifest = _load_package_manager(Path(args.common_config), args.user_id).install_skill(
         args.source,
         expected_sha256=args.expected_sha256,
     )
@@ -269,7 +269,7 @@ def _install_skill(args: argparse.Namespace) -> int:
 
 
 def _update_skill(args: argparse.Namespace) -> int:
-    manifest = _load_package_manager(Path(args.config), args.user_id).update_skill(
+    manifest = _load_package_manager(Path(args.common_config), args.user_id).update_skill(
         args.name,
         args.source,
         expected_sha256=args.expected_sha256,
@@ -279,7 +279,7 @@ def _update_skill(args: argparse.Namespace) -> int:
 
 
 def _remove_skill(args: argparse.Namespace) -> int:
-    manager = _load_package_manager(Path(args.config), args.user_id)
+    manager = _load_package_manager(Path(args.common_config), args.user_id)
     manager.remove_skill(args.name)
     print(f"Removed skill: {args.name}")
     return 0
@@ -326,24 +326,24 @@ def _load_package_manager(config_path: Path, user_id: str) -> SkillPackageManage
 
 
 def _add_change_name_arguments(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--config", default="common.toml")
+    parser.add_argument("--common-config", default="common.toml")
     parser.add_argument("--name", required=True)
     parser.add_argument("--goal", required=True)
     parser.add_argument("--type", dest="skill_type")
 
 
 def _add_change_id_arguments(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--config", default="common.toml")
+    parser.add_argument("--common-config", default="common.toml")
     parser.add_argument("--change-id", required=True)
 
 
 def _add_composition_arguments(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--config", default="common.toml")
+    parser.add_argument("--common-config", default="common.toml")
     parser.add_argument("--name", action="append", required=True)
 
 
 def _add_package_source_arguments(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--config", default="common.toml")
+    parser.add_argument("--common-config", default="common.toml")
     parser.add_argument("--source", required=True)
     parser.add_argument("--expected-sha256", default="")
 

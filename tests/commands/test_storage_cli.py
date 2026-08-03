@@ -31,7 +31,7 @@ class StorageCliTests(unittest.TestCase):
                         [
                             "run",
                             "--save",
-                            "--config",
+                            "--common-config",
                             str(config),
                             "--user-id",
                             "alpha",
@@ -43,7 +43,7 @@ class StorageCliTests(unittest.TestCase):
                 )
                 self.assertEqual(
                     0,
-                    main(["run", "--save", "--config", str(config), "--user-id", "beta", "echo beta"]),
+                    main(["run", "--save", "--common-config", str(config), "--user-id", "beta", "echo beta"]),
                 )
 
             first = self._run_json(
@@ -51,7 +51,7 @@ class StorageCliTests(unittest.TestCase):
                     "data",
                     "storage",
                     "copy",
-                    "--config",
+                    "--common-config",
                     str(config),
                     "--to-backend",
                     "sqlite",
@@ -68,7 +68,7 @@ class StorageCliTests(unittest.TestCase):
                     "data",
                     "storage",
                     "copy",
-                    "--config",
+                    "--common-config",
                     str(config),
                     "--to-backend",
                     "sqlite",
@@ -86,7 +86,7 @@ class StorageCliTests(unittest.TestCase):
                     "data",
                     "conversations",
                     "list",
-                    "--config",
+                    "--common-config",
                     str(sqlite_config),
                     "--user-id",
                     "alpha",
@@ -97,7 +97,7 @@ class StorageCliTests(unittest.TestCase):
                     "data",
                     "runs",
                     "status",
-                    "--config",
+                    "--common-config",
                     str(sqlite_config),
                     "--user-id",
                     "beta",
@@ -131,7 +131,7 @@ class StorageCliTests(unittest.TestCase):
                             "data",
                             "storage",
                             "copy",
-                            "--config",
+                            "--common-config",
                             str(Path(tmp) / "common.toml"),
                             "--to-backend",
                             "postgresql",

@@ -29,6 +29,9 @@ Unknown tables and fields are rejected. There is no migration or old-field conve
 Every file declares `schema_version = 1` and its exact `kind`; configuration scopes are
 never merged and a file of one kind cannot be loaded as another.
 
+Terminal defaults belong in `cli.toml`, not this file. See [CLI](cli.md). The CLI uses
+`--common-config` when an explicit shared configuration path is needed.
+
 Coding workspace behavior belongs in a separate optional `code.toml`:
 
 ```toml

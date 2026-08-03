@@ -16,7 +16,16 @@ from core.models import SubAgentResult, RunResult
 class CliTests(unittest.TestCase):
     def test_cli_has_clear_top_level_commands(self) -> None:
         self.assertEqual(
-            {"check", "setup", "run", "skills", "manage", "data", "serve"},
+            {
+                "check",
+                "config",
+                "setup",
+                "run",
+                "skills",
+                "manage",
+                "data",
+                "serve",
+            },
             CLI_COMMANDS,
         )
         self.assertTrue(REMOVED_COMMANDS.isdisjoint(CLI_COMMANDS))
@@ -79,7 +88,7 @@ class CliTests(unittest.TestCase):
             output = StringIO()
 
             with patch("sys.stdout", output):
-                code = main(["check", "--config", str(Path(tmp) / "common.toml")])
+                code = main(["check", "--common-config", str(Path(tmp) / "common.toml")])
 
             self.assertEqual(0, code)
             self.assertIn("OK  model: model:default -> mock/mock", output.getvalue())
@@ -124,7 +133,7 @@ class CliTests(unittest.TestCase):
 
             output = StringIO()
             with patch("sys.stdout", output):
-                code = main(["skills", "list", "--config", str(Path(tmp) / "common.toml")])
+                code = main(["skills", "list", "--common-config", str(Path(tmp) / "common.toml")])
 
             self.assertEqual(0, code)
             self.assertIn("default\ttask", output.getvalue())
@@ -140,7 +149,7 @@ class CliTests(unittest.TestCase):
                     [
                         "skills",
                         "index",
-                        "--config",
+                        "--common-config",
                         str(Path(tmp) / "common.toml"),
                         "--output",
                         "json",
@@ -171,7 +180,7 @@ class CliTests(unittest.TestCase):
 
             output = StringIO()
             with patch("sys.stdout", output):
-                code = main(["run", "--config", str(Path(tmp) / "common.toml"), "hello"])
+                code = main(["run", "--common-config", str(Path(tmp) / "common.toml"), "hello"])
 
             self.assertEqual(0, code)
             self.assertIn("Mock response", output.getvalue())
@@ -189,11 +198,11 @@ class CliTests(unittest.TestCase):
             config = str(Path(tmp) / "common.toml")
             main(["setup", "--path", tmp])
             _select_skills(Path(config), ["task:default", "memory:default"])
-            main(["run", "--save", "--config", config, "hello"])
+            main(["run", "--save", "--common-config", config, "hello"])
 
             output = StringIO()
             with patch("sys.stdout", output):
-                code = main(["data", "memory", "habits", "--config", config])
+                code = main(["data", "memory", "habits", "--common-config", config])
 
             self.assertEqual(0, code)
             self.assertIn("total runs: 1", output.getvalue())
@@ -210,7 +219,7 @@ class CliTests(unittest.TestCase):
                         "data",
                         "memory",
                         "add",
-                        "--config",
+                        "--common-config",
                         config,
                         "--text",
                         "Remember Python.",
@@ -222,13 +231,13 @@ class CliTests(unittest.TestCase):
             recall_output = StringIO()
             with patch("sys.stdout", recall_output):
                 recall_code = main(
-                    ["data", "memory", "recall", "--config", config, "--query", "Python", "--scope", "project"]
+                    ["data", "memory", "recall", "--common-config", config, "--query", "Python", "--scope", "project"]
                 )
             list_output = StringIO()
             with patch("sys.stdout", list_output):
-                list_code = main(["data", "memory", "list", "--config", config, "--scope", "project"])
+                list_code = main(["data", "memory", "list", "--common-config", config, "--scope", "project"])
             forget_code = main(
-                ["data", "memory", "forget", "--config", config, "--item-id", item["item_id"]]
+                ["data", "memory", "forget", "--common-config", config, "--item-id", item["item_id"]]
             )
 
             self.assertEqual(0, add_code)
@@ -285,7 +294,7 @@ description = "Compact note writer"
                             "manage",
                             "skill-changes",
                             "propose",
-                            "--config",
+                            "--common-config",
                             config,
                             "--name",
                             "agent-note",
@@ -299,7 +308,7 @@ description = "Compact note writer"
                         "manage",
                         "skill-changes",
                         "test",
-                        "--config",
+                        "--common-config",
                         config,
                         "--change-id",
                         change_id,
@@ -312,7 +321,7 @@ description = "Compact note writer"
                         "manage",
                         "skill-changes",
                         "apply",
-                        "--config",
+                        "--common-config",
                         config,
                         "--change-id",
                         change_id,
@@ -343,13 +352,13 @@ description = "Compact note writer"
             main(["setup", "--path", tmp])
             run_output = StringIO()
             with patch("sys.stdout", run_output):
-                main(["run", "--save", "--output", "json", "--config", config, "echo hello"])
+                main(["run", "--save", "--output", "json", "--common-config", config, "echo hello"])
             run_id = json.loads(run_output.getvalue())["run_id"]
-            main(["data", "runs", "learn", "--config", config, "--run-id", run_id])
+            main(["data", "runs", "learn", "--common-config", config, "--run-id", run_id])
 
             output = StringIO()
             with patch("sys.stdout", output):
-                code = main(["skills", "freshness", "--config", config])
+                code = main(["skills", "freshness", "--common-config", config])
 
             self.assertEqual(0, code)
             self.assertIn("default", output.getvalue())
@@ -367,7 +376,7 @@ description = "Compact note writer"
 
             with patch("sys.stdout", output):
                 code = main(
-                    ["run", "--save", "--output", "json", "--config", str(Path(tmp) / "common.toml"), "hello"]
+                    ["run", "--save", "--output", "json", "--common-config", str(Path(tmp) / "common.toml"), "hello"]
                 )
 
             data = json.loads(output.getvalue())
@@ -408,7 +417,7 @@ description = "Compact note writer"
             validation_output = StringIO()
 
             with patch("sys.stdout", validation_output):
-                validation_code = main(["skills", "validate", "--config", config])
+                validation_code = main(["skills", "validate", "--common-config", config])
 
             self.assertEqual(0, validation_code)
             self.assertIn("6 valid skills", validation_output.getvalue())
@@ -421,13 +430,13 @@ description = "Compact note writer"
             graph_output = StringIO()
 
             with patch("sys.stdout", graph_output):
-                graph_code = main(["skills", "graph", "--config", config, "--name", "task:default"])
+                graph_code = main(["skills", "graph", "--common-config", config, "--name", "task:default"])
             lock_code = main(
                 [
                     "manage",
                     "skill-packages",
                     "lock",
-                    "--config",
+                    "--common-config",
                     config,
                     "--name",
                     "task:default",
@@ -449,12 +458,12 @@ description = "Compact note writer"
             package_path = root / "default.zip"
 
             pack_code = main(
-                ["manage", "skill-packages", "pack", "--config", config, "--name", "task:default", "--output", str(package_path)]
+                ["manage", "skill-packages", "pack", "--common-config", config, "--name", "task:default", "--output", str(package_path)]
             )
             error = StringIO()
             with patch("sys.stderr", error):
                 remove_shared_code = main(
-                    ["manage", "skill-packages", "remove", "--config", config, "--name", "task:default"]
+                    ["manage", "skill-packages", "remove", "--common-config", config, "--name", "task:default"]
                 )
             self.assertEqual(1, remove_shared_code)
             self.assertIn("cannot remove shared Skill", error.getvalue())
@@ -478,7 +487,7 @@ max_steps = 8
                     "manage",
                     "skill-packages",
                     "update",
-                    "--config",
+                    "--common-config",
                     config,
                     "--name",
                     "task:default",
@@ -494,7 +503,7 @@ max_steps = 8
                 "Updated task.",
                 (installed / "SKILL.md").read_text(encoding="utf-8"),
             )
-            remove_code = main(["manage", "skill-packages", "remove", "--config", config, "--name", "task:default"])
+            remove_code = main(["manage", "skill-packages", "remove", "--common-config", config, "--name", "task:default"])
             self.assertEqual(0, remove_code)
             self.assertFalse(installed.exists())
             self.assertTrue((root / "skills" / "task" / "default").is_dir())
@@ -524,7 +533,7 @@ max_steps = 8
                         "--request-stdin",
                         "--output",
                         "jsonl",
-                        "--config",
+                        "--common-config",
                         str(Path(tmp) / "common.toml"),
                     ]
                 )

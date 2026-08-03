@@ -10,7 +10,7 @@ from core.models import LOCAL_USER_ID
 
 
 def configure_serve_parser(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--config")
+    parser.add_argument("--common-config")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--user-id", default=LOCAL_USER_ID)
@@ -23,7 +23,7 @@ def configure_serve_parser(parser: argparse.ArgumentParser) -> None:
 
 
 def run_serve_command(args: argparse.Namespace) -> int:
-    agent = load_agent(args.config)
+    agent = load_agent(args.common_config)
     origins = tuple(args.allowed_origins or DEFAULT_ALLOWED_ORIGINS)
     server = create_ag_ui_server(
         agent,

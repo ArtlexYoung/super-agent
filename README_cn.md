@@ -119,6 +119,7 @@ super-agent manage skill-changes undo --change-id <id>
 super-agent check
 super-agent run "执行一次任务"
 super-agent run --skill code "检查这个仓库"
+super-agent config show
 super-agent skills list
 super-agent data runs status
 super-agent serve
@@ -128,6 +129,10 @@ super-agent serve
 使用的模型、任务 Skill、工作流、Skill、结束原因和运行 ID。集成程序可使用 `--output json` 或
 `--output jsonl`。React 页面、CopilotKit 示例和 AG-UI 接口默认位于
 `http://127.0.0.1:8765/`。
+
+可选的 `cli.toml` 只管理终端默认行为。共享 Runtime 设置放在 `common.toml`，编码工作区
+设置放在 `code.toml`，模型连接放在模型 Skill 或环境变量中。这些文件分别校验，绝不进行
+深度合并。
 
 ## 保证
 

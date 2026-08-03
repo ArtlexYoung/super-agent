@@ -39,7 +39,7 @@ def configure_conversations_parser(parser: argparse.ArgumentParser) -> None:
 
 def run_conversations_command(args: argparse.Namespace) -> int:
     command = args.conversations_command or "list"
-    agent = load_agent(args.config)
+    agent = load_agent(args.common_config)
     conversations = agent.for_user(args.user_id).conversations
     if command == "list":
         return _print_json(
@@ -85,7 +85,7 @@ def _add_common_arguments(
     include_defaults: bool = False,
 ) -> None:
     default = None if include_defaults else argparse.SUPPRESS
-    parser.add_argument("--config", default=default)
+    parser.add_argument("--common-config", default=default)
     parser.add_argument(
         "--user-id",
         default=LOCAL_USER_ID if include_defaults else argparse.SUPPRESS,

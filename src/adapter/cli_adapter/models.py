@@ -27,14 +27,14 @@ def configure_models_parser(parser: argparse.ArgumentParser) -> None:
         "list",
         help="list model Skills or zero-configuration environment profiles",
     )
-    list_parser.add_argument("--config")
+    list_parser.add_argument("--common-config")
     list_parser.add_argument("--user-id", default=LOCAL_USER_ID)
     list_parser.add_argument("--output", choices=["text", "json"], default="text")
     resolve_parser = subparsers.add_parser(
         "resolve",
         help="show the default model profile selected for this project",
     )
-    resolve_parser.add_argument("--config")
+    resolve_parser.add_argument("--common-config")
     resolve_parser.add_argument("--user-id", default=LOCAL_USER_ID)
     resolve_parser.add_argument("--output", choices=["text", "json"], default="text")
     save_parser = subparsers.add_parser(
@@ -49,7 +49,7 @@ def configure_models_parser(parser: argparse.ArgumentParser) -> None:
 
 
 def run_models_command(args: argparse.Namespace) -> int:
-    config = load_common_config(getattr(args, "config", None))
+    config = load_common_config(getattr(args, "common_config", None))
     output = getattr(args, "output", "text")
     if args.models_command == "save":
         return _save_model_skill(config, args.user_id, output)
@@ -176,6 +176,6 @@ def _create_model_skill_manager(
 
 
 def _add_management_arguments(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--config", required=True)
+    parser.add_argument("--common-config", required=True)
     parser.add_argument("--user-id", default=LOCAL_USER_ID)
     parser.add_argument("--output", choices=["text", "json"], default="text")

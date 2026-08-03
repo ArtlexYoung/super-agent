@@ -43,7 +43,7 @@ def configure_memory_parser(parser: argparse.ArgumentParser) -> None:
 
 def run_memory_command(args: argparse.Namespace) -> int:
     if args.memory_command == "habits":
-        return _show_usage_habits(Path(args.config), args.user_id)
+        return _show_usage_habits(Path(args.common_config), args.user_id)
     if args.memory_command == "list":
         return _list_memory(args)
     if args.memory_command == "add":
@@ -69,7 +69,7 @@ def _show_usage_habits(config_path: Path, user_id: str) -> int:
 
 def _list_memory(args: argparse.Namespace) -> int:
     items = _run_memory_action(
-        Path(args.config),
+        Path(args.common_config),
         args.user_id,
         (ActionEffect.READ,),
         "memory:long-term",
@@ -81,7 +81,7 @@ def _list_memory(args: argparse.Namespace) -> int:
 
 def _add_memory(args: argparse.Namespace) -> int:
     item = _run_memory_action(
-        Path(args.config),
+        Path(args.common_config),
         args.user_id,
         (ActionEffect.CREATE,),
         "memory:long-term",
@@ -97,7 +97,7 @@ def _add_memory(args: argparse.Namespace) -> int:
 
 def _recall_memory(args: argparse.Namespace) -> int:
     items = _run_memory_action(
-        Path(args.config),
+        Path(args.common_config),
         args.user_id,
         (ActionEffect.READ,),
         "memory:long-term",
@@ -113,7 +113,7 @@ def _recall_memory(args: argparse.Namespace) -> int:
 
 def _forget_memory(args: argparse.Namespace) -> int:
     _run_memory_action(
-        Path(args.config),
+        Path(args.common_config),
         args.user_id,
         (ActionEffect.DELETE,),
         f"memory:long-term:{args.item_id}",
@@ -172,5 +172,5 @@ def _print_items(items: list[MemoryItem]) -> None:
 
 
 def _add_common_arguments(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--config", default="common.toml")
+    parser.add_argument("--common-config", default="common.toml")
     parser.add_argument("--user-id", default=LOCAL_USER_ID)

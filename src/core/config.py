@@ -42,13 +42,12 @@ class CommonConfig:
     def load_from_file(cls, path: str | Path) -> "CommonConfig":
         source = Path(path).expanduser().absolute()
         data = tomllib.loads(source.read_text(encoding="utf-8"))
-        _require_config_header(data, "common")
-        unknown = set(data) - {"agent", "paths", "storage"}
-        unknown -= {"schema_version", "kind"}
-        if unknown:
-            raise ValueError(
-                "unknown common configuration tables: " + ", ".join(sorted(unknown))
-            )
+        require_config_header(data, "common")
+        reject_unknown_settings(
+            data,
+            {"schema_version", "kind", "agent", "paths", "storage"},
+            "common configuration tables",
+        )
         base_dir = source.parent
         return cls(
             agent=_read_agent_settings(data.get("agent", {})),
@@ -63,26 +62,13 @@ class CommonConfig:
         base_directory: str | Path | None = None,
         environment: Mapping[str, str] | None = None,
     ) -> "CommonConfig":
-        base = (
-            Path.cwd()
-            if base_directory is None
-            else Path(base_directory).expanduser().absolute()
+        base, source = find_optional_config_file(
+            "common.toml",
+            "SUPER_AGENT_COMMON_CONFIG",
+            base_directory=base_directory,
+            environment=environment,
         )
-        env = os.environ if environment is None else environment
-        configured_path = _optional_string(env.get("SUPER_AGENT_COMMON_CONFIG"))
-        if configured_path is not None:
-            path = Path(configured_path).expanduser()
-            if not path.is_absolute():
-                path = base / path
-            if not path.is_file():
-                raise FileNotFoundError(
-                    f"SUPER_AGENT_COMMON_CONFIG file not found: {path}"
-                )
-            return cls.load_from_file(path)
-        project_config = base / "common.toml"
-        if project_config.is_file():
-            return cls.load_from_file(project_config)
-        return cls.create_default(base)
+        return cls.load_from_file(source) if source else cls.create_default(base)
 
     @classmethod
     def create_default(cls, base_directory: str | Path | None = None) -> "CommonConfig":
@@ -120,18 +106,12 @@ class CodeConfig:
     def load_from_file(cls, path: str | Path) -> "CodeConfig":
         source = Path(path).expanduser().absolute()
         data = tomllib.loads(source.read_text(encoding="utf-8"))
-        _require_config_header(data, "code")
-        unknown = set(data) - {
-            "schema_version",
-            "kind",
-            "workspace",
-            "actions",
-            "verification",
-        }
-        if unknown:
-            raise ValueError(
-                "unknown code configuration tables: " + ", ".join(sorted(unknown))
-            )
+        require_config_header(data, "code")
+        reject_unknown_settings(
+            data,
+            {"schema_version", "kind", "workspace", "actions", "verification"},
+            "code configuration tables",
+        )
         base = source.parent
         workspace = _read_code_workspace(data.get("workspace", {}), base)
         actions = _read_code_actions(data.get("actions", {}))
@@ -149,11 +129,45 @@ class CodeConfig:
         )
 
 
-def _require_config_header(data: dict[str, Any], expected_kind: str) -> None:
+def require_config_header(data: dict[str, Any], expected_kind: str) -> None:
     if data.get("schema_version") != 1:
         raise ValueError("configuration schema_version must be 1")
     if data.get("kind") != expected_kind:
         raise ValueError(f"configuration kind must be {expected_kind!r}")
+
+
+def reject_unknown_settings(
+    data: Mapping[str, Any],
+    allowed: set[str],
+    name: str,
+) -> None:
+    unknown = set(data) - allowed
+    if unknown:
+        raise ValueError(f"unknown {name}: {', '.join(sorted(unknown))}")
+
+
+def find_optional_config_file(
+    filename: str,
+    environment_variable: str,
+    *,
+    base_directory: str | Path | None = None,
+    environment: Mapping[str, str] | None = None,
+) -> tuple[Path, Path | None]:
+    base = (
+        Path.cwd()
+        if base_directory is None
+        else Path(base_directory).expanduser().absolute()
+    )
+    env = os.environ if environment is None else environment
+    configured = _optional_string(env.get(environment_variable))
+    if configured is None:
+        project_config = base / filename
+        return base, project_config if project_config.is_file() else None
+    source = Path(configured).expanduser()
+    source = source if source.is_absolute() else base / source
+    if not source.is_file():
+        raise FileNotFoundError(f"{environment_variable} file not found: {source}")
+    return base, source
 
 
 def _read_agent_settings(data: dict[str, Any]) -> AgentSettings:
@@ -164,9 +178,7 @@ def _read_agent_settings(data: dict[str, Any]) -> AgentSettings:
         "max_agent_chain_depth",
         "disabled_skills",
     }
-    unknown = set(data) - allowed
-    if unknown:
-        raise ValueError(f"unknown agent settings: {', '.join(sorted(unknown))}")
+    reject_unknown_settings(data, allowed, "agent settings")
     return AgentSettings(
         name=str(data.get("name", "super-agent")),
         system=str(data.get("system", "You are a helpful agent.")),
@@ -179,9 +191,7 @@ def _read_agent_settings(data: dict[str, Any]) -> AgentSettings:
 
 
 def _read_paths_settings(data: dict[str, Any], base_dir: Path) -> PathsSettings:
-    unknown = set(data) - {"skills"}
-    if unknown:
-        raise ValueError(f"unknown paths settings: {', '.join(sorted(unknown))}")
+    reject_unknown_settings(data, {"skills"}, "paths settings")
     skill_paths = data.get("skills", ["skills"])
     return PathsSettings(
         skills=[_resolve_path(base_dir, Path(str(item))) for item in skill_paths],
@@ -189,9 +199,7 @@ def _read_paths_settings(data: dict[str, Any], base_dir: Path) -> PathsSettings:
 
 
 def _read_storage_settings(data: dict[str, Any], base_dir: Path) -> StorageSettings:
-    unknown = set(data) - {"backend", "path", "url_env"}
-    if unknown:
-        raise ValueError(f"unknown storage settings: {', '.join(sorted(unknown))}")
+    reject_unknown_settings(data, {"backend", "path", "url_env"}, "storage settings")
     backend = str(data.get("backend", "jsonl")).strip().lower()
     if backend not in {"jsonl", "sqlite", "mysql", "postgresql"}:
         raise ValueError(f"unknown storage backend: {backend}")
@@ -207,11 +215,7 @@ def _read_code_workspace(
     data: dict[str, Any],
     base_dir: Path,
 ) -> dict[str, Any]:
-    unknown = set(data) - {"root", "ignore"}
-    if unknown:
-        raise ValueError(
-            "unknown code workspace settings: " + ", ".join(sorted(unknown))
-        )
+    reject_unknown_settings(data, {"root", "ignore"}, "code workspace settings")
     root = _resolve_path(base_dir, Path(str(data.get("root", "."))))
     ignored = data.get("ignore", [])
     if not isinstance(ignored, list) or not all(
@@ -222,11 +226,7 @@ def _read_code_workspace(
 
 
 def _read_code_actions(data: dict[str, Any]) -> dict[str, str]:
-    unknown = set(data) - {"read", "write", "execute"}
-    if unknown:
-        raise ValueError(
-            "unknown code action settings: " + ", ".join(sorted(unknown))
-        )
+    reject_unknown_settings(data, {"read", "write", "execute"}, "code action settings")
     values = {
         name: str(data.get(name, "ask" if name != "read" else "allow")).strip().lower()
         for name in ("read", "write", "execute")
@@ -237,11 +237,7 @@ def _read_code_actions(data: dict[str, Any]) -> dict[str, str]:
 
 
 def _read_verification_commands(data: dict[str, Any]) -> list[list[str]]:
-    unknown = set(data) - {"commands"}
-    if unknown:
-        raise ValueError(
-            "unknown code verification settings: " + ", ".join(sorted(unknown))
-        )
+    reject_unknown_settings(data, {"commands"}, "code verification settings")
     commands = data.get("commands", [])
     if not isinstance(commands, list) or not all(
         isinstance(command, list)

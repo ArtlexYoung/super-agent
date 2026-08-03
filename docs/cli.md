@@ -1,16 +1,37 @@
 # CLI Reference
 
-The CLI has six top-level commands: `setup`, `check`, `run`, `skills`, `data`, and `serve`.
-A bare prompt is short for `run`; no arguments start interactive chat.
+The CLI keeps common actions shallow. A bare prompt is short for `run`; no arguments
+start interactive chat.
+
+CLI behavior is isolated in optional `cli.toml`; it is never merged with `common.toml`:
+
+```toml
+schema_version = 1
+kind = "cli"
+
+[run]
+user_id = "local"
+output = "text"
+save = false
+show_summary = true
+```
+
+The CLI checks `SUPER_AGENT_CLI_CONFIG`, then `cli.toml`, then uses in-memory defaults.
+It never creates this file automatically. Inspect or validate it without writing:
+
+```bash
+super-agent config show
+super-agent config validate --cli-config cli.toml
+```
 
 ## Check and Run
 
 ```bash
 super-agent check
-super-agent check --config common.toml --output json
+super-agent check --common-config common.toml --output json
 super-agent "hello"
-super-agent run --config common.toml --user-id alice "hello"
-super-agent run --chat --save --config common.toml --user-id alice
+super-agent run --common-config common.toml --user-id alice "hello"
+super-agent run --chat --save --common-config common.toml --user-id alice
 super-agent run --skill code --output json "inspect this repository"
 ```
 
@@ -22,15 +43,18 @@ actual model, task Skill, workflow, Skills, stop reason, and run ID. `--request-
 JSON object with `prompt` and optional `messages`, `user_id`, `conversation_id`, and
 `skill`. One-shot runs and chat are file-free by default. `--save` explicitly enables the
 configured storage; supplying a conversation ID also makes that requirement explicit.
+Run flags override `cli.toml`, including `--no-save` and `--no-show-summary`. Shared
+Runtime settings always use `--common-config`; the removed generic `--config` name has no
+compatibility alias.
 
 ## Skills
 
 ```bash
-super-agent skills list --config common.toml
-super-agent skills index --config common.toml --output json
-super-agent skills validate --config common.toml
-super-agent skills graph --config common.toml --name prompt:research
-super-agent skills freshness --config common.toml
+super-agent skills list --common-config common.toml
+super-agent skills index --common-config common.toml --output json
+super-agent skills validate --common-config common.toml
+super-agent skills graph --common-config common.toml --name prompt:research
+super-agent skills freshness --common-config common.toml
 ```
 
 Passive package commands are `pack`, `install`, `update`, and `remove`. They validate
@@ -41,8 +65,8 @@ Models are Skills and live under the same group:
 ```bash
 super-agent manage models list --output json
 super-agent manage models resolve
-super-agent manage models save --config common.toml --request-stdin < model.json
-super-agent manage models remove --config common.toml --name fast
+super-agent manage models save --common-config common.toml --request-stdin < model.json
+super-agent manage models remove --common-config common.toml --name fast
 ```
 
 Saved model Skills name an environment variable; they never contain its secret value.

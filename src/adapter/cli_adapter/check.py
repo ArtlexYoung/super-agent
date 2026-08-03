@@ -17,7 +17,7 @@ from core.skill_use.models import (
 
 
 def configure_check_parser(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--config")
+    parser.add_argument("--common-config")
     parser.add_argument("--output", choices=("text", "json"), default="text")
 
 
@@ -26,7 +26,7 @@ def run_check_command(args: argparse.Namespace) -> int:
     stage = "configuration"
     try:
         config = load_common_config(
-            None if args.config is None else Path(args.config)
+            None if args.common_config is None else Path(args.common_config)
         )
         source = str(config.source) if config.source.is_file() else "built-in defaults"
         checks.append(_check("configuration", True, source))
