@@ -806,6 +806,19 @@ Status: implemented.
 - Remove the generic runtime stdin request and streaming JSONL output paths; retain direct
   `text` and `json` output without compatibility forwarding or hidden degradation.
 
+## v0.0.130: CLI Source Ownership
+
+Status: implemented.
+
+- Move CLI parsing, terminal conversations, command dispatch, and output handling into
+  `adapter.cli_adapter.commands`, where external CLI behavior belongs.
+- Keep `src/cli.py` as a direct source-tree entry point only and point the installed command
+  directly at the adapter implementation.
+- Remove the redundant result-to-dictionary helper and update tests and documentation to
+  import each CLI contract from its owning module.
+- Preserve the v0.0.129 command surface without aliases, forwarding commands, or runtime
+  behavior changes.
+
 ## Release Gate
 
 The project will not move to `0.1.x` because of feature count. The gate is a reproducible

@@ -7,10 +7,8 @@ from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
-from cli import CLI_COMMANDS, _is_terminal_request, main
-from cli import run_result_to_dict
+from adapter.cli_adapter.commands import CLI_COMMANDS, _is_terminal_request, main
 from core.provider.chat import MockProvider
-from core.models import SubAgentResult, RunResult
 from support import write_minimal_project
 
 
@@ -475,38 +473,6 @@ max_steps = 8
             self.assertEqual(0, remove_code)
             self.assertFalse(installed.exists())
             self.assertTrue((root / "skills" / "task" / "default").is_dir())
-
-    def test_run_result_serialization_keeps_nested_subagents(self) -> None:
-        result = RunResult(
-            text="main",
-            workflow="direct",
-            skills=[],
-            run_id="main-run",
-            subagent_results=[
-                SubAgentResult(
-                    name="coder",
-                    description="writes code",
-                    text="child",
-                    prompt="build",
-                    created_by_agent=True,
-                    run_id="child-run",
-                    subagent_results=[
-                        SubAgentResult(
-                            name="reviewer",
-                            description="reviews",
-                            text="grandchild",
-                            run_id="review-run",
-                        )
-                    ],
-                )
-            ],
-        )
-
-        data = run_result_to_dict(result)
-
-        self.assertEqual("child-run", data["subagent_results"][0]["run_id"])
-        self.assertEqual("review-run", data["subagent_results"][0]["subagent_results"][0]["run_id"])
-
 
 def _find_user_skill(root: Path, skill_type: str, name: str) -> Path:
     matches = [

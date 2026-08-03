@@ -1,0 +1,378 @@
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from dataclasses import asdict
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Callable, Sequence
+
+from adapter.cli_adapter.conversations import (
+    configure_conversations_parser,
+    run_conversations_command,
+)
+from adapter.cli_adapter import (
+    CliConfig,
+    attach_code_config_to_agent,
+    configure_config_parser,
+    load_agent,
+    load_cli_config,
+    run_config_command,
+)
+from adapter.cli_adapter.check import configure_check_parser, run_check_command
+from adapter.cli_adapter.memory import configure_memory_parser, run_memory_command
+from adapter.cli_adapter.models import configure_models_parser, run_models_command
+from adapter.cli_adapter.runs import configure_runs_parser, run_runs_command
+from adapter.cli_adapter.serve import configure_serve_parser, run_serve_command
+from adapter.cli_adapter.skills import (
+    configure_skill_changes_parser,
+    configure_skill_packages_parser,
+    configure_skills_parser,
+    run_skill_changes_command,
+    run_skill_packages_command,
+    run_skills_command,
+)
+from adapter.cli_adapter.storage import configure_storage_parser, run_storage_command
+from core import __version__
+from core.provider.chat import Message
+from core.models import LOCAL_USER_ID, RunResult
+
+
+CLI_COMMANDS = frozenset({"check", "config", "data", "manage", "serve", "skills"})
+
+
+@dataclass(frozen=True)
+class CliRequest:
+    prompt: str
+    user_id: str = LOCAL_USER_ID
+    conversation_id: str | None = None
+    skill: str | None = None
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    debug = "--debug" in arguments
+    arguments = [value for value in arguments if value != "--debug"]
+    try:
+        if _is_terminal_request(arguments):
+            return _run_terminal(arguments)
+        parser = _build_parser()
+        args = parser.parse_args(arguments)
+        if args.command == "config":
+            return run_config_command(args)
+        return _run_parsed_command(args)
+    except Exception as error:
+        if debug:
+            raise
+        _print_cli_error(error)
+        return 1
+
+
+def _run_parsed_command(args: argparse.Namespace) -> int:
+    handlers = {
+        "check": run_check_command,
+        "data": _run_data_command,
+        "manage": _run_manage_command,
+        "serve": run_serve_command,
+        "skills": run_skills_command,
+    }
+    handler = handlers.get(args.command)
+    if handler is None:
+        raise ValueError(f"unknown command: {args.command}")
+    return handler(args)
+
+
+def _run_terminal(arguments: list[str]) -> int:
+    args = _build_terminal_parser().parse_args(arguments)
+    cli_config = load_cli_config(args.cli_config)
+    common_config_path = (
+        None if args.common_config is None else Path(args.common_config)
+    )
+    code_config_path = None if args.code_config is None else Path(args.code_config)
+    output = args.output or cli_config.output
+    user_id = args.user_id or cli_config.user_id
+    save = cli_config.save if args.save is None else args.save
+    show_summary = (
+        cli_config.show_summary
+        if args.show_summary is None
+        else args.show_summary
+    )
+    if not args.prompt:
+        if args.output not in {None, "text"}:
+            raise ValueError("interactive conversation only supports text output")
+        return _run_chat_command(
+            common_config_path,
+            user_id,
+            args.conversation_id,
+            args.skill,
+            save=save,
+            code_config_path=code_config_path,
+        )
+    request = _read_runtime_request_from_args(args, user_id)
+    return _run_prompt_command(
+        common_config_path,
+        request,
+        output,
+        save=save,
+        show_summary=show_summary,
+        code_config_path=code_config_path,
+    )
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="super-agent",
+        description="Chat with an Agent, or pass a prompt directly without a command.",
+    )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    subparsers = parser.add_subparsers(dest="command")
+
+    check_parser = subparsers.add_parser(
+        "check",
+        help="check configuration, Skills, and the default model",
+    )
+    configure_check_parser(check_parser)
+
+    config_parser = subparsers.add_parser(
+        "config",
+        help="show or validate CLI-only configuration",
+    )
+    configure_config_parser(config_parser)
+
+    skills_parser = subparsers.add_parser("skills", help="manage skills")
+    configure_skills_parser(skills_parser)
+    manage_parser = subparsers.add_parser("manage", help="advanced Agent management")
+    _configure_manage_parser(manage_parser)
+    data_parser = subparsers.add_parser("data", help="manage conversations and saved data")
+    _configure_data_parser(data_parser)
+    serve_parser = subparsers.add_parser(
+        "serve",
+        help="serve the Agent over the AG-UI protocol",
+    )
+    configure_serve_parser(serve_parser)
+    return parser
+
+
+def _build_terminal_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="super-agent", description="Chat or run one prompt.")
+    parser.add_argument("prompt", nargs="*")
+    parser.add_argument("--common-config")
+    parser.add_argument("--cli-config")
+    parser.add_argument("--code-config")
+    parser.add_argument("--output", choices=["text", "json"])
+    parser.add_argument("--user-id")
+    parser.add_argument("--conversation-id")
+    parser.add_argument("--skill", help="explicit task Skill name or task:name key")
+    parser.add_argument(
+        "--save",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="save run events or chat messages using configured storage",
+    )
+    parser.add_argument(
+        "--show-summary",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="show model, Skill, workflow, and run details after text output",
+    )
+    return parser
+
+
+def _configure_manage_parser(parser: argparse.ArgumentParser) -> None:
+    subparsers = parser.add_subparsers(dest="manage_command")
+    changes = subparsers.add_parser("skill-changes", help="manage Skill changes")
+    configure_skill_changes_parser(changes)
+    packages = subparsers.add_parser("skill-packages", help="manage Skill packages")
+    configure_skill_packages_parser(packages)
+    models_parser = subparsers.add_parser("models", help="manage model Skills")
+    configure_models_parser(models_parser)
+
+
+def _configure_data_parser(parser: argparse.ArgumentParser) -> None:
+    subparsers = parser.add_subparsers(dest="data_command")
+    conversations = subparsers.add_parser("conversations", help="manage conversations")
+    configure_conversations_parser(conversations)
+    memory = subparsers.add_parser("memory", help="manage long-term memory")
+    configure_memory_parser(memory)
+    runs = subparsers.add_parser("runs", help="inspect saved runs")
+    configure_runs_parser(runs)
+    storage = subparsers.add_parser("storage", help="copy stored data")
+    configure_storage_parser(storage)
+
+
+def _run_manage_command(args: argparse.Namespace) -> int:
+    handlers = {
+        "skill-changes": run_skill_changes_command,
+        "skill-packages": run_skill_packages_command,
+        "models": run_models_command,
+    }
+    handler = handlers.get(args.manage_command)
+    if handler is None:
+        raise ValueError("manage command is required")
+    return handler(args)
+
+
+def _run_data_command(args: argparse.Namespace) -> int:
+    handlers = {
+        "conversations": run_conversations_command,
+        "memory": run_memory_command,
+        "runs": run_runs_command,
+        "storage": run_storage_command,
+    }
+    handler = handlers.get(args.data_command)
+    if handler is None:
+        raise ValueError("data command is required")
+    return handler(args)
+
+
+def _is_terminal_request(arguments: list[str]) -> bool:
+    if not arguments:
+        return True
+    return arguments[0] not in CLI_COMMANDS | {"-h", "--help", "--version"}
+
+
+def _run_prompt_command(
+    common_config_path: Path | None,
+    request: CliRequest,
+    output: str,
+    *,
+    save: bool,
+    show_summary: bool,
+    code_config_path: Path | None = None,
+) -> int:
+    use_storage = save or request.conversation_id is not None
+    agent = load_agent(common_config_path, use_storage=use_storage)
+    attach_code_config_to_agent(agent, code_config_path)
+    user = agent.for_user(request.user_id)
+    result = user.run(
+        request.prompt,
+        conversation_id=request.conversation_id,
+        skill=request.skill,
+    )
+    if output == "json":
+        print(json.dumps(asdict(result), ensure_ascii=False))
+        return 0
+    for warning in result.warning_messages or []:
+        print(f"Warning: {warning}")
+    print(result.text)
+    if show_summary:
+        _print_run_summary(result)
+    return 0
+
+
+def _run_chat_command(
+    common_config_path: Path | None,
+    user_id: str,
+    conversation_id: str | None,
+    skill: str | None,
+    *,
+    save: bool,
+    code_config_path: Path | None = None,
+) -> int:
+    use_storage = save or conversation_id is not None
+    agent = load_agent(common_config_path, use_storage=use_storage)
+    attach_code_config_to_agent(agent, code_config_path)
+    user = agent.for_user(user_id)
+    conversation = None
+    if use_storage:
+        conversation = (
+            user.conversations.create()
+            if conversation_id is None
+            else user.conversations.read(conversation_id)
+        )
+    messages: list[Message] = []
+
+    def clear_history() -> None:
+        nonlocal conversation
+        messages.clear()
+        if conversation is not None:
+            conversation = user.conversations.create()
+
+    while True:
+        try:
+            prompt = input("You: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            return 0
+        if not prompt:
+            continue
+        handled = _handle_chat_command(prompt, clear_history)
+        if handled is not None:
+            if handled:
+                return 0
+            continue
+        result = (
+            user.run(prompt, conversation_id=conversation.conversation_id, skill=skill)
+            if conversation is not None
+            else user.run(prompt, messages=messages, skill=skill)
+        )
+        if conversation is None:
+            messages.extend(
+                [
+                    {"role": "user", "content": prompt},
+                    {"role": "assistant", "content": result.text},
+                ]
+            )
+        print(f"Agent: {result.text}")
+
+
+def _handle_chat_command(prompt: str, clear_history: Callable[[], None]) -> bool | None:
+    if not prompt.startswith("/"):
+        return None
+    if prompt == "/exit":
+        return True
+    messages = {
+        "/help": "Commands: /help, /clear, /exit",
+        "/clear": "Conversation cleared.",
+    }
+    if prompt == "/clear":
+        clear_history()
+    print(messages.get(prompt, f"Unknown command: {prompt}. Use /help."))
+    return False
+
+
+def _print_run_summary(result: RunResult) -> None:
+    selected_models = []
+    for event in result.events:
+        if event.event_type != "model.call.selected":
+            continue
+        label = f"{event.data.get('profile', 'unknown')} ({event.data.get('model', 'unknown')})"
+        if label not in selected_models:
+            selected_models.append(label)
+    task_skill = next((name for name in result.skills if name.startswith("task:")), "none")
+    print()
+    print(f"Run: {result.run_id}")
+    print(f"Model: {', '.join(selected_models) if selected_models else 'none'}")
+    print(f"Task Skill: {task_skill}")
+    print(f"Workflow: {result.workflow}")
+    print(f"Skills: {', '.join(result.skills) if result.skills else 'none'}")
+    print(f"Stop: {result.stop_reason}")
+
+
+def _read_runtime_request_from_args(args: argparse.Namespace, default_user_id: str) -> CliRequest:
+    prompt = " ".join(args.prompt).strip()
+    if not prompt:
+        raise ValueError("run prompt cannot be empty")
+    return CliRequest(
+        prompt=prompt,
+        user_id=default_user_id,
+        conversation_id=args.conversation_id,
+        skill=args.skill,
+    )
+
+
+def _print_cli_error(error: Exception) -> None:
+    print(f"Error: {error}", file=sys.stderr)
+    message = str(error)
+    if "No model is configured" in message:
+        print(
+            "Hint: set a model environment variable or add a model Skill.",
+            file=sys.stderr,
+        )
+    elif isinstance(error, FileNotFoundError):
+        print("Hint: check the explicit file or configuration path.", file=sys.stderr)
+    print("Run again with --debug to show the Python traceback.", file=sys.stderr)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

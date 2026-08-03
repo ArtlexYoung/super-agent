@@ -15,7 +15,7 @@ from core.skill_use.handlers import (
     SkillTool,
     SkillResult,
 )
-from cli import main
+from adapter.cli_adapter.commands import main
 from core.provider.chat import MockProvider, ModelResponse, ToolCall
 from core.config import CommonConfig
 from core.checks import ActionEffect

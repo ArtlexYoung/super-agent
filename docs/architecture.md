@@ -24,6 +24,8 @@ src/
 `core` owns execution and may read passive Skill definitions. `skill` does not own the
 Runtime. `adapter` connects external interfaces and durable backends. `super_agent.py` is a
 five-line facade; `core/runtime/agent.py` owns composition and the `Agent` implementation.
+The CLI command owner is `adapter.cli_adapter.commands`; `src/cli.py` only makes direct
+source-tree execution possible.
 
 ## One Task Path
 
