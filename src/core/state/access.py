@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Callable
 
 from core.checks import ActionRequest, ActionRunner, ActionRules
-from core.config import AgentConfig
+from core.config import CommonConfig
 from core.events import StorageBackend
 from core.models import RunIdentity, TaskTrace
 from core.state.models import RunEvent
@@ -14,7 +14,7 @@ from core.state.models import RunEvent
 
 @dataclass(frozen=True)
 class StateAccess:
-    config: AgentConfig
+    config: CommonConfig
     storage: StorageBackend | None
     create_action_rules: Callable[[], ActionRules] | None
 

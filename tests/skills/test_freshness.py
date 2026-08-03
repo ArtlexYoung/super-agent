@@ -5,7 +5,7 @@ from pathlib import Path
 
 from super_agent import Agent
 from core.provider.chat import MockProvider
-from core.config import AgentConfig
+from core.config import CommonConfig
 from core.evaluation.records import (
     EvaluationResult,
     EvaluationSource,
@@ -181,7 +181,7 @@ description = "Research helper"
             _write_skill(root, "echo", "general")
             config_path = _write_config(root)
             agent = Agent(
-                AgentConfig.load_from_file(config_path),
+                CommonConfig.load_from_file(config_path),
                 provider=MockProvider("useful answer"),
                 use_storage=True,
             )
@@ -215,7 +215,7 @@ description = "Research helper"
             write_workflow_skill(root)
             _write_skill(root, "echo", "general")
             agent = Agent(
-                AgentConfig.load_from_file(_write_config(root)),
+                CommonConfig.load_from_file(_write_config(root)),
                 provider=_FailingProvider(),
                 use_storage=True,
             )
@@ -289,9 +289,12 @@ description = "{name} helper"
 
 
 def _write_config(root: Path) -> Path:
-    config_path = root / "agent.toml"
+    config_path = root / "common.toml"
     config_path.write_text(
         """
+schema_version = 1
+kind = "common"
+
 [agent]
 name = "demo"
 system = "Base system."

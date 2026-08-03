@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from core.config import AgentConfig
+from core.config import CommonConfig
 from core.skill_use.update import SkillChangeCase
 from super_agent import Agent
 from support import SequenceProvider
@@ -17,7 +17,7 @@ class SkillUpdateTests(unittest.TestCase):
             root = Path(tmp)
             skill = _write_project(root)
             agent = Agent(
-                AgentConfig.create_default(root),
+                CommonConfig.create_default(root),
                 provider=SequenceProvider(
                     [_proposal("Candidate instructions.\n"), "wrong", "wrong"]
                 ),
@@ -48,7 +48,7 @@ class SkillUpdateTests(unittest.TestCase):
             root = Path(tmp)
             skill = _write_project(root)
             agent = Agent(
-                AgentConfig.create_default(root),
+                CommonConfig.create_default(root),
                 provider=SequenceProvider(
                     [_proposal("Candidate instructions.\n"), "required", "baseline"]
                 ),

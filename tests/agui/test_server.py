@@ -8,7 +8,7 @@ from pathlib import Path
 from super_agent import Agent
 from adapter.ag_ui_adapter.server import create_ag_ui_server
 from core.provider.chat import MockProvider
-from core.config import AgentConfig
+from core.config import CommonConfig
 from support import write_workflow_skill
 
 
@@ -227,9 +227,12 @@ def _run_input() -> dict[str, object]:
 
 def _make_agent(root: Path, provider: MockProvider) -> Agent:
     write_workflow_skill(root)
-    config_path = root / "agent.toml"
+    config_path = root / "common.toml"
     config_path.write_text(
         """
+schema_version = 1
+kind = "common"
+
 [agent]
 name = "ag-ui-agent"
 system = "Answer clearly."
@@ -245,7 +248,7 @@ path = ".super-agent"
         encoding="utf-8",
     )
     return Agent(
-        AgentConfig.load_from_file(config_path),
+        CommonConfig.load_from_file(config_path),
         provider=provider,
         use_storage=True,
     )

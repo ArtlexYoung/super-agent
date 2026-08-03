@@ -5,7 +5,7 @@ from pathlib import Path
 
 from super_agent import Agent
 from core.provider.chat import MockProvider
-from core.config import AgentConfig
+from core.config import CommonConfig
 from core.models import RunIdentity
 from core.state.event_log import RunEventLog
 from adapter.storage import JsonlStorage
@@ -19,7 +19,7 @@ class EventStoreTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             provider = MockProvider("finished")
             agent = Agent(
-                AgentConfig.create_default(Path(tmp)),
+                CommonConfig.create_default(Path(tmp)),
                 provider=provider,
                 use_storage=False,
             )
@@ -201,9 +201,12 @@ class _FailingProvider:
 
 def _make_agent(root: Path, provider: MockProvider | _FailingProvider) -> Agent:
     write_workflow_skill(root)
-    config_path = root / "agent.toml"
+    config_path = root / "common.toml"
     config_path.write_text(
         """
+schema_version = 1
+kind = "common"
+
 [agent]
 name = "trace-agent"
 system = "Trace every run."
@@ -219,7 +222,7 @@ path = ".super-agent"
         encoding="utf-8",
     )
     return Agent(
-        AgentConfig.load_from_file(config_path),
+        CommonConfig.load_from_file(config_path),
         provider=provider,
         use_storage=True,
     )

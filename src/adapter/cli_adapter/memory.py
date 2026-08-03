@@ -6,9 +6,9 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Callable, TypeVar, cast
 
-from adapter.cli_adapter import load_agent_config, load_event_store
+from adapter.cli_adapter import load_common_config, load_event_store
 from core.checks import ActionEffect, ActionRequest, ActionRunner, ActionRules
-from core.config import AgentConfig
+from core.config import CommonConfig
 from core.models import LOCAL_USER_ID
 from core.skill_use.defaults import create_progressive_skill_disclosure
 from core.state.memory import Memory, MemoryItem, create_memory_from_skill
@@ -124,7 +124,7 @@ def _forget_memory(args: argparse.Namespace) -> int:
 
 
 def _load_configured_memory(config_path: Path, user_id: str) -> Memory:
-    config = load_agent_config(config_path)
+    config = load_common_config(config_path)
     store = load_event_store(config, user_id)
     disclosure = create_progressive_skill_disclosure(config, store=store)
     disclosure.prepare_skill_index()
@@ -155,7 +155,7 @@ def _run_memory_action(
     )
 
 
-def _selected_memory_name(config: AgentConfig) -> str:
+def _selected_memory_name(config: CommonConfig) -> str:
     selected = [
         value.partition(":")[2]
         for value in config.agent.skills
@@ -172,5 +172,5 @@ def _print_items(items: list[MemoryItem]) -> None:
 
 
 def _add_common_arguments(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--config", default="agent.toml")
+    parser.add_argument("--config", default="common.toml")
     parser.add_argument("--user-id", default=LOCAL_USER_ID)

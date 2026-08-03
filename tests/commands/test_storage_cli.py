@@ -22,7 +22,7 @@ class StorageCliTests(unittest.TestCase):
     def test_copy_moves_only_selected_user_to_sqlite(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            config = root / "agent.toml"
+            config = root / "common.toml"
             with patch("sys.stdout", StringIO()):
                 self.assertEqual(0, main(["setup", "--path", tmp]))
                 self.assertEqual(
@@ -132,7 +132,7 @@ class StorageCliTests(unittest.TestCase):
                             "storage",
                             "copy",
                             "--config",
-                            str(Path(tmp) / "agent.toml"),
+                            str(Path(tmp) / "common.toml"),
                             "--to-backend",
                             "postgresql",
                             "--to-url-env",
@@ -146,7 +146,7 @@ class StorageCliTests(unittest.TestCase):
 
     @staticmethod
     def _write_sqlite_config(root: Path, source: Path) -> Path:
-        path = root / "sqlite-agent.toml"
+        path = root / "sqlite-common.toml"
         text = source.read_text(encoding="utf-8")
         text = text.replace('backend = "jsonl"', 'backend = "sqlite"')
         text = text.replace('path = ".super-agent"', 'path = "sqlite-state"')

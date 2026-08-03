@@ -7,7 +7,7 @@ import json
 import os
 from pathlib import Path
 
-from adapter.cli_adapter import load_agent_config
+from adapter.cli_adapter import load_common_config
 from core.skill_use.defaults import create_default_skill_handlers, create_skills
 from core.skill_use.models import (
     model_profile_is_ready,
@@ -25,7 +25,7 @@ def run_check_command(args: argparse.Namespace) -> int:
     checks: list[dict[str, object]] = []
     stage = "configuration"
     try:
-        config = load_agent_config(
+        config = load_common_config(
             None if args.config is None else Path(args.config)
         )
         source = str(config.source) if config.source.is_file() else "built-in defaults"

@@ -1,3 +1,6 @@
+schema_version = 1
+kind = "common"
+
 [agent]
 name = "custom-example"
 system = "Use the selected task Skill."

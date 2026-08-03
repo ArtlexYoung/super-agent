@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 
 from super_agent import Agent
-from core.config import AgentConfig
+from core.config import CommonConfig
 from core.models import AgentRunOptions
 from core.provider.chat import MockProvider
 
@@ -43,12 +43,12 @@ import sys
 import tempfile
 from pathlib import Path
 from super_agent import Agent
-from core.config import AgentConfig
+from core.config import CommonConfig
 from core.models import AgentRunOptions
 from core.provider.chat import MockProvider
 
 with tempfile.TemporaryDirectory() as temporary_directory:
-    config = AgentConfig.create_default(Path(temporary_directory))
+    config = CommonConfig.create_default(Path(temporary_directory))
     agent = Agent(config, provider=MockProvider("finished"), use_storage=True)
     result = agent.run("hello")
 assert result.text == "finished"
@@ -74,11 +74,11 @@ import sys
 import tempfile
 from pathlib import Path
 from super_agent import Agent
-from core.config import AgentConfig
+from core.config import CommonConfig
 from core.provider.chat import MockProvider
 
 with tempfile.TemporaryDirectory() as temporary_directory:
-    config = AgentConfig.create_default(Path(temporary_directory))
+    config = CommonConfig.create_default(Path(temporary_directory))
     result = Agent(config, provider=MockProvider("finished")).run("hello")
 assert result.text == "finished"
 blocked = (
@@ -99,7 +99,7 @@ print(json.dumps(sorted(name for name in sys.modules if name.startswith(blocked)
 
     def test_stateless_run_uses_no_backend_and_returns_ordered_events(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            config = AgentConfig.create_default(Path(tmp))
+            config = CommonConfig.create_default(Path(tmp))
             received = []
             agent = Agent(config, provider=MockProvider("finished"))
 
@@ -129,7 +129,7 @@ print(json.dumps(sorted(name for name in sys.modules if name.startswith(blocked)
 
     def test_pure_model_run_does_not_create_action_rules(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            config = AgentConfig.create_default(Path(tmp))
+            config = CommonConfig.create_default(Path(tmp))
             agent = Agent(config, provider=MockProvider("finished"), use_storage=False)
 
             result = agent.run("hello")
@@ -139,7 +139,7 @@ print(json.dumps(sorted(name for name in sys.modules if name.startswith(blocked)
 
     def test_stateless_conversation_fails_instead_of_creating_storage(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            config = AgentConfig.create_default(Path(tmp))
+            config = CommonConfig.create_default(Path(tmp))
             agent = Agent(config, provider=MockProvider(), use_storage=False)
 
             with self.assertRaisesRegex(
@@ -152,7 +152,7 @@ print(json.dumps(sorted(name for name in sys.modules if name.startswith(blocked)
 
     def test_task_skill_runs_without_storage_or_substitution(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            config = AgentConfig.create_default(Path(tmp))
+            config = CommonConfig.create_default(Path(tmp))
             agent = Agent(config, provider=MockProvider("ok"), use_storage=False)
 
             result = agent.run("hello", skill="common")
@@ -162,7 +162,7 @@ print(json.dumps(sorted(name for name in sys.modules if name.startswith(blocked)
 
     def test_explicit_backend_conflicts_with_disabled_storage(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            config = AgentConfig.create_default(Path(tmp))
+            config = CommonConfig.create_default(Path(tmp))
             stateful = Agent(config, provider=MockProvider(), use_storage=True)
             _ = stateful.runtime
 

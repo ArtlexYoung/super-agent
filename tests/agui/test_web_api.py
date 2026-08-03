@@ -8,7 +8,7 @@ from pathlib import Path
 from super_agent import Agent
 from adapter.ag_ui_adapter.web_api import WebAPI
 from core.provider.chat import MockProvider
-from core.config import AgentConfig
+from core.config import CommonConfig
 from core.state.memory import Memory
 
 
@@ -17,15 +17,15 @@ class WebAPIContractTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             agent = Agent(
-                AgentConfig.create_default(root),
+                CommonConfig.create_default(root),
                 provider=MockProvider("ok"),
                 use_storage=True,
             )
             child = Agent(
                 replace(
-                    AgentConfig.create_default(root / "child"),
+                    CommonConfig.create_default(root / "child"),
                     agent=replace(
-                        AgentConfig.create_default(root / "child").agent,
+                        CommonConfig.create_default(root / "child").agent,
                         name="researcher",
                     ),
                 ),
@@ -67,7 +67,7 @@ class WebAPIContractTests(unittest.TestCase):
     def test_conversation_run_and_memory_operations_use_runtime_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             agent = Agent(
-                AgentConfig.create_default(Path(tmp)),
+                CommonConfig.create_default(Path(tmp)),
                 provider=MockProvider("runtime answer"),
                 use_storage=True,
             )
@@ -97,14 +97,14 @@ class WebAPIContractTests(unittest.TestCase):
     def test_configuration_save_preserves_all_progressive_skill_roots(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            config = AgentConfig.create_default(root)
+            config = CommonConfig.create_default(root)
             agent = Agent(config, provider=MockProvider("ok"), use_storage=True)
             api = WebAPI(agent, "web-user")
             request = dict(_body_dict(api.handle("GET", "/api/bootstrap").body)["agent"])
             request["name"] = "configured-agent"
 
             response = api.handle("PUT", "/api/config", request)
-            loaded = AgentConfig.load_from_file(root / "agent.toml")
+            loaded = CommonConfig.load_from_file(root / "common.toml")
 
             self.assertEqual(200, response.status)
             self.assertEqual("configured-agent", loaded.agent.name)
@@ -114,7 +114,7 @@ class WebAPIContractTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             agent = Agent(
-                AgentConfig.create_default(root),
+                CommonConfig.create_default(root),
                 provider=MockProvider(),
                 use_storage=True,
             )

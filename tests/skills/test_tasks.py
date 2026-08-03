@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from dataclasses import replace
 
-from core.config import AgentConfig
+from core.config import CommonConfig
 from core.provider.chat import MockProvider, ModelResponse, ToolCall
 from core.skill_use.defaults import create_progressive_skill_disclosure
 from core.skill_use.workflow import create_task_policy_from_skill
@@ -13,7 +13,7 @@ class TaskSkillTests(unittest.TestCase):
     def test_builtin_task_skills_combine_instructions_and_run_policy(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             disclosure = create_progressive_skill_disclosure(
-                AgentConfig.create_default(tmp)
+                CommonConfig.create_default(tmp)
             )
             disclosure.prepare_skill_index()
 
@@ -29,7 +29,7 @@ class TaskSkillTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             provider = MockProvider("finished")
             result = Agent(
-                AgentConfig.create_default(tmp),
+                CommonConfig.create_default(tmp),
                 provider=provider,
                 use_storage=False,
             ).run("Summarize these notes", skill="common")
@@ -53,7 +53,7 @@ class TaskSkillTests(unittest.TestCase):
         )
         with tempfile.TemporaryDirectory() as tmp:
             result = Agent(
-                AgentConfig.create_default(tmp),
+                CommonConfig.create_default(tmp),
                 provider=provider,
                 use_storage=False,
             ).run("Handle this repository task")
@@ -73,14 +73,14 @@ class TaskSkillTests(unittest.TestCase):
             ]
         )
         with tempfile.TemporaryDirectory() as tmp:
-            agent = Agent(AgentConfig.create_default(tmp), provider=provider)
+            agent = Agent(CommonConfig.create_default(tmp), provider=provider)
 
             with self.assertRaisesRegex(PermissionError, "outside this run"):
                 agent.run("Use another task", skill="code")
 
     def test_explicit_task_skill_replaces_configured_task_short_name(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            config = AgentConfig.create_default(tmp)
+            config = CommonConfig.create_default(tmp)
             config = replace(config, agent=replace(config.agent, skills=["common"]))
 
             result = Agent(config, provider=MockProvider("coded")).run(

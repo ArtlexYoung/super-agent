@@ -7,7 +7,7 @@ from pathlib import Path
 from super_agent import Agent
 from core.provider.chat import OpenAICompatibleProvider, ProviderConnection
 from core.provider.pool import ProviderPool
-from core.config import AgentConfig
+from core.config import CommonConfig
 from core.provider.secrets import UserSecretResolver
 from core.models import RunIdentity, validate_user_id
 
@@ -15,7 +15,7 @@ from core.models import RunIdentity, validate_user_id
 class IdentityAndSecretIsolationTests(unittest.TestCase):
     def test_every_user_entry_point_uses_the_same_identity_validation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            agent = Agent(AgentConfig.create_default(Path(tmp)), use_storage=True)
+            agent = Agent(CommonConfig.create_default(Path(tmp)), use_storage=True)
             user = agent.for_user("  alice  ")
             store = agent._create_event_store("  alice  ")
             identity = RunIdentity.create("  alice  ", "  demo  ")

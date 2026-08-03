@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from super_agent import Agent
-from core.config import AgentConfig
+from core.config import CommonConfig
 from core.models import AgentRunOptions
 from core.provider.chat import MockProvider
 from core.state.models import RunEvent
@@ -18,7 +18,7 @@ class RuntimeEventSubscriberTests(unittest.TestCase):
     def test_subscriber_names_must_be_unique(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             agent = Agent(
-                AgentConfig.create_default(Path(tmp)),
+                CommonConfig.create_default(Path(tmp)),
                 provider=MockProvider("finished"),
             )
             agent._add_event_subscriber(_RecordingSubscriber())
@@ -35,7 +35,7 @@ class RuntimeEventSubscriberTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             subscriber = _RecordingSubscriber()
             agent = Agent(
-                AgentConfig.create_default(Path(tmp)),
+                CommonConfig.create_default(Path(tmp)),
                 provider=MockProvider("finished"),
             )
             agent._add_event_subscriber(subscriber)
@@ -59,7 +59,7 @@ class RuntimeEventSubscriberTests(unittest.TestCase):
     def test_failing_subscriber_fails_the_run_by_default(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             agent = Agent(
-                AgentConfig.create_default(Path(tmp)),
+                CommonConfig.create_default(Path(tmp)),
                 provider=MockProvider("completed answer"),
             )
             agent._add_event_subscriber(_FailingSubscriber())
@@ -86,7 +86,7 @@ class RuntimeEventSubscriberTests(unittest.TestCase):
     def test_failing_subscriber_can_be_explicitly_allowed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             agent = Agent(
-                AgentConfig.create_default(Path(tmp)),
+                CommonConfig.create_default(Path(tmp)),
                 provider=MockProvider("completed answer"),
             )
             agent._add_event_subscriber(_FailingSubscriber())
@@ -102,7 +102,7 @@ class RuntimeEventSubscriberTests(unittest.TestCase):
     def test_run_records_evidence_without_starting_learning(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             agent = Agent(
-                AgentConfig.create_default(Path(tmp)),
+                CommonConfig.create_default(Path(tmp)),
                 provider=MockProvider("completed answer"),
                 use_storage=True,
             )
@@ -121,7 +121,7 @@ class RuntimeEventSubscriberTests(unittest.TestCase):
     def test_explicit_learning_is_idempotent(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             agent = Agent(
-                AgentConfig.create_default(Path(tmp)),
+                CommonConfig.create_default(Path(tmp)),
                 provider=MockProvider("completed answer"),
                 use_storage=True,
             )
@@ -140,7 +140,7 @@ class RuntimeEventSubscriberTests(unittest.TestCase):
     def test_stateless_run_stays_file_free_and_cannot_learn(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            config = AgentConfig.create_default(root)
+            config = CommonConfig.create_default(root)
             agent = Agent(config, provider=MockProvider("finished"), use_storage=False)
 
             result = agent.run("hello")

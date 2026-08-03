@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 
 from super_agent import Agent
-from core.config import AgentConfig
+from core.config import CommonConfig
 from core.provider.chat import MockProvider
 from core.provider.chat import ModelResponse, ToolCall
 
@@ -43,7 +43,7 @@ class ExecutableWorkflowTests(unittest.TestCase):
             )
 
             result = Agent(
-                AgentConfig.load_from_file(config_path),
+                CommonConfig.load_from_file(config_path),
                 provider=provider,
                 use_storage=True,
             ).run("unrelated question")
@@ -72,7 +72,7 @@ class ExecutableWorkflowTests(unittest.TestCase):
             provider = MockProvider(tool_responses=[repeated_call, repeated_call])
 
             result = Agent(
-                AgentConfig.load_from_file(config_path),
+                CommonConfig.load_from_file(config_path),
                 provider=provider,
                 use_storage=True,
             ).run("keep working")
@@ -100,9 +100,12 @@ max_steps = {max_steps}
         "Run the configured workflow until a final answer is ready.",
         encoding="utf-8",
     )
-    config_path = root / "agent.toml"
+    config_path = root / "common.toml"
     config_path.write_text(
         f"""
+schema_version = 1
+kind = "common"
+
 [agent]
 name = "workflow-agent"
 system = "Use skills when needed."

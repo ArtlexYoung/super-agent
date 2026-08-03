@@ -40,7 +40,7 @@ super-agent check
 super-agent "Use the local Skill"
 ```
 
-Setup writes `agent.toml` and `skills/task/default/` only when they do not exist. Pass
+Setup writes `common.toml` and `skills/task/default/` only when they do not exist. Pass
 `--provider openai`, `anthropic`, `ollama`, or `mock` to create a model Skill from a preset.
 
 ## Embed

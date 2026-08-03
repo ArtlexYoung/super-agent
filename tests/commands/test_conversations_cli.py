@@ -221,7 +221,7 @@ class ConversationsCliTests(unittest.TestCase):
             code = main(["setup", "--path", root])
         if code != 0:
             raise AssertionError(f"project initialization failed: {code}")
-        return str(Path(root) / "agent.toml")
+        return str(Path(root) / "common.toml")
 
     def _run_json(self, arguments: list[str]) -> dict[str, object]:
         return json.loads(self._run_text(arguments))

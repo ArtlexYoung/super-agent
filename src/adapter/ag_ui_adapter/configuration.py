@@ -1,4 +1,4 @@
-"""Validated, canonical agent.toml updates for the web interface."""
+"""Validated, canonical common.toml updates for the web interface."""
 
 from __future__ import annotations
 
@@ -6,12 +6,12 @@ import json
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from core.config import AgentConfig, AgentSettings
+from core.config import CommonConfig, AgentSettings
 from core.files import write_bytes_atomically
 
 
 @dataclass(frozen=True)
-class AgentConfigurationInput:
+class CommonConfigurationInput:
     name: str
     system: str
     skills: list[str]
@@ -19,7 +19,7 @@ class AgentConfigurationInput:
     disabled_skills: list[str]
 
     @classmethod
-    def from_dict(cls, value: object) -> "AgentConfigurationInput":
+    def from_dict(cls, value: object) -> "CommonConfigurationInput":
         if not isinstance(value, dict):
             raise ValueError("agent configuration must be a JSON object")
         allowed = set(cls.__dataclass_fields__)
@@ -38,10 +38,10 @@ class AgentConfigurationInput:
         )
 
 
-def update_agent_configuration(
-    config: AgentConfig,
-    request: AgentConfigurationInput,
-) -> AgentConfig:
+def update_common_configuration(
+    config: CommonConfig,
+    request: CommonConfigurationInput,
+) -> CommonConfig:
     updated = replace(
         config,
         agent=AgentSettings(
@@ -52,12 +52,12 @@ def update_agent_configuration(
             disabled_skills=request.disabled_skills,
         ),
     )
-    content = _agent_config_to_toml(updated)
+    content = _common_config_to_toml(updated)
     write_bytes_atomically(config.source, content.encode("utf-8"))
-    return AgentConfig.load_from_file(config.source)
+    return CommonConfig.load_from_file(config.source)
 
 
-def agent_configuration_to_dict(config: AgentConfig) -> dict[str, object]:
+def common_configuration_to_dict(config: CommonConfig) -> dict[str, object]:
     settings = config.agent
     return {
         "name": settings.name,
@@ -68,10 +68,13 @@ def agent_configuration_to_dict(config: AgentConfig) -> dict[str, object]:
     }
 
 
-def _agent_config_to_toml(config: AgentConfig) -> str:
+def _common_config_to_toml(config: CommonConfig) -> str:
     agent = config.agent
     base = config.source.parent
     lines = [
+        "schema_version = 1",
+        'kind = "common"',
+        "",
         "[agent]",
         f"name = {_toml_string(agent.name)}",
         f"system = {_toml_string(agent.system)}",

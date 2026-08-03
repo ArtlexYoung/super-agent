@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 from super_agent import Agent
-from core.config import AgentConfig
+from core.config import CommonConfig
 from core.state.events import create_local_event_store
 from core.provider.chat import MockProvider
 from skill.disclosure import ProgressiveDisclosureCore
@@ -56,7 +56,7 @@ class ProgressiveDisclosureTests(unittest.TestCase):
             provider = MockProvider("ok")
 
             agent = Agent(
-                AgentConfig.load_from_file(config_path),
+                CommonConfig.load_from_file(config_path),
                 provider=provider,
                 use_storage=True,
             )
@@ -92,9 +92,12 @@ description = "{description}"
 
 
 def _write_config(root: Path) -> Path:
-    config_path = root / "agent.toml"
+    config_path = root / "common.toml"
     config_path.write_text(
         """
+schema_version = 1
+kind = "common"
+
 [agent]
 name = "demo"
 system = "Base system."

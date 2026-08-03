@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 from super_agent import Agent
 from core.checks import ActionEffect
-from core.config import AgentConfig
+from core.config import CodeConfig, CommonConfig
 from core.provider.chat import MockProvider
 from adapter.storage import create_storage_backend
 from skill.disclosure import ProgressiveDisclosureCore
@@ -18,9 +18,12 @@ class ConfigSkillAgentTests(unittest.TestCase):
     def test_config_loads_agent_paths_and_storage(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            config_path = root / "agent.toml"
+            config_path = root / "common.toml"
             config_path.write_text(
                 """
+schema_version = 1
+kind = "common"
+
 [agent]
 name = "demo"
 system = "You are concise."
@@ -39,7 +42,7 @@ url_env = "CUSTOM_DATABASE_URL"
                 encoding="utf-8",
             )
 
-            config = AgentConfig.load_from_file(config_path)
+            config = CommonConfig.load_from_file(config_path)
 
             self.assertEqual("demo", config.agent.name)
             self.assertEqual(
@@ -56,9 +59,12 @@ url_env = "CUSTOM_DATABASE_URL"
     def test_default_configuration_requires_no_optional_skills(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            config_path = root / "agent.toml"
+            config_path = root / "common.toml"
             config_path.write_text(
                 """
+schema_version = 1
+kind = "common"
+
 [agent]
 name = "demo"
 
@@ -68,25 +74,31 @@ skills = ["skills"]
                 encoding="utf-8",
             )
 
-            config = AgentConfig.load_from_file(config_path)
+            config = CommonConfig.load_from_file(config_path)
 
             self.assertEqual([], config.agent.skills)
             self.assertEqual([], config.agent.disabled_skills)
 
     def test_removed_safety_setting_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / "agent.toml"
-            path.write_text('[agent]\nsafety = "unsafe"\n', encoding="utf-8")
+            path = Path(tmp) / "common.toml"
+            path.write_text(
+                'schema_version = 1\nkind = "common"\n\n[agent]\nsafety = "unsafe"\n',
+                encoding="utf-8",
+            )
 
             with self.assertRaisesRegex(ValueError, "unknown agent settings: safety"):
-                AgentConfig.load_from_file(path)
+                CommonConfig.load_from_file(path)
 
     def test_removed_feature_switch_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            config_path = root / "agent.toml"
+            config_path = root / "common.toml"
             config_path.write_text(
                 """
+schema_version = 1
+kind = "common"
+
 [agent]
 use_features = ["SKILLS", "MCP"]
 """.strip(),
@@ -94,13 +106,16 @@ use_features = ["SKILLS", "MCP"]
             )
 
             with self.assertRaisesRegex(ValueError, "unknown agent settings: use_features"):
-                AgentConfig.load_from_file(config_path)
+                CommonConfig.load_from_file(config_path)
 
     def test_removed_memory_path_is_rejected_instead_of_ignored(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            config_path = Path(tmp) / "agent.toml"
+            config_path = Path(tmp) / "common.toml"
             config_path.write_text(
                 """
+schema_version = 1
+kind = "common"
+
 [paths]
 skills = ["skills"]
 memory = ".super-agent/memory"
@@ -109,13 +124,16 @@ memory = ".super-agent/memory"
             )
 
             with self.assertRaisesRegex(ValueError, "unknown paths settings: memory"):
-                AgentConfig.load_from_file(config_path)
+                CommonConfig.load_from_file(config_path)
 
     def test_removed_model_table_is_rejected_instead_of_ignored(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            config_path = Path(tmp) / "agent.toml"
+            config_path = Path(tmp) / "common.toml"
             config_path.write_text(
                 """
+schema_version = 1
+kind = "common"
+
 [model]
 provider = "mock"
 model = "mock"
@@ -123,8 +141,8 @@ model = "mock"
                 encoding="utf-8",
             )
 
-            with self.assertRaisesRegex(ValueError, "unknown agent configuration tables: model"):
-                AgentConfig.load_from_file(config_path)
+            with self.assertRaisesRegex(ValueError, "unknown common configuration tables: model"):
+                CommonConfig.load_from_file(config_path)
 
     def test_disclosure_core_reads_manifest_instruction_and_selection(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -169,9 +187,12 @@ description = "Echo helper"
                 encoding="utf-8",
             )
             (skill_dir / "SKILL.md").write_text("Use skill context.", encoding="utf-8")
-            config_path = root / "agent.toml"
+            config_path = root / "common.toml"
             config_path.write_text(
                 """
+schema_version = 1
+kind = "common"
+
 [agent]
 name = "demo"
 system = "Base system."
@@ -183,7 +204,7 @@ skills = ["skills"]
                 encoding="utf-8",
             )
 
-            config = AgentConfig.load_from_file(config_path)
+            config = CommonConfig.load_from_file(config_path)
             provider = MockProvider("ok")
             agent = Agent(config, provider=provider)
             result = agent.run("echo hello")
@@ -195,12 +216,113 @@ skills = ["skills"]
             self.assertEqual("echo hello", provider.last_messages[-1]["content"])
 
 
+class ScopedConfigurationTests(unittest.TestCase):
+    def test_common_config_requires_its_header(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "common.toml"
+            path.write_text('[agent]\nname = "demo"\n', encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "schema_version must be 1"):
+                CommonConfig.load_from_file(path)
+
+    def test_common_config_rejects_another_scope(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "common.toml"
+            path.write_text(
+                'schema_version = 1\nkind = "code"\n',
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "kind must be 'common'"):
+                CommonConfig.load_from_file(path)
+
+    def test_code_config_loads_relative_workspace_and_safe_commands(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            path = root / "code.toml"
+            path.write_text(
+                """
+schema_version = 1
+kind = "code"
+
+[workspace]
+root = "project"
+ignore = [".git", ".super-agent"]
+
+[actions]
+read = "allow"
+write = "ask"
+execute = "deny"
+
+[verification]
+commands = [["python3", "-m", "unittest"], ["git", "diff", "--check"]]
+""".strip(),
+                encoding="utf-8",
+            )
+
+            config = CodeConfig.load_from_file(path)
+
+            self.assertEqual(root / "project", config.settings.root)
+            self.assertEqual([".git", ".super-agent"], config.settings.ignored_paths)
+            self.assertEqual("allow", config.settings.read)
+            self.assertEqual("ask", config.settings.write)
+            self.assertEqual("deny", config.settings.execute)
+            self.assertEqual(
+                [["python3", "-m", "unittest"], ["git", "diff", "--check"]],
+                config.settings.verification_commands,
+            )
+
+    def test_code_config_rejects_missing_or_wrong_header(self) -> None:
+        cases = (
+            ("[workspace]\nroot = '.'\n", "schema_version must be 1"),
+            ('schema_version = 1\nkind = "common"\n', "kind must be 'code'"),
+        )
+        for content, message in cases:
+            with self.subTest(message=message), tempfile.TemporaryDirectory() as tmp:
+                path = Path(tmp) / "code.toml"
+                path.write_text(content, encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, message):
+                    CodeConfig.load_from_file(path)
+
+    def test_code_config_rejects_unknown_fields_and_invalid_actions(self) -> None:
+        cases = (
+            ('unexpected = true\n', "unknown code configuration tables: unexpected"),
+            ('[actions]\nwrite = "sometimes"\n', "actions must be allow, ask, or deny"),
+        )
+        for body, message in cases:
+            with self.subTest(message=message), tempfile.TemporaryDirectory() as tmp:
+                path = Path(tmp) / "code.toml"
+                path.write_text(
+                    f'schema_version = 1\nkind = "code"\n\n{body}',
+                    encoding="utf-8",
+                )
+                with self.assertRaisesRegex(ValueError, message):
+                    CodeConfig.load_from_file(path)
+
+    def test_code_config_rejects_shell_command_strings(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "code.toml"
+            path.write_text(
+                """
+schema_version = 1
+kind = "code"
+
+[verification]
+commands = ["python3 -m unittest"]
+""".strip(),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "non-empty string arrays"):
+                CodeConfig.load_from_file(path)
+
+
 class LazyAgentInitializationTests(unittest.TestCase):
     def test_add_skill_path_is_explicit_and_idempotent(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             agent = Agent(
-                AgentConfig.create_default(root),
+                CommonConfig.create_default(root),
                 provider=MockProvider("ready"),
             )
             shared = root / "shared-skills"
@@ -220,7 +342,7 @@ class LazyAgentInitializationTests(unittest.TestCase):
         ) as build_skills, patch(
             "adapter.storage.create_storage_backend"
         ) as create_storage:
-            config = AgentConfig.create_default(Path(tmp))
+            config = CommonConfig.create_default(Path(tmp))
             agent = Agent(config, provider=MockProvider("ready"))
             child = Agent(config, provider=MockProvider("child"), use_storage=False)
 
@@ -250,7 +372,7 @@ class LazyAgentInitializationTests(unittest.TestCase):
             wraps=create_storage_backend,
         ) as create_storage:
             agent = Agent(
-                AgentConfig.create_default(Path(tmp)),
+                CommonConfig.create_default(Path(tmp)),
                 provider=MockProvider("ready"),
                 use_storage=True,
             )
@@ -279,7 +401,7 @@ class LazyAgentInitializationTests(unittest.TestCase):
             side_effect=discover_models_once_ready,
         ):
             agent = Agent(
-                AgentConfig.create_default(Path(tmp)),
+                CommonConfig.create_default(Path(tmp)),
                 provider=MockProvider("ready"),
             )
 
@@ -295,7 +417,7 @@ class LazyAgentInitializationTests(unittest.TestCase):
     def test_supplied_storage_provider_and_handler_keep_their_identity(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            config = AgentConfig.create_default(root)
+            config = CommonConfig.create_default(root)
             storage = create_storage_backend("jsonl", str(root / "state"))
             provider = MockProvider("ready")
             handler = _UnusedSkillHandler()

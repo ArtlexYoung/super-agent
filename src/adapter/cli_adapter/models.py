@@ -4,9 +4,9 @@ import argparse
 import json
 import sys
 
-from adapter.cli_adapter import load_agent_config, load_event_store
+from adapter.cli_adapter import load_common_config, load_event_store
 from core.skill_use.defaults import create_skills
-from core.config import AgentConfig
+from core.config import CommonConfig
 from core.models import LOCAL_USER_ID
 from core.checks import ActionRules
 from core.skill_use.models import (
@@ -49,7 +49,7 @@ def configure_models_parser(parser: argparse.ArgumentParser) -> None:
 
 
 def run_models_command(args: argparse.Namespace) -> int:
-    config = load_agent_config(getattr(args, "config", None))
+    config = load_common_config(getattr(args, "config", None))
     output = getattr(args, "output", "text")
     if args.models_command == "save":
         return _save_model_skill(config, args.user_id, output)
@@ -67,7 +67,7 @@ def run_models_command(args: argparse.Namespace) -> int:
 
 
 def _read_configured_model_profiles(
-    config: AgentConfig,
+    config: CommonConfig,
     user_id: str,
 ) -> list[ModelProfile]:
     store = load_event_store(config, user_id)
@@ -75,7 +75,7 @@ def _read_configured_model_profiles(
 
 
 def _print_model_profiles(
-    config: AgentConfig,
+    config: CommonConfig,
     profiles: list[ModelProfile],
     output: str,
 ) -> int:
@@ -99,7 +99,7 @@ def _print_model_profiles(
 
 
 def _print_selected_model(
-    config: AgentConfig,
+    config: CommonConfig,
     profiles: list[ModelProfile],
     output: str,
 ) -> int:
@@ -129,14 +129,14 @@ def _print_model_profile(profile: ModelProfile, prefix: str = "profile") -> None
     )
 
 
-def _save_model_skill(config: AgentConfig, user_id: str, output: str) -> int:
+def _save_model_skill(config: CommonConfig, user_id: str, output: str) -> int:
     request = model_skill_input_from_dict(json.loads(sys.stdin.read()))
     profile = _create_model_skill_manager(config, user_id).save_model_skill(request)
     return _print_model_change(profile, output, "saved")
 
 
 def _remove_model_skill(
-    config: AgentConfig,
+    config: CommonConfig,
     user_id: str,
     name: str,
     output: str,
@@ -164,7 +164,7 @@ def _print_model_change(profile: ModelProfile, output: str, action: str) -> int:
 
 
 def _create_model_skill_manager(
-    config: AgentConfig,
+    config: CommonConfig,
     user_id: str,
 ) -> ModelSkillManager:
     store = load_event_store(config, user_id)

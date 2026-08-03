@@ -8,15 +8,15 @@ from urllib.parse import unquote
 
 from super_agent import Agent
 from adapter.ag_ui_adapter.configuration import (
-    AgentConfigurationInput,
-    agent_configuration_to_dict,
-    update_agent_configuration,
+    CommonConfigurationInput,
+    common_configuration_to_dict,
+    update_common_configuration,
 )
 from core.skill_use.defaults import (
     create_skills,
     load_configured_freshness_rules_if_enabled,
 )
-from core.config import AgentConfig
+from core.config import CommonConfig
 from core.evaluation.insight import explain_run_with_insight
 from core.checks import ActionEffect, ActionRequest
 from skill.disclosure import skill_index_to_dict
@@ -97,7 +97,7 @@ class WebAPI:
         models = read_model_profiles(skills, environment)
         return {
             "schema_version": 3,
-            "agent": agent_configuration_to_dict(config),
+            "agent": common_configuration_to_dict(config),
             "storage": {
                 "backend": config.storage.backend,
                 "path": str(config.storage.path),
@@ -152,7 +152,7 @@ class WebAPI:
         )
 
     def _update_configuration(self, body: object | None) -> None:
-        request = AgentConfigurationInput.from_dict(body)
+        request = CommonConfigurationInput.from_dict(body)
         updated = self.agent._get_state_access().execute_action(
             self.user_id,
             ActionRequest.create(
@@ -160,7 +160,7 @@ class WebAPI:
                 "config:agent",
                 (ActionEffect.UPDATE,),
             ),
-            lambda: update_agent_configuration(self.agent.config, request),
+            lambda: update_common_configuration(self.agent.config, request),
         )
         self.user.configuration.replace(updated)
 
@@ -180,7 +180,7 @@ def _ok(body: object, status: HTTPStatus = HTTPStatus.OK) -> WebAPIResponse:
 
 def _web_skill_list(
     value: dict[str, object],
-    config: AgentConfig,
+    config: CommonConfig,
 ) -> list[dict[str, object]]:
     disabled = set(config.agent.disabled_skills)
     selected = set(config.agent.skills)

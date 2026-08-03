@@ -6,7 +6,7 @@ from pathlib import Path
 
 from super_agent import Agent
 from core.provider.chat import MockProvider, ModelResponse, ToolCall
-from core.config import AgentConfig
+from core.config import CommonConfig
 from adapter.storage import JsonlStorage
 from adapter.conversations import (
     append_conversation_turn,
@@ -21,7 +21,7 @@ class ConversationRuntimeTests(unittest.TestCase):
     def test_conversation_management_replays_events(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             agent = Agent(
-                AgentConfig.create_default(tmp), provider=MockProvider(), use_storage=True
+                CommonConfig.create_default(tmp), provider=MockProvider(), use_storage=True
             )
             conversations = agent.for_user("local").conversations
             conversation = conversations.create("Original")
@@ -51,7 +51,7 @@ class ConversationRuntimeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             provider = SequenceProvider(["first answer", "second answer"])
             agent = Agent(
-                AgentConfig.create_default(tmp), provider=provider, use_storage=True
+                CommonConfig.create_default(tmp), provider=provider, use_storage=True
             )
             user = agent.for_user("local")
             conversation = user.conversations.create()
@@ -75,7 +75,7 @@ class ConversationRuntimeTests(unittest.TestCase):
     def test_explicit_messages_cannot_compete_with_stored_conversation_history(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             agent = Agent(
-                AgentConfig.create_default(tmp), provider=MockProvider(), use_storage=True
+                CommonConfig.create_default(tmp), provider=MockProvider(), use_storage=True
             )
             user = agent.for_user("local")
             conversation = user.conversations.create()
@@ -90,7 +90,7 @@ class ConversationRuntimeTests(unittest.TestCase):
     def test_failed_run_does_not_append_a_partial_conversation_turn(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             agent = Agent(
-                AgentConfig.create_default(tmp),
+                CommonConfig.create_default(tmp),
                 provider=RecordingProvider(RuntimeError("provider failed")),
                 use_storage=True,
             )
@@ -105,7 +105,7 @@ class ConversationRuntimeTests(unittest.TestCase):
 
     def test_user_scopes_isolate_conversations_memory_evaluations_and_cache(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            config = AgentConfig.create_default(tmp)
+            config = CommonConfig.create_default(tmp)
             config = replace(
                 config,
                 agent=replace(config.agent, skills=["task:common"]),
@@ -198,7 +198,7 @@ class ConversationRuntimeTests(unittest.TestCase):
     def test_new_agent_instance_reads_existing_conversations(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            config = AgentConfig.create_default(root)
+            config = CommonConfig.create_default(root)
             first = Agent(
                 config, provider=MockProvider("persisted answer"), use_storage=True
             )
@@ -233,7 +233,7 @@ class ConversationRuntimeTests(unittest.TestCase):
                 }
             )
             agent = Agent(
-                AgentConfig.create_default(tmp),
+                CommonConfig.create_default(tmp),
                 provider=MockProvider(response),
                 use_storage=True,
             )
@@ -249,7 +249,7 @@ class ConversationRuntimeTests(unittest.TestCase):
 
     def test_sqlite_backend_replays_conversations_across_agent_instances(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            config = AgentConfig.create_default(tmp)
+            config = CommonConfig.create_default(tmp)
             config = replace(
                 config,
                 storage=replace(config.storage, backend="sqlite"),
@@ -285,7 +285,7 @@ def _named_agent(
     *,
     provider: MockProvider | None = None,
 ) -> Agent:
-    config = AgentConfig.create_default(root)
+    config = CommonConfig.create_default(root)
     config = replace(config, agent=replace(config.agent, name=name))
     return Agent(
         config,

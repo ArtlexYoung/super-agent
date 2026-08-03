@@ -10,7 +10,7 @@ from unittest.mock import patch
 from super_agent import Agent
 from cli import main
 from core.provider.chat import MockProvider, ModelResponse, ToolCall
-from core.config import AgentConfig
+from core.config import CommonConfig
 
 
 class RunsCliTests(unittest.TestCase):
@@ -26,7 +26,7 @@ class RunsCliTests(unittest.TestCase):
     def test_status_explain_and_export_use_saved_run_snapshot(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            config_path = root / "agent.toml"
+            config_path = root / "common.toml"
             main(["setup", "--path", tmp])
             run_output = StringIO()
             with patch("sys.stdout", run_output):
@@ -136,7 +136,7 @@ class RunsCliTests(unittest.TestCase):
 
     def test_text_explain_prints_task_and_evidence_insight(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            config_path = Path(tmp) / "agent.toml"
+            config_path = Path(tmp) / "common.toml"
             main(["setup", "--path", tmp])
             run_output = StringIO()
             with patch("sys.stdout", run_output):
@@ -198,7 +198,7 @@ class RunsCliTests(unittest.TestCase):
                         "runs",
                         "status",
                         "--config",
-                        str(root / "agent.toml"),
+                        str(root / "common.toml"),
                         "--output",
                         "json",
                     ]
@@ -210,7 +210,7 @@ class RunsCliTests(unittest.TestCase):
     def test_feedback_records_score_in_the_task_event_stream(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            config_path = root / "agent.toml"
+            config_path = root / "common.toml"
             main(["setup", "--path", tmp])
             run_output = StringIO()
             with patch("sys.stdout", run_output):
@@ -257,9 +257,9 @@ class RunsCliTests(unittest.TestCase):
     def test_explain_finds_subagent_run_in_the_same_user_scope(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            config_path = root / "agent.toml"
+            config_path = root / "common.toml"
             main(["setup", "--path", tmp])
-            config = AgentConfig.load_from_file(config_path)
+            config = CommonConfig.load_from_file(config_path)
             parent_provider = MockProvider(
                 tool_responses=[
                     ModelResponse(

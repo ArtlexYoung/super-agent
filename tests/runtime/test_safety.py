@@ -5,7 +5,7 @@ from pathlib import Path
 from core.skill_use.defaults import create_default_skill_handlers
 from core.skill_use.handlers import SkillAction, SkillCollection
 from core.provider.chat import MockProvider
-from core.config import AgentConfig
+from core.config import CommonConfig
 from core.runtime.run import Run
 from core.models import RunIdentity
 from core.checks import (
@@ -210,7 +210,7 @@ def _create_session(
     root: Path,
     action_rules: ActionRules | None = None,
 ) -> Run:
-    config = AgentConfig.create_default(root)
+    config = CommonConfig.create_default(root)
     identity = RunIdentity.create("local", config.agent.name)
     backend = JsonlStorage(root / "state")
     event_log = RunEventLog(identity, backend=backend)
@@ -236,7 +236,7 @@ def _create_session(
 
 
 def _create_session_without_action_checker() -> Run:
-    config = AgentConfig.create_default(Path("."))
+    config = CommonConfig.create_default(Path("."))
     identity = RunIdentity.create("local", config.agent.name)
     event_log = RunEventLog(identity)
     event_log.start_run("question")

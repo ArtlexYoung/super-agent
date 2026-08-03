@@ -15,7 +15,7 @@ class ModelsCliTests(unittest.TestCase):
     def test_save_update_default_and_remove_model_skills(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            config_path = root / "agent.toml"
+            config_path = root / "common.toml"
             main(["setup", "--path", tmp])
 
             first = _save_model(config_path, _model_request("fast", default=True))
@@ -61,7 +61,7 @@ class ModelsCliTests(unittest.TestCase):
     def test_save_keeps_environment_name_without_secret_value(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            config_path = root / "agent.toml"
+            config_path = root / "common.toml"
             main(["setup", "--path", tmp])
             request = _model_request("remote", default=True)
             request["provider"] = "openai-compatible"
@@ -78,7 +78,7 @@ class ModelsCliTests(unittest.TestCase):
     def test_model_commands_read_only_the_selected_user_overlay(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            config_path = root / "agent.toml"
+            config_path = root / "common.toml"
             main(["setup", "--path", tmp])
 
             _save_model(

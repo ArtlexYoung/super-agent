@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from core.config import AgentConfig
+from core.config import CommonConfig
 from core.provider.chat import MockProvider
 from super_agent import Agent
 
@@ -11,7 +11,7 @@ class RunSnapshotTests(unittest.TestCase):
     def test_completed_run_replays_the_canonical_event_stream(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             agent = Agent(
-                AgentConfig.create_default(tmp),
+                CommonConfig.create_default(tmp),
                 provider=MockProvider("finished"),
                 use_storage=True,
             )
@@ -40,7 +40,7 @@ class RunSnapshotTests(unittest.TestCase):
     def test_failed_run_preserves_the_provider_error(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             agent = Agent(
-                AgentConfig.create_default(tmp),
+                CommonConfig.create_default(tmp),
                 provider=_FailingProvider(),
                 use_storage=True,
             )
@@ -56,7 +56,7 @@ class RunSnapshotTests(unittest.TestCase):
     def test_run_snapshot_is_derived_from_the_canonical_event_stream(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             agent = Agent(
-                AgentConfig.create_default(tmp),
+                CommonConfig.create_default(tmp),
                 provider=MockProvider(),
                 use_storage=True,
             )

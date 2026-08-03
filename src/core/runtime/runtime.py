@@ -7,7 +7,7 @@ from time import perf_counter
 from typing import Callable
 
 from core.checks import ActionRules
-from core.config import AgentConfig
+from core.config import CommonConfig
 from core.events import StorageBackend
 from core.models import LOCAL_USER_ID, RunIdentity, RunResult, Task
 from core.provider.pool import ProviderPool
@@ -30,7 +30,7 @@ from core.state.subscribers import (
 class RuntimeContext:
     """Dependencies shared by one Agent and its task Runtime."""
 
-    config: AgentConfig
+    config: CommonConfig
     provider_pool: ProviderPool
     skill_handlers: SkillHandlers
     storage: StorageBackend | None

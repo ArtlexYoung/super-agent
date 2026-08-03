@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import cast
 from uuid import uuid4
 
-from core.config import AgentConfig
+from core.config import CommonConfig
 from core.checks import ActionEffect, ActionRequest, ActionRunner, ActionRules
 from core.state.events import EventStore
 from skill.disclosure import ProgressiveDisclosureCore, SkillDisclosure
@@ -52,7 +52,7 @@ class ModelSkillManager:
 
     def __init__(
         self,
-        config: AgentConfig,
+        config: CommonConfig,
         store: EventStore,
         action_rules: ActionRules | None = None,
     ) -> None:

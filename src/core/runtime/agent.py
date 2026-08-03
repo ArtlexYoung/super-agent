@@ -16,7 +16,7 @@ from core.provider.chat import (
     Message,
 )
 from core.provider.pool import ProviderPool
-from core.config import AgentConfig
+from core.config import CommonConfig
 from core.runtime.runtime import Runtime, RuntimeContext
 from core.runtime.run import Run
 from core.runtime.team import find_cycle_chains, find_longest_agent_chain
@@ -62,7 +62,7 @@ class SubAgent:
 class Agent:
     def __init__(
         self,
-        config: AgentConfig | str | Path | None = None,
+        config: CommonConfig | str | Path | None = None,
         *,
         provider: ChatProvider | None = None,
         storage: StorageBackend | None = None,
@@ -75,11 +75,11 @@ class Agent:
         if storage is not None and use_storage is False:
             raise ValueError("storage cannot be combined with use_storage=False")
         if config is None:
-            self.config = AgentConfig.load_automatically()
-        elif isinstance(config, AgentConfig):
+            self.config = CommonConfig.load_automatically()
+        elif isinstance(config, CommonConfig):
             self.config = config
         else:
-            self.config = AgentConfig.load_from_file(config)
+            self.config = CommonConfig.load_from_file(config)
         self._action_rules = action_rules
         self.user_secrets = UserSecretResolver(secret_lookup)
         self._use_storage = storage is not None if use_storage is None else use_storage
@@ -337,7 +337,7 @@ class Agent:
 
     def _replace_configuration(
         self,
-        config: AgentConfig,
+        config: CommonConfig,
     ) -> None:
         with self._initialization_lock:
             has_storage = self._configured_storage is not None or self._storage is not None
@@ -428,7 +428,7 @@ class Agent:
         self,
         storage: StorageBackend | None,
         *,
-        config: AgentConfig | None = None,
+        config: CommonConfig | None = None,
     ) -> "EventStore | None":
         if storage is None:
             return None
@@ -443,7 +443,7 @@ class Agent:
 
     def _build_runtime(
         self,
-        config: AgentConfig,
+        config: CommonConfig,
         provider_pool: ProviderPool,
         storage: StorageBackend | None,
         code_profiles: tuple[ModelProfile, ...],

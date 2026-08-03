@@ -18,7 +18,7 @@ from core.skill_use.builtins import create_memory_skill_contribution
 from core.provider.chat import ToolCall
 from core.provider.chat import MockProvider
 from core.runtime.tools import RuntimeTools, RuntimeToolsContext
-from core.config import AgentConfig
+from core.config import CommonConfig
 from core.runtime.run import Run
 from core.models import RunIdentity
 from core.checks import ActionConfirmationRequired, ActionEffect, ActionRules
@@ -337,7 +337,7 @@ def _create_session(
     *,
     mcp_servers: McpServers | None = None,
 ) -> Run:
-    config = AgentConfig.create_default(root)
+    config = CommonConfig.create_default(root)
     provider = MockProvider()
     identity = RunIdentity.create(
         "local",

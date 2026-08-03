@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from core.skill_use.handlers import SkillCollection, SkillHandlers
 from core.skill_use.builtins import create_builtin_skill_handlers
 from core.skill_use.mcp import McpServers
-from core.config import AgentConfig
+from core.config import CommonConfig
 from core.models import RunIdentity
 from skill.disclosure import DisclosureRecorder, ProgressiveDisclosureCore
 
@@ -28,7 +28,7 @@ def create_default_skill_handlers(
 
 
 def create_progressive_skill_disclosure(
-    config: AgentConfig,
+    config: CommonConfig,
     *,
     store: EventStore | None = None,
     identity: RunIdentity | None = None,
@@ -82,7 +82,7 @@ def create_progressive_skill_disclosure(
 
 
 def load_configured_freshness_rules(
-    config: AgentConfig,
+    config: CommonConfig,
     *,
     store: EventStore | None = None,
 ) -> FreshnessRules:
@@ -102,7 +102,7 @@ def load_configured_freshness_rules(
 
 
 def load_configured_freshness_rules_if_enabled(
-    config: AgentConfig,
+    config: CommonConfig,
     *,
     store: EventStore | None = None,
 ) -> FreshnessRules | None:
@@ -113,7 +113,7 @@ def load_configured_freshness_rules_if_enabled(
 
 
 def create_skills(
-    config: AgentConfig,
+    config: CommonConfig,
     *,
     handlers: SkillHandlers | None = None,
     store: EventStore | None = None,

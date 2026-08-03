@@ -3,7 +3,7 @@ import unittest
 from dataclasses import replace
 from pathlib import Path
 
-from core.config import AgentConfig
+from core.config import CommonConfig
 from core.provider.chat import MockProvider, ModelResponse, ToolCall
 from super_agent import Agent
 
@@ -147,7 +147,7 @@ def _agent(
     *,
     max_depth: int | None = None,
 ) -> Agent:
-    config = AgentConfig.create_default(root)
+    config = CommonConfig.create_default(root)
     settings = replace(
         config.agent,
         name=name,

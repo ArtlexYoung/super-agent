@@ -15,7 +15,7 @@ from core.checks import (
 )
 
 if TYPE_CHECKING:
-    from core.config import AgentConfig
+    from core.config import CommonConfig
     from core.provider.chat import ChatProvider, Message
     from core.state.event_log import RunEventLog
     from core.state.models import RunEvent
@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 
 @dataclass
 class Run:
-    config: AgentConfig
+    config: CommonConfig
     model_profile: ModelProfile | None
     provider: ChatProvider | None
     skills: SkillCollection

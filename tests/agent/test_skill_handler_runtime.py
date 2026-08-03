@@ -17,7 +17,7 @@ from core.skill_use.handlers import (
 )
 from cli import main
 from core.provider.chat import MockProvider, ModelResponse, ToolCall
-from core.config import AgentConfig
+from core.config import CommonConfig
 from core.checks import ActionEffect
 from skill.manifest import Skill
 from support import write_workflow_skill
@@ -182,7 +182,7 @@ class SkillHandlerRuntimeTests(unittest.TestCase):
     def test_task_trace_uses_one_runtime_task_path(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             agent = Agent(
-                AgentConfig.create_default(tmp),
+                CommonConfig.create_default(tmp),
                 provider=MockProvider(),
                 use_storage=True,
             )
@@ -360,6 +360,6 @@ description = "Echo helper"
     )
 
 
-def _config_with_skills(root: Path, skills: list[str]) -> AgentConfig:
-    config = AgentConfig.create_default(root)
+def _config_with_skills(root: Path, skills: list[str]) -> CommonConfig:
+    config = CommonConfig.create_default(root)
     return replace(config, agent=replace(config.agent, skills=skills))

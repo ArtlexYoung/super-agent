@@ -30,7 +30,7 @@ Freshness is calculated from recorded evidence and does not call a model. The se
 - sample confidence for sparse evidence.
 
 ```bash
-super-agent skills freshness --config agent.toml
+super-agent skills freshness --config common.toml
 ```
 
 ## Change a Skill
@@ -74,11 +74,11 @@ event. It does not start a hidden organizer model or apply a partial plan. Recal
 ranked read. Forgetting appends an explicit tombstone rather than rewriting history.
 
 ```bash
-super-agent data memory list --config agent.toml
-super-agent data memory add --config agent.toml \
+super-agent data memory list --config common.toml
+super-agent data memory add --config common.toml \
   --text "Prefer concise answers." --scope agent
-super-agent data memory recall --config agent.toml --query "response style"
-super-agent data memory forget --config agent.toml --item-id <memory-id>
+super-agent data memory recall --config common.toml --query "response style"
+super-agent data memory forget --config common.toml --item-id <memory-id>
 ```
 
 Learning records, memory items, usage habits, and Skill overlays are isolated by trusted

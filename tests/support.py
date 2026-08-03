@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from core.config import AgentConfig
+from core.config import CommonConfig
 from core.provider.chat import MockProvider, ModelResponse
 from core.skill_use.defaults import load_configured_freshness_rules
 
@@ -86,7 +86,7 @@ class SequenceProvider(RecordingProvider):
 
 def load_default_freshness_rules(root: Path):
     """Load built-in freshness rules through central Skill disclosure."""
-    return load_configured_freshness_rules(AgentConfig.create_default(root))
+    return load_configured_freshness_rules(CommonConfig.create_default(root))
 
 
 def write_memory_skill(root: Path, name: str = "default") -> None:

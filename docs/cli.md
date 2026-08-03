@@ -7,10 +7,10 @@ A bare prompt is short for `run`; no arguments start interactive chat.
 
 ```bash
 super-agent check
-super-agent check --config agent.toml --output json
+super-agent check --config common.toml --output json
 super-agent "hello"
-super-agent run --config agent.toml --user-id alice "hello"
-super-agent run --chat --save --config agent.toml --user-id alice
+super-agent run --config common.toml --user-id alice "hello"
+super-agent run --chat --save --config common.toml --user-id alice
 super-agent run --skill code --output json "inspect this repository"
 ```
 
@@ -26,11 +26,11 @@ configured storage; supplying a conversation ID also makes that requirement expl
 ## Skills
 
 ```bash
-super-agent skills list --config agent.toml
-super-agent skills index --config agent.toml --output json
-super-agent skills validate --config agent.toml
-super-agent skills graph --config agent.toml --name prompt:research
-super-agent skills freshness --config agent.toml
+super-agent skills list --config common.toml
+super-agent skills index --config common.toml --output json
+super-agent skills validate --config common.toml
+super-agent skills graph --config common.toml --name prompt:research
+super-agent skills freshness --config common.toml
 ```
 
 Passive package commands are `pack`, `install`, `update`, and `remove`. They validate
@@ -41,8 +41,8 @@ Models are Skills and live under the same group:
 ```bash
 super-agent manage models list --output json
 super-agent manage models resolve
-super-agent manage models save --config agent.toml --request-stdin < model.json
-super-agent manage models remove --config agent.toml --name fast
+super-agent manage models save --config common.toml --request-stdin < model.json
+super-agent manage models remove --config common.toml --name fast
 ```
 
 Saved model Skills name an environment variable; they never contain its secret value.

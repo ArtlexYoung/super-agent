@@ -10,7 +10,7 @@ from core.checks import ActionEffect
 from super_agent import Agent
 from core.skill_use.defaults import create_default_skill_handlers
 from core.skill_use.handlers import SkillContext
-from core.config import AgentConfig
+from core.config import CommonConfig
 from core.state.events import create_local_event_store
 from core.provider.chat import MockProvider
 from skill.disclosure import ProgressiveDisclosureCore, SkillReference
@@ -156,7 +156,7 @@ description = "Missing mcp table"
             root = Path(tmp)
             write_workflow_skill(root)
             _write_mcp_skill(root, "missing", "Missing MCP registration")
-            config = AgentConfig.load_from_file(
+            config = CommonConfig.load_from_file(
                 _write_agent_config(root, skills=["mcp:missing"])
             )
             provider = MockProvider("must not run")
@@ -191,7 +191,7 @@ description = "Missing mcp table"
             write_workflow_skill(root)
             write_workflow_skill(root, name="react", mode="react")
             _write_mcp_skill(root, "calculator", "Calculator MCP")
-            config = AgentConfig.load_from_file(
+            config = CommonConfig.load_from_file(
                 _write_agent_config(root, skills=["mcp:calculator"])
             )
             config = replace(
@@ -229,7 +229,7 @@ description = "Missing mcp table"
             provider = MockProvider("ok")
 
             result = Agent(
-                AgentConfig.load_from_file(config_path),
+                CommonConfig.load_from_file(config_path),
                 provider=provider,
                 use_storage=True,
             ).run("github")
@@ -256,7 +256,7 @@ description = "Missing mcp table"
             provider = MockProvider("ok")
 
             result = Agent(
-                AgentConfig.load_from_file(config_path),
+                CommonConfig.load_from_file(config_path),
                 provider=provider,
                 use_storage=True,
             ).run("echo github")
@@ -333,11 +333,14 @@ def _write_agent_config(
     skills: list[str] | None = None,
     disabled_skills: list[str] | None = None,
 ) -> Path:
-    config_path = root / "agent.toml"
+    config_path = root / "common.toml"
     skills_text = _toml_list(["workflow:direct", "memory:default", *(skills or [])])
     disabled_skills_line = "" if disabled_skills is None else f"disabled_skills = {_toml_list(disabled_skills)}"
     config_path.write_text(
         f"""
+schema_version = 1
+kind = "common"
+
 [agent]
 name = "demo"
 system = "Base system."

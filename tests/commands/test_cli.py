@@ -60,7 +60,7 @@ class CliTests(unittest.TestCase):
 
             root = Path(tmp)
             self.assertEqual(0, code)
-            self.assertTrue((root / "agent.toml").exists())
+            self.assertTrue((root / "common.toml").exists())
             self.assertTrue((root / "skills" / "task" / "default" / "skill.toml").exists())
             self.assertTrue((root / "skills" / "task" / "default" / "SKILL.md").exists())
             self.assertEqual(
@@ -79,7 +79,7 @@ class CliTests(unittest.TestCase):
             output = StringIO()
 
             with patch("sys.stdout", output):
-                code = main(["check", "--config", str(Path(tmp) / "agent.toml")])
+                code = main(["check", "--config", str(Path(tmp) / "common.toml")])
 
             self.assertEqual(0, code)
             self.assertIn("OK  model: model:default -> mock/mock", output.getvalue())
@@ -124,7 +124,7 @@ class CliTests(unittest.TestCase):
 
             output = StringIO()
             with patch("sys.stdout", output):
-                code = main(["skills", "list", "--config", str(Path(tmp) / "agent.toml")])
+                code = main(["skills", "list", "--config", str(Path(tmp) / "common.toml")])
 
             self.assertEqual(0, code)
             self.assertIn("default\ttask", output.getvalue())
@@ -141,7 +141,7 @@ class CliTests(unittest.TestCase):
                         "skills",
                         "index",
                         "--config",
-                        str(Path(tmp) / "agent.toml"),
+                        str(Path(tmp) / "common.toml"),
                         "--output",
                         "json",
                     ]
@@ -171,7 +171,7 @@ class CliTests(unittest.TestCase):
 
             output = StringIO()
             with patch("sys.stdout", output):
-                code = main(["run", "--config", str(Path(tmp) / "agent.toml"), "hello"])
+                code = main(["run", "--config", str(Path(tmp) / "common.toml"), "hello"])
 
             self.assertEqual(0, code)
             self.assertIn("Mock response", output.getvalue())
@@ -186,7 +186,7 @@ class CliTests(unittest.TestCase):
             {"SUPER_AGENT_PROVIDER": "mock"},
             clear=True,
         ):
-            config = str(Path(tmp) / "agent.toml")
+            config = str(Path(tmp) / "common.toml")
             main(["setup", "--path", tmp])
             _select_skills(Path(config), ["task:default", "memory:default"])
             main(["run", "--save", "--config", config, "hello"])
@@ -201,7 +201,7 @@ class CliTests(unittest.TestCase):
 
     def test_memory_commands_add_recall_list_and_forget_long_term_items(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            config = str(Path(tmp) / "agent.toml")
+            config = str(Path(tmp) / "common.toml")
             main(["setup", "--path", tmp])
             add_output = StringIO()
             with patch("sys.stdout", add_output):
@@ -246,7 +246,7 @@ class CliTests(unittest.TestCase):
             {"SUPER_AGENT_PROVIDER": "mock"},
             clear=True,
         ):
-            config = str(Path(tmp) / "agent.toml")
+            config = str(Path(tmp) / "common.toml")
             main(["setup", "--path", tmp])
             candidate_response = json.dumps(
                 {
@@ -339,7 +339,7 @@ description = "Compact note writer"
             {"SUPER_AGENT_PROVIDER": "mock"},
             clear=True,
         ):
-            config = str(Path(tmp) / "agent.toml")
+            config = str(Path(tmp) / "common.toml")
             main(["setup", "--path", tmp])
             run_output = StringIO()
             with patch("sys.stdout", run_output):
@@ -367,7 +367,7 @@ description = "Compact note writer"
 
             with patch("sys.stdout", output):
                 code = main(
-                    ["run", "--save", "--output", "json", "--config", str(Path(tmp) / "agent.toml"), "hello"]
+                    ["run", "--save", "--output", "json", "--config", str(Path(tmp) / "common.toml"), "hello"]
                 )
 
             data = json.loads(output.getvalue())
@@ -404,7 +404,7 @@ description = "Compact note writer"
     def test_skills_validate_has_an_explicit_command(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             main(["setup", "--path", tmp])
-            config = str(Path(tmp) / "agent.toml")
+            config = str(Path(tmp) / "common.toml")
             validation_output = StringIO()
 
             with patch("sys.stdout", validation_output):
@@ -416,7 +416,7 @@ description = "Compact note writer"
     def test_skills_graph_and_lock_resolve_configured_skill_dependencies(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             main(["setup", "--path", tmp])
-            config = str(Path(tmp) / "agent.toml")
+            config = str(Path(tmp) / "common.toml")
             lock_path = Path(tmp) / "skill.lock"
             graph_output = StringIO()
 
@@ -445,7 +445,7 @@ description = "Compact note writer"
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             main(["setup", "--path", tmp])
-            config = str(root / "agent.toml")
+            config = str(root / "common.toml")
             package_path = root / "default.zip"
 
             pack_code = main(
@@ -525,7 +525,7 @@ max_steps = 8
                         "--output",
                         "jsonl",
                         "--config",
-                        str(Path(tmp) / "agent.toml"),
+                        str(Path(tmp) / "common.toml"),
                     ]
                 )
 

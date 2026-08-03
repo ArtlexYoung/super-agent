@@ -1,12 +1,16 @@
 # Configuration
 
-Configuration is optional. `Agent()` checks `SUPER_AGENT_CONFIG`, then `agent.toml`, then
-uses an in-memory default. Model configuration still must come from the environment, a
-model Skill, or Python.
+Configuration is optional. Shared Runtime and Agent settings belong only in `common.toml`.
+`Agent()` checks `SUPER_AGENT_COMMON_CONFIG`, then `common.toml`, then uses an in-memory
+default. Model configuration still must come from the environment, a model Skill, or
+Python.
 
 ## Minimal File
 
 ```toml
+schema_version = 1
+kind = "common"
+
 [agent]
 name = "demo"
 system = "You are a concise, helpful agent."
@@ -22,6 +26,30 @@ path = ".super-agent"
 ```
 
 Unknown tables and fields are rejected. There is no migration or old-field conversion.
+Every file declares `schema_version = 1` and its exact `kind`; configuration scopes are
+never merged and a file of one kind cannot be loaded as another.
+
+Coding workspace behavior belongs in a separate optional `code.toml`:
+
+```toml
+schema_version = 1
+kind = "code"
+
+[workspace]
+root = "."
+ignore = [".git", ".super-agent"]
+
+[actions]
+read = "allow"
+write = "ask"
+execute = "ask"
+
+[verification]
+commands = [["python3", "-m", "unittest"], ["git", "diff", "--check"]]
+```
+
+Commands are argument arrays, not shell strings. `code.toml` describes requested behavior;
+it does not grant process or file authority by itself.
 
 `agent.skills` pins ordinary Skills to every run. `disabled_skills` excludes a type or a
 specific `type:name`. Task selection is per run, while subagent links are configured in

@@ -228,7 +228,7 @@ def _run_setup_command(root: Path, provider: str) -> int:
     root.mkdir(parents=True, exist_ok=True)
     skill_dir = root / "skills" / "task" / "default"
     skill_dir.mkdir(parents=True, exist_ok=True)
-    _write_file_if_missing(root / "agent.toml", _default_agent_config())
+    _write_file_if_missing(root / "common.toml", _default_agent_config())
     _write_file_if_missing(skill_dir / "skill.toml", _default_skill_manifest())
     _write_file_if_missing(skill_dir / "SKILL.md", "Answer briefly and clearly.\n")
     model_content = _model_skill_for_provider(provider)
@@ -431,6 +431,9 @@ def _print_cli_error(error: Exception) -> None:
 
 def _default_agent_config() -> str:
     return """
+schema_version = 1
+kind = "common"
+
 [agent]
 name = "super-agent"
 system = "You are a concise, helpful agent."

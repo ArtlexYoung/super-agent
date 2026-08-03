@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 from super_agent import Agent
-from core.config import AgentConfig
+from core.config import CommonConfig
 from core.state.events import create_local_event_store
 from core.provider.chat import MockProvider
 from core.state.memory import Memory
@@ -20,7 +20,7 @@ class MemoryWorkflowSkillHandlerTests(unittest.TestCase):
             provider = MockProvider("ok")
 
             result = Agent(
-                AgentConfig.load_from_file(_write_config(root)),
+                CommonConfig.load_from_file(_write_config(root)),
                 provider=provider,
                 use_storage=True,
             ).run("remember via Skill handler")
@@ -37,7 +37,7 @@ class MemoryWorkflowSkillHandlerTests(unittest.TestCase):
             provider = MockProvider("ok")
 
             Agent(
-                AgentConfig.load_from_file(_write_config(root, disabled_skills=["memory:default"])),
+                CommonConfig.load_from_file(_write_config(root, disabled_skills=["memory:default"])),
                 provider=provider,
                 use_storage=True,
             ).run("hello")
@@ -51,7 +51,7 @@ class MemoryWorkflowSkillHandlerTests(unittest.TestCase):
             provider = MockProvider("ok")
 
             result = Agent(
-                AgentConfig.load_from_file(_write_config(root, workflow="careful")),
+                CommonConfig.load_from_file(_write_config(root, workflow="careful")),
                 provider=provider,
                 use_storage=True,
             ).run("hello")
@@ -118,10 +118,13 @@ def _write_config(
     memory: str = "default",
     disabled_skills: list[str] | None = None,
 ) -> Path:
-    config_path = root / "agent.toml"
+    config_path = root / "common.toml"
     disabled_skills_text = _toml_list(disabled_skills or [])
     config_path.write_text(
         f"""
+schema_version = 1
+kind = "common"
+
 [agent]
 name = "demo"
 system = "Base system."

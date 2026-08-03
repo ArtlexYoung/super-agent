@@ -729,6 +729,16 @@ Status: implemented.
 - Verify Skill updates retain separate propose, test, apply, and undo stages.
 - Enforce a lower Python source file and line count than `v0.0.114` before release.
 
+## v0.0.123: Scoped Configuration Files
+
+Status: implemented.
+
+- Rename shared Agent and Runtime configuration from `agent.toml` to `common.toml`.
+- Require an explicit schema version and kind in every persisted configuration file.
+- Define `code.toml` for coding workspace behavior without granting action authority.
+- Reject cross-scope files, unknown fields, shell command strings, and old configuration
+  names without compatibility readers.
+
 ## Release Gate
 
 The project will not move to `0.1.x` because of feature count. The gate is a reproducible

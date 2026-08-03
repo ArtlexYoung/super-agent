@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, cast
 
 from core.provider.chat import Message
-from core.config import AgentConfig
+from core.config import CommonConfig
 from core.models import validate_user_id
 from core.state.models import Conversation, RunEvent
 from adapter.conversations import (
@@ -244,7 +244,7 @@ class UserConfiguration:
     def __init__(self, user: UserAgent) -> None:
         self.user = user
 
-    def replace(self, config: AgentConfig) -> None:
+    def replace(self, config: CommonConfig) -> None:
         self.user.agent._replace_configuration(config)
 
 

@@ -30,7 +30,7 @@ chat renderers.
 
 ## Data Ownership
 
-Configuration writes are validated by Python and saved atomically to `agent.toml` or a
+Configuration writes are validated by Python and saved atomically to `common.toml` or a
 user model Skill. The selected storage backend remains authoritative for conversations,
 runs, memory, and explicit Skill changes. Skill lists come from the central progressive index and group
 by their actual `type`, including custom types.

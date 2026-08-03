@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 from super_agent import Agent
-from core.config import AgentConfig
+from core.config import CommonConfig
 from core.provider.chat import MockProvider
 from skill.disclosure import ProgressiveDisclosureCore
 from core.skill_use.files.lock import write_skill_lock_file
@@ -105,9 +105,12 @@ class SkillCompositionTests(unittest.TestCase):
             _write_skill(skill_root, "research")
             _write_skill(skill_root, "report")
             write_workflow_skill(root)
-            config_path = root / "agent.toml"
+            config_path = root / "common.toml"
             config_path.write_text(
                 """
+schema_version = 1
+kind = "common"
+
 [agent]
 name = "demo"
 system = "Base system."
@@ -123,7 +126,7 @@ path = ".super-agent"
                 encoding="utf-8",
             )
             agent = Agent(
-                AgentConfig.load_from_file(config_path),
+                CommonConfig.load_from_file(config_path),
                 provider=MockProvider("ok"),
                 use_storage=True,
             )

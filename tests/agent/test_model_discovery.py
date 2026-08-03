@@ -16,7 +16,7 @@ from core.provider.chat import (
     create_chat_provider,
 )
 from core.provider.pool import ProviderPool
-from core.config import AgentConfig
+from core.config import CommonConfig
 from core.skill_use.models import (
     discover_environment_model_profiles,
     model_profile_is_ready,
@@ -42,7 +42,7 @@ class ModelSkillTests(unittest.TestCase):
             agent = Agent()
 
             self.assertEqual("project-agent", agent.config.agent.name)
-            self.assertEqual((Path(tmp) / "agent.toml").resolve(), agent.config.source)
+            self.assertEqual((Path(tmp) / "common.toml").resolve(), agent.config.source)
 
     def test_environment_config_path_takes_priority_over_project_config(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -54,19 +54,19 @@ class ModelSkillTests(unittest.TestCase):
             _write_agent_config(project, name="project-agent")
             selected_path = _write_agent_config(selected, name="selected-agent")
 
-            config = AgentConfig.load_automatically(
+            config = CommonConfig.load_automatically(
                 project,
-                {"SUPER_AGENT_CONFIG": str(selected_path)},
+                {"SUPER_AGENT_COMMON_CONFIG": str(selected_path)},
             )
 
             self.assertEqual("selected-agent", config.agent.name)
 
     def test_missing_environment_config_path_fails_clearly(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            with self.assertRaisesRegex(FileNotFoundError, "SUPER_AGENT_CONFIG file not found"):
-                AgentConfig.load_automatically(
+            with self.assertRaisesRegex(FileNotFoundError, "SUPER_AGENT_COMMON_CONFIG file not found"):
+                CommonConfig.load_automatically(
                     tmp,
-                    {"SUPER_AGENT_CONFIG": "missing.toml"},
+                    {"SUPER_AGENT_COMMON_CONFIG": "missing.toml"},
                 )
 
     def test_no_model_skill_or_environment_has_no_implicit_provider(self) -> None:
@@ -115,7 +115,7 @@ class ModelSkillTests(unittest.TestCase):
             _write_model_skill(root, name="fast", default=True)
 
             agent = Agent(
-                AgentConfig.create_default(root),
+                CommonConfig.create_default(root),
                 provider=_FixedProvider(),
                 use_storage=True,
             )
@@ -132,7 +132,7 @@ class ModelSkillTests(unittest.TestCase):
             root = Path(tmp)
             _write_model_skill(root, name="fast", default=True)
             agent = Agent(
-                AgentConfig.create_default(root),
+                CommonConfig.create_default(root),
                 provider=_FixedProvider(),
                 use_storage=True,
             )
@@ -156,7 +156,7 @@ class ModelSkillTests(unittest.TestCase):
             _write_model_skill(root, name="one", default=True)
             _write_model_skill(root, name="two", default=True)
 
-            agent = Agent(AgentConfig.create_default(root))
+            agent = Agent(CommonConfig.create_default(root))
 
             with self.assertRaisesRegex(ValueError, "multiple model Skills are marked default"):
                 _ = agent.model_profiles
@@ -229,7 +229,7 @@ class ModelSkillTests(unittest.TestCase):
             )
             specialist = RecordingProvider("specialist result")
             agent = Agent(
-                AgentConfig.create_default(root),
+                CommonConfig.create_default(root),
                 provider=primary,
                 use_storage=True,
             )
@@ -293,7 +293,7 @@ class ModelSkillTests(unittest.TestCase):
                 ]
             )
             agent = Agent(
-                AgentConfig.create_default(root),
+                CommonConfig.create_default(root),
                 provider=primary,
                 use_storage=True,
             )
@@ -312,7 +312,7 @@ class ModelSkillTests(unittest.TestCase):
             root = Path(tmp)
             _write_model_skill(root, name="fast", default=True)
             agent = Agent(
-                AgentConfig.create_default(root),
+                CommonConfig.create_default(root),
                 provider=_FixedProvider(),
                 use_storage=True,
             )
@@ -359,7 +359,7 @@ class ModelSkillTests(unittest.TestCase):
                 ("bob", "MODEL_API_KEY"): "bob-secret",
             }
             agent = Agent(
-                AgentConfig.create_default(root),
+                CommonConfig.create_default(root),
                 secret_lookup=lambda user_id, name: secrets.get((user_id, name)),
                 use_storage=True,
             )
@@ -411,7 +411,7 @@ class ModelSkillTests(unittest.TestCase):
                 ]
             )
             agent = Agent(
-                AgentConfig.create_default(root),
+                CommonConfig.create_default(root),
                 provider=provider,
                 use_storage=True,
             )
@@ -460,9 +460,12 @@ class _SequenceProvider(SequenceProvider):
 
 
 def _write_agent_config(root: Path, name: str) -> Path:
-    path = root / "agent.toml"
+    path = root / "common.toml"
     path.write_text(
         f"""
+schema_version = 1
+kind = "common"
+
 [agent]
 name = "{name}"
 """.strip(),

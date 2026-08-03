@@ -7,7 +7,7 @@ from pathlib import Path
 
 from super_agent import Agent
 from core.provider.chat import MockProvider
-from core.config import AgentConfig
+from core.config import CommonConfig
 from skill.disclosure import ProgressiveDisclosureCore
 
 
@@ -41,7 +41,7 @@ class SkillIsolationTests(unittest.TestCase):
             _write_prompt_skill(root)
             provider = MockProvider("finished")
 
-            config = AgentConfig.create_default(root)
+            config = CommonConfig.create_default(root)
             config = replace(
                 config,
                 agent=replace(config.agent, skills=["prompt:isolated"]),
