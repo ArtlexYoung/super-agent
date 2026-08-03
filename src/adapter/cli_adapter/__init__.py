@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import json
 import tomllib
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from super_agent import Agent
 from core.config import (
+    CodeConfig,
     CommonConfig,
     find_optional_config_file,
     reject_unknown_settings,
@@ -16,6 +18,8 @@ from core.config import (
 )
 from core.models import LOCAL_USER_ID
 from core.state.events import EventStore
+from core.skill_use.builtins import TaskSkillHandler
+from core.skill_use.handlers import SkillContext
 
 
 CommonConfigSource = CommonConfig | str | Path | None
@@ -99,6 +103,20 @@ def load_cli_config(source: str | Path | None = None) -> CliConfig:
     if source is None:
         return CliConfig.load_automatically()
     return CliConfig.load_from_file(source)
+
+
+def attach_code_config_to_agent(agent: Agent, source: str | Path | None = None) -> None:
+    """Attach code settings without reading them until task:code is loaded."""
+
+    def read_code_workspace(context: SkillContext) -> str:
+        if context.reference.name != "code":
+            return ""
+        config = CodeConfig.load_automatically() if source is None else CodeConfig.load_from_file(source)
+        return "# Coding workspace (does not grant file or process authority)\n" + json.dumps(
+            asdict(config.settings), default=str
+        )
+
+    agent._add_skill_handler(TaskSkillHandler(read_code_workspace))
 
 
 def configure_config_parser(parser: argparse.ArgumentParser) -> None:

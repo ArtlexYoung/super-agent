@@ -14,6 +14,7 @@ from adapter.cli_adapter.conversations import (
 )
 from adapter.cli_adapter import (
     CliConfig,
+    attach_code_config_to_agent,
     configure_config_parser,
     load_agent,
     load_cli_config,
@@ -101,7 +102,7 @@ def _run_parsed_command(
             save=cli_config.save,
         )
     if args.command == "setup":
-        return _run_setup_command(Path(args.path), args.provider)
+        return _run_setup_command(Path(args.path))
     if args.command == "check":
         return run_check_command(args)
     if args.command == "run":
@@ -122,6 +123,7 @@ def _run_command(args: argparse.Namespace, cli_config: CliConfig) -> int:
     common_config_path = (
         None if args.common_config is None else Path(args.common_config)
     )
+    code_config_path = None if args.code_config is None else Path(args.code_config)
     output = args.output or cli_config.output
     user_id = args.user_id or cli_config.user_id
     save = cli_config.save if args.save is None else args.save
@@ -141,6 +143,7 @@ def _run_command(args: argparse.Namespace, cli_config: CliConfig) -> int:
             args.conversation_id,
             args.skill,
             save=save,
+            code_config_path=code_config_path,
         )
     request = (
         _read_runtime_request_from_stdin(user_id)
@@ -153,6 +156,7 @@ def _run_command(args: argparse.Namespace, cli_config: CliConfig) -> int:
         output,
         save=save,
         show_summary=show_summary,
+        code_config_path=code_config_path,
     )
 
 
@@ -165,12 +169,6 @@ def _build_parser() -> argparse.ArgumentParser:
 
     setup_parser = subparsers.add_parser("setup", help="create a minimal agent project")
     setup_parser.add_argument("--path", default=".", help="target directory")
-    setup_parser.add_argument(
-        "--provider",
-        choices=("environment", "openai", "anthropic", "ollama", "mock"),
-        default="environment",
-        help="optional model configuration to create",
-    )
 
     check_parser = subparsers.add_parser(
         "check",
@@ -188,6 +186,7 @@ def _build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("prompt", nargs="*")
     run_parser.add_argument("--common-config")
     run_parser.add_argument("--cli-config")
+    run_parser.add_argument("--code-config")
     run_parser.add_argument("--output", choices=["text", "json", "jsonl"])
     run_parser.add_argument("--request-stdin", action="store_true")
     run_parser.add_argument("--user-id")
@@ -276,18 +275,13 @@ def _is_direct_prompt(arguments: list[str]) -> bool:
     )
 
 
-def _run_setup_command(root: Path, provider: str) -> int:
+def _run_setup_command(root: Path) -> int:
     root.mkdir(parents=True, exist_ok=True)
     skill_dir = root / "skills" / "task" / "default"
     skill_dir.mkdir(parents=True, exist_ok=True)
     _write_file_if_missing(root / "common.toml", _default_common_config())
     _write_file_if_missing(skill_dir / "skill.toml", _default_skill_manifest())
     _write_file_if_missing(skill_dir / "SKILL.md", "Answer briefly and clearly.\n")
-    model_content = _model_skill_for_provider(provider)
-    if model_content is not None:
-        model_dir = root / "skills" / "model" / "default"
-        model_dir.mkdir(parents=True, exist_ok=True)
-        _write_file_if_missing(model_dir / "skill.toml", model_content)
     print(f"Set up super-agent project at {root}")
     print("Next: super-agent check")
     return 0
@@ -300,9 +294,11 @@ def _run_prompt_command(
     *,
     save: bool,
     show_summary: bool,
+    code_config_path: Path | None = None,
 ) -> int:
     use_storage = save or request.conversation_id is not None
     agent = load_agent(common_config_path, use_storage=use_storage)
+    attach_code_config_to_agent(agent, code_config_path)
     user = agent.for_user(request.user_id)
     if output == "jsonl":
         result = user.run(
@@ -340,9 +336,11 @@ def _run_chat_command(
     skill: str | None,
     *,
     save: bool,
+    code_config_path: Path | None = None,
 ) -> int:
     use_storage = save or conversation_id is not None
     agent = load_agent(common_config_path, use_storage=use_storage)
+    attach_code_config_to_agent(agent, code_config_path)
     user = agent.for_user(user_id)
     conversation = None
     if use_storage:
@@ -515,38 +513,6 @@ description = "Minimal example skill"
 mode = "loop"
 max_steps = 8
 """.lstrip()
-
-
-def _model_skill_for_provider(provider: str) -> str | None:
-    settings = {
-        "openai": ("openai-compatible", "gpt-4.1-mini", "OPENAI_API_KEY", None),
-        "anthropic": (
-            "anthropic-compatible",
-            "claude-sonnet-4",
-            "ANTHROPIC_API_KEY",
-            None,
-        ),
-        "ollama": ("openai-compatible", "llama3.2", None, "http://127.0.0.1:11434/v1"),
-        "mock": ("mock", "mock", None, None),
-    }
-    if provider == "environment":
-        return None
-    provider_name, model, api_key_env, base_url = settings[provider]
-    lines = [
-        'type = "model"',
-        'description = "Default model created by super-agent setup"',
-        "",
-        "[configuration]",
-        f'provider = "{provider_name}"',
-        f'model = "{model}"',
-        "default = true",
-        'supports = ["text", "tools"]',
-    ]
-    if api_key_env is not None:
-        lines.append(f'api_key_env = "{api_key_env}"')
-    if base_url is not None:
-        lines.append(f'base_url = "{base_url}"')
-    return "\n".join(lines) + "\n"
 
 
 if __name__ == "__main__":

@@ -32,7 +32,7 @@ super-agent check --common-config common.toml --output json
 super-agent "hello"
 super-agent run --common-config common.toml --user-id alice "hello"
 super-agent run --chat --save --common-config common.toml --user-id alice
-super-agent run --skill code --output json "inspect this repository"
+super-agent run --skill code --code-config code.toml --output json "inspect this repository"
 ```
 
 `check` is read-only. It validates configuration, the central Skill index, configured
@@ -45,7 +45,8 @@ JSON object with `prompt` and optional `messages`, `user_id`, `conversation_id`,
 configured storage; supplying a conversation ID also makes that requirement explicit.
 Run flags override `cli.toml`, including `--no-save` and `--no-show-summary`. Shared
 Runtime settings always use `--common-config`; the removed generic `--config` name has no
-compatibility alias.
+compatibility alias. Code settings use `--code-config` and are loaded only if `task:code`
+is activated.
 
 ## Skills
 

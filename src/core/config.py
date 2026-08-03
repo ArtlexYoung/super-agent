@@ -128,6 +128,21 @@ class CodeConfig:
             source,
         )
 
+    @classmethod
+    def load_automatically(
+        cls, base_directory: str | Path | None = None,
+        environment: Mapping[str, str] | None = None,
+    ) -> "CodeConfig":
+        base, source = find_optional_config_file(
+            "code.toml", "SUPER_AGENT_CODE_CONFIG",
+            base_directory=base_directory,
+            environment=environment,
+        )
+        return (
+            cls.load_from_file(source)
+            if source else cls(CodeSettings(base, [], "allow", "ask", "ask", []), base / "code.toml")
+        )
+
 
 def require_config_header(data: dict[str, Any], expected_kind: str) -> None:
     if data.get("schema_version") != 1:
@@ -153,11 +168,7 @@ def find_optional_config_file(
     base_directory: str | Path | None = None,
     environment: Mapping[str, str] | None = None,
 ) -> tuple[Path, Path | None]:
-    base = (
-        Path.cwd()
-        if base_directory is None
-        else Path(base_directory).expanduser().absolute()
-    )
+    base = Path.cwd() if base_directory is None else Path(base_directory).expanduser().absolute()
     env = os.environ if environment is None else environment
     configured = _optional_string(env.get(environment_variable))
     if configured is None:

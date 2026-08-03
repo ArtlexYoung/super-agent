@@ -749,6 +749,18 @@ Status: implemented.
 - Add read-only `config show` and `config validate` commands; never create configuration
   automatically.
 
+## v0.0.125: Lazy Code Configuration
+
+Status: implemented.
+
+- Keep coding workspace settings in optional `code.toml`, with an explicit
+  `SUPER_AGENT_CODE_CONFIG` or `--code-config` path.
+- Attach the code settings reader only to the trusted task handler and load it when
+  `task:code` is actually activated.
+- Keep ordinary tasks independent from missing or invalid code configuration.
+- Stop setup from generating model Skills; model ownership remains with model Skills and
+  environment configuration.
+
 ## Release Gate
 
 The project will not move to `0.1.x` because of feature count. The gate is a reproducible

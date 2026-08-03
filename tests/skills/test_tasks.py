@@ -1,7 +1,10 @@
+import json
 import tempfile
 import unittest
 from dataclasses import replace
+from pathlib import Path
 
+from adapter.cli_adapter import attach_code_config_to_agent
 from core.config import CommonConfig
 from core.provider.chat import MockProvider, ModelResponse, ToolCall
 from core.skill_use.defaults import create_progressive_skill_disclosure
@@ -90,6 +93,64 @@ class TaskSkillTests(unittest.TestCase):
 
             self.assertEqual(["task:code"], result.skills)
             self.assertEqual("code", result.workflow)
+
+    def test_code_task_lazily_adds_validated_workspace_settings(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            code_config = root / "code.toml"
+            code_config.write_text(
+                """
+schema_version = 1
+kind = "code"
+
+[workspace]
+root = "workspace"
+ignore = [".git", "build"]
+
+[actions]
+read = "allow"
+write = "ask"
+execute = "deny"
+
+[verification]
+commands = [["python3.11", "-m", "unittest"]]
+""".strip(),
+                encoding="utf-8",
+            )
+            provider = MockProvider("configured")
+            agent = Agent(CommonConfig.create_default(root), provider=provider)
+            attach_code_config_to_agent(agent, code_config)
+
+            result = agent.run("Inspect this project", skill="code")
+
+            system = provider.last_messages[0]["content"]
+            self.assertEqual("configured", result.text)
+            workspace = system.split("# Coding workspace", 1)[1]
+            settings = json.loads(workspace.splitlines()[1])
+            self.assertEqual(str(root / "workspace"), settings["root"])
+            self.assertEqual([".git", "build"], settings["ignored_paths"])
+            self.assertEqual("allow", settings["read"])
+            self.assertEqual("ask", settings["write"])
+            self.assertEqual("deny", settings["execute"])
+            self.assertEqual(
+                [["python3.11", "-m", "unittest"]],
+                settings["verification_commands"],
+            )
+            self.assertIn("does not grant file or process authority", system)
+
+    def test_invalid_code_config_does_not_affect_non_code_tasks(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            code_config = root / "code.toml"
+            code_config.write_text('[workspace]\nroot = "."\n', encoding="utf-8")
+            agent = Agent(CommonConfig.create_default(root), provider=MockProvider("ok"))
+            attach_code_config_to_agent(agent, code_config)
+
+            result = agent.run("Summarize this", skill="common")
+
+            self.assertEqual("ok", result.text)
+            with self.assertRaisesRegex(ValueError, "schema_version must be 1"):
+                agent.run("Modify this", skill="code")
 
 
 if __name__ == "__main__":

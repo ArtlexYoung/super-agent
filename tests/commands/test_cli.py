@@ -78,20 +78,10 @@ class CliTests(unittest.TestCase):
             )
             self.assertFalse((root / "mcp").exists())
 
-    def test_setup_can_create_a_ready_mock_model_skill(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp, chdir(tmp), patch.dict(
-            os.environ,
-            {},
-            clear=True,
-        ):
-            self.assertEqual(0, main(["setup", "--path", tmp, "--provider", "mock"]))
-            output = StringIO()
-
-            with patch("sys.stdout", output):
-                code = main(["check", "--common-config", str(Path(tmp) / "common.toml")])
-
-            self.assertEqual(0, code)
-            self.assertIn("OK  model: model:default -> mock/mock", output.getvalue())
+    def test_setup_does_not_create_model_configuration(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(0, main(["setup", "--path", tmp]))
+            self.assertEqual([], list((Path(tmp) / "skills" / "model").glob("*")))
 
     def test_check_is_read_only_and_reports_ready_model(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, chdir(tmp), patch.dict(

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import asdict
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 from core.skill_use.handlers import (
     SkillContext,
@@ -111,15 +111,20 @@ class TaskSkillHandler:
     skill_type = "task"
     adds_model_context = True
 
+    def __init__(self, read_instructions: Callable[[SkillContext], str] | None = None) -> None:
+        self._read_additional_instructions = read_instructions
+
     def handle_skill(self, context: SkillContext) -> SkillResult:
         from core.skill_use.workflow import create_task_policy_from_skill
 
         opened = context.open_skill()
-        manifest = opened.disclose_manifest()
         opened.disclose_configuration()
         instructions = opened.disclose_instructions().content
+        additional = self._read_additional_instructions(context) if self._read_additional_instructions else ""
+        if additional:
+            instructions = f"{instructions}\n\n{additional}"
         return SkillResult(
-            model_context=Skill(manifest=manifest, instructions=instructions),
+            model_context=Skill(manifest=opened.disclose_manifest(), instructions=instructions),
             task_policy=create_task_policy_from_skill(opened),
         )
 
