@@ -112,47 +112,6 @@ class ConversationsCliTests(unittest.TestCase):
             self.assertEqual([0, 2], message_counts)
             self.assertIn("Conversation cleared.", output.getvalue())
 
-    def test_stdin_request_persists_runtime_conversation_identity(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            config = self._initialize_project(tmp)
-            request = {
-                "prompt": "persist through stdin",
-                "user_id": "desktop-user",
-                "conversation_id": "desktop-conversation",
-            }
-            output = StringIO()
-
-            with patch("sys.stdin", StringIO(json.dumps(request))), patch("sys.stdout", output):
-                code = main(
-                    [
-                        "--save",
-                        "--common-config",
-                        config,
-                        "--request-stdin",
-                        "--output",
-                        "jsonl",
-                    ]
-                )
-
-            conversation = self._run_conversation_command(
-                "show",
-                config,
-                "desktop-user",
-                conversation_id="desktop-conversation",
-            )
-            result_line = json.loads(output.getvalue().splitlines()[-1])
-
-            self.assertEqual(0, code)
-            self.assertEqual("desktop-user", conversation["user_id"])
-            self.assertEqual(
-                ["persist through stdin", "Mock response"],
-                [item["content"] for item in conversation["messages"]],
-            )
-            self.assertEqual(
-                result_line["result"]["run_id"],
-                conversation["messages"][-1]["run_result"]["run_id"],
-            )
-
     def test_runtime_state_commands_select_one_user(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             config = self._initialize_project(tmp)

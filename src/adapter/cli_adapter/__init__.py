@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
+import sys
 import tomllib
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -17,7 +19,7 @@ from core.config import (
     reject_unknown_settings,
     require_config_header,
 )
-from core.checks import ActionEffect
+from core.checks import ActionDecision, ActionDecisionType, ActionEffect, ActionRequest, ActionRules
 from core.models import LOCAL_USER_ID
 from core.state.events import EventStore
 from core.skill_use.builtins import TaskSkillHandler
@@ -26,13 +28,16 @@ from core.skill_use.handlers import (
     SkillContext,
     SkillTool,
     read_optional_tool_string,
+    read_optional_positive_tool_integer,
     read_required_tool_string,
 )
+from core.files import write_bytes_atomically
 
 
 CommonConfigSource = CommonConfig | str | Path | None
 WORKSPACE_FILE_LIMIT = 1_000_000
 WORKSPACE_SEARCH_LIMIT = 200
+WORKSPACE_COMMAND_TIMEOUT = 60
 
 
 @dataclass(frozen=True)
@@ -59,8 +64,8 @@ class CliConfig:
         if not user_id:
             raise ValueError("CLI run user_id cannot be empty")
         output = str(run.get("output", "text")).strip().lower()
-        if output not in {"text", "json", "jsonl"}:
-            raise ValueError("CLI run output must be text, json, or jsonl")
+        if output not in {"text", "json"}:
+            raise ValueError("CLI run output must be text or json")
         save = _read_cli_boolean(run.get("save", False), "save")
         summary = _read_cli_boolean(run.get("show_summary", True), "show_summary")
         return cls(user_id, output, save, summary, source)
@@ -92,6 +97,24 @@ def load_cli_config(source: str | Path | None = None) -> CliConfig:
     return CliConfig.load_from_file(source)
 
 
+class TerminalActionRules(ActionRules):
+    """Ask in the terminal before a Runtime action leaves read-only state."""
+
+    def check_action(self, request: ActionRequest) -> ActionDecision:
+        decision = super().check_action(request)
+        if decision.decision != ActionDecisionType.REQUIRE_CONFIRMATION:
+            return decision
+        effects = ", ".join(effect.value for effect in request.effects)
+        print(f"Allow {effects} on {request.resource}? [y/N]", file=sys.stderr, end=" ", flush=True)
+        try:
+            answer = sys.stdin.readline().strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            answer = ""
+        if answer in {"y", "yes"}:
+            return ActionDecision(ActionDecisionType.ALLOW, "terminal user confirmed the action", True)
+        return decision
+
+
 def attach_code_config_to_agent(agent: Agent, source: str | Path | None = None) -> None:
     """Attach code settings without reading them until task:code is loaded."""
 
@@ -115,9 +138,14 @@ class CodeWorkspace:
 
     def list_tools(self) -> tuple[SkillTool, ...]:
         path = {"type": "string", "description": "Path relative to the configured workspace."}
+        content = {"type": "string", "description": "Complete replacement text."}
         return (
             SkillTool("read_workspace_file", "Read one UTF-8 workspace file.", {"path": path}, self.read_file, SkillAction((ActionEffect.READ,), "workspace:file", "path"), ("path",)),
             SkillTool("search_workspace", "Search UTF-8 workspace files.", {"query": {"type": "string"}, "path": path}, self.search, SkillAction((ActionEffect.READ,), "workspace:search", "path"), ("query",)),
+            SkillTool("write_workspace_file", "Create or replace one workspace file after confirmation.", {"path": path, "content": content}, self.write_file, SkillAction((ActionEffect.CREATE, ActionEffect.UPDATE), "workspace:file", "path"), ("path", "content")),
+            SkillTool("patch_workspace_file", "Replace one exact text occurrence after confirmation.", {"path": path, "old_text": {"type": "string"}, "new_text": {"type": "string"}}, self.patch_file, SkillAction((ActionEffect.UPDATE,), "workspace:file", "path"), ("path", "old_text", "new_text")),
+            SkillTool("delete_workspace_file", "Delete one workspace file after confirmation.", {"path": path}, self.delete_file, SkillAction((ActionEffect.DELETE,), "workspace:file", "path"), ("path",)),
+            SkillTool("run_workspace_check", "Run one declared verification command after confirmation.", {"command_number": {"type": "integer", "minimum": 1}}, self.run_check, SkillAction((ActionEffect.EXECUTE,), "workspace:command", "command_number"), ("command_number",)),
         )
 
     def read_file(self, arguments: dict[str, object]) -> dict[str, object]:
@@ -153,9 +181,56 @@ class CodeWorkspace:
                         raise ValueError("workspace search has more than 200 matches; narrow the query")
         return {"query": query, "matches": matches, "skipped": skipped}
 
-    def _resolve(self, value: str) -> Path:
+    def write_file(self, arguments: dict[str, object]) -> dict[str, object]:
+        self._require_setting("write")
+        selected = self._resolve(read_required_tool_string(arguments, "path"), allow_symlink=False)
+        content = arguments.get("content")
+        if not isinstance(content, str):
+            raise ValueError("tool argument 'content' must be a string")
+        if selected.exists() and not selected.is_file():
+            raise ValueError(f"workspace path is not a file: {selected}")
+        if not selected.parent.is_dir():
+            raise FileNotFoundError(f"workspace parent directory not found: {selected.parent}")
+        existed = selected.exists()
+        write_bytes_atomically(selected, content.encode("utf-8"))
+        return {"path": self._relative(selected), "created": not existed, "updated": existed}
+
+    def patch_file(self, arguments: dict[str, object]) -> dict[str, object]:
+        self._require_setting("write")
+        selected = self._resolve(read_required_tool_string(arguments, "path"), allow_symlink=False)
+        old_text = arguments.get("old_text")
+        new_text = arguments.get("new_text")
+        if not isinstance(old_text, str) or not isinstance(new_text, str) or not old_text:
+            raise ValueError("old_text must be a non-empty string and new_text must be a string")
+        current = self._read_text(selected)
+        if current.count(old_text) != 1:
+            raise ValueError("patch must match exactly one text occurrence")
+        write_bytes_atomically(selected, current.replace(old_text, new_text).encode("utf-8"))
+        return {"path": self._relative(selected), "updated": True}
+
+    def delete_file(self, arguments: dict[str, object]) -> dict[str, object]:
+        self._require_setting("write")
+        selected = self._resolve(read_required_tool_string(arguments, "path"), allow_symlink=False)
+        if not selected.is_file():
+            raise FileNotFoundError(f"workspace file not found: {selected}")
+        selected.unlink()
+        return {"path": self._relative(selected), "deleted": True}
+
+    def run_check(self, arguments: dict[str, object]) -> dict[str, object]:
+        self._require_setting("execute")
+        number = read_optional_positive_tool_integer(arguments, "command_number")
+        commands = self.settings.verification_commands
+        if number is None or number > len(commands):
+            raise ValueError(f"verification command number must be between 1 and {len(commands)}")
+        command = commands[number - 1]
+        completed = subprocess.run(command, cwd=self.root, capture_output=True, text=True, timeout=WORKSPACE_COMMAND_TIMEOUT, check=False)
+        return {"command_number": number, "command": command, "returncode": completed.returncode, "stdout": completed.stdout, "stderr": completed.stderr}
+
+    def _resolve(self, value: str, *, allow_symlink: bool = True) -> Path:
         if Path(value).is_absolute():
             raise PermissionError("workspace paths must be relative")
+        if not allow_symlink and (self.root / value).is_symlink():
+            raise PermissionError("workspace changes cannot follow symbolic links")
         selected = (self.root / value).resolve()
         if selected != self.root and self.root not in selected.parents:
             raise PermissionError(f"path is outside the workspace: {value}")
@@ -183,6 +258,11 @@ class CodeWorkspace:
         if self.settings.read != "allow":
             raise PermissionError(f"code configuration sets reads to {self.settings.read}")
 
+    def _require_setting(self, name: str) -> None:
+        value = getattr(self.settings, name)
+        if value == "deny":
+            raise PermissionError(f"code configuration denies workspace {name}")
+
 
 def configure_config_parser(parser: argparse.ArgumentParser) -> None:
     parser.set_defaults(cli_config=None)
@@ -204,7 +284,7 @@ def run_config_command(args: argparse.Namespace) -> int:
 
 
 def load_agent(source: CommonConfigSource = None, *, use_storage: bool = True) -> Agent:
-    return Agent(load_common_config(source), use_storage=use_storage)
+    return Agent(load_common_config(source), use_storage=use_storage, action_rules=TerminalActionRules())
 
 
 def load_event_store(source: CommonConfigSource = None, user_id: str = LOCAL_USER_ID) -> EventStore:

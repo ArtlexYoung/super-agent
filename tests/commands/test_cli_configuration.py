@@ -49,7 +49,7 @@ class CliConfigurationTests(unittest.TestCase):
             ),
             (
                 'schema_version = 1\nkind = "cli"\n[run]\noutput = "yaml"\n',
-                "output must be text, json, or jsonl",
+                "output must be text or json",
             ),
             (
                 'schema_version = 1\nkind = "cli"\n[run]\nsave = "yes"\n',

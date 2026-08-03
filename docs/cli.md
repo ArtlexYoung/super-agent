@@ -41,16 +41,16 @@ super-agent --skill code --code-config code.toml --output json "inspect this rep
 `check` is read-only. It validates configuration, the central Skill index, configured
 references, and default model readiness without opening storage or calling a model.
 
-`--output` accepts `text`, `json`, or streaming `jsonl`. Text output explains the
-actual model, task Skill, workflow, Skills, stop reason, and run ID. `--request-stdin` reads a
-JSON object with `prompt` and optional `messages`, `user_id`, `conversation_id`, and
-`skill`. One-shot runs and chat are file-free by default. `--save` explicitly enables the
+`--output` accepts `text` or `json`. Text output explains the actual model, task Skill,
+workflow, Skills, stop reason, and run ID. One-shot runs and chat are file-free by default. `--save` explicitly enables the
 configured storage; supplying a conversation ID also makes that requirement explicit.
 Terminal flags override `cli.toml`, including `--no-save` and `--no-show-summary`. Shared
 Runtime settings always use `--common-config`; the removed generic `--config` name has no
 compatibility alias. Code settings use `--code-config` and are loaded only if `task:code`
-is activated. That task adds `read_workspace_file` and `search_workspace`; both reject
-paths outside the configured root and never truncate file content.
+is activated. That task adds bounded file reads and search, plus explicit file writes,
+exact patches, deletion, and numbered verification commands. All non-read tools ask for
+terminal confirmation through the central action runner; refusal or EOF blocks the action.
+Paths outside the configured root and undeclared verification commands fail visibly.
 
 ## Skills
 

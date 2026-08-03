@@ -793,6 +793,19 @@ Status: implemented.
 - Remove project scaffolding from the CLI; defaults and built-in Skills already run with
   no generated files, while custom configuration remains explicit.
 
+## v0.0.129: Explicit Workspace Actions
+
+Status: implemented.
+
+- Add bounded workspace creation or replacement, exact one-occurrence patching, deletion,
+  and numbered verification tools to `task:code`.
+- Route every code-task tool through the central `ActionRunner`; terminal adapters ask for
+  explicit confirmation before non-read effects and never execute on refusal or EOF.
+- Keep verification commands as validated argument arrays from `code.toml`; no model-provided
+  shell command is executed, and undeclared command numbers fail visibly.
+- Remove the generic runtime stdin request and streaming JSONL output paths; retain direct
+  `text` and `json` output without compatibility forwarding or hidden degradation.
+
 ## Release Gate
 
 The project will not move to `0.1.x` because of feature count. The gate is a reproducible

@@ -476,51 +476,6 @@ max_steps = 8
             self.assertFalse(installed.exists())
             self.assertTrue((root / "skills" / "task" / "default").is_dir())
 
-    def test_run_reads_stdin_request_and_streams_jsonl_events(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp, patch.dict(
-            os.environ,
-            {"SUPER_AGENT_PROVIDER": "mock"},
-            clear=True,
-        ):
-            write_minimal_project(tmp)
-            request = {
-                "prompt": "latest question",
-                "skill": "code",
-                "messages": [
-                    {"role": "user", "content": "earlier question"},
-                    {"role": "assistant", "content": "earlier answer"},
-                ],
-            }
-            output = StringIO()
-
-            with patch("sys.stdin", StringIO(json.dumps(request))), patch("sys.stdout", output):
-                code = main(
-                    [
-                        "--save",
-                        "--request-stdin",
-                        "--output",
-                        "jsonl",
-                        "--common-config",
-                        str(Path(tmp) / "common.toml"),
-                    ]
-                )
-
-            lines = [json.loads(line) for line in output.getvalue().splitlines()]
-            self.assertEqual(0, code)
-            self.assertEqual("event", lines[0]["type"])
-            self.assertEqual("run.started", lines[0]["event"]["event_type"])
-            selected = next(
-                line["event"]
-                for line in lines
-                if line.get("type") == "event"
-                and line["event"]["event_type"] == "task.scheduled"
-            )
-            self.assertIn("task:code", selected["data"]["skills"])
-            self.assertEqual("model_loop", selected["data"]["selection"])
-            self.assertEqual("result", lines[-1]["type"])
-            self.assertEqual("code", lines[-1]["result"]["workflow"])
-            self.assertEqual(lines[0]["event"]["run_id"], lines[-1]["result"]["run_id"])
-
     def test_run_result_serialization_keeps_nested_subagents(self) -> None:
         result = RunResult(
             text="main",

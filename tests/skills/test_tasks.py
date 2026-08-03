@@ -1,10 +1,13 @@
 import json
+import sys
 import tempfile
 import unittest
 from dataclasses import replace
+from io import StringIO
 from pathlib import Path
+from unittest.mock import patch
 
-from adapter.cli_adapter import CodeWorkspace, attach_code_config_to_agent
+from adapter.cli_adapter import CodeWorkspace, TerminalActionRules, attach_code_config_to_agent
 from core.config import CodeSettings, CommonConfig
 from core.provider.chat import MockProvider, ModelResponse, ToolCall
 from core.skill_use.defaults import create_progressive_skill_disclosure
@@ -231,6 +234,82 @@ commands = [["python3.11", "-m", "unittest"]]
                 bounded.read_file({"path": "binary.bin"})
             with self.assertRaisesRegex(PermissionError, "sets reads to deny"):
                 CodeWorkspace(replace(settings, read="deny")).read_file({"path": "binary.bin"})
+
+    def test_code_workspace_changes_are_exact_and_commands_are_declared(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "workspace"
+            workspace.mkdir()
+            settings = CodeSettings(
+                workspace,
+                [],
+                "allow",
+                "allow",
+                "allow",
+                [[sys.executable, "-c", "print('checked')"]],
+            )
+            bounded = CodeWorkspace(settings)
+
+            created = bounded.write_file({"path": "note.txt", "content": "old"})
+            patched = bounded.patch_file(
+                {"path": "note.txt", "old_text": "old", "new_text": "new"}
+            )
+            checked = bounded.run_check({"command_number": 1})
+            deleted = bounded.delete_file({"path": "note.txt"})
+
+            self.assertTrue(created["created"])
+            self.assertTrue(patched["updated"])
+            self.assertEqual(0, checked["returncode"])
+            self.assertIn("checked", checked["stdout"])
+            self.assertTrue(deleted["deleted"])
+            self.assertFalse(workspace.joinpath("note.txt").exists())
+
+    def test_code_workspace_changes_require_terminal_confirmation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "workspace"
+            workspace.mkdir()
+            config = _write_code_config(root, ignored=[])
+            provider = MockProvider(
+                tool_responses=[
+                    ModelResponse(
+                        "",
+                        [ToolCall("write", "write_workspace_file", {"path": "note.txt", "content": "saved"})],
+                        "tool_calls",
+                    ),
+                    ModelResponse("saved", [], "model_finished"),
+                ]
+            )
+            agent = Agent(
+                CommonConfig.create_default(root),
+                provider=provider,
+                action_rules=TerminalActionRules(),
+            )
+            attach_code_config_to_agent(agent, config)
+            with patch("sys.stdin", StringIO("n\n")), self.assertRaises(PermissionError):
+                agent.run("Save this file", skill="code")
+            self.assertFalse(workspace.joinpath("note.txt").exists())
+
+            provider = MockProvider(
+                tool_responses=[
+                    ModelResponse(
+                        "",
+                        [ToolCall("write", "write_workspace_file", {"path": "note.txt", "content": "saved"})],
+                        "tool_calls",
+                    ),
+                    ModelResponse("saved", [], "model_finished"),
+                ]
+            )
+            agent = Agent(
+                CommonConfig.create_default(root),
+                provider=provider,
+                action_rules=TerminalActionRules(),
+            )
+            attach_code_config_to_agent(agent, config)
+            with patch("sys.stdin", StringIO("y\n")):
+                result = agent.run("Save this file", skill="code")
+            self.assertEqual("saved", result.text)
+            self.assertEqual("saved", workspace.joinpath("note.txt").read_text(encoding="utf-8"))
 
 
 def _write_code_config(root: Path, *, ignored: list[str]) -> Path:

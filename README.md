@@ -135,7 +135,7 @@ super-agent serve
 
 One-shot runs are stateless unless `--save` or a conversation ID is explicit. Text runs
 print the answer plus the actual model, task Skill, workflow, Skills, stop reason, and run ID.
-Use `--output json` or `--output jsonl` for integrations. The React client,
+Use `--output json` for integrations. The React client,
 CopilotKit example, and AG-UI endpoint are served at `http://127.0.0.1:8765/`.
 
 Optional `cli.toml` controls terminal defaults only. Shared Runtime settings stay in
@@ -143,8 +143,11 @@ Optional `cli.toml` controls terminal defaults only. Shared Runtime settings sta
 in model Skills or environment variables. These files are validated separately and are
 never deep-merged.
 
-The code task exposes bounded UTF-8 file reading and text search. Paths must remain under
-the configured workspace; ignored, escaping, oversized, and non-text reads fail visibly.
+The code task exposes bounded UTF-8 file reading and text search, plus file creation or
+replacement, exact one-occurrence patches, deletion, and declared verification commands.
+Paths must remain under the configured workspace; ignored, escaping, oversized, and non-text
+reads fail visibly. Every non-read tool asks for terminal confirmation before it runs, and
+refusal or end-of-input stops the action without a hidden fallback.
 
 ## Guarantees
 

@@ -36,9 +36,7 @@ from adapter.cli_adapter.skills import (
 from adapter.cli_adapter.storage import configure_storage_parser, run_storage_command
 from core import __version__
 from core.provider.chat import Message
-from core.models import AgentRunOptions, LOCAL_USER_ID
-from core.state.models import RunEvent
-from core.models import RunResult
+from core.models import LOCAL_USER_ID, RunResult
 
 
 CLI_COMMANDS = frozenset({"check", "config", "data", "manage", "serve", "skills"})
@@ -47,7 +45,6 @@ CLI_COMMANDS = frozenset({"check", "config", "data", "manage", "serve", "skills"
 @dataclass(frozen=True)
 class CliRequest:
     prompt: str
-    messages: list[Message]
     user_id: str = LOCAL_USER_ID
     conversation_id: str | None = None
     skill: str | None = None
@@ -101,7 +98,7 @@ def _run_terminal(arguments: list[str]) -> int:
         if args.show_summary is None
         else args.show_summary
     )
-    if not args.prompt and not args.request_stdin:
+    if not args.prompt:
         if args.output not in {None, "text"}:
             raise ValueError("interactive conversation only supports text output")
         return _run_chat_command(
@@ -112,13 +109,7 @@ def _run_terminal(arguments: list[str]) -> int:
             save=save,
             code_config_path=code_config_path,
         )
-    if args.prompt and args.request_stdin:
-        raise ValueError("prompt and --request-stdin cannot be used together")
-    request = (
-        _read_runtime_request_from_stdin(user_id)
-        if args.request_stdin
-        else _read_runtime_request_from_args(args, user_id)
-    )
+    request = _read_runtime_request_from_args(args, user_id)
     return _run_prompt_command(
         common_config_path,
         request,
@@ -169,8 +160,7 @@ def _build_terminal_parser() -> argparse.ArgumentParser:
     parser.add_argument("--common-config")
     parser.add_argument("--cli-config")
     parser.add_argument("--code-config")
-    parser.add_argument("--output", choices=["text", "json", "jsonl"])
-    parser.add_argument("--request-stdin", action="store_true")
+    parser.add_argument("--output", choices=["text", "json"])
     parser.add_argument("--user-id")
     parser.add_argument("--conversation-id")
     parser.add_argument("--skill", help="explicit task Skill name or task:name key")
@@ -255,21 +245,8 @@ def _run_prompt_command(
     agent = load_agent(common_config_path, use_storage=use_storage)
     attach_code_config_to_agent(agent, code_config_path)
     user = agent.for_user(request.user_id)
-    if output == "jsonl":
-        result = user.run(
-            request.prompt,
-            messages=request.messages,
-            conversation_id=request.conversation_id,
-            run_options=AgentRunOptions(
-                event_listener=_print_run_event,
-                skill=request.skill,
-            ),
-        )
-        print(json.dumps({"type": "result", "result": run_result_to_dict(result)}, ensure_ascii=False))
-        return 0
     result = user.run(
         request.prompt,
-        messages=request.messages,
         conversation_id=request.conversation_id,
         skill=request.skill,
     )
@@ -358,10 +335,6 @@ def run_result_to_dict(result: RunResult) -> dict[str, Any]:
     return asdict(result)
 
 
-def _print_run_event(event: RunEvent) -> None:
-    print(json.dumps({"type": "event", "event": asdict(event)}, ensure_ascii=False), flush=True)
-
-
 def _print_run_summary(result: RunResult) -> None:
     selected_models = []
     for event in result.events:
@@ -380,70 +353,16 @@ def _print_run_summary(result: RunResult) -> None:
     print(f"Stop: {result.stop_reason}")
 
 
-def _read_runtime_request_from_args(
-    args: argparse.Namespace,
-    default_user_id: str,
-) -> CliRequest:
+def _read_runtime_request_from_args(args: argparse.Namespace, default_user_id: str) -> CliRequest:
     prompt = " ".join(args.prompt).strip()
     if not prompt:
         raise ValueError("run prompt cannot be empty")
     return CliRequest(
         prompt=prompt,
-        messages=[],
         user_id=default_user_id,
         conversation_id=args.conversation_id,
         skill=args.skill,
     )
-
-
-def _read_runtime_request_from_stdin(default_user_id: str) -> CliRequest:
-    data = json.loads(sys.stdin.read())
-    if not isinstance(data, dict):
-        raise ValueError("runtime request must be a JSON object")
-    prompt = str(data.get("prompt", "")).strip()
-    if not prompt:
-        raise ValueError("runtime request prompt cannot be empty")
-    return CliRequest(
-        prompt=prompt,
-        messages=_read_runtime_messages(data.get("messages", [])),
-        user_id=_read_runtime_user_id(data.get("user_id", default_user_id)),
-        conversation_id=_read_optional_runtime_id(
-            data.get("conversation_id"),
-            "conversation_id",
-        ),
-        skill=_read_optional_runtime_id(data.get("skill"), "skill"),
-    )
-
-
-def _read_runtime_user_id(value: object) -> str:
-    user_id = str(value).strip()
-    if not user_id:
-        raise ValueError("runtime request user_id cannot be empty")
-    return user_id
-
-
-def _read_optional_runtime_id(value: object, name: str) -> str | None:
-    if value is None:
-        return None
-    identifier = str(value).strip()
-    if not identifier:
-        raise ValueError(f"runtime request {name} cannot be empty")
-    return identifier
-
-
-def _read_runtime_messages(value: object) -> list[Message]:
-    if not isinstance(value, list):
-        raise ValueError("runtime request messages must be an array")
-    messages: list[Message] = []
-    for item in value:
-        if not isinstance(item, dict):
-            raise ValueError("runtime request message must be an object")
-        role = str(item.get("role", ""))
-        content = str(item.get("content", ""))
-        if role not in {"user", "assistant"}:
-            raise ValueError(f"unsupported runtime message role: {role}")
-        messages.append({"role": role, "content": content})
-    return messages
 
 
 def _print_cli_error(error: Exception) -> None:
