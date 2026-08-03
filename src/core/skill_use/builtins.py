@@ -111,8 +111,8 @@ class TaskSkillHandler:
     skill_type = "task"
     adds_model_context = True
 
-    def __init__(self, read_instructions: Callable[[SkillContext], str] | None = None) -> None:
-        self._read_additional_instructions = read_instructions
+    def __init__(self, read_additions: Callable[[SkillContext], tuple[str, tuple[SkillTool, ...]]] | None = None) -> None:
+        self._read_additions = read_additions
 
     def handle_skill(self, context: SkillContext) -> SkillResult:
         from core.skill_use.workflow import create_task_policy_from_skill
@@ -120,11 +120,12 @@ class TaskSkillHandler:
         opened = context.open_skill()
         opened.disclose_configuration()
         instructions = opened.disclose_instructions().content
-        additional = self._read_additional_instructions(context) if self._read_additional_instructions else ""
+        additional, tools = self._read_additions(context) if self._read_additions else ("", ())
         if additional:
             instructions = f"{instructions}\n\n{additional}"
         return SkillResult(
             model_context=Skill(manifest=opened.disclose_manifest(), instructions=instructions),
+            tools=tools,
             task_policy=create_task_policy_from_skill(opened),
         )
 

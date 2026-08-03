@@ -49,7 +49,8 @@ configured storage; supplying a conversation ID also makes that requirement expl
 Terminal flags override `cli.toml`, including `--no-save` and `--no-show-summary`. Shared
 Runtime settings always use `--common-config`; the removed generic `--config` name has no
 compatibility alias. Code settings use `--code-config` and are loaded only if `task:code`
-is activated.
+is activated. That task adds `read_workspace_file` and `search_workspace`; both reject
+paths outside the configured root and never truncate file content.
 
 ## Skills
 

@@ -781,6 +781,18 @@ Status: implemented.
 - Report unknown slash commands instead of passing them to the model.
 - Treat ordinary words such as `exit` and `quit` as user messages, not hidden controls.
 
+## v0.0.128: Bounded Workspace Reads
+
+Status: implemented.
+
+- Give `task:code` UTF-8 file reading and text search tools only when its lazy code
+  configuration is loaded by the terminal adapter.
+- Keep reads inside the configured root and reject absolute, escaping, ignored, oversized,
+  and non-text paths without truncating content.
+- Return exact paths, line numbers, and explicit skipped-file errors from search.
+- Remove project scaffolding from the CLI; defaults and built-in Skills already run with
+  no generated files, while custom configuration remains explicit.
+
 ## Release Gate
 
 The project will not move to `0.1.x` because of feature count. The gate is a reproducible

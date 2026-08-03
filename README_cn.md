@@ -34,13 +34,8 @@ SUPER_AGENT_PROVIDER=mock super-agent check
 SUPER_AGENT_PROVIDER=mock super-agent "你好"
 ```
 
-不带参数运行 `super-agent` 会进入交互对话。只有需要可编辑项目文件时才初始化：
-
-```bash
-super-agent setup --path my-agent
-cd my-agent
-super-agent check
-```
+不带参数运行 `super-agent` 会进入交互对话。程序不会生成项目文件；只有确实需要时才添加
+`common.toml`、`cli.toml`、`code.toml` 或本地 Skill。
 
 在对话中使用 `/help`、`/clear` 或 `/exit` 控制终端会话。
 
@@ -135,6 +130,9 @@ super-agent serve
 可选的 `cli.toml` 只管理终端默认行为。共享 Runtime 设置放在 `common.toml`，编码工作区
 设置放在 `code.toml`，模型连接放在模型 Skill 或环境变量中。这些文件分别校验，绝不进行
 深度合并。
+
+代码任务提供受工作区限制的 UTF-8 文件读取和文本搜索。忽略路径、越界路径、超大文件和
+非文本读取都会明确失败。
 
 ## 保证
 

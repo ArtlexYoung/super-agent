@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from cli import main
+from support import write_minimal_project
 
 
 class StorageCliTests(unittest.TestCase):
@@ -24,7 +25,7 @@ class StorageCliTests(unittest.TestCase):
             root = Path(tmp)
             config = root / "common.toml"
             with patch("sys.stdout", StringIO()):
-                self.assertEqual(0, main(["setup", "--path", tmp]))
+                self.assertEqual(0, write_minimal_project(tmp))
                 self.assertEqual(
                     0,
                     main(
@@ -118,7 +119,7 @@ class StorageCliTests(unittest.TestCase):
     def test_copy_accepts_remote_backend_and_custom_url_environment(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             with patch("sys.stdout", StringIO()):
-                self.assertEqual(0, main(["setup", "--path", tmp]))
+                self.assertEqual(0, write_minimal_project(tmp))
             with patch(
                 "adapter.storage.sql.postgresql.import_module",
                 side_effect=ModuleNotFoundError("psycopg is missing"),

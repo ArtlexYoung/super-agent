@@ -11,6 +11,7 @@ from super_agent import Agent
 from cli import main
 from core.provider.chat import MockProvider, ModelResponse, ToolCall
 from core.config import CommonConfig
+from support import write_minimal_project
 
 
 class RunsCliTests(unittest.TestCase):
@@ -27,7 +28,7 @@ class RunsCliTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             config_path = root / "common.toml"
-            main(["setup", "--path", tmp])
+            write_minimal_project(tmp)
             run_output = StringIO()
             with patch("sys.stdout", run_output):
                 run_code = main(
@@ -136,7 +137,7 @@ class RunsCliTests(unittest.TestCase):
     def test_text_explain_prints_task_and_evidence_insight(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             config_path = Path(tmp) / "common.toml"
-            main(["setup", "--path", tmp])
+            write_minimal_project(tmp)
             run_output = StringIO()
             with patch("sys.stdout", run_output):
                 main(
@@ -186,7 +187,7 @@ class RunsCliTests(unittest.TestCase):
     def test_status_without_runs_is_a_successful_empty_result(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            main(["setup", "--path", tmp])
+            write_minimal_project(tmp)
             output = StringIO()
 
             with patch("sys.stdout", output):
@@ -209,7 +210,7 @@ class RunsCliTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             config_path = root / "common.toml"
-            main(["setup", "--path", tmp])
+            write_minimal_project(tmp)
             run_output = StringIO()
             with patch("sys.stdout", run_output):
                 main(
@@ -255,7 +256,7 @@ class RunsCliTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             config_path = root / "common.toml"
-            main(["setup", "--path", tmp])
+            write_minimal_project(tmp)
             config = CommonConfig.load_from_file(config_path)
             parent_provider = MockProvider(
                 tool_responses=[

@@ -72,11 +72,7 @@ class CommonConfig:
 
     @classmethod
     def create_default(cls, base_directory: str | Path | None = None) -> "CommonConfig":
-        base = (
-            Path.cwd()
-            if base_directory is None
-            else Path(base_directory).expanduser().absolute()
-        )
+        base = Path.cwd() if base_directory is None else Path(base_directory).expanduser().absolute()
         return cls(
             agent=_read_agent_settings({}),
             paths=PathsSettings(skills=[base / "skills"]),
@@ -233,6 +229,8 @@ def _read_code_workspace(
         isinstance(item, str) and item for item in ignored
     ):
         raise ValueError("code workspace ignore must be a string array")
+    if any(Path(item).is_absolute() or ".." in Path(item).parts for item in ignored):
+        raise ValueError("code workspace ignore paths must stay relative")
     return {"root": root, "ignored_paths": list(ignored)}
 
 

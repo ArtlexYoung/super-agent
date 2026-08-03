@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from cli import main
+from support import write_minimal_project
 
 
 class ConversationsCliTests(unittest.TestCase):
@@ -234,7 +235,7 @@ class ConversationsCliTests(unittest.TestCase):
     @staticmethod
     def _initialize_project(root: str) -> str:
         with patch("sys.stdout", StringIO()):
-            code = main(["setup", "--path", root])
+            code = write_minimal_project(root)
         if code != 0:
             raise AssertionError(f"project initialization failed: {code}")
         return str(Path(root) / "common.toml")

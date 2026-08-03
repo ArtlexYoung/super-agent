@@ -38,14 +38,8 @@ SUPER_AGENT_PROVIDER=mock super-agent check
 SUPER_AGENT_PROVIDER=mock super-agent "hello"
 ```
 
-Run `super-agent` without arguments for an interactive conversation. Create editable
-project files only when you need them:
-
-```bash
-super-agent setup --path my-agent
-cd my-agent
-super-agent check
-```
+Run `super-agent` without arguments for an interactive conversation. No project files are
+generated; add `common.toml`, `cli.toml`, `code.toml`, or local Skills only when needed.
 
 Inside a conversation, use `/help`, `/clear`, or `/exit` for terminal controls.
 
@@ -148,6 +142,9 @@ Optional `cli.toml` controls terminal defaults only. Shared Runtime settings sta
 `common.toml`, coding workspace settings stay in `code.toml`, and model connections stay
 in model Skills or environment variables. These files are validated separately and are
 never deep-merged.
+
+The code task exposes bounded UTF-8 file reading and text search. Paths must remain under
+the configured workspace; ignored, escaping, oversized, and non-text reads fail visibly.
 
 ## Guarantees
 

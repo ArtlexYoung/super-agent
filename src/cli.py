@@ -41,12 +41,7 @@ from core.state.models import RunEvent
 from core.models import RunResult
 
 
-CLI_COMMANDS = frozenset(
-    {"check", "config", "data", "manage", "serve", "setup", "skills"}
-)
-REMOVED_COMMANDS = frozenset(
-    {"chat", "conversations", "init", "memory", "models", "run", "runs", "storage"}
-)
+CLI_COMMANDS = frozenset({"check", "config", "data", "manage", "serve", "skills"})
 
 
 @dataclass(frozen=True)
@@ -78,19 +73,17 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 def _run_parsed_command(args: argparse.Namespace) -> int:
-    if args.command == "setup":
-        return _run_setup_command(Path(args.path))
-    if args.command == "check":
-        return run_check_command(args)
-    if args.command == "skills":
-        return run_skills_command(args)
-    if args.command == "manage":
-        return _run_manage_command(args)
-    if args.command == "data":
-        return _run_data_command(args)
-    if args.command == "serve":
-        return run_serve_command(args)
-    raise ValueError(f"unknown command: {args.command}")
+    handlers = {
+        "check": run_check_command,
+        "data": _run_data_command,
+        "manage": _run_manage_command,
+        "serve": run_serve_command,
+        "skills": run_skills_command,
+    }
+    handler = handlers.get(args.command)
+    if handler is None:
+        raise ValueError(f"unknown command: {args.command}")
+    return handler(args)
 
 
 def _run_terminal(arguments: list[str]) -> int:
@@ -143,9 +136,6 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     subparsers = parser.add_subparsers(dest="command")
-
-    setup_parser = subparsers.add_parser("setup", help="create a minimal agent project")
-    setup_parser.add_argument("--path", default=".", help="target directory")
 
     check_parser = subparsers.add_parser(
         "check",
@@ -249,19 +239,7 @@ def _run_data_command(args: argparse.Namespace) -> int:
 def _is_terminal_request(arguments: list[str]) -> bool:
     if not arguments:
         return True
-    return arguments[0] not in CLI_COMMANDS | REMOVED_COMMANDS | {"-h", "--help", "--version"}
-
-
-def _run_setup_command(root: Path) -> int:
-    root.mkdir(parents=True, exist_ok=True)
-    skill_dir = root / "skills" / "task" / "default"
-    skill_dir.mkdir(parents=True, exist_ok=True)
-    _write_file_if_missing(root / "common.toml", _default_common_config())
-    _write_file_if_missing(skill_dir / "skill.toml", _default_skill_manifest())
-    _write_file_if_missing(skill_dir / "SKILL.md", "Answer briefly and clearly.\n")
-    print(f"Set up super-agent project at {root}")
-    print("Next: super-agent check")
-    return 0
+    return arguments[0] not in CLI_COMMANDS | {"-h", "--help", "--version"}
 
 
 def _run_prompt_command(
@@ -468,53 +446,17 @@ def _read_runtime_messages(value: object) -> list[Message]:
     return messages
 
 
-def _write_file_if_missing(path: Path, content: str) -> None:
-    if not path.exists():
-        path.write_text(content, encoding="utf-8")
-
-
 def _print_cli_error(error: Exception) -> None:
     print(f"Error: {error}", file=sys.stderr)
     message = str(error)
     if "No model is configured" in message:
         print(
-            "Hint: set a model environment variable or run `super-agent setup`.",
+            "Hint: set a model environment variable or add a model Skill.",
             file=sys.stderr,
         )
     elif isinstance(error, FileNotFoundError):
-        print("Hint: check the path or run `super-agent setup`.", file=sys.stderr)
+        print("Hint: check the explicit file or configuration path.", file=sys.stderr)
     print("Run again with --debug to show the Python traceback.", file=sys.stderr)
-
-
-def _default_common_config() -> str:
-    return """
-schema_version = 1
-kind = "common"
-
-[agent]
-name = "super-agent"
-system = "You are a concise, helpful agent."
-skills = ["task:default"]
-disabled_skills = []
-
-[paths]
-skills = ["skills"]
-
-[storage]
-backend = "jsonl"
-path = ".super-agent"
-""".lstrip()
-
-
-def _default_skill_manifest() -> str:
-    return """
-type = "task"
-description = "Minimal example skill"
-
-[configuration]
-mode = "loop"
-max_steps = 8
-""".lstrip()
 
 
 if __name__ == "__main__":

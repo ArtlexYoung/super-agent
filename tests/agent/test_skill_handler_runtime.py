@@ -95,7 +95,7 @@ class SkillHandlerRuntimeTests(unittest.TestCase):
 
             self.assertEqual(1, code)
             self.assertIn("Error: No model is configured", error.getvalue())
-            self.assertIn("super-agent setup", error.getvalue())
+            self.assertIn("add a model Skill", error.getvalue())
             self.assertNotIn("Traceback", error.getvalue())
 
     def test_agent_can_replace_one_skill_handler(self) -> None:

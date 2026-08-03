@@ -288,6 +288,7 @@ commands = [["python3", "-m", "unittest"], ["git", "diff", "--check"]]
         cases = (
             ('unexpected = true\n', "unknown code configuration tables: unexpected"),
             ('[actions]\nwrite = "sometimes"\n', "actions must be allow, ask, or deny"),
+            ('[workspace]\nignore = ["../secret"]\n', "ignore paths must stay relative"),
         )
         for body, message in cases:
             with self.subTest(message=message), tempfile.TemporaryDirectory() as tmp:

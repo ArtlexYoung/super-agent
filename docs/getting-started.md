@@ -28,21 +28,12 @@ super-agent
 
 The first command runs one stateless task. Its text output includes the answer and an
 actual run summary. The second starts an in-process conversation without saving it. Add
-`run --chat --save` when conversation history should survive a restart. Use
+`--save` when conversation history should survive a restart. Use
 `SUPER_AGENT_PROVIDER=mock` only for an explicit offline test.
 
-No project files are required. Create an editable example when needed:
-
-```bash
-super-agent setup --path my-agent
-cd my-agent
-super-agent check
-super-agent "Use the local Skill"
-```
-
-Setup writes `common.toml` and `skills/task/default/` only when they do not exist. It never
-creates model configuration; choose a model through environment variables or an explicit
-model Skill.
+No project files are required or generated. Add strict `common.toml`, `cli.toml`, or
+`code.toml` files only for settings owned by those scopes. Add a local `skills/` directory
+only when the built-in Skills are not enough.
 
 ## Embed
 

@@ -7,10 +7,11 @@ from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
-from cli import CLI_COMMANDS, REMOVED_COMMANDS, _is_terminal_request, main
+from cli import CLI_COMMANDS, _is_terminal_request, main
 from cli import run_result_to_dict
 from core.provider.chat import MockProvider
 from core.models import SubAgentResult, RunResult
+from support import write_minimal_project
 
 
 class CliTests(unittest.TestCase):
@@ -19,7 +20,6 @@ class CliTests(unittest.TestCase):
             {
                 "check",
                 "config",
-                "setup",
                 "skills",
                 "manage",
                 "data",
@@ -27,10 +27,8 @@ class CliTests(unittest.TestCase):
             },
             CLI_COMMANDS,
         )
-        self.assertTrue(REMOVED_COMMANDS.isdisjoint(CLI_COMMANDS))
-        for command in REMOVED_COMMANDS:
-            self.assertFalse(_is_terminal_request([command]))
         self.assertTrue(_is_terminal_request([]))
+        self.assertTrue(_is_terminal_request(["setup"]))
         self.assertTrue(_is_terminal_request(["--skill", "code", "inspect this"]))
 
     def test_models_list_reports_discovered_models_without_secret_values(self) -> None:
@@ -54,7 +52,7 @@ class CliTests(unittest.TestCase):
             {},
             clear=True,
         ):
-            main(["setup", "--path", tmp])
+            write_minimal_project(tmp)
             error = StringIO()
 
             with patch("sys.stderr", error):
@@ -62,27 +60,7 @@ class CliTests(unittest.TestCase):
 
             self.assertEqual(1, code)
             self.assertIn("No model is configured", error.getvalue())
-            self.assertIn("super-agent setup", error.getvalue())
-
-    def test_setup_creates_config_and_example_skill(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            code = main(["setup", "--path", tmp])
-
-            root = Path(tmp)
-            self.assertEqual(0, code)
-            self.assertTrue((root / "common.toml").exists())
-            self.assertTrue((root / "skills" / "task" / "default" / "skill.toml").exists())
-            self.assertTrue((root / "skills" / "task" / "default" / "SKILL.md").exists())
-            self.assertEqual(
-                [root / "skills" / "task" / "default" / "skill.toml"],
-                list(root.joinpath("skills").rglob("skill.toml")),
-            )
-            self.assertFalse((root / "mcp").exists())
-
-    def test_setup_does_not_create_model_configuration(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            self.assertEqual(0, main(["setup", "--path", tmp]))
-            self.assertEqual([], list((Path(tmp) / "skills" / "model").glob("*")))
+            self.assertIn("add a model Skill", error.getvalue())
 
     def test_check_is_read_only_and_reports_ready_model(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, chdir(tmp), patch.dict(
@@ -120,7 +98,7 @@ class CliTests(unittest.TestCase):
 
     def test_skills_list_prints_available_skills(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            main(["setup", "--path", tmp])
+            write_minimal_project(tmp)
 
             output = StringIO()
             with patch("sys.stdout", output):
@@ -132,7 +110,7 @@ class CliTests(unittest.TestCase):
 
     def test_skills_index_prints_all_kinds_from_central_disclosure(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            main(["setup", "--path", tmp])
+            write_minimal_project(tmp)
             output = StringIO()
 
             with patch("sys.stdout", output):
@@ -167,7 +145,7 @@ class CliTests(unittest.TestCase):
             {"SUPER_AGENT_PROVIDER": "mock"},
             clear=True,
         ):
-            main(["setup", "--path", tmp])
+            write_minimal_project(tmp)
 
             output = StringIO()
             with patch("sys.stdout", output):
@@ -187,7 +165,7 @@ class CliTests(unittest.TestCase):
             clear=True,
         ):
             config = str(Path(tmp) / "common.toml")
-            main(["setup", "--path", tmp])
+            write_minimal_project(tmp)
             _select_skills(Path(config), ["task:default", "memory:default"])
             main(["--save", "--common-config", config, "hello"])
 
@@ -202,7 +180,7 @@ class CliTests(unittest.TestCase):
     def test_memory_commands_add_recall_list_and_forget_long_term_items(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             config = str(Path(tmp) / "common.toml")
-            main(["setup", "--path", tmp])
+            write_minimal_project(tmp)
             add_output = StringIO()
             with patch("sys.stdout", add_output):
                 add_code = main(
@@ -247,7 +225,7 @@ class CliTests(unittest.TestCase):
             clear=True,
         ):
             config = str(Path(tmp) / "common.toml")
-            main(["setup", "--path", tmp])
+            write_minimal_project(tmp)
             candidate_response = json.dumps(
                 {
                     "write_files": {
@@ -340,7 +318,7 @@ description = "Compact note writer"
             clear=True,
         ):
             config = str(Path(tmp) / "common.toml")
-            main(["setup", "--path", tmp])
+            write_minimal_project(tmp)
             run_output = StringIO()
             with patch("sys.stdout", run_output):
                 main(["--save", "--output", "json", "--common-config", config, "echo hello"])
@@ -362,7 +340,7 @@ description = "Compact note writer"
             {"SUPER_AGENT_PROVIDER": "mock"},
             clear=True,
         ):
-            main(["setup", "--path", tmp])
+            write_minimal_project(tmp)
             output = StringIO()
 
             with patch("sys.stdout", output):
@@ -402,7 +380,7 @@ description = "Compact note writer"
 
     def test_skills_validate_has_an_explicit_command(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            main(["setup", "--path", tmp])
+            write_minimal_project(tmp)
             config = str(Path(tmp) / "common.toml")
             validation_output = StringIO()
 
@@ -414,7 +392,7 @@ description = "Compact note writer"
 
     def test_skills_graph_and_lock_resolve_configured_skill_dependencies(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            main(["setup", "--path", tmp])
+            write_minimal_project(tmp)
             config = str(Path(tmp) / "common.toml")
             lock_path = Path(tmp) / "skill.lock"
             graph_output = StringIO()
@@ -443,7 +421,7 @@ description = "Compact note writer"
     def test_skills_pack_update_and_remove_manage_user_overlay(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            main(["setup", "--path", tmp])
+            write_minimal_project(tmp)
             config = str(root / "common.toml")
             package_path = root / "default.zip"
 
@@ -504,7 +482,7 @@ max_steps = 8
             {"SUPER_AGENT_PROVIDER": "mock"},
             clear=True,
         ):
-            main(["setup", "--path", tmp])
+            write_minimal_project(tmp)
             request = {
                 "prompt": "latest question",
                 "skill": "code",

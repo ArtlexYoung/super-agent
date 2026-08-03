@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from cli import main
+from support import write_minimal_project
 
 
 class ModelsCliTests(unittest.TestCase):
@@ -16,7 +17,7 @@ class ModelsCliTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             config_path = root / "common.toml"
-            main(["setup", "--path", tmp])
+            write_minimal_project(tmp)
 
             first = _save_model(config_path, _model_request("fast", default=True))
             second = _save_model(config_path, _model_request("deep", default=True))
@@ -62,7 +63,7 @@ class ModelsCliTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             config_path = root / "common.toml"
-            main(["setup", "--path", tmp])
+            write_minimal_project(tmp)
             request = _model_request("remote", default=True)
             request["provider"] = "openai-compatible"
             request["api_key_env"] = "OPENAI_API_KEY"
@@ -79,7 +80,7 @@ class ModelsCliTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             config_path = root / "common.toml"
-            main(["setup", "--path", tmp])
+            write_minimal_project(tmp)
 
             _save_model(
                 config_path,

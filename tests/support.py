@@ -128,3 +128,36 @@ max_steps = 8
         "Complete the selected workflow and return text when finished.",
         encoding="utf-8",
     )
+
+
+def write_minimal_project(root: str | Path) -> int:
+    """Create explicit project files needed only by CLI integration tests."""
+    project = Path(root)
+    skill = project / "skills" / "task" / "default"
+    skill.mkdir(parents=True, exist_ok=True)
+    (project / "common.toml").write_text(
+        """schema_version = 1
+kind = "common"
+
+[agent]
+name = "super-agent"
+system = "You are a concise, helpful agent."
+skills = ["task:default"]
+disabled_skills = []
+
+[paths]
+skills = ["skills"]
+
+[storage]
+backend = "jsonl"
+path = ".super-agent"
+""",
+        encoding="utf-8",
+    )
+    (skill / "skill.toml").write_text(
+        'type = "task"\ndescription = "Minimal test skill"\n\n'
+        '[configuration]\nmode = "loop"\nmax_steps = 8\n',
+        encoding="utf-8",
+    )
+    (skill / "SKILL.md").write_text("Answer briefly and clearly.\n", encoding="utf-8")
+    return 0

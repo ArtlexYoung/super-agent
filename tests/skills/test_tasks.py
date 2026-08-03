@@ -4,8 +4,8 @@ import unittest
 from dataclasses import replace
 from pathlib import Path
 
-from adapter.cli_adapter import attach_code_config_to_agent
-from core.config import CommonConfig
+from adapter.cli_adapter import CodeWorkspace, attach_code_config_to_agent
+from core.config import CodeSettings, CommonConfig
 from core.provider.chat import MockProvider, ModelResponse, ToolCall
 from core.skill_use.defaults import create_progressive_skill_disclosure
 from core.skill_use.workflow import create_task_policy_from_skill
@@ -151,6 +151,106 @@ commands = [["python3.11", "-m", "unittest"]]
             self.assertEqual("ok", result.text)
             with self.assertRaisesRegex(ValueError, "schema_version must be 1"):
                 agent.run("Modify this", skill="code")
+
+    def test_code_task_reads_and_searches_only_bounded_workspace_text(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "workspace"
+            workspace.joinpath("src").mkdir(parents=True)
+            workspace.joinpath("ignored").mkdir()
+            workspace.joinpath("src", "app.py").write_text(
+                "first line\nneedle = 1\n", encoding="utf-8"
+            )
+            workspace.joinpath("ignored", "secret.txt").write_text(
+                "needle secret\n", encoding="utf-8"
+            )
+            workspace.joinpath("binary.bin").write_bytes(b"\xff")
+            outside = root / "outside.txt"
+            outside.write_text("needle outside\n", encoding="utf-8")
+            workspace.joinpath("outside-link").symlink_to(outside)
+            code_config = _write_code_config(root, ignored=["ignored"])
+            provider = MockProvider(
+                tool_responses=[
+                    ModelResponse(
+                        "",
+                        [ToolCall("read", "read_workspace_file", {"path": "src/app.py"})],
+                        "tool_calls",
+                    ),
+                    ModelResponse(
+                        "",
+                        [ToolCall("search", "search_workspace", {"query": "needle"})],
+                        "tool_calls",
+                    ),
+                    ModelResponse("inspected", [], "model_finished"),
+                ]
+            )
+            agent = Agent(CommonConfig.create_default(root), provider=provider)
+            attach_code_config_to_agent(agent, code_config)
+
+            result = agent.run("Inspect the workspace", skill="code")
+
+            tools = {
+                item["function"]["name"] for item in provider.tool_requests[0][1]
+            }
+            tool_results = {
+                message["name"]: json.loads(message["content"])
+                for message in provider.last_messages
+                if message["role"] == "tool"
+            }
+            self.assertEqual("inspected", result.text)
+            self.assertTrue({"read_workspace_file", "search_workspace"} <= tools)
+            self.assertEqual("first line\nneedle = 1\n", tool_results["read_workspace_file"]["content"])
+            self.assertEqual(
+                [{"path": "src/app.py", "line": 2, "text": "needle = 1"}],
+                tool_results["search_workspace"]["matches"],
+            )
+            skipped = tool_results["search_workspace"]["skipped"]
+            self.assertEqual({"binary.bin", "outside-link"}, {item["path"] for item in skipped})
+            self.assertNotIn("secret", json.dumps(tool_results))
+
+    def test_code_workspace_rejects_unapproved_and_escaping_reads(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "workspace"
+            workspace.joinpath("ignored").mkdir(parents=True)
+            workspace.joinpath("ignored", "secret.txt").write_text("secret", encoding="utf-8")
+            workspace.joinpath("large.txt").write_bytes(b"x" * 1_000_001)
+            workspace.joinpath("binary.bin").write_bytes(b"\xff")
+            outside = root / "outside.txt"
+            outside.write_text("outside", encoding="utf-8")
+            workspace.joinpath("outside-link").symlink_to(outside)
+            settings = CodeSettings(workspace, ["ignored"], "allow", "ask", "ask", [])
+            bounded = CodeWorkspace(settings)
+
+            for path in (str(outside), "../outside.txt", "ignored/secret.txt", "outside-link"):
+                with self.subTest(path=path), self.assertRaises(PermissionError):
+                    bounded.read_file({"path": path})
+            with self.assertRaisesRegex(ValueError, "exceeds 1000000 bytes"):
+                bounded.read_file({"path": "large.txt"})
+            with self.assertRaisesRegex(ValueError, "not UTF-8 text"):
+                bounded.read_file({"path": "binary.bin"})
+            with self.assertRaisesRegex(PermissionError, "sets reads to deny"):
+                CodeWorkspace(replace(settings, read="deny")).read_file({"path": "binary.bin"})
+
+
+def _write_code_config(root: Path, *, ignored: list[str]) -> Path:
+    path = root / "code.toml"
+    path.write_text(
+        f"""schema_version = 1
+kind = "code"
+
+[workspace]
+root = "workspace"
+ignore = {json.dumps(ignored)}
+
+[actions]
+read = "allow"
+write = "ask"
+execute = "ask"
+""",
+        encoding="utf-8",
+    )
+    return path
 
 
 if __name__ == "__main__":
