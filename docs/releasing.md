@@ -16,14 +16,14 @@ pnpm --dir web install --frozen-lockfile
 
 ## Checks
 
-Replace `0.0.131` with the version being released:
+Replace `0.0.132` with the version being released:
 
 ```bash
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src:tests \
   .venv/bin/python -m unittest discover -s tests -p 'test_*.py'
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src \
   .venv/bin/python -m compileall -q src
-.venv/bin/python scripts/verify_release.py --version 0.0.131
+.venv/bin/python scripts/verify_release.py --version 0.0.132
 git diff --check
 pnpm --dir web typecheck
 pnpm --dir web lint
@@ -42,6 +42,6 @@ unrelated working-tree changes out of the release commit:
 ```bash
 git add -A -- . ':(exclude).gitignore'
 git diff --cached --check
-git commit -m "release: v0.0.131"
-git tag v0.0.131
+git commit -m "release: v0.0.132"
+git tag v0.0.132
 ```

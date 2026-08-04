@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -74,7 +74,7 @@ def complete_conversation_turn(
             pending.prompt,
             result.text,
             run_id=result.run_id,
-            run_result=asdict(result),
+            run_result=_run_result_summary(result),
         ),
     )
 
@@ -279,6 +279,19 @@ def _message_data(
         "content": _required_text(content, "conversation message content"),
         "run_id": _required_text(run_id, "conversation run_id"),
         "run_result": None if run_result is None else dict(run_result),
+    }
+
+
+def _run_result_summary(result: RunResult) -> dict[str, object]:
+    """Store only bounded run metadata beside the durable conversation text."""
+    return {
+        "schema_version": 1,
+        "run_id": result.run_id,
+        "workflow": result.workflow,
+        "skills": list(result.skills),
+        "stop_reason": result.stop_reason,
+        "action_count": len(result.actions or []),
+        "subagent_count": len(result.subagent_results or []),
     }
 
 

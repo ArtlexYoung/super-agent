@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
 
+from core.state.audit import AuditSettings
+
 
 @dataclass(frozen=True)
 class AgentSettings:
@@ -27,6 +29,7 @@ class StorageSettings:
     backend: str
     path: Path
     url_env: str | None
+    audit: AuditSettings
 
 
 @dataclass(frozen=True)
@@ -206,15 +209,41 @@ def _read_paths_settings(data: dict[str, Any], base_dir: Path) -> PathsSettings:
 
 
 def _read_storage_settings(data: dict[str, Any], base_dir: Path) -> StorageSettings:
-    reject_unknown_settings(data, {"backend", "path", "url_env"}, "storage settings")
+    reject_unknown_settings(
+        data,
+        {"backend", "path", "url_env", "audit"},
+        "storage settings",
+    )
     backend = str(data.get("backend", "jsonl")).strip().lower()
     if backend not in {"jsonl", "sqlite", "mysql", "postgresql"}:
         raise ValueError(f"unknown storage backend: {backend}")
     path = _resolve_path(base_dir, Path(str(data.get("path", ".super-agent"))))
+    audit = _read_audit_settings(data.get("audit", {}))
     return StorageSettings(
         backend=backend,
         path=path,
         url_env=_optional_string(data.get("url_env")),
+        audit=audit,
+    )
+
+
+def _read_audit_settings(data: Any) -> AuditSettings:
+    if not isinstance(data, dict):
+        raise ValueError("storage audit settings must be a table")
+    reject_unknown_settings(
+        data,
+        {"detailed_days", "critical_days"},
+        "storage audit settings",
+    )
+    return AuditSettings(
+        detailed_days=_read_positive_days(
+            data.get("detailed_days", 180),
+            "detailed_days",
+        ),
+        critical_days=_read_positive_days(
+            data.get("critical_days", 365),
+            "critical_days",
+        ),
     )
 
 
@@ -276,3 +305,9 @@ def _optional_positive_int(value: Any) -> int | None:
     if number <= 0:
         raise ValueError("max_agent_chain_depth must be greater than 0")
     return number
+
+
+def _read_positive_days(value: Any, name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(f"audit {name} must be a positive integer")
+    return value

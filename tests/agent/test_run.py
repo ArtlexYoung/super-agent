@@ -99,7 +99,10 @@ class EventStoreTests(unittest.TestCase):
             result = agent.run("hello")
 
             events = agent._create_event_store().read_run_events(result.run_id)
-            self.assertEqual(result.events, events)
+            self.assertEqual(
+                [event.event_type for event in result.events],
+                [event.event_type for event in events],
+            )
             self.assertEqual("completed", result.stop_reason)
             event_types = [event.event_type for event in events]
             self.assertEqual("run.started", event_types[0])
@@ -115,7 +118,12 @@ class EventStoreTests(unittest.TestCase):
             completed = next(
                 event for event in events if event.event_type == "task.completed"
             )
-            self.assertEqual("finished", completed.data["text"])
+            self.assertNotIn("text", completed.data)
+            self.assertIn("text_digest", completed.data)
+            self.assertEqual("finished", next(
+                event for event in result.events
+                if event.event_type == "task.completed"
+            ).data["text"])
 
     def test_agent_run_writes_failure_trace(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

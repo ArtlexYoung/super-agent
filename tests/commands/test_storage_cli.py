@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from adapter.cli_adapter.commands import main
+from adapter.storage import JsonlStorage
 from support import write_minimal_project
 
 
@@ -143,6 +144,58 @@ class StorageCliTests(unittest.TestCase):
                     )
                 self.assertEqual(1, code)
                 self.assertIn("super-agent[postgresql]", error.getvalue())
+
+    def test_prune_previews_by_default_and_applies_only_with_flag(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = root / "common.toml"
+            with patch("sys.stdout", StringIO()):
+                self.assertEqual(0, write_minimal_project(tmp))
+            storage = JsonlStorage(root / ".super-agent")
+            storage.append_event(
+                user_id="alice",
+                agent_name="super-agent",
+                stream_type="run",
+                stream_id="old-run",
+                event_type="model.turn.completed",
+                created_at="2025-01-01T00:00:00Z",
+                data={"text": "old"},
+                event_id="old-event",
+            )
+
+            preview = self._run_json(
+                [
+                    "data",
+                    "storage",
+                    "prune",
+                    "--common-config",
+                    str(config),
+                    "--user-id",
+                    "alice",
+                    "--output",
+                    "json",
+                ]
+            )
+            self.assertFalse(preview["applied"])
+            self.assertEqual(1, preview["users"][0]["detailed_candidates"])
+            self.assertEqual(0, preview["users"][0]["events_deleted"])
+
+            applied = self._run_json(
+                [
+                    "data",
+                    "storage",
+                    "prune",
+                    "--common-config",
+                    str(config),
+                    "--user-id",
+                    "alice",
+                    "--apply",
+                    "--output",
+                    "json",
+                ]
+            )
+            self.assertTrue(applied["applied"])
+            self.assertEqual(1, applied["users"][0]["events_deleted"])
 
     @staticmethod
     def _write_sqlite_config(root: Path, source: Path) -> Path:

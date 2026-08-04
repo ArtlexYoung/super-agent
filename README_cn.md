@@ -97,6 +97,10 @@ alice.runs.learn(result.run_id)
 
 JSONL 是可直接阅读的默认存储。SQLite 同样只用标准库；MySQL 和 PostgreSQL 驱动为可选依赖。
 
+审计记录有保留期限且可以配置。详细记录默认保留 180 天，关键记录默认保留 365 天。模型输出、工具
+参数/结果只保存小型哈希与大小摘要，不保存完整文本。使用
+`super-agent data storage prune` 预览清理内容，明确添加 `--apply` 才会删除。
+
 ## 显式更新 Skill
 
 学习只记录评价、保鲜度和模型使用证据，不会修改 Skill。Skill 更新包含四个可见步骤：

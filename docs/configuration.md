@@ -23,6 +23,10 @@ skills = ["skills"]
 [storage]
 backend = "jsonl"
 path = ".super-agent"
+
+[storage.audit]
+detailed_days = 180
+critical_days = 365
 ```
 
 Unknown tables and fields are rejected. There is no migration or old-field conversion.
@@ -112,6 +116,10 @@ the model used by later task turns.
 backend = "jsonl" # jsonl, sqlite, mysql, postgresql
 path = ".super-agent"
 # url_env = "DATABASE_URL"
+
+[storage.audit]
+detailed_days = 180 # six months by default
+critical_days = 365 # twelve months by default
 ```
 
 JSONL is the readable, dependency-free default. SQLite uses the standard library. Install
@@ -121,6 +129,23 @@ read from the named environment variable.
 The Python library ignores storage until `use_storage=True` or `storage=` is passed. CLI
 and Web adapters enable it explicitly. Changing a live Agent's storage configuration is
 rejected; use `data storage copy` and restart.
+
+Runtime audit content is bounded by explicit cleanup. Detailed events include model turns,
+tool calls, and Skill disclosure paths and use `detailed_days`. Critical events include run
+completion, checked actions, learning, and Skill changes and use `critical_days`. Model text,
+tool arguments and tool results are stored as SHA-256 and size summaries in audit events;
+durable conversation and long-term memory content remains available because
+those are active state, not disposable audit logs.
+
+Cleanup is preview-only unless `--apply` is supplied:
+
+```bash
+super-agent data storage prune --common-config common.toml --user-id alice --output json
+super-agent data storage prune --common-config common.toml --user-id alice --apply
+```
+
+Unknown event types and state streams are protected and reported instead of being guessed or
+deleted. The cleanup itself writes an `audit.pruned` event for each changed Agent scope.
 
 ## Code-First Integration
 

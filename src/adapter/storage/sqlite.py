@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+from dataclasses import replace
 from pathlib import Path
 from uuid import uuid4
 
@@ -18,6 +19,7 @@ from adapter.storage.values import (
 
 SQLITE_SCHEMA_VERSION = 1
 SQLITE_BUSY_TIMEOUT_MILLISECONDS = 30_000
+SQLITE_DELETE_EVENT_ID_BATCH_SIZE = 500
 
 
 class SqliteStorage:
@@ -97,12 +99,21 @@ class SqliteStorage:
         return [_event_from_row(row, self.database_path) for row in rows]
 
     def delete_events(self, query: StorageEventQuery) -> int:
-        where, parameters = _query_where(query)
         connection = self._connect()
         try:
             connection.execute("BEGIN IMMEDIATE")
-            cursor = connection.execute("DELETE FROM storage_events" + where, parameters)
-            deleted = cursor.rowcount
+            deleted = 0
+            for event_ids in _event_id_batches(query.event_ids):
+                selected = query if event_ids is None else replace(
+                    query,
+                    event_ids=event_ids,
+                )
+                where, parameters = _query_where(selected)
+                cursor = connection.execute(
+                    "DELETE FROM storage_events" + where,
+                    parameters,
+                )
+                deleted += cursor.rowcount
             connection.commit()
             return deleted
         except Exception:
@@ -172,7 +183,25 @@ def _query_where(query: StorageEventQuery) -> tuple[str, tuple[str, ...]]:
         if value is not None:
             clauses.append(f"{column} = ?")
             parameters.append(clean_storage_text(value, column))
+    if query.event_ids is not None:
+        placeholders = ", ".join("?" for _ in query.event_ids)
+        clauses.append(f"event_id IN ({placeholders})")
+        parameters.extend(
+            clean_storage_text(event_id, "event_id")
+            for event_id in query.event_ids
+        )
     return " WHERE " + " AND ".join(clauses), tuple(parameters)
+
+
+def _event_id_batches(
+    event_ids: tuple[str, ...] | None,
+) -> list[tuple[str, ...] | None]:
+    if event_ids is None:
+        return [None]
+    return [
+        event_ids[index : index + SQLITE_DELETE_EVENT_ID_BATCH_SIZE]
+        for index in range(0, len(event_ids), SQLITE_DELETE_EVENT_ID_BATCH_SIZE)
+    ]
 
 
 def _event_from_row(row: sqlite3.Row | tuple[object, ...], path: Path) -> StorageEvent:

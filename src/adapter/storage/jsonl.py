@@ -136,6 +136,7 @@ def _matches_query(event: StorageEvent, query: StorageEventQuery) -> bool:
         and (query.stream_type is None or event.stream_type == query.stream_type)
         and (query.stream_id is None or event.stream_id == query.stream_id)
         and (query.event_type is None or event.event_type == query.event_type)
+        and (query.event_ids is None or event.event_id in query.event_ids)
     )
 
 

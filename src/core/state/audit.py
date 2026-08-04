@@ -1,0 +1,300 @@
+"""Central audit redaction, classification, and explicit retention cleanup."""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from hashlib import sha256
+
+from core.events import StorageBackend, StorageEvent, StorageEventQuery
+
+
+DETAILED = "detailed"
+CRITICAL = "critical"
+PROTECTED = "protected"
+
+_PROTECTED_STREAMS = {"conversation", "memory", "habit", "skill_evaluation"}
+_DETAILED_EVENT_TYPES = {
+    "model.call.selected",
+    "model.call.completed",
+    "model.call.failed",
+    "model.turn.completed",
+    "model.used",
+    "task.started",
+    "task.scheduled",
+    "task.completed",
+    "tool.requested",
+    "tool.completed",
+    "tool.failed",
+    "skills.disclosed",
+    "skills.selected",
+    "skill.disclosed",
+    "subagent.started",
+    "subagent.completed",
+    "runtime.subscriber.failed",
+}
+_CRITICAL_EVENT_TYPES = {
+    "run.started",
+    "run.completed",
+    "run.failed",
+    "task.feedback.recorded",
+    "action.checked",
+    "action.prepared",
+    "action.applying",
+    "action.applied",
+    "action.blocked",
+    "action.failed",
+    "learning.started",
+    "learning.evaluation.recorded",
+    "learning.freshness.calculated",
+    "learning.model_usage.updated",
+    "learning.completed",
+    "learning.failed",
+    "skill_change.proposed",
+    "skill_change.tested",
+    "skill_change.applied",
+    "skill_change.undone",
+    "model_skill.saved",
+    "model_skill.removed",
+    "skill_package.installed",
+    "skill_package.updated",
+    "skill_package.removed",
+    "audit.pruned",
+}
+_CONTENT_FIELDS = {
+    "model.turn.completed": ("text",),
+    "task.completed": ("text",),
+    "tool.requested": ("arguments",),
+    "tool.completed": ("result",),
+    "subagent.started": ("prompt",),
+}
+
+
+@dataclass(frozen=True)
+class AuditSettings:
+    """Retention periods for persisted detailed and critical audit events."""
+
+    detailed_days: int = 180
+    critical_days: int = 365
+
+    def __post_init__(self) -> None:
+        _require_positive_days(self.detailed_days, "detailed_days")
+        _require_positive_days(self.critical_days, "critical_days")
+
+
+@dataclass(frozen=True)
+class AuditPruneUserReport:
+    user_id: str
+    detailed_candidates: int
+    critical_candidates: int
+    protected_events: int
+    invalid_timestamps: int
+    events_deleted: int
+    maintenance_events: int
+    affected_agents: list[str]
+
+
+@dataclass(frozen=True)
+class AuditPruneReport:
+    applied: bool
+    now: str
+    detailed_days: int
+    critical_days: int
+    users: list[AuditPruneUserReport]
+
+
+def classify_audit_event(stream_type: str, event_type: str) -> str:
+    """Return the retention class without guessing for unknown event types."""
+    if stream_type in _PROTECTED_STREAMS:
+        return PROTECTED
+    if event_type in _CRITICAL_EVENT_TYPES:
+        return CRITICAL
+    if event_type in _DETAILED_EVENT_TYPES:
+        return DETAILED
+    return PROTECTED
+
+
+def prepare_event_data_for_storage(
+    stream_type: str,
+    event_type: str,
+    data: dict[str, object],
+) -> dict[str, object]:
+    """Remove large or sensitive audit content while retaining verifiable digests."""
+    prepared = dict(data)
+    if classify_audit_event(stream_type, event_type) == PROTECTED:
+        return prepared
+    for field in _CONTENT_FIELDS.get(event_type, ()):
+        if field not in prepared:
+            continue
+        prepared[f"{field}_digest"] = _content_digest(prepared.pop(field))
+    return prepared
+
+
+def prune_expired_audit_events(
+    backend: StorageBackend,
+    user_ids: list[str],
+    settings: AuditSettings,
+    *,
+    apply: bool = False,
+    now: datetime | None = None,
+) -> AuditPruneReport:
+    """Preview or explicitly delete expired detailed and critical audit events."""
+    selected_users = _unique_user_ids(user_ids)
+    current_time = _normalise_now(now)
+    reports: list[AuditPruneUserReport] = []
+    for user_id in selected_users:
+        reports.append(
+            _prune_one_user(
+                backend,
+                user_id,
+                settings,
+                current_time,
+                apply,
+            )
+        )
+    return AuditPruneReport(
+        applied=apply,
+        now=_format_datetime(current_time),
+        detailed_days=settings.detailed_days,
+        critical_days=settings.critical_days,
+        users=reports,
+    )
+
+
+def _prune_one_user(
+    backend: StorageBackend,
+    user_id: str,
+    settings: AuditSettings,
+    now: datetime,
+    apply: bool,
+) -> AuditPruneUserReport:
+    events = backend.read_events(StorageEventQuery(user_id=user_id))
+    detailed_cutoff = now - timedelta(days=settings.detailed_days)
+    critical_cutoff = now - timedelta(days=settings.critical_days)
+    candidates: list[StorageEvent] = []
+    detailed_count = 0
+    critical_count = 0
+    protected_count = 0
+    invalid_timestamps = 0
+    for event in events:
+        level = classify_audit_event(event.stream_type, event.event_type)
+        if level == PROTECTED:
+            protected_count += 1
+            continue
+        event_time = _parse_event_time(event.created_at)
+        if event_time is None:
+            invalid_timestamps += 1
+            continue
+        cutoff = detailed_cutoff if level == DETAILED else critical_cutoff
+        if event_time >= cutoff:
+            continue
+        candidates.append(event)
+        if level == DETAILED:
+            detailed_count += 1
+        else:
+            critical_count += 1
+    deleted = 0
+    maintenance_events = 0
+    if apply and candidates:
+        deleted = backend.delete_events(
+            StorageEventQuery(
+                user_id=user_id,
+                event_ids=tuple(event.event_id for event in candidates),
+            )
+        )
+        if deleted:
+            maintenance_events = _record_prune_events(
+                backend,
+                user_id,
+                candidates,
+                settings,
+                now,
+            )
+    return AuditPruneUserReport(
+        user_id=user_id,
+        detailed_candidates=detailed_count,
+        critical_candidates=critical_count,
+        protected_events=protected_count,
+        invalid_timestamps=invalid_timestamps,
+        events_deleted=deleted,
+        maintenance_events=maintenance_events,
+        affected_agents=sorted({event.agent_name for event in candidates}),
+    )
+
+
+def _record_prune_events(
+    backend: StorageBackend,
+    user_id: str,
+    candidates: list[StorageEvent],
+    settings: AuditSettings,
+    now: datetime,
+) -> int:
+    by_agent: dict[str, dict[str, int]] = {}
+    for event in candidates:
+        counts = by_agent.setdefault(event.agent_name, {DETAILED: 0, CRITICAL: 0})
+        level = classify_audit_event(event.stream_type, event.event_type)
+        counts[level] += 1
+    for agent_name, counts in by_agent.items():
+        backend.append_event(
+            user_id=user_id,
+            agent_name=agent_name,
+            stream_type="audit",
+            stream_id="retention",
+            event_type="audit.pruned",
+            created_at=_format_datetime(now),
+            data={
+                "schema_version": 1,
+                "detailed_days": settings.detailed_days,
+                "critical_days": settings.critical_days,
+                "detailed_events_deleted": counts[DETAILED],
+                "critical_events_deleted": counts[CRITICAL],
+            },
+        )
+    return len(by_agent)
+
+
+def _content_digest(value: object) -> dict[str, object]:
+    if isinstance(value, str):
+        text = value
+    else:
+        text = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    encoded = text.encode("utf-8")
+    return {
+        "sha256": sha256(encoded).hexdigest(),
+        "bytes": len(encoded),
+        "characters": len(text),
+    }
+
+
+def _unique_user_ids(user_ids: list[str]) -> list[str]:
+    selected = list(dict.fromkeys(value.strip() for value in user_ids))
+    if not selected or any(not value for value in selected):
+        raise ValueError("audit pruning requires at least one non-empty user_id")
+    return selected
+
+
+def _normalise_now(value: datetime | None) -> datetime:
+    selected = datetime.now(UTC) if value is None else value
+    if selected.tzinfo is None:
+        raise ValueError("audit pruning time must include a timezone")
+    return selected.astimezone(UTC)
+
+
+def _parse_event_time(value: str) -> datetime | None:
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    if parsed.tzinfo is None:
+        return None
+    return parsed.astimezone(UTC)
+
+
+def _format_datetime(value: datetime) -> str:
+    return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _require_positive_days(value: int, name: str) -> None:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(f"audit {name} must be a positive integer")

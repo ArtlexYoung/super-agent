@@ -100,6 +100,12 @@ class RuntimeDisclosureStore:
             )
         else:
             self._store.append_run_event(identity, "skill.disclosed", data)
+        self.refresh_history()
+
+    def refresh_history(self) -> None:
+        """Rewrite the derived history cache from the retained event stream."""
+        if not self.cache_root.exists() and not self.history_path.exists():
+            return
         write_bytes_atomically(
             self.history_path,
             (

@@ -115,6 +115,19 @@ super-agent data storage copy --to-backend sqlite \
 
 Identical events are skipped; conflicting content fails.
 
+Preview expired audit events, then apply the exact same plan explicitly:
+
+```bash
+super-agent data storage prune --common-config common.toml \
+  --user-id alice --output json
+super-agent data storage prune --common-config common.toml \
+  --user-id alice --apply
+```
+
+The command uses `[storage.audit]` retention settings. It never deletes conversation,
+memory, habit, evaluation, or unknown event streams. A successful applied cleanup leaves a
+small `audit.pruned` record with counts and the settings used.
+
 ## Web
 
 ```bash

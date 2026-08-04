@@ -3,6 +3,26 @@
 These are three separate opt-in operations. A task run records immutable evidence but does
 not learn, rewrite memory, or change a Skill after returning its answer.
 
+## Audit Retention
+
+Runtime writes one central event stream for model calls, tools, actions, learning, Skill
+changes, and memory changes. Detailed and critical audit entries are not permanent:
+`common.toml` keeps detailed entries for 180 days and critical entries for 365 days by
+default.
+
+```toml
+[storage.audit]
+detailed_days = 180
+critical_days = 365
+```
+
+Use `data storage prune` to preview expired entries. Add `--apply` to perform deletion. The
+operation is explicit and records its counts. Content that is only useful for replaying the
+current run, such as model output and tool payloads, is kept in memory for the caller and
+stored as a digest in the persistent audit stream. Conversation, long-term memory, usage
+habits, evaluation records, and unknown event types are protected until their own explicit
+state management is implemented.
+
 ## Learn From a Run
 
 ```python

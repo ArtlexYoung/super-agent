@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from core.state.audit import prepare_event_data_for_storage
 from core.events import StorageBackend, StorageEvent, StorageEventQuery
 from core.models import RunIdentity, validate_agent_name, validate_user_id
 from core.state.event_log import RunEventLog
@@ -76,13 +77,19 @@ class EventStore:
         created_at: str | None = None,
     ) -> StorageEvent:
         """Append one canonical event inside this user and Agent scope."""
+        clean_stream_type = _required_text(stream_type, "stream_type")
+        clean_event_type = _required_text(event_type, "event_type")
         return self._backend.append_event(
             user_id=self.user_id,
             agent_name=self.agent_name,
-            stream_type=_required_text(stream_type, "stream_type"),
+            stream_type=clean_stream_type,
             stream_id=_required_text(stream_id, "stream_id"),
-            event_type=_required_text(event_type, "event_type"),
-            data=dict(data),
+            event_type=clean_event_type,
+            data=prepare_event_data_for_storage(
+                clean_stream_type,
+                clean_event_type,
+                data,
+            ),
             event_id=event_id,
             created_at=created_at,
         )

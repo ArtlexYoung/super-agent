@@ -106,6 +106,11 @@ Agent scopes isolate conversations, memory, runs, and Skill overlays.
 JSONL is the readable default backend. SQLite also uses the standard library. MySQL and
 PostgreSQL drivers are optional extras.
 
+Audit records are bounded and configurable. Detailed records are kept for 180 days and
+critical records for 365 days by default. Model output and tool arguments/results are stored
+as small hashes and size summaries instead of full text. Preview cleanup
+with `super-agent data storage prune`; add `--apply` when you explicitly want deletion.
+
 ## Update a Skill Explicitly
 
 Learning records evaluation, freshness, and model-use evidence. It never changes a Skill.

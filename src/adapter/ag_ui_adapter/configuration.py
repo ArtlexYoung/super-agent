@@ -96,6 +96,14 @@ def _common_config_to_toml(config: CommonConfig) -> str:
     )
     if config.storage.url_env is not None:
         lines.append(f"url_env = {_toml_string(config.storage.url_env)}")
+    lines.extend(
+        [
+            "",
+            "[storage.audit]",
+            f"detailed_days = {config.storage.audit.detailed_days}",
+            f"critical_days = {config.storage.audit.critical_days}",
+        ]
+    )
     return "\n".join(lines) + "\n"
 
 

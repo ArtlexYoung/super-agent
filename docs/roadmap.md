@@ -833,6 +833,22 @@ Status: implemented.
 - Keep the release gate separate from Runtime behavior; failed checks stop the release
   before commit and never silently reduce the tested surface.
 
+## v0.0.132: Bounded Central Audit
+
+Status: implemented.
+
+- Add one central audit classifier for detailed, critical, and protected state events.
+- Store model turns, tool payloads, and subagent prompts as digests with size metadata instead
+  of retaining their full content in runtime audit events.
+- Add configurable `[storage.audit]` retention with 180 detailed days and 365 critical days
+  by default.
+- Add explicit `data storage prune` preview and `--apply` deletion across JSONL, SQLite,
+  MySQL, and PostgreSQL without guessing unknown event types.
+- Keep conversation, memory, habit, evaluation, and unknown streams intact and record each
+  applied cleanup with a compact `audit.pruned` event.
+- Keep the release gate below 83 Python source files and 17,000 lines after adding the
+  central audit layer.
+
 ## Release Gate
 
 The project will not move to `0.1.x` because of feature count. The gate is a reproducible

@@ -26,6 +26,16 @@ class StorageEventQuery:
     stream_type: str | None = None
     stream_id: str | None = None
     event_type: str | None = None
+    event_ids: tuple[str, ...] | None = None
+
+    def __post_init__(self) -> None:
+        if self.event_ids is not None and not self.event_ids:
+            raise ValueError("event_ids cannot be empty")
+        if self.event_ids is not None and any(
+            not isinstance(event_id, str) or not event_id.strip()
+            for event_id in self.event_ids
+        ):
+            raise ValueError("event_ids must contain non-empty strings")
 
 
 class StorageBackend(Protocol):

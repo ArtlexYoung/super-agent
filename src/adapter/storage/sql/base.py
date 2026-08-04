@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from hashlib import sha256
 from typing import Any, Protocol
 from urllib.parse import unquote, urlsplit
@@ -20,6 +20,7 @@ from adapter.storage.values import (
 
 
 REMOTE_SQL_SCHEMA_VERSION = 1
+REMOTE_DELETE_EVENT_ID_BATCH_SIZE = 500
 _SCHEMA_COMPONENT = "runtime-events"
 _SCHEMA_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS super_agent_storage_schema (
@@ -148,12 +149,21 @@ class RemoteSqlStorage:
         return [_event_from_row(row, self._database.location) for row in rows]
 
     def delete_events(self, query: StorageEventQuery) -> int:
-        where, parameters = _query_where(query)
         connection = self._database.connect_to_database()
         try:
             cursor = connection.cursor()
-            cursor.execute("DELETE FROM super_agent_storage_events" + where, parameters)
-            deleted = int(cursor.rowcount)
+            deleted = 0
+            for event_ids in _event_id_batches(query.event_ids):
+                selected = query if event_ids is None else replace(
+                    query,
+                    event_ids=event_ids,
+                )
+                where, parameters = _query_where(selected)
+                cursor.execute(
+                    "DELETE FROM super_agent_storage_events" + where,
+                    parameters,
+                )
+                deleted += int(cursor.rowcount)
             connection.commit()
             return deleted
         except Exception:
@@ -231,7 +241,25 @@ def _query_where(query: StorageEventQuery) -> tuple[str, tuple[str, ...]]:
             cleaned = clean_storage_text(value, text_column)
             clauses.extend((f"{key_column} = %s", f"{text_column} = %s"))
             parameters.extend((_storage_text_key(cleaned), cleaned))
+    if query.event_ids is not None:
+        event_clauses: list[str] = []
+        for event_id in query.event_ids:
+            cleaned = clean_storage_text(event_id, "event_id")
+            event_clauses.append("(event_key = %s AND event_id = %s)")
+            parameters.extend((_storage_text_key(cleaned), cleaned))
+        clauses.append("(" + " OR ".join(event_clauses) + ")")
     return " WHERE " + " AND ".join(clauses), tuple(parameters)
+
+
+def _event_id_batches(
+    event_ids: tuple[str, ...] | None,
+) -> list[tuple[str, ...] | None]:
+    if event_ids is None:
+        return [None]
+    return [
+        event_ids[index : index + REMOTE_DELETE_EVENT_ID_BATCH_SIZE]
+        for index in range(0, len(event_ids), REMOTE_DELETE_EVENT_ID_BATCH_SIZE)
+    ]
 
 
 def _event_from_row(row: object, location: str) -> StorageEvent:

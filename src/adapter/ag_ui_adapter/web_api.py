@@ -101,6 +101,10 @@ class WebAPI:
             "storage": {
                 "backend": config.storage.backend,
                 "path": str(config.storage.path),
+                "audit": {
+                    "detailed_days": config.storage.audit.detailed_days,
+                    "critical_days": config.storage.audit.critical_days,
+                },
             },
             "configuration_path": str(config.source),
             "skills": _web_skill_list(skill_index_to_dict(skills.index), config),
