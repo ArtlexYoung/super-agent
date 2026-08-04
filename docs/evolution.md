@@ -17,11 +17,12 @@ critical_days = 365
 ```
 
 Use `data storage prune` to preview expired entries. Add `--apply` to perform deletion. The
-operation is explicit and records its counts. Content that is only useful for replaying the
-current run, such as model output and tool payloads, is kept in memory for the caller and
-stored as a digest in the persistent audit stream. Conversation, long-term memory, usage
-habits, evaluation records, and unknown event types are protected until their own explicit
-state management is implemented.
+operation is explicit and records its counts. Canonical events retain complete prompts,
+model output, tool payloads, and errors so later learning can use the original evidence.
+Run views dynamically redact those fields unless a CLI caller explicitly selects
+`--include-sensitive`; Web views remain redacted. This view-level redaction does not encrypt
+the backend. Conversation, long-term memory, usage habits, evaluation records, and unknown
+event types are protected until their own explicit state management is implemented.
 
 ## Learn From a Run
 

@@ -106,6 +106,18 @@ Conversation commands also provide `show`, `rename`, `clear`, and `delete`. Long
 memory provides `add` and `forget`. Run data provides `export`. Every operation is scoped
 by user and Agent.
 
+Run status, explanation, and export dynamically redact prompts, model output, tool payloads,
+and error messages. The canonical event remains complete. Request the original values only
+when needed:
+
+```bash
+super-agent data runs explain --run-id <id> --include-sensitive --output json
+super-agent data runs export --run-id <id> --include-sensitive --output run.json
+```
+
+The Web API does not expose an unredacted run route. Dynamic redaction is not encryption;
+direct JSONL or database access still reads complete canonical events.
+
 Copy selected users between explicit storage backends with:
 
 ```bash

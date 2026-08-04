@@ -849,6 +849,19 @@ Status: implemented.
 - Keep the release gate below 83 Python source files and 17,000 lines after adding the
   central audit layer.
 
+## v0.0.133: Dynamic Audit Redaction
+
+Status: implemented.
+
+- Keep canonical audit events complete so replay, learning, storage copy, and direct review
+  do not lose original evidence.
+- Move prompt, model text, tool payload, and error redaction into the central read view instead
+  of irreversibly changing data during writes.
+- Redact run status, event, explanation, export, and Web views by default.
+- Require the explicit CLI `--include-sensitive` flag for complete run output; do not add an
+  unredacted Web route or silently weaken the default view.
+- Retain the v0.0.132 detailed and critical cleanup periods and explicit `--apply` deletion.
+
 ## Release Gate
 
 The project will not move to `0.1.x` because of feature count. The gate is a reproducible

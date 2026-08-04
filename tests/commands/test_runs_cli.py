@@ -87,6 +87,24 @@ class RunsCliTests(unittest.TestCase):
                 )
             explanation = json.loads(explanation_output.getvalue())
 
+            sensitive_output = StringIO()
+            with patch("sys.stdout", sensitive_output):
+                sensitive_code = main(
+                    [
+                        "data",
+                        "runs",
+                        "explain",
+                        "--common-config",
+                        str(config_path),
+                        "--run-id",
+                        run_id,
+                        "--include-sensitive",
+                        "--output",
+                        "json",
+                    ]
+                )
+            sensitive = json.loads(sensitive_output.getvalue())
+
             export_path = root / "exported-run.json"
             with patch("sys.stdout", StringIO()):
                 export_code = main(
@@ -110,7 +128,12 @@ class RunsCliTests(unittest.TestCase):
             self.assertEqual(run_id, status["runs"][0]["run_id"])
             self.assertEqual("completed", status["runs"][0]["status"])
             self.assertEqual(0, explanation_code)
+            self.assertEqual(0, sensitive_code)
             self.assertEqual(run_id, explanation["snapshot"]["run_id"])
+            self.assertEqual("[redacted]", explanation["snapshot"]["prompt"])
+            self.assertEqual("echo this", sensitive["snapshot"]["prompt"])
+            self.assertNotIn("Mock response", json.dumps(explanation))
+            self.assertIn("Mock response", json.dumps(sensitive))
             self.assertEqual("auto", explanation["plan"]["purpose"])
             self.assertEqual("completed", explanation["model_calls"][0]["status"])
             self.assertEqual(1, explanation["model_calls"][0]["call_id"])
@@ -132,6 +155,7 @@ class RunsCliTests(unittest.TestCase):
             self.assertEqual(0, export_code)
             self.assertEqual(run_id, exported["snapshot"]["run_id"])
             self.assertTrue(exported["events"])
+            self.assertNotIn("Mock response", json.dumps(exported))
             self.assertNotIn("runtime_lock", exported)
 
     def test_text_explain_prints_task_and_evidence_insight(self) -> None:

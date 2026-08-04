@@ -36,7 +36,7 @@ def learn_from_run(
     rules: FreshnessRules,
 ) -> RunLearningResult:
     """Record observations for one completed run without changing any Skill."""
-    events = store.read_run_events(run_id)
+    events = store.read_run_events(run_id, include_sensitive=True)
     completed = _find_event(events, LEARNING_COMPLETED_EVENT)
     if completed is not None:
         return _result_from_completed_event(completed, events)
@@ -99,7 +99,10 @@ def learn_from_run(
                 f"{type(recording_error).__name__}: {recording_error}"
             )
         raise
-    return _result_from_completed_event(completed, store.read_run_events(run_id))
+    return _result_from_completed_event(
+        completed,
+        store.read_run_events(run_id, include_sensitive=True),
+    )
 
 
 def _record_run_evaluations(
@@ -156,7 +159,7 @@ def _read_run_model_usage(store: EventStore, run_id: str) -> list[dict[str, obje
             str(event.data.get("profile", "")).strip().lower(),
             str(event.data.get("purpose", "")).strip().lower(),
         )
-        for event in store.read_run_events(run_id)
+        for event in store.read_run_events(run_id, include_sensitive=True)
         if event.event_type in {"model.call.completed", "model.call.failed"}
     }
     return [

@@ -49,9 +49,14 @@ class RunSnapshotTests(unittest.TestCase):
                 agent.run("hello")
 
             snapshot = agent._create_event_store().list_runs()[0]
+            original = agent._create_event_store().read_run(
+                snapshot.run_id,
+                include_sensitive=True,
+            )
             self.assertEqual("failed", snapshot.status)
             self.assertEqual("RuntimeError", snapshot.error["error_type"])
-            self.assertEqual("provider failed", snapshot.error["message"])
+            self.assertEqual("[redacted]", snapshot.error["message"])
+            self.assertEqual("provider failed", original.error["message"])
 
     def test_run_snapshot_is_derived_from_the_canonical_event_stream(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

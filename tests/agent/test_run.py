@@ -53,9 +53,12 @@ class EventStoreTests(unittest.TestCase):
             store.append_run_event(identity, "skills.selected", {"names": ["echo"]})
 
             events = store.read_run_events(identity.run_id)
+            original = store.read_run_events(identity.run_id, include_sensitive=True)
             self.assertEqual([1, 2], [event.sequence for event in events])
             self.assertEqual(["run.started", "skills.selected"], [event.event_type for event in events])
-            self.assertEqual("hello", events[0].data["prompt"])
+            self.assertEqual("[redacted]", events[0].data["prompt"])
+            self.assertIn("prompt_digest", events[0].data)
+            self.assertEqual("hello", original[0].data["prompt"])
 
     def test_event_store_is_the_only_agent_scoped_event_access(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -118,8 +121,17 @@ class EventStoreTests(unittest.TestCase):
             completed = next(
                 event for event in events if event.event_type == "task.completed"
             )
-            self.assertNotIn("text", completed.data)
+            original_completed = next(
+                event
+                for event in agent._create_event_store().read_run_events(
+                    result.run_id,
+                    include_sensitive=True,
+                )
+                if event.event_type == "task.completed"
+            )
+            self.assertEqual("[redacted]", completed.data["text"])
             self.assertIn("text_digest", completed.data)
+            self.assertEqual("finished", original_completed.data["text"])
             self.assertEqual("finished", next(
                 event for event in result.events
                 if event.event_type == "task.completed"

@@ -14,9 +14,11 @@ def explain_run_with_insight(
     store: EventStore,
     run_id: str,
     policy: FreshnessRules | None,
+    *,
+    include_sensitive: bool = False,
 ) -> dict[str, object]:
-    explanation = store.explain_run(run_id)
-    events = store.read_run_events(run_id)
+    explanation = store.explain_run(run_id, include_sensitive=include_sensitive)
+    events = store.read_run_events(run_id, include_sensitive=include_sensitive)
     plan = _latest_event_data(events, "task.scheduled")
     purposes = _model_purposes_for_run(events)
     explanation.update(

@@ -132,10 +132,13 @@ rejected; use `data storage copy` and restart.
 
 Runtime audit content is bounded by explicit cleanup. Detailed events include model turns,
 tool calls, and Skill disclosure paths and use `detailed_days`. Critical events include run
-completion, checked actions, learning, and Skill changes and use `critical_days`. Model text,
-tool arguments and tool results are stored as SHA-256 and size summaries in audit events;
-durable conversation and long-term memory content remains available because
-those are active state, not disposable audit logs.
+completion, checked actions, learning, and Skill changes and use `critical_days`. Canonical
+events keep complete model text, tool payloads, prompts, and errors so internal learning and
+review do not lose evidence. Run status, explanation, export, and Web views dynamically
+replace those fields with SHA-256 and size summaries by default. CLI callers must add
+`--include-sensitive` to request complete values. Dynamic redaction is not encryption; access
+to JSONL files or database tables must be protected separately. Conversation and long-term
+memory are active state rather than disposable audit logs.
 
 Cleanup is preview-only unless `--apply` is supplied:
 

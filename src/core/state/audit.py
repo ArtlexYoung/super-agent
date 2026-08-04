@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 
@@ -63,11 +63,18 @@ _CRITICAL_EVENT_TYPES = {
     "audit.pruned",
 }
 _CONTENT_FIELDS = {
+    "run.started": ("prompt",),
+    "run.failed": ("message",),
+    "model.call.failed": ("message",),
     "model.turn.completed": ("text",),
     "task.completed": ("text",),
     "tool.requested": ("arguments",),
     "tool.completed": ("result",),
+    "tool.failed": ("message",),
     "subagent.started": ("prompt",),
+    "runtime.subscriber.failed": ("message",),
+    "action.failed": ("message",),
+    "learning.failed": ("message",),
 }
 
 
@@ -115,20 +122,36 @@ def classify_audit_event(stream_type: str, event_type: str) -> str:
     return PROTECTED
 
 
-def prepare_event_data_for_storage(
+def redact_event_data_for_display(
     stream_type: str,
     event_type: str,
     data: dict[str, object],
 ) -> dict[str, object]:
-    """Remove large or sensitive audit content while retaining verifiable digests."""
+    """Return a redacted copy while leaving the canonical event unchanged."""
     prepared = dict(data)
     if classify_audit_event(stream_type, event_type) == PROTECTED:
         return prepared
     for field in _CONTENT_FIELDS.get(event_type, ()):
         if field not in prepared:
             continue
-        prepared[f"{field}_digest"] = _content_digest(prepared.pop(field))
+        prepared[f"{field}_digest"] = _content_digest(prepared[field])
+        prepared[field] = "[redacted]"
     return prepared
+
+
+def redact_events_for_display(events: list[StorageEvent]) -> list[StorageEvent]:
+    """Build a dynamically redacted view of canonical storage events."""
+    return [
+        replace(
+            event,
+            data=redact_event_data_for_display(
+                event.stream_type,
+                event.event_type,
+                event.data,
+            ),
+        )
+        for event in events
+    ]
 
 
 def prune_expired_audit_events(

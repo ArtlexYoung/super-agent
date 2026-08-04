@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Callable
 
-from core.state.audit import prepare_event_data_for_storage
 from core.models import RunIdentity
 from core.state.models import RunEvent
 from core.state.views import run_event_from_storage
@@ -69,25 +68,12 @@ class RunEventLog:
                 stream_type="run",
                 stream_id=self.identity.run_id,
                 event_type=clean_type,
-                data=prepare_event_data_for_storage(
-                    "run",
-                    clean_type,
-                    content,
-                ),
+                data=content,
             )
             event = run_event_from_storage(
                 stored,
                 len(self._events) + 1,
                 self.identity.parent_run_id,
-            )
-            event = RunEvent(
-                run_id=self.identity.run_id,
-                sequence=event.sequence,
-                event_type=clean_type,
-                created_at=event.created_at,
-                agent_name=self.identity.agent_name,
-                parent_run_id=self.identity.parent_run_id,
-                data=content,
             )
         self._events.append(event)
         if self.event_listener is not None:

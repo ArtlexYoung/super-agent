@@ -91,7 +91,10 @@ class WebAPIContractTests(unittest.TestCase):
 
             self.assertEqual(201, created.status)
             self.assertEqual("Renamed", _body_dict(renamed.body)["title"])
-            self.assertEqual(result.run_id, _body_dict(run.body)["snapshot"]["run_id"])
+            run_body = _body_dict(run.body)
+            self.assertEqual(result.run_id, _body_dict(run_body["snapshot"])["run_id"])
+            self.assertNotIn("runtime answer", str(run_body))
+            self.assertNotIn("hello", str(run_body))
             self.assertEqual([], _body_dict(forgotten.body)["memory"])
 
     def test_configuration_save_preserves_all_progressive_skill_roots(self) -> None:

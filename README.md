@@ -107,9 +107,12 @@ JSONL is the readable default backend. SQLite also uses the standard library. My
 PostgreSQL drivers are optional extras.
 
 Audit records are bounded and configurable. Detailed records are kept for 180 days and
-critical records for 365 days by default. Model output and tool arguments/results are stored
-as small hashes and size summaries instead of full text. Preview cleanup
-with `super-agent data storage prune`; add `--apply` when you explicitly want deletion.
+critical records for 365 days by default. Canonical events stay complete for learning and
+review, while CLI and Web run views dynamically replace prompts, model output, tool payloads,
+and error messages with hashes and size summaries. CLI users can explicitly add
+`--include-sensitive` to run status, explanation, or export commands. Dynamic redaction is
+not storage encryption, so protect access to the selected backend. Preview cleanup with
+`super-agent data storage prune`; add `--apply` when you explicitly want deletion.
 
 ## Update a Skill Explicitly
 

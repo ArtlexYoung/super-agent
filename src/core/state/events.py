@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from core.state.audit import prepare_event_data_for_storage
+from core.state.audit import redact_events_for_display
 from core.events import StorageBackend, StorageEvent, StorageEventQuery
 from core.models import RunIdentity, validate_agent_name, validate_user_id
 from core.state.event_log import RunEventLog
@@ -77,19 +77,13 @@ class EventStore:
         created_at: str | None = None,
     ) -> StorageEvent:
         """Append one canonical event inside this user and Agent scope."""
-        clean_stream_type = _required_text(stream_type, "stream_type")
-        clean_event_type = _required_text(event_type, "event_type")
         return self._backend.append_event(
             user_id=self.user_id,
             agent_name=self.agent_name,
-            stream_type=clean_stream_type,
+            stream_type=_required_text(stream_type, "stream_type"),
             stream_id=_required_text(stream_id, "stream_id"),
-            event_type=clean_event_type,
-            data=prepare_event_data_for_storage(
-                clean_stream_type,
-                clean_event_type,
-                data,
-            ),
+            event_type=_required_text(event_type, "event_type"),
+            data=dict(data),
             event_id=event_id,
             created_at=created_at,
         )
@@ -189,19 +183,26 @@ class EventStore:
         event = run_event_from_storage(stored, len(events), identity.parent_run_id)
         return event
 
-    def read_run(self, run_id: str) -> RunSnapshot:
+    def read_run(
+        self,
+        run_id: str,
+        *,
+        include_sensitive: bool = False,
+    ) -> RunSnapshot:
         from core.state.views import run_snapshot_from_events
 
         events = self.read_events("run", run_id)
         if not events:
             raise KeyError(f"run not found: {run_id}")
-        return run_snapshot_from_events(self.user_id, events)
+        visible = events if include_sensitive else redact_events_for_display(events)
+        return run_snapshot_from_events(self.user_id, visible)
 
     def list_runs(
         self,
         limit: int | None = None,
         *,
         conversation_id: str | None = None,
+        include_sensitive: bool = False,
     ) -> list[RunSnapshot]:
         from core.state.views import run_snapshot_from_events
 
@@ -211,7 +212,13 @@ class EventStore:
         for event in self.read_events("run"):
             grouped.setdefault(event.stream_id, []).append(event)
         snapshots = sorted(
-            (run_snapshot_from_events(self.user_id, events) for events in grouped.values()),
+            (
+                run_snapshot_from_events(
+                    self.user_id,
+                    events if include_sensitive else redact_events_for_display(events),
+                )
+                for events in grouped.values()
+            ),
             key=lambda item: (item.started_at, item.run_id),
             reverse=True,
         )
@@ -223,26 +230,47 @@ class EventStore:
             ]
         return snapshots if limit is None else snapshots[:limit]
 
-    def read_run_events(self, run_id: str) -> list[RunEvent]:
+    def read_run_events(
+        self,
+        run_id: str,
+        *,
+        include_sensitive: bool = False,
+    ) -> list[RunEvent]:
         from core.state.views import run_events_from_storage
 
         events = self.read_events("run", run_id)
         if not events:
             raise KeyError(f"run not found: {run_id}")
-        return run_events_from_storage(events)
+        visible = events if include_sensitive else redact_events_for_display(events)
+        return run_events_from_storage(visible)
 
-    def explain_run(self, run_id: str) -> dict[str, object]:
+    def explain_run(
+        self,
+        run_id: str,
+        *,
+        include_sensitive: bool = False,
+    ) -> dict[str, object]:
         from core.state.views import explain_run_from_events
 
         events = self.read_events("run", run_id)
         if not events:
             raise KeyError(f"run not found: {run_id}")
-        return explain_run_from_events(self.user_id, events)
+        visible = events if include_sensitive else redact_events_for_display(events)
+        return explain_run_from_events(self.user_id, visible)
 
-    def export_run(self, run_id: str, path: Path) -> Path:
+    def export_run(
+        self,
+        run_id: str,
+        path: Path,
+        *,
+        include_sensitive: bool = False,
+    ) -> Path:
         from core.files import write_bytes_atomically
 
-        explanation = self.explain_run(run_id)
+        explanation = self.explain_run(
+            run_id,
+            include_sensitive=include_sensitive,
+        )
         document = {
             "schema_version": 2,
             "snapshot": explanation["snapshot"],

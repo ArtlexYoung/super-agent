@@ -5,7 +5,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from adapter.storage import JsonlStorage, SqliteStorage
-from core.state.audit import AuditSettings, prune_expired_audit_events
+from core.state.audit import (
+    AuditSettings,
+    prune_expired_audit_events,
+    redact_events_for_display,
+)
 from core.config import CommonConfig
 from core.events import StorageEventQuery
 from core.models import RunIdentity
@@ -52,7 +56,7 @@ critical_days = 365
             with self.assertRaisesRegex(ValueError, "audit detailed_days"):
                 CommonConfig.load_from_file(path)
 
-    def test_persisted_model_and_tool_content_is_replaced_by_digest(self) -> None:
+    def test_raw_events_stay_complete_and_display_events_are_redacted(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             backend = SqliteStorage(root)
@@ -72,16 +76,25 @@ critical_days = 365
             )
 
             persisted = backend.read_events(StorageEventQuery(user_id="alice"))
-            serialized = json.dumps(
+            raw_serialized = json.dumps(
                 [event.data for event in persisted],
                 ensure_ascii=False,
                 sort_keys=True,
             )
-            self.assertNotIn("private model output", serialized)
-            self.assertNotIn("tool output", serialized)
+            redacted = redact_events_for_display(persisted)
+            redacted_serialized = json.dumps(
+                [event.data for event in redacted],
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+
+            self.assertIn("private model output", raw_serialized)
+            self.assertIn("tool output", raw_serialized)
+            self.assertNotIn("private model output", redacted_serialized)
+            self.assertNotIn("tool output", redacted_serialized)
             self.assertEqual("private model output", runtime_event.data["text"])
             model_event = next(
-                event for event in persisted if event.event_type == "model.turn.completed"
+                event for event in redacted if event.event_type == "model.turn.completed"
             )
             self.assertIn("text_digest", model_event.data)
             self.assertEqual(

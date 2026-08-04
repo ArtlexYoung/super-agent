@@ -25,6 +25,7 @@ def configure_runs_parser(parser: argparse.ArgumentParser) -> None:
     status_parser.add_argument("--conversation-id")
     status_parser.add_argument("--limit", type=_positive_integer, default=20)
     status_parser.add_argument("--output", choices=["text", "json"], default="text")
+    _add_sensitive_output_argument(status_parser)
 
     explain_parser = subparsers.add_parser(
         "explain",
@@ -34,6 +35,7 @@ def configure_runs_parser(parser: argparse.ArgumentParser) -> None:
     _add_user_argument(explain_parser)
     explain_parser.add_argument("--run-id")
     explain_parser.add_argument("--output", choices=["text", "json"], default="text")
+    _add_sensitive_output_argument(explain_parser)
 
     export_parser = subparsers.add_parser(
         "export",
@@ -43,6 +45,7 @@ def configure_runs_parser(parser: argparse.ArgumentParser) -> None:
     _add_user_argument(export_parser)
     export_parser.add_argument("--run-id")
     export_parser.add_argument("--output")
+    _add_sensitive_output_argument(export_parser)
 
     feedback_parser = subparsers.add_parser(
         "feedback",
@@ -87,9 +90,13 @@ def run_runs_command(args: argparse.Namespace) -> int:
 def _show_run_status(args: argparse.Namespace) -> int:
     store = _load_run_snapshot_store(args.common_config, args.user_id)
     snapshots = (
-        [store.read_run(args.run_id)]
+        [store.read_run(args.run_id, include_sensitive=args.include_sensitive)]
         if args.run_id
-        else store.list_runs(args.limit, conversation_id=args.conversation_id)
+        else store.list_runs(
+            args.limit,
+            conversation_id=args.conversation_id,
+            include_sensitive=args.include_sensitive,
+        )
     )
     if args.output == "json":
         print(
@@ -121,7 +128,12 @@ def _explain_run(args: argparse.Namespace) -> int:
         return 1
     store = _find_run_store(store, run_id)
     rules = load_configured_freshness_rules_if_enabled(agent.config, store=store)
-    explanation = explain_run_with_insight(store, run_id, rules)
+    explanation = explain_run_with_insight(
+        store,
+        run_id,
+        rules,
+        include_sensitive=args.include_sensitive,
+    )
     if args.output == "json":
         print(json.dumps(explanation, ensure_ascii=False, indent=2, sort_keys=True))
         return 0
@@ -136,7 +148,11 @@ def _export_run(args: argparse.Namespace) -> int:
         print("No run snapshots yet.")
         return 1
     output = Path(args.output or f"run-{run_id}.json").expanduser()
-    path = store.export_run(run_id, output)
+    path = store.export_run(
+        run_id,
+        output,
+        include_sensitive=args.include_sensitive,
+    )
     print(f"Exported run: {path}")
     return 0
 
@@ -300,6 +316,14 @@ def _add_config_argument(parser: argparse.ArgumentParser) -> None:
 
 def _add_user_argument(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--user-id", default=LOCAL_USER_ID)
+
+
+def _add_sensitive_output_argument(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--include-sensitive",
+        action="store_true",
+        help="show complete prompts, model text, tool payloads, and error messages",
+    )
 
 
 def _positive_integer(value: str) -> int:
