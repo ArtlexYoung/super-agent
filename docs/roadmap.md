@@ -862,8 +862,21 @@ Status: implemented.
   unredacted Web route or silently weaken the default view.
 - Retain the v0.0.132 detailed and critical cleanup periods and explicit `--apply` deletion.
 
+## v0.1.0: Reproducible Capability Baseline
+
+Status: implemented.
+
+- Add one dependency-free benchmark runner for structured Agent commands and task manifests.
+- Isolate each Agent and task in a copied workspace without invoking shell strings.
+- Record versions, manifest and output hashes, elapsed time, exit status, timeouts, and bounded
+  stderr in one report while refusing to overwrite prior evidence.
+- Provide an explicit SiliconFlow smoke manifest that reads the API key only from
+  `OA3_SILICONFLOW_API_KEY` and never persists the secret.
+- Move release versions to `0.x.y` and keep the v0.1 source budget below 90 Python files and
+  20,000 lines with no default runtime dependencies.
+
 ## Release Gate
 
-The project will not move to `0.1.x` because of feature count. The gate is a reproducible
-proof that the single Skill lifecycle is useful, understandable, isolated across users,
-and maintainable without hidden fallback paths or mandatory heavy dependencies.
+The project will not move to `1.0` because of feature count. The gate is reproducible proof
+that the single Skill lifecycle is useful, understandable, isolated across users, and
+maintainable without hidden fallback paths or mandatory heavy dependencies.

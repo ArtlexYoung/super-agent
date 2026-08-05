@@ -15,7 +15,7 @@ The default Python install has no third-party runtime dependencies. A basic `Age
 stateless and writes no files. Storage, conversations, memory, Skill updates, MCP, and Web
 are optional layers that fail clearly when their requirements are missing.
 
-Super Agent is experimental `0.0.x` software. Breaking changes do not keep compatibility
+Super Agent is experimental pre-`1.0` software. Breaking changes do not keep compatibility
 aliases or migration wrappers.
 
 ## Start in One Minute
@@ -193,3 +193,6 @@ pnpm --dir web build
 
 For the complete local release gate, including version and package-shape checks, see
 [Local release](docs/releasing.md).
+
+The dependency-free comparison runner and its reproducibility contract are documented in
+[Benchmarks](docs/benchmarks.md).

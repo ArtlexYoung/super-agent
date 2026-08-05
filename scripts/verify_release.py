@@ -11,8 +11,8 @@ import tomllib
 from pathlib import Path
 
 
-MAX_SOURCE_FILES = 83
-MAX_SOURCE_LINES = 17_000
+MAX_SOURCE_FILES = 90
+MAX_SOURCE_LINES = 20_000
 EXPECTED_SOURCE_ROOT = {"adapter", "cli.py", "core", "skill", "super_agent.py"}
 EXPECTED_WHEEL_ROOTS = [
     "src/adapter",
@@ -31,7 +31,7 @@ EXPECTED_SDIST_ROOTS = [
     "tests",
     "examples",
 ]
-VERSION_PATTERN = re.compile(r"0\.0\.\d+$")
+VERSION_PATTERN = re.compile(r"0\.\d+\.\d+$")
 
 
 def main(arguments: list[str] | None = None) -> int:
@@ -51,7 +51,7 @@ def main(arguments: list[str] | None = None) -> int:
 def verify_release(root: Path, expected_version: str) -> list[str]:
     errors: list[str] = []
     if VERSION_PATTERN.fullmatch(expected_version) is None:
-        errors.append("version must use the 0.0.x format")
+        errors.append("version must use the 0.x.y format")
 
     project = _read_toml(root / "pyproject.toml", errors)
     web_package = _read_json(root / "web/package.json", errors)

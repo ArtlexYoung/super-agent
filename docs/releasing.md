@@ -1,6 +1,6 @@
 # Local Release
 
-Releases stay in `0.0.x` until the project release gate is intentionally changed. The
+Releases stay below `1.0` until the project release gate is intentionally changed. The
 process is local and does not push or modify remote history.
 
 ## Environment
@@ -16,14 +16,14 @@ pnpm --dir web install --frozen-lockfile
 
 ## Checks
 
-Replace `0.0.133` with the version being released:
+Replace `0.1.0` with the version being released:
 
 ```bash
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src:tests \
   .venv/bin/python -m unittest discover -s tests -p 'test_*.py'
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src \
   .venv/bin/python -m compileall -q src
-.venv/bin/python scripts/verify_release.py --version 0.0.133
+.venv/bin/python scripts/verify_release.py --version 0.1.0
 git diff --check
 pnpm --dir web typecheck
 pnpm --dir web lint
@@ -42,6 +42,6 @@ unrelated working-tree changes out of the release commit:
 ```bash
 git add -A -- . ':(exclude).gitignore'
 git diff --cached --check
-git commit -m "release: v0.0.133"
-git tag v0.0.133
+git commit -m "release: v0.1.0"
+git tag v0.1.0
 ```

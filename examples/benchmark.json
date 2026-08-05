@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "agents": [
+    {
+      "name": "super-agent",
+      "version": "0.1.0",
+      "command": [
+        "{python}",
+        "{project_root}/src/cli.py",
+        "--output",
+        "json",
+        "{prompt}"
+      ],
+      "environment": {
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "SUPER_AGENT_PROVIDER": "openai-compatible",
+        "SUPER_AGENT_MODEL": "THUDM/GLM-4-9B-0414",
+        "SUPER_AGENT_BASE_URL": "https://api.siliconflow.cn/v1",
+        "SUPER_AGENT_API_KEY_ENV": "OA3_SILICONFLOW_API_KEY"
+      },
+      "result_json_field": "text"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "remote-smoke",
+      "prompt": "Return exactly: super-agent benchmark ready",
+      "workspace": null
+    }
+  ]
+}
