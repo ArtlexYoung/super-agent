@@ -963,11 +963,23 @@ Status: implemented.
   accepts invalid zero-length pages.
 - Verify budget sharing and exhaustion through Skill, tool, and memory-stage disclosures.
 
-## v0.1.8-v0.1.19: Planned Capability Proof
+## v0.1.8: Evidence-Based Model Assignment
+
+Status: implemented.
+
+- Discover the configured free SiliconFlow OpenAI-compatible model only when
+  `OA3_SILICONFLOW_API_KEY` is present; keep the secret itself out of profiles and events.
+- Select a model from declared purpose and feature support, configured quality, and observed
+  reliability without keyword triggers or hidden fallback behavior.
+- Record the score and every selection fact in the normal model call and task events.
+- Expose `AgentRunOptions.purpose` and `required_features` so callers can state a task contract
+  without coupling the Runtime to a provider.
+
+## v0.1.9-v0.1.19: Planned Capability Proof
 
 Status: planned.
 
-- `v0.1.8-v0.1.19`: reference-based model assignment, specialized Agents, isolated worktrees,
+- `v0.1.9-v0.1.19`: specialized Agents, isolated worktrees,
   independent review, evolution comparisons, general tasks, and final release gates.
 - `v0.1.8-v0.1.13`: evidence-based model assignment, specialized subagents, isolated parallel
   worktrees, independent review, comparative Skill evolution, and public coding evaluation.

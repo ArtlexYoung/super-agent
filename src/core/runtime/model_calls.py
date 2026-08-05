@@ -49,6 +49,7 @@ class SelectedModel:
     connection: ProviderConnection
     selected_by: str
     reason: str
+    evidence: tuple[str, ...] = ()
     input_cost_per_million: float | None = None
     output_cost_per_million: float | None = None
 
@@ -61,6 +62,7 @@ class SelectedModel:
             "api_key_env": self.connection.api_key_env,
             "selected_by": self.selected_by,
             "reason": self.reason,
+            "evidence": list(self.evidence),
         }
 
 
@@ -93,6 +95,43 @@ class ModelUsageStats:
             "average_output_tokens": self.average_output_tokens,
             "average_cost": self.average_cost,
         }
+
+
+@dataclass(frozen=True)
+class ModelAssignment:
+    """One deterministic model choice with inspectable supporting facts."""
+
+    profile: ModelProfile
+    score: float
+    evidence: tuple[str, ...]
+
+
+def assign_model_for_task(
+    profiles: list[ModelProfile],
+    purpose: str,
+    required_features: tuple[str, ...],
+    usage: list[ModelUsageStats],
+) -> ModelAssignment:
+    """Choose from declared and observed evidence without inspecting prompt keywords."""
+    required = {item.strip().lower() for item in required_features if item.strip()}
+    candidates = [
+        profile
+        for profile in profiles
+        if required.issubset(set(profile.traits.supports))
+    ]
+    if not candidates:
+        features = ", ".join(sorted(required)) or "none"
+        raise ValueError(f"no configured model supports required features: {features}")
+    observed = {(item.profile_key, item.purpose): item for item in usage}
+    clean_purpose = purpose.strip().lower() or "auto"
+    assignments = [
+        _score_model_candidate(profile, clean_purpose, required, observed)
+        for profile in candidates
+    ]
+    return max(
+        assignments,
+        key=lambda item: (item.score, -profiles.index(item.profile)),
+    )
 
 
 @dataclass
@@ -128,6 +167,56 @@ class ModelCalls:
     ) -> None:
         self.model_profiles = list(model_profiles)
         self.provider_pool = provider_pool
+
+    def select_task_model(
+        self,
+        purpose: str,
+        required_features: tuple[str, ...],
+        store: EventStore | None,
+    ) -> SelectedModel:
+        usage = [] if store is None else list_model_usage_stats(store, purpose)
+        assignment = assign_model_for_task(
+            self.model_profiles,
+            purpose,
+            required_features,
+            usage,
+        )
+        profile = assignment.profile
+        if not _profile_is_ready(profile, self.provider_pool.environment):
+            requirement = profile.connection.api_key_env or "provider connection"
+            raise RuntimeError(
+                f"selected model {profile.key} is not ready; configure {requirement}"
+            )
+        return SelectedModel(
+            profile_key=profile.key,
+            model=profile.model,
+            connection=profile.connection,
+            selected_by="task_evidence",
+            reason=f"evidence score {assignment.score:.4f}",
+            evidence=assignment.evidence,
+            input_cost_per_million=profile.traits.input_cost_per_million,
+            output_cost_per_million=profile.traits.output_cost_per_million,
+        )
+
+    def select_default_model(self) -> SelectedModel:
+        profile = next(
+            (item for item in self.model_profiles if item.default),
+            self.model_profiles[0],
+        )
+        if not _profile_is_ready(profile, self.provider_pool.environment):
+            requirement = profile.connection.api_key_env or "provider connection"
+            raise RuntimeError(
+                f"default model {profile.key} is not ready; configure {requirement}"
+            )
+        return SelectedModel(
+            profile_key=profile.key,
+            model=profile.model,
+            connection=profile.connection,
+            selected_by="default",
+            reason="configured default model",
+            input_cost_per_million=profile.traits.input_cost_per_million,
+            output_cost_per_million=profile.traits.output_cost_per_million,
+        )
 
     def create_text_model(
         self,
@@ -378,10 +467,46 @@ def _finish_stats(
     )
 
 
+def _score_model_candidate(
+    profile: ModelProfile,
+    purpose: str,
+    required: set[str],
+    observed: dict[tuple[str, str], ModelUsageStats],
+) -> ModelAssignment:
+    traits = profile.traits
+    purpose_match = purpose != "auto" and purpose in traits.purposes
+    stats = observed.get((profile.key, purpose))
+    score = 4.0 if purpose_match else 0.0
+    evidence = ["supports=" + ",".join(sorted(required))]
+    if purpose_match:
+        evidence.append(f"declared_purpose={purpose}")
+    if traits.quality_score is not None:
+        score += traits.quality_score * 2
+        evidence.append(f"declared_quality={traits.quality_score:.4f}")
+    if stats is not None and stats.call_count:
+        score += stats.reliability + stats.average_quality
+        evidence.extend(
+            [
+                f"observed_calls={stats.call_count}",
+                f"observed_reliability={stats.reliability:.4f}",
+                f"observed_quality={stats.average_quality:.4f}",
+            ]
+        )
+    if profile.default:
+        score += 0.01
+        evidence.append("configured_default=true")
+    return ModelAssignment(profile, round(score, 6), tuple(evidence))
+
+
 def _score(value: object, default: float) -> float:
     if isinstance(value, bool) or not isinstance(value, int | float):
         return default
     return min(1.0, max(0.0, float(value)))
+
+
+def _profile_is_ready(profile: ModelProfile, environment: dict[str, str]) -> bool:
+    name = profile.connection.api_key_env
+    return name is None or bool(environment.get(name, "").strip())
 
 
 def _nonnegative_number(value: object) -> float:
@@ -464,5 +589,9 @@ def _to_provider_call(
         tools=None if tools is None else tuple(tools),
         input_cost_per_million=decision.input_cost_per_million or 0.0,
         output_cost_per_million=decision.output_cost_per_million or 0.0,
-        selection={"selected_by": decision.selected_by, "reason": decision.reason},
+        selection={
+            "selected_by": decision.selected_by,
+            "reason": decision.reason,
+            "evidence": list(decision.evidence),
+        },
     )

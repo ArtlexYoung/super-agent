@@ -18,6 +18,8 @@ from core.provider.chat import (
 from core.provider.pool import ProviderPool
 from core.config import CommonConfig
 from core.skill_use.models import (
+    ModelProfile,
+    ModelTraits,
     discover_environment_model_profiles,
     model_profile_is_ready,
     model_profile_to_dict,
@@ -27,6 +29,10 @@ from core.skill_use.files.models import model_skill_input_from_dict
 from core.skill_use.files.validation import validate_skill_replacement
 from core.skill_use.update import SkillChangeCase
 from core.evaluation.records import read_evaluation_records
+from core.runtime.model_calls import (
+    ModelUsageStats,
+    assign_model_for_task,
+)
 from support import RecordingProvider, SequenceProvider
 
 
@@ -75,6 +81,36 @@ class ModelSkillTests(unittest.TestCase):
         self.assertEqual([], profiles)
         with self.assertRaisesRegex(RuntimeError, "No model is configured"):
             select_default_model_profile(profiles)
+
+    def test_siliconflow_environment_uses_the_declared_free_model_without_key_output(self) -> None:
+        profiles = discover_environment_model_profiles(
+            {"OA3_SILICONFLOW_API_KEY": "secret-value"}
+        )
+
+        selected = select_default_model_profile(profiles)
+
+        self.assertEqual("siliconflow", selected.name)
+        self.assertEqual("THUDM/GLM-4-9B-0414", selected.model)
+        self.assertEqual("https://api.siliconflow.cn/v1", selected.connection.base_url)
+        self.assertEqual("OA3_SILICONFLOW_API_KEY", selected.connection.api_key_env)
+        self.assertNotIn("secret-value", str(model_profile_to_dict(selected, {
+            "OA3_SILICONFLOW_API_KEY": "secret-value"
+        })))
+
+    def test_model_assignment_records_declared_and_observed_evidence(self) -> None:
+        first = _profile_for_assignment("default", default=True, quality=0.6)
+        second = _profile_for_assignment("specialist", default=False, quality=0.8)
+
+        assignment = assign_model_for_task(
+            [first, second],
+            "code-review",
+            ("text",),
+            [ModelUsageStats("model:specialist", "code-review", 4, 4, 1.0, 10, 1, 1, 0)],
+        )
+
+        self.assertEqual("model:specialist", assignment.profile.key)
+        self.assertIn("declared_purpose=code-review", assignment.evidence)
+        self.assertIn("observed_reliability=1.0000", assignment.evidence)
 
     def test_environment_discovers_openai_without_exposing_key(self) -> None:
         environment = {"OPENAI_API_KEY": "secret-value"}
@@ -521,4 +557,18 @@ output_cost_per_million = 0.8
 agent_can_update_connection = false
 """.strip(),
         encoding="utf-8",
+    )
+
+
+def _profile_for_assignment(name: str, *, default: bool, quality: float) -> ModelProfile:
+    return ModelProfile(
+        name=name,
+        description=name,
+        version="test",
+        model=name,
+        connection=ProviderConnection("mock"),
+        traits=ModelTraits(["text"], ["code-review"], [], quality),
+        default=default,
+        source="test",
+        skill_key=f"model:{name}",
     )

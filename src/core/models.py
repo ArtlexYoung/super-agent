@@ -22,6 +22,8 @@ class AgentRunOptions:
     run_id: str | None = None
     event_listener: Callable[[RunEvent], None] | None = None
     skill: str | None = None
+    purpose: str = "auto"
+    required_features: tuple[str, ...] = ("text",)
 
 
 def resolve_agent_run_options(

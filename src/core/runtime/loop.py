@@ -28,7 +28,6 @@ from core.skill_use.models import (
     ModelProfile,
     model_profile_is_ready,
     model_profile_to_dict,
-    select_default_model_profile,
 )
 from core.runtime.model_calls import (
     ModelCalls,
@@ -171,7 +170,11 @@ class ModelLoop:
         self.model_calls = ModelCalls(self.model_profiles, provider_pool)
 
     def run_task(self, request: Task, run: Run) -> RunResult:
-        decision = self._select_default_model()
+        decision = self.model_calls.select_task_model(
+            request.purpose,
+            request.required_features,
+            run.store,
+        )
         self._select_run_model(run, decision)
         state = self._prepare_loop(request, run, decision)
         run.record_event(
@@ -198,7 +201,7 @@ class ModelLoop:
         *,
         decision: SelectedModel | None = None,
     ) -> TextModel:
-        selected = decision or self._select_default_model()
+        selected = decision or self.model_calls.select_default_model()
         return self.model_calls.create_text_model(
             store,
             purpose,
@@ -303,15 +306,6 @@ class ModelLoop:
                 tool_result_message(call, state.tools.run_tool_call(call))
             )
         state.contributions.extend(state.tools.activated_contributions)
-
-    def _select_default_model(self) -> SelectedModel:
-        profile = select_default_model_profile(self.model_profiles)
-        if not model_profile_is_ready(profile, self.provider_pool.environment):
-            requirement = profile.connection.api_key_env or "provider connection"
-            raise RuntimeError(
-                f"default model {profile.key} is not ready; configure {requirement}"
-            )
-        return _selected_model(profile, "default", "configured default model")
 
     def _select_run_model(self, run: Run, decision: SelectedModel) -> None:
         profile = self.model_calls.require_model_profile(decision)
@@ -429,6 +423,7 @@ def _selected_model(
     profile: ModelProfile,
     selected_by: str,
     reason: str,
+    evidence: tuple[str, ...] = (),
 ) -> SelectedModel:
     return SelectedModel(
         profile_key=profile.key,
@@ -436,6 +431,7 @@ def _selected_model(
         connection=profile.connection,
         selected_by=selected_by,
         reason=reason,
+        evidence=evidence,
         input_cost_per_million=profile.traits.input_cost_per_million,
         output_cost_per_million=profile.traits.output_cost_per_million,
     )

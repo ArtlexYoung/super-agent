@@ -231,8 +231,17 @@ def _read_model_profiles(
     user_id: str,
 ) -> list[ModelProfile]:
     environment = context.user_secrets.get_environment_for_user(user_id)
+    if context.code_model_profiles and not _has_model_skill(skills):
+        return list(context.code_model_profiles)
     profiles = read_model_profiles(skills, environment)
     return profiles or list(context.code_model_profiles)
+
+
+def _has_model_skill(skills) -> bool:
+    return any(
+        entry.reference.skill_type == "model"
+        for entry in skills.index.entries
+    )
 
 
 def _create_task_loop(

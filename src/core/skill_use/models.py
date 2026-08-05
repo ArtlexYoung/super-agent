@@ -20,6 +20,8 @@ from skill.manifest import calculate_skill_directory_sha256
 DEFAULT_OPENAI_MODEL = "gpt-4.1-mini"
 DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4"
 DEFAULT_OLLAMA_MODEL = "llama3.2"
+DEFAULT_SILICONFLOW_MODEL = "THUDM/GLM-4-9B-0414"
+DEFAULT_SILICONFLOW_BASE_URL = "https://api.siliconflow.cn/v1"
 
 MODEL_CONFIGURATION_FIELDS = {
     "provider",
@@ -167,6 +169,21 @@ def discover_environment_model_profiles(
     configured_provider = _environment_text(env, "SUPER_AGENT_PROVIDER")
     if configured_provider is not None:
         profiles.append(_profile_from_super_agent_environment(env, configured_provider))
+    if _environment_text(env, "OA3_SILICONFLOW_API_KEY") is not None:
+        profiles.append(
+            _create_ephemeral_profile(
+                "siliconflow",
+                "Free SiliconFlow model discovered from OA3_SILICONFLOW_API_KEY.",
+                DEFAULT_SILICONFLOW_MODEL,
+                ProviderConnection(
+                    OPENAI_COMPATIBLE_PROVIDER,
+                    DEFAULT_SILICONFLOW_BASE_URL,
+                    "OA3_SILICONFLOW_API_KEY",
+                ),
+                "environment:OA3_SILICONFLOW_API_KEY",
+                supports=["text", "tools"],
+            )
+        )
     ollama_host = _environment_text(env, "OLLAMA_HOST")
     if ollama_host is not None:
         base_url = ollama_host.rstrip("/")

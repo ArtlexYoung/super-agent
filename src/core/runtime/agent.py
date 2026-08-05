@@ -288,6 +288,8 @@ class Agent:
             allowed_task_skills=() if options.skill is None else (options.skill,),
             resumed_from_run_id=resumed_from_run_id,
             resume_checkpoint=resume_checkpoint,
+            purpose=options.purpose,
+            required_features=options.required_features,
             subagents=SubagentCallbacks(
                 list_subagents=self._list_subagents_for_model,
                 run_named_subagent=self._run_named_subagent_for_model,
@@ -392,7 +394,8 @@ class Agent:
             environment = self.user_secrets.get_environment_for_user(LOCAL_USER_ID)
             profiles = read_model_profiles(skills, environment)
             code_profiles: tuple[ModelProfile, ...] = ()
-            if self._provided_provider is not None and not profiles:
+            has_model_skill = _has_model_skill(skills)
+            if self._provided_provider is not None and not has_model_skill:
                 code_profiles = (create_direct_provider_profile(),)
                 profiles = list(code_profiles)
             profile = select_default_model_profile(profiles) if profiles else None
@@ -481,6 +484,8 @@ class Agent:
     ) -> list[ModelProfile]:
         environment = self.user_secrets.get_environment_for_user(user_id)
         profiles = read_model_profiles(skills, environment)
+        if self._provided_provider is not None and not _has_model_skill(skills):
+            return list(self._code_model_profiles)
         return profiles or list(self._code_model_profiles)
 
     def _create_task_loop(self, user_id: str, skills):
@@ -585,3 +590,10 @@ class Agent:
             conversation_id=parent_session.identity.conversation_id,
             parent_run_id=parent_session.run_id,
         )
+
+
+def _has_model_skill(skills) -> bool:
+    return any(
+        entry.reference.skill_type == "model"
+        for entry in skills.index.entries
+    )

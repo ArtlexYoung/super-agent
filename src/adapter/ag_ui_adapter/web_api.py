@@ -94,6 +94,8 @@ class WebAPI:
             store=store,
         )
         environment = self.agent.user_secrets.get_environment_for_user(self.user_id)
+        if self.agent._provided_provider is not None and not _has_model_skill(skills):
+            environment = {}
         models = read_model_profiles(skills, environment)
         return {
             "schema_version": 3,
@@ -123,7 +125,6 @@ class WebAPI:
                 [config.agent.name],
             ),
         }
-
     def _read_run(self, run_id: str) -> dict[str, object]:
         agent = _find_agent_for_run(self.agent, self.user_id, run_id, set())
         store = agent._create_event_store(self.user_id)
@@ -180,6 +181,13 @@ class WebAPI:
 
 def _ok(body: object, status: HTTPStatus = HTTPStatus.OK) -> WebAPIResponse:
     return WebAPIResponse(status, body)
+
+
+def _has_model_skill(skills) -> bool:
+    return any(
+        entry.reference.skill_type == "model"
+        for entry in skills.index.entries
+    )
 
 
 def _web_skill_list(
