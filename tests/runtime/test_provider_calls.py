@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import unittest
 
+from core.evaluation.review import parse_review_response
+
 from core.provider.chat import (
     ActionTurn,
     FinalTurn,
@@ -15,6 +17,20 @@ from core.provider.chat import (
 
 
 class ProviderCallTests(unittest.TestCase):
+    def test_review_response_has_a_strict_machine_contract(self) -> None:
+        report = parse_review_response(
+            '{"verdict":"changes_requested","findings":[{"severity":"major",'
+            '"title":"Missing check","evidence":"No test result",'
+            '"action":"Run the declared check"}],"checks":["schema"]}'
+        )
+
+        self.assertFalse(report.passed)
+        self.assertEqual("major", report.findings[0].severity)
+        with self.assertRaisesRegex(ValueError, "passing review cannot contain findings"):
+            parse_review_response(
+                '{"verdict":"pass","findings":[{"severity":"info",'
+                '"title":"x","evidence":"y","action":"z"}],"checks":[]}'
+            )
     def test_provider_text_becomes_one_final_turn(self) -> None:
         self.assertEqual(
             FinalTurn("finished"),

@@ -995,11 +995,21 @@ Status: implemented.
   `.super-agent/worktrees` and never accept model-provided shell commands.
 - Keep removal non-forced so dirty worktrees fail visibly instead of losing changes.
 
-## v0.1.11-v0.1.19: Planned Capability Proof
+## v0.1.11: Independent Review Evidence
+
+Status: implemented.
+
+- Add an explicit user-scoped review operation that uses a separate review-purpose model call.
+- Send review evidence through the central progressive disclosure path and parse a strict report
+  contract with no Markdown or implicit repair fallback.
+- Store only verdicts, findings, and check names in the run audit stream; review failures record
+  their type and leave the original run unchanged.
+
+## v0.1.12-v0.1.19: Planned Capability Proof
 
 Status: planned.
 
-- `v0.1.11-v0.1.19`: independent review, evolution comparisons, general tasks,
+- `v0.1.12-v0.1.19`: evolution comparisons, general tasks,
   independent review, evolution comparisons, general tasks, and final release gates.
 - `v0.1.8-v0.1.13`: evidence-based model assignment, specialized subagents, isolated parallel
   worktrees, independent review, comparative Skill evolution, and public coding evaluation.

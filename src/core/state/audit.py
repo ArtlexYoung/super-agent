@@ -61,6 +61,8 @@ _CRITICAL_EVENT_TYPES = {
     "skill_package.updated",
     "skill_package.removed",
     "audit.pruned",
+    "review.completed",
+    "review.failed",
 }
 _CONTENT_FIELDS = {
     "run.started": ("prompt",),

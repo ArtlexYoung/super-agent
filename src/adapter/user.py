@@ -241,6 +241,46 @@ class UserRuns:
             purpose,
         )
 
+    def review(
+        self,
+        run_id: str,
+        evidence: dict[str, object],
+    ):
+        from core.evaluation.review import review_run_evidence
+        from core.skill_use.defaults import create_skills
+
+        agent = self.user.agent
+        store = agent._create_event_store(self.user.user_id)
+        skills = create_skills(
+            agent.config,
+            handlers=agent._skill_handlers,
+            store=store,
+            include_freshness=False,
+        )
+        loop = agent._create_task_loop(self.user.user_id, skills)
+        decision = loop.model_calls.select_task_model("review", ("text",), store)
+        reviewer = loop.create_text_model(
+            store,
+            "independent_review",
+            decision=decision,
+        )
+        state = agent._get_state_access()
+        return state.execute_action(
+            self.user.user_id,
+            ActionRequest.create(
+                "user:run-review",
+                f"run:{run_id}",
+                (ActionEffect.CREATE,),
+            ),
+            lambda: review_run_evidence(
+                store,
+                run_id,
+                evidence,
+                reviewer.send_messages,
+                skills.disclosure,
+            ),
+        )
+
 
 class UserSkills:
     """Manage explicit Skill changes and model Skills for one user."""
