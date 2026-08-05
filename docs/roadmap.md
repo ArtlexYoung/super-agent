@@ -1070,11 +1070,24 @@ Status: implemented.
 - Keep process success, output correctness, file artifacts, and workspace safety as separate
   report facts rather than collapsing them into one inferred success.
 
-## v0.1.18-v0.1.19: Planned Capability Proof
+## v0.1.18: Remove Superseded Source
+
+Status: implemented.
+
+- Delete the unused parallel model-message builder after proving the Runtime loop owns the only
+  active construction path.
+- Remove seven empty package shells and rely on the namespace-package layout already used by
+  `adapter`, without aliases or import forwarding files.
+- Tighten the release budget from fewer than 90 files and 20,000 lines to fewer than 85 files
+  and 19,500 lines; the release contains 82 Python files and 19,345 physical lines.
+
+## v0.1.19: Final Reproducible Gate
 
 Status: planned.
 
-- `v0.1.18-v0.1.19`: remove superseded paths and publish the final non-regression gate,
+Status: planned.
+
+- `v0.1.19`: publish the final non-regression gate,
   independent review, evolution comparisons, general tasks, and final release gates.
 - `v0.1.8-v0.1.13`: evidence-based model assignment, specialized subagents, isolated parallel
   worktrees, independent review, comparative Skill evolution, and public coding evaluation.

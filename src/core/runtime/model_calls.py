@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable, Protocol
 from uuid import uuid4
 
-from core.skill_use.handlers import TaskPolicy
 from core.provider.chat import (
     ChatProvider,
     Message,
@@ -21,9 +20,7 @@ from core.provider.chat import (
 )
 from core.provider.pool import ProviderPool
 from core.state.models import Conversation
-from core.models import Task
 from core.skill_use.models import ModelProfile
-from skill.manifest import Skill
 
 if TYPE_CHECKING:
     from core.state.events import EventStore
@@ -513,39 +510,6 @@ def _nonnegative_number(value: object) -> float:
     if isinstance(value, bool) or not isinstance(value, int | float):
         return 0.0
     return max(0.0, float(value))
-
-
-def build_model_messages(
-    request: Task,
-    workflow: TaskPolicy,
-    skills: list[Skill],
-    *,
-    system: str,
-) -> list[Message]:
-    system_parts = [system, UNTRUSTED_CONTEXT_POLICY]
-    if workflow.instruction:
-        system_parts.append(
-            "<untrusted_workflow>\n" + workflow.instruction + "\n</untrusted_workflow>"
-        )
-    system_parts.extend(
-        (
-            f'<untrusted_skill name="{skill.manifest.name}">\n'
-            + skill.instructions
-            + "\n</untrusted_skill>"
-        )
-        for skill in skills
-    )
-    messages: list[Message] = [
-        {"role": "system", "content": "\n\n".join(system_parts)}
-    ]
-    messages.extend(
-        {"role": str(item.get("role", "")), "content": str(item.get("content", ""))}
-        for item in request.messages
-        if item.get("role") in {"user", "assistant"}
-    )
-    if messages[-1].get("role") != "user" or messages[-1].get("content") != request.prompt:
-        messages.append({"role": "user", "content": request.prompt})
-    return messages
 
 
 def assistant_tool_call_message(text: str, calls: list[ToolCall]) -> Message:

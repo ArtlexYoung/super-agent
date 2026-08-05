@@ -11,8 +11,8 @@ import tomllib
 from pathlib import Path
 
 
-MAX_SOURCE_FILES = 90
-MAX_SOURCE_LINES = 20_000
+MAX_SOURCE_FILES = 85
+MAX_SOURCE_LINES = 19_500
 EXPECTED_SOURCE_ROOT = {"adapter", "cli.py", "core", "skill", "super_agent.py"}
 EXPECTED_WHEEL_ROOTS = [
     "src/adapter",
