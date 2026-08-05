@@ -22,8 +22,9 @@
 ## Verify
 
 1. Run the narrowest relevant checks first, then broaden checks in proportion to shared behavior and blast radius.
-2. Cover the critical path, changed failure paths, invalid input, limits, empty values, and duplicate or conflicting state when relevant.
-3. Inspect the final diff for accidental scope, stale names, compatibility shells, generated noise, secrets, and unverified claims.
+2. Start only declared commands. Poll long-running checks to completion and stop a process explicitly when its result is no longer needed.
+3. Cover the critical path, changed failure paths, invalid input, limits, empty values, and duplicate or conflicting state when relevant.
+4. Inspect the final diff for accidental scope, stale names, compatibility shells, generated noise, secrets, and unverified claims.
 
 ## Report
 

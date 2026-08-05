@@ -9,6 +9,7 @@ import subprocess
 from dataclasses import asdict
 from pathlib import Path
 
+from adapter.processes import DeclaredProcessTools
 from core.checks import ActionEffect
 from core.config import CodeConfig, CodeSettings
 from core.files import write_bytes_atomically
@@ -27,7 +28,7 @@ from super_agent import Agent
 WORKSPACE_FILE_LIMIT = 1_000_000
 WORKSPACE_SEARCH_LIMIT = 200
 WORKSPACE_TREE_LIMIT = 500
-WORKSPACE_COMMAND_TIMEOUT = 60
+WORKSPACE_GIT_TIMEOUT = 60
 WORKSPACE_GIT_OUTPUT_LIMIT = 256_000
 
 
@@ -65,9 +66,14 @@ class CodeWorkspace:
         self.ignored = tuple(
             (self.root / item).resolve() for item in settings.ignored_paths
         )
+        self.processes = DeclaredProcessTools(
+            self.root,
+            settings.verification_commands,
+            settings.execute,
+        )
 
     def list_tools(self) -> tuple[SkillTool, ...]:
-        return (*self._read_tools(), *self._change_tools())
+        return (*self._read_tools(), *self._change_tools(), *self.processes.list_tools())
 
     def _read_tools(self) -> tuple[SkillTool, ...]:
         path = _workspace_path_schema()
@@ -167,17 +173,6 @@ class CodeWorkspace:
                 SkillAction((ActionEffect.DELETE,), "workspace:file", "path"),
                 ("path", "expected_sha256"),
                 result_kind="file",
-            ),
-            SkillTool(
-                "run_workspace_check",
-                "Run one declared verification command after confirmation.",
-                {"command_number": {"type": "integer", "minimum": 1}},
-                self.run_check,
-                SkillAction(
-                    (ActionEffect.EXECUTE,), "workspace:command", "command_number"
-                ),
-                ("command_number",),
-                result_kind="process",
             ),
         )
 
@@ -351,31 +346,6 @@ class CodeWorkspace:
             "previous_sha256": current_sha256,
         }
 
-    def run_check(self, arguments: dict[str, object]) -> dict[str, object]:
-        self._require_setting("execute")
-        number = read_optional_positive_tool_integer(arguments, "command_number")
-        commands = self.settings.verification_commands
-        if number is None or number > len(commands):
-            raise ValueError(
-                f"verification command number must be between 1 and {len(commands)}"
-            )
-        command = commands[number - 1]
-        completed = subprocess.run(
-            command,
-            cwd=self.root,
-            capture_output=True,
-            text=True,
-            timeout=WORKSPACE_COMMAND_TIMEOUT,
-            check=False,
-        )
-        return {
-            "command_number": number,
-            "command": command,
-            "returncode": completed.returncode,
-            "stdout": completed.stdout,
-            "stderr": completed.stderr,
-        }
-
     def _walk_entries(self, selected: Path, max_depth: int) -> list[dict[str, object]]:
         entries: list[dict[str, object]] = []
         pending = [(selected, 0)]
@@ -451,7 +421,7 @@ class CodeWorkspace:
             env=environment,
             capture_output=True,
             text=True,
-            timeout=WORKSPACE_COMMAND_TIMEOUT,
+            timeout=WORKSPACE_GIT_TIMEOUT,
             check=False,
         )
         if completed.returncode != 0:

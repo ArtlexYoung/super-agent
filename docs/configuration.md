@@ -63,6 +63,9 @@ follow the configured read setting. With no `code.toml`, the current directory i
 list replaces those defaults. Writes, patches, deletion, and numbered verification commands
 pass through the central action runner and require terminal confirmation before they run.
 Replacing, patching, or deleting an existing file also requires its current SHA-256.
+Declared commands start asynchronously with a process ID. Polling returns bounded stdout,
+stderr, state, return code, elapsed time, and explicit timeout, output-limit, stop, and decode
+facts. Stopping is a separate checked action. The model cannot supply executable arguments.
 
 `agent.skills` pins ordinary Skills to every run. `disabled_skills` excludes a type or a
 specific `type:name`. Task selection is per run, while subagent links are configured in

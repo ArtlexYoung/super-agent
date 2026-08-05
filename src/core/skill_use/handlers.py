@@ -58,9 +58,10 @@ class SkillAction:
         if self.resource_argument is None:
             return self.resource
         value = arguments.get(self.resource_argument)
-        if not isinstance(value, str) or not value.strip():
+        if isinstance(value, bool) or not isinstance(value, str | int):
             return self.resource
-        return f"{self.resource}:{value.strip()}"
+        selected = str(value).strip()
+        return f"{self.resource}:{selected}" if selected else self.resource
 
 
 @dataclass(frozen=True)

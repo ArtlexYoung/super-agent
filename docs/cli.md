@@ -52,7 +52,8 @@ status and diff reads, plus explicit file writes, structured patches, deletion, 
 verification commands. Existing-file changes require the SHA-256 returned by a read. All
 non-read tools ask for terminal confirmation through the central action runner; refusal or
 EOF blocks the action. Paths outside the configured root and undeclared verification
-commands fail visibly.
+commands fail visibly. Declared commands run without a shell and expose separate start,
+poll, and stop tools with bounded time and output.
 
 ## Skills
 

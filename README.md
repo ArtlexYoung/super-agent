@@ -157,7 +157,8 @@ deletion require the SHA-256 returned by a prior read, so a concurrent change fa
 of being overwritten. Paths must remain under the configured workspace; ignored, escaping,
 oversized, and non-text reads fail visibly. Every non-read tool asks for terminal
 confirmation before it runs, and refusal or end-of-input stops the action without a hidden
-fallback.
+fallback. Verification commands are declared as argument arrays, then started, polled, or
+stopped by ID with explicit time and output limits; shell strings are never accepted.
 
 ## Guarantees
 

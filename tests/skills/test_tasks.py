@@ -1,6 +1,5 @@
 import json
 import subprocess
-import sys
 import tempfile
 import unittest
 from dataclasses import replace
@@ -240,7 +239,7 @@ commands = [["python3.11", "-m", "unittest"]]
             with self.assertRaisesRegex(PermissionError, "sets reads to deny"):
                 CodeWorkspace(replace(settings, read="deny")).read_file({"path": "binary.bin"})
 
-    def test_code_workspace_changes_are_exact_and_commands_are_declared(self) -> None:
+    def test_code_workspace_changes_are_sha_checked_and_exact(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             workspace = root / "workspace"
@@ -250,8 +249,8 @@ commands = [["python3.11", "-m", "unittest"]]
                 [],
                 "allow",
                 "allow",
-                "allow",
-                [[sys.executable, "-c", "print('checked')"]],
+                "deny",
+                [],
             )
             bounded = CodeWorkspace(settings)
 
@@ -263,15 +262,12 @@ commands = [["python3.11", "-m", "unittest"]]
                     "replacements": [{"old_text": "old", "new_text": "new"}],
                 }
             )
-            checked = bounded.run_check({"command_number": 1})
             deleted = bounded.delete_file(
                 {"path": "note.txt", "expected_sha256": patched["sha256"]}
             )
 
             self.assertTrue(created["created"])
             self.assertTrue(patched["updated"])
-            self.assertEqual(0, checked["returncode"])
-            self.assertIn("checked", checked["stdout"])
             self.assertTrue(deleted["deleted"])
             self.assertFalse(workspace.joinpath("note.txt").exists())
 

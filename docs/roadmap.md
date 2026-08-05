@@ -902,12 +902,25 @@ Status: implemented.
 - Keep code settings optional and separate in `code.toml`; zero configuration ignores common
   repository and build-noise directories without adding a runtime dependency.
 
-## v0.1.3-v0.1.19: Planned Capability Proof
+## v0.1.3: Bounded Declared Processes
+
+Status: implemented.
+
+- Replace the blocking verification tool with explicit start, poll, and stop operations for
+  argv commands declared in `code.toml`; never accept model-provided executables or shell text.
+- Bound each process by time, combined output bytes, and active-process count, and terminate
+  the complete process group on timeout, output overflow, or an explicit stop.
+- Report running, collecting-output, completed, timed-out, output-limit, and stopped states
+  with return code and decode facts instead of treating partial output as success.
+- Send process results through the same progressive disclosure and action audit paths used by
+  every other Skill tool.
+
+## v0.1.4-v0.1.19: Planned Capability Proof
 
 Status: planned.
 
-- `v0.1.3-v0.1.7`: bounded process control, incremental repository maps, verification-driven
-  repair, resumable checkpoints, and reference-based context selection.
+- `v0.1.4-v0.1.7`: incremental repository maps, verification-driven repair, resumable
+  checkpoints, and reference-based context selection.
 - `v0.1.8-v0.1.13`: evidence-based model assignment, specialized subagents, isolated parallel
   worktrees, independent review, comparative Skill evolution, and public coding evaluation.
 - `v0.1.14-v0.1.17`: optional general tools, model-planned task decomposition, memory and task
