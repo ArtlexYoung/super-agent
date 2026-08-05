@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict, dataclass
-from typing import Callable, TYPE_CHECKING
+from typing import Callable, TYPE_CHECKING, cast
 
 from core.models import RunIdentity
 from core.provider.chat import Message
@@ -13,6 +13,7 @@ from skill.index import format_disclosure_page_for_prompt
 
 if TYPE_CHECKING:
     from skill.disclosure import ProgressiveDisclosureCore
+    from core.skill_use.update import SkillChangeReport
 
 
 REVIEW_RESPONSE_FIELDS = {"verdict", "findings", "checks"}
@@ -140,4 +141,33 @@ def _record_review_failure(store: EventStore, snapshot, error: Exception) -> Non
         _identity_from_snapshot(snapshot),
         "review.failed",
         {"error_type": type(error).__name__},
+    )
+
+
+def skill_change_report_to_dict(
+    report: "SkillChangeReport",
+) -> dict[str, object]:
+    """Serialize one comparative Skill report without model output."""
+    return {"schema_version": 1, **asdict(report)}
+
+
+def read_skill_change_report(data: dict[str, object]) -> "SkillChangeReport":
+    from core.skill_use.update import SkillChangeCaseResult, SkillChangeReport
+
+    results = [
+        SkillChangeCaseResult(**item)
+        for item in cast(list[dict], data["results"])
+    ]
+    baseline = [
+        SkillChangeCaseResult(**item)
+        for item in cast(list[dict], data["baseline_results"])
+    ]
+    return SkillChangeReport(
+        str(data["report_id"]), str(data["change_id"]), float(data["score"]),
+        None if data["baseline_score"] is None else float(data["baseline_score"]),
+        bool(data["passed"]), float(data["minimum_score"]), bool(data["no_regression"]),
+        None if data["improvement"] is None else float(data["improvement"]),
+        float(data["minimum_improvement"]), bool(data["improvement_target_met"]),
+        str(data["candidate_sha256"]), str(data["parent_sha256"]), str(data["created_at"]),
+        results, baseline,
     )

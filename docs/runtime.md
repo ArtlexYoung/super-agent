@@ -39,6 +39,20 @@ It can return final text immediately or request tools until the active workflow'
 limit is reached. Invalid tool names, arguments, Skill references, and action requests fail
 the run visibly.
 
+Optional general tools are attached in code and remain absent by default:
+
+```python
+from adapter.general import attach_general_tools_to_agent
+from super_agent import Agent
+
+agent = Agent()
+attach_general_tools_to_agent(agent)
+result = agent.run("Calculate the mean of 2, 4, and 6")
+```
+
+The bundled general MCP Skill provides only bounded calculation and literal text search.
+Network, files, and processes require separately registered tools.
+
 ## Stateless and Stateful Runs
 
 `Agent()` is stateless by default. Run events are still returned in `RunResult.events`, but

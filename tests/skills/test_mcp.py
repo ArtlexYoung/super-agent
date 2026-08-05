@@ -19,9 +19,37 @@ from core.state.memory import Memory
 from skill.manifest import Skill
 from core.skill_use.mcp import McpServers, StdioMcpServer
 from support import write_memory_skill, write_workflow_skill
+from adapter.general import GeneralToolServer, attach_general_tools_to_agent
 
 
 class McpSkillTests(unittest.TestCase):
+    def test_optional_general_tools_are_bounded_and_explicitly_attached(self) -> None:
+        server = GeneralToolServer()
+
+        calculated = server.call_tool(
+            "calculate_numbers",
+            {"operation": "mean", "values": [2, 4, 6]},
+        )
+        found = server.call_tool(
+            "find_text",
+            {"text": "one two one", "query": "one"},
+        )
+
+        self.assertEqual(4.0, calculated["result"])
+        self.assertEqual([0, 8], found["positions"])
+        self.assertFalse(found["truncated"])
+
+        with tempfile.TemporaryDirectory() as tmp:
+            provider = MockProvider("done")
+            agent = Agent(CommonConfig.create_default(tmp), provider=provider)
+            attach_general_tools_to_agent(agent)
+
+            result = agent.run("calculate this")
+
+            self.assertIn("mcp:general", result.skills)
+            names = {tool["function"]["name"] for tool in provider.tool_requests[0][1]}
+            self.assertIn("mcp_general_run", names)
+
     def test_stdio_mcp_lists_and_calls_real_tool(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

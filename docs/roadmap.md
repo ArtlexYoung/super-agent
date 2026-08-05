@@ -1026,11 +1026,22 @@ Status: implemented.
 - Reject escaping paths, symbolic links, oversized files, and non-UTF-8 artifacts instead of
   skipping them, and publish a small SiliconFlow coding benchmark starter.
 
-## v0.1.14-v0.1.19: Planned Capability Proof
+## v0.1.14: Optional General Tools
+
+Status: implemented.
+
+- Add one explicit `attach_general_tools_to_agent(agent)` entry point backed by an ordinary
+  built-in MCP Skill; default Agents remain unchanged.
+- Provide bounded numeric calculation and literal text search without network, file, process,
+  regular-expression, or third-party dependency access.
+- Route calls through existing Skill selection, action checks, audit events, and progressive
+  tool-result disclosure instead of adding a separate tool system.
+
+## v0.1.15-v0.1.19: Planned Capability Proof
 
 Status: planned.
 
-- `v0.1.14-v0.1.19`: general tasks,
+- `v0.1.15-v0.1.19`: general task decomposition,
   independent review, evolution comparisons, general tasks, and final release gates.
 - `v0.1.8-v0.1.13`: evidence-based model assignment, specialized subagents, isolated parallel
   worktrees, independent review, comparative Skill evolution, and public coding evaluation.

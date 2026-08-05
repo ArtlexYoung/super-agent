@@ -163,6 +163,7 @@ class CliTests(unittest.TestCase):
                     "freshness",
                     "feedback",
                     "memory",
+                    "mcp",
                     "task",
                 },
                 {item["type"] for item in data["skills"]},
@@ -418,7 +419,7 @@ description = "Compact note writer"
                 validation_code = main(["skills", "validate", "--common-config", config])
 
             self.assertEqual(0, validation_code)
-            self.assertIn("6 valid skills", validation_output.getvalue())
+            self.assertIn("7 valid skills", validation_output.getvalue())
 
     def test_skills_graph_and_lock_resolve_configured_skill_dependencies(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
