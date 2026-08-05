@@ -51,6 +51,15 @@ storage raises `RuntimeError`.
 The CLI and Web adapters opt into storage because their user-facing features are expected
 to survive process restarts.
 
+## Checkpoints
+
+The Runtime records a compact checkpoint when a task is ready and after each model turn.
+Checkpoint events contain an ID, label, step facts, selected Skill names, workflow, and
+content hashes only; model text and tool payloads are not checkpoint state. Stateful callers
+can list them with `user.runs.list_checkpoints(run_id)` and explicitly resume with
+`user.runs.resume(run_id, prompt, checkpoint_id=...)`. Resume starts a new run and records
+the relationship. It does not pretend to reconstruct unavailable model context.
+
 ## Conversations and Memory
 
 ```python
@@ -70,7 +79,7 @@ can inspect the current conversation while deciding what belongs in long-term me
 
 Important event families include:
 
-- `run.*`: start, completion, and failure.
+- `run.*`: start, completion, failure, resume, and checkpoint records.
 - `task.*`: task start, selected model/context, and result.
 - `model.*`: calls and model turns.
 - `skill.*` and `skills.*`: disclosure, activation, and use.

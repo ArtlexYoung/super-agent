@@ -99,6 +99,22 @@ class Run:
     def list_recorded_events(self) -> list[RunEvent]:
         return self.event_log.list_events()
 
+    def create_checkpoint(
+        self,
+        label: str,
+        facts: dict[str, object],
+    ) -> dict[str, object]:
+        from core.runtime.checkpoints import create_checkpoint_data
+
+        data = create_checkpoint_data(self.run_id, label, facts)
+        self.record_event("run.checkpoint.created", data)
+        return data
+
+    def list_checkpoints(self) -> list[dict[str, object]]:
+        from core.runtime.checkpoints import list_checkpoint_data
+
+        return list_checkpoint_data(self.list_recorded_events())
+
     def require_store(self, feature: str) -> EventStore:
         if self.store is None:
             raise RuntimeError(f"{feature} requires Runtime storage")

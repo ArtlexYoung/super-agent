@@ -123,6 +123,8 @@ class Task:
     allow_subscriber_failures: bool = False
     skill: str | None = None
     allowed_task_skills: tuple[str, ...] = ()
+    resumed_from_run_id: str | None = None
+    resume_checkpoint: dict[str, object] | None = None
 
 
 @dataclass(frozen=True)

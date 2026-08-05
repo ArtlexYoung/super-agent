@@ -79,8 +79,21 @@ class Runtime:
                     "purpose": request.purpose,
                     "required_features": list(request.required_features),
                     "requested_skill": request.skill,
+                    "resumed_from_run_id": request.resumed_from_run_id,
                 },
             )
+            if request.resumed_from_run_id is not None:
+                run.record_event(
+                    "run.resumed",
+                    {
+                        "source_run_id": request.resumed_from_run_id,
+                        "checkpoint_id": (
+                            None
+                            if request.resume_checkpoint is None
+                            else request.resume_checkpoint.get("checkpoint_id")
+                        ),
+                    },
+                )
             result = task_loop.run_task(request, run)
             result = replace(
                 result,

@@ -165,6 +165,10 @@ file types report no parser rather than receiving guessed symbols.
 `run_declared_check` waits for one declared check and returns `passed` from its actual exit
 code. A failed check is evidence for the next explicit model edit; the runtime never repairs
 files or hides a failed verification.
+Long tasks create content-free checkpoints containing steps, selected Skills, workflow, and
+hashes. `user.runs.list_checkpoints(run_id)` lists them and
+`user.runs.resume(run_id, prompt, checkpoint_id=...)` starts a new explicit run from one;
+the new prompt supplies the continuation intent because model output is not reconstructed.
 
 ## Guarantees
 

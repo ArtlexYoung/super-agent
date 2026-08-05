@@ -146,6 +146,9 @@ React 页面、CopilotKit 示例和 AG-UI 接口默认位于
 Python 符号使用标准 AST 解析；其他文件类型会明确标记没有解析器，不会猜测符号。
 `run_declared_check` 会等待一个预先声明的检查并根据真实退出码返回 `passed`。失败检查只是下一次
 模型显式修改的依据；运行时不会自动修改文件，也不会隐藏失败的验证。
+长任务会创建不含原文的检查点，只记录步骤、选中的 Skill、工作流和哈希。使用
+`user.runs.list_checkpoints(run_id)` 查看，使用 `user.runs.resume(run_id, prompt,
+checkpoint_id=...)` 从指定检查点创建新的显式运行；由于不重建模型输出，继续意图由新的 prompt 提供。
 
 ## 保证
 

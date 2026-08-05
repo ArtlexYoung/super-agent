@@ -58,6 +58,9 @@ The same code Skill can refresh an in-memory repository map. It reports file has
 Python AST symbols, reuses unchanged parses, and states when another file type has no parser.
 `run_declared_check` is the bounded synchronous form for a single check. Its `passed` value
 is derived from the process exit code; a failed check does not trigger an automatic edit.
+The Python API exposes `user.runs.list_checkpoints(run_id)` and
+`user.runs.resume(run_id, prompt, checkpoint_id=...)`. Resume creates a new run and records
+the source run and checkpoint; it does not restore model output.
 
 ## Skills
 

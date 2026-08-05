@@ -244,6 +244,8 @@ class Agent:
         messages: list[Message] | None = None,
         conversation_id: str | None = None,
         run_options: AgentRunOptions | None = None,
+        resumed_from_run_id: str | None = None,
+        resume_checkpoint: dict[str, object] | None = None,
     ) -> RunResult:
         options = run_options or AgentRunOptions()
         prepared_messages = list(messages or [])
@@ -284,6 +286,8 @@ class Agent:
             allow_subscriber_failures=options.allow_subscriber_failures,
             skill=options.skill,
             allowed_task_skills=() if options.skill is None else (options.skill,),
+            resumed_from_run_id=resumed_from_run_id,
+            resume_checkpoint=resume_checkpoint,
             subagents=SubagentCallbacks(
                 list_subagents=self._list_subagents_for_model,
                 run_named_subagent=self._run_named_subagent_for_model,

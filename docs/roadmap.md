@@ -938,11 +938,24 @@ Status: implemented.
   the check; Runtime never performs an implicit repair or treats partial output as success.
 - Test a failed-check-to-unchanged-file path so verification cannot mutate the workspace.
 
-## v0.1.6-v0.1.19: Planned Capability Proof
+## v0.1.6: Explicit Checkpoints and Resume
+
+Status: implemented.
+
+- Record content-free checkpoints when a task is ready and after each model turn with a
+  bounded facts contract, stable ID, state hash, selected Skills, workflow, and message hashes.
+- Add `user.runs.list_checkpoints(run_id)` and `user.runs.resume(run_id, prompt,
+  checkpoint_id=...)` with strict user and Agent scope checks.
+- Start a new run for resume, record the source run and checkpoint, and disclose only the
+  checkpoint metadata through the central content path; never claim to restore model output.
+- Verify latest and selected checkpoint lookup, unknown IDs, user scope, and absence of model
+  text in checkpoint events.
+
+## v0.1.7-v0.1.19: Planned Capability Proof
 
 Status: planned.
 
-- `v0.1.6-v0.1.7`: resumable checkpoints and reference-based context selection.
+- `v0.1.7`: reference-based context selection.
 - `v0.1.8-v0.1.13`: evidence-based model assignment, specialized subagents, isolated parallel
   worktrees, independent review, comparative Skill evolution, and public coding evaluation.
 - `v0.1.14-v0.1.17`: optional general tools, model-planned task decomposition, memory and task

@@ -39,6 +39,7 @@ from core.runtime.model_calls import (
     assistant_tool_call_message,
     tool_result_message,
 )
+from core.runtime.checkpoints import hash_checkpoint_value
 from core.runtime.run import Run
 from core.runtime.tools import RuntimeTools, RuntimeToolsContext
 from skill.index import format_disclosure_page_for_prompt
@@ -184,6 +185,7 @@ class ModelLoop:
                 "selection": "model_loop",
             },
         )
+        run.create_checkpoint("task-ready", _checkpoint_facts(request, state, 0))
         result = self._run_model_turns(request, run, decision, state)
         _record_task_completed(run, result, state.contributions)
         return result
@@ -283,7 +285,7 @@ class ModelLoop:
             )
             turn = read_model_turn(response)
             state.last_text = response.text or state.last_text
-            _record_model_turn(run, step, response)
+            _record_model_turn(run, step, response, state)
             if isinstance(turn, FinalTurn):
                 return _create_result(request, run, state, turn.text, response.stop_reason)
             if definitions is None:
@@ -451,6 +453,19 @@ def _build_messages(
         untrusted.append(
             _disclose_prompt_content(run, "workflow", workflow.name, workflow.instruction)
         )
+    if request.resume_checkpoint is not None:
+        untrusted.append(
+            _disclose_prompt_content(
+                run,
+                "checkpoint",
+                str(request.resume_checkpoint["checkpoint_id"]),
+                json.dumps(
+                    request.resume_checkpoint,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                ),
+            )
+        )
     for contribution in contributions:
         source = contribution.source
         kind = getattr(source, "skill_type", "skill")
@@ -517,7 +532,12 @@ def _create_result(
     )
 
 
-def _record_model_turn(run: Run, step: int, response: ModelResponse) -> None:
+def _record_model_turn(
+    run: Run,
+    step: int,
+    response: ModelResponse,
+    state: _LoopState,
+) -> None:
     run.record_event(
         "model.turn.completed",
         {
@@ -527,6 +547,28 @@ def _record_model_turn(run: Run, step: int, response: ModelResponse) -> None:
             "stop_reason": response.stop_reason,
         },
     )
+    run.create_checkpoint("model-step", _checkpoint_facts(None, state, step, response))
+
+
+def _checkpoint_facts(
+    request: Task | None,
+    state: _LoopState,
+    step: int,
+    response: ModelResponse | None = None,
+) -> dict[str, object]:
+    facts: dict[str, object] = {
+        "step": step,
+        "workflow": state.workflow.name,
+        "skills": list(state.selected_skill_names),
+        "messages_sha256": hash_checkpoint_value(state.messages),
+        "tool_names": [tool.name for tool in state.tools.list_tools()],
+    }
+    if request is not None:
+        facts["purpose"] = request.purpose
+    if response is not None:
+        facts["response_sha256"] = hash_checkpoint_value(response.text)
+        facts["response_actions"] = [call.name for call in response.tool_calls]
+    return facts
 
 
 def _record_task_completed(

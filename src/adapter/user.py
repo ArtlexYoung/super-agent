@@ -162,6 +162,34 @@ class UserRuns:
             run_id,
         )
 
+    def list_checkpoints(self, run_id: str) -> list[dict[str, object]]:
+        from core.runtime.checkpoints import list_checkpoint_data
+
+        events = self.user.agent._create_event_store(self.user.user_id).read_run_events(
+            run_id,
+            include_sensitive=True,
+        )
+        return list_checkpoint_data(events)
+
+    def resume(
+        self,
+        run_id: str,
+        prompt: str,
+        *,
+        checkpoint_id: str | None = None,
+    ) -> RunResult:
+        from core.runtime.checkpoints import find_checkpoint_data
+
+        store = self.user.agent._create_event_store(self.user.user_id)
+        events = store.read_run_events(run_id, include_sensitive=True)
+        checkpoint = find_checkpoint_data(events, checkpoint_id)
+        return self.user.agent._run_for_user(
+            prompt,
+            self.user.user_id,
+            resumed_from_run_id=run_id,
+            resume_checkpoint=checkpoint,
+        )
+
     def record_feedback(
         self,
         run_id: str,

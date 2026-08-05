@@ -9,6 +9,7 @@ Read one ordinary call in this order:
 4. `src/core/runtime/loop.py` gives the model selected context and checked tools.
 5. `src/skill/disclosure.py` builds the shared Skill index and opens requested content.
 6. `src/core/provider/chat.py` makes and measures the selected Provider call.
+7. `src/core/runtime/checkpoints.py` records content-free recovery facts for explicit resume.
 
 The short execution path is:
 
