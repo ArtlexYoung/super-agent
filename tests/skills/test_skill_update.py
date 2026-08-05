@@ -12,6 +12,63 @@ from support import SequenceProvider
 
 
 class SkillUpdateTests(unittest.TestCase):
+    def test_agent_can_create_and_compare_a_typed_task_skill(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            agent = Agent(
+                CommonConfig.create_default(root),
+                provider=SequenceProvider([
+                    _new_typed_skill("task", "mode = \"loop\"\nmax_steps = 4"),
+                    "required",
+                ]),
+                use_storage=True,
+            )
+            updater = agent.for_user("alice").skills.create_skill_updater()
+
+            change = updater.propose_skill_change("task:focused", "create a focused task")
+            report = updater.test_skill_change(
+                change.change_id,
+                [SkillChangeCase(
+                    "typed settings",
+                    "run",
+                    expected_output_contains=["required"],
+                    expected_configuration={"mode": "loop", "max_steps": 4},
+                )],
+            )
+            applied = updater.apply_skill_change(change.change_id)
+
+            self.assertTrue(report.passed)
+            self.assertEqual("task", applied.skill_type)
+            self.assertTrue(applied.agent_created)
+            self.assertTrue(applied.agent_can_update)
+
+    def test_memory_evolution_fails_when_typed_settings_do_not_match(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            agent = Agent(
+                CommonConfig.create_default(root),
+                provider=SequenceProvider([
+                    _new_typed_skill("memory", "recall_limit = 5"),
+                    "required",
+                ]),
+                use_storage=True,
+            )
+            updater = agent.for_user("alice").skills.create_skill_updater()
+            change = updater.propose_skill_change("memory:focused", "create focused memory")
+
+            report = updater.test_skill_change(
+                change.change_id,
+                [SkillChangeCase(
+                    "typed settings",
+                    "remember",
+                    expected_output_contains=["required"],
+                    expected_configuration={"recall_limit": 10},
+                )],
+            )
+
+            self.assertFalse(report.passed)
+            self.assertEqual(0.5, report.score)
+
     def test_evolution_report_requires_an_explicit_improvement_target(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -135,6 +192,22 @@ def _proposal(instructions: str) -> str:
     return json.dumps(
         {
             "write_files": {"SKILL.md": instructions},
+            "delete_files": [],
+        }
+    )
+
+
+def _new_typed_skill(skill_type: str, configuration: str) -> str:
+    return json.dumps(
+        {
+            "write_files": {
+                "skill.toml": (
+                    f'type = "{skill_type}"\n'
+                    'description = "Agent-created typed Skill"\n\n'
+                    f"[configuration]\n{configuration}\n"
+                ),
+                "SKILL.md": "Use this typed Skill during evaluation.\n",
+            },
             "delete_files": [],
         }
     )

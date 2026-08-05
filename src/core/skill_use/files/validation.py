@@ -59,6 +59,24 @@ def validate_skill_replacement(
         _validate_model_replacement(current, proposed)
 
 
+def check_skill_configuration(
+    skill_path: Path,
+    expected: dict[str, object],
+) -> list[bool]:
+    """Compare typed Skill settings through the central source reader."""
+    if not isinstance(expected, dict) or not all(
+        isinstance(name, str) and name.strip() for name in expected
+    ):
+        raise ValueError("expected Skill configuration must use non-empty string keys")
+    disclosure = ProgressiveDisclosureCore([skill_path])
+    index = disclosure.prepare_skill_index()
+    if len(index.entries) != 1:
+        raise ValueError("skill directory must contain exactly one valid skill")
+    reference = index.entries[0].reference
+    configuration = disclosure.inspect_skill_configuration(reference)
+    return [configuration.get(name) == value for name, value in expected.items()]
+
+
 def _open_only_skill(path: Path) -> SkillDisclosure:
     disclosure = ProgressiveDisclosureCore([path])
     index = disclosure.prepare_skill_index()

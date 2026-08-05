@@ -21,7 +21,7 @@ from core.evaluation.review import (
     skill_change_report_to_dict,
 )
 from core.skill_use.files.directory import replace_skill_directory_atomically
-from core.skill_use.files.validation import validate_skill_directory, validate_skill_replacement
+from core.skill_use.files.validation import check_skill_configuration, validate_skill_directory, validate_skill_replacement
 from core.state.events import EventStore
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.manifest import SkillManifest, calculate_skill_directory_sha256
@@ -51,6 +51,7 @@ class SkillChangeCase:
     prompt: str
     expected_output_contains: list[str] = field(default_factory=list)
     forbidden_output_contains: list[str] = field(default_factory=list)
+    expected_configuration: dict[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -276,6 +277,7 @@ class SkillUpdater:
         output = self.test_model.send_messages(messages)
         checks = [value in output for value in case.expected_output_contains]
         checks.extend(value not in output for value in case.forbidden_output_contains)
+        checks.extend(check_skill_configuration(skill_path, case.expected_configuration))
         passed = bool(output.strip()) and all(checks)
         score = (sum(checks) / len(checks)) if checks else float(bool(output.strip()))
         return SkillChangeCaseResult(

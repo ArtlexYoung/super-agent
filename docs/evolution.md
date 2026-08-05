@@ -75,6 +75,12 @@ activate the candidate. `apply` is the only activation operation and requires a
 matching passing report with no regression. `undo` restores the prior user overlay
 or removes the newly created one.
 
+Evaluation cases may also declare `expected_configuration`. These settings are read through
+the central Skill source path and combined with output checks. Memory and task candidates are
+validated by their real mechanism parsers before testing, so malformed recall or workflow
+settings cannot pass through plausible model text. New typed Skills become Agent-created,
+user-private overlays only after their comparison report passes.
+
 Built-in Skills are immutable. Project and user Skill update authority comes from trusted
 source metadata, never editable Skill TOML. Every operation passes through action rules
 and records its result. There is no background monitor, automatic application, or hidden

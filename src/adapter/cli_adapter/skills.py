@@ -356,12 +356,25 @@ def _read_change_cases(path: Path) -> list[SkillChangeCase]:
     for item in data:
         if not isinstance(item, dict):
             raise ValueError("each evaluation case must be a JSON object")
+        allowed = {
+            "name",
+            "prompt",
+            "expected_output_contains",
+            "forbidden_output_contains",
+            "expected_configuration",
+        }
+        if set(item) - allowed:
+            raise ValueError("unknown evaluation case fields: " + ", ".join(sorted(set(item) - allowed)))
+        expected_configuration = item.get("expected_configuration", {})
+        if not isinstance(expected_configuration, dict):
+            raise ValueError("evaluation case expected_configuration must be an object")
         cases.append(
             SkillChangeCase(
                 name=_read_json_string(item, "name", required=True),
                 prompt=_read_json_string(item, "prompt", required=True),
                 expected_output_contains=_read_string_list(item, "expected_output_contains"),
                 forbidden_output_contains=_read_string_list(item, "forbidden_output_contains"),
+                expected_configuration=dict(expected_configuration),
             )
         )
     return cases

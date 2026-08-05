@@ -1048,11 +1048,22 @@ Status: implemented.
 - Record plan counts, statuses, and evidence hashes through Runtime events while normal tool
   results continue through central progressive disclosure.
 
-## v0.1.16-v0.1.19: Planned Capability Proof
+## v0.1.16: Typed Memory and Task Evolution
+
+Status: implemented.
+
+- Let evaluation cases declare exact expected Skill configuration in addition to model-output
+  checks, with configuration read through the central Skill source path.
+- Validate memory and task candidates with their real settings parsers before testing, and
+  combine deterministic settings checks with candidate/baseline scores.
+- Activate passing new typed Skills only in the user-private overlay, where source ownership
+  marks them Agent-created and updateable; failed candidates never replace active behavior.
+
+## v0.1.17-v0.1.19: Planned Capability Proof
 
 Status: planned.
 
-- `v0.1.16-v0.1.19`: memory and task Skill evolution,
+- `v0.1.17-v0.1.19`: general capability and security evaluation,
   independent review, evolution comparisons, general tasks, and final release gates.
 - `v0.1.8-v0.1.13`: evidence-based model assignment, specialized subagents, isolated parallel
   worktrees, independent review, comparative Skill evolution, and public coding evaluation.
