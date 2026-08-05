@@ -163,6 +163,7 @@ class Run:
                     identity=self.identity,
                     send_text_model_messages=send_text_model_messages,
                     execute_action=self.execute_action,
+                    record_event=self.record_event,
                 )
             )
             loaded = replace(loaded, source=reference)

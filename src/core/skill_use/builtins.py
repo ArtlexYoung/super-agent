@@ -125,7 +125,7 @@ class TaskSkillHandler:
             instructions = f"{instructions}\n\n{additional}"
         return SkillResult(
             model_context=Skill(manifest=opened.disclose_manifest(), instructions=instructions),
-            tools=tools,
+            tools=(*tools, *_create_task_plan_tools(context)),
             task_policy=create_task_policy_from_skill(opened),
         )
 
@@ -152,6 +152,104 @@ def create_memory_skill_contribution(memory: Memory) -> SkillResult:
             "memory:habits",
         ),
     )
+
+
+def _create_task_plan_tools(context: SkillContext) -> tuple[SkillTool, ...]:
+    if context.record_event is None:
+        return ()
+    plan = _TaskPlan(context.record_event)
+    action = SkillAction((ActionEffect.CREATE, ActionEffect.UPDATE), "task:plan")
+    return (
+        SkillTool(
+            "set_task_plan",
+            "Set a bounded task plan when the task benefits from explicit steps.",
+            {
+                "goal": {"type": "string"},
+                "steps": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "minItems": 1,
+                    "maxItems": 20,
+                },
+            },
+            plan.set_plan,
+            action,
+            required=("goal", "steps"),
+            result_kind="task-plan",
+        ),
+        SkillTool(
+            "update_task_plan_step",
+            "Update one planned step with an explicit status and optional evidence.",
+            {
+                "step": {"type": "integer", "minimum": 1},
+                "status": {
+                    "type": "string",
+                    "enum": ["pending", "in_progress", "completed", "blocked"],
+                },
+                "evidence": {"type": "string"},
+            },
+            plan.update_step,
+            action,
+            required=("step", "status"),
+            result_kind="task-plan",
+        ),
+    )
+
+
+class _TaskPlan:
+    def __init__(self, record_event: Callable[[str, dict[str, object]], object]) -> None:
+        self.record_event = record_event
+        self.goal = ""
+        self.steps: list[dict[str, object]] = []
+
+    def set_plan(self, arguments: dict[str, object]) -> dict[str, object]:
+        goal = read_required_tool_string(arguments, "goal")
+        value = arguments.get("steps")
+        if not isinstance(value, list) or not 1 <= len(value) <= 20:
+            raise ValueError("task plan requires 1 to 20 steps")
+        if not all(isinstance(item, str) and item.strip() for item in value):
+            raise ValueError("task plan steps must contain non-empty text")
+        self.goal = goal
+        self.steps = [
+            {"step": index, "text": item.strip(), "status": "pending", "evidence": ""}
+            for index, item in enumerate(value, 1)
+        ]
+        self.record_event(
+            "task.plan.set",
+            {
+                "goal_sha256": hashlib.sha256(goal.encode()).hexdigest(),
+                "step_count": len(self.steps),
+            },
+        )
+        return self._result()
+
+    def update_step(self, arguments: dict[str, object]) -> dict[str, object]:
+        step = arguments.get("step")
+        status = arguments.get("status")
+        evidence = arguments.get("evidence", "")
+        if isinstance(step, bool) or not isinstance(step, int) or not 1 <= step <= len(self.steps):
+            raise ValueError("task plan step is outside the active plan")
+        if status not in {"pending", "in_progress", "completed", "blocked"}:
+            raise ValueError("task plan status is invalid")
+        if not isinstance(evidence, str):
+            raise ValueError("task plan evidence must be text")
+        if status == "in_progress" and any(
+            item["status"] == "in_progress" and item["step"] != step for item in self.steps
+        ):
+            raise ValueError("task plan can have only one in-progress step")
+        self.steps[step - 1].update(status=status, evidence=evidence)
+        self.record_event(
+            "task.plan.step.updated",
+            {
+                "step": step,
+                "status": status,
+                "evidence_sha256": hashlib.sha256(evidence.encode()).hexdigest(),
+            },
+        )
+        return self._result()
+
+    def _result(self) -> dict[str, object]:
+        return {"goal": self.goal, "steps": [dict(item) for item in self.steps]}
 
 
 def _create_memory_tools(memory: Memory) -> tuple[SkillTool, ...]:

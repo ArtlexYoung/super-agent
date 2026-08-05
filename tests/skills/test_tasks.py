@@ -27,7 +27,7 @@ class TaskSkillTests(unittest.TestCase):
             common = disclosure.open_skill("common", expected_type="task")
             code = disclosure.open_skill("code", expected_type="task")
 
-            self.assertEqual("direct", create_task_policy_from_skill(common).mode)
+            self.assertEqual("loop", create_task_policy_from_skill(common).mode)
             self.assertEqual("loop", create_task_policy_from_skill(code).mode)
             self.assertIn("General task chain", common.read_instructions().content)
             self.assertIn("Repository coding chain", code.read_instructions().content)
@@ -44,8 +44,46 @@ class TaskSkillTests(unittest.TestCase):
             self.assertEqual("finished", result.text)
             self.assertEqual("common", result.workflow)
             self.assertEqual(["task:common"], result.skills)
-            self.assertEqual([], provider.tool_requests)
+            self.assertEqual(1, len(provider.tool_requests))
+            self.assertIn(
+                "set_task_plan",
+                {tool["function"]["name"] for tool in provider.tool_requests[0][1]},
+            )
             self.assertIn("# General task chain", provider.last_messages[0]["content"])
+
+    def test_common_task_plan_is_model_driven_and_run_scoped(self) -> None:
+        provider = MockProvider(
+            tool_responses=[
+                ModelResponse(
+                    "",
+                    [ToolCall("plan", "set_task_plan", {
+                        "goal": "finish",
+                        "steps": ["inspect", "answer"],
+                    })],
+                    "tool_calls",
+                ),
+                ModelResponse(
+                    "",
+                    [ToolCall("step", "update_task_plan_step", {
+                        "step": 1,
+                        "status": "completed",
+                        "evidence": "inspection complete",
+                    })],
+                    "tool_calls",
+                ),
+                ModelResponse("finished", [], "model_finished"),
+            ]
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            result = Agent(
+                CommonConfig.create_default(tmp),
+                provider=provider,
+            ).run("Handle a multi-step task", skill="common")
+
+        event_types = [event.event_type for event in result.events]
+        self.assertEqual("finished", result.text)
+        self.assertIn("task.plan.set", event_types)
+        self.assertIn("task.plan.step.updated", event_types)
 
     def test_model_can_activate_one_task_skill(self) -> None:
         provider = MockProvider(

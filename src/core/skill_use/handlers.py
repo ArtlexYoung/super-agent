@@ -111,6 +111,7 @@ class SkillContext:
     identity: RunIdentity | None = None
     send_text_model_messages: Callable[[list[Message]], str] | None = None
     execute_action: Callable[[ActionRequest, Callable[[], object]], object] | None = None
+    record_event: Callable[[str, dict[str, object]], object] | None = None
 
     def __post_init__(self) -> None:
         if self.identity is not None and self.execute_action is None:

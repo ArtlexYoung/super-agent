@@ -1,6 +1,6 @@
 type = "task"
-description = "General task instructions and direct run policy"
+description = "General task instructions with optional model-planned steps"
 
 [configuration]
-mode = "direct"
+mode = "loop"
 max_steps = 8

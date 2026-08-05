@@ -33,6 +33,8 @@ _DETAILED_EVENT_TYPES = {
     "subagent.started",
     "subagent.completed",
     "runtime.subscriber.failed",
+    "task.plan.set",
+    "task.plan.step.updated",
 }
 _CRITICAL_EVENT_TYPES = {
     "run.started",

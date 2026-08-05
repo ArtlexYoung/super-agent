@@ -1037,11 +1037,22 @@ Status: implemented.
 - Route calls through existing Skill selection, action checks, audit events, and progressive
   tool-result disclosure instead of adding a separate tool system.
 
-## v0.1.15-v0.1.19: Planned Capability Proof
+## v0.1.15: Model-Planned Task Decomposition
+
+Status: implemented.
+
+- Let Task Skills provide `set_task_plan` and `update_task_plan_step` tools backed only by
+  current-run state; no planner service or persistent task controller is introduced.
+- Keep planning model-driven and optional, cap plans at 20 steps, and allow only one active
+  in-progress step without prompt keyword triggers.
+- Record plan counts, statuses, and evidence hashes through Runtime events while normal tool
+  results continue through central progressive disclosure.
+
+## v0.1.16-v0.1.19: Planned Capability Proof
 
 Status: planned.
 
-- `v0.1.15-v0.1.19`: general task decomposition,
+- `v0.1.16-v0.1.19`: memory and task Skill evolution,
   independent review, evolution comparisons, general tasks, and final release gates.
 - `v0.1.8-v0.1.13`: evidence-based model assignment, specialized subagents, isolated parallel
   worktrees, independent review, comparative Skill evolution, and public coding evaluation.

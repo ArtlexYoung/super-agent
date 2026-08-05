@@ -293,6 +293,7 @@ _INTERNAL_RESOURCE_PREFIXES = (
     "skill:active",
     "skill:disclosure:",
     "skill:owned:",
+    "task:plan",
 )
 
 
