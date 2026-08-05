@@ -16,7 +16,8 @@
 
 1. Keep validation, orchestration, persistence, and side effects clear at boundaries where they differ.
 2. Make state-changing operations explicit. Do not hide a failed command, unavailable tool, missing dependency, or reduced behavior behind a fallback.
-3. Preserve unrelated changes. Do not rewrite history or remove data unless the request explicitly authorizes it.
+3. Read a file's current SHA-256 before replacing, patching, or deleting it. Reject stale state instead of overwriting concurrent changes.
+4. Preserve unrelated changes. Do not rewrite history or remove data unless the request explicitly authorizes it.
 
 ## Verify
 

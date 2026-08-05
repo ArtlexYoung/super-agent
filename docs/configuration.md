@@ -44,7 +44,7 @@ kind = "code"
 
 [workspace]
 root = "."
-ignore = [".git", ".super-agent"]
+ignore = [".git", ".super-agent", "node_modules", "__pycache__"]
 
 [actions]
 read = "allow"
@@ -58,9 +58,11 @@ commands = [["python3", "-m", "unittest"], ["git", "diff", "--check"]]
 Commands are argument arrays, not shell strings. `code.toml` describes requested behavior;
 it does not grant process or file authority by itself. The CLI reads it lazily only when
 `task:code` is selected; ordinary tasks do not depend on its presence or validity. Reads
-follow the configured read setting. Writes, patches, deletion, and numbered verification
-commands pass through the central action runner and require terminal confirmation before
-they run.
+follow the configured read setting. With no `code.toml`, the current directory is used and
+`.git`, `.super-agent`, `node_modules`, and `__pycache__` are ignored. An explicit `ignore`
+list replaces those defaults. Writes, patches, deletion, and numbered verification commands
+pass through the central action runner and require terminal confirmation before they run.
+Replacing, patching, or deleting an existing file also requires its current SHA-256.
 
 `agent.skills` pins ordinary Skills to every run. `disabled_skills` excludes a type or a
 specific `type:name`. Task selection is per run, while subagent links are configured in

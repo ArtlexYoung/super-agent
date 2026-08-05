@@ -46,11 +46,13 @@ workflow, Skills, stop reason, and run ID. One-shot runs and chat are file-free 
 configured storage; supplying a conversation ID also makes that requirement explicit.
 Terminal flags override `cli.toml`, including `--no-save` and `--no-show-summary`. Shared
 Runtime settings always use `--common-config`; the removed generic `--config` name has no
-compatibility alias. Code settings use `--code-config` and are loaded only if `task:code`
-is activated. That task adds bounded file reads and search, plus explicit file writes,
-exact patches, deletion, and numbered verification commands. All non-read tools ask for
-terminal confirmation through the central action runner; refusal or EOF blocks the action.
-Paths outside the configured root and undeclared verification commands fail visibly.
+compatibility alias. Code settings use `--code-config` and are loaded only if `task:code` is
+activated. That task adds a bounded directory tree, ranged file reads, search, fixed Git
+status and diff reads, plus explicit file writes, structured patches, deletion, and numbered
+verification commands. Existing-file changes require the SHA-256 returned by a read. All
+non-read tools ask for terminal confirmation through the central action runner; refusal or
+EOF blocks the action. Paths outside the configured root and undeclared verification
+commands fail visibly.
 
 ## Skills
 

@@ -889,6 +889,32 @@ Status: implemented.
 - Keep the passive Skill package at five source files and preserve the default dependency-free
   install.
 
+## v0.1.2: Checked Code Workspace
+
+Status: implemented.
+
+- Add bounded workspace trees, ranged UTF-8 reads, ignored-directory pruning, and fixed-argv
+  Git status and diff tools to the optional code task.
+- Return a SHA-256 from file reads and require it for replacement, structured patching, and
+  deletion so stale model state cannot overwrite a newer file.
+- Reject ambiguous, duplicate, overlapping, escaping, symbolic-link, oversized, and undeclared
+  operations instead of guessing or silently reducing behavior.
+- Keep code settings optional and separate in `code.toml`; zero configuration ignores common
+  repository and build-noise directories without adding a runtime dependency.
+
+## v0.1.3-v0.1.19: Planned Capability Proof
+
+Status: planned.
+
+- `v0.1.3-v0.1.7`: bounded process control, incremental repository maps, verification-driven
+  repair, resumable checkpoints, and reference-based context selection.
+- `v0.1.8-v0.1.13`: evidence-based model assignment, specialized subagents, isolated parallel
+  worktrees, independent review, comparative Skill evolution, and public coding evaluation.
+- `v0.1.14-v0.1.17`: optional general tools, model-planned task decomposition, memory and task
+  Skill evolution, and general capability plus security evaluation.
+- `v0.1.18-v0.1.19`: remove superseded paths, tighten lightweight budgets, and publish one
+  reproducible non-regression gate for the complete `v0.1` line.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

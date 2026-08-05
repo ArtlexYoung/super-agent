@@ -151,11 +151,13 @@ Optional `cli.toml` controls terminal defaults only. Shared Runtime settings sta
 in model Skills or environment variables. These files are validated separately and are
 never deep-merged.
 
-The code task exposes bounded UTF-8 file reading and text search, plus file creation or
-replacement, exact one-occurrence patches, deletion, and declared verification commands.
-Paths must remain under the configured workspace; ignored, escaping, oversized, and non-text
-reads fail visibly. Every non-read tool asks for terminal confirmation before it runs, and
-refusal or end-of-input stops the action without a hidden fallback.
+The code task exposes a bounded directory tree, ranged UTF-8 file reads, text search, and
+fixed-argument Git status and diff reads. File replacement, structured exact patches, and
+deletion require the SHA-256 returned by a prior read, so a concurrent change fails instead
+of being overwritten. Paths must remain under the configured workspace; ignored, escaping,
+oversized, and non-text reads fail visibly. Every non-read tool asks for terminal
+confirmation before it runs, and refusal or end-of-input stops the action without a hidden
+fallback.
 
 ## Guarantees
 

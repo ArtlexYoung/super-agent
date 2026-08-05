@@ -14,12 +14,12 @@ from adapter.cli_adapter.conversations import (
 )
 from adapter.cli_adapter import (
     CliConfig,
-    attach_code_config_to_agent,
     configure_config_parser,
     load_agent,
     load_cli_config,
     run_config_command,
 )
+from adapter.cli_adapter.code import attach_code_config_to_agent
 from adapter.cli_adapter.check import configure_check_parser, run_check_command
 from adapter.cli_adapter.memory import configure_memory_parser, run_memory_command
 from adapter.cli_adapter.models import configure_models_parser, run_models_command

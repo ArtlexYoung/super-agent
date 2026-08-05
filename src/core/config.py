@@ -9,6 +9,9 @@ from typing import Any, Mapping
 from core.state.audit import AuditSettings
 
 
+DEFAULT_CODE_IGNORES = [".git", ".super-agent", "node_modules", "__pycache__"]
+
+
 @dataclass(frozen=True)
 class AgentSettings:
     name: str
@@ -75,7 +78,11 @@ class CommonConfig:
 
     @classmethod
     def create_default(cls, base_directory: str | Path | None = None) -> "CommonConfig":
-        base = Path.cwd() if base_directory is None else Path(base_directory).expanduser().absolute()
+        base = (
+            Path.cwd()
+            if base_directory is None
+            else Path(base_directory).expanduser().absolute()
+        )
         return cls(
             agent=_read_agent_settings({}),
             paths=PathsSettings(skills=[base / "skills"]),
@@ -139,7 +146,18 @@ class CodeConfig:
         )
         return (
             cls.load_from_file(source)
-            if source else cls(CodeSettings(base, [], "allow", "ask", "ask", []), base / "code.toml")
+            if source
+            else cls(
+                CodeSettings(
+                    base,
+                    list(DEFAULT_CODE_IGNORES),
+                    "allow",
+                    "ask",
+                    "ask",
+                    [],
+                ),
+                base / "code.toml",
+            )
         )
 
 
