@@ -48,6 +48,7 @@ class BenchmarkChecks:
     output_contains: tuple[str, ...]
     output_excludes: tuple[str, ...]
     files: tuple[BenchmarkFileCheck, ...]
+    workspace_unchanged: bool
 
 
 @dataclass(frozen=True)
@@ -188,6 +189,7 @@ def run_agent_command(
     timeout_seconds: int,
 ) -> BenchmarkResult:
     started = time.monotonic()
+    initial_workspace_sha256 = _workspace_sha256(workspace)
     timed_out = False
     try:
         completed = subprocess.run(
@@ -209,7 +211,12 @@ def run_agent_command(
         stdout = _bounded_text(error.stdout or b"")
         stderr = _bounded_text(error.stderr or b"")
     output = _extract_output(stdout, agent.result_json_field)
-    checks = evaluate_task_checks(task.checks, output, workspace)
+    checks = evaluate_task_checks(
+        task.checks,
+        output,
+        workspace,
+        initial_workspace_sha256,
+    )
     score = sum(bool(item["passed"]) for item in checks) / len(checks) if checks else 1.0
     return BenchmarkResult(
         agent=agent.name,
@@ -310,7 +317,8 @@ def _read_task(value: dict[str, object], base: Path) -> BenchmarkTask:
 
 
 def _read_checks(value: object) -> BenchmarkChecks:
-    if not isinstance(value, dict) or set(value) != {"output_contains", "output_excludes", "files"}:
+    expected = {"output_contains", "output_excludes", "files", "workspace_unchanged"}
+    if not isinstance(value, dict) or set(value) != expected:
         raise ValueError("benchmark checks fields do not match schema v2")
     files = []
     for item in _object_list(value["files"], "check files"):
@@ -322,6 +330,7 @@ def _read_checks(value: object) -> BenchmarkChecks:
         tuple(_text_list(value["output_contains"], "output_contains")),
         tuple(_text_list(value["output_excludes"], "output_excludes")),
         tuple(files),
+        _boolean(value["workspace_unchanged"], "workspace_unchanged"),
     )
 
 
@@ -329,6 +338,7 @@ def evaluate_task_checks(
     checks: BenchmarkChecks,
     output: str,
     workspace: Path,
+    initial_workspace_sha256: str,
 ) -> list[dict[str, object]]:
     results = [
         {"check": f"output contains {text!r}", "passed": text in output}
@@ -349,6 +359,11 @@ def evaluate_task_checks(
             {"check": f"{file_check.path} excludes {text!r}", "passed": text not in content}
             for text in file_check.excludes
         )
+    if checks.workspace_unchanged:
+        results.append({
+            "check": "workspace unchanged",
+            "passed": _workspace_sha256(workspace) == initial_workspace_sha256,
+        })
     return results
 
 
@@ -370,6 +385,12 @@ def _text_list(value: object, name: str) -> list[str]:
     return list(value)
 
 
+def _boolean(value: object, name: str) -> bool:
+    if not isinstance(value, bool):
+        raise ValueError(f"benchmark {name} must be a boolean")
+    return value
+
+
 def _safe_relative_path(value: str) -> str:
     path = PurePosixPath(value.replace("\\", "/"))
     if path.is_absolute() or not path.parts or ".." in path.parts:
@@ -387,6 +408,30 @@ def _read_checked_file(path: Path) -> str:
         return data.decode("utf-8")
     except UnicodeDecodeError as error:
         raise ValueError(f"benchmark check file is not UTF-8: {path}") from error
+
+
+def _workspace_sha256(workspace: Path) -> str:
+    digest = hashlib.sha256()
+    paths = sorted(workspace.rglob("*"))
+    if len(paths) > 2_000:
+        raise ValueError("benchmark workspace hash exceeds 2000 paths")
+    total_bytes = 0
+    for path in paths:
+        relative = path.relative_to(workspace).as_posix()
+        digest.update(relative.encode("utf-8"))
+        digest.update(b"\0")
+        if path.is_symlink():
+            digest.update(b"link\0" + os.readlink(path).encode("utf-8"))
+        elif path.is_file():
+            data = path.read_bytes()
+            total_bytes += len(data)
+            if total_bytes > 50_000_000:
+                raise ValueError("benchmark workspace hash exceeds 50000000 bytes")
+            digest.update(b"file\0" + data)
+        elif path.is_dir():
+            digest.update(b"directory")
+        digest.update(b"\0")
+    return digest.hexdigest()
 
 
 def _required_text(value: object, name: str) -> str:

@@ -3,7 +3,7 @@
   "agents": [
     {
       "name": "super-agent",
-      "version": "0.1.13",
+      "version": "0.1.17",
       "command": [
         "{python}",
         "{project_root}/src/cli.py",
@@ -29,7 +29,8 @@
       "checks": {
         "output_contains": ["super-agent benchmark ready"],
         "output_excludes": [],
-        "files": []
+        "files": [],
+        "workspace_unchanged": true
       }
     }
   ]

@@ -25,6 +25,9 @@ Schema v2 task checks declare required and forbidden output text plus bounded UT
 file assertions. File paths must remain relative, symbolic links are not followed, and files
 larger than the capture limit fail evaluation. The included `examples/code-benchmark.json`
 is a small public coding starter that can be extended with copied repository fixtures.
+`workspace_unchanged = true` adds a bounded before/after hash assertion for tasks that must
+not create side effects. `examples/general-benchmark.json` and
+`examples/safety-benchmark.json` provide small public general and prompt-injection starters.
 
 The report records the manifest SHA-256, exact task output and digest, exit status, timeout,
 elapsed time, every check result, and an aggregate score. A completed process is never treated

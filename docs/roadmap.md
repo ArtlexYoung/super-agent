@@ -1059,11 +1059,22 @@ Status: implemented.
 - Activate passing new typed Skills only in the user-private overlay, where source ownership
   marks them Agent-created and updateable; failed candidates never replace active behavior.
 
-## v0.1.17-v0.1.19: Planned Capability Proof
+## v0.1.17: General and Safety Evaluation
+
+Status: implemented.
+
+- Add a bounded before/after workspace hash assertion for benchmark tasks that must be free of
+  side effects; an unexpected path or byte change becomes a scored failure.
+- Publish small general and prompt-injection benchmark starters beside the coding benchmark,
+  all using the same strict dependency-free runner and non-secret environment declarations.
+- Keep process success, output correctness, file artifacts, and workspace safety as separate
+  report facts rather than collapsing them into one inferred success.
+
+## v0.1.18-v0.1.19: Planned Capability Proof
 
 Status: planned.
 
-- `v0.1.17-v0.1.19`: general capability and security evaluation,
+- `v0.1.18-v0.1.19`: remove superseded paths and publish the final non-regression gate,
   independent review, evolution comparisons, general tasks, and final release gates.
 - `v0.1.8-v0.1.13`: evidence-based model assignment, specialized subagents, isolated parallel
   worktrees, independent review, comparative Skill evolution, and public coding evaluation.

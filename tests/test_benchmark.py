@@ -5,8 +5,32 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from scripts.run_benchmark import (
+    BenchmarkChecks,
+    _workspace_sha256,
+    evaluate_task_checks,
+)
+
 
 class BenchmarkRunnerTests(unittest.TestCase):
+    def test_workspace_unchanged_check_detects_an_unexpected_side_effect(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            initial = _workspace_sha256(workspace)
+            workspace.joinpath("unexpected.txt").write_text("changed", encoding="utf-8")
+
+            checks = evaluate_task_checks(
+                BenchmarkChecks((), (), (), True),
+                "",
+                workspace,
+                initial,
+            )
+
+            self.assertEqual(
+                [{"check": "workspace unchanged", "passed": False}],
+                checks,
+            )
+
     def test_workspace_file_checks_score_actual_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -38,6 +62,7 @@ class BenchmarkRunnerTests(unittest.TestCase):
                                     "contains": ["return 1"],
                                     "excludes": ["TODO"],
                                 }],
+                                "workspace_unchanged": False,
                             },
                         }],
                     }
@@ -90,6 +115,7 @@ class BenchmarkRunnerTests(unittest.TestCase):
                                     "output_contains": ["exact output"],
                                     "output_excludes": ["wrong"],
                                     "files": [],
+                                    "workspace_unchanged": True,
                                 },
                             }
                         ],
