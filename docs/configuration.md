@@ -69,6 +69,9 @@ facts. Stopping is a separate checked action. The model cannot supply executable
 Repository maps are read-only and in-memory. They cap file count, per-file bytes, total bytes,
 skipped paths, and Python symbols; exceeding a limit fails explicitly. A refresh hashes every
 bounded file but only reparses files whose content hash changed.
+For a direct verification loop, `run_declared_check` waits for one configured command and
+returns `passed = true` only for exit code zero. The model must make and verify any repair as
+separate explicit actions.
 
 `agent.skills` pins ordinary Skills to every run. `disabled_skills` excludes a type or a
 specific `type:name`. Task selection is per run, while subagent links are configured in

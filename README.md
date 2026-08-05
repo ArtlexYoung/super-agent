@@ -162,6 +162,9 @@ stopped by ID with explicit time and output limits; shell strings are never acce
 `refresh_repository_map` provides a bounded path and metadata map and reuses unchanged
 symbol parsing within the current run. Python symbols use the standard AST parser; other
 file types report no parser rather than receiving guessed symbols.
+`run_declared_check` waits for one declared check and returns `passed` from its actual exit
+code. A failed check is evidence for the next explicit model edit; the runtime never repairs
+files or hides a failed verification.
 
 ## Guarantees
 

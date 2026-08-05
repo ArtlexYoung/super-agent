@@ -22,6 +22,7 @@ class DeclaredProcessTests(unittest.TestCase):
 
             self.assertEqual("completed", result["state"])
             self.assertEqual(0, result["returncode"])
+            self.assertTrue(result["passed"])
             self.assertEqual("hello; exit 9\n", result["stdout"])
             self.assertTrue(result["output_complete"])
             self.assertFalse(result["decode_replaced"])
@@ -40,6 +41,7 @@ class DeclaredProcessTests(unittest.TestCase):
 
             self.assertEqual("timed_out", result["state"])
             self.assertTrue(result["timed_out"])
+            self.assertFalse(result["passed"])
             self.assertIsNotNone(result["returncode"])
 
     def test_declared_process_marks_output_limit_instead_of_hiding_truncation(self) -> None:
@@ -89,6 +91,24 @@ class DeclaredProcessTests(unittest.TestCase):
             self.assertTrue(result["stopped"])
             self.assertIsNotNone(result["returncode"])
 
+    def test_declared_check_returns_failure_evidence_without_repairing_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            marker = Path(tmp) / "marker.txt"
+            marker.write_text("unchanged", encoding="utf-8")
+            tools = DeclaredProcessTools(
+                Path(tmp),
+                [[sys.executable, "-c", "import sys; print('failed'); sys.exit(2)"]],
+                "allow",
+            )
+
+            result = tools.run_check({"command_number": 1})
+
+            self.assertEqual("completed", result["state"])
+            self.assertEqual(2, result["returncode"])
+            self.assertFalse(result["passed"])
+            self.assertIn("failed", result["stdout"])
+            self.assertEqual("unchanged", marker.read_text(encoding="utf-8"))
+
     def test_declared_process_rejects_undeclared_or_denied_execution(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             allowed = DeclaredProcessTools(Path(tmp), [], "allow")
@@ -118,6 +138,7 @@ class DeclaredProcessTests(unittest.TestCase):
                 "start_declared_process",
                 "poll_declared_process",
                 "stop_declared_process",
+                "run_declared_check",
             },
             {tool.name for tool in tools},
         )

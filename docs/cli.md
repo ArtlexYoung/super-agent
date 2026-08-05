@@ -56,6 +56,8 @@ commands fail visibly. Declared commands run without a shell and expose separate
 poll, and stop tools with bounded time and output.
 The same code Skill can refresh an in-memory repository map. It reports file hashes and
 Python AST symbols, reuses unchanged parses, and states when another file type has no parser.
+`run_declared_check` is the bounded synchronous form for a single check. Its `passed` value
+is derived from the process exit code; a failed check does not trigger an automatic edit.
 
 ## Skills
 

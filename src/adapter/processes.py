@@ -135,6 +135,26 @@ class DeclaredProcessTools:
                 ("process_id",),
                 result_kind="process",
             ),
+            SkillTool(
+                "run_declared_check",
+                "Run one configured check and wait for its bounded result.",
+                {
+                    "command_number": {"type": "integer", "minimum": 1},
+                    "timeout_seconds": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": MAX_PROCESS_TIMEOUT_SECONDS,
+                    },
+                },
+                self.run_check,
+                SkillAction(
+                    (ActionEffect.EXECUTE,),
+                    "workspace:command",
+                    "command_number",
+                ),
+                ("command_number",),
+                result_kind="process",
+            ),
         )
 
     def start_process(self, arguments: dict[str, object]) -> dict[str, object]:
@@ -192,6 +212,18 @@ class DeclaredProcessTools:
                 task.stopped = True
             self._terminate(task)
         return self._snapshot(task)
+
+    def run_check(self, arguments: dict[str, object]) -> dict[str, object]:
+        started = self.start_process(arguments)
+        process_id = str(started["process_id"])
+        deadline = time.monotonic() + int(started["timeout_seconds"]) + 2
+        while True:
+            result = self.poll_process({"process_id": process_id})
+            if _is_terminal_result(result):
+                return result
+            if time.monotonic() >= deadline:
+                return self.stop_process({"process_id": process_id})
+            time.sleep(0.01)
 
     def _start_watchers(self, task: _RunningProcess) -> None:
         streams = ((task.process.stdout, task.stdout), (task.process.stderr, task.stderr))
@@ -284,6 +316,7 @@ class DeclaredProcessTools:
             "output_limit_exceeded": output_limit_exceeded,
             "timed_out": timed_out,
             "stopped": stopped,
+            "passed": returncode == 0 if returncode is not None else None,
             "decode_replaced": stdout_replaced or stderr_replaced,
             "stdout": stdout_text,
             "stderr": stderr_text,
@@ -322,6 +355,10 @@ def _process_state(
     if returncode is None:
         return "running"
     return "completed" if output_finished else "collecting_output"
+
+
+def _is_terminal_result(result: dict[str, object]) -> bool:
+    return result["returncode"] is not None and result["state"] != "collecting_output"
 
 
 def _decode_output(value: bytes) -> tuple[str, bool]:

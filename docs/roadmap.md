@@ -926,12 +926,23 @@ Status: implemented.
 - Recalculate every bounded file hash but reuse unchanged parsed summaries in the current run;
   report refreshed, reused, deleted, and skipped entries explicitly without writing an index.
 
-## v0.1.5-v0.1.19: Planned Capability Proof
+## v0.1.5: Verification-Driven Repair Evidence
+
+Status: implemented.
+
+- Add `run_declared_check` as the bounded synchronous form of the explicit process lifecycle,
+  while retaining start, poll, and stop for long-running checks.
+- Return `passed` only when a check actually exits with code zero, with stdout, stderr,
+  timeout, output-limit, stop, and decoding facts preserved in the result.
+- Teach the code Skill to inspect failed evidence, make a separate checked change, and rerun
+  the check; Runtime never performs an implicit repair or treats partial output as success.
+- Test a failed-check-to-unchanged-file path so verification cannot mutate the workspace.
+
+## v0.1.6-v0.1.19: Planned Capability Proof
 
 Status: planned.
 
-- `v0.1.5-v0.1.7`: verification-driven repair, resumable checkpoints, and reference-based
-  context selection.
+- `v0.1.6-v0.1.7`: resumable checkpoints and reference-based context selection.
 - `v0.1.8-v0.1.13`: evidence-based model assignment, specialized subagents, isolated parallel
   worktrees, independent review, comparative Skill evolution, and public coding evaluation.
 - `v0.1.14-v0.1.17`: optional general tools, model-planned task decomposition, memory and task

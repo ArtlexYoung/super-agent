@@ -24,8 +24,9 @@
 
 1. Run the narrowest relevant checks first, then broaden checks in proportion to shared behavior and blast radius.
 2. Start only declared commands. Poll long-running checks to completion and stop a process explicitly when its result is no longer needed.
-3. Cover the critical path, changed failure paths, invalid input, limits, empty values, and duplicate or conflicting state when relevant.
-4. Inspect the final diff for accidental scope, stale names, compatibility shells, generated noise, secrets, and unverified claims.
+3. If a check fails, use its actual exit code and bounded output as evidence, make a separate checked repair, and run the check again.
+4. Cover the critical path, changed failure paths, invalid input, limits, empty values, and duplicate or conflicting state when relevant.
+5. Inspect the final diff for accidental scope, stale names, compatibility shells, generated noise, secrets, and unverified claims.
 
 ## Report
 
