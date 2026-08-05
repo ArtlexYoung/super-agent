@@ -1016,11 +1016,21 @@ Status: implemented.
 - Persist comparison facts through the central evolution record module and management audit
   event without storing model output in the report.
 
-## v0.1.13-v0.1.19: Planned Capability Proof
+## v0.1.13: Public Coding Evaluation
+
+Status: implemented.
+
+- Upgrade the dependency-free benchmark manifest to explicit output and workspace file checks.
+- Score correctness separately from process completion and publish each bounded check result in
+  the immutable report.
+- Reject escaping paths, symbolic links, oversized files, and non-UTF-8 artifacts instead of
+  skipping them, and publish a small SiliconFlow coding benchmark starter.
+
+## v0.1.14-v0.1.19: Planned Capability Proof
 
 Status: planned.
 
-- `v0.1.13-v0.1.19`: public coding evaluation, general tasks,
+- `v0.1.14-v0.1.19`: general tasks,
   independent review, evolution comparisons, general tasks, and final release gates.
 - `v0.1.8-v0.1.13`: evidence-based model assignment, specialized subagents, isolated parallel
   worktrees, independent review, comparative Skill evolution, and public coding evaluation.

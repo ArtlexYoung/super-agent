@@ -23,11 +23,21 @@
   ],
   "tasks": [
     {
-      "id": "remote-smoke",
-      "prompt": "Return exactly: super-agent benchmark ready",
+      "id": "review-zero-division",
+      "prompt": "Review this Python function and state the concrete bug: def average(total, count): return total / count",
       "workspace": null,
       "checks": {
-        "output_contains": ["super-agent benchmark ready"],
+        "output_contains": ["division by zero"],
+        "output_excludes": [],
+        "files": []
+      }
+    },
+    {
+      "id": "repair-zero-division",
+      "prompt": "Return a one-line safe Python implementation for average(total, count). Include exactly this expression: return total / count if count else 0",
+      "workspace": null,
+      "checks": {
+        "output_contains": ["return total / count if count else 0"],
         "output_excludes": [],
         "files": []
       }

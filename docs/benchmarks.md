@@ -21,6 +21,11 @@ optional JSON result field. Place `{prompt}`, `{workspace}`, `{project_root}`, o
 inside individual arguments instead of constructing a shell command. Tasks may start from an
 empty directory or a copied workspace.
 
+Schema v2 task checks declare required and forbidden output text plus bounded UTF-8 workspace
+file assertions. File paths must remain relative, symbolic links are not followed, and files
+larger than the capture limit fail evaluation. The included `examples/code-benchmark.json`
+is a small public coding starter that can be extended with copied repository fixtures.
+
 The report records the manifest SHA-256, exact task output and digest, exit status, timeout,
-and elapsed time. A completed process is not automatically a correct answer; benchmark-specific
-scoring is added separately so generation and evaluation remain auditable.
+elapsed time, every check result, and an aggregate score. A completed process is never treated
+as a correct answer without its declared checks passing.

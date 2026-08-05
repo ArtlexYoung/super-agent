@@ -13,6 +13,7 @@ import time
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from pathlib import PurePosixPath
 
 
 MAX_CAPTURE_BYTES = 256 * 1024
@@ -32,6 +33,21 @@ class BenchmarkTask:
     task_id: str
     prompt: str
     workspace: Path | None
+    checks: "BenchmarkChecks"
+
+
+@dataclass(frozen=True)
+class BenchmarkFileCheck:
+    path: str
+    contains: tuple[str, ...]
+    excludes: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class BenchmarkChecks:
+    output_contains: tuple[str, ...]
+    output_excludes: tuple[str, ...]
+    files: tuple[BenchmarkFileCheck, ...]
 
 
 @dataclass(frozen=True)
@@ -45,6 +61,9 @@ class BenchmarkResult:
     output_sha256: str
     output: str
     stderr: str
+    passed: bool
+    score: float
+    checks: list[dict[str, object]]
 
 
 def main(arguments: list[str] | None = None) -> int:
@@ -74,7 +93,7 @@ def main(arguments: list[str] | None = None) -> int:
         args.timeout_seconds,
     )
     report = {
-        "schema_version": 1,
+        "schema_version": 2,
         "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "manifest": str(manifest_path),
         "manifest_sha256": hashlib.sha256(manifest_path.read_bytes()).hexdigest(),
@@ -89,15 +108,15 @@ def main(arguments: list[str] | None = None) -> int:
     )
     print(json.dumps(report["summary"], ensure_ascii=False, sort_keys=True))
     print(f"Benchmark report: {report_path}")
-    return 0 if all(result.returncode == 0 for result in results) else 1
+    return 0 if all(result.returncode == 0 and result.passed for result in results) else 1
 
 
 def read_manifest(path: Path) -> tuple[list[AgentSpec], list[BenchmarkTask]]:
     value = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(value, dict) or set(value) != {"schema_version", "agents", "tasks"}:
         raise ValueError("benchmark manifest fields must be schema_version, agents, and tasks")
-    if value["schema_version"] != 1:
-        raise ValueError("benchmark manifest schema_version must be 1")
+    if value["schema_version"] != 2:
+        raise ValueError("benchmark manifest schema_version must be 2")
     agents = [_read_agent(item) for item in _object_list(value["agents"], "agents")]
     tasks = [_read_task(item, path.parent) for item in _object_list(value["tasks"], "tasks")]
     names = [agent.name for agent in agents]
@@ -190,6 +209,8 @@ def run_agent_command(
         stdout = _bounded_text(error.stdout or b"")
         stderr = _bounded_text(error.stderr or b"")
     output = _extract_output(stdout, agent.result_json_field)
+    checks = evaluate_task_checks(task.checks, output, workspace)
+    score = sum(bool(item["passed"]) for item in checks) / len(checks) if checks else 1.0
     return BenchmarkResult(
         agent=agent.name,
         agent_version=agent.version,
@@ -200,6 +221,9 @@ def run_agent_command(
         output_sha256=hashlib.sha256(output.encode("utf-8")).hexdigest(),
         output=output,
         stderr=stderr,
+        passed=returncode == 0 and all(bool(item["passed"]) for item in checks),
+        score=round(score, 4),
+        checks=checks,
     )
 
 
@@ -208,15 +232,19 @@ def summarize_results(results: list[BenchmarkResult]) -> dict[str, object]:
     for result in results:
         summary = by_agent.setdefault(
             result.agent,
-            {"tasks": 0, "completed": 0, "timed_out": 0, "elapsed_seconds": 0.0},
+            {"tasks": 0, "completed": 0, "passed": 0, "timed_out": 0, "elapsed_seconds": 0.0, "score": 0.0},
         )
         summary["tasks"] = int(summary["tasks"]) + 1
         summary["completed"] = int(summary["completed"]) + (result.returncode == 0)
+        summary["passed"] = int(summary["passed"]) + result.passed
+        summary["score"] = round(float(summary["score"]) + result.score, 4)
         summary["timed_out"] = int(summary["timed_out"]) + result.timed_out
         summary["elapsed_seconds"] = round(
             float(summary["elapsed_seconds"]) + result.elapsed_seconds,
             3,
         )
+    for summary in by_agent.values():
+        summary["average_score"] = round(float(summary.pop("score")) / int(summary["tasks"]), 4)
     return {"agents": by_agent, "total_runs": len(results)}
 
 
@@ -267,8 +295,8 @@ def _read_agent(value: dict[str, object]) -> AgentSpec:
 
 
 def _read_task(value: dict[str, object], base: Path) -> BenchmarkTask:
-    if set(value) != {"id", "prompt", "workspace"}:
-        raise ValueError("benchmark task fields must be id, prompt, and workspace")
+    if set(value) != {"id", "prompt", "workspace", "checks"}:
+        raise ValueError("benchmark task fields must be id, prompt, workspace, and checks")
     workspace = value["workspace"]
     if workspace is not None and not isinstance(workspace, str):
         raise ValueError("benchmark task workspace must be a string or null")
@@ -277,7 +305,51 @@ def _read_task(value: dict[str, object], base: Path) -> BenchmarkTask:
         _required_text(value["id"], "task id"),
         _required_text(value["prompt"], "task prompt"),
         source,
+        _read_checks(value["checks"]),
     )
+
+
+def _read_checks(value: object) -> BenchmarkChecks:
+    if not isinstance(value, dict) or set(value) != {"output_contains", "output_excludes", "files"}:
+        raise ValueError("benchmark checks fields do not match schema v2")
+    files = []
+    for item in _object_list(value["files"], "check files"):
+        if set(item) != {"path", "contains", "excludes"}:
+            raise ValueError("benchmark file check fields do not match schema v2")
+        path = _safe_relative_path(_required_text(item["path"], "check file path"))
+        files.append(BenchmarkFileCheck(path, tuple(_text_list(item["contains"], "contains")), tuple(_text_list(item["excludes"], "excludes"))))
+    return BenchmarkChecks(
+        tuple(_text_list(value["output_contains"], "output_contains")),
+        tuple(_text_list(value["output_excludes"], "output_excludes")),
+        tuple(files),
+    )
+
+
+def evaluate_task_checks(
+    checks: BenchmarkChecks,
+    output: str,
+    workspace: Path,
+) -> list[dict[str, object]]:
+    results = [
+        {"check": f"output contains {text!r}", "passed": text in output}
+        for text in checks.output_contains
+    ]
+    results.extend(
+        {"check": f"output excludes {text!r}", "passed": text not in output}
+        for text in checks.output_excludes
+    )
+    for file_check in checks.files:
+        path = workspace.joinpath(*PurePosixPath(file_check.path).parts)
+        content = _read_checked_file(path)
+        results.extend(
+            {"check": f"{file_check.path} contains {text!r}", "passed": text in content}
+            for text in file_check.contains
+        )
+        results.extend(
+            {"check": f"{file_check.path} excludes {text!r}", "passed": text not in content}
+            for text in file_check.excludes
+        )
+    return results
 
 
 def _object_list(value: object, name: str) -> list[dict[str, object]]:
@@ -290,6 +362,31 @@ def _string_list(value: object, name: str) -> list[str]:
     if not isinstance(value, list) or not value or not all(isinstance(item, str) and item for item in value):
         raise ValueError(f"benchmark {name} must be a non-empty string array")
     return value
+
+
+def _text_list(value: object, name: str) -> list[str]:
+    if not isinstance(value, list) or not all(isinstance(item, str) and item for item in value):
+        raise ValueError(f"benchmark {name} must be a string array")
+    return list(value)
+
+
+def _safe_relative_path(value: str) -> str:
+    path = PurePosixPath(value.replace("\\", "/"))
+    if path.is_absolute() or not path.parts or ".." in path.parts:
+        raise ValueError(f"unsafe benchmark check path: {value}")
+    return path.as_posix()
+
+
+def _read_checked_file(path: Path) -> str:
+    if path.is_symlink() or not path.is_file():
+        return ""
+    data = path.read_bytes()
+    if len(data) > MAX_CAPTURE_BYTES:
+        raise ValueError(f"benchmark check file exceeds {MAX_CAPTURE_BYTES} bytes: {path}")
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise ValueError(f"benchmark check file is not UTF-8: {path}") from error
 
 
 def _required_text(value: object, name: str) -> str:
