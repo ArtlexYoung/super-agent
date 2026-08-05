@@ -4,7 +4,8 @@
 
 1. Read repository instructions that apply to the target files, then inspect the working tree without discarding existing user changes.
 2. Locate the relevant entry points, callers, data flow, tests, configuration, and public contracts before editing.
-3. Separate facts from assumptions. Search narrowly first and expand only when the dependency boundary requires it.
+3. Refresh the repository map when the task spans several files, then use its hashes and symbols to choose focused reads.
+4. Separate facts from assumptions. Search narrowly first and expand only when the dependency boundary requires it.
 
 ## Decide
 

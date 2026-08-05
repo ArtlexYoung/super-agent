@@ -10,6 +10,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 from adapter.processes import DeclaredProcessTools
+from adapter.repository import IncrementalRepositoryMap
 from core.checks import ActionEffect
 from core.config import CodeConfig, CodeSettings
 from core.files import write_bytes_atomically
@@ -71,9 +72,18 @@ class CodeWorkspace:
             settings.verification_commands,
             settings.execute,
         )
+        self.repository = IncrementalRepositoryMap(
+            self.root,
+            settings.ignored_paths,
+        )
 
     def list_tools(self) -> tuple[SkillTool, ...]:
-        return (*self._read_tools(), *self._change_tools(), *self.processes.list_tools())
+        return (
+            *self._read_tools(),
+            *self._change_tools(),
+            *self.repository.list_tools(),
+            *self.processes.list_tools(),
+        )
 
     def _read_tools(self) -> tuple[SkillTool, ...]:
         path = _workspace_path_schema()

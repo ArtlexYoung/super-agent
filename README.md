@@ -159,6 +159,9 @@ oversized, and non-text reads fail visibly. Every non-read tool asks for termina
 confirmation before it runs, and refusal or end-of-input stops the action without a hidden
 fallback. Verification commands are declared as argument arrays, then started, polled, or
 stopped by ID with explicit time and output limits; shell strings are never accepted.
+`refresh_repository_map` provides a bounded path and metadata map and reuses unchanged
+symbol parsing within the current run. Python symbols use the standard AST parser; other
+file types report no parser rather than receiving guessed symbols.
 
 ## Guarantees
 

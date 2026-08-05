@@ -54,6 +54,8 @@ non-read tools ask for terminal confirmation through the central action runner; 
 EOF blocks the action. Paths outside the configured root and undeclared verification
 commands fail visibly. Declared commands run without a shell and expose separate start,
 poll, and stop tools with bounded time and output.
+The same code Skill can refresh an in-memory repository map. It reports file hashes and
+Python AST symbols, reuses unchanged parses, and states when another file type has no parser.
 
 ## Skills
 

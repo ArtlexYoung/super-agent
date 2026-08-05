@@ -66,6 +66,9 @@ Replacing, patching, or deleting an existing file also requires its current SHA-
 Declared commands start asynchronously with a process ID. Polling returns bounded stdout,
 stderr, state, return code, elapsed time, and explicit timeout, output-limit, stop, and decode
 facts. Stopping is a separate checked action. The model cannot supply executable arguments.
+Repository maps are read-only and in-memory. They cap file count, per-file bytes, total bytes,
+skipped paths, and Python symbols; exceeding a limit fails explicitly. A refresh hashes every
+bounded file but only reparses files whose content hash changed.
 
 `agent.skills` pins ordinary Skills to every run. `disabled_skills` excludes a type or a
 specific `type:name`. Task selection is per run, while subagent links are configured in

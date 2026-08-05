@@ -915,12 +915,23 @@ Status: implemented.
 - Send process results through the same progressive disclosure and action audit paths used by
   every other Skill tool.
 
-## v0.1.4-v0.1.19: Planned Capability Proof
+## v0.1.4: Incremental Repository Map
+
+Status: implemented.
+
+- Add one read-only `refresh_repository_map` tool to the code Skill with bounded file count,
+  per-file bytes, total bytes, skipped paths, and symbols.
+- Return stable file paths, sizes, line counts, content hashes, parser status, and Python
+  class/function/method locations without guessing symbols for unsupported file types.
+- Recalculate every bounded file hash but reuse unchanged parsed summaries in the current run;
+  report refreshed, reused, deleted, and skipped entries explicitly without writing an index.
+
+## v0.1.5-v0.1.19: Planned Capability Proof
 
 Status: planned.
 
-- `v0.1.4-v0.1.7`: incremental repository maps, verification-driven repair, resumable
-  checkpoints, and reference-based context selection.
+- `v0.1.5-v0.1.7`: verification-driven repair, resumable checkpoints, and reference-based
+  context selection.
 - `v0.1.8-v0.1.13`: evidence-based model assignment, specialized subagents, isolated parallel
   worktrees, independent review, comparative Skill evolution, and public coding evaluation.
 - `v0.1.14-v0.1.17`: optional general tools, model-planned task decomposition, memory and task
