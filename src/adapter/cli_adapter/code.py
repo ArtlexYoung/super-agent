@@ -11,6 +11,7 @@ from pathlib import Path
 
 from adapter.processes import DeclaredProcessTools
 from adapter.repository import IncrementalRepositoryMap
+from adapter.worktree import IsolatedWorktreeTools
 from core.checks import ActionEffect
 from core.config import CodeConfig, CodeSettings
 from core.files import write_bytes_atomically
@@ -76,6 +77,7 @@ class CodeWorkspace:
             self.root,
             settings.ignored_paths,
         )
+        self.worktrees = IsolatedWorktreeTools(self.root)
 
     def list_tools(self) -> tuple[SkillTool, ...]:
         return (
@@ -83,6 +85,7 @@ class CodeWorkspace:
             *self._change_tools(),
             *self.repository.list_tools(),
             *self.processes.list_tools(),
+            *self.worktrees.list_tools(),
         )
 
     def _read_tools(self) -> tuple[SkillTool, ...]:

@@ -986,11 +986,20 @@ Status: implemented.
 - Record purpose and required features in subagent start and scheduled events so delegation
   can be inspected without retaining model text.
 
-## v0.1.10-v0.1.19: Planned Capability Proof
+## v0.1.10: Isolated Git Worktrees
+
+Status: implemented.
+
+- Add explicit code Skill tools for create, list, and remove of detached Git worktrees.
+- Restrict worktree identifiers, paths, and Git arguments; create only below
+  `.super-agent/worktrees` and never accept model-provided shell commands.
+- Keep removal non-forced so dirty worktrees fail visibly instead of losing changes.
+
+## v0.1.11-v0.1.19: Planned Capability Proof
 
 Status: planned.
 
-- `v0.1.10-v0.1.19`: isolated worktrees,
+- `v0.1.11-v0.1.19`: independent review, evolution comparisons, general tasks,
   independent review, evolution comparisons, general tasks, and final release gates.
 - `v0.1.8-v0.1.13`: evidence-based model assignment, specialized subagents, isolated parallel
   worktrees, independent review, comparative Skill evolution, and public coding evaluation.

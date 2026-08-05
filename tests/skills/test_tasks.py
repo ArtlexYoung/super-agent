@@ -352,6 +352,29 @@ commands = [["python3.11", "-m", "unittest"]]
             self.assertIn("--no-ext-diff", diff["command"])
             self.assertIn("--no-textconv", diff["command"])
 
+    def test_code_workspace_worktrees_are_detached_and_bounded(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repository = Path(tmp)
+            subprocess.run(["git", "init", "--quiet"], cwd=repository, check=True)
+            repository.joinpath("note.txt").write_text("saved\n", encoding="utf-8")
+            subprocess.run(["git", "add", "note.txt"], cwd=repository, check=True)
+            subprocess.run(
+                ["git", "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "--quiet", "-m", "initial"],
+                cwd=repository,
+                check=True,
+            )
+            bounded = CodeWorkspace(CodeSettings(repository, [], "allow", "deny", "deny", []))
+
+            created = bounded.worktrees.create_worktree({"worktree_id": "run01"})
+            listed = bounded.worktrees.list_worktrees({})
+
+            self.assertTrue(created["created"])
+            self.assertEqual("run01", listed["worktrees"][0]["worktree_id"])
+            self.assertTrue(Path(created["path"]).joinpath("note.txt").is_file())
+
+            removed = bounded.worktrees.remove_worktree({"worktree_id": "run01"})
+            self.assertTrue(removed["removed"])
+
     def test_code_workspace_changes_require_terminal_confirmation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
