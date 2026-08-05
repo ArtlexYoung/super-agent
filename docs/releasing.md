@@ -16,23 +16,15 @@ pnpm --dir web install --frozen-lockfile
 
 ## Checks
 
-Replace `0.1.18` with the version being released:
+Replace `0.1.19` with the version being released:
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src:tests \
-  .venv/bin/python -m unittest discover -s tests -p 'test_*.py'
-PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src \
-  .venv/bin/python -m compileall -q src
-.venv/bin/python scripts/verify_release.py --version 0.1.18
-git diff --check
-pnpm --dir web typecheck
-pnpm --dir web lint
-pnpm --dir web build
+.venv/bin/python scripts/verify_release.py --version 0.1.19 --full --web
 ```
 
-The release script is read-only. It checks the version in Python, TOML, and Web package
-metadata, the dependency-free default, source layout, wheel roots, README link, and the
-source size gate.
+Static mode is read-only. `--full` additionally runs all Python tests, compileall, diff
+validation, and the committed offline benchmark in a temporary directory. `--web` explicitly
+adds pnpm typecheck, lint, and build; a missing tool or failed command stops the gate.
 
 ## Commit
 
@@ -42,6 +34,6 @@ unrelated working-tree changes out of the release commit:
 ```bash
 git add -A -- . ':(exclude).gitignore'
 git diff --cached --check
-git commit -m "release: v0.1.18"
-git tag v0.1.18
+git commit -m "release: v0.1.19"
+git tag v0.1.19
 ```

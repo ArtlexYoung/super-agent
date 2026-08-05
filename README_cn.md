@@ -180,11 +180,7 @@ checkpoint_id=...)` 从指定检查点创建新的显式运行；由于不重建
 ## 验证仓库
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src:tests python3 -m unittest discover -s tests
-PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src python3 -m compileall -q src
-pnpm --dir web typecheck
-pnpm --dir web lint
-pnpm --dir web build
+python3.11 scripts/verify_release.py --version 0.1.19 --full --web
 ```
 
 完整的本地发布检查（包括版本一致性和打包范围）见[本地发布流程](docs/releasing.md)。

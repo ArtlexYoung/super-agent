@@ -202,11 +202,7 @@ Runnable examples are in `examples/minimal.py`, `examples/custom_skill.py`, and
 ## Verify the Repository
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src:tests python3 -m unittest discover -s tests
-PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src python3 -m compileall -q src
-pnpm --dir web typecheck
-pnpm --dir web lint
-pnpm --dir web build
+python3.11 scripts/verify_release.py --version 0.1.19 --full --web
 ```
 
 For the complete local release gate, including version and package-shape checks, see

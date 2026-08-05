@@ -5,8 +5,11 @@ from __future__ import annotations
 import argparse
 import ast
 import json
+import os
 import re
+import subprocess
 import sys
+import tempfile
 import tomllib
 from pathlib import Path
 
@@ -37,7 +40,11 @@ VERSION_PATTERN = re.compile(r"0\.\d+\.\d+$")
 def main(arguments: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--version", required=True, help="release version to verify")
+    parser.add_argument("--full", action="store_true", help="run executable Python gates")
+    parser.add_argument("--web", action="store_true", help="include Web checks in --full")
     args = parser.parse_args(arguments)
+    if args.web and not args.full:
+        parser.error("--web requires --full")
     root = Path(__file__).resolve().parents[1]
     errors = verify_release(root, args.version)
     if errors:
@@ -45,7 +52,80 @@ def main(arguments: list[str] | None = None) -> int:
             print(f"FAIL {error}", file=sys.stderr)
         return 1
     print(f"Release checks passed: {args.version}")
+    if args.full:
+        full_errors = run_full_release_gate(root, include_web=args.web)
+        if full_errors:
+            for error in full_errors:
+                print(f"FAIL {error}", file=sys.stderr)
+            return 1
+        print("Full release gate passed")
     return 0
+
+
+def run_full_release_gate(root: Path, *, include_web: bool) -> list[str]:
+    environment = dict(os.environ)
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    environment["PYTHONPATH"] = os.pathsep.join(
+        [str(root / "src"), str(root / "tests")]
+    )
+    errors: list[str] = []
+    with tempfile.TemporaryDirectory(prefix="super-agent-release-") as temporary:
+        output = Path(temporary) / "benchmark"
+        for name, command in build_full_gate_commands(root, output, include_web):
+            try:
+                completed = subprocess.run(
+                    command,
+                    cwd=root,
+                    env=environment,
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                )
+            except OSError as error:
+                errors.append(f"{name} could not start: {error}")
+                continue
+            if completed.returncode != 0:
+                detail = (completed.stderr or completed.stdout).strip()[-8_000:]
+                errors.append(f"{name} exited {completed.returncode}: {detail}")
+            else:
+                print(f"PASS {name}")
+    return errors
+
+
+def build_full_gate_commands(
+    root: Path,
+    benchmark_output: Path,
+    include_web: bool,
+) -> list[tuple[str, tuple[str, ...]]]:
+    python = sys.executable
+    commands = [
+        (
+            "Python tests",
+            (python, "-m", "unittest", "discover", "-s", "tests", "-p", "test_*.py"),
+        ),
+        ("Python compile", (python, "-m", "compileall", "-q", "src")),
+        ("diff check", ("git", "diff", "--check")),
+        (
+            "offline benchmark",
+            (
+                python,
+                str(root / "scripts" / "run_benchmark.py"),
+                "--manifest",
+                str(root / "examples" / "offline-gate-benchmark.json"),
+                "--output",
+                str(benchmark_output),
+            ),
+        ),
+    ]
+    if include_web:
+        commands.extend(
+            [
+                ("Web typecheck", ("pnpm", "--dir", "web", "typecheck")),
+                ("Web lint", ("pnpm", "--dir", "web", "lint")),
+                ("Web build", ("pnpm", "--dir", "web", "build")),
+            ]
+        )
+    return commands
 
 
 def verify_release(root: Path, expected_version: str) -> list[str]:

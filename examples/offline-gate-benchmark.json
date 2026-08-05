@@ -1,0 +1,21 @@
+{
+  "schema_version": 2,
+  "agents": [{
+    "name": "offline-fixture",
+    "version": "1",
+    "command": ["{python}", "-c", "print('super-agent offline gate ready')"],
+    "environment": {"PYTHONDONTWRITEBYTECODE": "1"},
+    "result_json_field": null
+  }],
+  "tasks": [{
+    "id": "runner-contract",
+    "prompt": "unused fixture prompt",
+    "workspace": null,
+    "checks": {
+      "output_contains": ["super-agent offline gate ready"],
+      "output_excludes": ["failed"],
+      "files": [],
+      "workspace_unchanged": true
+    }
+  }]
+}

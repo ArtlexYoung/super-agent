@@ -1083,18 +1083,14 @@ Status: implemented.
 
 ## v0.1.19: Final Reproducible Gate
 
-Status: planned.
+Status: implemented.
 
-Status: planned.
-
-- `v0.1.19`: publish the final non-regression gate,
-  independent review, evolution comparisons, general tasks, and final release gates.
-- `v0.1.8-v0.1.13`: evidence-based model assignment, specialized subagents, isolated parallel
-  worktrees, independent review, comparative Skill evolution, and public coding evaluation.
-- `v0.1.14-v0.1.17`: optional general tools, model-planned task decomposition, memory and task
-  Skill evolution, and general capability plus security evaluation.
-- `v0.1.18-v0.1.19`: remove superseded paths, tighten lightweight budgets, and publish one
-  reproducible non-regression gate for the complete `v0.1` line.
+- Extend the existing release verifier with one explicit `--full` path for all Python tests,
+  compilation, diff validation, and a committed offline scored benchmark.
+- Add explicit `--web` verification for pnpm typecheck, lint, and build; unavailable tooling or
+  any failed command is reported and never skipped or replaced.
+- Keep every subprocess as a fixed argv array, run the benchmark in a temporary directory, and
+  publish one command in the release guide for the complete v0.1 non-regression gate.
 
 ## Release Gate
 
