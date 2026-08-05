@@ -30,6 +30,11 @@ The model receives:
 - A compact central Skill index.
 - Tool definitions for disclosure, activation, and registered task actions.
 
+The central disclosure core also tracks one 24,000-character context budget for the run.
+Skill instructions, tool results, memory context, subagent results, and explicit reference
+reads spend the same budget. Once exhausted, a disclosure result contains only its reference,
+hash, total size, and next offset; it is never silently truncated.
+
 It can return final text immediately or request tools until the active workflow's step
 limit is reached. Invalid tool names, arguments, Skill references, and action requests fail
 the run visibly.

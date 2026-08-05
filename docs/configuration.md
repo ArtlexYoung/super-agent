@@ -73,6 +73,11 @@ For a direct verification loop, `run_declared_check` waits for one configured co
 returns `passed = true` only for exit code zero. The model must make and verify any repair as
 separate explicit actions.
 
+The progressive disclosure core uses a 24,000-character per-run context budget by default.
+The budget is shared across model context, tool results, memory context, subagent results,
+and reference reads. It is a Runtime bound rather than a separate Skill setting, so optional
+features cannot create competing context policies.
+
 `agent.skills` pins ordinary Skills to every run. `disabled_skills` excludes a type or a
 specific `type:name`. Task selection is per run, while subagent links are configured in
 Python because code is clearer for dynamic composition.

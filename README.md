@@ -175,6 +175,9 @@ the new prompt supplies the continuation intent because model output is not reco
 - Skills, files, tool output, memory context, and subagent results use one central progressive
   disclosure path. Large content is referenced and read in bounded pages instead of silently
   truncated.
+- One per-run context budget is shared by Skill instructions, tool results, memory context,
+  subagent results, and reference reads. When it is full, the model receives only a stable
+  reference and hash and must request the next page explicitly.
 - Routing is model judgment, not keyword matching.
 - Reads do not write, and state changes are explicit checked actions.
 - Skill content is passive and cannot register code, permissions, or secrets.

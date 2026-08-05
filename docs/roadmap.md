@@ -951,11 +951,24 @@ Status: implemented.
 - Verify latest and selected checkpoint lookup, unknown IDs, user scope, and absence of model
   text in checkpoint events.
 
-## v0.1.7-v0.1.19: Planned Capability Proof
+## v0.1.7: One Context Budget
+
+Status: implemented.
+
+- Add one per-run context budget to `ProgressiveDisclosureCore` and make model context, tool
+  results, memory context, subagent results, and reference reads use the same accounting.
+- Return a stable reference, hash, total size, and next offset when the budget is exhausted;
+  keep explicit page reads as the only way to retrieve more content.
+- Keep reference-only pages distinct from ordinary page arguments so no public paging contract
+  accepts invalid zero-length pages.
+- Verify budget sharing and exhaustion through Skill, tool, and memory-stage disclosures.
+
+## v0.1.8-v0.1.19: Planned Capability Proof
 
 Status: planned.
 
-- `v0.1.7`: reference-based context selection.
+- `v0.1.8-v0.1.19`: reference-based model assignment, specialized Agents, isolated worktrees,
+  independent review, evolution comparisons, general tasks, and final release gates.
 - `v0.1.8-v0.1.13`: evidence-based model assignment, specialized subagents, isolated parallel
   worktrees, independent review, comparative Skill evolution, and public coding evaluation.
 - `v0.1.14-v0.1.17`: optional general tools, model-planned task decomposition, memory and task

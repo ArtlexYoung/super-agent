@@ -13,6 +13,7 @@ from core.evaluation.records import (
 )
 from core.state.events import create_local_event_store
 from skill.disclosure import ProgressiveDisclosureCore
+from skill.index import format_disclosure_page_for_prompt
 from core.evaluation.freshness import calculate_skill_freshness
 from core.evaluation.models import SkillRevision
 from core.skill_use.defaults import create_runtime_disclosure_recorder
@@ -22,6 +23,36 @@ from support import load_default_freshness_rules
 
 
 class ProgressiveDisclosureCoreTests(unittest.TestCase):
+    def test_one_core_budget_returns_reference_when_context_is_full(self) -> None:
+        core = ProgressiveDisclosureCore([], context_budget_chars=10)
+        core.prepare_skill_index()
+
+        first = core.disclose_content(
+            "skill",
+            "first",
+            "1234567",
+            stage="model-context",
+        )
+        second = core.disclose_content(
+            "tool",
+            "second",
+            "abcdefgh",
+            stage="tool-result",
+        )
+        third = core.disclose_content(
+            "memory",
+            "third",
+            "remaining content",
+            stage="memory-context",
+        )
+
+        self.assertEqual("1234567", first.content)
+        self.assertEqual("abc", second.content)
+        self.assertEqual(10, core.context_usage()["used_chars"])
+        self.assertEqual("", third.content)
+        self.assertEqual(0, third.offset)
+        self.assertIn(third.reference, format_disclosure_page_for_prompt(third))
+
     def test_one_core_pages_generic_content_without_storage(self) -> None:
         core = ProgressiveDisclosureCore([])
         core.prepare_skill_index()

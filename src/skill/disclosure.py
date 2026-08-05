@@ -9,8 +9,8 @@ from urllib.parse import quote
 from skill.index import (
     DEFAULT_INLINE_CHARS,
     DEFAULT_PAGE_CHARS,
+    DisclosureContextBudget,
     DisclosurePage,
-    create_disclosure_page,
     serialize_disclosure_value,
     DisclosedConfiguration,
     DisclosedSkillFile,
@@ -64,6 +64,7 @@ class ProgressiveDisclosureCore:
         freshness_stats: Mapping[str, Mapping[str, object]] | None = None,
         recorder: DisclosureRecorder | None = None,
         record_event: RecordEvent | None = None,
+        context_budget_chars: int = 24_000,
     ) -> None:
         self.skill_roots = [path.expanduser() for path in skill_roots]
         self.user_skill_roots = [
@@ -78,6 +79,7 @@ class ProgressiveDisclosureCore:
         }
         self.recorder = recorder
         self.record_event = record_event
+        self.context_budget = DisclosureContextBudget(context_budget_chars)
         self._index: SkillIndex | None = None
         self._sources_by_key: dict[str, SkillSource] = {}
         self._disabled_references: list[SkillReference] = []
@@ -247,11 +249,12 @@ class ProgressiveDisclosureCore:
             content,
             selected_path,
         )
-        return create_disclosure_page(
+        return self.context_budget.create_page(
             reference,
             clean_kind,
             clean_name,
             content,
+            stage,
             limit=inline_chars,
             cache_path=selected_path,
         )
@@ -289,15 +292,19 @@ class ProgressiveDisclosureCore:
             cached = ("cache", Path(selected).name, content, Path(selected))
             self._disclosed_content[selected] = cached
         kind, name, content, cache_path = cached
-        return create_disclosure_page(
+        return self.context_budget.create_page(
             selected,
             kind,
             name,
             content,
+            "reference-read",
             offset=offset,
             limit=limit,
             cache_path=cache_path,
         )
+
+    def context_usage(self) -> dict[str, int]:
+        return self.context_budget.usage()
 
     def read_disclosure_history(self) -> list[DisclosureEvent]:
         if self.recorder is None:

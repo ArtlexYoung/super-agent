@@ -12,6 +12,17 @@ DEFAULT_INLINE_CHARS = 4_000
 DEFAULT_PAGE_CHARS = 8_000
 MAX_PAGE_CHARS = 32_000
 MAX_CONTENT_CHARS = 2_000_000
+DEFAULT_CONTEXT_BUDGET_CHARS = 24_000
+CONTEXT_BUDGET_STAGES = frozenset(
+    {
+        "model-context",
+        "tool-result",
+        "memory-context",
+        "subagent-result",
+        "checkpoint",
+        "reference-read",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -25,6 +36,70 @@ class DisclosurePage:
     total_chars: int
     next_offset: int | None
     cache_path: Path | None = None
+
+
+class DisclosureContextBudget:
+    """Count prompt characters across every central disclosure stage."""
+
+    def __init__(self, budget_chars: int = DEFAULT_CONTEXT_BUDGET_CHARS) -> None:
+        if (
+            isinstance(budget_chars, bool)
+            or not isinstance(budget_chars, int)
+            or budget_chars <= 0
+        ):
+            raise ValueError("context budget must be a positive integer")
+        self.budget_chars = budget_chars
+        self.used_chars = 0
+
+    def create_page(
+        self,
+        reference: str,
+        kind: str,
+        name: str,
+        content: str,
+        stage: str,
+        *,
+        offset: int = 0,
+        limit: int = DEFAULT_INLINE_CHARS,
+        cache_path: Path | None = None,
+    ) -> DisclosurePage:
+        if (
+            isinstance(limit, bool)
+            or not isinstance(limit, int)
+            or limit <= 0
+            or limit > MAX_PAGE_CHARS
+        ):
+            raise ValueError(
+                f"disclosure limit must be between 1 and {MAX_PAGE_CHARS} characters"
+            )
+        selected_limit = limit
+        if stage in CONTEXT_BUDGET_STAGES:
+            selected_limit = min(limit, max(0, self.budget_chars - self.used_chars))
+        page = (
+            create_reference_disclosure_page(
+                reference, kind, name, content, offset=offset, cache_path=cache_path
+            )
+            if selected_limit == 0
+            else create_disclosure_page(
+                reference,
+                kind,
+                name,
+                content,
+                offset=offset,
+                limit=selected_limit,
+                cache_path=cache_path,
+            )
+        )
+        if stage in CONTEXT_BUDGET_STAGES:
+            self.used_chars += len(page.content)
+        return page
+
+    def usage(self) -> dict[str, int]:
+        return {
+            "used_chars": self.used_chars,
+            "budget_chars": self.budget_chars,
+            "remaining_chars": max(0, self.budget_chars - self.used_chars),
+        }
 
 
 def create_disclosure_page(
@@ -71,7 +146,7 @@ def disclosure_page_to_dict(page: DisclosurePage) -> dict[str, object]:
 
 
 def format_disclosure_page_for_prompt(page: DisclosurePage) -> str:
-    if page.next_offset is None:
+    if page.next_offset is None and page.content:
         return page.content
     return (
         "Progressive content page:\n"
@@ -83,6 +158,32 @@ def format_disclosure_page_for_prompt(page: DisclosurePage) -> str:
         f"- next_offset: {page.next_offset}\n"
         "- content:\n"
         + page.content
+    )
+
+
+def create_reference_disclosure_page(
+    reference: str,
+    kind: str,
+    name: str,
+    content: str,
+    *,
+    offset: int = 0,
+    cache_path: Path | None = None,
+) -> DisclosurePage:
+    """Return metadata without spending context characters on source content."""
+    _require_content_size(content)
+    if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
+        raise ValueError("disclosure offset must be a non-negative integer")
+    return DisclosurePage(
+        reference=reference,
+        kind=kind,
+        name=name,
+        content="",
+        content_sha256=hashlib.sha256(content.encode("utf-8")).hexdigest(),
+        offset=offset,
+        total_chars=len(content),
+        next_offset=offset if offset < len(content) else None,
+        cache_path=cache_path,
     )
 
 
