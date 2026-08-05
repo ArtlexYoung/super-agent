@@ -252,6 +252,7 @@ def _write_isolated_domain_state(store: EventStore, marker: str) -> None:
     store.disclosure.write_text(
         None,
         f"prompt:{marker}-skill",
+        "skill",
         "instructions",
         store.disclosure.cache_root / "proof.txt",
         f"{marker}-only",
@@ -296,7 +297,7 @@ def _require_disclosure_isolation(store: EventStore, skill_name: str) -> str:
     if store.disclosure.read_content(path) != f"{marker}-only":
         raise AssertionError("Skill disclosure cache user isolation failed")
     history = store.disclosure.read_history()
-    if [item["skill_key"] for item in history] != [f"prompt:{skill_name}"]:
+    if [item["content_key"] for item in history] != [f"prompt:{skill_name}"]:
         raise AssertionError("Skill disclosure history user isolation failed")
     return "skill_disclosure_user_isolation"
 

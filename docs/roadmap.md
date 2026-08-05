@@ -875,6 +875,20 @@ Status: implemented.
 - Move release versions to `0.x.y` and keep the v0.1 source budget below 90 Python files and
   20,000 lines with no default runtime dependencies.
 
+## v0.1.1: One Progressive Content Path
+
+Status: implemented.
+
+- Extend `ProgressiveDisclosureCore` from Skill-only content to tool results, memory context,
+  and delegated subagent results.
+- Return bounded pages with stable references and explicit offsets; stateless runs keep the
+  reference in memory, while stateful runs use a content-hash cache.
+- Record generic `content.disclosed` events with kind, reference, digest, and cache-hit facts;
+  never treat a successful tool process as proof that its content is correct.
+- Reject unsupported content sizes and invalid page ranges instead of silently degrading.
+- Keep the passive Skill package at five source files and preserve the default dependency-free
+  install.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

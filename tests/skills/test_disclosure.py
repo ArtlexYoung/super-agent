@@ -36,7 +36,7 @@ class ProgressiveDisclosureTests(unittest.TestCase):
             self.assertTrue(instruction.cache_path.exists())
             self.assertEqual(
                 "Always answer briefly.",
-                disclosure.read_disclosed_content(instruction.cache_path),
+                disclosure.read_disclosed_content(instruction.cache_path).content,
             )
             self.assertEqual("echo", index_data["skills"][0]["name"])
             self.assertEqual(6, index_data["schema_version"])

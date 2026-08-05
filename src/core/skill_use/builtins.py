@@ -170,6 +170,7 @@ def _create_memory_tools(memory: Memory) -> tuple[SkillTool, ...]:
                 "memory:long-term",
                 "scope",
             ),
+            result_kind="memory",
         ),
         SkillTool(
             "remember_long_term",
@@ -182,6 +183,7 @@ def _create_memory_tools(memory: Memory) -> tuple[SkillTool, ...]:
                 "scope",
             ),
             required=("text",),
+            result_kind="memory",
         ),
         SkillTool(
             "recall_long_term_memory",
@@ -198,6 +200,7 @@ def _create_memory_tools(memory: Memory) -> tuple[SkillTool, ...]:
                 "scope",
             ),
             required=("query",),
+            result_kind="memory",
         ),
         SkillTool(
             "organize_long_term_memory",
@@ -230,6 +233,7 @@ def _create_memory_tools(memory: Memory) -> tuple[SkillTool, ...]:
                 "memory:long-term",
             ),
             required=("operations",),
+            result_kind="memory",
         ),
         SkillTool(
             "forget_long_term_memory",
@@ -242,6 +246,7 @@ def _create_memory_tools(memory: Memory) -> tuple[SkillTool, ...]:
                 "item_id",
             ),
             required=("item_id",),
+            result_kind="memory",
         ),
     )
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Callable
 
 from core.models import RunIdentity
@@ -149,6 +149,7 @@ class Run:
                     execute_action=self.execute_action,
                 )
             )
+            loaded = replace(loaded, source=reference)
             self._loaded_skills[key] = loaded
         return loaded
 

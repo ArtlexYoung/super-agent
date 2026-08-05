@@ -22,6 +22,25 @@ from support import load_default_freshness_rules
 
 
 class ProgressiveDisclosureCoreTests(unittest.TestCase):
+    def test_one_core_pages_generic_content_without_storage(self) -> None:
+        core = ProgressiveDisclosureCore([])
+        core.prepare_skill_index()
+
+        page = core.disclose_content("tool", "call-1", "x" * 9_000)
+
+        self.assertEqual(4_000, len(page.content))
+        self.assertEqual(9_000, page.total_chars)
+        self.assertIsNotNone(page.next_offset)
+        next_page = core.read_disclosed_content(
+            page.reference,
+            offset=page.next_offset or 0,
+            limit=8_000,
+        )
+        self.assertEqual("x" * 5_000, next_page.content)
+        self.assertIsNone(next_page.next_offset)
+        with self.assertRaisesRegex(ValueError, "between 1 and 32000"):
+            core.read_disclosed_content(page.reference, limit=32_001)
+
     def test_run_owns_one_central_skills_snapshot(self) -> None:
         skills = SkillCollection(ProgressiveDisclosureCore([]))
         run_fields = {field.name for field in fields(Run)}
@@ -212,7 +231,10 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
             )
             self.assertFalse(history[2].cache_hit)
             self.assertTrue(history[3].cache_hit)
-            self.assertEqual(first.content, core.read_disclosed_content(first.cache_path))
+            self.assertEqual(
+                first.content,
+                core.read_disclosed_content(first.cache_path).content,
+            )
 
     def test_read_stages_do_not_write_cache_or_history(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -293,6 +315,7 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
                 store.disclosure.write_text(
                     None,
                     "prompt:outside",
+                    "skill",
                     "instructions",
                     outside,
                     "must not be written",

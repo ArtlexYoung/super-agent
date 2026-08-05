@@ -30,14 +30,16 @@ class RuntimeDisclosureStore:
     def write_text(
         self,
         identity: RunIdentity | None,
-        skill_key: str,
+        content_key: str,
+        kind: str,
         stage: str,
         path: Path,
         content: str,
     ) -> None:
         self._write_bytes(
             identity,
-            skill_key,
+            content_key,
+            kind,
             stage,
             path,
             content.encode("utf-8"),
@@ -46,14 +48,16 @@ class RuntimeDisclosureStore:
     def write_json(
         self,
         identity: RunIdentity | None,
-        skill_key: str,
+        content_key: str,
+        kind: str,
         stage: str,
         path: Path,
         content: dict[str, object],
     ) -> None:
         self._write_bytes(
             identity,
-            skill_key,
+            content_key,
+            kind,
             stage,
             path,
             (
@@ -71,7 +75,8 @@ class RuntimeDisclosureStore:
     def _write_bytes(
         self,
         identity: RunIdentity | None,
-        skill_key: str,
+        content_key: str,
+        kind: str,
         stage: str,
         path: Path,
         content: bytes,
@@ -85,9 +90,10 @@ class RuntimeDisclosureStore:
         if not cache_hit:
             write_bytes_atomically(cache_path, content)
         data: dict[str, object] = {
-            "skill_key": skill_key,
+            "content_key": content_key,
+            "kind": kind,
             "stage": stage,
-            "cache_path": str(cache_path),
+            "reference": str(cache_path),
             "content_sha256": digest,
             "cache_hit": cache_hit,
         }
@@ -95,11 +101,11 @@ class RuntimeDisclosureStore:
             self._store.append_event(
                 "disclosure",
                 "management",
-                "skill.disclosed",
+                "content.disclosed",
                 data=data,
             )
         else:
-            self._store.append_run_event(identity, "skill.disclosed", data)
+            self._store.append_run_event(identity, "content.disclosed", data)
         self.refresh_history()
 
     def refresh_history(self) -> None:

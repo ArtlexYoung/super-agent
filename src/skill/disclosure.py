@@ -7,11 +7,16 @@ from typing import Callable, Mapping
 from urllib.parse import quote
 
 from skill.index import (
+    DEFAULT_INLINE_CHARS,
+    DEFAULT_PAGE_CHARS,
+    DisclosurePage,
+    create_disclosure_page,
+    serialize_disclosure_value,
     DisclosedConfiguration,
     DisclosedSkillFile,
     DisclosedSkillFiles,
     DisclosedText,
-    SkillDisclosureEvent,
+    DisclosureEvent,
     SkillIndex,
     SkillIndexEntry,
     SkillReference,
@@ -29,8 +34,8 @@ from skill.manifest import (
 )
 
 
-WriteText = Callable[[str, str, Path, str], None]
-WriteJson = Callable[[str, str, Path, dict[str, object]], None]
+WriteText = Callable[[str, str, str, Path, str], None]
+WriteJson = Callable[[str, str, str, Path, dict[str, object]], None]
 ReadContent = Callable[[str | Path], str]
 ReadHistory = Callable[[], list[dict[str, object]]]
 RecordEvent = Callable[[str, dict[str, object]], object]
@@ -76,6 +81,7 @@ class ProgressiveDisclosureCore:
         self._index: SkillIndex | None = None
         self._sources_by_key: dict[str, SkillSource] = {}
         self._disabled_references: list[SkillReference] = []
+        self._disclosed_content: dict[str, tuple[str, str, str, Path | None]] = {}
 
     def validate_skill_sources(self) -> list[SkillValidationIssue]:
         return self._read_skill_sources().issues
@@ -107,6 +113,7 @@ class ProgressiveDisclosureCore:
         if self.recorder is not None:
             self.recorder.write_json(
                 "*",
+                "skill",
                 "index",
                 _require_cache_path(self._index.index_path),
                 skill_index_to_dict(self._index),
@@ -195,26 +202,116 @@ class ProgressiveDisclosureCore:
         return SkillDisclosure(
             self._sources_by_key[entry.reference.key],
             entry,
-            self.recorder,
+            self,
         )
 
-    def read_disclosed_content(self, cache_path: str | Path) -> str:
-        if self.recorder is None:
-            raise RuntimeError("Skill disclosure recording is not configured")
-        return self.recorder.read_content(cache_path)
+    def disclose_content(
+        self,
+        kind: str,
+        name: str,
+        content: str,
+        *,
+        stage: str = "content",
+        cache_path: Path | None = None,
+        inline_chars: int = DEFAULT_INLINE_CHARS,
+    ) -> DisclosurePage:
+        """Register one source and return its first bounded page."""
+        clean_kind = _clean_content_label(kind, "kind")
+        clean_name = _clean_content_label(name, "name")
+        digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
+        selected_path = cache_path
+        if selected_path is None and self.recorder is not None:
+            selected_path = (
+                self.recorder.cache_root
+                / "content"
+                / _path_segment(clean_kind)
+                / _path_segment(clean_name)
+                / f"{digest}.txt"
+            )
+        reference = (
+            f"disclosure://{_path_segment(clean_kind)}/{_path_segment(clean_name)}/{digest}"
+            if selected_path is None
+            else str(selected_path)
+        )
+        if self.recorder is not None and selected_path is not None:
+            self.recorder.write_text(
+                f"{clean_kind}:{clean_name}",
+                clean_kind,
+                _clean_content_label(stage, "stage"),
+                selected_path,
+                content,
+            )
+        self._disclosed_content[reference] = (
+            clean_kind,
+            clean_name,
+            content,
+            selected_path,
+        )
+        return create_disclosure_page(
+            reference,
+            clean_kind,
+            clean_name,
+            content,
+            limit=inline_chars,
+            cache_path=selected_path,
+        )
 
-    def read_disclosure_history(self) -> list[SkillDisclosureEvent]:
+    def disclose_value(
+        self,
+        kind: str,
+        name: str,
+        value: object,
+        *,
+        stage: str = "result",
+        inline_chars: int = DEFAULT_INLINE_CHARS,
+    ) -> DisclosurePage:
+        return self.disclose_content(
+            kind,
+            name,
+            serialize_disclosure_value(value),
+            stage=stage,
+            inline_chars=inline_chars,
+        )
+
+    def read_disclosed_content(
+        self,
+        reference: str | Path,
+        *,
+        offset: int = 0,
+        limit: int = DEFAULT_PAGE_CHARS,
+    ) -> DisclosurePage:
+        selected = str(reference)
+        cached = self._disclosed_content.get(selected)
+        if cached is None:
+            if self.recorder is None:
+                raise RuntimeError("Skill disclosure recording is not configured")
+            content = self.recorder.read_content(selected)
+            cached = ("cache", Path(selected).name, content, Path(selected))
+            self._disclosed_content[selected] = cached
+        kind, name, content, cache_path = cached
+        return create_disclosure_page(
+            selected,
+            kind,
+            name,
+            content,
+            offset=offset,
+            limit=limit,
+            cache_path=cache_path,
+        )
+
+    def read_disclosure_history(self) -> list[DisclosureEvent]:
         if self.recorder is None:
             raise RuntimeError("Skill disclosure recording is not configured")
         return [
-            SkillDisclosureEvent(
+            DisclosureEvent(
                 schema_version=int(item["schema_version"]),
                 sequence=int(item["sequence"]),
                 created_at=str(item["created_at"]),
                 run_id=str(item["run_id"]),
-                skill_key=str(item["skill_key"]),
+                content_key=str(item["content_key"]),
+                kind=str(item["kind"]),
                 stage=str(item["stage"]),
-                cache_path=Path(str(item["cache_path"])),
+                reference=str(item["reference"]),
                 content_sha256=str(item["content_sha256"]),
                 cache_hit=bool(item["cache_hit"]),
             )
@@ -260,11 +357,11 @@ class SkillDisclosure:
         self,
         source: SkillSource,
         index_entry: SkillIndexEntry,
-        recorder: DisclosureRecorder | None,
+        core: ProgressiveDisclosureCore,
     ) -> None:
         self.source = source
         self.index_entry = index_entry
-        self.recorder = recorder
+        self.core = core
 
     def read_manifest(self) -> SkillManifest:
         self._verify_source_content()
@@ -272,13 +369,13 @@ class SkillDisclosure:
 
     def disclose_manifest(self) -> SkillManifest:
         manifest = self.read_manifest()
-        if self.recorder is not None:
-            self.recorder.write_json(
-                self.source.reference.key,
-                "manifest",
-                _require_cache_path(self.index_entry.manifest_cache_path),
-                skill_manifest_to_dict(manifest),
-            )
+        self.core.disclose_content(
+            "skill",
+            self.source.reference.key,
+            serialize_disclosure_value(skill_manifest_to_dict(manifest)),
+            stage="manifest",
+            cache_path=self.index_entry.manifest_cache_path,
+        )
         return manifest
 
     def read_instructions(self) -> DisclosedText:
@@ -295,18 +392,18 @@ class SkillDisclosure:
 
     def disclose_instructions(self) -> DisclosedText:
         disclosed = self.read_instructions()
-        if self.recorder is not None:
-            self.recorder.write_text(
-                self.source.reference.key,
-                "instructions",
-                _require_cache_path(self.index_entry.instructions_cache_path),
-                disclosed.content,
-            )
+        self.core.disclose_content(
+            "skill",
+            self.source.reference.key,
+            disclosed.content,
+            stage="instructions",
+            cache_path=self.index_entry.instructions_cache_path,
+        )
         return DisclosedText(
             content=disclosed.content,
             cache_path=(
                 None
-                if self.recorder is None
+                if self.core.recorder is None
                 else self.index_entry.instructions_cache_path
             ),
         )
@@ -318,18 +415,18 @@ class SkillDisclosure:
 
     def disclose_configuration(self) -> DisclosedConfiguration:
         disclosed = self.read_configuration()
-        if self.recorder is not None:
-            self.recorder.write_json(
-                self.source.reference.key,
-                "configuration",
-                _require_cache_path(self.index_entry.configuration_cache_path),
-                disclosed.content,
-            )
+        self.core.disclose_content(
+            "skill",
+            self.source.reference.key,
+            serialize_disclosure_value(disclosed.content),
+            stage="configuration",
+            cache_path=self.index_entry.configuration_cache_path,
+        )
         return DisclosedConfiguration(
             content=disclosed.content,
             cache_path=(
                 None
-                if self.recorder is None
+                if self.core.recorder is None
                 else self.index_entry.configuration_cache_path
             ),
         )
@@ -341,11 +438,10 @@ class SkillDisclosure:
 
     def disclose_skill_files(self) -> DisclosedSkillFiles:
         disclosed = self.read_skill_files()
-        if self.recorder is not None:
-            self.recorder.write_json(
-                self.source.reference.key,
-                "files",
-                _require_cache_path(self.index_entry.files_cache_path),
+        self.core.disclose_content(
+            "skill",
+            self.source.reference.key,
+            serialize_disclosure_value(
                 {
                     "schema_version": 1,
                     "files": [
@@ -357,12 +453,15 @@ class SkillDisclosure:
                         }
                         for item in disclosed.files
                     ],
-                },
-            )
+                }
+            ),
+            stage="files",
+            cache_path=self.index_entry.files_cache_path,
+        )
         return DisclosedSkillFiles(
             files=disclosed.files,
             cache_path=(
-                None if self.recorder is None else self.index_entry.files_cache_path
+                None if self.core.recorder is None else self.index_entry.files_cache_path
             ),
         )
 
@@ -449,6 +548,15 @@ def _require_cache_path(path: Path | None) -> Path:
     if path is None:
         raise RuntimeError("Skill disclosure cache path is not configured")
     return path
+
+
+def _clean_content_label(value: str, name: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"disclosure {name} cannot be empty")
+    clean = value.strip()
+    if len(clean) > 200 or any(ord(character) < 32 for character in clean):
+        raise ValueError(f"disclosure {name} must be at most 200 printable characters")
+    return clean
 
 
 def _explain_selection(

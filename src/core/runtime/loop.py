@@ -41,6 +41,7 @@ from core.runtime.model_calls import (
 )
 from core.runtime.run import Run
 from core.runtime.tools import RuntimeTools, RuntimeToolsContext
+from skill.index import format_disclosure_page_for_prompt
 
 if TYPE_CHECKING:
     from core.state.events import EventStore
@@ -447,18 +448,24 @@ def _build_messages(
     trusted = [run.config.agent.system, UNTRUSTED_CONTEXT_POLICY]
     untrusted: list[str] = []
     if workflow.instruction:
-        untrusted.append(workflow.instruction)
+        untrusted.append(
+            _disclose_prompt_content(run, "workflow", workflow.name, workflow.instruction)
+        )
     for contribution in contributions:
+        source = contribution.source
+        kind = getattr(source, "skill_type", "skill")
+        name = getattr(source, "key", kind)
         if contribution.model_context is not None:
             skill = contribution.model_context
-            untrusted.append(
+            content = (
                 f'<skill key="{skill.manifest.skill_type}:{skill.manifest.name}">\n'
                 f"{skill.instructions}\n</skill>"
             )
+            untrusted.append(_disclose_prompt_content(run, kind, name, content))
         if contribution.build_prompt_context is not None:
             context = contribution.build_prompt_context(request.prompt)
             if context:
-                untrusted.append(context)
+                untrusted.append(_disclose_prompt_content(run, kind, name, context))
     index = run.skills.index.build_progressive_disclosure_prompt()
     if index:
         untrusted.append(index)
@@ -477,6 +484,16 @@ def _build_messages(
     if messages[-1].get("role") != "user" or messages[-1].get("content") != request.prompt:
         messages.append({"role": "user", "content": request.prompt})
     return messages
+
+
+def _disclose_prompt_content(run: Run, kind: str, name: str, content: str) -> str:
+    page = run.skills.disclosure.disclose_content(
+        kind,
+        name,
+        content,
+        stage="model-context",
+    )
+    return format_disclosure_page_for_prompt(page)
 
 
 def _create_result(

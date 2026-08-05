@@ -8,6 +8,8 @@ from core.skill_use.handlers import (
     SkillAction,
     SkillTool,
     SkillResult,
+    read_optional_non_negative_tool_integer,
+    read_optional_positive_tool_integer,
     read_optional_tool_string,
     read_required_tool_string,
 )
@@ -15,6 +17,7 @@ from core.provider.chat import Message, ToolCall, ToolDefinition
 from core.runtime.run import Run
 from core.checks import ActionEffect, ActionRequest
 from skill.disclosure import SkillDisclosure, SkillIndex, SkillReference, skill_index_to_dict
+from skill.index import DEFAULT_PAGE_CHARS, disclosure_page_to_dict
 
 if TYPE_CHECKING:
     from core.state.models import SubAgentResult
@@ -63,7 +66,7 @@ class RuntimeTools:
             _create_disclosure_tools(
                 self,
                 context.session.skills.index,
-                include_cache_reader=disclosure.recorder is not None,
+                records_cache=disclosure.recorder is not None,
             )
         )
         for contribution in contributions or []:
@@ -89,7 +92,7 @@ class RuntimeTools:
             self._record_tool_failure(call, error)
             raise error
         try:
-            result = self.context.session.execute_action(
+            raw_result = self.context.session.execute_action(
                 ActionRequest(
                     action_id=call.id,
                     actor=f"tool:{call.name}",
@@ -102,11 +105,32 @@ class RuntimeTools:
         except Exception as error:
             self._record_tool_failure(call, error)
             raise
+        result = self._prepare_result(tool, call, raw_result)
         self.context.session.record_event(
             "tool.completed",
             {"call_id": call.id, "name": call.name, "result": result},
         )
         return result
+
+    def _prepare_result(
+        self,
+        tool: SkillTool,
+        call: ToolCall,
+        result: dict[str, object],
+    ) -> dict[str, object]:
+        if not isinstance(result, dict):
+            raise TypeError(f"Skill tool must return an object: {tool.name}")
+        if tool.result_kind is None:
+            return result
+        page = self.context.session.skills.disclosure.disclose_value(
+            tool.result_kind,
+            call.id,
+            result,
+            stage="tool-result",
+        )
+        if page.next_offset is None:
+            return result
+        return {"progressive_disclosure": disclosure_page_to_dict(page)}
 
     def _record_tool_failure(self, call: ToolCall, error: Exception) -> None:
         self.context.session.record_event(
@@ -187,9 +211,16 @@ class RuntimeTools:
         self,
         arguments: dict[str, object],
     ) -> dict[str, object]:
-        path = read_required_tool_string(arguments, "cache_path")
-        content = self.context.session.skills.disclosure.read_disclosed_content(path)
-        return {"cache_path": path, "content": content}
+        reference = read_required_tool_string(arguments, "reference")
+        page = self.context.session.skills.disclosure.read_disclosed_content(
+            reference,
+            offset=read_optional_non_negative_tool_integer(arguments, "offset") or 0,
+            limit=(
+                read_optional_positive_tool_integer(arguments, "limit")
+                or DEFAULT_PAGE_CHARS
+            ),
+        )
+        return disclosure_page_to_dict(page)
 
     def _activate_skill(self, arguments: dict[str, object]) -> dict[str, object]:
         opened = self._open_requested_skill(arguments)
@@ -307,12 +338,12 @@ def _create_disclosure_tools(
     runtime_tools: RuntimeTools,
     skill_index: SkillIndex,
     *,
-    include_cache_reader: bool,
+    records_cache: bool,
 ) -> tuple[SkillTool, ...]:
     reference = _skill_reference_properties(skill_index)
     disclosure_effects = (
         (ActionEffect.READ, ActionEffect.CREATE, ActionEffect.UPDATE)
-        if include_cache_reader
+        if records_cache
         else (ActionEffect.READ,)
     )
     tools = [
@@ -322,6 +353,7 @@ def _create_disclosure_tools(
             {},
             runtime_tools._list_skills,
             action=SkillAction((ActionEffect.READ,), "skill:index"),
+            result_kind="skill",
         ),
         SkillTool(
             "disclose_skill_manifest",
@@ -334,6 +366,7 @@ def _create_disclosure_tools(
                 "name",
             ),
             required=("name",),
+            result_kind="skill",
         ),
         SkillTool(
             "disclose_skill_instructions",
@@ -346,6 +379,7 @@ def _create_disclosure_tools(
                 "name",
             ),
             required=("name",),
+            result_kind="skill",
         ),
         SkillTool(
             "disclose_skill_configuration",
@@ -358,6 +392,7 @@ def _create_disclosure_tools(
                 "name",
             ),
             required=("name",),
+            result_kind="skill",
         ),
         SkillTool(
             "activate_skill",
@@ -370,19 +405,26 @@ def _create_disclosure_tools(
                 "name",
             ),
             required=("name",),
+            result_kind="skill",
         ),
-    ]
-    if include_cache_reader:
-        tools.append(
-            SkillTool(
-                "read_disclosed_content",
-                "Read content from a path already produced by the disclosure cache.",
-                {"cache_path": {"type": "string"}},
-                runtime_tools._read_disclosed_content,
-                action=SkillAction((ActionEffect.READ,), "skill:cache"),
-                required=("cache_path",),
-            )
+        SkillTool(
+            "read_disclosed_content",
+            "Read one bounded page from a reference returned by progressive disclosure.",
+            {
+                "reference": {"type": "string"},
+                "offset": {"type": "integer", "minimum": 0},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 32_000},
+            },
+            runtime_tools._read_disclosed_content,
+            action=SkillAction(
+                (ActionEffect.READ,),
+                "disclosure:content",
+                "reference",
+            ),
+            required=("reference",),
+            result_kind=None,
         )
+    ]
     return tuple(tools)
 
 
@@ -410,6 +452,7 @@ def _create_subagent_tools(runtime_tools: RuntimeTools) -> tuple[SkillTool, ...]
             {},
             runtime_tools.list_subagents,
             action=SkillAction((ActionEffect.READ,), "subagent:index"),
+            result_kind="subagent",
         ),
         SkillTool(
             "run_subagent",
@@ -421,6 +464,7 @@ def _create_subagent_tools(runtime_tools: RuntimeTools) -> tuple[SkillTool, ...]
             runtime_tools.run_subagent,
             action=SkillAction((ActionEffect.DELEGATE,), "subagent", "name"),
             required=("name", "prompt"),
+            result_kind="subagent",
         ),
     )
 

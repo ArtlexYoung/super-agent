@@ -71,6 +71,7 @@ class SkillTool:
     handler: ToolHandler
     action: SkillAction
     required: tuple[str, ...] = ()
+    result_kind: str | None = "tool"
 
     def to_provider_definition(self) -> ToolDefinition:
         return {
@@ -97,6 +98,7 @@ class SkillResult:
     included_skills: tuple[SkillReference, ...] = ()
     record_task_completed: Callable[[str, list[str]], None] | None = None
     task_completed_action: SkillAction | None = None
+    source: SkillReference | None = None
 
 
 @dataclass(frozen=True)
@@ -205,6 +207,8 @@ def _validate_skill_result(result: object) -> None:
     keys = [reference.key for reference in result.included_skills]
     if len(keys) != len(set(keys)):
         raise ValueError("SkillResult.included_skills cannot contain duplicates")
+    if result.source is not None and not isinstance(result.source, SkillReference):
+        raise TypeError("SkillResult.source must be a SkillReference or None")
 
 
 def _validate_skill_tool(tool: object) -> None:
@@ -226,6 +230,10 @@ def _validate_skill_tool(tool: object) -> None:
         raise ValueError(f"Skill tool required names are invalid: {tool.name}")
     if not isinstance(tool.action, SkillAction):
         raise TypeError(f"Skill tool is missing an action: {tool.name}")
+    if tool.result_kind is not None and (
+        not isinstance(tool.result_kind, str) or not tool.result_kind.strip()
+    ):
+        raise ValueError(f"Skill tool result_kind is invalid: {tool.name}")
     argument = tool.action.resource_argument
     if argument is not None and argument not in tool.properties:
         raise ValueError(f"Skill tool action argument is not declared: {tool.name}.{argument}")
@@ -276,4 +284,16 @@ def read_optional_positive_tool_integer(
         return None
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
         raise ValueError(f"tool argument {name!r} must be a positive integer")
+    return value
+
+
+def read_optional_non_negative_tool_integer(
+    arguments: ToolArguments,
+    name: str,
+) -> int | None:
+    value = arguments.get(name)
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(f"tool argument {name!r} must be a non-negative integer")
     return value

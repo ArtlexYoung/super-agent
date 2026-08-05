@@ -78,7 +78,7 @@ class SkillToolsTests(unittest.TestCase):
             self.assertIn("action.checked", event_types)
             self.assertIn("action.applied", event_types)
             self.assertIn("tool.completed", event_types)
-            self.assertIn("skill.disclosed", event_types)
+            self.assertIn("content.disclosed", event_types)
 
     def test_reading_a_cached_path_does_not_activate_the_skill(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -97,7 +97,7 @@ class SkillToolsTests(unittest.TestCase):
                 ToolCall(
                     "call-1",
                     "read_disclosed_content",
-                    {"cache_path": str(cached.cache_path)},
+                    {"reference": str(cached.cache_path)},
                 )
             )
 
@@ -120,6 +120,39 @@ class SkillToolsTests(unittest.TestCase):
                 "tool.failed",
                 session.store.read_run_events(session.run_id)[-1].event_type,
             )
+
+    def test_large_tool_output_uses_the_central_disclosure_reference(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            session = _create_session(root)
+            disclosure = _create_disclosure(session)
+            tool = SkillTool(
+                "run_subagent",
+                "Return a large delegated result.",
+                {},
+                lambda arguments: {"text": "y" * 9_000},
+                action=SkillAction((ActionEffect.READ,), "subagent"),
+                result_kind="subagent",
+            )
+            tools = RuntimeTools(
+                RuntimeToolsContext(session=session),
+                contributions=[SkillResult(tools=(tool,))],
+            )
+
+            result = tools.run_tool_call(ToolCall("delegated-1", "run_subagent", {}))
+
+            page_data = result["progressive_disclosure"]
+            self.assertEqual("subagent", page_data["kind"])
+            self.assertGreater(page_data["total_chars"], 9_000)
+            self.assertEqual(4_000, len(page_data["content"]))
+            page = disclosure.read_disclosed_content(page_data["reference"])
+            self.assertIn('"text":', page.content)
+            completed = [
+                event
+                for event in session.store.read_run_events(session.run_id)
+                if event.event_type == "tool.completed"
+            ][-1]
+            self.assertNotIn("y" * 9_000, str(completed.data["result"]))
 
     def test_model_uses_explicit_long_term_memory_tools(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

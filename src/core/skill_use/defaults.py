@@ -141,16 +141,18 @@ def create_runtime_disclosure_recorder(
     return DisclosureRecorder(
         cache_root=disclosure.cache_root,
         history_path=disclosure.history_path,
-        write_text=lambda key, stage, path, content: disclosure.write_text(
+        write_text=lambda key, kind, stage, path, content: disclosure.write_text(
             identity,
             key,
+            kind,
             stage,
             path,
             content,
         ),
-        write_json=lambda key, stage, path, content: disclosure.write_json(
+        write_json=lambda key, kind, stage, path, content: disclosure.write_json(
             identity,
             key,
+            kind,
             stage,
             path,
             content,

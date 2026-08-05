@@ -86,7 +86,7 @@ def explain_run_from_events(
         "snapshot": asdict(snapshot),
         "selection_decisions": _latest_selection_decisions(events),
         "disclosure_path": [
-            asdict(event) for event in events if event.event_type == "skill.disclosed"
+            asdict(event) for event in events if event.event_type == "content.disclosed"
         ],
         "events": [asdict(event) for event in events],
     }
@@ -95,16 +95,17 @@ def explain_run_from_events(
 def disclosure_history_from_events(
     events: list[StorageEvent],
 ) -> list[dict[str, object]]:
-    disclosed = [event for event in events if event.event_type == "skill.disclosed"]
+    disclosed = [event for event in events if event.event_type == "content.disclosed"]
     return [
         {
             "schema_version": 1,
             "sequence": sequence,
             "created_at": event.created_at,
             "run_id": event.stream_id if event.stream_type == "run" else "",
-            "skill_key": str(event.data["skill_key"]),
+            "content_key": str(event.data["content_key"]),
+            "kind": str(event.data["kind"]),
             "stage": str(event.data["stage"]),
-            "cache_path": str(event.data["cache_path"]),
+            "reference": str(event.data["reference"]),
             "content_sha256": str(event.data["content_sha256"]),
             "cache_hit": bool(event.data["cache_hit"]),
         }

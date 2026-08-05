@@ -29,7 +29,7 @@ _DETAILED_EVENT_TYPES = {
     "tool.failed",
     "skills.disclosed",
     "skills.selected",
-    "skill.disclosed",
+    "content.disclosed",
     "subagent.started",
     "subagent.completed",
     "runtime.subscriber.failed",

@@ -159,7 +159,9 @@ refusal or end-of-input stops the action without a hidden fallback.
 
 ## Guarantees
 
-- Every Skill type uses one central progressive disclosure path.
+- Skills, files, tool output, memory context, and subagent results use one central progressive
+  disclosure path. Large content is referenced and read in bounded pages instead of silently
+  truncated.
 - Routing is model judgment, not keyword matching.
 - Reads do not write, and state changes are explicit checked actions.
 - Skill content is passive and cannot register code, permissions, or secrets.

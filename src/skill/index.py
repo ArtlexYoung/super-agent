@@ -1,9 +1,105 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import hashlib
+import json
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from skill.manifest import SkillManifest
+
+
+DEFAULT_INLINE_CHARS = 4_000
+DEFAULT_PAGE_CHARS = 8_000
+MAX_PAGE_CHARS = 32_000
+MAX_CONTENT_CHARS = 2_000_000
+
+
+@dataclass(frozen=True)
+class DisclosurePage:
+    reference: str
+    kind: str
+    name: str
+    content: str
+    content_sha256: str
+    offset: int
+    total_chars: int
+    next_offset: int | None
+    cache_path: Path | None = None
+
+
+def create_disclosure_page(
+    reference: str,
+    kind: str,
+    name: str,
+    content: str,
+    *,
+    offset: int = 0,
+    limit: int = DEFAULT_INLINE_CHARS,
+    cache_path: Path | None = None,
+) -> DisclosurePage:
+    """Return one bounded page without changing or discarding source content."""
+    _require_content_size(content)
+    if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
+        raise ValueError("disclosure offset must be a non-negative integer")
+    if (
+        isinstance(limit, bool)
+        or not isinstance(limit, int)
+        or limit <= 0
+        or limit > MAX_PAGE_CHARS
+    ):
+        raise ValueError(
+            f"disclosure limit must be between 1 and {MAX_PAGE_CHARS} characters"
+        )
+    end = min(len(content), offset + limit)
+    return DisclosurePage(
+        reference=reference,
+        kind=kind,
+        name=name,
+        content=content[offset:end],
+        content_sha256=hashlib.sha256(content.encode("utf-8")).hexdigest(),
+        offset=offset,
+        total_chars=len(content),
+        next_offset=end if end < len(content) else None,
+        cache_path=cache_path,
+    )
+
+
+def disclosure_page_to_dict(page: DisclosurePage) -> dict[str, object]:
+    value = asdict(page)
+    value["cache_path"] = None if page.cache_path is None else str(page.cache_path)
+    return value
+
+
+def format_disclosure_page_for_prompt(page: DisclosurePage) -> str:
+    if page.next_offset is None:
+        return page.content
+    return (
+        "Progressive content page:\n"
+        f"- kind: {page.kind}\n"
+        f"- name: {page.name}\n"
+        f"- reference: {page.reference}\n"
+        f"- content_sha256: {page.content_sha256}\n"
+        f"- total_chars: {page.total_chars}\n"
+        f"- next_offset: {page.next_offset}\n"
+        "- content:\n"
+        + page.content
+    )
+
+
+def serialize_disclosure_value(value: object) -> str:
+    """Serialize structured output exactly once or fail on unsupported values."""
+    content = json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True)
+    _require_content_size(content)
+    return content
+
+
+def _require_content_size(content: str) -> None:
+    if not isinstance(content, str):
+        raise TypeError("disclosure content must be a string")
+    if len(content) > MAX_CONTENT_CHARS:
+        raise ValueError(
+            f"disclosure content exceeds the explicit {MAX_CONTENT_CHARS} character limit"
+        )
 
 
 @dataclass(frozen=True)
@@ -205,14 +301,15 @@ class DisclosedSkillFiles:
 
 
 @dataclass(frozen=True)
-class SkillDisclosureEvent:
+class DisclosureEvent:
     schema_version: int
     sequence: int
     created_at: str
     run_id: str
-    skill_key: str
+    content_key: str
+    kind: str
     stage: str
-    cache_path: Path
+    reference: str
     content_sha256: str
     cache_hit: bool
 

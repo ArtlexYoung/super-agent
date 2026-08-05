@@ -110,12 +110,12 @@ class EventStoreTests(unittest.TestCase):
             event_types = [event.event_type for event in events]
             self.assertEqual("run.started", event_types[0])
             self.assertEqual("run.completed", event_types[-1])
-            self.assertIn("skill.disclosed", event_types)
+            self.assertIn("content.disclosed", event_types)
             self.assertIn("skills.disclosed", event_types)
             disclosed_stages = [
                 event.data["stage"]
                 for event in events
-                if event.event_type == "skill.disclosed"
+                if event.event_type == "content.disclosed"
             ]
             self.assertEqual(["index", "manifest", "configuration"], disclosed_stages[:3])
             completed = next(

@@ -230,7 +230,7 @@ def _print_run_explanation(explanation: dict[str, object]) -> None:
         data = event.get("data", {})
         if isinstance(data, dict):
             print(
-                f"disclosure\t{data.get('skill_key', '')}\t{data.get('stage', '')}"
+                f"disclosure\t{data.get('content_key', '')}\t{data.get('stage', '')}"
                 f"\tcache_hit={str(data.get('cache_hit', False)).lower()}"
             )
     _print_plan_insight(explanation.get("plan"))
