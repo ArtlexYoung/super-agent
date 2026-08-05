@@ -1005,11 +1005,22 @@ Status: implemented.
 - Store only verdicts, findings, and check names in the run audit stream; review failures record
   their type and leave the original run unchanged.
 
-## v0.1.12-v0.1.19: Planned Capability Proof
+## v0.1.12: Comparative Skill Evolution
+
+Status: implemented.
+
+- Compare candidate and parent Skill revisions on the same cases and expose the measured
+  improvement instead of only a pass/fail score.
+- Allow callers to require a declared minimum improvement; a failed target blocks activation
+  and leaves the active Skill untouched.
+- Persist comparison facts through the central evolution record module and management audit
+  event without storing model output in the report.
+
+## v0.1.13-v0.1.19: Planned Capability Proof
 
 Status: planned.
 
-- `v0.1.12-v0.1.19`: evolution comparisons, general tasks,
+- `v0.1.13-v0.1.19`: public coding evaluation, general tasks,
   independent review, evolution comparisons, general tasks, and final release gates.
 - `v0.1.8-v0.1.13`: evidence-based model assignment, specialized subagents, isolated parallel
   worktrees, independent review, comparative Skill evolution, and public coding evaluation.

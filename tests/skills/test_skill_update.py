@@ -12,6 +12,32 @@ from support import SequenceProvider
 
 
 class SkillUpdateTests(unittest.TestCase):
+    def test_evolution_report_requires_an_explicit_improvement_target(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_project(root)
+            agent = Agent(
+                CommonConfig.create_default(root),
+                provider=SequenceProvider(
+                    [_proposal("Candidate instructions.\n"), "required", "required"]
+                ),
+                use_storage=True,
+            )
+            updater = agent.for_user("alice").skills.create_skill_updater()
+            change = updater.propose_skill_change("writer", "make output precise")
+
+            report = updater.test_skill_change(
+                change.change_id,
+                [SkillChangeCase("same", "write this", expected_output_contains=["required"])],
+                minimum_improvement=0.1,
+            )
+
+            self.assertEqual(0.0, report.improvement)
+            self.assertFalse(report.improvement_target_met)
+            self.assertFalse(report.passed)
+            with self.assertRaisesRegex(ValueError, "did not pass"):
+                updater.apply_skill_change(change.change_id)
+
     def test_testing_does_not_activate_candidate_and_failure_blocks_apply(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

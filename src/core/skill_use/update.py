@@ -16,6 +16,10 @@ from core.checks import ActionEffect, ActionRequest, ActionRunner, ActionRules
 from core.files import write_bytes_atomically
 from core.provider.chat import Message
 from core.runtime.model_calls import TextModel, estimate_text_tokens
+from core.evaluation.evolution import (
+    read_skill_change_report,
+    skill_change_report_to_dict,
+)
 from core.skill_use.files.directory import replace_skill_directory_atomically
 from core.skill_use.files.validation import validate_skill_directory, validate_skill_replacement
 from core.state.events import EventStore
@@ -69,6 +73,9 @@ class SkillChangeReport:
     passed: bool
     minimum_score: float
     no_regression: bool
+    improvement: float | None
+    minimum_improvement: float
+    improvement_target_met: bool
     candidate_sha256: str
     parent_sha256: str
     created_at: str
@@ -126,6 +133,7 @@ class SkillUpdater:
         cases: list[SkillChangeCase],
         *,
         minimum_score: float = 0.8,
+        minimum_improvement: float = 0.0,
     ) -> SkillChangeReport:
         effects = (ActionEffect.READ, ActionEffect.CREATE, ActionEffect.NETWORK)
         return cast(
@@ -134,7 +142,7 @@ class SkillUpdater:
                 ActionRequest.create(
                     "user:skill-change", f"skill:change:{change_id}:test", effects
                 ),
-                lambda: self._test(change_id, cases, minimum_score),
+                lambda: self._test(change_id, cases, minimum_score, minimum_improvement),
             ),
         )
 
@@ -211,9 +219,12 @@ class SkillUpdater:
         change_id: str,
         cases: list[SkillChangeCase],
         minimum_score: float,
+        minimum_improvement: float,
     ) -> SkillChangeReport:
         if not 0 <= minimum_score <= 1:
             raise ValueError("minimum_score must be between 0 and 1")
+        if not 0 <= minimum_improvement <= 1:
+            raise ValueError("minimum_improvement must be between 0 and 1")
         if not cases:
             raise ValueError("Skill change testing requires at least one case")
         change = self.read_skill_change(change_id)
@@ -228,22 +239,34 @@ class SkillUpdater:
             else sum(item.score for item in baseline_results) / len(baseline_results)
         )
         no_regression = baseline_score is None or score >= baseline_score
+        improvement = None if baseline_score is None else round(score - baseline_score, 4)
+        improvement_target_met = baseline_score is None or score - baseline_score >= minimum_improvement
         report = SkillChangeReport(
             report_id=f"test-{uuid4().hex}",
             change_id=change.change_id,
             score=round(score, 4),
             baseline_score=None if baseline_score is None else round(baseline_score, 4),
-            passed=score >= minimum_score and no_regression and all(item.passed for item in candidate_results),
+            passed=score >= minimum_score and no_regression and improvement_target_met and all(item.passed for item in candidate_results),
             minimum_score=minimum_score,
             no_regression=no_regression,
+            improvement=improvement,
+            minimum_improvement=minimum_improvement,
+            improvement_target_met=improvement_target_met,
             candidate_sha256=change.candidate_sha256,
             parent_sha256=change.parent_sha256,
             created_at=_utc_now(),
             results=candidate_results,
             baseline_results=baseline_results,
         )
-        _write_json(self.root / "tests" / change.change_id / f"{report.report_id}.json", _report_to_dict(report))
-        self._record(change.change_id, "skill_change.tested", {"report_id": report.report_id, "passed": report.passed})
+        _write_json(
+            self.root / "tests" / change.change_id / f"{report.report_id}.json",
+            skill_change_report_to_dict(report),
+        )
+        self._record(change.change_id, "skill_change.tested", {
+            key: getattr(report, key) for key in
+            ("report_id", "passed", "score", "baseline_score", "improvement",
+             "minimum_improvement", "improvement_target_met")
+        })
         return report
 
     def _run_case(self, skill_path: Path, case: SkillChangeCase) -> SkillChangeCaseResult:
@@ -402,7 +425,7 @@ class SkillUpdater:
         paths = sorted(root.glob("test-*.json")) if root.is_dir() else []
         if not paths:
             raise ValueError(f"Skill change has not been tested: {change.change_id}")
-        reports = [_report_from_dict(_read_json(path)) for path in paths]
+        reports = [read_skill_change_report(_read_json(path)) for path in paths]
         return max(reports, key=lambda item: (item.created_at, item.report_id))
 
     def _record(self, change_id: str, event_type: str, data: dict[str, object]) -> None:
@@ -581,20 +604,6 @@ def _read_change(change_id: str, root: Path) -> SkillChange:
         str(data["parent_version"]), str(data["proposed_version"]),
         str(data["parent_sha256"]), str(data["candidate_sha256"]),
         str(data["created_at"]), root / change_id / str(data["name"]),
-    )
-
-def _report_to_dict(report: SkillChangeReport) -> dict[str, object]:
-    return {"schema_version": 1, **asdict(report)}
-
-def _report_from_dict(data: dict[str, object]) -> SkillChangeReport:
-    results = [SkillChangeCaseResult(**item) for item in cast(list[dict], data["results"])]
-    baseline = [SkillChangeCaseResult(**item) for item in cast(list[dict], data["baseline_results"])]
-    return SkillChangeReport(
-        str(data["report_id"]), str(data["change_id"]), float(data["score"]),
-        None if data["baseline_score"] is None else float(data["baseline_score"]),
-        bool(data["passed"]), float(data["minimum_score"]), bool(data["no_regression"]),
-        str(data["candidate_sha256"]), str(data["parent_sha256"]), str(data["created_at"]),
-        results, baseline,
     )
 
 def _write_json(path: Path, value: dict[str, object]) -> None:
