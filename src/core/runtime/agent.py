@@ -57,6 +57,8 @@ class SubAgent:
     agent: "Agent"
     description: str
     created_by_agent: bool = False
+    purpose: str = "auto"
+    required_features: tuple[str, ...] = ("text",)
 
 
 class Agent:
@@ -129,18 +131,30 @@ class Agent:
         name: str | None = None,
         description: str = "",
         created_by_agent: bool = False,
+        purpose: str = "auto",
+        required_features: tuple[str, ...] = ("text",),
     ) -> str:
         subagent_name = self._make_next_subagent_name() if name is None else name.strip()
         if not subagent_name:
             raise ValueError("subagent name cannot be empty")
         if any(item.name == subagent_name for item in self._subagents):
             raise ValueError(f"subagent name already exists: {subagent_name}")
+        clean_purpose = purpose.strip().lower()
+        if not clean_purpose:
+            raise ValueError("subagent purpose cannot be empty")
+        clean_features = tuple(
+            dict.fromkeys(item.strip().lower() for item in required_features if item.strip())
+        )
+        if not clean_features:
+            raise ValueError("subagent required_features cannot be empty")
         self._subagents.append(
             SubAgent(
                 name=subagent_name,
                 agent=agent,
                 description=description,
                 created_by_agent=created_by_agent,
+                purpose=clean_purpose,
+                required_features=clean_features,
             )
         )
         return subagent_name
@@ -519,6 +533,8 @@ class Agent:
                 "name": subagent.name,
                 "description": subagent.description,
                 "created_by_agent": subagent.created_by_agent,
+                "purpose": subagent.purpose,
+                "required_features": list(subagent.required_features),
                 "agent_name": subagent.agent.config.agent.name,
             }
             for subagent in self._subagents
@@ -547,11 +563,15 @@ class Agent:
                 "name": subagent.name,
                 "agent_name": subagent.agent.config.agent.name,
                 "prompt": prompt,
+                "purpose": subagent.purpose,
+                "required_features": list(subagent.required_features),
             },
         )
         result = subagent.agent._run_as_subagent(
             prompt,
             parent_session,
+            purpose=subagent.purpose,
+            required_features=subagent.required_features,
         )
         subagent_result = SubAgentResult(
             name=subagent.name,
@@ -572,12 +592,17 @@ class Agent:
         self,
         prompt: str,
         parent_session: Run,
+        *,
+        purpose: str = "auto",
+        required_features: tuple[str, ...] = ("text",),
     ) -> RunResult:
         request = Task(
             prompt=prompt,
             messages=[],
             include_subagents=True,
             warning_messages=[],
+            purpose=purpose,
+            required_features=required_features,
             allow_subscriber_failures=parent_session.allow_subscriber_failures,
             subagents=SubagentCallbacks(
                 list_subagents=self._list_subagents_for_model,

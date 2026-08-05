@@ -975,11 +975,22 @@ Status: implemented.
 - Expose `AgentRunOptions.purpose` and `required_features` so callers can state a task contract
   without coupling the Runtime to a provider.
 
-## v0.1.9-v0.1.19: Planned Capability Proof
+## v0.1.9: Code-Composed Specialist Agents
+
+Status: implemented.
+
+- Let code-created child Agents declare a plain task purpose and required features directly
+  in `Agent.add_subagent(...)`; names remain optional and sequence automatically.
+- Show specialist contracts to the deciding model and carry the same contract into child task
+  selection, without keyword routing or a second configuration format.
+- Record purpose and required features in subagent start and scheduled events so delegation
+  can be inspected without retaining model text.
+
+## v0.1.10-v0.1.19: Planned Capability Proof
 
 Status: planned.
 
-- `v0.1.9-v0.1.19`: specialized Agents, isolated worktrees,
+- `v0.1.10-v0.1.19`: isolated worktrees,
   independent review, evolution comparisons, general tasks, and final release gates.
 - `v0.1.8-v0.1.13`: evidence-based model assignment, specialized subagents, isolated parallel
   worktrees, independent review, comparative Skill evolution, and public coding evaluation.

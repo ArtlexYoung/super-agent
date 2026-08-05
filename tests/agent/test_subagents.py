@@ -33,7 +33,12 @@ class SubAgentTests(unittest.TestCase):
             root = Path(tmp)
             main = _agent(root, "main", provider)
             coder = _agent(root, "coder", MockProvider("coder-result"))
-            main.add_subagent(coder, name="coder", description="writes code")
+            main.add_subagent(
+                coder,
+                name="coder",
+                description="writes code",
+                purpose="implementation",
+            )
 
             result = main.run("delegate coding")
 
@@ -41,6 +46,33 @@ class SubAgentTests(unittest.TestCase):
             self.assertEqual(["coder"], [item.name for item in result.subagent_results])
             self.assertEqual("write the implementation", result.subagent_results[0].prompt)
             self.assertIn("coder-result", str(provider.last_messages))
+
+    def test_specialist_contract_reaches_the_child_run(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            main = _agent(
+                root,
+                "main",
+                _delegate_provider("reviewer", "review this", "main-final"),
+            )
+            reviewer = _agent(root, "reviewer", MockProvider("reviewed"))
+            main.add_subagent(
+                reviewer,
+                name="reviewer",
+                purpose="code-review",
+                required_features=("text",),
+            )
+
+            result = main.run("delegate")
+            child_events = reviewer._create_event_store().read_run_events(
+                result.subagent_results[0].run_id
+            )
+            scheduled = next(
+                event for event in child_events if event.event_type == "task.scheduled"
+            )
+
+            self.assertEqual("code-review", scheduled.data["purpose"])
+            self.assertEqual(["text"], scheduled.data["required_features"])
 
     def test_model_that_returns_final_text_does_not_run_subagents(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
