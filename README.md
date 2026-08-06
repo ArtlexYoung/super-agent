@@ -184,6 +184,17 @@ the new prompt supplies the continuation intent because model output is not reco
 - Provider, storage, and optional-feature failures are visible; there is no hidden fallback.
 - A basic run does not require storage, memory, conversations, safety rules, or learning.
 
+## Benchmark Results
+
+All agents used `THUDM/GLM-4-9B-0414` with their respective default configurations.
+Scores are passed tasks / total tasks (pass rate).
+
+| Agent | Model | HumanEval+ | LiveCodeBench Codegen |
+| --- | --- | ---: | ---: |
+| Codex | `THUDM/GLM-4-9B-0414` | 96 / 164 (58.54%) | 166 / 612 (27.12%) |
+| Claude Code | `THUDM/GLM-4-9B-0414` | 100 / 164 (60.98%) | 151 / 612 (24.67%) |
+| Super Agent | `THUDM/GLM-4-9B-0414` | 103 / 164 (62.80%) | 156 / 612 (25.49%) |
+
 ## Read Next
 
 - [Getting started](docs/getting-started.md)
