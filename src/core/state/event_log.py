@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from threading import RLock
 from typing import Callable
 
 from core.models import RunIdentity
@@ -29,18 +30,20 @@ class RunEventLog:
         self.event_listener = event_listener
         self._events: list[RunEvent] = []
         self._observers: list[RunEventObserver] = []
+        self._lock = RLock()
 
     def start_run(self, prompt: str) -> RunEvent:
-        if self._events or self._read_stored_events():
-            raise ValueError(f"run already exists: {self.identity.run_id}")
-        return self.append_event(
-            "run.started",
-            {
-                "prompt": prompt,
-                "conversation_id": self.identity.conversation_id,
-                "parent_run_id": self.identity.parent_run_id,
-            },
-        )
+        with self._lock:
+            if self._events or self._read_stored_events():
+                raise ValueError(f"run already exists: {self.identity.run_id}")
+            return self.append_event(
+                "run.started",
+                {
+                    "prompt": prompt,
+                    "conversation_id": self.identity.conversation_id,
+                    "parent_run_id": self.identity.parent_run_id,
+                },
+            )
 
     def append_event(
         self,
@@ -48,6 +51,15 @@ class RunEventLog:
         data: dict[str, object] | None = None,
         *,
         notify_observers: bool = True,
+    ) -> RunEvent:
+        with self._lock:
+            return self._append_event(event_type, data, notify_observers)
+
+    def _append_event(
+        self,
+        event_type: str,
+        data: dict[str, object] | None,
+        notify_observers: bool,
     ) -> RunEvent:
         clean_type = _required_text(event_type, "run event type")
         content = dict(data or {})
@@ -84,12 +96,14 @@ class RunEventLog:
         return event
 
     def add_observer(self, observer: RunEventObserver) -> None:
-        if observer in self._observers:
-            raise ValueError("run event observer is already registered")
-        self._observers.append(observer)
+        with self._lock:
+            if observer in self._observers:
+                raise ValueError("run event observer is already registered")
+            self._observers.append(observer)
 
     def list_events(self) -> list[RunEvent]:
-        return list(self._events)
+        with self._lock:
+            return list(self._events)
 
     def _read_stored_events(self) -> list[StorageEvent]:
         if self._backend is None:

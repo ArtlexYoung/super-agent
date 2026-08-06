@@ -104,6 +104,7 @@ Important event families include:
 - `skill.*` and `skills.*`: disclosure, activation, and use.
 - `tool.*` and `action.*`: requested operations and outcomes.
 - `subagent.*`: child execution.
+- `agent_task.*`: queue creation, dispatch, state changes, waits, and wakeups.
 - `learning.*`: explicit post-run learning.
 
 An event listener can stream events without storage by using `AgentRunOptions` from
@@ -137,6 +138,37 @@ later runs.
 Cycles are allowed. Before execution, Agent can report a cycle chain or a configured depth
 warning; these are warnings, not execution limits. Workflow instructions and the model's
 completion result provide the stopping mechanism.
+
+### Producer-Consumer Tasks
+
+The optional `task:producer-consumer` Skill lets the main Agent create work and dispatch it
+to registered specialists. It is ordinary passive Skill content: selecting or activating it
+mounts the trusted queue tools for that run, and omitting it leaves those tools absent.
+
+```python
+from super_agent import Agent
+
+main = Agent()
+main.add_subagent(Agent(), name="coder", purpose="implementation")
+main.add_subagent(Agent(), name="reviewer", purpose="code-review")
+result = main.run("Implement and review the change", skill="producer-consumer")
+```
+
+Each subagent has one serial consumer, while different subagents may execute concurrently.
+The main model can request a bounded sleep with `wait_for_agent_tasks`; no model call occurs
+while the tool is waiting. The Skill configuration caps each requested sleep:
+
+```toml
+[configuration.tools.agent_tasks]
+max_tasks = 32
+max_wait_seconds = 60
+```
+
+Available wake triggers are `timeout`, `any_task_finished`, `any_task_completed`,
+`any_task_failed`, `all_tasks_finished`, and `selected_tasks_finished`. Task states move
+through explicit `created`, `queued`, `running`, `completed`, `failed`, or `cancelled`
+transitions. Prompts and result bodies stay out of `agent_task.*` events; the run result
+contains bounded status snapshots and normal traced subagent results.
 
 ## Learning
 

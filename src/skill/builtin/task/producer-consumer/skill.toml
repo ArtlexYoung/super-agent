@@ -1,0 +1,10 @@
+type = "task"
+description = "Produce independent tasks, dispatch them to specialized Agents, and wait for event-driven completion"
+
+[configuration]
+mode = "loop"
+max_steps = 20
+
+[configuration.tools.agent_tasks]
+max_tasks = 32
+max_wait_seconds = 60

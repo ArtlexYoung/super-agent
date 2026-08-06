@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import KW_ONLY, dataclass
+from dataclasses import KW_ONLY, dataclass, field
 from typing import TYPE_CHECKING, Callable, Protocol
 
 from core.checks import ActionEffect, ActionRequest
@@ -27,6 +27,7 @@ class TaskPolicy:
     mode: str
     instruction: str
     max_steps: int
+    tools: dict[str, dict[str, object]] = field(default_factory=dict)
 
     @property
     def uses_tools(self) -> bool:

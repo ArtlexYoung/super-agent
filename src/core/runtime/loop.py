@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable
 
 from core.checks import ActionEffect, ActionRequest
-from core.models import RunResult, SubAgentResult, Task
+from core.models import RunResult, Task
 from core.provider.chat import (
     ActionTurn,
     FinalTurn,
@@ -40,7 +40,7 @@ from core.runtime.model_calls import (
 )
 from core.runtime.checkpoints import hash_checkpoint_value
 from core.runtime.run import Run
-from core.runtime.tools import RuntimeTools, RuntimeToolsContext
+from core.runtime.tools import RuntimeTools, create_runtime_tools
 from skill.index import format_disclosure_page_for_prompt
 
 if TYPE_CHECKING:
@@ -189,7 +189,10 @@ class ModelLoop:
             },
         )
         run.create_checkpoint("task-ready", _checkpoint_facts(request, state, 0))
-        result = self._run_model_turns(request, run, decision, state)
+        try:
+            result = self._run_model_turns(request, run, decision, state)
+        finally:
+            state.tools.close()
         _record_task_completed(run, result, state.contributions)
         return result
 
@@ -240,11 +243,12 @@ class ModelLoop:
         workflow = _select_workflow(contributions)
         if "tools" in request.required_features and not workflow.uses_tools:
             raise ValueError("task requires tools but the configured workflow is direct")
-        tools = _create_runtime_tools(
+        tools = create_runtime_tools(
             request,
             run,
             contributions,
             text_model.send_messages,
+            workflow,
             _ConfiguredModelTool(
                 tuple(self.model_profiles),
                 self.model_calls,
@@ -279,7 +283,9 @@ class ModelLoop:
             if state.workflow.uses_tools and supports_tools
             else None
         )
-        for step in range(1, state.workflow.max_steps + 1):
+        step = 0
+        while step < state.workflow.max_steps:
+            step += 1
             response = self.model_calls.call_model(
                 state.messages,
                 decision,
@@ -290,11 +296,19 @@ class ModelLoop:
             state.last_text = response.text or state.last_text
             _record_model_turn(run, step, response, state)
             if isinstance(turn, FinalTurn):
+                if state.tools.agent_tasks is not None:
+                    state.tools.agent_tasks.require_finished()
                 return _create_result(request, run, state, turn.text, response.stop_reason)
             if definitions is None:
                 raise RuntimeError("model requested actions when actions are unavailable")
             self._run_actions(state, turn)
-            definitions = state.tools.get_tool_definitions()
+            definitions = (
+                state.tools.get_tool_definitions()
+                if state.workflow.uses_tools and supports_tools
+                else None
+            )
+        if state.tools.agent_tasks is not None:
+            state.tools.agent_tasks.require_finished()
         return _create_result(request, run, state, state.last_text, "max_steps")
 
     @staticmethod
@@ -306,6 +320,8 @@ class ModelLoop:
                 tool_result_message(call, state.tools.run_tool_call(call))
             )
         state.contributions.extend(state.tools.activated_contributions)
+        if state.tools.task_policy is not None:
+            state.workflow = state.tools.task_policy
 
     def _select_run_model(self, run: Run, decision: SelectedModel) -> None:
         profile = self.model_calls.require_model_profile(decision)
@@ -385,38 +401,6 @@ def _select_workflow(contributions: list[SkillResult]) -> TaskPolicy:
     if len(policies) > 1:
         raise ValueError("configure at most one task or workflow Skill")
     return policies[0] if policies else TaskPolicy("model-loop", "loop", "", DEFAULT_MAX_STEPS)
-
-
-def _create_runtime_tools(
-    request: Task,
-    run: Run,
-    contributions: list[SkillResult],
-    send_text_model_messages: Callable[[list[Message]], str],
-    model_tool: SkillTool | None,
-) -> RuntimeTools:
-    results: list[SubAgentResult] = []
-    has_subagents = (
-        request.include_subagents
-        and bool(request.subagents.list_subagents())
-    )
-
-    def run_subagent(name: str, prompt: str) -> dict[str, object]:
-        value = request.subagents.run_named_subagent(name, prompt, run)
-        results.append(_read_subagent_result(value))
-        return value
-
-    return RuntimeTools(
-        RuntimeToolsContext(
-            session=run,
-            list_subagents=request.subagents.list_subagents if has_subagents else None,
-            run_subagent=run_subagent if has_subagents else None,
-            send_text_model_messages=send_text_model_messages,
-            allowed_task_skills=request.allowed_task_skills,
-        ),
-        contributions,
-        results,
-        extra_tools=() if model_tool is None else (model_tool,),
-    )
 
 
 def _selected_model(
@@ -520,6 +504,11 @@ def _create_result(
         workflow=state.workflow.name,
         skills=names,
         subagent_results=state.tools.delegated_subagent_results,
+        agent_tasks=(
+            None
+            if state.tools.agent_tasks is None
+            else state.tools.agent_tasks.list_tasks()
+        ),
         warning_messages=request.warning_messages,
         run_id=run.run_id,
         stop_reason=("completed" if stop_reason == "model_finished" else stop_reason)
@@ -600,23 +589,6 @@ def _record_task_completed(
                 result.skills,
             ),
         )
-
-
-def _read_subagent_result(value: dict[str, object]) -> SubAgentResult:
-    nested = value.get("subagent_results")
-    return SubAgentResult(
-        name=str(value["name"]),
-        description=str(value["description"]),
-        text=str(value["text"]),
-        prompt=str(value.get("prompt", "")),
-        created_by_agent=bool(value.get("created_by_agent", False)),
-        subagent_results=(
-            [_read_subagent_result(item) for item in nested if isinstance(item, dict)]
-            if isinstance(nested, list)
-            else None
-        ),
-        run_id=str(value.get("run_id", "")),
-    )
 
 
 def list_run_actions(run: Run) -> list[dict[str, object]]:

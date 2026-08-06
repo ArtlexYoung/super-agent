@@ -18,7 +18,7 @@ MAX_CONTROL_FLOW_COMPLEXITY = 10
 MAX_SOURCE_LINES = 600
 MAX_DIRECTORY_CHILDREN = 10
 CURRENT_RELEASE_PYTHON_FILES = 85
-CURRENT_RELEASE_PYTHON_LINES = 19_500
+CURRENT_RELEASE_PYTHON_LINES = 20_000
 CONTROL_FLOW_NODES = (
     ast.If,
     ast.For,
@@ -76,6 +76,8 @@ class ReleaseShapeTests(unittest.TestCase):
             "task/code/skill.toml",
             "task/common/SKILL.md",
             "task/common/skill.toml",
+            "task/producer-consumer/SKILL.md",
+            "task/producer-consumer/skill.toml",
         }
         packaged = {
             str(path.relative_to(root))

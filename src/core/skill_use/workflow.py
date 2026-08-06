@@ -36,17 +36,34 @@ def _create_task_policy(
     mode = str(data["mode"]).strip().lower()
     if mode not in WORKFLOW_MODES:
         raise ValueError(f"unknown workflow mode: {mode}")
-    unknown = sorted(set(data) - {"mode", "max_steps"})
+    unknown = sorted(set(data) - {"mode", "max_steps", "tools"})
     if unknown:
         raise ValueError(f"unknown {expected_type} Skill settings: " + ", ".join(unknown))
     instruction = disclosure.read_instructions().content.strip()
     if not instruction:
         raise ValueError(f"{expected_type} Skill instructions cannot be empty")
     max_steps = _read_max_steps(data["max_steps"], expected_type)
-    return TaskPolicy(manifest.name, mode, instruction, max_steps)
+    return TaskPolicy(
+        manifest.name,
+        mode,
+        instruction,
+        max_steps,
+        _read_tools(data.get("tools", {}), expected_type),
+    )
 
 
 def _read_max_steps(value: object, skill_type: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
         raise ValueError(f"{skill_type} max_steps must be a positive integer")
     return value
+
+
+def _read_tools(value: object, skill_type: str) -> dict[str, dict[str, object]]:
+    if not isinstance(value, dict):
+        raise ValueError(f"{skill_type} tools must be a table")
+    tools: dict[str, dict[str, object]] = {}
+    for name, settings in value.items():
+        if not isinstance(name, str) or not name.strip() or not isinstance(settings, dict):
+            raise ValueError(f"{skill_type} tools must map names to settings tables")
+        tools[name.strip().lower()] = dict(settings)
+    return tools

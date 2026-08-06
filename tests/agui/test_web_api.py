@@ -51,7 +51,7 @@ class WebAPIContractTests(unittest.TestCase):
             )
             tasks = [item for item in skills if item["type"] == "task"]
             self.assertEqual(
-                {"common", "code"},
+                {"common", "code", "producer-consumer"},
                 {item["name"] for item in tasks},
             )
             self.assertEqual([], [item["name"] for item in tasks if item["default"]])

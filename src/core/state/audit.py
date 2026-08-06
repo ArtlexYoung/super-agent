@@ -35,6 +35,15 @@ _DETAILED_EVENT_TYPES = {
     "runtime.subscriber.failed",
     "task.plan.set",
     "task.plan.step.updated",
+    "agent_task.created",
+    "agent_task.queued",
+    "agent_task.dispatched",
+    "agent_task.running",
+    "agent_task.completed",
+    "agent_task.failed",
+    "agent_task.cancelled",
+    "agent_task.wait.started",
+    "agent_task.wait.woke",
 }
 _CRITICAL_EVENT_TYPES = {
     "run.started",

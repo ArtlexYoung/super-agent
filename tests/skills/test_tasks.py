@@ -26,9 +26,13 @@ class TaskSkillTests(unittest.TestCase):
 
             common = disclosure.open_skill("common", expected_type="task")
             code = disclosure.open_skill("code", expected_type="task")
+            producer = disclosure.open_skill("producer-consumer", expected_type="task")
 
             self.assertEqual("loop", create_task_policy_from_skill(common).mode)
             self.assertEqual("loop", create_task_policy_from_skill(code).mode)
+            producer_policy = create_task_policy_from_skill(producer)
+            self.assertEqual(32, producer_policy.tools["agent_tasks"]["max_tasks"])
+            self.assertEqual(60, producer_policy.tools["agent_tasks"]["max_wait_seconds"])
             self.assertIn("General task chain", common.read_instructions().content)
             self.assertIn("Repository coding chain", code.read_instructions().content)
 

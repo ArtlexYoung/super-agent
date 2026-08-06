@@ -294,6 +294,7 @@ _INTERNAL_RESOURCE_PREFIXES = (
     "skill:disclosure:",
     "skill:owned:",
     "task:plan",
+    "task:queue",
 )
 
 

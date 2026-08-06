@@ -8,19 +8,21 @@ from core.skill_use.handlers import (
     SkillAction,
     SkillTool,
     SkillResult,
+    TaskPolicy,
     read_optional_non_negative_tool_integer,
     read_optional_positive_tool_integer,
     read_optional_tool_string,
     read_required_tool_string,
 )
 from core.provider.chat import Message, ToolCall, ToolDefinition
+from core.models import SubAgentResult, Task
 from core.runtime.run import Run
 from core.checks import ActionEffect, ActionRequest
 from skill.disclosure import SkillDisclosure, SkillIndex, SkillReference, skill_index_to_dict
 from skill.index import DEFAULT_PAGE_CHARS, disclosure_page_to_dict
 
 if TYPE_CHECKING:
-    from core.state.models import SubAgentResult
+    from core.skill_use.tasks import AgentTaskQueue
 
 
 @dataclass(frozen=True)
@@ -40,6 +42,9 @@ class RuntimeTools:
         delegated_subagent_results: list[SubAgentResult] | None = None,
         *,
         extra_tools: tuple[SkillTool, ...] = (),
+        task_policy: TaskPolicy | None = None,
+        agent_tasks: AgentTaskQueue | None = None,
+        create_agent_tasks: Callable[[TaskPolicy], AgentTaskQueue | None] | None = None,
     ) -> None:
         self.context = context
         self.used_skill_names: list[str] = []
@@ -60,6 +65,9 @@ class RuntimeTools:
             if delegated_subagent_results is None
             else delegated_subagent_results
         )
+        self.agent_tasks = agent_tasks
+        self.task_policy = task_policy
+        self._create_agent_tasks = create_agent_tasks
         self._tools: dict[str, SkillTool] = {}
         disclosure = context.session.skills.disclosure
         self._add_tools(
@@ -72,8 +80,13 @@ class RuntimeTools:
         for contribution in contributions or []:
             self._add_tools(contribution.tools)
         self._add_tools(extra_tools)
-        if context.list_subagents is not None and context.run_subagent is not None:
+        if context.list_subagents is not None:
             self._add_tools(_create_subagent_tools(self))
+
+    def close(self) -> None:
+        """Wait for all run-scoped consumers before the run is finalized."""
+        if self.agent_tasks is not None:
+            self.agent_tasks.close()
 
     def get_tool_definitions(self) -> list[ToolDefinition]:
         return [tool.to_provider_definition() for tool in self._tools.values()]
@@ -228,17 +241,16 @@ class RuntimeTools:
         self._check_task_skill_access(reference)
         if reference.key in self._activated_skill_keys:
             return {"key": reference.key, "already_active": True, "tools": []}
+        previous_tools = set(self._tools)
         loaded = self._activate_reference(reference)
+        current_tools = set(self._tools)
         return {
             "key": reference.key,
             "already_active": False,
             "activated": [item.key for item, _contribution in loaded],
             "instructions": _activation_instructions(loaded),
-            "tools": [
-                tool.name
-                for _item, contribution in loaded
-                for tool in contribution.tools
-            ],
+            "tools": sorted(current_tools - previous_tools),
+            "removed_tools": sorted(previous_tools - current_tools),
         }
 
     def _activate_reference(
@@ -246,11 +258,17 @@ class RuntimeTools:
         reference: SkillReference,
     ) -> list[tuple[SkillReference, SkillResult]]:
         loaded = self._load_reference_tree(reference, set())
-        new_tools = tuple(
-            tool for _item, item in loaded for tool in item.tools
-        )
-        self._validate_new_tools(new_tools)
-        self._tools.update({tool.name: tool for tool in new_tools})
+        new_tools = [tool for _item, item in loaded for tool in item.tools]
+        new_policy = self._read_new_task_policy(loaded)
+        new_agent_tasks = self._create_new_agent_task_queue(new_policy)
+        if new_agent_tasks is not None:
+            new_tools.extend(new_agent_tasks.create_tools())
+        self._add_tools(tuple(new_tools))
+        if new_agent_tasks is not None:
+            self.agent_tasks = new_agent_tasks
+            self._tools.pop("run_subagent", None)
+        if new_policy is not None:
+            self.task_policy = new_policy
         for item, loaded_contribution in loaded:
             self._record_loaded_skill(item)
             self._activated_skill_keys.add(item.key)
@@ -258,6 +276,35 @@ class RuntimeTools:
                 self._active_task_skill = item.key
             self.activated_contributions.append(loaded_contribution)
         return loaded
+
+    def _read_new_task_policy(
+        self,
+        loaded: list[tuple[SkillReference, SkillResult]],
+    ) -> TaskPolicy | None:
+        new_policies = [
+            item.task_policy for _reference, item in loaded
+            if item.task_policy is not None
+        ]
+        if len(new_policies) > 1:
+            raise ValueError("activate at most one task or workflow Skill")
+        if new_policies and self.task_policy is not None:
+            raise ValueError("only one task or workflow Skill can be active in a run")
+        return new_policies[0] if new_policies else None
+
+    def _create_new_agent_task_queue(
+        self,
+        policy: TaskPolicy | None,
+    ) -> AgentTaskQueue | None:
+        if policy is None or not policy.tools:
+            return None
+        if self.agent_tasks is not None:
+            raise ValueError("only one task queue can be active in a run")
+        if self._create_agent_tasks is None:
+            raise RuntimeError("task Skill queue creation is unavailable")
+        queue = self._create_agent_tasks(policy)
+        if queue is None:
+            raise RuntimeError("task Skill does not provide a usable task queue")
+        return queue
 
     def _load_reference_tree(
         self,
@@ -428,6 +475,85 @@ def _create_disclosure_tools(
     return tuple(tools)
 
 
+def create_runtime_tools(
+    request: Task,
+    run: Run,
+    contributions: list[SkillResult],
+    send_text_model_messages: Callable[[list[Message]], str],
+    workflow: TaskPolicy,
+    model_tool: SkillTool | None,
+) -> RuntimeTools:
+    results: list[SubAgentResult] = []
+    subagents = request.subagents.list_subagents() if request.include_subagents else []
+
+    def run_subagent(name: str, prompt: str) -> dict[str, object]:
+        value = request.subagents.run_named_subagent(name, prompt, run)
+        results.append(_read_subagent_result(value))
+        return value
+
+    agent_tasks = None
+    if workflow.tools:
+        from core.skill_use.tasks import create_agent_task_queue
+
+        agent_tasks = create_agent_task_queue(
+            workflow.tools,
+            subagents,
+            run_subagent,
+            run.record_event,
+        )
+
+    def create_agent_tasks(policy: TaskPolicy) -> AgentTaskQueue | None:
+        from core.skill_use.tasks import create_agent_task_queue
+
+        return create_agent_task_queue(
+            policy.tools,
+            subagents,
+            run_subagent,
+            run.record_event,
+        )
+
+    extra_tools = [tool for tool in (model_tool,) if tool is not None]
+    if agent_tasks is not None:
+        extra_tools.extend(agent_tasks.create_tools())
+    tools = RuntimeTools(
+        RuntimeToolsContext(
+            session=run,
+            list_subagents=request.subagents.list_subagents if subagents else None,
+            run_subagent=run_subagent if subagents and agent_tasks is None else None,
+            send_text_model_messages=send_text_model_messages,
+            allowed_task_skills=request.allowed_task_skills,
+        ),
+        contributions,
+        results,
+        extra_tools=tuple(extra_tools),
+        task_policy=(
+            workflow
+            if any(item.task_policy is not None for item in contributions)
+            else None
+        ),
+        agent_tasks=agent_tasks,
+        create_agent_tasks=create_agent_tasks,
+    )
+    return tools
+
+
+def _read_subagent_result(value: dict[str, object]) -> SubAgentResult:
+    nested = value.get("subagent_results")
+    return SubAgentResult(
+        name=str(value["name"]),
+        description=str(value["description"]),
+        text=str(value["text"]),
+        prompt=str(value.get("prompt", "")),
+        created_by_agent=bool(value.get("created_by_agent", False)),
+        subagent_results=(
+            [_read_subagent_result(item) for item in nested if isinstance(item, dict)]
+            if isinstance(nested, list)
+            else None
+        ),
+        run_id=str(value.get("run_id", "")),
+    )
+
+
 def _skill_reference_properties(
     skill_index: SkillIndex,
 ) -> dict[str, dict[str, object]]:
@@ -445,7 +571,7 @@ def _optional_path(path: Path | None) -> str | None:
 
 
 def _create_subagent_tools(runtime_tools: RuntimeTools) -> tuple[SkillTool, ...]:
-    return (
+    tools = [
         SkillTool(
             "list_subagents",
             "List subagents added to the current Agent in code.",
@@ -454,7 +580,9 @@ def _create_subagent_tools(runtime_tools: RuntimeTools) -> tuple[SkillTool, ...]
             action=SkillAction((ActionEffect.READ,), "subagent:index"),
             result_kind="subagent",
         ),
-        SkillTool(
+    ]
+    if runtime_tools.context.run_subagent is not None:
+        tools.append(SkillTool(
             "run_subagent",
             "Run one subagent added in code and return its traced result.",
             {
@@ -465,8 +593,8 @@ def _create_subagent_tools(runtime_tools: RuntimeTools) -> tuple[SkillTool, ...]
             action=SkillAction((ActionEffect.DELEGATE,), "subagent", "name"),
             required=("name", "prompt"),
             result_kind="subagent",
-        ),
-    )
+        ))
+    return tuple(tools)
 
 
 def _activation_instructions(

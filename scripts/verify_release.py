@@ -15,7 +15,7 @@ from pathlib import Path
 
 
 MAX_SOURCE_FILES = 85
-MAX_SOURCE_LINES = 19_500
+MAX_SOURCE_LINES = 20_000
 EXPECTED_SOURCE_ROOT = {"adapter", "cli.py", "core", "skill", "super_agent.py"}
 EXPECTED_WHEEL_ROOTS = [
     "src/adapter",

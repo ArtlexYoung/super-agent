@@ -1,6 +1,6 @@
 # Roadmap
 
-Super Agent remains in `0.0.x` while it tests one claim: a low-configuration Agent can
+Super Agent remains below `1.0` while it tests one claim: a low-configuration Agent can
 represent prompts, tools, memory, workflows, planning, and model descriptions as
 progressively disclosed Skills, then improve eligible Skills from real evidence.
 
@@ -1091,6 +1091,21 @@ Status: implemented.
   any failed command is reported and never skipped or replaced.
 - Keep every subprocess as a fixed argv array, run the benchmark in a temporary directory, and
   publish one command in the release guide for the complete v0.1 non-regression gate.
+
+## v0.1.20: Skill-Driven Agent Task Queues
+
+Status: implemented.
+
+- Add the optional `task:producer-consumer` Skill, which mounts run-scoped create, dispatch,
+  inspect, cancel, and wait tools without adding an execution-mode branch to Core.
+- Give each subagent one serial consumer while allowing different subagents to run concurrently;
+  route from declared purpose, required features, queue load, or an explicit model choice.
+- Let the model request bounded sleep and wake on timeout, any completion or failure, all tasks,
+  or selected task IDs without spending model calls while waiting.
+- Record ordered `agent_task.*` events without prompt or result bodies, disclose queue tool
+  results through the central context budget, and expose final safe task snapshots.
+- Support both run-start selection and dynamic `activate_skill` mounting through the same
+  Runtime tool owner, with no keyword triggers or silent fallback path.
 
 ## Release Gate
 
