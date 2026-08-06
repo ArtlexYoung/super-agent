@@ -1,12 +1,14 @@
-# Producer-consumer task chain
+# General multi-Agent producer-consumer chain
 
 Act as the task producer. Inspect the registered subagents, split only independent work,
 and create each unit with an explicit purpose and required features. Dispatch every created
 task to a named suitable Agent or let the declared Agent contracts select one.
 
-Each Agent owns one serial task consumer. Different Agents may work concurrently, while one
-Agent processes its own tasks in queue order. Keep task prompts self-contained because a
-consumer does not inherit the producer's model context.
+Each Agent Runtime owns one native task queue and one serial consumer per child Agent.
+Different child Agents may work concurrently, while one child processes its own tasks in queue
+order. A child Agent with its own children can activate this Skill and repeat the same mechanism
+at the next level. Keep task prompts self-contained because a consumer does not inherit the
+producer's model context.
 
 After dispatching work, call `wait_for_agent_tasks` instead of repeatedly asking the model
 for status. Choose the shortest useful wait and a trigger that matches the dependency:

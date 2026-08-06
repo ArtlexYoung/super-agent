@@ -44,6 +44,10 @@ There is no keyword router, separate planner engine, or preflight controller. Pl
 ordinary Skill instruction. A task Skill combines instructions with one run policy. The
 model can inspect or activate either through the same tools it uses for every other Skill.
 
+The Agent Runtime owns one native task queue mechanism. A selected Task Skill may expose its
+tools and limits for that run. Child Agents use the same mechanism with their own child graph,
+so nested producer-consumer work does not add another scheduler or copy queue code into Skills.
+
 The configured default model owns the task loop. When other model Skills exist, Runtime
 adds one `use_model` tool containing their descriptions, support, strengths, and readiness.
 The default model may send one explicit subtask to one of them and receives the result as a

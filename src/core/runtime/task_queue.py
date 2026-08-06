@@ -1,4 +1,4 @@
-"""Run-scoped tools requested by task and workflow Skills."""
+"""Native run-scoped task queues shared by every Agent Runtime."""
 
 from __future__ import annotations
 

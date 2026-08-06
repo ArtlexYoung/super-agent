@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable
+from typing import Callable
 
 from core.skill_use.handlers import (
     SkillAction,
@@ -17,13 +17,10 @@ from core.skill_use.handlers import (
 from core.provider.chat import Message, ToolCall, ToolDefinition
 from core.models import SubAgentResult, Task
 from core.runtime.run import Run
+from core.runtime.task_queue import AgentTaskQueue, create_agent_task_queue
 from core.checks import ActionEffect, ActionRequest
 from skill.disclosure import SkillDisclosure, SkillIndex, SkillReference, skill_index_to_dict
 from skill.index import DEFAULT_PAGE_CHARS, disclosure_page_to_dict
-
-if TYPE_CHECKING:
-    from core.skill_use.tasks import AgentTaskQueue
-
 
 @dataclass(frozen=True)
 class RuntimeToolsContext:
@@ -493,8 +490,6 @@ def create_runtime_tools(
 
     agent_tasks = None
     if workflow.tools:
-        from core.skill_use.tasks import create_agent_task_queue
-
         agent_tasks = create_agent_task_queue(
             workflow.tools,
             subagents,
@@ -503,8 +498,6 @@ def create_runtime_tools(
         )
 
     def create_agent_tasks(policy: TaskPolicy) -> AgentTaskQueue | None:
-        from core.skill_use.tasks import create_agent_task_queue
-
         return create_agent_task_queue(
             policy.tools,
             subagents,

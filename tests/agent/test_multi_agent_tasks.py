@@ -7,18 +7,118 @@ from pathlib import Path
 
 from core.config import CommonConfig
 from core.provider.chat import MockProvider, ModelResponse, ToolCall
-from core.skill_use.tasks import AgentTaskQueue, AgentTaskQueueSettings
+from core.runtime.task_queue import AgentTaskQueue, AgentTaskQueueSettings
 from super_agent import Agent
 
 
-class ProducerConsumerTests(unittest.TestCase):
+class MultiAgentTaskTests(unittest.TestCase):
+    def test_deep_optimization_reuses_native_queues_at_two_agent_levels(self) -> None:
+        batch_provider = MockProvider(
+            tool_responses=[
+                ModelResponse(
+                    "",
+                    [ToolCall("activate", "activate_skill", {
+                        "name": "common-multi-producer-consumer",
+                        "type": "task",
+                    })],
+                    "tool_calls",
+                ),
+                ModelResponse(
+                    "",
+                    [
+                        _call("create-a", "create_agent_task", "try A", "experiment"),
+                        _call("create-b", "create_agent_task", "try B", "experiment"),
+                    ],
+                    "tool_calls",
+                ),
+                ModelResponse(
+                    "",
+                    [
+                        _call("dispatch-a", "dispatch_agent_task", "", "", "agent-task-01"),
+                        _call("dispatch-b", "dispatch_agent_task", "", "", "agent-task-02"),
+                    ],
+                    "tool_calls",
+                ),
+                ModelResponse(
+                    "",
+                    [_wait_call("wait-experiments", "all_tasks_finished")],
+                    "tool_calls",
+                ),
+                ModelResponse("batch evidence", [], "model_finished"),
+            ]
+        )
+        main_provider = MockProvider(
+            tool_responses=[
+                ModelResponse(
+                    "",
+                    [_call(
+                        "create-batch",
+                        "create_agent_task",
+                        "run a diverse measured batch",
+                        "optimization-batch",
+                    )],
+                    "tool_calls",
+                ),
+                ModelResponse(
+                    "",
+                    [_call(
+                        "dispatch-batch",
+                        "dispatch_agent_task",
+                        "",
+                        "",
+                        "agent-task-01",
+                    )],
+                    "tool_calls",
+                ),
+                ModelResponse(
+                    "",
+                    [_wait_call("wait-batch", "all_tasks_finished")],
+                    "tool_calls",
+                ),
+                ModelResponse("global result", [], "model_finished"),
+            ]
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            batch_lead = _agent(root, "batch-lead", batch_provider)
+            batch_lead.add_subagent(
+                _agent(root, "experiment-a", MockProvider("experiment A evidence")),
+                name="experiment-a",
+                purpose="experiment",
+            )
+            batch_lead.add_subagent(
+                _agent(root, "experiment-b", MockProvider("experiment B evidence")),
+                name="experiment-b",
+                purpose="experiment",
+            )
+            main = _agent(root, "main", main_provider)
+            main.add_subagent(
+                batch_lead,
+                name="batch-lead",
+                purpose="optimization-batch",
+            )
+
+            result = main.run(
+                "find the best measured implementation",
+                skill="code-multi-deep-optimization",
+            )
+
+        batch = result.subagent_results[0]
+        self.assertEqual("code-multi-deep-optimization", result.workflow)
+        self.assertEqual("completed", result.agent_tasks[0]["status"])
+        self.assertEqual("batch evidence", batch.text)
+        self.assertEqual(
+            {"experiment A evidence", "experiment B evidence"},
+            {item.text for item in batch.subagent_results},
+        )
+
     def test_model_can_activate_task_queue_during_a_run(self) -> None:
         provider = MockProvider(
             tool_responses=[
                 ModelResponse(
                     "",
                     [ToolCall("activate", "activate_skill", {
-                        "name": "producer-consumer",
+                        "name": "common-multi-producer-consumer",
                         "type": "task",
                     })],
                     "tool_calls",
@@ -59,7 +159,7 @@ class ProducerConsumerTests(unittest.TestCase):
         activation_result = json.loads(activated["content"])
         self.assertIn("create_agent_task", activation_result["tools"])
         self.assertIn("run_subagent", activation_result["removed_tools"])
-        self.assertEqual("producer-consumer", result.workflow)
+        self.assertEqual("common-multi-producer-consumer", result.workflow)
         self.assertEqual("completed", result.agent_tasks[0]["status"])
         self.assertEqual("coded", result.subagent_results[0].text)
 
@@ -101,7 +201,10 @@ class ProducerConsumerTests(unittest.TestCase):
             main.add_subagent(_agent(root, "coder", MockProvider("coded")), name="coder", purpose="implementation")
             main.add_subagent(_agent(root, "reviewer", MockProvider("reviewed")), name="reviewer", purpose="code-review")
 
-            result = main.run("coordinate the work", skill="producer-consumer")
+            result = main.run(
+                "coordinate the work",
+                skill="common-multi-producer-consumer",
+            )
 
         self.assertEqual("assembled", result.text)
         self.assertEqual({"completed"}, {item["status"] for item in result.agent_tasks})
@@ -133,7 +236,7 @@ class ProducerConsumerTests(unittest.TestCase):
             main = _agent(root, "main", provider)
             main.add_subagent(_agent(root, "coder", MockProvider("wrong")), name="coder", purpose="implementation")
             main.add_subagent(_agent(root, "reviewer", MockProvider("right")), name="reviewer", purpose="code-review")
-            result = main.run("coordinate", skill="producer-consumer")
+            result = main.run("coordinate", skill="common-multi-producer-consumer")
 
         self.assertEqual("reviewer", result.agent_tasks[0]["agent_name"])
         self.assertEqual("right", result.subagent_results[0].text)
@@ -150,7 +253,7 @@ class ProducerConsumerTests(unittest.TestCase):
             main = _agent(root, "main", provider)
             main.add_subagent(_agent(root, "coder"), name="coder", purpose="implementation")
             with self.assertRaisesRegex(ValueError, "no suitable subagent"):
-                main.run("coordinate", skill="producer-consumer")
+                main.run("coordinate", skill="common-multi-producer-consumer")
 
     def test_one_agent_consumes_its_queue_serially_and_wait_is_capped(self) -> None:
         active = 0

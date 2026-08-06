@@ -1,5 +1,5 @@
 type = "task"
-description = "Produce independent tasks, dispatch them to specialized Agents, and wait for event-driven completion"
+description = "Coordinate general multi-Agent work through native queues and event-driven completion"
 
 [configuration]
 mode = "loop"

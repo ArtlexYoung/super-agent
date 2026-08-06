@@ -1096,8 +1096,9 @@ Status: implemented.
 
 Status: implemented.
 
-- Add the optional `task:producer-consumer` Skill, which mounts run-scoped create, dispatch,
-  inspect, cancel, and wait tools without adding an execution-mode branch to Core.
+- Add the optional `task:common-multi-producer-consumer` Skill, which mounts run-scoped
+  create, dispatch, inspect, cancel, and wait tools without adding an execution-mode branch
+  to Core.
 - Give each subagent one serial consumer while allowing different subagents to run concurrently;
   route from declared purpose, required features, queue load, or an explicit model choice.
 - Let the model request bounded sleep and wake on timeout, any completion or failure, all tasks,
@@ -1106,6 +1107,21 @@ Status: implemented.
   results through the central context budget, and expose final safe task snapshots.
 - Support both run-start selection and dynamic `activate_skill` mounting through the same
   Runtime tool owner, with no keyword triggers or silent fallback path.
+
+## v0.1.21: Native Nested Queues and Deep Optimization
+
+Status: implemented.
+
+- Move the single Agent task queue mechanism into Runtime and remove the old Skill-mechanism
+  module without an import alias or migration path.
+- Rename the general Task Skill to `task:common-multi-producer-consumer` everywhere, with no
+  legacy Skill directory or alternate name.
+- Add `task:code-multi-deep-optimization` for global batch planning, first-level evidence
+  synthesis, and second-level minimal implementation and benchmark experiments.
+- Reuse each Agent's own queue and child graph at every level; different child Agents remain
+  serial consumers of their own work while separate Agents and batches run concurrently.
+- Prove the complete main-to-batch-to-experiment result tree with an end-to-end nested Runtime
+  test instead of introducing a special deep-optimization scheduler.
 
 ## Release Gate
 

@@ -76,8 +76,10 @@ class ReleaseShapeTests(unittest.TestCase):
             "task/code/skill.toml",
             "task/common/SKILL.md",
             "task/common/skill.toml",
-            "task/producer-consumer/SKILL.md",
-            "task/producer-consumer/skill.toml",
+            "task/code-multi-deep-optimization/SKILL.md",
+            "task/code-multi-deep-optimization/skill.toml",
+            "task/common-multi-producer-consumer/SKILL.md",
+            "task/common-multi-producer-consumer/skill.toml",
         }
         packaged = {
             str(path.relative_to(root))

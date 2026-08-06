@@ -26,15 +26,26 @@ class TaskSkillTests(unittest.TestCase):
 
             common = disclosure.open_skill("common", expected_type="task")
             code = disclosure.open_skill("code", expected_type="task")
-            producer = disclosure.open_skill("producer-consumer", expected_type="task")
+            common_multi = disclosure.open_skill(
+                "common-multi-producer-consumer",
+                expected_type="task",
+            )
+            deep = disclosure.open_skill(
+                "code-multi-deep-optimization",
+                expected_type="task",
+            )
 
             self.assertEqual("loop", create_task_policy_from_skill(common).mode)
             self.assertEqual("loop", create_task_policy_from_skill(code).mode)
-            producer_policy = create_task_policy_from_skill(producer)
-            self.assertEqual(32, producer_policy.tools["agent_tasks"]["max_tasks"])
-            self.assertEqual(60, producer_policy.tools["agent_tasks"]["max_wait_seconds"])
+            common_multi_policy = create_task_policy_from_skill(common_multi)
+            deep_policy = create_task_policy_from_skill(deep)
+            self.assertEqual(32, common_multi_policy.tools["agent_tasks"]["max_tasks"])
+            self.assertEqual(60, common_multi_policy.tools["agent_tasks"]["max_wait_seconds"])
+            self.assertEqual(64, deep_policy.tools["agent_tasks"]["max_tasks"])
+            self.assertEqual(120, deep_policy.tools["agent_tasks"]["max_wait_seconds"])
             self.assertIn("General task chain", common.read_instructions().content)
             self.assertIn("Repository coding chain", code.read_instructions().content)
+            self.assertIn("global search owner", deep.read_instructions().content)
 
     def test_explicit_task_skill_needs_no_storage_or_extra_model_call(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

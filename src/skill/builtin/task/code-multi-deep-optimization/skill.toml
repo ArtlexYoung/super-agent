@@ -1,0 +1,10 @@
+type = "task"
+description = "Run evidence-driven optimization batches through nested specialist Agents"
+
+[configuration]
+mode = "loop"
+max_steps = 40
+
+[configuration.tools.agent_tasks]
+max_tasks = 64
+max_wait_seconds = 120

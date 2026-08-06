@@ -139,11 +139,12 @@ Cycles are allowed. Before execution, Agent can report a cycle chain or a config
 warning; these are warnings, not execution limits. Workflow instructions and the model's
 completion result provide the stopping mechanism.
 
-### Producer-Consumer Tasks
+### Native Agent Queues
 
-The optional `task:producer-consumer` Skill lets the main Agent create work and dispatch it
-to registered specialists. It is ordinary passive Skill content: selecting or activating it
-mounts the trusted queue tools for that run, and omitting it leaves those tools absent.
+Every Agent Runtime contains the same task queue mechanism. Task Skills decide when and how it
+is exposed; they do not implement their own queue. The optional
+`task:common-multi-producer-consumer` Skill mounts create, dispatch, inspect, cancel, and wait
+tools for general multi-Agent work. Omitting it leaves those tools absent from that run.
 
 ```python
 from super_agent import Agent
@@ -151,7 +152,10 @@ from super_agent import Agent
 main = Agent()
 main.add_subagent(Agent(), name="coder", purpose="implementation")
 main.add_subagent(Agent(), name="reviewer", purpose="code-review")
-result = main.run("Implement and review the change", skill="producer-consumer")
+result = main.run(
+    "Implement and review the change",
+    skill="common-multi-producer-consumer",
+)
 ```
 
 Each subagent has one serial consumer, while different subagents may execute concurrently.
@@ -169,6 +173,32 @@ Available wake triggers are `timeout`, `any_task_finished`, `any_task_completed`
 through explicit `created`, `queued`, `running`, `completed`, `failed`, or `cancelled`
 transitions. Prompts and result bodies stay out of `agent_task.*` events; the run result
 contains bounded status snapshots and normal traced subagent results.
+
+### Deep Optimization
+
+`task:code-multi-deep-optimization` reuses the same native queue for evidence-heavy coding,
+competition, and performance work. The main Agent owns global planning and parallel batches;
+each first-level batch Agent may activate `task:common-multi-producer-consumer` in its own
+Runtime and dispatch minimal experiments to its own child Agents.
+
+```python
+from super_agent import Agent
+
+batch = Agent()
+batch.add_subagent(Agent(), name="experiment-a", purpose="experiment")
+batch.add_subagent(Agent(), name="experiment-b", purpose="experiment")
+
+main = Agent()
+main.add_subagent(batch, name="batch-a", purpose="optimization-batch")
+result = main.run("Optimize against the benchmark", skill="code-multi-deep-optimization")
+```
+
+Each Agent keeps its own model, configuration, Skills, queue, and child graph. This allows
+second-level experiments to use different models and viewpoints while first-level Agents judge
+their batch evidence and the main Agent avoids optimizing only one local direction. Batch Agents
+should either start without a fixed Task Skill or select `common-multi-producer-consumer` in their
+own configuration. Experiment Agents activate `task:code` and should use isolated worktrees or
+separate workspaces for concurrent changes.
 
 ## Learning
 
