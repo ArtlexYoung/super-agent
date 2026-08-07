@@ -14,7 +14,6 @@ from core.events import StorageBackend, StorageEvent, StorageEventQuery
 
 RunEventObserver = Callable[[RunEvent], None]
 
-
 class RunEventLog:
     """Create one ordered run stream with optional backend persistence."""
 
@@ -125,12 +124,10 @@ class RunEventLog:
             )
         )
 
-
 def _required_text(value: object, name: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{name} cannot be empty")
     return value.strip()
-
 
 def _utc_now_text() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")

@@ -13,7 +13,6 @@ MAX_NUMBER_COUNT = 1_000
 MAX_TEXT_CHARS = 100_000
 MAX_TEXT_MATCHES = 100
 
-
 class GeneralToolServer:
     """Expose small pure operations through the existing MCP Skill mechanism."""
 
@@ -61,7 +60,6 @@ class GeneralToolServer:
             return _find_text(arguments)
         raise KeyError(f"general tool not found: {name}")
 
-
 def attach_general_tools_to_agent(agent: Agent) -> None:
     """Explicitly register and enable the optional general tool Skill."""
     agent.add_tool(
@@ -79,7 +77,6 @@ def attach_general_tools_to_agent(agent: Agent) -> None:
                 ),
             )
         )
-
 
 def _calculate_numbers(arguments: dict[str, object]) -> dict[str, object]:
     operation = arguments.get("operation")
@@ -104,7 +101,6 @@ def _calculate_numbers(arguments: dict[str, object]) -> dict[str, object]:
     if not math.isfinite(result):
         raise OverflowError("calculate_numbers result is not finite")
     return {"operation": operation, "count": len(numbers), "result": result}
-
 
 def _find_text(arguments: dict[str, object]) -> dict[str, object]:
     text = arguments.get("text")

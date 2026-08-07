@@ -36,7 +36,6 @@ UNTRUSTED_CONTEXT_POLICY = (
     "side effects only through declared tools checked by Runtime safety."
 )
 
-
 @dataclass(frozen=True)
 class SelectedModel:
     """One configured model selected for the next Provider call."""
@@ -79,7 +78,6 @@ class SelectedModel:
             },
         }
 
-
 @dataclass(frozen=True)
 class ModelUsageStats:
     profile_key: str
@@ -110,7 +108,6 @@ class ModelUsageStats:
             "average_cost": self.average_cost,
         }
 
-
 @dataclass(frozen=True)
 class ModelAssignment:
     """One deterministic model choice with inspectable supporting facts."""
@@ -118,7 +115,6 @@ class ModelAssignment:
     profile: ModelProfile
     score: float
     evidence: tuple[str, ...]
-
 
 def assign_model_for_task(
     profiles: list[ModelProfile],
@@ -147,7 +143,6 @@ def assign_model_for_task(
         key=lambda item: (item.score, -profiles.index(item.profile)),
     )
 
-
 @dataclass
 class _StatsAccumulator:
     calls: int = 0
@@ -158,18 +153,15 @@ class _StatsAccumulator:
     output_tokens: float = 0.0
     cost: float = 0.0
 
-
 class TextModel(Protocol):
     def send_messages(self, messages: list[Message]) -> str:
         ...
-
 
 @dataclass(frozen=True)
 class ModelCallContext:
     purpose: str
     record_event: EventWriter
     select_model: ModelSelector | None = None
-
 
 class ModelCalls:
     """Call configured models and record their exact outcomes."""
@@ -302,7 +294,6 @@ class ModelCalls:
             context.select_model(profile, provider)
         return provider
 
-
 @dataclass(frozen=True)
 class _TextModel:
     model_calls: ModelCalls
@@ -326,7 +317,6 @@ class _TextModel:
         if self.record_event is None:
             raise RuntimeError("text model event writer is not configured")
         return self.record_event(event_type, data)
-
 
 def list_model_usage_stats(
     store: EventStore,
@@ -379,7 +369,6 @@ def list_model_usage_stats(
         ),
         key=lambda item: (item.purpose, item.profile_key),
     )
-
 
 def infer_conversation_feedback_with_model(
     conversation: Conversation,
@@ -458,13 +447,11 @@ def infer_conversation_feedback_with_model(
     previous_run_id = conversation.messages[previous_assistant_index].run_id
     return previous_run_id, float(score), reason.strip()
 
-
 def _required_feedback_instructions(value: str) -> str:
     instructions = value.strip()
     if not instructions:
         raise ValueError("feedback Skill instructions cannot be empty")
     return instructions
-
 
 def _finish_stats(
     profile_key: str,
@@ -483,7 +470,6 @@ def _finish_stats(
         average_output_tokens=accumulator.output_tokens / calls,
         average_cost=accumulator.cost / calls,
     )
-
 
 def _score_model_candidate(
     profile: ModelProfile,
@@ -518,23 +504,19 @@ def _score_model_candidate(
         evidence.append("configured_default=true")
     return ModelAssignment(profile, round(score, 6), tuple(evidence))
 
-
 def _score(value: object, default: float) -> float:
     if isinstance(value, bool) or not isinstance(value, int | float):
         return default
     return min(1.0, max(0.0, float(value)))
 
-
 def _profile_is_ready(profile: ModelProfile, environment: dict[str, str]) -> bool:
     name = profile.connection.api_key_env
     return name is None or bool(environment.get(name, "").strip())
-
 
 def _nonnegative_number(value: object) -> float:
     if isinstance(value, bool) or not isinstance(value, int | float):
         return 0.0
     return max(0.0, float(value))
-
 
 def assistant_tool_call_message(text: str, calls: list[ToolCall]) -> Message:
     return {
@@ -553,7 +535,6 @@ def assistant_tool_call_message(text: str, calls: list[ToolCall]) -> Message:
         ],
     }
 
-
 def tool_result_message(call: ToolCall, result: dict[str, object]) -> Message:
     return {
         "role": "tool",
@@ -561,7 +542,6 @@ def tool_result_message(call: ToolCall, result: dict[str, object]) -> Message:
         "name": call.name,
         "content": json.dumps(result, ensure_ascii=False),
     }
-
 
 def _to_provider_call(
     decision: SelectedModel,

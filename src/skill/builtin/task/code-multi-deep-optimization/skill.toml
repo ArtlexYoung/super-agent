@@ -16,3 +16,13 @@ agent_selection = "rotate"
 circuit_breaker_failures = 1
 circuit_breaker_wait_seconds = 30
 retry_unavailable_times = 1
+
+[configuration.tools.agent_groups]
+max_groups = 16
+max_members = 3
+default_members = 3
+quorum = 2
+max_estimated_cost = 0.0
+allow_reduced_group = false
+require_different_models = true
+summary_chars = 1000

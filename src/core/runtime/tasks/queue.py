@@ -12,7 +12,7 @@ from core.checks import ActionEffect
 from core.models import SubagentRecordOptions
 from core.provider.chat import estimate_text_tokens
 from core.state.audit import compact_subagent_result
-from core.runtime.task_agents import (
+from core.runtime.tasks.agents import (
     AgentChoice,
     AgentTask,
     AgentTaskEstimate,
@@ -23,6 +23,11 @@ from core.runtime.task_agents import (
     is_agent_unavailable,
     read_optional_estimated_tokens,
 )
+from core.runtime.tasks.group_data import (
+    AgentGroupOptions,
+    read_group_settings,
+)
+from core.runtime.tasks.groups import AgentGroupTools
 from core.skill_use.handlers import (
     SkillAction,
     SkillTool,
@@ -46,17 +51,17 @@ _TRANSITIONS = {
     "running": {"queued", "completed", "failed"},
 }
 
-
-class AgentTaskQueue:
+class AgentTaskQueue(AgentGroupTools):
     """Give each subagent one serial consumer and wake the producer on demand."""
 
     def __init__(
         self,
         settings: AgentTaskQueueSettings,
         subagents: list[dict[str, object]],
-        run_subagent: Callable[[str, str, SubagentRecordOptions], dict[str, object]],
+        run_subagent: Callable[..., dict[str, object]],
         record_event: Callable[[str, dict[str, object]], object],
         record_result: Callable[[dict[str, object]], None] | None = None,
+        group_options: AgentGroupOptions | None = None,
     ) -> None:
         names = [str(item.get("name", "")).strip() for item in subagents]
         if not names or any(not name for name in names) or len(names) != len(set(names)):
@@ -65,11 +70,15 @@ class AgentTaskQueue:
         self.run_subagent = run_subagent
         self.record_event = record_event
         self.record_result = record_result
+        self.group_options = group_options
         self._condition = Condition(RLock())
         self._tasks: dict[str, AgentTask] = {}
+        self._groups: dict[str, AgentGroup] = {}
+        self._group_failures: list[dict[str, object]] = []
         self._executors: dict[str, ThreadPoolExecutor] = {}
         self._observed_terminal: set[str] = set()
         self._started_task_count = 0
+        self._group_attempt_count = 0
         self._agent_pool = SubagentPool(settings, subagents, record_event)
         self._retry_timers: list[Timer] = []
         self._closed = False
@@ -77,7 +86,7 @@ class AgentTaskQueue:
     def create_tools(self) -> tuple[SkillTool, ...]:
         task_id = {"type": "string"}
         action = SkillAction((ActionEffect.CREATE, ActionEffect.UPDATE), "task:queue")
-        return (
+        tools = (
             SkillTool(
                 "create_agent_task",
                 "Create one explicit task for later dispatch to a suitable subagent.",
@@ -143,6 +152,7 @@ class AgentTaskQueue:
                 "agent-task",
             ),
         )
+        return tools if self.group_options is None else (*tools, *self._create_group_tools())
 
     def list_tasks(self) -> list[dict[str, object]]:
         with self._condition:
@@ -151,6 +161,8 @@ class AgentTaskQueue:
     def require_finished(self) -> None:
         with self._condition:
             if not self._tasks:
+                if self._group_failures:
+                    return
                 raise RuntimeError("agent_tasks Skill must create at least one task")
             unfinished = [
                 task.task_id
@@ -252,11 +264,19 @@ class AgentTaskQueue:
                     attempt_count=task.attempt_count + 1,
                     retry_after_seconds=None,
                 )
-            result = self.run_subagent(
-                str(running.agent_name),
-                running.prompt,
-                record_options,
-            )
+            if running.shared_context is None:
+                result = self.run_subagent(
+                    str(running.agent_name),
+                    running.prompt,
+                    record_options,
+                )
+            else:
+                result = self.run_subagent(
+                    str(running.agent_name),
+                    running.prompt,
+                    record_options,
+                    running.shared_context,
+                )
             recorded_result = compact_subagent_result(result, record_options)
             if self.record_result is not None:
                 self.record_result(recorded_result)
@@ -354,14 +374,7 @@ class AgentTaskQueue:
     ) -> AgentChoice:
         try:
             return self._agent_pool.choose(
-                AgentTaskEstimate(
-                    task.purpose,
-                    task.required_features,
-                    estimate_text_tokens(task.prompt),
-                    task.estimated_output_tokens,
-                    task.estimated_cache_creation_tokens,
-                    task.estimated_cache_read_tokens,
-                ),
+                self._task_estimate(task),
                 self._active_task_counts_locked(),
                 requested_agent,
                 excluded,
@@ -370,6 +383,21 @@ class AgentTaskQueue:
             if str(error) == "no suitable subagent for task":
                 raise ValueError(f"no suitable subagent for task: {task.task_id}") from error
             raise
+
+    @staticmethod
+    def _task_estimate(task: AgentTask) -> AgentTaskEstimate:
+        return AgentTaskEstimate(
+            task.purpose,
+            task.required_features,
+            (
+                estimate_text_tokens(task.prompt)
+                if task.estimated_input_tokens is None
+                else task.estimated_input_tokens
+            ),
+            task.estimated_output_tokens,
+            task.estimated_cache_creation_tokens,
+            task.estimated_cache_read_tokens,
+        )
 
     def _active_task_counts_locked(self) -> dict[str, int]:
         counts: dict[str, int] = {}
@@ -516,6 +544,8 @@ class AgentTaskQueue:
         updated = replace(task, status=status, **changes)
         self._tasks[task.task_id] = updated
         self._record_locked(f"agent_task.{status}", updated)
+        if updated.group_id is not None and status in _TERMINAL_STATUSES:
+            self._refresh_group_locked(updated.group_id)
         return updated
 
     def _record_locked(self, event_type: str, task: AgentTask) -> None:
@@ -524,27 +554,37 @@ class AgentTaskQueue:
         self.record_event(event_type, data)
         self._condition.notify_all()
 
-
 def create_agent_task_queue(
     tools: dict[str, dict[str, object]],
     subagents: list[dict[str, object]],
-    run_subagent: Callable[[str, str, SubagentRecordOptions], dict[str, object]],
+    run_subagent: Callable[..., dict[str, object]],
     record_event: Callable[[str, dict[str, object]], object],
     record_result: Callable[[dict[str, object]], None] | None = None,
+    create_shared_context: Callable[[str, str], dict[str, object]] | None = None,
 ) -> AgentTaskQueue | None:
-    unknown = set(tools) - {"agent_tasks"}
+    unknown = set(tools) - {"agent_tasks", "agent_groups"}
     if unknown:
         raise ValueError("unknown task Skill tools: " + ", ".join(sorted(unknown)))
     if "agent_tasks" not in tools:
+        if "agent_groups" in tools:
+            raise ValueError("agent_groups requires agent_tasks in the same task Skill")
         return None
+    group_options = (
+        None
+        if "agent_groups" not in tools
+        else AgentGroupOptions(
+            read_group_settings(tools["agent_groups"]),
+            create_shared_context,
+        )
+    )
     return AgentTaskQueue(
         AgentTaskQueueSettings.from_dict(tools["agent_tasks"]),
         subagents,
         run_subagent,
         record_event,
         record_result,
+        group_options,
     )
-
 
 def _read_string_list(arguments: dict[str, object], name: str) -> tuple[str, ...]:
     value = arguments.get(name)
@@ -556,7 +596,6 @@ def _read_string_list(arguments: dict[str, object], name: str) -> tuple[str, ...
     if len(cleaned) != len(value):
         raise ValueError(f"tool argument {name!r} must contain unique non-empty strings")
     return cleaned
-
 
 def _read_optional_string_list(
     arguments: dict[str, object],
@@ -571,7 +610,6 @@ def _read_optional_string_list(
     if len(cleaned) != len(value):
         raise ValueError(f"tool argument {name!r} must contain unique non-empty strings")
     return cleaned
-
 
 def _read_positive_number(arguments: dict[str, object], name: str) -> float:
     value = arguments.get(name)

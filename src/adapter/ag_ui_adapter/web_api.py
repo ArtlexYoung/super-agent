@@ -23,12 +23,10 @@ from skill.disclosure import skill_index_to_dict
 from core.skill_use.models import model_profile_to_dict, read_model_profiles
 from core.skill_use.files.models import model_skill_input_from_dict
 
-
 @dataclass(frozen=True)
 class WebAPIResponse:
     status: HTTPStatus
     body: object
-
 
 class WebAPI:
     def __init__(self, agent: Agent, user_id: str) -> None:
@@ -178,17 +176,14 @@ class WebAPI:
         self.user.skills.create_model_manager().remove_model_skill(name)
         self.user.skills.reload_models()
 
-
 def _ok(body: object, status: HTTPStatus = HTTPStatus.OK) -> WebAPIResponse:
     return WebAPIResponse(status, body)
-
 
 def _has_model_skill(skills) -> bool:
     return any(
         entry.reference.skill_type == "model"
         for entry in skills.index.entries
     )
-
 
 def _web_skill_list(
     value: dict[str, object],
@@ -221,7 +216,6 @@ def _web_skill_list(
         if isinstance(item, dict)
     ]
 
-
 def _find_agent_for_run(
     agent: Agent,
     user_id: str,
@@ -242,7 +236,6 @@ def _find_agent_for_run(
         except KeyError:
             continue
     raise KeyError(f"run not found: {run_id}")
-
 
 def _subagent_tree(
     agent: Agent,
@@ -275,7 +268,6 @@ def _subagent_tree(
         )
     return nodes
 
-
 def _required_body_text(body: object | None, name: str) -> str:
     if not isinstance(body, dict):
         raise ValueError("request body must be a JSON object")
@@ -283,7 +275,6 @@ def _required_body_text(body: object | None, name: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"request {name} must be a non-empty string")
     return value.strip()
-
 
 def _optional_body_text(body: object | None, name: str) -> str:
     if body is None:

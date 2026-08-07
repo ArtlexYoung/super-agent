@@ -60,6 +60,14 @@ class TaskSkillTests(unittest.TestCase):
                 1,
                 deep_policy.tools["agent_tasks"]["retry_unavailable_times"],
             )
+            self.assertEqual(
+                3,
+                common_multi_policy.tools["agent_groups"]["default_members"],
+            )
+            self.assertEqual(2, deep_policy.tools["agent_groups"]["quorum"])
+            self.assertTrue(
+                deep_policy.tools["agent_groups"]["require_different_models"]
+            )
             self.assertIn("General task chain", common.read_instructions().content)
             self.assertIn("Repository coding chain", code.read_instructions().content)
             self.assertIn("global search owner", deep.read_instructions().content)

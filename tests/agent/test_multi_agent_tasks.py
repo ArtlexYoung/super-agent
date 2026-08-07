@@ -7,7 +7,7 @@ from pathlib import Path
 
 from core.config import CommonConfig
 from core.provider.chat import MockProvider, ModelResponse, ToolCall
-from core.runtime.task_queue import AgentTaskQueue, AgentTaskQueueSettings
+from core.runtime.tasks.queue import AgentTaskQueue, AgentTaskQueueSettings
 from super_agent import Agent
 
 

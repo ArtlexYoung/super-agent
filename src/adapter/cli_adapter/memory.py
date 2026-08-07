@@ -13,7 +13,6 @@ from core.models import LOCAL_USER_ID
 from core.skill_use.defaults import create_progressive_skill_disclosure
 from core.state.memory import Memory, MemoryItem, create_memory_from_skill
 
-
 def configure_memory_parser(parser: argparse.ArgumentParser) -> None:
     subparsers = parser.add_subparsers(dest="memory_command")
     habits = subparsers.add_parser("habits", help="show learned usage habits")
@@ -40,7 +39,6 @@ def configure_memory_parser(parser: argparse.ArgumentParser) -> None:
     forget.add_argument("--item-id", required=True)
     forget.add_argument("--reason", default="")
 
-
 def run_memory_command(args: argparse.Namespace) -> int:
     if args.memory_command == "habits":
         return _show_usage_habits(Path(args.common_config), args.user_id)
@@ -54,7 +52,6 @@ def run_memory_command(args: argparse.Namespace) -> int:
         return _forget_memory(args)
     raise ValueError("memory command is required")
 
-
 def _show_usage_habits(config_path: Path, user_id: str) -> int:
     instruction = _run_memory_action(
         config_path,
@@ -66,7 +63,6 @@ def _show_usage_habits(config_path: Path, user_id: str) -> int:
     print(instruction or "No memory yet.")
     return 0
 
-
 def _list_memory(args: argparse.Namespace) -> int:
     items = _run_memory_action(
         Path(args.common_config),
@@ -77,7 +73,6 @@ def _list_memory(args: argparse.Namespace) -> int:
     )
     _print_items(items)
     return 0
-
 
 def _add_memory(args: argparse.Namespace) -> int:
     item = _run_memory_action(
@@ -94,7 +89,6 @@ def _add_memory(args: argparse.Namespace) -> int:
     print(json.dumps(asdict(item), ensure_ascii=False))
     return 0
 
-
 def _recall_memory(args: argparse.Namespace) -> int:
     items = _run_memory_action(
         Path(args.common_config),
@@ -110,7 +104,6 @@ def _recall_memory(args: argparse.Namespace) -> int:
     _print_items(items)
     return 0
 
-
 def _forget_memory(args: argparse.Namespace) -> int:
     _run_memory_action(
         Path(args.common_config),
@@ -122,7 +115,6 @@ def _forget_memory(args: argparse.Namespace) -> int:
     print(json.dumps({"item_id": args.item_id, "forgotten": True}, ensure_ascii=False))
     return 0
 
-
 def _load_configured_memory(config_path: Path, user_id: str) -> Memory:
     config = load_common_config(config_path)
     store = load_event_store(config, user_id)
@@ -133,7 +125,6 @@ def _load_configured_memory(config_path: Path, user_id: str) -> Memory:
 
 
 MemoryResult = TypeVar("MemoryResult")
-
 
 def _run_memory_action(
     config_path: Path,
@@ -154,7 +145,6 @@ def _run_memory_action(
         ),
     )
 
-
 def _selected_memory_name(config: CommonConfig) -> str:
     selected = [
         value.partition(":")[2]
@@ -165,11 +155,9 @@ def _selected_memory_name(config: CommonConfig) -> str:
         raise ValueError("memory commands require one selected memory Skill")
     return selected[0] if selected else "default"
 
-
 def _print_items(items: list[MemoryItem]) -> None:
     for item in items:
         print(json.dumps(asdict(item), ensure_ascii=False))
-
 
 def _add_common_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--common-config", default="common.toml")

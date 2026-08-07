@@ -17,7 +17,6 @@ from adapter.storage.values import clean_storage_text, positive_storage_integer,
 JSONL_SCHEMA_VERSION = 1
 _WRITE_LOCK = threading.RLock()
 
-
 class JsonlStorage:
     name = "jsonl"
 
@@ -96,7 +95,6 @@ class JsonlStorage:
             if line.strip()
         ]
 
-
 def _event_json(event: StorageEvent) -> str:
     return json.dumps(
         {"schema_version": JSONL_SCHEMA_VERSION, **asdict(event)},
@@ -104,7 +102,6 @@ def _event_json(event: StorageEvent) -> str:
         separators=(",", ":"),
         sort_keys=True,
     )
-
 
 def _event_from_json(line: str, path: Path, line_number: int) -> StorageEvent:
     try:
@@ -128,7 +125,6 @@ def _event_from_json(line: str, path: Path, line_number: int) -> StorageEvent:
         data=dict(value["data"]),
     )
 
-
 def _matches_query(event: StorageEvent, query: StorageEventQuery) -> bool:
     return (
         event.user_id == query.user_id
@@ -138,7 +134,6 @@ def _matches_query(event: StorageEvent, query: StorageEventQuery) -> bool:
         and (query.event_type is None or event.event_type == query.event_type)
         and (query.event_ids is None or event.event_id in query.event_ids)
     )
-
 
 def _write_events_atomically(path: Path, events: list[StorageEvent]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)

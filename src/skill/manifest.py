@@ -14,11 +14,9 @@ SKILL_MANIFEST_FIELDS = {
     "configuration",
 }
 
-
 @dataclass(frozen=True)
 class SkillEntry:
     instructions: str | None = None
-
 
 @dataclass(frozen=True)
 class SkillManifest:
@@ -53,18 +51,15 @@ def skill_manifest_from_dict(data: dict[str, object], path: Path) -> SkillManife
         provides=[name],
     )
 
-
 @dataclass(frozen=True)
 class Skill:
     manifest: SkillManifest
     instructions: str
 
-
 def _reject_unknown_manifest_fields(data: dict[str, object]) -> None:
     unknown = sorted(set(data) - SKILL_MANIFEST_FIELDS)
     if unknown:
         raise ValueError(f"unknown skill manifest fields: {', '.join(unknown)}")
-
 
 def _read_skill_type(data: dict[str, object]) -> str:
     skill_type = _read_optional_string(data, "type", "prompt").strip().lower()
@@ -76,13 +71,11 @@ def _read_skill_type(data: dict[str, object]) -> str:
         )
     return skill_type
 
-
 def _read_required_string(data: dict[str, object], name: str) -> str:
     value = data.get(name)
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"skill {name} must be a non-empty string")
     return value.strip()
-
 
 def _read_skill_name(path: Path) -> str:
     name = path.parent.name.strip().lower()
@@ -92,13 +85,11 @@ def _read_skill_name(path: Path) -> str:
         raise ValueError("skill name must use lowercase letters, numbers, '-' or '_'")
     return name
 
-
 def _read_optional_string(data: dict[str, object], name: str, default: str) -> str:
     value = data.get(name, default)
     if not isinstance(value, str):
         raise ValueError(f"skill {name} must be a string")
     return value
-
 
 def skill_manifest_to_dict(manifest: SkillManifest) -> dict[str, object]:
     return {
@@ -107,7 +98,6 @@ def skill_manifest_to_dict(manifest: SkillManifest) -> dict[str, object]:
         "description": manifest.description,
         "version": manifest.version,
     }
-
 
 def calculate_skill_directory_sha256(path: Path) -> str:
     if path.is_symlink():

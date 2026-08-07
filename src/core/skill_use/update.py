@@ -26,7 +26,6 @@ from core.state.events import EventStore
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.manifest import SkillManifest, calculate_skill_directory_sha256
 
-
 @dataclass(frozen=True)
 class SkillChange:
     change_id: str
@@ -44,7 +43,6 @@ class SkillChange:
     def key(self) -> str:
         return f"{self.skill_type}:{self.name}"
 
-
 @dataclass(frozen=True)
 class SkillChangeCase:
     name: str
@@ -52,7 +50,6 @@ class SkillChangeCase:
     expected_output_contains: list[str] = field(default_factory=list)
     forbidden_output_contains: list[str] = field(default_factory=list)
     expected_configuration: dict[str, object] = field(default_factory=dict)
-
 
 @dataclass(frozen=True)
 class SkillChangeCaseResult:
@@ -63,7 +60,6 @@ class SkillChangeCaseResult:
     input_tokens: int
     output_tokens: int
     latency_ms: int
-
 
 @dataclass(frozen=True)
 class SkillChangeReport:
@@ -83,13 +79,11 @@ class SkillChangeReport:
     results: list[SkillChangeCaseResult]
     baseline_results: list[SkillChangeCaseResult]
 
-
 @dataclass(frozen=True)
 class _ApplyPaths:
     target: Path
     target_sha256: str
     history: Path
-
 
 class SkillUpdater:
     """Keep proposal, testing, activation, and undo as separate user actions."""

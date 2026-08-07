@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from core.events import StorageBackend
 
-
 def create_storage_backend(
     backend: str,
     path: str,
@@ -36,7 +35,6 @@ __all__ = [
     "SqliteStorage",
     "create_storage_backend",
 ]
-
 
 def __getattr__(name: str) -> object:
     if name == "JsonlStorage":

@@ -27,7 +27,6 @@ from super_agent import Agent
 
 CommonConfigSource = CommonConfig | str | Path | None
 
-
 @dataclass(frozen=True)
 class CliConfig:
     """Terminal behavior independent from Agent and task configuration."""
@@ -96,7 +95,6 @@ class CliConfig:
         )
         return cls(LOCAL_USER_ID, "text", False, True, base / "cli.toml")
 
-
 class TerminalActionRules(ActionRules):
     """Ask before a Runtime action leaves read-only state."""
 
@@ -123,7 +121,6 @@ class TerminalActionRules(ActionRules):
             )
         return decision
 
-
 def load_common_config(source: CommonConfigSource = None) -> CommonConfig:
     if source is None:
         return CommonConfig.load_automatically()
@@ -131,12 +128,10 @@ def load_common_config(source: CommonConfigSource = None) -> CommonConfig:
         return source
     return CommonConfig.load_from_file(source)
 
-
 def load_cli_config(source: str | Path | None = None) -> CliConfig:
     if source is None:
         return CliConfig.load_automatically()
     return CliConfig.load_from_file(source)
-
 
 def configure_config_parser(parser: argparse.ArgumentParser) -> None:
     parser.set_defaults(cli_config=None)
@@ -147,7 +142,6 @@ def configure_config_parser(parser: argparse.ArgumentParser) -> None:
     ):
         subparsers.add_parser(name, help=help_text).add_argument("--cli-config")
 
-
 def run_config_command(args: argparse.Namespace) -> int:
     config = load_cli_config(args.cli_config)
     if args.config_command == "validate":
@@ -155,7 +149,6 @@ def run_config_command(args: argparse.Namespace) -> int:
     else:
         _print_cli_config(config)
     return 0
-
 
 def load_agent(
     source: CommonConfigSource = None,
@@ -167,7 +160,6 @@ def load_agent(
         use_storage=use_storage,
         action_rules=TerminalActionRules(),
     )
-
 
 def load_event_store(
     source: CommonConfigSource = None,
@@ -188,7 +180,6 @@ def load_event_store(
         config.agent.name,
     )
 
-
 def _print_cli_config(config: CliConfig) -> None:
     print(f"CLI configuration: {_cli_source_label(config)}")
     print(f"run.user_id = {config.user_id}")
@@ -196,10 +187,8 @@ def _print_cli_config(config: CliConfig) -> None:
     print(f"run.save = {str(config.save).lower()}")
     print(f"run.show_summary = {str(config.show_summary).lower()}")
 
-
 def _cli_source_label(config: CliConfig) -> str:
     return str(config.source) if config.source.is_file() else "built-in defaults"
-
 
 def _read_cli_boolean(value: object, name: str) -> bool:
     if not isinstance(value, bool):

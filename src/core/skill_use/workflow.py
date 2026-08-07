@@ -7,18 +7,15 @@ from skill.disclosure import SkillDisclosure
 
 WORKFLOW_MODES = {"direct", "react", "loop"}
 
-
 def create_workflow_policy_from_skill(
     disclosure: SkillDisclosure,
 ) -> TaskPolicy:
     return _create_task_policy(disclosure, "workflow")
 
-
 def create_task_policy_from_skill(
     disclosure: SkillDisclosure,
 ) -> TaskPolicy:
     return _create_task_policy(disclosure, "task")
-
 
 def _create_task_policy(
     disclosure: SkillDisclosure,
@@ -51,12 +48,10 @@ def _create_task_policy(
         _read_tools(data.get("tools", {}), expected_type),
     )
 
-
 def _read_max_steps(value: object, skill_type: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
         raise ValueError(f"{skill_type} max_steps must be a positive integer")
     return value
-
 
 def _read_tools(value: object, skill_type: str) -> dict[str, dict[str, object]]:
     if not isinstance(value, dict):

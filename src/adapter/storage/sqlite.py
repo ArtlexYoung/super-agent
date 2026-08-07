@@ -21,7 +21,6 @@ SQLITE_SCHEMA_VERSION = 1
 SQLITE_BUSY_TIMEOUT_MILLISECONDS = 30_000
 SQLITE_DELETE_EVENT_ID_BATCH_SIZE = 500
 
-
 class SqliteStorage:
     name = "sqlite"
 
@@ -170,7 +169,6 @@ SELECT position, event_id, user_id, agent_name, stream_type, stream_id,
 FROM storage_events
 """.strip()
 
-
 def _query_where(query: StorageEventQuery) -> tuple[str, tuple[str, ...]]:
     clauses = ["user_id = ?"]
     parameters = [clean_storage_text(query.user_id, "user_id")]
@@ -192,7 +190,6 @@ def _query_where(query: StorageEventQuery) -> tuple[str, tuple[str, ...]]:
         )
     return " WHERE " + " AND ".join(clauses), tuple(parameters)
 
-
 def _event_id_batches(
     event_ids: tuple[str, ...] | None,
 ) -> list[tuple[str, ...] | None]:
@@ -202,7 +199,6 @@ def _event_id_batches(
         event_ids[index : index + SQLITE_DELETE_EVENT_ID_BATCH_SIZE]
         for index in range(0, len(event_ids), SQLITE_DELETE_EVENT_ID_BATCH_SIZE)
     ]
-
 
 def _event_from_row(row: sqlite3.Row | tuple[object, ...], path: Path) -> StorageEvent:
     values = tuple(row)

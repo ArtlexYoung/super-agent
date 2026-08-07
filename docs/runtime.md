@@ -217,6 +217,44 @@ model-output errors fail without opening the circuit or changing health. Events 
 `circuit_opened`, `fallback_selected`, `retry_scheduled`,
 `circuit_half_open`, and `circuit_closed`; retries never happen silently.
 
+### Budgeted Decision Groups
+
+Task Skills may opt into decision groups by adding `configuration.tools.agent_groups`. This
+attaches `create_agent_group`, `wait_for_agent_group`, `list_agent_groups`, and
+`cancel_agent_group` to the same native queue. Without that table, group tools are absent.
+
+```toml
+[configuration.tools.agent_groups]
+max_groups = 8
+max_members = 3
+default_members = 3
+quorum = 2
+max_estimated_cost = 0.0
+allow_reduced_group = false
+require_different_models = true
+summary_chars = 1000
+```
+
+`create_agent_group` checks compatible Agents, distinct configured models, and estimated total
+cost before creating any member task. `max_estimated_cost = 0` means no monetary cap; a positive
+limit produces an explicit `budget_exceeded` result when the quorum cannot fit. A smaller group is
+never selected unless `allow_reduced_group` is true, and every smaller result records
+`reduced = true`. Missing model diversity raises an explicit availability error.
+
+Runtime writes the shared task packet once through central progressive disclosure. Each member
+receives only its role, the shared reference, and a strict JSON output contract with `decision`,
+`evidence`, and `confidence`. A persistent disclosure cache yields `cache_reference`; a stateless
+run yields `run_reference`; direct queue use without a disclosure writer reports `inline`.
+
+The default three-member group requires two support votes to pass and two independent reject
+votes to reject. Failed members, failed experiments, malformed JSON, and split votes are
+`inconclusive`, not implicit rejection. Final results include bounded evidence for synthesis;
+`agent_group.completed` audit events omit evidence text and retain decision facts and hashes.
+
+Because groups reuse each Agent's native queue, main, batch, and experiment Agents can enable the
+same Task Skill independently. This preserves nested specialization without introducing a second
+group executor or forcing group behavior into Agents that do not select the Skill.
+
 Available wake triggers are `timeout`, `any_task_finished`, `any_task_completed`,
 `any_task_failed`, `all_tasks_finished`, and `selected_tasks_finished`. Task states move
 through explicit `created`, `queued`, `running`, `completed`, `failed`, or `cancelled`

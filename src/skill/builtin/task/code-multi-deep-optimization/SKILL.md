@@ -20,6 +20,24 @@ Within the rotating set, declared Agent weight and model prices determine the st
 Unavailable Agents are skipped while their circuit is open and rejoin only after a recorded
 half-open probe succeeds.
 
+## Cost-aware decision groups
+
+Do not send every prompt to three models. Start with the cheapest suitable single-Agent scout for
+routine or reversible work. Create a group only for uncertain search direction, candidate
+promotion, regression disputes, or stopping decisions where another independent measurement can
+change the outcome.
+
+A group carries one shared task packet through central progressive disclosure. Members receive
+only its reference and one distinct role: proposal or implementation design, counterexample and
+risk search, or independent measurement and reproducibility. Use `create_agent_group` and then
+`wait_for_agent_group`; do not create three ordinary tasks containing duplicate packets.
+
+The default group uses three distinct configured models and a two-vote quorum. Two measured
+support votes promote a candidate. Two independent negative evidence records reject it. One failed
+member, one failed implementation, malformed output, or split evidence makes the group
+inconclusive rather than rejected. Budget checks happen before dispatch. `budget_exceeded` and
+`reduced` are explicit outcomes; never silently replace a group with one Agent.
+
 ## Main Agent: global search owner
 
 1. Establish the baseline, evaluation command, primary and guardrail metrics, resource budget,
@@ -31,7 +49,9 @@ half-open probe succeeds.
    budget, and the expected batch report in every self-contained task prompt.
 4. Dispatch independent batches concurrently through the native Agent task queue, then sleep on
    an event trigger instead of polling with model calls.
-5. Compare completed batches globally. Preserve measured improvements, reject regressions, and
+5. Use a group for global batch selection when evidence is close or contradictory; keep obvious
+   decisions single-Agent.
+6. Compare completed batches globally. Preserve measured improvements, reject regressions, and
    use negative results to choose the next diverse batch instead of repeatedly refining one
    locally promising idea.
 
@@ -54,6 +74,12 @@ rejected, inconclusive, or worth a narrower follow-up. Return one compact batch 
 - unexplored directions and a recommendation to continue, branch, or stop.
 
 Do not silently start another batch. The main Agent owns cross-batch planning.
+
+Use a group when promoting or rejecting a second-level optimization point would otherwise depend
+on one implementation result. One member may design the smallest experiment, one should challenge
+the hypothesis, and one should reproduce the metric. After a decision, only the selected
+implementation owner changes code; the other members verify or refute it instead of making
+conflicting edits.
 
 ## Second-level Agent: minimal experiment owner
 

@@ -17,7 +17,6 @@ from core.skill_use.handlers import (
 WORKTREE_ID_PATTERN = r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}"
 WORKTREE_OUTPUT_LIMIT = 64_000
 
-
 class IsolatedWorktreeTools:
     """Create and inspect detached worktrees without accepting arbitrary Git args."""
 
@@ -99,13 +98,11 @@ class IsolatedWorktreeTools:
             raise RuntimeError(f"git worktree operation failed: {detail}")
         return completed.stdout[:WORKTREE_OUTPUT_LIMIT]
 
-
 def _read_worktree_id(arguments: dict[str, object]) -> str:
     value = read_required_tool_string(arguments, "worktree_id")
     if fullmatch(WORKTREE_ID_PATTERN, value) is None:
         raise ValueError("worktree_id must be a simple identifier")
     return value
-
 
 def _is_within(path: Path, parent: Path) -> bool:
     try:

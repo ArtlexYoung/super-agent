@@ -17,7 +17,6 @@ if TYPE_CHECKING:
     from core.state.memory import RuntimeMemoryStore
     from core.state.models import RunEvent, RunSnapshot
 
-
 class EventStore:
     """Expose domain operations while keeping backend details out of Skill handlers."""
 
@@ -314,7 +313,6 @@ class EventStore:
         if identity.user_id != self.user_id or identity.agent_name != self.agent_name:
             raise ValueError("run identity does not match runtime store scope")
 
-
 def create_local_event_store(
     root: Path,
     *,
@@ -324,7 +322,6 @@ def create_local_event_store(
     from adapter.storage.jsonl import JsonlStorage
 
     return EventStore(JsonlStorage(root), root, user_id, agent_name)
-
 
 def _required_text(value: object, name: str) -> str:
     if not isinstance(value, str) or not value.strip():

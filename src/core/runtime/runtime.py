@@ -10,8 +10,7 @@ from core.checks import ActionRules
 from core.config import CommonConfig
 from core.events import StorageBackend
 from core.models import LOCAL_USER_ID, RunIdentity, RunResult, Task
-from core.provider.pool import ProviderPool
-from core.provider.secrets import UserSecretResolver
+from core.provider.pool import ProviderPool, UserSecretResolver
 from core.runtime.loop import ModelLoop, list_run_actions
 from core.runtime.model_calls import estimate_text_tokens
 from core.runtime.run import Run
@@ -24,7 +23,6 @@ from core.state.subscribers import (
     RuntimeEventSubscriberError,
     RuntimeEventSubscribers,
 )
-
 
 @dataclass
 class RuntimeContext:
@@ -40,7 +38,6 @@ class RuntimeContext:
     event_subscribers: RuntimeEventSubscribers = field(
         default_factory=RuntimeEventSubscribers
     )
-
 
 class Runtime:
     """Own only the lifecycle and execution of Agent tasks."""
@@ -148,7 +145,6 @@ class Runtime:
                 )
             raise
 
-
 def _create_run(
     context: RuntimeContext,
     request: Task,
@@ -203,7 +199,6 @@ def _create_run(
         )
         raise
 
-
 def _create_run_event_store(
     context: RuntimeContext,
     identity: RunIdentity,
@@ -221,7 +216,6 @@ def _create_run_event_store(
         run_event_log=event_log,
     )
 
-
 def _create_skills(
     context: RuntimeContext,
     store,
@@ -235,7 +229,6 @@ def _create_skills(
         include_freshness=False,
     )
 
-
 def _read_model_profiles(
     context: RuntimeContext,
     skills: SkillCollection,
@@ -247,13 +240,11 @@ def _read_model_profiles(
     profiles = read_model_profiles(skills, environment)
     return profiles or list(context.code_model_profiles)
 
-
 def _has_model_skill(skills) -> bool:
     return any(
         entry.reference.skill_type == "model"
         for entry in skills.index.entries
     )
-
 
 def _create_task_loop(
     context: RuntimeContext,
@@ -265,7 +256,6 @@ def _create_task_loop(
         profiles,
         context.provider_pool.create_user_provider_pool(environment),
     )
-
 
 def _create_run_learning_evidence(
     run: Run,

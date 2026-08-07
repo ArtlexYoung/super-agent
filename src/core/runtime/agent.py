@@ -16,7 +16,7 @@ from core.provider.chat import (
     ChatProvider,
     Message,
 )
-from core.provider.pool import ProviderPool
+from core.provider.pool import ProviderPool, UserSecretLookup, UserSecretResolver
 from core.config import CommonConfig
 from core.runtime.runtime import Runtime, RuntimeContext
 from core.runtime.run import Run
@@ -29,7 +29,6 @@ from core.checks import (
     ActionEffect,
     ActionRules,
 )
-from core.provider.secrets import UserSecretLookup, UserSecretResolver
 from core.models import (
     AgentRunOptions,
     SubAgentResult,
@@ -53,7 +52,6 @@ from skill.manifest import SkillManifest
 if TYPE_CHECKING:
     from adapter.user import UserAgent
 
-
 @dataclass(frozen=True)
 class SubAgent:
     name: str
@@ -63,7 +61,6 @@ class SubAgent:
     purpose: str = "auto"
     required_features: tuple[str, ...] = ("text",)
     weight: float = 1.0
-
 
 class Agent:
     def __init__(
@@ -110,24 +107,20 @@ class Agent:
         if self._runtime is None:
             raise RuntimeError("Agent initialization did not create a Runtime")
         return self._runtime
-
     @property
     def provider_pool(self) -> ProviderPool:
         self._ensure_initialized()
         if self._provider_pool is None:
             raise RuntimeError("Agent initialization did not create a Provider pool")
         return self._provider_pool
-
     @property
     def model_profiles(self) -> list[ModelProfile]:
         self._ensure_initialized()
         return self._model_profiles
-
     @property
     def model_profile(self) -> ModelProfile | None:
         self._ensure_initialized()
         return self._model_profile
-
     def add_subagent(
         self,
         agent: "Agent",
@@ -173,7 +166,6 @@ class Agent:
     @property
     def subagents(self) -> tuple[SubAgent, ...]:
         return tuple(self._subagents)
-
     def add_skill_path(self, path: str | Path) -> None:
         """Add one shared Skill root and refresh initialized Runtime state."""
         selected = Path(path).expanduser().absolute()
@@ -191,7 +183,6 @@ class Agent:
     def _add_skill_handler(self, handler: SkillHandler) -> None:
         with self._initialization_lock:
             self._skill_handlers.add(handler, replace=True)
-
     def add_tool(
         self,
         name: str,
@@ -562,6 +553,7 @@ class Agent:
         prompt: str,
         session: Run,
         record_options: SubagentRecordOptions,
+        shared_context: dict[str, object] | None = None,
     ) -> dict[str, object]:
         subagent = next((item for item in self._subagents if item.name == name), None)
         if subagent is None:
@@ -572,6 +564,7 @@ class Agent:
                 prompt,
                 session,
                 record_options,
+                shared_context,
             )
         )
 
@@ -581,6 +574,7 @@ class Agent:
         prompt: str,
         parent_session: Run,
         record_options: SubagentRecordOptions,
+        shared_context: dict[str, object] | None = None,
     ) -> SubAgentResult:
         parent_session.record_event(
             "subagent.started",
@@ -599,6 +593,7 @@ class Agent:
             purpose=subagent.purpose,
             required_features=subagent.required_features,
             record_options=record_options,
+            shared_context=shared_context,
         )
         subagent_result = SubAgentResult(
             name=subagent.name,
@@ -627,6 +622,7 @@ class Agent:
         purpose: str = "auto",
         required_features: tuple[str, ...] = ("text",),
         record_options: SubagentRecordOptions,
+        shared_context: dict[str, object] | None = None,
     ) -> RunResult:
         request = Task(
             prompt=prompt,
@@ -635,6 +631,7 @@ class Agent:
             warning_messages=[],
             purpose=purpose,
             required_features=required_features,
+            shared_context=shared_context,
             allow_subscriber_failures=parent_session.allow_subscriber_failures,
             subagent_record_options=record_options,
             subagents=SubagentCallbacks(
@@ -648,7 +645,6 @@ class Agent:
             conversation_id=parent_session.identity.conversation_id,
             parent_run_id=parent_session.run_id,
         )
-
 
 def _has_model_skill(skills) -> bool:
     return any(

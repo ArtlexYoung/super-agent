@@ -29,7 +29,6 @@ from core.state.models import RunEvent
 
 LEARNING_COMPLETED_EVENT = "learning.completed"
 
-
 def learn_from_run(
     store: EventStore,
     run_id: str,
@@ -104,7 +103,6 @@ def learn_from_run(
         store.read_run_events(run_id, include_sensitive=True),
     )
 
-
 def _record_run_evaluations(
     store: EventStore,
     terminal: RunEvent,
@@ -136,7 +134,6 @@ def _record_run_evaluations(
         records.append(record)
     return records
 
-
 def _calculate_current_freshness(
     store: EventStore,
     revisions: list[SkillRevision],
@@ -152,7 +149,6 @@ def _calculate_current_freshness(
         if key in by_skill
     ]
 
-
 def _read_run_model_usage(store: EventStore, run_id: str) -> list[dict[str, object]]:
     observed = {
         (
@@ -167,7 +163,6 @@ def _read_run_model_usage(store: EventStore, run_id: str) -> list[dict[str, obje
         for stats in list_model_usage_stats(store)
         if (stats.profile_key, stats.purpose) in observed
     ]
-
 
 def _read_learning_evidence(
     terminal: RunEvent,
@@ -185,7 +180,6 @@ def _read_learning_evidence(
         [skill_revision_from_dict(item) for item in revisions],
         evaluation_result_from_dict(evidence.get("result")),
     )
-
 
 def _result_from_completed_event(
     completed: RunEvent,
@@ -208,7 +202,6 @@ def _result_from_completed_event(
         events=list(events),
     )
 
-
 def _identity_from_events(store: EventStore, events: list[RunEvent]) -> RunIdentity:
     first = events[0]
     conversation_id = first.data.get("conversation_id")
@@ -222,7 +215,6 @@ def _identity_from_events(store: EventStore, events: list[RunEvent]) -> RunIdent
         parent_run_id=first.parent_run_id,
     )
 
-
 def _require_terminal_event(events: list[RunEvent]) -> RunEvent:
     if not events:
         raise KeyError("run not found")
@@ -234,10 +226,8 @@ def _require_terminal_event(events: list[RunEvent]) -> RunEvent:
         raise ValueError(f"run has not finished: {events[0].run_id}")
     return terminal
 
-
 def _find_event(events: list[RunEvent], event_type: str) -> RunEvent | None:
     return next((item for item in reversed(events) if item.event_type == event_type), None)
-
 
 def _evaluation_record_id(
     store: EventStore,
@@ -250,19 +240,16 @@ def _evaluation_record_id(
         digest.update(b"\0")
     return f"evaluation-{digest.hexdigest()}"
 
-
 def _parse_event_time(value: str) -> datetime:
     parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     if parsed.tzinfo is None:
         raise ValueError("run event time must include a timezone")
     return parsed
 
-
 def _string_list(value: object, name: str) -> list[str]:
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
         raise ValueError(f"run learning {name} must be a string array")
     return list(value)
-
 
 def _object_list(value: object, name: str) -> list[dict[str, object]]:
     if not isinstance(value, list) or not all(isinstance(item, dict) for item in value):

@@ -16,20 +16,17 @@ MOCK_PROVIDER = "mock"
 OPENAI_COMPATIBLE_PROVIDER = "openai-compatible"
 ANTHROPIC_COMPATIBLE_PROVIDER = "anthropic-compatible"
 
-
 @dataclass(frozen=True)
 class ProviderConnection:
     provider: str
     base_url: str | None = None
     api_key_env: str | None = None
 
-
 @dataclass(frozen=True)
 class ToolCall:
     id: str
     name: str
     arguments: dict[str, object]
-
 
 @dataclass(frozen=True)
 class ModelResponse:
@@ -39,7 +36,6 @@ class ModelResponse:
 
 
 EventWriter = Callable[[str, dict[str, object]], object]
-
 
 @dataclass(frozen=True)
 class ModelAction:
@@ -51,11 +47,9 @@ class ModelAction:
         if not self.name.strip():
             raise ValueError("model action name cannot be empty")
 
-
 @dataclass(frozen=True)
 class FinalTurn:
     text: str
-
 
 @dataclass(frozen=True)
 class ActionTurn:
@@ -68,7 +62,6 @@ class ActionTurn:
 
 
 ModelTurn = FinalTurn | ActionTurn
-
 
 @dataclass(frozen=True)
 class ProviderCall:
@@ -83,7 +76,6 @@ class ProviderCall:
     cache_read_cost_per_million: float = 0.0
     selection: dict[str, object] | None = None
 
-
 class ChatProvider(Protocol):
     def send_chat_messages(self, messages: list[Message], model: str) -> str:
         ...
@@ -95,7 +87,6 @@ class ChatProvider(Protocol):
         tools: list[ToolDefinition],
     ) -> ModelResponse:
         ...
-
 
 def call_chat_model(
     call: ProviderCall,
@@ -137,7 +128,6 @@ def call_chat_model(
     )
     return response
 
-
 def read_model_turn(response: ModelResponse) -> ModelTurn:
     if response.tool_calls:
         return ActionTurn(
@@ -151,10 +141,8 @@ def read_model_turn(response: ModelResponse) -> ModelTurn:
         raise ValueError("model returned neither final text nor actions")
     return FinalTurn(response.text)
 
-
 def estimate_text_tokens(text: str) -> int:
     return 0 if not text else math.ceil(len(text) / 4)
-
 
 class MockProvider:
     def __init__(
@@ -192,7 +180,6 @@ class MockProvider:
             return self.tool_responses.pop(0)
         return ModelResponse(text=self.response, tool_calls=[], stop_reason="model_finished")
 
-
 @dataclass(frozen=True)
 class OpenAICompatibleProvider:
     base_url: str
@@ -222,7 +209,6 @@ class OpenAICompatibleProvider:
     def _send_request(self, payload: dict[str, object]) -> dict[str, Any]:
         url = f"{self.base_url.rstrip('/')}/chat/completions"
         return _send_json_post_request(url, payload, self.api_key)
-
 
 @dataclass(frozen=True)
 class AnthropicCompatibleProvider:
@@ -261,7 +247,6 @@ class AnthropicCompatibleProvider:
         url = f"{self.base_url.rstrip('/')}/v1/messages"
         return _send_json_post_request(url, payload, self.api_key)
 
-
 def create_chat_provider(
     connection: ProviderConnection,
     environment: Mapping[str, str] | None = None,
@@ -275,7 +260,6 @@ def create_chat_provider(
     if provider == OPENAI_COMPATIBLE_PROVIDER:
         return OpenAICompatibleProvider(settings.base_url or "", api_key)
     return AnthropicCompatibleProvider(settings.base_url or "", api_key)
-
 
 def _send_provider_call(
     call: ProviderCall,
@@ -293,7 +277,6 @@ def _send_provider_call(
         call.model,
         list(call.tools),
     )
-
 
 def _provider_call_metrics(
     call: ProviderCall,
@@ -318,7 +301,6 @@ def _provider_call_metrics(
         ),
     }
 
-
 def _provider_call_pricing(call: ProviderCall) -> dict[str, float]:
     pricing = {
         "input_cost_per_million": call.input_cost_per_million,
@@ -327,7 +309,6 @@ def _provider_call_pricing(call: ProviderCall) -> dict[str, float]:
         "cache_read_cost_per_million": call.cache_read_cost_per_million,
     }
     return {**pricing, "total_cost_per_million": sum(pricing.values())}
-
 
 def _model_response_text(response: ModelResponse) -> str:
     return json.dumps(
@@ -341,7 +322,6 @@ def _model_response_text(response: ModelResponse) -> str:
         ensure_ascii=False,
         sort_keys=True,
     )
-
 
 def normalize_provider_connection(
     connection: ProviderConnection,
@@ -365,7 +345,6 @@ def normalize_provider_connection(
         )
     return ProviderConnection(provider, base_url, api_key_env)
 
-
 def _mock_structured_response(
     messages: list[Message],
     feedback_response: str | None,
@@ -387,7 +366,6 @@ def _mock_structured_response(
         )
     return None
 
-
 def _read_openai_tool_call(data: dict[str, Any]) -> ToolCall:
     function = data.get("function", {})
     arguments = function.get("arguments", {})
@@ -397,13 +375,11 @@ def _read_openai_tool_call(data: dict[str, Any]) -> ToolCall:
         raise ValueError("OpenAI tool call arguments must be an object")
     return ToolCall(id=str(data.get("id", "")), name=str(function.get("name", "")), arguments=arguments)
 
-
 def _read_anthropic_tool_call(data: dict[str, Any]) -> ToolCall:
     arguments = data.get("input", {})
     if not isinstance(arguments, dict):
         raise ValueError("Anthropic tool call input must be an object")
     return ToolCall(id=str(data.get("id", "")), name=str(data.get("name", "")), arguments=arguments)
-
 
 def _to_anthropic_tool_definition(tool: ToolDefinition) -> dict[str, object]:
     function = tool.get("function", {})
@@ -412,7 +388,6 @@ def _to_anthropic_tool_definition(tool: ToolDefinition) -> dict[str, object]:
         "description": str(function.get("description", "")),
         "input_schema": function.get("parameters", {"type": "object", "properties": {}}),
     }
-
 
 def _to_anthropic_messages(messages: list[Message]) -> list[Message]:
     converted: list[Message] = []
@@ -438,7 +413,6 @@ def _to_anthropic_messages(messages: list[Message]) -> list[Message]:
             converted.append({"role": role, "content": message.get("content", "")})
     return converted
 
-
 def _tool_call_to_anthropic_block(data: dict[str, Any]) -> dict[str, object]:
     function = data.get("function", {})
     arguments = function.get("arguments", {})
@@ -451,11 +425,9 @@ def _tool_call_to_anthropic_block(data: dict[str, Any]) -> dict[str, object]:
         "input": arguments,
     }
 
-
 def _read_anthropic_text(data: dict[str, Any]) -> str:
     blocks = data.get("content", [])
     return "".join(str(block.get("text", "")) for block in blocks if block.get("type") == "text")
-
 
 def _read_api_key_from_environment(
     name: str | None,
@@ -468,12 +440,10 @@ def _read_api_key_from_environment(
         raise ValueError(f"environment variable is empty: {name}")
     return value
 
-
 def _default_base_url(provider: str) -> str:
     if provider == OPENAI_COMPATIBLE_PROVIDER:
         return "https://api.openai.com/v1"
     return "https://api.anthropic.com"
-
 
 def _is_local_url(value: str) -> bool:
     from urllib.parse import urlparse
@@ -481,13 +451,11 @@ def _is_local_url(value: str) -> bool:
     hostname = urlparse(value).hostname or ""
     return hostname in {"localhost", "127.0.0.1", "::1"}
 
-
 def _optional_text(value: str | None) -> str | None:
     if value is None:
         return None
     text = value.strip()
     return text or None
-
 
 def _send_json_post_request(url: str, payload: dict[str, object], api_key: str) -> dict[str, Any]:
     body = json.dumps(payload).encode("utf-8")
@@ -506,7 +474,6 @@ def _send_json_post_request(url: str, payload: dict[str, object], api_key: str) 
     )
     with urllib.request.urlopen(request, timeout=60) as response:
         return json.loads(response.read().decode("utf-8"))
-
 
 def _split_system_message_from_user_messages(messages: list[Message]) -> tuple[str, list[Message]]:
     if messages and messages[0]["role"] == "system":

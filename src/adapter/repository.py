@@ -17,18 +17,15 @@ REPOSITORY_MAP_TOTAL_BYTES = 50_000_000
 REPOSITORY_MAP_SYMBOL_LIMIT = 500
 REPOSITORY_MAP_SKIP_LIMIT = 200
 
-
 @dataclass(frozen=True)
 class _FileStamp:
     size: int
     sha256: str
 
-
 @dataclass(frozen=True)
 class _CachedMapEntry:
     stamp: _FileStamp
     data: dict[str, object]
-
 
 class IncrementalRepositoryMap:
     """Reuse unchanged file summaries without writing an index to disk."""
@@ -144,14 +141,12 @@ class IncrementalRepositoryMap:
         selected = path.resolve()
         return any(selected == item or item in selected.parents for item in self.ignored)
 
-
 def _read_bounded_file(path: Path) -> bytes:
     with path.open("rb") as source:
         content = source.read(REPOSITORY_MAP_FILE_BYTES + 1)
     if len(content) > REPOSITORY_MAP_FILE_BYTES:
         raise ValueError(f"repository map file exceeds {REPOSITORY_MAP_FILE_BYTES} bytes")
     return content
-
 
 def _summarize_file(
     path: Path,
@@ -175,7 +170,6 @@ def _summarize_file(
     if parse_error is not None:
         data["parse_error"] = parse_error
     return data
-
 
 def _extract_symbols(
     path: Path,
@@ -203,10 +197,8 @@ def _extract_symbols(
             raise ValueError("repository map file has more than 500 symbols")
     return symbols, "python-ast", None
 
-
 def _symbol(name: str, kind: str, line: int) -> dict[str, object]:
     return {"name": name, "kind": kind, "line": line}
-
 
 def _append_skip(
     skipped: list[dict[str, str]],

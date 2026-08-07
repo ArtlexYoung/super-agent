@@ -33,7 +33,6 @@ WORKSPACE_TREE_LIMIT = 500
 WORKSPACE_GIT_TIMEOUT = 60
 WORKSPACE_GIT_OUTPUT_LIMIT = 256_000
 
-
 def attach_code_config_to_agent(
     agent: Agent,
     source: str | Path | None = None,
@@ -57,7 +56,6 @@ def attach_code_config_to_agent(
         return instructions, CodeWorkspace(config.settings).list_tools()
 
     agent._add_skill_handler(TaskSkillHandler(read_code_workspace))
-
 
 class CodeWorkspace:
     """Keep code-task operations inside one validated workspace."""
@@ -492,10 +490,8 @@ class CodeWorkspace:
         if value == "deny":
             raise PermissionError(f"code configuration denies workspace {name}")
 
-
 def _workspace_path_schema() -> dict[str, object]:
     return {"type": "string", "description": "Path relative to the configured workspace."}
-
 
 def _workspace_digest_schema() -> dict[str, object]:
     return {
@@ -504,7 +500,6 @@ def _workspace_digest_schema() -> dict[str, object]:
         "minLength": 64,
         "maxLength": 64,
     }
-
 
 def _replacement_schema() -> dict[str, object]:
     return {
@@ -520,7 +515,6 @@ def _replacement_schema() -> dict[str, object]:
         },
     }
 
-
 def _workspace_path_kind(path: Path) -> str:
     if path.is_symlink():
         return "symlink"
@@ -530,10 +524,8 @@ def _workspace_path_kind(path: Path) -> str:
         return "file"
     return "other"
 
-
 def _text_sha256(content: str) -> str:
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
-
 
 def _require_expected_sha256(expected: str | None, actual: str) -> None:
     if expected is None:
@@ -545,7 +537,6 @@ def _require_expected_sha256(expected: str | None, actual: str) -> None:
         raise ValueError(
             f"workspace file changed: expected {selected}, current {actual}"
         )
-
 
 def _apply_exact_replacements(content: str, value: object) -> str:
     if not isinstance(value, list) or not value or not all(

@@ -17,7 +17,7 @@ from core.skill_use.handlers import (
 from core.provider.chat import Message, ToolCall, ToolDefinition
 from core.models import SubAgentResult, SubagentRecordOptions, Task
 from core.runtime.run import Run
-from core.runtime.task_queue import AgentTaskQueue, create_agent_task_queue
+from core.runtime.tasks.queue import AgentTaskQueue, create_agent_task_queue
 from core.checks import ActionEffect, ActionRequest
 from skill.disclosure import SkillDisclosure, SkillIndex, SkillReference, skill_index_to_dict
 from skill.index import DEFAULT_PAGE_CHARS, disclosure_page_to_dict
@@ -29,7 +29,7 @@ class RuntimeToolsContext:
     run_subagent: Callable[[str, str], dict[str, object]] | None = None
     send_text_model_messages: Callable[[list[Message]], str] | None = None
     allowed_task_skills: tuple[str, ...] = ()
-
+    shared_context: dict[str, object] | None = None
 
 class RuntimeTools:
     def __init__(
@@ -77,6 +77,8 @@ class RuntimeTools:
         for contribution in contributions or []:
             self._add_tools(contribution.tools)
         self._add_tools(extra_tools)
+        if context.shared_context is not None:
+            self._add_tools(_create_shared_context_tools(self))
         if context.list_subagents is not None:
             self._add_tools(_create_subagent_tools(self))
 
@@ -84,13 +86,10 @@ class RuntimeTools:
         """Wait for all run-scoped consumers before the run is finalized."""
         if self.agent_tasks is not None:
             self.agent_tasks.close()
-
     def get_tool_definitions(self) -> list[ToolDefinition]:
         return [tool.to_provider_definition() for tool in self._tools.values()]
-
     def list_tools(self) -> tuple[SkillTool, ...]:
         return tuple(self._tools.values())
-
     def run_tool_call(self, call: ToolCall) -> dict[str, object]:
         self.context.session.record_event(
             "tool.requested",
@@ -153,10 +152,7 @@ class RuntimeTools:
             },
         )
 
-    def _add_tools(
-        self,
-        tools: tuple[SkillTool, ...],
-    ) -> None:
+    def _add_tools(self, tools: tuple[SkillTool, ...]) -> None:
         self._validate_new_tools(tools)
         self._tools.update({tool.name: tool for tool in tools})
 
@@ -172,11 +168,7 @@ class RuntimeTools:
 
     def _list_skills(self, arguments: dict[str, object]) -> dict[str, object]:
         return skill_index_to_dict(self.context.session.skills.index)
-
-    def _disclose_skill_manifest(
-        self,
-        arguments: dict[str, object],
-    ) -> dict[str, object]:
+    def _disclose_skill_manifest(self, arguments: dict[str, object]) -> dict[str, object]:
         opened = self._open_requested_skill(arguments)
         manifest = opened.disclose_manifest()
         return {
@@ -192,10 +184,7 @@ class RuntimeTools:
             "cache_path": _optional_path(opened.index_entry.manifest_cache_path),
         }
 
-    def _disclose_skill_instructions(
-        self,
-        arguments: dict[str, object],
-    ) -> dict[str, object]:
+    def _disclose_skill_instructions(self, arguments: dict[str, object]) -> dict[str, object]:
         opened = self._open_requested_skill(arguments)
         disclosed = opened.disclose_instructions()
         reference = opened.index_entry.reference
@@ -205,10 +194,7 @@ class RuntimeTools:
             "cache_path": _optional_path(disclosed.cache_path),
         }
 
-    def _disclose_skill_configuration(
-        self,
-        arguments: dict[str, object],
-    ) -> dict[str, object]:
+    def _disclose_skill_configuration(self, arguments: dict[str, object]) -> dict[str, object]:
         opened = self._open_requested_skill(arguments)
         disclosed = opened.disclose_configuration()
         return {
@@ -217,10 +203,7 @@ class RuntimeTools:
             "cache_path": _optional_path(disclosed.cache_path),
         }
 
-    def _read_disclosed_content(
-        self,
-        arguments: dict[str, object],
-    ) -> dict[str, object]:
+    def _read_disclosed_content(self, arguments: dict[str, object]) -> dict[str, object]:
         reference = read_required_tool_string(arguments, "reference")
         page = self.context.session.skills.disclosure.read_disclosed_content(
             reference,
@@ -356,6 +339,22 @@ class RuntimeTools:
             read_required_tool_string(arguments, "prompt"),
         )
 
+    def read_shared_task_context(self, arguments: dict[str, object]) -> dict[str, object]:
+        shared = self.context.shared_context
+        if shared is None:
+            raise RuntimeError("this task has no shared context")
+        reference = read_required_tool_string(arguments, "reference")
+        if reference != shared.get("reference"):
+            raise KeyError(f"shared task context not found: {reference}")
+        content = shared.get("content")
+        if not isinstance(content, str):
+            raise TypeError("shared task context content must be text")
+        page = self.context.session.skills.disclosure.disclose_content(
+            "agent-group", str(shared.get("group_id", "shared-task")), content,
+            stage="reference-read",
+        )
+        return disclosure_page_to_dict(page)
+
     def _open_requested_skill(self, arguments: dict[str, object]) -> SkillDisclosure:
         name = read_required_tool_string(arguments, "name")
         skill_type = read_optional_tool_string(arguments, "type")
@@ -377,7 +376,6 @@ class RuntimeTools:
         self.context.session.record_skill_used(entry)
         if reference.key not in self.used_skill_names:
             self.used_skill_names.append(reference.key)
-
 def _create_disclosure_tools(
     runtime_tools: RuntimeTools,
     skill_index: SkillIndex,
@@ -390,54 +388,29 @@ def _create_disclosure_tools(
         if records_cache
         else (ActionEffect.READ,)
     )
-    tools = [
-        SkillTool(
-            "list_skills",
-            "List every available Skill type from the central index.",
-            {},
-            runtime_tools._list_skills,
-            action=SkillAction((ActionEffect.READ,), "skill:index"),
-            result_kind="skill",
-        ),
-        SkillTool(
-            "disclose_skill_manifest",
-            "Disclose one skill manifest through the central cache.",
-            reference,
-            runtime_tools._disclose_skill_manifest,
-            action=SkillAction(
-                disclosure_effects,
-                "skill:disclosure:manifest",
-                "name",
-            ),
-            required=("name",),
-            result_kind="skill",
-        ),
-        SkillTool(
-            "disclose_skill_instructions",
-            "Disclose one skill's instructions through the central cache.",
-            reference,
-            runtime_tools._disclose_skill_instructions,
-            action=SkillAction(
-                disclosure_effects,
-                "skill:disclosure:instructions",
-                "name",
-            ),
-            required=("name",),
-            result_kind="skill",
-        ),
-        SkillTool(
-            "disclose_skill_configuration",
-            "Disclose one skill's skill_type configuration through the central cache.",
-            reference,
-            runtime_tools._disclose_skill_configuration,
-            action=SkillAction(
-                disclosure_effects,
-                "skill:disclosure:configuration",
-                "name",
-            ),
-            required=("name",),
-            result_kind="skill",
-        ),
+    tools = [SkillTool(
+        "list_skills",
+        "List every available Skill type from the central index.",
+        {},
+        runtime_tools._list_skills,
+        action=SkillAction((ActionEffect.READ,), "skill:index"),
+        result_kind="skill",
+    )]
+    disclosures = (
+        ("manifest", runtime_tools._disclose_skill_manifest),
+        ("instructions", runtime_tools._disclose_skill_instructions),
+        ("configuration", runtime_tools._disclose_skill_configuration),
+    )
+    tools.extend(SkillTool(
+        f"disclose_skill_{part}",
+        f"Disclose one Skill's {part} through the central cache.",
+        reference,
+        handler,
+        action=SkillAction(disclosure_effects, f"skill:disclosure:{part}", "name"),
+        required=("name",),
+        result_kind="skill",
+    ) for part, handler in disclosures)
+    tools.extend((
         SkillTool(
             "activate_skill",
             "Explicitly activate one Skill and attach its registered Runtime tools.",
@@ -467,32 +440,28 @@ def _create_disclosure_tools(
             ),
             required=("reference",),
             result_kind=None,
-        )
-    ]
+        ),
+    ))
     return tuple(tools)
 
-
 def create_runtime_tools(
-    request: Task,
-    run: Run,
-    contributions: list[SkillResult],
+    request: Task, run: Run, contributions: list[SkillResult],
     send_text_model_messages: Callable[[list[Message]], str],
-    workflow: TaskPolicy,
-    model_tool: SkillTool | None,
+    workflow: TaskPolicy, model_tool: SkillTool | None,
 ) -> RuntimeTools:
     results: list[SubAgentResult] = []
     subagents = request.subagents.list_subagents() if request.include_subagents else []
 
     def run_subagent(
-        name: str,
-        prompt: str,
-        record_options: SubagentRecordOptions | None = None,
+        name: str, prompt: str, record_options: SubagentRecordOptions | None = None,
+        shared_context: dict[str, object] | None = None,
     ) -> dict[str, object]:
         value = request.subagents.run_named_subagent(
             name,
             prompt,
             run,
             record_options or SubagentRecordOptions(),
+            shared_context,
         )
         if record_options is None:
             results.append(_read_subagent_result(value))
@@ -500,6 +469,16 @@ def create_runtime_tools(
 
     def record_queue_result(value: dict[str, object]) -> None:
         results.append(_read_subagent_result(value))
+
+    def create_shared_context(group_id: str, content: str) -> dict[str, object]:
+        page = run.skills.disclosure.disclose_content(
+            "agent-group", group_id, content, stage="group-context"
+        )
+        return {
+            "group_id": group_id, "content": content, "reference": page.reference,
+            "content_sha256": page.content_sha256,
+            "total_chars": page.total_chars, "cache_backed": page.cache_path is not None,
+        }
 
     agent_tasks = None
     if workflow.tools:
@@ -509,6 +488,7 @@ def create_runtime_tools(
             run_subagent,
             run.record_event,
             record_queue_result,
+            create_shared_context,
         )
 
     def create_agent_tasks(policy: TaskPolicy) -> AgentTaskQueue | None:
@@ -518,6 +498,7 @@ def create_runtime_tools(
             run_subagent,
             run.record_event,
             record_queue_result,
+            create_shared_context,
         )
 
     extra_tools = [tool for tool in (model_tool,) if tool is not None]
@@ -530,6 +511,7 @@ def create_runtime_tools(
             run_subagent=run_subagent if subagents and agent_tasks is None else None,
             send_text_model_messages=send_text_model_messages,
             allowed_task_skills=request.allowed_task_skills,
+            shared_context=request.shared_context,
         ),
         contributions,
         results,
@@ -543,7 +525,6 @@ def create_runtime_tools(
         create_agent_tasks=create_agent_tasks,
     )
     return tools
-
 
 def _read_subagent_result(value: dict[str, object]) -> SubAgentResult:
     nested = value.get("subagent_results")
@@ -561,7 +542,6 @@ def _read_subagent_result(value: dict[str, object]) -> SubAgentResult:
         run_id=str(value.get("run_id", "")),
     )
 
-
 def _skill_reference_properties(
     skill_index: SkillIndex,
 ) -> dict[str, dict[str, object]]:
@@ -573,10 +553,8 @@ def _skill_reference_properties(
         "type": {"type": "string", "enum": skill_types},
     }
 
-
 def _optional_path(path: Path | None) -> str | None:
     return None if path is None else str(path)
-
 
 def _create_subagent_tools(runtime_tools: RuntimeTools) -> tuple[SkillTool, ...]:
     tools = [
@@ -604,18 +582,32 @@ def _create_subagent_tools(runtime_tools: RuntimeTools) -> tuple[SkillTool, ...]
         ))
     return tuple(tools)
 
+def _create_shared_context_tools(runtime_tools: RuntimeTools) -> tuple[SkillTool, ...]:
+    shared = runtime_tools.context.shared_context or {}
+    reference = str(shared.get("reference", ""))
+    return (
+        SkillTool(
+            "read_shared_task_context",
+            "Read the shared task packet attached by the parent Agent through central disclosure.",
+            {"reference": {"type": "string", "enum": [reference]}},
+            runtime_tools.read_shared_task_context,
+            action=SkillAction((ActionEffect.READ,), "task:shared-context", "reference"),
+            required=("reference",),
+            result_kind=None,
+        ),
+    )
 
-def _activation_instructions(
-    loaded: list[tuple[SkillReference, SkillResult]],
-) -> list[dict[str, str]]:
+def _activation_instructions(loaded: list[tuple[SkillReference, SkillResult]]) -> list[dict[str, str]]:
     instructions: list[dict[str, str]] = []
+    added: set[tuple[str, str]] = set()
     for reference, contribution in loaded:
-        if contribution.model_context is not None:
-            instructions.append(
-                {"key": reference.key, "content": contribution.model_context.instructions}
-            )
-        if contribution.task_policy is not None and contribution.task_policy.instruction:
-            instructions.append(
-                {"key": reference.key, "content": contribution.task_policy.instruction}
-            )
+        candidates = (
+            None if contribution.model_context is None else contribution.model_context.instructions,
+            None if contribution.task_policy is None else contribution.task_policy.instruction,
+        )
+        for content in candidates:
+            if not content or (reference.key, content) in added:
+                continue
+            instructions.append({"key": reference.key, "content": content})
+            added.add((reference.key, content))
     return instructions

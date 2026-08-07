@@ -2,7 +2,7 @@ import tempfile
 import unittest
 
 from core.config import CommonConfig
-from core.runtime.checkpoints import create_checkpoint_data
+from core.runtime.run import create_checkpoint_data
 from core.provider.chat import MockProvider
 from super_agent import Agent
 

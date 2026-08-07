@@ -6,9 +6,8 @@ from pathlib import Path
 
 from super_agent import Agent
 from core.provider.chat import OpenAICompatibleProvider, ProviderConnection
-from core.provider.pool import ProviderPool
+from core.provider.pool import ProviderPool, UserSecretResolver
 from core.config import CommonConfig
-from core.provider.secrets import UserSecretResolver
 from core.models import RunIdentity, validate_user_id
 
 

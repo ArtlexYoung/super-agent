@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
+from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Callable
+from uuid import uuid4
 
 from core.models import RunIdentity, SubagentRecordOptions
 from core.state.audit import compact_runtime_event_data
@@ -25,7 +29,6 @@ if TYPE_CHECKING:
     from skill.disclosure import SkillIndexEntry, SkillReference
     from core.skill_use.models import ModelProfile
     from core.skill_use.handlers import SkillCollection, SkillResult
-
 
 @dataclass
 class Run:
@@ -115,15 +118,11 @@ class Run:
         label: str,
         facts: dict[str, object],
     ) -> dict[str, object]:
-        from core.runtime.checkpoints import create_checkpoint_data
-
         data = create_checkpoint_data(self.run_id, label, facts)
         self.record_event("run.checkpoint.created", data)
         return data
 
     def list_checkpoints(self) -> list[dict[str, object]]:
-        from core.runtime.checkpoints import list_checkpoint_data
-
         return list_checkpoint_data(self.list_recorded_events())
 
     def require_store(self, feature: str) -> EventStore:
@@ -214,3 +213,70 @@ class Run:
             }
             for entry in self._used_skill_entries.values()
         ]
+
+
+CHECKPOINT_STATE_BYTES = 16_384
+
+def create_checkpoint_data(
+    run_id: str,
+    label: str,
+    facts: dict[str, object],
+) -> dict[str, object]:
+    """Create a content-free checkpoint record for explicit task resumption."""
+    clean_label = label.strip()
+    if not clean_label:
+        raise ValueError("checkpoint label cannot be empty")
+    if not isinstance(facts, dict):
+        raise TypeError("checkpoint facts must be a dictionary")
+    try:
+        encoded = _encode_checkpoint_value(facts)
+    except (TypeError, ValueError) as error:
+        raise ValueError("checkpoint facts must be JSON-compatible") from error
+    if len(encoded) > CHECKPOINT_STATE_BYTES:
+        raise ValueError("checkpoint facts exceed 16384 bytes")
+    return {
+        "checkpoint_id": f"checkpoint-{uuid4().hex}",
+        "run_id": run_id,
+        "label": clean_label,
+        "state_sha256": hashlib.sha256(encoded).hexdigest(),
+        "state_keys": sorted(str(key) for key in facts),
+    }
+
+def list_checkpoint_data(events: Iterable[RunEvent]) -> list[dict[str, object]]:
+    return [
+        dict(event.data)
+        for event in events
+        if event.event_type == "run.checkpoint.created"
+    ]
+
+def find_checkpoint_data(
+    events: Iterable[RunEvent],
+    checkpoint_id: str | None = None,
+) -> dict[str, object]:
+    checkpoints = list_checkpoint_data(events)
+    if not checkpoints:
+        raise KeyError("run has no checkpoints")
+    if checkpoint_id is None:
+        return checkpoints[-1]
+    selected = next(
+        (
+            item
+            for item in checkpoints
+            if item.get("checkpoint_id") == checkpoint_id.strip()
+        ),
+        None,
+    )
+    if selected is None:
+        raise KeyError(f"checkpoint not found: {checkpoint_id}")
+    return selected
+
+def hash_checkpoint_value(value: object) -> str:
+    return hashlib.sha256(_encode_checkpoint_value(value)).hexdigest()
+
+def _encode_checkpoint_value(value: object) -> bytes:
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")

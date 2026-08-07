@@ -13,7 +13,6 @@ from core.models import LOCAL_USER_ID
 from adapter.storage import create_storage_backend
 from adapter.storage.copy import copy_storage_events
 
-
 def configure_storage_parser(parser: argparse.ArgumentParser) -> None:
     subparsers = parser.add_subparsers(dest="storage_command")
     copy_parser = subparsers.add_parser(
@@ -42,7 +41,6 @@ def configure_storage_parser(parser: argparse.ArgumentParser) -> None:
         help="perform the deletion; without it this command only previews",
     )
     prune_parser.add_argument("--output", choices=["text", "json"], default="text")
-
 
 def run_storage_command(args: argparse.Namespace) -> int:
     if args.storage_command == "prune":
@@ -77,7 +75,6 @@ def run_storage_command(args: argparse.Namespace) -> int:
         )
     return 0
 
-
 def _run_prune_command(args: argparse.Namespace) -> int:
     config = load_common_config(args.common_config)
     backend = create_storage_backend(
@@ -111,7 +108,6 @@ def _run_prune_command(args: argparse.Namespace) -> int:
         )
     return 0
 
-
 def _refresh_disclosure_histories(
     config: CommonConfig,
     backend: StorageBackend,
@@ -129,7 +125,6 @@ def _refresh_disclosure_histories(
                 user_report.user_id,
                 agent_name,
             ).disclosure.refresh_history()
-
 
 def _resolve_destination_path(value: str, base_directory: Path) -> Path:
     path = Path(value).expanduser()

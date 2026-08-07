@@ -20,7 +20,6 @@ from core.skill_use.files.models import (
     model_skill_input_from_dict,
 )
 
-
 def configure_models_parser(parser: argparse.ArgumentParser) -> None:
     subparsers = parser.add_subparsers(dest="models_command")
     list_parser = subparsers.add_parser(
@@ -47,7 +46,6 @@ def configure_models_parser(parser: argparse.ArgumentParser) -> None:
     _add_management_arguments(remove_parser)
     remove_parser.add_argument("--name", required=True)
 
-
 def run_models_command(args: argparse.Namespace) -> int:
     config = load_common_config(getattr(args, "common_config", None))
     output = getattr(args, "output", "text")
@@ -65,14 +63,12 @@ def run_models_command(args: argparse.Namespace) -> int:
         return _print_selected_model(config, profiles, output)
     raise ValueError(f"unknown models command: {args.models_command}")
 
-
 def _read_configured_model_profiles(
     config: CommonConfig,
     user_id: str,
 ) -> list[ModelProfile]:
     store = load_event_store(config, user_id)
     return read_model_profiles(create_skills(config, store=store))
-
 
 def _print_model_profiles(
     config: CommonConfig,
@@ -97,7 +93,6 @@ def _print_model_profiles(
         _print_model_profile(profile)
     return 0
 
-
 def _print_selected_model(
     config: CommonConfig,
     profiles: list[ModelProfile],
@@ -116,7 +111,6 @@ def _print_selected_model(
     print(f"config\t{config.source}")
     return 0
 
-
 def _print_model_profile(profile: ModelProfile, prefix: str = "profile") -> None:
     data = model_profile_to_dict(profile)
     print(
@@ -128,12 +122,10 @@ def _print_model_profile(profile: ModelProfile, prefix: str = "profile") -> None
         f"\tapi_key_env={data['api_key_env'] or ''}"
     )
 
-
 def _save_model_skill(config: CommonConfig, user_id: str, output: str) -> int:
     request = model_skill_input_from_dict(json.loads(sys.stdin.read()))
     profile = _create_model_skill_manager(config, user_id).save_model_skill(request)
     return _print_model_change(profile, output, "saved")
-
 
 def _remove_model_skill(
     config: CommonConfig,
@@ -149,7 +141,6 @@ def _remove_model_skill(
         print(f"Removed model Skill: model:{name}")
     return 0
 
-
 def _print_model_change(profile: ModelProfile, output: str, action: str) -> int:
     data = {
         "schema_version": 1,
@@ -162,7 +153,6 @@ def _print_model_change(profile: ModelProfile, output: str, action: str) -> int:
         _print_model_profile(profile, prefix=action)
     return 0
 
-
 def _create_model_skill_manager(
     config: CommonConfig,
     user_id: str,
@@ -173,7 +163,6 @@ def _create_model_skill_manager(
         store,
         ActionRules(),
     )
-
 
 def _add_management_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--common-config", required=True)

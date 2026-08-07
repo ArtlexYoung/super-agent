@@ -26,7 +26,6 @@ if TYPE_CHECKING:
     from core.skill_use.files.models import ModelSkillManager
     from core.skill_use.update import SkillUpdater
 
-
 class UserAgent:
     """Bind every stateful operation to one trusted user identifier."""
 
@@ -57,7 +56,6 @@ class UserAgent:
                 skill,
             ),
         )
-
 
 class UserConversations:
     """Manage conversations inside one user and Agent scope."""
@@ -149,7 +147,6 @@ class UserConversations:
             ),
         )
 
-
 class UserRuns:
     """Read traces and record feedback in one user scope."""
 
@@ -163,7 +160,7 @@ class UserRuns:
         )
 
     def list_checkpoints(self, run_id: str) -> list[dict[str, object]]:
-        from core.runtime.checkpoints import list_checkpoint_data
+        from core.runtime.run import list_checkpoint_data
 
         events = self.user.agent._create_event_store(self.user.user_id).read_run_events(
             run_id,
@@ -178,7 +175,7 @@ class UserRuns:
         *,
         checkpoint_id: str | None = None,
     ) -> RunResult:
-        from core.runtime.checkpoints import find_checkpoint_data
+        from core.runtime.run import find_checkpoint_data
 
         store = self.user.agent._create_event_store(self.user.user_id)
         events = store.read_run_events(run_id, include_sensitive=True)
@@ -281,7 +278,6 @@ class UserRuns:
             ),
         )
 
-
 class UserSkills:
     """Manage explicit Skill changes and model Skills for one user."""
 
@@ -314,7 +310,6 @@ class UserConfiguration:
 
     def replace(self, config: CommonConfig) -> None:
         self.user.agent._replace_configuration(config)
-
 
 def _create_skill_updater(user: UserAgent) -> "SkillUpdater":
     from core.skill_use.defaults import create_skills

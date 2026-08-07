@@ -24,7 +24,6 @@ MEMORY_STREAM = "long-term"
 DEFAULT_RECALL_LIMIT = 20
 MemoryActionRunner = Callable[[ActionRequest, Callable[[], object]], object]
 
-
 @dataclass(frozen=True)
 class MemorySettings:
     default_scope: str = "agent"
@@ -33,7 +32,6 @@ class MemorySettings:
     include_usage_habits: bool = True
     instructions: str = ""
 
-
 @dataclass(frozen=True)
 class MemoryItem:
     item_id: str
@@ -41,7 +39,6 @@ class MemoryItem:
     scope: str
     source_run_id: str
     created_at: str
-
 
 class RuntimeMemoryStore:
     """Rebuild the active long-term memory view from immutable events."""
@@ -120,7 +117,6 @@ class RuntimeMemoryStore:
             raise KeyError("active long-term memory not found: " + ", ".join(missing))
         return selected
 
-
 class UsageHabits:
     def __init__(
         self,
@@ -156,7 +152,6 @@ class UsageHabits:
         lines.extend(_count_lines("workflow", data["workflows"]))
         lines.extend(_count_lines("skill", data["skills"]))
         return "Usage habits:\n" + "\n".join(lines)
-
 
 class Memory:
     """Expose only durable memory; conversation messages are short-term memory."""
@@ -286,7 +281,6 @@ class Memory:
             return selected
         return "" if self.identity is None else self.identity.run_id
 
-
 def create_memory_from_skill(
     disclosure: SkillDisclosure,
     store: EventStore,
@@ -300,7 +294,6 @@ def create_memory_from_skill(
         read_memory_settings_from_skill(disclosure),
         execute_action=execute_action,
     )
-
 
 def read_memory_settings_from_skill(disclosure: SkillDisclosure) -> MemorySettings:
     manifest = disclosure.read_manifest()
@@ -322,7 +315,6 @@ def read_memory_settings_from_skill(disclosure: SkillDisclosure) -> MemorySettin
         instructions=instructions,
     )
 
-
 def _prepare_organization(
     operations: list[dict[str, object]],
     active: dict[str, dict[str, object]],
@@ -339,7 +331,6 @@ def _prepare_organization(
         if replacement is not None:
             replacements.append(replacement)
     return changes, replacements
-
 
 def _prepare_operation(
     value: dict[str, object],
@@ -381,7 +372,6 @@ def _prepare_operation(
         "replacement": replacement,
     }, replacement
 
-
 def _replay_memory(events: list[StorageEvent]) -> dict[str, dict[str, object]]:
     active: dict[str, dict[str, object]] = {}
     for event in sorted(events, key=lambda item: item.position):
@@ -398,7 +388,6 @@ def _replay_memory(events: list[StorageEvent]) -> dict[str, dict[str, object]]:
             raise ValueError(f"unknown memory event type: {event.event_type}")
     return active
 
-
 def _replay_organization(active: dict[str, dict[str, object]], value: object) -> None:
     if not isinstance(value, list):
         raise ValueError("stored memory operations must be an array")
@@ -410,7 +399,6 @@ def _replay_organization(active: dict[str, dict[str, object]], value: object) ->
         _remove_items(active, item_ids)
         if replacement is not None:
             active[str(replacement["item_id"])] = replacement
-
 
 def _validate_stored_operation(
     value: object,
@@ -434,7 +422,6 @@ def _validate_stored_operation(
     )
     return str(operation), item_ids, replacement
 
-
 def _validate_stored_item(value: object) -> dict[str, object]:
     fields = {"item_id", "text", "scope", "source_run_id", "created_at"}
     if not isinstance(value, dict) or set(value) != fields:
@@ -447,7 +434,6 @@ def _validate_stored_item(value: object) -> dict[str, object]:
     _clean_scope(str(item["scope"]))
     return item
 
-
 def _new_stored_item(text: str, scope: str, source_run_id: str) -> dict[str, object]:
     return asdict(
         MemoryItem(
@@ -459,10 +445,8 @@ def _new_stored_item(text: str, scope: str, source_run_id: str) -> dict[str, obj
         )
     )
 
-
 def _item_from_dict(item: dict[str, object]) -> MemoryItem:
     return MemoryItem(**{name: str(value) for name, value in item.items()})
-
 
 def _clean_item_ids(value: object) -> list[str]:
     if not isinstance(value, list):
@@ -471,7 +455,6 @@ def _clean_item_ids(value: object) -> list[str]:
     if not selected:
         raise ValueError("memory operation requires at least one item")
     return selected
-
 
 def _organization_item_ids(operations: object) -> list[str]:
     if not isinstance(operations, list) or not operations:
@@ -483,18 +466,15 @@ def _organization_item_ids(operations: object) -> list[str]:
         item_ids.extend(_clean_item_ids(operation.get("item_ids")))
     return item_ids
 
-
 def _clean_item_id(value: object) -> str:
     if not isinstance(value, str) or not re.fullmatch(r"memory-[0-9a-f]{32}", value.strip()):
         raise ValueError("invalid memory item id")
     return value.strip()
 
-
 def _clean_text(value: object) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError("memory text cannot be empty")
     return value.strip()
-
 
 def _clean_scope(value: str) -> str:
     selected = value.strip().lower()
@@ -502,22 +482,18 @@ def _clean_scope(value: str) -> str:
         raise ValueError("memory scope must use letters, numbers, '.', '_', ':' or '-'")
     return selected
 
-
 def _tokenize(text: str) -> list[str]:
     return re.findall(r"[a-z0-9_]+|[\u4e00-\u9fff]", text.lower())
-
 
 def _score_text(query: str, query_terms: Counter[str], text: str) -> float:
     item_terms = Counter(_tokenize(text))
     overlap = sum(min(count, item_terms[term]) for term, count in query_terms.items())
     return (1.0 if query.lower() in text.lower() else 0.0) + overlap / max(sum(query_terms.values()), 1)
 
-
 def _positive_limit(value: object) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
         raise ValueError("memory recall limit must be a positive integer")
     return value
-
 
 def _read_string(data: dict[str, object], name: str, default: str) -> str:
     value = data.get(name, default)
@@ -525,28 +501,23 @@ def _read_string(data: dict[str, object], name: str, default: str) -> str:
         raise ValueError(f"memory {name} must be a string")
     return value
 
-
 def _read_bool(data: dict[str, object], name: str, default: bool) -> bool:
     value = data.get(name, default)
     if not isinstance(value, bool):
         raise ValueError(f"memory {name} must be a boolean")
     return value
 
-
 def _remove_items(active: dict[str, dict[str, object]], value: object) -> None:
     for item_id in _clean_item_ids(value):
         active.pop(item_id, None)
 
-
 def _sort_items(items: Iterable[dict[str, object]]) -> list[dict[str, object]]:
     return sorted(items, key=lambda item: (str(item["created_at"]), str(item["item_id"])), reverse=True)
-
 
 def _count_lines(label: str, counts: object) -> list[str]:
     if not isinstance(counts, dict):
         return []
     return [f"- {label} {name} used {count} times" for name, count in sorted(counts.items())]
-
 
 def _utc_now() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")

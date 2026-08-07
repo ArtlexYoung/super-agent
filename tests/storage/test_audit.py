@@ -28,6 +28,12 @@ class AuditStorageTests(unittest.TestCase):
             "agent_task.circuit_opened",
             "agent_task.circuit_half_open",
             "agent_task.circuit_closed",
+            "agent_group.created",
+            "agent_group.reduced",
+            "agent_group.budget_exceeded",
+            "agent_group.completed",
+            "agent_group.wait.started",
+            "agent_group.wait.woke",
         )
         self.assertEqual(
             {DETAILED},

@@ -7,7 +7,6 @@ from dataclasses import dataclass
 
 from skill.disclosure import ProgressiveDisclosureCore, SkillDisclosure
 
-
 @dataclass(frozen=True)
 class FreshnessRules:
     name: str
@@ -29,7 +28,6 @@ class FreshnessRules:
     empty_output_penalty: float
     error_penalty: float
 
-
 def load_freshness_rules(
     disclosure: ProgressiveDisclosureCore,
     configured_skills: list[str],
@@ -45,7 +43,6 @@ def load_freshness_rules(
         opened.disclose_manifest()
         opened.disclose_configuration()
     return read_freshness_rules(opened)
-
 
 def read_freshness_rules(disclosure: SkillDisclosure) -> FreshnessRules:
     manifest = disclosure.read_manifest()
@@ -89,7 +86,6 @@ def read_freshness_rules(disclosure: SkillDisclosure) -> FreshnessRules:
         raise ValueError("freshness component weights must sum to 1")
     return rules
 
-
 def _require_fields(value: dict[str, object], expected: set[str]) -> None:
     if set(value) != expected:
         missing = sorted(expected - set(value))
@@ -98,7 +94,6 @@ def _require_fields(value: dict[str, object], expected: set[str]) -> None:
             "freshness settings do not match schema: "
             f"missing={missing}, unknown={unknown}"
         )
-
 
 def _number(value: dict[str, object], name: str) -> float:
     selected = value[name]
@@ -109,20 +104,17 @@ def _number(value: dict[str, object], name: str) -> float:
         raise ValueError(f"freshness {name} must be finite")
     return number
 
-
 def _score(value: dict[str, object], name: str, *, maximum: float = 1) -> float:
     number = _number(value, name)
     if not 0 <= number <= maximum:
         raise ValueError(f"freshness {name} must be between 0 and {maximum:g}")
     return number
 
-
 def _positive(value: dict[str, object], name: str) -> float:
     number = _number(value, name)
     if number <= 0:
         raise ValueError(f"freshness {name} must be greater than 0")
     return number
-
 
 def _nonnegative(value: dict[str, object], name: str) -> float:
     number = _number(value, name)

@@ -15,11 +15,9 @@ from core.skill_use.models import (
     select_default_model_profile,
 )
 
-
 def configure_check_parser(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--common-config")
     parser.add_argument("--output", choices=("text", "json"), default="text")
-
 
 def run_check_command(args: argparse.Namespace) -> int:
     checks: list[dict[str, object]] = []
@@ -74,7 +72,6 @@ def run_check_command(args: argparse.Namespace) -> int:
         if not result["ok"]:
             print("Fix the failed check, then run `super-agent check` again.")
     return 0 if result["ok"] else 1
-
 
 def _check(name: str, ok: bool, detail: str) -> dict[str, object]:
     return {"name": name, "ok": ok, "detail": detail}

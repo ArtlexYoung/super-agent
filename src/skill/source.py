@@ -12,7 +12,6 @@ from skill.index import (
 )
 from skill.manifest import skill_manifest_from_dict
 
-
 def read_skill_sources(
     skill_roots: list[Path],
     disabled_names: list[str],
@@ -47,7 +46,6 @@ def read_skill_sources(
         issues=[*user.issues, *project.issues, *builtin.issues],
     )
 
-
 def _read_source_group(
     roots: list[Path],
     disabled_names: list[str],
@@ -81,7 +79,6 @@ def _read_source_group(
         issues=issues,
     )
 
-
 def _read_skill_source(path: Path, source_layer: str) -> SkillSource:
     data = tomllib.loads(path.read_text(encoding="utf-8"))
     manifest = skill_manifest_from_dict(data, path)
@@ -100,7 +97,6 @@ def _read_skill_source(path: Path, source_layer: str) -> SkillSource:
         source=source_layer,
     )
 
-
 def _read_configuration(
     data: dict[str, object],
     path: Path,
@@ -110,7 +106,6 @@ def _read_configuration(
         raise ValueError(f"skill configuration must be a TOML table: {path}")
     return dict(value)
 
-
 def _list_manifest_paths(roots: list[Path]) -> list[Path]:
     paths: list[Path] = []
     for root in roots:
@@ -119,11 +114,9 @@ def _list_manifest_paths(roots: list[Path]) -> list[Path]:
             paths.extend(path for path in expanded.rglob("skill.toml") if path.is_file())
     return sorted(paths)
 
-
 def _skill_is_disabled(reference: SkillReference, disabled_names: list[str]) -> bool:
     values = {item.strip().lower() for item in disabled_names}
     return reference.skill_type in values or reference.name in values or reference.key in values
-
 
 def _validate_instructions_path(skill_root: Path, instructions: str) -> None:
     # Instructions may live below the skill root but cannot escape it through paths or symlinks.

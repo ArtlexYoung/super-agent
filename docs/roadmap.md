@@ -1190,6 +1190,27 @@ Status: implemented.
 - Keep both task queue modules below 600 lines, the complete Python source below 21,000 lines,
   and the default Runtime dependency-free.
 
+## v0.1.26: Budgeted Group Decisions
+
+Status: implemented.
+
+- Let an optional Task Skill attach decision-group tools to the existing Agent queue; Runtime
+  does not add another execution mode, scheduler, or default group behavior.
+- Preflight member availability, distinct configured models, and estimated four-part call cost
+  before creating any task. Budget failure creates no child work and remains visible as
+  `budget_exceeded`.
+- Send one shared task packet through central progressive disclosure and give each member only
+  its role delta, context reference, and strict JSON decision contract.
+- Require a configurable quorum, defaulting to two votes from three members. Member failure,
+  malformed output, split votes, and failed experiments stay `inconclusive`; two independent
+  negative votes are required for rejection.
+- Make reduced groups opt-in and mark every reduction explicitly. Return bounded evidence to the
+  parent while detailed audit records retain hashes and vote facts rather than evidence text.
+- Support the same group tools at main, first-level, and second-level Agents through native nested
+  queues, while preserving zero-storage execution and the dependency-free default.
+- Keep fewer than 85 Python files, the complete source below 21,000 physical lines, and every
+  source file and function within the existing maintenance limits.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

@@ -16,7 +16,6 @@ if TYPE_CHECKING:
     from core.state.events import EventStore
     from core.evaluation.rules import FreshnessRules
 
-
 def create_default_skill_handlers(
     mcp_servers: McpServers | None = None,
 ) -> SkillHandlers:
@@ -25,7 +24,6 @@ def create_default_skill_handlers(
     for handler in create_builtin_skill_handlers(servers):
         handlers.add(handler)
     return handlers
-
 
 def create_progressive_skill_disclosure(
     config: CommonConfig,
@@ -80,7 +78,6 @@ def create_progressive_skill_disclosure(
         record_event=None,
     )
 
-
 def load_configured_freshness_rules(
     config: CommonConfig,
     *,
@@ -100,7 +97,6 @@ def load_configured_freshness_rules(
     disclosure.prepare_skill_index()
     return load_freshness_rules(disclosure, config.agent.skills, disclose=False)
 
-
 def load_configured_freshness_rules_if_enabled(
     config: CommonConfig,
     *,
@@ -110,7 +106,6 @@ def load_configured_freshness_rules_if_enabled(
     if "freshness" in config.agent.disabled_skills:
         return None
     return load_configured_freshness_rules(config, store=store)
-
 
 def create_skills(
     config: CommonConfig,
@@ -130,7 +125,6 @@ def create_skills(
         include_freshness=include_freshness,
     )
     return SkillCollection(disclosure, handlers)
-
 
 def create_runtime_disclosure_recorder(
     store: EventStore,
@@ -160,7 +154,6 @@ def create_runtime_disclosure_recorder(
         read_content=disclosure.read_content,
         read_history=disclosure.read_history,
     )
-
 
 def _builtin_skill_root() -> Path:
     root = Path(__file__).resolve().parents[2] / "skill" / "builtin"

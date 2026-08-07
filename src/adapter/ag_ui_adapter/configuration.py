@@ -9,7 +9,6 @@ from pathlib import Path
 from core.config import CommonConfig, AgentSettings
 from core.files import write_bytes_atomically
 
-
 @dataclass(frozen=True)
 class CommonConfigurationInput:
     name: str
@@ -37,7 +36,6 @@ class CommonConfigurationInput:
             ),
         )
 
-
 def update_common_configuration(
     config: CommonConfig,
     request: CommonConfigurationInput,
@@ -56,7 +54,6 @@ def update_common_configuration(
     write_bytes_atomically(config.source, content.encode("utf-8"))
     return CommonConfig.load_from_file(config.source)
 
-
 def common_configuration_to_dict(config: CommonConfig) -> dict[str, object]:
     settings = config.agent
     return {
@@ -66,7 +63,6 @@ def common_configuration_to_dict(config: CommonConfig) -> dict[str, object]:
         "max_agent_chain_depth": settings.max_agent_chain_depth,
         "disabled_skills": list(settings.disabled_skills),
     }
-
 
 def _common_config_to_toml(config: CommonConfig) -> str:
     agent = config.agent
@@ -106,7 +102,6 @@ def _common_config_to_toml(config: CommonConfig) -> str:
     )
     return "\n".join(lines) + "\n"
 
-
 def _portable_path(path: Path, base: Path) -> str:
     try:
         relative = path.resolve().relative_to(base.resolve())
@@ -114,20 +109,16 @@ def _portable_path(path: Path, base: Path) -> str:
         return str(path.resolve())
     return str(relative) or "."
 
-
 def _toml_string(value: str) -> str:
     return json.dumps(value, ensure_ascii=False)
 
-
 def _toml_array(values: list[str]) -> str:
     return "[" + ", ".join(_toml_string(value) for value in values) + "]"
-
 
 def _required_text(value: object, name: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"agent configuration {name} must be a non-empty string")
     return value.strip()
-
 
 def _text_list(value: object, name: str) -> list[str]:
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
@@ -136,7 +127,6 @@ def _text_list(value: object, name: str) -> list[str]:
     if any(not item for item in items) or len(items) != len(set(items)):
         raise ValueError(f"agent configuration {name} must contain unique values")
     return items
-
 
 def _optional_depth(value: object) -> int | None:
     if value is None:

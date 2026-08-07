@@ -17,7 +17,6 @@ from core.skill_use.workflow import (
 )
 from skill.manifest import SkillManifest
 
-
 def validate_skill_directory(
     skill_path: Path,
     *,
@@ -42,7 +41,6 @@ def validate_skill_directory(
     _validate_skill_type(opened, entry.reference.skill_type)
     return opened.read_manifest()
 
-
 def validate_skill_replacement(
     current_path: Path,
     proposed_path: Path,
@@ -57,7 +55,6 @@ def validate_skill_replacement(
         raise ValueError("updated skill cannot change name")
     if proposed_manifest.skill_type == "model":
         _validate_model_replacement(current, proposed)
-
 
 def check_skill_configuration(
     skill_path: Path,
@@ -76,7 +73,6 @@ def check_skill_configuration(
     configuration = disclosure.inspect_skill_configuration(reference)
     return [configuration.get(name) == value for name, value in expected.items()]
 
-
 def _open_only_skill(path: Path) -> SkillDisclosure:
     disclosure = ProgressiveDisclosureCore([path])
     index = disclosure.prepare_skill_index()
@@ -84,7 +80,6 @@ def _open_only_skill(path: Path) -> SkillDisclosure:
         raise ValueError("skill directory must contain exactly one valid skill")
     reference = index.entries[0].reference
     return disclosure.open_skill(reference.name, reference.skill_type)
-
 
 def _validate_skill_type(
     disclosure: SkillDisclosure,
@@ -103,14 +98,12 @@ def _validate_skill_type(
     elif skill_type == "model":
         create_model_profile_from_skill_disclosure(disclosure)
 
-
 def _validate_prompt_skill(disclosure: SkillDisclosure) -> None:
     manifest = disclosure.read_manifest()
     if manifest.entry.instructions is None:
         raise ValueError(f"prompt Skill requires entry.instructions: {manifest.name}")
     if not disclosure.read_instructions().content:
         raise ValueError(f"prompt Skill instructions cannot be empty: {manifest.name}")
-
 
 def _validate_model_replacement(
     current: SkillDisclosure,

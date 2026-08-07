@@ -42,7 +42,6 @@ MODEL_CONFIGURATION_FIELDS = {
     "agent_can_update_connection",
 }
 
-
 @dataclass(frozen=True)
 class ModelTraits:
     supports: list[str]
@@ -67,7 +66,6 @@ class ModelTraits:
             )
         )
 
-
 @dataclass(frozen=True)
 class ModelProfile:
     name: str
@@ -87,7 +85,6 @@ class ModelProfile:
     @property
     def key(self) -> str:
         return self.skill_key or f"model:{self.name}"
-
 
 def create_model_profile_from_skill_disclosure(
     disclosure: SkillDisclosure,
@@ -153,7 +150,6 @@ def create_model_profile_from_skill_disclosure(
         ),
     )
 
-
 def read_model_profiles(
     skills: SkillCollection,
     environment: Mapping[str, str] | None = None,
@@ -172,7 +168,6 @@ def read_model_profiles(
     select_default_model_profile(profiles)
     return profiles
 
-
 def select_default_model_profile(profiles: list[ModelProfile]) -> ModelProfile:
     if not profiles:
         raise RuntimeError(
@@ -184,7 +179,6 @@ def select_default_model_profile(profiles: list[ModelProfile]) -> ModelProfile:
         names = ", ".join(profile.name for profile in defaults)
         raise ValueError(f"multiple model Skills are marked default: {names}")
     return defaults[0] if defaults else profiles[0]
-
 
 def discover_environment_model_profiles(
     environment: Mapping[str, str] | None = None,
@@ -254,7 +248,6 @@ def discover_environment_model_profiles(
     profiles = _deduplicate_profiles(profiles)
     return [replace(profile, default=index == 0) for index, profile in enumerate(profiles)]
 
-
 def create_direct_provider_profile() -> ModelProfile:
     """Describe a provider explicitly supplied in application code."""
     return ModelProfile(
@@ -269,7 +262,6 @@ def create_direct_provider_profile() -> ModelProfile:
         skill_key="model:provided",
     )
 
-
 def model_profile_is_ready(
     profile: ModelProfile,
     environment: Mapping[str, str] | None = None,
@@ -277,7 +269,6 @@ def model_profile_is_ready(
     env = os.environ if environment is None else environment
     name = profile.connection.api_key_env
     return name is None or bool(env.get(name, "").strip())
-
 
 def model_profile_to_dict(
     profile: ModelProfile,
@@ -313,7 +304,6 @@ def model_profile_to_dict(
         "ready": model_profile_is_ready(profile, environment),
     }
 
-
 def model_dispatch_to_dict(profile: ModelProfile) -> dict[str, object]:
     """Expose only model contract facts needed before Agent dispatch."""
     traits = profile.traits
@@ -329,7 +319,6 @@ def model_dispatch_to_dict(profile: ModelProfile) -> dict[str, object]:
         "total_cost_per_million": traits.total_cost_per_million,
     }
 
-
 def model_connection_fields(profile: ModelProfile) -> tuple[str, str, str | None, str | None]:
     return (
         profile.connection.provider,
@@ -337,7 +326,6 @@ def model_connection_fields(profile: ModelProfile) -> tuple[str, str, str | None
         profile.connection.base_url,
         profile.connection.api_key_env,
     )
-
 
 def _profile_from_super_agent_environment(
     environment: Mapping[str, str],
@@ -365,7 +353,6 @@ def _profile_from_super_agent_environment(
         supports=["text", "tools"],
     )
 
-
 def _create_ephemeral_profile(
     name: str,
     description: str,
@@ -387,7 +374,6 @@ def _create_ephemeral_profile(
         skill_key="",
     )
 
-
 def _deduplicate_profiles(profiles: list[ModelProfile]) -> list[ModelProfile]:
     result: list[ModelProfile] = []
     seen: set[tuple[ProviderConnection, str]] = set()
@@ -398,13 +384,11 @@ def _deduplicate_profiles(profiles: list[ModelProfile]) -> list[ModelProfile]:
             result.append(profile)
     return result
 
-
 def _required_string(data: dict[str, object], name: str) -> str:
     value = data.get(name)
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"model Skill {name} must be a non-empty string")
     return value.strip()
-
 
 def _optional_string(data: dict[str, object], name: str) -> str | None:
     value = data.get(name)
@@ -413,7 +397,6 @@ def _optional_string(data: dict[str, object], name: str) -> str | None:
     if not isinstance(value, str):
         raise ValueError(f"model Skill {name} must be a string")
     return value.strip() or None
-
 
 def _string_list(
     data: dict[str, object],
@@ -430,20 +413,17 @@ def _string_list(
         raise ValueError(f"model Skill {name} cannot contain duplicates")
     return result
 
-
 def _boolean(data: dict[str, object], name: str, default: bool) -> bool:
     value = data.get(name, default)
     if not isinstance(value, bool):
         raise ValueError(f"model Skill {name} must be a TOML boolean")
     return value
 
-
 def _optional_score(data: dict[str, object], name: str) -> float | None:
     value = _optional_nonnegative_number(data, name)
     if value is not None and value > 1:
         raise ValueError(f"model Skill {name} must be between 0 and 1")
     return value
-
 
 def _optional_nonnegative_number(
     data: dict[str, object],
@@ -459,7 +439,6 @@ def _optional_nonnegative_number(
         raise ValueError(f"model Skill {name} must be finite and non-negative")
     return result
 
-
 def _optional_nonnegative_integer(
     data: dict[str, object],
     name: str,
@@ -472,7 +451,6 @@ def _optional_nonnegative_integer(
     if value < 0:
         raise ValueError(f"model Skill {name} cannot be negative")
     return value
-
 
 def _environment_text(environment: Mapping[str, str], name: str) -> str | None:
     value = environment.get(name, "").strip()

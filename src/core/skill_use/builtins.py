@@ -22,7 +22,6 @@ if TYPE_CHECKING:
     from core.state.memory import Memory
     from core.skill_use.mcp import McpServers, RegisteredMcpServer
 
-
 class PromptSkillHandler:
     skill_type = "prompt"
     adds_model_context = True
@@ -35,7 +34,6 @@ class PromptSkillHandler:
                 instructions=opened.disclose_instructions().content,
             )
         )
-
 
 class McpSkillHandler:
     skill_type = "mcp"
@@ -70,7 +68,6 @@ class McpSkillHandler:
     def list_code_registrations(self) -> list[dict[str, object]]:
         return self.servers.list_code_registrations()
 
-
 class MemorySkillHandler:
     skill_type = "memory"
     adds_model_context = False
@@ -90,7 +87,6 @@ class MemorySkillHandler:
         )
         return create_memory_skill_contribution(memory)
 
-
 class WorkflowSkillHandler:
     skill_type = "workflow"
     adds_model_context = False
@@ -105,7 +101,6 @@ class WorkflowSkillHandler:
         return SkillResult(
             task_policy=create_workflow_policy_from_skill(opened),
         )
-
 
 class TaskSkillHandler:
     skill_type = "task"
@@ -129,7 +124,6 @@ class TaskSkillHandler:
             task_policy=create_task_policy_from_skill(opened),
         )
 
-
 def create_builtin_skill_handlers(
     mcp_servers: McpServers,
 ) -> tuple[SkillHandler, ...]:
@@ -141,7 +135,6 @@ def create_builtin_skill_handlers(
         TaskSkillHandler(),
     )
 
-
 def create_memory_skill_contribution(memory: Memory) -> SkillResult:
     return SkillResult(
         build_prompt_context=memory.build_prompt_instruction,
@@ -152,7 +145,6 @@ def create_memory_skill_contribution(memory: Memory) -> SkillResult:
             "memory:habits",
         ),
     )
-
 
 def _create_task_plan_tools(context: SkillContext) -> tuple[SkillTool, ...]:
     if context.record_event is None:
@@ -194,7 +186,6 @@ def _create_task_plan_tools(context: SkillContext) -> tuple[SkillTool, ...]:
             result_kind="task-plan",
         ),
     )
-
 
 class _TaskPlan:
     def __init__(self, record_event: Callable[[str, dict[str, object]], object]) -> None:
@@ -250,7 +241,6 @@ class _TaskPlan:
 
     def _result(self) -> dict[str, object]:
         return {"goal": self.goal, "steps": [dict(item) for item in self.steps]}
-
 
 def _create_memory_tools(memory: Memory) -> tuple[SkillTool, ...]:
     scope = {
@@ -348,7 +338,6 @@ def _create_memory_tools(memory: Memory) -> tuple[SkillTool, ...]:
         ),
     )
 
-
 def _list_long_term_memory(
     memory: Memory,
     arguments: dict[str, object],
@@ -361,7 +350,6 @@ def _list_long_term_memory(
         ]
     }
 
-
 def _remember_long_term(
     memory: Memory,
     arguments: dict[str, object],
@@ -372,7 +360,6 @@ def _remember_long_term(
         scope=scope,
     )
     return {"item": asdict(item)}
-
 
 def _recall_long_term_memory(
     memory: Memory,
@@ -386,7 +373,6 @@ def _recall_long_term_memory(
     )
     return {"items": [asdict(item) for item in items]}
 
-
 def _organize_long_term_memory(
     memory: Memory,
     arguments: dict[str, object],
@@ -399,7 +385,6 @@ def _organize_long_term_memory(
     items = memory.organize_long_term(operations)
     return {"items": [asdict(item) for item in items], "applied": True}
 
-
 def _forget_long_term_memory(
     memory: Memory,
     arguments: dict[str, object],
@@ -410,7 +395,6 @@ def _forget_long_term_memory(
         read_optional_tool_string(arguments, "reason") or "",
     )
     return {"item_id": item_id, "forgotten": True}
-
 
 def _create_mcp_tools(
     registered: RegisteredMcpServer,
@@ -442,7 +426,6 @@ def _create_mcp_tools(
         ),
     )
 
-
 def _run_mcp_tool(
     registered: RegisteredMcpServer,
     arguments: dict[str, object],
@@ -453,7 +436,6 @@ def _run_mcp_tool(
         read_tool_object(arguments, "arguments"),
     )
     return {"name": registered.name, "tool": tool, "result": result}
-
 
 def _mcp_tool_names(skill_name: str) -> tuple[str, str]:
     clean = "".join(

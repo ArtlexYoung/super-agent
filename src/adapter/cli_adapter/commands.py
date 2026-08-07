@@ -41,14 +41,12 @@ from core.models import LOCAL_USER_ID, RunResult
 
 CLI_COMMANDS = frozenset({"check", "config", "data", "manage", "serve", "skills"})
 
-
 @dataclass(frozen=True)
 class CliRequest:
     prompt: str
     user_id: str = LOCAL_USER_ID
     conversation_id: str | None = None
     skill: str | None = None
-
 
 def main(argv: Sequence[str] | None = None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
@@ -68,7 +66,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         _print_cli_error(error)
         return 1
 
-
 def _run_parsed_command(args: argparse.Namespace) -> int:
     handlers = {
         "check": run_check_command,
@@ -81,7 +78,6 @@ def _run_parsed_command(args: argparse.Namespace) -> int:
     if handler is None:
         raise ValueError(f"unknown command: {args.command}")
     return handler(args)
-
 
 def _run_terminal(arguments: list[str]) -> int:
     args = _build_terminal_parser().parse_args(arguments)
@@ -119,7 +115,6 @@ def _run_terminal(arguments: list[str]) -> int:
         code_config_path=code_config_path,
     )
 
-
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="super-agent",
@@ -153,7 +148,6 @@ def _build_parser() -> argparse.ArgumentParser:
     configure_serve_parser(serve_parser)
     return parser
 
-
 def _build_terminal_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="super-agent", description="Chat or run one prompt.")
     parser.add_argument("prompt", nargs="*")
@@ -178,7 +172,6 @@ def _build_terminal_parser() -> argparse.ArgumentParser:
     )
     return parser
 
-
 def _configure_manage_parser(parser: argparse.ArgumentParser) -> None:
     subparsers = parser.add_subparsers(dest="manage_command")
     changes = subparsers.add_parser("skill-changes", help="manage Skill changes")
@@ -187,7 +180,6 @@ def _configure_manage_parser(parser: argparse.ArgumentParser) -> None:
     configure_skill_packages_parser(packages)
     models_parser = subparsers.add_parser("models", help="manage model Skills")
     configure_models_parser(models_parser)
-
 
 def _configure_data_parser(parser: argparse.ArgumentParser) -> None:
     subparsers = parser.add_subparsers(dest="data_command")
@@ -200,7 +192,6 @@ def _configure_data_parser(parser: argparse.ArgumentParser) -> None:
     storage = subparsers.add_parser("storage", help="copy stored data")
     configure_storage_parser(storage)
 
-
 def _run_manage_command(args: argparse.Namespace) -> int:
     handlers = {
         "skill-changes": run_skill_changes_command,
@@ -211,7 +202,6 @@ def _run_manage_command(args: argparse.Namespace) -> int:
     if handler is None:
         raise ValueError("manage command is required")
     return handler(args)
-
 
 def _run_data_command(args: argparse.Namespace) -> int:
     handlers = {
@@ -225,12 +215,10 @@ def _run_data_command(args: argparse.Namespace) -> int:
         raise ValueError("data command is required")
     return handler(args)
 
-
 def _is_terminal_request(arguments: list[str]) -> bool:
     if not arguments:
         return True
     return arguments[0] not in CLI_COMMANDS | {"-h", "--help", "--version"}
-
 
 def _run_prompt_command(
     common_config_path: Path | None,
@@ -259,7 +247,6 @@ def _run_prompt_command(
     if show_summary:
         _print_run_summary(result)
     return 0
-
 
 def _run_chat_command(
     common_config_path: Path | None,
@@ -315,7 +302,6 @@ def _run_chat_command(
             )
         print(f"Agent: {result.text}")
 
-
 def _handle_chat_command(prompt: str, clear_history: Callable[[], None]) -> bool | None:
     if not prompt.startswith("/"):
         return None
@@ -329,7 +315,6 @@ def _handle_chat_command(prompt: str, clear_history: Callable[[], None]) -> bool
         clear_history()
     print(messages.get(prompt, f"Unknown command: {prompt}. Use /help."))
     return False
-
 
 def _print_run_summary(result: RunResult) -> None:
     selected_models = []
@@ -348,7 +333,6 @@ def _print_run_summary(result: RunResult) -> None:
     print(f"Skills: {', '.join(result.skills) if result.skills else 'none'}")
     print(f"Stop: {result.stop_reason}")
 
-
 def _read_runtime_request_from_args(args: argparse.Namespace, default_user_id: str) -> CliRequest:
     prompt = " ".join(args.prompt).strip()
     if not prompt:
@@ -359,7 +343,6 @@ def _read_runtime_request_from_args(args: argparse.Namespace, default_user_id: s
         conversation_id=args.conversation_id,
         skill=args.skill,
     )
-
 
 def _print_cli_error(error: Exception) -> None:
     print(f"Error: {error}", file=sys.stderr)

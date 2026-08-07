@@ -8,7 +8,6 @@ from adapter.cli_adapter import load_agent
 from adapter.ag_ui_adapter.server import DEFAULT_ALLOWED_ORIGINS, create_ag_ui_server
 from core.models import LOCAL_USER_ID
 
-
 def configure_serve_parser(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--common-config")
     parser.add_argument("--host", default="127.0.0.1")
@@ -20,7 +19,6 @@ def configure_serve_parser(parser: argparse.ArgumentParser) -> None:
         dest="allowed_origins",
         help="browser origin allowed to call the server; may be repeated",
     )
-
 
 def run_serve_command(args: argparse.Namespace) -> int:
     agent = load_agent(args.common_config)

@@ -11,7 +11,6 @@ from skill.manifest import SkillManifest, calculate_skill_directory_sha256
 
 SKILL_LOCK_SCHEMA_VERSION = 2
 
-
 @dataclass(frozen=True)
 class LockedSkill:
     name: str
@@ -20,7 +19,6 @@ class LockedSkill:
     sha256: str
     provides: list[str]
     requires: list[str]
-
 
 def write_skill_lock_file(manifests: list[SkillManifest], path: Path) -> None:
     # Excluding timestamps and absolute paths makes identical lock content byte-for-byte stable.
@@ -50,7 +48,6 @@ def write_skill_lock_file(manifests: list[SkillManifest], path: Path) -> None:
         )
     _write_text_atomically(path, "\n".join(lines))
 
-
 def _lock_manifest(manifest: SkillManifest) -> LockedSkill:
     return LockedSkill(
         name=manifest.name,
@@ -61,10 +58,8 @@ def _lock_manifest(manifest: SkillManifest) -> LockedSkill:
         requires=sorted(manifest.requires),
     )
 
-
 def _toml_string_array(values: list[str]) -> str:
     return "[" + ", ".join(json.dumps(value) for value in values) + "]"
-
 
 def _write_text_atomically(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)

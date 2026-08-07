@@ -6,7 +6,6 @@ from dataclasses import dataclass
 
 from core.events import StorageBackend, StorageEvent, StorageEventQuery
 
-
 @dataclass(frozen=True)
 class StorageCopyUserResult:
     user_id: str
@@ -14,13 +13,11 @@ class StorageCopyUserResult:
     events_copied: int
     events_already_present: int
 
-
 @dataclass(frozen=True)
 class StorageCopyReport:
     source_backend: str
     destination_backend: str
     users: list[StorageCopyUserResult]
-
 
 def copy_storage_events(
     source: StorageBackend,
@@ -39,7 +36,6 @@ def copy_storage_events(
         destination_backend=destination.name,
         users=results,
     )
-
 
 def _copy_user_events(
     source: StorageBackend,
@@ -79,7 +75,6 @@ def _copy_user_events(
         events_already_present=already_present,
     )
 
-
 def _require_matching_event(source: StorageEvent, destination: StorageEvent) -> None:
     source_value = _event_value_without_position(source)
     destination_value = _event_value_without_position(destination)
@@ -88,7 +83,6 @@ def _require_matching_event(source: StorageEvent, destination: StorageEvent) -> 
             "storage copy found conflicting event_id "
             f"for user {source.user_id}: {source.event_id}"
         )
-
 
 def _event_value_without_position(event: StorageEvent) -> tuple[object, ...]:
     return (

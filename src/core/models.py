@@ -13,7 +13,6 @@ from core.state.models import RunEvent
 
 LOCAL_USER_ID = "local"
 
-
 @dataclass(frozen=True)
 class SubagentRecordOptions:
     """Control how a child run is represented in its parent run record."""
@@ -50,7 +49,6 @@ class SubagentRecordOptions:
             f"{name}_chars": len(value),
         }
 
-
 @dataclass(frozen=True)
 class AgentRunOptions:
     include_subagents: bool = True
@@ -62,7 +60,6 @@ class AgentRunOptions:
     skill: str | None = None
     purpose: str = "auto"
     required_features: tuple[str, ...] = ("text",)
-
 
 def resolve_agent_run_options(
     options: AgentRunOptions | None,
@@ -77,7 +74,6 @@ def resolve_agent_run_options(
     if resolved.skill is not None and clean_skill != resolved.skill.lower():
         raise ValueError("skill conflicts with AgentRunOptions.skill")
     return replace(resolved, skill=clean_skill)
-
 
 @dataclass(frozen=True)
 class RunIdentity:
@@ -132,7 +128,6 @@ class RunIdentity:
             _clean_optional_identity_value(self.parent_run_id, "parent_run_id"),
         )
 
-
 @dataclass(frozen=True)
 class SubAgentResult:
     name: str
@@ -143,14 +138,13 @@ class SubAgentResult:
     subagent_results: list["SubAgentResult"] | None = None
     run_id: str = ""
 
-
 @dataclass(frozen=True)
 class SubagentCallbacks:
     list_subagents: Callable[[], list[dict[str, object]]]
     run_named_subagent: Callable[
-        [str, str, object, SubagentRecordOptions], dict[str, object]
+        [str, str, object, SubagentRecordOptions, dict[str, object] | None],
+        dict[str, object],
     ]
-
 
 @dataclass(frozen=True)
 class Task:
@@ -159,6 +153,7 @@ class Task:
     include_subagents: bool
     warning_messages: list[str]
     subagents: SubagentCallbacks
+    shared_context: dict[str, object] | None = None
     purpose: str = "auto"
     required_features: tuple[str, ...] = ("text",)
     learn_from_conversation: bool = False
@@ -169,7 +164,6 @@ class Task:
     resume_checkpoint: dict[str, object] | None = None
     subagent_record_options: SubagentRecordOptions | None = None
 
-
 @dataclass(frozen=True)
 class RunResult:
     text: str
@@ -177,13 +171,13 @@ class RunResult:
     skills: list[str]
     subagent_results: list[SubAgentResult] | None = None
     agent_tasks: list[dict[str, object]] | None = None
+    agent_groups: list[dict[str, object]] | None = None
     warning_messages: list[str] | None = None
     run_id: str = ""
     stop_reason: str = "completed"
     actions: list[dict[str, object]] | None = None
     subscriber_failures: list[dict[str, object]] = field(default_factory=list)
     events: list[RunEvent] = field(default_factory=list)
-
 
 @dataclass(frozen=True)
 class RunLearningResult:
@@ -193,21 +187,17 @@ class RunLearningResult:
     model_usage: list[dict[str, object]]
     events: list[RunEvent]
 
-
 @dataclass(frozen=True)
 class TaskTrace:
     task_id: str
     parent_task_id: str | None
     events: list[RunEvent]
 
-
 def validate_user_id(value: str) -> str:
     return _clean_identity_value(value, "user_id")
 
-
 def validate_agent_name(value: str) -> str:
     return _clean_identity_value(value, "agent_name")
-
 
 def _clean_identity_value(value: str, name: str) -> str:
     if not isinstance(value, str):
@@ -218,7 +208,6 @@ def _clean_identity_value(value: str, name: str) -> str:
     if len(clean) > 200 or any(ord(character) < 32 for character in clean):
         raise ValueError(f"{name} must be at most 200 printable characters")
     return clean
-
 
 def _clean_optional_identity_value(value: str | None, name: str) -> str | None:
     return None if value is None else _clean_identity_value(value, name)
