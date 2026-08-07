@@ -162,7 +162,17 @@ def _create_run(
         event_listener=event_listener,
     )
     store = _create_run_event_store(context, identity, event_log)
-    event_log.start_run(request.prompt)
+    start_data = {"prompt": request.prompt}
+    if request.subagent_record_options is not None:
+        start_data = request.subagent_record_options.record_text(
+            "prompt",
+            request.prompt,
+        )
+    prompt = start_data.pop("prompt", None)
+    event_log.start_run(
+        None if prompt is None else str(prompt),
+        extra_data=start_data,
+    )
     try:
         skills = _create_skills(context, store, identity)
         profiles = _read_model_profiles(context, skills, identity.user_id)
@@ -177,6 +187,7 @@ def _create_run(
             store=store,
             allow_subscriber_failures=request.allow_subscriber_failures,
             create_action_rules=context.create_action_rules,
+            subagent_record_options=request.subagent_record_options,
             event_subscribers=RuntimeEventSubscribers(
                 context.event_subscribers.list_subscribers()
             ),

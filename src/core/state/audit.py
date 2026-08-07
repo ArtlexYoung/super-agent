@@ -6,8 +6,12 @@ import json
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
+from typing import TYPE_CHECKING
 
 from core.events import StorageBackend, StorageEvent, StorageEventQuery
+
+if TYPE_CHECKING:
+    from core.models import SubagentRecordOptions
 
 
 DETAILED = "detailed"
@@ -150,6 +154,79 @@ def redact_event_data_for_display(
         prepared[f"{field}_digest"] = _content_digest(prepared[field])
         prepared[field] = "[redacted]"
     return prepared
+
+
+def compact_runtime_event_data(
+    event_type: str,
+    data: dict[str, object],
+    options: "SubagentRecordOptions",
+) -> dict[str, object]:
+    """Remove detailed content before a summary-mode child event is persisted."""
+    if not options.is_summary:
+        return dict(data)
+    compacted = dict(data)
+    for field in _CONTENT_FIELDS.get(event_type, ()):
+        if field not in compacted:
+            continue
+        digest = _content_digest(compacted.pop(field))
+        compacted[f"{field}_summary"] = {
+            key: digest[key] for key in ("sha256", "characters")
+        }
+    compacted["record_mode"] = options.mode
+    return compacted
+
+
+def compact_subagent_result(
+    value: dict[str, object],
+    options: "SubagentRecordOptions",
+) -> dict[str, object]:
+    """Keep a bounded child result while preserving evidence for its source."""
+    if not isinstance(value, dict):
+        raise TypeError("subagent result must be an object")
+    nested = value.get("subagent_results")
+    has_too_many_nested_results = (
+        isinstance(nested, list) and len(nested) > options.nested_results
+    )
+    if not options.is_summary and not has_too_many_nested_results:
+        return dict(value)
+
+    compacted = dict(value)
+    if isinstance(nested, list):
+        compacted.update(
+            subagent_results_count=len(nested),
+            subagent_results=[
+                compact_subagent_result(item, options)
+                for item in nested[: options.nested_results]
+                if isinstance(item, dict)
+            ],
+            subagent_results_omitted=max(0, len(nested) - options.nested_results),
+        )
+    elif options.is_summary:
+        compacted["subagent_results_count"] = 0
+
+    if options.is_summary:
+        if "prompt" in compacted:
+            prompt_digest = _content_digest(compacted.pop("prompt"))
+            compacted.update(
+                prompt_sha256=prompt_digest["sha256"],
+                prompt_chars=prompt_digest["characters"],
+            )
+        if "text" in compacted:
+            text = str(compacted["text"])
+            text_digest = _content_digest(text)
+            compacted.update(
+                text=text[: options.summary_chars],
+                text_sha256=text_digest["sha256"],
+                text_chars=text_digest["characters"],
+                text_truncated=len(text) > options.summary_chars,
+            )
+        result_digest = _content_digest(value)
+        compacted.update(
+            result_sha256=result_digest["sha256"],
+            result_chars=result_digest["characters"],
+            record_mode=options.mode,
+        )
+    return compacted
 
 
 def redact_events_for_display(events: list[StorageEvent]) -> list[StorageEvent]:

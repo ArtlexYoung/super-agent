@@ -1123,6 +1123,23 @@ Status: implemented.
 - Prove the complete main-to-batch-to-experiment result tree with an end-to-end nested Runtime
   test instead of introducing a special deep-optimization scheduler.
 
+## v0.1.22: Adaptive Subagent Record Compression
+
+Status: implemented.
+
+- Let queue Skills choose full, summary, or task-count-based adaptive child records without
+  adding a fixed execution mode to Runtime.
+- Keep bounded prompt and result hashes, character counts, text previews, and nested-result
+  counts while dropping child model text, tool arguments, and prompts from summary events.
+- Apply one central compression function to queue results and Runtime events so deep nested
+  batches do not duplicate independent compression logic.
+- Preserve complete results for ordinary direct `run_subagent` calls and keep the queue policy
+  visible in task state, events, and the Skill configuration.
+- Verify threshold switching, nested result limits, content removal, strict settings, and the
+  unchanged full-record path with focused tests.
+- Raise the explicit Python source budget from 20,000 to 20,500 lines for this central feature;
+  keep the 85-file limit, per-file and function limits, and dependency-free default unchanged.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

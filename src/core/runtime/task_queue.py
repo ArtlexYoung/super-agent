@@ -10,6 +10,8 @@ from time import monotonic
 from typing import Callable
 
 from core.checks import ActionEffect
+from core.models import SubagentRecordOptions
+from core.state.audit import compact_subagent_result
 from core.skill_use.handlers import (
     SkillAction,
     SkillTool,
@@ -38,19 +40,75 @@ _TRANSITIONS = {
 class AgentTaskQueueSettings:
     max_tasks: int = 32
     max_wait_seconds: float = 60.0
+    record_mode: str = "full"
+    compress_after_tasks: int = 8
+    summary_chars: int = 2_000
+    max_nested_results: int = 8
 
     @classmethod
     def from_dict(cls, value: dict[str, object]) -> "AgentTaskQueueSettings":
-        unknown = set(value) - {"max_tasks", "max_wait_seconds"}
+        unknown = set(value) - {
+            "max_tasks",
+            "max_wait_seconds",
+            "record_mode",
+            "compress_after_tasks",
+            "summary_chars",
+            "max_nested_results",
+        }
         if unknown:
             raise ValueError("unknown agent_tasks settings: " + ", ".join(sorted(unknown)))
         max_tasks = value.get("max_tasks", 32)
         max_wait = value.get("max_wait_seconds", 60.0)
+        record_mode = value.get("record_mode", "full")
+        compress_after_tasks = value.get("compress_after_tasks", 8)
+        summary_chars = value.get("summary_chars", 2_000)
+        max_nested_results = value.get("max_nested_results", 8)
         if isinstance(max_tasks, bool) or not isinstance(max_tasks, int) or max_tasks <= 0:
             raise ValueError("agent_tasks max_tasks must be a positive integer")
         if isinstance(max_wait, bool) or not isinstance(max_wait, int | float) or max_wait <= 0:
             raise ValueError("agent_tasks max_wait_seconds must be positive")
-        return cls(max_tasks, float(max_wait))
+        if (
+            not isinstance(record_mode, str)
+            or record_mode not in {"full", "summary", "adaptive"}
+        ):
+            raise ValueError("agent_tasks record_mode must be full, summary, or adaptive")
+        if (
+            isinstance(compress_after_tasks, bool)
+            or not isinstance(compress_after_tasks, int)
+            or compress_after_tasks <= 0
+        ):
+            raise ValueError("agent_tasks compress_after_tasks must be a positive integer")
+        if (
+            isinstance(summary_chars, bool)
+            or not isinstance(summary_chars, int)
+            or summary_chars <= 0
+        ):
+            raise ValueError("agent_tasks summary_chars must be a positive integer")
+        if (
+            isinstance(max_nested_results, bool)
+            or not isinstance(max_nested_results, int)
+            or max_nested_results < 0
+        ):
+            raise ValueError("agent_tasks max_nested_results cannot be negative")
+        return cls(
+            max_tasks,
+            float(max_wait),
+            str(record_mode),
+            compress_after_tasks,
+            summary_chars,
+            max_nested_results,
+        )
+
+    def record_options_for_task(self, task_number: int) -> SubagentRecordOptions:
+        """Choose the child record policy at the moment a task starts."""
+        mode = self.record_mode
+        if mode == "adaptive":
+            mode = "full" if task_number <= self.compress_after_tasks else "summary"
+        return SubagentRecordOptions(
+            mode=mode,
+            summary_chars=self.summary_chars,
+            nested_results=self.max_nested_results,
+        )
 
 
 @dataclass(frozen=True)
@@ -65,6 +123,8 @@ class AgentTask:
     error_type: str | None = None
     error_message: str | None = None
     result: dict[str, object] | None = None
+    record_mode: str | None = None
+    record_task_number: int | None = None
 
     def to_dict(self, *, include_result: bool = False) -> dict[str, object]:
         data = {
@@ -78,7 +138,15 @@ class AgentTask:
             "error_message": self.error_message,
             "prompt_sha256": hashlib.sha256(self.prompt.encode()).hexdigest(),
             "prompt_chars": len(self.prompt),
+            "record_mode": self.record_mode,
+            "record_task_number": self.record_task_number,
         }
+        if self.result is not None:
+            data.update({
+                key: self.result[key]
+                for key in ("result_sha256", "result_chars", "subagent_results_count")
+                if key in self.result
+            })
         if include_result:
             data["result"] = self.result
         return data
@@ -91,8 +159,9 @@ class AgentTaskQueue:
         self,
         settings: AgentTaskQueueSettings,
         subagents: list[dict[str, object]],
-        run_subagent: Callable[[str, str], dict[str, object]],
+        run_subagent: Callable[[str, str, SubagentRecordOptions], dict[str, object]],
         record_event: Callable[[str, dict[str, object]], object],
+        record_result: Callable[[dict[str, object]], None] | None = None,
     ) -> None:
         names = [str(item.get("name", "")).strip() for item in subagents]
         if not names or any(not name for name in names) or len(names) != len(set(names)):
@@ -101,10 +170,12 @@ class AgentTaskQueue:
         self.subagents = tuple(dict(item) for item in subagents)
         self.run_subagent = run_subagent
         self.record_event = record_event
+        self.record_result = record_result
         self._condition = Condition(RLock())
         self._tasks: dict[str, AgentTask] = {}
         self._executors: dict[str, ThreadPoolExecutor] = {}
         self._observed_terminal: set[str] = set()
+        self._started_task_count = 0
         self._closed = False
 
     def create_tools(self) -> tuple[SkillTool, ...]:
@@ -242,14 +313,30 @@ class AgentTaskQueue:
                 task = self._require_task_locked(task_id)
                 if task.status == "cancelled":
                     return
-                running = self._transition_locked(task, "running")
-            result = self.run_subagent(str(running.agent_name), running.prompt)
+                self._started_task_count += 1
+                record_options = self.settings.record_options_for_task(
+                    self._started_task_count
+                )
+                running = self._transition_locked(
+                    task,
+                    "running",
+                    record_mode=record_options.mode,
+                    record_task_number=self._started_task_count,
+                )
+            result = self.run_subagent(
+                str(running.agent_name),
+                running.prompt,
+                record_options,
+            )
+            recorded_result = compact_subagent_result(result, record_options)
+            if self.record_result is not None:
+                self.record_result(recorded_result)
             with self._condition:
                 self._transition_locked(
                     running,
                     "completed",
-                    result_run_id=str(result.get("run_id", "")) or None,
-                    result=result,
+                    result_run_id=str(recorded_result.get("run_id", "")) or None,
+                    result=recorded_result,
                 )
         except Exception as error:
             with self._condition:
@@ -415,8 +502,9 @@ class AgentTaskQueue:
 def create_agent_task_queue(
     tools: dict[str, dict[str, object]],
     subagents: list[dict[str, object]],
-    run_subagent: Callable[[str, str], dict[str, object]],
+    run_subagent: Callable[[str, str, SubagentRecordOptions], dict[str, object]],
     record_event: Callable[[str, dict[str, object]], object],
+    record_result: Callable[[dict[str, object]], None] | None = None,
 ) -> AgentTaskQueue | None:
     unknown = set(tools) - {"agent_tasks"}
     if unknown:
@@ -428,6 +516,7 @@ def create_agent_task_queue(
         subagents,
         run_subagent,
         record_event,
+        record_result,
     )
 
 

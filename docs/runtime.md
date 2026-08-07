@@ -166,7 +166,19 @@ while the tool is waiting. The Skill configuration caps each requested sleep:
 [configuration.tools.agent_tasks]
 max_tasks = 32
 max_wait_seconds = 60
+record_mode = "adaptive"
+compress_after_tasks = 8
+summary_chars = 2000
+max_nested_results = 8
 ```
+
+Queue records can be `full`, `summary`, or `adaptive`. Adaptive mode keeps the first
+`compress_after_tasks` child runs complete, then records later child runs as a bounded text
+preview with prompt and result hashes, character counts, and a bounded nested-result list.
+The policy is selected when each task starts, so concurrent consumers do not change an
+already-started task. Summary child runs also omit model text, tool arguments, and child
+prompts from their persisted Runtime events. Their live result still contains the configured
+preview needed by the parent Agent to compare a batch.
 
 Available wake triggers are `timeout`, `any_task_finished`, `any_task_completed`,
 `any_task_failed`, `all_tasks_finished`, and `selected_tasks_finished`. Task states move

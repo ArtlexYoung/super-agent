@@ -8,3 +8,7 @@ max_steps = 20
 [configuration.tools.agent_tasks]
 max_tasks = 32
 max_wait_seconds = 60
+record_mode = "adaptive"
+compress_after_tasks = 8
+summary_chars = 2000
+max_nested_results = 8

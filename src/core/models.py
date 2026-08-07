@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
+from hashlib import sha256
 from typing import Callable
 from uuid import uuid4
 
@@ -11,6 +12,43 @@ from core.state.models import RunEvent
 
 
 LOCAL_USER_ID = "local"
+
+
+@dataclass(frozen=True)
+class SubagentRecordOptions:
+    """Control how a child run is represented in its parent run record."""
+
+    mode: str = "full"
+    summary_chars: int = 2_000
+    nested_results: int = 8
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.mode, str) or self.mode not in {"full", "summary"}:
+            raise ValueError("subagent record mode must be full or summary")
+        if (
+            isinstance(self.summary_chars, bool)
+            or not isinstance(self.summary_chars, int)
+            or self.summary_chars <= 0
+        ):
+            raise ValueError("subagent summary_chars must be positive")
+        if (
+            isinstance(self.nested_results, bool)
+            or not isinstance(self.nested_results, int)
+            or self.nested_results < 0
+        ):
+            raise ValueError("subagent nested_results cannot be negative")
+
+    @property
+    def is_summary(self) -> bool:
+        return self.mode == "summary"
+
+    def record_text(self, name: str, value: str) -> dict[str, object]:
+        if not self.is_summary:
+            return {name: value}
+        return {
+            f"{name}_sha256": sha256(value.encode("utf-8")).hexdigest(),
+            f"{name}_chars": len(value),
+        }
 
 
 @dataclass(frozen=True)
@@ -109,7 +147,9 @@ class SubAgentResult:
 @dataclass(frozen=True)
 class SubagentCallbacks:
     list_subagents: Callable[[], list[dict[str, object]]]
-    run_named_subagent: Callable[[str, str, object], dict[str, object]]
+    run_named_subagent: Callable[
+        [str, str, object, SubagentRecordOptions], dict[str, object]
+    ]
 
 
 @dataclass(frozen=True)
@@ -127,6 +167,7 @@ class Task:
     allowed_task_skills: tuple[str, ...] = ()
     resumed_from_run_id: str | None = None
     resume_checkpoint: dict[str, object] | None = None
+    subagent_record_options: SubagentRecordOptions | None = None
 
 
 @dataclass(frozen=True)

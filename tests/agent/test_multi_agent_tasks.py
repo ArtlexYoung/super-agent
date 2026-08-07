@@ -260,7 +260,7 @@ class MultiAgentTaskTests(unittest.TestCase):
         peak = 0
         lock = threading.Lock()
 
-        def consume(_name: str, prompt: str) -> dict[str, object]:
+        def consume(_name: str, prompt: str, _record_options) -> dict[str, object]:
             nonlocal active, peak
             with lock:
                 active += 1

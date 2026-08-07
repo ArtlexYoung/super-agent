@@ -5,7 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Callable
 
-from core.models import RunIdentity
+from core.models import RunIdentity, SubagentRecordOptions
+from core.state.audit import compact_runtime_event_data
 from core.state.subscribers import RuntimeEventSubscribers
 from core.checks import (
     ActionRequest,
@@ -44,6 +45,10 @@ class Run:
         default_factory=RuntimeEventSubscribers,
         repr=False,
     )
+    subagent_record_options: SubagentRecordOptions | None = field(
+        default=None,
+        repr=False,
+    )
     _used_skill_entries: dict[tuple[str, str, str], SkillIndexEntry] = field(
         default_factory=dict,
         init=False,
@@ -73,6 +78,12 @@ class Run:
         event_type: str,
         data: dict[str, object] | None = None,
     ) -> RunEvent:
+        if self.subagent_record_options is not None:
+            data = compact_runtime_event_data(
+                event_type,
+                data or {},
+                self.subagent_record_options,
+            )
         return self.event_log.append_event(event_type, data)
 
     def publish_existing_event(self, event: RunEvent) -> None:

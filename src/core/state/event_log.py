@@ -32,14 +32,22 @@ class RunEventLog:
         self._observers: list[RunEventObserver] = []
         self._lock = RLock()
 
-    def start_run(self, prompt: str) -> RunEvent:
+    def start_run(
+        self,
+        prompt: str | None,
+        *,
+        extra_data: dict[str, object] | None = None,
+    ) -> RunEvent:
         with self._lock:
             if self._events or self._read_stored_events():
                 raise ValueError(f"run already exists: {self.identity.run_id}")
+            data = dict(extra_data or {})
+            if prompt is not None:
+                data["prompt"] = prompt
             return self.append_event(
                 "run.started",
                 {
-                    "prompt": prompt,
+                    **data,
                     "conversation_id": self.identity.conversation_id,
                     "parent_run_id": self.identity.parent_run_id,
                 },

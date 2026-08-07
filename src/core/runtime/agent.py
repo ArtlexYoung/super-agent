@@ -33,6 +33,7 @@ from core.models import (
     AgentRunOptions,
     SubAgentResult,
     SubagentCallbacks,
+    SubagentRecordOptions,
     Task,
     RunResult,
     resolve_agent_run_options,
@@ -545,24 +546,34 @@ class Agent:
         name: str,
         prompt: str,
         session: Run,
+        record_options: SubagentRecordOptions,
     ) -> dict[str, object]:
         subagent = next((item for item in self._subagents if item.name == name), None)
         if subagent is None:
             raise KeyError(f"subagent not found: {name}")
-        return asdict(self._run_subagent(subagent, prompt, session))
+        return asdict(
+            self._run_subagent(
+                subagent,
+                prompt,
+                session,
+                record_options,
+            )
+        )
 
     def _run_subagent(
         self,
         subagent: SubAgent,
         prompt: str,
         parent_session: Run,
+        record_options: SubagentRecordOptions,
     ) -> SubAgentResult:
         parent_session.record_event(
             "subagent.started",
             {
                 "name": subagent.name,
                 "agent_name": subagent.agent.config.agent.name,
-                "prompt": prompt,
+                **record_options.record_text("prompt", prompt),
+                "record_mode": record_options.mode,
                 "purpose": subagent.purpose,
                 "required_features": list(subagent.required_features),
             },
@@ -572,6 +583,7 @@ class Agent:
             parent_session,
             purpose=subagent.purpose,
             required_features=subagent.required_features,
+            record_options=record_options,
         )
         subagent_result = SubAgentResult(
             name=subagent.name,
@@ -584,7 +596,11 @@ class Agent:
         )
         parent_session.record_event(
             "subagent.completed",
-            {"name": subagent.name, "run_id": result.run_id},
+            {
+                "name": subagent.name,
+                "run_id": result.run_id,
+                "record_mode": record_options.mode,
+            },
         )
         return subagent_result
 
@@ -595,6 +611,7 @@ class Agent:
         *,
         purpose: str = "auto",
         required_features: tuple[str, ...] = ("text",),
+        record_options: SubagentRecordOptions,
     ) -> RunResult:
         request = Task(
             prompt=prompt,
@@ -604,6 +621,7 @@ class Agent:
             purpose=purpose,
             required_features=required_features,
             allow_subscriber_failures=parent_session.allow_subscriber_failures,
+            subagent_record_options=record_options,
             subagents=SubagentCallbacks(
                 list_subagents=self._list_subagents_for_model,
                 run_named_subagent=self._run_named_subagent_for_model,

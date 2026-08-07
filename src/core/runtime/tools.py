@@ -15,7 +15,7 @@ from core.skill_use.handlers import (
     read_required_tool_string,
 )
 from core.provider.chat import Message, ToolCall, ToolDefinition
-from core.models import SubAgentResult, Task
+from core.models import SubAgentResult, SubagentRecordOptions, Task
 from core.runtime.run import Run
 from core.runtime.task_queue import AgentTaskQueue, create_agent_task_queue
 from core.checks import ActionEffect, ActionRequest
@@ -483,10 +483,23 @@ def create_runtime_tools(
     results: list[SubAgentResult] = []
     subagents = request.subagents.list_subagents() if request.include_subagents else []
 
-    def run_subagent(name: str, prompt: str) -> dict[str, object]:
-        value = request.subagents.run_named_subagent(name, prompt, run)
-        results.append(_read_subagent_result(value))
+    def run_subagent(
+        name: str,
+        prompt: str,
+        record_options: SubagentRecordOptions | None = None,
+    ) -> dict[str, object]:
+        value = request.subagents.run_named_subagent(
+            name,
+            prompt,
+            run,
+            record_options or SubagentRecordOptions(),
+        )
+        if record_options is None:
+            results.append(_read_subagent_result(value))
         return value
+
+    def record_queue_result(value: dict[str, object]) -> None:
+        results.append(_read_subagent_result(value))
 
     agent_tasks = None
     if workflow.tools:
@@ -495,6 +508,7 @@ def create_runtime_tools(
             subagents,
             run_subagent,
             run.record_event,
+            record_queue_result,
         )
 
     def create_agent_tasks(policy: TaskPolicy) -> AgentTaskQueue | None:
@@ -503,6 +517,7 @@ def create_runtime_tools(
             subagents,
             run_subagent,
             run.record_event,
+            record_queue_result,
         )
 
     extra_tools = [tool for tool in (model_tool,) if tool is not None]
