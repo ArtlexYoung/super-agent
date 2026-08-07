@@ -296,7 +296,7 @@ class MultiAgentTaskTests(unittest.TestCase):
         self.assertEqual({"rotate"}, {item["agent_selection"] for item in dispatches})
         self.assertEqual({2}, {item["eligible_agent_count"] for item in dispatches})
 
-    def test_weighted_price_selection_prefers_high_weight_low_price_agent(self) -> None:
+    def test_weighted_cost_selection_prefers_high_weight_low_price_agent(self) -> None:
         assignments = []
         events = []
 
@@ -314,6 +314,13 @@ class MultiAgentTaskTests(unittest.TestCase):
             lambda name, data: events.append((name, data)),
         )
         tools = {tool.name: tool for tool in queue.create_tools()}
+        with self.assertRaisesRegex(ValueError, "integer from 0"):
+            tools["create_agent_task"].handler({
+                "prompt": "invalid estimate",
+                "purpose": "experiment",
+                "required_features": ["text"],
+                "estimated_output_tokens": True,
+            })
         tools["create_agent_task"].handler({
             "prompt": "experiment",
             "purpose": "experiment",
@@ -327,9 +334,85 @@ class MultiAgentTaskTests(unittest.TestCase):
         queue.close()
 
         self.assertEqual(["efficient"], assignments)
-        self.assertEqual("weighted_price", dispatched["selected_by"])
+        self.assertEqual("weighted_cost_reliability", dispatched["selected_by"])
         self.assertEqual(2.0, dispatched["weight"])
         self.assertEqual(0.5, dispatched["pricing"]["total_cost_per_million"])
+        self.assertEqual(3, dispatched["cost_estimate"]["tokens"]["input_tokens"])
+        self.assertTrue(dispatched["cost_estimate"]["excludes_unprovided_usage"])
+
+    def test_estimated_output_tokens_choose_the_lower_expected_call_cost(self) -> None:
+        assignments = []
+        queue = AgentTaskQueue(
+            AgentTaskQueueSettings(max_wait_seconds=1),
+            [
+                _priced_agent("cheap-input", input_price=0.1, output_price=8),
+                _priced_agent("cheap-output", input_price=4, output_price=0.2),
+            ],
+            lambda name, prompt, _options: assignments.append(name) or {
+                "name": name,
+                "text": prompt,
+                "run_id": "run",
+            },
+            lambda _name, _data: None,
+        )
+        tools = {tool.name: tool for tool in queue.create_tools()}
+        tools["create_agent_task"].handler({
+            "prompt": "experiment",
+            "purpose": "experiment",
+            "required_features": ["text"],
+            "estimated_output_tokens": 1_000,
+        })
+        dispatched = tools["dispatch_agent_task"].handler({"task_id": "agent-task-01"})
+        tools["wait_for_agent_tasks"].handler({
+            "trigger": "all_tasks_finished",
+            "max_wait_seconds": 1,
+        })
+        queue.close()
+
+        self.assertEqual(["cheap-output"], assignments)
+        self.assertEqual(1_000, dispatched["cost_estimate"]["tokens"]["output_tokens"])
+        self.assertAlmostEqual(
+            0.000212,
+            dispatched["cost_estimate"]["estimated_cost"],
+        )
+
+    def test_recovered_agent_remains_ranked_by_run_reliability(self) -> None:
+        calls = []
+
+        def consume(name: str, prompt: str, _record_options) -> dict[str, object]:
+            calls.append(name)
+            if name == "primary" and calls.count(name) == 1:
+                raise ConnectionError("provider offline")
+            return {"name": name, "text": prompt, "run_id": f"run-{len(calls)}"}
+
+        queue = AgentTaskQueue(
+            AgentTaskQueueSettings(
+                max_wait_seconds=1,
+                circuit_breaker_wait_seconds=0.01,
+            ),
+            [_priced_agent("primary"), _priced_agent("fallback")],
+            consume,
+            lambda _name, _data: None,
+        )
+        tools = {tool.name: tool for tool in queue.create_tools()}
+        _create_and_dispatch(tools, 1)
+        tools["wait_for_agent_tasks"].handler({
+            "trigger": "all_tasks_finished",
+            "max_wait_seconds": 1,
+        })
+        time.sleep(0.03)
+        second = _create_and_dispatch(tools, 2)
+        tools["wait_for_agent_tasks"].handler({
+            "trigger": "selected_tasks_finished",
+            "task_ids": ["agent-task-02"],
+            "max_wait_seconds": 1,
+        })
+        queue.close()
+
+        self.assertEqual(["primary", "fallback", "fallback"], calls)
+        self.assertEqual("fallback", second["agent_name"])
+        self.assertEqual(1, second["successful_tasks"])
+        self.assertEqual(1.0, second["reliability"])
 
     def test_unavailable_agent_opens_circuit_and_falls_back(self) -> None:
         calls = []
@@ -369,6 +452,8 @@ class MultiAgentTaskTests(unittest.TestCase):
         self.assertEqual(1, task["fallback_count"])
         self.assertIn("agent_task.circuit_opened", event_names)
         self.assertIn("agent_task.fallback_selected", event_names)
+        opened = next(data for name, data in events if name == "agent_task.circuit_opened")
+        self.assertEqual(0.5, opened["reliability"])
 
     def test_open_circuit_retries_half_open_and_closes_after_success(self) -> None:
         attempts = 0
@@ -548,11 +633,23 @@ def _wait_call(call_id: str, trigger: str) -> ToolCall:
     return ToolCall(call_id, "wait_for_agent_tasks", {"trigger": trigger, "max_wait_seconds": 1})
 
 
+def _create_and_dispatch(tools, number: int) -> dict[str, object]:
+    tools["create_agent_task"].handler({
+        "prompt": f"experiment-{number}",
+        "purpose": "experiment",
+        "required_features": ["text"],
+    })
+    return tools["dispatch_agent_task"].handler({
+        "task_id": f"agent-task-{number:02d}",
+    })
+
+
 def _priced_agent(
     name: str,
     *,
     weight: float = 1,
     input_price: float = 0,
+    output_price: float = 0,
 ) -> dict[str, object]:
     return {
         "name": name,
@@ -564,7 +661,8 @@ def _priced_agent(
             "supports": ["text"],
             "purposes": ["experiment"],
             "input_cost_per_million": input_price,
-            "total_cost_per_million": input_price,
+            "output_cost_per_million": output_price,
+            "total_cost_per_million": input_price + output_price,
         }],
     }
 

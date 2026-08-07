@@ -48,6 +48,12 @@ _DETAILED_EVENT_TYPES = {
     "agent_task.cancelled",
     "agent_task.wait.started",
     "agent_task.wait.woke",
+    "agent_task.fallback_selected",
+    "agent_task.retry_scheduled",
+    "agent_task.retry_dispatched",
+    "agent_task.circuit_opened",
+    "agent_task.circuit_half_open",
+    "agent_task.circuit_closed",
 }
 _CRITICAL_EVENT_TYPES = {
     "run.started",

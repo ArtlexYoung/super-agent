@@ -2,22 +2,26 @@
 
 from __future__ import annotations
 
-import hashlib
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from threading import Condition, RLock, Timer
 from time import monotonic
 from typing import Callable
 
 from core.checks import ActionEffect
 from core.models import SubagentRecordOptions
+from core.provider.chat import estimate_text_tokens
 from core.state.audit import compact_subagent_result
 from core.runtime.task_agents import (
     AgentChoice,
+    AgentTask,
+    AgentTaskEstimate,
     AgentTaskQueueSettings,
     AgentUnavailableError,
     SubagentPool,
+    estimated_token_schema,
     is_agent_unavailable,
+    read_optional_estimated_tokens,
 )
 from core.skill_use.handlers import (
     SkillAction,
@@ -41,55 +45,6 @@ _TRANSITIONS = {
     "queued": {"running", "cancelled", "failed"},
     "running": {"queued", "completed", "failed"},
 }
-
-
-@dataclass(frozen=True)
-class AgentTask:
-    task_id: str
-    prompt: str
-    purpose: str
-    required_features: tuple[str, ...]
-    status: str = "created"
-    agent_name: str | None = None
-    result_run_id: str | None = None
-    error_type: str | None = None
-    error_message: str | None = None
-    result: dict[str, object] | None = None
-    record_mode: str | None = None
-    record_task_number: int | None = None
-    attempt_count: int = 0
-    fallback_count: int = 0
-    last_agent_name: str | None = None
-    retry_after_seconds: float | None = None
-
-    def to_dict(self, *, include_result: bool = False) -> dict[str, object]:
-        data = {
-            "task_id": self.task_id,
-            "status": self.status,
-            "purpose": self.purpose,
-            "required_features": list(self.required_features),
-            "agent_name": self.agent_name,
-            "result_run_id": self.result_run_id,
-            "error_type": self.error_type,
-            "error_message": self.error_message,
-            "prompt_sha256": hashlib.sha256(self.prompt.encode()).hexdigest(),
-            "prompt_chars": len(self.prompt),
-            "record_mode": self.record_mode,
-            "record_task_number": self.record_task_number,
-            "attempt_count": self.attempt_count,
-            "fallback_count": self.fallback_count,
-            "last_agent_name": self.last_agent_name,
-            "retry_after_seconds": self.retry_after_seconds,
-        }
-        if self.result is not None:
-            data.update({
-                key: self.result[key]
-                for key in ("result_sha256", "result_chars", "subagent_results_count")
-                if key in self.result
-            })
-        if include_result:
-            data["result"] = self.result
-        return data
 
 
 class AgentTaskQueue:
@@ -135,6 +90,9 @@ class AgentTaskQueue:
                         "minItems": 1,
                         "maxItems": 16,
                     },
+                    "estimated_output_tokens": estimated_token_schema(),
+                    "estimated_cache_creation_tokens": estimated_token_schema(),
+                    "estimated_cache_read_tokens": estimated_token_schema(),
                 },
                 self._create_task,
                 action,
@@ -216,6 +174,14 @@ class AgentTaskQueue:
         prompt = read_required_tool_string(arguments, "prompt")
         purpose = read_required_tool_string(arguments, "purpose").strip().lower()
         features = _read_string_list(arguments, "required_features")
+        estimates = tuple(
+            read_optional_estimated_tokens(arguments, name)
+            for name in (
+                "estimated_output_tokens",
+                "estimated_cache_creation_tokens",
+                "estimated_cache_read_tokens",
+            )
+        )
         with self._condition:
             if self._closed:
                 raise RuntimeError("agent task queue is closed")
@@ -226,6 +192,9 @@ class AgentTaskQueue:
                 prompt,
                 purpose,
                 features,
+                estimated_output_tokens=estimates[0],
+                estimated_cache_creation_tokens=estimates[1],
+                estimated_cache_read_tokens=estimates[2],
             )
             self._tasks[task.task_id] = task
             self._record_locked("agent_task.created", task)
@@ -385,8 +354,14 @@ class AgentTaskQueue:
     ) -> AgentChoice:
         try:
             return self._agent_pool.choose(
-                task.purpose,
-                task.required_features,
+                AgentTaskEstimate(
+                    task.purpose,
+                    task.required_features,
+                    estimate_text_tokens(task.prompt),
+                    task.estimated_output_tokens,
+                    task.estimated_cache_creation_tokens,
+                    task.estimated_cache_read_tokens,
+                ),
                 self._active_task_counts_locked(),
                 requested_agent,
                 excluded,

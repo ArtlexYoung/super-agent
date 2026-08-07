@@ -7,6 +7,8 @@ from pathlib import Path
 from adapter.storage import JsonlStorage, SqliteStorage
 from core.state.audit import (
     AuditSettings,
+    DETAILED,
+    classify_audit_event,
     prune_expired_audit_events,
     redact_events_for_display,
 )
@@ -18,6 +20,20 @@ from core.state.events import EventStore
 
 
 class AuditStorageTests(unittest.TestCase):
+    def test_agent_fallback_and_circuit_events_use_detailed_retention(self) -> None:
+        event_types = (
+            "agent_task.fallback_selected",
+            "agent_task.retry_scheduled",
+            "agent_task.retry_dispatched",
+            "agent_task.circuit_opened",
+            "agent_task.circuit_half_open",
+            "agent_task.circuit_closed",
+        )
+        self.assertEqual(
+            {DETAILED},
+            {classify_audit_event("run", name) for name in event_types},
+        )
+
     def test_default_and_custom_retention_settings_load_from_common_config(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

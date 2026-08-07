@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import math
 import urllib.error
 from dataclasses import dataclass
@@ -9,19 +10,83 @@ from time import monotonic
 from typing import Callable
 
 from core.models import SubagentRecordOptions
+from core.provider.chat import estimate_text_tokens
 
 
 EventWriter = Callable[[str, dict[str, object]], object]
+MAX_ESTIMATED_TOKENS = 10_000_000
 PRICE_FIELDS = (
     "input_cost_per_million",
     "output_cost_per_million",
     "cache_creation_cost_per_million",
     "cache_read_cost_per_million",
 )
+TOKEN_PRICE_FIELDS = (
+    ("input_tokens", "input_cost_per_million"),
+    ("output_tokens", "output_cost_per_million"),
+    ("cache_creation_tokens", "cache_creation_cost_per_million"),
+    ("cache_read_tokens", "cache_read_cost_per_million"),
+)
 
 
 class AgentUnavailableError(RuntimeError):
     """Report that no compatible Agent is currently callable."""
+
+
+@dataclass(frozen=True)
+class AgentTask:
+    task_id: str
+    prompt: str
+    purpose: str
+    required_features: tuple[str, ...]
+    status: str = "created"
+    agent_name: str | None = None
+    result_run_id: str | None = None
+    error_type: str | None = None
+    error_message: str | None = None
+    result: dict[str, object] | None = None
+    record_mode: str | None = None
+    record_task_number: int | None = None
+    attempt_count: int = 0
+    fallback_count: int = 0
+    last_agent_name: str | None = None
+    retry_after_seconds: float | None = None
+    estimated_output_tokens: int | None = None
+    estimated_cache_creation_tokens: int | None = None
+    estimated_cache_read_tokens: int | None = None
+
+    def to_dict(self, *, include_result: bool = False) -> dict[str, object]:
+        data = {
+            "task_id": self.task_id,
+            "status": self.status,
+            "purpose": self.purpose,
+            "required_features": list(self.required_features),
+            "agent_name": self.agent_name,
+            "result_run_id": self.result_run_id,
+            "error_type": self.error_type,
+            "error_message": self.error_message,
+            "prompt_sha256": hashlib.sha256(self.prompt.encode()).hexdigest(),
+            "prompt_chars": len(self.prompt),
+            "record_mode": self.record_mode,
+            "record_task_number": self.record_task_number,
+            "attempt_count": self.attempt_count,
+            "fallback_count": self.fallback_count,
+            "last_agent_name": self.last_agent_name,
+            "retry_after_seconds": self.retry_after_seconds,
+            "estimated_input_tokens": estimate_text_tokens(self.prompt),
+            "estimated_output_tokens": self.estimated_output_tokens,
+            "estimated_cache_creation_tokens": self.estimated_cache_creation_tokens,
+            "estimated_cache_read_tokens": self.estimated_cache_read_tokens,
+        }
+        if self.result is not None:
+            data.update({
+                key: self.result[key]
+                for key in ("result_sha256", "result_chars", "subagent_results_count")
+                if key in self.result
+            })
+        if include_result:
+            data["result"] = self.result
+        return data
 
 
 @dataclass(frozen=True)
@@ -66,6 +131,22 @@ class AgentTaskQueueSettings:
 
 
 @dataclass(frozen=True)
+class AgentTaskEstimate:
+    purpose: str
+    features: tuple[str, ...]
+    input_tokens: int
+    output_tokens: int | None = None
+    cache_creation_tokens: int | None = None
+    cache_read_tokens: int | None = None
+
+    def token_counts(self) -> dict[str, int | None]:
+        return {
+            name: getattr(self, name)
+            for name, _price_name in TOKEN_PRICE_FIELDS
+        }
+
+
+@dataclass(frozen=True)
 class AgentChoice:
     name: str
     selected_by: str
@@ -74,6 +155,10 @@ class AgentChoice:
     weight: float
     model: str | None
     pricing: dict[str, float]
+    cost_estimate: dict[str, object]
+    reliability: float
+    successful_tasks: int
+    unavailable_failures: int
     score: float
 
     def to_dict(self) -> dict[str, object]:
@@ -85,6 +170,10 @@ class AgentChoice:
             "weight": self.weight,
             "estimated_model": self.model,
             "pricing": dict(self.pricing),
+            "cost_estimate": dict(self.cost_estimate),
+            "reliability": self.reliability,
+            "successful_tasks": self.successful_tasks,
+            "unavailable_failures": self.unavailable_failures,
             "selection_score": self.score,
         }
 
@@ -94,6 +183,18 @@ class _Circuit:
     failures: int = 0
     state: str = "closed"
     retry_at: float = 0.0
+
+
+@dataclass
+class _AgentHealth:
+    successful_tasks: int = 0
+    unavailable_failures: int = 0
+
+    @property
+    def reliability(self) -> float:
+        return (self.successful_tasks + 1) / (
+            self.successful_tasks + self.unavailable_failures + 1
+        )
 
 
 class SubagentPool:
@@ -112,19 +213,19 @@ class SubagentPool:
             raise ValueError("agent_tasks requires uniquely named subagents")
         self.record_event = record_event
         self._circuits = {str(item["name"]): _Circuit() for item in self.subagents}
+        self._health = {str(item["name"]): _AgentHealth() for item in self.subagents}
         self._rotation_positions: dict[tuple[str, ...], int] = {}
 
     def choose(
         self,
-        purpose: str,
-        features: tuple[str, ...],
+        task: AgentTaskEstimate,
         active: dict[str, int],
         requested: str | None = None,
         excluded: set[str] | None = None,
     ) -> AgentChoice:
         matching = [
             item for item in self.subagents
-            if _matches(item, purpose, features)
+            if _matches(item, task.purpose, task.features)
         ]
         available = [
             item for item in matching
@@ -147,19 +248,18 @@ class SubagentPool:
                 available[0],
                 "model",
                 (available_count, active.get(requested, 0)),
-                purpose,
-                features,
+                task,
             )
         if not matching:
             raise ValueError("no suitable subagent for task")
         if not available:
-            delay = self.retry_delay(purpose, features)
+            delay = self.retry_delay(task.purpose, task.features)
             raise AgentUnavailableError(
                 f"all suitable subagents are unavailable; retry after {delay:.3f} seconds"
             )
         ranked = sorted(
             available,
-            key=lambda item: self._rank(item, purpose, features, active),
+            key=lambda item: self._rank(item, task, active),
             reverse=True,
         )
         if self.settings.agent_selection == "rotate":
@@ -170,25 +270,31 @@ class SubagentPool:
             selected_by = "skill_rotation"
         else:
             selected = ranked[0]
-            selected_by = "weighted_price"
+            selected_by = "weighted_cost_reliability"
         return self._finish_choice(
             selected,
             selected_by,
             (available_count, active.get(str(selected["name"]), 0)),
-            purpose,
-            features,
+            task,
         )
 
     def record_success(self, name: str) -> None:
+        health = self._health[name]
+        health.successful_tasks += 1
         circuit = self._circuits[name]
         previous = circuit.state
         circuit.failures = 0
         circuit.state = "closed"
         circuit.retry_at = 0.0
         if previous != "closed":
-            self.record_event("agent_task.circuit_closed", {"agent_name": name})
+            self.record_event(
+                "agent_task.circuit_closed",
+                {"agent_name": name, **_health_facts(health)},
+            )
 
     def record_unavailable(self, name: str, error: Exception) -> None:
+        health = self._health[name]
+        health.unavailable_failures += 1
         circuit = self._circuits[name]
         circuit.failures += 1
         if circuit.state == "half_open" or (
@@ -203,6 +309,7 @@ class SubagentPool:
                     "failure_count": circuit.failures,
                     "retry_after_seconds": self.settings.circuit_breaker_wait_seconds,
                     "error_type": type(error).__name__,
+                    **_health_facts(health),
                 },
             )
 
@@ -225,13 +332,13 @@ class SubagentPool:
     def _rank(
         self,
         agent: dict[str, object],
-        purpose: str,
-        features: tuple[str, ...],
+        task: AgentTaskEstimate,
         active: dict[str, int],
     ) -> tuple[float, float, float]:
-        model, pricing = _model_price(agent, purpose, features)
-        base = float(agent["weight"]) / (1.0 + pricing["total_cost_per_million"])
-        exact = float(agent.get("purpose") == purpose and purpose != "auto")
+        _model, _pricing, cost = _model_cost(agent, task)
+        health = self._health[str(agent["name"])]
+        base = _base_score(agent, health, cost)
+        exact = float(agent.get("purpose") == task.purpose and task.purpose != "auto")
         return exact, base / (1 + active.get(str(agent["name"]), 0)), base
 
     def _finish_choice(
@@ -239,12 +346,12 @@ class SubagentPool:
         agent: dict[str, object],
         selected_by: str,
         counts: tuple[int, int],
-        purpose: str,
-        features: tuple[str, ...],
+        task: AgentTaskEstimate,
     ) -> AgentChoice:
         name = str(agent["name"])
-        model, pricing = _model_price(agent, purpose, features)
-        base_score = float(agent["weight"]) / (1.0 + pricing["total_cost_per_million"])
+        model, pricing, cost = _model_cost(agent, task)
+        health = self._health[name]
+        base_score = _base_score(agent, health, cost)
         candidate_count, active_count = counts
         score = (
             base_score
@@ -263,6 +370,10 @@ class SubagentPool:
             float(agent["weight"]),
             model,
             pricing,
+            cost,
+            round(health.reliability, 8),
+            health.successful_tasks,
+            health.unavailable_failures,
             round(score, 8),
         )
 
@@ -286,6 +397,29 @@ def is_agent_unavailable(error: Exception) -> bool:
             "timed out",
         )
     )
+
+
+def estimated_token_schema() -> dict[str, object]:
+    return {"type": "integer", "minimum": 0, "maximum": MAX_ESTIMATED_TOKENS}
+
+
+def read_optional_estimated_tokens(
+    arguments: dict[str, object],
+    name: str,
+) -> int | None:
+    value = arguments.get(name)
+    if value is None:
+        return None
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int)
+        or not 0 <= value <= MAX_ESTIMATED_TOKENS
+    ):
+        raise ValueError(
+            f"tool argument {name!r} must be an integer from 0 to "
+            f"{MAX_ESTIMATED_TOKENS}"
+        )
+    return value
 
 
 def _validated_agent(value: dict[str, object]) -> dict[str, object]:
@@ -315,30 +449,77 @@ def _matches(agent: dict[str, object], purpose: str, features: tuple[str, ...]) 
     )
 
 
-def _model_price(
+def _model_cost(
     agent: dict[str, object],
-    purpose: str,
-    features: tuple[str, ...],
-) -> tuple[str | None, dict[str, float]]:
+    task: AgentTaskEstimate,
+) -> tuple[str | None, dict[str, float], dict[str, object]]:
     models = agent.get("models", [])
     compatible = [
         item for item in models
         if isinstance(item, dict)
-        and set(features) <= set(item.get("supports", []))
+        and set(task.features) <= set(item.get("supports", []))
     ] if isinstance(models, list) else []
     if not compatible:
-        return None, {**{name: 0.0 for name in PRICE_FIELDS}, "total_cost_per_million": 0.0}
+        pricing = {**{name: 0.0 for name in PRICE_FIELDS}, "total_cost_per_million": 0.0}
+        return None, pricing, _estimate_cost(pricing, task)
     selected = min(
         enumerate(compatible),
         key=lambda pair: (
-            0 if purpose in pair[1].get("purposes", []) else 1,
-            float(pair[1].get("total_cost_per_million", 0.0)),
+            0 if task.purpose in pair[1].get("purposes", []) else 1,
+            _estimate_cost(_read_pricing(pair[1]), task)[
+                "blended_cost_per_million"
+            ],
             pair[0],
         ),
     )[1]
-    pricing = {name: float(selected.get(name, 0.0)) for name in PRICE_FIELDS}
-    pricing["total_cost_per_million"] = sum(pricing.values())
-    return str(selected.get("model", "")) or None, pricing
+    pricing = _read_pricing(selected)
+    return str(selected.get("model", "")) or None, pricing, _estimate_cost(pricing, task)
+
+
+def _read_pricing(model: dict[str, object]) -> dict[str, float]:
+    pricing = {name: float(model.get(name, 0.0)) for name in PRICE_FIELDS}
+    return {**pricing, "total_cost_per_million": sum(pricing.values())}
+
+
+def _estimate_cost(
+    pricing: dict[str, float],
+    task: AgentTaskEstimate,
+) -> dict[str, object]:
+    token_counts = task.token_counts()
+    known = {name: value for name, value in token_counts.items() if value is not None}
+    weighted_cost = sum(
+        count * pricing[price_name]
+        for name, price_name in TOKEN_PRICE_FIELDS
+        if (count := known.get(name)) is not None
+    )
+    total_tokens = sum(known.values())
+    return {
+        "tokens": token_counts,
+        "estimated_cost": round(weighted_cost / 1_000_000, 12),
+        "blended_cost_per_million": round(
+            weighted_cost / total_tokens if total_tokens else 0.0,
+            8,
+        ),
+        "unprovided_usage": [name for name, value in token_counts.items() if value is None],
+        "excludes_unprovided_usage": len(known) != len(token_counts),
+    }
+
+
+def _base_score(
+    agent: dict[str, object],
+    health: _AgentHealth,
+    cost: dict[str, object],
+) -> float:
+    price = float(cost["blended_cost_per_million"])
+    return float(agent["weight"]) * health.reliability / (1.0 + price)
+
+
+def _health_facts(health: _AgentHealth) -> dict[str, object]:
+    return {
+        "successful_tasks": health.successful_tasks,
+        "unavailable_failures": health.unavailable_failures,
+        "reliability": round(health.reliability, 8),
+    }
 
 
 def _positive_int(value: object, name: str) -> None:

@@ -1173,6 +1173,23 @@ Status: implemented.
 - Preserve the dependency-free default and all per-file and complexity limits. Add one focused
   Runtime module and raise only the aggregate Python source budget from 20,500 to 21,000 lines.
 
+## v0.1.25: Task-Aware Agent Cost and Reliability
+
+Status: implemented.
+
+- Let a produced task explicitly estimate output, cache-creation, and cache-read tokens while
+  deriving prompt input tokens from the same deterministic estimator used by Provider calls.
+- Combine task token proportions with all four model prices instead of treating unrelated prices
+  as equally used; mark omitted usage as excluded rather than inventing an output or cache amount.
+- Rank compatible Agents by exact task contract, code-defined weight, run-scoped availability
+  reliability, estimated blended price, and current queue load.
+- Reduce reliability only for classified unavailable failures, recover it through successful
+  tasks, and leave ordinary task, tool, validation, and model-output errors out of Agent health.
+- Record every cost input, partial-estimate flag, health sample, and score in dispatch events, and
+  classify circuit, fallback, and retry events under normal detailed audit retention.
+- Keep both task queue modules below 600 lines, the complete Python source below 21,000 lines,
+  and the default Runtime dependency-free.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof
