@@ -1,0 +1,18 @@
+{
+  "tested_versions": {
+    "codex": "codex-cli 0.146.0",
+    "claude": "2.1.221 (Claude Code)",
+    "super-agent": "0.1.0 (ccac936326ada84b2a3a6ebdb52b3d432130bacc)",
+    "raw-model": "direct OpenAI Chat Completions (temperature=0, max_tokens=8192)"
+  },
+  "runs": {
+    "humaneval_plus:claude": "token-usage-he-claude-20260806",
+    "humaneval_plus:codex": "token-usage-he-codex-20260806",
+    "humaneval_plus:raw-model": "raw-model-he-glm4-9b-20260807",
+    "humaneval_plus:super-agent": "humaneval-plus-glm4-9b-20260805",
+    "livecodebench_codegen:claude": "token-usage-lcb-claude-20260806",
+    "livecodebench_codegen:codex": "token-usage-lcb-codex-20260806",
+    "livecodebench_codegen:raw-model": "raw-model-lcb-glm4-9b-20260807",
+    "livecodebench_codegen:super-agent": "livecodebench-glm4-9b-20260806"
+  }
+}
