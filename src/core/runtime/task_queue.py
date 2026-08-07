@@ -5,13 +5,20 @@ from __future__ import annotations
 import hashlib
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
-from threading import Condition, RLock
+from threading import Condition, RLock, Timer
 from time import monotonic
 from typing import Callable
 
 from core.checks import ActionEffect
 from core.models import SubagentRecordOptions
 from core.state.audit import compact_subagent_result
+from core.runtime.task_agents import (
+    AgentChoice,
+    AgentTaskQueueSettings,
+    AgentUnavailableError,
+    SubagentPool,
+    is_agent_unavailable,
+)
 from core.skill_use.handlers import (
     SkillAction,
     SkillTool,
@@ -32,92 +39,8 @@ _TRIGGERS = {
 _TRANSITIONS = {
     "created": {"queued", "cancelled"},
     "queued": {"running", "cancelled", "failed"},
-    "running": {"completed", "failed"},
+    "running": {"queued", "completed", "failed"},
 }
-
-
-@dataclass(frozen=True)
-class AgentTaskQueueSettings:
-    max_tasks: int = 32
-    max_wait_seconds: float = 60.0
-    record_mode: str = "full"
-    compress_after_tasks: int = 8
-    summary_chars: int = 2_000
-    max_nested_results: int = 8
-    agent_selection: str = "least_busy"
-
-    @classmethod
-    def from_dict(cls, value: dict[str, object]) -> "AgentTaskQueueSettings":
-        unknown = set(value) - {
-            "max_tasks",
-            "max_wait_seconds",
-            "record_mode",
-            "compress_after_tasks",
-            "summary_chars",
-            "max_nested_results",
-            "agent_selection",
-        }
-        if unknown:
-            raise ValueError("unknown agent_tasks settings: " + ", ".join(sorted(unknown)))
-        max_tasks = value.get("max_tasks", 32)
-        max_wait = value.get("max_wait_seconds", 60.0)
-        record_mode = value.get("record_mode", "full")
-        compress_after_tasks = value.get("compress_after_tasks", 8)
-        summary_chars = value.get("summary_chars", 2_000)
-        max_nested_results = value.get("max_nested_results", 8)
-        agent_selection = value.get("agent_selection", "least_busy")
-        if isinstance(max_tasks, bool) or not isinstance(max_tasks, int) or max_tasks <= 0:
-            raise ValueError("agent_tasks max_tasks must be a positive integer")
-        if isinstance(max_wait, bool) or not isinstance(max_wait, int | float) or max_wait <= 0:
-            raise ValueError("agent_tasks max_wait_seconds must be positive")
-        if (
-            not isinstance(record_mode, str)
-            or record_mode not in {"full", "summary", "adaptive"}
-        ):
-            raise ValueError("agent_tasks record_mode must be full, summary, or adaptive")
-        if (
-            isinstance(compress_after_tasks, bool)
-            or not isinstance(compress_after_tasks, int)
-            or compress_after_tasks <= 0
-        ):
-            raise ValueError("agent_tasks compress_after_tasks must be a positive integer")
-        if (
-            isinstance(summary_chars, bool)
-            or not isinstance(summary_chars, int)
-            or summary_chars <= 0
-        ):
-            raise ValueError("agent_tasks summary_chars must be a positive integer")
-        if (
-            isinstance(max_nested_results, bool)
-            or not isinstance(max_nested_results, int)
-            or max_nested_results < 0
-        ):
-            raise ValueError("agent_tasks max_nested_results cannot be negative")
-        if (
-            not isinstance(agent_selection, str)
-            or agent_selection not in {"least_busy", "rotate"}
-        ):
-            raise ValueError("agent_tasks agent_selection must be least_busy or rotate")
-        return cls(
-            max_tasks,
-            float(max_wait),
-            str(record_mode),
-            compress_after_tasks,
-            summary_chars,
-            max_nested_results,
-            str(agent_selection),
-        )
-
-    def record_options_for_task(self, task_number: int) -> SubagentRecordOptions:
-        """Choose the child record policy at the moment a task starts."""
-        mode = self.record_mode
-        if mode == "adaptive":
-            mode = "full" if task_number <= self.compress_after_tasks else "summary"
-        return SubagentRecordOptions(
-            mode=mode,
-            summary_chars=self.summary_chars,
-            nested_results=self.max_nested_results,
-        )
 
 
 @dataclass(frozen=True)
@@ -134,6 +57,10 @@ class AgentTask:
     result: dict[str, object] | None = None
     record_mode: str | None = None
     record_task_number: int | None = None
+    attempt_count: int = 0
+    fallback_count: int = 0
+    last_agent_name: str | None = None
+    retry_after_seconds: float | None = None
 
     def to_dict(self, *, include_result: bool = False) -> dict[str, object]:
         data = {
@@ -149,6 +76,10 @@ class AgentTask:
             "prompt_chars": len(self.prompt),
             "record_mode": self.record_mode,
             "record_task_number": self.record_task_number,
+            "attempt_count": self.attempt_count,
+            "fallback_count": self.fallback_count,
+            "last_agent_name": self.last_agent_name,
+            "retry_after_seconds": self.retry_after_seconds,
         }
         if self.result is not None:
             data.update({
@@ -176,7 +107,6 @@ class AgentTaskQueue:
         if not names or any(not name for name in names) or len(names) != len(set(names)):
             raise ValueError("agent_tasks requires uniquely named subagents")
         self.settings = settings
-        self.subagents = tuple(dict(item) for item in subagents)
         self.run_subagent = run_subagent
         self.record_event = record_event
         self.record_result = record_result
@@ -185,7 +115,8 @@ class AgentTaskQueue:
         self._executors: dict[str, ThreadPoolExecutor] = {}
         self._observed_terminal: set[str] = set()
         self._started_task_count = 0
-        self._rotation_positions: dict[tuple[str, ...], int] = {}
+        self._agent_pool = SubagentPool(settings, subagents, record_event)
+        self._retry_timers: list[Timer] = []
         self._closed = False
 
     def create_tools(self) -> tuple[SkillTool, ...]:
@@ -275,6 +206,9 @@ class AgentTaskQueue:
         with self._condition:
             self._closed = True
             executors = list(self._executors.values())
+            timers = list(self._retry_timers)
+        for timer in timers:
+            timer.cancel()
         for executor in executors:
             executor.shutdown(wait=True, cancel_futures=False)
 
@@ -304,37 +238,30 @@ class AgentTaskQueue:
             task = self._require_task_locked(task_id)
             if task.status != "created":
                 raise ValueError(f"agent task cannot be dispatched from {task.status}: {task_id}")
-            agent_name, selected_by, candidate_count = self._select_agent_locked(
+            choice = self._select_agent_locked(
                 task,
                 requested_agent,
             )
-            queued = self._transition_locked(task, "queued", agent_name=agent_name)
+            queued = self._transition_locked(task, "queued", agent_name=choice.name)
             self.record_event(
                 "agent_task.dispatched",
                 {
                     "task_id": task_id,
-                    "agent_name": agent_name,
-                    "selected_by": selected_by,
+                    **choice.to_dict(),
                     "agent_selection": self.settings.agent_selection,
-                    "eligible_agent_count": candidate_count,
                     "rotation_limited": (
                         self.settings.agent_selection == "rotate"
-                        and candidate_count < 2
+                        and choice.candidate_count < 2
                     ),
                 },
             )
-            executor = self._executors.setdefault(
-                agent_name,
-                ThreadPoolExecutor(max_workers=1, thread_name_prefix=f"agent-{agent_name}"),
-            )
-            executor.submit(self._consume_task, task_id)
+            self._submit_locked(choice.name, task_id)
             return {
                 "task": queued.to_dict(),
-                "selected_by": selected_by,
-                "eligible_agent_count": candidate_count,
+                **choice.to_dict(),
                 "rotation_limited": (
                     self.settings.agent_selection == "rotate"
-                    and candidate_count < 2
+                    and choice.candidate_count < 2
                 ),
             }
 
@@ -353,6 +280,8 @@ class AgentTaskQueue:
                     "running",
                     record_mode=record_options.mode,
                     record_task_number=self._started_task_count,
+                    attempt_count=task.attempt_count + 1,
+                    retry_after_seconds=None,
                 )
             result = self.run_subagent(
                 str(running.agent_name),
@@ -363,6 +292,7 @@ class AgentTaskQueue:
             if self.record_result is not None:
                 self.record_result(recorded_result)
             with self._condition:
+                self._agent_pool.record_success(str(running.agent_name))
                 self._transition_locked(
                     running,
                     "completed",
@@ -373,12 +303,12 @@ class AgentTaskQueue:
             with self._condition:
                 current = self._require_task_locked(task_id)
                 if current.status in {"queued", "running"}:
-                    self._transition_locked(
-                        current,
-                        "failed",
-                        error_type=type(error).__name__,
-                        error_message=str(error),
-                    )
+                    if is_agent_unavailable(error) and current.agent_name:
+                        self._agent_pool.record_unavailable(current.agent_name, error)
+                        if current.attempt_count <= self.settings.retry_unavailable_times:
+                            self._retry_unavailable_locked(current, error)
+                            return
+                    self._fail_task_locked(current, error)
 
     def _wait_for_tasks(self, arguments: dict[str, object]) -> dict[str, object]:
         trigger = read_required_tool_string(arguments, "trigger").strip().lower()
@@ -451,39 +381,122 @@ class AgentTaskQueue:
         self,
         task: AgentTask,
         requested_agent: str | None,
-    ) -> tuple[str, str, int]:
-        candidates = [item for item in self.subagents if _agent_matches_task(item, task)]
-        if requested_agent is not None:
-            if self.settings.agent_selection == "rotate":
-                raise ValueError("agent_name cannot be fixed when agent_selection is rotate")
-            selected = next(
-                (item for item in candidates if item.get("name") == requested_agent),
-                None,
+        excluded: set[str] | None = None,
+    ) -> AgentChoice:
+        try:
+            return self._agent_pool.choose(
+                task.purpose,
+                task.required_features,
+                self._active_task_counts_locked(),
+                requested_agent,
+                excluded,
             )
-            if selected is None:
-                raise ValueError(f"subagent is not suitable for task {task.task_id}: {requested_agent}")
-            return requested_agent, "model", len(candidates)
-        if not candidates:
-            raise ValueError(f"no suitable subagent for task: {task.task_id}")
-        if self.settings.agent_selection == "rotate":
-            names = tuple(str(item["name"]) for item in candidates)
-            position = self._rotation_positions.get(names, 0)
-            self._rotation_positions[names] = position + 1
-            return names[position % len(names)], "skill_rotation", len(candidates)
-        selected = min(
-            enumerate(candidates),
-            key=lambda value: (
-                0 if value[1].get("purpose") == task.purpose else 1,
-                self._active_task_count_locked(str(value[1]["name"])),
-                value[0],
-            ),
-        )[1]
-        return str(selected["name"]), "skill_contract", len(candidates)
+        except ValueError as error:
+            if str(error) == "no suitable subagent for task":
+                raise ValueError(f"no suitable subagent for task: {task.task_id}") from error
+            raise
 
-    def _active_task_count_locked(self, agent_name: str) -> int:
-        return sum(
-            task.agent_name == agent_name and task.status in {"queued", "running"}
-            for task in self._tasks.values()
+    def _active_task_counts_locked(self) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for task in self._tasks.values():
+            if task.agent_name and task.status in {"queued", "running"}:
+                counts[task.agent_name] = counts.get(task.agent_name, 0) + 1
+        return counts
+
+    def _retry_unavailable_locked(
+        self,
+        task: AgentTask,
+        error: Exception,
+    ) -> None:
+        failed_agent = str(task.agent_name)
+        try:
+            choice = self._select_agent_locked(task, None, {failed_agent})
+        except AgentUnavailableError:
+            delay = self._agent_pool.retry_delay(task.purpose, task.required_features)
+            queued = self._transition_locked(
+                task,
+                "queued",
+                agent_name=None,
+                last_agent_name=failed_agent,
+                retry_after_seconds=round(delay, 3),
+                error_type=type(error).__name__,
+                error_message=str(error),
+            )
+            self._schedule_retry_locked(queued, delay)
+            return
+        queued = self._transition_locked(
+            task,
+            "queued",
+            agent_name=choice.name,
+            last_agent_name=failed_agent,
+            fallback_count=task.fallback_count + 1,
+            retry_after_seconds=0.0,
+            error_type=type(error).__name__,
+            error_message=str(error),
+        )
+        self.record_event(
+            "agent_task.fallback_selected",
+            {"task_id": task.task_id, "failed_agent_name": failed_agent, **choice.to_dict()},
+        )
+        self._record_retry_scheduled(queued, 0.0)
+        self._submit_locked(choice.name, task.task_id)
+
+    def _schedule_retry_locked(self, task: AgentTask, delay: float) -> None:
+        self._record_retry_scheduled(task, delay)
+        timer = Timer(delay, self._retry_task, args=(task.task_id,))
+        timer.daemon = True
+        self._retry_timers.append(timer)
+        timer.start()
+
+    def _retry_task(self, task_id: str) -> None:
+        with self._condition:
+            task = self._require_task_locked(task_id)
+            if self._closed or task.status != "queued" or task.agent_name is not None:
+                return
+            try:
+                choice = self._select_agent_locked(task, None)
+            except AgentUnavailableError:
+                delay = self._agent_pool.retry_delay(task.purpose, task.required_features)
+                self._schedule_retry_locked(task, delay)
+                return
+            updated = replace(
+                task,
+                agent_name=choice.name,
+                retry_after_seconds=None,
+                error_type=None,
+                error_message=None,
+            )
+            self._tasks[task_id] = updated
+            self.record_event(
+                "agent_task.retry_dispatched",
+                {"task_id": task_id, **choice.to_dict()},
+            )
+            self._condition.notify_all()
+            self._submit_locked(choice.name, task_id)
+
+    def _submit_locked(self, agent_name: str, task_id: str) -> None:
+        executor = self._executors.setdefault(
+            agent_name,
+            ThreadPoolExecutor(max_workers=1, thread_name_prefix=f"agent-{agent_name}"),
+        )
+        executor.submit(self._consume_task, task_id)
+
+    def _record_retry_scheduled(self, task: AgentTask, delay: float) -> None:
+        self.record_event(
+            "agent_task.retry_scheduled",
+            {
+                "task_id": task.task_id,
+                "attempt_count": task.attempt_count,
+                "retry_after_seconds": round(delay, 3),
+            },
+        )
+
+    def _fail_task_locked(self, task: AgentTask, error: Exception) -> None:
+        self._transition_locked(
+            task,
+            "failed",
+            error_type=type(error).__name__,
+            error_message=str(error),
         )
 
     def _matching_tasks_locked(
@@ -555,20 +568,6 @@ def create_agent_task_queue(
         run_subagent,
         record_event,
         record_result,
-    )
-
-
-def _agent_matches_task(agent: dict[str, object], task: AgentTask) -> bool:
-    purpose = str(agent.get("purpose", "auto")).strip().lower()
-    features = agent.get("required_features", [])
-    supported = {
-        str(item).strip().lower()
-        for item in features
-        if isinstance(item, str) and item.strip()
-    } if isinstance(features, list | tuple) else set()
-    return (
-        (task.purpose == "auto" or purpose in {"auto", task.purpose})
-        and set(task.required_features) <= supported
     )
 
 

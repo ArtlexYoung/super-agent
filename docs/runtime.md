@@ -127,10 +127,16 @@ Subagents are composed in code:
 ```python
 main = Agent()
 worker = Agent()
-main.add_subagent(worker, name="worker", description="Handles repository changes")
+main.add_subagent(
+    worker,
+    name="worker",
+    description="Handles repository changes",
+    weight=1.5,
+)
 ```
 
-Omit `name` to receive `subagent01`, `subagent02`, and so on. The model can list and call
+Omit `name` to receive `subagent01`, `subagent02`, and so on. Weight defaults to `1`; a higher
+positive weight increases automatic dispatch priority. The model can list and call
 registered subagents through explicit tools. Each child owns its configuration, model,
 Skills, and storage scope. Task Skill selection belongs to each run and does not mutate
 later runs.
@@ -171,6 +177,9 @@ compress_after_tasks = 8
 summary_chars = 2000
 max_nested_results = 8
 agent_selection = "least_busy"
+circuit_breaker_failures = 1
+circuit_breaker_wait_seconds = 30
+retry_unavailable_times = 1
 ```
 
 Queue records can be `full`, `summary`, or `adaptive`. Adaptive mode keeps the first
@@ -181,10 +190,23 @@ already-started task. Summary child runs also omit model text, tool arguments, a
 prompts from their persisted Runtime events. Their live result still contains the configured
 preview needed by the parent Agent to compare a batch.
 
-`agent_selection = "least_busy"` preserves the general queue behavior. The optional `rotate`
+Automatic selection scores each Agent as `weight / (1 + total model price)`, then adjusts for
+its current queue load. Total price is the sum of model Skill input, output, cache-creation, and
+cache-read prices per million tokens; omitted prices are `0`. Selection and dispatch events
+record the weight, price breakdown, estimated model, and score used for the decision.
+
+`agent_selection = "least_busy"` uses that weighted price score. The optional `rotate`
 mode cycles through every compatible Agent even when earlier tasks have already finished. It
 rejects an explicit `agent_name`, records `selected_by=skill_rotation` and the eligible Agent
 count, and lets each selected Agent use its own model configuration.
+
+Unavailable Provider, connection, timeout, HTTP 429, and HTTP 5xx failures count toward the
+run-scoped circuit breaker. An open Agent is skipped in favor of another compatible Agent. If
+none is ready, the task remains visibly queued until the cooldown expires, then reserves one
+half-open probe. Success closes the circuit; failure reopens it. `retry_unavailable_times` bounds
+actual reruns, and ordinary task, tool, validation, and model-output errors fail without opening
+the circuit. Events include `circuit_opened`, `fallback_selected`, `retry_scheduled`,
+`circuit_half_open`, and `circuit_closed`; retries never happen silently.
 
 Available wake triggers are `timeout`, `any_task_finished`, `any_task_completed`,
 `any_task_failed`, `all_tasks_finished`, and `selected_tasks_finished`. Task states move

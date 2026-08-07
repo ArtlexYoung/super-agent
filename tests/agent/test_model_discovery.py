@@ -112,6 +112,30 @@ class ModelSkillTests(unittest.TestCase):
         self.assertIn("declared_purpose=code-review", assignment.evidence)
         self.assertIn("observed_reliability=1.0000", assignment.evidence)
 
+    def test_model_assignment_prefers_lower_price_when_other_evidence_matches(self) -> None:
+        expensive = _profile_for_assignment(
+            "expensive",
+            default=False,
+            quality=0.8,
+            input_cost=8,
+        )
+        efficient = _profile_for_assignment(
+            "efficient",
+            default=False,
+            quality=0.8,
+            input_cost=0.5,
+        )
+
+        assignment = assign_model_for_task(
+            [expensive, efficient],
+            "code-review",
+            ("text",),
+            [],
+        )
+
+        self.assertEqual("model:efficient", assignment.profile.key)
+        self.assertIn("configured_total_cost=0.5000", assignment.evidence)
+
     def test_environment_discovers_openai_without_exposing_key(self) -> None:
         environment = {"OPENAI_API_KEY": "secret-value"}
         profile = select_default_model_profile(
@@ -161,6 +185,12 @@ class ModelSkillTests(unittest.TestCase):
             self.assertEqual("unit-model", agent.model_profile.model)
             self.assertEqual(["summary"], agent.model_profile.traits.purposes)
             self.assertEqual(0.75, agent.model_profile.traits.quality_score)
+            self.assertAlmostEqual(1.4, agent.model_profile.traits.total_cost_per_million)
+            self.assertEqual(
+                0.1,
+                agent.model_profile.traits.cache_creation_cost_per_million,
+            )
+            self.assertEqual(0.3, agent.model_profile.traits.cache_read_cost_per_million)
             self.assertEqual("skill", agent.model_profile.source)
 
     def test_selected_model_skill_is_recorded_and_evaluated_as_used(self) -> None:
@@ -554,20 +584,34 @@ quality_score = 0.75
 expected_latency_ms = 100
 input_cost_per_million = 0.2
 output_cost_per_million = 0.8
+cache_creation_cost_per_million = 0.1
+cache_read_cost_per_million = 0.3
 agent_can_update_connection = false
 """.strip(),
         encoding="utf-8",
     )
 
 
-def _profile_for_assignment(name: str, *, default: bool, quality: float) -> ModelProfile:
+def _profile_for_assignment(
+    name: str,
+    *,
+    default: bool,
+    quality: float,
+    input_cost: float = 0,
+) -> ModelProfile:
     return ModelProfile(
         name=name,
         description=name,
         version="test",
         model=name,
         connection=ProviderConnection("mock"),
-        traits=ModelTraits(["text"], ["code-review"], [], quality),
+        traits=ModelTraits(
+            ["text"],
+            ["code-review"],
+            [],
+            quality,
+            input_cost_per_million=input_cost,
+        ),
         default=default,
         source="test",
         skill_key=f"model:{name}",

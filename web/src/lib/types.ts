@@ -84,6 +84,9 @@ export interface ModelProfile {
   expected_latency_ms: number
   input_cost_per_million: number
   output_cost_per_million: number
+  cache_creation_cost_per_million: number
+  cache_read_cost_per_million: number
+  total_cost_per_million: number
   source: string
   skill_key: string | null
   content_sha256: string | null
@@ -110,6 +113,8 @@ export interface ModelSkillInput {
   expected_latency_ms: number | null
   input_cost_per_million: number | null
   output_cost_per_million: number | null
+  cache_creation_cost_per_million: number | null
+  cache_read_cost_per_million: number | null
   previous_name: string
 }
 

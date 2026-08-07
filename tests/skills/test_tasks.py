@@ -48,6 +48,18 @@ class TaskSkillTests(unittest.TestCase):
             self.assertEqual("adaptive", deep_policy.tools["agent_tasks"]["record_mode"])
             self.assertEqual(8, deep_policy.tools["agent_tasks"]["compress_after_tasks"])
             self.assertEqual("rotate", deep_policy.tools["agent_tasks"]["agent_selection"])
+            self.assertEqual(
+                1,
+                common_multi_policy.tools["agent_tasks"]["circuit_breaker_failures"],
+            )
+            self.assertEqual(
+                30,
+                deep_policy.tools["agent_tasks"]["circuit_breaker_wait_seconds"],
+            )
+            self.assertEqual(
+                1,
+                deep_policy.tools["agent_tasks"]["retry_unavailable_times"],
+            )
             self.assertIn("General task chain", common.read_instructions().content)
             self.assertIn("Repository coding chain", code.read_instructions().content)
             self.assertIn("global search owner", deep.read_instructions().content)

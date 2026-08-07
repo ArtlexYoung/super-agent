@@ -418,6 +418,8 @@ def _selected_model(
         evidence=evidence,
         input_cost_per_million=profile.traits.input_cost_per_million,
         output_cost_per_million=profile.traits.output_cost_per_million,
+        cache_creation_cost_per_million=profile.traits.cache_creation_cost_per_million,
+        cache_read_cost_per_million=profile.traits.cache_read_cost_per_million,
     )
 
 

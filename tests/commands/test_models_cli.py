@@ -36,6 +36,7 @@ class ModelsCliTests(unittest.TestCase):
             self.assertFalse(models["fast"]["default"])
             self.assertTrue(models["precise"]["default"])
             self.assertEqual(0.95, models["precise"]["quality_score"])
+            self.assertEqual(0.3, models["precise"]["cache_creation_cost_per_million"])
 
             removed = StringIO()
             with redirect_stdout(removed):
@@ -170,6 +171,8 @@ def _model_request(name: str, *, default: bool) -> dict[str, object]:
         "expected_latency_ms": 100,
         "input_cost_per_million": 0.1,
         "output_cost_per_million": 0.2,
+        "cache_creation_cost_per_million": 0.3,
+        "cache_read_cost_per_million": 0.4,
     }
 
 

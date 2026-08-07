@@ -296,6 +296,158 @@ class MultiAgentTaskTests(unittest.TestCase):
         self.assertEqual({"rotate"}, {item["agent_selection"] for item in dispatches})
         self.assertEqual({2}, {item["eligible_agent_count"] for item in dispatches})
 
+    def test_weighted_price_selection_prefers_high_weight_low_price_agent(self) -> None:
+        assignments = []
+        events = []
+
+        def consume(name: str, prompt: str, _record_options) -> dict[str, object]:
+            assignments.append(name)
+            return {"name": name, "text": prompt, "run_id": "run"}
+
+        queue = AgentTaskQueue(
+            AgentTaskQueueSettings(max_wait_seconds=1),
+            [
+                _priced_agent("expensive", weight=1, input_price=8),
+                _priced_agent("efficient", weight=2, input_price=0.5),
+            ],
+            consume,
+            lambda name, data: events.append((name, data)),
+        )
+        tools = {tool.name: tool for tool in queue.create_tools()}
+        tools["create_agent_task"].handler({
+            "prompt": "experiment",
+            "purpose": "experiment",
+            "required_features": ["text"],
+        })
+        dispatched = tools["dispatch_agent_task"].handler({"task_id": "agent-task-01"})
+        tools["wait_for_agent_tasks"].handler({
+            "trigger": "all_tasks_finished",
+            "max_wait_seconds": 1,
+        })
+        queue.close()
+
+        self.assertEqual(["efficient"], assignments)
+        self.assertEqual("weighted_price", dispatched["selected_by"])
+        self.assertEqual(2.0, dispatched["weight"])
+        self.assertEqual(0.5, dispatched["pricing"]["total_cost_per_million"])
+
+    def test_unavailable_agent_opens_circuit_and_falls_back(self) -> None:
+        calls = []
+        events = []
+
+        def consume(name: str, prompt: str, _record_options) -> dict[str, object]:
+            calls.append(name)
+            if name == "primary":
+                raise ConnectionError("provider offline")
+            return {"name": name, "text": prompt, "run_id": "fallback-run"}
+
+        queue = AgentTaskQueue(
+            AgentTaskQueueSettings(max_wait_seconds=1),
+            [_priced_agent("primary", weight=2), _priced_agent("fallback", weight=1)],
+            consume,
+            lambda name, data: events.append((name, data)),
+        )
+        tools = {tool.name: tool for tool in queue.create_tools()}
+        tools["create_agent_task"].handler({
+            "prompt": "experiment",
+            "purpose": "experiment",
+            "required_features": ["text"],
+        })
+        tools["dispatch_agent_task"].handler({"task_id": "agent-task-01"})
+        waited = tools["wait_for_agent_tasks"].handler({
+            "trigger": "all_tasks_finished",
+            "max_wait_seconds": 1,
+        })
+        queue.close()
+
+        task = waited["tasks"][0]
+        event_names = [name for name, _data in events]
+        self.assertEqual(["primary", "fallback"], calls)
+        self.assertEqual("completed", task["status"])
+        self.assertEqual("fallback", task["agent_name"])
+        self.assertEqual("primary", task["last_agent_name"])
+        self.assertEqual(1, task["fallback_count"])
+        self.assertIn("agent_task.circuit_opened", event_names)
+        self.assertIn("agent_task.fallback_selected", event_names)
+
+    def test_open_circuit_retries_half_open_and_closes_after_success(self) -> None:
+        attempts = 0
+        events = []
+
+        def consume(name: str, prompt: str, _record_options) -> dict[str, object]:
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                raise TimeoutError("provider timed out")
+            return {"name": name, "text": prompt, "run_id": "recovered-run"}
+
+        queue = AgentTaskQueue(
+            AgentTaskQueueSettings(
+                max_wait_seconds=1,
+                circuit_breaker_wait_seconds=0.01,
+            ),
+            [_priced_agent("worker")],
+            consume,
+            lambda name, data: events.append((name, data)),
+        )
+        tools = {tool.name: tool for tool in queue.create_tools()}
+        tools["create_agent_task"].handler({
+            "prompt": "experiment",
+            "purpose": "experiment",
+            "required_features": ["text"],
+        })
+        tools["dispatch_agent_task"].handler({"task_id": "agent-task-01"})
+        result = tools["wait_for_agent_tasks"].handler({
+            "trigger": "all_tasks_finished",
+            "max_wait_seconds": 1,
+        })
+        queue.close()
+
+        event_names = [name for name, _data in events]
+        self.assertEqual(2, attempts)
+        self.assertEqual("completed", result["tasks"][0]["status"])
+        self.assertEqual(2, result["tasks"][0]["attempt_count"])
+        self.assertIn("agent_task.retry_scheduled", event_names)
+        self.assertIn("agent_task.circuit_half_open", event_names)
+        self.assertIn("agent_task.circuit_closed", event_names)
+
+    def test_failed_half_open_probe_reopens_circuit_and_finishes_failed(self) -> None:
+        attempts = 0
+        events = []
+
+        def consume(_name: str, _prompt: str, _record_options) -> dict[str, object]:
+            nonlocal attempts
+            attempts += 1
+            raise ConnectionError("still offline")
+
+        queue = AgentTaskQueue(
+            AgentTaskQueueSettings(
+                max_wait_seconds=1,
+                circuit_breaker_wait_seconds=0.01,
+            ),
+            [_priced_agent("worker")],
+            consume,
+            lambda name, data: events.append((name, data)),
+        )
+        tools = {tool.name: tool for tool in queue.create_tools()}
+        tools["create_agent_task"].handler({
+            "prompt": "experiment",
+            "purpose": "experiment",
+            "required_features": ["text"],
+        })
+        tools["dispatch_agent_task"].handler({"task_id": "agent-task-01"})
+        result = tools["wait_for_agent_tasks"].handler({
+            "trigger": "all_tasks_finished",
+            "max_wait_seconds": 1,
+        })
+        queue.close()
+
+        event_names = [name for name, _data in events]
+        self.assertEqual(2, attempts)
+        self.assertEqual("failed", result["tasks"][0]["status"])
+        self.assertEqual(2, event_names.count("agent_task.circuit_opened"))
+        self.assertNotIn("agent_task.circuit_closed", event_names)
+
     def test_no_suitable_agent_is_a_visible_dispatch_failure(self) -> None:
         provider = MockProvider(
             tool_responses=[
@@ -381,6 +533,7 @@ class MultiAgentTaskTests(unittest.TestCase):
         self.assertEqual("selected_tasks_finished", selected["reason"])
         self.assertIn("agent_task.failed", [name for name, _data in events])
         self.assertIn("agent_task.cancelled", [name for name, _data in events])
+        self.assertNotIn("agent_task.circuit_opened", [name for name, _data in events])
 
 
 def _call(call_id: str, name: str, prompt: str, purpose: str, task_id: str | None = None) -> ToolCall:
@@ -393,6 +546,27 @@ def _call(call_id: str, name: str, prompt: str, purpose: str, task_id: str | Non
 
 def _wait_call(call_id: str, trigger: str) -> ToolCall:
     return ToolCall(call_id, "wait_for_agent_tasks", {"trigger": trigger, "max_wait_seconds": 1})
+
+
+def _priced_agent(
+    name: str,
+    *,
+    weight: float = 1,
+    input_price: float = 0,
+) -> dict[str, object]:
+    return {
+        "name": name,
+        "purpose": "experiment",
+        "required_features": ["text"],
+        "weight": weight,
+        "models": [{
+            "model": f"{name}-model",
+            "supports": ["text"],
+            "purposes": ["experiment"],
+            "input_cost_per_million": input_price,
+            "total_cost_per_million": input_price,
+        }],
+    }
 
 
 def _agent(root: Path, name: str, provider: MockProvider | None = None) -> Agent:

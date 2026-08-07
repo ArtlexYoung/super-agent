@@ -16,6 +16,9 @@ Rotation changes the Agent and therefore its independently configured model set.
 also select another configured model through its normal model tools. Preserve the same metric
 contract across rotations so results remain comparable. If only one compatible Agent exists,
 report that diversity limit instead of describing repeated runs as independent evidence.
+Within the rotating set, declared Agent weight and model prices determine the stable order.
+Unavailable Agents are skipped while their circuit is open and rejoin only after a recorded
+half-open probe succeeds.
 
 ## Main Agent: global search owner
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import shutil
@@ -18,6 +19,14 @@ from skill.disclosure import ProgressiveDisclosureCore, SkillDisclosure
 from core.skill_use.models import ModelProfile, create_model_profile_from_skill_disclosure
 from skill.manifest import DEFAULT_SKILL_FRESHNESS, SkillEntry, SkillManifest
 from core.skill_use.files.validation import validate_skill_directory
+
+
+MODEL_PRICE_FIELDS = (
+    "input_cost_per_million",
+    "output_cost_per_million",
+    "cache_creation_cost_per_million",
+    "cache_read_cost_per_million",
+)
 
 
 @dataclass(frozen=True)
@@ -38,6 +47,8 @@ class ModelSkillInput:
     expected_latency_ms: int | None = None
     input_cost_per_million: float | None = None
     output_cost_per_million: float | None = None
+    cache_creation_cost_per_million: float | None = None
+    cache_read_cost_per_million: float | None = None
     previous_name: str = ""
 
 
@@ -233,15 +244,11 @@ def model_skill_input_from_dict(value: object) -> ModelSkillInput:
                 value.get("expected_latency_ms"),
                 "expected_latency_ms",
             ),
-            input_cost_per_million=_optional_number(
-                value.get("input_cost_per_million"),
-                "input_cost_per_million",
-            ),
-            output_cost_per_million=_optional_number(
-                value.get("output_cost_per_million"),
-                "output_cost_per_million",
-            ),
             previous_name=_optional_text(value.get("previous_name"), "previous_name"),
+            **{
+                name: _optional_number(value.get(name), name)
+                for name in MODEL_PRICE_FIELDS
+            },
         )
     )
 
@@ -266,14 +273,10 @@ def validate_model_skill_input(request: ModelSkillInput) -> ModelSkillInput:
             request.expected_latency_ms,
             "expected_latency_ms",
         ),
-        input_cost_per_million=_optional_number(
-            request.input_cost_per_million,
-            "input_cost_per_million",
-        ),
-        output_cost_per_million=_optional_number(
-            request.output_cost_per_million,
-            "output_cost_per_million",
-        ),
+        **{
+            name: _optional_number(getattr(request, name), name)
+            for name in MODEL_PRICE_FIELDS
+        },
     )
 
 
@@ -321,16 +324,8 @@ def _create_model_skill_document(
     _add_optional(configuration, "api_key_env", request.api_key_env)
     _add_optional(configuration, "quality_score", request.quality_score)
     _add_optional(configuration, "expected_latency_ms", request.expected_latency_ms)
-    _add_optional(
-        configuration,
-        "input_cost_per_million",
-        request.input_cost_per_million,
-    )
-    _add_optional(
-        configuration,
-        "output_cost_per_million",
-        request.output_cost_per_million,
-    )
+    for name in MODEL_PRICE_FIELDS:
+        _add_optional(configuration, name, getattr(request, name))
     return _ModelSkillDocument(manifest, configuration)
 
 
@@ -480,6 +475,8 @@ def _model_skill_toml(document: _ModelSkillDocument) -> str:
         "expected_latency_ms",
         "input_cost_per_million",
         "output_cost_per_million",
+        "cache_creation_cost_per_million",
+        "cache_read_cost_per_million",
         "agent_can_update_connection",
     ):
         if name in document.configuration:
@@ -573,7 +570,9 @@ def _optional_number(
     if isinstance(value, bool) or not isinstance(value, int | float):
         raise TypeError(f"model Skill {name} must be a number")
     number = float(value)
-    if number < 0 or (maximum is not None and number > maximum):
+    if not math.isfinite(number) or number < 0 or (
+        maximum is not None and number > maximum
+    ):
         limit = "non-negative" if maximum is None else f"between 0 and {maximum:g}"
         raise ValueError(f"model Skill {name} must be {limit}")
     return number

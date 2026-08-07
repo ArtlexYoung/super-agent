@@ -136,6 +136,8 @@ class WebAPIContractTests(unittest.TestCase):
             self.assertEqual(201, created.status)
             self.assertEqual("fast", created_models[0]["name"])
             self.assertEqual("OPENAI_API_KEY", created_models[0]["api_key_env"])
+            self.assertEqual(0.3, created_models[0]["cache_creation_cost_per_million"])
+            self.assertEqual(1.0, created_models[0]["total_cost_per_million"])
             self.assertFalse((root / "skills" / "model" / "fast").exists())
             self.assertEqual([], removed_models)
 
@@ -158,6 +160,8 @@ def _model_request() -> dict[str, object]:
         "expected_latency_ms": 250,
         "input_cost_per_million": 0.1,
         "output_cost_per_million": 0.2,
+        "cache_creation_cost_per_million": 0.3,
+        "cache_read_cost_per_million": 0.4,
     }
 
 

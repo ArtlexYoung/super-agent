@@ -1155,6 +1155,24 @@ Status: implemented.
 - Record the selection strategy, eligible Agent count, and `skill_rotation` decision in normal
   dispatch events, and prove sequential rotation with a deterministic queue test.
 
+## v0.1.24: Weighted, Priced, Resilient Subagents
+
+Status: implemented.
+
+- Add a positive code-defined weight to every registered subagent, defaulting to `1`, and add
+  input, output, cache-creation, and cache-read prices to model Skills.
+- Prefer compatible Agents with higher weight and lower total model price while retaining queue
+  load balancing; keep deep-optimization rotation across the ranked compatible set.
+- Record the selected Agent, estimated model, weight, four-part pricing, score, and selection
+  policy so every automatic dispatch decision remains inspectable.
+- Add run-scoped Agent circuit breakers with explicit unavailable-error classification, bounded
+  retries, immediate compatible fallback, cooldown, one half-open probe, and auditable state
+  changes without adding Provider fallback behavior.
+- Keep cache cost reporting honest: configured cache prices are recorded, while estimated call
+  cost explicitly excludes cache until a Provider supplies measured cache token usage.
+- Preserve the dependency-free default and all per-file and complexity limits. Add one focused
+  Runtime module and raise only the aggregate Python source budget from 20,500 to 21,000 lines.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

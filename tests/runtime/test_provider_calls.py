@@ -62,6 +62,10 @@ class ProviderCallTests(unittest.TestCase):
             model="test",
             purpose="answer",
             messages=({"role": "user", "content": "hello"},),
+            input_cost_per_million=0.1,
+            output_cost_per_million=0.2,
+            cache_creation_cost_per_million=0.3,
+            cache_read_cost_per_million=0.4,
         )
 
         response = call_chat_model(
@@ -75,6 +79,9 @@ class ProviderCallTests(unittest.TestCase):
             ["model.call.selected", "model.call.completed"],
             [event_type for event_type, _data in events],
         )
+        metrics = events[-1][1]
+        self.assertEqual(0.3, metrics["pricing"]["cache_creation_cost_per_million"])
+        self.assertTrue(metrics["estimated_cost_excludes_cache"])
 
     def test_provider_failure_is_recorded_and_raised_without_fallback(self) -> None:
         events: list[tuple[str, dict[str, object]]] = []

@@ -27,6 +27,21 @@ class SubAgentTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "already exists: worker"):
                 main.add_subagent(_agent(root, "reviewer"), name="worker")
 
+    def test_subagent_weight_defaults_to_one_and_rejects_invalid_values(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            main = _agent(root, "main")
+            main.add_subagent(_agent(root, "default"), name="default")
+            main.add_subagent(_agent(root, "preferred"), name="preferred", weight=2.5)
+
+            self.assertEqual([1.0, 2.5], [item.weight for item in main.subagents])
+            for value in (0, -1, float("inf"), float("nan")):
+                with self.subTest(value=value), self.assertRaisesRegex(
+                    ValueError,
+                    "finite and positive",
+                ):
+                    main.add_subagent(_agent(root, "invalid"), weight=value)
+
     def test_model_delegates_only_through_the_subagent_action(self) -> None:
         provider = _delegate_provider("coder", "write the implementation", "main-final")
         with tempfile.TemporaryDirectory() as tmp:

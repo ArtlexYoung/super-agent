@@ -250,6 +250,24 @@ export function ModelEditor(props: ModelEditorProps) {
                         update("output_cost_per_million", value)
                       }
                     />
+                    <NumberInput
+                      label="缓存创建成本 / 百万 token"
+                      help="供应商创建提示缓存的单价；不支持或不计费时可留空。"
+                      value={model.cache_creation_cost_per_million}
+                      step="0.01"
+                      onChange={(value) =>
+                        update("cache_creation_cost_per_million", value)
+                      }
+                    />
+                    <NumberInput
+                      label="缓存读取成本 / 百万 token"
+                      help="供应商读取提示缓存的单价；不支持或不计费时可留空。"
+                      value={model.cache_read_cost_per_million}
+                      step="0.01"
+                      onChange={(value) =>
+                        update("cache_read_cost_per_million", value)
+                      }
+                    />
                   </div>
                 </CollapsibleContent>
               </Collapsible>

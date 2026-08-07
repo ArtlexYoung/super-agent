@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import os
 from dataclasses import dataclass, replace
 from typing import Mapping
@@ -36,6 +37,8 @@ MODEL_CONFIGURATION_FIELDS = {
     "expected_latency_ms",
     "input_cost_per_million",
     "output_cost_per_million",
+    "cache_creation_cost_per_million",
+    "cache_read_cost_per_million",
     "agent_can_update_connection",
 }
 
@@ -49,6 +52,20 @@ class ModelTraits:
     expected_latency_ms: int | None = None
     input_cost_per_million: float | None = None
     output_cost_per_million: float | None = None
+    cache_creation_cost_per_million: float | None = None
+    cache_read_cost_per_million: float | None = None
+
+    @property
+    def total_cost_per_million(self) -> float:
+        return sum(
+            value or 0.0
+            for value in (
+                self.input_cost_per_million,
+                self.output_cost_per_million,
+                self.cache_creation_cost_per_million,
+                self.cache_read_cost_per_million,
+            )
+        )
 
 
 @dataclass(frozen=True)
@@ -113,6 +130,14 @@ def create_model_profile_from_skill_disclosure(
             output_cost_per_million=_optional_nonnegative_number(
                 configuration,
                 "output_cost_per_million",
+            ),
+            cache_creation_cost_per_million=_optional_nonnegative_number(
+                configuration,
+                "cache_creation_cost_per_million",
+            ),
+            cache_read_cost_per_million=_optional_nonnegative_number(
+                configuration,
+                "cache_read_cost_per_million",
             ),
         ),
         default=_boolean(configuration, "default", False),
@@ -276,6 +301,9 @@ def model_profile_to_dict(
         "expected_latency_ms": traits.expected_latency_ms,
         "input_cost_per_million": traits.input_cost_per_million,
         "output_cost_per_million": traits.output_cost_per_million,
+        "cache_creation_cost_per_million": traits.cache_creation_cost_per_million,
+        "cache_read_cost_per_million": traits.cache_read_cost_per_million,
+        "total_cost_per_million": traits.total_cost_per_million,
         "source": profile.source,
         "skill_key": profile.skill_key or None,
         "content_sha256": profile.content_sha256 or None,
@@ -283,6 +311,22 @@ def model_profile_to_dict(
         "agent_can_update": profile.agent_can_update,
         "agent_can_update_connection": profile.agent_can_update_connection,
         "ready": model_profile_is_ready(profile, environment),
+    }
+
+
+def model_dispatch_to_dict(profile: ModelProfile) -> dict[str, object]:
+    """Expose only model contract facts needed before Agent dispatch."""
+    traits = profile.traits
+    return {
+        "key": profile.key,
+        "model": profile.model,
+        "supports": list(traits.supports),
+        "purposes": list(traits.purposes),
+        "input_cost_per_million": traits.input_cost_per_million or 0.0,
+        "output_cost_per_million": traits.output_cost_per_million or 0.0,
+        "cache_creation_cost_per_million": traits.cache_creation_cost_per_million or 0.0,
+        "cache_read_cost_per_million": traits.cache_read_cost_per_million or 0.0,
+        "total_cost_per_million": traits.total_cost_per_million,
     }
 
 
@@ -411,8 +455,8 @@ def _optional_nonnegative_number(
     if isinstance(value, bool) or not isinstance(value, int | float):
         raise ValueError(f"model Skill {name} must be a TOML number")
     result = float(value)
-    if result < 0:
-        raise ValueError(f"model Skill {name} cannot be negative")
+    if not math.isfinite(result) or result < 0:
+        raise ValueError(f"model Skill {name} must be finite and non-negative")
     return result
 
 

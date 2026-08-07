@@ -79,6 +79,8 @@ class ProviderCall:
     tools: tuple[ToolDefinition, ...] | None = None
     input_cost_per_million: float = 0.0
     output_cost_per_million: float = 0.0
+    cache_creation_cost_per_million: float = 0.0
+    cache_read_cost_per_million: float = 0.0
     selection: dict[str, object] | None = None
 
 
@@ -104,6 +106,7 @@ def call_chat_model(
         "profile": call.profile_key,
         "model": call.model,
         "purpose": call.purpose,
+        "pricing": _provider_call_pricing(call),
         **dict(call.selection or {}),
     }
     record_event("model.call.selected", selected)
@@ -309,7 +312,21 @@ def _provider_call_metrics(
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
         "estimated_cost": (input_cost + output_cost) / 1_000_000,
+        "pricing": _provider_call_pricing(call),
+        "estimated_cost_excludes_cache": bool(
+            call.cache_creation_cost_per_million or call.cache_read_cost_per_million
+        ),
     }
+
+
+def _provider_call_pricing(call: ProviderCall) -> dict[str, float]:
+    pricing = {
+        "input_cost_per_million": call.input_cost_per_million,
+        "output_cost_per_million": call.output_cost_per_million,
+        "cache_creation_cost_per_million": call.cache_creation_cost_per_million,
+        "cache_read_cost_per_million": call.cache_read_cost_per_million,
+    }
+    return {**pricing, "total_cost_per_million": sum(pricing.values())}
 
 
 def _model_response_text(response: ModelResponse) -> str:

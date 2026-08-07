@@ -183,6 +183,8 @@ function emptyModelInput(defaultModel: boolean): ModelSkillInput {
     expected_latency_ms: 1000,
     input_cost_per_million: null,
     output_cost_per_million: null,
+    cache_creation_cost_per_million: null,
+    cache_read_cost_per_million: null,
     previous_name: "",
   }
 }
@@ -205,6 +207,8 @@ function modelInputFromProfile(model: ModelProfile): ModelSkillInput {
     expected_latency_ms: model.expected_latency_ms,
     input_cost_per_million: model.input_cost_per_million,
     output_cost_per_million: model.output_cost_per_million,
+    cache_creation_cost_per_million: model.cache_creation_cost_per_million,
+    cache_read_cost_per_million: model.cache_read_cost_per_million,
     previous_name: model.skill_key ? model.name : "",
   }
 }

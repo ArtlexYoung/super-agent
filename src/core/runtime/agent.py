@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, replace
+import math
 from pathlib import Path
 from threading import RLock
 from typing import TYPE_CHECKING, Callable
@@ -45,6 +46,7 @@ from core.skill_use.models import (
     create_direct_provider_profile,
     read_model_profiles,
     select_default_model_profile,
+    model_dispatch_to_dict,
 )
 from skill.manifest import SkillManifest
 
@@ -60,6 +62,7 @@ class SubAgent:
     created_by_agent: bool = False
     purpose: str = "auto"
     required_features: tuple[str, ...] = ("text",)
+    weight: float = 1.0
 
 
 class Agent:
@@ -134,6 +137,7 @@ class Agent:
         created_by_agent: bool = False,
         purpose: str = "auto",
         required_features: tuple[str, ...] = ("text",),
+        weight: float = 1.0,
     ) -> str:
         subagent_name = self._make_next_subagent_name() if name is None else name.strip()
         if not subagent_name:
@@ -148,6 +152,11 @@ class Agent:
         )
         if not clean_features:
             raise ValueError("subagent required_features cannot be empty")
+        if isinstance(weight, bool) or not isinstance(weight, int | float):
+            raise TypeError("subagent weight must be a number")
+        clean_weight = float(weight)
+        if not math.isfinite(clean_weight) or clean_weight <= 0:
+            raise ValueError("subagent weight must be finite and positive")
         self._subagents.append(
             SubAgent(
                 name=subagent_name,
@@ -156,6 +165,7 @@ class Agent:
                 created_by_agent=created_by_agent,
                 purpose=clean_purpose,
                 required_features=clean_features,
+                weight=clean_weight,
             )
         )
         return subagent_name
@@ -537,6 +547,11 @@ class Agent:
                 "purpose": subagent.purpose,
                 "required_features": list(subagent.required_features),
                 "agent_name": subagent.agent.config.agent.name,
+                "weight": subagent.weight,
+                "models": [
+                    model_dispatch_to_dict(profile)
+                    for profile in subagent.agent.model_profiles
+                ],
             }
             for subagent in self._subagents
         ]
