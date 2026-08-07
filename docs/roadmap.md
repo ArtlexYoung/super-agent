@@ -1140,6 +1140,21 @@ Status: implemented.
 - Raise the explicit Python source budget from 20,000 to 20,500 lines for this central feature;
   keep the 85-file limit, per-file and function limits, and dependency-free default unchanged.
 
+## v0.1.23: Rotating Deep-Optimization Agents
+
+Status: implemented.
+
+- Add one optional `agent_selection` queue setting with explicit `least_busy` and `rotate`
+  behavior; keep the general queue default unchanged.
+- Make deep optimization rotate every compatible batch and experiment task across Agent
+  identities instead of returning to the first idle specialist.
+- Reject fixed Agent names in rotation mode so model output cannot silently restore permanent
+  task-type ownership.
+- Let each rotated Agent use its own model Skills and Provider settings, making Agent rotation
+  also a model and perspective rotation without moving model selection into the queue.
+- Record the selection strategy, eligible Agent count, and `skill_rotation` decision in normal
+  dispatch events, and prove sequential rotation with a deterministic queue test.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

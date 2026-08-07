@@ -44,6 +44,7 @@ class AgentTaskQueueSettings:
     compress_after_tasks: int = 8
     summary_chars: int = 2_000
     max_nested_results: int = 8
+    agent_selection: str = "least_busy"
 
     @classmethod
     def from_dict(cls, value: dict[str, object]) -> "AgentTaskQueueSettings":
@@ -54,6 +55,7 @@ class AgentTaskQueueSettings:
             "compress_after_tasks",
             "summary_chars",
             "max_nested_results",
+            "agent_selection",
         }
         if unknown:
             raise ValueError("unknown agent_tasks settings: " + ", ".join(sorted(unknown)))
@@ -63,6 +65,7 @@ class AgentTaskQueueSettings:
         compress_after_tasks = value.get("compress_after_tasks", 8)
         summary_chars = value.get("summary_chars", 2_000)
         max_nested_results = value.get("max_nested_results", 8)
+        agent_selection = value.get("agent_selection", "least_busy")
         if isinstance(max_tasks, bool) or not isinstance(max_tasks, int) or max_tasks <= 0:
             raise ValueError("agent_tasks max_tasks must be a positive integer")
         if isinstance(max_wait, bool) or not isinstance(max_wait, int | float) or max_wait <= 0:
@@ -90,6 +93,11 @@ class AgentTaskQueueSettings:
             or max_nested_results < 0
         ):
             raise ValueError("agent_tasks max_nested_results cannot be negative")
+        if (
+            not isinstance(agent_selection, str)
+            or agent_selection not in {"least_busy", "rotate"}
+        ):
+            raise ValueError("agent_tasks agent_selection must be least_busy or rotate")
         return cls(
             max_tasks,
             float(max_wait),
@@ -97,6 +105,7 @@ class AgentTaskQueueSettings:
             compress_after_tasks,
             summary_chars,
             max_nested_results,
+            str(agent_selection),
         )
 
     def record_options_for_task(self, task_number: int) -> SubagentRecordOptions:
@@ -176,6 +185,7 @@ class AgentTaskQueue:
         self._executors: dict[str, ThreadPoolExecutor] = {}
         self._observed_terminal: set[str] = set()
         self._started_task_count = 0
+        self._rotation_positions: dict[tuple[str, ...], int] = {}
         self._closed = False
 
     def create_tools(self) -> tuple[SkillTool, ...]:
@@ -294,18 +304,39 @@ class AgentTaskQueue:
             task = self._require_task_locked(task_id)
             if task.status != "created":
                 raise ValueError(f"agent task cannot be dispatched from {task.status}: {task_id}")
-            agent_name, selected_by = self._select_agent_locked(task, requested_agent)
+            agent_name, selected_by, candidate_count = self._select_agent_locked(
+                task,
+                requested_agent,
+            )
             queued = self._transition_locked(task, "queued", agent_name=agent_name)
             self.record_event(
                 "agent_task.dispatched",
-                {"task_id": task_id, "agent_name": agent_name, "selected_by": selected_by},
+                {
+                    "task_id": task_id,
+                    "agent_name": agent_name,
+                    "selected_by": selected_by,
+                    "agent_selection": self.settings.agent_selection,
+                    "eligible_agent_count": candidate_count,
+                    "rotation_limited": (
+                        self.settings.agent_selection == "rotate"
+                        and candidate_count < 2
+                    ),
+                },
             )
             executor = self._executors.setdefault(
                 agent_name,
                 ThreadPoolExecutor(max_workers=1, thread_name_prefix=f"agent-{agent_name}"),
             )
             executor.submit(self._consume_task, task_id)
-            return {"task": queued.to_dict(), "selected_by": selected_by}
+            return {
+                "task": queued.to_dict(),
+                "selected_by": selected_by,
+                "eligible_agent_count": candidate_count,
+                "rotation_limited": (
+                    self.settings.agent_selection == "rotate"
+                    and candidate_count < 2
+                ),
+            }
 
     def _consume_task(self, task_id: str) -> None:
         try:
@@ -420,18 +451,25 @@ class AgentTaskQueue:
         self,
         task: AgentTask,
         requested_agent: str | None,
-    ) -> tuple[str, str]:
+    ) -> tuple[str, str, int]:
         candidates = [item for item in self.subagents if _agent_matches_task(item, task)]
         if requested_agent is not None:
+            if self.settings.agent_selection == "rotate":
+                raise ValueError("agent_name cannot be fixed when agent_selection is rotate")
             selected = next(
                 (item for item in candidates if item.get("name") == requested_agent),
                 None,
             )
             if selected is None:
                 raise ValueError(f"subagent is not suitable for task {task.task_id}: {requested_agent}")
-            return requested_agent, "model"
+            return requested_agent, "model", len(candidates)
         if not candidates:
             raise ValueError(f"no suitable subagent for task: {task.task_id}")
+        if self.settings.agent_selection == "rotate":
+            names = tuple(str(item["name"]) for item in candidates)
+            position = self._rotation_positions.get(names, 0)
+            self._rotation_positions[names] = position + 1
+            return names[position % len(names)], "skill_rotation", len(candidates)
         selected = min(
             enumerate(candidates),
             key=lambda value: (
@@ -440,7 +478,7 @@ class AgentTaskQueue:
                 value[0],
             ),
         )[1]
-        return str(selected["name"]), "skill_contract"
+        return str(selected["name"]), "skill_contract", len(candidates)
 
     def _active_task_count_locked(self, agent_name: str) -> int:
         return sum(

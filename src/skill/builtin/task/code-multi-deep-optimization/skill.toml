@@ -12,3 +12,4 @@ record_mode = "adaptive"
 compress_after_tasks = 8
 summary_chars = 2000
 max_nested_results = 8
+agent_selection = "rotate"

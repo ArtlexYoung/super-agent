@@ -170,6 +170,7 @@ record_mode = "adaptive"
 compress_after_tasks = 8
 summary_chars = 2000
 max_nested_results = 8
+agent_selection = "least_busy"
 ```
 
 Queue records can be `full`, `summary`, or `adaptive`. Adaptive mode keeps the first
@@ -179,6 +180,11 @@ The policy is selected when each task starts, so concurrent consumers do not cha
 already-started task. Summary child runs also omit model text, tool arguments, and child
 prompts from their persisted Runtime events. Their live result still contains the configured
 preview needed by the parent Agent to compare a batch.
+
+`agent_selection = "least_busy"` preserves the general queue behavior. The optional `rotate`
+mode cycles through every compatible Agent even when earlier tasks have already finished. It
+rejects an explicit `agent_name`, records `selected_by=skill_rotation` and the eligible Agent
+count, and lets each selected Agent use its own model configuration.
 
 Available wake triggers are `timeout`, `any_task_finished`, `any_task_completed`,
 `any_task_failed`, `all_tasks_finished`, and `selected_tasks_finished`. Task states move
@@ -190,8 +196,8 @@ contains bounded status snapshots and normal traced subagent results.
 
 `task:code-multi-deep-optimization` reuses the same native queue for evidence-heavy coding,
 competition, and performance work. The main Agent owns global planning and parallel batches;
-each first-level batch Agent may activate `task:common-multi-producer-consumer` in its own
-Runtime and dispatch minimal experiments to its own child Agents.
+each first-level batch Agent activates the same deep-optimization Skill in its own Runtime and
+dispatches minimal experiments to its own rotating child Agents.
 
 ```python
 from super_agent import Agent
@@ -208,9 +214,12 @@ result = main.run("Optimize against the benchmark", skill="code-multi-deep-optim
 Each Agent keeps its own model, configuration, Skills, queue, and child graph. This allows
 second-level experiments to use different models and viewpoints while first-level Agents judge
 their batch evidence and the main Agent avoids optimizing only one local direction. Batch Agents
-should either start without a fixed Task Skill or select `common-multi-producer-consumer` in their
-own configuration. Experiment Agents activate `task:code` and should use isolated worktrees or
-separate workspaces for concurrent changes.
+should start without a fixed Task Skill and activate `code-multi-deep-optimization` for their
+assigned batch. Register at least two compatible batch or experiment Agents with the same broad
+purpose and different model configurations when diversity is required. The rotating queue then
+changes Agent and model without permanently assigning one hypothesis family to one specialist.
+Experiment Agents activate `task:code` and should use isolated worktrees or separate workspaces
+for concurrent changes.
 
 ## Learning
 

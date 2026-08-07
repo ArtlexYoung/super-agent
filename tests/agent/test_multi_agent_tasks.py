@@ -18,7 +18,7 @@ class MultiAgentTaskTests(unittest.TestCase):
                 ModelResponse(
                     "",
                     [ToolCall("activate", "activate_skill", {
-                        "name": "common-multi-producer-consumer",
+                        "name": "code-multi-deep-optimization",
                         "type": "task",
                     })],
                     "tool_calls",
@@ -240,6 +240,61 @@ class MultiAgentTaskTests(unittest.TestCase):
 
         self.assertEqual("reviewer", result.agent_tasks[0]["agent_name"])
         self.assertEqual("right", result.subagent_results[0].text)
+
+    def test_rotate_selection_changes_agent_across_sequential_tasks(self) -> None:
+        assignments = []
+        events = []
+
+        def consume(name: str, prompt: str, _record_options) -> dict[str, object]:
+            assignments.append(name)
+            return {"name": name, "text": prompt, "run_id": f"run-{prompt}"}
+
+        queue = AgentTaskQueue(
+            AgentTaskQueueSettings(
+                max_tasks=4,
+                max_wait_seconds=1,
+                agent_selection="rotate",
+            ),
+            [
+                {"name": "alpha", "purpose": "experiment", "required_features": ["text"]},
+                {"name": "beta", "purpose": "experiment", "required_features": ["text"]},
+            ],
+            consume,
+            lambda name, data: events.append((name, data)),
+        )
+        tools = {tool.name: tool for tool in queue.create_tools()}
+        for number in range(1, 4):
+            task_id = f"agent-task-{number:02d}"
+            tools["create_agent_task"].handler({
+                "prompt": f"experiment-{number}",
+                "purpose": "experiment",
+                "required_features": ["text"],
+            })
+            dispatched = tools["dispatch_agent_task"].handler({"task_id": task_id})
+            self.assertEqual("skill_rotation", dispatched["selected_by"])
+            self.assertEqual(2, dispatched["eligible_agent_count"])
+            tools["wait_for_agent_tasks"].handler({
+                "trigger": "selected_tasks_finished",
+                "task_ids": [task_id],
+                "max_wait_seconds": 1,
+            })
+
+        tools["create_agent_task"].handler({
+            "prompt": "fixed",
+            "purpose": "experiment",
+            "required_features": ["text"],
+        })
+        with self.assertRaisesRegex(ValueError, "cannot be fixed"):
+            tools["dispatch_agent_task"].handler({
+                "task_id": "agent-task-04",
+                "agent_name": "alpha",
+            })
+        queue.close()
+
+        self.assertEqual(["alpha", "beta", "alpha"], assignments)
+        dispatches = [data for name, data in events if name == "agent_task.dispatched"]
+        self.assertEqual({"rotate"}, {item["agent_selection"] for item in dispatches})
+        self.assertEqual({2}, {item["eligible_agent_count"] for item in dispatches})
 
     def test_no_suitable_agent_is_a_visible_dispatch_failure(self) -> None:
         provider = MockProvider(
