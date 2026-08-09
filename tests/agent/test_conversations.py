@@ -13,7 +13,7 @@ from adapter.conversations import (
     read_conversation,
 )
 from core.state.memory import Memory
-from core.evaluation.records import read_evaluation_records
+from skill.learning.records import read_evaluation_records
 from support import RecordingProvider, SequenceProvider
 
 

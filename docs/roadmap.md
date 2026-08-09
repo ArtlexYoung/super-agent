@@ -1255,6 +1255,19 @@ Status: implemented.
 - Remove every old import path without aliases or forwarding packages.
 - Keep central progressive disclosure in `skill/disclosure.py` and the task lifecycle in Core.
 
+## v0.1.31: Unified Skill Learning
+
+Status: implemented.
+
+- Move evaluation records, freshness, review, run learning, and insight projection from Core to
+  `skill/learning`.
+- Move the explicit, tested, reversible Skill updater from `skill/runtime` to
+  `skill/learning/update.py`.
+- Name the post-run entry point `skill.learning.runs.learn_from_run` so its purpose is visible
+  without a repeated `learning.learning` path.
+- Keep every learning and update module optional: ordinary stateless execution imports none of
+  them and performs no implicit evolution.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

@@ -11,7 +11,7 @@ from core.models import AgentRunOptions
 from core.provider import MockProvider
 from core.state.models import RunEvent
 from core.state.subscribers import RuntimeEventSubscriberError
-from core.evaluation.records import read_evaluation_records
+from skill.learning.records import read_evaluation_records
 
 
 class RuntimeEventSubscriberTests(unittest.TestCase):

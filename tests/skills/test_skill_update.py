@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 from core.config import CommonConfig
-from skill.runtime.update import SkillChangeCase
+from skill.learning.update import SkillChangeCase
 from super_agent import Agent
 from support import SequenceProvider
 

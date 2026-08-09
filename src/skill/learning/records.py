@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from core.evaluation.models import (
+from skill.learning.models import (
     SkillRevision,
     skill_revision_from_dict,
     skill_revision_to_dict,

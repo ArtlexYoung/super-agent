@@ -8,7 +8,7 @@ from pathlib import Path
 from core.config import CommonConfig
 from core.provider import MockProvider, ModelResponse, ToolCall
 from skill.runtime.defaults import create_progressive_skill_disclosure
-from skill.runtime.update import SkillChangeCase
+from skill.learning.update import SkillChangeCase
 from core.state.memory import create_memory_from_skill
 from skill.disclosure import ProgressiveDisclosureCore
 from super_agent import Agent

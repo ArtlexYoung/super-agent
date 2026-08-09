@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from core.evaluation.insight import project_model_calls
+from skill.learning.insight import project_model_calls
 from core.state.models import RunEvent
 from core.config import CommonConfig
 from super_agent import Agent

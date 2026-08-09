@@ -93,9 +93,9 @@ class ReleaseShapeTests(unittest.TestCase):
 
     def test_automatic_evolution_state_machine_is_removed(self) -> None:
         self.assertFalse(Path("src/core/evolution").exists())
-        self.assertTrue(Path("src/core/evaluation/learning.py").is_file())
-        self.assertTrue(Path("src/skill/runtime/update.py").is_file())
-        source = Path("src/skill/runtime/update.py").read_text(encoding="utf-8")
+        self.assertTrue(Path("src/skill/learning/runs.py").is_file())
+        self.assertTrue(Path("src/skill/learning/update.py").is_file())
+        source = Path("src/skill/learning/update.py").read_text(encoding="utf-8")
         cli_source = Path("src/adapter/cli_adapter/skills.py").read_text(
             encoding="utf-8"
         )
@@ -104,7 +104,7 @@ class ReleaseShapeTests(unittest.TestCase):
         self.assertNotIn('add_parser("promote"', cli_source)
 
     def test_skill_change_has_one_import_path(self) -> None:
-        from skill.runtime.update import SkillUpdater
+        from skill.learning.update import SkillUpdater
 
         self.assertEqual("SkillUpdater", SkillUpdater.__name__)
 
@@ -123,6 +123,7 @@ class ReleaseShapeTests(unittest.TestCase):
             "skill_scenes",
             "src/core/actions.py",
             "src/core/identity.py",
+            "src/core/evaluation",
             "src/core/secrets.py",
             "src/core/provider",
             "src/core/skill_use",
@@ -132,6 +133,8 @@ class ReleaseShapeTests(unittest.TestCase):
             "src/skill/runtime/registry.py",
             "src/skill/runtime/skills.py",
             "src/skill/runtime/workflow.py",
+            "src/skill/runtime/update.py",
+            "src/skill/learning/learning.py",
         ]
 
         self.assertEqual([], [path for path in removed_paths if Path(path).exists()])

@@ -17,7 +17,7 @@ from skill.runtime.defaults import (
     load_configured_freshness_rules_if_enabled,
 )
 from core.config import CommonConfig
-from core.evaluation.insight import explain_run_with_insight
+from skill.learning.insight import explain_run_with_insight
 from core.checks import ActionEffect, ActionRequest
 from skill.disclosure import skill_index_to_dict
 from skill.runtime.models import model_profile_to_dict, read_model_profiles

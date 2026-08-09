@@ -27,8 +27,8 @@ from skill.runtime.models import (
 )
 from skill.runtime.files.models import model_skill_input_from_dict
 from skill.runtime.files.validation import validate_skill_replacement
-from skill.runtime.update import SkillChangeCase
-from core.evaluation.records import read_evaluation_records
+from skill.learning.update import SkillChangeCase
+from skill.learning.records import read_evaluation_records
 from core.runtime.model_calls import (
     ModelUsageStats,
     assign_model_for_task,

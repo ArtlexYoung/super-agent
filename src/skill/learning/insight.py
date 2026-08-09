@@ -5,9 +5,9 @@ from __future__ import annotations
 from core.state.models import RunEvent
 from core.runtime.model_calls import list_model_usage_stats
 from core.state.events import EventStore
-from core.evaluation.freshness import calculate_skill_freshness
-from core.evaluation.records import read_evaluation_records
-from core.evaluation.rules import FreshnessRules
+from skill.learning.freshness import calculate_skill_freshness
+from skill.learning.records import read_evaluation_records
+from skill.learning.rules import FreshnessRules
 
 
 def explain_run_with_insight(

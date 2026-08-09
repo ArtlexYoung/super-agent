@@ -14,9 +14,9 @@ from core.models import LOCAL_USER_ID
 from core.checks import ActionRules
 from skill.disclosure import ProgressiveDisclosureCore, skill_index_to_dict
 from skill.runtime.files.package import SkillPackageManager
-from skill.runtime.update import SkillChangeCase
-from core.evaluation.freshness import calculate_skill_freshness
-from core.evaluation.records import read_evaluation_records
+from skill.learning.update import SkillChangeCase
+from skill.learning.freshness import calculate_skill_freshness
+from skill.learning.records import read_evaluation_records
 from skill.runtime.files.lock import write_skill_lock_file
 from skill.manifest import SkillManifest
 

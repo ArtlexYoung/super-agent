@@ -5,13 +5,13 @@ from __future__ import annotations
 import hashlib
 from datetime import datetime
 
-from core.evaluation.freshness import calculate_skill_freshness
-from core.evaluation.models import (
+from skill.learning.freshness import calculate_skill_freshness
+from skill.learning.models import (
     SkillRevision,
     skill_revision_from_dict,
     skill_revision_to_dict,
 )
-from core.evaluation.records import (
+from skill.learning.records import (
     EvaluationRecord,
     EvaluationResult,
     EvaluationSource,
@@ -20,7 +20,7 @@ from core.evaluation.records import (
     evaluation_result_from_dict,
     read_evaluation_records,
 )
-from core.evaluation.rules import FreshnessRules
+from skill.learning.rules import FreshnessRules
 from core.models import RunIdentity, RunLearningResult
 from core.runtime.model_calls import list_model_usage_stats
 from core.state.events import EventStore

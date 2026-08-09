@@ -64,14 +64,14 @@ class SkillArchitectureTests(unittest.TestCase):
     def test_runtime_learning_is_an_explicit_post_run_operation(self) -> None:
         engine_source = Path("src/core/runtime/run.py").read_text(encoding="utf-8")
         learning_source = Path(
-            "src/core/evaluation/learning.py"
+            "src/skill/learning/runs.py"
         ).read_text(encoding="utf-8")
         self.assertNotIn("def _record_task_evaluation", engine_source)
         self.assertIn("def learn_from_run", learning_source)
         self.assertNotIn("EventSubscriber", learning_source)
         self.assertNotIn("learning.requested", engine_source)
         self.assertTrue(
-            Path("src/core/evaluation/records.py").is_file()
+            Path("src/skill/learning/records.py").is_file()
         )
         self.assertFalse(Path("src/core/evolution").exists())
         self.assertTrue(Path("src/core/state/subscribers.py").is_file())
@@ -110,7 +110,7 @@ class SkillArchitectureTests(unittest.TestCase):
             ("core", "Agent"),
             ("skill", "SkillManifest"),
             ("skill.runtime.files", "SkillPackageManager"),
-            ("skill.runtime", "SkillUpdater"),
+            ("skill.learning", "SkillUpdater"),
         ]:
             module = importlib.import_module(module_name)
             self.assertFalse(hasattr(module, attribute_name))
@@ -125,7 +125,7 @@ class SkillArchitectureTests(unittest.TestCase):
                 sys.executable,
                 "-c",
                 "from skill.manifest import SkillManifest; "
-                "from skill.runtime.update import SkillUpdater; "
+                "from skill.learning.update import SkillUpdater; "
                 "from super_agent import Agent",
             ],
             check=False,

@@ -47,7 +47,7 @@ For a subsystem, start at its owner:
 - Scoped state access: `core.state.access.StateAccess`.
 - Side-effect checks: `core.checks.ActionRunner`.
 - Run events: `core.state.event_log.RunEventLog`.
-- Explicit Skill changes: `skill.runtime.update.SkillUpdater`.
+- Explicit Skill changes: `skill.learning.update.SkillUpdater`.
 
 `src/cli.py` is the direct source-tree entry point. The CLI implementation belongs to
 `adapter.cli_adapter.commands`, alongside the other external command adapters. These

@@ -3,7 +3,7 @@ import unittest
 from dataclasses import fields
 from pathlib import Path
 
-from core.evaluation.records import (
+from skill.learning.records import (
     EvaluationResult,
     EvaluationSource,
     EvaluationTokenUsage,
@@ -14,8 +14,8 @@ from core.evaluation.records import (
 from core.state.events import create_local_event_store
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.index import format_disclosure_page_for_prompt
-from core.evaluation.freshness import calculate_skill_freshness
-from core.evaluation.models import SkillRevision
+from skill.learning.freshness import calculate_skill_freshness
+from skill.learning.models import SkillRevision
 from skill.runtime.defaults import create_runtime_disclosure_recorder
 from skill.runtime.handlers import SkillCollection
 from core.runtime.run import Run

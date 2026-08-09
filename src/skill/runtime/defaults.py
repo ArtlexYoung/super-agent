@@ -14,7 +14,7 @@ from skill.disclosure import DisclosureRecorder, ProgressiveDisclosureCore
 
 if TYPE_CHECKING:
     from core.state.events import EventStore
-    from core.evaluation.rules import FreshnessRules
+    from skill.learning.rules import FreshnessRules
 
 
 def create_default_skill_handlers(
@@ -41,9 +41,9 @@ def create_progressive_skill_disclosure(
         and include_freshness
         and "freshness" not in config.agent.disabled_skills
     ):
-        from core.evaluation.freshness import calculate_skill_freshness
-        from core.evaluation.rules import load_freshness_rules
-        from core.evaluation.records import read_evaluation_records
+        from skill.learning.freshness import calculate_skill_freshness
+        from skill.learning.rules import load_freshness_rules
+        from skill.learning.records import read_evaluation_records
 
         policy_disclosure = create_progressive_skill_disclosure(
             config,
@@ -89,7 +89,7 @@ def load_configured_freshness_rules(
     """Load deterministic freshness settings through central disclosure."""
     if "freshness" in config.agent.disabled_skills:
         raise ValueError("freshness Skills are disabled for this Agent")
-    from core.evaluation.rules import load_freshness_rules
+    from skill.learning.rules import load_freshness_rules
 
     disclosure = create_progressive_skill_disclosure(
         config,

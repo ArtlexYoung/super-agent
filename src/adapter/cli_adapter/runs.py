@@ -7,7 +7,7 @@ from pathlib import Path
 
 from adapter.cli_adapter import load_agent, load_event_store
 from core.models import LOCAL_USER_ID
-from core.evaluation.insight import explain_run_with_insight
+from skill.learning.insight import explain_run_with_insight
 from core.state.models import RunSnapshot
 from core.state.events import EventStore
 from skill.runtime.defaults import load_configured_freshness_rules_if_enabled

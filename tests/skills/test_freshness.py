@@ -6,7 +6,7 @@ from pathlib import Path
 from super_agent import Agent
 from core.provider import MockProvider
 from core.config import CommonConfig
-from core.evaluation.records import (
+from skill.learning.records import (
     EvaluationResult,
     EvaluationSource,
     EvaluationTokenUsage,
@@ -18,9 +18,9 @@ from core.evaluation.records import (
 )
 from core.state.events import create_local_event_store
 from skill.disclosure import ProgressiveDisclosureCore
-from core.evaluation.freshness import calculate_skill_freshness
-from core.evaluation.rules import load_freshness_rules
-from core.evaluation.models import SkillRevision
+from skill.learning.freshness import calculate_skill_freshness
+from skill.learning.rules import load_freshness_rules
+from skill.learning.models import SkillRevision
 from support import (
     load_default_freshness_rules,
     write_memory_skill,

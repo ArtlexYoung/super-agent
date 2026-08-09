@@ -13,7 +13,7 @@ from skill.index import format_disclosure_page_for_prompt
 
 if TYPE_CHECKING:
     from skill.disclosure import ProgressiveDisclosureCore
-    from skill.runtime.update import SkillChangeReport
+    from skill.learning.update import SkillChangeReport
 
 
 REVIEW_RESPONSE_FIELDS = {"verdict", "findings", "checks"}
@@ -152,7 +152,7 @@ def skill_change_report_to_dict(
 
 
 def read_skill_change_report(data: dict[str, object]) -> "SkillChangeReport":
-    from skill.runtime.update import SkillChangeCaseResult, SkillChangeReport
+    from skill.learning.update import SkillChangeCaseResult, SkillChangeReport
 
     results = [
         SkillChangeCaseResult(**item)

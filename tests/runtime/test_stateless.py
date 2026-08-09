@@ -23,9 +23,9 @@ from super_agent import Agent
 user = Agent().for_user("alice")
 assert user.user_id == "alice"
 blocked = (
-    "core.evaluation",
+    "skill.learning",
     "core.state.memory",
-    "skill.runtime.update",
+    "skill.learning.update",
     "skill.runtime.files.models",
 )
 print(json.dumps(sorted(name for name in sys.modules if name.startswith(blocked))))
@@ -53,10 +53,10 @@ with tempfile.TemporaryDirectory() as temporary_directory:
     result = agent.run("hello")
 assert result.text == "finished"
 blocked = (
-    "core.evaluation.records",
-    "core.evaluation.learning",
+    "skill.learning.records",
+    "skill.learning.runs",
     "core.state.memory",
-    "skill.runtime.update",
+    "skill.learning.update",
     "core.state.memory_service",
 )
 print(json.dumps(sorted(name for name in sys.modules if name.startswith(blocked))))
@@ -82,12 +82,12 @@ with tempfile.TemporaryDirectory() as temporary_directory:
     result = Agent(config, provider=MockProvider("finished")).run("hello")
 assert result.text == "finished"
 blocked = (
-    "core.evaluation.records",
-    "core.evaluation.learning",
+    "skill.learning.records",
+    "skill.learning.runs",
     "core.state.memory",
     "core.state.events",
     "adapter.storage",
-    "skill.runtime.update",
+    "skill.learning.update",
     "core.state.memory_service",
 )
 print(json.dumps(sorted(name for name in sys.modules if name.startswith(blocked))))

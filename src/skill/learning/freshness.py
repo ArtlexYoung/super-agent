@@ -9,9 +9,9 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from core.evaluation.records import EvaluationRecord, evaluation_record_to_dict
-from core.evaluation.models import SkillRevision
-from core.evaluation.rules import FreshnessRules
+from skill.learning.records import EvaluationRecord, evaluation_record_to_dict
+from skill.learning.models import SkillRevision
+from skill.learning.rules import FreshnessRules
 
 
 FOLLOWUP_WINDOW_MINUTES = 10
