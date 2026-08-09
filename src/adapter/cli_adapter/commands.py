@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Sequence
 
-from adapter.cli_adapter.conversations import (
+from adapter.cli_adapter.data.conversations import (
     configure_conversations_parser,
     run_conversations_command,
 )
@@ -20,12 +20,12 @@ from adapter.cli_adapter import (
     run_config_command,
 )
 from adapter.cli_adapter.code import attach_code_config_to_agent
-from adapter.cli_adapter.check import configure_check_parser, run_check_command
-from adapter.cli_adapter.memory import configure_memory_parser, run_memory_command
-from adapter.cli_adapter.models import configure_models_parser, run_models_command
-from adapter.cli_adapter.runs import configure_runs_parser, run_runs_command
-from adapter.cli_adapter.serve import configure_serve_parser, run_serve_command
-from adapter.cli_adapter.skills import (
+from adapter.cli_adapter.run.check import configure_check_parser, run_check_command
+from adapter.cli_adapter.data.memory import configure_memory_parser, run_memory_command
+from adapter.cli_adapter.manage.models import configure_models_parser, run_models_command
+from adapter.cli_adapter.data.runs import configure_runs_parser, run_runs_command
+from adapter.cli_adapter.run.serve import configure_serve_parser, run_serve_command
+from adapter.cli_adapter.manage.skills import (
     configure_skill_changes_parser,
     configure_skill_packages_parser,
     configure_skills_parser,
@@ -33,7 +33,7 @@ from adapter.cli_adapter.skills import (
     run_skill_packages_command,
     run_skills_command,
 )
-from adapter.cli_adapter.storage import configure_storage_parser, run_storage_command
+from adapter.cli_adapter.data.storage import configure_storage_parser, run_storage_command
 from core import __version__
 from core.provider import Message
 from core.models import LOCAL_USER_ID, RunResult

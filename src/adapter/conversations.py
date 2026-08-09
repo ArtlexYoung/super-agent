@@ -6,6 +6,12 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
+from adapter.agent import (
+    create_agent_event_store,
+    create_agent_skills,
+    create_agent_task_loop,
+    get_agent_state_access,
+)
 from core.checks import ActionEffect, ActionRequest, ActionRunner, ActionRules, PreparedAction
 from core.events import StorageEvent
 from core.provider import Message
@@ -88,15 +94,8 @@ def infer_conversation_feedback(
 ) -> None:
     """Ask the active model whether one follow-up is feedback for the prior run."""
     from core.runtime.model_calls import infer_conversation_feedback_with_model
-    from skill.runtime.defaults import create_skills
-
-    store = agent._setup.create_event_store(user_id)
-    skills = create_skills(
-        agent.config,
-        handlers=agent._setup.skill_handlers,
-        store=store,
-        include_freshness=False,
-    )
+    store = create_agent_event_store(agent, user_id)
+    skills = create_agent_skills(agent, user_id)
     entry = skills.index.select_one_configured_or_default_skill(
         "feedback",
         agent.config.agent.skills,
@@ -107,7 +106,7 @@ def infer_conversation_feedback(
     instructions = feedback_skill.disclose_instructions().content
     if feedback_skill.read_configuration().content:
         raise ValueError("feedback Skill configuration must be empty")
-    model = agent._setup.create_task_loop(user_id, skills).create_text_model(
+    model = create_agent_task_loop(agent, user_id, skills).create_text_model(
         store,
         "conversation_feedback",
     )
@@ -119,7 +118,7 @@ def infer_conversation_feedback(
     )
     if feedback is not None:
         run_id, score, reason = feedback
-        agent._setup.active_state_access.record_task_feedback(
+        get_agent_state_access(agent).record_task_feedback(
             user_id,
             run_id,
             score=score,

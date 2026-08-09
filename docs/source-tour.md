@@ -51,5 +51,6 @@ For a subsystem, start at its owner:
 
 `src/cli.py` is the direct source-tree entry point. The CLI implementation belongs to
 `adapter.cli_adapter.commands`, alongside the other external command adapters. These
-modules may compose Core but do not own task execution. There are no compatibility
+modules use `adapter.agent` for the single explicit Agent access boundary and do not own task
+execution. There are no compatibility
 modules; import an advanced type from the file that owns it.

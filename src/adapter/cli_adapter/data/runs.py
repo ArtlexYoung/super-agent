@@ -5,6 +5,7 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
+from adapter.agent import create_agent_event_store
 from adapter.cli_adapter import load_agent, load_event_store
 from core.models import LOCAL_USER_ID
 from skill.learning.insight import explain_run_with_insight
@@ -121,7 +122,7 @@ def _show_run_status(args: argparse.Namespace) -> int:
 
 def _explain_run(args: argparse.Namespace) -> int:
     agent = load_agent(args.common_config)
-    store = agent._setup.create_event_store(args.user_id)
+    store = create_agent_event_store(agent, args.user_id)
     run_id = _resolve_run_id(store, args.run_id)
     if run_id is None:
         print("No run snapshots yet.")

@@ -8,6 +8,18 @@ from core.provider import Message
 from core.config import CommonConfig
 from core.models import resolve_agent_run_options, validate_user_id
 from core.state.models import Conversation, RunEvent
+from adapter.agent import (
+    AgentUserRunRequest,
+    activate_agent_skill_change,
+    create_agent_event_store,
+    create_agent_skills,
+    create_agent_task_loop,
+    get_agent_action_rules,
+    get_agent_state_access,
+    reload_agent_models,
+    replace_agent_configuration,
+    run_agent_for_user,
+)
 from adapter.conversations import (
     clear_conversation,
     create_conversation,
@@ -47,14 +59,17 @@ class UserAgent:
         skill: str | None = None,
         run_options: "AgentRunOptions | None" = None,
     ) -> RunResult:
-        return self.agent._run_for_user(
-            prompt,
-            self.user_id,
-            messages=messages,
-            conversation_id=conversation_id,
-            run_options=resolve_agent_run_options(
-                run_options,
-                skill,
+        return run_agent_for_user(
+            self.agent,
+            AgentUserRunRequest(
+                prompt=prompt,
+                user_id=self.user_id,
+                messages=messages,
+                conversation_id=conversation_id,
+                run_options=resolve_agent_run_options(
+                    run_options,
+                    skill,
+                ),
             ),
         )
 
@@ -71,7 +86,7 @@ class UserConversations:
         *,
         conversation_id: str | None = None,
     ) -> Conversation:
-        state = self.user.agent._setup.active_state_access
+        state = get_agent_state_access(self.user.agent)
         return cast(
             Conversation,
             state.execute_action(
@@ -90,15 +105,15 @@ class UserConversations:
         )
 
     def list(self) -> list[Conversation]:
-        store = self.user.agent._setup.create_event_store(self.user.user_id)
+        store = create_agent_event_store(self.user.agent, self.user.user_id)
         return list_conversations(store)
 
     def read(self, conversation_id: str) -> Conversation:
-        store = self.user.agent._setup.create_event_store(self.user.user_id)
+        store = create_agent_event_store(self.user.agent, self.user.user_id)
         return read_conversation(store, conversation_id)
 
     def rename(self, conversation_id: str, title: str) -> Conversation:
-        state = self.user.agent._setup.active_state_access
+        state = get_agent_state_access(self.user.agent)
         return cast(
             Conversation,
             state.execute_action(
@@ -117,7 +132,7 @@ class UserConversations:
         )
 
     def clear(self, conversation_id: str) -> Conversation:
-        state = self.user.agent._setup.active_state_access
+        state = get_agent_state_access(self.user.agent)
         return cast(
             Conversation,
             state.execute_action(
@@ -135,7 +150,7 @@ class UserConversations:
         )
 
     def delete(self, conversation_id: str) -> None:
-        state = self.user.agent._setup.active_state_access
+        state = get_agent_state_access(self.user.agent)
         state.execute_action(
             self.user.user_id,
             ActionRequest.create(
@@ -157,7 +172,7 @@ class UserRuns:
         self.user = user
 
     def read_trace(self, run_id: str) -> TaskTrace:
-        return self.user.agent._setup.active_state_access.read_task_trace(
+        return get_agent_state_access(self.user.agent).read_task_trace(
             self.user.user_id,
             run_id,
         )
@@ -165,7 +180,7 @@ class UserRuns:
     def list_checkpoints(self, run_id: str) -> list[dict[str, object]]:
         from core.runtime.run import list_checkpoint_data
 
-        events = self.user.agent._setup.create_event_store(self.user.user_id).read_run_events(
+        events = create_agent_event_store(self.user.agent, self.user.user_id).read_run_events(
             run_id,
             include_sensitive=True,
         )
@@ -180,14 +195,17 @@ class UserRuns:
     ) -> RunResult:
         from core.runtime.run import find_checkpoint_data
 
-        store = self.user.agent._setup.create_event_store(self.user.user_id)
+        store = create_agent_event_store(self.user.agent, self.user.user_id)
         events = store.read_run_events(run_id, include_sensitive=True)
         checkpoint = find_checkpoint_data(events, checkpoint_id)
-        return self.user.agent._run_for_user(
-            prompt,
-            self.user.user_id,
-            resumed_from_run_id=run_id,
-            resume_checkpoint=checkpoint,
+        return run_agent_for_user(
+            self.user.agent,
+            AgentUserRunRequest(
+                prompt=prompt,
+                user_id=self.user.user_id,
+                resumed_from_run_id=run_id,
+                resume_checkpoint=checkpoint,
+            ),
         )
 
     def record_feedback(
@@ -196,7 +214,7 @@ class UserRuns:
         score: float,
         reason: str = "",
     ) -> RunEvent:
-        return self.user.agent._setup.active_state_access.record_task_feedback(
+        return get_agent_state_access(self.user.agent).record_task_feedback(
             self.user.user_id,
             run_id,
             score=score,
@@ -205,7 +223,7 @@ class UserRuns:
         )
 
     def learn(self, run_id: str) -> "RunLearningResult":
-        store = self.user.agent._setup.create_event_store(self.user.user_id)
+        store = create_agent_event_store(self.user.agent, self.user.user_id)
         snapshot = store.read_run(run_id)
         if snapshot.agent_name != self.user.agent.config.agent.name:
             raise ValueError(f"run belongs to another Agent: {run_id}")
@@ -217,7 +235,7 @@ class UserRuns:
             self.user.agent.config,
             store=store,
         )
-        result = self.user.agent._setup.active_state_access.execute_action(
+        result = get_agent_state_access(self.user.agent).execute_action(
             self.user.user_id,
             ActionRequest.create(
                 "user:run-learning",
@@ -237,7 +255,7 @@ class UserRuns:
         from core.runtime.model_calls import list_model_usage_stats
 
         return list_model_usage_stats(
-            self.user.agent._setup.create_event_store(self.user.user_id),
+            create_agent_event_store(self.user.agent, self.user.user_id),
             purpose,
         )
 
@@ -247,24 +265,17 @@ class UserRuns:
         evidence: dict[str, object],
     ):
         from skill.learning.review import review_run_evidence
-        from skill.runtime.defaults import create_skills
-
         agent = self.user.agent
-        store = agent._setup.create_event_store(self.user.user_id)
-        skills = create_skills(
-            agent.config,
-            handlers=agent._setup.skill_handlers,
-            store=store,
-            include_freshness=False,
-        )
-        loop = agent._setup.create_task_loop(self.user.user_id, skills)
+        store = create_agent_event_store(agent, self.user.user_id)
+        skills = create_agent_skills(agent, self.user.user_id)
+        loop = create_agent_task_loop(agent, self.user.user_id, skills)
         decision = loop.model_calls.select_task_model("review", ("text",), store)
         reviewer = loop.create_text_model(
             store,
             "independent_review",
             decision=decision,
         )
-        state = agent._setup.active_state_access
+        state = get_agent_state_access(agent)
         return state.execute_action(
             self.user.user_id,
             ActionRequest.create(
@@ -299,12 +310,12 @@ class UserSkills:
 
         return ModelSkillManager(
             self.user.agent.config,
-            self.user.agent._setup.create_event_store(self.user.user_id),
-            self.user.agent._setup.get_action_rules(),
+            create_agent_event_store(self.user.agent, self.user.user_id),
+            get_agent_action_rules(self.user.agent),
         )
 
     def reload_models(self) -> None:
-        self.user.agent._setup.reload_model_profiles(self.user.user_id)
+        reload_agent_models(self.user.agent, self.user.user_id)
 
 
 class UserConfiguration:
@@ -314,30 +325,25 @@ class UserConfiguration:
         self.user = user
 
     def replace(self, config: CommonConfig) -> None:
-        self.user.agent._setup.replace_configuration(config)
+        replace_agent_configuration(self.user.agent, config)
 
 
 def _create_skill_updater(user: UserAgent) -> "SkillUpdater":
-    from skill.runtime.defaults import create_skills
     from skill.learning.update import SkillUpdater
 
     agent = user.agent
-    store = agent._setup.create_event_store(user.user_id)
-    skills = create_skills(
-        agent.config,
-        handlers=agent._setup.skill_handlers,
-        store=store,
-        include_freshness=False,
-    )
-    task_loop = agent._setup.create_task_loop(user.user_id, skills)
+    store = create_agent_event_store(agent, user.user_id)
+    skills = create_agent_skills(agent, user.user_id)
+    task_loop = create_agent_task_loop(agent, user.user_id, skills)
     return SkillUpdater(
         skills.disclosure,
         store=store,
         propose_model=task_loop.create_text_model(store, "skill_change_proposal"),
         test_model=task_loop.create_text_model(store, "skill_change_test"),
-        on_skill_changed=lambda manifest: agent._activate_changed_skill(
-            manifest,
+        on_skill_changed=lambda manifest: activate_agent_skill_change(
+            agent,
             user.user_id,
+            manifest,
         ),
-        action_rules=agent._setup.active_state_access.require_action_rules(),
+        action_rules=get_agent_state_access(agent).require_action_rules(),
     )

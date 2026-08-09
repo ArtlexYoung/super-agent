@@ -96,7 +96,7 @@ class ReleaseShapeTests(unittest.TestCase):
         self.assertTrue(Path("src/skill/learning/runs.py").is_file())
         self.assertTrue(Path("src/skill/learning/update.py").is_file())
         source = Path("src/skill/learning/update.py").read_text(encoding="utf-8")
-        cli_source = Path("src/adapter/cli_adapter/skills.py").read_text(
+        cli_source = Path("src/adapter/cli_adapter/manage/skills.py").read_text(
             encoding="utf-8"
         )
         for operation in ("propose_skill_change", "test_skill_change", "apply_skill_change", "undo_skill_change"):
@@ -135,9 +135,45 @@ class ReleaseShapeTests(unittest.TestCase):
             "src/skill/runtime/workflow.py",
             "src/skill/runtime/update.py",
             "src/skill/learning/learning.py",
+            "src/adapter/cli_adapter/check.py",
+            "src/adapter/cli_adapter/serve.py",
+            "src/adapter/cli_adapter/skills.py",
+            "src/adapter/cli_adapter/models.py",
+            "src/adapter/cli_adapter/conversations.py",
+            "src/adapter/cli_adapter/memory.py",
+            "src/adapter/cli_adapter/runs.py",
+            "src/adapter/cli_adapter/storage.py",
         ]
 
         self.assertEqual([], [path for path in removed_paths if Path(path).exists()])
+
+    def test_cli_has_explicit_function_groups(self) -> None:
+        root = Path("src/adapter/cli_adapter")
+        self.assertTrue((root / "commands.py").is_file())
+        self.assertTrue((root / "code.py").is_file())
+        for group in ("run", "manage", "data"):
+            self.assertTrue((root / group).is_dir())
+        for old_path in (
+            "check.py",
+            "serve.py",
+            "skills.py",
+            "models.py",
+            "conversations.py",
+            "memory.py",
+            "runs.py",
+            "storage.py",
+        ):
+            self.assertFalse((root / old_path).exists())
+
+    def test_external_adapters_use_one_agent_access_module(self) -> None:
+        access_path = Path("src/adapter/agent.py")
+        self.assertTrue(access_path.is_file())
+        for path in Path("src/adapter").rglob("*.py"):
+            if path == access_path:
+                continue
+            source = path.read_text(encoding="utf-8")
+            self.assertNotIn("._setup", source, str(path))
+            self.assertNotIn("._run_for_user", source, str(path))
 
     def test_public_modules_import_in_a_fresh_process(self) -> None:
         environment = dict(os.environ)

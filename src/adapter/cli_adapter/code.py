@@ -9,6 +9,7 @@ import subprocess
 from dataclasses import asdict
 from pathlib import Path
 
+from adapter.agent import register_agent_skill_handler
 from adapter.processes import DeclaredProcessTools
 from adapter.repository import IncrementalRepositoryMap
 from adapter.worktree import IsolatedWorktreeTools
@@ -56,7 +57,7 @@ def attach_code_config_to_agent(
         )
         return instructions, CodeWorkspace(config.settings).list_tools()
 
-    agent._add_skill_handler(TaskSkillHandler(read_code_workspace))
+    register_agent_skill_handler(agent, TaskSkillHandler(read_code_workspace))
 
 
 class CodeWorkspace:

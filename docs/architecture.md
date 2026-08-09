@@ -25,7 +25,8 @@ src/
 Runtime. `adapter` connects external interfaces and durable backends. `super_agent.py` is a
 five-line facade; `core/runtime/agent.py` owns the public actions, `setup.py` owns lazy Runtime
 resources, and `team.py` owns child Agent composition.
-The CLI command owner is `adapter.cli_adapter.commands`; `src/cli.py` only makes direct
+The CLI command owner is `adapter.cli_adapter.commands`; its `run`, `manage`, and `data`
+directories group command domains, while `src/cli.py` only makes direct
 source-tree execution possible.
 
 ## One Task Path

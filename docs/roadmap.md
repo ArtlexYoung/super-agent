@@ -1280,6 +1280,18 @@ Status: implemented.
 - Remove the old Agent initialization fields and private team methods instead of forwarding
   them, while keeping `Agent.run` and `Agent.add_subagent` unchanged.
 
+## v0.1.33: Clear External Adapters
+
+Status: implemented.
+
+- Add one explicit `adapter/agent.py` boundary for user-scoped runs, stores, state, Skills,
+  model loops, configuration changes, and model reloads.
+- Remove direct Agent setup access from User, Web, general-tool, conversation, and CLI modules;
+  only the boundary module knows how adapters reach Agent internals.
+- Group CLI commands under `cli_adapter/run`, `cli_adapter/manage`, and `cli_adapter/data`,
+  leaving `commands.py` as the parser/dispatcher and `code.py` as the optional code adapter.
+- Delete the old flat CLI module paths without import forwarding files.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof
