@@ -1356,6 +1356,18 @@ Status: implemented.
 - Keep the task implementation split by clear responsibility instead of creating one oversized
   Runtime file.
 
+## v0.1.39: One Skill File Lifecycle
+
+Status: implemented.
+
+- Keep validation, revision checks, and atomic Skill directory replacement in one explicit
+  `skill.runtime.files.operations` module.
+- Make package installation, package updates, and learning-driven Skill changes use the same
+  verified file operations and hash checks.
+- Remove the split `directory` and `validation` modules without import forwarding paths.
+- Keep model Skill management separate from package mechanics and preserve explicit action
+  checks, protected model connection fields, and failure-atomic replacement behavior.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

@@ -20,8 +20,13 @@ from skill.learning.review import (
     read_skill_change_report,
     skill_change_report_to_dict,
 )
-from skill.runtime.files.directory import replace_skill_directory_atomically
-from skill.runtime.files.validation import check_skill_configuration, validate_skill_directory, validate_skill_replacement
+from skill.runtime.files.operations import (
+    check_skill_configuration,
+    replace_skill_directory_atomically,
+    require_skill_directory_hash,
+    validate_skill_directory,
+    validate_skill_replacement,
+)
 from core.state.store import EventStore
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.manifest import SkillManifest, calculate_skill_directory_sha256
@@ -229,7 +234,7 @@ class SkillUpdater:
         if not cases:
             raise ValueError("Skill change testing requires at least one case")
         change = self.read_skill_change(change_id)
-        _require_hash(change.candidate_path, change.candidate_sha256, "candidate")
+        require_skill_directory_hash(change.candidate_path, change.candidate_sha256, "candidate")
         baseline = self._require_parent(change)
         candidate_results = [self._run_case(change.candidate_path, case) for case in cases]
         baseline_results = [] if baseline is None else [self._run_case(baseline, case) for case in cases]
@@ -288,7 +293,7 @@ class SkillUpdater:
 
     def _apply(self, change_id: str) -> SkillManifest:
         change = self.read_skill_change(change_id)
-        _require_hash(change.candidate_path, change.candidate_sha256, "candidate")
+        require_skill_directory_hash(change.candidate_path, change.candidate_sha256, "candidate")
         report = self._read_latest_report(change)
         if not report.passed:
             raise ValueError(f"Skill change did not pass testing: {change.change_id}")
@@ -388,7 +393,7 @@ class SkillUpdater:
         history = self.root / "history" / change.change_id
         application = _read_json(history / "apply.json")
         target = self.store.private_root / "skills" / change.skill_type / change.name
-        _require_hash(target, change.candidate_sha256, "applied Skill")
+        require_skill_directory_hash(target, change.candidate_sha256, "applied Skill")
         previous = history / "previous"
         if application.get("had_user_skill") is True:
             previous_sha = str(application.get("target_sha256", ""))
@@ -419,7 +424,7 @@ class SkillUpdater:
         if not entry.agent_can_update:
             raise PermissionError(f"Skill no longer allows Agent updates: {change.key}")
         path = self.disclosure.open_skill(change.name, change.skill_type).read_manifest().path
-        _require_hash(path, change.parent_sha256, "active Skill")
+        require_skill_directory_hash(path, change.parent_sha256, "active Skill")
         return path
 
     def _read_latest_report(self, change: SkillChange) -> SkillChangeReport:
@@ -576,11 +581,6 @@ def _validate_case(case: SkillChangeCase) -> None:
         raise ValueError("Skill change case name and prompt cannot be empty")
     if any(not item for item in [*case.expected_output_contains, *case.forbidden_output_contains]):
         raise ValueError("Skill change checks cannot contain empty text")
-
-
-def _require_hash(path: Path, expected: str, label: str) -> None:
-    if not path.is_dir() or calculate_skill_directory_sha256(path) != expected:
-        raise ValueError(f"{label} files changed")
 
 
 def _restore_failed_apply(

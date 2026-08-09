@@ -117,6 +117,20 @@ class SkillArchitectureTests(unittest.TestCase):
         with self.assertRaises(ModuleNotFoundError):
             importlib.import_module("skill.kinds")
 
+    def test_skill_file_lifecycle_has_one_operations_owner(self) -> None:
+        operations = importlib.import_module("skill.runtime.files.operations")
+        self.assertEqual("validate_skill_directory", operations.validate_skill_directory.__name__)
+        self.assertEqual(
+            "replace_skill_directory_atomically",
+            operations.replace_skill_directory_atomically.__name__,
+        )
+        for module_name in (
+            "skill.runtime.files.directory",
+            "skill.runtime.files.validation",
+        ):
+            with self.assertRaises(ModuleNotFoundError):
+                importlib.import_module(module_name)
+
     def test_real_modules_and_public_api_import_in_fresh_process(self) -> None:
         environment = dict(os.environ)
         environment["PYTHONPATH"] = "src"
