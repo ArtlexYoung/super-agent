@@ -12,7 +12,7 @@ from core.files import write_bytes_atomically
 from core.state.views import disclosure_history_from_events
 
 if TYPE_CHECKING:
-    from core.state.events import EventStore
+    from core.state.store import EventStore
 
 
 class DisclosureStorage:

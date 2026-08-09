@@ -7,9 +7,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Protocol
 
 from core.state.audit import redact_events_for_display
-from core.events import StorageBackend, StorageEvent, StorageEventQuery
+from core.state.backend import StorageBackend, StorageEvent, StorageEventQuery
 from core.models import RunIdentity, validate_agent_name, validate_user_id
-from core.state.event_log import RunEventLog
+from core.state.run import RunEventLog
 from core.files import create_scope_digest
 
 if TYPE_CHECKING:

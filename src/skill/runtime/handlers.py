@@ -13,7 +13,7 @@ from skill.disclosure import ProgressiveDisclosureCore, SkillDisclosure, SkillRe
 from skill.manifest import Skill
 
 if TYPE_CHECKING:
-    from core.state.events import EventStore
+    from core.state.store import EventStore
 
 ToolArguments = dict[str, object]
 ToolResult = dict[str, object]

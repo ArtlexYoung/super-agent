@@ -8,7 +8,7 @@ from typing import Callable, TYPE_CHECKING, cast
 
 from core.models import RunIdentity
 from core.provider import Message
-from core.state.events import EventStore
+from core.state.store import EventStore
 from skill.index import format_disclosure_page_for_prompt
 
 if TYPE_CHECKING:

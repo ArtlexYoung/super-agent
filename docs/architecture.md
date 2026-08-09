@@ -14,7 +14,7 @@ The repository has three internal roots plus two entry files:
 
 ```text
 src/
-  core/       Runtime, Provider contracts, configuration, checks, and events
+  core/       Runtime, Provider contracts, configuration, checks, and state
   skill/      passive Skill manifests, source discovery, index, and disclosure
   adapter/    CLI, Web, AG-UI, storage, and user-facing state access
   super_agent.py
@@ -35,6 +35,9 @@ source-tree execution possible.
 | Concern | Owner | Does not own |
 | --- | --- | --- |
 | Model protocols and calls | `core/provider.py` | Model profiles or task routing |
+| Storage protocol | `core/state/backend.py` | Concrete JSONL, SQL, or Web I/O |
+| Scoped state store | `core/state/store.py` | Backend construction or external commands |
+| One run event log | `core/state/run.py` | Durable backend selection |
 | One run lifecycle | `core/runtime/run.py` | CLI, Web, or storage policy |
 | Agent setup and child graph | `core/runtime/setup.py`, `team.py` | Skill content or Provider protocols |
 | Task queues and groups | `core/runtime/tasks/` | When those optional tools are activated |

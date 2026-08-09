@@ -85,7 +85,7 @@ blocked = (
     "skill.learning.records",
     "skill.learning.runs",
     "core.state.memory",
-    "core.state.events",
+    "core.state.store",
     "adapter.storage",
     "skill.learning.update",
     "core.state.memory_service",

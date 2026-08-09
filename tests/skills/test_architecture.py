@@ -77,8 +77,8 @@ class SkillArchitectureTests(unittest.TestCase):
         self.assertTrue(Path("src/core/state/subscribers.py").is_file())
         self.assertTrue(Path("src/core/runtime/run.py").is_file())
         self.assertFalse(Path("src/core/session.py").exists())
-        self.assertTrue(Path("src/core/state/events.py").is_file())
-        self.assertTrue(Path("src/core/events.py").is_file())
+        self.assertTrue(Path("src/core/state/store.py").is_file())
+        self.assertTrue(Path("src/core/state/backend.py").is_file())
         self.assertTrue(Path("src/adapter/storage/jsonl.py").is_file())
         self.assertFalse(Path("src/core/storage").exists())
 

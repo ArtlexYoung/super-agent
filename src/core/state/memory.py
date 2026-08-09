@@ -13,11 +13,11 @@ from uuid import uuid4
 from core.checks import ActionEffect, ActionRequest
 from core.models import RunIdentity
 from core.state.views import usage_habits_from_events
-from core.events import StorageEvent
+from core.state.backend import StorageEvent
 from skill.disclosure import SkillDisclosure
 
 if TYPE_CHECKING:
-    from core.state.events import EventStore
+    from core.state.store import EventStore
 
 
 MEMORY_STREAM = "long-term"

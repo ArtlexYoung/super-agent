@@ -13,8 +13,8 @@ from core.state.conversations import (
     create_conversation,
     read_conversation,
 )
-from core.events import StorageBackend, StorageEventQuery
-from core.state.events import EventStore
+from core.state.backend import StorageBackend, StorageEventQuery
+from core.state.store import EventStore
 from core.state.memory import Memory
 
 

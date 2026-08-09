@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 
 from core.checks import ActionRequest, ActionRunner, ActionRules
 from core.config import CommonConfig
-from core.events import StorageBackend
+from core.state.backend import StorageBackend
 from core.models import RunIdentity, TaskTrace
-from core.state.events import DisclosureStorageFactory
 from core.state.models import RunEvent
+
+if TYPE_CHECKING:
+    from core.state.store import DisclosureStorageFactory
 
 
 @dataclass(frozen=True)
@@ -23,7 +25,7 @@ class StateAccess:
     def create_event_store(self, user_id: str):
         if self.storage is None:
             raise RuntimeError("storage is disabled for this Agent")
-        from core.state.events import EventStore
+        from core.state.store import EventStore
 
         return EventStore(
             self.storage,

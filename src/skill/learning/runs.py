@@ -23,7 +23,7 @@ from skill.learning.records import (
 from skill.learning.rules import FreshnessRules
 from core.models import RunIdentity, RunLearningResult
 from core.runtime.model_calls import list_model_usage_stats
-from core.state.events import EventStore
+from core.state.store import EventStore
 from core.state.models import RunEvent
 
 

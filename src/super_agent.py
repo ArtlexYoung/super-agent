@@ -1,10 +1,15 @@
 """Public zero-setup Super Agent entry point."""
 
-from pathlib import Path
+from __future__ import annotations
 
-from core.events import StorageBackend
+from pathlib import Path
+from typing import TYPE_CHECKING
+
 from core.runtime.agent import Agent as RuntimeAgent
-from core.state.events import DisclosureStorage, EventStore
+
+if TYPE_CHECKING:
+    from core.state.backend import StorageBackend
+    from core.state.store import DisclosureStorage, EventStore
 
 
 class Agent(RuntimeAgent):

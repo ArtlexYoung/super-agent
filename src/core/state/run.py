@@ -9,7 +9,7 @@ from typing import Callable
 from core.models import RunIdentity
 from core.state.models import RunEvent
 from core.state.views import run_event_from_storage
-from core.events import StorageBackend, StorageEvent, StorageEventQuery
+from core.state.backend import StorageBackend, StorageEvent, StorageEventQuery
 
 
 RunEventObserver = Callable[[RunEvent], None]

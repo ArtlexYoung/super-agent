@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Callable
 
 from core.checks import ActionRules
 from core.config import CommonConfig
-from core.events import StorageBackend
+from core.state.backend import StorageBackend
 from core.models import LOCAL_USER_ID
 from core.provider import (
     ChatProvider,
@@ -30,7 +30,7 @@ from skill.runtime.models import (
 
 if TYPE_CHECKING:
     from core.runtime.loop import ModelLoop
-    from core.state.events import DisclosureStorageFactory, EventStore
+    from core.state.store import DisclosureStorageFactory, EventStore
 
 
 StorageBackendFactory = Callable[[str, str, str | None], StorageBackend]
@@ -241,7 +241,7 @@ class AgentSetup:
     ) -> EventStore | None:
         if storage is None:
             return None
-        from core.state.events import EventStore
+        from core.state.store import EventStore
 
         selected = config or self.config
         return EventStore(

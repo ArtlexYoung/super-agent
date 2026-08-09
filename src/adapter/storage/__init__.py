@@ -4,8 +4,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from core.events import StorageBackend
-    from core.state.events import EventStore
+    from core.state.backend import StorageBackend
+    from core.state.store import EventStore
 
 
 def create_storage_backend(
@@ -41,7 +41,7 @@ def create_local_event_store(
     """Create a JSONL EventStore for tests and local Skill tooling."""
     from adapter.storage.jsonl import JsonlStorage
     from adapter.storage.disclosure import DisclosureStorage
-    from core.state.events import EventStore
+    from core.state.store import EventStore
 
     path = Path(root).expanduser().absolute()
     return EventStore(

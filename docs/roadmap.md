@@ -1331,6 +1331,18 @@ Status: implemented.
 - Remove `core.state.disclosure` without aliases and test both the new storage owner and the
   failed old import path.
 
+## v0.1.37: Clear State Names
+
+Status: implemented.
+
+- Rename the backend-neutral storage contract to `core.state.backend` and the scoped EventStore
+  to `core.state.store` so their ownership is obvious from the import path.
+- Rename the ordered run event log to `core.state.run`; keep event data, state views, and storage
+  adapters on the same explicit state vocabulary.
+- Remove the old `core.events`, `core.state.events`, and `core.state.event_log` paths without
+  forwarding modules and update fresh-process import tests.
+- Preserve event schemas, retention behavior, user isolation, and stateless import boundaries.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

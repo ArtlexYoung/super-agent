@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from adapter.storage import JsonlStorage, SqliteStorage, create_storage_backend
-from core.events import StorageEventQuery
+from core.state.backend import StorageEventQuery
 from adapter.storage.sql.base import _query_where
 from adapter.storage.sql.mysql import _mysql_connection_arguments
 

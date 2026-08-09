@@ -43,7 +43,7 @@ from core.runtime.tools import RuntimeTools, create_runtime_tools
 from skill.index import format_disclosure_page_for_prompt
 
 if TYPE_CHECKING:
-    from core.state.events import EventStore
+    from core.state.store import EventStore
 
 
 DEFAULT_MAX_STEPS = 8

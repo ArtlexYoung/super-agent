@@ -21,7 +21,7 @@ from core.config import (
     require_config_header,
 )
 from core.models import LOCAL_USER_ID
-from core.state.events import EventStore
+from core.state.store import EventStore
 from super_agent import Agent
 
 

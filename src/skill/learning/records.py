@@ -16,7 +16,7 @@ from skill.learning.models import (
 )
 
 if TYPE_CHECKING:
-    from core.state.events import EventStore
+    from core.state.store import EventStore
 
 
 EVALUATION_RECORD_SCHEMA_VERSION = 3

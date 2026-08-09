@@ -14,7 +14,7 @@ from adapter.storage import (
     SqliteStorage,
     copy_storage_events,
 )
-from core.events import StorageBackend, StorageEvent, StorageEventQuery
+from core.state.backend import StorageBackend, StorageEvent, StorageEventQuery
 
 
 class StorageContractTests:

@@ -23,7 +23,7 @@ from core.state.models import Conversation
 from skill.runtime.models import ModelProfile
 
 if TYPE_CHECKING:
-    from core.state.events import EventStore
+    from core.state.store import EventStore
 
 
 EventWriter = Callable[[str, dict[str, object]], object]

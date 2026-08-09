@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from typing import TYPE_CHECKING
 
-from core.events import StorageBackend, StorageEvent, StorageEventQuery
+from core.state.backend import StorageBackend, StorageEvent, StorageEventQuery
 
 if TYPE_CHECKING:
     from core.models import SubagentRecordOptions

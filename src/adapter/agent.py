@@ -12,7 +12,7 @@ from core.provider import Message
 from core.runtime.agent import Agent
 from core.runtime.loop import ModelLoop
 from core.state.access import StateAccess
-from core.state.events import EventStore
+from core.state.store import EventStore
 from skill.manifest import SkillManifest
 from skill.runtime.defaults import create_skills
 from skill.runtime.handlers import SkillCollection, SkillHandler

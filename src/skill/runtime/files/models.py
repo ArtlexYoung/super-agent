@@ -14,7 +14,7 @@ from uuid import uuid4
 
 from core.config import CommonConfig
 from core.checks import ActionEffect, ActionRequest, ActionRunner, ActionRules
-from core.state.events import EventStore
+from core.state.store import EventStore
 from skill.disclosure import ProgressiveDisclosureCore, SkillDisclosure
 from skill.runtime.models import ModelProfile, create_model_profile_from_skill_disclosure
 from skill.manifest import DEFAULT_SKILL_FRESHNESS, SkillEntry, SkillManifest

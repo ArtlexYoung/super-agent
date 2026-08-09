@@ -22,9 +22,10 @@ from core.config import CommonConfig
 from core.runtime.run import Run
 from core.models import RunIdentity
 from core.checks import ActionConfirmationRequired, ActionEffect, ActionRules
-from core.state.event_log import RunEventLog
-from core.state.events import EventStore
+from core.state.run import RunEventLog
+from core.state.store import EventStore
 from adapter.storage import JsonlStorage
+from adapter.storage.disclosure import DisclosureStorage
 from skill.disclosure import ProgressiveDisclosureCore
 from core.state.memory import Memory
 from skill.runtime.models import create_direct_provider_profile
@@ -385,6 +386,10 @@ def _create_session(
         "local",
         config.agent.name,
         run_event_log=event_log,
+        disclosure_factory=lambda cache_root, selected_store: DisclosureStorage(
+            cache_root,
+            selected_store,
+        ),
     )
     event_log.start_run("question")
     disclosure = ProgressiveDisclosureCore(

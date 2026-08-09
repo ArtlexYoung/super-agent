@@ -22,7 +22,7 @@ from skill.learning.review import (
 )
 from skill.runtime.files.directory import replace_skill_directory_atomically
 from skill.runtime.files.validation import check_skill_configuration, validate_skill_directory, validate_skill_replacement
-from core.state.events import EventStore
+from core.state.store import EventStore
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.manifest import SkillManifest, calculate_skill_directory_sha256
 

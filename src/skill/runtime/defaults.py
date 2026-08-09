@@ -13,7 +13,7 @@ from core.models import RunIdentity
 from skill.disclosure import DisclosureRecorder, ProgressiveDisclosureCore
 
 if TYPE_CHECKING:
-    from core.state.events import EventStore
+    from core.state.store import EventStore
     from skill.learning.rules import FreshnessRules
 
 

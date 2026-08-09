@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 from core.checks import ActionEffect, ActionRules
 from core.config import CommonConfig
-from core.events import StorageBackend
+from core.state.backend import StorageBackend
 from core.models import (
     LOCAL_USER_ID,
     AgentRunOptions,
@@ -31,7 +31,6 @@ from core.state.conversations import (
     infer_conversation_feedback,
     prepare_conversation_turn,
 )
-from core.state.events import DisclosureStorage, EventStore
 from core.state.models import Conversation
 from core.state.subscribers import RuntimeEventSubscriber
 from skill.runtime.handlers import SkillHandler
@@ -39,6 +38,7 @@ from skill.runtime.mcp import McpServer
 from skill.runtime.models import ModelProfile
 
 if TYPE_CHECKING:
+    from core.state.store import DisclosureStorage, EventStore
     from skill.manifest import SkillManifest
 
 

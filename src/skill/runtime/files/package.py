@@ -14,7 +14,7 @@ from urllib.parse import unquote
 from uuid import uuid4
 
 from core.checks import ActionEffect, ActionRequest, ActionRunner, ActionRules
-from core.state.events import EventStore
+from core.state.store import EventStore
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.runtime.files.directory import replace_skill_directory_atomically
 from skill.manifest import SkillManifest, calculate_skill_directory_sha256

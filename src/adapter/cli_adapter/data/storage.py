@@ -7,7 +7,7 @@ from pathlib import Path
 
 from adapter.cli_adapter import load_common_config
 from core.config import CommonConfig
-from core.events import StorageBackend
+from core.state.backend import StorageBackend
 from core.state.audit import AuditPruneReport, prune_expired_audit_events
 from core.models import LOCAL_USER_ID
 from adapter.storage import create_storage_backend
@@ -118,7 +118,7 @@ def _refresh_disclosure_histories(
     backend: StorageBackend,
     report: AuditPruneReport,
 ) -> None:
-    from core.state.events import EventStore
+    from core.state.store import EventStore
 
     for user_report in report.users:
         if not user_report.events_deleted:

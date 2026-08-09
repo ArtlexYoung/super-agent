@@ -5,7 +5,8 @@ Read one ordinary call in this order:
 1. `src/super_agent.py` wires external factories and exports the public `Agent` facade.
 2. `src/core/runtime/agent.py` exposes the Agent actions, while `setup.py` owns lazy resources
    and `team.py` owns child Agents.
-3. `src/core/runtime/run.py` owns one run identity, event log, result, and failure.
+3. `src/core/runtime/run.py` owns one run identity and task lifecycle; `core/state/run.py`
+   owns the ordered event log.
 4. `src/core/runtime/loop.py` gives the model selected context and checked tools.
 5. `src/skill/disclosure.py` builds the shared Skill index and opens requested content; its
    optional cache recorder is supplied by `adapter/storage`.
@@ -47,6 +48,8 @@ For a subsystem, start at its owner:
 - Run lifecycle: `core.runtime.run.Runtime`.
 - Model loop and calls: `core.runtime.loop.ModelLoop` and `core.runtime.model_calls.ModelCalls`.
 - Provider protocols and pooling: `core.provider`.
+- State backend and store: `core.state.backend` and `core.state.store`.
+- Run event log: `core.state.run`.
 - Skill index and disclosure: `skill.disclosure.ProgressiveDisclosureCore`.
 - Disclosure persistence: `adapter.storage.disclosure.DisclosureStorage`.
 - Skill handling: `skill.runtime.handlers.SkillCollection` and `SkillHandlers`.
