@@ -31,6 +31,7 @@ from core.state.conversations import (
     infer_conversation_feedback,
     prepare_conversation_turn,
 )
+from core.state.events import DisclosureStorage, EventStore
 from core.state.models import Conversation
 from core.state.subscribers import RuntimeEventSubscriber
 from skill.runtime.handlers import SkillHandler
@@ -62,6 +63,7 @@ class Agent:
             action_rules=action_rules,
             secret_lookup=secret_lookup,
             storage_factory=self._create_storage_backend,
+            disclosure_factory=self._create_disclosure_storage,
         )
         self._team = AgentTeam(self)
 
@@ -253,6 +255,16 @@ class Agent:
         raise RuntimeError(
             "storage backend creation is an Adapter responsibility; "
             "use super_agent.Agent or pass a StorageBackend"
+        )
+
+    def _create_disclosure_storage(
+        self,
+        cache_root: Path,
+        store: EventStore,
+    ) -> DisclosureStorage:
+        raise RuntimeError(
+            "Skill disclosure storage is an Adapter responsibility; "
+            "use super_agent.Agent"
         )
 
     def _create_user_agent_view(self, user_id: str) -> object:

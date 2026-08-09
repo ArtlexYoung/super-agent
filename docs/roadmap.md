@@ -1318,6 +1318,19 @@ Status: implemented.
 - Add release tests for the one-way `adapter -> core/skill` dependency and fresh-process failure
   of the removed conversation path.
 
+## v0.1.36: One Progressive Disclosure Owner
+
+Status: implemented.
+
+- Keep indexing, Skill selection, content paging, cache references, and disclosure history
+  coordination in `skill.disclosure.ProgressiveDisclosureCore`.
+- Move durable disclosure cache and history writes to `adapter/storage/disclosure.py` behind the
+  Core storage port; Core no longer owns a second disclosure implementation.
+- Thread the explicit disclosure storage factory through Agent setup, StateAccess, EventStore,
+  and Run without changing the stateless path.
+- Remove `core.state.disclosure` without aliases and test both the new storage owner and the
+  failed old import path.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

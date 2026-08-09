@@ -40,10 +40,20 @@ def create_local_event_store(
 ) -> EventStore:
     """Create a JSONL EventStore for tests and local Skill tooling."""
     from adapter.storage.jsonl import JsonlStorage
+    from adapter.storage.disclosure import DisclosureStorage
     from core.state.events import EventStore
 
     path = Path(root).expanduser().absolute()
-    return EventStore(JsonlStorage(path), path, user_id, agent_name)
+    return EventStore(
+        JsonlStorage(path),
+        path,
+        user_id,
+        agent_name,
+        disclosure_factory=lambda cache_root, store: DisclosureStorage(
+            cache_root,
+            store,
+        ),
+    )
 
 __all__ = [
     "JsonlStorage",

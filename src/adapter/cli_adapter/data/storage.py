@@ -12,6 +12,7 @@ from core.state.audit import AuditPruneReport, prune_expired_audit_events
 from core.models import LOCAL_USER_ID
 from adapter.storage import create_storage_backend
 from adapter.storage.copy import copy_storage_events
+from adapter.storage.disclosure import DisclosureStorage
 
 
 def configure_storage_parser(parser: argparse.ArgumentParser) -> None:
@@ -128,6 +129,10 @@ def _refresh_disclosure_histories(
                 config.storage.path,
                 user_report.user_id,
                 agent_name,
+                disclosure_factory=lambda cache_root, store: DisclosureStorage(
+                    cache_root,
+                    store,
+                ),
             ).disclosure.refresh_history()
 
 

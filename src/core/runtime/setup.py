@@ -30,7 +30,7 @@ from skill.runtime.models import (
 
 if TYPE_CHECKING:
     from core.runtime.loop import ModelLoop
-    from core.state.events import EventStore
+    from core.state.events import DisclosureStorageFactory, EventStore
 
 
 StorageBackendFactory = Callable[[str, str, str | None], StorageBackend]
@@ -49,6 +49,7 @@ class AgentSetup:
         action_rules: ActionRules | None,
         secret_lookup: UserSecretLookup | None,
         storage_factory: StorageBackendFactory | None,
+        disclosure_factory: DisclosureStorageFactory | None,
     ) -> None:
         if use_storage is not None and not isinstance(use_storage, bool):
             raise TypeError("use_storage must be a boolean or None")
@@ -60,6 +61,7 @@ class AgentSetup:
         self.use_storage = storage is not None if use_storage is None else use_storage
         self.configured_storage = storage
         self.storage_factory = storage_factory
+        self.disclosure_factory = disclosure_factory
         self.provided_provider = provider
         self.storage: StorageBackend | None = None
         self.runtime: Runtime | None = None
@@ -132,6 +134,7 @@ class AgentSetup:
                 config,
                 self.storage,
                 self.get_action_rules,
+                self.disclosure_factory,
             )
             self.model_profiles = profiles
             self.model_profile = (
@@ -200,6 +203,7 @@ class AgentSetup:
                 self.config,
                 storage,
                 self.get_action_rules,
+                self.disclosure_factory,
             )
             runtime = self._build_runtime(
                 self.config,
@@ -245,6 +249,7 @@ class AgentSetup:
             selected.storage.path,
             LOCAL_USER_ID,
             selected.agent.name,
+            disclosure_factory=self.disclosure_factory,
         )
 
     def _build_runtime(
@@ -262,6 +267,7 @@ class AgentSetup:
                 storage,
                 self.get_action_rules,
                 self.user_secrets,
+                self.disclosure_factory,
                 code_model_profiles=code_profiles,
                 event_subscribers=self.event_subscribers,
             )

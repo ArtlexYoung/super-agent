@@ -180,6 +180,8 @@ def _run_multiuser_isolation_checks(
     local_root: Path,
     user_ids: list[str],
 ) -> tuple[list[str], int]:
+    from adapter.storage.disclosure import DisclosureStorage
+
     user_a, user_b = user_ids
     agent_name = "proof-agent"
     store_a = EventStore(
@@ -187,18 +189,30 @@ def _run_multiuser_isolation_checks(
         local_root=local_root,
         user_id=user_a,
         agent_name=agent_name,
+        disclosure_factory=lambda cache_root, store: DisclosureStorage(
+            cache_root,
+            store,
+        ),
     )
     store_b = EventStore(
         backend=backend,
         local_root=local_root,
         user_id=user_b,
         agent_name=agent_name,
+        disclosure_factory=lambda cache_root, store: DisclosureStorage(
+            cache_root,
+            store,
+        ),
     )
     subagent_store = EventStore(
         backend=backend,
         local_root=local_root,
         user_id=user_a,
         agent_name="proof-subagent",
+        disclosure_factory=lambda cache_root, store: DisclosureStorage(
+            cache_root,
+            store,
+        ),
     )
 
     _write_isolated_domain_state(store_a, "alice")

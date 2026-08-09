@@ -41,6 +41,7 @@ if TYPE_CHECKING:
     from core.provider import ChatProvider, Message
     from core.runtime.loop import ModelLoop
     from core.state.events import EventStore
+    from core.state.events import DisclosureStorageFactory
     from core.state.models import RunEvent
     from core.state.subscribers import RuntimeEventSubscriber, SubscriberFailure
     from skill.disclosure import SkillIndexEntry, SkillReference
@@ -314,6 +315,7 @@ class RuntimeContext:
     storage: StorageBackend | None
     create_action_rules: Callable[[], ActionRules] | None
     user_secrets: UserSecretResolver
+    disclosure_factory: DisclosureStorageFactory | None
     code_model_profiles: tuple[ModelProfile, ...] = ()
     event_subscribers: RuntimeEventSubscribers = field(
         default_factory=RuntimeEventSubscribers
@@ -496,6 +498,7 @@ def _create_run_event_store(
         identity.user_id,
         identity.agent_name,
         run_event_log=event_log,
+        disclosure_factory=context.disclosure_factory,
     )
 
 

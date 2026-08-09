@@ -38,7 +38,7 @@ source-tree execution possible.
 | One run lifecycle | `core/runtime/run.py` | CLI, Web, or storage policy |
 | Agent setup and child graph | `core/runtime/setup.py`, `team.py` | Skill content or Provider protocols |
 | Task queues and groups | `core/runtime/tasks/` | When those optional tools are activated |
-| Skill discovery | `skill/disclosure.py` | Skill execution or mutation |
+| Skill discovery | `skill/disclosure.py` | Storage writes or Skill mutation |
 | Skill execution | `skill/runtime/` | Agent learning or external adapters |
 | Skill evidence and changes | `skill/learning/` | Implicit updates during a run |
 | Conversations | `core/state/conversations.py` | Storage backend construction or UI |
@@ -79,7 +79,9 @@ propagated without a fallback call.
 
 ## Progressive Disclosure
 
-`ProgressiveDisclosureCore` is the only content discovery path:
+`ProgressiveDisclosureCore` is the only content discovery path. Its optional recorder is a
+storage port; JSONL, SQLite, and remote storage implementations live under `adapter/storage`
+and are injected by `super_agent.Agent`:
 
 1. Build compact index entries from built-in, project, and user Skill sources.
 2. Expose names, types, descriptions, versions, hashes, and features.

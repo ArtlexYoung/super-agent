@@ -1,4 +1,4 @@
-"""Cache and history storage for central progressive Skill disclosure."""
+"""Durable cache and history storage for the central Skill disclosure core."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from core.state.events import EventStore
 
 
-class RuntimeDisclosureStore:
+class DisclosureStorage:
     """Persist disclosed content only inside one user and Agent cache."""
 
     def __init__(

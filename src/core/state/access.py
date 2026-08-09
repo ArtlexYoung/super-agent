@@ -9,6 +9,7 @@ from core.checks import ActionRequest, ActionRunner, ActionRules
 from core.config import CommonConfig
 from core.events import StorageBackend
 from core.models import RunIdentity, TaskTrace
+from core.state.events import DisclosureStorageFactory
 from core.state.models import RunEvent
 
 
@@ -17,6 +18,7 @@ class StateAccess:
     config: CommonConfig
     storage: StorageBackend | None
     create_action_rules: Callable[[], ActionRules] | None
+    create_disclosure_storage: DisclosureStorageFactory | None = None
 
     def create_event_store(self, user_id: str):
         if self.storage is None:
@@ -28,6 +30,7 @@ class StateAccess:
             self.config.storage.path,
             user_id,
             self.config.agent.name,
+            disclosure_factory=self.create_disclosure_storage,
         )
 
     def execute_action(

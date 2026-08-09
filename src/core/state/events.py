@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable, Protocol
 
 from core.state.audit import redact_events_for_display
 from core.events import StorageBackend, StorageEvent, StorageEventQuery
@@ -13,9 +13,43 @@ from core.state.event_log import RunEventLog
 from core.files import create_scope_digest
 
 if TYPE_CHECKING:
-    from core.state.disclosure import RuntimeDisclosureStore
     from core.state.memory import RuntimeMemoryStore
     from core.state.models import RunEvent, RunSnapshot
+
+
+class DisclosureStorage(Protocol):
+    """Storage port used by the passive progressive disclosure core."""
+
+    cache_root: Path
+
+    def write_text(
+        self,
+        identity: RunIdentity | None,
+        content_key: str,
+        kind: str,
+        stage: str,
+        path: Path,
+        content: str,
+    ) -> None: ...
+
+    def write_json(
+        self,
+        identity: RunIdentity | None,
+        content_key: str,
+        kind: str,
+        stage: str,
+        path: Path,
+        content: dict[str, object],
+    ) -> None: ...
+
+    def read_content(self, path: str | Path) -> str: ...
+
+    def read_history(self) -> list[dict[str, object]]: ...
+
+    def refresh_history(self) -> None: ...
+
+
+DisclosureStorageFactory = Callable[[Path, "EventStore"], DisclosureStorage]
 
 
 class EventStore:
@@ -29,12 +63,14 @@ class EventStore:
         agent_name: str,
         *,
         run_event_log: RunEventLog | None = None,
+        disclosure_factory: DisclosureStorageFactory | None = None,
     ) -> None:
         self._backend = backend
         self.local_root = local_root.expanduser().absolute()
         self.user_id = validate_user_id(user_id)
         self.agent_name = validate_agent_name(agent_name)
         self._run_event_log = run_event_log
+        self._disclosure_factory = disclosure_factory
         self.private_root = (
             self.local_root
             / "users"
@@ -42,17 +78,19 @@ class EventStore:
             / "agents"
             / create_scope_digest(self.agent_name)
         )
-        self._disclosure: RuntimeDisclosureStore | None = None
+        self._disclosure: DisclosureStorage | None = None
         self._memory: RuntimeMemoryStore | None = None
         if run_event_log is not None:
             self._require_identity_scope(run_event_log.identity)
 
     @property
-    def disclosure(self) -> RuntimeDisclosureStore:
+    def disclosure(self) -> DisclosureStorage:
         if self._disclosure is None:
-            from core.state.disclosure import RuntimeDisclosureStore
-
-            self._disclosure = RuntimeDisclosureStore(
+            if self._disclosure_factory is None:
+                raise RuntimeError(
+                    "Skill disclosure storage is unavailable for this EventStore"
+                )
+            self._disclosure = self._disclosure_factory(
                 self.private_root / "cache",
                 self,
             )
@@ -140,6 +178,7 @@ class EventStore:
             self.local_root,
             self.user_id,
             agent_name,
+            disclosure_factory=self._disclosure_factory,
         )
 
     def start_run(self, identity: RunIdentity, prompt: str) -> RunEvent:

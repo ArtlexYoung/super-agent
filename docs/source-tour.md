@@ -7,7 +7,8 @@ Read one ordinary call in this order:
    and `team.py` owns child Agents.
 3. `src/core/runtime/run.py` owns one run identity, event log, result, and failure.
 4. `src/core/runtime/loop.py` gives the model selected context and checked tools.
-5. `src/skill/disclosure.py` builds the shared Skill index and opens requested content.
+5. `src/skill/disclosure.py` builds the shared Skill index and opens requested content; its
+   optional cache recorder is supplied by `adapter/storage`.
 6. `src/core/provider.py` makes and measures the selected Provider call.
 7. Checkpoints are recorded by `src/core/runtime/run.py` as content-free recovery facts.
 
@@ -47,6 +48,7 @@ For a subsystem, start at its owner:
 - Model loop and calls: `core.runtime.loop.ModelLoop` and `core.runtime.model_calls.ModelCalls`.
 - Provider protocols and pooling: `core.provider`.
 - Skill index and disclosure: `skill.disclosure.ProgressiveDisclosureCore`.
+- Disclosure persistence: `adapter.storage.disclosure.DisclosureStorage`.
 - Skill handling: `skill.runtime.handlers.SkillCollection` and `SkillHandlers`.
 - Conversation state: `core.state.conversations`.
 - Skill evidence and changes: `skill.learning`.

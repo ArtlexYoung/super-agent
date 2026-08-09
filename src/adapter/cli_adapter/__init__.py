@@ -175,6 +175,7 @@ def load_event_store(
 ) -> EventStore:
     config = load_common_config(source)
     from adapter.storage import create_storage_backend
+    from adapter.storage.disclosure import DisclosureStorage
 
     backend = create_storage_backend(
         config.storage.backend,
@@ -186,6 +187,10 @@ def load_event_store(
         config.storage.path,
         user_id,
         config.agent.name,
+        disclosure_factory=lambda cache_root, store: DisclosureStorage(
+            cache_root,
+            store,
+        ),
     )
 
 

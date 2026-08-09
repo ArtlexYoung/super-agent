@@ -1,7 +1,10 @@
 """Public zero-setup Super Agent entry point."""
 
+from pathlib import Path
+
 from core.events import StorageBackend
 from core.runtime.agent import Agent as RuntimeAgent
+from core.state.events import DisclosureStorage, EventStore
 
 
 class Agent(RuntimeAgent):
@@ -21,5 +24,14 @@ class Agent(RuntimeAgent):
         from adapter.user import UserAgent
 
         return UserAgent(self, user_id)
+
+    def _create_disclosure_storage(
+        self,
+        cache_root: Path,
+        store: EventStore,
+    ) -> DisclosureStorage:
+        from adapter.storage.disclosure import DisclosureStorage as DurableDisclosureStorage
+
+        return DurableDisclosureStorage(cache_root, store)
 
 __all__ = ["Agent"]
