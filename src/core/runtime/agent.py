@@ -18,7 +18,7 @@ from core.provider import (
 )
 from core.provider import ProviderPool, UserSecretLookup, UserSecretResolver
 from core.config import CommonConfig
-from core.runtime.runtime import Runtime, RuntimeContext
+from core.runtime.run import Runtime, RuntimeContext
 from core.runtime.run import Run
 from core.runtime.team import find_cycle_chains, find_longest_agent_chain
 from core.models import LOCAL_USER_ID

@@ -1,6 +1,6 @@
 # Runtime
 
-`Agent.run()` is the simple entry point. `core.runtime.runtime.Runtime` owns the full run:
+`Agent.run()` is the simple entry point. `core.runtime.run.Runtime` owns the full run:
 identity, optional storage, event recording, model turns, actions, and completion.
 
 ```python

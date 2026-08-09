@@ -62,7 +62,7 @@ class SkillArchitectureTests(unittest.TestCase):
             self.assertEqual(module_name, importlib.import_module(module_name).__name__)
 
     def test_runtime_learning_is_an_explicit_post_run_operation(self) -> None:
-        engine_source = Path("src/core/runtime/runtime.py").read_text(encoding="utf-8")
+        engine_source = Path("src/core/runtime/run.py").read_text(encoding="utf-8")
         learning_source = Path(
             "src/core/evaluation/learning.py"
         ).read_text(encoding="utf-8")

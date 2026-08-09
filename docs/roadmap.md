@@ -584,7 +584,7 @@ Status: implemented.
 
 Status: implemented.
 
-- Keep `core.runtime.runtime.Runtime` as the only task lifecycle owner and move one measured
+- Keep `core.runtime.run.Runtime` as the only task lifecycle owner and move one measured
   Provider call into `core.provider`.
 - Expose configured non-default model Skills through one explicit `use_model` tool; keep
   the default model in control of later turns and propagate delegated failures unchanged.
@@ -1233,6 +1233,16 @@ Status: implemented.
   on making a configured model call.
 - Verify Provider caching, user isolation, OpenAI-compatible requests, Anthropic-compatible
   requests, and Mock behavior through the same test suite.
+
+## v0.1.29: One Run Lifecycle Module
+
+Status: implemented.
+
+- Keep `Run`, `RuntimeContext`, and `Runtime` together in `core/runtime/run.py` so one file
+  explains run state, setup, execution, completion, and failure.
+- Remove `core/runtime/runtime.py` and its old import path without a forwarding module.
+- Delay the model-loop import at the execution boundary to preserve one-way module imports.
+- Keep the public `Agent.run` behavior and stateless default unchanged.
 
 ## Release Gate
 

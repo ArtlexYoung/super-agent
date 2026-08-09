@@ -125,6 +125,7 @@ class ReleaseShapeTests(unittest.TestCase):
             "src/core/identity.py",
             "src/core/secrets.py",
             "src/core/provider",
+            "src/core/runtime/runtime.py",
             "src/core/session.py",
             "src/core/skill_use/loaded.py",
             "src/core/skill_use/registry.py",
@@ -195,7 +196,7 @@ class ReleaseShapeTests(unittest.TestCase):
                     self.assertNotEqual(0, completed.returncode)
 
     def test_core_owns_runtime_and_skill_does_not(self) -> None:
-        self.assertTrue(Path("src/core/runtime/runtime.py").is_file())
+        self.assertTrue(Path("src/core/runtime/run.py").is_file())
         self.assertTrue(Path("src/core/runtime/loop.py").is_file())
         self.assertFalse(Path("src/skill/task").exists())
 

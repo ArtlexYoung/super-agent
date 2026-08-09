@@ -250,7 +250,7 @@ class SkillHandlerRuntimeTests(unittest.TestCase):
             run_classes = {
                 node.name for node in run_tree.body if isinstance(node, ast.ClassDef)
             }
-            self.assertEqual({"Run"}, run_classes)
+            self.assertEqual({"Run", "RuntimeContext", "Runtime"}, run_classes)
             self.assertFalse(Path("src/core/session.py").exists())
             self.assertFalse(Path("src/core/runtime/plan.py").exists())
             self.assertFalse(Path("src/core/runtime/scheduler.py").exists())
@@ -258,13 +258,13 @@ class SkillHandlerRuntimeTests(unittest.TestCase):
             self.assertFalse(Path("src/core/task/decisions.py").exists())
 
     def test_core_exposes_one_task_entry_method(self) -> None:
-        tree = ast.parse(Path("src/core/runtime/runtime.py").read_text(encoding="utf-8"))
+        tree = ast.parse(Path("src/core/runtime/run.py").read_text(encoding="utf-8"))
         method_names = {
             node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
         }
         self.assertIn("run_task", method_names)
         self.assertNotIn("run_agent", method_names)
-        runtime = ast.parse(Path("src/core/runtime/runtime.py").read_text(encoding="utf-8"))
+        runtime = ast.parse(Path("src/core/runtime/run.py").read_text(encoding="utf-8"))
         runtime_class = next(
             node
             for node in runtime.body
