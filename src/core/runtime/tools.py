@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from core.skill_use.handlers import (
+from skill.runtime.handlers import (
     SkillAction,
     SkillTool,
     SkillResult,

@@ -23,8 +23,8 @@ if TYPE_CHECKING:
     from core.runtime.agent import Agent
     from core.models import AgentRunOptions, RunLearningResult
     from core.runtime.model_calls import ModelUsageStats
-    from core.skill_use.files.models import ModelSkillManager
-    from core.skill_use.update import SkillUpdater
+    from skill.runtime.files.models import ModelSkillManager
+    from skill.runtime.update import SkillUpdater
 
 
 class UserAgent:
@@ -211,7 +211,7 @@ class UserRuns:
             raise ValueError(f"run belongs to another Agent: {run_id}")
         from core.evaluation.learning import learn_from_run
         from core.models import RunLearningResult
-        from core.skill_use.defaults import load_configured_freshness_rules
+        from skill.runtime.defaults import load_configured_freshness_rules
 
         rules = load_configured_freshness_rules(
             self.user.agent.config,
@@ -247,7 +247,7 @@ class UserRuns:
         evidence: dict[str, object],
     ):
         from core.evaluation.review import review_run_evidence
-        from core.skill_use.defaults import create_skills
+        from skill.runtime.defaults import create_skills
 
         agent = self.user.agent
         store = agent._create_event_store(self.user.user_id)
@@ -295,7 +295,7 @@ class UserSkills:
         )
 
     def create_model_manager(self) -> "ModelSkillManager":
-        from core.skill_use.files.models import ModelSkillManager
+        from skill.runtime.files.models import ModelSkillManager
 
         return ModelSkillManager(
             self.user.agent.config,
@@ -318,8 +318,8 @@ class UserConfiguration:
 
 
 def _create_skill_updater(user: UserAgent) -> "SkillUpdater":
-    from core.skill_use.defaults import create_skills
-    from core.skill_use.update import SkillUpdater
+    from skill.runtime.defaults import create_skills
+    from skill.runtime.update import SkillUpdater
 
     agent = user.agent
     store = agent._create_event_store(user.user_id)

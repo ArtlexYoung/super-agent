@@ -5,17 +5,17 @@ import json
 import sys
 
 from adapter.cli_adapter import load_common_config, load_event_store
-from core.skill_use.defaults import create_skills
+from skill.runtime.defaults import create_skills
 from core.config import CommonConfig
 from core.models import LOCAL_USER_ID
 from core.checks import ActionRules
-from core.skill_use.models import (
+from skill.runtime.models import (
     ModelProfile,
     model_profile_to_dict,
     read_model_profiles,
     select_default_model_profile,
 )
-from core.skill_use.files.models import (
+from skill.runtime.files.models import (
     ModelSkillManager,
     model_skill_input_from_dict,
 )

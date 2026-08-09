@@ -10,7 +10,7 @@ from core.models import LOCAL_USER_ID
 from core.evaluation.insight import explain_run_with_insight
 from core.state.models import RunSnapshot
 from core.state.events import EventStore
-from core.skill_use.defaults import load_configured_freshness_rules_if_enabled
+from skill.runtime.defaults import load_configured_freshness_rules_if_enabled
 
 
 def configure_runs_parser(parser: argparse.ArgumentParser) -> None:

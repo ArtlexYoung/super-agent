@@ -9,7 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from super_agent import Agent
-from core.skill_use.handlers import (
+from skill.runtime.handlers import (
     SkillContext,
     SkillAction,
     SkillTool,
@@ -284,8 +284,8 @@ class SkillHandlerRuntimeTests(unittest.TestCase):
         ):
             source = path.read_text(encoding="utf-8")
             self.assertNotIn("core.state.memory_service", source)
-            self.assertNotIn("core.skill_use.mcp", source)
-            self.assertNotIn("core.skill_use.workflow", source)
+            self.assertNotIn("skill.runtime.mcp", source)
+            self.assertNotIn("skill.runtime.builtins", source)
 
 
 class _RecordingPromptSkillHandler:

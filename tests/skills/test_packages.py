@@ -7,7 +7,7 @@ from pathlib import Path
 
 from core.state.events import create_local_event_store
 from skill.disclosure import ProgressiveDisclosureCore
-from core.skill_use.files.package import SkillPackageManager
+from skill.runtime.files.package import SkillPackageManager
 
 
 class SkillPackageManagerTests(unittest.TestCase):

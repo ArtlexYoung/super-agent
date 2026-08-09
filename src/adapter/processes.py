@@ -13,7 +13,7 @@ from typing import BinaryIO
 from uuid import uuid4
 
 from core.checks import ActionEffect
-from core.skill_use.handlers import (
+from skill.runtime.handlers import (
     SkillAction,
     SkillTool,
     read_optional_positive_tool_integer,

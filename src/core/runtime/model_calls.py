@@ -20,7 +20,7 @@ from core.provider import (
 )
 from core.provider import ProviderPool
 from core.state.models import Conversation
-from core.skill_use.models import ModelProfile
+from skill.runtime.models import ModelProfile
 
 if TYPE_CHECKING:
     from core.state.events import EventStore

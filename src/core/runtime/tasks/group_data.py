@@ -13,7 +13,7 @@ from core.runtime.tasks.agents import (
     AgentChoice,
     read_optional_estimated_tokens,
 )
-from core.skill_use.handlers import read_required_tool_string
+from skill.runtime.handlers import read_required_tool_string
 
 
 GROUP_VOTES = {"support", "reject", "inconclusive"}

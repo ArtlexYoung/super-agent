@@ -16,8 +16,8 @@ from skill.disclosure import ProgressiveDisclosureCore
 from skill.index import format_disclosure_page_for_prompt
 from core.evaluation.freshness import calculate_skill_freshness
 from core.evaluation.models import SkillRevision
-from core.skill_use.defaults import create_runtime_disclosure_recorder
-from core.skill_use.handlers import SkillCollection
+from skill.runtime.defaults import create_runtime_disclosure_recorder
+from skill.runtime.handlers import SkillCollection
 from core.runtime.run import Run
 from support import load_default_freshness_rules
 
@@ -405,9 +405,9 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
             self.assertIn("unknown skill manifest fields: entry", issues[0].message)
 
     def test_kind_factories_only_accept_center_disclosure(self) -> None:
-        from core.skill_use.mcp import read_mcp_skill_settings
+        from skill.runtime.mcp import read_mcp_skill_settings
         from core.state.memory import create_memory_from_skill
-        from core.skill_use.workflow import create_workflow_policy_from_skill
+        from skill.runtime.handlers import create_workflow_policy_from_skill
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

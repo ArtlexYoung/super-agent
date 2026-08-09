@@ -28,7 +28,7 @@ from core.runtime.tasks.group_data import (
     read_group_settings,
 )
 from core.runtime.tasks.groups import AgentGroupTools
-from core.skill_use.handlers import (
+from skill.runtime.handlers import (
     SkillAction,
     SkillTool,
     read_optional_tool_string,

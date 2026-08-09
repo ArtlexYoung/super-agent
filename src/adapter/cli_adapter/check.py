@@ -8,8 +8,8 @@ import os
 from pathlib import Path
 
 from adapter.cli_adapter import load_common_config
-from core.skill_use.defaults import create_default_skill_handlers, create_skills
-from core.skill_use.models import (
+from skill.runtime.defaults import create_default_skill_handlers, create_skills
+from skill.runtime.models import (
     model_profile_is_ready,
     read_model_profiles,
     select_default_model_profile,

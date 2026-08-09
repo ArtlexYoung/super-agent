@@ -16,9 +16,9 @@ from core.config import CommonConfig
 from core.checks import ActionEffect, ActionRequest, ActionRunner, ActionRules
 from core.state.events import EventStore
 from skill.disclosure import ProgressiveDisclosureCore, SkillDisclosure
-from core.skill_use.models import ModelProfile, create_model_profile_from_skill_disclosure
+from skill.runtime.models import ModelProfile, create_model_profile_from_skill_disclosure
 from skill.manifest import DEFAULT_SKILL_FRESHNESS, SkillEntry, SkillManifest
-from core.skill_use.files.validation import validate_skill_directory
+from skill.runtime.files.validation import validate_skill_directory
 
 
 MODEL_PRICE_FIELDS = (

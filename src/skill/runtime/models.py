@@ -15,7 +15,7 @@ from core.provider import (
     normalize_provider_connection,
 )
 from skill.disclosure import SkillDisclosure
-from core.skill_use.handlers import SkillCollection
+from skill.runtime.handlers import SkillCollection
 from skill.manifest import calculate_skill_directory_sha256
 
 DEFAULT_OPENAI_MODEL = "gpt-4.1-mini"

@@ -88,7 +88,7 @@ def infer_conversation_feedback(
 ) -> None:
     """Ask the active model whether one follow-up is feedback for the prior run."""
     from core.runtime.model_calls import infer_conversation_feedback_with_model
-    from core.skill_use.defaults import create_skills
+    from skill.runtime.defaults import create_skills
 
     store = agent._create_event_store(user_id)
     skills = create_skills(

@@ -19,9 +19,9 @@ from core.models import (
 )
 from core.provider import ProviderPool, UserSecretResolver
 from core.runtime.model_calls import estimate_text_tokens
-from core.skill_use.defaults import create_skills
-from core.skill_use.handlers import SkillCollection, SkillHandlers
-from core.skill_use.models import ModelProfile, read_model_profiles
+from skill.runtime.defaults import create_skills
+from skill.runtime.handlers import SkillCollection, SkillHandlers
+from skill.runtime.models import ModelProfile, read_model_profiles
 from core.state.audit import compact_runtime_event_data
 from core.state.event_log import RunEventLog
 from core.state.subscribers import (
@@ -44,7 +44,7 @@ if TYPE_CHECKING:
     from core.state.models import RunEvent
     from core.state.subscribers import RuntimeEventSubscriber, SubscriberFailure
     from skill.disclosure import SkillIndexEntry, SkillReference
-    from core.skill_use.handlers import SkillResult
+    from skill.runtime.handlers import SkillResult
 
 
 @dataclass
@@ -180,7 +180,7 @@ class Run:
         key = (reference.key, send_text_model_messages is not None)
         loaded = self._loaded_skills.get(key)
         if loaded is None:
-            from core.skill_use.handlers import SkillContext
+            from skill.runtime.handlers import SkillContext
 
             loaded = self.skills.handlers.handle(
                 SkillContext(

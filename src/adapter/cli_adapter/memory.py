@@ -10,7 +10,7 @@ from adapter.cli_adapter import load_common_config, load_event_store
 from core.checks import ActionEffect, ActionRequest, ActionRunner, ActionRules
 from core.config import CommonConfig
 from core.models import LOCAL_USER_ID
-from core.skill_use.defaults import create_progressive_skill_disclosure
+from skill.runtime.defaults import create_progressive_skill_disclosure
 from core.state.memory import Memory, MemoryItem, create_memory_from_skill
 
 

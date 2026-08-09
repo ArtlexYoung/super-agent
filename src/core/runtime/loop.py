@@ -17,14 +17,14 @@ from core.provider import (
     read_model_turn,
 )
 from core.provider import ProviderPool
-from core.skill_use.handlers import (
+from skill.runtime.handlers import (
     SkillResult,
     SkillAction,
     SkillTool,
     TaskPolicy,
     read_required_tool_string,
 )
-from core.skill_use.models import (
+from skill.runtime.models import (
     ModelProfile,
     model_profile_is_ready,
     model_profile_to_dict,

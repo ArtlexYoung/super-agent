@@ -17,7 +17,7 @@ from core.provider import (
 )
 from core.provider import ProviderPool
 from core.config import CommonConfig
-from core.skill_use.models import (
+from skill.runtime.models import (
     ModelProfile,
     ModelTraits,
     discover_environment_model_profiles,
@@ -25,9 +25,9 @@ from core.skill_use.models import (
     model_profile_to_dict,
     select_default_model_profile,
 )
-from core.skill_use.files.models import model_skill_input_from_dict
-from core.skill_use.files.validation import validate_skill_replacement
-from core.skill_use.update import SkillChangeCase
+from skill.runtime.files.models import model_skill_input_from_dict
+from skill.runtime.files.validation import validate_skill_replacement
+from skill.runtime.update import SkillChangeCase
 from core.evaluation.records import read_evaluation_records
 from core.runtime.model_calls import (
     ModelUsageStats,

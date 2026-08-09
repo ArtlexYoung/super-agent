@@ -5,9 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from core.skill_use.handlers import SkillCollection, SkillHandlers
-from core.skill_use.builtins import create_builtin_skill_handlers
-from core.skill_use.mcp import McpServers
+from skill.runtime.handlers import SkillCollection, SkillHandlers
+from skill.runtime.builtins import create_builtin_skill_handlers
+from skill.runtime.mcp import McpServers
 from core.config import CommonConfig
 from core.models import RunIdentity
 from skill.disclosure import DisclosureRecorder, ProgressiveDisclosureCore

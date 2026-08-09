@@ -24,7 +24,7 @@ from core.runtime.tasks.group_data import (
     read_group_request,
     read_positive_number,
 )
-from core.skill_use.handlers import SkillAction, SkillTool, read_required_tool_string
+from skill.runtime.handlers import SkillAction, SkillTool, read_required_tool_string
 
 
 _TERMINAL_STATUSES = {"completed", "failed", "cancelled"}

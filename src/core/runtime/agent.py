@@ -6,12 +6,12 @@ from pathlib import Path
 from threading import RLock
 from typing import TYPE_CHECKING, Callable
 
-from core.skill_use.defaults import (
+from skill.runtime.defaults import (
     create_default_skill_handlers,
     create_skills,
 )
-from core.skill_use.handlers import SkillHandler
-from core.skill_use.mcp import McpServer, McpServers
+from skill.runtime.handlers import SkillHandler
+from skill.runtime.mcp import McpServer, McpServers
 from core.provider import (
     ChatProvider,
     Message,
@@ -40,7 +40,7 @@ from core.models import (
 )
 from core.state.models import Conversation
 from core.events import StorageBackend
-from core.skill_use.models import (
+from skill.runtime.models import (
     ModelProfile,
     create_direct_provider_profile,
     read_model_profiles,

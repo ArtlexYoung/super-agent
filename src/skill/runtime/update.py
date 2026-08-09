@@ -20,8 +20,8 @@ from core.evaluation.review import (
     read_skill_change_report,
     skill_change_report_to_dict,
 )
-from core.skill_use.files.directory import replace_skill_directory_atomically
-from core.skill_use.files.validation import check_skill_configuration, validate_skill_directory, validate_skill_replacement
+from skill.runtime.files.directory import replace_skill_directory_atomically
+from skill.runtime.files.validation import check_skill_configuration, validate_skill_directory, validate_skill_replacement
 from core.state.events import EventStore
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.manifest import SkillManifest, calculate_skill_directory_sha256

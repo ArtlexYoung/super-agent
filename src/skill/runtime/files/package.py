@@ -16,9 +16,9 @@ from uuid import uuid4
 from core.checks import ActionEffect, ActionRequest, ActionRunner, ActionRules
 from core.state.events import EventStore
 from skill.disclosure import ProgressiveDisclosureCore
-from core.skill_use.files.directory import replace_skill_directory_atomically
+from skill.runtime.files.directory import replace_skill_directory_atomically
 from skill.manifest import SkillManifest, calculate_skill_directory_sha256
-from core.skill_use.files.validation import validate_skill_directory, validate_skill_replacement
+from skill.runtime.files.validation import validate_skill_directory, validate_skill_replacement
 
 
 FIXED_ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)

@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from core.checks import ActionEffect
-from core.skill_use.handlers import SkillAction, SkillTool
+from skill.runtime.handlers import SkillAction, SkillTool
 
 
 REPOSITORY_MAP_FILE_LIMIT = 1_000

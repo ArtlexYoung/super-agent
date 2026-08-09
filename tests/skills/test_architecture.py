@@ -6,11 +6,11 @@ import unittest
 from pathlib import Path
 
 from skill.disclosure import ProgressiveDisclosureCore
-from core.skill_use.mcp import McpSkillSettings
-from core.skill_use.mcp import McpServer
+from skill.runtime.mcp import McpSkillSettings
+from skill.runtime.mcp import McpServer
 from core.state.memory import Memory
 from core.models import SubAgentResult, RunResult
-from core.skill_use.workflow import create_workflow_policy_from_skill
+from skill.runtime.handlers import create_workflow_policy_from_skill
 from skill.manifest import SkillManifest
 
 
@@ -109,8 +109,8 @@ class SkillArchitectureTests(unittest.TestCase):
         for module_name, attribute_name in [
             ("core", "Agent"),
             ("skill", "SkillManifest"),
-            ("core.skill_use.files", "SkillPackageManager"),
-            ("core.skill_use", "SkillUpdater"),
+            ("skill.runtime.files", "SkillPackageManager"),
+            ("skill.runtime", "SkillUpdater"),
         ]:
             module = importlib.import_module(module_name)
             self.assertFalse(hasattr(module, attribute_name))
@@ -125,7 +125,7 @@ class SkillArchitectureTests(unittest.TestCase):
                 sys.executable,
                 "-c",
                 "from skill.manifest import SkillManifest; "
-                "from core.skill_use.update import SkillUpdater; "
+                "from skill.runtime.update import SkillUpdater; "
                 "from super_agent import Agent",
             ],
             check=False,

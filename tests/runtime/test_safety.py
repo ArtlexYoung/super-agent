@@ -2,8 +2,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from core.skill_use.defaults import create_default_skill_handlers
-from core.skill_use.handlers import SkillAction, SkillCollection
+from skill.runtime.defaults import create_default_skill_handlers
+from skill.runtime.handlers import SkillAction, SkillCollection
 from core.provider import MockProvider
 from core.config import CommonConfig
 from core.runtime.run import Run
@@ -20,7 +20,7 @@ from core.state.event_log import RunEventLog
 from core.state.events import EventStore
 from adapter.storage import JsonlStorage
 from skill.disclosure import ProgressiveDisclosureCore
-from core.skill_use.models import create_direct_provider_profile
+from skill.runtime.models import create_direct_provider_profile
 
 
 class RuntimeSafetyTests(unittest.TestCase):

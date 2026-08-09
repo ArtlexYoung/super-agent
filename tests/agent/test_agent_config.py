@@ -9,8 +9,8 @@ from core.config import CodeConfig, CommonConfig
 from core.provider import MockProvider
 from adapter.storage import create_storage_backend
 from skill.disclosure import ProgressiveDisclosureCore
-from core.skill_use.models import read_model_profiles
-from core.skill_use.defaults import create_skills
+from skill.runtime.models import read_model_profiles
+from skill.runtime.defaults import create_skills
 from support import write_workflow_skill
 
 

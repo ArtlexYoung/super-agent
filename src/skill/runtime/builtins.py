@@ -4,7 +4,7 @@ import hashlib
 from dataclasses import asdict
 from typing import TYPE_CHECKING, Callable
 
-from core.skill_use.handlers import (
+from skill.runtime.handlers import (
     SkillContext,
     SkillHandler,
     SkillAction,
@@ -20,7 +20,7 @@ from skill.manifest import Skill
 
 if TYPE_CHECKING:
     from core.state.memory import Memory
-    from core.skill_use.mcp import McpServers, RegisteredMcpServer
+    from skill.runtime.mcp import McpServers, RegisteredMcpServer
 
 
 class PromptSkillHandler:
@@ -45,7 +45,7 @@ class McpSkillHandler:
         self.servers = servers
 
     def handle_skill(self, context: SkillContext) -> SkillResult:
-        from core.skill_use.mcp import read_mcp_skill_settings
+        from skill.runtime.mcp import read_mcp_skill_settings
 
         opened = context.open_skill()
         opened.disclose_configuration()
@@ -96,7 +96,7 @@ class WorkflowSkillHandler:
     adds_model_context = False
 
     def handle_skill(self, context: SkillContext) -> SkillResult:
-        from core.skill_use.workflow import create_workflow_policy_from_skill
+        from skill.runtime.handlers import create_workflow_policy_from_skill
 
         opened = context.open_skill()
         opened.disclose_manifest()
@@ -115,7 +115,7 @@ class TaskSkillHandler:
         self._read_additions = read_additions
 
     def handle_skill(self, context: SkillContext) -> SkillResult:
-        from core.skill_use.workflow import create_task_policy_from_skill
+        from skill.runtime.handlers import create_task_policy_from_skill
 
         opened = context.open_skill()
         opened.disclose_configuration()

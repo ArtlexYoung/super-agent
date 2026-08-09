@@ -29,7 +29,7 @@ MCP has a built-in handler but requires an implementation registered in code:
 
 ```python
 from core.checks import ActionEffect
-from core.skill_use.mcp import StdioMcpServer
+from skill.runtime.mcp import StdioMcpServer
 from super_agent import Agent
 
 agent = Agent()

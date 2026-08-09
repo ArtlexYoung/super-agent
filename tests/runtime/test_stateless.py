@@ -25,8 +25,8 @@ assert user.user_id == "alice"
 blocked = (
     "core.evaluation",
     "core.state.memory",
-    "core.skill_use.update",
-    "core.skill_use.files.models",
+    "skill.runtime.update",
+    "skill.runtime.files.models",
 )
 print(json.dumps(sorted(name for name in sys.modules if name.startswith(blocked))))
 """
@@ -56,7 +56,7 @@ blocked = (
     "core.evaluation.records",
     "core.evaluation.learning",
     "core.state.memory",
-    "core.skill_use.update",
+    "skill.runtime.update",
     "core.state.memory_service",
 )
 print(json.dumps(sorted(name for name in sys.modules if name.startswith(blocked))))
@@ -87,7 +87,7 @@ blocked = (
     "core.state.memory",
     "core.state.events",
     "adapter.storage",
-    "core.skill_use.update",
+    "skill.runtime.update",
     "core.state.memory_service",
 )
 print(json.dumps(sorted(name for name in sys.modules if name.startswith(blocked))))

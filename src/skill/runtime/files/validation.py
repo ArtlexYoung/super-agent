@@ -5,13 +5,13 @@ from __future__ import annotations
 from pathlib import Path
 
 from skill.disclosure import ProgressiveDisclosureCore, SkillDisclosure
-from core.skill_use.mcp import read_mcp_skill_settings
+from skill.runtime.mcp import read_mcp_skill_settings
 from core.state.memory import read_memory_settings_from_skill
-from core.skill_use.models import (
+from skill.runtime.models import (
     create_model_profile_from_skill_disclosure,
     model_connection_fields,
 )
-from core.skill_use.workflow import (
+from skill.runtime.handlers import (
     create_task_policy_from_skill,
     create_workflow_policy_from_skill,
 )

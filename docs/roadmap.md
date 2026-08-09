@@ -1244,6 +1244,17 @@ Status: implemented.
 - Delay the model-loop import at the execution boundary to preserve one-way module imports.
 - Keep the public `Agent.run` behavior and stateless default unchanged.
 
+## v0.1.30: One Skill Runtime
+
+Status: implemented.
+
+- Move trusted Skill handlers, models, MCP connections, defaults, and managed Skill files from
+  `core/skill_use` to `skill/runtime` so Skill mechanisms have one visible domain owner.
+- Merge workflow and task policy parsing into `skill/runtime/handlers.py` and remove the separate
+  workflow module.
+- Remove every old import path without aliases or forwarding packages.
+- Keep central progressive disclosure in `skill/disclosure.py` and the task lifecycle in Core.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

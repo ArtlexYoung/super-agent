@@ -1,7 +1,7 @@
 import unittest
 
-from core.skill_use.defaults import create_default_skill_handlers
-from core.skill_use.handlers import (
+from skill.runtime.defaults import create_default_skill_handlers
+from skill.runtime.handlers import (
     SkillContext,
     SkillHandlers,
     SkillResult,

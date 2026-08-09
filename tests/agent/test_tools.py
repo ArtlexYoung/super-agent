@@ -3,18 +3,18 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from core.skill_use.defaults import (
+from skill.runtime.defaults import (
     create_default_skill_handlers,
     create_runtime_disclosure_recorder,
 )
-from core.skill_use.handlers import (
+from skill.runtime.handlers import (
     SkillCollection,
     SkillContext,
     SkillAction,
     SkillTool,
     SkillResult,
 )
-from core.skill_use.builtins import create_memory_skill_contribution
+from skill.runtime.builtins import create_memory_skill_contribution
 from core.provider import ToolCall
 from core.provider import MockProvider
 from core.runtime.tools import RuntimeTools, RuntimeToolsContext
@@ -27,8 +27,8 @@ from core.state.events import EventStore
 from adapter.storage import JsonlStorage
 from skill.disclosure import ProgressiveDisclosureCore
 from core.state.memory import Memory
-from core.skill_use.models import create_direct_provider_profile
-from core.skill_use.mcp import McpServers, StdioMcpServer
+from skill.runtime.models import create_direct_provider_profile
+from skill.runtime.mcp import McpServers, StdioMcpServer
 
 
 class SkillToolsTests(unittest.TestCase):

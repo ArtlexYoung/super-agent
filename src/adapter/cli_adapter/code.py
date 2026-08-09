@@ -15,8 +15,8 @@ from adapter.worktree import IsolatedWorktreeTools
 from core.checks import ActionEffect
 from core.config import CodeConfig, CodeSettings
 from core.files import write_bytes_atomically
-from core.skill_use.builtins import TaskSkillHandler
-from core.skill_use.handlers import (
+from skill.runtime.builtins import TaskSkillHandler
+from skill.runtime.handlers import (
     SkillAction,
     SkillContext,
     SkillTool,
