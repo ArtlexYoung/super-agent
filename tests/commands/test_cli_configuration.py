@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from adapter.cli_adapter import CliConfig
+from adapter.cli_adapter.configuration import CliConfig
 from adapter.cli_adapter.commands import main
 
 

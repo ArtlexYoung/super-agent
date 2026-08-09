@@ -6,7 +6,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Callable, TypeVar, cast
 
-from adapter.cli_adapter import load_common_config, load_event_store
+from adapter.cli_adapter.loaders import load_common_config, load_event_store
 from core.checks import ActionEffect, ActionRequest, ActionRunner, ActionRules
 from core.config import CommonConfig
 from core.models import LOCAL_USER_ID

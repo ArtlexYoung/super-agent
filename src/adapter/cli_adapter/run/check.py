@@ -7,7 +7,7 @@ import json
 import os
 from pathlib import Path
 
-from adapter.cli_adapter import load_common_config
+from adapter.cli_adapter.loaders import load_common_config
 from skill.runtime.defaults import create_default_skill_handlers, create_skills
 from skill.runtime.models import (
     model_profile_is_ready,

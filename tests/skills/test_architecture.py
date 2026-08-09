@@ -131,6 +131,15 @@ class SkillArchitectureTests(unittest.TestCase):
             with self.assertRaises(ModuleNotFoundError):
                 importlib.import_module(module_name)
 
+    def test_cli_package_exposes_explicit_configuration_and_loader_modules(self) -> None:
+        package = importlib.import_module("adapter.cli_adapter")
+        configuration = importlib.import_module("adapter.cli_adapter.configuration")
+        loaders = importlib.import_module("adapter.cli_adapter.loaders")
+        self.assertFalse(Path("src/adapter/cli_adapter/__init__.py").exists())
+        self.assertFalse(hasattr(package, "CliConfig"))
+        self.assertEqual("CliConfig", configuration.CliConfig.__name__)
+        self.assertEqual("load_agent", loaders.load_agent.__name__)
+
     def test_real_modules_and_public_api_import_in_fresh_process(self) -> None:
         environment = dict(os.environ)
         environment["PYTHONPATH"] = "src"

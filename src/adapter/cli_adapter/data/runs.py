@@ -6,7 +6,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 from adapter.agent import create_agent_event_store
-from adapter.cli_adapter import load_agent, load_event_store
+from adapter.cli_adapter.loaders import load_agent, load_event_store
 from core.models import LOCAL_USER_ID
 from skill.learning.insight import explain_run_with_insight
 from core.state.models import RunSnapshot

@@ -5,7 +5,7 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
-from adapter.cli_adapter import load_common_config
+from adapter.cli_adapter.loaders import load_common_config
 from core.config import CommonConfig
 from core.state.backend import StorageBackend
 from core.state.audit import AuditPruneReport, prune_expired_audit_events

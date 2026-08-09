@@ -1,4 +1,4 @@
-"""CLI configuration, terminal action checks, and shared readers."""
+"""CLI-only configuration and terminal confirmation behavior."""
 
 from __future__ import annotations
 
@@ -15,17 +15,11 @@ from core.checks import (
     ActionRules,
 )
 from core.config import (
-    CommonConfig,
     find_optional_config_file,
     reject_unknown_settings,
     require_config_header,
 )
 from core.models import LOCAL_USER_ID
-from core.state.store import EventStore
-from super_agent import Agent
-
-
-CommonConfigSource = CommonConfig | str | Path | None
 
 
 @dataclass(frozen=True)
@@ -85,10 +79,7 @@ class CliConfig:
         return cls.load_from_file(source) if source else cls.create_default(base)
 
     @classmethod
-    def create_default(
-        cls,
-        base_directory: str | Path | None = None,
-    ) -> "CliConfig":
+    def create_default(cls, base_directory: str | Path | None = None) -> "CliConfig":
         base = (
             Path.cwd()
             if base_directory is None
@@ -98,7 +89,7 @@ class CliConfig:
 
 
 class TerminalActionRules(ActionRules):
-    """Ask before a Runtime action leaves read-only state."""
+    """Ask before a CLI action leaves read-only state."""
 
     def check_action(self, request: ActionRequest) -> ActionDecision:
         decision = super().check_action(request)
@@ -124,18 +115,8 @@ class TerminalActionRules(ActionRules):
         return decision
 
 
-def load_common_config(source: CommonConfigSource = None) -> CommonConfig:
-    if source is None:
-        return CommonConfig.load_automatically()
-    if isinstance(source, CommonConfig):
-        return source
-    return CommonConfig.load_from_file(source)
-
-
 def load_cli_config(source: str | Path | None = None) -> CliConfig:
-    if source is None:
-        return CliConfig.load_automatically()
-    return CliConfig.load_from_file(source)
+    return CliConfig.load_automatically() if source is None else CliConfig.load_from_file(source)
 
 
 def configure_config_parser(parser: argparse.ArgumentParser) -> None:
@@ -155,43 +136,6 @@ def run_config_command(args: argparse.Namespace) -> int:
     else:
         _print_cli_config(config)
     return 0
-
-
-def load_agent(
-    source: CommonConfigSource = None,
-    *,
-    use_storage: bool = True,
-) -> Agent:
-    return Agent(
-        load_common_config(source),
-        use_storage=use_storage,
-        action_rules=TerminalActionRules(),
-    )
-
-
-def load_event_store(
-    source: CommonConfigSource = None,
-    user_id: str = LOCAL_USER_ID,
-) -> EventStore:
-    config = load_common_config(source)
-    from adapter.storage import create_storage_backend
-    from adapter.storage.disclosure import DisclosureStorage
-
-    backend = create_storage_backend(
-        config.storage.backend,
-        str(config.storage.path),
-        config.storage.url_env,
-    )
-    return EventStore(
-        backend,
-        config.storage.path,
-        user_id,
-        config.agent.name,
-        disclosure_factory=lambda cache_root, store: DisclosureStorage(
-            cache_root,
-            store,
-        ),
-    )
 
 
 def _print_cli_config(config: CliConfig) -> None:

@@ -12,13 +12,12 @@ from adapter.cli_adapter.data.conversations import (
     configure_conversations_parser,
     run_conversations_command,
 )
-from adapter.cli_adapter import (
-    CliConfig,
+from adapter.cli_adapter.configuration import (
     configure_config_parser,
-    load_agent,
     load_cli_config,
     run_config_command,
 )
+from adapter.cli_adapter.loaders import load_agent
 from adapter.cli_adapter.code import attach_code_config_to_agent
 from adapter.cli_adapter.run.check import configure_check_parser, run_check_command
 from adapter.cli_adapter.data.memory import configure_memory_parser, run_memory_command

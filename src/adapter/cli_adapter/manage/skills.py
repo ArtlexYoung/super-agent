@@ -4,7 +4,7 @@ import argparse
 import json
 from pathlib import Path
 
-from adapter.cli_adapter import load_agent, load_common_config, load_event_store
+from adapter.cli_adapter.loaders import load_agent, load_common_config, load_event_store
 from skill.runtime.defaults import (
     create_progressive_skill_disclosure,
     load_configured_freshness_rules,

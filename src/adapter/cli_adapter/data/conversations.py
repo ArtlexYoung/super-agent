@@ -4,7 +4,7 @@ import argparse
 import json
 from dataclasses import asdict
 
-from adapter.cli_adapter import load_agent
+from adapter.cli_adapter.loaders import load_agent
 from core.models import LOCAL_USER_ID
 
 

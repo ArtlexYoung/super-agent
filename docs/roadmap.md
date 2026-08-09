@@ -1368,6 +1368,19 @@ Status: implemented.
 - Keep model Skill management separate from package mechanics and preserve explicit action
   checks, protected model connection fields, and failure-atomic replacement behavior.
 
+## v0.1.40: Explicit CLI Configuration Owners
+
+Status: implemented.
+
+- Keep terminal-only settings, validation, display, and confirmation behavior in
+  `adapter.cli_adapter.configuration`.
+- Keep common configuration, Agent construction, and EventStore construction in the explicit
+  `adapter.cli_adapter.loaders` module.
+- Make every CLI command import its required owner directly; the package root no longer exports
+  a mixed configuration and service-loading API.
+- Remove the old CLI package initializer without a forwarding module while preserving the
+  independent `common.toml`, `cli.toml`, and `code.toml` lookup rules.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof
