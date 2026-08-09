@@ -40,15 +40,18 @@ EVALUATION_RESULT_FIELDS = {
 }
 EVALUATION_TOKEN_USAGE_FIELDS = {"input_tokens", "output_tokens"}
 
+
 @dataclass(frozen=True)
 class EvaluationSource:
     source_type: str
     run_id: str = ""
 
+
 @dataclass(frozen=True)
 class EvaluationTokenUsage:
     input_tokens: int
     output_tokens: int
+
 
 @dataclass(frozen=True)
 class EvaluationResult:
@@ -59,6 +62,7 @@ class EvaluationResult:
     error_type: str
     checks: list[str]
 
+
 @dataclass(frozen=True)
 class EvaluationRecord:
     schema_version: int
@@ -67,6 +71,7 @@ class EvaluationRecord:
     revision: SkillRevision
     source: EvaluationSource
     result: EvaluationResult
+
 
 def append_evaluation_records(
     store: EventStore,
@@ -82,6 +87,7 @@ def append_evaluation_records(
             event_id=record.record_id,
             created_at=record.created_at,
         )
+
 
 def read_evaluation_records(
     store: EventStore,
@@ -102,6 +108,7 @@ def read_evaluation_records(
         and (source_type is None or record.source.source_type == source_type)
     ]
 
+
 def create_evaluation_record(
     revision: SkillRevision,
     source: EvaluationSource,
@@ -121,6 +128,7 @@ def create_evaluation_record(
     evaluation_record_to_dict(record)
     return record
 
+
 def estimate_evaluation_token_usage(
     input_text: str,
     output_text: str,
@@ -129,6 +137,7 @@ def estimate_evaluation_token_usage(
         input_tokens=estimate_text_tokens(input_text),
         output_tokens=estimate_text_tokens(output_text),
     )
+
 
 def evaluation_record_to_dict(record: EvaluationRecord) -> dict[str, object]:
     _validate_evaluation_record(record)
@@ -143,6 +152,7 @@ def evaluation_record_to_dict(record: EvaluationRecord) -> dict[str, object]:
         },
         "result": evaluation_result_to_dict(record.result),
     }
+
 
 def evaluation_record_from_dict(value: object) -> EvaluationRecord:
     data = _require_exact_object(value, EVALUATION_RECORD_FIELDS, "evaluation record")
@@ -162,12 +172,14 @@ def evaluation_record_from_dict(value: object) -> EvaluationRecord:
     _validate_evaluation_record(record)
     return record
 
+
 def _source_from_dict(value: object) -> EvaluationSource:
     data = _require_exact_object(value, EVALUATION_SOURCE_FIELDS, "evaluation source")
     return EvaluationSource(
         source_type=_required_string(data, "source_type"),
         run_id=_string_value(data, "run_id"),
     )
+
 
 def evaluation_result_to_dict(result: EvaluationResult) -> dict[str, object]:
     _validate_result(result)
@@ -182,6 +194,7 @@ def evaluation_result_to_dict(result: EvaluationResult) -> dict[str, object]:
         "error_type": result.error_type,
         "checks": list(result.checks),
     }
+
 
 def evaluation_result_from_dict(value: object) -> EvaluationResult:
     data = _require_exact_object(value, EVALUATION_RESULT_FIELDS, "evaluation result")
@@ -217,6 +230,7 @@ def evaluation_result_from_dict(value: object) -> EvaluationResult:
         checks=list(checks),
     )
 
+
 def _validate_evaluation_record(record: EvaluationRecord) -> None:
     if record.schema_version != EVALUATION_RECORD_SCHEMA_VERSION:
         raise ValueError(
@@ -237,6 +251,7 @@ def _validate_evaluation_record(record: EvaluationRecord) -> None:
     _validate_source(record.source)
     _validate_result(record.result)
 
+
 def _validate_source(source: EvaluationSource) -> None:
     for name, value in {"source_type": source.source_type, "run_id": source.run_id}.items():
         if not isinstance(value, str):
@@ -245,6 +260,7 @@ def _validate_source(source: EvaluationSource) -> None:
         raise ValueError(f"unknown evaluation source_type: {source.source_type}")
     if not source.run_id.strip():
         raise ValueError("agent_run evaluation source requires run_id")
+
 
 def _validate_result(result: EvaluationResult) -> None:
     if not isinstance(result.success, bool):
@@ -263,6 +279,7 @@ def _validate_result(result: EvaluationResult) -> None:
     ):
         raise ValueError("evaluation checks must be a string array")
 
+
 def _require_exact_object(
     value: object,
     fields: set[str],
@@ -279,11 +296,13 @@ def _require_exact_object(
         )
     return value
 
+
 def _required_string(data: dict[str, Any], name: str) -> str:
     value = _string_value(data, name)
     if not value.strip():
         raise ValueError(f"evaluation {name} cannot be empty")
     return value
+
 
 def _string_value(data: dict[str, Any], name: str) -> str:
     value = data[name]
@@ -291,16 +310,19 @@ def _string_value(data: dict[str, Any], name: str) -> str:
         raise ValueError(f"evaluation {name} must be a string")
     return value
 
+
 def _required_integer(data: dict[str, Any], name: str) -> int:
     value = data[name]
     if isinstance(value, bool) or not isinstance(value, int):
         raise ValueError(f"evaluation {name} must be an integer")
     return value
 
+
 def _non_negative_integer(value: object, label: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         raise ValueError(f"{label} must be a non-negative integer")
     return value
+
 
 def _score_value(value: object) -> float:
     if isinstance(value, bool) or not isinstance(value, int | float):
@@ -310,9 +332,11 @@ def _score_value(value: object) -> float:
         raise ValueError("evaluation result score must be between 0 and 1")
     return score
 
+
 def _format_datetime(value: datetime) -> str:
     normalized = value if value.tzinfo is not None else value.replace(tzinfo=UTC)
     return normalized.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
 
 def _parse_datetime(value: str) -> datetime:
     try:

@@ -20,6 +20,7 @@ ToolResult = dict[str, object]
 ToolHandler = Callable[[ToolArguments], ToolResult]
 _TYPE_PATTERN = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}")
 
+
 @dataclass(frozen=True)
 class TaskPolicy:
     name: str
@@ -31,6 +32,7 @@ class TaskPolicy:
     @property
     def uses_tools(self) -> bool:
         return self.mode in {"react", "loop"}
+
 
 @dataclass(frozen=True)
 class SkillAction:
@@ -62,6 +64,7 @@ class SkillAction:
         selected = str(value).strip()
         return f"{self.resource}:{selected}" if selected else self.resource
 
+
 @dataclass(frozen=True)
 class SkillTool:
     name: str
@@ -87,6 +90,7 @@ class SkillTool:
             },
         }
 
+
 @dataclass(frozen=True)
 class SkillResult:
     model_context: Skill | None = None
@@ -97,6 +101,7 @@ class SkillResult:
     record_task_completed: Callable[[str, list[str]], None] | None = None
     task_completed_action: SkillAction | None = None
     source: SkillReference | None = None
+
 
 @dataclass(frozen=True)
 class SkillContext:
@@ -128,11 +133,13 @@ class SkillContext:
             raise ValueError("Skill handler requires a Runtime action executor")
         return self.execute_action
 
+
 class SkillHandler(Protocol):
     skill_type: str
     adds_model_context: bool
 
     def handle_skill(self, context: SkillContext) -> SkillResult: ...
+
 
 class SkillHandlers:
     """Map each passive Skill type to one explicitly registered code handler."""
@@ -171,6 +178,7 @@ class SkillHandlers:
         _validate_skill_result(result)
         return result
 
+
 class SkillCollection:
     """Keep one progressive disclosure snapshot with its trusted handlers."""
 
@@ -185,6 +193,7 @@ class SkillCollection:
 
     def open(self, reference: SkillReference) -> SkillDisclosure:
         return self.disclosure.open_skill(reference.name, reference.skill_type)
+
 
 def _validate_skill_result(result: object) -> None:
     if not isinstance(result, SkillResult):
@@ -204,6 +213,7 @@ def _validate_skill_result(result: object) -> None:
         raise ValueError("SkillResult.included_skills cannot contain duplicates")
     if result.source is not None and not isinstance(result.source, SkillReference):
         raise TypeError("SkillResult.source must be a SkillReference or None")
+
 
 def _validate_skill_tool(tool: object) -> None:
     if not isinstance(tool, SkillTool):
@@ -232,8 +242,10 @@ def _validate_skill_tool(tool: object) -> None:
     if argument is not None and argument not in tool.properties:
         raise ValueError(f"Skill tool action argument is not declared: {tool.name}.{argument}")
 
+
 def _read_handler_type(handler: object) -> str:
     return _clean_skill_type(getattr(handler, "skill_type", ""))
+
 
 def _clean_skill_type(value: object) -> str:
     if not isinstance(value, str):
@@ -243,11 +255,13 @@ def _clean_skill_type(value: object) -> str:
         raise ValueError(f"Invalid Skill type: {value}")
     return skill_type
 
+
 def read_required_tool_string(arguments: ToolArguments, name: str) -> str:
     value = arguments.get(name)
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"tool argument {name!r} must be a non-empty string")
     return value
+
 
 def read_optional_tool_string(arguments: ToolArguments, name: str) -> str | None:
     value = arguments.get(name)
@@ -257,11 +271,13 @@ def read_optional_tool_string(arguments: ToolArguments, name: str) -> str | None
         raise ValueError(f"tool argument {name!r} must be a non-empty string")
     return value
 
+
 def read_tool_object(arguments: ToolArguments, name: str) -> dict[str, object]:
     value = arguments.get(name)
     if not isinstance(value, dict):
         raise ValueError(f"tool argument {name!r} must be an object")
     return value
+
 
 def read_optional_positive_tool_integer(
     arguments: ToolArguments,
@@ -273,6 +289,7 @@ def read_optional_positive_tool_integer(
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
         raise ValueError(f"tool argument {name!r} must be a positive integer")
     return value
+
 
 def read_optional_non_negative_tool_integer(
     arguments: ToolArguments,

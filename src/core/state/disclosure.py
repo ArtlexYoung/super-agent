@@ -14,6 +14,7 @@ from core.state.views import disclosure_history_from_events
 if TYPE_CHECKING:
     from core.state.events import EventStore
 
+
 class RuntimeDisclosureStore:
     """Persist disclosed content only inside one user and Agent cache."""
 

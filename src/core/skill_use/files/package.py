@@ -23,6 +23,7 @@ from core.skill_use.files.validation import validate_skill_directory, validate_s
 
 FIXED_ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 
+
 class SkillPackageManager:
     def __init__(
         self,
@@ -199,6 +200,7 @@ class SkillPackageManager:
         self.skill_disclosure.prepare_skill_index()
         return self.skill_disclosure.open_skill(name, expected_type).read_manifest()
 
+
 def _stage_skill_source(source: str, temporary_root: Path) -> Path:
     value = source.strip()
     if not value:
@@ -215,6 +217,7 @@ def _stage_skill_source(source: str, temporary_root: Path) -> Path:
         _extract_skill_zip(path, extracted)
         return _locate_skill_directory(extracted)
     raise FileNotFoundError(f"skill package source not found or unsupported: {source}")
+
 
 def _stage_git_source(source: str, temporary_root: Path) -> Path:
     repository, separator, fragment = source.partition("#")
@@ -239,6 +242,7 @@ def _stage_git_source(source: str, temporary_root: Path) -> Path:
     _copy_skill_tree(located, copied)
     return copied
 
+
 def _resolve_git_subdirectory(repository: Path, fragment: str) -> Path:
     if not fragment:
         return repository
@@ -251,6 +255,7 @@ def _resolve_git_subdirectory(repository: Path, fragment: str) -> Path:
     if not selected.is_dir():
         raise FileNotFoundError(f"Git skill subdirectory not found: {fragment}")
     return selected
+
 
 def _extract_skill_zip(package_path: Path, output: Path) -> None:
     with zipfile.ZipFile(package_path) as archive:
@@ -265,6 +270,7 @@ def _extract_skill_zip(package_path: Path, output: Path) -> None:
             target.parent.mkdir(parents=True, exist_ok=True)
             with archive.open(info) as source_file, target.open("wb") as target_file:
                 shutil.copyfileobj(source_file, target_file)
+
 
 def _validate_zip_member(info: zipfile.ZipInfo) -> PurePosixPath:
     name = info.filename.replace("\\", "/")
@@ -281,6 +287,7 @@ def _validate_zip_member(info: zipfile.ZipInfo) -> PurePosixPath:
         raise ValueError(f"unsafe path in skill package: {info.filename}")
     return relative
 
+
 def _locate_skill_directory(root: Path) -> Path:
     if (root / "skill.toml").is_file():
         return root
@@ -290,6 +297,7 @@ def _locate_skill_directory(root: Path) -> Path:
     if len(candidates) != 1:
         raise ValueError("skill package must contain exactly one skill directory")
     return candidates[0]
+
 
 def _validate_staged_skill(path: Path, expected_sha256: str) -> SkillManifest:
     _reject_symlinks(path)
@@ -303,8 +311,10 @@ def _validate_staged_skill(path: Path, expected_sha256: str) -> SkillManifest:
         raise ValueError(f"skill content SHA-256 mismatch: expected {expected}, got {actual}")
     return manifest
 
+
 def _managed_skill_target(skill_root: Path, manifest: SkillManifest) -> Path:
     return skill_root / manifest.skill_type / manifest.name
+
 
 def _copy_skill_tree(source: Path, target: Path) -> None:
     shutil.copytree(
@@ -314,6 +324,7 @@ def _copy_skill_tree(source: Path, target: Path) -> None:
         ignore=shutil.ignore_patterns(".git", "__pycache__"),
     )
     _reject_symlinks(target)
+
 
 def _write_deterministic_skill_zip(source: Path, name: str, output: Path) -> None:
     _reject_symlinks(source)
@@ -327,9 +338,11 @@ def _write_deterministic_skill_zip(source: Path, name: str, output: Path) -> Non
             info.external_attr = (stat.S_IFREG | 0o644) << 16
             archive.writestr(info, path.read_bytes(), compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
 
+
 def _reject_symlinks(path: Path) -> None:
     if path.is_symlink() or any(item.is_symlink() for item in path.rglob("*")):
         raise ValueError(f"skill package cannot contain symbolic links: {path}")
+
 
 def _require_managed_skill_path(path: Path, root: Path) -> None:
     resolved_path = path.resolve()
@@ -337,14 +350,17 @@ def _require_managed_skill_path(path: Path, root: Path) -> None:
     if resolved_path == resolved_root or not _path_is_within(resolved_path, resolved_root):
         raise ValueError(f"skill is outside managed root: {path}")
 
+
 def _path_is_within(path: Path, root: Path) -> bool:
     return path == root or root in path.parents
+
 
 def _clean_skill_name(name: str) -> str:
     value = name.strip().lower()
     if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", value):
         raise ValueError("skill name must use lowercase letters, numbers, '-' or '_'")
     return value
+
 
 def _split_skill_reference(value: str) -> tuple[str, str | None]:
     reference = value.strip().lower()
@@ -354,6 +370,7 @@ def _split_skill_reference(value: str) -> tuple[str, str | None]:
     if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", skill_type):
         raise ValueError(f"invalid Skill type: {skill_type}")
     return _clean_skill_name(name), skill_type
+
 
 def _clean_expected_sha256(value: str) -> str:
     expected = value.strip().lower()

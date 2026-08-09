@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+
 class _ReadOnlyDict(dict):
     """Keep event objects JSON-compatible while rejecting nested mutation."""
 
@@ -19,6 +20,7 @@ class _ReadOnlyDict(dict):
 
     def __deepcopy__(self, memo: dict[int, object]) -> "_ReadOnlyDict":
         return self
+
 
 class _ReadOnlyList(list):
     """Preserve array equality and JSON encoding without exposing mutation."""
@@ -42,6 +44,7 @@ class _ReadOnlyList(list):
     def __deepcopy__(self, memo: dict[int, object]) -> "_ReadOnlyList":
         return self
 
+
 @dataclass(frozen=True)
 class ConversationMessage:
     message_id: str
@@ -50,6 +53,7 @@ class ConversationMessage:
     created_at: str
     run_id: str
     run_result: dict[str, object] | None = None
+
 
 @dataclass(frozen=True)
 class Conversation:
@@ -60,6 +64,7 @@ class Conversation:
     created_at: str
     updated_at: str
     messages: list[ConversationMessage]
+
 
 @dataclass(frozen=True)
 class RunEvent:
@@ -75,6 +80,7 @@ class RunEvent:
         if not isinstance(self.data, dict):
             raise TypeError("Runtime event data must be a dictionary")
         object.__setattr__(self, "data", _freeze_event_dictionary(self.data))
+
 
 @dataclass(frozen=True)
 class RunSnapshot:
@@ -94,6 +100,7 @@ class RunSnapshot:
     stop_reason: str | None
     error: dict[str, str] | None
 
+
 def _freeze_event_dictionary(value: dict[object, object]) -> _ReadOnlyDict:
     return _ReadOnlyDict(
         {
@@ -101,6 +108,7 @@ def _freeze_event_dictionary(value: dict[object, object]) -> _ReadOnlyDict:
             for key, item in value.items()
         }
     )
+
 
 def _freeze_event_value(value: object) -> object:
     if isinstance(value, _ReadOnlyDict | _ReadOnlyList):

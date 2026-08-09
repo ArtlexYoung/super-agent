@@ -51,6 +51,7 @@ _TRANSITIONS = {
     "running": {"queued", "completed", "failed"},
 }
 
+
 class AgentTaskQueue(AgentGroupTools):
     """Give each subagent one serial consumer and wake the producer on demand."""
 
@@ -554,6 +555,7 @@ class AgentTaskQueue(AgentGroupTools):
         self.record_event(event_type, data)
         self._condition.notify_all()
 
+
 def create_agent_task_queue(
     tools: dict[str, dict[str, object]],
     subagents: list[dict[str, object]],
@@ -586,6 +588,7 @@ def create_agent_task_queue(
         group_options,
     )
 
+
 def _read_string_list(arguments: dict[str, object], name: str) -> tuple[str, ...]:
     value = arguments.get(name)
     if not isinstance(value, list) or not 1 <= len(value) <= 16:
@@ -596,6 +599,7 @@ def _read_string_list(arguments: dict[str, object], name: str) -> tuple[str, ...
     if len(cleaned) != len(value):
         raise ValueError(f"tool argument {name!r} must contain unique non-empty strings")
     return cleaned
+
 
 def _read_optional_string_list(
     arguments: dict[str, object],
@@ -610,6 +614,7 @@ def _read_optional_string_list(
     if len(cleaned) != len(value):
         raise ValueError(f"tool argument {name!r} must contain unique non-empty strings")
     return cleaned
+
 
 def _read_positive_number(arguments: dict[str, object], name: str) -> float:
     value = arguments.get(name)

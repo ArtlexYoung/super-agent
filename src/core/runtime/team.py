@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from core.runtime.agent import Agent
 
+
 def find_cycle_chains(
     agent: Agent,
     chain: list[str],
@@ -26,6 +27,7 @@ def find_cycle_chains(
             )
         )
     return cycles
+
 
 def find_longest_agent_chain(
     agent: Agent,

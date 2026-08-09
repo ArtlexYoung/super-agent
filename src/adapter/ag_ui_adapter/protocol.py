@@ -8,6 +8,7 @@ from typing import Any
 
 from core.state.models import RunEvent
 
+
 @dataclass(frozen=True)
 class AGUIRunInput:
     thread_id: str
@@ -30,6 +31,7 @@ class AGUIRunInput:
             raise ValueError("AG-UI forwardedProps must be an object")
         skill = _read_optional_skill(forwarded.get("skill"))
         return cls(thread_id, run_id, prompt, skill)
+
 
 class AGUIEventMapper:
     """Map one canonical Runtime stream to ordered AG-UI events."""
@@ -100,9 +102,11 @@ class AGUIEventMapper:
             mapped["parentRunId"] = event.parent_run_id
         return mapped
 
+
 def encode_sse_event(event: dict[str, object]) -> bytes:
     payload = json.dumps(event, ensure_ascii=False, separators=(",", ":"))
     return f"data: {payload}\n\n".encode("utf-8")
+
 
 def _read_identifier(data: dict[str, object], name: str) -> str:
     value = data.get(name)
@@ -112,6 +116,7 @@ def _read_identifier(data: dict[str, object], name: str) -> str:
     if len(clean) > 200 or any(ord(character) < 32 for character in clean):
         raise ValueError(f"AG-UI {name} must be at most 200 printable characters")
     return clean
+
 
 def _read_optional_skill(value: object) -> str | None:
     if value is None:
@@ -123,6 +128,7 @@ def _read_optional_skill(value: object) -> str | None:
         raise ValueError("AG-UI forwardedProps.skill is invalid")
     return clean
 
+
 def _read_latest_user_message(messages: list[object]) -> str:
     for message in reversed(messages):
         if not isinstance(message, dict) or message.get("role") != "user":
@@ -131,6 +137,7 @@ def _read_latest_user_message(messages: list[object]) -> str:
         if content:
             return content
     raise ValueError("AG-UI messages must contain a non-empty user message")
+
 
 def _read_user_content(value: object) -> str:
     if isinstance(value, str):
@@ -143,6 +150,7 @@ def _read_user_content(value: object) -> str:
         if isinstance(item, dict) and item.get("type") == "text"
     ]
     return "\n".join(part for part in parts if part)
+
 
 def _custom_runtime_event(event: RunEvent) -> dict[str, object]:
     return {
@@ -157,6 +165,7 @@ def _custom_runtime_event(event: RunEvent) -> dict[str, object]:
             "data": event.data,
         },
     }
+
 
 def _tool_call_started_events(event: RunEvent) -> list[dict[str, object]]:
     call_id = str(event.data.get("call_id") or f"tool-{event.sequence}")
@@ -175,6 +184,7 @@ def _tool_call_started_events(event: RunEvent) -> list[dict[str, object]]:
         {"type": "TOOL_CALL_END", "toolCallId": call_id},
     ]
 
+
 def _tool_call_result_event(event: RunEvent) -> dict[str, object]:
     call_id = str(event.data.get("call_id") or f"tool-{event.sequence}")
     content = (
@@ -192,6 +202,7 @@ def _tool_call_result_event(event: RunEvent) -> dict[str, object]:
         "content": json.dumps(content, ensure_ascii=False, separators=(",", ":")),
         "role": "tool",
     }
+
 
 def _assistant_message_events(event: RunEvent) -> list[dict[str, str]]:
     message_id = f"message-{event.run_id}"

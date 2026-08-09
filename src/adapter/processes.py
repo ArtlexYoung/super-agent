@@ -28,6 +28,7 @@ MAX_ACTIVE_PROCESSES = 16
 PROCESS_STOP_GRACE_SECONDS = 1
 PROCESS_READ_CHUNK = 8_192
 
+
 @dataclass(frozen=True)
 class ProcessLimits:
     timeout_seconds: int = DEFAULT_PROCESS_TIMEOUT_SECONDS
@@ -47,6 +48,7 @@ class ProcessLimits:
         ):
             raise ValueError("process output limit must be greater than 0")
 
+
 @dataclass
 class _RunningProcess:
     process_id: str
@@ -64,6 +66,7 @@ class _RunningProcess:
     output_finished: threading.Event = field(default_factory=threading.Event)
     lock: threading.Lock = field(default_factory=threading.Lock)
     stop_lock: threading.Lock = field(default_factory=threading.Lock)
+
 
 class DeclaredProcessTools:
     """Run only configured argv commands with explicit bounded state."""
@@ -325,6 +328,7 @@ class DeclaredProcessTools:
             raise KeyError(f"declared process not found: {process_id}")
         return task
 
+
 def _signal_process(process: subprocess.Popen[bytes], selected_signal: signal.Signals) -> None:
     try:
         if os.name == "posix":
@@ -335,6 +339,7 @@ def _signal_process(process: subprocess.Popen[bytes], selected_signal: signal.Si
             process.kill()
     except ProcessLookupError:
         return
+
 
 def _process_state(
     task: _RunningProcess,
@@ -351,8 +356,10 @@ def _process_state(
         return "running"
     return "completed" if output_finished else "collecting_output"
 
+
 def _is_terminal_result(result: dict[str, object]) -> bool:
     return result["returncode"] is not None and result["state"] != "collecting_output"
+
 
 def _decode_output(value: bytes) -> tuple[str, bool]:
     try:

@@ -12,6 +12,7 @@ from core.state.models import RunSnapshot
 from core.state.events import EventStore
 from core.skill_use.defaults import load_configured_freshness_rules_if_enabled
 
+
 def configure_runs_parser(parser: argparse.ArgumentParser) -> None:
     subparsers = parser.add_subparsers(dest="runs_command")
     status_parser = subparsers.add_parser(
@@ -70,6 +71,7 @@ def configure_runs_parser(parser: argparse.ArgumentParser) -> None:
     learn_parser.add_argument("--run-id", required=True)
     learn_parser.add_argument("--output", choices=["text", "json"], default="text")
 
+
 def run_runs_command(args: argparse.Namespace) -> int:
     command = args.runs_command or "status"
     if command == "status":
@@ -83,6 +85,7 @@ def run_runs_command(args: argparse.Namespace) -> int:
     if command == "learn":
         return _learn_from_run(args)
     raise ValueError(f"unknown runs command: {command}")
+
 
 def _show_run_status(args: argparse.Namespace) -> int:
     store = _load_run_snapshot_store(args.common_config, args.user_id)
@@ -115,6 +118,7 @@ def _show_run_status(args: argparse.Namespace) -> int:
         print(_run_status_line(snapshot))
     return 0
 
+
 def _explain_run(args: argparse.Namespace) -> int:
     agent = load_agent(args.common_config)
     store = agent._create_event_store(args.user_id)
@@ -136,6 +140,7 @@ def _explain_run(args: argparse.Namespace) -> int:
     _print_run_explanation(explanation)
     return 0
 
+
 def _export_run(args: argparse.Namespace) -> int:
     store = _load_run_snapshot_store(args.common_config, args.user_id)
     run_id = _resolve_run_id(store, args.run_id)
@@ -151,6 +156,7 @@ def _export_run(args: argparse.Namespace) -> int:
     print(f"Exported run: {path}")
     return 0
 
+
 def _record_run_feedback(args: argparse.Namespace) -> int:
     event = load_agent(args.common_config).for_user(args.user_id).runs.record_feedback(
         args.run_id,
@@ -163,6 +169,7 @@ def _record_run_feedback(args: argparse.Namespace) -> int:
         print(f"Recorded feedback: {event.run_id} score={args.score:.3f}")
     return 0
 
+
 def _learn_from_run(args: argparse.Namespace) -> int:
     result = load_agent(args.common_config).for_user(args.user_id).runs.learn(args.run_id)
     if args.output == "json":
@@ -174,14 +181,17 @@ def _learn_from_run(args: argparse.Namespace) -> int:
         )
     return 0
 
+
 def _load_run_snapshot_store(config_path: str | None, user_id: str) -> EventStore:
     return load_event_store(config_path, user_id)
+
 
 def _resolve_run_id(store: EventStore, requested: str | None) -> str | None:
     if requested:
         return requested.strip()
     snapshots = store.list_runs(1)
     return snapshots[0].run_id if snapshots else None
+
 
 def _find_run_store(store: EventStore, run_id: str) -> EventStore:
     try:
@@ -190,6 +200,7 @@ def _find_run_store(store: EventStore, run_id: str) -> EventStore:
     except KeyError:
         return store.store_for_run(run_id)
 
+
 def _run_status_line(snapshot: RunSnapshot) -> str:
     skills = ",".join(snapshot.used_skills)
     return (
@@ -197,6 +208,7 @@ def _run_status_line(snapshot: RunSnapshot) -> str:
         f"\tstarted={snapshot.started_at}\tworkflow={snapshot.workflow or ''}"
         f"\tstop_reason={snapshot.stop_reason or ''}\tskills={skills}"
     )
+
 
 def _print_run_explanation(explanation: dict[str, object]) -> None:
     snapshot = _required_object(explanation, "snapshot")
@@ -226,6 +238,7 @@ def _print_run_explanation(explanation: dict[str, object]) -> None:
     _print_model_usage_insight(explanation.get("model_usage"))
     _print_freshness_insight(explanation.get("skill_freshness"))
 
+
 def _print_plan_insight(value: object) -> None:
     if not isinstance(value, dict):
         return
@@ -242,6 +255,7 @@ def _print_plan_insight(value: object) -> None:
             f"\treason={model.get('reason', '')}"
         )
 
+
 def _print_model_call_insight(value: object) -> None:
     for call in _object_items(value):
         print(
@@ -254,6 +268,7 @@ def _print_model_call_insight(value: object) -> None:
             f"\testimated_cost={call.get('estimated_cost', '')}"
         )
 
+
 def _print_model_usage_insight(value: object) -> None:
     for evidence in _object_items(value):
         print(
@@ -263,6 +278,7 @@ def _print_model_usage_insight(value: object) -> None:
             f"\treliability={evidence.get('reliability', '')}"
             f"\tquality={evidence.get('average_quality', '')}"
         )
+
 
 def _print_freshness_insight(value: object) -> None:
     for skill in _object_items(value):
@@ -274,15 +290,18 @@ def _print_freshness_insight(value: object) -> None:
             f"\treplacements={skill.get('same_function_successful_followups', '')}"
         )
 
+
 def _object_items(value: object) -> list[dict[str, object]]:
     if not isinstance(value, list):
         return []
     return [item for item in value if isinstance(item, dict)]
 
+
 def _string_items(value: object) -> list[str]:
     if not isinstance(value, list):
         return []
     return [str(item) for item in value]
+
 
 def _required_object(data: dict[str, object], name: str) -> dict[str, object]:
     value = data.get(name)
@@ -290,11 +309,14 @@ def _required_object(data: dict[str, object], name: str) -> dict[str, object]:
         raise ValueError(f"run explanation {name} must be an object")
     return value
 
+
 def _add_config_argument(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--common-config")
 
+
 def _add_user_argument(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--user-id", default=LOCAL_USER_ID)
+
 
 def _add_sensitive_output_argument(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
@@ -303,11 +325,13 @@ def _add_sensitive_output_argument(parser: argparse.ArgumentParser) -> None:
         help="show complete prompts, model text, tool payloads, and error messages",
     )
 
+
 def _positive_integer(value: str) -> int:
     number = int(value)
     if number <= 0:
         raise argparse.ArgumentTypeError("value must be greater than zero")
     return number
+
 
 def _feedback_score(value: str) -> float:
     score = float(value)

@@ -30,6 +30,7 @@ if TYPE_CHECKING:
     from core.skill_use.models import ModelProfile
     from core.skill_use.handlers import SkillCollection, SkillResult
 
+
 @dataclass
 class Run:
     config: CommonConfig
@@ -217,6 +218,7 @@ class Run:
 
 CHECKPOINT_STATE_BYTES = 16_384
 
+
 def create_checkpoint_data(
     run_id: str,
     label: str,
@@ -242,12 +244,14 @@ def create_checkpoint_data(
         "state_keys": sorted(str(key) for key in facts),
     }
 
+
 def list_checkpoint_data(events: Iterable[RunEvent]) -> list[dict[str, object]]:
     return [
         dict(event.data)
         for event in events
         if event.event_type == "run.checkpoint.created"
     ]
+
 
 def find_checkpoint_data(
     events: Iterable[RunEvent],
@@ -270,8 +274,10 @@ def find_checkpoint_data(
         raise KeyError(f"checkpoint not found: {checkpoint_id}")
     return selected
 
+
 def hash_checkpoint_value(value: object) -> str:
     return hashlib.sha256(_encode_checkpoint_value(value)).hexdigest()
+
 
 def _encode_checkpoint_value(value: object) -> bytes:
     return json.dumps(

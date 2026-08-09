@@ -16,6 +16,7 @@ from core.provider.chat import (
 
 UserSecretLookup = Callable[[str, str], str | None]
 
+
 class UserSecretResolver:
     """Create a non-enumerable environment view for one validated user."""
 
@@ -34,6 +35,7 @@ class UserSecretResolver:
         if self.lookup is None:
             return self.process_environment
         return _UserSecretEnvironment(clean_user_id, self.lookup)
+
 
 class _UserSecretEnvironment(Mapping[str, str]):
     def __init__(self, user_id: str, lookup: UserSecretLookup) -> None:
@@ -55,6 +57,7 @@ class _UserSecretEnvironment(Mapping[str, str]):
 
     def __len__(self) -> int:
         return 0
+
 
 class ProviderPool:
     def __init__(self, environment: Mapping[str, str] | None = None) -> None:
@@ -91,6 +94,7 @@ class ProviderPool:
             provider = create_chat_provider(normalized, self.environment)
             self._providers_by_connection[normalized] = provider
         return provider
+
 
 def _clean_profile_key(value: str) -> str:
     key = value.strip().lower()

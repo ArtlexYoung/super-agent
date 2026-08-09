@@ -10,6 +10,7 @@ from uuid import uuid4
 
 from skill.manifest import calculate_skill_directory_sha256
 
+
 def require_skill_directory_matches(
     path: Path,
     expected_sha256: str,
@@ -23,6 +24,7 @@ def require_skill_directory_matches(
             raise ValueError(f"Skill {label} changed before directory replacement")
     elif _path_exists(path):
         raise ValueError(f"Skill {label} unexpectedly exists before directory replacement")
+
 
 def replace_skill_directory_atomically(
     source: Path,
@@ -55,6 +57,7 @@ def replace_skill_directory_atomically(
     if _path_exists(backup):
         shutil.rmtree(backup)
 
+
 def restore_skill_directory_after_failed_change(
     target: Path,
     changed_sha256: str,
@@ -78,12 +81,14 @@ def restore_skill_directory_after_failed_change(
         expected_target_sha256=changed_sha256,
     )
 
+
 def _directory_matches(path: Path, expected_sha256: str) -> bool:
     if not _path_exists(path):
         return expected_sha256 == ""
     if not expected_sha256 or not path.is_dir():
         return False
     return calculate_skill_directory_sha256(path) == expected_sha256
+
 
 def _path_exists(path: Path) -> bool:
     return path.exists() or path.is_symlink()

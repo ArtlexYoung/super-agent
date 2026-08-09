@@ -37,6 +37,7 @@ SELECT position, event_id, user_id, agent_name, stream_type, stream_id,
 FROM super_agent_storage_events
 """.strip()
 
+
 class RemoteSqlDatabaseAdapter(Protocol):
     """Database-specific connection and SQL statements used by shared storage."""
 
@@ -52,6 +53,7 @@ class RemoteSqlDatabaseAdapter(Protocol):
 
     def read_inserted_position(self, cursor: Any) -> int:
         ...
+
 
 @dataclass(frozen=True)
 class _PendingEvent:
@@ -81,6 +83,7 @@ class _PendingEvent:
             self.created_at,
             self.data_json,
         )
+
 
 class RemoteSqlStorage:
     """Store Runtime events with one backend-neutral remote SQL implementation."""
@@ -192,6 +195,7 @@ class RemoteSqlStorage:
         finally:
             connection.close()
 
+
 def read_storage_connection_url(
     backend: str,
     url_env: str | None,
@@ -204,6 +208,7 @@ def read_storage_connection_url(
             f"{backend} storage requires a connection URL in {environment_name}"
         )
     return connection_url
+
 
 def remote_database_location(
     connection_url: str,
@@ -220,6 +225,7 @@ def remote_database_location(
     host = parsed.hostname or "local-socket"
     port = "" if parsed.port is None else f":{parsed.port}"
     return f"{backend}:{host}{port}/{database}"
+
 
 def _query_where(query: StorageEventQuery) -> tuple[str, tuple[str, ...]]:
     clauses: list[str] = []
@@ -244,6 +250,7 @@ def _query_where(query: StorageEventQuery) -> tuple[str, tuple[str, ...]]:
         clauses.append("(" + " OR ".join(event_clauses) + ")")
     return " WHERE " + " AND ".join(clauses), tuple(parameters)
 
+
 def _event_id_batches(
     event_ids: tuple[str, ...] | None,
 ) -> list[tuple[str, ...] | None]:
@@ -253,6 +260,7 @@ def _event_id_batches(
         event_ids[index : index + REMOTE_DELETE_EVENT_ID_BATCH_SIZE]
         for index in range(0, len(event_ids), REMOTE_DELETE_EVENT_ID_BATCH_SIZE)
     ]
+
 
 def _event_from_row(row: object, location: str) -> StorageEvent:
     values = tuple(row)  # type: ignore[arg-type]
@@ -273,8 +281,10 @@ def _event_from_row(row: object, location: str) -> StorageEvent:
         ),
     )
 
+
 def _storage_text_key(value: str) -> str:
     return sha256(value.encode("utf-8")).hexdigest()
+
 
 def _reject_identifier_hash_collision(
     pending: _PendingEvent,
@@ -283,10 +293,12 @@ def _reject_identifier_hash_collision(
     if stored.user_id != pending.user_id or stored.event_id != pending.event_id:
         raise RuntimeError("remote SQL storage identifier hash collision")
 
+
 def _reject_unsupported_schema_version(row: object | None, backend: str) -> None:
     if row is None:
         return
     _require_current_schema_version(row, backend)
+
 
 def _require_current_schema_version(row: object | None, backend: str) -> None:
     values = () if row is None else tuple(row)  # type: ignore[arg-type]

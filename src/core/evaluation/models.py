@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 
 SKILL_REVISION_SCHEMA_VERSION = 2
 
+
 @dataclass(frozen=True)
 class SkillRevision:
     key: str
@@ -30,6 +31,7 @@ class SkillRevision:
     def identity(self) -> tuple[str, str, str]:
         return self.key, self.version, self.content_sha256
 
+
 def create_indexed_skill_revision(entry: SkillIndexEntry) -> SkillRevision:
     return SkillRevision(
         key=entry.reference.key,
@@ -42,6 +44,7 @@ def create_indexed_skill_revision(entry: SkillIndexEntry) -> SkillRevision:
         agent_can_update=entry.agent_can_update,
         freshness=entry.freshness,
     )
+
 
 def create_manifest_skill_revision(
     manifest: SkillManifest,
@@ -64,6 +67,7 @@ def create_manifest_skill_revision(
         freshness=manifest.freshness,
     )
 
+
 def skill_revision_to_dict(revision: SkillRevision) -> dict[str, object]:
     validate_skill_revision(revision)
     return {
@@ -78,6 +82,7 @@ def skill_revision_to_dict(revision: SkillRevision) -> dict[str, object]:
         "agent_can_update": revision.agent_can_update,
         "freshness": revision.freshness,
     }
+
 
 def skill_revision_from_dict(value: object) -> SkillRevision:
     fields = {
@@ -103,6 +108,7 @@ def skill_revision_from_dict(value: object) -> SkillRevision:
     validate_skill_revision(revision)
     return revision
 
+
 def validate_skill_revision(revision: SkillRevision) -> None:
     if revision.key != f"{revision.skill_type}:{revision.name}":
         raise ValueError("Skill revision key must equal type:name")
@@ -119,15 +125,18 @@ def validate_skill_revision(revision: SkillRevision) -> None:
     _required_bool(revision.agent_can_update, "agent_can_update")
     _optional_freshness(revision.freshness)
 
+
 def _required_text(value: object, name: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise TypeError(f"Skill revision {name} must contain non-empty text")
     return value.strip()
 
+
 def _required_bool(value: object, name: str) -> bool:
     if not isinstance(value, bool):
         raise TypeError(f"Skill revision {name} must be a boolean")
     return value
+
 
 def _optional_freshness(value: object) -> float | None:
     if value is None:

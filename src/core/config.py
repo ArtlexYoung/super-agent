@@ -11,6 +11,7 @@ from core.state.audit import AuditSettings
 
 DEFAULT_CODE_IGNORES = [".git", ".super-agent", "node_modules", "__pycache__"]
 
+
 @dataclass(frozen=True)
 class AgentSettings:
     name: str
@@ -19,10 +20,12 @@ class AgentSettings:
     max_agent_chain_depth: int | None
     disabled_skills: list[str]
 
+
 @dataclass(frozen=True)
 class PathsSettings:
     # Shared Skill roots are scanned recursively; manifest type defines behavior.
     skills: list[Path]
+
 
 @dataclass(frozen=True)
 class StorageSettings:
@@ -30,6 +33,7 @@ class StorageSettings:
     path: Path
     url_env: str | None
     audit: AuditSettings
+
 
 @dataclass(frozen=True)
 class CommonConfig:
@@ -86,6 +90,7 @@ class CommonConfig:
             source=base / "common.toml",
         )
 
+
 @dataclass(frozen=True)
 class CodeSettings:
     root: Path
@@ -94,6 +99,7 @@ class CodeSettings:
     write: str
     execute: str
     verification_commands: list[list[str]]
+
 
 @dataclass(frozen=True)
 class CodeConfig:
@@ -154,11 +160,13 @@ class CodeConfig:
             )
         )
 
+
 def require_config_header(data: dict[str, Any], expected_kind: str) -> None:
     if data.get("schema_version") != 1:
         raise ValueError("configuration schema_version must be 1")
     if data.get("kind") != expected_kind:
         raise ValueError(f"configuration kind must be {expected_kind!r}")
+
 
 def reject_unknown_settings(
     data: Mapping[str, Any],
@@ -168,6 +176,7 @@ def reject_unknown_settings(
     unknown = set(data) - allowed
     if unknown:
         raise ValueError(f"unknown {name}: {', '.join(sorted(unknown))}")
+
 
 def find_optional_config_file(
     filename: str,
@@ -188,6 +197,7 @@ def find_optional_config_file(
         raise FileNotFoundError(f"{environment_variable} file not found: {source}")
     return base, source
 
+
 def _read_agent_settings(data: dict[str, Any]) -> AgentSettings:
     allowed = {
         "name",
@@ -207,12 +217,14 @@ def _read_agent_settings(data: dict[str, Any]) -> AgentSettings:
         ],
     )
 
+
 def _read_paths_settings(data: dict[str, Any], base_dir: Path) -> PathsSettings:
     reject_unknown_settings(data, {"skills"}, "paths settings")
     skill_paths = data.get("skills", ["skills"])
     return PathsSettings(
         skills=[_resolve_path(base_dir, Path(str(item))) for item in skill_paths],
     )
+
 
 def _read_storage_settings(data: dict[str, Any], base_dir: Path) -> StorageSettings:
     reject_unknown_settings(
@@ -231,6 +243,7 @@ def _read_storage_settings(data: dict[str, Any], base_dir: Path) -> StorageSetti
         url_env=_optional_string(data.get("url_env")),
         audit=audit,
     )
+
 
 def _read_audit_settings(data: Any) -> AuditSettings:
     if not isinstance(data, dict):
@@ -251,6 +264,7 @@ def _read_audit_settings(data: Any) -> AuditSettings:
         ),
     )
 
+
 def _read_code_workspace(
     data: dict[str, Any],
     base_dir: Path,
@@ -266,6 +280,7 @@ def _read_code_workspace(
         raise ValueError("code workspace ignore paths must stay relative")
     return {"root": root, "ignored_paths": list(ignored)}
 
+
 def _read_code_actions(data: dict[str, Any]) -> dict[str, str]:
     reject_unknown_settings(data, {"read", "write", "execute"}, "code action settings")
     values = {
@@ -275,6 +290,7 @@ def _read_code_actions(data: dict[str, Any]) -> dict[str, str]:
     if any(value not in {"allow", "ask", "deny"} for value in values.values()):
         raise ValueError("code actions must be allow, ask, or deny")
     return values
+
 
 def _read_verification_commands(data: dict[str, Any]) -> list[list[str]]:
     reject_unknown_settings(data, {"commands"}, "code verification settings")
@@ -288,14 +304,17 @@ def _read_verification_commands(data: dict[str, Any]) -> list[list[str]]:
         raise ValueError("code verification commands must be non-empty string arrays")
     return [list(command) for command in commands]
 
+
 def _resolve_path(base_dir: Path, path: Path) -> Path:
     return path.expanduser() if path.is_absolute() else base_dir / path
+
 
 def _optional_string(value: Any) -> str | None:
     if value is None:
         return None
     text = str(value).strip()
     return text or None
+
 
 def _optional_positive_int(value: Any) -> int | None:
     if value is None:
@@ -304,6 +323,7 @@ def _optional_positive_int(value: Any) -> int | None:
     if number <= 0:
         raise ValueError("max_agent_chain_depth must be greater than 0")
     return number
+
 
 def _read_positive_days(value: Any, name: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:

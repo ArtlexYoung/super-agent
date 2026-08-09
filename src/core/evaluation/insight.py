@@ -9,6 +9,7 @@ from core.evaluation.freshness import calculate_skill_freshness
 from core.evaluation.records import read_evaluation_records
 from core.evaluation.rules import FreshnessRules
 
+
 def explain_run_with_insight(
     store: EventStore,
     run_id: str,
@@ -34,6 +35,7 @@ def explain_run_with_insight(
         }
     )
     return explanation
+
 
 def project_model_calls(events: list[RunEvent]) -> list[dict[str, object]]:
     calls: list[dict[str, object]] = []
@@ -73,6 +75,7 @@ def project_model_calls(events: list[RunEvent]) -> list[dict[str, object]]:
             projected["status"] = "failed"
     return calls
 
+
 def _skill_freshness_for_run(
     store: EventStore,
     run_id: str,
@@ -94,6 +97,7 @@ def _skill_freshness_for_run(
     )
     return [current[key] for key in sorted(run_skill_keys) if key in current]
 
+
 def _latest_event_data(
     events: list[RunEvent],
     event_type: str,
@@ -102,6 +106,7 @@ def _latest_event_data(
         if event.event_type == event_type:
             return dict(event.data)
     return {}
+
 
 def _model_purposes_for_run(events: list[RunEvent]) -> set[str]:
     purposes = {

@@ -15,6 +15,7 @@ from adapter.storage.sql.base import (
 DEFAULT_POSTGRESQL_URL_ENV = "SUPER_AGENT_POSTGRESQL_URL"
 _POSTGRESQL_SCHEMES = {"postgres", "postgresql"}
 
+
 class PostgreSqlStorage(RemoteSqlStorage):
     """Store Runtime events in PostgreSQL through the optional psycopg driver."""
 
@@ -32,6 +33,7 @@ class PostgreSqlStorage(RemoteSqlStorage):
             DEFAULT_POSTGRESQL_URL_ENV,
         )
         super().__init__(_PostgreSqlDatabase(driver, connection_url))
+
 
 class _PostgreSqlDatabase:
     name = "postgresql"

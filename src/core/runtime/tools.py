@@ -22,6 +22,7 @@ from core.checks import ActionEffect, ActionRequest
 from skill.disclosure import SkillDisclosure, SkillIndex, SkillReference, skill_index_to_dict
 from skill.index import DEFAULT_PAGE_CHARS, disclosure_page_to_dict
 
+
 @dataclass(frozen=True)
 class RuntimeToolsContext:
     session: Run
@@ -30,6 +31,7 @@ class RuntimeToolsContext:
     send_text_model_messages: Callable[[list[Message]], str] | None = None
     allowed_task_skills: tuple[str, ...] = ()
     shared_context: dict[str, object] | None = None
+
 
 class RuntimeTools:
     def __init__(
@@ -444,6 +446,7 @@ def _create_disclosure_tools(
     ))
     return tuple(tools)
 
+
 def create_runtime_tools(
     request: Task, run: Run, contributions: list[SkillResult],
     send_text_model_messages: Callable[[list[Message]], str],
@@ -526,6 +529,7 @@ def create_runtime_tools(
     )
     return tools
 
+
 def _read_subagent_result(value: dict[str, object]) -> SubAgentResult:
     nested = value.get("subagent_results")
     return SubAgentResult(
@@ -542,6 +546,7 @@ def _read_subagent_result(value: dict[str, object]) -> SubAgentResult:
         run_id=str(value.get("run_id", "")),
     )
 
+
 def _skill_reference_properties(
     skill_index: SkillIndex,
 ) -> dict[str, dict[str, object]]:
@@ -553,8 +558,10 @@ def _skill_reference_properties(
         "type": {"type": "string", "enum": skill_types},
     }
 
+
 def _optional_path(path: Path | None) -> str | None:
     return None if path is None else str(path)
+
 
 def _create_subagent_tools(runtime_tools: RuntimeTools) -> tuple[SkillTool, ...]:
     tools = [
@@ -582,6 +589,7 @@ def _create_subagent_tools(runtime_tools: RuntimeTools) -> tuple[SkillTool, ...]
         ))
     return tuple(tools)
 
+
 def _create_shared_context_tools(runtime_tools: RuntimeTools) -> tuple[SkillTool, ...]:
     shared = runtime_tools.context.shared_context or {}
     reference = str(shared.get("reference", ""))
@@ -596,6 +604,7 @@ def _create_shared_context_tools(runtime_tools: RuntimeTools) -> tuple[SkillTool
             result_kind=None,
         ),
     )
+
 
 def _activation_instructions(loaded: list[tuple[SkillReference, SkillResult]]) -> list[dict[str, str]]:
     instructions: list[dict[str, str]] = []

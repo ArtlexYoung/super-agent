@@ -7,6 +7,7 @@ from enum import StrEnum
 from typing import Callable, TypeVar
 from uuid import uuid4
 
+
 class ActionEffect(StrEnum):
     READ = "read"
     CREATE = "create"
@@ -16,16 +17,19 @@ class ActionEffect(StrEnum):
     NETWORK = "network"
     DELEGATE = "delegate"
 
+
 class ActionDecisionType(StrEnum):
     ALLOW = "allow"
     DENY = "deny"
     REQUIRE_CONFIRMATION = "require_confirmation"
+
 
 class ActionMode(StrEnum):
     AUDIT = "audit"
     STANDARD = "standard"
     READ_ONLY = "read_only"
     AUTONOMOUS = "autonomous"
+
 
 @dataclass(frozen=True)
 class ActionRequest:
@@ -77,6 +81,7 @@ class ActionRequest:
             argument_names,
         )
 
+
 @dataclass(frozen=True)
 class ActionDecision:
     decision: ActionDecisionType
@@ -90,12 +95,14 @@ class ActionDecision:
             "enforced": self.enforced,
         }
 
+
 @dataclass(frozen=True)
 class PreparedAction:
     """An allowed state change that has not run its handler yet."""
 
     request: ActionRequest
     decision: ActionDecision
+
 
 @dataclass(frozen=True)
 class ActionRules:
@@ -134,6 +141,7 @@ class ActionRules:
             return _allow("autonomous policy allows declared actions")
         return _check_standard_action(request)
 
+
 def _check_standard_action(request: ActionRequest) -> ActionDecision:
     if request.actor.startswith("user:"):
         return _allow("the user explicitly requested this management action")
@@ -153,14 +161,17 @@ def _check_standard_action(request: ActionRequest) -> ActionDecision:
         return _confirm("external execution, network access, or deletion needs approval")
     return _confirm("the declared state change needs approval")
 
+
 class ActionBlockedError(PermissionError):
     def __init__(self, request: ActionRequest, decision: ActionDecision) -> None:
         super().__init__(decision.reason)
         self.request = request
         self.decision = decision
 
+
 class ActionNotAllowedError(ActionBlockedError):
     pass
+
 
 class ActionConfirmationRequired(ActionBlockedError):
     pass
@@ -168,6 +179,7 @@ class ActionConfirmationRequired(ActionBlockedError):
 
 Result = TypeVar("Result")
 EventRecorder = Callable[[str, dict[str, object]], object]
+
 
 class ActionRunner:
     def __init__(self, policy: ActionRules, record_event: EventRecorder) -> None:
@@ -261,6 +273,7 @@ class ActionRunner:
             {**request.to_event_data(), **decision.to_event_data()},
         )
 
+
 def action_requires_checker(effects: tuple[ActionEffect, ...]) -> bool:
     """Return whether declared effects can change state or leave the process."""
     return set(effects) != {ActionEffect.READ}
@@ -284,17 +297,22 @@ _INTERNAL_RESOURCE_PREFIXES = (
     "task:queue",
 )
 
+
 def _is_internal_resource(resource: str) -> bool:
     return resource.startswith(_INTERNAL_RESOURCE_PREFIXES)
+
 
 def _is_read_only(request: ActionRequest) -> bool:
     return set(request.effects) == {ActionEffect.READ}
 
+
 def _allow(reason: str) -> ActionDecision:
     return ActionDecision(ActionDecisionType.ALLOW, reason, True)
 
+
 def _deny(reason: str) -> ActionDecision:
     return ActionDecision(ActionDecisionType.DENY, reason, True)
+
 
 def _confirm(reason: str) -> ActionDecision:
     return ActionDecision(ActionDecisionType.REQUIRE_CONFIRMATION, reason, True)

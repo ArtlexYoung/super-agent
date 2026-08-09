@@ -28,6 +28,7 @@ MODEL_PRICE_FIELDS = (
     "cache_read_cost_per_million",
 )
 
+
 @dataclass(frozen=True)
 class ModelSkillInput:
     name: str
@@ -50,10 +51,12 @@ class ModelSkillInput:
     cache_read_cost_per_million: float | None = None
     previous_name: str = ""
 
+
 @dataclass(frozen=True)
 class _ModelSkillDocument:
     manifest: SkillManifest
     configuration: dict[str, object]
+
 
 class ModelSkillManager:
     """Manage model Skill overlays inside one user scope."""
@@ -208,6 +211,7 @@ class ModelSkillManager:
             user_skill_roots=[self.user_skill_root],
         )
 
+
 def model_skill_input_from_dict(value: object) -> ModelSkillInput:
     if not isinstance(value, dict):
         raise TypeError("model Skill input must be a JSON object")
@@ -248,6 +252,7 @@ def model_skill_input_from_dict(value: object) -> ModelSkillInput:
         )
     )
 
+
 def validate_model_skill_input(request: ModelSkillInput) -> ModelSkillInput:
     name = _clean_skill_name(request.name)
     previous_name = "" if not request.previous_name else _clean_skill_name(request.previous_name)
@@ -273,6 +278,7 @@ def validate_model_skill_input(request: ModelSkillInput) -> ModelSkillInput:
             for name in MODEL_PRICE_FIELDS
         },
     )
+
 
 def _create_model_skill_document(
     request: ModelSkillInput,
@@ -322,11 +328,13 @@ def _create_model_skill_document(
         _add_optional(configuration, name, getattr(request, name))
     return _ModelSkillDocument(manifest, configuration)
 
+
 def _read_model_skill_document(disclosure: SkillDisclosure) -> _ModelSkillDocument:
     return _ModelSkillDocument(
         disclosure.read_manifest(),
         disclosure.read_configuration().content,
     )
+
 
 def _with_default(
     document: _ModelSkillDocument,
@@ -339,6 +347,7 @@ def _with_default(
         version=_next_patch_version(document.manifest.version),
     )
     return _ModelSkillDocument(manifest, configuration)
+
 
 def _apply_model_skill_updates(
     updates: list[tuple[Path, Path | None, _ModelSkillDocument]],
@@ -362,6 +371,7 @@ def _apply_model_skill_updates(
     for backup in backups.values():
         shutil.rmtree(backup)
 
+
 def _stage_model_skill_updates(
     updates: list[tuple[Path, Path | None, _ModelSkillDocument]],
     store: EventStore,
@@ -375,6 +385,7 @@ def _stage_model_skill_updates(
         raise
     return stages
 
+
 def _backup_model_skill_directories(
     paths: list[Path],
     backups: dict[Path, Path],
@@ -385,10 +396,12 @@ def _backup_model_skill_directories(
             os.replace(path, backup)
             backups[path] = backup
 
+
 def _activate_model_skill_stages(stages: list[tuple[Path, Path]]) -> None:
     for target, stage in stages:
         target.parent.mkdir(parents=True, exist_ok=True)
         os.replace(stage, target)
+
 
 def _restore_model_skill_directories(
     stages: list[tuple[Path, Path]],
@@ -402,11 +415,13 @@ def _restore_model_skill_directories(
             shutil.rmtree(path)
         os.replace(backup, path)
 
+
 def _remove_model_skill_stages(stages: list[tuple[Path, Path]]) -> None:
     for _, stage in stages:
         stage_root = stage.parent
         if stage_root.exists():
             shutil.rmtree(stage_root)
+
 
 def _stage_model_skill(
     target: Path,
@@ -438,6 +453,7 @@ def _stage_model_skill(
         raise
     return target, stage
 
+
 def _model_skill_toml(document: _ModelSkillDocument) -> str:
     manifest = document.manifest
     lines = [
@@ -467,6 +483,7 @@ def _model_skill_toml(document: _ModelSkillDocument) -> str:
             lines.append(f"{name} = {_toml_value(document.configuration[name])}")
     return "\n".join(lines) + "\n"
 
+
 def _toml_value(value: object) -> str:
     if isinstance(value, bool):
         return str(value).lower()
@@ -478,6 +495,7 @@ def _toml_value(value: object) -> str:
         return f"{value:g}" if isinstance(value, float) else str(value)
     raise TypeError(f"unsupported model Skill TOML value: {type(value).__name__}")
 
+
 def _next_patch_version(version: str) -> str:
     if not version:
         return "0.1.0"
@@ -487,11 +505,13 @@ def _next_patch_version(version: str) -> str:
     major, minor, patch = (int(item) for item in match.groups())
     return f"{major}.{minor}.{patch + 1}"
 
+
 def _require_managed_path(path: Path, root: Path) -> None:
     resolved = path.resolve()
     managed_root = root.resolve()
     if resolved == managed_root or managed_root not in resolved.parents:
         raise ValueError(f"model Skill is outside writable Skill root: {path}")
+
 
 def _clean_skill_name(value: object) -> str:
     name = _required_text(value, "name").lower()
@@ -499,10 +519,12 @@ def _clean_skill_name(value: object) -> str:
         raise ValueError("model Skill name must use lowercase letters, numbers, '-' or '_'")
     return name
 
+
 def _required_text(value: object, name: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"model Skill {name} cannot be empty")
     return value.strip()
+
 
 def _optional_text(value: object, name: str) -> str:
     if value is None:
@@ -511,10 +533,12 @@ def _optional_text(value: object, name: str) -> str:
         raise TypeError(f"model Skill {name} must be a string")
     return value.strip()
 
+
 def _text_list(value: object, name: str) -> list[str]:
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
         raise TypeError(f"model Skill {name} must be a string array")
     return list(value)
+
 
 def _normalized_text_list(
     value: object,
@@ -529,10 +553,12 @@ def _normalized_text_list(
         raise ValueError(f"model Skill {name} cannot contain duplicates")
     return items
 
+
 def _boolean(value: object, name: str) -> bool:
     if not isinstance(value, bool):
         raise TypeError(f"model Skill {name} must be a boolean")
     return value
+
 
 def _optional_number(
     value: object,
@@ -551,6 +577,7 @@ def _optional_number(
         raise ValueError(f"model Skill {name} must be {limit}")
     return number
 
+
 def _optional_integer(value: object, name: str) -> int | None:
     if value is None:
         return None
@@ -558,12 +585,15 @@ def _optional_integer(value: object, name: str) -> int | None:
         raise ValueError(f"model Skill {name} must be a non-negative integer")
     return value
 
+
 def _add_optional(data: dict[str, object], name: str, value: object) -> None:
     if value not in {None, ""}:
         data[name] = value
 
+
 def _quote(value: str) -> str:
     return json.dumps(value, ensure_ascii=False)
+
 
 def _array(values: list[object]) -> str:
     return "[" + ", ".join(_quote(str(value)) for value in values) + "]"

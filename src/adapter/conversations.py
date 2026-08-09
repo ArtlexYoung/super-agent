@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from core.state.events import EventStore
     from core.runtime.agent import Agent
 
+
 @dataclass(frozen=True)
 class PendingConversationTurn:
     store: EventStore
@@ -24,6 +25,7 @@ class PendingConversationTurn:
     conversation: Conversation | None
     conversation_id: str
     prompt: str
+
 
 def prepare_conversation_turn(
     store: EventStore,
@@ -58,6 +60,7 @@ def prepare_conversation_turn(
         prompt,
     )
 
+
 def complete_conversation_turn(
     pending: PendingConversationTurn,
     result: RunResult,
@@ -74,6 +77,7 @@ def complete_conversation_turn(
             run_result=_run_result_summary(result),
         ),
     )
+
 
 def infer_conversation_feedback(
     agent: Agent,
@@ -123,6 +127,7 @@ def infer_conversation_feedback(
             source="implicit",
         )
 
+
 def create_conversation(
     store: EventStore,
     title: str = "",
@@ -143,12 +148,14 @@ def create_conversation(
     )
     return read_conversation(store, selected_id)
 
+
 def read_conversation(store: EventStore, conversation_id: str) -> Conversation:
     selected_id = _required_text(conversation_id, "conversation_id")
     events = store.read_events("conversation", selected_id)
     if not events:
         raise KeyError(f"conversation not found: {selected_id}")
     return conversation_from_events(store.user_id, events)
+
 
 def list_conversations(store: EventStore) -> list[Conversation]:
     grouped: dict[str, list[StorageEvent]] = {}
@@ -159,6 +166,7 @@ def list_conversations(store: EventStore) -> list[Conversation]:
         key=lambda item: (item.updated_at, item.conversation_id),
         reverse=True,
     )
+
 
 def rename_conversation(
     store: EventStore,
@@ -176,6 +184,7 @@ def rename_conversation(
         )
     return read_conversation(store, conversation.conversation_id)
 
+
 def clear_conversation(store: EventStore, conversation_id: str) -> Conversation:
     conversation = read_conversation(store, conversation_id)
     store.append_event(
@@ -186,9 +195,11 @@ def clear_conversation(store: EventStore, conversation_id: str) -> Conversation:
     )
     return read_conversation(store, conversation.conversation_id)
 
+
 def delete_conversation(store: EventStore, conversation_id: str) -> None:
     conversation = read_conversation(store, conversation_id)
     store.delete_events("conversation", conversation.conversation_id)
+
 
 def append_conversation_turn(
     store: EventStore,
@@ -220,6 +231,7 @@ def append_conversation_turn(
         event_id=turn_id,
     )
     return read_conversation(store, selected_id)
+
 
 def conversation_from_events(
     user_id: str,
@@ -253,6 +265,7 @@ def conversation_from_events(
         messages=messages,
     )
 
+
 def _message_data(
     role: str,
     content: str,
@@ -268,6 +281,7 @@ def _message_data(
         "run_result": None if run_result is None else dict(run_result),
     }
 
+
 def _run_result_summary(result: RunResult) -> dict[str, object]:
     """Store only bounded run metadata beside the durable conversation text."""
     return {
@@ -280,6 +294,7 @@ def _run_result_summary(result: RunResult) -> dict[str, object]:
         "subagent_count": len(result.subagent_results or []),
     }
 
+
 def _turn_messages_from_event(event: StorageEvent) -> list[ConversationMessage]:
     messages = [
         _conversation_message_from_data(event, "user"),
@@ -288,6 +303,7 @@ def _turn_messages_from_event(event: StorageEvent) -> list[ConversationMessage]:
     if [message.role for message in messages] != ["user", "assistant"]:
         raise ValueError("conversation turn must contain user and assistant messages")
     return messages
+
 
 def _conversation_message_from_data(
     event: StorageEvent,
@@ -308,15 +324,18 @@ def _conversation_message_from_data(
         run_result=None if run_result is None else dict(run_result),
     )
 
+
 def _required_text(value: object, name: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{name} cannot be empty")
     return value.strip()
 
+
 def _optional_title(value: object) -> str:
     if not isinstance(value, str):
         raise TypeError("conversation title must be a string")
     return value.strip()
+
 
 def _stored_string(
     data: dict[str, object],

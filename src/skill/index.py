@@ -24,6 +24,7 @@ CONTEXT_BUDGET_STAGES = frozenset(
     }
 )
 
+
 @dataclass(frozen=True)
 class DisclosurePage:
     reference: str
@@ -35,6 +36,7 @@ class DisclosurePage:
     total_chars: int
     next_offset: int | None
     cache_path: Path | None = None
+
 
 class DisclosureContextBudget:
     """Count prompt characters across every central disclosure stage."""
@@ -99,6 +101,7 @@ class DisclosureContextBudget:
             "remaining_chars": max(0, self.budget_chars - self.used_chars),
         }
 
+
 def create_disclosure_page(
     reference: str,
     kind: str,
@@ -135,10 +138,12 @@ def create_disclosure_page(
         cache_path=cache_path,
     )
 
+
 def disclosure_page_to_dict(page: DisclosurePage) -> dict[str, object]:
     value = asdict(page)
     value["cache_path"] = None if page.cache_path is None else str(page.cache_path)
     return value
+
 
 def format_disclosure_page_for_prompt(page: DisclosurePage) -> str:
     if page.next_offset is None and page.content:
@@ -154,6 +159,7 @@ def format_disclosure_page_for_prompt(page: DisclosurePage) -> str:
         "- content:\n"
         + page.content
     )
+
 
 def create_reference_disclosure_page(
     reference: str,
@@ -180,11 +186,13 @@ def create_reference_disclosure_page(
         cache_path=cache_path,
     )
 
+
 def serialize_disclosure_value(value: object) -> str:
     """Serialize structured output exactly once or fail on unsupported values."""
     content = json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True)
     _require_content_size(content)
     return content
+
 
 def _require_content_size(content: str) -> None:
     if not isinstance(content, str):
@@ -193,6 +201,7 @@ def _require_content_size(content: str) -> None:
         raise ValueError(
             f"disclosure content exceeds the explicit {MAX_CONTENT_CHARS} character limit"
         )
+
 
 @dataclass(frozen=True)
 class SkillReference:
@@ -203,6 +212,7 @@ class SkillReference:
     def key(self) -> str:
         return f"{self.skill_type}:{self.name}"
 
+
 @dataclass(frozen=True)
 class SkillSource:
     reference: SkillReference
@@ -211,16 +221,19 @@ class SkillSource:
     manifest_path: Path
     source: str
 
+
 @dataclass(frozen=True)
 class SkillValidationIssue:
     path: Path
     message: str
+
 
 @dataclass(frozen=True)
 class SkillSourceScan:
     sources: list[SkillSource]
     disabled_references: list[SkillReference]
     issues: list[SkillValidationIssue]
+
 
 @dataclass(frozen=True)
 class SkillIndexEntry:
@@ -245,11 +258,13 @@ class SkillIndexEntry:
     same_function_successful_followups: int = 0
     is_default: bool = False
 
+
 @dataclass(frozen=True)
 class SkillSelectionDecision:
     reference: SkillReference
     selected: bool
     reason: str
+
 
 @dataclass(frozen=True)
 class SkillIndex:
@@ -359,15 +374,18 @@ class SkillIndex:
             lines.append(summary)
         return "\n".join(lines)
 
+
 @dataclass(frozen=True)
 class DisclosedText:
     content: str
     cache_path: Path | None
 
+
 @dataclass(frozen=True)
 class DisclosedConfiguration:
     content: dict[str, object]
     cache_path: Path | None
+
 
 @dataclass(frozen=True)
 class DisclosedSkillFile:
@@ -376,10 +394,12 @@ class DisclosedSkillFile:
     sha256: str
     content: str | None
 
+
 @dataclass(frozen=True)
 class DisclosedSkillFiles:
     files: list[DisclosedSkillFile]
     cache_path: Path | None
+
 
 @dataclass(frozen=True)
 class DisclosureEvent:
@@ -393,6 +413,7 @@ class DisclosureEvent:
     reference: str
     content_sha256: str
     cache_hit: bool
+
 
 def skill_index_to_dict(index: SkillIndex) -> dict[str, object]:
     return {
@@ -426,14 +447,17 @@ def skill_index_to_dict(index: SkillIndex) -> dict[str, object]:
         ],
     }
 
+
 def _optional_path(path: Path | None) -> str | None:
     return None if path is None else str(path)
+
 
 def _clean_name(name: str) -> str:
     value = name.strip().lower()
     if not value:
         raise ValueError("skill name cannot be empty")
     return value
+
 
 def _providers_by_type(entries: list[SkillIndexEntry]) -> dict[str, list[SkillIndexEntry]]:
     providers: dict[str, list[SkillIndexEntry]] = {}
@@ -443,6 +467,7 @@ def _providers_by_type(entries: list[SkillIndexEntry]) -> dict[str, list[SkillIn
     for values in providers.values():
         values.sort(key=lambda item: item.reference.key)
     return providers
+
 
 def _visit_entry(
     entry: SkillIndexEntry,
@@ -473,6 +498,7 @@ def _visit_entry(
     stack.pop()
     visit_states[key] = "visited"
     resolved.append(entry)
+
 
 def _find_required_entry(
     skill_type: str,

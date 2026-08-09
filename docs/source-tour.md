@@ -5,11 +5,11 @@ Read one ordinary call in this order:
 1. `src/super_agent.py` exports the small public `Agent` facade.
 2. `src/core/runtime/agent.py` composes configuration, optional state, Skills, Providers,
    and subagents.
-3. `src/core/runtime/runtime.py` owns one run identity, event log, result, and failure.
+3. `src/core/runtime/run.py` owns one run identity, event log, result, and failure.
 4. `src/core/runtime/loop.py` gives the model selected context and checked tools.
 5. `src/skill/disclosure.py` builds the shared Skill index and opens requested content.
-6. `src/core/provider/chat.py` makes and measures the selected Provider call.
-7. `src/core/runtime/checkpoints.py` records content-free recovery facts for explicit resume.
+6. `src/core/provider.py` makes and measures the selected Provider call.
+7. Checkpoints are recorded by `src/core/runtime/run.py` as content-free recovery facts.
 
 The short execution path is:
 
@@ -41,13 +41,13 @@ enter only at a visible boundary:
 For a subsystem, start at its owner:
 
 - Skill index and disclosure: `skill.disclosure.ProgressiveDisclosureCore`.
-- Skill handling: `core.skill_use.handlers.SkillCollection` and `SkillHandlers`.
-- Provider selection: `core.provider.pool.ProviderPool`.
+- Skill handling: `skill.runtime.handlers.SkillCollection` and `SkillHandlers`.
+- Provider selection: `core.provider.ProviderPool`.
 - Stored user access: `adapter.user.UserAgent`.
 - Scoped state access: `core.state.access.StateAccess`.
 - Side-effect checks: `core.checks.ActionRunner`.
 - Run events: `core.state.event_log.RunEventLog`.
-- Explicit Skill changes: `core.skill_use.update.SkillUpdater`.
+- Explicit Skill changes: `skill.runtime.update.SkillUpdater`.
 
 `src/cli.py` is the direct source-tree entry point. The CLI implementation belongs to
 `adapter.cli_adapter.commands`, alongside the other external command adapters. These

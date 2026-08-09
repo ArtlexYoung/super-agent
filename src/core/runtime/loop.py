@@ -53,6 +53,7 @@ NON_EXECUTION_SKILL_TYPES = {
     "model",
 }
 
+
 @dataclass
 class _LoopState:
     contributions: list[SkillResult]
@@ -61,6 +62,7 @@ class _LoopState:
     workflow: TaskPolicy
     selected_skill_names: list[str]
     last_text: str = ""
+
 
 @dataclass(frozen=True)
 class _ConfiguredModelTool:
@@ -147,6 +149,7 @@ class _ConfiguredModelTool:
                 f"model {profile.key} is not ready; configure {requirement}"
             )
         return profile
+
 
 class ModelLoop:
     """Let one selected model finish directly or request checked actions."""
@@ -327,6 +330,7 @@ class ModelLoop:
         )
         run.select_model(profile, provider)
 
+
 def _load_configured_skills(
     request: Task,
     run: Run,
@@ -385,15 +389,18 @@ def _load_configured_skills(
         names.append(entry.reference.key)
     return contributions, names
 
+
 def _has_skill_type(value: str, skill_types: set[str]) -> bool:
     clean = value.strip().lower()
     return ":" in clean and clean.split(":", 1)[0] in skill_types
+
 
 def _select_workflow(contributions: list[SkillResult]) -> TaskPolicy:
     policies = [item.task_policy for item in contributions if item.task_policy is not None]
     if len(policies) > 1:
         raise ValueError("configure at most one task or workflow Skill")
     return policies[0] if policies else TaskPolicy("model-loop", "loop", "", DEFAULT_MAX_STEPS)
+
 
 def _selected_model(
     profile: ModelProfile,
@@ -413,6 +420,7 @@ def _selected_model(
         cache_creation_cost_per_million=profile.traits.cache_creation_cost_per_million,
         cache_read_cost_per_million=profile.traits.cache_read_cost_per_million,
     )
+
 
 def _build_messages(
     request: Task,
@@ -473,6 +481,7 @@ def _build_messages(
         messages.append({"role": "user", "content": request.prompt})
     return messages
 
+
 def _disclose_prompt_content(run: Run, kind: str, name: str, content: str) -> str:
     page = run.skills.disclosure.disclose_content(
         kind,
@@ -481,6 +490,7 @@ def _disclose_prompt_content(run: Run, kind: str, name: str, content: str) -> st
         stage="model-context",
     )
     return format_disclosure_page_for_prompt(page)
+
 
 def _create_result(
     request: Task,
@@ -512,6 +522,7 @@ def _create_result(
         actions=list_run_actions(run),
     )
 
+
 def _record_model_turn(
     run: Run,
     step: int,
@@ -528,6 +539,7 @@ def _record_model_turn(
         },
     )
     run.create_checkpoint("model-step", _checkpoint_facts(None, state, step, response))
+
 
 def _checkpoint_facts(
     request: Task | None,
@@ -548,6 +560,7 @@ def _checkpoint_facts(
         facts["response_sha256"] = hash_checkpoint_value(response.text)
         facts["response_actions"] = [call.name for call in response.tool_calls]
     return facts
+
 
 def _record_task_completed(
     run: Run,
@@ -582,6 +595,7 @@ def _record_task_completed(
                 result.skills,
             ),
         )
+
 
 def list_run_actions(run: Run) -> list[dict[str, object]]:
     terminal = {

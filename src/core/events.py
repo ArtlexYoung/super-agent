@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
+
 @dataclass(frozen=True)
 class StorageEvent:
     event_id: str
@@ -16,6 +17,7 @@ class StorageEvent:
     event_type: str
     created_at: str
     data: dict[str, object]
+
 
 @dataclass(frozen=True)
 class StorageEventQuery:
@@ -34,6 +36,7 @@ class StorageEventQuery:
             for event_id in self.event_ids
         ):
             raise ValueError("event_ids must contain non-empty strings")
+
 
 class StorageBackend(Protocol):
     name: str

@@ -40,6 +40,7 @@ ReadContent = Callable[[str | Path], str]
 ReadHistory = Callable[[], list[dict[str, object]]]
 RecordEvent = Callable[[str, dict[str, object]], object]
 
+
 @dataclass(frozen=True)
 class DisclosureRecorder:
     """Explicit cache and history output for an otherwise read-only Skill catalog."""
@@ -50,6 +51,7 @@ class DisclosureRecorder:
     write_json: WriteJson
     read_content: ReadContent
     read_history: ReadHistory
+
 
 class ProgressiveDisclosureCore:
     def __init__(
@@ -356,6 +358,7 @@ class ProgressiveDisclosureCore:
                 selected.append(name)
         return selected
 
+
 class SkillDisclosure:
     def __init__(
         self,
@@ -477,6 +480,7 @@ class SkillDisclosure:
                 f"{self.source.reference.key}"
             )
 
+
 def _build_index_entry(
     source: SkillSource,
     cache_root: Path | None,
@@ -519,6 +523,7 @@ def _build_index_entry(
         is_default=manifest.is_default,
     )
 
+
 def _read_skill_directory_files(skill_root: Path) -> list[DisclosedSkillFile]:
     files: list[DisclosedSkillFile] = []
     for path in sorted(skill_root.rglob("*")):
@@ -541,13 +546,16 @@ def _read_skill_directory_files(skill_root: Path) -> list[DisclosedSkillFile]:
         )
     return files
 
+
 def _path_segment(value: str) -> str:
     return quote(value, safe="._-")
+
 
 def _require_cache_path(path: Path | None) -> Path:
     if path is None:
         raise RuntimeError("Skill disclosure cache path is not configured")
     return path
+
 
 def _clean_content_label(value: str, name: str) -> str:
     if not isinstance(value, str) or not value.strip():
@@ -556,6 +564,7 @@ def _clean_content_label(value: str, name: str) -> str:
     if len(clean) > 200 or any(ord(character) < 32 for character in clean):
         raise ValueError(f"disclosure {name} must be at most 200 printable characters")
     return clean
+
 
 def _explain_selection(
     entry: SkillIndexEntry,

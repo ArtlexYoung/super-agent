@@ -23,9 +23,11 @@ DEFAULT_MCP_TIMEOUT_SECONDS = 30.0
 _SERVER_NAME_PATTERN = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}")
 MCP_CONFIGURATION_FIELDS = {"server"}
 
+
 @dataclass(frozen=True)
 class McpSkillSettings:
     server_name: str
+
 
 def read_mcp_skill_settings(disclosure: SkillDisclosure) -> McpSkillSettings:
     manifest = disclosure.read_manifest()
@@ -42,6 +44,7 @@ def read_mcp_skill_settings(disclosure: SkillDisclosure) -> McpSkillSettings:
         raise ValueError("MCP Skill configuration.server must be a non-empty string")
     return McpSkillSettings(value.strip().lower())
 
+
 class McpServer(Protocol):
     def list_tools(self) -> list[dict[str, Any]]: ...
 
@@ -50,6 +53,7 @@ class McpServer(Protocol):
         name: str,
         arguments: dict[str, object],
     ) -> dict[str, Any]: ...
+
 
 @dataclass(frozen=True, init=False)
 class StdioMcpServer:
@@ -119,6 +123,7 @@ class StdioMcpServer:
             "timeout_seconds": self.timeout_seconds,
         }
 
+
 @dataclass(frozen=True)
 class RegisteredMcpServer:
     name: str
@@ -137,6 +142,7 @@ class RegisteredMcpServer:
             "code_sha256": self.code_sha256,
             "settings_sha256": self.settings_sha256,
         }
+
 
 class McpServers:
     """Own MCP implementations explicitly attached to one Agent."""
@@ -187,6 +193,7 @@ class McpServers:
 
     def list_code_registrations(self) -> list[dict[str, object]]:
         return [self._servers[name].to_lock_data() for name in sorted(self._servers)]
+
 
 class _McpStdioSession:
     def __init__(self, server: StdioMcpServer) -> None:
@@ -305,6 +312,7 @@ class _McpStdioSession:
             if process.stdout is not None:
                 process.stdout.close()
 
+
 def _clean_server_name(value: str) -> str:
     clean = value.strip().lower() if isinstance(value, str) else ""
     if _SERVER_NAME_PATTERN.fullmatch(clean) is None:
@@ -312,6 +320,7 @@ def _clean_server_name(value: str) -> str:
             "MCP server name must use lowercase letters, numbers, '_' or '-'"
         )
     return clean
+
 
 def _implementation_sha256(server: McpServer) -> str:
     digest = hashlib.sha256()
@@ -328,6 +337,7 @@ def _implementation_sha256(server: McpServer) -> str:
         except (OSError, TypeError):
             pass
     return digest.hexdigest()
+
 
 def _settings_sha256(server: McpServer) -> str:
     describe = getattr(server, "describe_registration", None)

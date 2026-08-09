@@ -7,6 +7,7 @@ from dataclasses import asdict
 from adapter.cli_adapter import load_agent
 from core.models import LOCAL_USER_ID
 
+
 def configure_conversations_parser(parser: argparse.ArgumentParser) -> None:
     _add_common_arguments(parser, include_defaults=True)
     subparsers = parser.add_subparsers(dest="conversations_command")
@@ -34,6 +35,7 @@ def configure_conversations_parser(parser: argparse.ArgumentParser) -> None:
     delete_parser = subparsers.add_parser("delete", help="delete a conversation")
     _add_common_arguments(delete_parser)
     _add_conversation_id_argument(delete_parser)
+
 
 def run_conversations_command(args: argparse.Namespace) -> int:
     command = args.conversations_command or "list"
@@ -71,9 +73,11 @@ def run_conversations_command(args: argparse.Namespace) -> int:
         return _print_json({"conversation_id": args.conversation_id, "deleted": True})
     raise ValueError(f"unknown conversations command: {command}")
 
+
 def _print_json(value: object) -> int:
     print(json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True))
     return 0
+
 
 def _add_common_arguments(
     parser: argparse.ArgumentParser,
@@ -86,6 +90,7 @@ def _add_common_arguments(
         "--user-id",
         default=LOCAL_USER_ID if include_defaults else argparse.SUPPRESS,
     )
+
 
 def _add_conversation_id_argument(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--conversation-id", required=True)

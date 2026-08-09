@@ -21,6 +21,7 @@ MAX_GROUP_MEMBERS = 16
 _JSON_BLOCK = re.compile(r"\{.*\}", re.DOTALL)
 _TERMINAL_STATUSES = {"completed", "failed", "cancelled"}
 
+
 @dataclass(frozen=True)
 class AgentGroupSettings:
     """Bound group size and quorum without forcing groups into every task."""
@@ -52,12 +53,14 @@ class AgentGroupSettings:
         _bounded_int(settings.summary_chars, "summary_chars", 100, 10_000)
         return settings
 
+
 @dataclass(frozen=True)
 class AgentGroupOptions:
     """Attach group settings and the shared-context writer to one queue."""
 
     settings: AgentGroupSettings
     create_shared_context: Callable[[str, str], dict[str, object]] | None = None
+
 
 @dataclass(frozen=True)
 class AgentGroupRequest:
@@ -68,6 +71,7 @@ class AgentGroupRequest:
     quorum: int
     roles: tuple[str, ...]
     estimates: tuple[int | None, ...]
+
 
 @dataclass(frozen=True)
 class AgentGroup:
@@ -110,10 +114,12 @@ class AgentGroup:
             "budget_limit": self.budget_limit,
         }
 
+
 def read_group_settings(value: object) -> AgentGroupSettings:
     if not isinstance(value, dict):
         raise ValueError("agent_groups settings must be a table")
     return AgentGroupSettings.from_dict(value)
+
 
 def read_group_request(
     arguments: Mapping[str, object],
@@ -137,6 +143,7 @@ def read_group_request(
         ),
     )
 
+
 def build_member_prompt(
     shared_prompt: str,
     role: str,
@@ -158,6 +165,7 @@ def build_member_prompt(
             f"shared_context_reference: {context_reference}"
         )
     return f"{instructions}\n\nShared packet:\n{shared_prompt}"
+
 
 def decide_group(
     group: AgentGroup,
@@ -207,6 +215,7 @@ def decide_group(
         "negative_evidence_required": group.quorum,
     }
 
+
 def read_group_vote(text: str) -> tuple[str, str, float | None]:
     """Read only the declared JSON protocol; free-form text stays inconclusive."""
     candidate = text.strip()
@@ -234,17 +243,20 @@ def read_group_vote(text: str) -> tuple[str, str, float | None]:
         return vote, evidence, None
     return vote, evidence, round(max(0.0, min(1.0, float(confidence))), 4)
 
+
 def read_positive_number(arguments: Mapping[str, object], name: str) -> float:
     value = arguments.get(name)
     if isinstance(value, bool) or not isinstance(value, int | float) or value <= 0:
         raise ValueError(f"tool argument {name!r} must be a positive number")
     return float(value)
 
+
 def choices_cost(choices: list[AgentChoice]) -> float:
     return round(
         sum(float(choice.cost_estimate["estimated_cost"]) for choice in choices),
         12,
     )
+
 
 def _read_group_members(
     arguments: Mapping[str, object],
@@ -261,12 +273,14 @@ def _read_group_members(
     _bounded_int(quorum, "quorum", 1, requested)
     return requested, quorum, roles
 
+
 def _group_decision(counts: dict[str, int], quorum: int) -> str:
     if counts["support"] >= quorum:
         return "supported"
     if counts["reject"] >= quorum:
         return "rejected"
     return "inconclusive"
+
 
 def _read_roles(value: object, count: int) -> tuple[str, ...]:
     if value is None:
@@ -278,13 +292,16 @@ def _read_roles(value: object, count: int) -> tuple[str, ...]:
         raise ValueError("group roles must be unique non-empty strings")
     return roles
 
+
 def _positive_int(value: object, name: str) -> None:
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
         raise ValueError(f"agent_groups {name} must be a positive integer")
 
+
 def _bounded_int(value: object, name: str, minimum: int, maximum: int) -> None:
     if isinstance(value, bool) or not isinstance(value, int) or not minimum <= value <= maximum:
         raise ValueError(f"agent_groups {name} must be from {minimum} to {maximum}")
+
 
 def _nonnegative_number(value: object, name: str) -> None:
     if (
@@ -294,6 +311,7 @@ def _nonnegative_number(value: object, name: str) -> None:
         or value < 0
     ):
         raise ValueError(f"agent_groups {name} must be a finite non-negative number")
+
 
 def _read_string_list(arguments: Mapping[str, object], name: str) -> tuple[str, ...]:
     value = arguments.get(name)

@@ -23,8 +23,10 @@ TOKEN_PRICE_FIELDS = (
 )
 PRICE_FIELDS = tuple(price_name for _token_name, price_name in TOKEN_PRICE_FIELDS)
 
+
 class AgentUnavailableError(RuntimeError):
     """Report that no compatible Agent is currently callable."""
+
 
 @dataclass(frozen=True)
 class AgentTask:
@@ -93,6 +95,7 @@ class AgentTask:
             data["result"] = self.result
         return data
 
+
 @dataclass(frozen=True)
 class AgentTaskQueueSettings:
     max_tasks: int = 32
@@ -130,6 +133,7 @@ class AgentTaskQueueSettings:
             mode = "full" if task_number <= self.compress_after_tasks else "summary"
         return SubagentRecordOptions(mode, self.summary_chars, self.max_nested_results)
 
+
 @dataclass(frozen=True)
 class AgentTaskEstimate:
     purpose: str
@@ -141,6 +145,7 @@ class AgentTaskEstimate:
 
     def token_counts(self) -> dict[str, int | None]:
         return {name: getattr(self, name) for name, _price in TOKEN_PRICE_FIELDS}
+
 
 @dataclass(frozen=True)
 class AgentChoice:
@@ -173,11 +178,13 @@ class AgentChoice:
             "selection_score": self.score,
         }
 
+
 @dataclass
 class _Circuit:
     failures: int = 0
     state: str = "closed"
     retry_at: float = 0.0
+
 
 @dataclass
 class _AgentHealth:
@@ -189,6 +196,7 @@ class _AgentHealth:
         return (self.successful_tasks + 1) / (
             self.successful_tasks + self.unavailable_failures + 1
         )
+
 
 class SubagentPool:
     """Choose available Agents and own their circuit state for one queue."""
@@ -433,6 +441,7 @@ class SubagentPool:
             round(score, 8),
         )
 
+
 def is_agent_unavailable(error: Exception) -> bool:
     if isinstance(error, urllib.error.HTTPError):
         return error.code in {408, 429} or error.code >= 500
@@ -453,8 +462,10 @@ def is_agent_unavailable(error: Exception) -> bool:
         )
     )
 
+
 def estimated_token_schema() -> dict[str, object]:
     return {"type": "integer", "minimum": 0, "maximum": MAX_ESTIMATED_TOKENS}
+
 
 def read_optional_estimated_tokens(
     arguments: dict[str, object],
@@ -474,6 +485,7 @@ def read_optional_estimated_tokens(
         )
     return value
 
+
 def _validated_agent(value: dict[str, object]) -> dict[str, object]:
     result = dict(value)
     name = str(result.get("name", "")).strip()
@@ -487,6 +499,7 @@ def _validated_agent(value: dict[str, object]) -> dict[str, object]:
     result.update(name=name, weight=float(weight))
     return result
 
+
 def _matches(agent: dict[str, object], purpose: str, features: tuple[str, ...]) -> bool:
     agent_purpose = str(agent.get("purpose", "auto")).strip().lower()
     supported = {
@@ -498,6 +511,7 @@ def _matches(agent: dict[str, object], purpose: str, features: tuple[str, ...]) 
         (purpose == "auto" or agent_purpose in {"auto", purpose})
         and set(features) <= supported
     )
+
 
 def _model_cost(
     agent: dict[str, object],
@@ -525,9 +539,11 @@ def _model_cost(
     pricing = _read_pricing(selected)
     return str(selected.get("model", "")) or None, pricing, _estimate_cost(pricing, task)
 
+
 def _read_pricing(model: dict[str, object]) -> dict[str, float]:
     pricing = {name: float(model.get(name, 0.0)) for name in PRICE_FIELDS}
     return {**pricing, "total_cost_per_million": sum(pricing.values())}
+
 
 def _estimate_cost(
     pricing: dict[str, float],
@@ -552,6 +568,7 @@ def _estimate_cost(
         "excludes_unprovided_usage": len(known) != len(token_counts),
     }
 
+
 def _base_score(
     agent: dict[str, object],
     health: _AgentHealth,
@@ -560,6 +577,7 @@ def _base_score(
     price = float(cost["blended_cost_per_million"])
     return float(agent["weight"]) * health.reliability / (1.0 + price)
 
+
 def _health_facts(health: _AgentHealth) -> dict[str, object]:
     return {
         "successful_tasks": health.successful_tasks,
@@ -567,13 +585,16 @@ def _health_facts(health: _AgentHealth) -> dict[str, object]:
         "reliability": round(health.reliability, 8),
     }
 
+
 def _positive_int(value: object, name: str) -> None:
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
         raise ValueError(f"agent_tasks {name} must be a positive integer")
 
+
 def _nonnegative_int(value: object, name: str) -> None:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         raise ValueError(f"agent_tasks {name} must be a non-negative integer")
+
 
 def _positive_number(value: object, name: str) -> None:
     if (
@@ -583,6 +604,7 @@ def _positive_number(value: object, name: str) -> None:
         or value <= 0
     ):
         raise ValueError(f"agent_tasks {name} must be positive")
+
 
 def _choice(value: object, name: str, allowed: set[str]) -> None:
     if not isinstance(value, str) or value not in allowed:

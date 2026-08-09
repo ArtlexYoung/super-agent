@@ -20,12 +20,14 @@ REVIEW_RESPONSE_FIELDS = {"verdict", "findings", "checks"}
 FINDING_FIELDS = {"severity", "title", "evidence", "action"}
 SEVERITIES = {"blocker", "major", "minor", "info"}
 
+
 @dataclass(frozen=True)
 class ReviewFinding:
     severity: str
     title: str
     evidence: str
     action: str
+
 
 @dataclass(frozen=True)
 class ReviewReport:
@@ -43,6 +45,7 @@ class ReviewReport:
             "findings": [asdict(item) for item in self.findings],
             "checks": list(self.checks),
         }
+
 
 def review_run_evidence(
     store: EventStore,
@@ -86,6 +89,7 @@ def review_run_evidence(
     )
     return report
 
+
 def parse_review_response(text: str) -> ReviewReport:
     try:
         value = json.loads(text)
@@ -109,6 +113,7 @@ def parse_review_response(text: str) -> ReviewReport:
         raise ValueError("review changes_requested must contain findings")
     return ReviewReport(verdict, parsed, list(checks))
 
+
 def _parse_finding(value: object) -> ReviewFinding:
     if not isinstance(value, dict) or set(value) != FINDING_FIELDS:
         raise ValueError("review finding fields must be severity, title, evidence, and action")
@@ -120,6 +125,7 @@ def _parse_finding(value: object) -> ReviewFinding:
         raise ValueError("review finding text fields cannot be empty")
     return ReviewFinding(severity, *[item.strip() for item in texts])
 
+
 def _identity_from_snapshot(snapshot) -> RunIdentity:
     return RunIdentity(
         snapshot.user_id,
@@ -129,6 +135,7 @@ def _identity_from_snapshot(snapshot) -> RunIdentity:
         parent_run_id=snapshot.parent_run_id,
     )
 
+
 def _record_review_failure(store: EventStore, snapshot, error: Exception) -> None:
     store.append_run_event(
         _identity_from_snapshot(snapshot),
@@ -136,11 +143,13 @@ def _record_review_failure(store: EventStore, snapshot, error: Exception) -> Non
         {"error_type": type(error).__name__},
     )
 
+
 def skill_change_report_to_dict(
     report: "SkillChangeReport",
 ) -> dict[str, object]:
     """Serialize one comparative Skill report without model output."""
     return {"schema_version": 1, **asdict(report)}
+
 
 def read_skill_change_report(data: dict[str, object]) -> "SkillChangeReport":
     from core.skill_use.update import SkillChangeCaseResult, SkillChangeReport

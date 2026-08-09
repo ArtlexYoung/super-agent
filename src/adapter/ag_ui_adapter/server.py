@@ -27,6 +27,7 @@ DEFAULT_ALLOWED_ORIGINS = (
 )
 DEFAULT_STATIC_ROOT = Path(__file__).with_name("static")
 
+
 class AGUIHTTPServer(ThreadingHTTPServer):
     daemon_threads = True
 
@@ -48,6 +49,7 @@ class AGUIHTTPServer(ThreadingHTTPServer):
             None if static_root is None else Path(static_root).expanduser().resolve()
         )
         super().__init__(address, AGUIRequestHandler)
+
 
 class AGUIRequestHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
@@ -319,6 +321,7 @@ class AGUIRequestHandler(BaseHTTPRequestHandler):
     def _server(self) -> AGUIHTTPServer:
         return cast(AGUIHTTPServer, self.server)
 
+
 def create_ag_ui_server(
     agent: Agent,
     host: str = "127.0.0.1",
@@ -342,6 +345,7 @@ def create_ag_ui_server(
         allowed_origins=allowed_origins,
         static_root=static_root,
     )
+
 
 def _error_message(error: KeyError) -> str:
     return str(error.args[0]) if error.args else "resource not found"

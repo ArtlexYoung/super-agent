@@ -16,6 +16,7 @@ from adapter.storage.sql.base import (
 DEFAULT_MYSQL_URL_ENV = "SUPER_AGENT_MYSQL_URL"
 _MYSQL_SCHEMES = {"mysql", "mysql+pymysql"}
 
+
 class MySqlStorage(RemoteSqlStorage):
     """Store Runtime events in MySQL through the optional PyMySQL driver."""
 
@@ -33,6 +34,7 @@ class MySqlStorage(RemoteSqlStorage):
             DEFAULT_MYSQL_URL_ENV,
         )
         super().__init__(_MySqlDatabase(driver, connection_url))
+
 
 class _MySqlDatabase:
     name = "mysql"
@@ -91,6 +93,7 @@ class _MySqlDatabase:
     def read_inserted_position(cursor: Any) -> int:
         return int(cursor.lastrowid)
 
+
 def _mysql_connection_arguments(connection_url: str) -> dict[str, object]:
     parsed = urlsplit(connection_url)
     remote_database_location(connection_url, "mysql", _MYSQL_SCHEMES)
@@ -115,12 +118,14 @@ def _mysql_connection_arguments(connection_url: str) -> dict[str, object]:
         )
     return arguments
 
+
 def _mysql_url_options(query: str) -> dict[str, str]:
     pairs = parse_qsl(query, keep_blank_values=True)
     options = dict(pairs)
     if len(options) != len(pairs):
         raise ValueError("MySQL storage URL options cannot be repeated")
     return options
+
 
 def _move_mysql_string_options(
     source: dict[str, str],
@@ -129,6 +134,7 @@ def _move_mysql_string_options(
     for name in ("unix_socket", "ssl_ca", "ssl_cert", "ssl_key"):
         if name in source:
             destination[name] = source.pop(name)
+
 
 def _move_mysql_integer_options(
     source: dict[str, str],
@@ -141,6 +147,7 @@ def _move_mysql_integer_options(
         if value <= 0:
             raise ValueError(f"MySQL storage URL option {name} must be positive")
         destination[name] = value
+
 
 def _move_mysql_boolean_options(
     source: dict[str, str],

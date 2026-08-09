@@ -181,9 +181,7 @@ def verify_release(root: Path, expected_version: str) -> list[str]:
         for path in source_root.rglob("*.py")
         if "__pycache__" not in path.parts
     ]
-    source_lines = sum(
-        len(path.read_text(encoding="utf-8").splitlines()) for path in source_files
-    )
+    source_lines = sum(_count_non_empty_lines(path) for path in source_files)
     if len(source_files) >= MAX_SOURCE_FILES:
         errors.append(f"source file count must stay below {MAX_SOURCE_FILES}")
     if source_lines >= MAX_SOURCE_LINES:
@@ -192,6 +190,12 @@ def verify_release(root: Path, expected_version: str) -> list[str]:
     if not readme.is_file() or "README_cn.md" not in readme.read_text(encoding="utf-8"):
         errors.append("README.md must link to README_cn.md")
     return errors
+
+
+def _count_non_empty_lines(path: Path) -> int:
+    return sum(
+        1 for line in path.read_text(encoding="utf-8").splitlines() if line.strip()
+    )
 
 
 def _read_toml(path: Path, errors: list[str]) -> dict[str, object]:

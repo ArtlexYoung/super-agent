@@ -224,7 +224,8 @@ class ReleaseShapeTests(unittest.TestCase):
     def test_release_stays_within_the_current_python_source_gate(self) -> None:
         sources = list(Path("src").rglob("*.py"))
         line_count = sum(
-            len(path.read_text(encoding="utf-8").splitlines()) for path in sources
+            sum(1 for line in path.read_text(encoding="utf-8").splitlines() if line.strip())
+            for path in sources
         )
 
         self.assertLess(len(sources), CURRENT_RELEASE_PYTHON_FILES)
@@ -309,7 +310,11 @@ def _count_non_import_lines(path: Path) -> int:
     for node in ast.walk(ast.parse(source, filename=str(path))):
         if isinstance(node, ast.Import | ast.ImportFrom):
             import_lines.update(range(node.lineno, node.end_lineno + 1))
-    return len(source.splitlines()) - len(import_lines)
+    return sum(
+        1
+        for line_number, line in enumerate(source.splitlines(), 1)
+        if line.strip() and line_number not in import_lines
+    )
 
 
 def _count_control_flow_complexity(

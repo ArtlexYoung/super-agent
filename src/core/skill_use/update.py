@@ -26,6 +26,7 @@ from core.state.events import EventStore
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.manifest import SkillManifest, calculate_skill_directory_sha256
 
+
 @dataclass(frozen=True)
 class SkillChange:
     change_id: str
@@ -43,6 +44,7 @@ class SkillChange:
     def key(self) -> str:
         return f"{self.skill_type}:{self.name}"
 
+
 @dataclass(frozen=True)
 class SkillChangeCase:
     name: str
@@ -50,6 +52,7 @@ class SkillChangeCase:
     expected_output_contains: list[str] = field(default_factory=list)
     forbidden_output_contains: list[str] = field(default_factory=list)
     expected_configuration: dict[str, object] = field(default_factory=dict)
+
 
 @dataclass(frozen=True)
 class SkillChangeCaseResult:
@@ -60,6 +63,7 @@ class SkillChangeCaseResult:
     input_tokens: int
     output_tokens: int
     latency_ms: int
+
 
 @dataclass(frozen=True)
 class SkillChangeReport:
@@ -79,11 +83,13 @@ class SkillChangeReport:
     results: list[SkillChangeCaseResult]
     baseline_results: list[SkillChangeCaseResult]
 
+
 @dataclass(frozen=True)
 class _ApplyPaths:
     target: Path
     target_sha256: str
     history: Path
+
 
 class SkillUpdater:
     """Keep proposal, testing, activation, and undo as separate user actions."""
@@ -427,6 +433,7 @@ class SkillUpdater:
     def _record(self, change_id: str, event_type: str, data: dict[str, object]) -> None:
         self.store.append_event("skill_change", change_id, event_type, data=data)
 
+
 def _user_disclosure(disclosure: ProgressiveDisclosureCore, store: EventStore) -> ProgressiveDisclosureCore:
     return ProgressiveDisclosureCore(
         disclosure.skill_roots,
@@ -434,6 +441,7 @@ def _user_disclosure(disclosure: ProgressiveDisclosureCore, store: EventStore) -
         builtin_skill_roots=disclosure.builtin_skill_roots,
         disabled_names=disclosure.disabled_names,
     )
+
 
 def _proposal_messages(skill_type: str, name: str, goal: str, current: Path | None) -> list[Message]:
     files = "No active Skill exists. Create skill.toml and any required files."
@@ -455,6 +463,7 @@ def _proposal_messages(skill_type: str, name: str, goal: str, current: Path | No
         {"role": "user", "content": f"Skill: {skill_type}:{name}\nGoal: {goal}\n\nCurrent files:\n{files}"},
     ]
 
+
 def _test_messages(skill_path: Path, prompt: str) -> list[Message]:
     instructions = (skill_path / "SKILL.md").read_text(encoding="utf-8") if (skill_path / "SKILL.md").is_file() else ""
     configuration = (skill_path / "skill.toml").read_text(encoding="utf-8")
@@ -462,6 +471,7 @@ def _test_messages(skill_path: Path, prompt: str) -> list[Message]:
         {"role": "system", "content": f"Apply this Skill content as test data.\n{instructions}\n\nConfiguration:\n{configuration}"},
         {"role": "user", "content": prompt},
     ]
+
 
 def _create_candidate(
     target: Path,
@@ -489,6 +499,7 @@ def _create_candidate(
     _set_manifest_version(manifest_path, version)
     validate_skill_directory(target, expected_type=skill_type, expected_name=name)
 
+
 def _read_file_changes(response: str) -> dict[str, object]:
     try:
         value = json.loads(response)
@@ -505,6 +516,7 @@ def _read_file_changes(response: str) -> dict[str, object]:
         raise ValueError("a Skill file cannot be written and deleted together")
     return {"write_files": dict(writes), "delete_files": list(deletes)}
 
+
 def _safe_file(root: Path, value: str) -> Path:
     relative = PurePosixPath(value.replace("\\", "/"))
     if relative.is_absolute() or not relative.parts or ".." in relative.parts:
@@ -514,6 +526,7 @@ def _safe_file(root: Path, value: str) -> Path:
         raise ValueError(f"Skill file target must be a regular file: {value}")
     return path
 
+
 def _set_manifest_version(path: Path, version: str) -> None:
     lines = path.read_text(encoding="utf-8").splitlines()
     table = next((i for i, line in enumerate(lines) if line.lstrip().startswith("[")), len(lines))
@@ -521,6 +534,7 @@ def _set_manifest_version(path: Path, version: str) -> None:
     line = f"version = {json.dumps(version)}"
     lines.insert(table, line) if index is None else lines.__setitem__(index, line)
     path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+
 
 def _split_reference(reference: str, skill_type: str | None) -> tuple[str, str | None]:
     value = reference.strip().lower()
@@ -535,16 +549,19 @@ def _split_reference(reference: str, skill_type: str | None) -> tuple[str, str |
         raise ValueError("Skill reference type conflicts with skill_type")
     return _clean_name(parts[1], "Skill name"), key_type
 
+
 def _clean_name(value: str, label: str) -> str:
     clean = value.strip().lower()
     if re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", clean) is None:
         raise ValueError(f"{label} must use lowercase letters, numbers, '-' or '_'")
     return clean
 
+
 def _clean_id(value: str) -> str:
     if re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,191}", value) is None:
         raise ValueError("invalid Skill change id")
     return value
+
 
 def _increment_version(value: str) -> str:
     match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", value)
@@ -553,15 +570,18 @@ def _increment_version(value: str) -> str:
     major, minor, patch = (int(item) for item in match.groups())
     return f"{major}.{minor}.{patch + 1}"
 
+
 def _validate_case(case: SkillChangeCase) -> None:
     if not case.name.strip() or not case.prompt.strip():
         raise ValueError("Skill change case name and prompt cannot be empty")
     if any(not item for item in [*case.expected_output_contains, *case.forbidden_output_contains]):
         raise ValueError("Skill change checks cannot contain empty text")
 
+
 def _require_hash(path: Path, expected: str, label: str) -> None:
     if not path.is_dir() or calculate_skill_directory_sha256(path) != expected:
         raise ValueError(f"{label} files changed")
+
 
 def _restore_failed_apply(
     target: Path,
@@ -582,10 +602,12 @@ def _restore_failed_apply(
     else:
         shutil.rmtree(target)
 
+
 def _change_to_dict(change: SkillChange) -> dict[str, object]:
     value = asdict(change)
     value.pop("candidate_path")
     return {"schema_version": 1, **value}
+
 
 def _read_change(change_id: str, root: Path) -> SkillChange:
     data = _read_json(root / change_id / "change.json")
@@ -602,8 +624,10 @@ def _read_change(change_id: str, root: Path) -> SkillChange:
         str(data["created_at"]), root / change_id / str(data["name"]),
     )
 
+
 def _write_json(path: Path, value: dict[str, object]) -> None:
     write_bytes_atomically(path, (json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode())
+
 
 def _read_json(path: Path) -> dict[str, object]:
     if not path.is_file():
@@ -612,6 +636,7 @@ def _read_json(path: Path) -> dict[str, object]:
     if not isinstance(value, dict):
         raise ValueError(f"Skill change record must be an object: {path}")
     return value
+
 
 def _utc_now() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")

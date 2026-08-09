@@ -106,6 +106,7 @@ _CONTENT_FIELDS = {
     "learning.failed": ("message",),
 }
 
+
 @dataclass(frozen=True)
 class AuditSettings:
     """Retention periods for persisted detailed and critical audit events."""
@@ -116,6 +117,7 @@ class AuditSettings:
     def __post_init__(self) -> None:
         _require_positive_days(self.detailed_days, "detailed_days")
         _require_positive_days(self.critical_days, "critical_days")
+
 
 @dataclass(frozen=True)
 class AuditPruneUserReport:
@@ -128,6 +130,7 @@ class AuditPruneUserReport:
     maintenance_events: int
     affected_agents: list[str]
 
+
 @dataclass(frozen=True)
 class AuditPruneReport:
     applied: bool
@@ -135,6 +138,7 @@ class AuditPruneReport:
     detailed_days: int
     critical_days: int
     users: list[AuditPruneUserReport]
+
 
 def classify_audit_event(stream_type: str, event_type: str) -> str:
     """Return the retention class without guessing for unknown event types."""
@@ -145,6 +149,7 @@ def classify_audit_event(stream_type: str, event_type: str) -> str:
     if event_type in _DETAILED_EVENT_TYPES:
         return DETAILED
     return PROTECTED
+
 
 def redact_event_data_for_display(
     stream_type: str,
@@ -161,6 +166,7 @@ def redact_event_data_for_display(
         prepared[f"{field}_digest"] = _content_digest(prepared[field])
         prepared[field] = "[redacted]"
     return prepared
+
 
 def compact_runtime_event_data(
     event_type: str,
@@ -180,6 +186,7 @@ def compact_runtime_event_data(
         }
     compacted["record_mode"] = options.mode
     return compacted
+
 
 def compact_subagent_result(
     value: dict[str, object],
@@ -233,6 +240,7 @@ def compact_subagent_result(
         )
     return compacted
 
+
 def redact_events_for_display(events: list[StorageEvent]) -> list[StorageEvent]:
     """Build a dynamically redacted view of canonical storage events."""
     return [
@@ -246,6 +254,7 @@ def redact_events_for_display(events: list[StorageEvent]) -> list[StorageEvent]:
         )
         for event in events
     ]
+
 
 def prune_expired_audit_events(
     backend: StorageBackend,
@@ -276,6 +285,7 @@ def prune_expired_audit_events(
         critical_days=settings.critical_days,
         users=reports,
     )
+
 
 def _prune_one_user(
     backend: StorageBackend,
@@ -337,6 +347,7 @@ def _prune_one_user(
         affected_agents=sorted({event.agent_name for event in candidates}),
     )
 
+
 def _record_prune_events(
     backend: StorageBackend,
     user_id: str,
@@ -367,6 +378,7 @@ def _record_prune_events(
         )
     return len(by_agent)
 
+
 def _content_digest(value: object) -> dict[str, object]:
     if isinstance(value, str):
         text = value
@@ -379,17 +391,20 @@ def _content_digest(value: object) -> dict[str, object]:
         "characters": len(text),
     }
 
+
 def _unique_user_ids(user_ids: list[str]) -> list[str]:
     selected = list(dict.fromkeys(value.strip() for value in user_ids))
     if not selected or any(not value for value in selected):
         raise ValueError("audit pruning requires at least one non-empty user_id")
     return selected
 
+
 def _normalise_now(value: datetime | None) -> datetime:
     selected = datetime.now(UTC) if value is None else value
     if selected.tzinfo is None:
         raise ValueError("audit pruning time must include a timezone")
     return selected.astimezone(UTC)
+
 
 def _parse_event_time(value: str) -> datetime | None:
     try:
@@ -400,8 +415,10 @@ def _parse_event_time(value: str) -> datetime | None:
         return None
     return parsed.astimezone(UTC)
 
+
 def _format_datetime(value: datetime) -> str:
     return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
 
 def _require_positive_days(value: int, name: str) -> None:
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:

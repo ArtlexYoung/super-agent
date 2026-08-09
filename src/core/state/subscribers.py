@@ -7,12 +7,14 @@ from typing import Protocol
 
 from core.state.models import RunEvent
 
+
 class RuntimeEventSubscriber(Protocol):
     """Observe immutable Runtime events without joining task execution."""
 
     name: str
 
     def handle_event(self, event: RunEvent) -> None: ...
+
 
 @dataclass(frozen=True)
 class SubscriberFailure:
@@ -29,6 +31,7 @@ class SubscriberFailure:
             "message": self.message,
         }
 
+
 class RuntimeEventSubscriberError(RuntimeError):
     """Report requested event work that failed while preserving the task result."""
 
@@ -39,6 +42,7 @@ class RuntimeEventSubscriberError(RuntimeError):
             sorted({str(item.get("subscriber", "unknown")) for item in failures})
         )
         super().__init__(f"Runtime event subscribers failed: {names}")
+
 
 class RuntimeEventSubscribers:
     def __init__(
@@ -75,6 +79,7 @@ class RuntimeEventSubscribers:
                     )
                 )
         return failures
+
 
 def get_runtime_event_subscriber_name(
     subscriber: RuntimeEventSubscriber,

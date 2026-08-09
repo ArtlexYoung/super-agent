@@ -29,6 +29,7 @@ from core.skill_use.handlers import SkillAction, SkillTool, read_required_tool_s
 
 _TERMINAL_STATUSES = {"completed", "failed", "cancelled"}
 
+
 class AgentGroupTools:
     """Expose group behavior only when a task Skill configures agent_groups."""
 

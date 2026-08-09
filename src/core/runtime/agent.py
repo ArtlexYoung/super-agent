@@ -52,6 +52,7 @@ from skill.manifest import SkillManifest
 if TYPE_CHECKING:
     from adapter.user import UserAgent
 
+
 @dataclass(frozen=True)
 class SubAgent:
     name: str
@@ -61,6 +62,7 @@ class SubAgent:
     purpose: str = "auto"
     required_features: tuple[str, ...] = ("text",)
     weight: float = 1.0
+
 
 class Agent:
     def __init__(
@@ -645,6 +647,7 @@ class Agent:
             conversation_id=parent_session.identity.conversation_id,
             parent_run_id=parent_session.run_id,
         )
+
 
 def _has_model_skill(skills) -> bool:
     return any(

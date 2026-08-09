@@ -16,6 +16,7 @@ from core.evaluation.rules import FreshnessRules
 
 FOLLOWUP_WINDOW_MINUTES = 10
 
+
 @dataclass(frozen=True)
 class EvaluationEvidenceSummary:
     revision: SkillRevision
@@ -40,6 +41,7 @@ class EvaluationEvidenceSummary:
     first_evaluated_at: str
     last_evaluated_at: str
 
+
 @dataclass
 class _EvidenceAccumulator:
     revision: SkillRevision
@@ -58,6 +60,7 @@ class _EvidenceAccumulator:
     same_function_successful_followups: int = 0
     first_evaluated_at: str = ""
     last_evaluated_at: str = ""
+
 
 def summarize_evaluation_evidence(
     records: list[EvaluationRecord],
@@ -85,6 +88,7 @@ def summarize_evaluation_evidence(
         )
     ]
 
+
 def _apply_record(
     accumulator: _EvidenceAccumulator,
     record: EvaluationRecord,
@@ -111,6 +115,7 @@ def _apply_record(
         accumulator.latency_sample_count += 1
     accumulator.last_evaluated_at = record.created_at
 
+
 def _record_replacement_followup(
     accumulators: dict[tuple[str, ...], _EvidenceAccumulator],
     last_by_function_group: dict[str, tuple[tuple[str, ...], EvaluationRecord]],
@@ -127,6 +132,7 @@ def _record_replacement_followup(
     if record.result.success:
         previous_accumulator.same_function_successful_followups += 1
 
+
 def _is_replacement_followup(
     previous: EvaluationRecord,
     current: EvaluationRecord,
@@ -137,6 +143,7 @@ def _is_replacement_followup(
         return False
     elapsed = _parse_datetime(current.created_at) - _parse_datetime(previous.created_at)
     return timedelta(0) <= elapsed <= timedelta(minutes=FOLLOWUP_WINDOW_MINUTES)
+
 
 def _create_summary(
     accumulator: _EvidenceAccumulator,
@@ -183,6 +190,7 @@ def _create_summary(
         last_evaluated_at=accumulator.last_evaluated_at,
     )
 
+
 def _evidence_key(
     revision: SkillRevision,
     combine_versions: bool,
@@ -195,6 +203,7 @@ def _evidence_key(
         revision.content_sha256,
     )
 
+
 def _evaluation_reward(record: EvaluationRecord) -> float:
     result = record.result
     if not result.success:
@@ -206,10 +215,12 @@ def _evaluation_reward(record: EvaluationRecord) -> float:
         reward *= 0.7
     return min(max(reward, 0.0), 1.0)
 
+
 def _update_ewma(previous: float, value: float, sample_count: int) -> float:
     if sample_count <= 1:
         return value
     return 0.75 * previous + 0.25 * value
+
 
 def _evaluation_record_sha256(record: EvaluationRecord) -> str:
     content = json.dumps(
@@ -219,6 +230,7 @@ def _evaluation_record_sha256(record: EvaluationRecord) -> str:
         sort_keys=True,
     ).encode("utf-8")
     return hashlib.sha256(content).hexdigest()
+
 
 def _evidence_sha256(revision: SkillRevision, record_sha256s: list[str]) -> str:
     digest = hashlib.sha256()
@@ -232,8 +244,10 @@ def _evidence_sha256(revision: SkillRevision, record_sha256s: list[str]) -> str:
         digest.update(b"\0")
     return digest.hexdigest()
 
+
 def _parse_datetime(value: str) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
 
 def calculate_skill_freshness(
     records: list[EvaluationRecord],
@@ -247,6 +261,7 @@ def calculate_skill_freshness(
         _update_freshness(stats, now, policy)
         stats_by_skill[summary.revision.key] = stats
     return stats_by_skill
+
 
 def _stats_from_evidence(
     summary: EvaluationEvidenceSummary,
@@ -274,6 +289,7 @@ def _stats_from_evidence(
         "last_used_at": summary.last_evaluated_at,
     }
 
+
 def _update_freshness(
     stats: dict[str, Any],
     now: datetime,
@@ -292,6 +308,7 @@ def _update_freshness(
     freshness = confidence * base + (1 - confidence) * policy.initial_freshness
     stats["freshness"] = round(_clamp(freshness, 0, 100), 2)
     stats["freshness_updated_at"] = _format_datetime(now)
+
 
 def _score_components(
     stats: dict[str, Any],
@@ -322,6 +339,7 @@ def _score_components(
         "confidence": 100 * call_count / (call_count + policy.confidence_sample_count),
     }
 
+
 def _efficiency_score(
     stats: dict[str, Any],
     average_tokens: float,
@@ -350,6 +368,7 @@ def _efficiency_score(
         + (1 - policy.token_efficiency_weight) * latency_score
     )
 
+
 def _reliability_score(
     stats: dict[str, Any],
     policy: FreshnessRules,
@@ -369,8 +388,10 @@ def _reliability_score(
         100,
     )
 
+
 def _format_datetime(value: datetime) -> str:
     return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
 
 def _clamp(value: float, minimum: float, maximum: float) -> float:
     return min(max(value, minimum), maximum)

@@ -1211,6 +1211,17 @@ Status: implemented.
 - Keep fewer than 85 Python files, the complete source below 21,000 physical lines, and every
   source file and function within the existing maintenance limits.
 
+## v0.1.27: Readable Source Layout
+
+Status: implemented.
+
+- Count non-empty source lines in the release gate so normal Python spacing is not treated as
+  unnecessary implementation code.
+- Restore readable separation between top-level declarations and class methods across `src`.
+- Update the source tour to show the shortest path from `Agent.run()` to the model call and the
+  owners of optional state, Skill handling, Provider calls, and external adapters.
+- Keep behavior, public entry points, and the dependency-free default unchanged.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

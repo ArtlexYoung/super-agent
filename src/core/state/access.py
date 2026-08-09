@@ -11,6 +11,7 @@ from core.events import StorageBackend
 from core.models import RunIdentity, TaskTrace
 from core.state.models import RunEvent
 
+
 @dataclass(frozen=True)
 class StateAccess:
     config: CommonConfig
@@ -84,6 +85,7 @@ class StateAccess:
         if not isinstance(rules, ActionRules):
             raise TypeError("action rules factory must return ActionRules")
         return rules
+
 
 def _validate_feedback_score(value: float) -> float:
     if isinstance(value, bool) or not isinstance(value, int | float):

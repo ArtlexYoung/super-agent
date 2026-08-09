@@ -7,6 +7,7 @@ from dataclasses import asdict
 from core.events import StorageEvent
 from core.state.models import RunEvent, RunSnapshot
 
+
 def run_snapshot_from_events(user_id: str, events: list[StorageEvent]) -> RunSnapshot:
     ordered = _ordered_run_events(events)
     started = ordered[0]
@@ -40,6 +41,7 @@ def run_snapshot_from_events(user_id: str, events: list[StorageEvent]) -> RunSna
         error=error,
     )
 
+
 def run_events_from_storage(events: list[StorageEvent]) -> list[RunEvent]:
     ordered = _ordered_run_events(events)
     parent_run_id = optional_string(ordered[0].data.get("parent_run_id"))
@@ -47,6 +49,7 @@ def run_events_from_storage(events: list[StorageEvent]) -> list[RunEvent]:
         run_event_from_storage(event, sequence, parent_run_id)
         for sequence, event in enumerate(ordered, 1)
     ]
+
 
 def run_event_from_storage(
     event: StorageEvent,
@@ -63,12 +66,14 @@ def run_event_from_storage(
         data=dict(event.data),
     )
 
+
 def _latest_selection_decisions(events: list[RunEvent]) -> list[object]:
     for event in reversed(events):
         if event.event_type == "skills.selected":
             decisions = event.data.get("decisions", [])
             return list(decisions) if isinstance(decisions, list) else []
     return []
+
 
 def explain_run_from_events(
     user_id: str,
@@ -85,6 +90,7 @@ def explain_run_from_events(
         ],
         "events": [asdict(event) for event in events],
     }
+
 
 def disclosure_history_from_events(
     events: list[StorageEvent],
@@ -106,6 +112,7 @@ def disclosure_history_from_events(
         for sequence, event in enumerate(disclosed, 1)
     ]
 
+
 def usage_habits_from_events(events: list[StorageEvent]) -> dict[str, object]:
     data: dict[str, object] = {"total_runs": 0, "workflows": {}, "skills": {}}
     for event in events:
@@ -117,17 +124,21 @@ def usage_habits_from_events(events: list[StorageEvent]) -> dict[str, object]:
             _increment_count(data["skills"], str(skill))
     return data
 
+
 def string_list(value: object) -> list[str]:
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
         raise ValueError("stored value must be a string array")
     return list(value)
 
+
 def optional_string(value: object) -> str | None:
     return value if isinstance(value, str) and value else None
+
 
 def _increment_count(counts: object, name: str) -> None:
     if isinstance(counts, dict) and name:
         counts[name] = int(counts.get(name, 0)) + 1
+
 
 def _ordered_run_events(events: list[StorageEvent]) -> list[StorageEvent]:
     if not events:
