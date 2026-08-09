@@ -95,7 +95,7 @@ class EvolutionLoopTests(unittest.TestCase):
                 _write_config(root, ["workflow:react", "memory:default"])
             )
             store_agent = Agent(config, provider=MockProvider(), use_storage=True)
-            store = store_agent._create_event_store("alice")
+            store = store_agent._setup.create_event_store("alice")
             disclosure = create_progressive_skill_disclosure(config, store=store)
             disclosure.prepare_skill_index()
             memory = create_memory_from_skill(

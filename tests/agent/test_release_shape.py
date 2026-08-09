@@ -203,6 +203,8 @@ class ReleaseShapeTests(unittest.TestCase):
     def test_core_owns_runtime_and_skill_does_not(self) -> None:
         self.assertTrue(Path("src/core/runtime/run.py").is_file())
         self.assertTrue(Path("src/core/runtime/loop.py").is_file())
+        self.assertTrue(Path("src/core/runtime/setup.py").is_file())
+        self.assertTrue(Path("src/core/runtime/team.py").is_file())
         self.assertFalse(Path("src/skill/task").exists())
 
     def test_removed_coupled_core_domains_do_not_return(self) -> None:

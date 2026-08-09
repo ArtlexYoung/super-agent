@@ -90,10 +90,10 @@ def infer_conversation_feedback(
     from core.runtime.model_calls import infer_conversation_feedback_with_model
     from skill.runtime.defaults import create_skills
 
-    store = agent._create_event_store(user_id)
+    store = agent._setup.create_event_store(user_id)
     skills = create_skills(
         agent.config,
-        handlers=agent._skill_handlers,
+        handlers=agent._setup.skill_handlers,
         store=store,
         include_freshness=False,
     )
@@ -107,7 +107,7 @@ def infer_conversation_feedback(
     instructions = feedback_skill.disclose_instructions().content
     if feedback_skill.read_configuration().content:
         raise ValueError("feedback Skill configuration must be empty")
-    model = agent._create_task_loop(user_id, skills).create_text_model(
+    model = agent._setup.create_task_loop(user_id, skills).create_text_model(
         store,
         "conversation_feedback",
     )
@@ -119,7 +119,7 @@ def infer_conversation_feedback(
     )
     if feedback is not None:
         run_id, score, reason = feedback
-        agent._get_state_access().record_task_feedback(
+        agent._setup.active_state_access.record_task_feedback(
             user_id,
             run_id,
             score=score,

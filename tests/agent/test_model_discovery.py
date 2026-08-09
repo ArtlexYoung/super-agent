@@ -205,7 +205,7 @@ class ModelSkillTests(unittest.TestCase):
 
             result = agent.run("summarize this")
             agent.for_user("local").runs.learn(result.run_id)
-            store = agent._create_event_store()
+            store = agent._setup.create_event_store()
             scheduled = next(
                 event.data
                 for event in store.read_run_events(result.run_id)

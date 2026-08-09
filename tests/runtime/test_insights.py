@@ -28,7 +28,7 @@ class RuntimeInsightTests(unittest.TestCase):
                 result.run_id,
                 {"diff": "bounded diff", "checks": ["passed"]},
             )
-            events = agent._create_event_store().read_run_events(
+            events = agent._setup.create_event_store().read_run_events(
                 result.run_id,
                 include_sensitive=True,
             )

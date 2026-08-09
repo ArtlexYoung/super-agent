@@ -335,11 +335,11 @@ class LazyAgentInitializationTests(unittest.TestCase):
                 [root / "skills", shared.absolute()],
                 agent.config.paths.skills,
             )
-            self.assertIsNone(agent._runtime)
+            self.assertIsNone(agent._setup.runtime)
 
     def test_construction_and_registration_do_not_initialize_runtime_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, patch(
-            "core.runtime.agent.create_skills"
+            "core.runtime.setup.create_skills"
         ) as build_skills, patch(
             "adapter.storage.create_storage_backend"
         ) as create_storage:
@@ -358,15 +358,15 @@ class LazyAgentInitializationTests(unittest.TestCase):
 
             build_skills.assert_not_called()
             create_storage.assert_not_called()
-            self.assertIsNone(agent._runtime)
+            self.assertIsNone(agent._setup.runtime)
             self.assertEqual("subagent01", agent.subagents[0].name)
 
     def test_first_runtime_access_initializes_everything_once(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, patch(
-            "core.runtime.agent.create_skills",
+            "core.runtime.setup.create_skills",
             wraps=create_skills,
         ) as build_skills, patch(
-            "core.runtime.agent.read_model_profiles",
+            "core.runtime.setup.read_model_profiles",
             wraps=read_model_profiles,
         ) as discover_models, patch(
             "adapter.storage.create_storage_backend",
@@ -381,7 +381,7 @@ class LazyAgentInitializationTests(unittest.TestCase):
             runtime = agent.runtime
 
             self.assertIs(runtime, agent.runtime)
-            self.assertIsNotNone(agent._storage)
+            self.assertIsNotNone(agent._setup.storage)
             self.assertEqual("model:provided", agent.model_profiles[0].key)
             self.assertEqual(1, build_skills.call_count)
             self.assertEqual(1, discover_models.call_count)
@@ -398,7 +398,7 @@ class LazyAgentInitializationTests(unittest.TestCase):
             return read_model_profiles(*args, **kwargs)
 
         with tempfile.TemporaryDirectory() as tmp, patch(
-            "core.runtime.agent.read_model_profiles",
+            "core.runtime.setup.read_model_profiles",
             side_effect=discover_models_once_ready,
         ):
             agent = Agent(
@@ -409,9 +409,9 @@ class LazyAgentInitializationTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "model discovery unavailable"):
                 _ = agent.runtime
 
-            self.assertIsNone(agent._runtime)
-            self.assertIsNone(agent._storage)
-            self.assertIsNone(agent._provider_pool)
+            self.assertIsNone(agent._setup.runtime)
+            self.assertIsNone(agent._setup.storage)
+            self.assertIsNone(agent._setup.provider_pool)
             self.assertIsNotNone(agent.runtime)
             self.assertEqual(2, attempts)
 
@@ -430,10 +430,10 @@ class LazyAgentInitializationTests(unittest.TestCase):
             agent._add_skill_handler(handler)
             _ = agent.runtime
 
-            self.assertIs(storage, agent._storage)
+            self.assertIs(storage, agent._setup.storage)
             self.assertIs(
                 handler,
-                agent._skill_handlers.find("unused"),
+                agent._setup.skill_handlers.find("unused"),
             )
             self.assertIs(
                 provider,

@@ -16,7 +16,7 @@ class IdentityAndSecretIsolationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             agent = Agent(CommonConfig.create_default(Path(tmp)), use_storage=True)
             user = agent.for_user("  alice  ")
-            store = agent._create_event_store("  alice  ")
+            store = agent._setup.create_event_store("  alice  ")
             identity = RunIdentity.create("  alice  ", "  demo  ")
 
             self.assertEqual("alice", validate_user_id("  alice  "))

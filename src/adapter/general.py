@@ -70,7 +70,7 @@ def attach_general_tools_to_agent(agent: Agent) -> None:
         effects=(ActionEffect.EXECUTE,),
     )
     if "mcp:general" not in agent.config.agent.skills:
-        agent._replace_configuration(
+        agent._setup.replace_configuration(
             replace(
                 agent.config,
                 agent=replace(

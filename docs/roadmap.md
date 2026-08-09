@@ -1268,6 +1268,18 @@ Status: implemented.
 - Keep every learning and update module optional: ordinary stateless execution imports none of
   them and performs no implicit evolution.
 
+## v0.1.32: Clear Agent Owners
+
+Status: implemented.
+
+- Keep the six public Agent actions and per-run request assembly in `core/runtime/agent.py`.
+- Move lazy storage, Provider, model, Skill-handler, and Runtime initialization into
+  `core/runtime/setup.py` with all-or-nothing state assignment.
+- Move subagent registration, automatic names, link warnings, model-visible descriptions, and
+  child execution into `core/runtime/team.py`.
+- Remove the old Agent initialization fields and private team methods instead of forwarding
+  them, while keeping `Agent.run` and `Agent.add_subagent` unchanged.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

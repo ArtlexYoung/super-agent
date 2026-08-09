@@ -37,7 +37,7 @@ class CheckpointTests(unittest.TestCase):
                 "Continue from the latest verified checkpoint",
                 checkpoint_id=str(checkpoints[-1]["checkpoint_id"]),
             )
-            events = agent._create_event_store().read_run_events(
+            events = agent._setup.create_event_store().read_run_events(
                 resumed.run_id,
                 include_sensitive=True,
             )

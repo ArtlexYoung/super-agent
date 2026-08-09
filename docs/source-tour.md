@@ -3,8 +3,8 @@
 Read one ordinary call in this order:
 
 1. `src/super_agent.py` exports the small public `Agent` facade.
-2. `src/core/runtime/agent.py` composes configuration, optional state, Skills, Providers,
-   and subagents.
+2. `src/core/runtime/agent.py` exposes the Agent actions, while `setup.py` owns lazy resources
+   and `team.py` owns child Agents.
 3. `src/core/runtime/run.py` owns one run identity, event log, result, and failure.
 4. `src/core/runtime/loop.py` gives the model selected context and checked tools.
 5. `src/skill/disclosure.py` builds the shared Skill index and opens requested content.

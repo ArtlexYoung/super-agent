@@ -239,7 +239,7 @@ description = "Missing mcp table"
 
             result = agent.run("use calculator")
 
-            registered = agent._mcp_servers.list_code_registrations()
+            registered = agent._setup.mcp_servers.list_code_registrations()
             self.assertEqual("calculator", registered[0]["name"])
             self.assertEqual(["execute"], registered[0]["effects"])
             self.assertEqual("mcp_server", registered[0]["kind"])
