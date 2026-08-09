@@ -53,6 +53,8 @@ For a subsystem, start at its owner:
 - Skill index and disclosure: `skill.disclosure.ProgressiveDisclosureCore`.
 - Disclosure persistence: `adapter.storage.disclosure.DisclosureStorage`.
 - Skill handling: `skill.runtime.handlers.SkillCollection` and `SkillHandlers`.
+- Model Skill management: `skill.runtime.model_skills.ModelSkillManager`.
+- Skill file lifecycle: `skill.runtime.files.operations`.
 - Conversation state: `core.state.conversations`.
 - Skill evidence and changes: `skill.learning`.
 - Scoped state and audit: `core.state`.
@@ -61,7 +63,9 @@ For a subsystem, start at its owner:
 - CLI, Web, and storage I/O: their modules under `adapter`.
 
 `src/cli.py` is the direct source-tree entry point. The CLI implementation belongs to
-`adapter.cli_adapter.commands`, alongside the other external command adapters. These
+`adapter.cli_adapter.commands`, while terminal settings and confirmation live in
+`adapter.cli_adapter.configuration` and Agent/storage construction lives in
+`adapter.cli_adapter.loaders`. These
 modules use `adapter.agent` for the single explicit Agent access boundary and do not own task
 execution. There are no compatibility modules; import an advanced type from the file that owns
 it. The release tests also import every removed module path in a fresh process and require it to

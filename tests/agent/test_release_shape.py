@@ -139,8 +139,10 @@ class ReleaseShapeTests(unittest.TestCase):
             "src/skill/runtime/skills.py",
             "src/skill/runtime/workflow.py",
             "src/skill/runtime/update.py",
+            "src/skill/runtime/files/models.py",
             "src/skill/learning/learning.py",
             "src/adapter/conversations.py",
+            "src/adapter/cli_adapter/__init__.py",
             "src/adapter/cli_adapter/check.py",
             "src/adapter/cli_adapter/serve.py",
             "src/adapter/cli_adapter/skills.py",
@@ -157,6 +159,8 @@ class ReleaseShapeTests(unittest.TestCase):
         root = Path("src/adapter/cli_adapter")
         self.assertTrue((root / "commands.py").is_file())
         self.assertTrue((root / "code.py").is_file())
+        self.assertTrue((root / "configuration.py").is_file())
+        self.assertTrue((root / "loaders.py").is_file())
         for group in ("run", "manage", "data"):
             self.assertTrue((root / group).is_dir())
         for old_path in (
@@ -270,6 +274,7 @@ class ReleaseShapeTests(unittest.TestCase):
                 "adapter.cli_adapter.serve",
                 "adapter.cli_adapter.skills",
                 "adapter.cli_adapter.storage",
+                "skill.runtime.files.models",
             ):
                 with self.subTest(module_name=module_name):
                     completed = subprocess.run(
@@ -289,6 +294,9 @@ class ReleaseShapeTests(unittest.TestCase):
         self.assertTrue(Path("src/core/runtime/setup.py").is_file())
         self.assertTrue(Path("src/core/runtime/team.py").is_file())
         self.assertFalse(Path("src/skill/task").exists())
+
+    def test_model_skill_management_has_an_explicit_path(self) -> None:
+        self.assertTrue(Path("src/skill/runtime/model_skills.py").is_file())
 
     def test_removed_coupled_core_domains_do_not_return(self) -> None:
         removed = [

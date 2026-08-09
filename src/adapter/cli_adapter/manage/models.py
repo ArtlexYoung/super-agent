@@ -15,7 +15,7 @@ from skill.runtime.models import (
     read_model_profiles,
     select_default_model_profile,
 )
-from skill.runtime.files.models import (
+from skill.runtime.model_skills import (
     ModelSkillManager,
     model_skill_input_from_dict,
 )

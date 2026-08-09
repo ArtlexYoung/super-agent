@@ -25,7 +25,7 @@ from skill.learning.insight import explain_run_with_insight
 from core.checks import ActionEffect, ActionRequest
 from skill.disclosure import skill_index_to_dict
 from skill.runtime.models import model_profile_to_dict, read_model_profiles
-from skill.runtime.files.models import model_skill_input_from_dict
+from skill.runtime.model_skills import model_skill_input_from_dict
 
 
 @dataclass(frozen=True)

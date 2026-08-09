@@ -43,6 +43,7 @@ source-tree execution possible.
 | Task queues and groups | `skill/runtime/tasks/` | Generic Run lifecycle |
 | Skill discovery | `skill/disclosure.py` | Storage writes or Skill mutation |
 | Skill execution | `skill/runtime/` | Agent learning or external adapters |
+| Model Skill management | `skill/runtime/model_skills.py` | Provider calls or model routing |
 | Skill evidence and changes | `skill/learning/` | Implicit updates during a run |
 | Conversations | `core/state/conversations.py` | Storage backend construction or UI |
 | External and durable I/O | `adapter/` | Runtime decisions or Skill mechanisms |
@@ -70,9 +71,9 @@ There is no keyword router, separate planner engine, or preflight controller. Pl
 ordinary Skill instruction. A task Skill combines instructions with one run policy. The
 model can inspect or activate either through the same tools it uses for every other Skill.
 
-The Agent Runtime owns one native task queue mechanism. A selected Task Skill may expose its
-tools and limits for that run. Child Agents use the same mechanism with their own child graph,
-so nested producer-consumer work does not add another scheduler or copy queue code into Skills.
+The Core Runtime owns the generic task lifecycle, while a selected Task Skill may install the
+optional queue and group mechanism for that run. Child Agents use the same Skill-owned mechanism
+with their own child graph, so nested producer-consumer work does not add a second scheduler.
 
 The configured default model owns the task loop. When other model Skills exist, Runtime
 adds one `use_model` tool containing their descriptions, support, strengths, and readiness.

@@ -1381,6 +1381,19 @@ Status: implemented.
 - Remove the old CLI package initializer without a forwarding module while preserving the
   independent `common.toml`, `cli.toml`, and `code.toml` lookup rules.
 
+## v0.1.41: Final Ownership Cleanup
+
+Status: implemented.
+
+- Remove the unused Core Skill-activation hook left after activation moved to the explicit
+  Adapter boundary.
+- Put model Skill management in `skill.runtime.model_skills`, separate from package file
+  operations and the model profile reader.
+- Correct the architecture and source-tour documentation so Core owns lifecycle orchestration,
+  while optional task queues remain Skill-owned.
+- Add release-shape checks for the final Skill and CLI paths, then run the complete Python,
+  Web, compilation, diff, and offline benchmark gate.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

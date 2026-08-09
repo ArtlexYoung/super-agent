@@ -39,7 +39,6 @@ from skill.runtime.models import ModelProfile
 
 if TYPE_CHECKING:
     from core.state.store import DisclosureStorage, EventStore
-    from skill.manifest import SkillManifest
 
 
 class Agent:
@@ -272,14 +271,6 @@ class Agent:
             "user-scoped views are an Adapter responsibility; "
             "use super_agent.Agent"
         )
-
-    def _activate_changed_skill(
-        self,
-        manifest: SkillManifest,
-        user_id: str,
-    ) -> None:
-        if manifest.skill_type == "model":
-            self._setup.reload_model_profiles(user_id)
 
     def _run_as_subagent(
         self,

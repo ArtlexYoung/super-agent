@@ -35,7 +35,7 @@ if TYPE_CHECKING:
     from core.runtime.agent import Agent
     from core.models import AgentRunOptions, RunLearningResult
     from core.runtime.model_calls import ModelUsageStats
-    from skill.runtime.files.models import ModelSkillManager
+    from skill.runtime.model_skills import ModelSkillManager
     from skill.learning.update import SkillUpdater
 
 
@@ -306,7 +306,7 @@ class UserSkills:
         )
 
     def create_model_manager(self) -> "ModelSkillManager":
-        from skill.runtime.files.models import ModelSkillManager
+        from skill.runtime.model_skills import ModelSkillManager
 
         return ModelSkillManager(
             self.user.agent.config,
