@@ -8,7 +8,7 @@ from uuid import uuid4
 
 from core.checks import ActionEffect, ActionRequest, ActionRunner, ActionRules, PreparedAction
 from core.events import StorageEvent
-from core.provider.chat import Message
+from core.provider import Message
 from core.models import RunResult
 from core.state.models import Conversation, ConversationMessage
 

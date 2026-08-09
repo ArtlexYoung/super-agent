@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Callable
 
 from core.checks import ActionEffect, ActionRequest
 from core.models import RunResult, Task
-from core.provider.chat import (
+from core.provider import (
     ActionTurn,
     FinalTurn,
     Message,
@@ -16,7 +16,7 @@ from core.provider.chat import (
     ToolCall,
     read_model_turn,
 )
-from core.provider.pool import ProviderPool
+from core.provider import ProviderPool
 from core.skill_use.handlers import (
     SkillResult,
     SkillAction,

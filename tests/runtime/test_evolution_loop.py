@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 from core.config import CommonConfig
-from core.provider.chat import MockProvider, ModelResponse, ToolCall
+from core.provider import MockProvider, ModelResponse, ToolCall
 from core.skill_use.defaults import create_progressive_skill_disclosure
 from core.skill_use.update import SkillChangeCase
 from core.state.memory import create_memory_from_skill

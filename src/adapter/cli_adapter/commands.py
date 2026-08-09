@@ -35,7 +35,7 @@ from adapter.cli_adapter.skills import (
 )
 from adapter.cli_adapter.storage import configure_storage_parser, run_storage_command
 from core import __version__
-from core.provider.chat import Message
+from core.provider import Message
 from core.models import LOCAL_USER_ID, RunResult
 
 

@@ -12,7 +12,7 @@ from core.skill_use.defaults import create_default_skill_handlers
 from core.skill_use.handlers import SkillContext
 from core.config import CommonConfig
 from core.state.events import create_local_event_store
-from core.provider.chat import MockProvider
+from core.provider import MockProvider
 from skill.disclosure import ProgressiveDisclosureCore, SkillReference
 from core.skill_use.mcp import read_mcp_skill_settings
 from core.state.memory import Memory

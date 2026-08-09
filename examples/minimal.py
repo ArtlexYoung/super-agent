@@ -1,6 +1,6 @@
 """Run one stateless Agent without configuration or network access."""
 
-from core.provider.chat import MockProvider
+from core.provider import MockProvider
 from super_agent import Agent
 
 

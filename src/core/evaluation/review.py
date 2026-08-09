@@ -7,7 +7,7 @@ from dataclasses import asdict, dataclass
 from typing import Callable, TYPE_CHECKING, cast
 
 from core.models import RunIdentity
-from core.provider.chat import Message
+from core.provider import Message
 from core.state.events import EventStore
 from skill.index import format_disclosure_page_for_prompt
 

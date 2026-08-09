@@ -16,7 +16,7 @@ from core.skill_use.handlers import (
     SkillResult,
 )
 from adapter.cli_adapter.commands import main
-from core.provider.chat import MockProvider, ModelResponse, ToolCall
+from core.provider import MockProvider, ModelResponse, ToolCall
 from core.config import CommonConfig
 from core.checks import ActionEffect
 from skill.manifest import Skill

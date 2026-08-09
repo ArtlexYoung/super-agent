@@ -5,7 +5,7 @@ from pathlib import Path
 
 from super_agent import Agent
 from core.config import CommonConfig
-from core.provider.chat import MockProvider
+from core.provider import MockProvider
 from skill.disclosure import ProgressiveDisclosureCore
 from core.skill_use.files.lock import write_skill_lock_file
 from support import write_workflow_skill

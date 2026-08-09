@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 from super_agent import Agent
 from adapter.cli_adapter.commands import main
-from core.provider.chat import MockProvider, ModelResponse, ToolCall
+from core.provider import MockProvider, ModelResponse, ToolCall
 from core.config import CommonConfig
 from support import write_minimal_project
 

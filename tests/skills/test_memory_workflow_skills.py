@@ -6,7 +6,7 @@ from pathlib import Path
 from super_agent import Agent
 from core.config import CommonConfig
 from core.state.events import create_local_event_store
-from core.provider.chat import MockProvider
+from core.provider import MockProvider
 from core.state.memory import Memory
 
 

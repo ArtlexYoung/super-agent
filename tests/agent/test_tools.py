@@ -15,8 +15,8 @@ from core.skill_use.handlers import (
     SkillResult,
 )
 from core.skill_use.builtins import create_memory_skill_contribution
-from core.provider.chat import ToolCall
-from core.provider.chat import MockProvider
+from core.provider import ToolCall
+from core.provider import MockProvider
 from core.runtime.tools import RuntimeTools, RuntimeToolsContext
 from core.config import CommonConfig
 from core.runtime.run import Run

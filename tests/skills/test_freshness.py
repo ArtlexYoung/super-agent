@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from super_agent import Agent
-from core.provider.chat import MockProvider
+from core.provider import MockProvider
 from core.config import CommonConfig
 from core.evaluation.records import (
     EvaluationResult,

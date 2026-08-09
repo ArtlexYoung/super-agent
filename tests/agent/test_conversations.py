@@ -5,7 +5,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from super_agent import Agent
-from core.provider.chat import MockProvider, ModelResponse, ToolCall
+from core.provider import MockProvider, ModelResponse, ToolCall
 from core.config import CommonConfig
 from adapter.storage import JsonlStorage
 from adapter.conversations import (

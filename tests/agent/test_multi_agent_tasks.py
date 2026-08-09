@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 from core.config import CommonConfig
-from core.provider.chat import MockProvider, ModelResponse, ToolCall
+from core.provider import MockProvider, ModelResponse, ToolCall
 from core.runtime.tasks.queue import AgentTaskQueue, AgentTaskQueueSettings
 from super_agent import Agent
 

@@ -21,7 +21,7 @@ from core.checks import (
 
 if TYPE_CHECKING:
     from core.config import CommonConfig
-    from core.provider.chat import ChatProvider, Message
+    from core.provider import ChatProvider, Message
     from core.state.event_log import RunEventLog
     from core.state.models import RunEvent
     from core.state.events import EventStore

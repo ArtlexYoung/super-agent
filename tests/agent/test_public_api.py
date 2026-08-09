@@ -2,7 +2,7 @@ import inspect
 import unittest
 
 import super_agent
-from core.provider.chat import ProviderConnection, create_chat_provider
+from core.provider import ProviderConnection, create_chat_provider
 
 
 class PublicApiTests(unittest.TestCase):
@@ -35,7 +35,7 @@ class PublicApiTests(unittest.TestCase):
     def test_advanced_types_use_their_own_modules(self) -> None:
         from core.checks import ActionRules
         from core.models import AgentRunOptions
-        from core.provider.chat import MockProvider
+        from core.provider import MockProvider
         from core.skill_use.handlers import SkillHandler
 
         self.assertIsNotNone(ActionRules)

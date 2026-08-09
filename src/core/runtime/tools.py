@@ -14,7 +14,7 @@ from core.skill_use.handlers import (
     read_optional_tool_string,
     read_required_tool_string,
 )
-from core.provider.chat import Message, ToolCall, ToolDefinition
+from core.provider import Message, ToolCall, ToolDefinition
 from core.models import SubAgentResult, SubagentRecordOptions, Task
 from core.runtime.run import Run
 from core.runtime.tasks.queue import AgentTaskQueue, create_agent_task_queue

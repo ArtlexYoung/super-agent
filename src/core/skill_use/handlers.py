@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Callable, Protocol
 
 from core.checks import ActionEffect, ActionRequest
 from core.models import RunIdentity
-from core.provider.chat import Message, ToolDefinition
+from core.provider import Message, ToolDefinition
 from skill.disclosure import ProgressiveDisclosureCore, SkillDisclosure, SkillReference
 from skill.manifest import Skill
 

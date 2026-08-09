@@ -4,7 +4,7 @@ from pathlib import Path
 
 from core.skill_use.defaults import create_default_skill_handlers
 from core.skill_use.handlers import SkillAction, SkillCollection
-from core.provider.chat import MockProvider
+from core.provider import MockProvider
 from core.config import CommonConfig
 from core.runtime.run import Run
 from core.models import RunIdentity

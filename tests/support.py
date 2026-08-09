@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from core.config import CommonConfig
-from core.provider.chat import MockProvider, ModelResponse
+from core.provider import MockProvider, ModelResponse
 from core.skill_use.defaults import load_configured_freshness_rules
 
 

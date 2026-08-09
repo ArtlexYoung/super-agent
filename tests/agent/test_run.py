@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 from super_agent import Agent
-from core.provider.chat import MockProvider
+from core.provider import MockProvider
 from core.config import CommonConfig
 from core.models import RunIdentity
 from core.state.event_log import RunEventLog

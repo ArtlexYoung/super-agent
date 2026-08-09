@@ -9,7 +9,7 @@ from pathlib import Path
 from super_agent import Agent
 from core.config import CommonConfig
 from core.models import AgentRunOptions
-from core.provider.chat import MockProvider
+from core.provider import MockProvider
 
 
 class StatelessRuntimeTests(unittest.TestCase):
@@ -45,7 +45,7 @@ from pathlib import Path
 from super_agent import Agent
 from core.config import CommonConfig
 from core.models import AgentRunOptions
-from core.provider.chat import MockProvider
+from core.provider import MockProvider
 
 with tempfile.TemporaryDirectory() as temporary_directory:
     config = CommonConfig.create_default(Path(temporary_directory))
@@ -75,7 +75,7 @@ import tempfile
 from pathlib import Path
 from super_agent import Agent
 from core.config import CommonConfig
-from core.provider.chat import MockProvider
+from core.provider import MockProvider
 
 with tempfile.TemporaryDirectory() as temporary_directory:
     config = CommonConfig.create_default(Path(temporary_directory))

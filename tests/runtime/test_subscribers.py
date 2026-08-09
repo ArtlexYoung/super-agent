@@ -8,7 +8,7 @@ from unittest.mock import patch
 from super_agent import Agent
 from core.config import CommonConfig
 from core.models import AgentRunOptions
-from core.provider.chat import MockProvider
+from core.provider import MockProvider
 from core.state.models import RunEvent
 from core.state.subscribers import RuntimeEventSubscriberError
 from core.evaluation.records import read_evaluation_records

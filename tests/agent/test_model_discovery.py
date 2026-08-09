@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from super_agent import Agent
-from core.provider.chat import (
+from core.provider import (
     MockProvider,
     ModelResponse,
     OpenAICompatibleProvider,
@@ -15,7 +15,7 @@ from core.provider.chat import (
     ToolCall,
     create_chat_provider,
 )
-from core.provider.pool import ProviderPool
+from core.provider import ProviderPool
 from core.config import CommonConfig
 from core.skill_use.models import (
     ModelProfile,
@@ -430,7 +430,7 @@ class ModelSkillTests(unittest.TestCase):
                 use_storage=True,
             )
 
-            with patch("core.provider.chat._send_json_post_request") as send:
+            with patch("core.provider._send_json_post_request") as send:
                 def respond(_url, payload, api_key):
                     return {"choices": [{"message": {"content": api_key}}]}
 

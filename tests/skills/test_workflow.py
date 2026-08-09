@@ -4,8 +4,8 @@ from pathlib import Path
 
 from super_agent import Agent
 from core.config import CommonConfig
-from core.provider.chat import MockProvider
-from core.provider.chat import ModelResponse, ToolCall
+from core.provider import MockProvider
+from core.provider import ModelResponse, ToolCall
 
 
 class ExecutableWorkflowTests(unittest.TestCase):

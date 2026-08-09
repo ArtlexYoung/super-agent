@@ -10,7 +10,7 @@ from time import monotonic
 from typing import Callable
 
 from core.models import SubagentRecordOptions
-from core.provider.chat import estimate_text_tokens
+from core.provider import estimate_text_tokens
 
 
 EventWriter = Callable[[str, dict[str, object]], object]

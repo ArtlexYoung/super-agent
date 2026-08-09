@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable, Protocol
 from uuid import uuid4
 
-from core.provider.chat import (
+from core.provider import (
     ChatProvider,
     Message,
     ModelResponse,
@@ -18,7 +18,7 @@ from core.provider.chat import (
     call_chat_model,
     estimate_text_tokens,
 )
-from core.provider.pool import ProviderPool
+from core.provider import ProviderPool
 from core.state.models import Conversation
 from core.skill_use.models import ModelProfile
 

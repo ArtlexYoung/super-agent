@@ -47,7 +47,7 @@ print(result.text)
 This path is stateless and creates no files. A known Provider can be passed directly:
 
 ```python
-from core.provider.chat import MockProvider
+from core.provider import MockProvider
 from super_agent import Agent
 
 agent = Agent(provider=MockProvider("offline response"))

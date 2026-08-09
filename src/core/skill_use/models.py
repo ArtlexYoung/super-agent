@@ -7,7 +7,7 @@ import os
 from dataclasses import dataclass, replace
 from typing import Mapping
 
-from core.provider.chat import (
+from core.provider import (
     ANTHROPIC_COMPATIBLE_PROVIDER,
     MOCK_PROVIDER,
     OPENAI_COMPATIBLE_PROVIDER,

@@ -585,7 +585,7 @@ Status: implemented.
 Status: implemented.
 
 - Keep `core.runtime.runtime.Runtime` as the only task lifecycle owner and move one measured
-  Provider call into `core.provider.chat`.
+  Provider call into `core.provider`.
 - Expose configured non-default model Skills through one explicit `use_model` tool; keep
   the default model in control of later turns and propagate delegated failures unchanged.
 - Replace score-shaped routing records with selected-model reasons and measured model-use
@@ -1221,6 +1221,18 @@ Status: implemented.
 - Update the source tour to show the shortest path from `Agent.run()` to the model call and the
   owners of optional state, Skill handling, Provider calls, and external adapters.
 - Keep behavior, public entry points, and the dependency-free default unchanged.
+
+## v0.1.28: One Provider Module
+
+Status: implemented.
+
+- Combine Provider request formats, connection normalization, user secret isolation, and the
+  per-run Provider pool in `core/provider.py`.
+- Remove the nested `core/provider` directory and all old import paths without forwarding files.
+- Keep model profiles and model Skill configuration outside Provider so Provider remains focused
+  on making a configured model call.
+- Verify Provider caching, user isolation, OpenAI-compatible requests, Anthropic-compatible
+  requests, and Mock behavior through the same test suite.
 
 ## Release Gate
 

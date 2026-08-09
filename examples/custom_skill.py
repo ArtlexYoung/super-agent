@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from core.provider.chat import MockProvider
+from core.provider import MockProvider
 from super_agent import Agent
 
 

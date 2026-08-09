@@ -124,6 +124,7 @@ class ReleaseShapeTests(unittest.TestCase):
             "src/core/actions.py",
             "src/core/identity.py",
             "src/core/secrets.py",
+            "src/core/provider",
             "src/core/session.py",
             "src/core/skill_use/loaded.py",
             "src/core/skill_use/registry.py",

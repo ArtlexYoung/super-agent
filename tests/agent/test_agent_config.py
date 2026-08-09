@@ -6,7 +6,7 @@ from unittest.mock import patch
 from super_agent import Agent
 from core.checks import ActionEffect
 from core.config import CodeConfig, CommonConfig
-from core.provider.chat import MockProvider
+from core.provider import MockProvider
 from adapter.storage import create_storage_backend
 from skill.disclosure import ProgressiveDisclosureCore
 from core.skill_use.models import read_model_profiles

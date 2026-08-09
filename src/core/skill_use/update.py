@@ -14,7 +14,7 @@ from uuid import uuid4
 
 from core.checks import ActionEffect, ActionRequest, ActionRunner, ActionRules
 from core.files import write_bytes_atomically
-from core.provider.chat import Message
+from core.provider import Message
 from core.runtime.model_calls import TextModel, estimate_text_tokens
 from core.evaluation.review import (
     read_skill_change_report,

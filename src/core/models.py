@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 from hashlib import sha256
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 from uuid import uuid4
 
-from core.provider.chat import Message
 from core.state.models import RunEvent
+
+if TYPE_CHECKING:
+    from core.provider import Message
 
 
 LOCAL_USER_ID = "local"

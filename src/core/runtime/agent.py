@@ -12,11 +12,11 @@ from core.skill_use.defaults import (
 )
 from core.skill_use.handlers import SkillHandler
 from core.skill_use.mcp import McpServer, McpServers
-from core.provider.chat import (
+from core.provider import (
     ChatProvider,
     Message,
 )
-from core.provider.pool import ProviderPool, UserSecretLookup, UserSecretResolver
+from core.provider import ProviderPool, UserSecretLookup, UserSecretResolver
 from core.config import CommonConfig
 from core.runtime.runtime import Runtime, RuntimeContext
 from core.runtime.run import Run

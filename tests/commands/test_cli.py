@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 from adapter.cli_adapter.commands import CLI_COMMANDS, _is_terminal_request, main
 from core import __version__
-from core.provider.chat import MockProvider
+from core.provider import MockProvider
 from support import write_minimal_project
 
 
@@ -285,7 +285,7 @@ description = "Compact note writer"
             )
             propose_output = StringIO()
             with patch(
-                "core.provider.pool.create_chat_provider",
+                "core.provider.create_chat_provider",
                 return_value=MockProvider(candidate_response),
             ):
                 with patch("sys.stdout", propose_output):

@@ -7,7 +7,7 @@ from pathlib import Path
 
 from super_agent import Agent
 from adapter.ag_ui_adapter.web_api import WebAPI
-from core.provider.chat import MockProvider
+from core.provider import MockProvider
 from core.config import CommonConfig
 from core.state.memory import Memory
 

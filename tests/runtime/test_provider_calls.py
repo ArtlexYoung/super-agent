@@ -4,7 +4,7 @@ import unittest
 
 from core.evaluation.review import parse_review_response
 
-from core.provider.chat import (
+from core.provider import (
     ActionTurn,
     FinalTurn,
     MockProvider,

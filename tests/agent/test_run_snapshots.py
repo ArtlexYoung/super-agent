@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 
 from core.config import CommonConfig
-from core.provider.chat import MockProvider
+from core.provider import MockProvider
 from super_agent import Agent
 
 

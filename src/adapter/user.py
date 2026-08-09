@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, cast
 
-from core.provider.chat import Message
+from core.provider import Message
 from core.config import CommonConfig
 from core.models import validate_user_id
 from core.state.models import Conversation, RunEvent

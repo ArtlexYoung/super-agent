@@ -7,7 +7,7 @@ from dataclasses import replace
 from time import monotonic
 
 from core.checks import ActionEffect
-from core.provider.chat import estimate_text_tokens
+from core.provider import estimate_text_tokens
 from core.runtime.tasks.agents import (
     AgentChoice,
     AgentTask,

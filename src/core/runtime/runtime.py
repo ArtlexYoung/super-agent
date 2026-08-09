@@ -10,7 +10,7 @@ from core.checks import ActionRules
 from core.config import CommonConfig
 from core.events import StorageBackend
 from core.models import LOCAL_USER_ID, RunIdentity, RunResult, Task
-from core.provider.pool import ProviderPool, UserSecretResolver
+from core.provider import ProviderPool, UserSecretResolver
 from core.runtime.loop import ModelLoop, list_run_actions
 from core.runtime.model_calls import estimate_text_tokens
 from core.runtime.run import Run

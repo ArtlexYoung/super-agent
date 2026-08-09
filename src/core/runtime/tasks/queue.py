@@ -10,7 +10,7 @@ from typing import Callable
 
 from core.checks import ActionEffect
 from core.models import SubagentRecordOptions
-from core.provider.chat import estimate_text_tokens
+from core.provider import estimate_text_tokens
 from core.state.audit import compact_subagent_result
 from core.runtime.tasks.agents import (
     AgentChoice,
