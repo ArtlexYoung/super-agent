@@ -17,7 +17,7 @@ from skill.runtime.handlers import (
 from core.provider import Message, ToolCall, ToolDefinition
 from core.models import SubAgentResult, SubagentRecordOptions, Task
 from core.runtime.run import Run
-from core.runtime.tasks.queue import AgentTaskQueue, create_agent_task_queue
+from skill.runtime.tasks.queue import AgentTaskQueue, create_agent_task_queue
 from core.checks import ActionEffect, ActionRequest
 from skill.disclosure import SkillDisclosure, SkillIndex, SkillReference, skill_index_to_dict
 from skill.index import DEFAULT_PAGE_CHARS, disclosure_page_to_dict

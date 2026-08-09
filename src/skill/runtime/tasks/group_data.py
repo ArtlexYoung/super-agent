@@ -9,7 +9,7 @@ import re
 from dataclasses import dataclass
 from typing import Callable, Mapping
 
-from core.runtime.tasks.agents import (
+from skill.runtime.tasks.agents import (
     AgentChoice,
     read_optional_estimated_tokens,
 )

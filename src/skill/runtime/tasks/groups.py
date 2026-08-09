@@ -8,13 +8,13 @@ from time import monotonic
 
 from core.checks import ActionEffect
 from core.provider import estimate_text_tokens
-from core.runtime.tasks.agents import (
+from skill.runtime.tasks.agents import (
     AgentChoice,
     AgentTask,
     AgentUnavailableError,
     estimated_token_schema,
 )
-from core.runtime.tasks.group_data import (
+from skill.runtime.tasks.group_data import (
     AgentGroup,
     AgentGroupOptions,
     AgentGroupRequest,

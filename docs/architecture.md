@@ -40,7 +40,7 @@ source-tree execution possible.
 | One run event log | `core/state/run.py` | Durable backend selection |
 | One run lifecycle | `core/runtime/run.py` | CLI, Web, or storage policy |
 | Agent setup and child graph | `core/runtime/setup.py`, `team.py` | Skill content or Provider protocols |
-| Task queues and groups | `core/runtime/tasks/` | When those optional tools are activated |
+| Task queues and groups | `skill/runtime/tasks/` | Generic Run lifecycle |
 | Skill discovery | `skill/disclosure.py` | Storage writes or Skill mutation |
 | Skill execution | `skill/runtime/` | Agent learning or external adapters |
 | Skill evidence and changes | `skill/learning/` | Implicit updates during a run |

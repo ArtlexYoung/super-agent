@@ -12,7 +12,7 @@ from core.checks import ActionEffect
 from core.models import SubagentRecordOptions
 from core.provider import estimate_text_tokens
 from core.state.audit import compact_subagent_result
-from core.runtime.tasks.agents import (
+from skill.runtime.tasks.agents import (
     AgentChoice,
     AgentTask,
     AgentTaskEstimate,
@@ -23,11 +23,11 @@ from core.runtime.tasks.agents import (
     is_agent_unavailable,
     read_optional_estimated_tokens,
 )
-from core.runtime.tasks.group_data import (
+from skill.runtime.tasks.group_data import (
     AgentGroupOptions,
     read_group_settings,
 )
-from core.runtime.tasks.groups import AgentGroupTools
+from skill.runtime.tasks.groups import AgentGroupTools
 from skill.runtime.handlers import (
     SkillAction,
     SkillTool,

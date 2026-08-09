@@ -1343,6 +1343,19 @@ Status: implemented.
   forwarding modules and update fresh-process import tests.
 - Preserve event schemas, retention behavior, user isolation, and stateless import boundaries.
 
+## v0.1.38: Skill-Owned Task Work
+
+Status: implemented.
+
+- Move queue consumers, Agent selection, circuit breakers, wait and wake triggers, and group
+  decisions from `core/runtime/tasks` to `skill/runtime/tasks`.
+- Keep Core responsible for the generic Run and checked tool execution; Task Skills explicitly
+  install the optional task queue mechanism when their configuration requests it.
+- Remove all old `core.runtime.tasks.*` paths without aliases and preserve nested queue behavior,
+  cost ranking, model rotation, retries, and group quorum decisions.
+- Keep the task implementation split by clear responsibility instead of creating one oversized
+  Runtime file.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

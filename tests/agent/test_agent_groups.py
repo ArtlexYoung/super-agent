@@ -1,8 +1,8 @@
 import json
 import unittest
 
-from core.runtime.tasks.agents import AgentUnavailableError
-from core.runtime.tasks.queue import create_agent_task_queue
+from skill.runtime.tasks.agents import AgentUnavailableError
+from skill.runtime.tasks.queue import create_agent_task_queue
 
 
 class AgentGroupTests(unittest.TestCase):
