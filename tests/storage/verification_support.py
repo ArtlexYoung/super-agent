@@ -8,7 +8,7 @@ from pathlib import Path
 from time import perf_counter
 from uuid import uuid4
 
-from adapter.conversations import (
+from core.state.conversations import (
     append_conversation_turn,
     create_conversation,
     read_conversation,

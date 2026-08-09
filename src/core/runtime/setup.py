@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from threading import RLock
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 from core.checks import ActionRules
 from core.config import CommonConfig
@@ -33,6 +33,9 @@ if TYPE_CHECKING:
     from core.state.events import EventStore
 
 
+StorageBackendFactory = Callable[[str, str, str | None], StorageBackend]
+
+
 class AgentSetup:
     """Create optional Agent resources only when they are first requested."""
 
@@ -45,6 +48,7 @@ class AgentSetup:
         use_storage: bool | None,
         action_rules: ActionRules | None,
         secret_lookup: UserSecretLookup | None,
+        storage_factory: StorageBackendFactory | None,
     ) -> None:
         if use_storage is not None and not isinstance(use_storage, bool):
             raise TypeError("use_storage must be a boolean or None")
@@ -55,6 +59,7 @@ class AgentSetup:
         self.user_secrets = UserSecretResolver(secret_lookup)
         self.use_storage = storage is not None if use_storage is None else use_storage
         self.configured_storage = storage
+        self.storage_factory = storage_factory
         self.provided_provider = provider
         self.storage: StorageBackend | None = None
         self.runtime: Runtime | None = None
@@ -213,9 +218,12 @@ class AgentSetup:
     def _create_configured_storage(self) -> StorageBackend | None:
         if self.configured_storage is not None or not self.use_storage:
             return self.configured_storage
-        from adapter.storage import create_storage_backend
-
-        return create_storage_backend(
+        if self.storage_factory is None:
+            raise RuntimeError(
+                "storage backend creation is unavailable; "
+                "use an Adapter Agent or pass a StorageBackend"
+            )
+        return self.storage_factory(
             self.config.storage.backend,
             str(self.config.storage.path),
             self.config.storage.url_env,

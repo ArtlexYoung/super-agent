@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from core.events import StorageBackend
+    from core.state.events import EventStore
 
 
 def create_storage_backend(
@@ -29,12 +31,27 @@ def create_storage_backend(
         return PostgreSqlStorage(url_env)
     raise ValueError(f"unknown storage backend: {backend}")
 
+
+def create_local_event_store(
+    root: str | Path,
+    *,
+    user_id: str = "local",
+    agent_name: str = "super-agent",
+) -> EventStore:
+    """Create a JSONL EventStore for tests and local Skill tooling."""
+    from adapter.storage.jsonl import JsonlStorage
+    from core.state.events import EventStore
+
+    path = Path(root).expanduser().absolute()
+    return EventStore(JsonlStorage(path), path, user_id, agent_name)
+
 __all__ = [
     "JsonlStorage",
     "MySqlStorage",
     "PostgreSqlStorage",
     "SqliteStorage",
     "create_storage_backend",
+    "create_local_event_store",
 ]
 
 

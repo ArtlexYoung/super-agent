@@ -22,9 +22,10 @@ src/
 ```
 
 `core` owns execution and may read passive Skill definitions. `skill` does not own the
-Runtime. `adapter` connects external interfaces and durable backends. `super_agent.py` is a
-five-line facade; `core/runtime/agent.py` owns the public actions, `setup.py` owns lazy Runtime
-resources, and `team.py` owns child Agent composition.
+Runtime. `adapter` connects external interfaces and durable backends. `super_agent.py` is the
+public wiring entry point; `core/runtime/agent.py` owns the public Core actions, `setup.py` owns
+lazy Runtime resources, and `team.py` owns child Agent composition. Core never imports Adapter
+implementations: storage creation and user views are supplied by the public wiring entry point.
 The CLI command owner is `adapter.cli_adapter.commands`; its `run`, `manage`, and `data`
 directories group command domains, while `src/cli.py` only makes direct
 source-tree execution possible.
@@ -40,9 +41,11 @@ source-tree execution possible.
 | Skill discovery | `skill/disclosure.py` | Skill execution or mutation |
 | Skill execution | `skill/runtime/` | Agent learning or external adapters |
 | Skill evidence and changes | `skill/learning/` | Implicit updates during a run |
+| Conversations | `core/state/conversations.py` | Storage backend construction or UI |
 | External and durable I/O | `adapter/` | Runtime decisions or Skill mechanisms |
 
-Dependencies point from adapters into Core and Skill owners. Skill discovery remains passive;
+Dependencies point from adapters into Core and Skill owners. `super_agent.Agent` wires the
+default Adapter factories into Core without making Core import them. Skill discovery remains passive;
 Runtime may consume disclosed Skill content, while optional learning is invoked explicitly after
 a run. Removed ownership paths are release-tested as failed imports rather than retained through
 aliases or forwarding modules.

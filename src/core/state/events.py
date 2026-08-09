@@ -315,17 +315,6 @@ class EventStore:
             raise ValueError("run identity does not match runtime store scope")
 
 
-def create_local_event_store(
-    root: Path,
-    *,
-    user_id: str = "local",
-    agent_name: str = "super-agent",
-) -> EventStore:
-    from adapter.storage.jsonl import JsonlStorage
-
-    return EventStore(JsonlStorage(root), root, user_id, agent_name)
-
-
 def _required_text(value: object, name: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{name} cannot be empty")

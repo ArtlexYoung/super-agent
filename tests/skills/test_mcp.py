@@ -11,7 +11,7 @@ from super_agent import Agent
 from skill.runtime.defaults import create_default_skill_handlers
 from skill.runtime.handlers import SkillContext
 from core.config import CommonConfig
-from core.state.events import create_local_event_store
+from adapter.storage import create_local_event_store
 from core.provider import MockProvider
 from skill.disclosure import ProgressiveDisclosureCore, SkillReference
 from skill.runtime.mcp import read_mcp_skill_settings

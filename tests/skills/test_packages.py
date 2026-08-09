@@ -5,7 +5,7 @@ import unittest
 import zipfile
 from pathlib import Path
 
-from core.state.events import create_local_event_store
+from adapter.storage import create_local_event_store
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.runtime.files.package import SkillPackageManager
 

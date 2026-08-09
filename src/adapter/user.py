@@ -20,7 +20,7 @@ from adapter.agent import (
     replace_agent_configuration,
     run_agent_for_user,
 )
-from adapter.conversations import (
+from core.state.conversations import (
     clear_conversation,
     create_conversation,
     delete_conversation,

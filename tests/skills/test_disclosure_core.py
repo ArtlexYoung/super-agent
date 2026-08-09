@@ -11,7 +11,7 @@ from skill.learning.records import (
     create_evaluation_record,
     read_evaluation_records,
 )
-from core.state.events import create_local_event_store
+from adapter.storage import create_local_event_store
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.index import format_disclosure_page_for_prompt
 from skill.learning.freshness import calculate_skill_freshness

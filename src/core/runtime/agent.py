@@ -26,6 +26,11 @@ from core.provider import (
 from core.runtime.run import Run, Runtime
 from core.runtime.setup import AgentSetup
 from core.runtime.team import AgentTeam, SubAgent
+from core.state.conversations import (
+    complete_conversation_turn,
+    infer_conversation_feedback,
+    prepare_conversation_turn,
+)
 from core.state.models import Conversation
 from core.state.subscribers import RuntimeEventSubscriber
 from skill.runtime.handlers import SkillHandler
@@ -33,7 +38,6 @@ from skill.runtime.mcp import McpServer
 from skill.runtime.models import ModelProfile
 
 if TYPE_CHECKING:
-    from adapter.user import UserAgent
     from skill.manifest import SkillManifest
 
 
@@ -57,6 +61,7 @@ class Agent:
             use_storage=use_storage,
             action_rules=action_rules,
             secret_lookup=secret_lookup,
+            storage_factory=self._create_storage_backend,
         )
         self._team = AgentTeam(self)
 
@@ -138,10 +143,8 @@ class Agent:
         with self._setup.lock:
             self.provider_pool.add_chat_provider(key, provider)
 
-    def for_user(self, user_id: str) -> UserAgent:
-        from adapter.user import UserAgent
-
-        return UserAgent(self, user_id)
+    def for_user(self, user_id: str) -> object:
+        return self._create_user_agent_view(user_id)
 
     def run(
         self,
@@ -190,8 +193,6 @@ class Agent:
             state = self._setup.active_state_access
             if state.storage is None:
                 raise RuntimeError("conversation history requires Runtime storage")
-            from adapter.conversations import prepare_conversation_turn
-
             prepared_messages, pending_turn = prepare_conversation_turn(
                 state.create_event_store(user_id),
                 self._setup.get_action_rules(),
@@ -232,8 +233,6 @@ class Agent:
             event_listener=options.event_listener,
         )
         if pending_turn is not None:
-            from adapter.conversations import complete_conversation_turn
-
             complete_conversation_turn(pending_turn, result)
         return result
 
@@ -243,9 +242,24 @@ class Agent:
         prompt: str,
         user_id: str,
     ) -> None:
-        from adapter.conversations import infer_conversation_feedback
-
         infer_conversation_feedback(self, conversation, prompt, user_id=user_id)
+
+    def _create_storage_backend(
+        self,
+        backend: str,
+        path: str,
+        url_env: str | None,
+    ) -> StorageBackend:
+        raise RuntimeError(
+            "storage backend creation is an Adapter responsibility; "
+            "use super_agent.Agent or pass a StorageBackend"
+        )
+
+    def _create_user_agent_view(self, user_id: str) -> object:
+        raise RuntimeError(
+            "user-scoped views are an Adapter responsibility; "
+            "use super_agent.Agent"
+        )
 
     def _activate_changed_skill(
         self,

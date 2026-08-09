@@ -1305,6 +1305,19 @@ Status: implemented.
 - Run the complete Python, Web, compilation, diff, and offline benchmark gate as one explicit
   release check.
 
+## v0.1.35: Core Ports Without Reverse Imports
+
+Status: implemented.
+
+- Move conversation state operations into `core/state/conversations.py`; the Adapter only
+  exposes them to users and external interfaces.
+- Wire storage creation and user-scoped views through explicit Agent hooks from
+  `super_agent.py`, so Core can run with a supplied backend without importing Adapter modules.
+- Move the local JSONL EventStore helper to `adapter.storage` and remove its Core path without a
+  compatibility module.
+- Add release tests for the one-way `adapter -> core/skill` dependency and fresh-process failure
+  of the removed conversation path.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

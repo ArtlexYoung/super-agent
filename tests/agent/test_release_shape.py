@@ -135,6 +135,7 @@ class ReleaseShapeTests(unittest.TestCase):
             "src/skill/runtime/workflow.py",
             "src/skill/runtime/update.py",
             "src/skill/learning/learning.py",
+            "src/adapter/conversations.py",
             "src/adapter/cli_adapter/check.py",
             "src/adapter/cli_adapter/serve.py",
             "src/adapter/cli_adapter/skills.py",
@@ -174,6 +175,23 @@ class ReleaseShapeTests(unittest.TestCase):
             source = path.read_text(encoding="utf-8")
             self.assertNotIn("._setup", source, str(path))
             self.assertNotIn("._run_for_user", source, str(path))
+
+    def test_core_and_skill_do_not_import_external_adapters(self) -> None:
+        for root_name in ("core", "skill"):
+            for path in Path("src", root_name).rglob("*.py"):
+                tree = ast.parse(path.read_text(encoding="utf-8"))
+                for node in ast.walk(tree):
+                    if isinstance(node, ast.Import):
+                        imported = [alias.name for alias in node.names]
+                    elif isinstance(node, ast.ImportFrom):
+                        imported = [] if node.module is None else [node.module]
+                    else:
+                        continue
+                    self.assertTrue(
+                        all(not name == "adapter" and not name.startswith("adapter.")
+                            for name in imported),
+                        f"{path} imports external adapter code",
+                    )
 
     def test_public_modules_import_in_a_fresh_process(self) -> None:
         environment = dict(os.environ)

@@ -8,7 +8,7 @@ from super_agent import Agent
 from core.provider import MockProvider, ModelResponse, ToolCall
 from core.config import CommonConfig
 from adapter.storage import JsonlStorage
-from adapter.conversations import (
+from core.state.conversations import (
     append_conversation_turn,
     read_conversation,
 )

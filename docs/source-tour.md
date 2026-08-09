@@ -2,7 +2,7 @@
 
 Read one ordinary call in this order:
 
-1. `src/super_agent.py` exports the small public `Agent` facade.
+1. `src/super_agent.py` wires external factories and exports the public `Agent` facade.
 2. `src/core/runtime/agent.py` exposes the Agent actions, while `setup.py` owns lazy resources
    and `team.py` owns child Agents.
 3. `src/core/runtime/run.py` owns one run identity, event log, result, and failure.
@@ -48,6 +48,7 @@ For a subsystem, start at its owner:
 - Provider protocols and pooling: `core.provider`.
 - Skill index and disclosure: `skill.disclosure.ProgressiveDisclosureCore`.
 - Skill handling: `skill.runtime.handlers.SkillCollection` and `SkillHandlers`.
+- Conversation state: `core.state.conversations`.
 - Skill evidence and changes: `skill.learning`.
 - Scoped state and audit: `core.state`.
 - Side-effect checks: `core.checks.ActionRunner`.
@@ -59,4 +60,5 @@ For a subsystem, start at its owner:
 modules use `adapter.agent` for the single explicit Agent access boundary and do not own task
 execution. There are no compatibility modules; import an advanced type from the file that owns
 it. The release tests also import every removed module path in a fresh process and require it to
-fail, so an obsolete owner cannot return unnoticed.
+fail, including the former `adapter.conversations` path, so an obsolete owner cannot return
+unnoticed. Core and Skill source are also checked to ensure they never import Adapter code.
