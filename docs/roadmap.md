@@ -1292,6 +1292,19 @@ Status: implemented.
   leaving `commands.py` as the parser/dispatcher and `code.py` as the optional code adapter.
 - Delete the old flat CLI module paths without import forwarding files.
 
+## v0.1.34: Final Ownership Gates
+
+Status: implemented.
+
+- Remove unused Skill revision constructors, token estimation, and directory restoration code
+  so every remaining operation has a caller and a single owner.
+- Document the final Provider, Runtime, Agent, Skill, learning, state, and adapter boundaries in
+  one ownership map and one short source path.
+- Verify every removed Provider, Runtime, Skill, learning, and flat CLI module path fails to
+  import in a fresh process; no compatibility aliases or forwarding modules remain.
+- Run the complete Python, Web, compilation, diff, and offline benchmark gate as one explicit
+  release check.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

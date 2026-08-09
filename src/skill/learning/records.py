@@ -14,7 +14,6 @@ from skill.learning.models import (
     skill_revision_to_dict,
     validate_skill_revision,
 )
-from core.runtime.model_calls import estimate_text_tokens
 
 if TYPE_CHECKING:
     from core.state.events import EventStore
@@ -127,16 +126,6 @@ def create_evaluation_record(
     )
     evaluation_record_to_dict(record)
     return record
-
-
-def estimate_evaluation_token_usage(
-    input_text: str,
-    output_text: str,
-) -> EvaluationTokenUsage:
-    return EvaluationTokenUsage(
-        input_tokens=estimate_text_tokens(input_text),
-        output_tokens=estimate_text_tokens(output_text),
-    )
 
 
 def evaluation_record_to_dict(record: EvaluationRecord) -> dict[str, object]:

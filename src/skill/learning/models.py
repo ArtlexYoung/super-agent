@@ -4,12 +4,6 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
-
-from skill.manifest import SkillManifest, calculate_skill_directory_sha256
-
-if TYPE_CHECKING:
-    from skill.index import SkillIndexEntry
 
 
 SKILL_REVISION_SCHEMA_VERSION = 2
@@ -30,42 +24,6 @@ class SkillRevision:
     @property
     def identity(self) -> tuple[str, str, str]:
         return self.key, self.version, self.content_sha256
-
-
-def create_indexed_skill_revision(entry: SkillIndexEntry) -> SkillRevision:
-    return SkillRevision(
-        key=entry.reference.key,
-        skill_type=entry.reference.skill_type,
-        name=entry.reference.name,
-        version=entry.version,
-        content_sha256=entry.content_sha256,
-        function_group=entry.function_group,
-        agent_created=entry.agent_created,
-        agent_can_update=entry.agent_can_update,
-        freshness=entry.freshness,
-    )
-
-
-def create_manifest_skill_revision(
-    manifest: SkillManifest,
-    *,
-    content_sha256: str | None = None,
-) -> SkillRevision:
-    return SkillRevision(
-        key=f"{manifest.skill_type}:{manifest.name}",
-        skill_type=manifest.skill_type,
-        name=manifest.name,
-        version=manifest.version,
-        content_sha256=(
-            content_sha256
-            if content_sha256 is not None
-            else calculate_skill_directory_sha256(manifest.path)
-        ),
-        function_group=manifest.function_group,
-        agent_created=manifest.agent_created,
-        agent_can_update=manifest.agent_can_update,
-        freshness=manifest.freshness,
-    )
 
 
 def skill_revision_to_dict(revision: SkillRevision) -> dict[str, object]:

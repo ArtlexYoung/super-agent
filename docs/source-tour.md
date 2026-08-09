@@ -40,17 +40,23 @@ enter only at a visible boundary:
 
 For a subsystem, start at its owner:
 
+- Agent actions: `core.runtime.agent.Agent`.
+- Lazy run resources: `core.runtime.setup.AgentSetup`.
+- Child Agent composition: `core.runtime.team.AgentTeam`.
+- Run lifecycle: `core.runtime.run.Runtime`.
+- Model loop and calls: `core.runtime.loop.ModelLoop` and `core.runtime.model_calls.ModelCalls`.
+- Provider protocols and pooling: `core.provider`.
 - Skill index and disclosure: `skill.disclosure.ProgressiveDisclosureCore`.
 - Skill handling: `skill.runtime.handlers.SkillCollection` and `SkillHandlers`.
-- Provider selection: `core.provider.ProviderPool`.
-- Stored user access: `adapter.user.UserAgent`.
-- Scoped state access: `core.state.access.StateAccess`.
+- Skill evidence and changes: `skill.learning`.
+- Scoped state and audit: `core.state`.
 - Side-effect checks: `core.checks.ActionRunner`.
-- Run events: `core.state.event_log.RunEventLog`.
-- Explicit Skill changes: `skill.learning.update.SkillUpdater`.
+- External Agent access: `adapter.agent`.
+- CLI, Web, and storage I/O: their modules under `adapter`.
 
 `src/cli.py` is the direct source-tree entry point. The CLI implementation belongs to
 `adapter.cli_adapter.commands`, alongside the other external command adapters. These
 modules use `adapter.agent` for the single explicit Agent access boundary and do not own task
-execution. There are no compatibility
-modules; import an advanced type from the file that owns it.
+execution. There are no compatibility modules; import an advanced type from the file that owns
+it. The release tests also import every removed module path in a fresh process and require it to
+fail, so an obsolete owner cannot return unnoticed.

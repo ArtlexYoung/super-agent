@@ -1,4 +1,4 @@
-"""Verified Skill directory replacement and failure restoration."""
+"""Verified atomic Skill directory replacement."""
 
 from __future__ import annotations
 
@@ -56,38 +56,6 @@ def replace_skill_directory_atomically(
             shutil.rmtree(staging)
     if _path_exists(backup):
         shutil.rmtree(backup)
-
-
-def restore_skill_directory_after_failed_change(
-    target: Path,
-    changed_sha256: str,
-    previous_source: Path | None,
-    previous_sha256: str,
-) -> None:
-    if _directory_matches(target, previous_sha256):
-        return
-    require_skill_directory_matches(target, changed_sha256, "changed target")
-    if previous_source is None:
-        if previous_sha256:
-            raise ValueError("previous Skill source is required for restoration")
-        shutil.rmtree(target)
-        return
-    if not previous_sha256:
-        raise ValueError("previous Skill SHA-256 is required for restoration")
-    replace_skill_directory_atomically(
-        previous_source,
-        target,
-        expected_source_sha256=previous_sha256,
-        expected_target_sha256=changed_sha256,
-    )
-
-
-def _directory_matches(path: Path, expected_sha256: str) -> bool:
-    if not _path_exists(path):
-        return expected_sha256 == ""
-    if not expected_sha256 or not path.is_dir():
-        return False
-    return calculate_skill_directory_sha256(path) == expected_sha256
 
 
 def _path_exists(path: Path) -> bool:

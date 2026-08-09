@@ -29,6 +29,24 @@ The CLI command owner is `adapter.cli_adapter.commands`; its `run`, `manage`, an
 directories group command domains, while `src/cli.py` only makes direct
 source-tree execution possible.
 
+## Ownership Map
+
+| Concern | Owner | Does not own |
+| --- | --- | --- |
+| Model protocols and calls | `core/provider.py` | Model profiles or task routing |
+| One run lifecycle | `core/runtime/run.py` | CLI, Web, or storage policy |
+| Agent setup and child graph | `core/runtime/setup.py`, `team.py` | Skill content or Provider protocols |
+| Task queues and groups | `core/runtime/tasks/` | When those optional tools are activated |
+| Skill discovery | `skill/disclosure.py` | Skill execution or mutation |
+| Skill execution | `skill/runtime/` | Agent learning or external adapters |
+| Skill evidence and changes | `skill/learning/` | Implicit updates during a run |
+| External and durable I/O | `adapter/` | Runtime decisions or Skill mechanisms |
+
+Dependencies point from adapters into Core and Skill owners. Skill discovery remains passive;
+Runtime may consume disclosed Skill content, while optional learning is invoked explicitly after
+a run. Removed ownership paths are release-tested as failed imports rather than retained through
+aliases or forwarding modules.
+
 ## One Task Path
 
 ```text
@@ -100,7 +118,7 @@ with `user.runs.learn(run_id)`, and it never changes active content. Agent-owned
 user-authorized Skills can be proposed, tested, applied, and undone through four separate
 operations. Proposal and testing do not modify the active Skill.
 
-## v0.0.122 Release Gate
+## Release Gate
 
 The release suite verifies the claims above as behavior:
 

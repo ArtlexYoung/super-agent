@@ -16,10 +16,10 @@ pnpm --dir web install --frozen-lockfile
 
 ## Checks
 
-Replace `0.1.33` with the version being released:
+Replace `0.1.34` with the version being released:
 
 ```bash
-.venv/bin/python scripts/verify_release.py --version 0.1.33 --full --web
+.venv/bin/python scripts/verify_release.py --version 0.1.34 --full --web
 ```
 
 Static mode is read-only. `--full` additionally runs all Python tests, compileall, diff
@@ -32,8 +32,8 @@ Update `pyproject.toml`, `src/core/__init__.py`, and `web/package.json` together
 unrelated working-tree changes out of the release commit:
 
 ```bash
-git add -A -- . ':(exclude).gitignore'
+git add -A -- . ':(exclude).gitignore' ':(exclude)README.md' ':(exclude)README_cn.md'
 git diff --cached --check
-git commit -m "refactor(adapter): release v0.1.33 with clear adapter groups"
-git tag v0.1.33
+git commit -m "refactor(source): release v0.1.34 with final ownership gates"
+git tag v0.1.34
 ```

@@ -211,18 +211,34 @@ class ReleaseShapeTests(unittest.TestCase):
                 )
                 self.assertEqual(0, completed.returncode, completed.stderr)
 
-    def test_removed_core_modules_cannot_be_imported(self) -> None:
+    def test_removed_module_paths_cannot_be_imported(self) -> None:
         environment = dict(os.environ)
         environment["PYTHONPATH"] = str(Path("src").resolve())
         with tempfile.TemporaryDirectory() as tmp:
             for module_name in (
                 "core.actions",
+                "core.evaluation",
                 "core.identity",
+                "core.provider.chat",
+                "core.provider.pool",
                 "core.secrets",
                 "core.session",
+                "core.runtime.runtime",
+                "core.skill_use",
                 "skill.runtime.loaded",
                 "skill.runtime.registry",
                 "skill.runtime.skills",
+                "skill.runtime.update",
+                "skill.runtime.workflow",
+                "skill.learning.learning",
+                "adapter.cli_adapter.check",
+                "adapter.cli_adapter.conversations",
+                "adapter.cli_adapter.memory",
+                "adapter.cli_adapter.models",
+                "adapter.cli_adapter.runs",
+                "adapter.cli_adapter.serve",
+                "adapter.cli_adapter.skills",
+                "adapter.cli_adapter.storage",
             ):
                 with self.subTest(module_name=module_name):
                     completed = subprocess.run(
