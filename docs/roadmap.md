@@ -1452,6 +1452,18 @@ Status: implemented.
 - Keep package and file mutations behind declared action checks; reads remain direct and
   side-effect free.
 
+## v0.1.47: One Agent Group Owner
+
+Status: implemented.
+
+- Keep Agent group settings, request validation, vote parsing, budget decisions, and group
+  tools in `skill.runtime.tasks.groups`.
+- Keep queue transitions in `queue.py` and subagent selection/circuit state in `agents.py`.
+- Remove `skill.runtime.tasks.group_data` and update the queue to consume the single group
+  owner directly.
+- Preserve explicit task limits, model diversity, quorum, cost checks, wake conditions, and
+  failure evidence semantics.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

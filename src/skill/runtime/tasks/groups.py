@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 import hashlib
-from dataclasses import replace
+import json
+import math
+import re
+from dataclasses import asdict, dataclass, replace
 from time import monotonic
+from typing import Callable, Mapping
 
 from core.checks import ActionEffect
 from core.provider import estimate_text_tokens
@@ -13,16 +17,7 @@ from skill.runtime.tasks.agents import (
     AgentTask,
     AgentUnavailableError,
     estimated_token_schema,
-)
-from skill.runtime.tasks.group_data import (
-    AgentGroup,
-    AgentGroupOptions,
-    AgentGroupRequest,
-    build_member_prompt,
-    choices_cost,
-    decide_group,
-    read_group_request,
-    read_positive_number,
+    read_optional_estimated_tokens,
 )
 from skill.runtime.handlers import SkillAction, SkillTool, read_required_tool_string
 
@@ -31,8 +26,6 @@ _TERMINAL_STATUSES = {"completed", "failed", "cancelled"}
 
 
 class AgentGroupTools:
-    """Expose group behavior only when a task Skill configures agent_groups."""
-
     def list_groups(self) -> list[dict[str, object]]:
         with self._condition:
             return [
@@ -167,7 +160,10 @@ class AgentGroupTools:
 
     def _wait_for_group(self, arguments: dict[str, object]) -> dict[str, object]:
         group_id = read_required_tool_string(arguments, "group_id")
-        requested_wait = read_positive_number(arguments, "max_wait_seconds")
+        value = arguments.get("max_wait_seconds")
+        if isinstance(value, bool) or not isinstance(value, int | float) or value <= 0:
+            raise ValueError("tool argument 'max_wait_seconds' must be a positive number")
+        requested_wait = float(value)
         wait_seconds = min(requested_wait, self.settings.max_wait_seconds)
         started = monotonic()
         self.record_event(
@@ -427,3 +423,254 @@ class AgentGroupTools:
         if self.group_options is None:
             raise RuntimeError("agent group tools are not active")
         return self.group_options
+
+GROUP_VOTES = {"support", "reject", "inconclusive"}
+MAX_GROUP_MEMBERS = 16
+_JSON_BLOCK = re.compile(r"\{.*\}", re.DOTALL)
+_TERMINAL_STATUSES = {"completed", "failed", "cancelled"}
+
+
+@dataclass(frozen=True)
+class AgentGroupSettings:
+    max_groups: int = 8
+    max_members: int = 3
+    default_members: int = 3
+    quorum: int = 2
+    max_estimated_cost: float = 0.0
+    allow_reduced_group: bool = False
+    require_different_models: bool = True
+    summary_chars: int = 1_000
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, object]) -> "AgentGroupSettings":
+        unknown = set(value) - set(cls.__dataclass_fields__)
+        if unknown:
+            raise ValueError("unknown agent_groups settings: " + ", ".join(sorted(unknown)))
+        settings = cls(**dict(value))
+        if isinstance(settings.max_groups, bool) or not isinstance(settings.max_groups, int) or settings.max_groups <= 0:
+            raise ValueError("agent_groups max_groups must be a positive integer")
+        for name, minimum, maximum in (
+            ("max_members", 2, MAX_GROUP_MEMBERS),
+            ("default_members", 2, settings.max_members),
+            ("quorum", 1, settings.default_members),
+        ):
+            _bounded_int(getattr(settings, name), name, minimum, maximum)
+        _nonnegative_number(settings.max_estimated_cost, "max_estimated_cost")
+        for name in ("allow_reduced_group", "require_different_models"):
+            if not isinstance(getattr(settings, name), bool):
+                raise TypeError(f"agent_groups {name} must be a boolean")
+        _bounded_int(settings.summary_chars, "summary_chars", 100, 10_000)
+        return settings
+
+
+@dataclass(frozen=True)
+class AgentGroupOptions:
+    settings: AgentGroupSettings
+    create_shared_context: Callable[[str, str], dict[str, object]] | None = None
+
+
+@dataclass(frozen=True)
+class AgentGroupRequest:
+    prompt: str
+    purpose: str
+    features: tuple[str, ...]
+    requested_members: int
+    quorum: int
+    roles: tuple[str, ...]
+    estimates: tuple[int | None, ...]
+
+
+@dataclass(frozen=True)
+class AgentGroup:
+    group_id: str
+    purpose: str
+    required_features: tuple[str, ...]
+    member_roles: tuple[str, ...]
+    task_ids: tuple[str, ...]
+    quorum: int
+    requested_members: int
+    actual_members: int
+    reduced: bool
+    shared_prompt_sha256: str
+    shared_prompt_chars: int
+    context_delivery: str
+    context_reference: str | None
+    estimated_cost: float
+    budget_limit: float
+    status: str = "running"
+
+    def to_dict(self) -> dict[str, object]:
+        data = asdict(self)
+        for name in ("required_features", "member_roles", "task_ids"):
+            data[name] = list(data[name])
+        return data
+
+
+def read_group_request(
+    arguments: Mapping[str, object],
+    settings: AgentGroupSettings,
+) -> AgentGroupRequest:
+    data = dict(arguments)
+    requested, quorum, roles = _read_group_members(arguments, settings)
+    estimates = tuple(read_optional_estimated_tokens(data, name) for name in (
+        "estimated_output_tokens", "estimated_cache_creation_tokens",
+        "estimated_cache_read_tokens",
+    ))
+    return AgentGroupRequest(
+        read_required_tool_string(data, "prompt"),
+        read_required_tool_string(data, "purpose").strip().lower(),
+        _read_string_list(arguments, "required_features"),
+        requested, quorum, roles, estimates,
+    )
+
+
+def build_member_prompt(
+    shared_prompt: str,
+    role: str,
+    context_reference: str | None,
+) -> str:
+    instructions = (
+        "You are one independent member of a decision group.\n"
+        f"Your role: {role}\n"
+        "Review the shared packet, work independently, and do not treat another member's "
+        "opinion as evidence. Return one JSON object with exactly these useful fields: "
+        "decision (support, reject, or inconclusive), evidence, confidence. "
+        "A failed implementation or missing measurement is inconclusive, not reject."
+    )
+    if context_reference is not None:
+        return (
+            f"{instructions}\n"
+            "Read the shared packet with the read_shared_task_context tool before deciding.\n"
+            f"shared_context_reference: {context_reference}"
+        )
+    return f"{instructions}\n\nShared packet:\n{shared_prompt}"
+
+
+def decide_group(
+    group: AgentGroup,
+    tasks: list[dict[str, object]],
+    *,
+    summary_chars: int,
+) -> dict[str, object]:
+    by_id = {str(item.get("task_id")): item for item in tasks}
+    members: list[dict[str, object]] = []
+    counts = {vote: 0 for vote in GROUP_VOTES}
+    failed = 0
+    for index, task_id in enumerate(group.task_ids):
+        task = by_id.get(task_id, {})
+        status = str(task.get("status", "missing"))
+        result = task.get("result")
+        vote, evidence, confidence = "inconclusive", "", None
+        if status == "completed" and isinstance(result, dict):
+            vote, evidence, confidence = read_group_vote(str(result.get("text", "")))
+        elif status in {"failed", "cancelled"}:
+            failed += 1
+        counts[vote] += 1
+        members.append({
+            "task_id": task_id,
+            "role": group.member_roles[index],
+            "status": "member_failed" if status == "failed" else status,
+            "agent_name": task.get("agent_name"),
+            "vote": vote,
+            "confidence": confidence,
+            "evidence": evidence[:summary_chars],
+            "evidence_sha256": hashlib.sha256(evidence.encode()).hexdigest(),
+            "evidence_chars": len(evidence),
+        })
+    terminal = all(
+        str(by_id.get(task_id, {}).get("status")) in _TERMINAL_STATUSES
+        for task_id in group.task_ids
+    )
+    decision = "supported" if counts["support"] >= group.quorum else (
+        "rejected" if counts["reject"] >= group.quorum else "inconclusive"
+    )
+    return {
+        **group.to_dict(),
+        "status": decision if terminal else "running",
+        "decision": decision if terminal else None,
+        "member_failures": failed,
+        "vote_counts": counts,
+        "members": members,
+        "quorum_met": decision != "inconclusive" and terminal,
+        "negative_evidence_required": group.quorum,
+    }
+
+
+def read_group_vote(text: str) -> tuple[str, str, float | None]:
+    candidate = text.strip()
+    if candidate.startswith("```"):
+        candidate = candidate.strip("`").strip()
+    if candidate.lower().startswith("json"):
+        candidate = candidate[4:].strip()
+    match = _JSON_BLOCK.search(candidate)
+    if match is None:
+        return "inconclusive", "", None
+    try:
+        value = json.loads(match.group(0))
+    except json.JSONDecodeError:
+        return "inconclusive", "", None
+    if not isinstance(value, dict):
+        return "inconclusive", "", None
+    vote = str(value.get("decision", "")).strip().lower()
+    if vote not in GROUP_VOTES:
+        return "inconclusive", "", None
+    evidence = value.get("evidence", "")
+    evidence = evidence if isinstance(evidence, str) else str(evidence)
+    confidence = value.get("confidence")
+    if isinstance(confidence, bool) or not isinstance(confidence, int | float):
+        return vote, evidence, None
+    return vote, evidence, round(max(0.0, min(1.0, float(confidence))), 4)
+
+
+def choices_cost(choices: list[AgentChoice]) -> float:
+    return round(sum(float(item.cost_estimate["estimated_cost"]) for item in choices), 12)
+
+
+def _read_group_members(
+    arguments: Mapping[str, object],
+    settings: AgentGroupSettings,
+) -> tuple[int, int, tuple[str, ...]]:
+    requested = _read_group_integer(arguments.get("member_count", settings.default_members), "member_count")
+    _bounded_int(requested, "member_count", 2, settings.max_members)
+    roles = _read_roles(arguments.get("roles"), requested)
+    quorum = _read_group_integer(arguments.get("quorum", settings.quorum), "quorum")
+    _bounded_int(quorum, "quorum", 1, requested)
+    return requested, quorum, roles
+
+
+def _read_group_integer(value: object, name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int): raise ValueError(f"group {name} must be an integer")
+    return value
+
+
+def _read_roles(value: object, count: int) -> tuple[str, ...]:
+    if value is None:
+        return tuple(f"independent reviewer {index}" for index in range(1, count + 1))
+    if not isinstance(value, list) or len(value) != count:
+        raise ValueError("group roles must contain exactly one role per member")
+    roles = tuple(item.strip() for item in value if isinstance(item, str) and item.strip())
+    if len(roles) != count or len(set(roles)) != count:
+        raise ValueError("group roles must be unique non-empty strings")
+    return roles
+
+
+def _bounded_int(value: object, name: str, minimum: int, maximum: int) -> None:
+    if isinstance(value, bool) or not isinstance(value, int) or not minimum <= value <= maximum:
+        raise ValueError(f"agent_groups {name} must be from {minimum} to {maximum}")
+
+
+def _nonnegative_number(value: object, name: str) -> None:
+    invalid = isinstance(value, bool) or not isinstance(value, int | float)
+    if invalid or not math.isfinite(float(value)) or value < 0:
+        raise ValueError(f"agent_groups {name} must be a finite non-negative number")
+
+
+def _read_string_list(arguments: Mapping[str, object], name: str) -> tuple[str, ...]:
+    value = arguments.get(name)
+    if not isinstance(value, list) or not 1 <= len(value) <= 16:
+        raise ValueError(f"tool argument {name!r} must contain 1 to 16 strings")
+    cleaned = tuple(dict.fromkeys(
+        item.strip().lower() for item in value if isinstance(item, str) and item.strip()))
+    if len(cleaned) != len(value):
+        raise ValueError(f"tool argument {name!r} must contain unique non-empty strings")
+    return cleaned

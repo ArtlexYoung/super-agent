@@ -23,9 +23,9 @@ from skill.runtime.tasks.agents import (
     is_agent_unavailable,
     read_optional_estimated_tokens,
 )
-from skill.runtime.tasks.group_data import (
+from skill.runtime.tasks.groups import (
+    AgentGroupSettings,
     AgentGroupOptions,
-    read_group_settings,
 )
 from skill.runtime.tasks.groups import AgentGroupTools
 from skill.runtime.handlers import (
@@ -575,7 +575,7 @@ def create_agent_task_queue(
         None
         if "agent_groups" not in tools
         else AgentGroupOptions(
-            read_group_settings(tools["agent_groups"]),
+            AgentGroupSettings.from_dict(tools["agent_groups"]),
             create_shared_context,
         )
     )
