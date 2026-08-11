@@ -1361,7 +1361,7 @@ Status: implemented.
 Status: implemented.
 
 - Keep validation, revision checks, and atomic Skill directory replacement in one explicit
-  `skill.runtime.files.operations` module.
+  `skill.runtime.files.package` module.
 - Make package installation, package updates, and learning-driven Skill changes use the same
   verified file operations and hash checks.
 - Remove the split `directory` and `validation` modules without import forwarding paths.
@@ -1439,6 +1439,18 @@ Status: implemented.
   post-run report functions instead of owning a second review module.
 - Remove `skill.learning.review` without import forwarding or compatibility names.
 - Preserve optional learning imports so ordinary stateless execution remains dependency-free.
+
+## v0.1.46: One Skill File Owner
+
+Status: implemented.
+
+- Keep Skill installation, package creation, deterministic locks, directory validation, and
+  failure-atomic replacement in `skill.runtime.files.package`.
+- Remove the separate `skill.runtime.files.operations` module and all forwarding imports.
+- Preserve model Skill connection protection and learning-driven replacement through the same
+  explicit file owner.
+- Keep package and file mutations behind declared action checks; reads remain direct and
+  side-effect free.
 
 ## Release Gate
 

@@ -54,7 +54,8 @@ For a subsystem, start at its owner:
 - Disclosure persistence: `adapter.storage.disclosure.DisclosureStorage`.
 - Skill handling: `skill.runtime.handlers.SkillCollection` and `SkillHandlers`.
 - Model Skill management: `skill.runtime.model_skills.ModelSkillManager`.
-- Skill file lifecycle: `skill.runtime.files.operations`.
+- Skill file lifecycle: `skill.runtime.files.package.SkillPackageManager` and its explicit
+  validation functions.
 - Conversation state: `core.state.conversations`.
 - Skill evidence and changes: `skill.learning`.
 - Scoped state and audit: `core.state`.

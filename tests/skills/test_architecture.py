@@ -119,13 +119,14 @@ class SkillArchitectureTests(unittest.TestCase):
             importlib.import_module("skill.kinds")
 
     def test_skill_file_lifecycle_has_one_operations_owner(self) -> None:
-        operations = importlib.import_module("skill.runtime.files.operations")
+        operations = importlib.import_module("skill.runtime.files.package")
         self.assertEqual("validate_skill_directory", operations.validate_skill_directory.__name__)
         self.assertEqual(
             "replace_skill_directory_atomically",
             operations.replace_skill_directory_atomically.__name__,
         )
         for module_name in (
+            "skill.runtime.files.operations",
             "skill.runtime.files.directory",
             "skill.runtime.files.validation",
         ):

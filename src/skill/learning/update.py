@@ -20,7 +20,7 @@ from skill.learning.runs import (
     read_skill_change_report,
     skill_change_report_to_dict,
 )
-from skill.runtime.files.operations import (
+from skill.runtime.files.package import (
     check_skill_configuration,
     replace_skill_directory_atomically,
     require_skill_directory_hash,

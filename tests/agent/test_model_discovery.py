@@ -26,7 +26,7 @@ from skill.runtime.models import (
     select_default_model_profile,
 )
 from skill.runtime.model_skills import model_skill_input_from_dict
-from skill.runtime.files.operations import validate_skill_replacement
+from skill.runtime.files.package import validate_skill_replacement
 from skill.learning.update import SkillChangeCase
 from skill.learning.records import read_evaluation_records
 from core.runtime.model_calls import (

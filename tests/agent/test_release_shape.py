@@ -278,6 +278,7 @@ class ReleaseShapeTests(unittest.TestCase):
                 "adapter.cli_adapter.skills",
                 "adapter.cli_adapter.storage",
                 "skill.runtime.files.models",
+                "skill.runtime.files.operations",
                 "skill.runtime.files.lock",
                 "skill.learning.models",
                 "skill.learning.review",
