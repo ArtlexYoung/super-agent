@@ -1,6 +1,6 @@
 # Source Tour
 
-Read one ordinary call in this order:
+Do not start by reading every file. Read one ordinary call in this order:
 
 1. `src/super_agent.py` wires external factories and exports the public `Agent` facade.
 2. `src/core/runtime/agent.py` exposes Agent actions and owns lazy resources, while `team.py`
@@ -12,6 +12,9 @@ Read one ordinary call in this order:
    optional cache recorder is supplied by `adapter/storage`.
 6. `src/core/provider.py` makes and measures the selected Provider call.
 7. Checkpoints are recorded by `src/core/runtime/run.py` as content-free recovery facts.
+
+Everything outside this path is optional state, a Skill mechanism, or an external adapter.
+Open those owners only when the task needs them.
 
 The short execution path is:
 

@@ -1486,6 +1486,21 @@ Status: implemented.
   `web_api` module.
 - Remove four narrow modules without aliases while preserving storage, AG-UI, and Web contracts.
 
+## v0.1.50: Strict Lightweight Baseline
+
+Status: implemented.
+
+- Remove the redundant remote-SQL package export and expose concrete storage backends directly
+  from the readable `adapter.storage` owner without dynamic attribute loading.
+- Keep one source-tour path for ordinary execution and clearly separate optional state, Skill
+  mechanisms, and external adapters.
+- Centralize the aggregate source budget in the release script and enforce fewer than 70 Python
+  files and fewer than 19,500 non-empty source lines in both static and executable gates.
+- Finish at 65 Python source files and 19,172 non-empty lines, down from 83 files and 19,342
+  non-empty lines in `v0.1.41`.
+- Preserve the 600-line file, 100-line function, complexity, directory-size, dependency-free,
+  stateless-import, Python, Web, and offline benchmark checks.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

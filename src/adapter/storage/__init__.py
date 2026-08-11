@@ -18,20 +18,12 @@ def create_storage_backend(
     url_env: str | None = None,
 ) -> StorageBackend:
     if backend == "jsonl":
-        from adapter.storage.jsonl import JsonlStorage
-
         return JsonlStorage(path)
     if backend == "sqlite":
-        from adapter.storage.sqlite import SqliteStorage
-
         return SqliteStorage(path)
     if backend == "mysql":
-        from adapter.storage.sql.mysql import MySqlStorage
-
         return MySqlStorage(url_env)
     if backend == "postgresql":
-        from adapter.storage.sql.postgresql import PostgreSqlStorage
-
         return PostgreSqlStorage(url_env)
     raise ValueError(f"unknown storage backend: {backend}")
 
@@ -43,7 +35,6 @@ def create_local_event_store(
     agent_name: str = "super-agent",
 ) -> EventStore:
     """Create a JSONL EventStore for tests and local Skill tooling."""
-    from adapter.storage.jsonl import JsonlStorage
     from adapter.storage.disclosure import DisclosureStorage
     from core.state.store import EventStore
 
@@ -190,6 +181,13 @@ def _event_value_without_position(event: StorageEvent) -> tuple[object, ...]:
         event.data,
     )
 
+
+# Concrete backends import the shared helpers above, so load them after those definitions.
+from adapter.storage.jsonl import JsonlStorage
+from adapter.storage.sql.mysql import MySqlStorage
+from adapter.storage.sql.postgresql import PostgreSqlStorage
+from adapter.storage.sqlite import SqliteStorage
+
 __all__ = [
     "JsonlStorage",
     "MySqlStorage",
@@ -201,23 +199,3 @@ __all__ = [
     "create_storage_backend",
     "create_local_event_store",
 ]
-
-
-def __getattr__(name: str) -> object:
-    if name == "JsonlStorage":
-        from adapter.storage.jsonl import JsonlStorage
-
-        return JsonlStorage
-    if name == "SqliteStorage":
-        from adapter.storage.sqlite import SqliteStorage
-
-        return SqliteStorage
-    if name == "MySqlStorage":
-        from adapter.storage.sql.mysql import MySqlStorage
-
-        return MySqlStorage
-    if name == "PostgreSqlStorage":
-        from adapter.storage.sql.postgresql import PostgreSqlStorage
-
-        return PostgreSqlStorage
-    raise AttributeError(name)

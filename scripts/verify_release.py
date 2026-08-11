@@ -14,8 +14,8 @@ import tomllib
 from pathlib import Path
 
 
-MAX_SOURCE_FILES = 85
-MAX_SOURCE_LINES = 21_000
+MAX_TOTAL_SOURCE_FILES = 70
+MAX_TOTAL_SOURCE_LINES = 19_500
 EXPECTED_SOURCE_ROOT = {"adapter", "cli.py", "core", "skill", "super_agent.py"}
 EXPECTED_WHEEL_ROOTS = [
     "src/adapter",
@@ -182,10 +182,14 @@ def verify_release(root: Path, expected_version: str) -> list[str]:
         if "__pycache__" not in path.parts
     ]
     source_lines = sum(_count_non_empty_lines(path) for path in source_files)
-    if len(source_files) >= MAX_SOURCE_FILES:
-        errors.append(f"source file count must stay below {MAX_SOURCE_FILES}")
-    if source_lines >= MAX_SOURCE_LINES:
-        errors.append(f"source line count must stay below {MAX_SOURCE_LINES}")
+    if len(source_files) >= MAX_TOTAL_SOURCE_FILES:
+        errors.append(
+            f"source file count must stay below {MAX_TOTAL_SOURCE_FILES}"
+        )
+    if source_lines >= MAX_TOTAL_SOURCE_LINES:
+        errors.append(
+            f"source line count must stay below {MAX_TOTAL_SOURCE_LINES}"
+        )
     readme = root / "README.md"
     if not readme.is_file() or "README_cn.md" not in readme.read_text(encoding="utf-8"):
         errors.append("README.md must link to README_cn.md")

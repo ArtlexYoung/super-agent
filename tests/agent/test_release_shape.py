@@ -11,14 +11,16 @@ import unittest
 from pathlib import Path
 
 from core import __version__
+from scripts.verify_release import (
+    MAX_TOTAL_SOURCE_FILES,
+    MAX_TOTAL_SOURCE_LINES,
+)
 
 
 MAX_FUNCTION_LINES = 100
 MAX_CONTROL_FLOW_COMPLEXITY = 10
 MAX_SOURCE_LINES = 600
 MAX_DIRECTORY_CHILDREN = 10
-CURRENT_RELEASE_PYTHON_FILES = 85
-CURRENT_RELEASE_PYTHON_LINES = 21_000
 CONTROL_FLOW_NODES = (
     ast.If,
     ast.For,
@@ -157,6 +159,7 @@ class ReleaseShapeTests(unittest.TestCase):
             "src/adapter/storage/values.py",
             "src/adapter/ag_ui_adapter/configuration.py",
             "src/adapter/ag_ui_adapter/protocol.py",
+            "src/adapter/storage/sql/__init__.py",
         ]
 
         self.assertEqual([], [path for path in removed_paths if Path(path).exists()])
@@ -345,15 +348,15 @@ class ReleaseShapeTests(unittest.TestCase):
 
         self.assertEqual([], [path for path in removed if Path(path).exists()])
 
-    def test_release_stays_within_the_current_python_source_gate(self) -> None:
+    def test_release_stays_within_the_strict_python_source_gate(self) -> None:
         sources = list(Path("src").rglob("*.py"))
         line_count = sum(
             sum(1 for line in path.read_text(encoding="utf-8").splitlines() if line.strip())
             for path in sources
         )
 
-        self.assertLess(len(sources), CURRENT_RELEASE_PYTHON_FILES)
-        self.assertLess(line_count, CURRENT_RELEASE_PYTHON_LINES)
+        self.assertLess(len(sources), MAX_TOTAL_SOURCE_FILES)
+        self.assertLess(line_count, MAX_TOTAL_SOURCE_LINES)
 
     def test_removed_runtime_contracts_do_not_return(self) -> None:
         source = "\n".join(
