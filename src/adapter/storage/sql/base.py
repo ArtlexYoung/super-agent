@@ -9,7 +9,7 @@ from typing import Any, Protocol
 from urllib.parse import unquote, urlsplit
 from uuid import uuid4
 
-from core.state.backend import StorageEvent, StorageEventQuery
+from core.state.store import StorageEvent, StorageEventQuery
 from adapter.storage.values import (
     clean_storage_text,
     decode_storage_data,

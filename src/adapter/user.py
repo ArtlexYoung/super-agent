@@ -229,7 +229,7 @@ class UserRuns:
             raise ValueError(f"run belongs to another Agent: {run_id}")
         from skill.learning.runs import learn_from_run
         from core.models import RunLearningResult
-        from skill.runtime.defaults import load_configured_freshness_rules
+        from skill.runtime.handlers import load_configured_freshness_rules
 
         rules = load_configured_freshness_rules(
             self.user.agent.config,

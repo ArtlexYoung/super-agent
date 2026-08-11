@@ -1394,6 +1394,19 @@ Status: implemented.
 - Add release-shape checks for the final Skill and CLI paths, then run the complete Python,
   Web, compilation, diff, and offline benchmark gate.
 
+## v0.1.42: Consolidated Small Owners
+
+Status: implemented.
+
+- Consolidate evaluation records and Skill revision records into `skill.learning.records`.
+- Keep freshness calculation and freshness configuration in `skill.learning.freshness`.
+- Keep run learning and run insight projections in `skill.learning.runs`.
+- Consolidate default Skill handlers and runtime Skill assembly in `skill.runtime.handlers`.
+- Keep package locks beside package management while preserving the separate file-operation
+  owner for validation and atomic replacement.
+- Make `core.state.store` the only source for storage records and backend protocol definitions.
+- Remove six duplicate or narrowly scoped modules without compatibility imports.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

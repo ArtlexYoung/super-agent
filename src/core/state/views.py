@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict
 
-from core.state.backend import StorageEvent
+from core.state.store import StorageEvent
 from core.state.models import RunEvent, RunSnapshot
 
 

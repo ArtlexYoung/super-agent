@@ -19,9 +19,9 @@ from adapter.ag_ui_adapter.configuration import (
     common_configuration_to_dict,
     update_common_configuration,
 )
-from skill.runtime.defaults import load_configured_freshness_rules_if_enabled
+from skill.runtime.handlers import load_configured_freshness_rules_if_enabled
 from core.config import CommonConfig
-from skill.learning.insight import explain_run_with_insight
+from skill.learning.runs import explain_run_with_insight
 from core.checks import ActionEffect, ActionRequest
 from skill.disclosure import skill_index_to_dict
 from skill.runtime.models import model_profile_to_dict, read_model_profiles

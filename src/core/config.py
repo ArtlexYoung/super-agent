@@ -4,9 +4,10 @@ import os
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping
+from typing import TYPE_CHECKING, Any, Mapping
 
-from core.state.audit import AuditSettings
+if TYPE_CHECKING:
+    from core.state.audit import AuditSettings
 
 
 DEFAULT_CODE_IGNORES = [".git", ".super-agent", "node_modules", "__pycache__"]
@@ -246,6 +247,8 @@ def _read_storage_settings(data: dict[str, Any], base_dir: Path) -> StorageSetti
 
 
 def _read_audit_settings(data: Any) -> AuditSettings:
+    from core.state.audit import AuditSettings
+
     if not isinstance(data, dict):
         raise ValueError("storage audit settings must be a table")
     reject_unknown_settings(

@@ -8,10 +8,9 @@ from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from typing import TYPE_CHECKING
 
-from core.state.backend import StorageBackend, StorageEvent, StorageEventQuery
-
 if TYPE_CHECKING:
     from core.models import SubagentRecordOptions
+    from core.state.store import StorageBackend, StorageEvent
 
 
 DETAILED = "detailed"
@@ -294,6 +293,8 @@ def _prune_one_user(
     now: datetime,
     apply: bool,
 ) -> AuditPruneUserReport:
+    from core.state.store import StorageEventQuery
+
     events = backend.read_events(StorageEventQuery(user_id=user_id))
     detailed_cutoff = now - timedelta(days=settings.detailed_days)
     critical_cutoff = now - timedelta(days=settings.critical_days)

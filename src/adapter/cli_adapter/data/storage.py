@@ -7,7 +7,7 @@ from pathlib import Path
 
 from adapter.cli_adapter.loaders import load_common_config
 from core.config import CommonConfig
-from core.state.backend import StorageBackend
+from core.state.store import StorageBackend
 from core.state.audit import AuditPruneReport, prune_expired_audit_events
 from core.models import LOCAL_USER_ID
 from adapter.storage import create_storage_backend

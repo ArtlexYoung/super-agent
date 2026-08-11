@@ -19,8 +19,7 @@ from skill.learning.records import (
 from adapter.storage import create_local_event_store
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.learning.freshness import calculate_skill_freshness
-from skill.learning.rules import load_freshness_rules
-from skill.learning.models import SkillRevision
+from skill.learning.freshness import load_freshness_rules, SkillRevision
 from support import (
     load_default_freshness_rules,
     write_memory_skill,

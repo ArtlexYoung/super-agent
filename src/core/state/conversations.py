@@ -7,14 +7,13 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from core.checks import ActionEffect, ActionRequest, ActionRunner, ActionRules, PreparedAction
-from core.state.backend import StorageEvent
 from core.provider import Message
 from core.models import RunResult
 from core.state.models import Conversation, ConversationMessage
-from skill.runtime.defaults import create_skills
+from skill.runtime.handlers import create_skills
 
 if TYPE_CHECKING:
-    from core.state.store import EventStore
+    from core.state.store import EventStore, StorageEvent
     from core.runtime.agent import Agent
 
 

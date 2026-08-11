@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from core.state.backend import StorageBackend
+    from core.state.store import StorageBackend
     from core.state.store import EventStore
 
 

@@ -19,11 +19,9 @@ from core.models import (
 )
 from core.provider import ProviderPool, UserSecretResolver
 from core.runtime.model_calls import estimate_text_tokens
-from skill.runtime.defaults import create_skills
+from skill.runtime.handlers import create_skills
 from skill.runtime.handlers import SkillCollection, SkillHandlers
 from skill.runtime.models import ModelProfile, read_model_profiles
-from core.state.audit import compact_runtime_event_data
-from core.state.run import RunEventLog
 from core.state.subscribers import (
     RuntimeEventSubscriberError,
     RuntimeEventSubscribers,
@@ -37,12 +35,13 @@ from core.checks import (
 
 if TYPE_CHECKING:
     from core.config import CommonConfig
-    from core.state.backend import StorageBackend
+    from core.state.store import StorageBackend
     from core.provider import ChatProvider, Message
     from core.runtime.loop import ModelLoop
     from core.state.store import EventStore
     from core.state.store import DisclosureStorageFactory
     from core.state.models import RunEvent
+    from core.state.run import RunEventLog
     from core.state.subscribers import RuntimeEventSubscriber, SubscriberFailure
     from skill.disclosure import SkillIndexEntry, SkillReference
     from skill.runtime.handlers import SkillResult
@@ -100,6 +99,8 @@ class Run:
         data: dict[str, object] | None = None,
     ) -> RunEvent:
         if self.subagent_record_options is not None:
+            from core.state.audit import compact_runtime_event_data
+
             data = compact_runtime_event_data(
                 event_type,
                 data or {},
@@ -435,6 +436,8 @@ def _create_run(
     *,
     event_listener: Callable[[RunEvent], None] | None,
 ) -> tuple[Run, ModelLoop]:
+    from core.state.run import RunEventLog
+
     event_log = RunEventLog(
         identity,
         backend=context.storage,

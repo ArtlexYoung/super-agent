@@ -10,7 +10,7 @@ from core.provider import MockProvider
 from adapter.storage import create_storage_backend
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.runtime.models import read_model_profiles
-from skill.runtime.defaults import create_skills
+from skill.runtime.handlers import create_skills
 from support import write_workflow_skill
 
 

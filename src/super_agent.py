@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from core.runtime.agent import Agent as RuntimeAgent
 
 if TYPE_CHECKING:
-    from core.state.backend import StorageBackend
+    from core.state.store import StorageBackend
     from core.state.store import DisclosureStorage, EventStore
 
 

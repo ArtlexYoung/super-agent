@@ -2,7 +2,7 @@ from pathlib import Path
 
 from core.config import CommonConfig
 from core.provider import MockProvider, ModelResponse
-from skill.runtime.defaults import load_configured_freshness_rules
+from skill.runtime.handlers import load_configured_freshness_rules
 
 
 class RecordingProvider(MockProvider):

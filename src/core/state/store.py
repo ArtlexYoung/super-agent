@@ -6,15 +6,13 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Protocol
 
-from core.state.audit import redact_events_for_display
-from core.state.backend import StorageBackend, StorageEvent, StorageEventQuery
 from core.models import RunIdentity, validate_agent_name, validate_user_id
-from core.state.run import RunEventLog
 from core.files import create_scope_digest
 
 if TYPE_CHECKING:
     from core.state.memory import RuntimeMemoryStore
     from core.state.models import RunEvent, RunSnapshot
+    from core.state.run import RunEventLog
 
 
 class DisclosureStorage(Protocol):
@@ -233,7 +231,7 @@ class EventStore:
         events = self.read_events("run", run_id)
         if not events:
             raise KeyError(f"run not found: {run_id}")
-        visible = events if include_sensitive else redact_events_for_display(events)
+        visible = events if include_sensitive else _redact_events_for_display(events)
         return run_snapshot_from_events(self.user_id, visible)
 
     def list_runs(
@@ -254,7 +252,7 @@ class EventStore:
             (
                 run_snapshot_from_events(
                     self.user_id,
-                    events if include_sensitive else redact_events_for_display(events),
+                    events if include_sensitive else _redact_events_for_display(events),
                 )
                 for events in grouped.values()
             ),
@@ -280,7 +278,7 @@ class EventStore:
         events = self.read_events("run", run_id)
         if not events:
             raise KeyError(f"run not found: {run_id}")
-        visible = events if include_sensitive else redact_events_for_display(events)
+        visible = events if include_sensitive else _redact_events_for_display(events)
         return run_events_from_storage(visible)
 
     def explain_run(
@@ -294,7 +292,7 @@ class EventStore:
         events = self.read_events("run", run_id)
         if not events:
             raise KeyError(f"run not found: {run_id}")
-        visible = events if include_sensitive else redact_events_for_display(events)
+        visible = events if include_sensitive else _redact_events_for_display(events)
         return explain_run_from_events(self.user_id, visible)
 
     def export_run(
@@ -358,3 +356,69 @@ def _required_text(value: object, name: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{name} cannot be empty")
     return value.strip()
+
+
+def _redact_events_for_display(events: list[StorageEvent]) -> list[StorageEvent]:
+    from core.state.audit import redact_events_for_display
+
+    return redact_events_for_display(events)
+
+# Backend-neutral records define the storage contract used by this store.
+from dataclasses import dataclass
+from typing import Protocol
+
+
+@dataclass(frozen=True)
+class StorageEvent:
+    event_id: str
+    position: int
+    user_id: str
+    agent_name: str
+    stream_type: str
+    stream_id: str
+    event_type: str
+    created_at: str
+    data: dict[str, object]
+
+
+@dataclass(frozen=True)
+class StorageEventQuery:
+    user_id: str
+    agent_name: str | None = None
+    stream_type: str | None = None
+    stream_id: str | None = None
+    event_type: str | None = None
+    event_ids: tuple[str, ...] | None = None
+
+    def __post_init__(self) -> None:
+        if self.event_ids is not None and not self.event_ids:
+            raise ValueError("event_ids cannot be empty")
+        if self.event_ids is not None and any(
+            not isinstance(event_id, str) or not event_id.strip()
+            for event_id in self.event_ids
+        ):
+            raise ValueError("event_ids must contain non-empty strings")
+
+
+class StorageBackend(Protocol):
+    name: str
+
+    def append_event(
+        self,
+        *,
+        user_id: str,
+        agent_name: str,
+        stream_type: str,
+        stream_id: str,
+        event_type: str,
+        data: dict[str, object],
+        event_id: str | None = None,
+        created_at: str | None = None,
+    ) -> StorageEvent:
+        ...
+
+    def read_events(self, query: StorageEventQuery) -> list[StorageEvent]:
+        ...
+
+    def delete_events(self, query: StorageEventQuery) -> int:
+        ...

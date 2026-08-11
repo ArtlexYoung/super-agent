@@ -7,12 +7,11 @@ from typing import TYPE_CHECKING, Callable
 
 from core.checks import ActionRequest, ActionRunner, ActionRules
 from core.config import CommonConfig
-from core.state.backend import StorageBackend
 from core.models import RunIdentity, TaskTrace
 from core.state.models import RunEvent
 
 if TYPE_CHECKING:
-    from core.state.store import DisclosureStorageFactory
+    from core.state.store import DisclosureStorageFactory, StorageBackend
 
 
 @dataclass(frozen=True)

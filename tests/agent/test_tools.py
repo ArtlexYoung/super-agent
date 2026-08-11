@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from skill.runtime.defaults import (
+from skill.runtime.handlers import (
     create_default_skill_handlers,
     create_runtime_disclosure_recorder,
 )

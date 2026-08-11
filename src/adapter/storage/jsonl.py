@@ -10,7 +10,7 @@ from dataclasses import asdict
 from pathlib import Path
 from uuid import uuid4
 
-from core.state.backend import StorageEvent, StorageEventQuery
+from core.state.store import StorageEvent, StorageEventQuery
 from adapter.storage.values import clean_storage_text, positive_storage_integer, utc_now_text
 
 

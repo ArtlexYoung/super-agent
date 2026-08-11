@@ -249,7 +249,8 @@ class ReleaseShapeTests(unittest.TestCase):
                 "core.provider.chat",
                 "core.provider.pool",
                 "core.secrets",
-                "core.events",
+            "core.events",
+            "core.state.backend",
                 "core.session",
                 "core.state.events",
                 "core.state.event_log",
@@ -274,7 +275,12 @@ class ReleaseShapeTests(unittest.TestCase):
                 "adapter.cli_adapter.serve",
                 "adapter.cli_adapter.skills",
                 "adapter.cli_adapter.storage",
-                "skill.runtime.files.models",
+            "skill.runtime.files.models",
+            "skill.runtime.files.lock",
+            "skill.learning.models",
+            "skill.learning.insight",
+            "skill.learning.rules",
+            "skill.runtime.defaults",
             ):
                 with self.subTest(module_name=module_name):
                     completed = subprocess.run(

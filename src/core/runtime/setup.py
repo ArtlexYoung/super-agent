@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, Callable
 
 from core.checks import ActionRules
 from core.config import CommonConfig
-from core.state.backend import StorageBackend
 from core.models import LOCAL_USER_ID
 from core.provider import (
     ChatProvider,
@@ -19,7 +18,7 @@ from core.provider import (
 from core.runtime.run import Runtime, RuntimeContext
 from core.state.access import StateAccess
 from core.state.subscribers import RuntimeEventSubscribers
-from skill.runtime.defaults import create_default_skill_handlers, create_skills
+from skill.runtime.handlers import create_default_skill_handlers, create_skills
 from skill.runtime.mcp import McpServers
 from skill.runtime.models import (
     ModelProfile,
@@ -30,10 +29,10 @@ from skill.runtime.models import (
 
 if TYPE_CHECKING:
     from core.runtime.loop import ModelLoop
-    from core.state.store import DisclosureStorageFactory, EventStore
+    from core.state.store import DisclosureStorageFactory, EventStore, StorageBackend
 
 
-StorageBackendFactory = Callable[[str, str, str | None], StorageBackend]
+StorageBackendFactory = Callable[[str, str, str | None], "StorageBackend"]
 
 
 class AgentSetup:

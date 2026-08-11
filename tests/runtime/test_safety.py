@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from skill.runtime.defaults import create_default_skill_handlers
+from skill.runtime.handlers import create_default_skill_handlers
 from skill.runtime.handlers import SkillAction, SkillCollection
 from core.provider import MockProvider
 from core.config import CommonConfig

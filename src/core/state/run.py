@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from threading import RLock
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 
 from core.models import RunIdentity
 from core.state.models import RunEvent
-from core.state.views import run_event_from_storage
-from core.state.backend import StorageBackend, StorageEvent, StorageEventQuery
+
+if TYPE_CHECKING:
+    from core.state.store import StorageBackend, StorageEvent
 
 
 RunEventObserver = Callable[[RunEvent], None]
@@ -82,6 +83,8 @@ class RunEventLog:
                 data=content,
             )
         else:
+            from core.state.views import run_event_from_storage
+
             stored = self._backend.append_event(
                 user_id=self.identity.user_id,
                 agent_name=self.identity.agent_name,
@@ -116,6 +119,8 @@ class RunEventLog:
     def _read_stored_events(self) -> list[StorageEvent]:
         if self._backend is None:
             return []
+        from core.state.store import StorageEventQuery
+
         return self._backend.read_events(
             StorageEventQuery(
                 user_id=self.identity.user_id,

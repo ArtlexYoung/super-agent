@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 from adapter.cli_adapter.loaders import load_agent, load_common_config, load_event_store
-from skill.runtime.defaults import (
+from skill.runtime.handlers import (
     create_progressive_skill_disclosure,
     load_configured_freshness_rules,
 )
@@ -17,7 +17,7 @@ from skill.runtime.files.package import SkillPackageManager
 from skill.learning.update import SkillChangeCase
 from skill.learning.freshness import calculate_skill_freshness
 from skill.learning.records import read_evaluation_records
-from skill.runtime.files.lock import write_skill_lock_file
+from skill.runtime.files.package import write_skill_lock_file
 from skill.manifest import SkillManifest
 
 

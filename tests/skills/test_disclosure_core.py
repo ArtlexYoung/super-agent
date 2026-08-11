@@ -15,8 +15,8 @@ from adapter.storage import create_local_event_store
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.index import format_disclosure_page_for_prompt
 from skill.learning.freshness import calculate_skill_freshness
-from skill.learning.models import SkillRevision
-from skill.runtime.defaults import create_runtime_disclosure_recorder
+from skill.learning.records import SkillRevision
+from skill.runtime.handlers import create_runtime_disclosure_recorder
 from skill.runtime.handlers import SkillCollection
 from core.runtime.run import Run
 from support import load_default_freshness_rules

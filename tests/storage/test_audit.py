@@ -13,7 +13,7 @@ from core.state.audit import (
     redact_events_for_display,
 )
 from core.config import CommonConfig
-from core.state.backend import StorageEventQuery
+from core.state.store import StorageEventQuery
 from core.models import RunIdentity
 from core.state.run import RunEventLog
 from core.state.store import EventStore

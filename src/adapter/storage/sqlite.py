@@ -7,7 +7,7 @@ from dataclasses import replace
 from pathlib import Path
 from uuid import uuid4
 
-from core.state.backend import StorageEvent, StorageEventQuery
+from core.state.store import StorageEvent, StorageEventQuery
 from adapter.storage.values import (
     clean_storage_text,
     decode_storage_data,

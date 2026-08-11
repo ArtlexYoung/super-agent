@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING
 
 from core.checks import ActionEffect, ActionRules
 from core.config import CommonConfig
-from core.state.backend import StorageBackend
 from core.models import (
     LOCAL_USER_ID,
     AgentRunOptions,
@@ -38,7 +37,7 @@ from skill.runtime.mcp import McpServer
 from skill.runtime.models import ModelProfile
 
 if TYPE_CHECKING:
-    from core.state.store import DisclosureStorage, EventStore
+    from core.state.store import DisclosureStorage, EventStore, StorageBackend
 
 
 class Agent:

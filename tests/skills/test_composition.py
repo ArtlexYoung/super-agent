@@ -7,7 +7,7 @@ from super_agent import Agent
 from core.config import CommonConfig
 from core.provider import MockProvider
 from skill.disclosure import ProgressiveDisclosureCore
-from skill.runtime.files.lock import write_skill_lock_file
+from skill.runtime.files.package import write_skill_lock_file
 from support import write_workflow_skill
 
 

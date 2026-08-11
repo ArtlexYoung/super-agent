@@ -8,7 +8,7 @@ from pathlib import Path
 from core import __version__
 from core.checks import ActionEffect
 from super_agent import Agent
-from skill.runtime.defaults import create_default_skill_handlers
+from skill.runtime.handlers import create_default_skill_handlers
 from skill.runtime.handlers import SkillContext
 from core.config import CommonConfig
 from adapter.storage import create_local_event_store

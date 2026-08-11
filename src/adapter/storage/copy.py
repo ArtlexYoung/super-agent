@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from core.state.backend import StorageBackend, StorageEvent, StorageEventQuery
+from core.state.store import StorageBackend, StorageEvent, StorageEventQuery
 
 
 @dataclass(frozen=True)

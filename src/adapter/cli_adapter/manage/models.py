@@ -5,7 +5,7 @@ import json
 import sys
 
 from adapter.cli_adapter.loaders import load_common_config, load_event_store
-from skill.runtime.defaults import create_skills
+from skill.runtime.handlers import create_skills
 from core.config import CommonConfig
 from core.models import LOCAL_USER_ID
 from core.checks import ActionRules

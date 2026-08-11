@@ -9,7 +9,7 @@ from core.config import CommonConfig
 from core.models import RunIdentity
 from core.state.run import RunEventLog
 from adapter.storage import JsonlStorage
-from core.state.backend import StorageEventQuery
+from core.state.store import StorageEventQuery
 from adapter.storage import create_local_event_store
 from core.state.store import EventStore
 from support import write_workflow_skill
