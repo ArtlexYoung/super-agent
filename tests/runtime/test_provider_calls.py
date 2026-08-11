@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from skill.learning.review import parse_review_response
+from skill.learning.runs import parse_review_response
 
 from core.provider import (
     ActionTurn,

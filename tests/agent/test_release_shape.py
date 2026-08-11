@@ -280,6 +280,7 @@ class ReleaseShapeTests(unittest.TestCase):
                 "skill.runtime.files.models",
                 "skill.runtime.files.lock",
                 "skill.learning.models",
+                "skill.learning.review",
                 "skill.learning.insight",
                 "skill.learning.rules",
                 "skill.runtime.defaults",

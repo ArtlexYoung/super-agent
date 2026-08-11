@@ -264,7 +264,7 @@ class UserRuns:
         run_id: str,
         evidence: dict[str, object],
     ):
-        from skill.learning.review import review_run_evidence
+        from skill.learning.runs import review_run_evidence
         agent = self.user.agent
         store = create_agent_event_store(agent, self.user.user_id)
         skills = create_agent_skills(agent, self.user.user_id)

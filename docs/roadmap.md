@@ -1429,6 +1429,17 @@ Status: implemented.
   public `Agent` API.
 - Remove `core.runtime.setup` and update tests and source documentation to the new owner.
 
+## v0.1.45: One Post-Run Learning Owner
+
+Status: implemented.
+
+- Keep completed-run learning, model-usage insights, evidence review, and Skill-change report
+  decoding in `skill.learning.runs`.
+- Keep Skill update execution separate in `skill.learning.update`; it consumes the shared
+  post-run report functions instead of owning a second review module.
+- Remove `skill.learning.review` without import forwarding or compatibility names.
+- Preserve optional learning imports so ordinary stateless execution remains dependency-free.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof
