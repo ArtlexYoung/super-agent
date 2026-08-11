@@ -12,7 +12,7 @@ from uuid import uuid4
 
 from core.checks import ActionEffect, ActionRequest
 from core.models import RunIdentity
-from core.state.views import usage_habits_from_events
+from core.state.run import usage_habits_from_events
 from core.state.store import StorageEvent
 from skill.disclosure import SkillDisclosure
 

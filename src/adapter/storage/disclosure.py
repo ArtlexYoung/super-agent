@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 from core.models import RunIdentity
 from core.files import write_bytes_atomically
-from core.state.views import disclosure_history_from_events
+from core.state.run import disclosure_history_from_events
 
 if TYPE_CHECKING:
     from core.state.store import EventStore

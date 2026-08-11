@@ -215,7 +215,7 @@ class EventStore:
             data=dict(data or {}),
         )
         events = self.read_events("run", identity.run_id)
-        from core.state.views import run_event_from_storage
+        from core.state.run import run_event_from_storage
 
         event = run_event_from_storage(stored, len(events), identity.parent_run_id)
         return event
@@ -226,7 +226,7 @@ class EventStore:
         *,
         include_sensitive: bool = False,
     ) -> RunSnapshot:
-        from core.state.views import run_snapshot_from_events
+        from core.state.run import run_snapshot_from_events
 
         events = self.read_events("run", run_id)
         if not events:
@@ -241,7 +241,7 @@ class EventStore:
         conversation_id: str | None = None,
         include_sensitive: bool = False,
     ) -> list[RunSnapshot]:
-        from core.state.views import run_snapshot_from_events
+        from core.state.run import run_snapshot_from_events
 
         if limit is not None and limit <= 0:
             raise ValueError("run limit must be greater than zero")
@@ -273,7 +273,7 @@ class EventStore:
         *,
         include_sensitive: bool = False,
     ) -> list[RunEvent]:
-        from core.state.views import run_events_from_storage
+        from core.state.run import run_events_from_storage
 
         events = self.read_events("run", run_id)
         if not events:
@@ -287,7 +287,7 @@ class EventStore:
         *,
         include_sensitive: bool = False,
     ) -> dict[str, object]:
-        from core.state.views import explain_run_from_events
+        from core.state.run import explain_run_from_events
 
         events = self.read_events("run", run_id)
         if not events:

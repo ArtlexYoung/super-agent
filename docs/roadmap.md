@@ -1407,6 +1407,17 @@ Status: implemented.
 - Make `core.state.store` the only source for storage records and backend protocol definitions.
 - Remove six duplicate or narrowly scoped modules without compatibility imports.
 
+## v0.1.43: One Run State Owner
+
+Status: implemented.
+
+- Move run event projections, snapshots, explanations, disclosure history, and usage views
+  into `core.state.run` beside the ordered run event log.
+- Keep storage imports out of the stateless event-log path; persistent queries load only when
+  a backend is present.
+- Remove `core.state.views` and update every caller to the single run-state owner.
+- Add an explicit removed-path assertion so the old projection module cannot return.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof
