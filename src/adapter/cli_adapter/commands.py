@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from dataclasses import asdict
 from dataclasses import dataclass
@@ -17,13 +18,11 @@ from adapter.cli_adapter.configuration import (
     load_cli_config,
     run_config_command,
 )
-from adapter.cli_adapter.loaders import load_agent
+from adapter.cli_adapter.loaders import load_agent, load_common_config
 from adapter.cli_adapter.code import attach_code_config_to_agent
-from adapter.cli_adapter.run.check import configure_check_parser, run_check_command
 from adapter.cli_adapter.data.memory import configure_memory_parser, run_memory_command
 from adapter.cli_adapter.manage.models import configure_models_parser, run_models_command
 from adapter.cli_adapter.data.runs import configure_runs_parser, run_runs_command
-from adapter.cli_adapter.run.serve import configure_serve_parser, run_serve_command
 from adapter.cli_adapter.manage.skills import (
     configure_skill_changes_parser,
     configure_skill_packages_parser,
@@ -33,9 +32,16 @@ from adapter.cli_adapter.manage.skills import (
     run_skills_command,
 )
 from adapter.cli_adapter.data.storage import configure_storage_parser, run_storage_command
+from adapter.ag_ui_adapter.server import DEFAULT_ALLOWED_ORIGINS, create_ag_ui_server
 from core import __version__
 from core.provider import Message
 from core.models import LOCAL_USER_ID, RunResult
+from skill.runtime.handlers import create_default_skill_handlers, create_skills
+from skill.runtime.models import (
+    model_profile_is_ready,
+    read_model_profiles,
+    select_default_model_profile,
+)
 
 
 CLI_COMMANDS = frozenset({"check", "config", "data", "manage", "serve", "skills"})
@@ -176,6 +182,102 @@ def _build_terminal_parser() -> argparse.ArgumentParser:
         help="show model, Skill, workflow, and run details after text output",
     )
     return parser
+
+
+def configure_check_parser(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--common-config")
+    parser.add_argument("--output", choices=("text", "json"), default="text")
+
+
+def run_check_command(args: argparse.Namespace) -> int:
+    checks: list[dict[str, object]] = []
+    stage = "configuration"
+    try:
+        config = load_common_config(
+            None if args.common_config is None else Path(args.common_config)
+        )
+        source = str(config.source) if config.source.is_file() else "built-in defaults"
+        checks.append(_check("configuration", True, source))
+
+        stage = "skills"
+        skills = create_skills(
+            config,
+            handlers=create_default_skill_handlers(),
+            include_freshness=False,
+        )
+        selected = skills.index.resolve_skill_dependencies(config.agent.skills)
+        checks.append(
+            _check(
+                "skills",
+                True,
+                f"{len(skills.index.entries)} available, {len(selected)} configured",
+            )
+        )
+
+        stage = "model"
+        profiles = read_model_profiles(skills, os.environ)
+        default = select_default_model_profile(profiles)
+        ready = model_profile_is_ready(default, os.environ)
+        requirement = default.connection.api_key_env
+        detail = f"{default.key} -> {default.connection.provider}/{default.model}"
+        if not ready and requirement is not None:
+            detail += f"; missing {requirement}"
+        checks.append(_check("model", ready, detail))
+    except Exception as error:
+        checks.append(_check(stage, False, f"{type(error).__name__}: {error}"))
+
+    result = {"ok": all(bool(item["ok"]) for item in checks), "checks": checks}
+    if args.output == "json":
+        print(json.dumps(result, ensure_ascii=False))
+    else:
+        for item in checks:
+            status = "OK" if item["ok"] else "FAIL"
+            print(f"{status}  {item['name']}: {item['detail']}")
+        if not result["ok"]:
+            print("Fix the failed check, then run `super-agent check` again.")
+    return 0 if result["ok"] else 1
+
+
+def _check(name: str, ok: bool, detail: str) -> dict[str, object]:
+    return {"name": name, "ok": ok, "detail": detail}
+
+
+def configure_serve_parser(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--common-config")
+    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument("--user-id", default=LOCAL_USER_ID)
+    parser.add_argument(
+        "--allow-origin",
+        action="append",
+        dest="allowed_origins",
+        help="browser origin allowed to call the server; may be repeated",
+    )
+
+
+def run_serve_command(args: argparse.Namespace) -> int:
+    agent = load_agent(args.common_config)
+    origins = tuple(args.allowed_origins or DEFAULT_ALLOWED_ORIGINS)
+    server = create_ag_ui_server(
+        agent,
+        args.host,
+        args.port,
+        user_id=args.user_id,
+        allowed_origins=origins,
+    )
+    host, port = server.server_address[:2]
+    base_url = f"http://{host}:{port}"
+    print(f"Super Agent Web UI: {base_url}/")
+    print(f"Super Agent AG-UI endpoint: {base_url}/ag-ui")
+    if args.host not in {"127.0.0.1", "::1", "localhost"}:
+        print("Warning: this server has no authentication; protect non-local bindings.")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        return 0
+    finally:
+        server.server_close()
+    return 0
 
 
 def _configure_manage_parser(parser: argparse.ArgumentParser) -> None:

@@ -26,9 +26,9 @@ Runtime. `adapter` connects external interfaces and durable backends. `super_age
 public wiring entry point; `core/runtime/agent.py` owns the public Core actions and lazy Runtime
 resources, while `team.py` owns child Agent composition. Core never imports Adapter
 implementations: storage creation and user views are supplied by the public wiring entry point.
-The CLI command owner is `adapter.cli_adapter.commands`; its `run`, `manage`, and `data`
-directories group command domains, while `src/cli.py` only makes direct
-source-tree execution possible.
+The CLI command owner is `adapter.cli_adapter.commands`; it owns direct execution, checks,
+and serving, while `manage` and `data` group stateful command domains. `src/cli.py` only makes
+direct source-tree execution possible.
 
 ## Ownership Map
 

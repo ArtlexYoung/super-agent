@@ -1464,6 +1464,16 @@ Status: implemented.
 - Preserve explicit task limits, model diversity, quorum, cost checks, wake conditions, and
   failure evidence semantics.
 
+## v0.1.48: One CLI Run Owner
+
+Status: implemented.
+
+- Keep direct prompts, terminal conversations, read-only checks, and AG-UI serving in
+  `adapter.cli_adapter.commands` as the single top-level CLI execution owner.
+- Keep CLI-only configuration and Agent construction in their existing explicit modules.
+- Remove the two-file `cli_adapter/run` directory without forwarding imports.
+- Preserve all command names, output formats, configuration lookup rules, and server behavior.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

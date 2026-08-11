@@ -151,6 +151,8 @@ class ReleaseShapeTests(unittest.TestCase):
             "src/adapter/cli_adapter/memory.py",
             "src/adapter/cli_adapter/runs.py",
             "src/adapter/cli_adapter/storage.py",
+            "src/adapter/cli_adapter/run/check.py",
+            "src/adapter/cli_adapter/run/serve.py",
         ]
 
         self.assertEqual([], [path for path in removed_paths if Path(path).exists()])
@@ -161,8 +163,9 @@ class ReleaseShapeTests(unittest.TestCase):
         self.assertTrue((root / "code.py").is_file())
         self.assertTrue((root / "configuration.py").is_file())
         self.assertTrue((root / "loaders.py").is_file())
-        for group in ("run", "manage", "data"):
+        for group in ("manage", "data"):
             self.assertTrue((root / group).is_dir())
+        self.assertFalse((root / "run").exists())
         for old_path in (
             "check.py",
             "serve.py",
@@ -277,6 +280,8 @@ class ReleaseShapeTests(unittest.TestCase):
                 "adapter.cli_adapter.serve",
                 "adapter.cli_adapter.skills",
                 "adapter.cli_adapter.storage",
+                "adapter.cli_adapter.run.check",
+                "adapter.cli_adapter.run.serve",
                 "skill.runtime.files.models",
                 "skill.runtime.files.operations",
                 "skill.runtime.tasks.group_data",
