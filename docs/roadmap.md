@@ -1274,7 +1274,7 @@ Status: implemented.
 
 - Keep the six public Agent actions and per-run request assembly in `core/runtime/agent.py`.
 - Move lazy storage, Provider, model, Skill-handler, and Runtime initialization into
-  `core/runtime/setup.py` with all-or-nothing state assignment.
+  `core/runtime/agent.py` with all-or-nothing state assignment.
 - Move subagent registration, automatic names, link warnings, model-visible descriptions, and
   child execution into `core/runtime/team.py`.
 - Remove the old Agent initialization fields and private team methods instead of forwarding
@@ -1417,6 +1417,17 @@ Status: implemented.
   a backend is present.
 - Remove `core.state.views` and update every caller to the single run-state owner.
 - Add an explicit removed-path assertion so the old projection module cannot return.
+
+## v0.1.44: One Agent Runtime Owner
+
+Status: implemented.
+
+- Keep public Agent actions and lazy Runtime resource assembly in `core.runtime.agent`.
+- Move `AgentSetup` into that owner so configuration, storage, Provider, model, Skill-handler,
+  and Runtime initialization can be read in one source path.
+- Preserve all-or-nothing initialization and explicit Adapter factories without changing the
+  public `Agent` API.
+- Remove `core.runtime.setup` and update tests and source documentation to the new owner.
 
 ## Release Gate
 

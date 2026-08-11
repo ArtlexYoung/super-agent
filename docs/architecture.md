@@ -23,8 +23,8 @@ src/
 
 `core` owns execution and may read passive Skill definitions. `skill` does not own the
 Runtime. `adapter` connects external interfaces and durable backends. `super_agent.py` is the
-public wiring entry point; `core/runtime/agent.py` owns the public Core actions, `setup.py` owns
-lazy Runtime resources, and `team.py` owns child Agent composition. Core never imports Adapter
+public wiring entry point; `core/runtime/agent.py` owns the public Core actions and lazy Runtime
+resources, while `team.py` owns child Agent composition. Core never imports Adapter
 implementations: storage creation and user views are supplied by the public wiring entry point.
 The CLI command owner is `adapter.cli_adapter.commands`; its `run`, `manage`, and `data`
 directories group command domains, while `src/cli.py` only makes direct
@@ -35,11 +35,11 @@ source-tree execution possible.
 | Concern | Owner | Does not own |
 | --- | --- | --- |
 | Model protocols and calls | `core/provider.py` | Model profiles or task routing |
-| Storage protocol | `core/state/backend.py` | Concrete JSONL, SQL, or Web I/O |
+| Storage protocol and records | `core/state/store.py` | Concrete JSONL, SQL, or Web I/O |
 | Scoped state store | `core/state/store.py` | Backend construction or external commands |
 | One run event log | `core/state/run.py` | Durable backend selection |
 | One run lifecycle | `core/runtime/run.py` | CLI, Web, or storage policy |
-| Agent setup and child graph | `core/runtime/setup.py`, `team.py` | Skill content or Provider protocols |
+| Agent setup and child graph | `core/runtime/agent.py`, `team.py` | Skill content or Provider protocols |
 | Task queues and groups | `skill/runtime/tasks/` | Generic Run lifecycle |
 | Skill discovery | `skill/disclosure.py` | Storage writes or Skill mutation |
 | Skill execution | `skill/runtime/` | Agent learning or external adapters |

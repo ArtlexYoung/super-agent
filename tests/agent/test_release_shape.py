@@ -255,6 +255,7 @@ class ReleaseShapeTests(unittest.TestCase):
                 "core.session",
                 "core.state.events",
                 "core.state.event_log",
+                "core.runtime.setup",
                 "core.runtime.runtime",
                 "core.runtime.tasks.queue",
                 "core.runtime.tasks.agents",
@@ -298,7 +299,8 @@ class ReleaseShapeTests(unittest.TestCase):
     def test_core_owns_runtime_and_skill_does_not(self) -> None:
         self.assertTrue(Path("src/core/runtime/run.py").is_file())
         self.assertTrue(Path("src/core/runtime/loop.py").is_file())
-        self.assertTrue(Path("src/core/runtime/setup.py").is_file())
+        self.assertFalse(Path("src/core/runtime/setup.py").exists())
+        self.assertTrue(Path("src/core/runtime/agent.py").is_file())
         self.assertTrue(Path("src/core/runtime/team.py").is_file())
         self.assertFalse(Path("src/skill/task").exists())
 
