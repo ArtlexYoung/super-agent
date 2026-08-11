@@ -1474,6 +1474,18 @@ Status: implemented.
 - Remove the two-file `cli_adapter/run` directory without forwarding imports.
 - Preserve all command names, output formats, configuration lookup rules, and server behavior.
 
+## v0.1.49: Consolidated External Adapters
+
+Status: implemented.
+
+- Keep backend creation, shared event-value validation, and explicit storage copying in
+  `adapter.storage`; concrete backends remain separate.
+- Keep AG-UI request parsing, event mapping, SSE encoding, and HTTP transport in one `server`
+  module.
+- Keep Web management operations and their validated common-configuration updates in one
+  `web_api` module.
+- Remove four narrow modules without aliases while preserving storage, AG-UI, and Web contracts.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

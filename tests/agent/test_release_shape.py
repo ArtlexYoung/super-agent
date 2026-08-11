@@ -153,6 +153,10 @@ class ReleaseShapeTests(unittest.TestCase):
             "src/adapter/cli_adapter/storage.py",
             "src/adapter/cli_adapter/run/check.py",
             "src/adapter/cli_adapter/run/serve.py",
+            "src/adapter/storage/copy.py",
+            "src/adapter/storage/values.py",
+            "src/adapter/ag_ui_adapter/configuration.py",
+            "src/adapter/ag_ui_adapter/protocol.py",
         ]
 
         self.assertEqual([], [path for path in removed_paths if Path(path).exists()])
@@ -282,6 +286,10 @@ class ReleaseShapeTests(unittest.TestCase):
                 "adapter.cli_adapter.storage",
                 "adapter.cli_adapter.run.check",
                 "adapter.cli_adapter.run.serve",
+                "adapter.storage.copy",
+                "adapter.storage.values",
+                "adapter.ag_ui_adapter.configuration",
+                "adapter.ag_ui_adapter.protocol",
                 "skill.runtime.files.models",
                 "skill.runtime.files.operations",
                 "skill.runtime.tasks.group_data",

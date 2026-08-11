@@ -51,7 +51,10 @@ For a subsystem, start at its owner:
 - State backend and store: `core.state.store`.
 - Run event log: `core.state.run`.
 - Skill index and disclosure: `skill.disclosure.ProgressiveDisclosureCore`.
+- Storage creation, shared values, and explicit copying: `adapter.storage`.
 - Disclosure persistence: `adapter.storage.disclosure.DisclosureStorage`.
+- AG-UI transport and event mapping: `adapter.ag_ui_adapter.server`.
+- Web management operations and configuration updates: `adapter.ag_ui_adapter.web_api`.
 - Skill handling: `skill.runtime.handlers.SkillCollection` and `SkillHandlers`.
 - Model Skill management: `skill.runtime.model_skills.ModelSkillManager`.
 - Skill file lifecycle: `skill.runtime.files.package.SkillPackageManager` and its explicit

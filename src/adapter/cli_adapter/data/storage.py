@@ -10,8 +10,7 @@ from core.config import CommonConfig
 from core.state.store import StorageBackend
 from core.state.audit import AuditPruneReport, prune_expired_audit_events
 from core.models import LOCAL_USER_ID
-from adapter.storage import create_storage_backend
-from adapter.storage.copy import copy_storage_events
+from adapter.storage import copy_storage_events, create_storage_backend
 from adapter.storage.disclosure import DisclosureStorage
 
 

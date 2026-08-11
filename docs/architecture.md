@@ -46,7 +46,8 @@ direct source-tree execution possible.
 | Model Skill management | `skill/runtime/model_skills.py` | Provider calls or model routing |
 | Skill evidence and changes | `skill/learning/` | Implicit updates during a run |
 | Conversations | `core/state/conversations.py` | Storage backend construction or UI |
-| External and durable I/O | `adapter/` | Runtime decisions or Skill mechanisms |
+| Durable storage I/O | `adapter/storage/__init__.py`, backend modules | Runtime state policy |
+| AG-UI and Web I/O | `adapter/ag_ui_adapter/server.py`, `web_api.py` | Runtime decisions |
 
 Dependencies point from adapters into Core and Skill owners. `super_agent.Agent` wires the
 default Adapter factories into Core without making Core import them. Skill discovery remains passive;

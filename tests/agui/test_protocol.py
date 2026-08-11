@@ -1,7 +1,7 @@
 import json
 import unittest
 
-from adapter.ag_ui_adapter.protocol import AGUIEventMapper, AGUIRunInput, encode_sse_event
+from adapter.ag_ui_adapter.server import AGUIEventMapper, AGUIRunInput, encode_sse_event
 from core.state.models import RunEvent
 
 

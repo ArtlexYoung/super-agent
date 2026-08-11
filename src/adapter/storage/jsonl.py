@@ -11,7 +11,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from core.state.store import StorageEvent, StorageEventQuery
-from adapter.storage.values import clean_storage_text, positive_storage_integer, utc_now_text
+from adapter.storage import clean_storage_text, positive_storage_integer, utc_now_text
 
 
 JSONL_SCHEMA_VERSION = 1

@@ -8,7 +8,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from core.state.store import StorageEvent, StorageEventQuery
-from adapter.storage.values import (
+from adapter.storage import (
     clean_storage_text,
     decode_storage_data,
     encode_storage_data,
