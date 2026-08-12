@@ -7,7 +7,12 @@ from pathlib import Path
 
 from adapter.storage import create_local_event_store
 from skill.disclosure import ProgressiveDisclosureCore
-from skill.runtime.files.package import SkillPackageManager
+from skill.manifest import calculate_skill_directory_sha256
+from skill.runtime.files.package import (
+    SkillDirectoryUpdate,
+    SkillPackageManager,
+    apply_skill_directory_updates,
+)
 
 
 class SkillPackageManagerTests(unittest.TestCase):
@@ -102,6 +107,39 @@ class SkillPackageManagerTests(unittest.TestCase):
             manager.remove_skill("demo")
             self.assertFalse(user_skill.exists())
             self.assertTrue(current.exists())
+
+    def test_batch_update_restores_every_skill_when_activation_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            first = root / "skills" / "first"
+            second = root / "skills" / "second"
+            first_new = root / "new" / "first"
+            second_new = root / "new" / "second"
+            _write_skill(first, "first", "0.1.0", "First old.")
+            _write_skill(second, "second", "0.1.0", "Second old.")
+            _write_skill(first_new, "first", "0.2.0", "First new.")
+            _write_skill(second_new, "second", "0.2.0", "Second new.")
+            updates = [
+                SkillDirectoryUpdate(
+                    source,
+                    target,
+                    calculate_skill_directory_sha256(source),
+                    calculate_skill_directory_sha256(target),
+                )
+                for source, target in ((first_new, first), (second_new, second))
+            ]
+
+            with self.assertRaisesRegex(RuntimeError, "refresh failed"):
+                apply_skill_directory_updates(
+                    updates,
+                    after_apply=lambda: (_ for _ in ()).throw(
+                        RuntimeError("refresh failed")
+                    ),
+                )
+
+            self.assertEqual("First old.", (first / "SKILL.md").read_text())
+            self.assertEqual("Second old.", (second / "SKILL.md").read_text())
+            self.assertFalse(any(path.name.startswith(".") for path in first.parent.iterdir()))
 
     def test_skill_type_selects_one_skill_when_names_are_shared(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

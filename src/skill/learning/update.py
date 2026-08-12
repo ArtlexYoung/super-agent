@@ -21,8 +21,9 @@ from skill.learning.runs import (
     skill_change_report_to_dict,
 )
 from skill.runtime.files.package import (
+    SkillDirectoryUpdate,
+    apply_skill_directory_updates,
     check_skill_configuration,
-    replace_skill_directory_atomically,
     require_skill_directory_hash,
     validate_skill_directory,
     validate_skill_replacement,
@@ -337,56 +338,45 @@ class SkillUpdater:
         changed_manifest: SkillManifest,
         paths: _ApplyPaths,
     ) -> SkillManifest:
+        if current is not None:
+            validate_skill_replacement(current, change.candidate_path)
+        activated: list[SkillManifest] = []
         try:
-            if current is not None:
-                validate_skill_replacement(current, change.candidate_path)
-            replace_skill_directory_atomically(
-                change.candidate_path,
-                paths.target,
-                expected_source_sha256=change.candidate_sha256,
-                expected_target_sha256=paths.target_sha256,
+            apply_skill_directory_updates(
+                [SkillDirectoryUpdate(
+                    change.candidate_path,
+                    paths.target,
+                    change.candidate_sha256,
+                    paths.target_sha256,
+                )],
+                after_apply=lambda: activated.append(
+                    self._finish_activation(change, paths.target)
+                ),
+                after_restore=(
+                    None
+                    if self.on_skill_changed is None
+                    else lambda: self.on_skill_changed(changed_manifest)
+                ),
             )
-            manifest = replace(
-                validate_skill_directory(paths.target),
-                agent_created=True,
-                agent_can_update=True,
-            )
-            if self.on_skill_changed is not None:
-                self.on_skill_changed(manifest)
-            self._record(change.change_id, "skill_change.applied", {"skill_key": change.key})
-        except Exception as error:
-            self._restore_failed_activation(
-                change,
-                changed_manifest,
-                paths,
-                error,
-            )
+        except Exception:
+            shutil.rmtree(paths.history)
             raise
-        return manifest
+        return activated[0]
 
-    def _restore_failed_activation(
+    def _finish_activation(
         self,
         change: SkillChange,
-        changed_manifest: SkillManifest,
-        paths: _ApplyPaths,
-        error: Exception,
-    ) -> None:
-        _restore_failed_apply(
-            paths.target,
-            change.candidate_sha256,
-            paths.history,
-            paths.target_sha256,
+        target: Path,
+    ) -> SkillManifest:
+        manifest = replace(
+            validate_skill_directory(target),
+            agent_created=True,
+            agent_can_update=True,
         )
-        shutil.rmtree(paths.history)
-        if self.on_skill_changed is None:
-            return
-        try:
-            self.on_skill_changed(changed_manifest)
-        except Exception as refresh_error:
-            error.add_note(
-                "Could not refresh Runtime after restoring Skill: "
-                f"{type(refresh_error).__name__}: {refresh_error}"
-            )
+        if self.on_skill_changed is not None:
+            self.on_skill_changed(manifest)
+        self._record(change.change_id, "skill_change.applied", {"skill_key": change.key})
+        return manifest
 
     def _undo(self, change_id: str) -> SkillManifest | None:
         change = self.read_skill_change(change_id)
@@ -395,23 +385,51 @@ class SkillUpdater:
         target = self.store.private_root / "skills" / change.skill_type / change.name
         require_skill_directory_hash(target, change.candidate_sha256, "applied Skill")
         previous = history / "previous"
+        previous_sha = str(application.get("target_sha256", ""))
+        restored: list[SkillManifest | None] = []
         if application.get("had_user_skill") is True:
-            previous_sha = str(application.get("target_sha256", ""))
-            replace_skill_directory_atomically(
-                previous, target,
-                expected_source_sha256=previous_sha,
-                expected_target_sha256=change.candidate_sha256,
+            update = SkillDirectoryUpdate(
+                previous,
+                target,
+                previous_sha,
+                change.candidate_sha256,
             )
         else:
-            shutil.rmtree(target)
-        _write_json(history / "undo.json", {"undone_at": _utc_now()})
-        self._record(change.change_id, "skill_change.undone", {"skill_key": change.key})
+            update = SkillDirectoryUpdate(
+                None,
+                target,
+                "",
+                change.candidate_sha256,
+            )
+        apply_skill_directory_updates(
+            [update],
+            after_apply=lambda: restored.append(
+                self._finish_undo(change, history)
+            ),
+            after_restore=lambda: self._restore_failed_undo(change, history),
+        )
+        return restored[0]
+
+    def _finish_undo(
+        self,
+        change: SkillChange,
+        history: Path,
+    ) -> SkillManifest | None:
         index = self.disclosure.prepare_skill_index()
         entry = index.find_skill(change.name, change.skill_type)
         manifest = None if entry is None else self.disclosure.open_skill(change.name, change.skill_type).read_manifest()
-        if manifest is not None and self.on_skill_changed is not None:
-            self.on_skill_changed(manifest)
+        if self.on_skill_changed is not None:
+            self.on_skill_changed(manifest or validate_skill_directory(change.candidate_path))
+        _write_json(history / "undo.json", {"undone_at": _utc_now()})
+        self._record(change.change_id, "skill_change.undone", {"skill_key": change.key})
         return manifest
+
+    def _restore_failed_undo(self, change: SkillChange, history: Path) -> None:
+        undo_record = history / "undo.json"
+        if undo_record.exists():
+            undo_record.unlink()
+        if self.on_skill_changed is not None:
+            self.on_skill_changed(validate_skill_directory(change.candidate_path))
 
     def _require_parent(self, change: SkillChange) -> Path | None:
         entry = self.disclosure.prepare_skill_index().find_skill(change.name, change.skill_type)
@@ -581,26 +599,6 @@ def _validate_case(case: SkillChangeCase) -> None:
         raise ValueError("Skill change case name and prompt cannot be empty")
     if any(not item for item in [*case.expected_output_contains, *case.forbidden_output_contains]):
         raise ValueError("Skill change checks cannot contain empty text")
-
-
-def _restore_failed_apply(
-    target: Path,
-    changed_sha256: str,
-    history: Path,
-    previous_sha256: str,
-) -> None:
-    if not target.is_dir() or calculate_skill_directory_sha256(target) != changed_sha256:
-        return
-    previous = history / "previous"
-    if previous.is_dir():
-        replace_skill_directory_atomically(
-            previous,
-            target,
-            expected_source_sha256=previous_sha256,
-            expected_target_sha256=changed_sha256,
-        )
-    else:
-        shutil.rmtree(target)
 
 
 def _change_to_dict(change: SkillChange) -> dict[str, object]:

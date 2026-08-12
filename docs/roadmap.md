@@ -1585,6 +1585,19 @@ Status: implemented.
 - Preserve idempotent learning, explicit failure audit, model-free evaluation, and the existing
   `RunLearningResult` interface while reducing long-lived event volume.
 
+## v0.1.58: One Skill Update Transaction
+
+Status: implemented.
+
+- Use one verified batch directory transaction for Skill package installation and updates, model
+  Skill changes, candidate activation, undo, and explicit removal.
+- Validate every source and target hash before activation, keep multi-model default changes atomic,
+  and restore every affected directory when activation or Runtime refresh fails.
+- Keep transaction backups invisible to progressive disclosure while callbacks run and remove all
+  temporary candidates and backups after success or restoration.
+- Delete the old single-directory replacement API plus model-specific and evolution-specific
+  backup shells without migration aliases.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

@@ -122,8 +122,8 @@ class SkillArchitectureTests(unittest.TestCase):
         operations = importlib.import_module("skill.runtime.files.package")
         self.assertEqual("validate_skill_directory", operations.validate_skill_directory.__name__)
         self.assertEqual(
-            "replace_skill_directory_atomically",
-            operations.replace_skill_directory_atomically.__name__,
+            "apply_skill_directory_updates",
+            operations.apply_skill_directory_updates.__name__,
         )
         for module_name in (
             "skill.runtime.files.operations",

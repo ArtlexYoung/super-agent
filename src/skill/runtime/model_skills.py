@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 import shutil
 from dataclasses import dataclass, replace
@@ -21,8 +20,17 @@ from skill.runtime.models import (
     ModelProfile,
     create_model_profile_from_skill_disclosure,
 )
-from skill.manifest import DEFAULT_SKILL_FRESHNESS, SkillEntry, SkillManifest
-from skill.runtime.files.package import validate_skill_directory
+from skill.manifest import (
+    DEFAULT_SKILL_FRESHNESS,
+    SkillEntry,
+    SkillManifest,
+    calculate_skill_directory_sha256,
+)
+from skill.runtime.files.package import (
+    SkillDirectoryUpdate,
+    apply_skill_directory_updates,
+    validate_skill_directory,
+)
 
 
 @dataclass(frozen=True)
@@ -293,20 +301,29 @@ def _apply_model_skill_updates(
     removed_path: Path | None,
 ) -> None:
     stages = _stage_model_skill_updates(updates, store)
-    affected = [target for target, _, _ in updates]
-    if removed_path is not None and removed_path not in affected:
-        affected.append(removed_path)
-    backups: dict[Path, Path] = {}
     try:
-        _backup_model_skill_directories(affected, backups)
-        _activate_model_skill_stages(stages)
-    except Exception:
-        _restore_model_skill_directories(stages, backups)
-        raise
+        changes = [
+            SkillDirectoryUpdate(
+                stage,
+                target,
+                calculate_skill_directory_sha256(stage),
+                calculate_skill_directory_sha256(target) if target.is_dir() else "",
+            )
+            for target, stage in stages
+        ]
+        affected = {target for target, _ in stages}
+        if removed_path is not None and removed_path not in affected:
+            changes.append(
+                SkillDirectoryUpdate(
+                    None,
+                    removed_path,
+                    "",
+                    calculate_skill_directory_sha256(removed_path),
+                )
+            )
+        apply_skill_directory_updates(changes)
     finally:
         _remove_model_skill_stages(stages)
-    for backup in backups.values():
-        shutil.rmtree(backup)
 
 
 def _stage_model_skill_updates(
@@ -321,36 +338,6 @@ def _stage_model_skill_updates(
         _remove_model_skill_stages(stages)
         raise
     return stages
-
-
-def _backup_model_skill_directories(
-    paths: list[Path],
-    backups: dict[Path, Path],
-) -> None:
-    for path in paths:
-        if path.exists():
-            backup = path.parent / f".{path.name}.model-backup-{uuid4().hex}"
-            os.replace(path, backup)
-            backups[path] = backup
-
-
-def _activate_model_skill_stages(stages: list[tuple[Path, Path]]) -> None:
-    for target, stage in stages:
-        target.parent.mkdir(parents=True, exist_ok=True)
-        os.replace(stage, target)
-
-
-def _restore_model_skill_directories(
-    stages: list[tuple[Path, Path]],
-    backups: dict[Path, Path],
-) -> None:
-    for target, _ in stages:
-        if target.exists() and target not in backups:
-            shutil.rmtree(target)
-    for path, backup in reversed(list(backups.items())):
-        if path.exists():
-            shutil.rmtree(path)
-        os.replace(backup, path)
 
 
 def _remove_model_skill_stages(stages: list[tuple[Path, Path]]) -> None:

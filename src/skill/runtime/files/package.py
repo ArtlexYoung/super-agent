@@ -11,7 +11,7 @@ import tempfile
 import zipfile
 from pathlib import Path, PurePosixPath
 from dataclasses import dataclass
-from typing import cast
+from typing import Callable, cast
 from urllib.parse import unquote
 from uuid import uuid4
 
@@ -111,12 +111,14 @@ class SkillPackageManager:
             target = _managed_skill_target(self.user_skill_root, manifest)
             if target.exists():
                 raise FileExistsError(f"skill target already exists: {target}")
-            replace_skill_directory_atomically(
-                staged,
-                target,
-                expected_source_sha256=calculate_skill_directory_sha256(staged),
-                expected_target_sha256="",
-            )
+            apply_skill_directory_updates([
+                SkillDirectoryUpdate(
+                    staged,
+                    target,
+                    calculate_skill_directory_sha256(staged),
+                    "",
+                )
+            ])
             return self._read_skill_manifest(manifest.name, manifest.skill_type)
 
     def update_skill(
@@ -167,12 +169,14 @@ class SkillPackageManager:
                 if current.path.absolute() == target.absolute()
                 else ""
             )
-            replace_skill_directory_atomically(
-                staged,
-                target,
-                expected_source_sha256=calculate_skill_directory_sha256(staged),
-                expected_target_sha256=expected_target_sha256,
-            )
+            apply_skill_directory_updates([
+                SkillDirectoryUpdate(
+                    staged,
+                    target,
+                    calculate_skill_directory_sha256(staged),
+                    expected_target_sha256,
+                )
+            ])
         return self._read_skill_manifest(skill_name, current.skill_type)
 
     def remove_skill(self, name: str) -> None:
@@ -193,14 +197,14 @@ class SkillPackageManager:
             raise PermissionError(f"cannot remove shared Skill: {entry.reference.key}")
         manifest = self._read_skill_manifest(skill_name, expected_type)
         _require_managed_skill_path(manifest.path, self.user_skill_root)
-        removed = manifest.path.parent / f".{manifest.path.name}.removed-{uuid4().hex}"
-        os.replace(manifest.path, removed)
-        try:
-            shutil.rmtree(removed)
-        except Exception:
-            if removed.exists() and not manifest.path.exists():
-                os.replace(removed, manifest.path)
-            raise
+        apply_skill_directory_updates([
+            SkillDirectoryUpdate(
+                None,
+                manifest.path,
+                "",
+                calculate_skill_directory_sha256(manifest.path),
+            )
+        ])
 
     def _read_skill_manifest(
         self,
@@ -465,7 +469,6 @@ def _write_text_atomically(path: Path, text: str) -> None:
         if temporary.exists():
             temporary.unlink()
 
-# Directory validation and replacement share the package lifecycle owner.
 def require_skill_directory_hash(path: Path, expected: str, label: str) -> None:
     """Reject a Skill directory when its recorded revision is no longer current."""
     if not path.is_dir() or calculate_skill_directory_sha256(path) != expected:
@@ -487,37 +490,137 @@ def require_skill_directory_matches(
         raise ValueError(f"Skill {label} unexpectedly exists before directory replacement")
 
 
-def replace_skill_directory_atomically(
-    source: Path,
-    target: Path,
+@dataclass(frozen=True)
+class SkillDirectoryUpdate:
+    source: Path | None
+    target: Path
+    expected_source_sha256: str
+    expected_target_sha256: str
+
+
+def apply_skill_directory_updates(
+    updates: list[SkillDirectoryUpdate],
     *,
-    expected_source_sha256: str,
-    expected_target_sha256: str,
+    after_apply: Callable[[], None] | None = None,
+    after_restore: Callable[[], None] | None = None,
 ) -> None:
-    """Copy a verified source into place and restore the target on failure."""
-    require_skill_directory_matches(source, expected_source_sha256, "source")
-    require_skill_directory_matches(target, expected_target_sha256, "target")
-    target.parent.mkdir(parents=True, exist_ok=True)
-    staging = target.parent / f".{target.name}.candidate-{uuid4().hex}"
-    backup = target.parent / f".{target.name}.backup-{uuid4().hex}"
-    moved_existing = False
+    """Apply one verified directory transaction and restore all targets on failure."""
+    if not updates:
+        return
+    targets = [update.target.absolute() for update in updates]
+    if len(set(targets)) != len(targets):
+        raise ValueError("Skill directory update targets must be unique")
+    staged = _stage_skill_directory_updates(updates)
+    backups: dict[Path, Path] = {}
+    activated: list[Path] = []
     try:
-        shutil.copytree(source, staging)
-        require_skill_directory_matches(staging, expected_source_sha256, "copied source")
-        require_skill_directory_matches(target, expected_target_sha256, "target")
-        if _path_exists(target):
-            os.replace(target, backup)
-            moved_existing = True
-        os.replace(staging, target)
-    except Exception:
-        if moved_existing and _path_exists(backup) and not _path_exists(target):
-            os.replace(backup, target)
+        _activate_skill_directory_updates(updates, staged, backups, activated)
+        if after_apply is not None:
+            after_apply()
+    except Exception as error:
+        _restore_skill_directory_updates(activated, backups)
+        _notify_skill_directory_restored(after_restore, error)
         raise
     finally:
-        if _path_exists(staging):
-            shutil.rmtree(staging)
-    if _path_exists(backup):
+        _remove_skill_directories(staged)
+    for backup in backups.values():
         shutil.rmtree(backup)
+
+
+def _stage_skill_directory_updates(
+    updates: list[SkillDirectoryUpdate],
+) -> list[Path | None]:
+    staged: list[Path | None] = []
+    try:
+        for update in updates:
+            update.target.parent.mkdir(parents=True, exist_ok=True)
+            if update.source is None:
+                staged.append(None)
+                continue
+            require_skill_directory_matches(
+                update.source,
+                update.expected_source_sha256,
+                "source",
+            )
+            candidate = update.target.parent / f".{update.target.name}.candidate-{uuid4().hex}"
+            staged.append(candidate)
+            shutil.copytree(update.source, candidate)
+            require_skill_directory_matches(
+                candidate,
+                update.expected_source_sha256,
+                "copied source",
+            )
+    except Exception:
+        _remove_skill_directories(staged)
+        raise
+    return staged
+
+
+def _activate_skill_directory_updates(
+    updates: list[SkillDirectoryUpdate],
+    staged: list[Path | None],
+    backups: dict[Path, Path],
+    activated: list[Path],
+) -> None:
+    for update in updates:
+        require_skill_directory_matches(
+            update.target,
+            update.expected_target_sha256,
+            "target",
+        )
+    for update in updates:
+        if _path_exists(update.target):
+            backup = update.target.parent / f".{update.target.name}.backup-{uuid4().hex}"
+            os.replace(update.target, backup)
+            backups[update.target] = backup
+            _hide_backup_manifests(backup)
+    for update, candidate in zip(updates, staged, strict=True):
+        if candidate is not None:
+            os.replace(candidate, update.target)
+            activated.append(update.target)
+
+
+def _notify_skill_directory_restored(
+    after_restore: Callable[[], None] | None,
+    error: Exception,
+) -> None:
+    if after_restore is None:
+        return
+    try:
+        after_restore()
+    except Exception as restore_error:
+        error.add_note(
+            "Could not refresh after restoring Skills: "
+            f"{type(restore_error).__name__}: {restore_error}"
+        )
+
+
+def _remove_skill_directories(paths: list[Path | None]) -> None:
+    for path in paths:
+        if path is not None and _path_exists(path):
+            shutil.rmtree(path)
+
+
+def _restore_skill_directory_updates(
+    activated: list[Path],
+    backups: dict[Path, Path],
+) -> None:
+    for target in activated:
+        if _path_exists(target):
+            shutil.rmtree(target)
+    for target, backup in reversed(list(backups.items())):
+        _show_backup_manifests(backup)
+        os.replace(backup, target)
+
+
+def _hide_backup_manifests(backup: Path) -> None:
+    for manifest in backup.rglob("skill.toml"):
+        manifest.replace(manifest.with_name(".skill.toml.backup"))
+
+
+def _show_backup_manifests(backup: Path) -> None:
+    for manifest in backup.rglob(".skill.toml.backup"):
+        manifest.replace(manifest.with_name("skill.toml"))
 
 
 def validate_skill_directory(
