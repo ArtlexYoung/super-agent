@@ -122,7 +122,7 @@ class AgentGroupTools:
                 {"reference": f"group://{group_id}/preview"},
             )
             choices = self._agent_pool.choose_group(
-                [self._task_estimate(task) for task in preview_tasks],
+                preview_tasks,
                 self._active_task_counts_locked(),
                 require_different_models=settings.require_different_models,
                 commit=False,
@@ -141,7 +141,7 @@ class AgentGroupTools:
                 context,
             )
             committed = self._agent_pool.choose_group(
-                [self._task_estimate(task) for task in member_tasks],
+                member_tasks,
                 self._active_task_counts_locked(),
                 require_different_models=settings.require_different_models,
                 commit=True,

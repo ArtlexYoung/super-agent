@@ -1501,6 +1501,18 @@ Status: implemented.
 - Preserve the 600-line file, 100-line function, complexity, directory-size, dependency-free,
   stateless-import, Python, Web, and offline benchmark checks.
 
+## v0.1.51: One Task Fact
+
+Status: implemented.
+
+- Let `AgentTask` carry its own token estimates and required features for both execution and
+  model selection.
+- Remove the short-lived `AgentTaskEstimate` conversion object and its queue conversion method.
+- Reuse the same task facts for single-agent selection, group preflight, group dispatch, cost
+  estimates, retries, and audit output.
+- Preserve task JSON fields, model pricing, rotation, circuit breakers, wait/wake behavior,
+  nested queues, and compressed subagent records.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

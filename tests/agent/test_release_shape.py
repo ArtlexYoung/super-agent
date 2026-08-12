@@ -348,6 +348,15 @@ class ReleaseShapeTests(unittest.TestCase):
 
         self.assertEqual([], [path for path in removed if Path(path).exists()])
 
+    def test_task_selection_has_one_task_fact(self) -> None:
+        source = "\n".join(
+            path.read_text(encoding="utf-8")
+            for path in Path("src/skill/runtime/tasks").glob("*.py")
+        )
+        self.assertNotIn("class AgentTaskEstimate", source)
+        self.assertNotIn("_task_estimate", source)
+        self.assertIn("def token_counts", source)
+
     def test_release_stays_within_the_strict_python_source_gate(self) -> None:
         sources = list(Path("src").rglob("*.py"))
         line_count = sum(

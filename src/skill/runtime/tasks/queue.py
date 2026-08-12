@@ -10,12 +10,10 @@ from typing import Callable
 
 from core.checks import ActionEffect
 from core.models import SubagentRecordOptions
-from core.provider import estimate_text_tokens
 from core.state.audit import compact_subagent_result
 from skill.runtime.tasks.agents import (
     AgentChoice,
     AgentTask,
-    AgentTaskEstimate,
     AgentTaskQueueSettings,
     AgentUnavailableError,
     SubagentPool,
@@ -375,7 +373,7 @@ class AgentTaskQueue(AgentGroupTools):
     ) -> AgentChoice:
         try:
             return self._agent_pool.choose(
-                self._task_estimate(task),
+                task,
                 self._active_task_counts_locked(),
                 requested_agent,
                 excluded,
@@ -384,21 +382,6 @@ class AgentTaskQueue(AgentGroupTools):
             if str(error) == "no suitable subagent for task":
                 raise ValueError(f"no suitable subagent for task: {task.task_id}") from error
             raise
-
-    @staticmethod
-    def _task_estimate(task: AgentTask) -> AgentTaskEstimate:
-        return AgentTaskEstimate(
-            task.purpose,
-            task.required_features,
-            (
-                estimate_text_tokens(task.prompt)
-                if task.estimated_input_tokens is None
-                else task.estimated_input_tokens
-            ),
-            task.estimated_output_tokens,
-            task.estimated_cache_creation_tokens,
-            task.estimated_cache_read_tokens,
-        )
 
     def _active_task_counts_locked(self) -> dict[str, int]:
         counts: dict[str, int] = {}

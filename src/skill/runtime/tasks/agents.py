@@ -54,10 +54,19 @@ class AgentTask:
     estimated_input_tokens: int | None = None
     shared_context: dict[str, object] | None = None
 
-    def to_dict(self, *, include_result: bool = False) -> dict[str, object]:
+    def token_counts(self) -> dict[str, int | None]:
         input_tokens = self.estimated_input_tokens
         if input_tokens is None:
             input_tokens = estimate_text_tokens(self.prompt)
+        return {
+            "input_tokens": input_tokens,
+            "output_tokens": self.estimated_output_tokens,
+            "cache_creation_tokens": self.estimated_cache_creation_tokens,
+            "cache_read_tokens": self.estimated_cache_read_tokens,
+        }
+
+    def to_dict(self, *, include_result: bool = False) -> dict[str, object]:
+        input_tokens = self.token_counts()["input_tokens"]
         shared = self.shared_context or {}
         data = {
             "task_id": self.task_id,
@@ -135,19 +144,6 @@ class AgentTaskQueueSettings:
 
 
 @dataclass(frozen=True)
-class AgentTaskEstimate:
-    purpose: str
-    features: tuple[str, ...]
-    input_tokens: int
-    output_tokens: int | None = None
-    cache_creation_tokens: int | None = None
-    cache_read_tokens: int | None = None
-
-    def token_counts(self) -> dict[str, int | None]:
-        return {name: getattr(self, name) for name, _price in TOKEN_PRICE_FIELDS}
-
-
-@dataclass(frozen=True)
 class AgentChoice:
     name: str
     selected_by: str
@@ -219,7 +215,7 @@ class SubagentPool:
 
     def choose(
         self,
-        task: AgentTaskEstimate,
+        task: AgentTask,
         active: dict[str, int],
         requested: str | None = None,
         excluded: set[str] | None = None,
@@ -228,7 +224,7 @@ class SubagentPool:
     ) -> AgentChoice:
         matching = [
             item for item in self.subagents
-            if _matches(item, task.purpose, task.features)
+            if _matches(item, task.purpose, task.required_features)
         ]
         available = [
             item for item in matching
@@ -257,7 +253,7 @@ class SubagentPool:
         if not matching:
             raise ValueError("no suitable subagent for task")
         if not available:
-            delay = self.retry_delay(task.purpose, task.features)
+            delay = self.retry_delay(task.purpose, task.required_features)
             raise AgentUnavailableError(
                 f"all suitable subagents are unavailable; retry after {delay:.3f} seconds"
             )
@@ -286,7 +282,7 @@ class SubagentPool:
 
     def choose_group(
         self,
-        tasks: list[AgentTaskEstimate],
+        tasks: list[AgentTask],
         active: dict[str, int],
         *,
         require_different_models: bool,
@@ -297,7 +293,7 @@ class SubagentPool:
             return []
         first = tasks[0]
         matching = [item for item in self.subagents if all(
-            _matches(item, task.purpose, task.features) for task in tasks
+            _matches(item, task.purpose, task.required_features) for task in tasks
         )]
         available = [item for item in matching if self._is_available(str(item["name"]))]
         ranked = sorted(
@@ -395,7 +391,7 @@ class SubagentPool:
     def _rank(
         self,
         agent: dict[str, object],
-        task: AgentTaskEstimate,
+        task: AgentTask,
         active: dict[str, int],
     ) -> tuple[float, float, float]:
         _model, _pricing, cost = _model_cost(agent, task)
@@ -409,7 +405,7 @@ class SubagentPool:
         agent: dict[str, object],
         selected_by: str,
         counts: tuple[int, int],
-        task: AgentTaskEstimate,
+        task: AgentTask,
         commit: bool,
     ) -> AgentChoice:
         name = str(agent["name"])
@@ -515,13 +511,13 @@ def _matches(agent: dict[str, object], purpose: str, features: tuple[str, ...]) 
 
 def _model_cost(
     agent: dict[str, object],
-    task: AgentTaskEstimate,
+    task: AgentTask,
 ) -> tuple[str | None, dict[str, float], dict[str, object]]:
     models = agent.get("models", [])
     compatible = [
         item for item in models
         if isinstance(item, dict)
-        and set(task.features) <= set(item.get("supports", []))
+        and set(task.required_features) <= set(item.get("supports", []))
     ] if isinstance(models, list) else []
     if not compatible:
         pricing = {**{name: 0.0 for name in PRICE_FIELDS}, "total_cost_per_million": 0.0}
@@ -547,7 +543,7 @@ def _read_pricing(model: dict[str, object]) -> dict[str, float]:
 
 def _estimate_cost(
     pricing: dict[str, float],
-    task: AgentTaskEstimate,
+    task: AgentTask,
 ) -> dict[str, object]:
     token_counts = task.token_counts()
     known = {name: value for name, value in token_counts.items() if value is not None}
