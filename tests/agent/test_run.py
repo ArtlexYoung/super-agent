@@ -12,6 +12,7 @@ from adapter.storage import JsonlStorage
 from core.state.store import StorageEventQuery
 from adapter.storage import create_local_event_store
 from core.state.store import EventStore
+from core.state.subscribers import RuntimeEventSubscribers
 from support import write_workflow_skill
 
 
@@ -30,20 +31,43 @@ class EventStoreTests(unittest.TestCase):
             self.assertEqual("finished", result.text)
             self.assertEqual(1, len(provider.tool_requests))
 
-    def test_run_event_log_orders_memory_events_and_notifies_explicit_observers(self) -> None:
+    def test_run_event_log_orders_and_publishes_events_through_one_pipeline(self) -> None:
         identity = RunIdentity.create("local", "main")
         listened = []
-        observed = []
-        event_log = RunEventLog(identity, event_listener=listened.append)
-        event_log.add_observer(observed.append)
+        subscriber = _RecordingSubscriber()
+        event_log = RunEventLog(
+            identity,
+            event_listener=listened.append,
+            subscribers=RuntimeEventSubscribers((subscriber,)),
+        )
 
         started = event_log.start_run("hello")
         completed = event_log.append_event("run.completed", {"status": "ok"})
 
         self.assertEqual([started, completed], event_log.list_events())
         self.assertEqual([started, completed], listened)
-        self.assertEqual([started, completed], observed)
+        self.assertEqual([started, completed], subscriber.events)
         self.assertEqual([1, 2], [event.sequence for event in event_log.list_events()])
+
+    def test_subscriber_failure_is_recorded_without_recursive_delivery(self) -> None:
+        identity = RunIdentity.create("local", "main")
+        listened = []
+        subscriber = _FailingSubscriber()
+        event_log = RunEventLog(
+            identity,
+            event_listener=listened.append,
+            subscribers=RuntimeEventSubscribers((subscriber,)),
+        )
+
+        event_log.start_run("hello")
+
+        self.assertEqual(1, subscriber.calls)
+        self.assertEqual(
+            ["run.started", "runtime.subscriber.failed"],
+            [event.event_type for event in event_log.list_events()],
+        )
+        self.assertEqual(event_log.list_events(), listened)
+        self.assertEqual("broken", event_log.list_subscriber_failures()[0]["subscriber"])
 
     def test_event_store_records_ordered_run_events(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -218,6 +242,27 @@ class EventStoreTests(unittest.TestCase):
 class _FailingProvider:
     def send_chat_messages(self, messages: list[dict[str, str]], model: str) -> str:
         raise RuntimeError("provider failed")
+
+
+class _RecordingSubscriber:
+    name = "recording"
+
+    def __init__(self) -> None:
+        self.events = []
+
+    def handle_event(self, event) -> None:
+        self.events.append(event)
+
+
+class _FailingSubscriber:
+    name = "broken"
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def handle_event(self, event) -> None:
+        self.calls += 1
+        raise RuntimeError("subscriber unavailable")
 
 
 def _make_agent(root: Path, provider: MockProvider | _FailingProvider) -> Agent:

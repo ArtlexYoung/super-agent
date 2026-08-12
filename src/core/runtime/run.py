@@ -42,7 +42,7 @@ if TYPE_CHECKING:
     from core.state.store import DisclosureStorageFactory
     from core.state.models import RunEvent
     from core.state.run import RunEventLog
-    from core.state.subscribers import RuntimeEventSubscriber, SubscriberFailure
+    from core.state.subscribers import RuntimeEventSubscriber
     from skill.disclosure import SkillIndexEntry, SkillReference
     from skill.runtime.handlers import SkillResult
 
@@ -61,10 +61,6 @@ class Run:
         default=None,
         repr=False,
     )
-    event_subscribers: RuntimeEventSubscribers = field(
-        default_factory=RuntimeEventSubscribers,
-        repr=False,
-    )
     subagent_record_options: SubagentRecordOptions | None = field(
         default=None,
         repr=False,
@@ -80,15 +76,6 @@ class Run:
         init=False,
         repr=False,
     )
-    _subscriber_failures: list[SubscriberFailure] = field(
-        default_factory=list,
-        init=False,
-        repr=False,
-    )
-
-    def __post_init__(self) -> None:
-        self.event_log.add_observer(self._publish_event)
-
     @property
     def run_id(self) -> str:
         return self.identity.run_id
@@ -108,26 +95,11 @@ class Run:
             )
         return self.event_log.append_event(event_type, data)
 
-    def publish_existing_event(self, event: RunEvent) -> None:
-        if event.run_id != self.run_id or event.agent_name != self.identity.agent_name:
-            raise ValueError("Runtime event does not belong to this run")
-        self._publish_event(event)
-
     def add_event_subscriber(self, subscriber: RuntimeEventSubscriber) -> None:
-        self.event_subscribers.add_subscriber(subscriber)
+        self.event_log.add_subscriber(subscriber)
 
     def list_subscriber_failures(self) -> list[dict[str, object]]:
-        return [failure.to_dict() for failure in self._subscriber_failures]
-
-    def _publish_event(self, event: RunEvent) -> None:
-        failures = self.event_subscribers.publish_event(event)
-        self._subscriber_failures.extend(failures)
-        for failure in failures:
-            self.event_log.append_event(
-                "runtime.subscriber.failed",
-                failure.to_dict(),
-                notify_observers=False,
-            )
+        return list(self.event_log.list_subscriber_failures())
 
     def list_recorded_events(self) -> list[RunEvent]:
         return self.event_log.list_events()
@@ -445,6 +417,9 @@ def _create_run(
         identity,
         backend=runtime.storage,
         event_listener=event_listener,
+        subscribers=RuntimeEventSubscribers(
+            runtime.event_subscribers.list_subscribers()
+        ),
     )
     store = _create_run_event_store(runtime, identity, event_log)
     start_data = {"prompt": request.prompt}
@@ -473,12 +448,7 @@ def _create_run(
             allow_subscriber_failures=request.allow_subscriber_failures,
             create_action_rules=runtime.create_action_rules,
             subagent_record_options=request.subagent_record_options,
-            event_subscribers=RuntimeEventSubscribers(
-                runtime.event_subscribers.list_subscribers()
-            ),
         )
-        for event in event_log.list_events():
-            run.publish_existing_event(event)
         skills.disclosure.set_event_writer(run.record_event)
         return run, task_loop
     except Exception as error:

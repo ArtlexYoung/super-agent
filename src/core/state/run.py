@@ -12,26 +12,35 @@ from core.state.models import RunEvent, RunSnapshot
 
 if TYPE_CHECKING:
     from core.state.store import StorageBackend, StorageEvent
+    from core.state.subscribers import (
+        RuntimeEventSubscriber,
+        RuntimeEventSubscribers,
+        SubscriberFailure,
+    )
 
 
-RunEventObserver = Callable[[RunEvent], None]
+RunEventListener = Callable[[RunEvent], None]
 
 
 class RunEventLog:
-    """Create one ordered run stream with optional backend persistence."""
+    """Persist, publish, and retain one ordered run event stream."""
 
     def __init__(
         self,
         identity: RunIdentity,
         *,
         backend: StorageBackend | None = None,
-        event_listener: RunEventObserver | None = None,
+        event_listener: RunEventListener | None = None,
+        subscribers: RuntimeEventSubscribers | None = None,
     ) -> None:
+        from core.state.subscribers import RuntimeEventSubscribers
+
         self.identity = identity
         self._backend = backend
-        self.event_listener = event_listener
+        self._event_listener = event_listener
+        self._subscribers = subscribers or RuntimeEventSubscribers()
         self._events: list[RunEvent] = []
-        self._observers: list[RunEventObserver] = []
+        self._subscriber_failures: list[SubscriberFailure] = []
         self._lock = RLock()
 
     def start_run(
@@ -59,17 +68,16 @@ class RunEventLog:
         self,
         event_type: str,
         data: dict[str, object] | None = None,
-        *,
-        notify_observers: bool = True,
     ) -> RunEvent:
         with self._lock:
-            return self._append_event(event_type, data, notify_observers)
+            return self._append_event(event_type, data, publish_to_subscribers=True)
 
     def _append_event(
         self,
         event_type: str,
         data: dict[str, object] | None,
-        notify_observers: bool,
+        *,
+        publish_to_subscribers: bool,
     ) -> RunEvent:
         clean_type = _required_text(event_type, "run event type")
         content = dict(data or {})
@@ -98,22 +106,33 @@ class RunEventLog:
                 self.identity.parent_run_id,
             )
         self._events.append(event)
-        if self.event_listener is not None:
-            self.event_listener(event)
-        if notify_observers:
-            for observer in self._observers:
-                observer(event)
+        if self._event_listener is not None:
+            self._event_listener(event)
+        if publish_to_subscribers:
+            self._record_subscriber_failures(event)
         return event
 
-    def add_observer(self, observer: RunEventObserver) -> None:
+    def add_subscriber(self, subscriber: RuntimeEventSubscriber) -> None:
         with self._lock:
-            if observer in self._observers:
-                raise ValueError("run event observer is already registered")
-            self._observers.append(observer)
+            self._subscribers.add_subscriber(subscriber)
+
+    def list_subscriber_failures(self) -> list[dict[str, str]]:
+        with self._lock:
+            return [failure.to_dict() for failure in self._subscriber_failures]
 
     def list_events(self) -> list[RunEvent]:
         with self._lock:
             return list(self._events)
+
+    def _record_subscriber_failures(self, event: RunEvent) -> None:
+        failures = self._subscribers.publish_event(event)
+        self._subscriber_failures.extend(failures)
+        for failure in failures:
+            self._append_event(
+                "runtime.subscriber.failed",
+                failure.to_dict(),
+                publish_to_subscribers=False,
+            )
 
     def _read_stored_events(self) -> list[StorageEvent]:
         if self._backend is None:

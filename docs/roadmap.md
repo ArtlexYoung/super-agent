@@ -1559,6 +1559,19 @@ Status: implemented.
 - Preserve per-user model loading, storage isolation, action checks, event subscribers, and child
   run identity without compatibility wrappers.
 
+## v0.1.56: One Run Event Pipeline
+
+Status: implemented.
+
+- Make `RunEventLog` the single owner of event ordering, persistence, external streaming,
+  subscriber delivery, and subscriber failure records.
+- Attach subscribers before `run.started` so startup events use the same direct path as every
+  later event without replaying existing events through `Run`.
+- Persist and stream `runtime.subscriber.failed` once without publishing that diagnostic event
+  back to subscribers recursively.
+- Keep stateful and stateless results, AG-UI listeners, user isolation, and event sequence behavior
+  unchanged while removing the Runtime observer layer.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof
