@@ -18,6 +18,7 @@ from core.provider import (
 from core.provider import ProviderPool
 from core.config import CommonConfig
 from skill.runtime.models import (
+    ModelDefinition,
     ModelProfile,
     ModelTraits,
     discover_environment_model_profiles,
@@ -37,6 +38,25 @@ from support import RecordingProvider, SequenceProvider
 
 
 class ModelSkillTests(unittest.TestCase):
+    def test_model_definition_round_trips_one_configuration_shape(self) -> None:
+        definition = ModelDefinition.from_dict({
+            "provider": "mock",
+            "model": "quality-model",
+            "supports": ["text", "tools"],
+            "purposes": ["answer"],
+            "strengths": ["careful"],
+            "default": True,
+            "quality_score": 0.9,
+            "input_cost_per_million": 0.2,
+            "agent_can_update_connection": False,
+        })
+
+        self.assertEqual(
+            definition.to_configuration(),
+            ModelDefinition.from_dict(definition.to_configuration()).to_configuration(),
+        )
+        self.assertEqual("quality-model", definition.to_dispatch_dict()["model"])
+
     def test_agent_automatically_loads_project_config(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, chdir(tmp), patch.dict(
             os.environ,
@@ -603,16 +623,18 @@ def _profile_for_assignment(
         name=name,
         description=name,
         version="test",
-        model=name,
-        connection=ProviderConnection("mock"),
-        traits=ModelTraits(
-            ["text"],
-            ["code-review"],
-            [],
-            quality,
-            input_cost_per_million=input_cost,
+        definition=ModelDefinition(
+            name,
+            ProviderConnection("mock"),
+            ModelTraits(
+                ["text"],
+                ["code-review"],
+                [],
+                quality,
+                input_cost_per_million=input_cost,
+            ),
+            default=default,
         ),
-        default=default,
         source="test",
         skill_key=f"model:{name}",
     )

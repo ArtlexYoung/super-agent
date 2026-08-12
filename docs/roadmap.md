@@ -1526,6 +1526,18 @@ Status: implemented.
 - Reuse the queue's task transitions, dispatch events, serial consumers, retries, cancellation,
   and completion notifications for every group member.
 
+## v0.1.53: One Model Definition
+
+Status: implemented.
+
+- Centralize model connection, capabilities, purposes, quality, latency, and pricing in
+  `ModelDefinition`.
+- Make model Skill TOML parsing, management input validation, public output, and dispatch output
+  use the same definition object.
+- Keep `ModelProfile` focused on Skill identity, provenance, version, ownership, and the model
+  definition rather than duplicating its fields.
+- Preserve the flat model configuration shape and user-scoped model Skill behavior.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import math
 import os
 import re
 import shutil
@@ -16,39 +15,22 @@ from core.config import CommonConfig
 from core.checks import ActionEffect, ActionRequest, ActionRunner, ActionRules
 from core.state.store import EventStore
 from skill.disclosure import ProgressiveDisclosureCore, SkillDisclosure
-from skill.runtime.models import ModelProfile, create_model_profile_from_skill_disclosure
+from skill.runtime.models import (
+    MODEL_CONFIGURATION_FIELDS,
+    ModelDefinition,
+    ModelProfile,
+    create_model_profile_from_skill_disclosure,
+)
 from skill.manifest import DEFAULT_SKILL_FRESHNESS, SkillEntry, SkillManifest
 from skill.runtime.files.package import validate_skill_directory
-
-
-MODEL_PRICE_FIELDS = (
-    "input_cost_per_million",
-    "output_cost_per_million",
-    "cache_creation_cost_per_million",
-    "cache_read_cost_per_million",
-)
 
 
 @dataclass(frozen=True)
 class ModelSkillInput:
     name: str
     description: str
-    provider: str
-    model: str
-    base_url: str
-    api_key_env: str
-    supports: list[str]
-    purposes: list[str]
-    strengths: list[str]
-    default: bool
+    definition: ModelDefinition
     agent_can_update: bool
-    agent_can_update_connection: bool
-    quality_score: float | None = None
-    expected_latency_ms: int | None = None
-    input_cost_per_million: float | None = None
-    output_cost_per_million: float | None = None
-    cache_creation_cost_per_million: float | None = None
-    cache_read_cost_per_million: float | None = None
     previous_name: str = ""
 
 
@@ -114,7 +96,7 @@ class ModelSkillManager:
         if target.exists() and source_path != target:
             raise FileExistsError(f"model Skill target already exists: {target}")
         updates = [(target, source_path, document)]
-        if clean_request.default:
+        if clean_request.definition.default:
             updates.extend(
                 self._default_removal_updates(
                     disclosure,
@@ -215,7 +197,8 @@ class ModelSkillManager:
 def model_skill_input_from_dict(value: object) -> ModelSkillInput:
     if not isinstance(value, dict):
         raise TypeError("model Skill input must be a JSON object")
-    allowed = set(ModelSkillInput.__dataclass_fields__)
+    metadata_fields = {"name", "description", "agent_can_update", "previous_name"}
+    allowed = metadata_fields | set(MODEL_CONFIGURATION_FIELDS)
     unknown = sorted(set(value) - allowed)
     if unknown:
         raise ValueError("unknown model Skill input fields: " + ", ".join(unknown))
@@ -223,32 +206,16 @@ def model_skill_input_from_dict(value: object) -> ModelSkillInput:
         ModelSkillInput(
             name=_required_text(value.get("name"), "name"),
             description=_required_text(value.get("description"), "description"),
-            provider=_required_text(value.get("provider"), "provider"),
-            model=_required_text(value.get("model"), "model"),
-            base_url=_optional_text(value.get("base_url"), "base_url"),
-            api_key_env=_optional_text(value.get("api_key_env"), "api_key_env"),
-            supports=_text_list(value.get("supports", ["text"]), "supports"),
-            purposes=_text_list(value.get("purposes", []), "purposes"),
-            strengths=_text_list(value.get("strengths", []), "strengths"),
-            default=_boolean(value.get("default", False), "default"),
+            definition=ModelDefinition.from_dict({
+                name: value[name]
+                for name in MODEL_CONFIGURATION_FIELDS
+                if name in value
+            }),
             agent_can_update=_boolean(
                 value.get("agent_can_update", False),
                 "agent_can_update",
             ),
-            agent_can_update_connection=_boolean(
-                value.get("agent_can_update_connection", False),
-                "agent_can_update_connection",
-            ),
-            quality_score=_optional_number(value.get("quality_score"), "quality_score", 1),
-            expected_latency_ms=_optional_integer(
-                value.get("expected_latency_ms"),
-                "expected_latency_ms",
-            ),
             previous_name=_optional_text(value.get("previous_name"), "previous_name"),
-            **{
-                name: _optional_number(value.get(name), name)
-                for name in MODEL_PRICE_FIELDS
-            },
         )
     )
 
@@ -261,22 +228,7 @@ def validate_model_skill_input(request: ModelSkillInput) -> ModelSkillInput:
         name=name,
         previous_name=previous_name,
         description=_required_text(request.description, "description"),
-        provider=_required_text(request.provider, "provider").lower(),
-        model=_required_text(request.model, "model"),
-        base_url=_optional_text(request.base_url, "base_url"),
-        api_key_env=_optional_text(request.api_key_env, "api_key_env"),
-        supports=_normalized_text_list(request.supports, "supports", required=True),
-        purposes=_normalized_text_list(request.purposes, "purposes"),
-        strengths=_normalized_text_list(request.strengths, "strengths"),
-        quality_score=_optional_number(request.quality_score, "quality_score", 1),
-        expected_latency_ms=_optional_integer(
-            request.expected_latency_ms,
-            "expected_latency_ms",
-        ),
-        **{
-            name: _optional_number(getattr(request, name), name)
-            for name in MODEL_PRICE_FIELDS
-        },
+        definition=ModelDefinition.from_dict(request.definition.to_configuration()),
     )
 
 
@@ -311,22 +263,7 @@ def _create_model_skill_document(
                 for item in current.manifest.provides
             ],
         )
-    configuration: dict[str, object] = {
-        "provider": request.provider,
-        "model": request.model,
-        "supports": request.supports,
-        "purposes": request.purposes,
-        "strengths": request.strengths,
-        "default": request.default,
-        "agent_can_update_connection": request.agent_can_update_connection,
-    }
-    _add_optional(configuration, "base_url", request.base_url)
-    _add_optional(configuration, "api_key_env", request.api_key_env)
-    _add_optional(configuration, "quality_score", request.quality_score)
-    _add_optional(configuration, "expected_latency_ms", request.expected_latency_ms)
-    for name in MODEL_PRICE_FIELDS:
-        _add_optional(configuration, name, getattr(request, name))
-    return _ModelSkillDocument(manifest, configuration)
+    return _ModelSkillDocument(manifest, request.definition.to_configuration())
 
 
 def _read_model_skill_document(disclosure: SkillDisclosure) -> _ModelSkillDocument:
@@ -340,8 +277,8 @@ def _with_default(
     document: _ModelSkillDocument,
     selected: bool,
 ) -> _ModelSkillDocument:
-    configuration = dict(document.configuration)
-    configuration["default"] = selected
+    definition = ModelDefinition.from_dict(document.configuration)
+    configuration = replace(definition, default=selected).to_configuration()
     manifest = replace(
         document.manifest,
         version=_next_patch_version(document.manifest.version),
@@ -462,23 +399,7 @@ def _model_skill_toml(document: _ModelSkillDocument) -> str:
         f"version = {_quote(manifest.version)}",
     ]
     lines.extend(["", "[configuration]"])
-    for name in (
-        "provider",
-        "model",
-        "base_url",
-        "api_key_env",
-        "supports",
-        "purposes",
-        "strengths",
-        "default",
-        "quality_score",
-        "expected_latency_ms",
-        "input_cost_per_million",
-        "output_cost_per_million",
-        "cache_creation_cost_per_million",
-        "cache_read_cost_per_million",
-        "agent_can_update_connection",
-    ):
+    for name in MODEL_CONFIGURATION_FIELDS:
         if name in document.configuration:
             lines.append(f"{name} = {_toml_value(document.configuration[name])}")
     return "\n".join(lines) + "\n"
@@ -534,61 +455,10 @@ def _optional_text(value: object, name: str) -> str:
     return value.strip()
 
 
-def _text_list(value: object, name: str) -> list[str]:
-    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
-        raise TypeError(f"model Skill {name} must be a string array")
-    return list(value)
-
-
-def _normalized_text_list(
-    value: object,
-    name: str,
-    *,
-    required: bool = False,
-) -> list[str]:
-    items = [_required_text(item, name).lower() for item in _text_list(value, name)]
-    if required and not items:
-        raise ValueError(f"model Skill {name} cannot be empty")
-    if len(items) != len(set(items)):
-        raise ValueError(f"model Skill {name} cannot contain duplicates")
-    return items
-
-
 def _boolean(value: object, name: str) -> bool:
     if not isinstance(value, bool):
         raise TypeError(f"model Skill {name} must be a boolean")
     return value
-
-
-def _optional_number(
-    value: object,
-    name: str,
-    maximum: float | None = None,
-) -> float | None:
-    if value is None:
-        return None
-    if isinstance(value, bool) or not isinstance(value, int | float):
-        raise TypeError(f"model Skill {name} must be a number")
-    number = float(value)
-    if not math.isfinite(number) or number < 0 or (
-        maximum is not None and number > maximum
-    ):
-        limit = "non-negative" if maximum is None else f"between 0 and {maximum:g}"
-        raise ValueError(f"model Skill {name} must be {limit}")
-    return number
-
-
-def _optional_integer(value: object, name: str) -> int | None:
-    if value is None:
-        return None
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-        raise ValueError(f"model Skill {name} must be a non-negative integer")
-    return value
-
-
-def _add_optional(data: dict[str, object], name: str, value: object) -> None:
-    if value not in {None, ""}:
-        data[name] = value
 
 
 def _quote(value: str) -> str:

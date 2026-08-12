@@ -24,7 +24,13 @@ DEFAULT_OLLAMA_MODEL = "llama3.2"
 DEFAULT_SILICONFLOW_MODEL = "THUDM/GLM-4-9B-0414"
 DEFAULT_SILICONFLOW_BASE_URL = "https://api.siliconflow.cn/v1"
 
-MODEL_CONFIGURATION_FIELDS = {
+MODEL_PRICE_FIELDS = (
+    "input_cost_per_million",
+    "output_cost_per_million",
+    "cache_creation_cost_per_million",
+    "cache_read_cost_per_million",
+)
+MODEL_CONFIGURATION_FIELDS = (
     "provider",
     "model",
     "base_url",
@@ -40,7 +46,7 @@ MODEL_CONFIGURATION_FIELDS = {
     "cache_creation_cost_per_million",
     "cache_read_cost_per_million",
     "agent_can_update_connection",
-}
+)
 
 
 @dataclass(frozen=True)
@@ -69,24 +75,120 @@ class ModelTraits:
 
 
 @dataclass(frozen=True)
+class ModelDefinition:
+    model: str
+    connection: ProviderConnection
+    traits: ModelTraits
+    default: bool = False
+    agent_can_update_connection: bool = False
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, object]) -> ModelDefinition:
+        data = dict(value)
+        unknown = set(data) - set(MODEL_CONFIGURATION_FIELDS)
+        if unknown:
+            raise ValueError(
+                "unknown model Skill settings: " + ", ".join(sorted(unknown))
+            )
+        return cls(
+            model=_required_string(data, "model"),
+            connection=normalize_provider_connection(ProviderConnection(
+                provider=_required_string(data, "provider"),
+                base_url=_optional_string(data, "base_url"),
+                api_key_env=_optional_string(data, "api_key_env"),
+            )),
+            traits=ModelTraits(
+                supports=_string_list(data, "supports", ["text"]),
+                purposes=_string_list(data, "purposes", []),
+                strengths=_string_list(data, "strengths", []),
+                quality_score=_optional_score(data, "quality_score"),
+                expected_latency_ms=_optional_nonnegative_integer(
+                    data, "expected_latency_ms"
+                ),
+                **{
+                    name: _optional_nonnegative_number(data, name)
+                    for name in MODEL_PRICE_FIELDS
+                },
+            ),
+            default=_boolean(data, "default", False),
+            agent_can_update_connection=_boolean(
+                data, "agent_can_update_connection", False
+            ),
+        )
+
+    def to_configuration(self) -> dict[str, object]:
+        traits = self.traits
+        data: dict[str, object] = {
+            "provider": self.connection.provider,
+            "model": self.model,
+            "supports": list(traits.supports),
+            "purposes": list(traits.purposes),
+            "strengths": list(traits.strengths),
+            "default": self.default,
+            "agent_can_update_connection": self.agent_can_update_connection,
+        }
+        optional = {
+            "base_url": self.connection.base_url,
+            "api_key_env": self.connection.api_key_env,
+            "quality_score": traits.quality_score,
+            "expected_latency_ms": traits.expected_latency_ms,
+            **{name: getattr(traits, name) for name in MODEL_PRICE_FIELDS},
+        }
+        data.update({key: value for key, value in optional.items() if value is not None})
+        return data
+
+    def to_public_dict(self) -> dict[str, object]:
+        return {
+            **self.to_configuration(),
+            "total_cost_per_million": self.traits.total_cost_per_million,
+        }
+
+    def to_dispatch_dict(self) -> dict[str, object]:
+        traits = self.traits
+        return {
+            "model": self.model,
+            "supports": list(traits.supports),
+            "purposes": list(traits.purposes),
+            **{name: getattr(traits, name) or 0.0 for name in MODEL_PRICE_FIELDS},
+            "total_cost_per_million": traits.total_cost_per_million,
+        }
+
+
+@dataclass(frozen=True)
 class ModelProfile:
     name: str
     description: str
     version: str
-    model: str
-    connection: ProviderConnection
-    traits: ModelTraits
-    default: bool
+    definition: ModelDefinition
     source: str
     skill_key: str
     content_sha256: str = ""
     agent_created: bool = False
     agent_can_update: bool = False
-    agent_can_update_connection: bool = False
 
     @property
     def key(self) -> str:
         return self.skill_key or f"model:{self.name}"
+
+    @property
+    def model(self) -> str:
+        return self.definition.model
+
+    @property
+    def connection(self) -> ProviderConnection:
+        return self.definition.connection
+
+    @property
+    def traits(self) -> ModelTraits:
+        return self.definition.traits
+
+    @property
+    def default(self) -> bool:
+        return self.definition.default
+
+    @property
+    def agent_can_update_connection(self) -> bool:
+        return self.definition.agent_can_update_connection
 
 
 def create_model_profile_from_skill_disclosure(
@@ -95,62 +197,17 @@ def create_model_profile_from_skill_disclosure(
     manifest = disclosure.read_manifest()
     if manifest.skill_type != "model":
         raise ValueError(f"skill does not contain a model profile: {manifest.name}")
-    configuration = disclosure.read_configuration().content
-    unknown = set(configuration) - MODEL_CONFIGURATION_FIELDS
-    if unknown:
-        raise ValueError(
-            "unknown model Skill settings: " + ", ".join(sorted(unknown))
-        )
-    connection = normalize_provider_connection(
-        ProviderConnection(
-            provider=_required_string(configuration, "provider"),
-            base_url=_optional_string(configuration, "base_url"),
-            api_key_env=_optional_string(configuration, "api_key_env"),
-        )
-    )
+    definition = ModelDefinition.from_dict(disclosure.read_configuration().content)
     return ModelProfile(
         name=manifest.name,
         description=manifest.description.strip(),
         version=manifest.version,
-        model=_required_string(configuration, "model"),
-        connection=connection,
-        traits=ModelTraits(
-            supports=_string_list(configuration, "supports", ["text"]),
-            purposes=_string_list(configuration, "purposes", []),
-            strengths=_string_list(configuration, "strengths", []),
-            quality_score=_optional_score(configuration, "quality_score"),
-            expected_latency_ms=_optional_nonnegative_integer(
-                configuration,
-                "expected_latency_ms",
-            ),
-            input_cost_per_million=_optional_nonnegative_number(
-                configuration,
-                "input_cost_per_million",
-            ),
-            output_cost_per_million=_optional_nonnegative_number(
-                configuration,
-                "output_cost_per_million",
-            ),
-            cache_creation_cost_per_million=_optional_nonnegative_number(
-                configuration,
-                "cache_creation_cost_per_million",
-            ),
-            cache_read_cost_per_million=_optional_nonnegative_number(
-                configuration,
-                "cache_read_cost_per_million",
-            ),
-        ),
-        default=_boolean(configuration, "default", False),
+        definition=definition,
         source="skill",
         skill_key=f"model:{manifest.name}",
         content_sha256=calculate_skill_directory_sha256(manifest.path),
         agent_created=manifest.agent_created,
         agent_can_update=manifest.agent_can_update,
-        agent_can_update_connection=_boolean(
-            configuration,
-            "agent_can_update_connection",
-            False,
-        ),
     )
 
 
@@ -252,7 +309,10 @@ def discover_environment_model_profiles(
             )
         )
     profiles = _deduplicate_profiles(profiles)
-    return [replace(profile, default=index == 0) for index, profile in enumerate(profiles)]
+    return [
+        replace(profile, definition=replace(profile.definition, default=index == 0))
+        for index, profile in enumerate(profiles)
+    ]
 
 
 def create_direct_provider_profile() -> ModelProfile:
@@ -261,10 +321,12 @@ def create_direct_provider_profile() -> ModelProfile:
         name="provided",
         description="Provider supplied directly when creating the Agent.",
         version="code",
-        model="provided",
-        connection=ProviderConnection(MOCK_PROVIDER),
-        traits=ModelTraits(["text", "tools"], [], []),
-        default=True,
+        definition=ModelDefinition(
+            "provided",
+            ProviderConnection(MOCK_PROVIDER),
+            ModelTraits(["text", "tools"], [], []),
+            default=True,
+        ),
         source="code",
         skill_key="model:provided",
     )
@@ -283,50 +345,26 @@ def model_profile_to_dict(
     profile: ModelProfile,
     environment: Mapping[str, str] | None = None,
 ) -> dict[str, object]:
-    traits = profile.traits
     return {
         "key": profile.key,
         "name": profile.name,
         "description": profile.description,
         "version": profile.version,
-        "provider": profile.connection.provider,
-        "model": profile.model,
-        "base_url": profile.connection.base_url,
-        "api_key_env": profile.connection.api_key_env,
-        "supports": list(traits.supports),
-        "purposes": list(traits.purposes),
-        "strengths": list(traits.strengths),
-        "default": profile.default,
-        "quality_score": traits.quality_score,
-        "expected_latency_ms": traits.expected_latency_ms,
-        "input_cost_per_million": traits.input_cost_per_million,
-        "output_cost_per_million": traits.output_cost_per_million,
-        "cache_creation_cost_per_million": traits.cache_creation_cost_per_million,
-        "cache_read_cost_per_million": traits.cache_read_cost_per_million,
-        "total_cost_per_million": traits.total_cost_per_million,
+        **profile.definition.to_public_dict(),
         "source": profile.source,
         "skill_key": profile.skill_key or None,
         "content_sha256": profile.content_sha256 or None,
         "agent_created": profile.agent_created,
         "agent_can_update": profile.agent_can_update,
-        "agent_can_update_connection": profile.agent_can_update_connection,
         "ready": model_profile_is_ready(profile, environment),
     }
 
 
 def model_dispatch_to_dict(profile: ModelProfile) -> dict[str, object]:
     """Expose only model contract facts needed before Agent dispatch."""
-    traits = profile.traits
     return {
         "key": profile.key,
-        "model": profile.model,
-        "supports": list(traits.supports),
-        "purposes": list(traits.purposes),
-        "input_cost_per_million": traits.input_cost_per_million or 0.0,
-        "output_cost_per_million": traits.output_cost_per_million or 0.0,
-        "cache_creation_cost_per_million": traits.cache_creation_cost_per_million or 0.0,
-        "cache_read_cost_per_million": traits.cache_read_cost_per_million or 0.0,
-        "total_cost_per_million": traits.total_cost_per_million,
+        **profile.definition.to_dispatch_dict(),
     }
 
 
@@ -379,10 +417,11 @@ def _create_ephemeral_profile(
         name=name,
         description=description,
         version="ephemeral",
-        model=model,
-        connection=normalize_provider_connection(connection),
-        traits=ModelTraits(list(supports or ["text"]), [], []),
-        default=False,
+        definition=ModelDefinition(
+            model,
+            normalize_provider_connection(connection),
+            ModelTraits(list(supports or ["text"]), [], []),
+        ),
         source=source,
         skill_key="",
     )
