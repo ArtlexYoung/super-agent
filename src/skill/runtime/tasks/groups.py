@@ -8,7 +8,7 @@ import math
 import re
 from dataclasses import asdict, dataclass, replace
 from time import monotonic
-from typing import Callable, Mapping
+from typing import TYPE_CHECKING, Callable, Mapping
 
 from core.checks import ActionEffect
 from core.provider import estimate_text_tokens
@@ -21,20 +21,42 @@ from skill.runtime.tasks.agents import (
 )
 from skill.runtime.handlers import SkillAction, SkillTool, read_required_tool_string
 
+if TYPE_CHECKING:
+    from skill.runtime.tasks.queue import AgentTaskQueue
+
 
 _TERMINAL_STATUSES = {"completed", "failed", "cancelled"}
 
 
-class AgentGroupTools:
+class AgentGroups:
+    """Apply decision-group policy to one explicit task queue."""
+
+    def __init__(
+        self,
+        queue: AgentTaskQueue,
+        settings: AgentGroupSettings,
+        create_shared_context: Callable[[str, str], dict[str, object]] | None,
+    ) -> None:
+        self.queue = queue
+        self.settings = settings
+        self.create_shared_context = create_shared_context
+        self._groups: dict[str, AgentGroup] = {}
+        self._failures: list[dict[str, object]] = []
+        self._attempt_count = 0
+
+    @property
+    def has_failures(self) -> bool:
+        return bool(self._failures)
+
     def list_groups(self) -> list[dict[str, object]]:
-        with self._condition:
+        with self.queue._condition:
             return [
-                *[dict(item) for item in self._group_failures],
+                *[dict(item) for item in self._failures],
                 *[self._group_result_locked(group) for group in self._groups.values()],
             ]
 
-    def _create_group_tools(self) -> tuple[SkillTool, ...]:
-        settings = self._require_group_options().settings
+    def create_tools(self) -> tuple[SkillTool, ...]:
+        settings = self.settings
         group_id = {"type": "string"}
         token_estimate = estimated_token_schema()
         return (
@@ -110,20 +132,20 @@ class AgentGroupTools:
         )
 
     def _create_group(self, arguments: dict[str, object]) -> dict[str, object]:
-        settings = self._require_group_options().settings
+        settings = self.settings
         request = read_group_request(arguments, settings)
-        with self._condition:
+        with self.queue._condition:
             group_id = self._next_group_id_locked()
             self._validate_group_capacity_locked(request.requested_members)
-            preview_tasks = self._build_group_tasks(
+            member_tasks = self._build_group_tasks(
                 group_id,
                 request,
                 request.roles,
-                {"reference": f"group://{group_id}/preview"},
+                uses_shared_context=self.create_shared_context is not None,
             )
-            choices = self._agent_pool.choose_group(
-                preview_tasks,
-                self._active_task_counts_locked(),
+            choices = self.queue._agent_pool.choose_group(
+                member_tasks,
+                self.queue._active_task_counts_locked(),
                 require_different_models=settings.require_different_models,
                 commit=False,
             )
@@ -134,28 +156,18 @@ class AgentGroupTools:
                 return self._budget_exceeded_result(group_id, request, choices)
             choices = choices[:selected_count]
             context = self._create_group_context_locked(group_id, request.prompt)
-            member_tasks = self._build_group_tasks(
-                group_id,
-                request,
-                request.roles[:selected_count],
-                context,
-            )
-            committed = self._agent_pool.choose_group(
-                member_tasks,
-                self._active_task_counts_locked(),
-                require_different_models=settings.require_different_models,
-                commit=True,
-            )
-            if [item.name for item in committed] != [item.name for item in choices]:
-                raise RuntimeError("group allocation changed after budget preflight")
+            member_tasks = member_tasks[:selected_count]
+            if context.get("reference") is not None:
+                member_tasks = [replace(task, shared_context=context) for task in member_tasks]
+            self.queue._agent_pool.commit_group(choices)
             group = self._create_group_record(
                 group_id,
                 request,
                 member_tasks,
-                committed,
+                choices,
                 context,
             )
-            self._start_group_locked(group, member_tasks, committed)
+            self._start_group_locked(group, member_tasks, choices)
             return {"group": self._group_result_locked(group), "created": True}
 
     def _wait_for_group(self, arguments: dict[str, object]) -> dict[str, object]:
@@ -164,9 +176,9 @@ class AgentGroupTools:
         if isinstance(value, bool) or not isinstance(value, int | float) or value <= 0:
             raise ValueError("tool argument 'max_wait_seconds' must be a positive number")
         requested_wait = float(value)
-        wait_seconds = min(requested_wait, self.settings.max_wait_seconds)
+        wait_seconds = min(requested_wait, self.queue.settings.max_wait_seconds)
         started = monotonic()
-        self.record_event(
+        self.queue.record_event(
             "agent_group.wait.started",
             {
                 "group_id": group_id,
@@ -174,16 +186,16 @@ class AgentGroupTools:
                 "wait_seconds": wait_seconds,
             },
         )
-        with self._condition:
+        with self.queue._condition:
             group = self._require_group_locked(group_id)
-            self._condition.wait_for(
+            self.queue._condition.wait_for(
                 lambda: self._group_is_terminal_locked(group),
                 timeout=wait_seconds,
             )
             result = self._group_result_locked(group)
         waited = max(0.0, monotonic() - started)
         reason = "group_finished" if result["status"] != "running" else "timeout"
-        self.record_event(
+        self.queue.record_event(
             "agent_group.wait.woke",
             {"group_id": group_id, "reason": reason, "waited_ms": round(waited * 1000)},
         )
@@ -199,14 +211,14 @@ class AgentGroupTools:
 
     def _cancel_group(self, arguments: dict[str, object]) -> dict[str, object]:
         group_id = read_required_tool_string(arguments, "group_id")
-        with self._condition:
+        with self.queue._condition:
             group = self._require_group_locked(group_id)
             cancelled = []
             still_running = []
             for task_id in group.task_ids:
-                task = self._require_task_locked(task_id)
+                task = self.queue._require_task_locked(task_id)
                 if task.status in {"created", "queued"}:
-                    self._transition_locked(task, "cancelled")
+                    self.queue._transition_locked(task, "cancelled")
                     cancelled.append(task_id)
                 elif task.status == "running":
                     still_running.append(task_id)
@@ -217,32 +229,35 @@ class AgentGroupTools:
             }
 
     def _next_group_id_locked(self) -> str:
-        self._group_attempt_count += 1
-        return f"agent-group-{self._group_attempt_count:02d}"
+        self._attempt_count += 1
+        return f"agent-group-{self._attempt_count:02d}"
 
     def _validate_group_capacity_locked(self, requested_members: int) -> None:
-        settings = self._require_group_options().settings
-        if self._closed:
+        settings = self.settings
+        if self.queue._closed:
             raise RuntimeError("agent task queue is closed")
         if len(self._groups) >= settings.max_groups:
             raise ValueError(f"agent group limit reached: {settings.max_groups}")
-        if len(self._tasks) + requested_members > self.settings.max_tasks:
-            raise ValueError(f"agent task limit reached: {self.settings.max_tasks}")
+        if len(self.queue._tasks) + requested_members > self.queue.settings.max_tasks:
+            raise ValueError(f"agent task limit reached: {self.queue.settings.max_tasks}")
 
     def _build_group_tasks(
         self,
         group_id: str,
         request: AgentGroupRequest,
         roles: tuple[str, ...],
-        context: dict[str, object],
+        *,
+        uses_shared_context: bool,
     ) -> list[AgentTask]:
-        reference_value = context.get("reference")
-        reference = reference_value if isinstance(reference_value, str) else None
-        shared_tokens = estimate_text_tokens(request.prompt) if reference else 0
-        first_task_number = len(self._tasks) + 1
+        shared_tokens = estimate_text_tokens(request.prompt) if uses_shared_context else 0
+        first_task_number = len(self.queue._tasks) + 1
         tasks = []
         for index, role in enumerate(roles):
-            member_prompt = build_member_prompt(request.prompt, role, reference)
+            member_prompt = build_member_prompt(
+                request.prompt,
+                role,
+                uses_shared_context=uses_shared_context,
+            )
             tasks.append(AgentTask(
                 f"agent-task-{first_task_number + index:02d}",
                 member_prompt,
@@ -254,7 +269,6 @@ class AgentGroupTools:
                 estimated_cache_creation_tokens=request.estimates[1],
                 estimated_cache_read_tokens=request.estimates[2],
                 estimated_input_tokens=estimate_text_tokens(member_prompt) + shared_tokens,
-                shared_context=context if reference else None,
             ))
         return tasks
 
@@ -264,7 +278,7 @@ class AgentGroupTools:
         request: AgentGroupRequest,
         choices: list[AgentChoice],
     ) -> int:
-        settings = self._require_group_options().settings
+        settings = self.settings
         minimum = max(2, request.quorum)
         available = min(request.requested_members, len(choices))
         if available < minimum:
@@ -293,7 +307,7 @@ class AgentGroupTools:
         request: AgentGroupRequest,
         choices: list[AgentChoice],
     ) -> dict[str, object]:
-        settings = self._require_group_options().settings
+        settings = self.settings
         result = {
             "group_id": group_id,
             "status": "budget_exceeded",
@@ -304,8 +318,8 @@ class AgentGroupTools:
             "budget_limit": settings.max_estimated_cost,
             "created": False,
         }
-        self._group_failures.append(dict(result))
-        self.record_event("agent_group.budget_exceeded", dict(result))
+        self._failures.append(dict(result))
+        self.queue.record_event("agent_group.budget_exceeded", dict(result))
         return {"group": result, "created": False}
 
     def _create_group_context_locked(
@@ -313,7 +327,7 @@ class AgentGroupTools:
         group_id: str,
         prompt: str,
     ) -> dict[str, object]:
-        writer = self._require_group_options().create_shared_context
+        writer = self.create_shared_context
         if writer is None:
             return {"reference": None, "cache_backed": False}
         context = writer(group_id, prompt)
@@ -334,7 +348,7 @@ class AgentGroupTools:
         choices: list[AgentChoice],
         context: dict[str, object],
     ) -> AgentGroup:
-        settings = self._require_group_options().settings
+        settings = self.settings
         reference = context.get("reference")
         return AgentGroup(
             group_id,
@@ -366,40 +380,29 @@ class AgentGroupTools:
     ) -> None:
         group_id = group.group_id
         self._groups[group_id] = group
-        self.record_event("agent_group.created", group.to_dict())
+        self.queue.record_event("agent_group.created", group.to_dict())
         if group.reduced:
-            self.record_event("agent_group.reduced", group.to_dict())
+            self.queue.record_event("agent_group.reduced", group.to_dict())
         for task, choice in zip(tasks, choices, strict=True):
-            self._tasks[task.task_id] = task
-            self._record_locked("agent_task.created", task)
-            self._transition_locked(task, "queued", agent_name=choice.name)
-            self.record_event(
-                "agent_task.dispatched",
-                {
-                    "task_id": task.task_id,
-                    "group_id": group_id,
-                    "group_role": task.group_role,
-                    **choice.to_dict(),
-                    "agent_selection": self.settings.agent_selection,
-                },
-            )
-            self._submit_locked(choice.name, task.task_id)
+            self.queue._tasks[task.task_id] = task
+            self.queue._record_locked("agent_task.created", task)
+            self.queue._queue_selected_task_locked(task, choice, group_id=group_id)
 
     def _group_result_locked(self, group: AgentGroup) -> dict[str, object]:
-        settings = self._require_group_options().settings
+        settings = self.settings
         tasks = [
-            self._require_task_locked(task_id).to_dict(include_result=True)
+            self.queue._require_task_locked(task_id).to_dict(include_result=True)
             for task_id in group.task_ids
         ]
         return decide_group(group, tasks, summary_chars=settings.summary_chars)
 
     def _group_is_terminal_locked(self, group: AgentGroup) -> bool:
         return all(
-            self._require_task_locked(task_id).status in _TERMINAL_STATUSES
+            self.queue._require_task_locked(task_id).status in _TERMINAL_STATUSES
             for task_id in group.task_ids
         )
 
-    def _refresh_group_locked(self, group_id: str) -> None:
+    def refresh(self, group_id: str) -> None:
         group = self._groups[group_id]
         if group.status != "running" or not self._group_is_terminal_locked(group):
             return
@@ -411,18 +414,13 @@ class AgentGroupTools:
             for member in result["members"]
             if isinstance(member, dict)
         ]
-        self.record_event("agent_group.completed", audit)
+        self.queue.record_event("agent_group.completed", audit)
 
     def _require_group_locked(self, group_id: str) -> AgentGroup:
         group = self._groups.get(group_id)
         if group is None:
             raise KeyError(f"agent group not found: {group_id}")
         return group
-
-    def _require_group_options(self) -> AgentGroupOptions:
-        if self.group_options is None:
-            raise RuntimeError("agent group tools are not active")
-        return self.group_options
 
 GROUP_VOTES = {"support", "reject", "inconclusive"}
 MAX_GROUP_MEMBERS = 16
@@ -461,12 +459,6 @@ class AgentGroupSettings:
                 raise TypeError(f"agent_groups {name} must be a boolean")
         _bounded_int(settings.summary_chars, "summary_chars", 100, 10_000)
         return settings
-
-
-@dataclass(frozen=True)
-class AgentGroupOptions:
-    settings: AgentGroupSettings
-    create_shared_context: Callable[[str, str], dict[str, object]] | None = None
 
 
 @dataclass(frozen=True)
@@ -527,7 +519,8 @@ def read_group_request(
 def build_member_prompt(
     shared_prompt: str,
     role: str,
-    context_reference: str | None,
+    *,
+    uses_shared_context: bool,
 ) -> str:
     instructions = (
         "You are one independent member of a decision group.\n"
@@ -537,11 +530,11 @@ def build_member_prompt(
         "decision (support, reject, or inconclusive), evidence, confidence. "
         "A failed implementation or missing measurement is inconclusive, not reject."
     )
-    if context_reference is not None:
+    if uses_shared_context:
         return (
             f"{instructions}\n"
-            "Read the shared packet with the read_shared_task_context tool before deciding.\n"
-            f"shared_context_reference: {context_reference}"
+            "Read the supplied shared packet with the read_shared_task_context tool before "
+            "deciding."
         )
     return f"{instructions}\n\nShared packet:\n{shared_prompt}"
 

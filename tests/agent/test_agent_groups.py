@@ -110,9 +110,12 @@ class AgentGroupTests(unittest.TestCase):
 
     def test_budget_failure_creates_no_tasks(self) -> None:
         events = []
+        shared_writes = []
         queue = _group_queue(
             lambda *_args: self.fail("budget failure must not run a member"),
             events=events,
+            shared=True,
+            shared_writes=shared_writes,
             max_estimated_cost=0.000001,
         )
         try:
@@ -124,6 +127,7 @@ class AgentGroupTests(unittest.TestCase):
         self.assertFalse(result["created"])
         self.assertEqual("budget_exceeded", result["group"]["status"])
         self.assertEqual([], queue.list_tasks())
+        self.assertEqual([], shared_writes)
         self.assertIn("agent_group.budget_exceeded", [name for name, _ in events])
 
     def test_missing_model_diversity_is_explicit(self) -> None:
@@ -168,6 +172,7 @@ def _group_queue(
     *,
     events=None,
     shared=False,
+    shared_writes=None,
     max_estimated_cost=0.0,
     models=("model-a", "model-b", "model-c"),
     allow_reduced_group=False,
@@ -187,16 +192,18 @@ def _group_queue(
         }
         for name, model in zip(("first", "second", "third"), models, strict=True)
     ]
-    create_shared = (
-        (lambda group_id, content: {
+    writes = [] if shared_writes is None else shared_writes
+
+    def write_shared(group_id, content):
+        writes.append(group_id)
+        return {
             "group_id": group_id,
             "content": content,
             "reference": f"group://{group_id}",
             "cache_backed": False,
-        })
-        if shared
-        else None
-    )
+        }
+
+    create_shared = write_shared if shared else None
     queue = create_agent_task_queue(
         {
             "agent_tasks": {"max_wait_seconds": 1},

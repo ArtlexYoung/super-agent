@@ -1513,6 +1513,19 @@ Status: implemented.
 - Preserve task JSON fields, model pricing, rotation, circuit breakers, wait/wake behavior,
   nested queues, and compressed subagent records.
 
+## v0.1.52: One Group Queue
+
+Status: implemented.
+
+- Make decision groups an explicit batch policy composed with `AgentTaskQueue` instead of a
+  mixin that inherits and manipulates the queue as a second controller.
+- Build each group member task once, preview model choices once, and commit those exact choices
+  after the explicit cost check without repeating selection or pricing.
+- Delay central shared-context disclosure until the budget passes, so rejected groups create no
+  tasks, cache entries, rotation changes, circuit changes, or subagent calls.
+- Reuse the queue's task transitions, dispatch events, serial consumers, retries, cancellation,
+  and completion notifications for every group member.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

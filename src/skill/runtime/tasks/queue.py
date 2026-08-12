@@ -22,10 +22,9 @@ from skill.runtime.tasks.agents import (
     read_optional_estimated_tokens,
 )
 from skill.runtime.tasks.groups import (
+    AgentGroups,
     AgentGroupSettings,
-    AgentGroupOptions,
 )
-from skill.runtime.tasks.groups import AgentGroupTools
 from skill.runtime.handlers import (
     SkillAction,
     SkillTool,
@@ -50,7 +49,7 @@ _TRANSITIONS = {
 }
 
 
-class AgentTaskQueue(AgentGroupTools):
+class AgentTaskQueue:
     """Give each subagent one serial consumer and wake the producer on demand."""
 
     def __init__(
@@ -60,7 +59,8 @@ class AgentTaskQueue(AgentGroupTools):
         run_subagent: Callable[..., dict[str, object]],
         record_event: Callable[[str, dict[str, object]], object],
         record_result: Callable[[dict[str, object]], None] | None = None,
-        group_options: AgentGroupOptions | None = None,
+        group_settings: AgentGroupSettings | None = None,
+        create_shared_context: Callable[[str, str], dict[str, object]] | None = None,
     ) -> None:
         names = [str(item.get("name", "")).strip() for item in subagents]
         if not names or any(not name for name in names) or len(names) != len(set(names)):
@@ -69,16 +69,17 @@ class AgentTaskQueue(AgentGroupTools):
         self.run_subagent = run_subagent
         self.record_event = record_event
         self.record_result = record_result
-        self.group_options = group_options
         self._condition = Condition(RLock())
         self._tasks: dict[str, AgentTask] = {}
-        self._groups: dict[str, AgentGroup] = {}
-        self._group_failures: list[dict[str, object]] = []
         self._executors: dict[str, ThreadPoolExecutor] = {}
         self._observed_terminal: set[str] = set()
         self._started_task_count = 0
-        self._group_attempt_count = 0
         self._agent_pool = SubagentPool(settings, subagents, record_event)
+        self._groups = (
+            None
+            if group_settings is None
+            else AgentGroups(self, group_settings, create_shared_context)
+        )
         self._retry_timers: list[Timer] = []
         self._closed = False
 
@@ -151,7 +152,10 @@ class AgentTaskQueue(AgentGroupTools):
                 "agent-task",
             ),
         )
-        return tools if self.group_options is None else (*tools, *self._create_group_tools())
+        return tools if self._groups is None else (*tools, *self._groups.create_tools())
+
+    def list_groups(self) -> list[dict[str, object]]:
+        return [] if self._groups is None else self._groups.list_groups()
 
     def list_tasks(self) -> list[dict[str, object]]:
         with self._condition:
@@ -160,7 +164,7 @@ class AgentTaskQueue(AgentGroupTools):
     def require_finished(self) -> None:
         with self._condition:
             if not self._tasks:
-                if self._group_failures:
+                if self._groups is not None and self._groups.has_failures:
                     return
                 raise RuntimeError("agent_tasks Skill must create at least one task")
             unfinished = [
@@ -222,20 +226,7 @@ class AgentTaskQueue(AgentGroupTools):
                 task,
                 requested_agent,
             )
-            queued = self._transition_locked(task, "queued", agent_name=choice.name)
-            self.record_event(
-                "agent_task.dispatched",
-                {
-                    "task_id": task_id,
-                    **choice.to_dict(),
-                    "agent_selection": self.settings.agent_selection,
-                    "rotation_limited": (
-                        self.settings.agent_selection == "rotate"
-                        and choice.candidate_count < 2
-                    ),
-                },
-            )
-            self._submit_locked(choice.name, task_id)
+            queued = self._queue_selected_task_locked(task, choice)
             return {
                 "task": queued.to_dict(),
                 **choice.to_dict(),
@@ -244,6 +235,31 @@ class AgentTaskQueue(AgentGroupTools):
                     and choice.candidate_count < 2
                 ),
             }
+
+    def _queue_selected_task_locked(
+        self,
+        task: AgentTask,
+        choice: AgentChoice,
+        *,
+        group_id: str | None = None,
+    ) -> AgentTask:
+        queued = self._transition_locked(task, "queued", agent_name=choice.name)
+        data: dict[str, object] = {
+            "task_id": task.task_id,
+            **choice.to_dict(),
+            "agent_selection": self.settings.agent_selection,
+        }
+        if group_id is not None:
+            data["group_id"] = group_id
+            data["group_role"] = task.group_role
+        else:
+            data["rotation_limited"] = (
+                self.settings.agent_selection == "rotate"
+                and choice.candidate_count < 2
+            )
+        self.record_event("agent_task.dispatched", data)
+        self._submit_locked(choice.name, task.task_id)
+        return queued
 
     def _consume_task(self, task_id: str) -> None:
         try:
@@ -529,7 +545,9 @@ class AgentTaskQueue(AgentGroupTools):
         self._tasks[task.task_id] = updated
         self._record_locked(f"agent_task.{status}", updated)
         if updated.group_id is not None and status in _TERMINAL_STATUSES:
-            self._refresh_group_locked(updated.group_id)
+            if self._groups is None:
+                raise RuntimeError("group task exists without an active group queue")
+            self._groups.refresh(updated.group_id)
         return updated
 
     def _record_locked(self, event_type: str, task: AgentTask) -> None:
@@ -554,13 +572,9 @@ def create_agent_task_queue(
         if "agent_groups" in tools:
             raise ValueError("agent_groups requires agent_tasks in the same task Skill")
         return None
-    group_options = (
-        None
-        if "agent_groups" not in tools
-        else AgentGroupOptions(
-            AgentGroupSettings.from_dict(tools["agent_groups"]),
-            create_shared_context,
-        )
+    group_settings = (
+        None if "agent_groups" not in tools
+        else AgentGroupSettings.from_dict(tools["agent_groups"])
     )
     return AgentTaskQueue(
         AgentTaskQueueSettings.from_dict(tools["agent_tasks"]),
@@ -568,7 +582,8 @@ def create_agent_task_queue(
         run_subagent,
         record_event,
         record_result,
-        group_options,
+        group_settings,
+        create_shared_context,
     )
 
 

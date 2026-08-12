@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import math
 import urllib.error
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from time import monotonic
 from typing import Callable
 
@@ -157,6 +157,7 @@ class AgentChoice:
     successful_tasks: int
     unavailable_failures: int
     score: float
+    selection_key: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -321,13 +322,13 @@ class SubagentPool:
             model_key = model or f"agent:{agent['name']}"
             if require_different_models and model_key in selected_models:
                 continue
-            choice = self._finish_choice(
+            choice = replace(self._finish_choice(
                 agent,
                 selected_by,
                 (len(available), virtual_active.get(str(agent["name"]), 0)),
                 task,
                 commit,
-            )
+            ), selection_key=rotation_key)
             selected.append(choice)
             selected_models.add(model_key)
             virtual_active[choice.name] = virtual_active.get(choice.name, 0) + 1
@@ -336,6 +337,16 @@ class SubagentPool:
                 self._rotation_positions.get(rotation_key, 0) + len(selected)
             )
         return selected
+
+    def commit_group(self, choices: list[AgentChoice]) -> None:
+        """Commit one previously previewed group without selecting or pricing it again."""
+        for choice in choices:
+            self._commit_choice(choice.name)
+        if self.settings.agent_selection == "rotate" and choices:
+            rotation_key = choices[0].selection_key
+            self._rotation_positions[rotation_key] = (
+                self._rotation_positions.get(rotation_key, 0) + len(choices)
+            )
 
     def record_success(self, name: str) -> None:
         health = self._health[name]
@@ -418,10 +429,8 @@ class SubagentPool:
             if self.settings.agent_selection == "rotate"
             else base_score / (1 + active_count)
         )
-        circuit = self._circuits[name]
-        if commit and circuit.state == "open":
-            circuit.state = "half_open"
-            self.record_event("agent_task.circuit_half_open", {"agent_name": name})
+        if commit:
+            self._commit_choice(name)
         return AgentChoice(
             name,
             selected_by,
@@ -436,6 +445,12 @@ class SubagentPool:
             health.unavailable_failures,
             round(score, 8),
         )
+
+    def _commit_choice(self, name: str) -> None:
+        circuit = self._circuits[name]
+        if circuit.state == "open":
+            circuit.state = "half_open"
+            self.record_event("agent_task.circuit_half_open", {"agent_name": name})
 
 
 def is_agent_unavailable(error: Exception) -> bool:
