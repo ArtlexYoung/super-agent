@@ -306,28 +306,31 @@ def _encode_checkpoint_value(value: object) -> bytes:
     ).encode("utf-8")
 
 
-@dataclass
-class RuntimeContext:
-    """Dependencies shared by one Agent and its task Runtime."""
-
-    config: CommonConfig
-    provider_pool: ProviderPool
-    skill_handlers: SkillHandlers
-    storage: StorageBackend | None
-    create_action_rules: Callable[[], ActionRules] | None
-    user_secrets: UserSecretResolver
-    disclosure_factory: DisclosureStorageFactory | None
-    code_model_profiles: tuple[ModelProfile, ...] = ()
-    event_subscribers: RuntimeEventSubscribers = field(
-        default_factory=RuntimeEventSubscribers
-    )
-
-
 class Runtime:
     """Own only the lifecycle and execution of Agent tasks."""
 
-    def __init__(self, context: RuntimeContext) -> None:
-        self.context = context
+    def __init__(
+        self,
+        config: CommonConfig,
+        provider_pool: ProviderPool,
+        skill_handlers: SkillHandlers,
+        storage: StorageBackend | None,
+        create_action_rules: Callable[[], ActionRules] | None,
+        user_secrets: UserSecretResolver,
+        disclosure_factory: DisclosureStorageFactory | None,
+        *,
+        code_model_profiles: tuple[ModelProfile, ...] = (),
+        event_subscribers: RuntimeEventSubscribers | None = None,
+    ) -> None:
+        self.config = config
+        self.provider_pool = provider_pool
+        self.skill_handlers = skill_handlers
+        self.storage = storage
+        self.create_action_rules = create_action_rules
+        self.user_secrets = user_secrets
+        self.disclosure_factory = disclosure_factory
+        self.code_model_profiles = code_model_profiles
+        self.event_subscribers = event_subscribers or RuntimeEventSubscribers()
 
     def run_task(
         self,
@@ -343,13 +346,13 @@ class Runtime:
 
         identity = RunIdentity.create(
             user_id,
-            self.context.config.agent.name,
+            self.config.agent.name,
             run_id=run_id,
             conversation_id=conversation_id,
             parent_run_id=parent_run_id,
         )
         run, task_loop = _create_run(
-            self.context,
+            self,
             request,
             identity,
             event_listener=event_listener,
@@ -430,7 +433,7 @@ class Runtime:
 
 
 def _create_run(
-    context: RuntimeContext,
+    runtime: Runtime,
     request: Task,
     identity: RunIdentity,
     *,
@@ -440,10 +443,10 @@ def _create_run(
 
     event_log = RunEventLog(
         identity,
-        backend=context.storage,
+        backend=runtime.storage,
         event_listener=event_listener,
     )
-    store = _create_run_event_store(context, identity, event_log)
+    store = _create_run_event_store(runtime, identity, event_log)
     start_data = {"prompt": request.prompt}
     if request.subagent_record_options is not None:
         start_data = request.subagent_record_options.record_text(
@@ -456,11 +459,11 @@ def _create_run(
         extra_data=start_data,
     )
     try:
-        skills = _create_skills(context, store, identity)
-        profiles = _read_model_profiles(context, skills, identity.user_id)
-        task_loop = _create_task_loop(context, profiles, identity.user_id)
+        skills = _create_skills(runtime, store, identity)
+        profiles = _read_model_profiles(runtime, skills, identity.user_id)
+        task_loop = _create_task_loop(runtime, profiles, identity.user_id)
         run = Run(
-            config=context.config,
+            config=runtime.config,
             model_profile=None,
             provider=None,
             skills=skills,
@@ -468,10 +471,10 @@ def _create_run(
             event_log=event_log,
             store=store,
             allow_subscriber_failures=request.allow_subscriber_failures,
-            create_action_rules=context.create_action_rules,
+            create_action_rules=runtime.create_action_rules,
             subagent_record_options=request.subagent_record_options,
             event_subscribers=RuntimeEventSubscribers(
-                context.event_subscribers.list_subscribers()
+                runtime.event_subscribers.list_subscribers()
             ),
         )
         for event in event_log.list_events():
@@ -487,32 +490,32 @@ def _create_run(
 
 
 def _create_run_event_store(
-    context: RuntimeContext,
+    runtime: Runtime,
     identity: RunIdentity,
     event_log: RunEventLog,
 ):
-    if context.storage is None:
+    if runtime.storage is None:
         return None
     from core.state.store import EventStore
 
     return EventStore(
-        context.storage,
-        context.config.storage.path,
+        runtime.storage,
+        runtime.config.storage.path,
         identity.user_id,
         identity.agent_name,
         run_event_log=event_log,
-        disclosure_factory=context.disclosure_factory,
+        disclosure_factory=runtime.disclosure_factory,
     )
 
 
 def _create_skills(
-    context: RuntimeContext,
+    runtime: Runtime,
     store,
     identity: RunIdentity,
 ) -> SkillCollection:
     return create_skills(
-        context.config,
-        handlers=context.skill_handlers,
+        runtime.config,
+        handlers=runtime.skill_handlers,
         store=store,
         identity=identity if store is not None else None,
         include_freshness=False,
@@ -520,15 +523,15 @@ def _create_skills(
 
 
 def _read_model_profiles(
-    context: RuntimeContext,
+    runtime: Runtime,
     skills: SkillCollection,
     user_id: str,
 ) -> list[ModelProfile]:
-    environment = context.user_secrets.get_environment_for_user(user_id)
-    if context.code_model_profiles and not _has_model_skill(skills):
-        return list(context.code_model_profiles)
+    environment = runtime.user_secrets.get_environment_for_user(user_id)
+    if runtime.code_model_profiles and not _has_model_skill(skills):
+        return list(runtime.code_model_profiles)
     profiles = read_model_profiles(skills, environment)
-    return profiles or list(context.code_model_profiles)
+    return profiles or list(runtime.code_model_profiles)
 
 
 def _has_model_skill(skills: SkillCollection) -> bool:
@@ -539,16 +542,16 @@ def _has_model_skill(skills: SkillCollection) -> bool:
 
 
 def _create_task_loop(
-    context: RuntimeContext,
+    runtime: Runtime,
     profiles: list[ModelProfile],
     user_id: str,
 ) -> ModelLoop:
     from core.runtime.loop import ModelLoop
 
-    environment = context.user_secrets.get_environment_for_user(user_id)
+    environment = runtime.user_secrets.get_environment_for_user(user_id)
     return ModelLoop(
         profiles,
-        context.provider_pool.create_user_provider_pool(environment),
+        runtime.provider_pool.create_user_provider_pool(environment),
     )
 
 

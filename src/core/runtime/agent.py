@@ -24,7 +24,7 @@ from core.provider import (
     UserSecretLookup,
     UserSecretResolver,
 )
-from core.runtime.run import Run, Runtime, RuntimeContext
+from core.runtime.run import Run, Runtime
 from core.runtime.team import AgentTeam, SubAgent
 from core.state.access import StateAccess
 from core.state.conversations import (
@@ -540,17 +540,15 @@ class AgentSetup:
         code_profiles: tuple[ModelProfile, ...],
     ) -> Runtime:
         return Runtime(
-            RuntimeContext(
-                config,
-                provider_pool,
-                self.skill_handlers,
-                storage,
-                self.get_action_rules,
-                self.user_secrets,
-                self.disclosure_factory,
-                code_model_profiles=code_profiles,
-                event_subscribers=self.event_subscribers,
-            )
+            config,
+            provider_pool,
+            self.skill_handlers,
+            storage,
+            self.get_action_rules,
+            self.user_secrets,
+            self.disclosure_factory,
+            code_model_profiles=code_profiles,
+            event_subscribers=self.event_subscribers,
         )
 
     def _read_model_profiles_for_user(

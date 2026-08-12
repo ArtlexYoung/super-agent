@@ -1548,6 +1548,17 @@ Status: implemented.
 - Keep subagent task pricing explicit while treating missing declared prices as zero without
   silently choosing another model.
 
+## v0.1.55: Direct Runtime Dependencies
+
+Status: implemented.
+
+- Remove the parameter-only `RuntimeContext` container.
+- Let `Runtime` own its explicit configuration, provider, Skill, storage, security, user-secret,
+  disclosure, and subscriber dependencies.
+- Pass the Runtime owner into run creation so one execution has a direct `Runtime -> Run` path.
+- Preserve per-user model loading, storage isolation, action checks, event subscribers, and child
+  run identity without compatibility wrappers.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof
