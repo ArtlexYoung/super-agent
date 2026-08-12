@@ -11,8 +11,8 @@ from core.provider import (
     ChatProvider,
     Message,
     ModelResponse,
+    ModelPricing,
     ProviderCall,
-    ProviderConnection,
     ToolCall,
     ToolDefinition,
     call_chat_model,
@@ -41,42 +41,22 @@ UNTRUSTED_CONTEXT_POLICY = (
 class SelectedModel:
     """One configured model selected for the next Provider call."""
 
-    profile_key: str
-    model: str
-    connection: ProviderConnection
+    profile: ModelProfile
     selected_by: str
     reason: str
     evidence: tuple[str, ...] = ()
-    input_cost_per_million: float | None = None
-    output_cost_per_million: float | None = None
-    cache_creation_cost_per_million: float | None = None
-    cache_read_cost_per_million: float | None = None
 
     def to_dict(self) -> dict[str, object]:
         return {
-            "key": self.profile_key,
-            "model": self.model,
-            "provider": self.connection.provider,
-            "base_url": self.connection.base_url,
-            "api_key_env": self.connection.api_key_env,
+            "key": self.profile.key,
+            "model": self.profile.model,
+            "provider": self.profile.connection.provider,
+            "base_url": self.profile.connection.base_url,
+            "api_key_env": self.profile.connection.api_key_env,
             "selected_by": self.selected_by,
             "reason": self.reason,
             "evidence": list(self.evidence),
-            "pricing": {
-                "input_cost_per_million": self.input_cost_per_million or 0.0,
-                "output_cost_per_million": self.output_cost_per_million or 0.0,
-                "cache_creation_cost_per_million": self.cache_creation_cost_per_million or 0.0,
-                "cache_read_cost_per_million": self.cache_read_cost_per_million or 0.0,
-                "total_cost_per_million": sum(
-                    value or 0.0
-                    for value in (
-                        self.input_cost_per_million,
-                        self.output_cost_per_million,
-                        self.cache_creation_cost_per_million,
-                        self.cache_read_cost_per_million,
-                    )
-                ),
-            },
+            "pricing": self.profile.traits.pricing.to_dict(),
         }
 
 
@@ -202,16 +182,10 @@ class ModelCalls:
                 f"selected model {profile.key} is not ready; configure {requirement}"
             )
         return SelectedModel(
-            profile_key=profile.key,
-            model=profile.model,
-            connection=profile.connection,
+            profile=profile,
             selected_by="task_evidence",
             reason=f"evidence score {assignment.score:.4f}",
             evidence=assignment.evidence,
-            input_cost_per_million=profile.traits.input_cost_per_million,
-            output_cost_per_million=profile.traits.output_cost_per_million,
-            cache_creation_cost_per_million=profile.traits.cache_creation_cost_per_million,
-            cache_read_cost_per_million=profile.traits.cache_read_cost_per_million,
         )
 
     def select_default_model(self) -> SelectedModel:
@@ -225,15 +199,9 @@ class ModelCalls:
                 f"default model {profile.key} is not ready; configure {requirement}"
             )
         return SelectedModel(
-            profile_key=profile.key,
-            model=profile.model,
-            connection=profile.connection,
+            profile=profile,
             selected_by="default",
             reason="configured default model",
-            input_cost_per_million=profile.traits.input_cost_per_million,
-            output_cost_per_million=profile.traits.output_cost_per_million,
-            cache_creation_cost_per_million=profile.traits.cache_creation_cost_per_million,
-            cache_read_cost_per_million=profile.traits.cache_read_cost_per_million,
         )
 
     def create_text_model(
@@ -269,34 +237,15 @@ class ModelCalls:
             context.record_event,
         )
 
-    def require_model_profile(self, decision: SelectedModel) -> ModelProfile:
-        profile = next(
-            (
-                item
-                for item in self.model_profiles
-                if item.key == decision.profile_key
-            ),
-            None,
-        )
-        if profile is None:
-            raise RuntimeError(
-                f"selected model profile is unavailable: {decision.profile_key}"
-            )
-        if profile.model != decision.model or profile.connection != decision.connection:
-            raise RuntimeError(
-                f"selected model decision no longer matches profile: {decision.profile_key}"
-            )
-        return profile
-
     def _prepare_model_call(
         self,
         decision: SelectedModel,
         context: ModelCallContext,
     ) -> ChatProvider:
-        profile = self.require_model_profile(decision)
+        profile = decision.profile
         provider = self.provider_pool.get_chat_provider(
-            decision.profile_key,
-            decision.connection,
+            profile.key,
+            profile.connection,
         )
         if context.select_model is not None:
             context.select_model(profile, provider)
@@ -501,9 +450,11 @@ def _score_model_candidate(
     if traits.quality_score is not None:
         score += traits.quality_score * 2
         evidence.append(f"declared_quality={traits.quality_score:.4f}")
-    cost_score = 1.0 / (1.0 + traits.total_cost_per_million)
+    cost_score = 1.0 / (1.0 + traits.pricing.total_cost_per_million)
     score += cost_score
-    evidence.append(f"configured_total_cost={traits.total_cost_per_million:.4f}")
+    evidence.append(
+        f"configured_total_cost={traits.pricing.total_cost_per_million:.4f}"
+    )
     if stats is not None and stats.call_count:
         score += stats.reliability + stats.average_quality
         evidence.extend(
@@ -570,15 +521,12 @@ def _to_provider_call(
     tools: list[ToolDefinition] | None,
 ) -> ProviderCall:
     return ProviderCall(
-        profile_key=decision.profile_key,
-        model=decision.model,
+        profile_key=decision.profile.key,
+        model=decision.profile.model,
         purpose=context.purpose,
         messages=tuple(messages),
         tools=None if tools is None else tuple(tools),
-        input_cost_per_million=decision.input_cost_per_million or 0.0,
-        output_cost_per_million=decision.output_cost_per_million or 0.0,
-        cache_creation_cost_per_million=decision.cache_creation_cost_per_million or 0.0,
-        cache_read_cost_per_million=decision.cache_read_cost_per_million or 0.0,
+        pricing=decision.profile.traits.pricing,
         selection={
             "selected_by": decision.selected_by,
             "reason": decision.reason,

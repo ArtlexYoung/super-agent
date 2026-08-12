@@ -14,6 +14,12 @@ ToolDefinition = dict[str, Any]
 MOCK_PROVIDER = "mock"
 OPENAI_COMPATIBLE_PROVIDER = "openai-compatible"
 ANTHROPIC_COMPATIBLE_PROVIDER = "anthropic-compatible"
+MODEL_PRICE_FIELDS = (
+    "input_cost_per_million",
+    "output_cost_per_million",
+    "cache_creation_cost_per_million",
+    "cache_read_cost_per_million",
+)
 
 
 @dataclass(frozen=True)
@@ -21,6 +27,40 @@ class ProviderConnection:
     provider: str
     base_url: str | None = None
     api_key_env: str | None = None
+
+
+@dataclass(frozen=True)
+class ModelPricing:
+    input_cost_per_million: float | None = None
+    output_cost_per_million: float | None = None
+    cache_creation_cost_per_million: float | None = None
+    cache_read_cost_per_million: float | None = None
+
+    @classmethod
+    def from_mapping(cls, value: Mapping[str, object]) -> ModelPricing:
+        prices: dict[str, float | None] = {}
+        for name in MODEL_PRICE_FIELDS:
+            raw = value.get(name)
+            if raw is None:
+                prices[name] = None
+                continue
+            if isinstance(raw, bool) or not isinstance(raw, int | float):
+                raise ValueError(f"model price {name} must be a number")
+            price = float(raw)
+            if not math.isfinite(price) or price < 0:
+                raise ValueError(f"model price {name} must be finite and non-negative")
+            prices[name] = price
+        return cls(**prices)
+
+    @property
+    def total_cost_per_million(self) -> float:
+        return sum(getattr(self, name) or 0.0 for name in MODEL_PRICE_FIELDS)
+
+    def to_dict(self, *, include_missing: bool = True) -> dict[str, float | None]:
+        data = {name: getattr(self, name) for name in MODEL_PRICE_FIELDS}
+        if not include_missing:
+            data = {name: value for name, value in data.items() if value is not None}
+        return {**data, "total_cost_per_million": self.total_cost_per_million}
 
 
 @dataclass(frozen=True)
@@ -76,10 +116,7 @@ class ProviderCall:
     purpose: str
     messages: tuple[Message, ...]
     tools: tuple[ToolDefinition, ...] | None = None
-    input_cost_per_million: float = 0.0
-    output_cost_per_million: float = 0.0
-    cache_creation_cost_per_million: float = 0.0
-    cache_read_cost_per_million: float = 0.0
+    pricing: ModelPricing = ModelPricing()
     selection: dict[str, object] | None = None
 
 
@@ -105,7 +142,7 @@ def call_chat_model(
         "profile": call.profile_key,
         "model": call.model,
         "purpose": call.purpose,
-        "pricing": _provider_call_pricing(call),
+        "pricing": call.pricing.to_dict(),
         **dict(call.selection or {}),
     }
     record_event("model.call.selected", selected)
@@ -301,8 +338,8 @@ def _provider_call_metrics(
     started_at: float,
 ) -> dict[str, object]:
     output_tokens = estimate_text_tokens(output)
-    input_cost = input_tokens * call.input_cost_per_million
-    output_cost = output_tokens * call.output_cost_per_million
+    input_cost = input_tokens * (call.pricing.input_cost_per_million or 0.0)
+    output_cost = output_tokens * (call.pricing.output_cost_per_million or 0.0)
     return {
         "profile": call.profile_key,
         "model": call.model,
@@ -311,21 +348,12 @@ def _provider_call_metrics(
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
         "estimated_cost": (input_cost + output_cost) / 1_000_000,
-        "pricing": _provider_call_pricing(call),
+        "pricing": call.pricing.to_dict(),
         "estimated_cost_excludes_cache": bool(
-            call.cache_creation_cost_per_million or call.cache_read_cost_per_million
+            call.pricing.cache_creation_cost_per_million
+            or call.pricing.cache_read_cost_per_million
         ),
     }
-
-
-def _provider_call_pricing(call: ProviderCall) -> dict[str, float]:
-    pricing = {
-        "input_cost_per_million": call.input_cost_per_million,
-        "output_cost_per_million": call.output_cost_per_million,
-        "cache_creation_cost_per_million": call.cache_creation_cost_per_million,
-        "cache_read_cost_per_million": call.cache_read_cost_per_million,
-    }
-    return {**pricing, "total_cost_per_million": sum(pricing.values())}
 
 
 def _model_response_text(response: ModelResponse) -> str:

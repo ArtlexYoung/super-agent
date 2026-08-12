@@ -10,6 +10,7 @@ from super_agent import Agent
 from core.provider import (
     MockProvider,
     ModelResponse,
+    ModelPricing,
     OpenAICompatibleProvider,
     ProviderConnection,
     ToolCall,
@@ -205,12 +206,18 @@ class ModelSkillTests(unittest.TestCase):
             self.assertEqual("unit-model", agent.model_profile.model)
             self.assertEqual(["summary"], agent.model_profile.traits.purposes)
             self.assertEqual(0.75, agent.model_profile.traits.quality_score)
-            self.assertAlmostEqual(1.4, agent.model_profile.traits.total_cost_per_million)
+            self.assertAlmostEqual(
+                1.4,
+                agent.model_profile.traits.pricing.total_cost_per_million,
+            )
             self.assertEqual(
                 0.1,
-                agent.model_profile.traits.cache_creation_cost_per_million,
+                agent.model_profile.traits.pricing.cache_creation_cost_per_million,
             )
-            self.assertEqual(0.3, agent.model_profile.traits.cache_read_cost_per_million)
+            self.assertEqual(
+                0.3,
+                agent.model_profile.traits.pricing.cache_read_cost_per_million,
+            )
             self.assertEqual("skill", agent.model_profile.source)
 
     def test_selected_model_skill_is_recorded_and_evaluated_as_used(self) -> None:
@@ -631,7 +638,7 @@ def _profile_for_assignment(
                 ["code-review"],
                 [],
                 quality,
-                input_cost_per_million=input_cost,
+                pricing=ModelPricing(input_cost_per_million=input_cost),
             ),
             default=default,
         ),

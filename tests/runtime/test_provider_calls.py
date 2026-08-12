@@ -8,6 +8,7 @@ from core.provider import (
     ActionTurn,
     FinalTurn,
     MockProvider,
+    ModelPricing,
     ModelResponse,
     ProviderCall,
     ToolCall,
@@ -62,10 +63,7 @@ class ProviderCallTests(unittest.TestCase):
             model="test",
             purpose="answer",
             messages=({"role": "user", "content": "hello"},),
-            input_cost_per_million=0.1,
-            output_cost_per_million=0.2,
-            cache_creation_cost_per_million=0.3,
-            cache_read_cost_per_million=0.4,
+            pricing=ModelPricing(0.1, 0.2, 0.3, 0.4),
         )
 
         response = call_chat_model(

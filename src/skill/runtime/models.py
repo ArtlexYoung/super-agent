@@ -11,6 +11,8 @@ from core.provider import (
     ANTHROPIC_COMPATIBLE_PROVIDER,
     MOCK_PROVIDER,
     OPENAI_COMPATIBLE_PROVIDER,
+    MODEL_PRICE_FIELDS,
+    ModelPricing,
     ProviderConnection,
     normalize_provider_connection,
 )
@@ -24,12 +26,6 @@ DEFAULT_OLLAMA_MODEL = "llama3.2"
 DEFAULT_SILICONFLOW_MODEL = "THUDM/GLM-4-9B-0414"
 DEFAULT_SILICONFLOW_BASE_URL = "https://api.siliconflow.cn/v1"
 
-MODEL_PRICE_FIELDS = (
-    "input_cost_per_million",
-    "output_cost_per_million",
-    "cache_creation_cost_per_million",
-    "cache_read_cost_per_million",
-)
 MODEL_CONFIGURATION_FIELDS = (
     "provider",
     "model",
@@ -56,22 +52,7 @@ class ModelTraits:
     strengths: list[str]
     quality_score: float | None = None
     expected_latency_ms: int | None = None
-    input_cost_per_million: float | None = None
-    output_cost_per_million: float | None = None
-    cache_creation_cost_per_million: float | None = None
-    cache_read_cost_per_million: float | None = None
-
-    @property
-    def total_cost_per_million(self) -> float:
-        return sum(
-            value or 0.0
-            for value in (
-                self.input_cost_per_million,
-                self.output_cost_per_million,
-                self.cache_creation_cost_per_million,
-                self.cache_read_cost_per_million,
-            )
-        )
+    pricing: ModelPricing = ModelPricing()
 
 
 @dataclass(frozen=True)
@@ -105,10 +86,7 @@ class ModelDefinition:
                 expected_latency_ms=_optional_nonnegative_integer(
                     data, "expected_latency_ms"
                 ),
-                **{
-                    name: _optional_nonnegative_number(data, name)
-                    for name in MODEL_PRICE_FIELDS
-                },
+                pricing=ModelPricing.from_mapping(data),
             ),
             default=_boolean(data, "default", False),
             agent_can_update_connection=_boolean(
@@ -132,15 +110,16 @@ class ModelDefinition:
             "api_key_env": self.connection.api_key_env,
             "quality_score": traits.quality_score,
             "expected_latency_ms": traits.expected_latency_ms,
-            **{name: getattr(traits, name) for name in MODEL_PRICE_FIELDS},
+            **traits.pricing.to_dict(include_missing=False),
         }
+        optional.pop("total_cost_per_million", None)
         data.update({key: value for key, value in optional.items() if value is not None})
         return data
 
     def to_public_dict(self) -> dict[str, object]:
         return {
             **self.to_configuration(),
-            "total_cost_per_million": self.traits.total_cost_per_million,
+            "total_cost_per_million": self.traits.pricing.total_cost_per_million,
         }
 
     def to_dispatch_dict(self) -> dict[str, object]:
@@ -149,8 +128,7 @@ class ModelDefinition:
             "model": self.model,
             "supports": list(traits.supports),
             "purposes": list(traits.purposes),
-            **{name: getattr(traits, name) or 0.0 for name in MODEL_PRICE_FIELDS},
-            "total_cost_per_million": traits.total_cost_per_million,
+            **traits.pricing.to_dict(),
         }
 
 

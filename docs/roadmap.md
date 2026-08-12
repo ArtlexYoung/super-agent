@@ -1538,6 +1538,16 @@ Status: implemented.
   definition rather than duplicating its fields.
 - Preserve the flat model configuration shape and user-scoped model Skill behavior.
 
+## v0.1.54: One Pricing Snapshot
+
+Status: implemented.
+
+- Make `ModelPricing` the single owner of input, output, cache creation, and cache read prices.
+- Carry one selected `ModelProfile` and its immutable pricing snapshot through model calls.
+- Let Provider audit and cost metrics read the same pricing object used for selection.
+- Keep subagent task pricing explicit while treating missing declared prices as zero without
+  silently choosing another model.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

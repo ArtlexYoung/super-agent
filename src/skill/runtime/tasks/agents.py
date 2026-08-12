@@ -552,7 +552,7 @@ def _model_cost(
 
 
 def _read_pricing(model: dict[str, object]) -> dict[str, float]:
-    pricing = {name: float(model.get(name, 0.0)) for name in PRICE_FIELDS}
+    pricing = {name: float(model.get(name) or 0.0) for name in PRICE_FIELDS}
     return {**pricing, "total_cost_per_million": sum(pricing.values())}
 
 

@@ -254,7 +254,7 @@ class ModelLoop:
                 self.provider_pool,
                 run,
                 request.purpose,
-                decision.profile_key,
+                decision.profile.key,
             ).create_tool(),
         )
         return _LoopState(
@@ -272,11 +272,9 @@ class ModelLoop:
         decision: SelectedModel,
         state: _LoopState,
     ) -> RunResult:
-        supports_tools = "tools" in self.model_calls.require_model_profile(
-            decision
-        ).traits.supports
+        supports_tools = "tools" in decision.profile.traits.supports
         if "tools" in request.required_features and not supports_tools:
-            raise ValueError(f"model {decision.profile_key} does not support tools")
+            raise ValueError(f"model {decision.profile.key} does not support tools")
         definitions = (
             state.tools.get_tool_definitions()
             if state.workflow.uses_tools and supports_tools
@@ -323,10 +321,10 @@ class ModelLoop:
             state.workflow = state.tools.task_policy
 
     def _select_run_model(self, run: Run, decision: SelectedModel) -> None:
-        profile = self.model_calls.require_model_profile(decision)
+        profile = decision.profile
         provider = self.provider_pool.get_chat_provider(
-            decision.profile_key,
-            decision.connection,
+            profile.key,
+            profile.connection,
         )
         run.select_model(profile, provider)
 
@@ -409,16 +407,10 @@ def _selected_model(
     evidence: tuple[str, ...] = (),
 ) -> SelectedModel:
     return SelectedModel(
-        profile_key=profile.key,
-        model=profile.model,
-        connection=profile.connection,
+        profile=profile,
         selected_by=selected_by,
         reason=reason,
         evidence=evidence,
-        input_cost_per_million=profile.traits.input_cost_per_million,
-        output_cost_per_million=profile.traits.output_cost_per_million,
-        cache_creation_cost_per_million=profile.traits.cache_creation_cost_per_million,
-        cache_read_cost_per_million=profile.traits.cache_read_cost_per_million,
     )
 
 
