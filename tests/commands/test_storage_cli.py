@@ -122,7 +122,7 @@ class StorageCliTests(unittest.TestCase):
             with patch("sys.stdout", StringIO()):
                 self.assertEqual(0, write_minimal_project(tmp))
             with patch(
-                "adapter.storage.sql.postgresql.import_module",
+                "adapter.storage.remote.import_module",
                 side_effect=ModuleNotFoundError("psycopg is missing"),
             ):
                 error = StringIO()

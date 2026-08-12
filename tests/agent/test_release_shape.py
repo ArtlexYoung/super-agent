@@ -160,6 +160,10 @@ class ReleaseShapeTests(unittest.TestCase):
             "src/adapter/ag_ui_adapter/configuration.py",
             "src/adapter/ag_ui_adapter/protocol.py",
             "src/adapter/storage/sql/__init__.py",
+            "src/adapter/storage/sql/base.py",
+            "src/adapter/storage/sql/mysql.py",
+            "src/adapter/storage/sql/postgresql.py",
+            "src/adapter/worktree.py",
         ]
 
         self.assertEqual([], [path for path in removed_paths if Path(path).exists()])
@@ -291,6 +295,10 @@ class ReleaseShapeTests(unittest.TestCase):
                 "adapter.cli_adapter.run.serve",
                 "adapter.storage.copy",
                 "adapter.storage.values",
+                "adapter.storage.sql.base",
+                "adapter.storage.sql.mysql",
+                "adapter.storage.sql.postgresql",
+                "adapter.worktree",
                 "adapter.ag_ui_adapter.configuration",
                 "adapter.ag_ui_adapter.protocol",
                 "skill.runtime.files.models",

@@ -1598,6 +1598,19 @@ Status: implemented.
 - Delete the old single-directory replacement API plus model-specific and evolution-specific
   backup shells without migration aliases.
 
+## v0.1.59: Clear Adapter I/O Owners
+
+Status: implemented.
+
+- Keep repository mapping and isolated Git worktrees together in `adapter.repository`, the one
+  owner of code-repository inspection and isolation tools.
+- Keep shared remote SQL semantics, MySQL, and PostgreSQL in `adapter.storage.remote`, while JSONL
+  and standard-library SQLite remain distinct lightweight backends.
+- Remove the `adapter.worktree` module and nested `adapter.storage.sql` package without import
+  aliases, and make the release gate reject those old paths.
+- Reduce Python source files from 65 to 62 while preserving code tools, lazy optional database
+  drivers, storage copying, exact-query isolation, and explicit action boundaries.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

@@ -11,8 +11,7 @@ from pathlib import Path
 
 from adapter.agent import register_agent_skill_handler
 from adapter.processes import DeclaredProcessTools
-from adapter.repository import IncrementalRepositoryMap
-from adapter.worktree import IsolatedWorktreeTools
+from adapter.repository import IncrementalRepositoryMap, IsolatedWorktreeTools
 from core.checks import ActionEffect
 from core.config import CodeConfig, CodeSettings
 from core.files import write_bytes_atomically

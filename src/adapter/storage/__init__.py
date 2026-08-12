@@ -184,8 +184,7 @@ def _event_value_without_position(event: StorageEvent) -> tuple[object, ...]:
 
 # Concrete backends import the shared helpers above, so load them after those definitions.
 from adapter.storage.jsonl import JsonlStorage
-from adapter.storage.sql.mysql import MySqlStorage
-from adapter.storage.sql.postgresql import PostgreSqlStorage
+from adapter.storage.remote import MySqlStorage, PostgreSqlStorage
 from adapter.storage.sqlite import SqliteStorage
 
 __all__ = [
