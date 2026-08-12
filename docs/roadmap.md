@@ -1572,6 +1572,19 @@ Status: implemented.
 - Keep stateful and stateless results, AG-UI listeners, user isolation, and event sequence behavior
   unchanged while removing the Runtime observer layer.
 
+## v0.1.57: Canonical Learning Evidence
+
+Status: implemented.
+
+- Keep raw outcome and used-Skill evidence on the terminal run event and one canonical evaluation
+  record for each observed Skill revision.
+- Replace four duplicate learning progress snapshots with one `learning.completed` event that
+  references exact evaluation record IDs.
+- Derive current Skill freshness and model usage when reading a learning result instead of copying
+  those changing projections into the run log.
+- Preserve idempotent learning, explicit failure audit, model-free evaluation, and the existing
+  `RunLearningResult` interface while reducing long-lived event volume.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

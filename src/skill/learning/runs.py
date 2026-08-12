@@ -12,7 +12,6 @@ from skill.learning.freshness import calculate_skill_freshness
 from skill.learning.records import (
     SkillRevision,
     skill_revision_from_dict,
-    skill_revision_to_dict,
     EvaluationRecord,
     EvaluationResult,
     EvaluationSource,
@@ -46,46 +45,21 @@ def learn_from_run(
     events = store.read_run_events(run_id, include_sensitive=True)
     completed = _find_event(events, LEARNING_COMPLETED_EVENT)
     if completed is not None:
-        return _result_from_completed_event(completed, events)
+        return _result_from_completed_event(store, completed, events, rules)
     terminal = _require_terminal_event(events)
     revisions, result = _read_learning_evidence(terminal)
     identity = _identity_from_events(store, events)
-    store.append_run_event(identity, "learning.started", {"schema_version": 2})
     stage = "evaluation"
     try:
         records = _record_run_evaluations(store, terminal, revisions, result)
         record_ids = [record.record_id for record in records]
-        store.append_run_event(
-            identity,
-            "learning.evaluation.recorded",
-            {
-                "schema_version": 2,
-                "record_ids": record_ids,
-                "skill_revisions": [skill_revision_to_dict(item) for item in revisions],
-            },
-        )
-        stage = "freshness"
-        freshness = _calculate_current_freshness(store, revisions, rules)
-        store.append_run_event(
-            identity,
-            "learning.freshness.calculated",
-            {"schema_version": 2, "skills": freshness},
-        )
-        stage = "model_usage"
-        model_usage = _read_run_model_usage(store, run_id)
-        store.append_run_event(
-            identity,
-            "learning.model_usage.updated",
-            {"schema_version": 2, "models": model_usage},
-        )
+        stage = "completion"
         completed = store.append_run_event(
             identity,
             LEARNING_COMPLETED_EVENT,
             {
-                "schema_version": 2,
+                "schema_version": 3,
                 "evaluation_record_ids": record_ids,
-                "skill_freshness": freshness,
-                "model_usage": model_usage,
             },
         )
     except Exception as error:
@@ -107,8 +81,10 @@ def learn_from_run(
             )
         raise
     return _result_from_completed_event(
+        store,
         completed,
         store.read_run_events(run_id, include_sensitive=True),
+        rules,
     )
 
 
@@ -146,7 +122,7 @@ def _record_run_evaluations(
 
 def _calculate_current_freshness(
     store: EventStore,
-    revisions: list[SkillRevision],
+    records: list[EvaluationRecord],
     rules: FreshnessRules,
 ) -> list[dict[str, object]]:
     by_skill = calculate_skill_freshness(
@@ -155,7 +131,7 @@ def _calculate_current_freshness(
     )
     return [
         dict(by_skill[key])
-        for key in dict.fromkeys(revision.key for revision in revisions)
+        for key in dict.fromkeys(record.revision.key for record in records)
         if key in by_skill
     ]
 
@@ -195,23 +171,32 @@ def _read_learning_evidence(
 
 
 def _result_from_completed_event(
+    store: EventStore,
     completed: RunEvent,
     events: list[RunEvent],
+    rules: FreshnessRules,
 ) -> RunLearningResult:
-    expected = {
-        "schema_version", "evaluation_record_ids", "skill_freshness", "model_usage"
+    expected = {"schema_version", "evaluation_record_ids"}
+    if set(completed.data) != expected or completed.data.get("schema_version") != 3:
+        raise ValueError("run learning completion fields do not match schema v3")
+    record_ids = _string_list(
+        completed.data.get("evaluation_record_ids"), "evaluation_record_ids"
+    )
+    records_by_id = {
+        record.record_id: record
+        for record in read_evaluation_records(store, source_type="agent_run")
     }
-    if set(completed.data) != expected or completed.data.get("schema_version") != 2:
-        raise ValueError("run learning completion fields do not match schema v2")
+    missing = [record_id for record_id in record_ids if record_id not in records_by_id]
+    if missing:
+        raise ValueError(f"run learning evaluation records are missing: {missing}")
+    records = [records_by_id[record_id] for record_id in record_ids]
+    if any(record.source.run_id != completed.run_id for record in records):
+        raise ValueError("run learning evaluation record belongs to another run")
     return RunLearningResult(
         run_id=completed.run_id,
-        evaluation_record_ids=_string_list(
-            completed.data.get("evaluation_record_ids"), "evaluation_record_ids"
-        ),
-        skill_freshness=_object_list(
-            completed.data.get("skill_freshness"), "skill_freshness"
-        ),
-        model_usage=_object_list(completed.data.get("model_usage"), "model_usage"),
+        evaluation_record_ids=record_ids,
+        skill_freshness=_calculate_current_freshness(store, records, rules),
+        model_usage=_read_run_model_usage(store, completed.run_id),
         events=list(events),
     )
 
@@ -270,11 +255,6 @@ def _string_list(value: object, name: str) -> list[str]:
         raise ValueError(f"run learning {name} must be a string array")
     return list(value)
 
-
-def _object_list(value: object, name: str) -> list[dict[str, object]]:
-    if not isinstance(value, list) or not all(isinstance(item, dict) for item in value):
-        raise ValueError(f"run learning {name} must be an object array")
-    return [dict(item) for item in value]
 
 # UI projections are derived from the same canonical run evidence.
 from core.state.models import RunEvent

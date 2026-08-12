@@ -136,6 +136,21 @@ class RuntimeEventSubscriberTests(unittest.TestCase):
                 len(first.evaluation_record_ids),
                 len(read_evaluation_records(agent._setup.create_event_store())),
             )
+            learning_events = [
+                event.event_type
+                for event in first.events
+                if event.event_type.startswith("learning.")
+            ]
+            self.assertEqual(["learning.completed"], learning_events)
+            completed = next(
+                event
+                for event in first.events
+                if event.event_type == "learning.completed"
+            )
+            self.assertEqual(
+                {"schema_version", "evaluation_record_ids"},
+                set(completed.data),
+            )
 
     def test_stateless_run_stays_file_free_and_cannot_learn(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
