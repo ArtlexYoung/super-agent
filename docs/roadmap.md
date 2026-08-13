@@ -1623,6 +1623,19 @@ Status: implemented.
 - Reduce Python source files from 62 to 61 while preserving user isolation, explicit writes, and
   the existing lightweight default installation.
 
+## v0.1.61: One Public Agent Owner
+
+Status: implemented.
+
+- Make `adapter.agent.Agent` the only concrete public Agent implementation and keep
+  `super_agent.py` as its zero-setup export.
+- Keep lazy Runtime resources in `core.runtime.resources` and child composition behind the small
+  `TeamAgent` protocol, so Core never imports external adapters.
+- Delete the former Core Agent class, abstract Adapter factory methods, and inheritance layer
+  without an import alias.
+- Move model-based conversation feedback to the concrete Agent boundary because it needs Agent
+  resources, while leaving passive conversation projections in Core state.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

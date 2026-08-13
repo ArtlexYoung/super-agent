@@ -22,10 +22,10 @@ src/
 ```
 
 `core` owns execution and may read passive Skill definitions. `skill` does not own the
-Runtime. `adapter` connects external interfaces and durable backends. `super_agent.py` is the
-public wiring entry point; `core/runtime/agent.py` owns the public Core actions and lazy Runtime
-resources, while `team.py` owns child Agent composition. Core never imports Adapter
-implementations: storage creation and user views are supplied by the public wiring entry point.
+Runtime. `adapter` connects external interfaces and durable backends. `super_agent.py` exports
+the Agent implemented by `adapter/agent.py`; `core/runtime/resources.py` owns lazy Runtime
+resources, while `team.py` owns child Agent composition through a small protocol. Core never
+imports Adapter implementations.
 The CLI command owner is `adapter.cli_adapter.commands`; it owns direct execution, checks,
 and serving, while `manage` and `data` group stateful command domains. `src/cli.py` only makes
 direct source-tree execution possible.
@@ -39,7 +39,8 @@ direct source-tree execution possible.
 | Scoped state store | `core/state/store.py` | Backend construction or external commands |
 | One run event log | `core/state/run.py` | Durable backend selection |
 | One run lifecycle | `core/runtime/run.py` | CLI, Web, or storage policy |
-| Agent setup and child graph | `core/runtime/agent.py`, `team.py` | Skill content or Provider protocols |
+| Agent composition | `adapter/agent.py` | Runtime internals or storage implementations |
+| Lazy Runtime resources and child graph | `core/runtime/resources.py`, `team.py` | External interfaces |
 | Task queues and groups | `skill/runtime/tasks/` | Generic Run lifecycle |
 | Skill discovery | `skill/disclosure.py` | Storage writes or Skill mutation |
 | Skill execution | `skill/runtime/` | Agent learning or external adapters |
@@ -49,8 +50,8 @@ direct source-tree execution possible.
 | Durable storage I/O | `adapter/storage/__init__.py`, backend modules | Runtime state policy |
 | AG-UI and Web I/O | `adapter/ag_ui_adapter/server.py`, `web_api.py` | Runtime decisions |
 
-Dependencies point from adapters into Core and Skill owners. `super_agent.Agent` wires the
-default Adapter factories into Core without making Core import them. Skill discovery remains passive;
+Dependencies point from adapters into Core and Skill owners. `super_agent.Agent` is the default
+Adapter composition and supplies concrete storage factories to Core. Skill discovery remains passive;
 Runtime may consume disclosed Skill content, while optional learning is invoked explicitly after
 a run. Removed ownership paths are release-tested as failed imports rather than retained through
 aliases or forwarding modules.

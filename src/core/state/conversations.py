@@ -10,11 +10,9 @@ from core.checks import ActionEffect, ActionRequest, ActionRunner, ActionRules, 
 from core.provider import Message
 from core.models import RunResult
 from core.state.models import Conversation, ConversationMessage
-from skill.runtime.handlers import create_skills
 
 if TYPE_CHECKING:
     from core.state.store import EventStore, StorageEvent
-    from core.runtime.agent import Agent
 
 
 @dataclass(frozen=True)
@@ -77,53 +75,6 @@ def complete_conversation_turn(
             run_result=_run_result_summary(result),
         ),
     )
-
-
-def infer_conversation_feedback(
-    agent: Agent,
-    conversation: Conversation,
-    prompt: str,
-    *,
-    user_id: str,
-) -> None:
-    """Ask the active model whether one follow-up is feedback for the prior run."""
-    from core.runtime.model_calls import infer_conversation_feedback_with_model
-    store = agent._setup.create_event_store(user_id)
-    skills = create_skills(
-        agent.config,
-        handlers=agent._setup.skill_handlers,
-        store=store,
-        include_freshness=False,
-    )
-    entry = skills.index.select_one_configured_or_default_skill(
-        "feedback",
-        agent.config.agent.skills,
-    )
-    feedback_skill = skills.open(entry.reference)
-    feedback_skill.disclose_manifest()
-    feedback_skill.disclose_configuration()
-    instructions = feedback_skill.disclose_instructions().content
-    if feedback_skill.read_configuration().content:
-        raise ValueError("feedback Skill configuration must be empty")
-    model = agent._setup.create_task_loop(user_id, skills).create_text_model(
-        store,
-        "conversation_feedback",
-    )
-    feedback = infer_conversation_feedback_with_model(
-        conversation,
-        prompt,
-        instructions,
-        model.send_messages,
-    )
-    if feedback is not None:
-        run_id, score, reason = feedback
-        agent._setup.active_state_access.record_task_feedback(
-            user_id,
-            run_id,
-            score=score,
-            reason=reason,
-            source="implicit",
-        )
 
 
 def create_conversation(

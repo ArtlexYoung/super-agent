@@ -2,9 +2,8 @@
 
 Do not start by reading every file. Read one ordinary call in this order:
 
-1. `src/super_agent.py` wires external factories and exports the public `Agent` facade.
-2. `src/core/runtime/agent.py` exposes Agent actions and owns lazy resources, while `team.py`
-   owns child Agents.
+1. `src/super_agent.py` exports the public `Agent` from `adapter/agent.py`.
+2. `src/core/runtime/resources.py` owns lazy resources, while `team.py` owns child Agents.
 3. `src/core/runtime/run.py` owns one run identity and task lifecycle; `core/state/run.py`
    owns the ordered event log.
 4. `src/core/runtime/loop.py` gives the model selected context and checked tools.
@@ -45,8 +44,8 @@ enter only at a visible boundary:
 
 For a subsystem, start at its owner:
 
-- Agent actions: `core.runtime.agent.Agent`.
-- Lazy run resources: `core.runtime.agent.AgentSetup`.
+- Agent actions and external wiring: `adapter.agent.Agent`.
+- Lazy run resources: `core.runtime.resources.AgentResources`.
 - Child Agent composition: `core.runtime.team.AgentTeam`.
 - Run lifecycle: `core.runtime.run.Runtime`.
 - Model loop and calls: `core.runtime.loop.ModelLoop` and `core.runtime.model_calls.ModelCalls`.
@@ -66,7 +65,6 @@ For a subsystem, start at its owner:
 - Skill evidence and changes: `skill.learning`.
 - Scoped state and audit: `core.state`.
 - Side-effect checks: `core.checks.ActionRunner`.
-- External Agent access: `adapter.agent`.
 - CLI, Web, and storage I/O: their modules under `adapter`.
 
 `src/cli.py` is the direct source-tree entry point. The CLI implementation belongs to

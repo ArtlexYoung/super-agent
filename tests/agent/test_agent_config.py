@@ -339,7 +339,7 @@ class LazyAgentInitializationTests(unittest.TestCase):
 
     def test_construction_and_registration_do_not_initialize_runtime_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, patch(
-            "core.runtime.agent.create_skills"
+            "core.runtime.resources.create_skills"
         ) as build_skills, patch(
             "adapter.storage.create_storage_backend"
         ) as create_storage:
@@ -363,10 +363,10 @@ class LazyAgentInitializationTests(unittest.TestCase):
 
     def test_first_runtime_access_initializes_everything_once(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, patch(
-            "core.runtime.agent.create_skills",
+            "core.runtime.resources.create_skills",
             wraps=create_skills,
         ) as build_skills, patch(
-            "core.runtime.agent.read_model_profiles",
+            "core.runtime.resources.read_model_profiles",
             wraps=read_model_profiles,
         ) as discover_models, patch(
             "adapter.storage.create_storage_backend",
@@ -398,7 +398,7 @@ class LazyAgentInitializationTests(unittest.TestCase):
             return read_model_profiles(*args, **kwargs)
 
         with tempfile.TemporaryDirectory() as tmp, patch(
-            "core.runtime.agent.read_model_profiles",
+            "core.runtime.resources.read_model_profiles",
             side_effect=discover_models_once_ready,
         ):
             agent = Agent(

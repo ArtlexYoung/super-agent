@@ -32,7 +32,7 @@ from core.checks import ActionEffect, ActionRequest
 from core.models import RunResult, TaskTrace
 
 if TYPE_CHECKING:
-    from core.runtime.agent import Agent
+    from adapter.agent import Agent
     from core.models import AgentRunOptions, RunLearningResult
     from core.runtime.model_calls import ModelUsageStats
     from skill.runtime.model_skills import ModelSkillManager

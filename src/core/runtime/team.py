@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import asdict, dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Protocol
 
 from core.models import (
     SubAgentResult,
@@ -14,14 +14,32 @@ from core.models import (
 from skill.runtime.models import model_dispatch_to_dict
 
 if TYPE_CHECKING:
-    from core.runtime.agent import Agent
     from core.runtime.run import Run
+
+
+class TeamAgent(Protocol):
+    """The small Agent surface required for child composition."""
+
+    config: Any
+    model_profiles: list[Any]
+    subagents: tuple[SubAgent, ...]
+
+    def _run_as_subagent(
+        self,
+        prompt: str,
+        parent_run: Run,
+        *,
+        purpose: str,
+        required_features: tuple[str, ...],
+        record_options: SubagentRecordOptions,
+        shared_context: dict[str, object] | None,
+    ): ...
 
 
 @dataclass(frozen=True)
 class SubAgent:
     name: str
-    agent: Agent
+    agent: TeamAgent
     description: str
     created_by_agent: bool = False
     purpose: str = "auto"
@@ -32,7 +50,7 @@ class SubAgent:
 class AgentTeam:
     """Own the child Agents attached to one parent Agent."""
 
-    def __init__(self, owner: Agent) -> None:
+    def __init__(self, owner: TeamAgent) -> None:
         self.owner = owner
         self._subagents: list[SubAgent] = []
 
@@ -42,7 +60,7 @@ class AgentTeam:
 
     def add_subagent(
         self,
-        agent: Agent,
+        agent: TeamAgent,
         *,
         name: str | None = None,
         description: str = "",
@@ -205,7 +223,7 @@ class AgentTeam:
 
 
 def find_cycle_chains(
-    agent: Agent,
+    agent: TeamAgent,
     chain: list[str],
     seen_ids: set[int],
 ) -> list[list[str]]:
@@ -226,7 +244,7 @@ def find_cycle_chains(
 
 
 def find_longest_agent_chain(
-    agent: Agent,
+    agent: TeamAgent,
     chain: list[str],
     seen_ids: set[int],
 ) -> list[str]:
