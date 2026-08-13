@@ -5,12 +5,9 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
-from adapter.cli_adapter.loaders import load_agent, load_event_store
+from adapter.cli_adapter.loaders import load_agent
 from core.models import LOCAL_USER_ID
-from skill.learning.runs import explain_run_with_insight
 from core.state.models import RunSnapshot
-from core.state.store import EventStore
-from skill.runtime.handlers import load_configured_freshness_rules_if_enabled
 
 
 def configure_runs_parser(parser: argparse.ArgumentParser) -> None:
@@ -88,11 +85,11 @@ def run_runs_command(args: argparse.Namespace) -> int:
 
 
 def _show_run_status(args: argparse.Namespace) -> int:
-    store = _load_run_snapshot_store(args.common_config, args.user_id)
+    runs = load_agent(args.common_config).for_user(args.user_id).runs
     snapshots = (
-        [store.read_run(args.run_id, include_sensitive=args.include_sensitive)]
+        [runs.read(args.run_id, include_sensitive=args.include_sensitive)]
         if args.run_id
-        else store.list_runs(
+        else runs.list(
             args.limit,
             conversation_id=args.conversation_id,
             include_sensitive=args.include_sensitive,
@@ -120,18 +117,13 @@ def _show_run_status(args: argparse.Namespace) -> int:
 
 
 def _explain_run(args: argparse.Namespace) -> int:
-    agent = load_agent(args.common_config)
-    store = agent._create_event_store(args.user_id)
-    run_id = _resolve_run_id(store, args.run_id)
+    runs = load_agent(args.common_config).for_user(args.user_id).runs
+    run_id = _resolve_run_id(runs.list(1), args.run_id)
     if run_id is None:
         print("No run snapshots yet.")
         return 1
-    store = _find_run_store(store, run_id)
-    rules = load_configured_freshness_rules_if_enabled(agent.config, store=store)
-    explanation = explain_run_with_insight(
-        store,
+    explanation = runs.explain(
         run_id,
-        rules,
         include_sensitive=args.include_sensitive,
     )
     if args.output == "json":
@@ -142,13 +134,13 @@ def _explain_run(args: argparse.Namespace) -> int:
 
 
 def _export_run(args: argparse.Namespace) -> int:
-    store = _load_run_snapshot_store(args.common_config, args.user_id)
-    run_id = _resolve_run_id(store, args.run_id)
+    runs = load_agent(args.common_config).for_user(args.user_id).runs
+    run_id = _resolve_run_id(runs.list(1), args.run_id)
     if run_id is None:
         print("No run snapshots yet.")
         return 1
     output = Path(args.output or f"run-{run_id}.json").expanduser()
-    path = store.export_run(
+    path = runs.export(
         run_id,
         output,
         include_sensitive=args.include_sensitive,
@@ -182,23 +174,13 @@ def _learn_from_run(args: argparse.Namespace) -> int:
     return 0
 
 
-def _load_run_snapshot_store(config_path: str | None, user_id: str) -> EventStore:
-    return load_event_store(config_path, user_id)
-
-
-def _resolve_run_id(store: EventStore, requested: str | None) -> str | None:
+def _resolve_run_id(
+    snapshots: list[RunSnapshot],
+    requested: str | None,
+) -> str | None:
     if requested:
         return requested.strip()
-    snapshots = store.list_runs(1)
     return snapshots[0].run_id if snapshots else None
-
-
-def _find_run_store(store: EventStore, run_id: str) -> EventStore:
-    try:
-        store.read_run(run_id)
-        return store
-    except KeyError:
-        return store.store_for_run(run_id)
 
 
 def _run_status_line(snapshot: RunSnapshot) -> str:

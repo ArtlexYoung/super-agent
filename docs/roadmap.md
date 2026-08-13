@@ -1645,6 +1645,18 @@ Status: implemented.
 - Delete `core.state.access` and the old `adapter.agent` forwarding functions without aliases.
 - Preserve user isolation, action audit events, feedback validation, and explicit storage errors.
 
+## v0.1.63: User-Domain I/O
+
+Status: implemented.
+
+- Give each user explicit conversation, run, memory, Skill, model, and configuration operations.
+- Make CLI run and memory commands use those user-domain operations instead of constructing
+  storage, disclosure, memory, and action services independently.
+- Make the Web API translate HTTP and JSON only, while user-domain services own state lookup,
+  checked changes, model visibility, and mounted subagent run discovery.
+- Keep persisted subagent runs readable after restart while preferring the exact mounted Agent
+  configuration when the Agent tree is present.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

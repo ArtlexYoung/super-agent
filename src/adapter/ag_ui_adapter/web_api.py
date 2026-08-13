@@ -2,20 +2,13 @@
 
 from __future__ import annotations
 
-import json
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass
 from http import HTTPStatus
-from pathlib import Path
 from urllib.parse import unquote
 
 from super_agent import Agent
-from skill.runtime.handlers import load_configured_freshness_rules_if_enabled
 from core.config import AgentSettings, CommonConfig
-from core.files import write_bytes_atomically
-from skill.learning.runs import explain_run_with_insight
-from core.checks import ActionEffect, ActionRequest
 from skill.disclosure import skill_index_to_dict
-from skill.runtime.models import model_profile_to_dict, read_model_profiles
 from skill.runtime.model_skills import model_skill_input_from_dict
 
 
@@ -45,25 +38,14 @@ class CommonConfigurationInput:
                 "disabled_skills",
             ),
         )
-
-
-def update_common_configuration(
-    config: CommonConfig,
-    request: CommonConfigurationInput,
-) -> CommonConfig:
-    updated = replace(
-        config,
-        agent=AgentSettings(
-            name=request.name,
-            system=request.system,
-            skills=request.skills,
-            max_agent_chain_depth=request.max_agent_chain_depth,
-            disabled_skills=request.disabled_skills,
-        ),
-    )
-    content = _common_config_to_toml(updated)
-    write_bytes_atomically(config.source, content.encode("utf-8"))
-    return CommonConfig.load_from_file(config.source)
+    def to_agent_settings(self) -> AgentSettings:
+        return AgentSettings(
+            name=self.name,
+            system=self.system,
+            skills=self.skills,
+            max_agent_chain_depth=self.max_agent_chain_depth,
+            disabled_skills=self.disabled_skills,
+        )
 
 
 def common_configuration_to_dict(config: CommonConfig) -> dict[str, object]:
@@ -136,20 +118,9 @@ class WebAPI:
         return WebAPIResponse(HTTPStatus.NOT_FOUND, {"error": "route not found"})
 
     def _read_bootstrap(self) -> dict[str, object]:
-        store = self.agent._create_event_store(self.user_id)
         config = self.agent.config
-        all_skills_config = replace(
-            config,
-            agent=replace(config.agent, disabled_skills=[]),
-        )
-        skills = self.agent._create_skills(
-            self.user_id,
-            config=all_skills_config,
-        )
-        environment = self.agent._user_environment(self.user_id)
-        if self.agent._uses_direct_provider() and not _has_model_skill(skills):
-            environment = {}
-        models = read_model_profiles(skills, environment)
+        skills = self.user.skills.list_all()
+        models = self.user.skills.list_models()
         return {
             "schema_version": 3,
             "agent": common_configuration_to_dict(config),
@@ -163,14 +134,12 @@ class WebAPI:
             },
             "configuration_path": str(config.source),
             "skills": _web_skill_list(skill_index_to_dict(skills.index), config),
-            "models": [
-                model_profile_to_dict(profile, environment) for profile in models
-            ],
+            "models": models,
             "conversations": [
                 asdict(item) for item in self.user.conversations.list()
             ],
-            "runs": [asdict(item) for item in store.list_runs(50)],
-            "memory": store.memory.list_items(),
+            "runs": [asdict(item) for item in self.user.runs.list(50)],
+            "memory": [asdict(item) for item in self.user.memory.list()],
             "subagents": _subagent_tree(
                 self.agent,
                 self.user_id,
@@ -178,69 +147,26 @@ class WebAPI:
                 [config.agent.name],
             ),
         }
+
     def _read_run(self, run_id: str) -> dict[str, object]:
-        agent = _find_agent_for_run(self.agent, self.user_id, run_id, set())
-        store = agent._create_event_store(self.user_id)
-        rules = load_configured_freshness_rules_if_enabled(agent.config, store=store)
-        return explain_run_with_insight(store, run_id, rules)
+        return self.user.runs.explain(run_id)
 
     def _forget_memory(self, item_id: str) -> None:
-        store = self.agent._create_event_store(self.user_id)
-        item = next(
-            (
-                candidate
-                for candidate in store.memory.list_items()
-                if candidate["item_id"] == item_id
-            ),
-            None,
-        )
-        if item is None:
-            raise KeyError(f"active memory item not found: {item_id}")
-        self.agent._execute_action(
-            self.user_id,
-            ActionRequest.create(
-                "user:web-memory",
-                f"memory:long-term:{item_id}",
-                (ActionEffect.DELETE,),
-            ),
-            lambda: store.memory.forget_items(
-                [item_id],
-                "forgotten from web interface",
-            ),
-        )
+        self.user.memory.forget(item_id, "forgotten from web interface")
 
     def _update_configuration(self, body: object | None) -> None:
         request = CommonConfigurationInput.from_dict(body)
-        updated = self.agent._execute_action(
-            self.user_id,
-            ActionRequest.create(
-                "user:web-configuration",
-                "config:agent",
-                (ActionEffect.UPDATE,),
-            ),
-            lambda: update_common_configuration(self.agent.config, request),
-        )
-        self.user.configuration.replace(updated)
+        self.user.configuration.update_agent_settings(request.to_agent_settings())
 
     def _save_model(self, body: object | None) -> None:
-        manager = self.user.skills.create_model_manager()
-        manager.save_model_skill(model_skill_input_from_dict(body))
-        self.user.skills.reload_models()
+        self.user.skills.save_model(model_skill_input_from_dict(body))
 
     def _remove_model(self, name: str) -> None:
-        self.user.skills.create_model_manager().remove_model_skill(name)
-        self.user.skills.reload_models()
+        self.user.skills.remove_model(name)
 
 
 def _ok(body: object, status: HTTPStatus = HTTPStatus.OK) -> WebAPIResponse:
     return WebAPIResponse(status, body)
-
-
-def _has_model_skill(skills) -> bool:
-    return any(
-        entry.reference.skill_type == "model"
-        for entry in skills.index.entries
-    )
 
 
 def _web_skill_list(
@@ -275,28 +201,6 @@ def _web_skill_list(
     ]
 
 
-def _find_agent_for_run(
-    agent: Agent,
-    user_id: str,
-    run_id: str,
-    seen: set[int],
-) -> Agent:
-    if id(agent) in seen:
-        raise KeyError(f"run not found: {run_id}")
-    seen.add(id(agent))
-    try:
-        agent._create_event_store(user_id).read_run(run_id)
-        return agent
-    except KeyError:
-        pass
-    for subagent in agent.subagents:
-        try:
-            return _find_agent_for_run(subagent.agent, user_id, run_id, seen)
-        except KeyError:
-            continue
-    raise KeyError(f"run not found: {run_id}")
-
-
 def _subagent_tree(
     agent: Agent,
     user_id: str,
@@ -309,7 +213,7 @@ def _subagent_tree(
     nodes: list[dict[str, object]] = []
     for subagent in agent.subagents:
         child_path = [*path, subagent.name]
-        child_store = subagent.agent._create_event_store(user_id)
+        child = subagent.agent.for_user(user_id)
         nodes.append(
             {
                 "name": subagent.name,
@@ -317,7 +221,7 @@ def _subagent_tree(
                 "agent_name": subagent.agent.config.agent.name,
                 "created_by_agent": subagent.created_by_agent,
                 "path": child_path,
-                "runs": [asdict(item) for item in child_store.list_runs(50)],
+                "runs": [asdict(item) for item in child.runs.list(50)],
                 "children": _subagent_tree(
                     subagent.agent,
                     user_id,
@@ -347,61 +251,6 @@ def _optional_body_text(body: object | None, name: str) -> str:
     if not isinstance(value, str):
         raise ValueError(f"request {name} must be a string")
     return value.strip()
-
-
-def _common_config_to_toml(config: CommonConfig) -> str:
-    agent = config.agent
-    base = config.source.parent
-    lines = [
-        "schema_version = 1",
-        'kind = "common"',
-        "",
-        "[agent]",
-        f"name = {_toml_string(agent.name)}",
-        f"system = {_toml_string(agent.system)}",
-        f"skills = {_toml_array(agent.skills)}",
-    ]
-    if agent.max_agent_chain_depth is not None:
-        lines.append(f"max_agent_chain_depth = {agent.max_agent_chain_depth}")
-    lines.extend(
-        [
-            f"disabled_skills = {_toml_array(agent.disabled_skills)}",
-            "",
-            "[paths]",
-            f"skills = {_toml_array([_portable_path(path, base) for path in config.paths.skills])}",
-            "",
-            "[storage]",
-            f"backend = {_toml_string(config.storage.backend)}",
-            f"path = {_toml_string(_portable_path(config.storage.path, base))}",
-        ]
-    )
-    if config.storage.url_env is not None:
-        lines.append(f"url_env = {_toml_string(config.storage.url_env)}")
-    lines.extend(
-        [
-            "",
-            "[storage.audit]",
-            f"detailed_days = {config.storage.audit.detailed_days}",
-            f"critical_days = {config.storage.audit.critical_days}",
-        ]
-    )
-    return "\n".join(lines) + "\n"
-
-
-def _portable_path(path: Path, base: Path) -> str:
-    try:
-        relative = path.resolve().relative_to(base.resolve())
-    except ValueError:
-        return str(path.resolve())
-    return str(relative) or "."
-
-
-def _toml_string(value: str) -> str:
-    return json.dumps(value, ensure_ascii=False)
-
-
-def _toml_array(values: list[str]) -> str:
-    return "[" + ", ".join(_toml_string(value) for value in values) + "]"
 
 
 def _required_text(value: object, name: str) -> str:

@@ -9,7 +9,6 @@ from super_agent import Agent
 from adapter.ag_ui_adapter.web_api import WebAPI
 from core.provider import MockProvider
 from core.config import CommonConfig
-from core.state.memory import Memory
 
 
 class WebAPIContractTests(unittest.TestCase):
@@ -34,8 +33,7 @@ class WebAPIContractTests(unittest.TestCase):
             )
             agent.add_subagent(child, name="research", created_by_agent=True)
             child_result = child.for_user("web-user").run("inspect")
-            memory = Memory(agent._setup.create_event_store("web-user"))
-            memory.remember_long_term("Stable preference.")
+            agent.for_user("web-user").memory.remember("Stable preference.")
 
             response = WebAPI(agent, "web-user").handle("GET", "/api/bootstrap")
 
@@ -90,8 +88,7 @@ class WebAPIContractTests(unittest.TestCase):
                 {"title": "Renamed"},
             )
             run = api.handle("GET", f"/api/runs/{result.run_id}")
-            memory = Memory(agent._setup.create_event_store("web-user"))
-            item = memory.remember_long_term("Forget this note.")
+            item = agent.for_user("web-user").memory.remember("Forget this note.")
             forgotten = api.handle("DELETE", f"/api/memory/{item.item_id}")
 
             self.assertEqual(201, created.status)
@@ -101,6 +98,41 @@ class WebAPIContractTests(unittest.TestCase):
             self.assertNotIn("runtime answer", str(run_body))
             self.assertNotIn("hello", str(run_body))
             self.assertEqual([], _body_dict(forgotten.body)["memory"])
+
+    def test_run_lookup_uses_the_mounted_subagent_configuration(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            parent = Agent(
+                CommonConfig.create_default(root),
+                provider=MockProvider("parent"),
+                use_storage=True,
+            )
+            child_config = replace(
+                CommonConfig.create_default(root),
+                agent=replace(
+                    CommonConfig.create_default(root).agent,
+                    name="worker",
+                    disabled_skills=["freshness"],
+                ),
+            )
+            child = Agent(
+                child_config,
+                provider=MockProvider("child"),
+                use_storage=True,
+            )
+            parent.add_subagent(child, name="worker")
+            result = child.for_user("web-user").run("inspect")
+
+            response = WebAPI(parent, "web-user").handle(
+                "GET",
+                f"/api/runs/{result.run_id}",
+            )
+
+            self.assertEqual(200, response.status)
+            self.assertEqual(
+                "worker",
+                _body_dict(_body_dict(response.body)["snapshot"])["agent_name"],
+            )
 
     def test_configuration_save_preserves_all_progressive_skill_roots(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

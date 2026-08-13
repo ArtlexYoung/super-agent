@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import json
+from dataclasses import replace
+from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from core.provider import Message
-from core.config import CommonConfig
+from core.config import AgentSettings, CommonConfig
+from core.files import write_bytes_atomically
 from core.models import resolve_agent_run_options, validate_user_id
-from core.state.models import Conversation, RunEvent
+from core.state.models import Conversation, RunEvent, RunSnapshot
 from core.state.conversations import (
     clear_conversation,
     create_conversation,
@@ -23,6 +27,11 @@ if TYPE_CHECKING:
     from adapter.agent import Agent
     from core.models import AgentRunOptions, RunLearningResult
     from core.runtime.model_calls import ModelUsageStats
+    from core.state.memory import Memory, MemoryItem
+    from core.state.store import EventStore
+    from skill.runtime.handlers import SkillCollection
+    from skill.runtime.models import ModelProfile
+    from skill.runtime.model_skills import ModelSkillInput
     from skill.runtime.model_skills import ModelSkillManager
     from skill.learning.update import SkillUpdater
 
@@ -35,6 +44,7 @@ class UserAgent:
         self.user_id = validate_user_id(user_id)
         self.conversations = UserConversations(self)
         self.runs = UserRuns(self)
+        self.memory = UserMemory(self)
         self.skills = UserSkills(self)
         self.configuration = UserConfiguration(self)
 
@@ -155,6 +165,63 @@ class UserRuns:
             run_id,
         )
 
+    def list(
+        self,
+        limit: int | None = None,
+        *,
+        conversation_id: str | None = None,
+        include_sensitive: bool = False,
+    ) -> list[RunSnapshot]:
+        return self.user._store().list_runs(
+            limit,
+            conversation_id=conversation_id,
+            include_sensitive=include_sensitive,
+        )
+
+    def read(
+        self,
+        run_id: str,
+        *,
+        include_sensitive: bool = False,
+    ) -> RunSnapshot:
+        _, store = _find_run_owner(self.user, run_id)
+        return store.read_run(run_id, include_sensitive=include_sensitive)
+
+    def explain(
+        self,
+        run_id: str,
+        *,
+        include_sensitive: bool = False,
+    ) -> dict[str, object]:
+        from skill.learning.runs import explain_run_with_insight
+        from skill.runtime.handlers import load_configured_freshness_rules_if_enabled
+
+        owner, store = _find_run_owner(self.user, run_id)
+        rules = load_configured_freshness_rules_if_enabled(
+            owner.agent.config,
+            store=store,
+        )
+        return explain_run_with_insight(
+            store,
+            run_id,
+            rules,
+            include_sensitive=include_sensitive,
+        )
+
+    def export(
+        self,
+        run_id: str,
+        path: str | Path,
+        *,
+        include_sensitive: bool = False,
+    ) -> Path:
+        _, store = _find_run_owner(self.user, run_id)
+        return store.export_run(
+            run_id,
+            Path(path).expanduser(),
+            include_sensitive=include_sensitive,
+        )
+
     def list_checkpoints(self, run_id: str) -> list[dict[str, object]]:
         from core.runtime.run import list_checkpoint_data
 
@@ -265,6 +332,72 @@ class UserRuns:
         )
 
 
+class UserMemory:
+    """Read and explicitly change long-term memory in one user scope."""
+
+    def __init__(self, user: UserAgent) -> None:
+        self.user = user
+
+    def list(self, scope: str | None = None) -> list["MemoryItem"]:
+        return self._memory().list_long_term(scope)
+
+    def recall(
+        self,
+        query: str,
+        scope: str | None = None,
+        limit: int | None = None,
+    ) -> list["MemoryItem"]:
+        return self._memory().recall_long_term(query, scope, limit)
+
+    def remember(
+        self,
+        text: str,
+        scope: str | None = None,
+        source_run_id: str = "",
+    ) -> "MemoryItem":
+        return cast(
+            "MemoryItem",
+            self.user._execute(
+                ActionRequest.create(
+                    "user:memory",
+                    "memory:long-term",
+                    (ActionEffect.CREATE,),
+                ),
+                lambda: self._memory().remember_long_term(
+                    text,
+                    scope,
+                    source_run_id,
+                ),
+            ),
+        )
+
+    def forget(self, item_id: str, reason: str = "") -> None:
+        self.user._execute(
+            ActionRequest.create(
+                "user:memory",
+                f"memory:long-term:{item_id}",
+                (ActionEffect.DELETE,),
+            ),
+            lambda: self._memory().forget_long_term(item_id, reason),
+        )
+
+    def usage_habits_instruction(self) -> str:
+        return self._memory().usage_habits.build_prompt_instruction()
+
+    def _memory(self) -> "Memory":
+        from core.state.memory import create_memory_from_skill
+
+        skills = self.user.agent._create_skills(self.user.user_id)
+        selected = skills.index.select_one_configured_or_default_skill(
+            "memory",
+            self.user.agent.config.agent.skills,
+        )
+        return create_memory_from_skill(
+            skills.open(selected.reference),
+            self.user._store(),
+        )
+
+
 class UserSkills:
     """Manage explicit Skill changes and model Skills for one user."""
 
@@ -286,18 +419,74 @@ class UserSkills:
             self.user.agent._action_rules(),
         )
 
+    def list_all(self) -> "SkillCollection":
+        from dataclasses import replace
+
+        config = self.user.agent.config
+        return self.user.agent._create_skills(
+            self.user.user_id,
+            config=replace(
+                config,
+                agent=replace(config.agent, disabled_skills=[]),
+            ),
+        )
+
+    def list_models(self) -> list[dict[str, object]]:
+        from skill.runtime.models import model_profile_to_dict, read_model_profiles
+
+        skills = self.list_all()
+        environment = self.user.agent._user_environment(self.user.user_id)
+        has_model_skill = any(
+            entry.reference.skill_type == "model"
+            for entry in skills.index.entries
+        )
+        if self.user.agent._uses_direct_provider() and not has_model_skill:
+            environment = {}
+        return [
+            model_profile_to_dict(profile, environment)
+            for profile in read_model_profiles(skills, environment)
+        ]
+
+    def save_model(self, request: "ModelSkillInput") -> "ModelProfile":
+        profile = self.create_model_manager().save_model_skill(request)
+        self.reload_models()
+        return profile
+
+    def remove_model(self, name: str) -> None:
+        self.create_model_manager().remove_model_skill(name)
+        self.reload_models()
+
     def reload_models(self) -> None:
         self.user.agent._reload_models(self.user.user_id)
 
 
 class UserConfiguration:
-    """Replace one Agent configuration while retaining its storage connection."""
+    """Save Agent settings and refresh the active configuration explicitly."""
 
     def __init__(self, user: UserAgent) -> None:
         self.user = user
 
-    def replace(self, config: CommonConfig) -> None:
-        self.user.agent._replace_configuration(config)
+    def update_agent_settings(self, settings: AgentSettings) -> CommonConfig:
+        def update() -> CommonConfig:
+            current = self.user.agent.config
+            updated = replace(current, agent=settings)
+            content = _common_config_to_toml(updated)
+            write_bytes_atomically(current.source, content.encode("utf-8"))
+            loaded = CommonConfig.load_from_file(current.source)
+            self.user.agent._replace_configuration(loaded)
+            return loaded
+
+        updated = self.user._execute(
+            ActionRequest.create(
+                "user:configuration",
+                "config:agent",
+                (ActionEffect.UPDATE,),
+            ),
+            update,
+        )
+        if not isinstance(updated, CommonConfig):
+            raise TypeError("configuration update must return CommonConfig")
+        return updated
 
 
 def _create_skill_updater(user: UserAgent) -> "SkillUpdater":
@@ -319,3 +508,91 @@ def _create_skill_updater(user: UserAgent) -> "SkillUpdater":
         ),
         action_rules=agent._action_rules(),
     )
+
+
+def _find_run_owner(
+    user: UserAgent,
+    run_id: str,
+) -> tuple[UserAgent, "EventStore"]:
+    try:
+        return _find_attached_run_owner(user, run_id, set())
+    except KeyError:
+        return user, user._store().store_for_run(run_id)
+
+
+def _find_attached_run_owner(
+    user: UserAgent,
+    run_id: str,
+    seen: set[int],
+) -> tuple[UserAgent, "EventStore"]:
+    if id(user.agent) in seen:
+        raise KeyError(f"run not found: {run_id}")
+    seen.add(id(user.agent))
+    store = user._store()
+    try:
+        store.read_run(run_id)
+        return user, store
+    except KeyError:
+        pass
+    for subagent in user.agent.subagents:
+        child = subagent.agent.for_user(user.user_id)
+        try:
+            return _find_attached_run_owner(child, run_id, seen)
+        except KeyError:
+            continue
+    raise KeyError(f"run not found: {run_id}")
+
+
+def _common_config_to_toml(config: CommonConfig) -> str:
+    agent = config.agent
+    base = config.source.parent
+    lines = [
+        "schema_version = 1",
+        'kind = "common"',
+        "",
+        "[agent]",
+        f"name = {_toml_string(agent.name)}",
+        f"system = {_toml_string(agent.system)}",
+        f"skills = {_toml_array(agent.skills)}",
+    ]
+    if agent.max_agent_chain_depth is not None:
+        lines.append(f"max_agent_chain_depth = {agent.max_agent_chain_depth}")
+    lines.extend(
+        [
+            f"disabled_skills = {_toml_array(agent.disabled_skills)}",
+            "",
+            "[paths]",
+            f"skills = {_toml_array([_portable_path(path, base) for path in config.paths.skills])}",
+            "",
+            "[storage]",
+            f"backend = {_toml_string(config.storage.backend)}",
+            f"path = {_toml_string(_portable_path(config.storage.path, base))}",
+        ]
+    )
+    if config.storage.url_env is not None:
+        lines.append(f"url_env = {_toml_string(config.storage.url_env)}")
+    lines.extend(
+        [
+            "",
+            "[storage.audit]",
+            f"detailed_days = {config.storage.audit.detailed_days}",
+            f"critical_days = {config.storage.audit.critical_days}",
+        ]
+    )
+    return "\n".join(lines) + "\n"
+
+
+def _portable_path(path: Path, base: Path) -> str:
+    try:
+        relative = path.resolve().relative_to(base.resolve())
+    except ValueError:
+        return str(path.resolve())
+    return str(relative) or "."
+
+
+def _toml_string(value: str) -> str:
+    return json.dumps(value, ensure_ascii=False)
+
+
+def _toml_array(values: list[str]) -> str:
+    return "[" + ", ".join(_toml_string(value) for value in values) + "]"

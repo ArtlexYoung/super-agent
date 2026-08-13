@@ -203,6 +203,35 @@ class ReleaseShapeTests(unittest.TestCase):
             if path != user_path:
                 self.assertNotIn("._run_for_user", source, str(path))
 
+    def test_external_io_uses_user_domain_services(self) -> None:
+        allowed_private_calls = {
+            "src/adapter/cli_adapter/code.py": {"._add_skill_handler"},
+            "src/adapter/general.py": {"._replace_configuration"},
+        }
+        private_calls = (
+            "._create_event_store",
+            "._create_skills",
+            "._create_task_loop",
+            "._action_rules",
+            "._execute_action",
+            "._read_task_trace",
+            "._record_task_feedback",
+            "._user_environment",
+            "._uses_direct_provider",
+            "._reload_models",
+            "._replace_configuration",
+            "._add_skill_handler",
+        )
+        for path in Path("src/adapter").rglob("*.py"):
+            relative = str(path)
+            if relative in {"src/adapter/agent.py", "src/adapter/user.py"}:
+                continue
+            source = path.read_text(encoding="utf-8")
+            allowed = allowed_private_calls.get(relative, set())
+            for call in private_calls:
+                if call not in allowed:
+                    self.assertNotIn(call, source, relative)
+
     def test_core_and_skill_do_not_import_external_adapters(self) -> None:
         for root_name in ("core", "skill"):
             for path in Path("src", root_name).rglob("*.py"):
