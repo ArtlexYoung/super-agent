@@ -8,7 +8,7 @@ from pathlib import Path
 from adapter.storage import create_local_event_store
 from skill.disclosure import ProgressiveDisclosureCore
 from skill.manifest import calculate_skill_directory_sha256
-from skill.runtime.files.package import (
+from skill.runtime.package import (
     SkillDirectoryUpdate,
     SkillPackageManager,
     apply_skill_directory_updates,

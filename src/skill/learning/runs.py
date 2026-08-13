@@ -21,11 +21,10 @@ from skill.learning.records import (
     read_evaluation_records,
 )
 from skill.learning.freshness import FreshnessRules
-from core.models import RunIdentity, RunLearningResult
+from core.models import RunEvent, RunIdentity, RunLearningResult
 from core.provider import Message
 from core.runtime.model_calls import list_model_usage_stats
 from core.state.store import EventStore
-from core.state.models import RunEvent
 from skill.index import format_disclosure_page_for_prompt
 
 if TYPE_CHECKING:
@@ -257,7 +256,6 @@ def _string_list(value: object, name: str) -> list[str]:
 
 
 # UI projections are derived from the same canonical run evidence.
-from core.state.models import RunEvent
 from core.runtime.model_calls import list_model_usage_stats
 from core.state.store import EventStore
 from skill.learning.freshness import calculate_skill_freshness

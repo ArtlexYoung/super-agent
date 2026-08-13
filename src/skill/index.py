@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import asdict, dataclass, field
+import tomllib
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 
-from skill.manifest import SkillManifest
+from skill.manifest import SkillManifest, skill_manifest_from_dict
 
 
 DEFAULT_INLINE_CHARS = 4_000
@@ -233,6 +234,118 @@ class SkillSourceScan:
     sources: list[SkillSource]
     disabled_references: list[SkillReference]
     issues: list[SkillValidationIssue]
+
+
+def read_skill_sources(
+    skill_roots: list[Path],
+    disabled_names: list[str],
+    builtin_skill_roots: list[Path] | None = None,
+    user_skill_roots: list[Path] | None = None,
+) -> SkillSourceScan:
+    """Scan user, project, and built-in Skills in override order."""
+    user = _read_source_group(user_skill_roots or [], disabled_names, "user")
+    project = _read_source_group(
+        skill_roots,
+        disabled_names,
+        "project",
+        {source.reference.key: source for source in user.sources},
+    )
+    builtin = _read_source_group(
+        builtin_skill_roots or [],
+        disabled_names,
+        "builtin",
+        {source.reference.key: source for source in project.sources},
+    )
+    disabled = {
+        reference.key: reference
+        for reference in [
+            *user.disabled_references,
+            *project.disabled_references,
+            *builtin.disabled_references,
+        ]
+    }
+    return SkillSourceScan(
+        builtin.sources,
+        sorted(disabled.values(), key=lambda item: item.key),
+        [*user.issues, *project.issues, *builtin.issues],
+    )
+
+
+def _read_source_group(
+    roots: list[Path],
+    disabled_names: list[str],
+    source_layer: str,
+    existing_sources: dict[str, SkillSource] | None = None,
+) -> SkillSourceScan:
+    sources = dict(existing_sources or {})
+    higher_keys = set(sources)
+    disabled: dict[str, SkillReference] = {}
+    issues = []
+    paths = sorted(
+        path
+        for root in roots
+        if root.expanduser().is_dir()
+        for path in root.expanduser().rglob("skill.toml")
+        if path.is_file()
+    )
+    for path in paths:
+        try:
+            source = _read_skill_source(path, source_layer)
+            reference = source.reference
+            if _skill_is_disabled(reference, disabled_names):
+                disabled[reference.key] = reference
+            elif reference.key in higher_keys:
+                continue
+            elif reference.key in sources:
+                previous = sources[reference.key]
+                raise ValueError(
+                    f"duplicate skill key {reference.key}: "
+                    f"{previous.manifest_path} and {path}"
+                )
+            else:
+                sources[reference.key] = source
+        except (OSError, ValueError, tomllib.TOMLDecodeError) as error:
+            issues.append(SkillValidationIssue(path, str(error)))
+    return SkillSourceScan(
+        sorted(sources.values(), key=lambda item: item.reference.key),
+        sorted(disabled.values(), key=lambda item: item.key),
+        issues,
+    )
+
+
+def _read_skill_source(path: Path, source_layer: str) -> SkillSource:
+    data = tomllib.loads(path.read_text(encoding="utf-8"))
+    manifest = skill_manifest_from_dict(data, path)
+    if source_layer == "project":
+        manifest = replace(manifest, agent_can_update=True)
+    elif source_layer == "user":
+        manifest = replace(manifest, agent_created=True, agent_can_update=True)
+    if manifest.entry.instructions is not None:
+        root = manifest.path.resolve()
+        instructions = (manifest.path / manifest.entry.instructions).resolve()
+        if instructions != root and root not in instructions.parents:
+            raise ValueError(
+                f"skill instruction path leaves skill directory: {manifest.entry.instructions}"
+            )
+    configuration = data.get("configuration", {})
+    if not isinstance(configuration, dict):
+        raise ValueError(f"skill configuration must be a TOML table: {path}")
+    return SkillSource(
+        SkillReference(manifest.skill_type, manifest.name),
+        manifest,
+        dict(configuration),
+        path,
+        source_layer,
+    )
+
+
+def _skill_is_disabled(reference: SkillReference, disabled_names: list[str]) -> bool:
+    values = {item.strip().lower() for item in disabled_names}
+    return (
+        reference.skill_type in values
+        or reference.name in values
+        or reference.key in values
+    )
 
 
 @dataclass(frozen=True)

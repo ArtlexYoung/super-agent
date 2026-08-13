@@ -28,7 +28,7 @@ from skill.runtime.models import (
     select_default_model_profile,
 )
 from skill.runtime.model_skills import model_skill_input_from_dict
-from skill.runtime.files.package import validate_skill_replacement
+from skill.runtime.package import validate_skill_replacement
 from skill.learning.update import SkillChangeCase
 from skill.learning.records import read_evaluation_records
 from core.runtime.model_calls import (
@@ -232,7 +232,7 @@ class ModelSkillTests(unittest.TestCase):
 
             result = agent.run("summarize this")
             agent.for_user("local").runs.learn(result.run_id)
-            store = agent._setup.create_event_store()
+            store = agent._create_event_store()
             scheduled = next(
                 event.data
                 for event in store.read_run_events(result.run_id)

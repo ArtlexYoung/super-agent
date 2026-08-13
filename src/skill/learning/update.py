@@ -13,14 +13,14 @@ from typing import Callable, cast
 from uuid import uuid4
 
 from core.checks import ActionEffect, ActionRequest, ActionRunner, ActionRules
-from core.files import write_bytes_atomically
+from core.checks import write_bytes_atomically
 from core.provider import Message
 from core.runtime.model_calls import TextModel, estimate_text_tokens
 from skill.learning.runs import (
     read_skill_change_report,
     skill_change_report_to_dict,
 )
-from skill.runtime.files.package import (
+from skill.runtime.package import (
     SkillDirectoryUpdate,
     apply_skill_directory_updates,
     check_skill_configuration,

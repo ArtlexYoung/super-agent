@@ -174,7 +174,33 @@ class SkillResult:
     included_skills: tuple[SkillReference, ...] = ()
     record_task_completed: Callable[[str, list[str]], None] | None = None
     task_completed_action: SkillAction | None = None
+    start_session: Callable[[SkillSessionContext], SkillSession] | None = None
     source: SkillReference | None = None
+
+
+@dataclass(frozen=True)
+class SkillSessionContext:
+    """Provide the run operations needed by an active Skill mechanism."""
+
+    subagents: list[dict[str, object]]
+    run_subagent: Callable[..., dict[str, object]]
+    record_event: Callable[[str, dict[str, object]], object]
+    record_result: Callable[[dict[str, object]], None]
+    create_shared_context: Callable[[str, str], dict[str, object]]
+
+
+class SkillSession(Protocol):
+    """Own temporary tools and state created by one active Skill."""
+
+    hidden_tools: tuple[str, ...]
+
+    def list_tools(self) -> tuple[SkillTool, ...]: ...
+
+    def finish(self) -> None: ...
+
+    def read_results(self) -> dict[str, object]: ...
+
+    def close(self) -> None: ...
 
 
 @dataclass(frozen=True)
@@ -285,6 +311,7 @@ def validate_skill_result(result: object) -> None:
     if result.task_policy is not None:
         _validate_task_policy(result.task_policy)
     _validate_completion_callback(result)
+    _validate_optional_callable(result.start_session, "start_session")
     _validate_included_skills(result.included_skills)
     _validate_optional_type(result.source, SkillReference, "source")
 

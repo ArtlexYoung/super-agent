@@ -19,7 +19,7 @@ from core.provider import (
     estimate_text_tokens,
 )
 from core.provider import ProviderPool
-from core.state.models import Conversation
+from core.models import Conversation
 from skill.runtime.models import ModelProfile
 
 if TYPE_CHECKING:

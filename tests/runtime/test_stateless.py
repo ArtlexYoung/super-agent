@@ -135,7 +135,7 @@ print(json.dumps(sorted(name for name in sys.modules if name.startswith(blocked)
             result = agent.run("hello")
 
             self.assertEqual("finished", result.text)
-            self.assertIsNone(agent._setup.action_rules)
+            self.assertIsNone(agent._action_rules_value)
 
     def test_stateless_conversation_fails_instead_of_creating_storage(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -173,7 +173,7 @@ print(json.dumps(sorted(name for name in sys.modules if name.startswith(blocked)
                 Agent(
                     config,
                     provider=MockProvider(),
-                    storage=stateful._setup.storage,
+                    storage=stateful._storage,
                     use_storage=False,
                 )
 

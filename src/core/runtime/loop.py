@@ -247,7 +247,6 @@ class ModelLoop:
             run,
             contributions,
             text_model.send_messages,
-            workflow,
             _ConfiguredModelTool(
                 tuple(self.model_profiles),
                 self.model_calls,
@@ -293,8 +292,7 @@ class ModelLoop:
             state.last_text = response.text or state.last_text
             _record_model_turn(run, step, response, state)
             if isinstance(turn, FinalTurn):
-                if state.tools.agent_tasks is not None:
-                    state.tools.agent_tasks.require_finished()
+                state.tools.finish()
                 return _create_result(request, run, state, turn.text, response.stop_reason)
             if definitions is None:
                 raise RuntimeError("model requested actions when actions are unavailable")
@@ -304,8 +302,7 @@ class ModelLoop:
                 if state.workflow.uses_tools and supports_tools
                 else None
             )
-        if state.tools.agent_tasks is not None:
-            state.tools.agent_tasks.require_finished()
+        state.tools.finish()
         return _create_result(request, run, state, state.last_text, "max_steps")
 
     @staticmethod
@@ -492,21 +489,14 @@ def _create_result(
     stop_reason: str,
 ) -> RunResult:
     names = list(dict.fromkeys([*state.selected_skill_names, *state.tools.used_skill_names]))
+    skill_results = state.tools.read_skill_results()
     return RunResult(
         text=text,
         workflow=state.workflow.name,
         skills=names,
         subagent_results=state.tools.delegated_subagent_results,
-        agent_tasks=(
-            None
-            if state.tools.agent_tasks is None
-            else state.tools.agent_tasks.list_tasks()
-        ),
-        agent_groups=(
-            None
-            if state.tools.agent_tasks is None
-            else state.tools.agent_tasks.list_groups()
-        ),
+        agent_tasks=skill_results.get("agent_tasks"),
+        agent_groups=skill_results.get("agent_groups"),
         warning_messages=request.warning_messages,
         run_id=run.run_id,
         stop_reason=("completed" if stop_reason == "model_finished" else stop_reason)

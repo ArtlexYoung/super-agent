@@ -12,17 +12,17 @@ from typing import TYPE_CHECKING, Callable, Mapping
 
 from core.checks import ActionEffect
 from core.provider import estimate_text_tokens
-from skill.runtime.tasks.agents import (
-    AgentChoice,
-    AgentTask,
+from skill.runtime.tasks.selection import (
     AgentUnavailableError,
+    QueuedTask,
+    SelectedAgent,
     estimated_token_schema,
     read_optional_estimated_tokens,
 )
 from skill.runtime.handlers import SkillAction, SkillTool, read_required_tool_string
 
 if TYPE_CHECKING:
-    from skill.runtime.tasks.queue import AgentTaskQueue
+    from skill.runtime.tasks.queue import TaskQueue
 
 
 _TERMINAL_STATUSES = {"completed", "failed", "cancelled"}
@@ -33,7 +33,7 @@ class AgentGroups:
 
     def __init__(
         self,
-        queue: AgentTaskQueue,
+        queue: TaskQueue,
         settings: AgentGroupSettings,
         create_shared_context: Callable[[str, str], dict[str, object]] | None,
     ) -> None:
@@ -55,7 +55,7 @@ class AgentGroups:
                 ],
             ]
 
-    def create_tools(self) -> tuple[SkillTool, ...]:
+    def list_tools(self) -> tuple[SkillTool, ...]:
         settings = self.settings
         group_id = {"type": "string"}
         token_estimate = estimated_token_schema()
@@ -248,7 +248,7 @@ class AgentGroups:
         roles: tuple[str, ...],
         *,
         uses_shared_context: bool,
-    ) -> list[AgentTask]:
+    ) -> list[QueuedTask]:
         shared_tokens = estimate_text_tokens(request.prompt) if uses_shared_context else 0
         first_task_number = len(self.queue._tasks) + 1
         tasks = []
@@ -258,7 +258,7 @@ class AgentGroups:
                 role,
                 uses_shared_context=uses_shared_context,
             )
-            tasks.append(AgentTask(
+            tasks.append(QueuedTask(
                 f"agent-task-{first_task_number + index:02d}",
                 member_prompt,
                 request.purpose,
@@ -276,7 +276,7 @@ class AgentGroups:
         self,
         group_id: str,
         request: AgentGroupRequest,
-        choices: list[AgentChoice],
+        choices: list[SelectedAgent],
     ) -> int:
         settings = self.settings
         minimum = max(2, request.quorum)
@@ -305,7 +305,7 @@ class AgentGroups:
         self,
         group_id: str,
         request: AgentGroupRequest,
-        choices: list[AgentChoice],
+        choices: list[SelectedAgent],
     ) -> dict[str, object]:
         settings = self.settings
         result = {
@@ -344,8 +344,8 @@ class AgentGroups:
         self,
         group_id: str,
         request: AgentGroupRequest,
-        tasks: list[AgentTask],
-        choices: list[AgentChoice],
+        tasks: list[QueuedTask],
+        choices: list[SelectedAgent],
         context: dict[str, object],
     ) -> AgentGroup:
         settings = self.settings
@@ -375,8 +375,8 @@ class AgentGroups:
     def _start_group_locked(
         self,
         group: AgentGroup,
-        tasks: list[AgentTask],
-        choices: list[AgentChoice],
+        tasks: list[QueuedTask],
+        choices: list[SelectedAgent],
     ) -> None:
         group_id = group.group_id
         self.queue._group_records[group_id] = group
@@ -618,7 +618,7 @@ def read_group_vote(text: str) -> tuple[str, str, float | None]:
     return vote, evidence, round(max(0.0, min(1.0, float(confidence))), 4)
 
 
-def choices_cost(choices: list[AgentChoice]) -> float:
+def choices_cost(choices: list[SelectedAgent]) -> float:
     return round(sum(float(item.cost_estimate["estimated_cost"]) for item in choices), 12)
 
 

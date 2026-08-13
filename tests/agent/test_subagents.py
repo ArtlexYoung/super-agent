@@ -79,7 +79,7 @@ class SubAgentTests(unittest.TestCase):
             )
 
             result = main.run("delegate")
-            child_events = reviewer._setup.create_event_store().read_run_events(
+            child_events = reviewer._create_event_store().read_run_events(
                 result.subagent_results[0].run_id
             )
             scheduled = next(
@@ -149,7 +149,7 @@ class SubAgentTests(unittest.TestCase):
             main.add_subagent(coder, name="coder")
 
             result = main.run("delegate")
-            child_events = coder._setup.create_event_store().read_run_events(
+            child_events = coder._create_event_store().read_run_events(
                 result.subagent_results[0].run_id
             )
             completed = next(

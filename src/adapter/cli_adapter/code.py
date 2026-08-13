@@ -13,7 +13,7 @@ from adapter.processes import DeclaredProcessTools
 from adapter.repository import IncrementalRepositoryMap, IsolatedWorktreeTools
 from core.checks import ActionEffect
 from core.config import CodeConfig, CodeSettings
-from core.files import write_bytes_atomically
+from core.checks import write_bytes_atomically
 from skill.runtime.builtins import TaskSkillHandler
 from skill.runtime.handlers import (
     SkillAction,

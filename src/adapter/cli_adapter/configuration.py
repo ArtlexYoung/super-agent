@@ -15,11 +15,17 @@ from core.checks import (
     ActionRules,
 )
 from core.config import (
+    CommonConfig,
     find_optional_config_file,
     reject_unknown_settings,
     require_config_header,
 )
 from core.models import LOCAL_USER_ID
+from core.state.store import EventStore
+from super_agent import Agent
+
+
+CommonConfigSource = CommonConfig | str | Path | None
 
 
 @dataclass(frozen=True)
@@ -117,6 +123,47 @@ class TerminalActionRules(ActionRules):
 
 def load_cli_config(source: str | Path | None = None) -> CliConfig:
     return CliConfig.load_automatically() if source is None else CliConfig.load_from_file(source)
+
+
+def load_common_config(source: CommonConfigSource = None) -> CommonConfig:
+    if source is None:
+        return CommonConfig.load_automatically()
+    if isinstance(source, CommonConfig):
+        return source
+    return CommonConfig.load_from_file(source)
+
+
+def load_agent(
+    source: CommonConfigSource = None,
+    *,
+    use_storage: bool = True,
+) -> Agent:
+    return Agent(
+        load_common_config(source),
+        use_storage=use_storage,
+        action_rules=TerminalActionRules(),
+    )
+
+
+def load_event_store(
+    source: CommonConfigSource = None,
+    user_id: str = LOCAL_USER_ID,
+) -> EventStore:
+    from adapter.storage import DisclosureStorage, create_storage_backend
+
+    config = load_common_config(source)
+    backend = create_storage_backend(
+        config.storage.backend,
+        str(config.storage.path),
+        config.storage.url_env,
+    )
+    return EventStore(
+        backend,
+        config.storage.path,
+        user_id,
+        config.agent.name,
+        disclosure_factory=DisclosureStorage,
+    )
 
 
 def configure_config_parser(parser: argparse.ArgumentParser) -> None:

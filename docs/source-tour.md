@@ -3,7 +3,7 @@
 Do not start by reading every file. Read one ordinary call in this order:
 
 1. `src/super_agent.py` exports the public `Agent` from `adapter/agent.py`.
-2. `src/core/runtime/resources.py` owns lazy resources, while `team.py` owns child Agents.
+2. `src/adapter/agent.py` lazily assembles Provider, storage, Skills, and Runtime only when used.
 3. `src/core/runtime/run.py` owns one run identity and task lifecycle; `core/state/run.py`
    owns the ordered event log.
 4. `src/core/runtime/loop.py` gives the model selected context and checked tools.
@@ -47,7 +47,7 @@ enter only at a visible boundary:
 For a subsystem, start at its owner:
 
 - Agent actions and external wiring: `adapter.agent.Agent`.
-- Lazy run resources: `core.runtime.resources.AgentResources`.
+- Agent composition and lazy startup: `adapter.agent.Agent`.
 - Child Agent composition: `core.runtime.team.AgentTeam`.
 - Run lifecycle: `core.runtime.run.Runtime`.
 - Model loop and calls: `core.runtime.loop.ModelLoop` and `core.runtime.model_calls.ModelCalls`.
@@ -56,12 +56,12 @@ For a subsystem, start at its owner:
 - Run event log: `core.state.run`.
 - Skill index and disclosure: `skill.disclosure.ProgressiveDisclosureCore`.
 - Storage creation, shared values, and explicit copying: `adapter.storage`.
-- Disclosure persistence: `adapter.storage.disclosure.DisclosureStorage`.
+- Disclosure persistence and backend creation: `adapter.storage`.
 - AG-UI transport and event mapping: `adapter.ag_ui_adapter.server`.
 - Web management operations and configuration updates: `adapter.ag_ui_adapter.web_api`.
 - Skill handling: `skill.runtime.handlers.SkillCollection` and `SkillHandlers`.
 - Model Skill management: `skill.runtime.model_skills.ModelSkillManager`.
-- Skill file lifecycle: `skill.runtime.files.package.SkillPackageManager` and its explicit
+- Skill file lifecycle: `skill.runtime.package.SkillPackageManager` and its explicit
   validation functions.
 - Conversation state: `core.state.conversations`.
 - Skill evidence and changes: `skill.learning`.
@@ -71,10 +71,9 @@ For a subsystem, start at its owner:
 
 `src/cli.py` is the direct source-tree entry point. The CLI implementation belongs to
 `adapter.cli_adapter.commands`, while terminal settings and confirmation live in
-`adapter.cli_adapter.configuration` and Agent/storage construction lives in
-`adapter.cli_adapter.loaders`. These
-modules use `adapter.agent` for the single explicit Agent access boundary and do not own task
-execution. There are no compatibility modules; import an advanced type from the file that owns
-it. The release tests also import every removed module path in a fresh process and require it to
-fail, including the former `adapter.conversations` path, so an obsolete owner cannot return
-unnoticed. Core and Skill source are also checked to ensure they never import Adapter code.
+`adapter.cli_adapter.configuration`, which also owns Agent and storage construction. These modules
+use `adapter.agent` for the single explicit Agent access boundary and do not own task execution.
+There are no compatibility modules; import an advanced type from the file that owns it. Release
+tests import removed module paths in a fresh process and require them to fail, so obsolete owners
+cannot return unnoticed. Core and Skill source are also checked to ensure they never import
+Adapter code.

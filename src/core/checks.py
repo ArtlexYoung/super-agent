@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from enum import StrEnum
+from pathlib import Path
 from typing import Callable, TypeVar
 from uuid import uuid4
 
@@ -277,6 +279,17 @@ class ActionRunner:
 def action_requires_checker(effects: tuple[ActionEffect, ...]) -> bool:
     """Return whether declared effects can change state or leave the process."""
     return set(effects) != {ActionEffect.READ}
+
+
+def write_bytes_atomically(path: Path, data: bytes) -> None:
+    """Replace a file only after its complete new content has been written."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.parent / f".{path.name}.{uuid4().hex}.tmp"
+    try:
+        temporary.write_bytes(data)
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 _INTERNAL_EFFECTS = {

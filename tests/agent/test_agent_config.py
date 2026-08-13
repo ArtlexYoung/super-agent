@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
@@ -335,7 +336,7 @@ class LazyAgentInitializationTests(unittest.TestCase):
                 [root / "skills", shared.absolute()],
                 agent.config.paths.skills,
             )
-            self.assertIsNone(agent._setup.runtime)
+            self.assertIsNone(agent._runtime)
 
     def test_enable_skill_is_explicit_idempotent_and_lazy(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -348,7 +349,7 @@ class LazyAgentInitializationTests(unittest.TestCase):
             agent.skills.enable("mcp:general")
 
             self.assertEqual(["mcp:general"], agent.config.agent.skills)
-            self.assertIsNone(agent._setup.runtime)
+            self.assertIsNone(agent._runtime)
             with self.assertRaisesRegex(ValueError, "cannot be empty"):
                 agent.skills.enable(" ")
             with self.assertRaisesRegex(TypeError, "must be a string"):
@@ -356,7 +357,7 @@ class LazyAgentInitializationTests(unittest.TestCase):
 
     def test_construction_and_registration_do_not_initialize_runtime_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, patch(
-            "core.runtime.resources.create_skills"
+            "adapter.agent.create_skills"
         ) as build_skills, patch(
             "adapter.storage.create_storage_backend"
         ) as create_storage:
@@ -376,15 +377,15 @@ class LazyAgentInitializationTests(unittest.TestCase):
 
             build_skills.assert_not_called()
             create_storage.assert_not_called()
-            self.assertIsNone(agent._setup.runtime)
+            self.assertIsNone(agent._runtime)
             self.assertEqual("subagent01", agent.subagents[0].name)
 
     def test_first_runtime_access_initializes_everything_once(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, patch(
-            "core.runtime.resources.create_skills",
+            "adapter.agent.create_skills",
             wraps=create_skills,
         ) as build_skills, patch(
-            "core.runtime.resources.read_model_profiles",
+            "adapter.agent.read_model_profiles",
             wraps=read_model_profiles,
         ) as discover_models, patch(
             "adapter.storage.create_storage_backend",
@@ -399,7 +400,7 @@ class LazyAgentInitializationTests(unittest.TestCase):
             runtime = agent.runtime
 
             self.assertIs(runtime, agent.runtime)
-            self.assertIsNotNone(agent._setup.storage)
+            self.assertIsNotNone(agent._storage)
             self.assertEqual("model:provided", agent.model_profiles[0].key)
             self.assertEqual(1, build_skills.call_count)
             self.assertEqual(1, discover_models.call_count)
@@ -416,7 +417,7 @@ class LazyAgentInitializationTests(unittest.TestCase):
             return read_model_profiles(*args, **kwargs)
 
         with tempfile.TemporaryDirectory() as tmp, patch(
-            "core.runtime.resources.read_model_profiles",
+            "adapter.agent.read_model_profiles",
             side_effect=discover_models_once_ready,
         ):
             agent = Agent(
@@ -427,9 +428,9 @@ class LazyAgentInitializationTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "model discovery unavailable"):
                 _ = agent.runtime
 
-            self.assertIsNone(agent._setup.runtime)
-            self.assertIsNone(agent._setup.storage)
-            self.assertIsNone(agent._setup.provider_pool)
+            self.assertIsNone(agent._runtime)
+            self.assertIsNone(agent._storage)
+            self.assertIsNone(agent._provider_pool)
             self.assertIsNotNone(agent.runtime)
             self.assertEqual(2, attempts)
 
@@ -448,10 +449,10 @@ class LazyAgentInitializationTests(unittest.TestCase):
             agent.skills.add_handler(handler)
             _ = agent.runtime
 
-            self.assertIs(storage, agent._setup.storage)
+            self.assertIs(storage, agent._storage)
             self.assertIs(
                 handler,
-                agent._setup.skill_handlers.find("unused"),
+                agent._skill_handlers.find("unused"),
             )
             self.assertIs(
                 provider,
@@ -460,6 +461,47 @@ class LazyAgentInitializationTests(unittest.TestCase):
                     agent.model_profile.connection,
                 ),
             )
+
+    def test_supplied_storage_rejects_config_change_before_initialization(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = CommonConfig.create_default(root)
+            agent = Agent(
+                config,
+                provider=MockProvider("ready"),
+                storage=create_storage_backend("jsonl", str(root / "state")),
+            )
+            changed = replace(
+                config,
+                storage=replace(config.storage, path=root / "other-state"),
+            )
+
+            with self.assertRaisesRegex(ValueError, "changing storage requires restarting"):
+                agent._replace_configuration(changed)
+
+            self.assertIs(config, agent.config)
+            self.assertIsNone(agent._runtime)
+
+    def test_failed_config_change_preserves_the_active_runtime(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            agent = Agent(
+                CommonConfig.create_default(root),
+                provider=MockProvider("ready"),
+            )
+            runtime = agent.runtime
+            config = agent.config
+            profiles = agent.model_profiles
+
+            with patch(
+                "adapter.agent.create_skills",
+                side_effect=RuntimeError("replacement Skill loading failed"),
+            ), self.assertRaisesRegex(RuntimeError, "replacement Skill loading failed"):
+                agent.add_skill_path(root / "unavailable-skills")
+
+            self.assertIs(config, agent.config)
+            self.assertIs(runtime, agent.runtime)
+            self.assertIs(profiles, agent.model_profiles)
 
 
 class _UnusedSkillHandler:

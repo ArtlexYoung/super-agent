@@ -3,8 +3,7 @@ import ast
 import unittest
 from pathlib import Path
 
-from skill.runtime.tasks.agents import AgentUnavailableError
-from skill.runtime.tasks.queue import create_agent_task_queue
+from skill.runtime.tasks.queue import AgentUnavailableError, create_task_queue
 
 
 class AgentGroupTests(unittest.TestCase):
@@ -54,7 +53,7 @@ class AgentGroupTests(unittest.TestCase):
 
         queue = _group_queue(run_member, events=events, shared=True)
         try:
-            tools = {tool.name: tool for tool in queue.create_tools()}
+            tools = {tool.name: tool for tool in queue.list_tools()}
             created = tools["create_agent_group"].handler({
                 "prompt": "large shared benchmark packet",
                 "purpose": "experiment",
@@ -94,7 +93,7 @@ class AgentGroupTests(unittest.TestCase):
 
         queue = _group_queue(run_member)
         try:
-            tools = {tool.name: tool for tool in queue.create_tools()}
+            tools = {tool.name: tool for tool in queue.list_tools()}
             group = tools["create_agent_group"].handler(_group_arguments())["group"]
             result = tools["wait_for_agent_group"].handler({
                 "group_id": group["group_id"],
@@ -123,7 +122,7 @@ class AgentGroupTests(unittest.TestCase):
 
         queue = _group_queue(run_member)
         try:
-            tools = {tool.name: tool for tool in queue.create_tools()}
+            tools = {tool.name: tool for tool in queue.list_tools()}
             group = tools["create_agent_group"].handler(_group_arguments())["group"]
             result = tools["wait_for_agent_group"].handler({
                 "group_id": group["group_id"],
@@ -146,7 +145,7 @@ class AgentGroupTests(unittest.TestCase):
             max_estimated_cost=0.000001,
         )
         try:
-            tools = {tool.name: tool for tool in queue.create_tools()}
+            tools = {tool.name: tool for tool in queue.list_tools()}
             result = tools["create_agent_group"].handler(_group_arguments())
         finally:
             queue.close()
@@ -163,7 +162,7 @@ class AgentGroupTests(unittest.TestCase):
             models=("same", "same", "other"),
         )
         try:
-            tools = {tool.name: tool for tool in queue.create_tools()}
+            tools = {tool.name: tool for tool in queue.list_tools()}
             with self.assertRaisesRegex(AgentUnavailableError, "distinct available models"):
                 tools["create_agent_group"].handler(_group_arguments())
         finally:
@@ -180,7 +179,7 @@ class AgentGroupTests(unittest.TestCase):
             allow_reduced_group=True,
         )
         try:
-            tools = {tool.name: tool for tool in queue.create_tools()}
+            tools = {tool.name: tool for tool in queue.list_tools()}
             group = tools["create_agent_group"].handler(_group_arguments())["group"]
             result = tools["wait_for_agent_group"].handler({
                 "group_id": group["group_id"],
@@ -231,7 +230,7 @@ def _group_queue(
         }
 
     create_shared = write_shared if shared else None
-    queue = create_agent_task_queue(
+    queue = create_task_queue(
         {
             "agent_tasks": {"max_wait_seconds": 1},
             "agent_groups": {

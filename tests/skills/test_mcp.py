@@ -19,7 +19,7 @@ from core.state.memory import Memory
 from skill.manifest import Skill
 from skill.runtime.mcp import McpServers, StdioMcpServer
 from support import write_memory_skill, write_workflow_skill
-from adapter.general import GeneralToolServer, attach_general_tools_to_agent
+from adapter.processes import GeneralToolServer, attach_general_tools_to_agent
 
 
 class McpSkillTests(unittest.TestCase):
@@ -239,7 +239,7 @@ description = "Missing mcp table"
 
             result = agent.run("use calculator")
 
-            registered = agent._setup.mcp_servers.list_code_registrations()
+            registered = agent._mcp_servers.list_code_registrations()
             self.assertEqual("calculator", registered[0]["name"])
             self.assertEqual(["execute"], registered[0]["effects"])
             self.assertEqual("mcp_server", registered[0]["kind"])

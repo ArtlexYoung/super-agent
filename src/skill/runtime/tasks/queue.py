@@ -11,12 +11,12 @@ from typing import Callable
 from core.checks import ActionEffect
 from core.models import SubagentRecordOptions
 from core.state.audit import compact_subagent_result
-from skill.runtime.tasks.agents import (
-    AgentChoice,
-    AgentTask,
-    AgentTaskQueueSettings,
+from skill.runtime.tasks.selection import (
+    AgentSelector,
+    TaskQueueSettings,
     AgentUnavailableError,
-    SubagentPool,
+    QueuedTask,
+    SelectedAgent,
     estimated_token_schema,
     is_agent_unavailable,
     read_optional_estimated_tokens,
@@ -50,12 +50,14 @@ _TRANSITIONS = {
 }
 
 
-class AgentTaskQueue:
+class TaskQueue:
     """Give each subagent one serial consumer and wake the producer on demand."""
+
+    hidden_tools = ("run_subagent",)
 
     def __init__(
         self,
-        settings: AgentTaskQueueSettings,
+        settings: TaskQueueSettings,
         subagents: list[dict[str, object]],
         run_subagent: Callable[..., dict[str, object]],
         record_event: Callable[[str, dict[str, object]], object],
@@ -71,14 +73,14 @@ class AgentTaskQueue:
         self.record_event = record_event
         self.record_result = record_result
         self._condition = Condition(RLock())
-        self._tasks: dict[str, AgentTask] = {}
+        self._tasks: dict[str, QueuedTask] = {}
         self._group_records: dict[str, AgentGroup] = {}
         self._group_failures: list[dict[str, object]] = []
         self._group_attempt_count = 0
         self._executors: dict[str, ThreadPoolExecutor] = {}
         self._observed_terminal: set[str] = set()
         self._started_task_count = 0
-        self._agent_pool = SubagentPool(settings, subagents, record_event)
+        self._agent_pool = AgentSelector(settings, subagents, record_event)
         self._groups = (
             None
             if group_settings is None
@@ -87,7 +89,7 @@ class AgentTaskQueue:
         self._retry_timers: list[Timer] = []
         self._closed = False
 
-    def create_tools(self) -> tuple[SkillTool, ...]:
+    def list_tools(self) -> tuple[SkillTool, ...]:
         task_id = {"type": "string"}
         action = SkillAction((ActionEffect.CREATE, ActionEffect.UPDATE), "task:queue")
         tools = (
@@ -156,7 +158,7 @@ class AgentTaskQueue:
                 "agent-task",
             ),
         )
-        return tools if self._groups is None else (*tools, *self._groups.create_tools())
+        return tools if self._groups is None else (*tools, *self._groups.list_tools())
 
     def list_groups(self) -> list[dict[str, object]]:
         return [] if self._groups is None else self._groups.list_groups()
@@ -165,7 +167,7 @@ class AgentTaskQueue:
         with self._condition:
             return [task.to_dict() for task in self._tasks.values()]
 
-    def require_finished(self) -> None:
+    def finish(self) -> None:
         with self._condition:
             if not self._tasks:
                 if self._groups is not None and self._groups.has_failures:
@@ -189,6 +191,12 @@ class AgentTaskQueue:
         for executor in executors:
             executor.shutdown(wait=True, cancel_futures=False)
 
+    def read_results(self) -> dict[str, object]:
+        return {
+            "agent_tasks": self.list_tasks(),
+            "agent_groups": self.list_groups(),
+        }
+
     def _create_task(self, arguments: dict[str, object]) -> dict[str, object]:
         prompt = read_required_tool_string(arguments, "prompt")
         purpose = read_required_tool_string(arguments, "purpose").strip().lower()
@@ -206,7 +214,7 @@ class AgentTaskQueue:
                 raise RuntimeError("agent task queue is closed")
             if len(self._tasks) >= self.settings.max_tasks:
                 raise ValueError(f"agent task limit reached: {self.settings.max_tasks}")
-            task = AgentTask(
+            task = QueuedTask(
                 f"agent-task-{len(self._tasks) + 1:02d}",
                 prompt,
                 purpose,
@@ -242,11 +250,11 @@ class AgentTaskQueue:
 
     def _queue_selected_task_locked(
         self,
-        task: AgentTask,
-        choice: AgentChoice,
+        task: QueuedTask,
+        choice: SelectedAgent,
         *,
         group_id: str | None = None,
-    ) -> AgentTask:
+    ) -> QueuedTask:
         queued = self._transition_locked(task, "queued", agent_name=choice.name)
         data: dict[str, object] = {
             "task_id": task.task_id,
@@ -387,10 +395,10 @@ class AgentTaskQueue:
 
     def _select_agent_locked(
         self,
-        task: AgentTask,
+        task: QueuedTask,
         requested_agent: str | None,
         excluded: set[str] | None = None,
-    ) -> AgentChoice:
+    ) -> SelectedAgent:
         try:
             return self._agent_pool.choose(
                 task,
@@ -412,7 +420,7 @@ class AgentTaskQueue:
 
     def _retry_unavailable_locked(
         self,
-        task: AgentTask,
+        task: QueuedTask,
         error: Exception,
     ) -> None:
         failed_agent = str(task.agent_name)
@@ -448,7 +456,7 @@ class AgentTaskQueue:
         self._record_retry_scheduled(queued, 0.0)
         self._submit_locked(choice.name, task.task_id)
 
-    def _schedule_retry_locked(self, task: AgentTask, delay: float) -> None:
+    def _schedule_retry_locked(self, task: QueuedTask, delay: float) -> None:
         self._record_retry_scheduled(task, delay)
         timer = Timer(delay, self._retry_task, args=(task.task_id,))
         timer.daemon = True
@@ -488,7 +496,7 @@ class AgentTaskQueue:
         )
         executor.submit(self._consume_task, task_id)
 
-    def _record_retry_scheduled(self, task: AgentTask, delay: float) -> None:
+    def _record_retry_scheduled(self, task: QueuedTask, delay: float) -> None:
         self.record_event(
             "agent_task.retry_scheduled",
             {
@@ -498,7 +506,7 @@ class AgentTaskQueue:
             },
         )
 
-    def _fail_task_locked(self, task: AgentTask, error: Exception) -> None:
+    def _fail_task_locked(self, task: QueuedTask, error: Exception) -> None:
         self._transition_locked(
             task,
             "failed",
@@ -531,7 +539,7 @@ class AgentTaskQueue:
         if missing:
             raise KeyError("agent tasks not found: " + ", ".join(missing))
 
-    def _require_task_locked(self, task_id: str) -> AgentTask:
+    def _require_task_locked(self, task_id: str) -> QueuedTask:
         task = self._tasks.get(task_id)
         if task is None:
             raise KeyError(f"agent task not found: {task_id}")
@@ -539,10 +547,10 @@ class AgentTaskQueue:
 
     def _transition_locked(
         self,
-        task: AgentTask,
+        task: QueuedTask,
         status: str,
         **changes: object,
-    ) -> AgentTask:
+    ) -> QueuedTask:
         if status not in _TRANSITIONS.get(task.status, set()):
             raise ValueError(f"invalid agent task transition: {task.status} -> {status}")
         updated = replace(task, status=status, **changes)
@@ -554,21 +562,21 @@ class AgentTaskQueue:
             self._groups.refresh(updated.group_id)
         return updated
 
-    def _record_locked(self, event_type: str, task: AgentTask) -> None:
+    def _record_locked(self, event_type: str, task: QueuedTask) -> None:
         data = task.to_dict()
         data.pop("error_message", None)
         self.record_event(event_type, data)
         self._condition.notify_all()
 
 
-def create_agent_task_queue(
+def create_task_queue(
     tools: dict[str, dict[str, object]],
     subagents: list[dict[str, object]],
     run_subagent: Callable[..., dict[str, object]],
     record_event: Callable[[str, dict[str, object]], object],
     record_result: Callable[[dict[str, object]], None] | None = None,
     create_shared_context: Callable[[str, str], dict[str, object]] | None = None,
-) -> AgentTaskQueue | None:
+) -> TaskQueue | None:
     unknown = set(tools) - {"agent_tasks", "agent_groups"}
     if unknown:
         raise ValueError("unknown task Skill tools: " + ", ".join(sorted(unknown)))
@@ -580,8 +588,8 @@ def create_agent_task_queue(
         None if "agent_groups" not in tools
         else AgentGroupSettings.from_dict(tools["agent_groups"])
     )
-    return AgentTaskQueue(
-        AgentTaskQueueSettings.from_dict(tools["agent_tasks"]),
+    return TaskQueue(
+        TaskQueueSettings.from_dict(tools["agent_tasks"]),
         subagents,
         run_subagent,
         record_event,

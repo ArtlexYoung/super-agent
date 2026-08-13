@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from pathlib import Path
+from threading import RLock
 from typing import TYPE_CHECKING
 
 from core.checks import ActionEffect, ActionRequest, ActionRunner, ActionRules
@@ -11,23 +12,40 @@ from core.config import CommonConfig
 from core.models import (
     LOCAL_USER_ID,
     AgentRunOptions,
+    Conversation,
+    RunEvent,
     RunResult,
+    RuntimeEventSubscriber,
+    RuntimeEventSubscribers,
     SubagentRecordOptions,
     RunIdentity,
     Task,
     TaskTrace,
     resolve_agent_run_options,
 )
-from core.provider import ChatProvider, Message, ProviderPool, UserSecretLookup
-from core.runtime.resources import AgentResources
+from core.provider import (
+    ChatProvider,
+    Message,
+    ProviderPool,
+    UserSecretLookup,
+    UserSecretResolver,
+)
 from core.runtime.run import Run, Runtime
 from core.runtime.team import AgentTeam, SubAgent
 from core.state.conversations import complete_conversation_turn, prepare_conversation_turn
-from core.state.models import Conversation, RunEvent
-from core.state.subscribers import RuntimeEventSubscriber
-from skill.runtime.handlers import SkillCollection, SkillHandler, create_skills
-from skill.runtime.mcp import McpServer
-from skill.runtime.models import ModelProfile
+from skill.runtime.handlers import (
+    SkillCollection,
+    SkillHandler,
+    create_default_skill_handlers,
+    create_skills,
+)
+from skill.runtime.mcp import McpServer, McpServers
+from skill.runtime.models import (
+    ModelProfile,
+    create_direct_provider_profile,
+    read_model_profiles,
+    select_default_model_profile,
+)
 
 if TYPE_CHECKING:
     from core.runtime.loop import ModelLoop
@@ -37,8 +55,8 @@ if TYPE_CHECKING:
 class AgentSkills:
     """Enable passive Skills and register their trusted code mechanisms."""
 
-    def __init__(self, resources: AgentResources) -> None:
-        self._resources = resources
+    def __init__(self, agent: Agent) -> None:
+        self._agent = agent
 
     def enable(self, reference: str) -> None:
         if not isinstance(reference, str):
@@ -46,10 +64,10 @@ class AgentSkills:
         selected = reference.strip().lower()
         if not selected:
             raise ValueError("Skill reference cannot be empty")
-        config = self._resources.config
+        config = self._agent.config
         if selected in config.agent.skills:
             return
-        self._resources.replace_configuration(
+        self._agent._replace_configuration(
             replace(
                 config,
                 agent=replace(
@@ -60,19 +78,19 @@ class AgentSkills:
         )
 
     def add_handler(self, handler: SkillHandler) -> None:
-        with self._resources.lock:
-            self._resources.skill_handlers.add(handler, replace=True)
+        with self._agent._lock:
+            self._agent._skill_handlers.add(handler, replace=True)
 
 
 class AgentEvents:
     """Register named observers before Runtime event delivery begins."""
 
-    def __init__(self, resources: AgentResources) -> None:
-        self._resources = resources
+    def __init__(self, agent: Agent) -> None:
+        self._agent = agent
 
     def add_subscriber(self, subscriber: RuntimeEventSubscriber) -> None:
-        with self._resources.lock:
-            self._resources.event_subscribers.add_subscriber(subscriber)
+        with self._agent._lock:
+            self._agent._event_subscribers.add_subscriber(subscriber)
 
 
 class Agent:
@@ -88,39 +106,53 @@ class Agent:
         action_rules: ActionRules | None = None,
         secret_lookup: UserSecretLookup | None = None,
     ) -> None:
-        self._setup = AgentResources(
-            config,
-            provider=provider,
-            storage=storage,
-            use_storage=use_storage,
-            action_rules=action_rules,
-            secret_lookup=secret_lookup,
-            storage_factory=_create_storage_backend,
-            disclosure_factory=_create_disclosure_storage,
-        )
+        if use_storage is not None and not isinstance(use_storage, bool):
+            raise TypeError("use_storage must be a boolean or None")
+        if storage is not None and use_storage is False:
+            raise ValueError("storage cannot be combined with use_storage=False")
+        self.config = _load_common_config(config)
+        self._provided_provider = provider
+        self._configured_storage = storage
+        self._use_storage = storage is not None if use_storage is None else use_storage
+        self._action_rules_value = action_rules
+        self._user_secrets = UserSecretResolver(secret_lookup)
+        self._storage: StorageBackend | None = None
+        self._runtime: Runtime | None = None
+        self._provider_pool: ProviderPool | None = None
+        self._model_profiles: list[ModelProfile] = []
+        self._model_profile: ModelProfile | None = None
+        self._code_model_profiles: tuple[ModelProfile, ...] = ()
+        self._mcp_servers = McpServers()
+        self._skill_handlers = create_default_skill_handlers(self._mcp_servers)
+        self._event_subscribers = RuntimeEventSubscribers()
+        self._lock = RLock()
         self._team = AgentTeam(self)
-        self.skills = AgentSkills(self._setup)
-        self.events = AgentEvents(self._setup)
-
-    @property
-    def config(self) -> CommonConfig:
-        return self._setup.config
+        self.skills = AgentSkills(self)
+        self.events = AgentEvents(self)
 
     @property
     def runtime(self) -> Runtime:
-        return self._setup.active_runtime
+        self._ensure_initialized()
+        if self._runtime is None:
+            raise RuntimeError("Agent initialization did not create a Runtime")
+        return self._runtime
 
     @property
     def provider_pool(self) -> ProviderPool:
-        return self._setup.active_provider_pool
+        self._ensure_initialized()
+        if self._provider_pool is None:
+            raise RuntimeError("Agent initialization did not create a Provider pool")
+        return self._provider_pool
 
     @property
     def model_profiles(self) -> list[ModelProfile]:
-        return self._setup.active_model_profiles
+        self._ensure_initialized()
+        return self._model_profiles
 
     @property
     def model_profile(self) -> ModelProfile | None:
-        return self._setup.default_model_profile
+        self._ensure_initialized()
+        return self._model_profile
 
     @property
     def subagents(self) -> tuple[SubAgent, ...]:
@@ -151,7 +183,7 @@ class Agent:
         selected = Path(path).expanduser().absolute()
         if selected in self.config.paths.skills:
             return
-        self._setup.replace_configuration(
+        self._replace_configuration(
             replace(
                 self.config,
                 paths=replace(
@@ -168,8 +200,8 @@ class Agent:
         *,
         effects: tuple[ActionEffect, ...],
     ) -> None:
-        with self._setup.lock:
-            self._setup.mcp_servers.add_mcp_server(name, server, effects=effects)
+        with self._lock:
+            self._mcp_servers.add_mcp_server(name, server, effects=effects)
 
     def add_model(self, model_name: str, provider: ChatProvider) -> None:
         key = model_name.strip().lower()
@@ -177,7 +209,7 @@ class Agent:
             key = f"model:{key}"
         if key not in {profile.key for profile in self.model_profiles}:
             raise KeyError(f"model profile not found: {key}")
-        with self._setup.lock:
+        with self._lock:
             self.provider_pool.add_chat_provider(key, provider)
 
     def for_user(self, user_id: str) -> object:
@@ -266,11 +298,11 @@ class Agent:
         if messages:
             raise ValueError("conversation_id cannot be combined with explicit messages")
         prepared_messages, pending_turn = prepare_conversation_turn(
-            self._setup.create_event_store(
+            self._create_event_store(
                 user_id,
                 feature="conversation history",
             ),
-            self._setup.get_action_rules(),
+            self._action_rules(),
             conversation_id,
             prompt,
         )
@@ -290,10 +322,10 @@ class Agent:
     ) -> None:
         from core.runtime.model_calls import infer_conversation_feedback_with_model
 
-        store = self._setup.create_event_store(user_id)
+        store = self._create_event_store(user_id)
         skills = create_skills(
             self.config,
-            handlers=self._setup.skill_handlers,
+            handlers=self._skill_handlers,
             store=store,
             include_freshness=False,
         )
@@ -307,7 +339,7 @@ class Agent:
         instructions = feedback_skill.disclose_instructions().content
         if feedback_skill.read_configuration().content:
             raise ValueError("feedback Skill configuration must be empty")
-        model = self._setup.create_task_loop(user_id, skills).create_text_model(
+        model = self._create_task_loop(user_id, skills).create_text_model(
             store,
             "conversation_feedback",
         )
@@ -356,8 +388,26 @@ class Agent:
             parent_run_id=parent_run.run_id,
         )
 
-    def _create_event_store(self, user_id: str) -> EventStore:
-        return self._setup.create_event_store(user_id)
+    def _create_event_store(
+        self,
+        user_id: str = LOCAL_USER_ID,
+        *,
+        feature: str | None = None,
+    ) -> EventStore:
+        self._ensure_initialized()
+        if self._storage is None:
+            if feature is not None:
+                raise RuntimeError(f"{feature} requires Runtime storage")
+            raise RuntimeError("storage is disabled for this Agent")
+        from core.state.store import EventStore
+
+        return EventStore(
+            self._storage,
+            self.config.storage.path,
+            user_id,
+            self.config.agent.name,
+            disclosure_factory=_create_disclosure_storage,
+        )
 
     def _create_skills(
         self,
@@ -368,16 +418,26 @@ class Agent:
     ) -> SkillCollection:
         return create_skills(
             config or self.config,
-            handlers=self._setup.skill_handlers,
+            handlers=self._skill_handlers,
             store=self._create_event_store(user_id),
             include_freshness=include_freshness,
         )
 
     def _create_task_loop(self, user_id: str, skills: SkillCollection) -> ModelLoop:
-        return self._setup.create_task_loop(user_id, skills)
+        from core.runtime.loop import ModelLoop
+
+        profiles = self._read_model_profiles(skills, user_id)
+        environment = self._user_secrets.get_environment_for_user(user_id)
+        return ModelLoop(
+            profiles,
+            self.provider_pool.create_user_provider_pool(environment),
+        )
 
     def _action_rules(self) -> ActionRules:
-        return self._setup.get_action_rules()
+        with self._lock:
+            if self._action_rules_value is None:
+                self._action_rules_value = ActionRules()
+            return self._action_rules_value
 
     def _execute_action(
         self,
@@ -424,16 +484,128 @@ class Agent:
         )
 
     def _user_environment(self, user_id: str) -> dict[str, str]:
-        return self._setup.user_secrets.get_environment_for_user(user_id)
+        return dict(self._user_secrets.get_environment_for_user(user_id))
 
     def _uses_direct_provider(self) -> bool:
-        return self._setup.provided_provider is not None
+        return self._provided_provider is not None
 
     def _replace_configuration(self, config: CommonConfig) -> None:
-        self._setup.replace_configuration(config)
+        with self._lock:
+            has_storage = self._configured_storage is not None or self._storage is not None
+            if has_storage and config.storage != self.config.storage:
+                raise ValueError("changing storage requires restarting the Agent")
+            if self._runtime is None:
+                self.config = config
+                return
+            runtime = self._build_runtime(config)
+            skills = create_skills(
+                config,
+                handlers=self._skill_handlers,
+                store=self._create_bootstrap_store(self._storage, config=config),
+                include_freshness=False,
+            )
+            profiles = self._read_model_profiles(skills, LOCAL_USER_ID)
+            profile = select_default_model_profile(profiles) if profiles else None
+            self.config = config
+            self._runtime = runtime
+            self._model_profiles = profiles
+            self._model_profile = profile
 
     def _reload_models(self, user_id: str) -> None:
-        self._setup.reload_model_profiles(user_id)
+        store = None if self._storage is None else self._create_event_store(user_id)
+        skills = create_skills(
+            self.config,
+            handlers=self._skill_handlers,
+            store=store,
+            include_freshness=False,
+        )
+        profiles = self._read_model_profiles(skills, user_id)
+        if user_id == LOCAL_USER_ID:
+            self._model_profiles = profiles
+            self._model_profile = (
+                select_default_model_profile(profiles) if profiles else None
+            )
+
+    def _ensure_initialized(self) -> None:
+        if self._runtime is not None:
+            return
+        with self._lock:
+            if self._runtime is not None:
+                return
+            storage = self._configured_storage
+            if storage is None and self._use_storage:
+                storage = _create_storage_backend(
+                    self.config.storage.backend,
+                    str(self.config.storage.path),
+                    self.config.storage.url_env,
+                )
+            store = self._create_bootstrap_store(storage)
+            skills = create_skills(
+                self.config,
+                handlers=self._skill_handlers,
+                store=store,
+                include_freshness=False,
+            )
+            environment = self._user_secrets.get_environment_for_user(LOCAL_USER_ID)
+            profiles = read_model_profiles(skills, environment)
+            code_profiles: tuple[ModelProfile, ...] = ()
+            if self._provided_provider is not None and not _has_model_skill(skills):
+                code_profiles = (create_direct_provider_profile(),)
+                profiles = list(code_profiles)
+            pool = ProviderPool(environment)
+            profile = select_default_model_profile(profiles) if profiles else None
+            if self._provided_provider is not None and profile is not None:
+                pool.add_chat_provider(profile.key, self._provided_provider)
+            self._storage = storage
+            self._provider_pool = pool
+            self._model_profiles = profiles
+            self._model_profile = profile
+            self._code_model_profiles = code_profiles
+            self._runtime = self._build_runtime(self.config)
+
+    def _build_runtime(self, config: CommonConfig) -> Runtime:
+        if self._provider_pool is None:
+            raise RuntimeError("Agent provider pool is unavailable")
+        return Runtime(
+            config,
+            self._provider_pool,
+            self._skill_handlers,
+            self._storage,
+            self._action_rules,
+            self._user_secrets,
+            _create_disclosure_storage,
+            code_model_profiles=self._code_model_profiles,
+            event_subscribers=self._event_subscribers,
+        )
+
+    def _create_bootstrap_store(
+        self,
+        storage: StorageBackend | None,
+        *,
+        config: CommonConfig | None = None,
+    ):
+        if storage is None:
+            return None
+        from core.state.store import EventStore
+
+        selected = config or self.config
+        return EventStore(
+            storage,
+            selected.storage.path,
+            LOCAL_USER_ID,
+            selected.agent.name,
+            disclosure_factory=_create_disclosure_storage,
+        )
+
+    def _read_model_profiles(
+        self,
+        skills: SkillCollection,
+        user_id: str,
+    ) -> list[ModelProfile]:
+        environment = self._user_secrets.get_environment_for_user(user_id)
+        if self._provided_provider is not None and not _has_model_skill(skills):
+            return list(self._code_model_profiles)
+        return read_model_profiles(skills, environment) or list(self._code_model_profiles)
 
 
 def _create_storage_backend(
@@ -446,8 +618,20 @@ def _create_storage_backend(
     return create_storage_backend(backend, path, url_env)
 
 
+def _load_common_config(config: CommonConfig | str | Path | None) -> CommonConfig:
+    if config is None:
+        return CommonConfig.load_automatically()
+    if isinstance(config, CommonConfig):
+        return config
+    return CommonConfig.load_from_file(config)
+
+
+def _has_model_skill(skills: SkillCollection) -> bool:
+    return any(entry.reference.skill_type == "model" for entry in skills.index.entries)
+
+
 def _create_disclosure_storage(cache_root: Path, store: EventStore):
-    from adapter.storage.disclosure import DisclosureStorage
+    from adapter.storage import DisclosureStorage
 
     return DisclosureStorage(cache_root, store)
 

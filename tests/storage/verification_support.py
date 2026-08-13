@@ -180,7 +180,7 @@ def _run_multiuser_isolation_checks(
     local_root: Path,
     user_ids: list[str],
 ) -> tuple[list[str], int]:
-    from adapter.storage.disclosure import DisclosureStorage
+    from adapter.storage import DisclosureStorage
 
     user_a, user_b = user_ids
     agent_name = "proof-agent"

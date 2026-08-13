@@ -24,9 +24,9 @@ from skill.index import (
     SkillSource,
     SkillSourceScan,
     SkillValidationIssue,
+    read_skill_sources,
     skill_index_to_dict,
 )
-from skill.source import read_skill_sources
 from skill.manifest import (
     SkillManifest,
     calculate_skill_directory_sha256,

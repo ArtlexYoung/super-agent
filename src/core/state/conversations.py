@@ -8,8 +8,7 @@ from uuid import uuid4
 
 from core.checks import ActionEffect, ActionRequest, ActionRunner, ActionRules, PreparedAction
 from core.provider import Message
-from core.models import RunResult
-from core.state.models import Conversation, ConversationMessage
+from core.models import Conversation, ConversationMessage, RunResult
 
 if TYPE_CHECKING:
     from core.state.store import EventStore, StorageEvent

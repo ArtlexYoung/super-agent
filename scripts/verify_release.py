@@ -14,8 +14,8 @@ import tomllib
 from pathlib import Path
 
 
-MAX_TOTAL_SOURCE_FILES = 70
-MAX_TOTAL_SOURCE_LINES = 19_500
+MAX_TOTAL_SOURCE_FILES = 48
+MAX_TOTAL_SOURCE_LINES = 18_700
 EXPECTED_SOURCE_ROOT = {"adapter", "cli.py", "core", "skill", "super_agent.py"}
 EXPECTED_WHEEL_ROOTS = [
     "src/adapter",
@@ -65,7 +65,13 @@ PRIVATE_AGENT_CALLS = {
     "_add_event_subscriber",
 }
 REMOVED_CODE_NAMES = {
+    "AgentChoice",
+    "AgentResources",
+    "AgentTask",
+    "AgentTaskQueue",
+    "AgentTaskQueueSettings",
     "AuditSettings",
+    "SubagentPool",
     "_add_event_subscriber",
     "_add_skill_handler",
     "classify_audit_event",
@@ -73,6 +79,7 @@ REMOVED_CODE_NAMES = {
     "prune_expired_audit_events",
     "redact_event_data_for_display",
     "redact_events_for_display",
+    "create_agent_task_queue",
 }
 
 

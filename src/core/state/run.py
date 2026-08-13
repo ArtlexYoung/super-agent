@@ -7,16 +7,17 @@ from dataclasses import asdict
 from threading import RLock
 from typing import TYPE_CHECKING, Callable
 
-from core.models import RunIdentity
-from core.state.models import RunEvent, RunSnapshot
+from core.models import (
+    RunEvent,
+    RunIdentity,
+    RunSnapshot,
+    RuntimeEventSubscriber,
+    RuntimeEventSubscribers,
+    SubscriberFailure,
+)
 
 if TYPE_CHECKING:
     from core.state.store import StorageBackend, StorageEvent
-    from core.state.subscribers import (
-        RuntimeEventSubscriber,
-        RuntimeEventSubscribers,
-        SubscriberFailure,
-    )
 
 
 RunEventListener = Callable[[RunEvent], None]
@@ -33,8 +34,6 @@ class RunEventLog:
         event_listener: RunEventListener | None = None,
         subscribers: RuntimeEventSubscribers | None = None,
     ) -> None:
-        from core.state.subscribers import RuntimeEventSubscribers
-
         self.identity = identity
         self._backend = backend
         self._event_listener = event_listener

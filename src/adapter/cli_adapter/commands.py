@@ -9,21 +9,25 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Sequence
 
-from adapter.cli_adapter.data.conversations import (
+from adapter.cli_adapter.data import (
     configure_conversations_parser,
+    configure_memory_parser,
+    configure_runs_parser,
+    configure_storage_parser,
     run_conversations_command,
+    run_memory_command,
+    run_runs_command,
+    run_storage_command,
 )
 from adapter.cli_adapter.configuration import (
     configure_config_parser,
+    load_agent,
     load_cli_config,
+    load_common_config,
     run_config_command,
 )
-from adapter.cli_adapter.loaders import load_agent, load_common_config
 from adapter.cli_adapter.code import attach_code_config_to_agent
-from adapter.cli_adapter.data.memory import configure_memory_parser, run_memory_command
-from adapter.cli_adapter.data.runs import configure_runs_parser, run_runs_command
 from adapter.cli_adapter.skills import configure_skills_parser, run_skills_command
-from adapter.cli_adapter.data.storage import configure_storage_parser, run_storage_command
 from adapter.ag_ui_adapter.server import DEFAULT_ALLOWED_ORIGINS, create_ag_ui_server
 from core import __version__
 from core.provider import Message

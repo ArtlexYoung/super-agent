@@ -1,7 +1,7 @@
 import unittest
 
 from core.models import SubagentRecordOptions
-from skill.runtime.tasks.queue import AgentTaskQueue, AgentTaskQueueSettings
+from skill.runtime.tasks.queue import TaskQueue, TaskQueueSettings
 from core.state.audit import (
     DEFAULT_AUDIT_POLICY,
     compact_subagent_result,
@@ -37,8 +37,8 @@ class RecordCompressionTests(unittest.TestCase):
                 ],
             }
 
-        queue = AgentTaskQueue(
-            AgentTaskQueueSettings(
+        queue = TaskQueue(
+            TaskQueueSettings(
                 max_tasks=2,
                 max_wait_seconds=1,
                 record_mode="adaptive",
@@ -50,7 +50,7 @@ class RecordCompressionTests(unittest.TestCase):
             consume,
             lambda event_type, data: events.append((event_type, data)),
         )
-        tools = {tool.name: tool for tool in queue.create_tools()}
+        tools = {tool.name: tool for tool in queue.list_tools()}
         for prompt in ("first", "second"):
             tools["create_agent_task"].handler({
                 "prompt": prompt,

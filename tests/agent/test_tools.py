@@ -25,7 +25,7 @@ from core.checks import ActionConfirmationRequired, ActionEffect, ActionRules
 from core.state.run import RunEventLog
 from core.state.store import EventStore
 from adapter.storage import JsonlStorage
-from adapter.storage.disclosure import DisclosureStorage
+from adapter.storage import DisclosureStorage
 from skill.disclosure import ProgressiveDisclosureCore
 from core.state.memory import Memory
 from skill.runtime.models import create_direct_provider_profile

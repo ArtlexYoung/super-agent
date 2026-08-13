@@ -6,6 +6,8 @@ from typing import Callable
 
 from skill.runtime.handlers import (
     SkillAction,
+    SkillSession,
+    SkillSessionContext,
     SkillTool,
     SkillResult,
     TaskPolicy,
@@ -17,7 +19,6 @@ from skill.runtime.handlers import (
 from core.provider import Message, ToolCall, ToolDefinition
 from core.models import SubAgentResult, SubagentRecordOptions, Task
 from core.runtime.run import Run
-from skill.runtime.tasks.queue import AgentTaskQueue, create_agent_task_queue
 from core.checks import ActionEffect, ActionRequest
 from skill.disclosure import SkillDisclosure, SkillIndex, SkillReference, skill_index_to_dict
 from skill.index import DEFAULT_PAGE_CHARS, disclosure_page_to_dict
@@ -41,9 +42,7 @@ class RuntimeTools:
         delegated_subagent_results: list[SubAgentResult] | None = None,
         *,
         extra_tools: tuple[SkillTool, ...] = (),
-        task_policy: TaskPolicy | None = None,
-        agent_tasks: AgentTaskQueue | None = None,
-        create_agent_tasks: Callable[[TaskPolicy], AgentTaskQueue | None] | None = None,
+        session_context: SkillSessionContext | None = None,
     ) -> None:
         self.context = context
         self.used_skill_names: list[str] = []
@@ -64,9 +63,9 @@ class RuntimeTools:
             if delegated_subagent_results is None
             else delegated_subagent_results
         )
-        self.agent_tasks = agent_tasks
-        self.task_policy = task_policy
-        self._create_agent_tasks = create_agent_tasks
+        self.skill_session: SkillSession | None = None
+        self.task_policy: TaskPolicy | None = None
+        self._session_context = session_context
         self._tools: dict[str, SkillTool] = {}
         disclosure = context.session.skills.disclosure
         self._add_tools(
@@ -76,22 +75,33 @@ class RuntimeTools:
                 records_cache=disclosure.recorder is not None,
             )
         )
-        for contribution in contributions or []:
-            self._add_tools(contribution.tools)
         self._add_tools(extra_tools)
         if context.shared_context is not None:
             self._add_tools(_create_shared_context_tools(self))
         if context.list_subagents is not None:
             self._add_tools(_create_subagent_tools(self))
+        self._install_contributions(contributions or [])
 
     def close(self) -> None:
         """Wait for all run-scoped consumers before the run is finalized."""
-        if self.agent_tasks is not None:
-            self.agent_tasks.close()
+        if self.skill_session is not None:
+            self.skill_session.close()
+
+    def finish(self) -> None:
+        if self.skill_session is not None:
+            self.skill_session.finish()
+
+    def read_skill_results(self) -> dict[str, object]:
+        if self.skill_session is None:
+            return {}
+        return self.skill_session.read_results()
+
     def get_tool_definitions(self) -> list[ToolDefinition]:
         return [tool.to_provider_definition() for tool in self._tools.values()]
+
     def list_tools(self) -> tuple[SkillTool, ...]:
         return tuple(self._tools.values())
+
     def run_tool_call(self, call: ToolCall) -> dict[str, object]:
         self.context.session.record_event(
             "tool.requested",
@@ -157,6 +167,10 @@ class RuntimeTools:
     def _add_tools(self, tools: tuple[SkillTool, ...]) -> None:
         self._validate_new_tools(tools)
         self._tools.update({tool.name: tool for tool in tools})
+
+    def _remove_tools(self, names: tuple[str, ...]) -> None:
+        for name in names:
+            self._tools.pop(name, None)
 
     def _validate_new_tools(self, tools: tuple[SkillTool, ...]) -> None:
         names = [tool.name for tool in tools]
@@ -240,17 +254,7 @@ class RuntimeTools:
         reference: SkillReference,
     ) -> list[tuple[SkillReference, SkillResult]]:
         loaded = self._load_reference_tree(reference, set())
-        new_tools = [tool for _item, item in loaded for tool in item.tools]
-        new_policy = self._read_new_task_policy(loaded)
-        new_agent_tasks = self._create_new_agent_task_queue(new_policy)
-        if new_agent_tasks is not None:
-            new_tools.extend(new_agent_tasks.create_tools())
-        self._add_tools(tuple(new_tools))
-        if new_agent_tasks is not None:
-            self.agent_tasks = new_agent_tasks
-            self._tools.pop("run_subagent", None)
-        if new_policy is not None:
-            self.task_policy = new_policy
+        self._install_contributions([item for _reference, item in loaded])
         for item, loaded_contribution in loaded:
             self._record_loaded_skill(item)
             self._activated_skill_keys.add(item.key)
@@ -259,13 +263,30 @@ class RuntimeTools:
             self.activated_contributions.append(loaded_contribution)
         return loaded
 
+    def _install_contributions(self, contributions: list[SkillResult]) -> None:
+        new_policy = self._read_new_task_policy(contributions)
+        new_session = self._start_session(contributions)
+        tools = [tool for item in contributions for tool in item.tools]
+        if new_session is not None:
+            tools.extend(new_session.list_tools())
+        try:
+            self._add_tools(tuple(tools))
+        except Exception:
+            if new_session is not None:
+                new_session.close()
+            raise
+        if new_session is not None:
+            self.skill_session = new_session
+            self._remove_tools(new_session.hidden_tools)
+        if new_policy is not None:
+            self.task_policy = new_policy
+
     def _read_new_task_policy(
         self,
-        loaded: list[tuple[SkillReference, SkillResult]],
+        contributions: list[SkillResult],
     ) -> TaskPolicy | None:
         new_policies = [
-            item.task_policy for _reference, item in loaded
-            if item.task_policy is not None
+            item.task_policy for item in contributions if item.task_policy is not None
         ]
         if len(new_policies) > 1:
             raise ValueError("activate at most one task or workflow Skill")
@@ -273,20 +294,18 @@ class RuntimeTools:
             raise ValueError("only one task or workflow Skill can be active in a run")
         return new_policies[0] if new_policies else None
 
-    def _create_new_agent_task_queue(
+    def _start_session(
         self,
-        policy: TaskPolicy | None,
-    ) -> AgentTaskQueue | None:
-        if policy is None or not policy.tools:
+        contributions: list[SkillResult],
+    ) -> SkillSession | None:
+        starters = [item.start_session for item in contributions if item.start_session]
+        if not starters:
             return None
-        if self.agent_tasks is not None:
-            raise ValueError("only one task queue can be active in a run")
-        if self._create_agent_tasks is None:
-            raise RuntimeError("task Skill queue creation is unavailable")
-        queue = self._create_agent_tasks(policy)
-        if queue is None:
-            raise RuntimeError("task Skill does not provide a usable task queue")
-        return queue
+        if len(starters) > 1 or self.skill_session is not None:
+            raise ValueError("only one stateful Skill can be active in a run")
+        if self._session_context is None:
+            raise RuntimeError("stateful Skill startup is unavailable")
+        return starters[0](self._session_context)
 
     def _load_reference_tree(
         self,
@@ -450,7 +469,7 @@ def _create_disclosure_tools(
 def create_runtime_tools(
     request: Task, run: Run, contributions: list[SkillResult],
     send_text_model_messages: Callable[[list[Message]], str],
-    workflow: TaskPolicy, model_tool: SkillTool | None,
+    model_tool: SkillTool | None,
 ) -> RuntimeTools:
     results: list[SubAgentResult] = []
     subagents = request.subagents.list_subagents() if request.include_subagents else []
@@ -483,35 +502,20 @@ def create_runtime_tools(
             "total_chars": page.total_chars, "cache_backed": page.cache_path is not None,
         }
 
-    agent_tasks = None
-    if workflow.tools:
-        agent_tasks = create_agent_task_queue(
-            workflow.tools,
-            subagents,
-            run_subagent,
-            run.record_event,
-            record_queue_result,
-            create_shared_context,
-        )
-
-    def create_agent_tasks(policy: TaskPolicy) -> AgentTaskQueue | None:
-        return create_agent_task_queue(
-            policy.tools,
-            subagents,
-            run_subagent,
-            run.record_event,
-            record_queue_result,
-            create_shared_context,
-        )
+    session_context = SkillSessionContext(
+        subagents,
+        run_subagent,
+        run.record_event,
+        record_queue_result,
+        create_shared_context,
+    )
 
     extra_tools = [tool for tool in (model_tool,) if tool is not None]
-    if agent_tasks is not None:
-        extra_tools.extend(agent_tasks.create_tools())
-    tools = RuntimeTools(
+    return RuntimeTools(
         RuntimeToolsContext(
             session=run,
             list_subagents=request.subagents.list_subagents if subagents else None,
-            run_subagent=run_subagent if subagents and agent_tasks is None else None,
+            run_subagent=run_subagent if subagents else None,
             send_text_model_messages=send_text_model_messages,
             allowed_task_skills=request.allowed_task_skills,
             shared_context=request.shared_context,
@@ -519,15 +523,8 @@ def create_runtime_tools(
         contributions,
         results,
         extra_tools=tuple(extra_tools),
-        task_policy=(
-            workflow
-            if any(item.task_policy is not None for item in contributions)
-            else None
-        ),
-        agent_tasks=agent_tasks,
-        create_agent_tasks=create_agent_tasks,
+        session_context=session_context,
     )
-    return tools
 
 
 def _read_subagent_result(value: dict[str, object]) -> SubAgentResult:

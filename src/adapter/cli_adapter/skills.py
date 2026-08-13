@@ -5,7 +5,7 @@ import json
 import sys
 from pathlib import Path
 
-from adapter.cli_adapter.loaders import load_agent, load_common_config, load_event_store
+from adapter.cli_adapter.configuration import load_agent, load_common_config, load_event_store
 from core.checks import ActionRules
 from core.config import CommonConfig
 from core.models import LOCAL_USER_ID
@@ -19,7 +19,7 @@ from skill.learning.freshness import calculate_skill_freshness
 from skill.learning.records import read_evaluation_records
 from skill.learning.update import SkillChangeCase
 from skill.manifest import SkillManifest
-from skill.runtime.files.package import SkillPackageManager, write_skill_lock_file
+from skill.runtime.package import SkillPackageManager, write_skill_lock_file
 from skill.runtime.model_skills import ModelSkillManager, model_skill_input_from_dict
 from skill.runtime.models import (
     ModelProfile,

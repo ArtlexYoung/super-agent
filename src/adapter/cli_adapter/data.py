@@ -5,9 +5,103 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
-from adapter.cli_adapter.loaders import load_agent
-from core.models import LOCAL_USER_ID
-from core.state.models import RunSnapshot
+from adapter.cli_adapter.configuration import load_agent, load_common_config
+from adapter.storage import DisclosureStorage, copy_storage_events, create_storage_backend
+from core.config import CommonConfig
+from core.models import LOCAL_USER_ID, RunSnapshot
+from core.state.audit import AuditPruneReport
+from core.state.memory import MemoryItem
+from core.state.store import StorageBackend
+
+
+def configure_conversations_parser(parser: argparse.ArgumentParser) -> None:
+    _add_identity_arguments(parser, inherited=False)
+    subparsers = parser.add_subparsers(dest="conversations_command")
+    for name, help_text in (
+        ("list", "list stored conversations"),
+        ("show", "show one stored conversation"),
+        ("create", "create a conversation"),
+        ("rename", "rename a conversation"),
+        ("clear", "clear conversation messages"),
+        ("delete", "delete a conversation"),
+    ):
+        selected = subparsers.add_parser(name, help=help_text)
+        _add_identity_arguments(selected, inherited=True)
+        if name in {"show", "rename", "clear", "delete"}:
+            selected.add_argument("--conversation-id", required=True)
+        elif name == "create":
+            selected.add_argument("--conversation-id")
+        if name in {"create", "rename"}:
+            selected.add_argument("--title", default="" if name == "create" else None,
+                                  required=name == "rename")
+
+
+def run_conversations_command(args: argparse.Namespace) -> int:
+    command = args.conversations_command or "list"
+    conversations = load_agent(args.common_config).for_user(args.user_id).conversations
+    if command == "list":
+        return _print_json({
+            "schema_version": 1,
+            "conversations": [asdict(item) for item in conversations.list()],
+        })
+    if command == "show":
+        return _print_json(asdict(conversations.read(args.conversation_id)))
+    if command == "create":
+        return _print_json(asdict(conversations.create(
+            args.title, conversation_id=args.conversation_id
+        )))
+    if command == "rename":
+        return _print_json(asdict(conversations.rename(args.conversation_id, args.title)))
+    if command == "clear":
+        return _print_json(asdict(conversations.clear(args.conversation_id)))
+    if command == "delete":
+        conversations.delete(args.conversation_id)
+        return _print_json({"conversation_id": args.conversation_id, "deleted": True})
+    raise ValueError(f"unknown conversations command: {command}")
+
+
+def configure_memory_parser(parser: argparse.ArgumentParser) -> None:
+    subparsers = parser.add_subparsers(dest="memory_command")
+    for name, help_text in (
+        ("habits", "show learned usage habits"),
+        ("list", "list long-term memory"),
+        ("add", "add long-term memory"),
+        ("recall", "recall long-term memory"),
+        ("forget", "forget long-term memory"),
+    ):
+        selected = subparsers.add_parser(name, help=help_text)
+        _add_identity_arguments(selected, inherited=False, default_config="common.toml")
+        if name in {"list", "add", "recall"}:
+            selected.add_argument("--scope")
+        if name == "add":
+            selected.add_argument("--text", required=True)
+            selected.add_argument("--source-run-id", default="")
+        elif name == "recall":
+            selected.add_argument("--query", required=True)
+            selected.add_argument("--limit", type=int)
+        elif name == "forget":
+            selected.add_argument("--item-id", required=True)
+            selected.add_argument("--reason", default="")
+
+
+def run_memory_command(args: argparse.Namespace) -> int:
+    memory = load_agent(args.common_config).for_user(args.user_id).memory
+    if args.memory_command == "habits":
+        print(memory.usage_habits_instruction() or "No memory yet.")
+    elif args.memory_command == "list":
+        _print_memory_items(memory.list(args.scope))
+    elif args.memory_command == "add":
+        print(json.dumps(asdict(memory.remember(
+            args.text, args.scope, args.source_run_id
+        )), ensure_ascii=False))
+    elif args.memory_command == "recall":
+        _print_memory_items(memory.recall(args.query, args.scope, args.limit))
+    elif args.memory_command == "forget":
+        memory.forget(args.item_id, args.reason)
+        print(json.dumps({"item_id": args.item_id, "forgotten": True}, ensure_ascii=False))
+    else:
+        raise ValueError("memory command is required")
+    return 0
 
 
 def configure_runs_parser(parser: argparse.ArgumentParser) -> None:
@@ -320,3 +414,123 @@ def _feedback_score(value: str) -> float:
     if not 0.0 <= score <= 1.0:
         raise argparse.ArgumentTypeError("score must be between 0 and 1")
     return score
+
+
+def configure_storage_parser(parser: argparse.ArgumentParser) -> None:
+    subparsers = parser.add_subparsers(dest="storage_command")
+    copy_parser = subparsers.add_parser(
+        "copy", help="copy selected user event streams to another backend"
+    )
+    copy_parser.add_argument("--common-config")
+    copy_parser.add_argument(
+        "--to-backend",
+        choices=["jsonl", "sqlite", "mysql", "postgresql"],
+        required=True,
+    )
+    copy_parser.add_argument("--to-path", default=".super-agent-copy")
+    copy_parser.add_argument("--to-url-env")
+    copy_parser.add_argument("--user-id", action="append")
+    copy_parser.add_argument("--output", choices=["text", "json"], default="text")
+    prune_parser = subparsers.add_parser(
+        "prune", help="preview or explicitly delete expired audit events"
+    )
+    prune_parser.add_argument("--common-config")
+    prune_parser.add_argument("--user-id", action="append")
+    prune_parser.add_argument("--apply", action="store_true")
+    prune_parser.add_argument("--output", choices=["text", "json"], default="text")
+
+
+def run_storage_command(args: argparse.Namespace) -> int:
+    if args.storage_command == "prune":
+        return _run_prune_command(args)
+    if args.storage_command != "copy":
+        raise ValueError("storage command is required")
+    config = load_common_config(args.common_config)
+    source = create_storage_backend(
+        config.storage.backend, str(config.storage.path), config.storage.url_env
+    )
+    path = _resolve_destination_path(args.to_path, config.source.parent)
+    destination = create_storage_backend(args.to_backend, str(path), args.to_url_env)
+    report = copy_storage_events(source, destination, args.user_id or [LOCAL_USER_ID])
+    if args.output == "json":
+        return _print_json(asdict(report))
+    for result in report.users:
+        print(
+            f"{result.user_id}\tread={result.events_read}"
+            f"\tcopied={result.events_copied}"
+            f"\texisting={result.events_already_present}"
+        )
+    return 0
+
+
+def _run_prune_command(args: argparse.Namespace) -> int:
+    config = load_common_config(args.common_config)
+    backend = create_storage_backend(
+        config.storage.backend, str(config.storage.path), config.storage.url_env
+    )
+    report = config.storage.audit.prune_expired_events(
+        backend, args.user_id or [LOCAL_USER_ID], apply=args.apply
+    )
+    if args.apply:
+        _refresh_disclosure_histories(config, backend, report)
+    if args.output == "json":
+        return _print_json(asdict(report))
+    mode = "applied" if report.applied else "preview"
+    print(f"audit {mode}: detailed={report.detailed_days}d critical={report.critical_days}d")
+    for result in report.users:
+        print(
+            f"{result.user_id}\tdetailed={result.detailed_candidates}"
+            f"\tcritical={result.critical_candidates}"
+            f"\tprotected={result.protected_events}"
+            f"\tinvalid_time={result.invalid_timestamps}"
+            f"\tdeleted={result.events_deleted}"
+        )
+    return 0
+
+
+def _refresh_disclosure_histories(
+    config: CommonConfig,
+    backend: StorageBackend,
+    report: AuditPruneReport,
+) -> None:
+    from core.state.store import EventStore
+
+    for user_report in report.users:
+        if not user_report.events_deleted:
+            continue
+        for agent_name in user_report.affected_agents:
+            EventStore(
+                backend,
+                config.storage.path,
+                user_report.user_id,
+                agent_name,
+                disclosure_factory=DisclosureStorage,
+            ).disclosure.refresh_history()
+
+
+def _resolve_destination_path(value: str, base_directory: Path) -> Path:
+    path = Path(value).expanduser()
+    return path if path.is_absolute() else base_directory / path
+
+
+def _add_identity_arguments(
+    parser: argparse.ArgumentParser,
+    *,
+    inherited: bool,
+    default_config: str | None = None,
+) -> None:
+    default = argparse.SUPPRESS if inherited else default_config
+    parser.add_argument("--common-config", default=default)
+    parser.add_argument(
+        "--user-id", default=argparse.SUPPRESS if inherited else LOCAL_USER_ID
+    )
+
+
+def _print_memory_items(items: list[MemoryItem]) -> None:
+    for item in items:
+        print(json.dumps(asdict(item), ensure_ascii=False))
+
+
+def _print_json(value: object) -> int:
+    print(json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True))
+    return 0

@@ -74,13 +74,13 @@ class SkillArchitectureTests(unittest.TestCase):
             Path("src/skill/learning/records.py").is_file()
         )
         self.assertFalse(Path("src/core/evolution").exists())
-        self.assertTrue(Path("src/core/state/subscribers.py").is_file())
+        self.assertTrue(Path("src/core/models.py").is_file())
         self.assertTrue(Path("src/core/runtime/run.py").is_file())
         self.assertFalse(Path("src/core/session.py").exists())
         self.assertTrue(Path("src/core/state/store.py").is_file())
         self.assertFalse(Path("src/core/state/backend.py").exists())
         self.assertFalse(Path("src/core/state/views.py").exists())
-        self.assertTrue(Path("src/adapter/storage/jsonl.py").is_file())
+        self.assertTrue(Path("src/adapter/storage/local.py").is_file())
         self.assertFalse(Path("src/core/storage").exists())
 
     def test_skill_package_is_passive_and_small(self) -> None:
@@ -104,22 +104,22 @@ class SkillArchitectureTests(unittest.TestCase):
             and '"skill.toml"' in path.read_text(encoding="utf-8")
         ]
 
-        self.assertEqual([Path("src/skill/source.py")], direct_parsers)
+        self.assertEqual([Path("src/skill/index.py")], direct_parsers)
 
     def test_only_super_agent_aggregates_public_api(self) -> None:
         for module_name, attribute_name in [
             ("core", "Agent"),
             ("skill", "SkillManifest"),
-            ("skill.runtime.files", "SkillPackageManager"),
             ("skill.learning", "SkillUpdater"),
         ]:
             module = importlib.import_module(module_name)
             self.assertFalse(hasattr(module, attribute_name))
-        with self.assertRaises(ModuleNotFoundError):
-            importlib.import_module("skill.kinds")
+        for module_name in ("skill.kinds", "skill.runtime.files"):
+            with self.assertRaises(ModuleNotFoundError):
+                importlib.import_module(module_name)
 
     def test_skill_file_lifecycle_has_one_operations_owner(self) -> None:
-        operations = importlib.import_module("skill.runtime.files.package")
+        operations = importlib.import_module("skill.runtime.package")
         self.assertEqual("validate_skill_directory", operations.validate_skill_directory.__name__)
         self.assertEqual(
             "apply_skill_directory_updates",
@@ -133,14 +133,15 @@ class SkillArchitectureTests(unittest.TestCase):
             with self.assertRaises(ModuleNotFoundError):
                 importlib.import_module(module_name)
 
-    def test_cli_package_exposes_explicit_configuration_and_loader_modules(self) -> None:
+    def test_cli_configuration_owns_cli_loading(self) -> None:
         package = importlib.import_module("adapter.cli_adapter")
         configuration = importlib.import_module("adapter.cli_adapter.configuration")
-        loaders = importlib.import_module("adapter.cli_adapter.loaders")
         self.assertFalse(Path("src/adapter/cli_adapter/__init__.py").exists())
         self.assertFalse(hasattr(package, "CliConfig"))
         self.assertEqual("CliConfig", configuration.CliConfig.__name__)
-        self.assertEqual("load_agent", loaders.load_agent.__name__)
+        self.assertEqual("load_agent", configuration.load_agent.__name__)
+        with self.assertRaises(ModuleNotFoundError):
+            importlib.import_module("adapter.cli_adapter.loaders")
 
     def test_real_modules_and_public_api_import_in_fresh_process(self) -> None:
         environment = dict(os.environ)

@@ -393,15 +393,6 @@ def _clean_expected_sha256(value: str) -> str:
     return expected
 
 # Reproducible lock files are part of Skill package management.
-import json
-import os
-from dataclasses import dataclass
-from pathlib import Path
-from uuid import uuid4
-
-from skill.manifest import SkillManifest, calculate_skill_directory_sha256
-
-
 SKILL_LOCK_SCHEMA_VERSION = 2
 
 

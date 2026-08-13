@@ -10,6 +10,8 @@ from skill.runtime.handlers import (
     SkillAction,
     SkillTool,
     SkillResult,
+    SkillSession,
+    SkillSessionContext,
     read_optional_positive_tool_integer,
     read_optional_tool_string,
     read_required_tool_string,
@@ -123,10 +125,16 @@ class TaskSkillHandler:
         additional, tools = self._read_additions(context) if self._read_additions else ("", ())
         if additional:
             instructions = f"{instructions}\n\n{additional}"
+        policy = create_task_policy_from_skill(opened)
         return SkillResult(
             model_context=Skill(manifest=opened.disclose_manifest(), instructions=instructions),
             tools=(*tools, *_create_task_plan_tools(context)),
-            task_policy=create_task_policy_from_skill(opened),
+            task_policy=policy,
+            start_session=(
+                None
+                if not policy.tools
+                else lambda session: _start_task_session(policy.tools, session)
+            ),
         )
 
 
@@ -140,6 +148,25 @@ def create_builtin_skill_handlers(
         WorkflowSkillHandler(),
         TaskSkillHandler(),
     )
+
+
+def _start_task_session(
+    tools: dict[str, dict[str, object]],
+    context: SkillSessionContext,
+) -> SkillSession:
+    from skill.runtime.tasks.queue import create_task_queue
+
+    queue = create_task_queue(
+        tools,
+        context.subagents,
+        context.run_subagent,
+        context.record_event,
+        context.record_result,
+        context.create_shared_context,
+    )
+    if queue is None:
+        raise RuntimeError("task Skill does not provide a usable task queue")
+    return queue
 
 
 def create_memory_skill_contribution(memory: Memory) -> SkillResult:

@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 from skill.learning.runs import project_model_calls
-from core.state.models import RunEvent
+from core.models import RunEvent
 from core.config import CommonConfig
 from super_agent import Agent
 from support import SequenceProvider
@@ -28,7 +28,7 @@ class RuntimeInsightTests(unittest.TestCase):
                 result.run_id,
                 {"diff": "bounded diff", "checks": ["passed"]},
             )
-            events = agent._setup.create_event_store().read_run_events(
+            events = agent._create_event_store().read_run_events(
                 result.run_id,
                 include_sensitive=True,
             )

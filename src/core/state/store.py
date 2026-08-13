@@ -2,16 +2,21 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Protocol
 
-from core.models import RunIdentity, validate_agent_name, validate_user_id
-from core.files import create_scope_digest
+from core.models import (
+    RunEvent,
+    RunIdentity,
+    RunSnapshot,
+    validate_agent_name,
+    validate_user_id,
+)
 
 if TYPE_CHECKING:
     from core.state.memory import RuntimeMemoryStore
-    from core.state.models import RunEvent, RunSnapshot
     from core.state.run import RunEventLog
 
 
@@ -50,6 +55,10 @@ class DisclosureStorage(Protocol):
 DisclosureStorageFactory = Callable[[Path, "EventStore"], DisclosureStorage]
 
 
+def _create_scope_digest(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()[:20]
+
+
 class EventStore:
     """Expose domain operations while keeping backend details out of Skill handlers."""
 
@@ -72,9 +81,9 @@ class EventStore:
         self.private_root = (
             self.local_root
             / "users"
-            / create_scope_digest(self.user_id)
+            / _create_scope_digest(self.user_id)
             / "agents"
-            / create_scope_digest(self.agent_name)
+            / _create_scope_digest(self.agent_name)
         )
         self._disclosure: DisclosureStorage | None = None
         self._memory: RuntimeMemoryStore | None = None
@@ -302,7 +311,7 @@ class EventStore:
         *,
         include_sensitive: bool = False,
     ) -> Path:
-        from core.files import write_bytes_atomically
+        from core.checks import write_bytes_atomically
 
         explanation = self.explain_run(
             run_id,

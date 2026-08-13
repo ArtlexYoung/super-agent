@@ -126,7 +126,7 @@ class RemoteSqlStorageConfigurationTests(unittest.TestCase):
         }
         removed = {"_event_from_row", "_event_id_batches", "_query_where"}
 
-        for path in (Path("src/adapter/storage/sqlite.py"), Path("src/adapter/storage/remote.py")):
+        for path in (Path("src/adapter/storage/local.py"), Path("src/adapter/storage/remote.py")):
             source = path.read_text(encoding="utf-8")
             with self.subTest(path=path):
                 self.assertTrue(all(name in source for name in required))

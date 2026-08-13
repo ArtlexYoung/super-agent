@@ -7,10 +7,8 @@ from unittest.mock import patch
 
 from super_agent import Agent
 from core.config import CommonConfig
-from core.models import AgentRunOptions
+from core.models import AgentRunOptions, RunEvent, RuntimeEventSubscriberError
 from core.provider import MockProvider
-from core.state.models import RunEvent
-from core.state.subscribers import RuntimeEventSubscriberError
 from skill.learning.records import read_evaluation_records
 
 
@@ -110,7 +108,7 @@ class RuntimeEventSubscriberTests(unittest.TestCase):
             result = agent.run("hello")
 
             self.assertEqual("completed answer", result.text)
-            self.assertEqual([], read_evaluation_records(agent._setup.create_event_store()))
+            self.assertEqual([], read_evaluation_records(agent._create_event_store()))
             self.assertFalse(
                 any(event.event_type.startswith("learning.") for event in result.events)
             )
@@ -134,7 +132,7 @@ class RuntimeEventSubscriberTests(unittest.TestCase):
             self.assertEqual(first.events, second.events)
             self.assertEqual(
                 len(first.evaluation_record_ids),
-                len(read_evaluation_records(agent._setup.create_event_store())),
+                len(read_evaluation_records(agent._create_event_store())),
             )
             learning_events = [
                 event.event_type

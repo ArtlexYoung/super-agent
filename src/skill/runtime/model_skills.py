@@ -26,7 +26,7 @@ from skill.manifest import (
     SkillManifest,
     calculate_skill_directory_sha256,
 )
-from skill.runtime.files.package import (
+from skill.runtime.package import (
     SkillDirectoryUpdate,
     apply_skill_directory_updates,
     validate_skill_directory,

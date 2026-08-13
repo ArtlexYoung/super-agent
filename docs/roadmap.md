@@ -1731,6 +1731,23 @@ Status: implemented.
 - Add negative gate tests that prove private calls, removed names, and hidden public actions fail
   before a release can be committed.
 
+## v0.1.70: Direct Runtime Ownership
+
+Status: implemented.
+
+- Let `Agent` directly own lazy Provider, storage, model, Skill, and Runtime state; delete the
+  resource container and its setup path instead of replacing them with another assembly object.
+- Give every stateful Skill one `SkillSession` contract, and install initial and dynamically
+  disclosed tools, policies, hidden tools, and sessions through one Runtime path.
+- Keep multi-Agent task execution inside `skill.runtime.tasks`: `TaskQueue` owns queue state,
+  `AgentSelector` owns model choice and resilience, and group policy remains independently named.
+- Consolidate Runtime data contracts, Skill source scanning, CLI data operations, local storage,
+  and disclosure persistence into their real owners without compatibility imports.
+- Remove AG-UI and Skill-package re-export paths, keep side-effecting file replacement explicit,
+  and finish at 47 Python files and fewer than 18,700 non-empty source lines.
+- Reject the removed resources, task names, modules, and forwarding paths in release tests while
+  preserving dependency-free installation, stateless execution, Web checks, and the offline gate.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

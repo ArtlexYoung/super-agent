@@ -71,7 +71,7 @@ class ProgressiveDisclosureTests(unittest.TestCase):
             self.assertIn("history.json", content)
             self.assertIn("skills/prompt/echo/manifest.json", content)
             self.assertTrue(
-                agent._setup.create_event_store()
+                agent._create_event_store()
                 .disclosure.cache_root.joinpath("index.json")
                 .exists()
             )

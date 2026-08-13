@@ -12,7 +12,7 @@ from adapter.storage import JsonlStorage
 from core.state.store import StorageEventQuery
 from adapter.storage import create_local_event_store
 from core.state.store import EventStore
-from core.state.subscribers import RuntimeEventSubscribers
+from core.models import RuntimeEventSubscribers
 from support import write_workflow_skill
 
 
@@ -126,7 +126,7 @@ class EventStoreTests(unittest.TestCase):
 
             result = agent.run("hello")
 
-            events = agent._setup.create_event_store().read_run_events(result.run_id)
+            events = agent._create_event_store().read_run_events(result.run_id)
             self.assertEqual(
                 [event.event_type for event in result.events],
                 [event.event_type for event in events],
@@ -148,7 +148,7 @@ class EventStoreTests(unittest.TestCase):
             )
             original_completed = next(
                 event
-                for event in agent._setup.create_event_store().read_run_events(
+                for event in agent._create_event_store().read_run_events(
                     result.run_id,
                     include_sensitive=True,
                 )
@@ -170,8 +170,8 @@ class EventStoreTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "provider failed"):
                 agent.run("hello")
 
-            runs = agent._setup.create_event_store().list_runs()
-            events = agent._setup.create_event_store().read_run_events(runs[0].run_id)
+            runs = agent._create_event_store().list_runs()
+            events = agent._create_event_store().read_run_events(runs[0].run_id)
             self.assertEqual("run.failed", events[-1].event_type)
             self.assertEqual("RuntimeError", events[-1].data["error_type"])
 

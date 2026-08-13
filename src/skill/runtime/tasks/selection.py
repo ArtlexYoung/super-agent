@@ -29,7 +29,7 @@ class AgentUnavailableError(RuntimeError):
 
 
 @dataclass(frozen=True)
-class AgentTask:
+class QueuedTask:
     task_id: str
     prompt: str
     purpose: str
@@ -106,7 +106,7 @@ class AgentTask:
 
 
 @dataclass(frozen=True)
-class AgentTaskQueueSettings:
+class TaskQueueSettings:
     max_tasks: int = 32
     max_wait_seconds: float = 60.0
     record_mode: str = "full"
@@ -119,7 +119,7 @@ class AgentTaskQueueSettings:
     retry_unavailable_times: int = 1
 
     @classmethod
-    def from_dict(cls, value: dict[str, object]) -> "AgentTaskQueueSettings":
+    def from_dict(cls, value: dict[str, object]) -> "TaskQueueSettings":
         unknown = set(value) - set(cls.__dataclass_fields__)
         if unknown:
             raise ValueError("unknown agent_tasks settings: " + ", ".join(sorted(unknown)))
@@ -144,7 +144,7 @@ class AgentTaskQueueSettings:
 
 
 @dataclass(frozen=True)
-class AgentChoice:
+class SelectedAgent:
     name: str
     selected_by: str
     candidate_count: int
@@ -195,12 +195,12 @@ class _AgentHealth:
         )
 
 
-class SubagentPool:
+class AgentSelector:
     """Choose available Agents and own their circuit state for one queue."""
 
     def __init__(
         self,
-        settings: AgentTaskQueueSettings,
+        settings: TaskQueueSettings,
         subagents: list[dict[str, object]],
         record_event: EventWriter,
     ) -> None:
@@ -216,13 +216,13 @@ class SubagentPool:
 
     def choose(
         self,
-        task: AgentTask,
+        task: QueuedTask,
         active: dict[str, int],
         requested: str | None = None,
         excluded: set[str] | None = None,
         *,
         commit: bool = True,
-    ) -> AgentChoice:
+    ) -> SelectedAgent:
         matching = [
             item for item in self.subagents
             if _matches(item, task.purpose, task.required_features)
@@ -283,12 +283,12 @@ class SubagentPool:
 
     def choose_group(
         self,
-        tasks: list[AgentTask],
+        tasks: list[QueuedTask],
         active: dict[str, int],
         *,
         require_different_models: bool,
         commit: bool,
-    ) -> list[AgentChoice]:
+    ) -> list[SelectedAgent]:
         """Select one distinct Agent per member and optionally require model diversity."""
         if not tasks:
             return []
@@ -306,7 +306,7 @@ class SubagentPool:
         if self.settings.agent_selection == "rotate" and ranked:
             position = self._rotation_positions.get(rotation_key, 0) % len(ranked)
             ranked = [*ranked[position:], *ranked[:position]]
-        selected: list[AgentChoice] = []
+        selected: list[SelectedAgent] = []
         selected_models: set[str] = set()
         virtual_active = dict(active)
         selected_by = (
@@ -338,7 +338,7 @@ class SubagentPool:
             )
         return selected
 
-    def commit_group(self, choices: list[AgentChoice]) -> None:
+    def commit_group(self, choices: list[SelectedAgent]) -> None:
         """Commit one previously previewed group without selecting or pricing it again."""
         for choice in choices:
             self._commit_choice(choice.name)
@@ -402,7 +402,7 @@ class SubagentPool:
     def _rank(
         self,
         agent: dict[str, object],
-        task: AgentTask,
+        task: QueuedTask,
         active: dict[str, int],
     ) -> tuple[float, float, float]:
         _model, _pricing, cost = _model_cost(agent, task)
@@ -416,9 +416,9 @@ class SubagentPool:
         agent: dict[str, object],
         selected_by: str,
         counts: tuple[int, int],
-        task: AgentTask,
+        task: QueuedTask,
         commit: bool,
-    ) -> AgentChoice:
+    ) -> SelectedAgent:
         name = str(agent["name"])
         model, pricing, cost = _model_cost(agent, task)
         health = self._health[name]
@@ -431,7 +431,7 @@ class SubagentPool:
         )
         if commit:
             self._commit_choice(name)
-        return AgentChoice(
+        return SelectedAgent(
             name,
             selected_by,
             candidate_count,
@@ -526,7 +526,7 @@ def _matches(agent: dict[str, object], purpose: str, features: tuple[str, ...]) 
 
 def _model_cost(
     agent: dict[str, object],
-    task: AgentTask,
+    task: QueuedTask,
 ) -> tuple[str | None, dict[str, float], dict[str, object]]:
     models = agent.get("models", [])
     compatible = [
@@ -558,7 +558,7 @@ def _read_pricing(model: dict[str, object]) -> dict[str, float]:
 
 def _estimate_cost(
     pricing: dict[str, float],
-    task: AgentTask,
+    task: QueuedTask,
 ) -> dict[str, object]:
     token_counts = task.token_counts()
     known = {name: value for name, value in token_counts.items() if value is not None}

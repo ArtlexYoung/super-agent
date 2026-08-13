@@ -7,7 +7,7 @@ from pathlib import Path
 
 from core.config import CommonConfig
 from core.provider import MockProvider, ModelResponse, ToolCall
-from skill.runtime.tasks.queue import AgentTaskQueue, AgentTaskQueueSettings
+from skill.runtime.tasks.queue import TaskQueue, TaskQueueSettings
 from super_agent import Agent
 
 
@@ -249,8 +249,8 @@ class MultiAgentTaskTests(unittest.TestCase):
             assignments.append(name)
             return {"name": name, "text": prompt, "run_id": f"run-{prompt}"}
 
-        queue = AgentTaskQueue(
-            AgentTaskQueueSettings(
+        queue = TaskQueue(
+            TaskQueueSettings(
                 max_tasks=4,
                 max_wait_seconds=1,
                 agent_selection="rotate",
@@ -262,7 +262,7 @@ class MultiAgentTaskTests(unittest.TestCase):
             consume,
             lambda name, data: events.append((name, data)),
         )
-        tools = {tool.name: tool for tool in queue.create_tools()}
+        tools = {tool.name: tool for tool in queue.list_tools()}
         for number in range(1, 4):
             task_id = f"agent-task-{number:02d}"
             tools["create_agent_task"].handler({
@@ -304,8 +304,8 @@ class MultiAgentTaskTests(unittest.TestCase):
             assignments.append(name)
             return {"name": name, "text": prompt, "run_id": "run"}
 
-        queue = AgentTaskQueue(
-            AgentTaskQueueSettings(max_wait_seconds=1),
+        queue = TaskQueue(
+            TaskQueueSettings(max_wait_seconds=1),
             [
                 _priced_agent("expensive", weight=1, input_price=8),
                 _priced_agent("efficient", weight=2, input_price=0.5),
@@ -313,7 +313,7 @@ class MultiAgentTaskTests(unittest.TestCase):
             consume,
             lambda name, data: events.append((name, data)),
         )
-        tools = {tool.name: tool for tool in queue.create_tools()}
+        tools = {tool.name: tool for tool in queue.list_tools()}
         with self.assertRaisesRegex(ValueError, "integer from 0"):
             tools["create_agent_task"].handler({
                 "prompt": "invalid estimate",
@@ -342,8 +342,8 @@ class MultiAgentTaskTests(unittest.TestCase):
 
     def test_estimated_output_tokens_choose_the_lower_expected_call_cost(self) -> None:
         assignments = []
-        queue = AgentTaskQueue(
-            AgentTaskQueueSettings(max_wait_seconds=1),
+        queue = TaskQueue(
+            TaskQueueSettings(max_wait_seconds=1),
             [
                 _priced_agent("cheap-input", input_price=0.1, output_price=8),
                 _priced_agent("cheap-output", input_price=4, output_price=0.2),
@@ -355,7 +355,7 @@ class MultiAgentTaskTests(unittest.TestCase):
             },
             lambda _name, _data: None,
         )
-        tools = {tool.name: tool for tool in queue.create_tools()}
+        tools = {tool.name: tool for tool in queue.list_tools()}
         tools["create_agent_task"].handler({
             "prompt": "experiment",
             "purpose": "experiment",
@@ -385,8 +385,8 @@ class MultiAgentTaskTests(unittest.TestCase):
                 raise ConnectionError("provider offline")
             return {"name": name, "text": prompt, "run_id": f"run-{len(calls)}"}
 
-        queue = AgentTaskQueue(
-            AgentTaskQueueSettings(
+        queue = TaskQueue(
+            TaskQueueSettings(
                 max_wait_seconds=1,
                 circuit_breaker_wait_seconds=0.01,
             ),
@@ -394,7 +394,7 @@ class MultiAgentTaskTests(unittest.TestCase):
             consume,
             lambda _name, _data: None,
         )
-        tools = {tool.name: tool for tool in queue.create_tools()}
+        tools = {tool.name: tool for tool in queue.list_tools()}
         _create_and_dispatch(tools, 1)
         tools["wait_for_agent_tasks"].handler({
             "trigger": "all_tasks_finished",
@@ -424,13 +424,13 @@ class MultiAgentTaskTests(unittest.TestCase):
                 raise ConnectionError("provider offline")
             return {"name": name, "text": prompt, "run_id": "fallback-run"}
 
-        queue = AgentTaskQueue(
-            AgentTaskQueueSettings(max_wait_seconds=1),
+        queue = TaskQueue(
+            TaskQueueSettings(max_wait_seconds=1),
             [_priced_agent("primary", weight=2), _priced_agent("fallback", weight=1)],
             consume,
             lambda name, data: events.append((name, data)),
         )
-        tools = {tool.name: tool for tool in queue.create_tools()}
+        tools = {tool.name: tool for tool in queue.list_tools()}
         tools["create_agent_task"].handler({
             "prompt": "experiment",
             "purpose": "experiment",
@@ -466,8 +466,8 @@ class MultiAgentTaskTests(unittest.TestCase):
                 raise TimeoutError("provider timed out")
             return {"name": name, "text": prompt, "run_id": "recovered-run"}
 
-        queue = AgentTaskQueue(
-            AgentTaskQueueSettings(
+        queue = TaskQueue(
+            TaskQueueSettings(
                 max_wait_seconds=1,
                 circuit_breaker_wait_seconds=0.01,
             ),
@@ -475,7 +475,7 @@ class MultiAgentTaskTests(unittest.TestCase):
             consume,
             lambda name, data: events.append((name, data)),
         )
-        tools = {tool.name: tool for tool in queue.create_tools()}
+        tools = {tool.name: tool for tool in queue.list_tools()}
         tools["create_agent_task"].handler({
             "prompt": "experiment",
             "purpose": "experiment",
@@ -505,8 +505,8 @@ class MultiAgentTaskTests(unittest.TestCase):
             attempts += 1
             raise ConnectionError("still offline")
 
-        queue = AgentTaskQueue(
-            AgentTaskQueueSettings(
+        queue = TaskQueue(
+            TaskQueueSettings(
                 max_wait_seconds=1,
                 circuit_breaker_wait_seconds=0.01,
             ),
@@ -514,7 +514,7 @@ class MultiAgentTaskTests(unittest.TestCase):
             consume,
             lambda name, data: events.append((name, data)),
         )
-        tools = {tool.name: tool for tool in queue.create_tools()}
+        tools = {tool.name: tool for tool in queue.list_tools()}
         tools["create_agent_task"].handler({
             "prompt": "experiment",
             "purpose": "experiment",
@@ -563,13 +563,13 @@ class MultiAgentTaskTests(unittest.TestCase):
             return {"text": prompt, "run_id": prompt}
 
         events = []
-        queue = AgentTaskQueue(
-            AgentTaskQueueSettings(max_tasks=4, max_wait_seconds=0.01),
+        queue = TaskQueue(
+            TaskQueueSettings(max_tasks=4, max_wait_seconds=0.01),
             [{"name": "worker", "purpose": "implementation", "required_features": ["text"]}],
             consume,
             lambda name, data: events.append((name, data)),
         )
-        tools = {tool.name: tool for tool in queue.create_tools()}
+        tools = {tool.name: tool for tool in queue.list_tools()}
         tools["create_agent_task"].handler({"prompt": "one", "purpose": "implementation", "required_features": ["text"]})
         tools["create_agent_task"].handler({"prompt": "two", "purpose": "implementation", "required_features": ["text"]})
         tools["dispatch_agent_task"].handler({"task_id": "agent-task-01"})
@@ -592,13 +592,13 @@ class MultiAgentTaskTests(unittest.TestCase):
             raise RuntimeError("child failed")
 
         events = []
-        queue = AgentTaskQueue(
-            AgentTaskQueueSettings(max_tasks=4),
+        queue = TaskQueue(
+            TaskQueueSettings(max_tasks=4),
             [{"name": "worker", "purpose": "implementation", "required_features": ["text"]}],
             fail,
             lambda name, data: events.append((name, data)),
         )
-        tools = {tool.name: tool for tool in queue.create_tools()}
+        tools = {tool.name: tool for tool in queue.list_tools()}
         tools["create_agent_task"].handler({"prompt": "fail", "purpose": "implementation", "required_features": ["text"]})
         tools["dispatch_agent_task"].handler({"task_id": "agent-task-01"})
         tools["create_agent_task"].handler({"prompt": "cancel", "purpose": "implementation", "required_features": ["text"]})

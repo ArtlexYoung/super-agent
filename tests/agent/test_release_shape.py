@@ -135,8 +135,10 @@ class ReleaseShapeTests(unittest.TestCase):
             "src/core/evaluation",
             "src/core/secrets.py",
             "src/core/events.py",
+            "src/core/files.py",
             "src/core/provider",
             "src/core/skill_use",
+            "src/core/runtime/resources.py",
             "src/core/runtime/runtime.py",
             "src/core/runtime/tasks",
             "src/core/session.py",
@@ -150,6 +152,7 @@ class ReleaseShapeTests(unittest.TestCase):
             "src/skill/runtime/workflow.py",
             "src/skill/runtime/update.py",
             "src/skill/runtime/files/models.py",
+            "src/skill/runtime/files",
             "src/skill/learning/learning.py",
             "src/adapter/conversations.py",
             "src/adapter/cli_adapter/__init__.py",
@@ -166,6 +169,7 @@ class ReleaseShapeTests(unittest.TestCase):
             "src/adapter/storage/copy.py",
             "src/adapter/storage/values.py",
             "src/adapter/ag_ui_adapter/configuration.py",
+            "src/adapter/ag_ui_adapter/__init__.py",
             "src/adapter/ag_ui_adapter/protocol.py",
             "src/adapter/storage/sql/__init__.py",
             "src/adapter/storage/sql/base.py",
@@ -181,9 +185,9 @@ class ReleaseShapeTests(unittest.TestCase):
         self.assertTrue((root / "commands.py").is_file())
         self.assertTrue((root / "code.py").is_file())
         self.assertTrue((root / "configuration.py").is_file())
-        self.assertTrue((root / "loaders.py").is_file())
+        self.assertFalse((root / "loaders.py").exists())
         self.assertTrue((root / "skills.py").is_file())
-        self.assertTrue((root / "data").is_dir())
+        self.assertTrue((root / "data.py").is_file())
         self.assertFalse((root / "manage").exists())
         self.assertFalse((root / "run").exists())
         for old_path in (
@@ -245,7 +249,7 @@ class ReleaseShapeTests(unittest.TestCase):
                     sys.executable,
                     "-c",
                     "from super_agent import Agent; "
-                    "from adapter.ag_ui_adapter import AGUIEventMapper; "
+                    "from adapter.ag_ui_adapter.server import AGUIEventMapper; "
                     "from core.runtime.run import Run; "
                     "from skill.manifest import SkillManifest",
                 ],
@@ -289,6 +293,8 @@ class ReleaseShapeTests(unittest.TestCase):
                 "core.session",
                 "core.state.events",
                 "core.state.event_log",
+                "core.state.models",
+                "core.state.subscribers",
                 "core.runtime.setup",
                 "core.runtime.agent",
                 "core.runtime.runtime",
@@ -311,6 +317,11 @@ class ReleaseShapeTests(unittest.TestCase):
                 "adapter.cli_adapter.runs",
                 "adapter.cli_adapter.serve",
                 "adapter.cli_adapter.storage",
+                "adapter.cli_adapter.loaders",
+                "adapter.cli_adapter.data.conversations",
+                "adapter.cli_adapter.data.memory",
+                "adapter.cli_adapter.data.runs",
+                "adapter.cli_adapter.data.storage",
                 "adapter.cli_adapter.manage.models",
                 "adapter.cli_adapter.manage.skills",
                 "adapter.cli_adapter.run.check",
@@ -320,18 +331,25 @@ class ReleaseShapeTests(unittest.TestCase):
                 "adapter.storage.sql.base",
                 "adapter.storage.sql.mysql",
                 "adapter.storage.sql.postgresql",
+                "adapter.storage.jsonl",
+                "adapter.storage.sqlite",
+                "adapter.storage.disclosure",
                 "adapter.worktree",
+                "adapter.general",
                 "adapter.ag_ui_adapter.configuration",
                 "adapter.ag_ui_adapter.protocol",
                 "skill.runtime.files.models",
+                "skill.runtime.files.package",
                 "skill.runtime.files.operations",
                 "skill.runtime.tasks.group_data",
+                "skill.runtime.tasks.agents",
                 "skill.runtime.files.lock",
                 "skill.learning.models",
                 "skill.learning.review",
                 "skill.learning.insight",
                 "skill.learning.rules",
                 "skill.runtime.defaults",
+                "skill.source",
             ):
                 with self.subTest(module_name=module_name):
                     completed = subprocess.run(
@@ -349,7 +367,7 @@ class ReleaseShapeTests(unittest.TestCase):
         self.assertTrue(Path("src/core/runtime/run.py").is_file())
         self.assertTrue(Path("src/core/runtime/loop.py").is_file())
         self.assertFalse(Path("src/core/runtime/setup.py").exists())
-        self.assertTrue(Path("src/core/runtime/resources.py").is_file())
+        self.assertFalse(Path("src/core/runtime/resources.py").exists())
         self.assertFalse(Path("src/core/runtime/agent.py").exists())
         self.assertTrue(Path("src/core/runtime/team.py").is_file())
         self.assertFalse(Path("src/skill/task").exists())
