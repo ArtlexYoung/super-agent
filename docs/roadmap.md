@@ -1681,6 +1681,19 @@ Status: implemented.
 - Preserve group tools, wait and cancellation behavior, model diversity, cost checks, retries,
   compact evidence, and completion events.
 
+## v0.1.66: Central Skill Handler Validation
+
+Status: implemented.
+
+- Validate each trusted Skill handler through one registration contract before it enters the
+  handler registry.
+- Validate each complete Skill contribution through one result contract before Runtime uses its
+  model context, prompt builder, tools, task policy, callbacks, or included Skill references.
+- Reject duplicate tool names inside one contribution centrally while keeping collisions between
+  active contributions in the Runtime tool owner.
+- Preserve passive Skill loading and explicit code registration without adding a validation
+  module, compatibility wrapper, or hidden fallback.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

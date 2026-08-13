@@ -1,11 +1,18 @@
 import unittest
+import ast
+from dataclasses import replace
+from pathlib import Path
 
 from skill.runtime.handlers import create_default_skill_handlers
 from skill.runtime.handlers import (
+    SkillAction,
     SkillContext,
     SkillHandlers,
     SkillResult,
+    SkillTool,
+    TaskPolicy,
 )
+from core.checks import ActionEffect
 from skill.disclosure import ProgressiveDisclosureCore, SkillReference
 
 
@@ -45,6 +52,56 @@ class SkillHandlersTests(unittest.TestCase):
         with self.assertRaisesRegex(TypeError, "must return SkillResult"):
             handlers.handle(context)
 
+    def test_handlers_validate_registration(self) -> None:
+        handler = _ResultHandler("custom")
+        handler.adds_model_context = "yes"
+
+        with self.assertRaisesRegex(TypeError, "must be a boolean"):
+            SkillHandlers().add(handler)
+
+    def test_handlers_reject_duplicate_result_tool_names(self) -> None:
+        result = SkillResult(tools=(_tool("repeat"), _tool("repeat")))
+
+        with self.assertRaisesRegex(ValueError, "duplicate names"):
+            _handle_result(result)
+
+    def test_handlers_validate_optional_result_fields(self) -> None:
+        invalid_results = (
+            replace(SkillResult(), model_context="prompt"),
+            replace(SkillResult(), build_prompt_context="callback"),
+            replace(SkillResult(), record_task_completed="callback"),
+            replace(SkillResult(), task_completed_action="action"),
+            replace(SkillResult(), task_policy="policy"),
+            replace(SkillResult(), source="prompt:test"),
+        )
+
+        for result in invalid_results:
+            with self.subTest(result=result), self.assertRaises(TypeError):
+                _handle_result(result)
+
+    def test_handlers_validate_task_policy_fields(self) -> None:
+        invalid = TaskPolicy("test", "unknown", "Run the task.", 1)
+
+        with self.assertRaisesRegex(ValueError, "mode is invalid"):
+            _handle_result(SkillResult(task_policy=invalid))
+
+    def test_skill_handlers_use_central_validation_functions(self) -> None:
+        tree = ast.parse(Path("src/skill/runtime/handlers.py").read_text(encoding="utf-8"))
+        owner = next(
+            node
+            for node in tree.body
+            if isinstance(node, ast.ClassDef) and node.name == "SkillHandlers"
+        )
+        calls = {
+            node.func.id
+            for node in ast.walk(owner)
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+        }
+
+        self.assertIn("validate_skill_handler", calls)
+        self.assertIn("validate_skill_result", calls)
+        self.assertNotIn("_validate_skill_tool", calls)
+
     def test_handlers_reject_missing_code(self) -> None:
         context = SkillContext(
             ProgressiveDisclosureCore([]),
@@ -64,6 +121,26 @@ class _ResultHandler:
 
     def handle_skill(self, context: SkillContext) -> SkillResult:
         return self.result  # type: ignore[return-value]
+
+
+def _handle_result(result: SkillResult) -> SkillResult:
+    context = SkillContext(
+        ProgressiveDisclosureCore([]),
+        SkillReference("custom", "test"),
+    )
+    handlers = SkillHandlers()
+    handlers.add(_ResultHandler("custom", result))
+    return handlers.handle(context)
+
+
+def _tool(name: str) -> SkillTool:
+    return SkillTool(
+        name,
+        "Test tool.",
+        {},
+        lambda arguments: {"ok": True},
+        SkillAction((ActionEffect.EXECUTE,), f"test:{name}"),
+    )
 
 
 if __name__ == "__main__":

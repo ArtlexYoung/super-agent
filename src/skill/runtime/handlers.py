@@ -222,13 +222,9 @@ class SkillHandlers:
         self._handlers: dict[str, SkillHandler] = {}
 
     def add(self, handler: SkillHandler, *, replace: bool = False) -> None:
-        skill_type = _read_handler_type(handler)
+        skill_type = validate_skill_handler(handler)
         if skill_type in self._handlers and not replace:
             raise ValueError(f"Skill handler already exists for type: {skill_type}")
-        if not isinstance(getattr(handler, "adds_model_context", None), bool):
-            raise TypeError("SkillHandler.adds_model_context must be a boolean")
-        if not callable(getattr(handler, "handle_skill", None)):
-            raise TypeError("SkillHandler must define handle_skill")
         self._handlers[skill_type] = handler
 
     def find(self, skill_type: str) -> SkillHandler | None:
@@ -249,7 +245,7 @@ class SkillHandlers:
         if handler is None:
             raise KeyError(f"Skill handler not found for type: {context.reference.skill_type}")
         result = handler.handle_skill(context)
-        _validate_skill_result(result)
+        validate_skill_result(result)
         return result
 
 
@@ -269,24 +265,85 @@ class SkillCollection:
         return self.disclosure.open_skill(reference.name, reference.skill_type)
 
 
-def _validate_skill_result(result: object) -> None:
+def validate_skill_handler(handler: object) -> str:
+    """Validate one trusted handler registration and return its Skill type."""
+    skill_type = _read_handler_type(handler)
+    if not isinstance(getattr(handler, "adds_model_context", None), bool):
+        raise TypeError("SkillHandler.adds_model_context must be a boolean")
+    if not callable(getattr(handler, "handle_skill", None)):
+        raise TypeError("SkillHandler must define handle_skill")
+    return skill_type
+
+
+def validate_skill_result(result: object) -> None:
+    """Validate the complete contribution returned by one Skill handler."""
     if not isinstance(result, SkillResult):
         raise TypeError("SkillHandler.handle_skill must return SkillResult")
-    if not isinstance(result.tools, tuple):
+    _validate_optional_type(result.model_context, Skill, "model_context")
+    _validate_optional_callable(result.build_prompt_context, "build_prompt_context")
+    _validate_skill_tools(result.tools)
+    if result.task_policy is not None:
+        _validate_task_policy(result.task_policy)
+    _validate_completion_callback(result)
+    _validate_included_skills(result.included_skills)
+    _validate_optional_type(result.source, SkillReference, "source")
+
+
+def _validate_skill_tools(tools: object) -> None:
+    if not isinstance(tools, tuple):
         raise TypeError("SkillResult.tools must be a tuple")
-    for tool in result.tools:
+    for tool in tools:
         _validate_skill_tool(tool)
+    names = [tool.name for tool in tools]
+    if len(names) != len(set(names)):
+        raise ValueError("SkillResult.tools cannot contain duplicate names")
+
+
+def _validate_task_policy(policy: object) -> None:
+    if not isinstance(policy, TaskPolicy):
+        raise TypeError("SkillResult.task_policy must be a TaskPolicy or None")
+    if not isinstance(policy.name, str) or not policy.name.strip():
+        raise ValueError("TaskPolicy.name cannot be empty")
+    if policy.mode not in WORKFLOW_MODES:
+        raise ValueError(f"TaskPolicy.mode is invalid: {policy.mode}")
+    if not isinstance(policy.instruction, str) or not policy.instruction.strip():
+        raise ValueError("TaskPolicy.instruction cannot be empty")
+    _read_max_steps(policy.max_steps, "TaskPolicy")
+    _read_policy_tools(policy.tools, "TaskPolicy")
+
+
+def _validate_completion_callback(result: SkillResult) -> None:
+    _validate_optional_callable(
+        result.record_task_completed,
+        "record_task_completed",
+    )
+    _validate_optional_type(
+        result.task_completed_action,
+        SkillAction,
+        "task_completed_action",
+    )
     if (result.record_task_completed is None) != (result.task_completed_action is None):
         raise TypeError("A Skill completion callback must declare one SkillAction")
-    if not isinstance(result.included_skills, tuple) or not all(
-        isinstance(reference, SkillReference) for reference in result.included_skills
+
+
+def _validate_included_skills(references: object) -> None:
+    if not isinstance(references, tuple) or not all(
+        isinstance(reference, SkillReference) for reference in references
     ):
         raise TypeError("SkillResult.included_skills must contain SkillReference values")
-    keys = [reference.key for reference in result.included_skills]
+    keys = [reference.key for reference in references]
     if len(keys) != len(set(keys)):
         raise ValueError("SkillResult.included_skills cannot contain duplicates")
-    if result.source is not None and not isinstance(result.source, SkillReference):
-        raise TypeError("SkillResult.source must be a SkillReference or None")
+
+
+def _validate_optional_callable(value: object, name: str) -> None:
+    if value is not None and not callable(value):
+        raise TypeError(f"SkillResult.{name} must be callable or None")
+
+
+def _validate_optional_type(value: object, expected: type, name: str) -> None:
+    if value is not None and not isinstance(value, expected):
+        raise TypeError(f"SkillResult.{name} must be {expected.__name__} or None")
 
 
 def _validate_skill_tool(tool: object) -> None:
