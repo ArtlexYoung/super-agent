@@ -16,10 +16,10 @@ pnpm --dir web install --frozen-lockfile
 
 ## Checks
 
-Replace `0.1.61` with the version being released:
+Replace `0.1.62` with the version being released:
 
 ```bash
-.venv/bin/python scripts/verify_release.py --version 0.1.61 --full --web
+.venv/bin/python scripts/verify_release.py --version 0.1.62 --full --web
 ```
 
 Static mode is read-only. `--full` additionally runs all Python tests, compileall, diff
@@ -34,5 +34,5 @@ unrelated working-tree changes out of the release commit:
 ```bash
 git add -A -- . ':(exclude).gitignore' ':(exclude)README.md' ':(exclude)README_cn.md'
 git diff --cached --check
-git commit -m "refactor(agent): release v0.1.61 with one public owner"
+git commit -m "refactor(state): release v0.1.62 without StateAccess"
 ```

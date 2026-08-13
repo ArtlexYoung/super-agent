@@ -1636,6 +1636,15 @@ Status: implemented.
 - Move model-based conversation feedback to the concrete Agent boundary because it needs Agent
   resources, while leaving passive conversation projections in Core state.
 
+## v0.1.62: Direct User State Access
+
+Status: implemented.
+
+- Let the concrete Agent create one user-scoped EventStore and execute checked actions directly.
+- Let `UserAgent` call those named Agent boundaries without an intermediate `StateAccess` object.
+- Delete `core.state.access` and the old `adapter.agent` forwarding functions without aliases.
+- Preserve user isolation, action audit events, feedback validation, and explicit storage errors.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

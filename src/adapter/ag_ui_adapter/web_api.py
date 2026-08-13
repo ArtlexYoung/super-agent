@@ -9,13 +9,6 @@ from pathlib import Path
 from urllib.parse import unquote
 
 from super_agent import Agent
-from adapter.agent import (
-    agent_uses_direct_provider,
-    create_agent_event_store,
-    create_agent_skills,
-    get_agent_state_access,
-    get_agent_user_environment,
-)
 from skill.runtime.handlers import load_configured_freshness_rules_if_enabled
 from core.config import AgentSettings, CommonConfig
 from core.files import write_bytes_atomically
@@ -143,19 +136,18 @@ class WebAPI:
         return WebAPIResponse(HTTPStatus.NOT_FOUND, {"error": "route not found"})
 
     def _read_bootstrap(self) -> dict[str, object]:
-        store = create_agent_event_store(self.agent, self.user_id)
+        store = self.agent._create_event_store(self.user_id)
         config = self.agent.config
         all_skills_config = replace(
             config,
             agent=replace(config.agent, disabled_skills=[]),
         )
-        skills = create_agent_skills(
-            self.agent,
+        skills = self.agent._create_skills(
             self.user_id,
             config=all_skills_config,
         )
-        environment = get_agent_user_environment(self.agent, self.user_id)
-        if agent_uses_direct_provider(self.agent) and not _has_model_skill(skills):
+        environment = self.agent._user_environment(self.user_id)
+        if self.agent._uses_direct_provider() and not _has_model_skill(skills):
             environment = {}
         models = read_model_profiles(skills, environment)
         return {
@@ -188,12 +180,12 @@ class WebAPI:
         }
     def _read_run(self, run_id: str) -> dict[str, object]:
         agent = _find_agent_for_run(self.agent, self.user_id, run_id, set())
-        store = create_agent_event_store(agent, self.user_id)
+        store = agent._create_event_store(self.user_id)
         rules = load_configured_freshness_rules_if_enabled(agent.config, store=store)
         return explain_run_with_insight(store, run_id, rules)
 
     def _forget_memory(self, item_id: str) -> None:
-        store = create_agent_event_store(self.agent, self.user_id)
+        store = self.agent._create_event_store(self.user_id)
         item = next(
             (
                 candidate
@@ -204,7 +196,7 @@ class WebAPI:
         )
         if item is None:
             raise KeyError(f"active memory item not found: {item_id}")
-        get_agent_state_access(self.agent).execute_action(
+        self.agent._execute_action(
             self.user_id,
             ActionRequest.create(
                 "user:web-memory",
@@ -219,7 +211,7 @@ class WebAPI:
 
     def _update_configuration(self, body: object | None) -> None:
         request = CommonConfigurationInput.from_dict(body)
-        updated = get_agent_state_access(self.agent).execute_action(
+        updated = self.agent._execute_action(
             self.user_id,
             ActionRequest.create(
                 "user:web-configuration",
@@ -293,7 +285,7 @@ def _find_agent_for_run(
         raise KeyError(f"run not found: {run_id}")
     seen.add(id(agent))
     try:
-        create_agent_event_store(agent, user_id).read_run(run_id)
+        agent._create_event_store(user_id).read_run(run_id)
         return agent
     except KeyError:
         pass
@@ -317,7 +309,7 @@ def _subagent_tree(
     nodes: list[dict[str, object]] = []
     for subagent in agent.subagents:
         child_path = [*path, subagent.name]
-        child_store = create_agent_event_store(subagent.agent, user_id)
+        child_store = subagent.agent._create_event_store(user_id)
         nodes.append(
             {
                 "name": subagent.name,

@@ -16,7 +16,6 @@ from core.provider import (
     UserSecretResolver,
 )
 from core.runtime.run import Runtime
-from core.state.access import StateAccess
 from core.state.subscribers import RuntimeEventSubscribers
 from skill.runtime.handlers import create_default_skill_handlers, create_skills
 from skill.runtime.mcp import McpServers
@@ -68,7 +67,6 @@ class AgentResources:
         self.provided_provider = provider
         self.storage: StorageBackend | None = None
         self.runtime: Runtime | None = None
-        self.state_access: StateAccess | None = None
         self.provider_pool: ProviderPool | None = None
         self.model_profiles: list[ModelProfile] = []
         self.model_profile: ModelProfile | None = None
@@ -102,13 +100,6 @@ class AgentResources:
         self._ensure_initialized()
         return self.model_profile
 
-    @property
-    def active_state_access(self) -> StateAccess:
-        self._ensure_initialized()
-        if self.state_access is None:
-            raise RuntimeError("Agent initialization did not create state access")
-        return self.state_access
-
     def replace_configuration(self, config: CommonConfig) -> None:
         with self.lock:
             has_storage = self.configured_storage is not None or self.storage is not None
@@ -133,12 +124,6 @@ class AgentResources:
             profiles = self._read_model_profiles_for_user(skills, LOCAL_USER_ID)
             self.config = config
             self.runtime = runtime
-            self.state_access = StateAccess(
-                config,
-                self.storage,
-                self.get_action_rules,
-                self.disclosure_factory,
-            )
             self.model_profiles = profiles
             self.model_profile = (
                 select_default_model_profile(profiles) if profiles else None
@@ -159,8 +144,26 @@ class AgentResources:
                 select_default_model_profile(profiles) if profiles else None
             )
 
-    def create_event_store(self, user_id: str = LOCAL_USER_ID) -> EventStore:
-        return self.active_state_access.create_event_store(user_id)
+    def create_event_store(
+        self,
+        user_id: str = LOCAL_USER_ID,
+        *,
+        feature: str | None = None,
+    ) -> EventStore:
+        self._ensure_initialized()
+        if self.storage is None:
+            if feature is not None:
+                raise RuntimeError(f"{feature} requires Runtime storage")
+            raise RuntimeError("storage is disabled for this Agent")
+        from core.state.store import EventStore
+
+        return EventStore(
+            self.storage,
+            self.config.storage.path,
+            user_id,
+            self.config.agent.name,
+            disclosure_factory=self.disclosure_factory,
+        )
 
     def create_task_loop(self, user_id: str, skills) -> ModelLoop:
         from core.runtime.loop import ModelLoop
@@ -202,12 +205,6 @@ class AgentResources:
             provider_pool = ProviderPool(environment)
             if self.provided_provider is not None and profile is not None:
                 provider_pool.add_chat_provider(profile.key, self.provided_provider)
-            state_access = StateAccess(
-                self.config,
-                storage,
-                self.get_action_rules,
-                self.disclosure_factory,
-            )
             runtime = self._build_runtime(
                 self.config,
                 provider_pool,
@@ -219,7 +216,6 @@ class AgentResources:
             self.model_profiles = profiles
             self.model_profile = profile
             self.code_model_profiles = code_profiles
-            self.state_access = state_access
             self.runtime = runtime
 
     def _create_configured_storage(self) -> StorageBackend | None:

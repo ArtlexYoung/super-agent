@@ -5,7 +5,6 @@ from __future__ import annotations
 import math
 from dataclasses import replace
 
-from adapter.agent import replace_agent_configuration
 from core.checks import ActionEffect
 from super_agent import Agent
 
@@ -71,8 +70,7 @@ def attach_general_tools_to_agent(agent: Agent) -> None:
         effects=(ActionEffect.EXECUTE,),
     )
     if "mcp:general" not in agent.config.agent.skills:
-        replace_agent_configuration(
-            agent,
+        agent._replace_configuration(
             replace(
                 agent.config,
                 agent=replace(

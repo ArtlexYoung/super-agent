@@ -2,19 +2,20 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from core.checks import ActionEffect, ActionRules
+from core.checks import ActionEffect, ActionRequest, ActionRunner, ActionRules
 from core.config import CommonConfig
 from core.models import (
     LOCAL_USER_ID,
     AgentRunOptions,
     RunResult,
     SubagentRecordOptions,
+    RunIdentity,
     Task,
+    TaskTrace,
     resolve_agent_run_options,
 )
 from core.provider import ChatProvider, Message, ProviderPool, UserSecretLookup
@@ -22,9 +23,8 @@ from core.runtime.resources import AgentResources
 from core.runtime.run import Run, Runtime
 from core.runtime.team import AgentTeam, SubAgent
 from core.state.conversations import complete_conversation_turn, prepare_conversation_turn
-from core.state.models import Conversation
+from core.state.models import Conversation, RunEvent
 from core.state.subscribers import RuntimeEventSubscriber
-from skill.manifest import SkillManifest
 from skill.runtime.handlers import SkillCollection, SkillHandler, create_skills
 from skill.runtime.mcp import McpServer
 from skill.runtime.models import ModelProfile
@@ -230,11 +230,11 @@ class Agent:
             return prepared_messages, None
         if messages:
             raise ValueError("conversation_id cannot be combined with explicit messages")
-        state = self._setup.active_state_access
-        if state.storage is None:
-            raise RuntimeError("conversation history requires Runtime storage")
         prepared_messages, pending_turn = prepare_conversation_turn(
-            state.create_event_store(user_id),
+            self._setup.create_event_store(
+                user_id,
+                feature="conversation history",
+            ),
             self._setup.get_action_rules(),
             conversation_id,
             prompt,
@@ -284,7 +284,7 @@ class Agent:
         )
         if feedback is not None:
             run_id, score, reason = feedback
-            self._setup.active_state_access.record_task_feedback(
+            self._record_task_feedback(
                 user_id,
                 run_id,
                 score=score,
@@ -321,92 +321,84 @@ class Agent:
             parent_run_id=parent_run.run_id,
         )
 
+    def _create_event_store(self, user_id: str) -> EventStore:
+        return self._setup.create_event_store(user_id)
 
-@dataclass(frozen=True)
-class AgentUserRunRequest:
-    prompt: str
-    user_id: str
-    messages: list[Message] | None = None
-    conversation_id: str | None = None
-    run_options: AgentRunOptions | None = None
-    resumed_from_run_id: str | None = None
-    resume_checkpoint: dict[str, object] | None = None
+    def _create_skills(
+        self,
+        user_id: str,
+        *,
+        config: CommonConfig | None = None,
+        include_freshness: bool = False,
+    ) -> SkillCollection:
+        return create_skills(
+            config or self.config,
+            handlers=self._setup.skill_handlers,
+            store=self._create_event_store(user_id),
+            include_freshness=include_freshness,
+        )
 
+    def _create_task_loop(self, user_id: str, skills: SkillCollection) -> ModelLoop:
+        return self._setup.create_task_loop(user_id, skills)
 
-def run_agent_for_user(agent: Agent, request: AgentUserRunRequest) -> RunResult:
-    return agent._run_for_user(
-        request.prompt,
-        request.user_id,
-        messages=request.messages,
-        conversation_id=request.conversation_id,
-        run_options=request.run_options,
-        resumed_from_run_id=request.resumed_from_run_id,
-        resume_checkpoint=request.resume_checkpoint,
-    )
+    def _action_rules(self) -> ActionRules:
+        return self._setup.get_action_rules()
 
+    def _execute_action(
+        self,
+        user_id: str,
+        request: ActionRequest,
+        action,
+    ) -> object:
+        store = self._create_event_store(user_id)
+        return ActionRunner(
+            self._action_rules(),
+            store.append_management_action_event,
+        ).execute_action(request, action)
 
-def create_agent_event_store(agent: Agent, user_id: str) -> EventStore:
-    return agent._setup.create_event_store(user_id)
+    def _read_task_trace(self, user_id: str, run_id: str) -> TaskTrace:
+        store = self._create_event_store(user_id)
+        snapshot = store.read_run(run_id)
+        return TaskTrace(run_id, snapshot.parent_run_id, store.read_run_events(run_id))
 
+    def _record_task_feedback(
+        self,
+        user_id: str,
+        run_id: str,
+        *,
+        score: float,
+        reason: str,
+        source: str,
+    ) -> RunEvent:
+        clean_score = _validate_feedback_score(score)
+        if not isinstance(reason, str):
+            raise TypeError("task feedback reason must be a string")
+        store = self._create_event_store(user_id)
+        snapshot = store.read_run(run_id)
+        identity = RunIdentity(
+            user_id=snapshot.user_id,
+            agent_name=snapshot.agent_name,
+            run_id=snapshot.run_id,
+            conversation_id=snapshot.conversation_id,
+            parent_run_id=snapshot.parent_run_id,
+        )
+        return store.append_run_event(
+            identity,
+            "task.feedback.recorded",
+            {"score": clean_score, "reason": reason.strip(), "source": source},
+        )
 
-def get_agent_state_access(agent: Agent):
-    return agent._setup.active_state_access
+    def _user_environment(self, user_id: str) -> dict[str, str]:
+        return self._setup.user_secrets.get_environment_for_user(user_id)
 
+    def _uses_direct_provider(self) -> bool:
+        return self._setup.provided_provider is not None
 
-def create_agent_skills(
-    agent: Agent,
-    user_id: str,
-    *,
-    config: CommonConfig | None = None,
-    include_freshness: bool = False,
-) -> SkillCollection:
-    return create_skills(
-        config or agent.config,
-        handlers=agent._setup.skill_handlers,
-        store=create_agent_event_store(agent, user_id),
-        include_freshness=include_freshness,
-    )
+    def _replace_configuration(self, config: CommonConfig) -> None:
+        self._setup.replace_configuration(config)
 
-
-def create_agent_task_loop(
-    agent: Agent,
-    user_id: str,
-    skills: SkillCollection,
-) -> ModelLoop:
-    return agent._setup.create_task_loop(user_id, skills)
-
-
-def get_agent_action_rules(agent: Agent) -> ActionRules:
-    return agent._setup.get_action_rules()
-
-
-def get_agent_user_environment(agent: Agent, user_id: str) -> Mapping[str, str]:
-    return agent._setup.user_secrets.get_environment_for_user(user_id)
-
-
-def agent_uses_direct_provider(agent: Agent) -> bool:
-    return agent._setup.provided_provider is not None
-
-
-def replace_agent_configuration(agent: Agent, config: CommonConfig) -> None:
-    agent._setup.replace_configuration(config)
-
-
-def reload_agent_models(agent: Agent, user_id: str) -> None:
-    agent._setup.reload_model_profiles(user_id)
-
-
-def activate_agent_skill_change(
-    agent: Agent,
-    user_id: str,
-    manifest: SkillManifest,
-) -> None:
-    if manifest.skill_type == "model":
-        reload_agent_models(agent, user_id)
-
-
-def register_agent_skill_handler(agent: Agent, handler: SkillHandler) -> None:
-    agent._add_skill_handler(handler)
+    def _reload_models(self, user_id: str) -> None:
+        self._setup.reload_model_profiles(user_id)
 
 
 def _create_storage_backend(
@@ -423,3 +415,12 @@ def _create_disclosure_storage(cache_root: Path, store: EventStore):
     from adapter.storage.disclosure import DisclosureStorage
 
     return DisclosureStorage(cache_root, store)
+
+
+def _validate_feedback_score(value: float) -> float:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise TypeError("task feedback score must be a number")
+    score = float(value)
+    if not 0.0 <= score <= 1.0:
+        raise ValueError("task feedback score must be between 0 and 1")
+    return score

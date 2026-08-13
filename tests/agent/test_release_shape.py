@@ -135,6 +135,7 @@ class ReleaseShapeTests(unittest.TestCase):
             "src/core/session.py",
             "src/core/state/events.py",
             "src/core/state/event_log.py",
+            "src/core/state/access.py",
             "src/core/state/disclosure.py",
             "src/skill/runtime/loaded.py",
             "src/skill/runtime/registry.py",
@@ -189,15 +190,18 @@ class ReleaseShapeTests(unittest.TestCase):
         ):
             self.assertFalse((root / old_path).exists())
 
-    def test_external_adapters_use_one_agent_access_module(self) -> None:
-        access_path = Path("src/adapter/agent.py")
-        self.assertTrue(access_path.is_file())
+    def test_external_adapters_use_the_owned_agent_boundaries(self) -> None:
+        agent_path = Path("src/adapter/agent.py")
+        user_path = Path("src/adapter/user.py")
+        self.assertTrue(agent_path.is_file())
+        self.assertTrue(user_path.is_file())
         for path in Path("src/adapter").rglob("*.py"):
-            if path == access_path:
+            if path == agent_path:
                 continue
             source = path.read_text(encoding="utf-8")
             self.assertNotIn("._setup", source, str(path))
-            self.assertNotIn("._run_for_user", source, str(path))
+            if path != user_path:
+                self.assertNotIn("._run_for_user", source, str(path))
 
     def test_core_and_skill_do_not_import_external_adapters(self) -> None:
         for root_name in ("core", "skill"):
