@@ -62,7 +62,11 @@ Add a shared Skill root without editing TOML:
 
 ```python
 agent.add_skill_path("team-skills")
+agent.skills.enable("prompt:research")
 ```
+
+Both operations update only this in-memory Agent. They do not write configuration or start
+Runtime resources. The enabled reference is validated by the central Skill index before use.
 
 Compose Agents in code:
 

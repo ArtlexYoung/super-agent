@@ -53,6 +53,14 @@ result = agent.run("Calculate the mean of 2, 4, and 6")
 The bundled general MCP Skill provides only bounded calculation and literal text search.
 Network, files, and processes require separately registered tools.
 
+Advanced integrations register a named event subscriber explicitly before the first run:
+
+```python
+agent.events.add_subscriber(MySubscriber())
+```
+
+Subscribers observe immutable events and cannot replace Runtime execution.
+
 ## Stateless and Stateful Runs
 
 `Agent()` is stateless by default. Run events are still returned in `RunResult.events`, but

@@ -35,6 +35,45 @@ EXPECTED_SDIST_ROOTS = [
     "examples",
 ]
 VERSION_PATTERN = re.compile(r"0\.\d+\.\d+$")
+AGENT_OWNER_MODULES = {"adapter/agent.py", "adapter/user.py"}
+EXPECTED_AGENT_ACTIONS = {
+    "add_model",
+    "add_skill_path",
+    "add_subagent",
+    "add_tool",
+    "for_user",
+    "run",
+}
+EXPECTED_AGENT_REGISTRATION_ACTIONS = {
+    "AgentEvents": {"add_subscriber"},
+    "AgentSkills": {"add_handler", "enable"},
+}
+PRIVATE_AGENT_CALLS = {
+    "_action_rules",
+    "_create_event_store",
+    "_create_skills",
+    "_create_task_loop",
+    "_execute_action",
+    "_read_task_trace",
+    "_record_task_feedback",
+    "_reload_models",
+    "_replace_configuration",
+    "_run_for_user",
+    "_user_environment",
+    "_uses_direct_provider",
+    "_add_skill_handler",
+    "_add_event_subscriber",
+}
+REMOVED_CODE_NAMES = {
+    "AuditSettings",
+    "_add_event_subscriber",
+    "_add_skill_handler",
+    "classify_audit_event",
+    "compact_runtime_event_data",
+    "prune_expired_audit_events",
+    "redact_event_data_for_display",
+    "redact_events_for_display",
+}
 
 
 def main(arguments: list[str] | None = None) -> int:
@@ -190,6 +229,9 @@ def verify_release(root: Path, expected_version: str) -> list[str]:
         errors.append(
             f"source line count must stay below {MAX_TOTAL_SOURCE_LINES}"
         )
+    errors.extend(_verify_owned_agent_calls(source_root, source_files))
+    errors.extend(_verify_removed_code_names(source_files))
+    errors.extend(_verify_agent_actions(source_root / "adapter" / "agent.py"))
     readme = root / "README.md"
     if not readme.is_file() or "README_cn.md" not in readme.read_text(encoding="utf-8"):
         errors.append("README.md must link to README_cn.md")
@@ -199,6 +241,89 @@ def verify_release(root: Path, expected_version: str) -> list[str]:
 def _count_non_empty_lines(path: Path) -> int:
     return sum(
         1 for line in path.read_text(encoding="utf-8").splitlines() if line.strip()
+    )
+
+
+def _verify_owned_agent_calls(
+    source_root: Path,
+    source_files: list[Path],
+) -> list[str]:
+    errors = []
+    for path in source_files:
+        relative = path.relative_to(source_root).as_posix()
+        if not relative.startswith("adapter/") or relative in AGENT_OWNER_MODULES:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr in PRIVATE_AGENT_CALLS
+            ):
+                errors.append(
+                    f"{relative}:{node.lineno} calls private Agent method "
+                    f"{node.func.attr}"
+                )
+    return errors
+
+
+def _verify_removed_code_names(source_files: list[Path]) -> list[str]:
+    errors = []
+    for path in source_files:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            names = _defined_or_imported_names(node)
+            for name in names & REMOVED_CODE_NAMES:
+                errors.append(
+                    f"removed code name returned: {name} at {path}:{node.lineno}"
+                )
+    return errors
+
+
+def _defined_or_imported_names(node: ast.AST) -> set[str]:
+    if isinstance(node, ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef):
+        return {node.name}
+    if isinstance(node, ast.ImportFrom | ast.Import):
+        return {alias.asname or alias.name.rsplit(".", 1)[-1] for alias in node.names}
+    return set()
+
+
+def _verify_agent_actions(path: Path) -> list[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    classes = {
+        node.name: node
+        for node in tree.body
+        if isinstance(node, ast.ClassDef)
+    }
+    expected = {
+        "Agent": EXPECTED_AGENT_ACTIONS,
+        **EXPECTED_AGENT_REGISTRATION_ACTIONS,
+    }
+    errors = []
+    for name, expected_actions in expected.items():
+        owner = classes.get(name)
+        if owner is None:
+            errors.append(f"Agent action owner is missing: {name}")
+            continue
+        actual = {
+            node.name
+            for node in owner.body
+            if isinstance(node, ast.FunctionDef)
+            and not node.name.startswith("_")
+            and not _is_property(node)
+        }
+        if actual != expected_actions:
+            errors.append(
+                f"{name} actions changed: expected {sorted(expected_actions)}, "
+                f"found {sorted(actual)}"
+            )
+    return errors
+
+
+def _is_property(function: ast.FunctionDef) -> bool:
+    return any(
+        isinstance(decorator, ast.Name) and decorator.id == "property"
+        for decorator in function.decorator_list
     )
 
 
@@ -233,7 +358,11 @@ def _read_python_version(path: Path, errors: list[str]) -> str | None:
     for node in tree.body:
         if not isinstance(node, ast.Assign):
             continue
-        if any(isinstance(target, ast.Name) and target.id == "__version__" for target in node.targets):
+        assigns_version = any(
+            isinstance(target, ast.Name) and target.id == "__version__"
+            for target in node.targets
+        )
+        if assigns_version:
             value = node.value
             if isinstance(value, ast.Constant) and isinstance(value.value, str):
                 return value.value

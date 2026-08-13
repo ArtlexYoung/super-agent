@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import math
-from dataclasses import replace
 
 from core.checks import ActionEffect
 from super_agent import Agent
@@ -69,16 +68,7 @@ def attach_general_tools_to_agent(agent: Agent) -> None:
         GeneralToolServer(),
         effects=(ActionEffect.EXECUTE,),
     )
-    if "mcp:general" not in agent.config.agent.skills:
-        agent._replace_configuration(
-            replace(
-                agent.config,
-                agent=replace(
-                    agent.config.agent,
-                    skills=[*agent.config.agent.skills, "mcp:general"],
-                ),
-            )
-        )
+    agent.skills.enable("mcp:general")
 
 
 def _calculate_numbers(arguments: dict[str, object]) -> dict[str, object]:

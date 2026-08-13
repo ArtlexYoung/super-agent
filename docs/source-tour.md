@@ -40,6 +40,8 @@ enter only at a visible boundary:
 - A selected memory Skill adds long-term memory tools.
 - `Agent.add_subagent(...)` adds explicit model delegation.
 - `Agent.add_tool(...)` binds passive MCP Skill content to trusted code.
+- `agent.skills` owns enabled Skill references and reviewed handler registration.
+- `agent.events` owns named Runtime event subscriber registration.
 - `user.runs.learn(run_id)` records evidence after a completed run.
 
 For a subsystem, start at its owner:

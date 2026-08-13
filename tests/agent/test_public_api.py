@@ -10,7 +10,7 @@ class PublicApiTests(unittest.TestCase):
         self.assertEqual(["Agent"], super_agent.__all__)
         self.assertIsNotNone(super_agent.Agent)
 
-    def test_agent_has_six_clear_public_actions(self) -> None:
+    def test_agent_has_clear_public_actions(self) -> None:
         actions = {
             name
             for name, value in inspect.getmembers(
@@ -31,6 +31,11 @@ class PublicApiTests(unittest.TestCase):
             },
             actions,
         )
+
+        agent = super_agent.Agent()
+        self.assertTrue(callable(agent.skills.enable))
+        self.assertTrue(callable(agent.skills.add_handler))
+        self.assertTrue(callable(agent.events.add_subscriber))
 
     def test_advanced_types_use_their_own_modules(self) -> None:
         from core.checks import ActionRules

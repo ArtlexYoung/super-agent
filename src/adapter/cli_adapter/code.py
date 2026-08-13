@@ -55,7 +55,7 @@ def attach_code_config_to_agent(
         )
         return instructions, CodeWorkspace(config.settings).list_tools()
 
-    agent._add_skill_handler(TaskSkillHandler(read_code_workspace))
+    agent.skills.add_handler(TaskSkillHandler(read_code_workspace))
 
 
 class CodeWorkspace:

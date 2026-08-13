@@ -14,6 +14,7 @@ from core import __version__
 from scripts.verify_release import (
     MAX_TOTAL_SOURCE_FILES,
     MAX_TOTAL_SOURCE_LINES,
+    _verify_owned_agent_calls,
 )
 
 
@@ -101,7 +102,13 @@ class ReleaseShapeTests(unittest.TestCase):
         cli_source = Path("src/adapter/cli_adapter/skills.py").read_text(
             encoding="utf-8"
         )
-        for operation in ("propose_skill_change", "test_skill_change", "apply_skill_change", "undo_skill_change"):
+        operations = (
+            "propose_skill_change",
+            "test_skill_change",
+            "apply_skill_change",
+            "undo_skill_change",
+        )
+        for operation in operations:
             self.assertIn(f"def {operation}", source)
         self.assertNotIn('add_parser("promote"', cli_source)
 
@@ -204,33 +211,13 @@ class ReleaseShapeTests(unittest.TestCase):
                 self.assertNotIn("._run_for_user", source, str(path))
 
     def test_external_io_uses_user_domain_services(self) -> None:
-        allowed_private_calls = {
-            "src/adapter/cli_adapter/code.py": {"._add_skill_handler"},
-            "src/adapter/general.py": {"._replace_configuration"},
-        }
-        private_calls = (
-            "._create_event_store",
-            "._create_skills",
-            "._create_task_loop",
-            "._action_rules",
-            "._execute_action",
-            "._read_task_trace",
-            "._record_task_feedback",
-            "._user_environment",
-            "._uses_direct_provider",
-            "._reload_models",
-            "._replace_configuration",
-            "._add_skill_handler",
+        source_root = Path("src")
+        source_files = list(source_root.rglob("*.py"))
+
+        self.assertEqual(
+            [],
+            _verify_owned_agent_calls(source_root, source_files),
         )
-        for path in Path("src/adapter").rglob("*.py"):
-            relative = str(path)
-            if relative in {"src/adapter/agent.py", "src/adapter/user.py"}:
-                continue
-            source = path.read_text(encoding="utf-8")
-            allowed = allowed_private_calls.get(relative, set())
-            for call in private_calls:
-                if call not in allowed:
-                    self.assertNotIn(call, source, relative)
 
     def test_core_and_skill_do_not_import_external_adapters(self) -> None:
         for root_name in ("core", "skill"):

@@ -1718,6 +1718,19 @@ Status: implemented.
 - Protect state streams and unknown event types by default, and remove the previous classification,
   redaction, compaction, and pruning function entrances without compatibility aliases.
 
+## v0.1.69: Owned Registration Paths
+
+Status: implemented.
+
+- Keep the everyday Agent surface at six direct actions while moving advanced Skill and event
+  registration to `agent.skills` and `agent.events` owners.
+- Remove private Skill handler and subscriber registration methods, and make optional code and
+  general-tool adapters use the owned public paths without private-call exceptions.
+- Extend the static release gate to reject cross-adapter private Agent calls, removed audit and
+  registration names, and unreviewed growth of the public Agent action surface.
+- Add negative gate tests that prove private calls, removed names, and hidden public actions fail
+  before a release can be committed.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

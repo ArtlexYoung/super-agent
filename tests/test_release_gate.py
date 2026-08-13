@@ -1,10 +1,16 @@
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
 from core import __version__
-from scripts.verify_release import build_full_gate_commands
+from scripts.verify_release import (
+    _verify_agent_actions,
+    _verify_owned_agent_calls,
+    _verify_removed_code_names,
+    build_full_gate_commands,
+)
 
 
 class ReleaseGateTests(unittest.TestCase):
@@ -58,6 +64,73 @@ class ReleaseGateTests(unittest.TestCase):
 
         self.assertEqual(1, result.returncode)
         self.assertIn("does not match", result.stderr)
+
+    def test_release_gate_rejects_private_agent_calls_outside_owners(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            path = root / "adapter" / "external.py"
+            path.parent.mkdir()
+            path.write_text(
+                "def run(agent):\n    return agent._create_skills('alice')\n",
+                encoding="utf-8",
+            )
+
+            errors = _verify_owned_agent_calls(root, [path])
+
+        self.assertEqual(1, len(errors))
+        self.assertIn("_create_skills", errors[0])
+
+    def test_release_gate_rejects_removed_public_names(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "audit.py"
+            path.write_text(
+                "def prune_expired_audit_events():\n    return None\n",
+                encoding="utf-8",
+            )
+
+            errors = _verify_removed_code_names([path])
+
+        self.assertEqual(1, len(errors))
+        self.assertIn("prune_expired_audit_events", errors[0])
+
+    def test_release_gate_rejects_removed_private_agent_methods(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "agent.py"
+            path.write_text(
+                "class Agent:\n    def _add_skill_handler(self):\n        return None\n",
+                encoding="utf-8",
+            )
+
+            errors = _verify_removed_code_names([path])
+
+        self.assertEqual(1, len(errors))
+        self.assertIn("_add_skill_handler", errors[0])
+
+    def test_release_gate_rejects_agent_action_growth(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "agent.py"
+            path.write_text(
+                """class AgentSkills:
+    def enable(self): pass
+    def add_handler(self): pass
+class AgentEvents:
+    def add_subscriber(self): pass
+class Agent:
+    def add_model(self): pass
+    def add_skill_path(self): pass
+    def add_subagent(self): pass
+    def add_tool(self): pass
+    def for_user(self): pass
+    def run(self): pass
+    def hidden_fallback(self): pass
+""",
+                encoding="utf-8",
+            )
+
+            errors = _verify_agent_actions(path)
+
+        self.assertEqual(1, len(errors))
+        self.assertIn("hidden_fallback", errors[0])
 
 
 if __name__ == "__main__":

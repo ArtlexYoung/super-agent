@@ -337,6 +337,23 @@ class LazyAgentInitializationTests(unittest.TestCase):
             )
             self.assertIsNone(agent._setup.runtime)
 
+    def test_enable_skill_is_explicit_idempotent_and_lazy(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            agent = Agent(
+                CommonConfig.create_default(Path(tmp)),
+                provider=MockProvider("ready"),
+            )
+
+            agent.skills.enable(" MCP:General ")
+            agent.skills.enable("mcp:general")
+
+            self.assertEqual(["mcp:general"], agent.config.agent.skills)
+            self.assertIsNone(agent._setup.runtime)
+            with self.assertRaisesRegex(ValueError, "cannot be empty"):
+                agent.skills.enable(" ")
+            with self.assertRaisesRegex(TypeError, "must be a string"):
+                agent.skills.enable(1)  # type: ignore[arg-type]
+
     def test_construction_and_registration_do_not_initialize_runtime_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, patch(
             "core.runtime.resources.create_skills"
@@ -348,13 +365,14 @@ class LazyAgentInitializationTests(unittest.TestCase):
             child = Agent(config, provider=MockProvider("child"), use_storage=False)
 
             agent.add_subagent(child)
-            agent._add_skill_handler(_UnusedSkillHandler())
+            agent.skills.enable("mcp:example")
+            agent.skills.add_handler(_UnusedSkillHandler())
             agent.add_tool(
                 "example",
                 _UnusedMcpServer(),
                 effects=(ActionEffect.EXECUTE,),
             )
-            agent._add_event_subscriber(_RecordingSubscriber())
+            agent.events.add_subscriber(_RecordingSubscriber())
 
             build_skills.assert_not_called()
             create_storage.assert_not_called()
@@ -427,7 +445,7 @@ class LazyAgentInitializationTests(unittest.TestCase):
                 provider=provider,
                 storage=storage,
             )
-            agent._add_skill_handler(handler)
+            agent.skills.add_handler(handler)
             _ = agent.runtime
 
             self.assertIs(storage, agent._setup.storage)

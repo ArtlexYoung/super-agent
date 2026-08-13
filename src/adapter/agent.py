@@ -34,6 +34,47 @@ if TYPE_CHECKING:
     from core.state.store import EventStore, StorageBackend
 
 
+class AgentSkills:
+    """Enable passive Skills and register their trusted code mechanisms."""
+
+    def __init__(self, resources: AgentResources) -> None:
+        self._resources = resources
+
+    def enable(self, reference: str) -> None:
+        if not isinstance(reference, str):
+            raise TypeError("Skill reference must be a string")
+        selected = reference.strip().lower()
+        if not selected:
+            raise ValueError("Skill reference cannot be empty")
+        config = self._resources.config
+        if selected in config.agent.skills:
+            return
+        self._resources.replace_configuration(
+            replace(
+                config,
+                agent=replace(
+                    config.agent,
+                    skills=[*config.agent.skills, selected],
+                ),
+            )
+        )
+
+    def add_handler(self, handler: SkillHandler) -> None:
+        with self._resources.lock:
+            self._resources.skill_handlers.add(handler, replace=True)
+
+
+class AgentEvents:
+    """Register named observers before Runtime event delivery begins."""
+
+    def __init__(self, resources: AgentResources) -> None:
+        self._resources = resources
+
+    def add_subscriber(self, subscriber: RuntimeEventSubscriber) -> None:
+        with self._resources.lock:
+            self._resources.event_subscribers.add_subscriber(subscriber)
+
+
 class Agent:
     """Compose one configurable Runtime and its optional child Agents."""
 
@@ -58,6 +99,8 @@ class Agent:
             disclosure_factory=_create_disclosure_storage,
         )
         self._team = AgentTeam(self)
+        self.skills = AgentSkills(self._setup)
+        self.events = AgentEvents(self._setup)
 
     @property
     def config(self) -> CommonConfig:
@@ -158,14 +201,6 @@ class Agent:
             conversation_id=conversation_id,
             run_options=resolve_agent_run_options(run_options, skill),
         )
-
-    def _add_skill_handler(self, handler: SkillHandler) -> None:
-        with self._setup.lock:
-            self._setup.skill_handlers.add(handler, replace=True)
-
-    def _add_event_subscriber(self, subscriber: RuntimeEventSubscriber) -> None:
-        with self._setup.lock:
-            self._setup.event_subscribers.add_subscriber(subscriber)
 
     def _run_for_user(
         self,

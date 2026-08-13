@@ -23,6 +23,15 @@ handler results, included Skill references, duplicate tools, and required tool a
 Every executable `SkillTool` and completion callback must include a `SkillAction` with
 explicit effects and a resource.
 
+Register reviewed handler code before the first run:
+
+```python
+agent.skills.add_handler(CustomSkillHandler())
+```
+
+This updates only the in-memory handler registry. Passive Skill files still cannot register
+or execute Python code.
+
 ## MCP
 
 MCP has a built-in handler but requires an implementation registered in code:

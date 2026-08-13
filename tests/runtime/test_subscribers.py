@@ -21,15 +21,15 @@ class RuntimeEventSubscriberTests(unittest.TestCase):
                 CommonConfig.create_default(Path(tmp)),
                 provider=MockProvider("finished"),
             )
-            agent._add_event_subscriber(_RecordingSubscriber())
+            agent.events.add_subscriber(_RecordingSubscriber())
 
             with self.assertRaisesRegex(ValueError, "already exists: recording"):
-                agent._add_event_subscriber(_RecordingSubscriber())
-            agent._add_event_subscriber(_NamedSubscriber("evaluation"))
+                agent.events.add_subscriber(_RecordingSubscriber())
+            agent.events.add_subscriber(_NamedSubscriber("evaluation"))
             with self.assertRaisesRegex(ValueError, "already exists: evaluation"):
-                agent._add_event_subscriber(_NamedSubscriber("evaluation"))
+                agent.events.add_subscriber(_NamedSubscriber("evaluation"))
             with self.assertRaisesRegex(ValueError, "name must be a non-empty string"):
-                agent._add_event_subscriber(_NamedSubscriber(" "))
+                agent.events.add_subscriber(_NamedSubscriber(" "))
 
     def test_custom_subscriber_receives_recursively_read_only_events(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -38,7 +38,7 @@ class RuntimeEventSubscriberTests(unittest.TestCase):
                 CommonConfig.create_default(Path(tmp)),
                 provider=MockProvider("finished"),
             )
-            agent._add_event_subscriber(subscriber)
+            agent.events.add_subscriber(subscriber)
 
             result = agent.run("hello")
 
@@ -62,7 +62,7 @@ class RuntimeEventSubscriberTests(unittest.TestCase):
                 CommonConfig.create_default(Path(tmp)),
                 provider=MockProvider("completed answer"),
             )
-            agent._add_event_subscriber(_FailingSubscriber())
+            agent.events.add_subscriber(_FailingSubscriber())
 
             with self.assertRaises(RuntimeEventSubscriberError) as caught:
                 agent.run("hello")
@@ -89,7 +89,7 @@ class RuntimeEventSubscriberTests(unittest.TestCase):
                 CommonConfig.create_default(Path(tmp)),
                 provider=MockProvider("completed answer"),
             )
-            agent._add_event_subscriber(_FailingSubscriber())
+            agent.events.add_subscriber(_FailingSubscriber())
 
             result = agent.run(
                 "hello",
