@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Mapping
 
 if TYPE_CHECKING:
-    from core.state.audit import AuditSettings
+    from core.state.audit import AuditPolicy
 
 
 DEFAULT_CODE_IGNORES = [".git", ".super-agent", "node_modules", "__pycache__"]
@@ -33,7 +33,7 @@ class StorageSettings:
     backend: str
     path: Path
     url_env: str | None
-    audit: AuditSettings
+    audit: AuditPolicy
 
 
 @dataclass(frozen=True)
@@ -246,8 +246,8 @@ def _read_storage_settings(data: dict[str, Any], base_dir: Path) -> StorageSetti
     )
 
 
-def _read_audit_settings(data: Any) -> AuditSettings:
-    from core.state.audit import AuditSettings
+def _read_audit_settings(data: Any) -> AuditPolicy:
+    from core.state.audit import AuditPolicy
 
     if not isinstance(data, dict):
         raise ValueError("storage audit settings must be a table")
@@ -256,7 +256,7 @@ def _read_audit_settings(data: Any) -> AuditSettings:
         {"detailed_days", "critical_days"},
         "storage audit settings",
     )
-    return AuditSettings(
+    return AuditPolicy(
         detailed_days=_read_positive_days(
             data.get("detailed_days", 180),
             "detailed_days",

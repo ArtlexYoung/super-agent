@@ -18,93 +18,26 @@ CRITICAL = "critical"
 PROTECTED = "protected"
 
 _PROTECTED_STREAMS = {"conversation", "memory", "habit", "skill_evaluation"}
-_DETAILED_EVENT_TYPES = {
-    "model.call.selected",
-    "model.call.completed",
-    "model.call.failed",
-    "model.turn.completed",
-    "model.used",
-    "task.started",
-    "task.scheduled",
-    "task.completed",
-    "tool.requested",
-    "tool.completed",
-    "tool.failed",
-    "skills.disclosed",
-    "skills.selected",
-    "content.disclosed",
-    "subagent.started",
-    "subagent.completed",
-    "runtime.subscriber.failed",
-    "task.plan.set",
-    "task.plan.step.updated",
-    "agent_task.created",
-    "agent_task.queued",
-    "agent_task.dispatched",
-    "agent_task.running",
-    "agent_task.completed",
-    "agent_task.failed",
-    "agent_task.cancelled",
-    "agent_task.wait.started",
-    "agent_task.wait.woke",
-    "agent_task.fallback_selected",
-    "agent_task.retry_scheduled",
-    "agent_task.retry_dispatched",
-    "agent_task.circuit_opened",
-    "agent_task.circuit_half_open",
-    "agent_task.circuit_closed",
-    "agent_group.created",
-    "agent_group.reduced",
-    "agent_group.budget_exceeded",
-    "agent_group.completed",
-    "agent_group.wait.started",
-    "agent_group.wait.woke",
-}
-_CRITICAL_EVENT_TYPES = {
-    "run.started",
-    "run.completed",
-    "run.failed",
-    "task.feedback.recorded",
-    "action.checked",
-    "action.prepared",
-    "action.applying",
-    "action.applied",
-    "action.blocked",
-    "action.failed",
-    "learning.completed",
-    "learning.failed",
-    "skill_change.proposed",
-    "skill_change.tested",
-    "skill_change.applied",
-    "skill_change.undone",
-    "model_skill.saved",
-    "model_skill.removed",
-    "skill_package.installed",
-    "skill_package.updated",
-    "skill_package.removed",
-    "audit.pruned",
-    "review.completed",
-    "review.failed",
-}
-_CONTENT_FIELDS = {
-    "run.started": ("prompt",),
-    "run.failed": ("message",),
-    "model.call.failed": ("message",),
-    "model.turn.completed": ("text",),
-    "task.completed": ("text",),
-    "tool.requested": ("arguments",),
-    "tool.completed": ("result",),
-    "tool.failed": ("message",),
-    "subagent.started": ("prompt",),
-    "runtime.subscriber.failed": ("message",),
-    "action.failed": ("message",),
-    "learning.failed": ("message",),
-}
 
 
 @dataclass(frozen=True)
-class AuditSettings:
-    """Retention periods for persisted detailed and critical audit events."""
+class AuditEventRule:
+    retention: str
+    content_fields: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.retention not in {DETAILED, CRITICAL, PROTECTED}:
+            raise ValueError(f"unknown audit retention class: {self.retention}")
+        if len(self.content_fields) != len(set(self.content_fields)) or any(
+            not isinstance(field, str) or not field
+            for field in self.content_fields
+        ):
+            raise ValueError("audit content fields must be unique non-empty strings")
+
+
+@dataclass(frozen=True)
+class AuditPolicy:
+    """One policy for event retention, display redaction, and record compaction."""
 
     detailed_days: int = 180
     critical_days: int = 365
@@ -113,7 +46,157 @@ class AuditSettings:
         _require_positive_days(self.detailed_days, "detailed_days")
         _require_positive_days(self.critical_days, "critical_days")
 
+    def event_rule(self, stream_type: str, event_type: str) -> AuditEventRule:
+        if stream_type in _PROTECTED_STREAMS:
+            return _PROTECTED_EVENT_RULE
+        return _EVENT_RULES.get(event_type, _PROTECTED_EVENT_RULE)
 
+    def retention_days(self, rule: AuditEventRule) -> int | None:
+        if rule.retention == DETAILED:
+            return self.detailed_days
+        if rule.retention == CRITICAL:
+            return self.critical_days
+        return None
+
+    def redact_event_data(
+        self,
+        stream_type: str,
+        event_type: str,
+        data: dict[str, object],
+    ) -> dict[str, object]:
+        """Return a redacted copy while leaving the canonical event unchanged."""
+        prepared = dict(data)
+        for field in self.event_rule(stream_type, event_type).content_fields:
+            if field not in prepared:
+                continue
+            prepared[f"{field}_digest"] = _content_digest(prepared[field])
+            prepared[field] = "[redacted]"
+        return prepared
+
+    def compact_event_data(
+        self,
+        event_type: str,
+        data: dict[str, object],
+        options: "SubagentRecordOptions",
+    ) -> dict[str, object]:
+        """Remove detailed content before a summary child event is persisted."""
+        if not options.is_summary:
+            return dict(data)
+        compacted = dict(data)
+        for field in self.event_rule("run", event_type).content_fields:
+            if field not in compacted:
+                continue
+            digest = _content_digest(compacted.pop(field))
+            compacted[f"{field}_summary"] = {
+                key: digest[key] for key in ("sha256", "characters")
+            }
+        compacted["record_mode"] = options.mode
+        return compacted
+
+    def redact_events(self, events: list[StorageEvent]) -> list[StorageEvent]:
+        """Build a dynamically redacted view of canonical storage events."""
+        return [
+            replace(
+                event,
+                data=self.redact_event_data(
+                    event.stream_type,
+                    event.event_type,
+                    event.data,
+                ),
+            )
+            for event in events
+        ]
+
+    def prune_expired_events(
+        self,
+        backend: StorageBackend,
+        user_ids: list[str],
+        *,
+        apply: bool = False,
+        now: datetime | None = None,
+    ) -> AuditPruneReport:
+        """Preview or explicitly delete expired detailed and critical events."""
+        current_time = _normalise_now(now)
+        reports = [
+            _prune_one_user(backend, user_id, self, current_time, apply)
+            for user_id in _unique_user_ids(user_ids)
+        ]
+        return AuditPruneReport(
+            applied=apply,
+            now=_format_datetime(current_time),
+            detailed_days=self.detailed_days,
+            critical_days=self.critical_days,
+            users=reports,
+        )
+
+
+_PROTECTED_EVENT_RULE = AuditEventRule(PROTECTED)
+_EVENT_RULES = {
+    "model.call.selected": AuditEventRule(DETAILED),
+    "model.call.completed": AuditEventRule(DETAILED),
+    "model.call.failed": AuditEventRule(DETAILED, ("message",)),
+    "model.turn.completed": AuditEventRule(DETAILED, ("text",)),
+    "model.used": AuditEventRule(DETAILED),
+    "task.started": AuditEventRule(DETAILED),
+    "task.scheduled": AuditEventRule(DETAILED),
+    "task.completed": AuditEventRule(DETAILED, ("text",)),
+    "tool.requested": AuditEventRule(DETAILED, ("arguments",)),
+    "tool.completed": AuditEventRule(DETAILED, ("result",)),
+    "tool.failed": AuditEventRule(DETAILED, ("message",)),
+    "skills.disclosed": AuditEventRule(DETAILED),
+    "skills.selected": AuditEventRule(DETAILED),
+    "content.disclosed": AuditEventRule(DETAILED),
+    "subagent.started": AuditEventRule(DETAILED, ("prompt",)),
+    "subagent.completed": AuditEventRule(DETAILED),
+    "runtime.subscriber.failed": AuditEventRule(DETAILED, ("message",)),
+    "task.plan.set": AuditEventRule(DETAILED),
+    "task.plan.step.updated": AuditEventRule(DETAILED),
+    "agent_task.created": AuditEventRule(DETAILED),
+    "agent_task.queued": AuditEventRule(DETAILED),
+    "agent_task.dispatched": AuditEventRule(DETAILED),
+    "agent_task.running": AuditEventRule(DETAILED),
+    "agent_task.completed": AuditEventRule(DETAILED),
+    "agent_task.failed": AuditEventRule(DETAILED),
+    "agent_task.cancelled": AuditEventRule(DETAILED),
+    "agent_task.wait.started": AuditEventRule(DETAILED),
+    "agent_task.wait.woke": AuditEventRule(DETAILED),
+    "agent_task.fallback_selected": AuditEventRule(DETAILED),
+    "agent_task.retry_scheduled": AuditEventRule(DETAILED),
+    "agent_task.retry_dispatched": AuditEventRule(DETAILED),
+    "agent_task.circuit_opened": AuditEventRule(DETAILED),
+    "agent_task.circuit_half_open": AuditEventRule(DETAILED),
+    "agent_task.circuit_closed": AuditEventRule(DETAILED),
+    "agent_group.created": AuditEventRule(DETAILED),
+    "agent_group.reduced": AuditEventRule(DETAILED),
+    "agent_group.budget_exceeded": AuditEventRule(DETAILED),
+    "agent_group.completed": AuditEventRule(DETAILED),
+    "agent_group.wait.started": AuditEventRule(DETAILED),
+    "agent_group.wait.woke": AuditEventRule(DETAILED),
+    "run.started": AuditEventRule(CRITICAL, ("prompt",)),
+    "run.completed": AuditEventRule(CRITICAL),
+    "run.failed": AuditEventRule(CRITICAL, ("message",)),
+    "task.feedback.recorded": AuditEventRule(CRITICAL),
+    "action.checked": AuditEventRule(CRITICAL),
+    "action.prepared": AuditEventRule(CRITICAL),
+    "action.applying": AuditEventRule(CRITICAL),
+    "action.applied": AuditEventRule(CRITICAL),
+    "action.blocked": AuditEventRule(CRITICAL),
+    "action.failed": AuditEventRule(CRITICAL, ("message",)),
+    "learning.completed": AuditEventRule(CRITICAL),
+    "learning.failed": AuditEventRule(CRITICAL, ("message",)),
+    "skill_change.proposed": AuditEventRule(CRITICAL),
+    "skill_change.tested": AuditEventRule(CRITICAL),
+    "skill_change.applied": AuditEventRule(CRITICAL),
+    "skill_change.undone": AuditEventRule(CRITICAL),
+    "model_skill.saved": AuditEventRule(CRITICAL),
+    "model_skill.removed": AuditEventRule(CRITICAL),
+    "skill_package.installed": AuditEventRule(CRITICAL),
+    "skill_package.updated": AuditEventRule(CRITICAL),
+    "skill_package.removed": AuditEventRule(CRITICAL),
+    "audit.pruned": AuditEventRule(CRITICAL),
+    "review.completed": AuditEventRule(CRITICAL),
+    "review.failed": AuditEventRule(CRITICAL),
+}
 @dataclass(frozen=True)
 class AuditPruneUserReport:
     user_id: str
@@ -133,54 +216,6 @@ class AuditPruneReport:
     detailed_days: int
     critical_days: int
     users: list[AuditPruneUserReport]
-
-
-def classify_audit_event(stream_type: str, event_type: str) -> str:
-    """Return the retention class without guessing for unknown event types."""
-    if stream_type in _PROTECTED_STREAMS:
-        return PROTECTED
-    if event_type in _CRITICAL_EVENT_TYPES:
-        return CRITICAL
-    if event_type in _DETAILED_EVENT_TYPES:
-        return DETAILED
-    return PROTECTED
-
-
-def redact_event_data_for_display(
-    stream_type: str,
-    event_type: str,
-    data: dict[str, object],
-) -> dict[str, object]:
-    """Return a redacted copy while leaving the canonical event unchanged."""
-    prepared = dict(data)
-    if classify_audit_event(stream_type, event_type) == PROTECTED:
-        return prepared
-    for field in _CONTENT_FIELDS.get(event_type, ()):
-        if field not in prepared:
-            continue
-        prepared[f"{field}_digest"] = _content_digest(prepared[field])
-        prepared[field] = "[redacted]"
-    return prepared
-
-
-def compact_runtime_event_data(
-    event_type: str,
-    data: dict[str, object],
-    options: "SubagentRecordOptions",
-) -> dict[str, object]:
-    """Remove detailed content before a summary-mode child event is persisted."""
-    if not options.is_summary:
-        return dict(data)
-    compacted = dict(data)
-    for field in _CONTENT_FIELDS.get(event_type, ()):
-        if field not in compacted:
-            continue
-        digest = _content_digest(compacted.pop(field))
-        compacted[f"{field}_summary"] = {
-            key: digest[key] for key in ("sha256", "characters")
-        }
-    compacted["record_mode"] = options.mode
-    return compacted
 
 
 def compact_subagent_result(
@@ -236,83 +271,36 @@ def compact_subagent_result(
     return compacted
 
 
-def redact_events_for_display(events: list[StorageEvent]) -> list[StorageEvent]:
-    """Build a dynamically redacted view of canonical storage events."""
-    return [
-        replace(
-            event,
-            data=redact_event_data_for_display(
-                event.stream_type,
-                event.event_type,
-                event.data,
-            ),
-        )
-        for event in events
-    ]
-
-
-def prune_expired_audit_events(
-    backend: StorageBackend,
-    user_ids: list[str],
-    settings: AuditSettings,
-    *,
-    apply: bool = False,
-    now: datetime | None = None,
-) -> AuditPruneReport:
-    """Preview or explicitly delete expired detailed and critical audit events."""
-    selected_users = _unique_user_ids(user_ids)
-    current_time = _normalise_now(now)
-    reports: list[AuditPruneUserReport] = []
-    for user_id in selected_users:
-        reports.append(
-            _prune_one_user(
-                backend,
-                user_id,
-                settings,
-                current_time,
-                apply,
-            )
-        )
-    return AuditPruneReport(
-        applied=apply,
-        now=_format_datetime(current_time),
-        detailed_days=settings.detailed_days,
-        critical_days=settings.critical_days,
-        users=reports,
-    )
-
-
 def _prune_one_user(
     backend: StorageBackend,
     user_id: str,
-    settings: AuditSettings,
+    policy: AuditPolicy,
     now: datetime,
     apply: bool,
 ) -> AuditPruneUserReport:
     from core.state.store import StorageEventQuery
 
     events = backend.read_events(StorageEventQuery(user_id=user_id))
-    detailed_cutoff = now - timedelta(days=settings.detailed_days)
-    critical_cutoff = now - timedelta(days=settings.critical_days)
     candidates: list[StorageEvent] = []
     detailed_count = 0
     critical_count = 0
     protected_count = 0
     invalid_timestamps = 0
     for event in events:
-        level = classify_audit_event(event.stream_type, event.event_type)
-        if level == PROTECTED:
+        rule = policy.event_rule(event.stream_type, event.event_type)
+        retention_days = policy.retention_days(rule)
+        if retention_days is None:
             protected_count += 1
             continue
         event_time = _parse_event_time(event.created_at)
         if event_time is None:
             invalid_timestamps += 1
             continue
-        cutoff = detailed_cutoff if level == DETAILED else critical_cutoff
+        cutoff = now - timedelta(days=retention_days)
         if event_time >= cutoff:
             continue
         candidates.append(event)
-        if level == DETAILED:
+        if rule.retention == DETAILED:
             detailed_count += 1
         else:
             critical_count += 1
@@ -330,7 +318,7 @@ def _prune_one_user(
                 backend,
                 user_id,
                 candidates,
-                settings,
+                policy,
                 now,
             )
     return AuditPruneUserReport(
@@ -349,13 +337,13 @@ def _record_prune_events(
     backend: StorageBackend,
     user_id: str,
     candidates: list[StorageEvent],
-    settings: AuditSettings,
+    policy: AuditPolicy,
     now: datetime,
 ) -> int:
     by_agent: dict[str, dict[str, int]] = {}
     for event in candidates:
         counts = by_agent.setdefault(event.agent_name, {DETAILED: 0, CRITICAL: 0})
-        level = classify_audit_event(event.stream_type, event.event_type)
+        level = policy.event_rule(event.stream_type, event.event_type).retention
         counts[level] += 1
     for agent_name, counts in by_agent.items():
         backend.append_event(
@@ -367,8 +355,8 @@ def _record_prune_events(
             created_at=_format_datetime(now),
             data={
                 "schema_version": 1,
-                "detailed_days": settings.detailed_days,
-                "critical_days": settings.critical_days,
+                "detailed_days": policy.detailed_days,
+                "critical_days": policy.critical_days,
                 "detailed_events_deleted": counts[DETAILED],
                 "critical_events_deleted": counts[CRITICAL],
             },
@@ -420,3 +408,6 @@ def _format_datetime(value: datetime) -> str:
 def _require_positive_days(value: int, name: str) -> None:
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
         raise ValueError(f"audit {name} must be a positive integer")
+
+
+DEFAULT_AUDIT_POLICY = AuditPolicy()

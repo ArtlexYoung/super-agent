@@ -8,7 +8,7 @@ from pathlib import Path
 from adapter.cli_adapter.loaders import load_common_config
 from core.config import CommonConfig
 from core.state.store import StorageBackend
-from core.state.audit import AuditPruneReport, prune_expired_audit_events
+from core.state.audit import AuditPruneReport
 from core.models import LOCAL_USER_ID
 from adapter.storage import copy_storage_events, create_storage_backend
 from adapter.storage.disclosure import DisclosureStorage
@@ -85,10 +85,9 @@ def _run_prune_command(args: argparse.Namespace) -> int:
         str(config.storage.path),
         config.storage.url_env,
     )
-    report = prune_expired_audit_events(
+    report = config.storage.audit.prune_expired_events(
         backend,
         args.user_id or [LOCAL_USER_ID],
-        config.storage.audit,
         apply=args.apply,
     )
     if args.apply:

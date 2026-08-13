@@ -359,9 +359,9 @@ def _required_text(value: object, name: str) -> str:
 
 
 def _redact_events_for_display(events: list[StorageEvent]) -> list[StorageEvent]:
-    from core.state.audit import redact_events_for_display
+    from core.state.audit import DEFAULT_AUDIT_POLICY
 
-    return redact_events_for_display(events)
+    return DEFAULT_AUDIT_POLICY.redact_events(events)
 
 # Backend-neutral records define the storage contract used by this store.
 from dataclasses import dataclass

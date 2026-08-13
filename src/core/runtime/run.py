@@ -88,9 +88,9 @@ class Run:
         data: dict[str, object] | None = None,
     ) -> RunEvent:
         if self.subagent_record_options is not None:
-            from core.state.audit import compact_runtime_event_data
+            from core.state.audit import DEFAULT_AUDIT_POLICY
 
-            data = compact_runtime_event_data(
+            data = DEFAULT_AUDIT_POLICY.compact_event_data(
                 event_type,
                 data or {},
                 self.subagent_record_options,

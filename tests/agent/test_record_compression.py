@@ -3,7 +3,7 @@ import unittest
 from core.models import SubagentRecordOptions
 from skill.runtime.tasks.queue import AgentTaskQueue, AgentTaskQueueSettings
 from core.state.audit import (
-    compact_runtime_event_data,
+    DEFAULT_AUDIT_POLICY,
     compact_subagent_result,
 )
 
@@ -95,7 +95,11 @@ class RecordCompressionTests(unittest.TestCase):
 
         for event_type, data in cases.items():
             with self.subTest(event_type=event_type):
-                compacted = compact_runtime_event_data(event_type, data, options)
+                compacted = DEFAULT_AUDIT_POLICY.compact_event_data(
+                    event_type,
+                    data,
+                    options,
+                )
                 self.assertEqual("summary", compacted["record_mode"])
                 self.assertNotEqual(set(data), set(compacted) & set(data))
                 self.assertTrue(any(key.endswith("_summary") for key in compacted))

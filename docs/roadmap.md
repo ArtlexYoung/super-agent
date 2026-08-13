@@ -1705,6 +1705,19 @@ Status: implemented.
 - Keep backend connection, schema, SQL dialect, and transaction behavior in their concrete owners
   without restoring the removed nested SQL package.
 
+## v0.1.68: One Audit Event Policy
+
+Status: implemented.
+
+- Resolve each Runtime event to one immutable rule containing its retention class and sensitive
+  content fields.
+- Use the same `AuditPolicy` for retention periods, dynamic display redaction, summary-mode child
+  event compaction, and explicit expired-event cleanup.
+- Keep canonical Runtime events complete; redaction remains a read-time view and cleanup still
+  requires an explicit apply operation.
+- Protect state streams and unknown event types by default, and remove the previous classification,
+  redaction, compaction, and pruning function entrances without compatibility aliases.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

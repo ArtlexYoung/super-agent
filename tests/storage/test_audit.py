@@ -6,15 +6,14 @@ from pathlib import Path
 
 from adapter.storage import JsonlStorage, SqliteStorage
 from core.state.audit import (
-    AuditSettings,
+    AuditPolicy,
+    CRITICAL,
     DETAILED,
-    classify_audit_event,
-    prune_expired_audit_events,
-    redact_events_for_display,
+    PROTECTED,
 )
 from core.config import CommonConfig
 from core.state.store import StorageEventQuery
-from core.models import RunIdentity
+from core.models import RunIdentity, SubagentRecordOptions
 from core.state.run import RunEventLog
 from core.state.store import EventStore
 
@@ -37,7 +36,53 @@ class AuditStorageTests(unittest.TestCase):
         )
         self.assertEqual(
             {DETAILED},
-            {classify_audit_event("run", name) for name in event_types},
+            {AuditPolicy().event_rule("run", name).retention for name in event_types},
+        )
+
+    def test_one_policy_drives_retention_redaction_and_compaction(self) -> None:
+        policy = AuditPolicy(detailed_days=30, critical_days=400)
+        detailed = policy.event_rule("run", "model.turn.completed")
+        critical = policy.event_rule("run", "run.started")
+        unknown = policy.event_rule("run", "future.event")
+
+        self.assertEqual(DETAILED, detailed.retention)
+        self.assertEqual(("text",), detailed.content_fields)
+        self.assertEqual(30, policy.retention_days(detailed))
+        self.assertEqual(CRITICAL, critical.retention)
+        self.assertEqual(400, policy.retention_days(critical))
+        self.assertEqual(PROTECTED, unknown.retention)
+        self.assertIsNone(policy.retention_days(unknown))
+        self.assertEqual(
+            "[redacted]",
+            policy.redact_event_data(
+                "run",
+                "model.turn.completed",
+                {"text": "private"},
+            )["text"],
+        )
+        compacted = policy.compact_event_data(
+            "model.turn.completed",
+            {"text": "private"},
+            SubagentRecordOptions(mode="summary"),
+        )
+        self.assertNotIn("text", compacted)
+        self.assertIn("text_summary", compacted)
+
+    def test_unknown_events_and_state_streams_are_protected_by_default(self) -> None:
+        policy = AuditPolicy()
+
+        self.assertEqual(PROTECTED, policy.event_rule("run", "future.event").retention)
+        self.assertEqual(
+            PROTECTED,
+            policy.event_rule("memory", "model.turn.completed").retention,
+        )
+        self.assertEqual(
+            {"text": "complete"},
+            policy.redact_event_data(
+                "memory",
+                "model.turn.completed",
+                {"text": "complete"},
+            ),
         )
 
     def test_default_and_custom_retention_settings_load_from_common_config(self) -> None:
@@ -103,7 +148,7 @@ critical_days = 365
                 ensure_ascii=False,
                 sort_keys=True,
             )
-            redacted = redact_events_for_display(persisted)
+            redacted = AuditPolicy().redact_events(persisted)
             redacted_serialized = json.dumps(
                 [event.data for event in redacted],
                 ensure_ascii=False,
@@ -138,10 +183,12 @@ critical_days = 365
             _append(backend, "unknown-old", "future.event", old)
             _append(backend, "invalid-time", "tool.completed", invalid)
 
-            preview = prune_expired_audit_events(
+            preview = AuditPolicy(
+                detailed_days=180,
+                critical_days=365,
+            ).prune_expired_events(
                 backend,
                 ["alice"],
-                AuditSettings(detailed_days=180, critical_days=365),
                 now=now,
             )
             user_preview = preview.users[0]
@@ -152,10 +199,12 @@ critical_days = 365
             self.assertEqual(1, user_preview.invalid_timestamps)
             self.assertEqual(6, len(backend.read_events(StorageEventQuery(user_id="alice"))))
 
-            applied = prune_expired_audit_events(
+            applied = AuditPolicy(
+                detailed_days=180,
+                critical_days=365,
+            ).prune_expired_events(
                 backend,
                 ["alice"],
-                AuditSettings(detailed_days=180, critical_days=365),
                 apply=True,
                 now=now,
             )
