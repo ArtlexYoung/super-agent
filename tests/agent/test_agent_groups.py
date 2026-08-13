@@ -1,11 +1,38 @@
 import json
+import ast
 import unittest
+from pathlib import Path
 
 from skill.runtime.tasks.agents import AgentUnavailableError
 from skill.runtime.tasks.queue import create_agent_task_queue
 
 
 class AgentGroupTests(unittest.TestCase):
+    def test_group_policy_does_not_own_queue_state(self) -> None:
+        tree = ast.parse(
+            Path("src/skill/runtime/tasks/groups.py").read_text(encoding="utf-8")
+        )
+        group_class = next(
+            node
+            for node in tree.body
+            if isinstance(node, ast.ClassDef) and node.name == "AgentGroups"
+        )
+        assignments = {
+            target.attr
+            for node in ast.walk(group_class)
+            if isinstance(node, (ast.Assign, ast.AnnAssign))
+            for target in (
+                node.targets if isinstance(node, ast.Assign) else [node.target]
+            )
+            if isinstance(target, ast.Attribute)
+            and isinstance(target.value, ast.Name)
+            and target.value.id == "self"
+        }
+
+        self.assertNotIn("_groups", assignments)
+        self.assertNotIn("_failures", assignments)
+        self.assertNotIn("_attempt_count", assignments)
+
     def test_two_support_votes_survive_one_member_failure(self) -> None:
         received = []
         events = []

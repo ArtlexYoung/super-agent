@@ -1669,6 +1669,18 @@ Status: implemented.
 - Preserve event order, model selection, Skill disclosure, subagent identity, and checkpoints
   while removing the split return of independent run resources and avoiding another owner class.
 
+## v0.1.65: One Agent Task Queue State
+
+Status: implemented.
+
+- Make `AgentTaskQueue` own group records, rejected group attempts, and group numbering beside the
+  member tasks they describe.
+- Keep `AgentGroups` focused on budget, member selection, shared context, and vote aggregation
+  without a second task-state registry.
+- Refresh group decisions from the queue's canonical terminal task transitions.
+- Preserve group tools, wait and cancellation behavior, model diversity, cost checks, retries,
+  compact evidence, and completion events.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

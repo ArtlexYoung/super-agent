@@ -40,19 +40,19 @@ class AgentGroups:
         self.queue = queue
         self.settings = settings
         self.create_shared_context = create_shared_context
-        self._groups: dict[str, AgentGroup] = {}
-        self._failures: list[dict[str, object]] = []
-        self._attempt_count = 0
 
     @property
     def has_failures(self) -> bool:
-        return bool(self._failures)
+        return bool(self.queue._group_failures)
 
     def list_groups(self) -> list[dict[str, object]]:
         with self.queue._condition:
             return [
-                *[dict(item) for item in self._failures],
-                *[self._group_result_locked(group) for group in self._groups.values()],
+                *[dict(item) for item in self.queue._group_failures],
+                *[
+                    self._group_result_locked(group)
+                    for group in self.queue._group_records.values()
+                ],
             ]
 
     def create_tools(self) -> tuple[SkillTool, ...]:
@@ -229,14 +229,14 @@ class AgentGroups:
             }
 
     def _next_group_id_locked(self) -> str:
-        self._attempt_count += 1
-        return f"agent-group-{self._attempt_count:02d}"
+        self.queue._group_attempt_count += 1
+        return f"agent-group-{self.queue._group_attempt_count:02d}"
 
     def _validate_group_capacity_locked(self, requested_members: int) -> None:
         settings = self.settings
         if self.queue._closed:
             raise RuntimeError("agent task queue is closed")
-        if len(self._groups) >= settings.max_groups:
+        if len(self.queue._group_records) >= settings.max_groups:
             raise ValueError(f"agent group limit reached: {settings.max_groups}")
         if len(self.queue._tasks) + requested_members > self.queue.settings.max_tasks:
             raise ValueError(f"agent task limit reached: {self.queue.settings.max_tasks}")
@@ -318,7 +318,7 @@ class AgentGroups:
             "budget_limit": settings.max_estimated_cost,
             "created": False,
         }
-        self._failures.append(dict(result))
+        self.queue._group_failures.append(dict(result))
         self.queue.record_event("agent_group.budget_exceeded", dict(result))
         return {"group": result, "created": False}
 
@@ -379,7 +379,7 @@ class AgentGroups:
         choices: list[AgentChoice],
     ) -> None:
         group_id = group.group_id
-        self._groups[group_id] = group
+        self.queue._group_records[group_id] = group
         self.queue.record_event("agent_group.created", group.to_dict())
         if group.reduced:
             self.queue.record_event("agent_group.reduced", group.to_dict())
@@ -403,11 +403,14 @@ class AgentGroups:
         )
 
     def refresh(self, group_id: str) -> None:
-        group = self._groups[group_id]
+        group = self.queue._group_records[group_id]
         if group.status != "running" or not self._group_is_terminal_locked(group):
             return
         result = self._group_result_locked(group)
-        self._groups[group_id] = replace(group, status=str(result["status"]))
+        self.queue._group_records[group_id] = replace(
+            group,
+            status=str(result["status"]),
+        )
         audit = dict(result)
         audit["members"] = [
             {key: value for key, value in member.items() if key != "evidence"}
@@ -417,7 +420,7 @@ class AgentGroups:
         self.queue.record_event("agent_group.completed", audit)
 
     def _require_group_locked(self, group_id: str) -> AgentGroup:
-        group = self._groups.get(group_id)
+        group = self.queue._group_records.get(group_id)
         if group is None:
             raise KeyError(f"agent group not found: {group_id}")
         return group

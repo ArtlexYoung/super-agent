@@ -22,6 +22,7 @@ from skill.runtime.tasks.agents import (
     read_optional_estimated_tokens,
 )
 from skill.runtime.tasks.groups import (
+    AgentGroup,
     AgentGroups,
     AgentGroupSettings,
 )
@@ -71,6 +72,9 @@ class AgentTaskQueue:
         self.record_result = record_result
         self._condition = Condition(RLock())
         self._tasks: dict[str, AgentTask] = {}
+        self._group_records: dict[str, AgentGroup] = {}
+        self._group_failures: list[dict[str, object]] = []
+        self._group_attempt_count = 0
         self._executors: dict[str, ThreadPoolExecutor] = {}
         self._observed_terminal: set[str] = set()
         self._started_task_count = 0
