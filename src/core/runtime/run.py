@@ -56,6 +56,8 @@ class Run:
     identity: RunIdentity
     event_log: RunEventLog
     store: EventStore | None
+    model_profiles: tuple[ModelProfile, ...] = ()
+    task_loop: ModelLoop | None = field(default=None, repr=False)
     allow_subscriber_failures: bool = False
     create_action_rules: Callable[[], ActionRules] | None = field(
         default=None,
@@ -323,7 +325,7 @@ class Runtime:
             conversation_id=conversation_id,
             parent_run_id=parent_run_id,
         )
-        run, task_loop = _create_run(
+        run = _create_run(
             self,
             request,
             identity,
@@ -352,7 +354,9 @@ class Runtime:
                         ),
                     },
                 )
-            result = task_loop.run_task(request, run)
+            if run.task_loop is None:
+                raise RuntimeError("run task loop is unavailable")
+            result = run.task_loop.run_task(request, run)
             result = replace(result, subscriber_failures=run.list_subscriber_failures())
             run.record_event(
                 "run.completed",
@@ -410,7 +414,7 @@ def _create_run(
     identity: RunIdentity,
     *,
     event_listener: Callable[[RunEvent], None] | None,
-) -> tuple[Run, ModelLoop]:
+) -> Run:
     from core.state.run import RunEventLog
 
     event_log = RunEventLog(
@@ -445,12 +449,14 @@ def _create_run(
             identity=identity,
             event_log=event_log,
             store=store,
+            model_profiles=tuple(profiles),
+            task_loop=task_loop,
             allow_subscriber_failures=request.allow_subscriber_failures,
             create_action_rules=runtime.create_action_rules,
             subagent_record_options=request.subagent_record_options,
         )
         skills.disclosure.set_event_writer(run.record_event)
-        return run, task_loop
+        return run
     except Exception as error:
         event_log.append_event(
             "run.failed",

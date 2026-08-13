@@ -251,6 +251,9 @@ class SkillHandlerRuntimeTests(unittest.TestCase):
                 node.name for node in run_tree.body if isinstance(node, ast.ClassDef)
             }
             self.assertEqual({"Run", "Runtime"}, run_classes)
+            run_source = Path("src/core/runtime/run.py").read_text(encoding="utf-8")
+            self.assertIn("model_profiles: tuple[ModelProfile, ...]", run_source)
+            self.assertIn("task_loop: ModelLoop | None", run_source)
             self.assertFalse(Path("src/core/session.py").exists())
             self.assertFalse(Path("src/core/runtime/plan.py").exists())
             self.assertFalse(Path("src/core/runtime/scheduler.py").exists())

@@ -1657,6 +1657,18 @@ Status: implemented.
 - Keep persisted subagent runs readable after restart while preferring the exact mounted Agent
   configuration when the Agent tree is present.
 
+## v0.1.64: One Run Resource Snapshot
+
+Status: implemented.
+
+- Attach one per-run resource snapshot to `Run`: the user-scoped Store, central Skill collection,
+  immutable model profile tuple, and ModelLoop.
+- Let the execution path read those same Run-owned resources so a task cannot silently switch
+  configuration after it starts.
+- Keep stateless execution explicit by allowing the snapshot Store to remain unavailable.
+- Preserve event order, model selection, Skill disclosure, subagent identity, and checkpoints
+  while removing the split return of independent run resources and avoiding another owner class.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof
