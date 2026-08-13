@@ -63,10 +63,10 @@ propose -> test -> apply -> optional undo
 ```
 
 ```bash
-super-agent manage skill-changes propose --name prompt:concise --goal "make it clearer"
-super-agent manage skill-changes test --change-id <id> --cases cases.json
-super-agent manage skill-changes apply --change-id <id>
-super-agent manage skill-changes undo --change-id <id>
+super-agent skills changes propose --name prompt:concise --goal "make it clearer"
+super-agent skills changes test --change-id <id> --cases cases.json
+super-agent skills changes apply --change-id <id>
+super-agent skills changes undo --change-id <id>
 ```
 
 `propose` writes a complete candidate outside active Skill roots. `test`

@@ -2,23 +2,31 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 from adapter.cli_adapter.loaders import load_agent, load_common_config, load_event_store
-from skill.runtime.handlers import (
-    create_progressive_skill_disclosure,
-    load_configured_freshness_rules,
-)
+from core.checks import ActionRules
 from core.config import CommonConfig
 from core.models import LOCAL_USER_ID
-from core.checks import ActionRules
 from skill.disclosure import ProgressiveDisclosureCore, skill_index_to_dict
-from skill.runtime.files.package import SkillPackageManager
-from skill.learning.update import SkillChangeCase
+from skill.runtime.handlers import (
+    create_progressive_skill_disclosure,
+    create_skills,
+    load_configured_freshness_rules,
+)
 from skill.learning.freshness import calculate_skill_freshness
 from skill.learning.records import read_evaluation_records
-from skill.runtime.files.package import write_skill_lock_file
+from skill.learning.update import SkillChangeCase
 from skill.manifest import SkillManifest
+from skill.runtime.files.package import SkillPackageManager, write_skill_lock_file
+from skill.runtime.model_skills import ModelSkillManager, model_skill_input_from_dict
+from skill.runtime.models import (
+    ModelProfile,
+    model_profile_to_dict,
+    read_model_profiles,
+    select_default_model_profile,
+)
 
 
 def configure_skills_parser(
@@ -36,6 +44,12 @@ def configure_skills_parser(
     validate_parser.add_argument("--common-config", default="common.toml")
     graph_parser = subparsers.add_parser("graph", help="resolve a skill dependency graph")
     _add_composition_arguments(graph_parser)
+    changes_parser = subparsers.add_parser("changes", help="manage Skill changes")
+    configure_skill_changes_parser(changes_parser)
+    packages_parser = subparsers.add_parser("packages", help="manage Skill packages")
+    configure_skill_packages_parser(packages_parser)
+    models_parser = subparsers.add_parser("models", help="manage model Skills")
+    configure_models_parser(models_parser)
     for command_parser in (
         list_parser,
         index_parser,
@@ -85,6 +99,29 @@ def configure_skill_packages_parser(parser: argparse.ArgumentParser) -> None:
         command_parser.add_argument("--user-id", default=LOCAL_USER_ID)
 
 
+def configure_models_parser(parser: argparse.ArgumentParser) -> None:
+    subparsers = parser.add_subparsers(dest="models_command")
+    list_parser = subparsers.add_parser(
+        "list",
+        help="list model Skills or zero-configuration environment profiles",
+    )
+    _add_model_read_arguments(list_parser)
+    resolve_parser = subparsers.add_parser(
+        "resolve",
+        help="show the default model profile selected for this project",
+    )
+    _add_model_read_arguments(resolve_parser)
+    save_parser = subparsers.add_parser(
+        "save",
+        help="create or update one model Skill from JSON stdin",
+    )
+    _add_model_write_arguments(save_parser)
+    save_parser.add_argument("--request-stdin", action="store_true", required=True)
+    remove_parser = subparsers.add_parser("remove", help="remove one model Skill")
+    _add_model_write_arguments(remove_parser)
+    remove_parser.add_argument("--name", required=True)
+
+
 def run_skills_command(args: argparse.Namespace) -> int:
     handlers = {
         "list": lambda: _list_skills(Path(args.common_config), args.user_id),
@@ -92,6 +129,9 @@ def run_skills_command(args: argparse.Namespace) -> int:
         "freshness": lambda: _show_skill_freshness(Path(args.common_config), args.user_id),
         "validate": lambda: _validate_skills(Path(args.common_config), args.user_id),
         "graph": lambda: _show_skill_graph(args),
+        "changes": lambda: run_skill_changes_command(args),
+        "packages": lambda: run_skill_packages_command(args),
+        "models": lambda: run_models_command(args),
     }
     handler = handlers.get(args.skill_command)
     if handler is None:
@@ -109,7 +149,7 @@ def run_skill_changes_command(args: argparse.Namespace) -> int:
     }
     handler = handlers.get(args.skill_change_command)
     if handler is None:
-        raise ValueError("skill-changes command is required")
+        raise ValueError("skills changes command is required")
     return handler()
 
 
@@ -123,8 +163,131 @@ def run_skill_packages_command(args: argparse.Namespace) -> int:
     }
     handler = handlers.get(args.skill_package_command)
     if handler is None:
-        raise ValueError("skill-packages command is required")
+        raise ValueError("skills packages command is required")
     return handler()
+
+
+def run_models_command(args: argparse.Namespace) -> int:
+    config = load_common_config(getattr(args, "common_config", None))
+    output = getattr(args, "output", "text")
+    if args.models_command == "save":
+        return _save_model_skill(config, args.user_id, output)
+    if args.models_command == "remove":
+        return _remove_model_skill(config, args.user_id, args.name, output)
+    profiles = _read_configured_model_profiles(
+        config,
+        getattr(args, "user_id", LOCAL_USER_ID),
+    )
+    if args.models_command == "list":
+        return _print_model_profiles(config, profiles, output)
+    if args.models_command in {None, "resolve"}:
+        return _print_selected_model(config, profiles, output)
+    raise ValueError(f"unknown models command: {args.models_command}")
+
+
+def _read_configured_model_profiles(
+    config: CommonConfig,
+    user_id: str,
+) -> list[ModelProfile]:
+    store = load_event_store(config, user_id)
+    return read_model_profiles(create_skills(config, store=store))
+
+
+def _print_model_profiles(
+    config: CommonConfig,
+    profiles: list[ModelProfile],
+    output: str,
+) -> int:
+    if output == "json":
+        print(
+            json.dumps(
+                {
+                    "schema_version": 2,
+                    "config_path": str(config.source),
+                    "models": [model_profile_to_dict(profile) for profile in profiles],
+                },
+                ensure_ascii=False,
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 0
+    for profile in profiles:
+        _print_model_profile(profile)
+    return 0
+
+
+def _print_selected_model(
+    config: CommonConfig,
+    profiles: list[ModelProfile],
+    output: str,
+) -> int:
+    selected = select_default_model_profile(profiles)
+    data = {
+        "schema_version": 2,
+        "config_path": str(config.source),
+        "model": model_profile_to_dict(selected),
+    }
+    if output == "json":
+        print(json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True))
+        return 0
+    _print_model_profile(selected, prefix="selected")
+    print(f"config\t{config.source}")
+    return 0
+
+
+def _print_model_profile(profile: ModelProfile, prefix: str = "profile") -> None:
+    data = model_profile_to_dict(profile)
+    print(
+        f"{prefix}\t{profile.key}\t{data['provider']}\t{profile.model}"
+        f"\tready={str(data['ready']).lower()}"
+        f"\tdefault={str(profile.default).lower()}"
+        f"\tsource={profile.source}"
+        f"\tbase_url={data['base_url'] or ''}"
+        f"\tapi_key_env={data['api_key_env'] or ''}"
+    )
+
+
+def _save_model_skill(config: CommonConfig, user_id: str, output: str) -> int:
+    request = model_skill_input_from_dict(json.loads(sys.stdin.read()))
+    profile = _create_model_skill_manager(config, user_id).save_model_skill(request)
+    return _print_model_change(profile, output, "saved")
+
+
+def _remove_model_skill(
+    config: CommonConfig,
+    user_id: str,
+    name: str,
+    output: str,
+) -> int:
+    _create_model_skill_manager(config, user_id).remove_model_skill(name)
+    data = {"schema_version": 1, "name": name, "removed": True}
+    if output == "json":
+        print(json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True))
+    else:
+        print(f"Removed model Skill: model:{name}")
+    return 0
+
+
+def _print_model_change(profile: ModelProfile, output: str, action: str) -> int:
+    data = {
+        "schema_version": 1,
+        "action": action,
+        "model": model_profile_to_dict(profile),
+    }
+    if output == "json":
+        print(json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True))
+    else:
+        _print_model_profile(profile, prefix=action)
+    return 0
+
+
+def _create_model_skill_manager(
+    config: CommonConfig,
+    user_id: str,
+) -> ModelSkillManager:
+    store = load_event_store(config, user_id)
+    return ModelSkillManager(config, store, ActionRules())
 
 
 def _list_skills(config_path: Path, user_id: str) -> int:
@@ -346,6 +509,18 @@ def _add_package_source_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--common-config", default="common.toml")
     parser.add_argument("--source", required=True)
     parser.add_argument("--expected-sha256", default="")
+
+
+def _add_model_read_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--common-config")
+    parser.add_argument("--user-id", default=LOCAL_USER_ID)
+    parser.add_argument("--output", choices=["text", "json"], default="text")
+
+
+def _add_model_write_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--common-config", required=True)
+    parser.add_argument("--user-id", default=LOCAL_USER_ID)
+    parser.add_argument("--output", choices=["text", "json"], default="text")
 
 
 def _read_change_cases(path: Path) -> list[SkillChangeCase]:

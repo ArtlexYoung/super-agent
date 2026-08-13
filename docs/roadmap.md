@@ -1611,6 +1611,18 @@ Status: implemented.
 - Reduce Python source files from 65 to 62 while preserving code tools, lazy optional database
   drivers, storage copying, exact-query isolation, and explicit action boundaries.
 
+## v0.1.60: One CLI Vocabulary
+
+Status: implemented.
+
+- Keep direct chat and prompts as the default, with only `check`, `config`, `data`, `serve`, and
+  `skills` as top-level commands.
+- Put Skill inspection, changes, packages, and model Skills under one `skills` command owner.
+- Keep conversations, memory, runs, and storage under `data`, separate from Skill operations.
+- Delete the `manage` command and package without aliases, forwarding modules, or hidden fallback.
+- Reduce Python source files from 62 to 61 while preserving user isolation, explicit writes, and
+  the existing lightweight default installation.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

@@ -63,8 +63,8 @@ code or a process can start.
 
 Package validation also rejects symlinks and paths outside a Skill directory. Proposed
 Skill changes remain outside active roots. Testing binds the candidate and baseline hashes;
-only a matching passing report permits `manage skill-changes apply`. The candidate and active target are
+only a matching passing report permits `skills changes apply`. The candidate and active target are
 checked again before replacement. A failed Runtime refresh restores the prior verified
-directory, while `manage skill-changes undo` is a separate explicit action. Provider failures,
+directory, while `skills changes undo` is a separate explicit action. Provider failures,
 memory-organization failures, invalid changes, and blocked actions surface as errors rather
 than alternate behavior.

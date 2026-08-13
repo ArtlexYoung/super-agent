@@ -98,7 +98,7 @@ class ReleaseShapeTests(unittest.TestCase):
         self.assertTrue(Path("src/skill/learning/runs.py").is_file())
         self.assertTrue(Path("src/skill/learning/update.py").is_file())
         source = Path("src/skill/learning/update.py").read_text(encoding="utf-8")
-        cli_source = Path("src/adapter/cli_adapter/manage/skills.py").read_text(
+        cli_source = Path("src/adapter/cli_adapter/skills.py").read_text(
             encoding="utf-8"
         )
         for operation in ("propose_skill_change", "test_skill_change", "apply_skill_change", "undo_skill_change"):
@@ -147,7 +147,6 @@ class ReleaseShapeTests(unittest.TestCase):
             "src/adapter/cli_adapter/__init__.py",
             "src/adapter/cli_adapter/check.py",
             "src/adapter/cli_adapter/serve.py",
-            "src/adapter/cli_adapter/skills.py",
             "src/adapter/cli_adapter/models.py",
             "src/adapter/cli_adapter/conversations.py",
             "src/adapter/cli_adapter/memory.py",
@@ -155,6 +154,7 @@ class ReleaseShapeTests(unittest.TestCase):
             "src/adapter/cli_adapter/storage.py",
             "src/adapter/cli_adapter/run/check.py",
             "src/adapter/cli_adapter/run/serve.py",
+            "src/adapter/cli_adapter/manage",
             "src/adapter/storage/copy.py",
             "src/adapter/storage/values.py",
             "src/adapter/ag_ui_adapter/configuration.py",
@@ -174,13 +174,13 @@ class ReleaseShapeTests(unittest.TestCase):
         self.assertTrue((root / "code.py").is_file())
         self.assertTrue((root / "configuration.py").is_file())
         self.assertTrue((root / "loaders.py").is_file())
-        for group in ("manage", "data"):
-            self.assertTrue((root / group).is_dir())
+        self.assertTrue((root / "skills.py").is_file())
+        self.assertTrue((root / "data").is_dir())
+        self.assertFalse((root / "manage").exists())
         self.assertFalse((root / "run").exists())
         for old_path in (
             "check.py",
             "serve.py",
-            "skills.py",
             "models.py",
             "conversations.py",
             "memory.py",
@@ -289,8 +289,9 @@ class ReleaseShapeTests(unittest.TestCase):
                 "adapter.cli_adapter.models",
                 "adapter.cli_adapter.runs",
                 "adapter.cli_adapter.serve",
-                "adapter.cli_adapter.skills",
                 "adapter.cli_adapter.storage",
+                "adapter.cli_adapter.manage.models",
+                "adapter.cli_adapter.manage.skills",
                 "adapter.cli_adapter.run.check",
                 "adapter.cli_adapter.run.serve",
                 "adapter.storage.copy",

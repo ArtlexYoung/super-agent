@@ -21,16 +21,8 @@ from adapter.cli_adapter.configuration import (
 from adapter.cli_adapter.loaders import load_agent, load_common_config
 from adapter.cli_adapter.code import attach_code_config_to_agent
 from adapter.cli_adapter.data.memory import configure_memory_parser, run_memory_command
-from adapter.cli_adapter.manage.models import configure_models_parser, run_models_command
 from adapter.cli_adapter.data.runs import configure_runs_parser, run_runs_command
-from adapter.cli_adapter.manage.skills import (
-    configure_skill_changes_parser,
-    configure_skill_packages_parser,
-    configure_skills_parser,
-    run_skill_changes_command,
-    run_skill_packages_command,
-    run_skills_command,
-)
+from adapter.cli_adapter.skills import configure_skills_parser, run_skills_command
 from adapter.cli_adapter.data.storage import configure_storage_parser, run_storage_command
 from adapter.ag_ui_adapter.server import DEFAULT_ALLOWED_ORIGINS, create_ag_ui_server
 from core import __version__
@@ -44,7 +36,7 @@ from skill.runtime.models import (
 )
 
 
-CLI_COMMANDS = frozenset({"check", "config", "data", "manage", "serve", "skills"})
+CLI_COMMANDS = frozenset({"check", "config", "data", "serve", "skills"})
 
 
 @dataclass(frozen=True)
@@ -78,7 +70,6 @@ def _run_parsed_command(args: argparse.Namespace) -> int:
     handlers = {
         "check": run_check_command,
         "data": _run_data_command,
-        "manage": _run_manage_command,
         "serve": run_serve_command,
         "skills": run_skills_command,
     }
@@ -147,8 +138,6 @@ def _build_parser() -> argparse.ArgumentParser:
 
     skills_parser = subparsers.add_parser("skills", help="manage skills")
     configure_skills_parser(skills_parser)
-    manage_parser = subparsers.add_parser("manage", help="advanced Agent management")
-    _configure_manage_parser(manage_parser)
     data_parser = subparsers.add_parser("data", help="manage conversations and saved data")
     _configure_data_parser(data_parser)
     serve_parser = subparsers.add_parser(
@@ -280,16 +269,6 @@ def run_serve_command(args: argparse.Namespace) -> int:
     return 0
 
 
-def _configure_manage_parser(parser: argparse.ArgumentParser) -> None:
-    subparsers = parser.add_subparsers(dest="manage_command")
-    changes = subparsers.add_parser("skill-changes", help="manage Skill changes")
-    configure_skill_changes_parser(changes)
-    packages = subparsers.add_parser("skill-packages", help="manage Skill packages")
-    configure_skill_packages_parser(packages)
-    models_parser = subparsers.add_parser("models", help="manage model Skills")
-    configure_models_parser(models_parser)
-
-
 def _configure_data_parser(parser: argparse.ArgumentParser) -> None:
     subparsers = parser.add_subparsers(dest="data_command")
     conversations = subparsers.add_parser("conversations", help="manage conversations")
@@ -300,18 +279,6 @@ def _configure_data_parser(parser: argparse.ArgumentParser) -> None:
     configure_runs_parser(runs)
     storage = subparsers.add_parser("storage", help="copy stored data")
     configure_storage_parser(storage)
-
-
-def _run_manage_command(args: argparse.Namespace) -> int:
-    handlers = {
-        "skill-changes": run_skill_changes_command,
-        "skill-packages": run_skill_packages_command,
-        "models": run_models_command,
-    }
-    handler = handlers.get(args.manage_command)
-    if handler is None:
-        raise ValueError("manage command is required")
-    return handler(args)
 
 
 def _run_data_command(args: argparse.Namespace) -> int:

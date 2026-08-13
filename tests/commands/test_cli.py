@@ -43,6 +43,7 @@ class CliTests(unittest.TestCase):
             self.assertEqual(0, help_result.returncode)
             self.assertIn("Chat with an Agent", help_result.stdout)
             self.assertIn("check", help_result.stdout)
+            self.assertNotIn("\n    manage ", help_result.stdout)
             self.assertFalse(Path(tmp, ".super-agent").exists())
 
     def test_cli_has_clear_top_level_commands(self) -> None:
@@ -51,7 +52,6 @@ class CliTests(unittest.TestCase):
                 "check",
                 "config",
                 "skills",
-                "manage",
                 "data",
                 "serve",
             },
@@ -68,7 +68,7 @@ class CliTests(unittest.TestCase):
                 "sys.stdout",
                 output,
             ):
-                code = main(["manage", "models", "list", "--output", "json"])
+                code = main(["skills", "models", "list", "--output", "json"])
 
         data = json.loads(output.getvalue())
         self.assertEqual(0, code)
@@ -86,7 +86,7 @@ class CliTests(unittest.TestCase):
             error = StringIO()
 
             with patch("sys.stderr", error):
-                code = main(["manage", "models", "resolve", "--output", "json"])
+                code = main(["skills", "models", "resolve", "--output", "json"])
 
             self.assertEqual(1, code)
             self.assertIn("No model is configured", error.getvalue())
@@ -291,8 +291,8 @@ description = "Compact note writer"
                 with patch("sys.stdout", propose_output):
                     propose_code = main(
                         [
-                            "manage",
-                            "skill-changes",
+                            "skills",
+                            "changes",
                             "propose",
                             "--common-config",
                             config,
@@ -305,8 +305,8 @@ description = "Compact note writer"
                 change_id = propose_output.getvalue().strip().split(": ", 1)[1]
                 test_code = main(
                     [
-                        "manage",
-                        "skill-changes",
+                        "skills",
+                        "changes",
                         "test",
                         "--common-config",
                         config,
@@ -318,8 +318,8 @@ description = "Compact note writer"
                 )
                 apply_code = main(
                     [
-                        "manage",
-                        "skill-changes",
+                        "skills",
+                        "changes",
                         "apply",
                         "--common-config",
                         config,
@@ -432,8 +432,8 @@ description = "Compact note writer"
                 graph_code = main(["skills", "graph", "--common-config", config, "--name", "task:default"])
             lock_code = main(
                 [
-                    "manage",
-                    "skill-packages",
+                    "skills",
+                    "packages",
                     "lock",
                     "--common-config",
                     config,
@@ -457,12 +457,12 @@ description = "Compact note writer"
             package_path = root / "default.zip"
 
             pack_code = main(
-                ["manage", "skill-packages", "pack", "--common-config", config, "--name", "task:default", "--output", str(package_path)]
+                ["skills", "packages", "pack", "--common-config", config, "--name", "task:default", "--output", str(package_path)]
             )
             error = StringIO()
             with patch("sys.stderr", error):
                 remove_shared_code = main(
-                    ["manage", "skill-packages", "remove", "--common-config", config, "--name", "task:default"]
+                    ["skills", "packages", "remove", "--common-config", config, "--name", "task:default"]
                 )
             self.assertEqual(1, remove_shared_code)
             self.assertIn("cannot remove shared Skill", error.getvalue())
@@ -483,8 +483,8 @@ max_steps = 8
             (update_source / "SKILL.md").write_text("Updated task.", encoding="utf-8")
             update_code = main(
                 [
-                    "manage",
-                    "skill-packages",
+                    "skills",
+                    "packages",
                     "update",
                     "--common-config",
                     config,
@@ -502,7 +502,7 @@ max_steps = 8
                 "Updated task.",
                 (installed / "SKILL.md").read_text(encoding="utf-8"),
             )
-            remove_code = main(["manage", "skill-packages", "remove", "--common-config", config, "--name", "task:default"])
+            remove_code = main(["skills", "packages", "remove", "--common-config", config, "--name", "task:default"])
             self.assertEqual(0, remove_code)
             self.assertFalse(installed.exists())
             self.assertTrue((root / "skills" / "task" / "default").is_dir())
