@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, replace
-from hashlib import sha256
+from dataclasses import dataclass
 from importlib import import_module
 from typing import Any, Protocol
 from urllib.parse import parse_qsl, unquote, urlsplit
@@ -12,16 +11,19 @@ from uuid import uuid4
 
 from core.state.store import StorageEvent, StorageEventQuery
 from adapter.storage import (
+    build_sql_event_where,
     clean_storage_text,
-    decode_storage_data,
     encode_storage_data,
     positive_storage_integer,
+    read_sql_event_row,
+    select_sql_events,
+    split_sql_event_id_query,
+    storage_text_key,
     utc_now_text,
 )
 
 
 REMOTE_SQL_SCHEMA_VERSION = 1
-REMOTE_DELETE_EVENT_ID_BATCH_SIZE = 500
 DEFAULT_MYSQL_URL_ENV = "SUPER_AGENT_MYSQL_URL"
 DEFAULT_POSTGRESQL_URL_ENV = "SUPER_AGENT_POSTGRESQL_URL"
 _MYSQL_SCHEMES = {"mysql", "mysql+pymysql"}
@@ -36,11 +38,7 @@ CREATE TABLE IF NOT EXISTS super_agent_storage_schema (
 _SELECT_SCHEMA_VERSION_SQL = (
     "SELECT version FROM super_agent_storage_schema WHERE component = %s"
 )
-_SELECT_EVENTS_SQL = """
-SELECT position, event_id, user_id, agent_name, stream_type, stream_id,
-       event_type, created_at, data_json
-FROM super_agent_storage_events
-""".strip()
+_SELECT_EVENTS_SQL = select_sql_events("super_agent_storage_events")
 
 
 class RemoteSqlDatabaseAdapter(Protocol):
@@ -74,17 +72,17 @@ class _PendingEvent:
     def insert_parameters(self) -> tuple[object, ...]:
         return (
             self.event_id,
-            _storage_text_key(self.event_id),
+            storage_text_key(self.event_id),
             self.user_id,
-            _storage_text_key(self.user_id),
+            storage_text_key(self.user_id),
             self.agent_name,
-            _storage_text_key(self.agent_name),
+            storage_text_key(self.agent_name),
             self.stream_type,
-            _storage_text_key(self.stream_type),
+            storage_text_key(self.stream_type),
             self.stream_id,
-            _storage_text_key(self.stream_id),
+            storage_text_key(self.stream_id),
             self.event_type,
-            _storage_text_key(self.event_type),
+            storage_text_key(self.event_type),
             self.created_at,
             self.data_json,
         )
@@ -132,7 +130,7 @@ class RemoteSqlStorage:
             row = cursor.fetchone()
             if row is None:
                 raise RuntimeError("remote SQL event disappeared before transaction commit")
-            stored = _event_from_row(row, self._database.location)
+            stored = read_sql_event_row(row, self._database.location)
             _reject_identifier_hash_collision(pending, stored)
             connection.commit()
             return stored
@@ -143,7 +141,11 @@ class RemoteSqlStorage:
             connection.close()
 
     def read_events(self, query: StorageEventQuery) -> list[StorageEvent]:
-        where, parameters = _query_where(query)
+        where, parameters = build_sql_event_where(
+            query,
+            "%s",
+            hash_identifiers=True,
+        )
         connection = self._database.connect_to_database()
         try:
             cursor = connection.cursor()
@@ -151,19 +153,19 @@ class RemoteSqlStorage:
             rows = cursor.fetchall()
         finally:
             connection.close()
-        return [_event_from_row(row, self._database.location) for row in rows]
+        return [read_sql_event_row(row, self._database.location) for row in rows]
 
     def delete_events(self, query: StorageEventQuery) -> int:
         connection = self._database.connect_to_database()
         try:
             cursor = connection.cursor()
             deleted = 0
-            for event_ids in _event_id_batches(query.event_ids):
-                selected = query if event_ids is None else replace(
-                    query,
-                    event_ids=event_ids,
+            for selected in split_sql_event_id_query(query):
+                where, parameters = build_sql_event_where(
+                    selected,
+                    "%s",
+                    hash_identifiers=True,
                 )
-                where, parameters = _query_where(selected)
                 cursor.execute(
                     "DELETE FROM super_agent_storage_events" + where,
                     parameters,
@@ -440,65 +442,6 @@ def remote_database_location(
     host = parsed.hostname or "local-socket"
     port = "" if parsed.port is None else f":{parsed.port}"
     return f"{backend}:{host}{port}/{database}"
-
-
-def _query_where(query: StorageEventQuery) -> tuple[str, tuple[str, ...]]:
-    clauses: list[str] = []
-    parameters: list[str] = []
-    for key_column, text_column, value in (
-        ("user_key", "user_id", query.user_id),
-        ("agent_key", "agent_name", query.agent_name),
-        ("stream_type_key", "stream_type", query.stream_type),
-        ("stream_id_key", "stream_id", query.stream_id),
-        ("event_type_key", "event_type", query.event_type),
-    ):
-        if value is not None:
-            cleaned = clean_storage_text(value, text_column)
-            clauses.extend((f"{key_column} = %s", f"{text_column} = %s"))
-            parameters.extend((_storage_text_key(cleaned), cleaned))
-    if query.event_ids is not None:
-        event_clauses: list[str] = []
-        for event_id in query.event_ids:
-            cleaned = clean_storage_text(event_id, "event_id")
-            event_clauses.append("(event_key = %s AND event_id = %s)")
-            parameters.extend((_storage_text_key(cleaned), cleaned))
-        clauses.append("(" + " OR ".join(event_clauses) + ")")
-    return " WHERE " + " AND ".join(clauses), tuple(parameters)
-
-
-def _event_id_batches(
-    event_ids: tuple[str, ...] | None,
-) -> list[tuple[str, ...] | None]:
-    if event_ids is None:
-        return [None]
-    return [
-        event_ids[index : index + REMOTE_DELETE_EVENT_ID_BATCH_SIZE]
-        for index in range(0, len(event_ids), REMOTE_DELETE_EVENT_ID_BATCH_SIZE)
-    ]
-
-
-def _event_from_row(row: object, location: str) -> StorageEvent:
-    values = tuple(row)  # type: ignore[arg-type]
-    if len(values) != 9:
-        raise ValueError(f"remote SQL event fields do not match schema at {location}")
-    return StorageEvent(
-        position=positive_storage_integer(values[0], "position"),
-        event_id=clean_storage_text(values[1], "event_id"),
-        user_id=clean_storage_text(values[2], "user_id"),
-        agent_name=clean_storage_text(values[3], "agent_name"),
-        stream_type=clean_storage_text(values[4], "stream_type"),
-        stream_id=clean_storage_text(values[5], "stream_id"),
-        event_type=clean_storage_text(values[6], "event_type"),
-        created_at=clean_storage_text(values[7], "created_at"),
-        data=decode_storage_data(
-            clean_storage_text(values[8], "data_json"),
-            f"{location}:{values[0]}",
-        ),
-    )
-
-
-def _storage_text_key(value: str) -> str:
-    return sha256(value.encode("utf-8")).hexdigest()
 
 
 def _reject_identifier_hash_collision(

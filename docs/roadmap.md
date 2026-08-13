@@ -1694,6 +1694,17 @@ Status: implemented.
 - Preserve passive Skill loading and explicit code registration without adding a validation
   module, compatibility wrapper, or hidden fallback.
 
+## v0.1.67: Shared SQL Event Semantics
+
+Status: implemented.
+
+- Use one canonical SQL event projection and row decoder for SQLite, MySQL, and PostgreSQL.
+- Build exact scoped event queries and large event-ID delete batches through one shared contract.
+- Preserve remote identifier hash indexes together with exact text comparisons so consolidation
+  does not weaken user, Agent, stream, or event isolation.
+- Keep backend connection, schema, SQL dialect, and transaction behavior in their concrete owners
+  without restoring the removed nested SQL package.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

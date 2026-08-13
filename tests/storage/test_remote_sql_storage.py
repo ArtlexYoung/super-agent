@@ -4,9 +4,16 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from adapter.storage import JsonlStorage, SqliteStorage, create_storage_backend
+from adapter.storage import (
+    JsonlStorage,
+    SQL_EVENT_ID_BATCH_SIZE,
+    SqliteStorage,
+    build_sql_event_where,
+    create_storage_backend,
+    split_sql_event_id_query,
+)
 from core.state.store import StorageEventQuery
-from adapter.storage.remote import _mysql_connection_arguments, _query_where
+from adapter.storage.remote import _mysql_connection_arguments
 
 
 class RemoteSqlStorageConfigurationTests(unittest.TestCase):
@@ -69,14 +76,16 @@ class RemoteSqlStorageConfigurationTests(unittest.TestCase):
             create_storage_backend("unknown", str(Path(".super-agent")))
 
     def test_remote_query_uses_hash_and_exact_text_for_every_scope(self) -> None:
-        where, parameters = _query_where(
+        where, parameters = build_sql_event_where(
             StorageEventQuery(
                 user_id="alice",
                 agent_name="main",
                 stream_type="run",
                 stream_id="run-1",
                 event_type="run.completed",
-            )
+            ),
+            "%s",
+            hash_identifiers=True,
         )
 
         self.assertIn("user_key = %s AND user_id = %s", where)
@@ -86,3 +95,39 @@ class RemoteSqlStorageConfigurationTests(unittest.TestCase):
             ("alice", "main", "run", "run-1", "run.completed"),
             parameters[1::2],
         )
+
+    def test_sql_event_id_batches_preserve_the_complete_scope(self) -> None:
+        query = StorageEventQuery(
+            user_id="alice",
+            agent_name="main",
+            stream_type="run",
+            stream_id="run-1",
+            event_ids=tuple(
+                f"event-{index}"
+                for index in range(SQL_EVENT_ID_BATCH_SIZE + 1)
+            ),
+        )
+
+        batches = split_sql_event_id_query(query)
+
+        self.assertEqual(2, len(batches))
+        self.assertEqual(SQL_EVENT_ID_BATCH_SIZE, len(batches[0].event_ids or ()))
+        self.assertEqual(("event-500",), batches[1].event_ids)
+        self.assertEqual("alice", batches[1].user_id)
+        self.assertEqual("main", batches[1].agent_name)
+        self.assertEqual("run-1", batches[1].stream_id)
+
+    def test_sql_backends_use_the_shared_event_query_functions(self) -> None:
+        required = {
+            "build_sql_event_where",
+            "read_sql_event_row",
+            "select_sql_events",
+            "split_sql_event_id_query",
+        }
+        removed = {"_event_from_row", "_event_id_batches", "_query_where"}
+
+        for path in (Path("src/adapter/storage/sqlite.py"), Path("src/adapter/storage/remote.py")):
+            source = path.read_text(encoding="utf-8")
+            with self.subTest(path=path):
+                self.assertTrue(all(name in source for name in required))
+                self.assertTrue(all(f"def {name}" not in source for name in removed))

@@ -3,23 +3,24 @@
 from __future__ import annotations
 
 import sqlite3
-from dataclasses import replace
 from pathlib import Path
 from uuid import uuid4
 
 from core.state.store import StorageEvent, StorageEventQuery
 from adapter.storage import (
+    build_sql_event_where,
     clean_storage_text,
-    decode_storage_data,
     encode_storage_data,
-    positive_storage_integer,
+    read_sql_event_row,
+    select_sql_events,
+    split_sql_event_id_query,
     utc_now_text,
 )
 
 
 SQLITE_SCHEMA_VERSION = 1
 SQLITE_BUSY_TIMEOUT_MILLISECONDS = 30_000
-SQLITE_DELETE_EVENT_ID_BATCH_SIZE = 500
+_SELECT_EVENTS = select_sql_events("storage_events")
 
 
 class SqliteStorage:
@@ -62,7 +63,7 @@ class SqliteStorage:
             ).fetchone()
             if duplicate is not None:
                 connection.commit()
-                return _event_from_row(duplicate, self.database_path)
+                return read_sql_event_row(duplicate, self.database_path)
             cursor = connection.execute(
                 """
                 INSERT INTO storage_events (
@@ -84,10 +85,10 @@ class SqliteStorage:
             connection.close()
         if row is None:
             raise RuntimeError("SQLite event disappeared before transaction commit")
-        return _event_from_row(row, self.database_path)
+        return read_sql_event_row(row, self.database_path)
 
     def read_events(self, query: StorageEventQuery) -> list[StorageEvent]:
-        where, parameters = _query_where(query)
+        where, parameters = build_sql_event_where(query, "?")
         connection = self._connect()
         try:
             rows = connection.execute(
@@ -96,19 +97,15 @@ class SqliteStorage:
             ).fetchall()
         finally:
             connection.close()
-        return [_event_from_row(row, self.database_path) for row in rows]
+        return [read_sql_event_row(row, self.database_path) for row in rows]
 
     def delete_events(self, query: StorageEventQuery) -> int:
         connection = self._connect()
         try:
             connection.execute("BEGIN IMMEDIATE")
             deleted = 0
-            for event_ids in _event_id_batches(query.event_ids):
-                selected = query if event_ids is None else replace(
-                    query,
-                    event_ids=event_ids,
-                )
-                where, parameters = _query_where(selected)
+            for selected in split_sql_event_id_query(query):
+                where, parameters = build_sql_event_where(selected, "?")
                 cursor = connection.execute(
                     "DELETE FROM storage_events" + where,
                     parameters,
@@ -162,63 +159,3 @@ class SqliteStorage:
         connection.execute(f"PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MILLISECONDS}")
         connection.execute("PRAGMA synchronous = NORMAL")
         return connection
-
-
-_SELECT_EVENTS = """
-SELECT position, event_id, user_id, agent_name, stream_type, stream_id,
-       event_type, created_at, data_json
-FROM storage_events
-""".strip()
-
-
-def _query_where(query: StorageEventQuery) -> tuple[str, tuple[str, ...]]:
-    clauses = ["user_id = ?"]
-    parameters = [clean_storage_text(query.user_id, "user_id")]
-    for column, value in (
-        ("agent_name", query.agent_name),
-        ("stream_type", query.stream_type),
-        ("stream_id", query.stream_id),
-        ("event_type", query.event_type),
-    ):
-        if value is not None:
-            clauses.append(f"{column} = ?")
-            parameters.append(clean_storage_text(value, column))
-    if query.event_ids is not None:
-        placeholders = ", ".join("?" for _ in query.event_ids)
-        clauses.append(f"event_id IN ({placeholders})")
-        parameters.extend(
-            clean_storage_text(event_id, "event_id")
-            for event_id in query.event_ids
-        )
-    return " WHERE " + " AND ".join(clauses), tuple(parameters)
-
-
-def _event_id_batches(
-    event_ids: tuple[str, ...] | None,
-) -> list[tuple[str, ...] | None]:
-    if event_ids is None:
-        return [None]
-    return [
-        event_ids[index : index + SQLITE_DELETE_EVENT_ID_BATCH_SIZE]
-        for index in range(0, len(event_ids), SQLITE_DELETE_EVENT_ID_BATCH_SIZE)
-    ]
-
-
-def _event_from_row(row: sqlite3.Row | tuple[object, ...], path: Path) -> StorageEvent:
-    values = tuple(row)
-    if len(values) != 9:
-        raise ValueError(f"SQLite storage event fields do not match schema at {path}")
-    return StorageEvent(
-        position=positive_storage_integer(values[0], "position"),
-        event_id=clean_storage_text(values[1], "event_id"),
-        user_id=clean_storage_text(values[2], "user_id"),
-        agent_name=clean_storage_text(values[3], "agent_name"),
-        stream_type=clean_storage_text(values[4], "stream_type"),
-        stream_id=clean_storage_text(values[5], "stream_id"),
-        event_type=clean_storage_text(values[6], "event_type"),
-        created_at=clean_storage_text(values[7], "created_at"),
-        data=decode_storage_data(
-            clean_storage_text(values[8], "data_json"),
-            f"{path}:{values[0]}",
-        ),
-    )
