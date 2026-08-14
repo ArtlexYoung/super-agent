@@ -8,8 +8,7 @@ from pathlib import Path
 from adapter.cli_support.cli_config import load_agent, load_common_config, load_event_store
 from adapter.cli_support.cli_data import add_config_and_user_options, add_output_format_option, add_subcommand_parsers, print_cli_json, run_selected_cli_command
 from core.checks import ActionRules
-from core.config import CommonConfig
-from core.models import LOCAL_USER_ID
+from core.models import LOCAL_USER_ID, read_object, read_text, read_text_list, reject_unknown_fields
 from skill.discovery.catalog import ProgressiveDisclosureCore, skill_index_to_dict
 from skill.handlers.runtime import create_progressive_skill_disclosure, create_skills, load_configured_freshness_rules
 from skill.learning.freshness import calculate_skill_freshness
@@ -24,7 +23,8 @@ from skill.handlers.models import ModelProfile, model_profile_to_dict, read_mode
 def configure_skills_parser(parser: argparse.ArgumentParser) -> None:
     commands = add_subcommand_parsers(parser, "skill_command", (("list", "list available skills"), ("index", "print the central skill index as JSON"), ("freshness", "show runtime skill freshness stats"), ("validate", "validate every skill manifest"), ("graph", "resolve a skill dependency graph"), ("changes", "manage Skill changes"), ("packages", "manage Skill packages"), ("models", "manage model Skills")))
     commands["index"].add_argument("--output", choices=["json"], default="json")
-    _add_composition_arguments(commands["graph"])
+    add_config_and_user_options(commands["graph"], config_default="common.toml")
+    commands["graph"].add_argument("--name", action="append", required=True)
     configure_skill_changes_parser(commands["changes"])
     configure_skill_packages_parser(commands["packages"])
     configure_models_parser(commands["models"])
@@ -34,22 +34,29 @@ def configure_skills_parser(parser: argparse.ArgumentParser) -> None:
 
 def configure_skill_changes_parser(parser: argparse.ArgumentParser) -> None:
     commands = add_subcommand_parsers(parser, "skill_change_command", (("propose", "propose an isolated Skill change"), ("test", "test a change without applying it"), ("apply", "apply a passing Skill change"), ("undo", "undo an applied Skill change"), ("list", "list proposed Skill changes")))
-    _add_change_name_arguments(commands["propose"])
+    add_config_and_user_options(commands["propose"], config_default="common.toml")
+    commands["propose"].add_argument("--name", required=True)
+    commands["propose"].add_argument("--goal", required=True)
+    commands["propose"].add_argument("--type", dest="skill_type")
     for name in ("test", "apply", "undo"):
-        _add_change_id_arguments(commands[name])
+        add_config_and_user_options(commands[name], config_default="common.toml")
+        commands[name].add_argument("--change-id", required=True)
     commands["test"].add_argument("--cases", required=True)
     add_config_and_user_options(commands["list"], config_default="common.toml")
 
 
 def configure_skill_packages_parser(parser: argparse.ArgumentParser) -> None:
     commands = add_subcommand_parsers(parser, "skill_package_command", (("lock", "write a deterministic Skill lock"), ("pack", "pack one Skill as a deterministic ZIP"), ("install", "install a local, ZIP, or Git Skill"), ("update", "replace an installed Skill"), ("remove", "remove one installed Skill")))
-    _add_composition_arguments(commands["lock"])
+    add_config_and_user_options(commands["lock"], config_default="common.toml")
+    commands["lock"].add_argument("--name", action="append", required=True)
     commands["lock"].add_argument("--output", default="skill.lock")
     add_config_and_user_options(commands["pack"], config_default="common.toml")
     commands["pack"].add_argument("--name", required=True)
     commands["pack"].add_argument("--output", required=True)
     for name in ("install", "update"):
-        _add_package_source_arguments(commands[name])
+        add_config_and_user_options(commands[name], config_default="common.toml")
+        commands[name].add_argument("--source", required=True)
+        commands[name].add_argument("--expected-sha256", default="")
     commands["update"].add_argument("--name", required=True)
     add_config_and_user_options(commands["remove"], config_default="common.toml")
     commands["remove"].add_argument("--name", required=True)
@@ -58,9 +65,11 @@ def configure_skill_packages_parser(parser: argparse.ArgumentParser) -> None:
 def configure_models_parser(parser: argparse.ArgumentParser) -> None:
     commands = add_subcommand_parsers(parser, "models_command", (("list", "list model Skills or zero-configuration environment profiles"), ("resolve", "show the default model profile selected for this project"), ("save", "create or update one model Skill from JSON stdin"), ("remove", "remove one model Skill")))
     for name in ("list", "resolve"):
-        _add_model_read_arguments(commands[name])
+        add_config_and_user_options(commands[name])
+        add_output_format_option(commands[name])
     for name in ("save", "remove"):
-        _add_model_write_arguments(commands[name])
+        add_config_and_user_options(commands[name], config_required=True)
+        add_output_format_option(commands[name])
     commands["save"].add_argument("--request-stdin", action="store_true", required=True)
     commands["remove"].add_argument("--name", required=True)
 
@@ -71,84 +80,54 @@ def run_skills_command(args: argparse.Namespace) -> int:
 
 
 def run_skill_changes_command(args: argparse.Namespace) -> int:
-    handlers = {"propose": _propose_skill_change, "test": _test_skill_change, "apply": _apply_skill_change, "undo": _undo_skill_change, "list": _list_skill_changes}
+    handlers = {name: _run_skill_change for name in ("propose", "test", "apply", "undo", "list")}
     return run_selected_cli_command(args, "skill_change_command", handlers, "skills changes command is required")
 
 
 def run_skill_packages_command(args: argparse.Namespace) -> int:
-    handlers = {"lock": _write_skill_lock, "pack": _pack_skill, "install": _install_skill, "update": _update_skill, "remove": _remove_skill}
+    handlers = {"lock": _write_skill_lock, **{name: _run_skill_package for name in ("pack", "install", "update", "remove")}}
     return run_selected_cli_command(args, "skill_package_command", handlers, "skills packages command is required")
 
 
 def run_models_command(args: argparse.Namespace) -> int:
     config = load_common_config(getattr(args, "common_config", None))
     output = getattr(args, "output", "text")
-    if args.models_command == "save":
-        return _save_model_skill(config, args.user_id, output)
-    if args.models_command == "remove":
-        return _remove_model_skill(config, args.user_id, args.name, output)
-    profiles = _read_configured_model_profiles(config, getattr(args, "user_id", LOCAL_USER_ID))
-    if args.models_command == "list":
-        return _print_model_profiles(config, profiles, output)
-    if args.models_command in {None, "resolve"}:
-        return _print_selected_model(config, profiles, output)
-    raise ValueError(f"unknown models command: {args.models_command}")
-
-
-def _read_configured_model_profiles(config: CommonConfig, user_id: str) -> list[ModelProfile]:
-    store = load_event_store(config, user_id)
-    return read_model_profiles(create_skills(config, store=store))
-
-
-def _print_model_profiles(config: CommonConfig, profiles: list[ModelProfile], output: str) -> int:
-    if output == "json":
-        return print_cli_json({"schema_version": 2, "config_path": str(config.source), "models": [model_profile_to_dict(profile) for profile in profiles]})
-    for profile in profiles:
-        _print_model_profile(profile)
-    return 0
-
-
-def _print_selected_model(config: CommonConfig, profiles: list[ModelProfile], output: str) -> int:
-    selected = select_default_model_profile(profiles)
-    data = {"schema_version": 2, "config_path": str(config.source), "model": model_profile_to_dict(selected)}
-    if output == "json":
-        return print_cli_json(data)
-    _print_model_profile(selected, prefix="selected")
-    print(f"config\t{config.source}")
+    command = args.models_command or "resolve"
+    match command:
+        case "list" | "resolve":
+            store = load_event_store(config, getattr(args, "user_id", LOCAL_USER_ID))
+            profiles = read_model_profiles(create_skills(config, store=store))
+            if command == "list":
+                if output == "json":
+                    return print_cli_json({"schema_version": 2, "config_path": str(config.source), "models": [model_profile_to_dict(profile) for profile in profiles]})
+                for profile in profiles:
+                    _print_model_profile(profile)
+            else:
+                selected = select_default_model_profile(profiles)
+                if output == "json":
+                    return print_cli_json({"schema_version": 2, "config_path": str(config.source), "model": model_profile_to_dict(selected)})
+                _print_model_profile(selected, prefix="selected")
+                print(f"config\t{config.source}")
+        case "save" | "remove":
+            manager = ModelSkillManager(config, load_event_store(config, args.user_id), ActionRules())
+            if command == "save":
+                profile = manager.save_model_skill(model_skill_input_from_dict(json.loads(sys.stdin.read())))
+                if output == "json":
+                    return print_cli_json({"schema_version": 1, "action": "saved", "model": model_profile_to_dict(profile)})
+                _print_model_profile(profile, prefix="saved")
+            else:
+                manager.remove_model_skill(args.name)
+                if output == "json":
+                    return print_cli_json({"schema_version": 1, "name": args.name, "removed": True})
+                print(f"Removed model Skill: model:{args.name}")
+        case _:
+            raise ValueError(f"unknown models command: {command}")
     return 0
 
 
 def _print_model_profile(profile: ModelProfile, prefix: str = "profile") -> None:
     data = model_profile_to_dict(profile)
     print(f"{prefix}\t{profile.key}\t{data['provider']}\t{profile.model}\tready={str(data['ready']).lower()}\tdefault={str(profile.default).lower()}\tsource={profile.source}\tbase_url={data['base_url'] or ''}\tapi_key_env={data['api_key_env'] or ''}")
-
-
-def _save_model_skill(config: CommonConfig, user_id: str, output: str) -> int:
-    request = model_skill_input_from_dict(json.loads(sys.stdin.read()))
-    profile = _create_model_skill_manager(config, user_id).save_model_skill(request)
-    return _print_model_change(profile, output, "saved")
-
-
-def _remove_model_skill(config: CommonConfig, user_id: str, name: str, output: str) -> int:
-    _create_model_skill_manager(config, user_id).remove_model_skill(name)
-    data = {"schema_version": 1, "name": name, "removed": True}
-    if output == "json":
-        return print_cli_json(data)
-    print(f"Removed model Skill: model:{name}")
-    return 0
-
-
-def _print_model_change(profile: ModelProfile, output: str, action: str) -> int:
-    data = {"schema_version": 1, "action": action, "model": model_profile_to_dict(profile)}
-    if output == "json":
-        return print_cli_json(data)
-    _print_model_profile(profile, prefix=action)
-    return 0
-
-
-def _create_model_skill_manager(config: CommonConfig, user_id: str) -> ModelSkillManager:
-    store = load_event_store(config, user_id)
-    return ModelSkillManager(config, store, ActionRules())
 
 
 def _list_skills(args: argparse.Namespace) -> int:
@@ -163,40 +142,27 @@ def _print_skill_index(args: argparse.Namespace) -> int:
     return print_cli_json(skill_index_to_dict(index))
 
 
-def _propose_skill_change(args: argparse.Namespace) -> int:
+def _run_skill_change(args: argparse.Namespace) -> int:
     updater = load_agent(args.common_config).for_user(args.user_id).skills.create_skill_updater()
-    change = updater.propose_skill_change(args.name, args.goal, skill_type=args.skill_type)
-    print(f"Proposed Skill change: {change.change_id}")
-    return 0
-
-
-def _test_skill_change(args: argparse.Namespace) -> int:
-    updater = load_agent(args.common_config).for_user(args.user_id).skills.create_skill_updater()
-    report = updater.test_skill_change(args.change_id, _read_change_cases(Path(args.cases)))
-    state = "passed" if report.passed else "failed"
-    print(f"Skill change test {report.report_id}: {state} score={report.score:.4f}")
-    return 0
-
-
-def _apply_skill_change(args: argparse.Namespace) -> int:
-    updater = load_agent(args.common_config).for_user(args.user_id).skills.create_skill_updater()
-    manifest = updater.apply_skill_change(args.change_id)
-    print(f"Applied Skill change: {manifest.skill_type}:{manifest.name}@{manifest.version}")
-    return 0
-
-
-def _undo_skill_change(args: argparse.Namespace) -> int:
-    updater = load_agent(args.common_config).for_user(args.user_id).skills.create_skill_updater()
-    manifest = updater.undo_skill_change(args.change_id)
-    restored = "removed" if manifest is None else f"restored {manifest.skill_type}:{manifest.name}@{manifest.version}"
-    print(f"Undid Skill change: {args.change_id} ({restored})")
-    return 0
-
-
-def _list_skill_changes(args: argparse.Namespace) -> int:
-    updater = load_agent(args.common_config).for_user(args.user_id).skills.create_skill_updater()
-    for change in updater.list_skill_changes():
-        print(f"{change.change_id}\t{change.key}\t{change.goal}")
+    command = args.skill_change_command
+    if command == "propose":
+        change = updater.propose_skill_change(args.name, args.goal, skill_type=args.skill_type)
+        print(f"Proposed Skill change: {change.change_id}")
+    elif command == "test":
+        report = updater.test_skill_change(args.change_id, _read_change_cases(Path(args.cases)))
+        print(f"Skill change test {report.report_id}: {'passed' if report.passed else 'failed'} score={report.score:.4f}")
+    elif command == "apply":
+        manifest = updater.apply_skill_change(args.change_id)
+        print(f"Applied Skill change: {manifest.skill_type}:{manifest.name}@{manifest.version}")
+    elif command == "undo":
+        manifest = updater.undo_skill_change(args.change_id)
+        restored = "removed" if manifest is None else f"restored {manifest.skill_type}:{manifest.name}@{manifest.version}"
+        print(f"Undid Skill change: {args.change_id} ({restored})")
+    elif command == "list":
+        for change in updater.list_skill_changes():
+            print(f"{change.change_id}\t{change.key}\t{change.goal}")
+    else:
+        raise ValueError(f"unknown skills changes command: {command}")
     return 0
 
 
@@ -242,28 +208,23 @@ def _write_skill_lock(args: argparse.Namespace) -> int:
     return 0
 
 
-def _pack_skill(args: argparse.Namespace) -> int:
-    package_path = _load_package_manager(Path(args.common_config), args.user_id).pack_skill(args.name, Path(args.output))
-    print(f"Packed skill: {package_path}")
-    return 0
-
-
-def _install_skill(args: argparse.Namespace) -> int:
-    manifest = _load_package_manager(Path(args.common_config), args.user_id).install_skill(args.source, expected_sha256=args.expected_sha256)
-    print(f"Installed skill: {manifest.name}@{manifest.version}")
-    return 0
-
-
-def _update_skill(args: argparse.Namespace) -> int:
-    manifest = _load_package_manager(Path(args.common_config), args.user_id).update_skill(args.name, args.source, expected_sha256=args.expected_sha256)
-    print(f"Updated skill: {manifest.name}@{manifest.version}")
-    return 0
-
-
-def _remove_skill(args: argparse.Namespace) -> int:
+def _run_skill_package(args: argparse.Namespace) -> int:
     manager = _load_package_manager(Path(args.common_config), args.user_id)
-    manager.remove_skill(args.name)
-    print(f"Removed skill: {args.name}")
+    command = args.skill_package_command
+    if command == "pack":
+        output = manager.pack_skill(args.name, Path(args.output))
+        print(f"Packed skill: {output}")
+    elif command == "install":
+        manifest = manager.install_skill(args.source, expected_sha256=args.expected_sha256)
+        print(f"Installed skill: {manifest.name}@{manifest.version}")
+    elif command == "update":
+        manifest = manager.update_skill(args.name, args.source, expected_sha256=args.expected_sha256)
+        print(f"Updated skill: {manifest.name}@{manifest.version}")
+    elif command == "remove":
+        manager.remove_skill(args.name)
+        print(f"Removed skill: {args.name}")
+    else:
+        raise ValueError(f"unknown skills packages command: {command}")
     return 0
 
 
@@ -284,69 +245,15 @@ def _load_package_manager(config_path: Path, user_id: str) -> SkillPackageManage
     return SkillPackageManager(create_progressive_skill_disclosure(config, store=store), store, ActionRules())
 
 
-def _add_change_name_arguments(parser: argparse.ArgumentParser) -> None:
-    add_config_and_user_options(parser, config_default="common.toml")
-    parser.add_argument("--name", required=True)
-    parser.add_argument("--goal", required=True)
-    parser.add_argument("--type", dest="skill_type")
-
-
-def _add_change_id_arguments(parser: argparse.ArgumentParser) -> None:
-    add_config_and_user_options(parser, config_default="common.toml")
-    parser.add_argument("--change-id", required=True)
-
-
-def _add_composition_arguments(parser: argparse.ArgumentParser) -> None:
-    add_config_and_user_options(parser, config_default="common.toml")
-    parser.add_argument("--name", action="append", required=True)
-
-
-def _add_package_source_arguments(parser: argparse.ArgumentParser) -> None:
-    add_config_and_user_options(parser, config_default="common.toml")
-    parser.add_argument("--source", required=True)
-    parser.add_argument("--expected-sha256", default="")
-
-
-def _add_model_read_arguments(parser: argparse.ArgumentParser) -> None:
-    add_config_and_user_options(parser)
-    add_output_format_option(parser)
-
-
-def _add_model_write_arguments(parser: argparse.ArgumentParser) -> None:
-    add_config_and_user_options(parser, config_required=True)
-    add_output_format_option(parser)
-
-
 def _read_change_cases(path: Path) -> list[SkillChangeCase]:
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, list):
         raise ValueError("evaluation cases file must contain a JSON array")
     cases: list[SkillChangeCase] = []
-    for item in data:
-        if not isinstance(item, dict):
-            raise ValueError("each evaluation case must be a JSON object")
-        allowed = {"name", "prompt", "expected_output_contains", "forbidden_output_contains", "expected_configuration"}
-        if set(item) - allowed:
-            raise ValueError("unknown evaluation case fields: " + ", ".join(sorted(set(item) - allowed)))
-        expected_configuration = item.get("expected_configuration", {})
-        if not isinstance(expected_configuration, dict):
-            raise ValueError("evaluation case expected_configuration must be an object")
-        cases.append(SkillChangeCase(name=_read_json_string(item, "name", required=True), prompt=_read_json_string(item, "prompt", required=True), expected_output_contains=_read_string_list(item, "expected_output_contains"), forbidden_output_contains=_read_string_list(item, "forbidden_output_contains"), expected_configuration=dict(expected_configuration)))
+    allowed = {"name", "prompt", "expected_output_contains", "forbidden_output_contains", "expected_configuration"}
+    for position, item in enumerate(data):
+        item = read_object(item, f"evaluation case {position}")
+        reject_unknown_fields(item, allowed, "evaluation case fields")
+        expected_configuration = dict(read_object(item.get("expected_configuration", {}), "evaluation case expected_configuration"))
+        cases.append(SkillChangeCase(name=read_text(item.get("name"), "evaluation case name"), prompt=read_text(item.get("prompt"), "evaluation case prompt"), expected_output_contains=read_text_list(item.get("expected_output_contains", []), "evaluation case expected_output_contains"), forbidden_output_contains=read_text_list(item.get("forbidden_output_contains", []), "evaluation case forbidden_output_contains"), expected_configuration=expected_configuration))
     return cases
-
-
-def _read_string_list(data: dict[str, object], name: str) -> list[str]:
-    value = data.get(name, [])
-    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
-        raise ValueError(f"evaluation case {name} must be a string array")
-    return list(value)
-
-
-def _read_json_string(data: dict[str, object], name: str, *, required: bool = False) -> str:
-    value = data.get(name)
-    if value is None and not required:
-        return ""
-    if not isinstance(value, str) or (required and not value.strip()):
-        requirement = "a non-empty string" if required else "a string"
-        raise ValueError(f"evaluation case {name} must be {requirement}")
-    return value

@@ -8,7 +8,7 @@ from dataclasses import dataclass, replace
 from time import monotonic
 from typing import Callable, Mapping
 
-from core.models import SubagentRecordOptions, read_choice, read_int, read_number, read_optional_int, read_text, read_text_list, reject_unknown_fields
+from core.models import SubagentRecordOptions, project_fields, read_choice, read_int, read_number, read_optional_int, read_text, read_text_list, reject_unknown_fields
 from core.provider import estimate_text_tokens
 from skill.handlers.models import ModelDispatchChoice, choose_dispatch_model
 
@@ -16,6 +16,7 @@ from skill.handlers.models import ModelDispatchChoice, choose_dispatch_model
 EventWriter = Callable[[str, dict[str, object]], object]
 MAX_ESTIMATED_TOKENS = 10_000_000
 TERMINAL_TASK_STATUSES = frozenset({"completed", "failed", "cancelled"})
+QUEUED_TASK_PUBLIC_FIELDS = ("task_id", "status", "purpose", "required_features", "group_id", "group_role", "agent_name", "result_run_id", "error_type", "error_message", "record_mode", "record_task_number", "attempt_count", "fallback_count", "last_agent_name", "retry_after_seconds", "estimated_input_tokens", "estimated_output_tokens", "estimated_cache_creation_tokens", "estimated_cache_read_tokens")
 
 
 class AgentUnavailableError(RuntimeError):
@@ -55,34 +56,9 @@ class QueuedTask:
         return {"input_tokens": input_tokens, "output_tokens": self.estimated_output_tokens, "cache_creation_tokens": self.estimated_cache_creation_tokens, "cache_read_tokens": self.estimated_cache_read_tokens}
 
     def to_dict(self, *, include_result: bool = False) -> dict[str, object]:
-        input_tokens = self.token_counts()["input_tokens"]
         shared = self.shared_context or {}
-        data = {
-            "task_id": self.task_id,
-            "status": self.status,
-            "purpose": self.purpose,
-            "required_features": list(self.required_features),
-            "group_id": self.group_id,
-            "group_role": self.group_role,
-            "agent_name": self.agent_name,
-            "result_run_id": self.result_run_id,
-            "error_type": self.error_type,
-            "error_message": self.error_message,
-            "prompt_sha256": hashlib.sha256(self.prompt.encode()).hexdigest(),
-            "prompt_chars": len(self.prompt),
-            "record_mode": self.record_mode,
-            "record_task_number": self.record_task_number,
-            "attempt_count": self.attempt_count,
-            "fallback_count": self.fallback_count,
-            "last_agent_name": self.last_agent_name,
-            "retry_after_seconds": self.retry_after_seconds,
-            "estimated_input_tokens": input_tokens,
-            "estimated_output_tokens": self.estimated_output_tokens,
-            "estimated_cache_creation_tokens": self.estimated_cache_creation_tokens,
-            "estimated_cache_read_tokens": self.estimated_cache_read_tokens,
-            "shared_context_reference": shared.get("reference"),
-            "shared_context_cache_backed": bool(shared.get("cache_backed", False)),
-        }
+        data = project_fields(self, QUEUED_TASK_PUBLIC_FIELDS)
+        data.update(required_features=list(self.required_features), prompt_sha256=hashlib.sha256(self.prompt.encode()).hexdigest(), prompt_chars=len(self.prompt), estimated_input_tokens=self.token_counts()["input_tokens"], shared_context_reference=shared.get("reference"), shared_context_cache_backed=bool(shared.get("cache_backed", False)))
         if self.result is not None:
             data.update({key: self.result[key] for key in ("result_sha256", "result_chars", "subagent_results_count") if key in self.result})
         if include_result:
@@ -107,16 +83,11 @@ class TaskQueueSettings:
     def from_dict(cls, value: dict[str, object]) -> "TaskQueueSettings":
         reject_unknown_fields(value, set(cls.__dataclass_fields__), "agent_tasks settings")
         settings = cls(**value)
-        read_int(settings.max_tasks, "agent_tasks max_tasks", minimum=1)
-        read_number(settings.max_wait_seconds, "agent_tasks max_wait_seconds", minimum=0)
-        read_choice(settings.record_mode, "agent_tasks record_mode", {"full", "summary", "adaptive"})
-        read_int(settings.compress_after_tasks, "agent_tasks compress_after_tasks", minimum=1)
-        read_int(settings.summary_chars, "agent_tasks summary_chars", minimum=1)
-        read_int(settings.max_nested_results, "agent_tasks max_nested_results", minimum=0)
-        read_choice(settings.agent_selection, "agent_tasks agent_selection", {"least_busy", "rotate"})
-        read_int(settings.circuit_breaker_failures, "agent_tasks circuit_breaker_failures", minimum=1)
-        read_number(settings.circuit_breaker_wait_seconds, "agent_tasks circuit_breaker_wait_seconds", minimum=0)
-        read_int(settings.retry_unavailable_times, "agent_tasks retry_unavailable_times", minimum=0)
+        numeric_fields = (("max_tasks", read_int, 1), ("max_wait_seconds", read_number, 0), ("compress_after_tasks", read_int, 1), ("summary_chars", read_int, 1), ("max_nested_results", read_int, 0), ("circuit_breaker_failures", read_int, 1), ("circuit_breaker_wait_seconds", read_number, 0), ("retry_unavailable_times", read_int, 0))
+        for name, reader, minimum in numeric_fields:
+            reader(getattr(settings, name), f"agent_tasks {name}", minimum=minimum)
+        for name, choices in (("record_mode", {"full", "summary", "adaptive"}), ("agent_selection", {"least_busy", "rotate"})):
+            read_choice(getattr(settings, name), f"agent_tasks {name}", choices)
         return settings
 
     def record_options_for_task(self, task_number: int) -> SubagentRecordOptions:

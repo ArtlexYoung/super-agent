@@ -8,7 +8,7 @@ from uuid import uuid4
 
 from core.checks import ActionEffect, ActionRequest, ActionRunner, ActionRules, PreparedAction
 from core.provider import Message
-from core.models import Conversation, ConversationMessage, RunResult, read_text
+from core.models import Conversation, ConversationMessage, RunResult, read_object, read_text
 
 if TYPE_CHECKING:
     from core.records.store import EventStore, StorageEvent
@@ -25,7 +25,6 @@ class PendingConversationTurn:
 
 
 def prepare_conversation_turn(store: EventStore, action_rules: ActionRules, conversation_id: str, prompt: str) -> tuple[list[Message], PendingConversationTurn]:
-    """Read history and authorize one future complete-turn commit."""
     selected_id = read_text(conversation_id, "conversation_id")
     try:
         conversation = read_conversation(store, selected_id)
@@ -38,7 +37,6 @@ def prepare_conversation_turn(store: EventStore, action_rules: ActionRules, conv
 
 
 def complete_conversation_turn(pending: PendingConversationTurn, result: RunResult) -> None:
-    """Apply one previously checked conversation change after a successful run."""
     pending.action_runner.apply_action(pending.prepared_action, lambda: append_conversation_turn(pending.store, pending.conversation_id, pending.prompt, result.text, run_id=result.run_id, run_result=_run_result_summary(result)))
 
 
@@ -85,7 +83,6 @@ def delete_conversation(store: EventStore, conversation_id: str) -> None:
 
 
 def append_conversation_turn(store: EventStore, conversation_id: str, prompt: str, response: str, *, run_id: str, run_result: dict[str, object]) -> Conversation:
-    """Commit one complete user and assistant turn as one storage event."""
     selected_id = read_text(conversation_id, "conversation_id")
     existing = store.read_events("conversation", selected_id)
     turn_id = f"turn-{uuid4().hex}"
@@ -120,21 +117,18 @@ def _message_data(role: str, content: str, run_id: str, *, run_result: dict[str,
 
 
 def _run_result_summary(result: RunResult) -> dict[str, object]:
-    """Store only bounded run metadata beside the durable conversation text."""
     return {"schema_version": 1, "run_id": result.run_id, "workflow": result.workflow, "skills": list(result.skills), "stop_reason": result.stop_reason, "action_count": len(result.actions or []), "subagent_count": len(result.subagent_results or [])}
 
 
 def _turn_messages_from_event(event: StorageEvent) -> list[ConversationMessage]:
     messages = [_conversation_message_from_data(event, "user"), _conversation_message_from_data(event, "assistant")]
-    if [message.role for message in messages] != ["user", "assistant"]:
+    if tuple(message.role for message in messages) != ("user", "assistant"):
         raise ValueError("conversation turn must contain user and assistant messages")
     return messages
 
 
 def _conversation_message_from_data(event: StorageEvent, name: str) -> ConversationMessage:
-    data = event.data.get(name)
-    if not isinstance(data, dict):
-        raise ValueError(f"stored conversation {name} must be an object")
+    data = read_object(event.data.get(name), f"stored conversation {name}")
     run_result = data.get("run_result")
     if run_result is not None and not isinstance(run_result, dict):
         raise ValueError("stored conversation run_result must be an object or null")

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from dataclasses import asdict, dataclass, field, replace
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from hashlib import sha256
 from typing import TYPE_CHECKING, Any, Callable, Mapping, Protocol
@@ -104,6 +104,10 @@ def reject_unknown_fields(value: Mapping[str, object], allowed: set[str], label:
         raise ValueError(f"unknown {label}: {', '.join(sorted(unknown))}")
 
 
+def project_fields(value: object, names: tuple[str, ...]) -> dict[str, object]:
+    return {name: getattr(value, name) for name in names}
+
+
 def read_required_tool_string(arguments: Mapping[str, object], name: str) -> str:
     return read_text(arguments.get(name), f"tool argument {name!r}")
 
@@ -140,46 +144,22 @@ def parse_utc(value: object, label: str) -> datetime:
     return parsed
 
 
-class _ReadOnlyDict(dict):
-    """Keep event objects JSON-compatible while rejecting nested mutation."""
-
+class _ReadOnlyValue:
     def _reject_change(self, *args: object, **kwargs: object) -> None:
         raise TypeError("Runtime event data is read-only")
 
-    __setitem__ = _reject_change
-    __delitem__ = _reject_change
-    __ior__ = _reject_change
-    clear = _reject_change
-    pop = _reject_change
-    popitem = _reject_change
-    setdefault = _reject_change
-    update = _reject_change
-
-    def __deepcopy__(self, memo: dict[int, object]) -> "_ReadOnlyDict":
+    def __deepcopy__(self, memo: dict[int, object]) -> object:
         return self
 
 
-class _ReadOnlyList(list):
-    """Preserve array equality and JSON encoding without exposing mutation."""
+class _ReadOnlyDict(_ReadOnlyValue, dict):
 
-    def _reject_change(self, *args: object, **kwargs: object) -> None:
-        raise TypeError("Runtime event data is read-only")
+    __setitem__ = __delitem__ = __ior__ = clear = pop = popitem = setdefault = update = _ReadOnlyValue._reject_change
 
-    __setitem__ = _reject_change
-    __delitem__ = _reject_change
-    __iadd__ = _reject_change
-    __imul__ = _reject_change
-    append = _reject_change
-    clear = _reject_change
-    extend = _reject_change
-    insert = _reject_change
-    pop = _reject_change
-    remove = _reject_change
-    reverse = _reject_change
-    sort = _reject_change
 
-    def __deepcopy__(self, memo: dict[int, object]) -> "_ReadOnlyList":
-        return self
+class _ReadOnlyList(_ReadOnlyValue, list):
+
+    __setitem__ = __delitem__ = __iadd__ = __imul__ = append = clear = extend = insert = pop = remove = reverse = sort = _ReadOnlyValue._reject_change
 
 
 @dataclass(frozen=True)
@@ -252,11 +232,10 @@ class SubscriberFailure:
     message: str
 
     def to_dict(self) -> dict[str, str]:
-        return asdict(self)
+        return project_fields(self, ("subscriber", "event_type", "error_type", "message"))  # type: ignore[return-value]
 
 
 class RuntimeEventSubscriberError(RuntimeError):
-    """Report event work that failed while preserving the task result."""
 
     def __init__(self, failures: list[dict[str, object]], result: object) -> None:
         self.failures = tuple(dict(item) for item in failures)
@@ -317,19 +296,15 @@ def _freeze_event_value(value: object) -> object:
 
 @dataclass(frozen=True)
 class SubagentRecordOptions:
-    """Control how a child run is represented in its parent run record."""
 
     mode: str = "full"
     summary_chars: int = 2_000
     nested_results: int = 8
 
     def __post_init__(self) -> None:
-        if not isinstance(self.mode, str) or self.mode not in {"full", "summary"}:
-            raise ValueError("subagent record mode must be full or summary")
-        if isinstance(self.summary_chars, bool) or not isinstance(self.summary_chars, int) or self.summary_chars <= 0:
-            raise ValueError("subagent summary_chars must be positive")
-        if isinstance(self.nested_results, bool) or not isinstance(self.nested_results, int) or self.nested_results < 0:
-            raise ValueError("subagent nested_results cannot be negative")
+        read_choice(self.mode, "subagent record mode", {"full", "summary"})
+        read_int(self.summary_chars, "subagent summary_chars", minimum=1)
+        read_int(self.nested_results, "subagent nested_results", minimum=0)
 
     @property
     def is_summary(self) -> bool:
@@ -368,7 +343,6 @@ def resolve_agent_run_options(options: AgentRunOptions | None, skill: str | None
 
 @dataclass(frozen=True)
 class RunIdentity:
-    """Validated identity shared by events, stores, and task execution."""
 
     user_id: str
     agent_name: str
@@ -381,11 +355,8 @@ class RunIdentity:
         return cls(user_id=validate_user_id(user_id), agent_name=validate_agent_name(agent_name), run_id=(f"run-{uuid4().hex}" if run_id is None else _clean_identity_value(run_id, "run_id")), conversation_id=_clean_optional_identity_value(conversation_id, "conversation_id"), parent_run_id=_clean_optional_identity_value(parent_run_id, "parent_run_id"))
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "user_id", validate_user_id(self.user_id))
-        object.__setattr__(self, "agent_name", validate_agent_name(self.agent_name))
-        object.__setattr__(self, "run_id", _clean_identity_value(self.run_id, "run_id"))
-        object.__setattr__(self, "conversation_id", _clean_optional_identity_value(self.conversation_id, "conversation_id"))
-        object.__setattr__(self, "parent_run_id", _clean_optional_identity_value(self.parent_run_id, "parent_run_id"))
+        for name, value, cleaner in (("user_id", self.user_id, validate_user_id), ("agent_name", self.agent_name, validate_agent_name), ("run_id", self.run_id, lambda item: _clean_identity_value(item, "run_id")), ("conversation_id", self.conversation_id, lambda item: _clean_optional_identity_value(item, "conversation_id")), ("parent_run_id", self.parent_run_id, lambda item: _clean_optional_identity_value(item, "parent_run_id"))):
+            object.__setattr__(self, name, cleaner(value))
 
 
 @dataclass(frozen=True)

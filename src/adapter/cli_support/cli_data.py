@@ -11,7 +11,7 @@ from typing import Callable
 from adapter.cli_support.cli_config import load_agent, load_common_config
 from adapter.storage_backends.storage import DisclosureStorage, copy_storage_events, create_storage_backend
 from core.config import CommonConfig
-from core.models import LOCAL_USER_ID, RunSnapshot, read_object
+from core.models import LOCAL_USER_ID, read_object
 from core.records.audit import AuditPruneReport
 from skill.handlers.memory import MemoryItem
 from core.records.store import StorageBackend
@@ -27,7 +27,6 @@ def add_output_format_option(parser: argparse.ArgumentParser, *, default: str | 
 
 
 def add_subcommand_parsers(parser: argparse.ArgumentParser, command_field: str, commands: tuple[tuple[str, str], ...]) -> dict[str, argparse.ArgumentParser]:
-    """Create a named CLI branch from one visible command list."""
     subparsers = parser.add_subparsers(dest=command_field)
     return {name: subparsers.add_parser(name, help=help_text) for name, help_text in commands}
 
@@ -39,7 +38,6 @@ def print_cli_json(value: object, *, pretty: bool = True) -> int:
 
 
 def run_selected_cli_command(args: argparse.Namespace, command_field: str, handlers: dict[str, Callable[[argparse.Namespace], int]], missing_message: str, *, default: str | None = None) -> int:
-    """Dispatch one parsed command without a second adapter-specific router."""
     handler = handlers.get(getattr(args, command_field, None) or default or "")
     if handler is None:
         raise ValueError(missing_message)
@@ -109,106 +107,68 @@ def run_memory_command(args: argparse.Namespace) -> int:
 
 def configure_runs_parser(parser: argparse.ArgumentParser) -> None:
     commands = add_subcommand_parsers(parser, "runs_command", (("status", "show recent run snapshot status"), ("explain", "explain one run from its ordered events"), ("export", "export one run snapshot and event stream"), ("feedback", "record a quality score for one completed task"), ("learn", "explicitly evaluate and improve Skills from one finished run")))
-    for selected in commands.values():
+    for name, selected in commands.items():
         add_config_and_user_options(selected)
-    status_parser = commands["status"]
-    status_parser.add_argument("--run-id")
-    status_parser.add_argument("--conversation-id")
-    status_parser.add_argument("--limit", type=_positive_integer, default=20)
-    add_output_format_option(status_parser)
-    _add_sensitive_output_argument(status_parser)
-
-    explain_parser = commands["explain"]
-    explain_parser.add_argument("--run-id")
-    add_output_format_option(explain_parser)
-    _add_sensitive_output_argument(explain_parser)
-
-    export_parser = commands["export"]
-    export_parser.add_argument("--run-id")
-    export_parser.add_argument("--output")
-    _add_sensitive_output_argument(export_parser)
-
-    feedback_parser = commands["feedback"]
-    feedback_parser.add_argument("--run-id", required=True)
-    feedback_parser.add_argument("--score", required=True, type=_feedback_score)
-    feedback_parser.add_argument("--reason", default="")
-    add_output_format_option(feedback_parser)
-
-    learn_parser = commands["learn"]
-    learn_parser.add_argument("--run-id", required=True)
-    add_output_format_option(learn_parser)
+        if name in {"status", "explain", "export"}:
+            selected.add_argument("--run-id")
+        if name in {"status", "explain", "feedback", "learn"}:
+            add_output_format_option(selected)
+        if name in {"status", "explain", "export"}:
+            _add_sensitive_output_argument(selected)
+    commands["status"].add_argument("--conversation-id")
+    commands["status"].add_argument("--limit", type=_positive_integer, default=20)
+    commands["export"].add_argument("--output")
+    commands["feedback"].add_argument("--run-id", required=True)
+    commands["feedback"].add_argument("--score", required=True, type=_feedback_score)
+    commands["feedback"].add_argument("--reason", default="")
+    commands["learn"].add_argument("--run-id", required=True)
 
 
 def run_runs_command(args: argparse.Namespace) -> int:
-    handlers = {"status": _show_run_status, "explain": _explain_run, "export": _export_run, "feedback": _record_run_feedback, "learn": _learn_from_run}
-    return run_selected_cli_command(args, "runs_command", handlers, "runs command is required", default="status")
-
-
-def _show_run_status(args: argparse.Namespace) -> int:
+    command = args.runs_command or "status"
+    if command in {"explain", "export"}:
+        return _explain_or_export_run(args, command)
     runs = load_agent(args.common_config).for_user(args.user_id).runs
-    snapshots = [runs.read(args.run_id, include_sensitive=args.include_sensitive)] if args.run_id else runs.list(args.limit, conversation_id=args.conversation_id, include_sensitive=args.include_sensitive)
-    if args.output == "json":
-        return print_cli_json({"schema_version": 1, "runs": [asdict(item) for item in snapshots]})
-    if not snapshots:
-        print("No run snapshots yet.")
-        return 0
-    for snapshot in snapshots:
-        print(_run_status_line(snapshot))
+    match command:
+        case "status":
+            snapshots = [runs.read(args.run_id, include_sensitive=args.include_sensitive)] if args.run_id else runs.list(args.limit, conversation_id=args.conversation_id, include_sensitive=args.include_sensitive)
+            if args.output == "json":
+                return print_cli_json({"schema_version": 1, "runs": [asdict(item) for item in snapshots]})
+            if not snapshots:
+                print("No run snapshots yet.")
+            for snapshot in snapshots:
+                print(f"{snapshot.run_id}\t{snapshot.status}\tagent={snapshot.agent_name}\tstarted={snapshot.started_at}\tworkflow={snapshot.workflow or ''}\tstop_reason={snapshot.stop_reason or ''}\tskills={','.join(snapshot.used_skills)}")
+        case "feedback":
+            event = runs.record_feedback(args.run_id, args.score, args.reason)
+            if args.output == "json":
+                return print_cli_json(asdict(event))
+            print(f"Recorded feedback: {event.run_id} score={args.score:.3f}")
+        case "learn":
+            result = runs.learn(args.run_id)
+            if args.output == "json":
+                return print_cli_json(asdict(result))
+            print(f"Learned from run: {result.run_id} evaluations={len(result.evaluation_record_ids)} ")
+        case _:
+            raise ValueError(f"unknown runs command: {command}")
     return 0
 
 
-def _explain_run(args: argparse.Namespace) -> int:
+def _explain_or_export_run(args: argparse.Namespace, command: str) -> int:
     runs = load_agent(args.common_config).for_user(args.user_id).runs
-    run_id = _resolve_run_id(runs.list(1), args.run_id)
+    recent = runs.list(1)
+    run_id = args.run_id.strip() if args.run_id else recent[0].run_id if recent else None
     if run_id is None:
         print("No run snapshots yet.")
         return 1
+    if command == "export":
+        path = runs.export(run_id, Path(args.output or f"run-{run_id}.json").expanduser(), include_sensitive=args.include_sensitive)
+        print(f"Exported run: {path}")
+        return 0
     explanation = runs.explain(run_id, include_sensitive=args.include_sensitive)
     if args.output == "json":
         return print_cli_json(explanation)
     _print_run_explanation(explanation)
     return 0
-
-
-def _export_run(args: argparse.Namespace) -> int:
-    runs = load_agent(args.common_config).for_user(args.user_id).runs
-    run_id = _resolve_run_id(runs.list(1), args.run_id)
-    if run_id is None:
-        print("No run snapshots yet.")
-        return 1
-    output = Path(args.output or f"run-{run_id}.json").expanduser()
-    path = runs.export(run_id, output, include_sensitive=args.include_sensitive)
-    print(f"Exported run: {path}")
-    return 0
-
-
-def _record_run_feedback(args: argparse.Namespace) -> int:
-    event = load_agent(args.common_config).for_user(args.user_id).runs.record_feedback(args.run_id, args.score, args.reason)
-    if args.output == "json":
-        return print_cli_json(asdict(event))
-    else:
-        print(f"Recorded feedback: {event.run_id} score={args.score:.3f}")
-    return 0
-
-
-def _learn_from_run(args: argparse.Namespace) -> int:
-    result = load_agent(args.common_config).for_user(args.user_id).runs.learn(args.run_id)
-    if args.output == "json":
-        return print_cli_json(asdict(result))
-    else:
-        print(f"Learned from run: {result.run_id} evaluations={len(result.evaluation_record_ids)} ")
-    return 0
-
-
-def _resolve_run_id(snapshots: list[RunSnapshot], requested: str | None) -> str | None:
-    if requested:
-        return requested.strip()
-    return snapshots[0].run_id if snapshots else None
-
-
-def _run_status_line(snapshot: RunSnapshot) -> str:
-    skills = ",".join(snapshot.used_skills)
-    return f"{snapshot.run_id}\t{snapshot.status}\tagent={snapshot.agent_name}\tstarted={snapshot.started_at}\tworkflow={snapshot.workflow or ''}\tstop_reason={snapshot.stop_reason or ''}\tskills={skills}"
 
 
 def _print_run_explanation(explanation: dict[str, object]) -> None:
@@ -229,41 +189,29 @@ def _print_run_explanation(explanation: dict[str, object]) -> None:
         if isinstance(data, dict):
             print(f"disclosure\t{data.get('content_key', '')}\t{data.get('stage', '')}\tcache_hit={str(data.get('cache_hit', False)).lower()}")
     _print_plan_insight(explanation.get("plan"))
-    _print_model_call_insight(explanation.get("model_calls"))
-    _print_model_usage_insight(explanation.get("model_usage"))
-    _print_freshness_insight(explanation.get("skill_freshness"))
+    _print_insight_rows(explanation.get("model_calls"), "model-call", "call_id", (("profile", "profile"), ("status", "status"), ("latency_ms", "latency_ms"), ("input_tokens", "input_tokens"), ("output_tokens", "output_tokens"), ("estimated_cost", "estimated_cost")))
+    _print_insight_rows(explanation.get("model_usage"), "model-usage", "profile_key", (("purpose", "purpose"), ("calls", "call_count"), ("reliability", "reliability"), ("quality", "average_quality")))
+    _print_insight_rows(explanation.get("skill_freshness"), "freshness", "skill", (("value", "freshness"), ("calls", "call_count"), ("success", "success_count"), ("replacements", "same_function_successful_followups")))
 
 
 def _print_plan_insight(value: object) -> None:
     if not isinstance(value, dict):
         return
-    print(f"run-plan\tpurpose={value.get('purpose', '')}\tworkflow={value.get('workflow', '')}\tfeatures={','.join(_string_items(value.get('required_features')))}")
+    features = [str(item) for item in value.get("required_features", [])] if isinstance(value.get("required_features"), list) else []
+    print(f"run-plan\tpurpose={value.get('purpose', '')}\tworkflow={value.get('workflow', '')}\tfeatures={','.join(features)}")
     model = value.get("model")
     if isinstance(model, dict):
         print(f"run-model\t{model.get('key', '')}\tselected_by={model.get('selected_by', '')}\treason={model.get('reason', '')}")
 
 
-def _print_model_call_insight(value: object) -> None:
-    for call in _object_items(value):
-        print(f"model-call\t{call.get('call_id', '')}\tprofile={call.get('profile', '')}\tstatus={call.get('status', '')}\tlatency_ms={call.get('latency_ms', '')}\tinput_tokens={call.get('input_tokens', '')}\toutput_tokens={call.get('output_tokens', '')}\testimated_cost={call.get('estimated_cost', '')}")
-
-
-def _print_model_usage_insight(value: object) -> None:
-    for evidence in _object_items(value):
-        print(f"model-usage\t{evidence.get('profile_key', '')}\tpurpose={evidence.get('purpose', '')}\tcalls={evidence.get('call_count', '')}\treliability={evidence.get('reliability', '')}\tquality={evidence.get('average_quality', '')}")
-
-
-def _print_freshness_insight(value: object) -> None:
-    for skill in _object_items(value):
-        print(f"freshness\t{skill.get('skill', '')}\tvalue={skill.get('freshness', '')}\tcalls={skill.get('call_count', '')}\tsuccess={skill.get('success_count', '')}\treplacements={skill.get('same_function_successful_followups', '')}")
+def _print_insight_rows(value: object, prefix: str, identity: str, fields: tuple[tuple[str, str], ...]) -> None:
+    for item in _object_items(value):
+        details = "\t".join(f"{label}={item.get(name, '')}" for label, name in fields)
+        print(f"{prefix}\t{item.get(identity, '')}\t{details}")
 
 
 def _object_items(value: object) -> list[dict[str, object]]:
     return [item for item in value if isinstance(item, dict)] if isinstance(value, list) else []
-
-
-def _string_items(value: object) -> list[str]:
-    return [str(item) for item in value] if isinstance(value, list) else []
 
 
 def _add_sensitive_output_argument(parser: argparse.ArgumentParser) -> None:

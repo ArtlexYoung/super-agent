@@ -16,12 +16,7 @@ DEFAULT_POSTGRESQL_URL_ENV = "SUPER_AGENT_POSTGRESQL_URL"
 _MYSQL_SCHEMES = {"mysql", "mysql+pymysql"}
 _POSTGRESQL_SCHEMES = {"postgres", "postgresql"}
 _SCHEMA_COMPONENT = "runtime-events"
-_SCHEMA_TABLE_SQL = """
-CREATE TABLE IF NOT EXISTS super_agent_storage_schema (
-    component VARCHAR(64) PRIMARY KEY,
-    version INTEGER NOT NULL
-)
-""".strip()
+_SCHEMA_TABLE_SQL = "CREATE TABLE IF NOT EXISTS super_agent_storage_schema (component VARCHAR(64) PRIMARY KEY, version INTEGER NOT NULL)"
 _SELECT_SCHEMA_VERSION_SQL = "SELECT version FROM super_agent_storage_schema WHERE component = %s"
 
 
@@ -91,44 +86,17 @@ class _MySqlDatabase:
     placeholder = "%s"
     hash_identifiers = True
     begin_write_sql = None
-    create_events_table_sql = """
-    CREATE TABLE IF NOT EXISTS super_agent_storage_events (
-        position BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-        event_id LONGTEXT COLLATE utf8mb4_bin NOT NULL,
-        event_key CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-        user_id LONGTEXT COLLATE utf8mb4_bin NOT NULL,
-        user_key CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-        agent_name LONGTEXT COLLATE utf8mb4_bin NOT NULL,
-        agent_key CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-        stream_type LONGTEXT COLLATE utf8mb4_bin NOT NULL,
-        stream_type_key CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-        stream_id LONGTEXT COLLATE utf8mb4_bin NOT NULL,
-        stream_id_key CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-        event_type LONGTEXT COLLATE utf8mb4_bin NOT NULL,
-        event_type_key CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-        created_at LONGTEXT COLLATE utf8mb4_bin NOT NULL,
-        data_json LONGTEXT COLLATE utf8mb4_bin NOT NULL,
-        UNIQUE KEY super_agent_user_event (user_key, event_key),
-        KEY super_agent_event_scope (
-            user_key, agent_key, stream_type_key, stream_id_key, position
-        ),
-        KEY super_agent_event_type (user_key, event_type_key, position)
-    ) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin
-    """.strip()
+    create_events_table_sql = (
+        "CREATE TABLE IF NOT EXISTS super_agent_storage_events (position BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, event_id LONGTEXT COLLATE utf8mb4_bin NOT NULL, event_key CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL, user_id LONGTEXT COLLATE utf8mb4_bin NOT NULL, user_key CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL, agent_name LONGTEXT COLLATE utf8mb4_bin NOT NULL, agent_key CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL, "
+        "stream_type LONGTEXT COLLATE utf8mb4_bin NOT NULL, stream_type_key CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL, stream_id LONGTEXT COLLATE utf8mb4_bin NOT NULL, stream_id_key CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL, event_type LONGTEXT COLLATE utf8mb4_bin NOT NULL, event_type_key CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL, created_at LONGTEXT COLLATE utf8mb4_bin NOT NULL, data_json LONGTEXT COLLATE utf8mb4_bin NOT NULL, UNIQUE KEY super_agent_user_event (user_key, event_key), KEY super_agent_event_scope (user_key, agent_key, stream_type_key, stream_id_key, position), KEY super_agent_event_type "
+        "(user_key, event_type_key, position)) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin"
+    )
     create_event_indexes_sql: tuple[str, ...] = ()
-    ensure_schema_version_sql = """
-    INSERT INTO super_agent_storage_schema (component, version)
-    VALUES (%s, %s)
-    ON DUPLICATE KEY UPDATE version = super_agent_storage_schema.version
-    """.strip()
-    insert_event_sql = """
-    INSERT INTO super_agent_storage_events (
-        event_id, event_key, user_id, user_key, agent_name, agent_key,
-        stream_type, stream_type_key, stream_id, stream_id_key,
-        event_type, event_type_key, created_at, data_json
-    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-    ON DUPLICATE KEY UPDATE position = LAST_INSERT_ID(position)
-    """.strip()
+    ensure_schema_version_sql = "INSERT INTO super_agent_storage_schema (component, version) VALUES (%s, %s) ON DUPLICATE KEY UPDATE version = super_agent_storage_schema.version"
+    insert_event_sql = (
+        "INSERT INTO super_agent_storage_events (event_id, event_key, user_id, user_key, agent_name, agent_key, stream_type, stream_type_key, stream_id, stream_id_key, event_type, event_type_key, created_at, data_json) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+        "ON DUPLICATE KEY UPDATE position = LAST_INSERT_ID(position)"
+    )
 
     def __init__(self, driver: Any, connection_url: str) -> None:
         self._driver = driver
@@ -149,53 +117,19 @@ class _PostgreSqlDatabase:
     placeholder = "%s"
     hash_identifiers = True
     begin_write_sql = None
-    create_events_table_sql = """
-    CREATE TABLE IF NOT EXISTS super_agent_storage_events (
-        position BIGSERIAL PRIMARY KEY,
-        event_id TEXT NOT NULL,
-        event_key CHAR(64) NOT NULL,
-        user_id TEXT NOT NULL,
-        user_key CHAR(64) NOT NULL,
-        agent_name TEXT NOT NULL,
-        agent_key CHAR(64) NOT NULL,
-        stream_type TEXT NOT NULL,
-        stream_type_key CHAR(64) NOT NULL,
-        stream_id TEXT NOT NULL,
-        stream_id_key CHAR(64) NOT NULL,
-        event_type TEXT NOT NULL,
-        event_type_key CHAR(64) NOT NULL,
-        created_at TEXT NOT NULL,
-        data_json TEXT NOT NULL,
-        UNIQUE (user_key, event_key)
+    create_events_table_sql = (
+        "CREATE TABLE IF NOT EXISTS super_agent_storage_events (position BIGSERIAL PRIMARY KEY, event_id TEXT NOT NULL, event_key CHAR(64) NOT NULL, user_id TEXT NOT NULL, user_key CHAR(64) NOT NULL, agent_name TEXT NOT NULL, agent_key CHAR(64) NOT NULL, stream_type TEXT NOT NULL, stream_type_key CHAR(64) NOT NULL, stream_id TEXT NOT NULL, stream_id_key CHAR(64) NOT NULL, event_type TEXT NOT NULL, event_type_key CHAR(64) NOT NULL, created_at TEXT NOT NULL, "
+        "data_json TEXT NOT NULL, UNIQUE (user_key, event_key))"
     )
-    """.strip()
     create_event_indexes_sql = (
-        """
-        CREATE INDEX IF NOT EXISTS super_agent_event_scope
-        ON super_agent_storage_events (
-            user_key, agent_key, stream_type_key, stream_id_key, position
-        )
-        """.strip(),
-        """
-        CREATE INDEX IF NOT EXISTS super_agent_event_type
-        ON super_agent_storage_events (user_key, event_type_key, position)
-        """.strip(),
+        "CREATE INDEX IF NOT EXISTS super_agent_event_scope ON super_agent_storage_events (user_key, agent_key, stream_type_key, stream_id_key, position)",
+        "CREATE INDEX IF NOT EXISTS super_agent_event_type ON super_agent_storage_events (user_key, event_type_key, position)",
     )
-    ensure_schema_version_sql = """
-    INSERT INTO super_agent_storage_schema (component, version)
-    VALUES (%s, %s)
-    ON CONFLICT (component) DO NOTHING
-    """.strip()
-    insert_event_sql = """
-    INSERT INTO super_agent_storage_events (
-        event_id, event_key, user_id, user_key, agent_name, agent_key,
-        stream_type, stream_type_key, stream_id, stream_id_key,
-        event_type, event_type_key, created_at, data_json
-    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-    ON CONFLICT (user_key, event_key)
-    DO UPDATE SET position = super_agent_storage_events.position
-    RETURNING position
-    """.strip()
+    ensure_schema_version_sql = "INSERT INTO super_agent_storage_schema (component, version) VALUES (%s, %s) ON CONFLICT (component) DO NOTHING"
+    insert_event_sql = (
+        "INSERT INTO super_agent_storage_events (event_id, event_key, user_id, user_key, agent_name, agent_key, stream_type, stream_type_key, stream_id, stream_id_key, event_type, event_type_key, created_at, data_json) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT (user_key, event_key) DO UPDATE SET "
+        "position = super_agent_storage_events.position RETURNING position"
+    )
 
     def __init__(self, driver: Any, connection_url: str) -> None:
         self._driver = driver

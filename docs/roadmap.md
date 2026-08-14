@@ -1963,6 +1963,17 @@ Status: implemented.
 - Preserve every CLI command, AG-UI and Web endpoint, code and process tool, storage backend, and
   management action while reducing source to at most 10,200 non-empty Python lines.
 
+## v0.1.90: One Runtime Projection and Resource Boundary
+
+Status: implemented.
+
+- Read shared primitive fields and project domain records through `core.models`, while each
+  Provider, Runtime record, and Skill owner retains its semantic validation and exact errors.
+- Bind conversations, runs, memory, model management, Skill changes, configuration, disclosure,
+  and storage to one explicit user and Agent resource path without adding implicit state.
+- Preserve package transactions, remote databases, CLI management, audit retention, task queues,
+  model routing, and self-evolution while reducing source to at most 9,750 non-empty Python lines.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

@@ -36,7 +36,6 @@ class AuditEventRule:
 
 @dataclass(frozen=True)
 class AuditPolicy:
-    """One policy for event retention, display redaction, and record compaction."""
 
     detailed_days: int = 180
     critical_days: int = 365
@@ -58,7 +57,6 @@ class AuditPolicy:
         return None
 
     def redact_event_data(self, stream_type: str, event_type: str, data: dict[str, object]) -> dict[str, object]:
-        """Return a redacted copy while leaving the canonical event unchanged."""
         prepared = dict(data)
         for field in self.event_rule(stream_type, event_type).content_fields:
             if field not in prepared:
@@ -68,7 +66,6 @@ class AuditPolicy:
         return prepared
 
     def compact_event_data(self, event_type: str, data: dict[str, object], options: "SubagentRecordOptions") -> dict[str, object]:
-        """Remove detailed content before a summary child event is persisted."""
         if not options.is_summary:
             return dict(data)
         compacted = dict(data)
@@ -81,11 +78,9 @@ class AuditPolicy:
         return compacted
 
     def redact_events(self, events: list[StorageEvent]) -> list[StorageEvent]:
-        """Build a dynamically redacted view of canonical storage events."""
         return [replace(event, data=self.redact_event_data(event.stream_type, event.event_type, event.data)) for event in events]
 
     def prune_expired_events(self, backend: StorageBackend, user_ids: list[str], *, apply: bool = False, now: datetime | None = None) -> AuditPruneReport:
-        """Preview or explicitly delete expired detailed and critical events."""
         current_time = _normalise_now(now)
         reports = [_prune_one_user(backend, user_id, self, current_time, apply) for user_id in _unique_user_ids(user_ids)]
         return AuditPruneReport(applied=apply, now=format_utc(current_time), detailed_days=self.detailed_days, critical_days=self.critical_days, users=reports)
@@ -93,27 +88,15 @@ class AuditPolicy:
 
 _PROTECTED_EVENT_RULE = AuditEventRule(PROTECTED)
 _DETAILED_EVENTS = frozenset(
-    """
-model.call.selected model.call.completed model.call.failed model.turn.completed model.used
-task.started task.scheduled task.completed task.plan.set task.plan.step.updated
-tool.requested tool.completed tool.failed skills.disclosed skills.selected content.disclosed
-subagent.started subagent.completed runtime.subscriber.failed
-agent_task.created agent_task.queued agent_task.dispatched agent_task.running agent_task.completed
-agent_task.failed agent_task.cancelled agent_task.wait.started agent_task.wait.woke
-agent_task.fallback_selected agent_task.retry_scheduled agent_task.retry_dispatched
-agent_task.circuit_opened agent_task.circuit_half_open agent_task.circuit_closed
-agent_group.created agent_group.reduced agent_group.budget_exceeded agent_group.completed
-agent_group.wait.started agent_group.wait.woke
-""".split()
+    "model.call.selected model.call.completed model.call.failed model.turn.completed model.used task.started task.scheduled task.completed task.plan.set task.plan.step.updated tool.requested tool.completed tool.failed skills.disclosed skills.selected content.disclosed subagent.started subagent.completed runtime.subscriber.failed "
+    "agent_task.created agent_task.queued agent_task.dispatched agent_task.running agent_task.completed agent_task.failed agent_task.cancelled agent_task.wait.started agent_task.wait.woke agent_task.fallback_selected agent_task.retry_scheduled agent_task.retry_dispatched agent_task.circuit_opened agent_task.circuit_half_open agent_task.circuit_closed "
+    "agent_group.created agent_group.reduced agent_group.budget_exceeded agent_group.completed agent_group.wait.started agent_group.wait.woke"
+    .split()
 )
 _CRITICAL_EVENTS = frozenset(
-    """
-run.started run.completed run.failed task.feedback.recorded
-action.checked action.prepared action.applying action.applied action.blocked action.failed
-learning.completed learning.failed skill_change.proposed skill_change.tested skill_change.applied
-skill_change.undone model_skill.saved model_skill.removed skill_package.installed
-skill_package.updated skill_package.removed audit.pruned review.completed review.failed
-""".split()
+    "run.started run.completed run.failed task.feedback.recorded action.checked action.prepared action.applying action.applied action.blocked action.failed learning.completed learning.failed skill_change.proposed skill_change.tested skill_change.applied skill_change.undone "
+    "model_skill.saved model_skill.removed skill_package.installed skill_package.updated skill_package.removed audit.pruned review.completed review.failed"
+    .split()
 )
 _CONTENT_FIELDS = {"model.call.failed": ("message",), "model.turn.completed": ("text",), "task.completed": ("text",), "tool.requested": ("arguments",), "tool.completed": ("result",), "tool.failed": ("message",), "subagent.started": ("prompt",), "runtime.subscriber.failed": ("message",), "run.started": ("prompt",), "run.failed": ("message",), "action.failed": ("message",), "learning.failed": ("message",), "review.failed": ("message",)}
 _EVENT_RULES = {name: AuditEventRule(retention, _CONTENT_FIELDS.get(name, ())) for retention, names in ((DETAILED, _DETAILED_EVENTS), (CRITICAL, _CRITICAL_EVENTS)) for name in names}
@@ -141,7 +124,6 @@ class AuditPruneReport:
 
 
 def compact_subagent_result(value: dict[str, object], options: "SubagentRecordOptions") -> dict[str, object]:
-    """Keep a bounded child result while preserving evidence for its source."""
     if not isinstance(value, dict):
         raise TypeError("subagent result must be an object")
     nested = value.get("subagent_results")

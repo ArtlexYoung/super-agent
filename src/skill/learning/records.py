@@ -56,13 +56,11 @@ EVALUATION_TOKEN_USAGE_FIELDS = set(EvaluationTokenUsage.__dataclass_fields__)
 
 
 def append_evaluation_records(store: EventStore, records: list[EvaluationRecord]) -> None:
-    """Append validated evaluation records to their canonical event streams."""
     for record in records:
         store.append_event("skill_evaluation", record.record_id, "evaluation.recorded", data=evaluation_record_to_dict(record), event_id=record.record_id, created_at=record.created_at)
 
 
 def read_evaluation_records(store: EventStore, *, skill_key: str | None = None, source_type: str | None = None, events: list[StorageEvent] | None = None) -> list[EvaluationRecord]:
-    """Project evaluation records from one scoped event store."""
     selected_events = store.read_events("skill_evaluation", snapshot=events)
     unknown = sorted({event.event_type for event in selected_events} - {"evaluation.recorded"})
     if unknown:
@@ -110,19 +108,11 @@ def evaluation_result_from_dict(value: object) -> EvaluationResult:
 
 
 def _validate_evaluation_record(record: EvaluationRecord) -> None:
-    if record.schema_version != EVALUATION_RECORD_SCHEMA_VERSION:
-        raise ValueError(f"evaluation record schema_version must be {EVALUATION_RECORD_SCHEMA_VERSION}")
-    if not isinstance(record.record_id, str) or not record.record_id.strip():
-        raise ValueError("evaluation record_id cannot be empty")
-    if not isinstance(record.created_at, str):
-        raise ValueError("evaluation created_at must be a string")
-    parse_utc(record.created_at, "evaluation created_at")
-    if not isinstance(record.revision, SkillRevision):
-        raise ValueError("evaluation revision must be SkillRevision")
-    if not isinstance(record.source, EvaluationSource):
-        raise ValueError("evaluation source must be EvaluationSource")
-    if not isinstance(record.result, EvaluationResult):
-        raise ValueError("evaluation result must be EvaluationResult")
+    if record.schema_version != EVALUATION_RECORD_SCHEMA_VERSION: raise ValueError(f"evaluation record schema_version must be {EVALUATION_RECORD_SCHEMA_VERSION}")
+    read_text(record.record_id, "evaluation record_id")
+    parse_utc(read_text(record.created_at, "evaluation created_at"), "evaluation created_at")
+    for name, expected in (("revision", SkillRevision), ("source", EvaluationSource), ("result", EvaluationResult)):
+        if not isinstance(getattr(record, name), expected): raise ValueError(f"evaluation {name} must be {expected.__name__}")
     validate_skill_revision(record.revision)
     _validate_source(record.source)
     _validate_result(record.result)
@@ -179,22 +169,18 @@ def skill_revision_to_dict(revision: SkillRevision) -> dict[str, object]:
 
 def skill_revision_from_dict(value: object) -> SkillRevision:
     fields = {"schema_version", "type", *SkillRevision.__dataclass_fields__} - {"skill_type"}
-    if not isinstance(value, dict) or set(value) != fields:
-        raise ValueError("Skill revision fields do not match schema v2")
-    if value["schema_version"] != SKILL_REVISION_SCHEMA_VERSION:
-        raise ValueError(f"unsupported Skill revision schema: {value['schema_version']}")
-    revision = SkillRevision(key=read_text(value["key"], "Skill revision key"), skill_type=read_text(value["type"], "Skill revision type"), name=read_text(value["name"], "Skill revision name"), version=read_text(value["version"], "Skill revision version"), content_sha256=read_text(value["content_sha256"], "Skill revision content_sha256"), function_group=read_text(value["function_group"], "Skill revision function_group"), agent_created=read_bool(value["agent_created"], "Skill revision agent_created"), agent_can_update=read_bool(value["agent_can_update"], "Skill revision agent_can_update"), freshness=_read_freshness(value["freshness"]))
+    data = read_object(value, "Skill revision schema v2", fields)
+    if data["schema_version"] != SKILL_REVISION_SCHEMA_VERSION: raise ValueError(f"unsupported Skill revision schema: {data['schema_version']}")
+    revision = SkillRevision(key=read_text(data["key"], "Skill revision key"), skill_type=read_text(data["type"], "Skill revision type"), name=read_text(data["name"], "Skill revision name"), version=read_text(data["version"], "Skill revision version"), content_sha256=read_text(data["content_sha256"], "Skill revision content_sha256"), function_group=read_text(data["function_group"], "Skill revision function_group"), agent_created=read_bool(data["agent_created"], "Skill revision agent_created"), agent_can_update=read_bool(data["agent_can_update"], "Skill revision agent_can_update"), freshness=_read_freshness(data["freshness"]))
     validate_skill_revision(revision)
     return revision
 
 
 def validate_skill_revision(revision: SkillRevision) -> None:
-    if revision.key != f"{revision.skill_type}:{revision.name}":
-        raise ValueError("Skill revision key must equal type:name")
+    if revision.key != f"{revision.skill_type}:{revision.name}": raise ValueError("Skill revision key must equal type:name")
     for name, value in (("type", revision.skill_type), ("name", revision.name), ("version", revision.version), ("function_group", revision.function_group)):
         read_text(value, f"Skill revision {name}")
-    if re.fullmatch(r"[0-9a-f]{64}", revision.content_sha256) is None:
-        raise ValueError("Skill revision content_sha256 must be lowercase SHA-256")
+    if re.fullmatch(r"[0-9a-f]{64}", revision.content_sha256) is None: raise ValueError("Skill revision content_sha256 must be lowercase SHA-256")
     read_bool(revision.agent_created, "Skill revision agent_created")
     read_bool(revision.agent_can_update, "Skill revision agent_can_update")
     _read_freshness(revision.freshness)

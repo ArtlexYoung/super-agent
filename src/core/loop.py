@@ -8,8 +8,7 @@ from typing import TYPE_CHECKING, Callable
 
 from core.checks import ActionEffect, ActionRequest
 from core.models import RunResult, Task, read_required_tool_string
-from core.provider import ActionTurn, FinalTurn, Message, ModelResponse, ToolCall, read_model_turn
-from core.provider import ProviderPool
+from core.provider import ActionTurn, FinalTurn, Message, ModelResponse, ProviderPool, ToolCall, read_model_turn
 from skill.handlers.runtime import SkillUse, SkillAction, SkillTool, TaskPolicy
 from skill.handlers.models import ModelProfile, model_profile_is_ready, model_profile_to_dict
 from core.model_calls import ModelCaller, ModelCallContext, SelectedModel, TextModel, UNTRUSTED_CONTEXT_POLICY, assistant_tool_call_message, tool_result_message
@@ -75,7 +74,6 @@ class _ConfiguredModelTool:
 
 
 class TaskRunner:
-    """Let one selected model finish directly or request checked actions."""
 
     def __init__(self, model_profiles: list[ModelProfile], provider_pool: ProviderPool) -> None:
         if not model_profiles:

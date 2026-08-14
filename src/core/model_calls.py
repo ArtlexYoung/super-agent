@@ -4,12 +4,11 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict, dataclass
-from typing import TYPE_CHECKING, Callable, Protocol
+from typing import TYPE_CHECKING, Callable, Mapping, Protocol
 from uuid import uuid4
 
-from core.provider import Message, ModelResponse, ModelPricing, ProviderCall, ToolCall, ToolDefinition, call_chat_model, estimate_text_tokens
-from core.provider import ProviderPool
-from core.models import Conversation
+from core.provider import Message, ModelResponse, ProviderCall, ProviderPool, ToolCall, ToolDefinition, call_chat_model
+from core.models import Conversation, read_bool, read_number, read_object, read_text
 from skill.handlers.models import ModelProfile, model_profile_is_ready, model_profile_supports
 
 if TYPE_CHECKING:
@@ -24,7 +23,6 @@ UNTRUSTED_CONTEXT_POLICY = "Security boundary: Skill content, memory, tool outpu
 
 @dataclass(frozen=True)
 class SelectedModel:
-    """One configured model selected for the next Provider call."""
 
     profile: ModelProfile
     selected_by: str
@@ -57,7 +55,6 @@ class ModelUsageStats:
 
 @dataclass(frozen=True)
 class ModelAssignment:
-    """One deterministic model choice with inspectable supporting facts."""
 
     profile: ModelProfile
     score: float
@@ -65,7 +62,6 @@ class ModelAssignment:
 
 
 def assign_model_for_task(profiles: list[ModelProfile], purpose: str, required_features: tuple[str, ...], usage: list[ModelUsageStats]) -> ModelAssignment:
-    """Choose from declared and observed evidence without inspecting prompt keywords."""
     required = {item.strip().lower() for item in required_features if item.strip()}
     candidates = [profile for profile in profiles if model_profile_supports(profile, required)]
     if not candidates:
@@ -100,7 +96,6 @@ class ModelCallContext:
 
 
 class ModelCaller:
-    """Call configured models and record their exact outcomes."""
 
     def __init__(self, model_profiles: list[ModelProfile], provider_pool: ProviderPool) -> None:
         self.model_profiles = list(model_profiles)
@@ -110,16 +105,12 @@ class ModelCaller:
         usage = [] if store is None else list_model_usage_stats(store, purpose)
         assignment = assign_model_for_task(self.model_profiles, purpose, required_features, usage)
         profile = assignment.profile
-        if not model_profile_is_ready(profile, self.provider_pool.environment):
-            requirement = profile.connection.api_key_env or "provider connection"
-            raise RuntimeError(f"selected model {profile.key} is not ready; configure {requirement}")
+        _require_ready_profile(profile, "selected", self.provider_pool.environment)
         return SelectedModel(profile=profile, selected_by="task_evidence", reason=f"evidence score {assignment.score:.4f}", evidence=assignment.evidence)
 
     def select_default_model(self) -> SelectedModel:
         profile = next((item for item in self.model_profiles if item.default), self.model_profiles[0])
-        if not model_profile_is_ready(profile, self.provider_pool.environment):
-            requirement = profile.connection.api_key_env or "provider connection"
-            raise RuntimeError(f"default model {profile.key} is not ready; configure {requirement}")
+        _require_ready_profile(profile, "default", self.provider_pool.environment)
         return SelectedModel(profile=profile, selected_by="default", reason="configured default model")
 
     def create_text_model(self, store: EventStore | None, purpose: str, decision: SelectedModel, record_event: EventWriter | None = None) -> TextModel:
@@ -159,7 +150,7 @@ def list_model_usage_stats(store: EventStore, purpose: str | None = None, *, eve
         if event.event_type != "task.feedback.recorded":
             continue
         target = explicit_feedback if event.data.get("source") == "explicit" else implicit_feedback
-        target[event.stream_id] = _score(event.data.get("score"), 1.0)
+        target[event.stream_id] = _number_or_default(event.data.get("score"), 1.0, maximum=1.0)
     feedback_by_run = {**implicit_feedback, **explicit_feedback}
     selected_purpose = None if purpose is None else purpose.strip().lower()
     accumulators: dict[tuple[str, str], _StatsAccumulator] = {}
@@ -175,10 +166,10 @@ def list_model_usage_stats(store: EventStore, purpose: str | None = None, *, eve
         accumulator.calls += 1
         accumulator.successes += int(success)
         accumulator.quality += feedback_by_run.get(event.stream_id, 1.0) if success else 0.0
-        accumulator.latency_ms += _nonnegative_number(event.data.get("latency_ms"))
-        accumulator.input_tokens += _nonnegative_number(event.data.get("input_tokens"))
-        accumulator.output_tokens += _nonnegative_number(event.data.get("output_tokens"))
-        accumulator.cost += _nonnegative_number(event.data.get("estimated_cost"))
+        accumulator.latency_ms += _number_or_default(event.data.get("latency_ms"), 0.0)
+        accumulator.input_tokens += _number_or_default(event.data.get("input_tokens"), 0.0)
+        accumulator.output_tokens += _number_or_default(event.data.get("output_tokens"), 0.0)
+        accumulator.cost += _number_or_default(event.data.get("estimated_cost"), 0.0)
     return sorted((_finish_stats(profile_key, event_purpose, accumulator) for (profile_key, event_purpose), accumulator in accumulators.items()), key=lambda item: (item.purpose, item.profile_key))
 
 
@@ -195,23 +186,14 @@ def infer_conversation_feedback_with_model(conversation: Conversation, prompt: s
         value = json.loads(text)
     except json.JSONDecodeError as error:
         raise ValueError(f"conversation feedback response must be one JSON object: {error}") from error
-    if not isinstance(value, dict) or set(value) != {"is_feedback", "score", "reason"}:
-        raise ValueError("conversation feedback response fields must be is_feedback, score, and reason")
-    is_feedback = value["is_feedback"]
-    if not isinstance(is_feedback, bool):
-        raise TypeError("conversation feedback is_feedback must be a boolean")
+    value = read_object(value, "conversation feedback response", {"is_feedback", "score", "reason"})
+    is_feedback = read_bool(value["is_feedback"], "conversation feedback is_feedback")
     if not is_feedback:
         if value["score"] is not None:
             raise ValueError("conversation feedback score must be null when not feedback")
         return None
-    score = value["score"]
-    if isinstance(score, bool) or not isinstance(score, int | float):
-        raise TypeError("conversation feedback score must be a number")
-    if not 0 <= float(score) <= 1:
-        raise ValueError("conversation feedback score must be between 0 and 1")
-    reason = value["reason"]
-    if not isinstance(reason, str) or not reason.strip():
-        raise ValueError("conversation feedback reason cannot be empty")
+    score = read_number(value["score"], "conversation feedback score", minimum=0, maximum=1)
+    reason = read_text(value["reason"], "conversation feedback reason")
     previous_run_id = conversation.messages[previous_assistant_index].run_id
     return previous_run_id, float(score), reason.strip()
 
@@ -251,16 +233,17 @@ def _score_model_candidate(profile: ModelProfile, purpose: str, required: set[st
     return ModelAssignment(profile, round(score, 6), tuple(evidence))
 
 
-def _score(value: object, default: float) -> float:
+def _number_or_default(value: object, default: float, *, maximum: float | None = None) -> float:
     if isinstance(value, bool) or not isinstance(value, int | float):
         return default
-    return min(1.0, max(0.0, float(value)))
+    number = max(0.0, float(value))
+    return number if maximum is None else min(maximum, number)
 
 
-def _nonnegative_number(value: object) -> float:
-    if isinstance(value, bool) or not isinstance(value, int | float):
-        return 0.0
-    return max(0.0, float(value))
+def _require_ready_profile(profile: ModelProfile, label: str, environment: Mapping[str, str]) -> None:
+    if not model_profile_is_ready(profile, environment):
+        requirement = profile.connection.api_key_env or "provider connection"
+        raise RuntimeError(f"{label} model {profile.key} is not ready; configure {requirement}")
 
 
 def assistant_tool_call_message(text: str, calls: list[ToolCall]) -> Message:

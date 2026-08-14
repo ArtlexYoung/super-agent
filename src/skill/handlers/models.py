@@ -7,7 +7,7 @@ from dataclasses import dataclass, replace
 from typing import Mapping, Sequence
 
 from core.models import read_bool, read_optional_int, read_optional_number, read_optional_text, read_text, read_text_list, reject_unknown_fields
-from core.provider import ANTHROPIC_COMPATIBLE_PROVIDER, MOCK_PROVIDER, OPENAI_COMPATIBLE_PROVIDER, MODEL_PRICE_FIELDS, ModelPricing, ProviderConnection, normalize_provider_connection
+from core.provider import ANTHROPIC_COMPATIBLE_PROVIDER, MOCK_PROVIDER, OPENAI_COMPATIBLE_PROVIDER, ModelPricing, ProviderConnection, normalize_provider_connection
 from skill.discovery.catalog import SkillDisclosure
 from skill.handlers.runtime import Skills
 from skill.discovery.manifest import calculate_skill_directory_sha256
@@ -161,7 +161,6 @@ def discover_environment_model_profiles(environment: Mapping[str, str] | None = 
 
 
 def create_direct_provider_profile() -> ModelProfile:
-    """Describe a provider explicitly supplied in application code."""
     return ModelProfile(name="provided", description="Provider supplied directly when creating the Agent.", version="code", definition=ModelDefinition("provided", ProviderConnection(MOCK_PROVIDER), ModelTraits(["text", "tools"], [], []), default=True), source="code", skill_key="model:provided")
 
 
@@ -176,7 +175,6 @@ def model_profile_to_dict(profile: ModelProfile, environment: Mapping[str, str] 
 
 
 def model_dispatch_to_dict(profile: ModelProfile) -> dict[str, object]:
-    """Expose only model contract facts needed before Agent dispatch."""
     return {"key": profile.key, **profile.definition.to_dispatch_dict()}
 
 
@@ -186,7 +184,6 @@ def model_profile_supports(profile: ModelProfile, required_features: Sequence[st
 
 
 def choose_dispatch_model(models: object, purpose: str, required_features: Sequence[str], token_counts: Mapping[str, int | None]) -> ModelDispatchChoice:
-    """Choose the lowest-cost compatible declared model for one Agent dispatch."""
     required = {item.strip().lower() for item in required_features if item.strip()}
     candidates = [item for item in models if isinstance(item, dict) and required <= {str(feature).strip().lower() for feature in item.get("supports", []) if isinstance(feature, str) and feature.strip()}] if isinstance(models, list) else []
     if not candidates:

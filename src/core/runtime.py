@@ -11,10 +11,8 @@ from typing import TYPE_CHECKING, Callable
 from uuid import uuid4
 
 from core.models import RunEvent, RunIdentity, RunResult, RuntimeEventSubscriber, RuntimeEventSubscriberError, RuntimeEventSubscribers, SubagentRecordOptions, Task
-from core.provider import ProviderPool, UserSecretResolver
-from core.model_calls import estimate_text_tokens
-from skill.handlers.runtime import create_skills
-from skill.handlers.runtime import Skills, SkillHandlers
+from core.provider import ProviderPool, UserSecretResolver, estimate_text_tokens
+from skill.handlers.runtime import SkillHandlers, Skills, create_skills
 from skill.handlers.models import ModelProfile, read_model_profiles
 from core.checks import ActionRequest, ActionRunner, ActionRules, action_requires_checker
 
@@ -126,7 +124,6 @@ CHECKPOINT_STATE_BYTES = 16_384
 
 
 def create_checkpoint_data(run_id: str, label: str, facts: dict[str, object]) -> dict[str, object]:
-    """Create a content-free checkpoint record for explicit task resumption."""
     clean_label = label.strip()
     if not clean_label:
         raise ValueError("checkpoint label cannot be empty")
@@ -166,7 +163,6 @@ def _encode_checkpoint_value(value: object) -> bytes:
 
 
 class Runtime:
-    """Own only the lifecycle and execution of Agent tasks."""
 
     def __init__(self, config: CommonConfig, provider_pool: ProviderPool, skill_handlers: SkillHandlers, storage: StorageBackend | None, create_action_rules: Callable[[], ActionRules] | None, user_secrets: UserSecretResolver, disclosure_factory: DisclosureStorageFactory | None, *, code_model_profiles: tuple[ModelProfile, ...] = (), event_subscribers: RuntimeEventSubscribers | None = None) -> None:
         self.config = config

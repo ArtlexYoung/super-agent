@@ -9,10 +9,9 @@ from typing import TYPE_CHECKING, cast
 
 from core.provider import Message
 from core.config import AgentSettings, CommonConfig
-from core.checks import write_bytes_atomically
+from core.checks import ActionEffect, ActionRequest, write_bytes_atomically
 from core.models import Conversation, RunEvent, RunSnapshot, resolve_agent_run_options, validate_user_id
 from core.records.conversations import clear_conversation, create_conversation, delete_conversation, list_conversations, read_conversation, rename_conversation
-from core.checks import ActionEffect, ActionRequest
 from core.models import RunResult, TaskTrace
 
 if TYPE_CHECKING:
@@ -29,7 +28,6 @@ if TYPE_CHECKING:
 
 
 class UserAgent:
-    """Bind every stateful operation to one trusted user identifier."""
 
     def __init__(self, agent: "Agent", user_id: str) -> None:
         self.agent = agent
@@ -50,42 +48,45 @@ class UserAgent:
         return self.agent._execute_action(self.user_id, request, action)
 
 
-class UserConversations:
-    """Manage conversations inside one user and Agent scope."""
-
+class _UserResource:
     def __init__(self, user: UserAgent) -> None:
         self.user = user
+
+    def _store(self):
+        return self.user._store()
+
+    def _execute(self, request: ActionRequest, action):
+        return self.user._execute(request, action)
+
+
+class UserConversations(_UserResource):
 
     def create(self, title: str = "", *, conversation_id: str | None = None) -> Conversation:
-        return cast(Conversation, self.user._execute(ActionRequest.create("user:conversation", "conversation:new", (ActionEffect.CREATE,)), lambda: create_conversation(self.user._store(), title, conversation_id=conversation_id)))
+        return cast(Conversation, self._execute(ActionRequest.create("user:conversation", "conversation:new", (ActionEffect.CREATE,)), lambda: create_conversation(self._store(), title, conversation_id=conversation_id)))
 
     def list(self) -> list[Conversation]:
-        return list_conversations(self.user._store())
+        return list_conversations(self._store())
 
     def read(self, conversation_id: str) -> Conversation:
-        return read_conversation(self.user._store(), conversation_id)
+        return read_conversation(self._store(), conversation_id)
 
     def rename(self, conversation_id: str, title: str) -> Conversation:
-        return cast(Conversation, self.user._execute(ActionRequest.create("user:conversation", f"conversation:{conversation_id}", (ActionEffect.UPDATE,)), lambda: rename_conversation(self.user._store(), conversation_id, title)))
+        return cast(Conversation, self._execute(ActionRequest.create("user:conversation", f"conversation:{conversation_id}", (ActionEffect.UPDATE,)), lambda: rename_conversation(self._store(), conversation_id, title)))
 
     def clear(self, conversation_id: str) -> Conversation:
-        return cast(Conversation, self.user._execute(ActionRequest.create("user:conversation", f"conversation:{conversation_id}", (ActionEffect.DELETE,)), lambda: clear_conversation(self.user._store(), conversation_id)))
+        return cast(Conversation, self._execute(ActionRequest.create("user:conversation", f"conversation:{conversation_id}", (ActionEffect.DELETE,)), lambda: clear_conversation(self._store(), conversation_id)))
 
     def delete(self, conversation_id: str) -> None:
-        self.user._execute(ActionRequest.create("user:conversation", f"conversation:{conversation_id}", (ActionEffect.DELETE,)), lambda: delete_conversation(self.user._store(), conversation_id))
+        self._execute(ActionRequest.create("user:conversation", f"conversation:{conversation_id}", (ActionEffect.DELETE,)), lambda: delete_conversation(self._store(), conversation_id))
 
 
-class UserRuns:
-    """Read traces and record feedback in one user scope."""
-
-    def __init__(self, user: UserAgent) -> None:
-        self.user = user
+class UserRuns(_UserResource):
 
     def read_trace(self, run_id: str) -> TaskTrace:
         return self.user.agent._read_task_trace(self.user.user_id, run_id)
 
     def list(self, limit: int | None = None, *, conversation_id: str | None = None, include_sensitive: bool = False) -> list[RunSnapshot]:
-        return self.user._store().list_runs(limit, conversation_id=conversation_id, include_sensitive=include_sensitive)
+        return self._store().list_runs(limit, conversation_id=conversation_id, include_sensitive=include_sensitive)
 
     def read(self, run_id: str, *, include_sensitive: bool = False) -> RunSnapshot:
         _, store = _find_run_owner(self.user, run_id)
@@ -106,13 +107,13 @@ class UserRuns:
     def list_checkpoints(self, run_id: str) -> list[dict[str, object]]:
         from core.runtime import list_checkpoint_data
 
-        events = self.user._store().read_run_events(run_id, include_sensitive=True)
+        events = self._store().read_run_events(run_id, include_sensitive=True)
         return list_checkpoint_data(events)
 
     def resume(self, run_id: str, prompt: str, *, checkpoint_id: str | None = None) -> RunResult:
         from core.runtime import find_checkpoint_data
 
-        store = self.user._store()
+        store = self._store()
         events = store.read_run_events(run_id, include_sensitive=True)
         checkpoint = find_checkpoint_data(events, checkpoint_id)
         return self.user.agent._run_for_user(prompt, self.user.user_id, resumed_from_run_id=run_id, resume_checkpoint=checkpoint)
@@ -121,7 +122,7 @@ class UserRuns:
         return self.user.agent._record_task_feedback(self.user.user_id, run_id, score=score, reason=reason, source="explicit")
 
     def learn(self, run_id: str) -> "RunLearningResult":
-        store = self.user._store()
+        store = self._store()
         snapshot = store.read_run(run_id)
         if snapshot.agent_name != self.user.agent.config.agent.name:
             raise ValueError(f"run belongs to another Agent: {run_id}")
@@ -130,7 +131,7 @@ class UserRuns:
         from skill.handlers.runtime import load_configured_freshness_rules
 
         rules = load_configured_freshness_rules(self.user.agent.config, store=store)
-        result = self.user._execute(ActionRequest.create("user:run-learning", f"run:{run_id}", (ActionEffect.CREATE, ActionEffect.UPDATE)), lambda: learn_from_run(store, run_id, rules))
+        result = self._execute(ActionRequest.create("user:run-learning", f"run:{run_id}", (ActionEffect.CREATE, ActionEffect.UPDATE)), lambda: learn_from_run(store, run_id, rules))
         if not isinstance(result, RunLearningResult):
             raise TypeError("run learning must return RunLearningResult")
         return result
@@ -138,25 +139,21 @@ class UserRuns:
     def list_model_usage_stats(self, purpose: str | None = None) -> list["ModelUsageStats"]:
         from core.model_calls import list_model_usage_stats
 
-        return list_model_usage_stats(self.user._store(), purpose)
+        return list_model_usage_stats(self._store(), purpose)
 
     def review(self, run_id: str, evidence: dict[str, object]):
         from skill.learning.run_learning import review_run_evidence
 
         agent = self.user.agent
-        store = self.user._store()
+        store = self._store()
         skills = agent._create_skills(self.user.user_id)
         runner = agent._create_task_runner(self.user.user_id, skills)
         decision = runner.model_caller.select_task_model("review", ("text",), store)
         reviewer = runner.create_text_model(store, "independent_review", decision=decision)
-        return self.user._execute(ActionRequest.create("user:run-review", f"run:{run_id}", (ActionEffect.CREATE,)), lambda: review_run_evidence(store, run_id, evidence, reviewer.send_messages, skills.disclosure))
+        return self._execute(ActionRequest.create("user:run-review", f"run:{run_id}", (ActionEffect.CREATE,)), lambda: review_run_evidence(store, run_id, evidence, reviewer.send_messages, skills.disclosure))
 
 
-class UserMemory:
-    """Read and explicitly change long-term memory in one user scope."""
-
-    def __init__(self, user: UserAgent) -> None:
-        self.user = user
+class UserMemory(_UserResource):
 
     def list(self, scope: str | None = None) -> list["MemoryItem"]:
         return self._memory().list_long_term(scope)
@@ -165,10 +162,10 @@ class UserMemory:
         return self._memory().recall_long_term(query, scope, limit)
 
     def remember(self, text: str, scope: str | None = None, source_run_id: str = "") -> "MemoryItem":
-        return cast("MemoryItem", self.user._execute(ActionRequest.create("user:memory", "memory:long-term", (ActionEffect.CREATE,)), lambda: self._memory().remember_long_term(text, scope, source_run_id)))
+        return cast("MemoryItem", self._execute(ActionRequest.create("user:memory", "memory:long-term", (ActionEffect.CREATE,)), lambda: self._memory().remember_long_term(text, scope, source_run_id)))
 
     def forget(self, item_id: str, reason: str = "") -> None:
-        self.user._execute(ActionRequest.create("user:memory", f"memory:long-term:{item_id}", (ActionEffect.DELETE,)), lambda: self._memory().forget_long_term(item_id, reason))
+        self._execute(ActionRequest.create("user:memory", f"memory:long-term:{item_id}", (ActionEffect.DELETE,)), lambda: self._memory().forget_long_term(item_id, reason))
 
     def usage_habits_instruction(self) -> str:
         return self._memory().usage_habits.build_prompt_instruction()
@@ -181,14 +178,16 @@ class UserMemory:
         return create_memory_from_skill(skills.open(selected.reference), self.user._store())
 
 
-class UserSkills:
-    """Manage explicit Skill changes and model Skills for one user."""
-
-    def __init__(self, user: UserAgent) -> None:
-        self.user = user
+class UserSkills(_UserResource):
 
     def create_skill_updater(self) -> "SkillUpdater":
-        return cast("SkillUpdater", _create_skill_updater(self.user))
+        from skill.learning.update import SkillUpdater
+
+        agent = self.user.agent
+        store = self._store()
+        skills = agent._create_skills(self.user.user_id)
+        task_runner = agent._create_task_runner(self.user.user_id, skills)
+        return SkillUpdater(skills.disclosure, store=store, propose_model=task_runner.create_text_model(store, "skill_change_proposal"), test_model=task_runner.create_text_model(store, "skill_change_test"), on_skill_changed=lambda manifest: agent._reload_models(self.user.user_id) if manifest.skill_type == "model" else None, action_rules=agent._action_rules())
 
     def create_model_manager(self) -> "ModelSkillManager":
         from skill.handlers.model_management import ModelSkillManager
@@ -196,8 +195,6 @@ class UserSkills:
         return ModelSkillManager(self.user.agent.config, self.user._store(), self.user.agent._action_rules())
 
     def list_all(self) -> "Skills":
-        from dataclasses import replace
-
         config = self.user.agent.config
         return self.user.agent._create_skills(self.user.user_id, config=replace(config, agent=replace(config.agent, disabled_skills=[])))
 
@@ -224,11 +221,7 @@ class UserSkills:
         self.user.agent._reload_models(self.user.user_id)
 
 
-class UserConfiguration:
-    """Save Agent settings and refresh the active configuration explicitly."""
-
-    def __init__(self, user: UserAgent) -> None:
-        self.user = user
+class UserConfiguration(_UserResource):
 
     def update_agent_settings(self, settings: AgentSettings) -> CommonConfig:
         def update() -> CommonConfig:
@@ -244,16 +237,6 @@ class UserConfiguration:
         if not isinstance(updated, CommonConfig):
             raise TypeError("configuration update must return CommonConfig")
         return updated
-
-
-def _create_skill_updater(user: UserAgent) -> "SkillUpdater":
-    from skill.learning.update import SkillUpdater
-
-    agent = user.agent
-    store = user._store()
-    skills = agent._create_skills(user.user_id)
-    task_runner = agent._create_task_runner(user.user_id, skills)
-    return SkillUpdater(skills.disclosure, store=store, propose_model=task_runner.create_text_model(store, "skill_change_proposal"), test_model=task_runner.create_text_model(store, "skill_change_test"), on_skill_changed=lambda manifest: agent._reload_models(user.user_id) if manifest.skill_type == "model" else None, action_rules=agent._action_rules())
 
 
 def _find_run_owner(user: UserAgent, run_id: str) -> tuple[UserAgent, "EventStore"]:

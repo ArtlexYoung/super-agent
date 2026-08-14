@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from core.models import format_utc, parse_utc, read_number, read_object
+from core.models import format_utc, parse_utc, project_fields, read_number, read_object
 from skill.discovery.catalog import ProgressiveDisclosureCore, SkillDisclosure
 from skill.learning.records import EvaluationRecord, SkillRevision, evaluation_record_to_dict
 
@@ -60,6 +60,14 @@ class _EvidenceAccumulator:
     same_function_successful_followups: int = 0
     first_evaluated_at: str = ""
     last_evaluated_at: str = ""
+
+
+_SUMMARY_DIRECT_FIELDS = (
+    "revision", "success_count", "error_count", "empty_output_count",
+    "total_input_tokens", "total_output_tokens", "total_latency_ms",
+    "latency_sample_count", "same_function_followups",
+    "same_function_successful_followups", "first_evaluated_at", "last_evaluated_at",
+)
 
 
 def summarize_evaluation_evidence(records: list[EvaluationRecord], *, combine_versions: bool = False) -> list[EvaluationEvidenceSummary]:
@@ -123,29 +131,18 @@ def _create_summary(accumulator: _EvidenceAccumulator) -> EvaluationEvidenceSumm
     total_tokens = accumulator.total_input_tokens + accumulator.total_output_tokens
     followups = accumulator.same_function_followups
     successful_followups = accumulator.same_function_successful_followups
-    return EvaluationEvidenceSummary(
-        revision=accumulator.revision,
+    copied = project_fields(accumulator, _SUMMARY_DIRECT_FIELDS)
+    copied.update(
         evidence_sha256=_evidence_sha256(accumulator.revision, accumulator.record_sha256s),
-        record_ids=tuple(accumulator.record_ids),
-        sample_count=sample_count,
-        success_count=accumulator.success_count,
+        record_ids=tuple(accumulator.record_ids), sample_count=sample_count,
         failure_count=sample_count - accumulator.success_count,
-        error_count=accumulator.error_count,
-        empty_output_count=accumulator.empty_output_count,
         average_score=round(accumulator.score_total / sample_count, 4),
         score_ewma=round(accumulator.score_ewma, 6),
-        total_input_tokens=accumulator.total_input_tokens,
-        total_output_tokens=accumulator.total_output_tokens,
         average_tokens=round(total_tokens / sample_count, 2),
-        total_latency_ms=accumulator.total_latency_ms,
-        latency_sample_count=accumulator.latency_sample_count,
         average_latency_ms=(None if accumulator.latency_sample_count == 0 else round(accumulator.total_latency_ms / accumulator.latency_sample_count, 2)),
-        same_function_followups=followups,
-        same_function_successful_followups=successful_followups,
         replacement_rate=(0.0 if followups == 0 else round(successful_followups / followups, 4)),
-        first_evaluated_at=accumulator.first_evaluated_at,
-        last_evaluated_at=accumulator.last_evaluated_at,
     )
+    return EvaluationEvidenceSummary(**copied)
 
 
 def _evidence_key(revision: SkillRevision, combine_versions: bool) -> tuple[str, ...]:

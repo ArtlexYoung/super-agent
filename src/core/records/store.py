@@ -15,7 +15,6 @@ if TYPE_CHECKING:
 
 
 class DisclosureStorage(Protocol):
-    """Storage port used by the passive progressive disclosure core."""
 
     cache_root: Path
 
@@ -38,7 +37,6 @@ def _create_scope_digest(value: str) -> str:
 
 
 class EventStore:
-    """Expose domain operations while keeping backend details out of Skill handlers."""
 
     def __init__(self, backend: StorageBackend, local_root: Path, user_id: str, agent_name: str, *, run_event_log: RunEventLog | None = None, disclosure_factory: DisclosureStorageFactory | None = None) -> None:
         self._backend = backend
@@ -61,11 +59,9 @@ class EventStore:
         return self._disclosure
 
     def append_event(self, stream_type: str, stream_id: str, event_type: str, *, data: dict[str, object], event_id: str | None = None, created_at: str | None = None) -> StorageEvent:
-        """Append one canonical event inside this user and Agent scope."""
         return self._backend.append_event(user_id=self.user_id, agent_name=self.agent_name, stream_type=read_text(stream_type, "stream_type"), stream_id=read_text(stream_id, "stream_id"), event_type=read_text(event_type, "event_type"), data=dict(data), event_id=event_id, created_at=created_at)
 
     def read_events(self, stream_type: str | None = None, stream_id: str | None = None, *, event_type: str | None = None, snapshot: list[StorageEvent] | None = None) -> list[StorageEvent]:
-        """Read canonical events without escaping this user and Agent scope."""
         query = self._scope_query(stream_type, stream_id, event_type)
         if snapshot is not None:
             if any(event.user_id != self.user_id or event.agent_name != self.agent_name for event in snapshot):
@@ -74,11 +70,9 @@ class EventStore:
         return self._backend.read_events(query)
 
     def delete_events(self, stream_type: str, stream_id: str | None = None) -> int:
-        """Explicitly delete one scoped event stream or stream type."""
         return self._backend.delete_events(self._scope_query(read_text(stream_type, "stream_type"), stream_id))
 
     def store_for_run(self, run_id: str) -> EventStore:
-        """Select the Agent-scoped store for one run inside this user scope."""
         selected_id = read_text(run_id, "run_id")
         events = self._backend.read_events(StorageEventQuery(user_id=self.user_id, stream_type="run", stream_id=selected_id))
         if not events:
@@ -92,21 +86,17 @@ class EventStore:
         return EventStore(self._backend, self.local_root, self.user_id, agent_name, disclosure_factory=self._disclosure_factory)
 
     def start_run(self, identity: RunIdentity, prompt: str) -> RunEvent:
-        self._require_identity_scope(identity)
-        if self._run_event_log is not None:
-            if identity != self._run_event_log.identity:
-                raise ValueError("run identity does not match the active event log")
-            return self._run_event_log.start_run(prompt)
+        active_log = self._active_run_log(identity)
+        if active_log is not None:
+            return active_log.start_run(prompt)
         if self.read_events("run", identity.run_id):
             raise ValueError(f"run already exists: {identity.run_id}")
         return self.append_run_event(identity, "run.started", {"prompt": prompt, "conversation_id": identity.conversation_id, "parent_run_id": identity.parent_run_id})
 
     def append_run_event(self, identity: RunIdentity, event_type: str, data: dict[str, object] | None = None) -> RunEvent:
-        self._require_identity_scope(identity)
-        if self._run_event_log is not None:
-            if identity != self._run_event_log.identity:
-                raise ValueError("run identity does not match the active event log")
-            return self._run_event_log.append_event(event_type, data)
+        active_log = self._active_run_log(identity)
+        if active_log is not None:
+            return active_log.append_event(event_type, data)
         stored = self.append_event("run", identity.run_id, event_type, data=dict(data or {}))
         events = self.read_events("run", identity.run_id)
         from core.records.events import run_event_from_storage
@@ -117,11 +107,7 @@ class EventStore:
     def read_run(self, run_id: str, *, include_sensitive: bool = False) -> RunSnapshot:
         from core.records.events import run_snapshot_from_events
 
-        events = self.read_events("run", run_id)
-        if not events:
-            raise KeyError(f"run not found: {run_id}")
-        visible = events if include_sensitive else _redact_events_for_display(events)
-        return run_snapshot_from_events(self.user_id, visible)
+        return run_snapshot_from_events(self.user_id, self._read_visible_run_events(run_id, include_sensitive))
 
     def list_runs(self, limit: int | None = None, *, conversation_id: str | None = None, include_sensitive: bool = False) -> list[RunSnapshot]:
         from core.records.events import run_snapshot_from_events
@@ -139,20 +125,12 @@ class EventStore:
     def read_run_events(self, run_id: str, *, include_sensitive: bool = False) -> list[RunEvent]:
         from core.records.events import run_events_from_storage
 
-        events = self.read_events("run", run_id)
-        if not events:
-            raise KeyError(f"run not found: {run_id}")
-        visible = events if include_sensitive else _redact_events_for_display(events)
-        return run_events_from_storage(visible)
+        return run_events_from_storage(self._read_visible_run_events(run_id, include_sensitive))
 
     def explain_run(self, run_id: str, *, include_sensitive: bool = False) -> dict[str, object]:
         from core.records.events import explain_run_from_events
 
-        events = self.read_events("run", run_id)
-        if not events:
-            raise KeyError(f"run not found: {run_id}")
-        visible = events if include_sensitive else _redact_events_for_display(events)
-        return explain_run_from_events(self.user_id, visible)
+        return explain_run_from_events(self.user_id, self._read_visible_run_events(run_id, include_sensitive))
 
     def export_run(self, run_id: str, path: Path, *, include_sensitive: bool = False) -> Path:
         from core.checks import write_bytes_atomically
@@ -172,8 +150,20 @@ class EventStore:
         if identity.user_id != self.user_id or identity.agent_name != self.agent_name:
             raise ValueError("run identity does not match runtime store scope")
 
+    def _active_run_log(self, identity: RunIdentity) -> RunEventLog | None:
+        self._require_identity_scope(identity)
+        if self._run_event_log is not None and identity != self._run_event_log.identity:
+            raise ValueError("run identity does not match the active event log")
+        return self._run_event_log
+
     def _scope_query(self, stream_type: str | None, stream_id: str | None, event_type: str | None = None) -> StorageEventQuery:
         return StorageEventQuery(self.user_id, self.agent_name, stream_type, stream_id, event_type)
+
+    def _read_visible_run_events(self, run_id: str, include_sensitive: bool) -> list[StorageEvent]:
+        events = self.read_events("run", run_id)
+        if not events:
+            raise KeyError(f"run not found: {run_id}")
+        return events if include_sensitive else _redact_events_for_display(events)
 
 
 def _redact_events_for_display(events: list[StorageEvent]) -> list[StorageEvent]:

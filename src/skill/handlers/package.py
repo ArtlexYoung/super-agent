@@ -27,6 +27,7 @@ from skill.discovery.manifest import SkillManifest, calculate_skill_directory_sh
 
 
 FIXED_ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
+SKILL_NAME_PATTERN = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}")
 ActionResult = TypeVar("ActionResult")
 TransactionResult = TypeVar("TransactionResult")
 
@@ -58,10 +59,7 @@ class SkillPackageManager:
         return output_path
 
     def install_skill(self, source: str, expected_sha256: str = "") -> SkillManifest:
-        effects = [ActionEffect.READ, ActionEffect.CREATE]
-        if source.strip().startswith("git+"):
-            effects.extend((ActionEffect.EXECUTE, ActionEffect.NETWORK))
-        return self._execute_package_action("skill:owned:install", tuple(effects), lambda: self._install_skill(source, expected_sha256))
+        return self._execute_package_action("skill:owned:install", _package_source_effects(source, ActionEffect.CREATE), lambda: self._install_skill(source, expected_sha256))
 
     def _install_skill(self, source: str, expected_sha256: str) -> SkillManifest:
         with tempfile.TemporaryDirectory(prefix="super-agent-install-") as tmp:
@@ -70,7 +68,7 @@ class SkillPackageManager:
             index = self.skill_disclosure.prepare_skill_index()
             if index.find_skill(manifest.name, manifest.skill_type) is not None:
                 raise FileExistsError(f"skill already exists: {manifest.skill_type}:{manifest.name}")
-            target = _managed_skill_target(self.user_skill_root, manifest)
+            target = self.user_skill_root / manifest.skill_type / manifest.name
             if target.exists():
                 raise FileExistsError(f"skill target already exists: {target}")
             update = SkillDirectoryUpdate(staged, target, calculate_skill_directory_sha256(staged), "")
@@ -78,22 +76,18 @@ class SkillPackageManager:
             return self._read_skill_manifest(manifest.name, manifest.skill_type)
 
     def update_skill(self, name: str, source: str, expected_sha256: str = "") -> SkillManifest:
-        effects = [ActionEffect.READ, ActionEffect.UPDATE]
-        if source.strip().startswith("git+"):
-            effects.extend((ActionEffect.EXECUTE, ActionEffect.NETWORK))
-        return self._execute_package_action(f"skill:owned:{name}", tuple(effects), lambda: self._update_skill(name, source, expected_sha256))
+        return self._execute_package_action(f"skill:owned:{name}", _package_source_effects(source, ActionEffect.UPDATE), lambda: self._update_skill(name, source, expected_sha256))
 
     def _update_skill(self, name: str, source: str, expected_sha256: str) -> SkillManifest:
         skill_name, expected_type = _split_skill_reference(name)
         current = self._read_skill_manifest(skill_name, expected_type)
-        target = _managed_skill_target(self.user_skill_root, current)
+        target = self.user_skill_root / current.skill_type / current.name
         with tempfile.TemporaryDirectory(prefix="super-agent-update-") as tmp:
             staged = _stage_skill_source(source, Path(tmp))
             proposed = _validate_staged_skill(staged, expected_sha256)
-            if proposed.name != skill_name:
-                raise ValueError(f"updated skill name does not match target: {proposed.name} != {skill_name}")
-            if proposed.skill_type != current.skill_type:
-                raise ValueError(f"updated Skill type does not match target: {proposed.skill_type} != {current.skill_type}")
+            for label, actual, expected in (("skill name", proposed.name, skill_name), ("Skill type", proposed.skill_type, current.skill_type)):
+                if actual != expected:
+                    raise ValueError(f"updated {label} does not match target: {actual} != {expected}")
             validate_skill_replacement(current.path, staged)
             expected_target_sha256 = calculate_skill_directory_sha256(current.path) if current.path.absolute() == target.absolute() else ""
             update = SkillDirectoryUpdate(staged, target, calculate_skill_directory_sha256(staged), expected_target_sha256)
@@ -104,8 +98,7 @@ class SkillPackageManager:
         self._execute_package_action(f"skill:owned:{name}", (ActionEffect.DELETE,), lambda: self._remove_skill(name))
 
     def _execute_package_action(self, resource: str, effects: tuple[ActionEffect, ...], action: Callable[[], ActionResult]) -> ActionResult:
-        request = ActionRequest.create("user:skill-package", resource, effects)
-        return self.actions.execute_action(request, action)
+        return self.actions.execute_action(ActionRequest.create("user:skill-package", resource, effects), action)
 
     def _remove_skill(self, name: str) -> None:
         skill_name, expected_type = _split_skill_reference(name)
@@ -123,6 +116,11 @@ class SkillPackageManager:
         return self.skill_disclosure.open_skill(name, expected_type).read_manifest()
 
 
+def _package_source_effects(source: str, write_effect: ActionEffect) -> tuple[ActionEffect, ...]:
+    effects = (ActionEffect.READ, write_effect)
+    return effects + ((ActionEffect.EXECUTE, ActionEffect.NETWORK) if source.strip().startswith("git+") else ())
+
+
 def _stage_skill_source(source: str, temporary_root: Path) -> Path:
     value = source.strip()
     if not value:
@@ -131,14 +129,14 @@ def _stage_skill_source(source: str, temporary_root: Path) -> Path:
         return _stage_git_source(value[4:], temporary_root)
     path = Path(value).expanduser()
     if path.is_dir():
-        copied = temporary_root / path.name
-        copy_skill_directory(path, copied)
-        return _locate_skill_directory(copied)
-    if path.is_file() and zipfile.is_zipfile(path):
-        extracted = temporary_root / "archive"
-        _extract_skill_zip(path, extracted)
-        return _locate_skill_directory(extracted)
-    raise FileNotFoundError(f"skill package source not found or unsupported: {source}")
+        staged_root = temporary_root / path.name
+        copy_skill_directory(path, staged_root)
+    elif path.is_file() and zipfile.is_zipfile(path):
+        staged_root = temporary_root / "archive"
+        _extract_skill_zip(path, staged_root)
+    else:
+        raise FileNotFoundError(f"skill package source not found or unsupported: {source}")
+    return _locate_skill_directory(staged_root)
 
 
 def _stage_git_source(source: str, temporary_root: Path) -> Path:
@@ -192,8 +190,7 @@ def _validate_zip_member(info: zipfile.ZipInfo) -> PurePosixPath:
     name = info.filename.replace("\\", "/")
     relative = PurePosixPath(name)
     file_type = (info.external_attr >> 16) & 0o170000
-    unsafe = not name or relative.is_absolute() or ".." in relative.parts or re.match(r"^[a-zA-Z]:", name) is not None or file_type == stat.S_IFLNK
-    if unsafe:
+    if not name or relative.is_absolute() or ".." in relative.parts or re.match(r"^[a-zA-Z]:", name) is not None or file_type == stat.S_IFLNK:
         raise ValueError(f"unsafe path in skill package: {info.filename}")
     return relative
 
@@ -201,7 +198,7 @@ def _validate_zip_member(info: zipfile.ZipInfo) -> PurePosixPath:
 def _locate_skill_directory(root: Path) -> Path:
     if (root / "skill.toml").is_file():
         return root
-    candidates = sorted(path for path in root.iterdir() if path.is_dir() and (path / "skill.toml").is_file())
+    candidates = [path for path in root.iterdir() if path.is_dir() and (path / "skill.toml").is_file()]
     if len(candidates) != 1:
         raise ValueError("skill package must contain exactly one skill directory")
     return candidates[0]
@@ -210,18 +207,13 @@ def _locate_skill_directory(root: Path) -> Path:
 def _validate_staged_skill(path: Path, expected_sha256: str) -> SkillManifest:
     _reject_symlinks(path)
     manifest = validate_skill_directory(path)
-    clean_name = _clean_skill_name(manifest.name)
-    if clean_name != manifest.name:
+    if _clean_skill_name(manifest.name) != manifest.name:
         raise ValueError(f"packaged skill name must be normalized: {manifest.name}")
     actual = calculate_skill_directory_sha256(path)
     expected = _clean_expected_sha256(expected_sha256)
     if expected and not hmac.compare_digest(actual, expected):
         raise ValueError(f"skill content SHA-256 mismatch: expected {expected}, got {actual}")
     return manifest
-
-
-def _managed_skill_target(skill_root: Path, manifest: SkillManifest) -> Path:
-    return skill_root / manifest.skill_type / manifest.name
 
 
 def copy_skill_directory(source: Path, target: Path) -> None:
@@ -236,10 +228,7 @@ def create_skill_candidate(target: Path, source: Path | None = None) -> Iterator
     target.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=f".{target.name}.skill-candidate-", dir=target.parent) as root:
         candidate = Path(root) / target.name
-        if source is None:
-            candidate.mkdir()
-        else:
-            copy_skill_directory(source, candidate)
+        candidate.mkdir() if source is None else copy_skill_directory(source, candidate)
         yield candidate
 
 
@@ -274,7 +263,7 @@ def _path_is_within(path: Path, root: Path) -> bool:
 
 def _clean_skill_name(name: str) -> str:
     value = name.strip().lower()
-    if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", value):
+    if SKILL_NAME_PATTERN.fullmatch(value) is None:
         raise ValueError("skill name must use lowercase letters, numbers, '-' or '_'")
     return value
 
@@ -284,7 +273,7 @@ def _split_skill_reference(value: str) -> tuple[str, str | None]:
     if ":" not in reference:
         return _clean_skill_name(reference), None
     skill_type, name = reference.split(":", 1)
-    if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", skill_type):
+    if SKILL_NAME_PATTERN.fullmatch(skill_type) is None:
         raise ValueError(f"invalid Skill type: {skill_type}")
     return _clean_skill_name(name), skill_type
 
@@ -300,30 +289,15 @@ def _clean_expected_sha256(value: str) -> str:
 SKILL_LOCK_SCHEMA_VERSION = 2
 
 
-@dataclass(frozen=True)
-class LockedSkill:
-    name: str
-    skill_type: str
-    version: str
-    sha256: str
-    provides: list[str]
-    requires: list[str]
-
-
 def write_skill_lock_file(manifests: list[SkillManifest], path: Path) -> None:
     # Excluding timestamps and absolute paths makes identical lock content byte-for-byte stable.
-    locked = [_lock_manifest(manifest) for manifest in sorted(manifests, key=lambda item: (item.skill_type, item.name))]
-    keys = {(item.skill_type, item.name) for item in locked}
-    if len(keys) != len(locked):
+    ordered = sorted(manifests, key=lambda item: (item.skill_type, item.name))
+    if len({(item.skill_type, item.name) for item in ordered}) != len(ordered):
         raise ValueError("skill lock cannot contain duplicate skill keys")
     lines = [f"schema_version = {SKILL_LOCK_SCHEMA_VERSION}", ""]
-    for item in locked:
-        lines.extend(["[[skills]]", f"name = {json.dumps(item.name)}", f"type = {json.dumps(item.skill_type)}", f"version = {json.dumps(item.version)}", f"sha256 = {json.dumps(item.sha256)}", f"provides = {_toml_string_array(item.provides)}", f"requires = {_toml_string_array(item.requires)}", ""])
+    for manifest in ordered:
+        lines.extend(["[[skills]]", f"name = {json.dumps(manifest.name)}", f"type = {json.dumps(manifest.skill_type)}", f"version = {json.dumps(manifest.version)}", f"sha256 = {json.dumps(calculate_skill_directory_sha256(manifest.path))}", f"provides = {_toml_string_array(sorted(manifest.provides))}", f"requires = {_toml_string_array(sorted(manifest.requires))}", ""])
     write_bytes_atomically(path, "\n".join(lines).encode())
-
-
-def _lock_manifest(manifest: SkillManifest) -> LockedSkill:
-    return LockedSkill(name=manifest.name, skill_type=manifest.skill_type, version=manifest.version, sha256=calculate_skill_directory_sha256(manifest.path), provides=sorted(manifest.provides), requires=sorted(manifest.requires))
 
 
 def _toml_string_array(values: list[str]) -> str:
@@ -359,20 +333,21 @@ def apply_skill_directory_updates(updates: list[SkillDirectoryUpdate], *, after_
     """Apply one verified directory transaction and restore all targets on failure."""
     if not updates:
         return
-    targets = [update.target.absolute() for update in updates]
-    if len(set(targets)) != len(targets):
+    if len({update.target.absolute() for update in updates}) != len(updates):
         raise ValueError("Skill directory update targets must be unique")
     staged = _stage_skill_directory_updates(updates)
     backups: dict[Path, Path] = {}
     activated: list[Path] = []
-    result = None
     try:
         _activate_skill_directory_updates(updates, staged, backups, activated)
-        if after_apply is not None:
-            result = after_apply()
+        result = None if after_apply is None else after_apply()
     except Exception as error:
         _restore_skill_directory_updates(activated, backups)
-        _notify_skill_directory_restored(after_restore, error)
+        if after_restore is not None:
+            try:
+                after_restore()
+            except Exception as restore_error:
+                error.add_note(f"Could not refresh after restoring Skills: {type(restore_error).__name__}: {restore_error}")
         raise
     finally:
         _remove_skill_directories(staged)
@@ -408,20 +383,11 @@ def _activate_skill_directory_updates(updates: list[SkillDirectoryUpdate], stage
             backup = update.target.parent / f".{update.target.name}.backup-{uuid4().hex}"
             os.replace(update.target, backup)
             backups[update.target] = backup
-            _hide_backup_manifests(backup)
+            _rename_backup_manifests(backup, hide=True)
     for update, candidate in zip(updates, staged, strict=True):
         if candidate is not None:
             os.replace(candidate, update.target)
             activated.append(update.target)
-
-
-def _notify_skill_directory_restored(after_restore: Callable[[], None] | None, error: Exception) -> None:
-    if after_restore is None:
-        return
-    try:
-        after_restore()
-    except Exception as restore_error:
-        error.add_note(f"Could not refresh after restoring Skills: {type(restore_error).__name__}: {restore_error}")
 
 
 def _remove_skill_directories(paths: list[Path | None]) -> None:
@@ -435,38 +401,28 @@ def _restore_skill_directory_updates(activated: list[Path], backups: dict[Path, 
         if _path_exists(target):
             shutil.rmtree(target)
     for target, backup in reversed(list(backups.items())):
-        _show_backup_manifests(backup)
+        _rename_backup_manifests(backup, hide=False)
         os.replace(backup, target)
 
 
-def _hide_backup_manifests(backup: Path) -> None:
-    for manifest in backup.rglob("skill.toml"):
-        manifest.replace(manifest.with_name(".skill.toml.backup"))
-
-
-def _show_backup_manifests(backup: Path) -> None:
-    for manifest in backup.rglob(".skill.toml.backup"):
-        manifest.replace(manifest.with_name("skill.toml"))
+def _rename_backup_manifests(backup: Path, *, hide: bool) -> None:
+    source, target = ("skill.toml", ".skill.toml.backup") if hide else (".skill.toml.backup", "skill.toml")
+    for manifest in backup.rglob(source):
+        manifest.replace(manifest.with_name(target))
 
 
 def validate_skill_directory(skill_path: Path, *, expected_type: str | None = None, expected_name: str | None = None) -> SkillManifest:
     """Validate one complete Skill directory through progressive disclosure."""
-    disclosure = ProgressiveDisclosureCore([skill_path])
-    index = disclosure.prepare_skill_index()
-    if len(index.entries) != 1:
-        raise ValueError("skill directory must contain exactly one valid skill")
-    entry = index.entries[0]
-    if expected_type is not None and entry.reference.skill_type != expected_type:
-        raise ValueError(f"candidate changed Skill type: {expected_type} -> {entry.reference.skill_type}")
-    if expected_name is not None and entry.reference.name != expected_name:
-        raise ValueError(f"candidate changed skill name: {expected_name} -> {entry.reference.name}")
-    opened = disclosure.open_skill(entry.reference.name, entry.reference.skill_type)
-    _validate_skill_type(opened, entry.reference.skill_type)
-    return opened.read_manifest()
+    opened = open_single_skill_directory(skill_path)
+    manifest = opened.read_manifest()
+    for label, expected, actual in (("Skill type", expected_type, manifest.skill_type), ("skill name", expected_name, manifest.name)):
+        if expected is not None and actual != expected:
+            raise ValueError(f"candidate changed {label}: {expected} -> {actual}")
+    _validate_skill_type(opened, manifest.skill_type)
+    return manifest
 
 
 def open_single_skill_directory(path: Path) -> SkillDisclosure:
-    """Open exactly one Skill directory for a read-only comparison."""
     disclosure = ProgressiveDisclosureCore([path])
     index = disclosure.prepare_skill_index()
     if len(index.entries) != 1:
@@ -476,21 +432,18 @@ def open_single_skill_directory(path: Path) -> SkillDisclosure:
 
 
 def validate_skill_replacement(current_path: Path, proposed_path: Path) -> None:
-    """Ensure an update keeps identity and protected model connection fields."""
     current = open_single_skill_directory(current_path)
     proposed = open_single_skill_directory(proposed_path)
     current_manifest = current.read_manifest()
     proposed_manifest = proposed.read_manifest()
-    if current_manifest.skill_type != proposed_manifest.skill_type:
-        raise ValueError("updated skill cannot change skill_type")
-    if current_manifest.name != proposed_manifest.name:
-        raise ValueError("updated skill cannot change name")
+    for field in ("skill_type", "name"):
+        if getattr(current_manifest, field) != getattr(proposed_manifest, field):
+            raise ValueError(f"updated skill cannot change {field}")
     if proposed_manifest.skill_type == "model":
         _validate_model_replacement(current, proposed)
 
 
 def check_skill_configuration(skill_path: Path, expected: dict[str, object]) -> list[bool]:
-    """Compare expected Skill settings without writing disclosure state."""
     if not isinstance(expected, dict) or not all(isinstance(name, str) and name.strip() for name in expected):
         raise ValueError("expected Skill configuration must use non-empty string keys")
     disclosure = open_single_skill_directory(skill_path)
@@ -499,18 +452,9 @@ def check_skill_configuration(skill_path: Path, expected: dict[str, object]) -> 
 
 
 def _validate_skill_type(disclosure: SkillDisclosure, skill_type: str) -> None:
-    if skill_type == "prompt":
-        _validate_prompt_skill(disclosure)
-    elif skill_type == "memory":
-        read_memory_settings_from_skill(disclosure)
-    elif skill_type == "workflow":
-        create_workflow_policy_from_skill(disclosure)
-    elif skill_type == "task":
-        create_task_policy_from_skill(disclosure)
-    elif skill_type == "mcp":
-        read_mcp_skill_settings(disclosure)
-    elif skill_type == "model":
-        create_model_profile_from_skill_disclosure(disclosure)
+    validator = {"prompt": _validate_prompt_skill, "memory": read_memory_settings_from_skill, "workflow": create_workflow_policy_from_skill, "task": create_task_policy_from_skill, "mcp": read_mcp_skill_settings, "model": create_model_profile_from_skill_disclosure}.get(skill_type)
+    if validator is not None:
+        validator(disclosure)
 
 
 def _validate_prompt_skill(disclosure: SkillDisclosure) -> None:

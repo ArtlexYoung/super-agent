@@ -57,6 +57,11 @@ Runtime may consume disclosed Skill content, while optional learning is invoked 
 a run. Removed ownership paths are release-tested as failed imports rather than retained through
 aliases or forwarding modules.
 
+`core.models` owns only strict primitive readers, immutable event values, and explicit field
+projection. Provider owns network contracts and measured calls, Runtime owns run identity and
+lifecycle, and each Skill module owns the meaning of its manifest, policy, evidence, or update.
+Shared projection therefore removes duplicate parsing without moving domain decisions into Core.
+
 ## One Task Path
 
 ```text
@@ -114,6 +119,10 @@ Every persisted stream includes a trusted user ID and Agent name. An unavailable
 feature raises an error when requested; Runtime does not replace it with an in-memory
 version.
 
+`adapter.user.UserAgent` is the single user-scoped resource entry. Its conversation, run, memory,
+Skill, model, and configuration views obtain the same scoped store and explicit action executor;
+child-run lookup keeps the user ID while traversing only Agents attached in application code.
+
 ## Side Effects
 
 `ActionRequest` declares the actor, resource, effects, and argument names before execution.
@@ -163,3 +172,7 @@ The release suite verifies the claims above as behavior:
 - External adapters share one parsed CLI dispatch boundary, one AG-UI byte-response path, and one
   SQL cursor lifecycle; the concrete commands, HTTP routes, and database dialects remain visible
   at their owning adapters.
+- Provider profiles, Runtime identities, Skill contributions, evaluation records, and stored
+  conversations reuse strict structural readers while preserving their domain-owned checks.
+- User-facing state operations enter through one user resource boundary and retain explicit action
+  requests, Agent scope, storage errors, and optional-state failures without fallback behavior.

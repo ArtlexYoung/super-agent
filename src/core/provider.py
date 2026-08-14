@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from time import perf_counter
 from typing import Any, Callable, Iterator, Mapping, Protocol
 
+from core.models import read_object, read_optional_number, read_optional_text, read_text
+
 Message = dict[str, Any]
 ToolDefinition = dict[str, Any]
 
@@ -34,19 +36,7 @@ class ModelPricing:
 
     @classmethod
     def from_mapping(cls, value: Mapping[str, object]) -> ModelPricing:
-        prices: dict[str, float | None] = {}
-        for name in MODEL_PRICE_FIELDS:
-            raw = value.get(name)
-            if raw is None:
-                prices[name] = None
-                continue
-            if isinstance(raw, bool) or not isinstance(raw, int | float):
-                raise ValueError(f"model price {name} must be a number")
-            price = float(raw)
-            if not math.isfinite(price) or price < 0:
-                raise ValueError(f"model price {name} must be finite and non-negative")
-            prices[name] = price
-        return cls(**prices)
+        return cls(**{name: read_optional_number(value.get(name), f"model price {name}", minimum=0) for name in MODEL_PRICE_FIELDS})
 
     @property
     def total_cost_per_million(self) -> float:
@@ -63,7 +53,6 @@ class ModelPricing:
         return {**data, "total_cost_per_million": sum(data.values())}
 
     def estimate_cost(self, token_counts: Mapping[str, int | None]) -> dict[str, object]:
-        """Estimate declared token costs while naming every unknown usage field."""
         counts = {name: token_counts.get(name) for name, _ in MODEL_TOKEN_PRICE_FIELDS}
         known = {name: value for name, value in counts.items() if value is not None}
         prices = self.resolved_dict()
@@ -96,8 +85,7 @@ class ModelAction:
     arguments: dict[str, object]
 
     def __post_init__(self) -> None:
-        if not self.name.strip():
-            raise ValueError("model action name cannot be empty")
+        read_text(self.name, "model action name")
 
 
 @dataclass(frozen=True)
@@ -186,49 +174,42 @@ class MockProvider:
 
 
 @dataclass(frozen=True)
-class OpenAICompatibleProvider:
+class _JsonProvider:
     base_url: str
     api_key: str
 
+    def _post(self, path: str, payload: dict[str, object]) -> dict[str, Any]:
+        return _send_json_post_request(f"{self.base_url.rstrip('/')}/{path}", payload, self.api_key)
+
+
+@dataclass(frozen=True)
+class OpenAICompatibleProvider(_JsonProvider):
     def send_chat_messages(self, messages: list[Message], model: str) -> str:
-        data = self._send_request({"model": model, "messages": messages})
+        data = self._post("chat/completions", {"model": model, "messages": messages})
         return str(data["choices"][0]["message"]["content"])
 
     def send_chat_messages_with_tools(self, messages: list[Message], model: str, tools: list[ToolDefinition]) -> ModelResponse:
-        data = self._send_request({"model": model, "messages": messages, "tools": tools})
+        data = self._post("chat/completions", {"model": model, "messages": messages, "tools": tools})
         choice = data["choices"][0]
         message = choice["message"]
         calls = [_read_openai_tool_call(item) for item in message.get("tool_calls", [])]
         stop_reason = "tool_calls" if calls else "model_finished"
         return ModelResponse(text=str(message.get("content") or ""), tool_calls=calls, stop_reason=stop_reason)
 
-    def _send_request(self, payload: dict[str, object]) -> dict[str, Any]:
-        url = f"{self.base_url.rstrip('/')}/chat/completions"
-        return _send_json_post_request(url, payload, self.api_key)
-
-
 @dataclass(frozen=True)
-class AnthropicCompatibleProvider:
-    base_url: str
-    api_key: str
-
+class AnthropicCompatibleProvider(_JsonProvider):
     def send_chat_messages(self, messages: list[Message], model: str) -> str:
         system, user_messages = _split_system_message_from_user_messages(messages)
         payload = {"model": model, "max_tokens": 4096, "system": system, "messages": user_messages}
-        data = self._send_request(payload)
+        data = self._post("v1/messages", payload)
         return _read_anthropic_text(data)
 
     def send_chat_messages_with_tools(self, messages: list[Message], model: str, tools: list[ToolDefinition]) -> ModelResponse:
         system, non_system_messages = _split_system_message_from_user_messages(messages)
         payload = {"model": model, "max_tokens": 4096, "system": system, "messages": _to_anthropic_messages(non_system_messages), "tools": [_to_anthropic_tool_definition(tool) for tool in tools]}
-        data = self._send_request(payload)
+        data = self._post("v1/messages", payload)
         calls = [_read_anthropic_tool_call(block) for block in data.get("content", []) if block.get("type") == "tool_use"]
         return ModelResponse(text=_read_anthropic_text(data), tool_calls=calls, stop_reason="tool_calls" if calls else "model_finished")
-
-    def _send_request(self, payload: dict[str, object]) -> dict[str, Any]:
-        url = f"{self.base_url.rstrip('/')}/v1/messages"
-        return _send_json_post_request(url, payload, self.api_key)
-
 
 def create_chat_provider(connection: ProviderConnection, environment: Mapping[str, str] | None = None) -> ChatProvider:
     settings = normalize_provider_connection(connection)
@@ -266,8 +247,8 @@ def normalize_provider_connection(connection: ProviderConnection) -> ProviderCon
         raise ValueError(f"unknown provider: {connection.provider}")
     if provider == MOCK_PROVIDER:
         return ProviderConnection(provider=provider)
-    base_url = _optional_text(connection.base_url) or _default_base_url(provider)
-    api_key_env = _optional_text(connection.api_key_env)
+    base_url = read_optional_text(connection.base_url, "provider base_url") or _default_base_url(provider)
+    api_key_env = read_optional_text(connection.api_key_env, "provider api_key_env")
     if api_key_env is None and not _is_local_url(base_url):
         api_key_env = "OPENAI_API_KEY" if provider == OPENAI_COMPATIBLE_PROVIDER else "ANTHROPIC_API_KEY"
     return ProviderConnection(provider, base_url, api_key_env)
@@ -292,19 +273,18 @@ def _mock_structured_response(messages: list[Message], feedback_response: str | 
 
 def _read_openai_tool_call(data: dict[str, Any]) -> ToolCall:
     function = data.get("function", {})
-    arguments = function.get("arguments", {})
-    if isinstance(arguments, str):
-        arguments = json.loads(arguments or "{}")
-    if not isinstance(arguments, dict):
-        raise ValueError("OpenAI tool call arguments must be an object")
+    arguments = _read_tool_arguments(function.get("arguments", {}), "OpenAI tool call arguments")
     return ToolCall(id=str(data.get("id", "")), name=str(function.get("name", "")), arguments=arguments)
 
 
 def _read_anthropic_tool_call(data: dict[str, Any]) -> ToolCall:
-    arguments = data.get("input", {})
-    if not isinstance(arguments, dict):
-        raise ValueError("Anthropic tool call input must be an object")
+    arguments = _read_tool_arguments(data.get("input", {}), "Anthropic tool call input")
     return ToolCall(id=str(data.get("id", "")), name=str(data.get("name", "")), arguments=arguments)
+
+
+def _read_tool_arguments(value: object, label: str) -> dict[str, object]:
+    arguments = json.loads(value or "{}") if isinstance(value, str) else value
+    return dict(read_object(arguments, label))
 
 
 def _to_anthropic_tool_definition(tool: ToolDefinition) -> dict[str, object]:
@@ -335,9 +315,7 @@ def _to_anthropic_messages(messages: list[Message]) -> list[Message]:
 
 def _tool_call_to_anthropic_block(data: dict[str, Any]) -> dict[str, object]:
     function = data.get("function", {})
-    arguments = function.get("arguments", {})
-    if isinstance(arguments, str):
-        arguments = json.loads(arguments or "{}")
+    arguments = _read_tool_arguments(function.get("arguments", {}), "Anthropic tool call input")
     return {"type": "tool_use", "id": str(data.get("id", "")), "name": str(function.get("name", "")), "input": arguments}
 
 
@@ -356,9 +334,7 @@ def _read_api_key_from_environment(name: str | None, environment: Mapping[str, s
 
 
 def _default_base_url(provider: str) -> str:
-    if provider == OPENAI_COMPATIBLE_PROVIDER:
-        return "https://api.openai.com/v1"
-    return "https://api.anthropic.com"
+    return "https://api.openai.com/v1" if provider == OPENAI_COMPATIBLE_PROVIDER else "https://api.anthropic.com"
 
 
 def _is_local_url(value: str) -> bool:
@@ -366,13 +342,6 @@ def _is_local_url(value: str) -> bool:
 
     hostname = urlparse(value).hostname or ""
     return hostname in {"localhost", "127.0.0.1", "::1"}
-
-
-def _optional_text(value: str | None) -> str | None:
-    if value is None:
-        return None
-    text = value.strip()
-    return text or None
 
 
 def _send_json_post_request(url: str, payload: dict[str, object], api_key: str) -> dict[str, Any]:
@@ -396,7 +365,6 @@ UserSecretLookup = Callable[[str, str], str | None]
 
 
 class UserSecretResolver:
-    """Create a non-enumerable environment view for one validated user."""
 
     def __init__(self, lookup: UserSecretLookup | None = None, process_environment: Mapping[str, str] | None = None) -> None:
         self.lookup = lookup
@@ -434,7 +402,6 @@ class _UserSecretEnvironment(Mapping[str, str]):
 
 
 class ProviderPool:
-    """Reuse providers while keeping user-specific environments isolated."""
 
     def __init__(self, environment: Mapping[str, str] | None = None) -> None:
         self.environment = os.environ if environment is None else environment
@@ -466,7 +433,4 @@ class ProviderPool:
 
 
 def _clean_profile_key(value: str) -> str:
-    key = value.strip().lower()
-    if not key:
-        raise ValueError("model profile key cannot be empty")
-    return key
+    return read_text(value, "model profile key").lower()

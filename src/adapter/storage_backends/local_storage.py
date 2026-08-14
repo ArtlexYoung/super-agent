@@ -105,10 +105,10 @@ class _SqliteDatabase:
     placeholder = "?"
     hash_identifiers = False
     begin_write_sql = "BEGIN IMMEDIATE"
-    insert_event_sql = """INSERT INTO storage_events (
-        event_id, user_id, agent_name, stream_type, stream_id,
-        event_type, created_at, data_json
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"""
+    insert_event_sql = (
+        "INSERT INTO storage_events (event_id, user_id, agent_name, stream_type, "
+        "stream_id, event_type, created_at, data_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+    )
 
     def __init__(self, database_path: Path) -> None:
         self.location = database_path
@@ -121,18 +121,15 @@ class _SqliteDatabase:
             if version not in {0, SQLITE_SCHEMA_VERSION}:
                 raise ValueError(f"unsupported SQLite storage schema version: {version}")
             connection.executescript(
-                """CREATE TABLE IF NOT EXISTS storage_events (
-                    position INTEGER PRIMARY KEY AUTOINCREMENT,
-                    event_id TEXT NOT NULL, user_id TEXT NOT NULL,
-                    agent_name TEXT NOT NULL, stream_type TEXT NOT NULL,
-                    stream_id TEXT NOT NULL, event_type TEXT NOT NULL,
-                    created_at TEXT NOT NULL, data_json TEXT NOT NULL,
-                    UNIQUE (user_id, event_id)
-                );
-                CREATE INDEX IF NOT EXISTS storage_events_scope
-                    ON storage_events (user_id, agent_name, stream_type, stream_id, position);
-                CREATE INDEX IF NOT EXISTS storage_events_type
-                    ON storage_events (user_id, event_type, position);"""
+                "CREATE TABLE IF NOT EXISTS storage_events ("
+                "position INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT NOT NULL, "
+                "user_id TEXT NOT NULL, agent_name TEXT NOT NULL, stream_type TEXT NOT NULL, "
+                "stream_id TEXT NOT NULL, event_type TEXT NOT NULL, created_at TEXT NOT NULL, "
+                "data_json TEXT NOT NULL, UNIQUE (user_id, event_id)); "
+                "CREATE INDEX IF NOT EXISTS storage_events_scope ON storage_events "
+                "(user_id, agent_name, stream_type, stream_id, position); "
+                "CREATE INDEX IF NOT EXISTS storage_events_type ON storage_events "
+                "(user_id, event_type, position);"
             )
             connection.execute(f"PRAGMA user_version = {SQLITE_SCHEMA_VERSION}")
             connection.commit()
