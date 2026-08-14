@@ -10,20 +10,9 @@ from time import monotonic
 from typing import Callable
 
 from core.checks import ActionEffect
-from core.models import SubagentRecordOptions, read_optional_tool_string, read_required_tool_string, read_text_list, reject_unknown_fields
+from core.models import read_optional_tool_string, read_required_tool_string, read_text_list, reject_unknown_fields
 from core.records.audit import compact_subagent_result
-from skill.tasks.task_selection import (
-    AgentSelector,
-    TaskQueueSettings,
-    AgentUnavailableError,
-    QueuedTask,
-    SelectedAgent,
-    TERMINAL_TASK_STATUSES,
-    estimated_token_schema,
-    is_agent_unavailable,
-    read_optional_estimated_tokens,
-    read_required_task_strings,
-)
+from skill.tasks.task_selection import AgentSelector, TaskQueueSettings, AgentUnavailableError, QueuedTask, SelectedAgent, TERMINAL_TASK_STATUSES, estimated_token_schema, is_agent_unavailable, read_optional_estimated_tokens, read_required_task_strings
 from skill.tasks.task_groups import AgentGroup, AgentGroups, AgentGroupSettings
 from skill.handlers.runtime import SkillAction, SkillTool
 
@@ -71,28 +60,13 @@ class TaskQueue:
             SkillTool(
                 "create_agent_task",
                 "Create one explicit task for later dispatch to a suitable subagent.",
-                {
-                    "prompt": {"type": "string"},
-                    "purpose": {"type": "string"},
-                    "required_features": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 16},
-                    "estimated_output_tokens": estimated_token_schema(),
-                    "estimated_cache_creation_tokens": estimated_token_schema(),
-                    "estimated_cache_read_tokens": estimated_token_schema(),
-                },
+                {"prompt": {"type": "string"}, "purpose": {"type": "string"}, "required_features": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 16}, "estimated_output_tokens": estimated_token_schema(), "estimated_cache_creation_tokens": estimated_token_schema(), "estimated_cache_read_tokens": estimated_token_schema()},
                 self._create_task,
                 action,
                 ("prompt", "purpose", "required_features"),
                 "agent-task",
             ),
-            SkillTool(
-                "dispatch_agent_task",
-                "Queue one created task for an explicit or contract-matched subagent.",
-                {"task_id": task_id, "agent_name": {"type": "string"}},
-                self._dispatch_task,
-                SkillAction((ActionEffect.UPDATE, ActionEffect.DELEGATE), "task:queue", "task_id"),
-                ("task_id",),
-                "agent-task",
-            ),
+            SkillTool("dispatch_agent_task", "Queue one created task for an explicit or contract-matched subagent.", {"task_id": task_id, "agent_name": {"type": "string"}}, self._dispatch_task, SkillAction((ActionEffect.UPDATE, ActionEffect.DELEGATE), "task:queue", "task_id"), ("task_id",), "agent-task"),
             SkillTool(
                 "wait_for_agent_tasks",
                 "Sleep without model calls until a task trigger or the configured time limit.",
@@ -103,9 +77,7 @@ class TaskQueue:
                 "agent-task",
             ),
             SkillTool("list_agent_tasks", "List current task queue states without returning task prompts.", {}, self._list_tasks, SkillAction((ActionEffect.READ,), "task:queue"), result_kind="agent-task"),
-            SkillTool(
-                "cancel_agent_task", "Cancel one task that has not started running.", {"task_id": task_id}, self._cancel_task, SkillAction((ActionEffect.UPDATE,), "task:queue", "task_id"), ("task_id",), "agent-task"
-            ),
+            SkillTool("cancel_agent_task", "Cancel one task that has not started running.", {"task_id": task_id}, self._cancel_task, SkillAction((ActionEffect.UPDATE,), "task:queue", "task_id"), ("task_id",), "agent-task"),
         )
         return tools if self._groups is None else (*tools, *self._groups.list_tools())
 
@@ -149,9 +121,7 @@ class TaskQueue:
                 raise RuntimeError("agent task queue is closed")
             if len(self._tasks) >= self.settings.max_tasks:
                 raise ValueError(f"agent task limit reached: {self.settings.max_tasks}")
-            task = QueuedTask(
-                f"agent-task-{len(self._tasks) + 1:02d}", prompt, purpose, features, estimated_output_tokens=estimates[0], estimated_cache_creation_tokens=estimates[1], estimated_cache_read_tokens=estimates[2]
-            )
+            task = QueuedTask(f"agent-task-{len(self._tasks) + 1:02d}", prompt, purpose, features, estimated_output_tokens=estimates[0], estimated_cache_creation_tokens=estimates[1], estimated_cache_read_tokens=estimates[2])
             self._tasks[task.task_id] = task
             self._record_locked("agent_task.created", task)
             return {"task": task.to_dict()}
@@ -232,14 +202,7 @@ class TaskQueue:
         waited = max(0.0, monotonic() - started)
         reason = trigger if matched else "timeout"
         self.record_event("agent_task.wait.woke", {"reason": reason, "triggered_task_ids": matched, "waited_ms": round(waited * 1000)})
-        return {
-            "reason": reason,
-            "triggered_task_ids": matched,
-            "waited_seconds": round(waited, 3),
-            "wait_was_capped": requested_wait > wait_seconds,
-            "configured_max_wait_seconds": self.settings.max_wait_seconds,
-            "tasks": tasks,
-        }
+        return {"reason": reason, "triggered_task_ids": matched, "waited_seconds": round(waited, 3), "wait_was_capped": requested_wait > wait_seconds, "configured_max_wait_seconds": self.settings.max_wait_seconds, "tasks": tasks}
 
     def _list_tasks(self, arguments: dict[str, object]) -> dict[str, object]:
         with self._condition:
@@ -277,9 +240,7 @@ class TaskQueue:
             queued = self._transition_locked(task, "queued", agent_name=None, last_agent_name=failed_agent, retry_after_seconds=round(delay, 3), error_type=type(error).__name__, error_message=str(error))
             self._schedule_retry_locked(queued, delay)
             return
-        queued = self._transition_locked(
-            task, "queued", agent_name=choice.name, last_agent_name=failed_agent, fallback_count=task.fallback_count + 1, retry_after_seconds=0.0, error_type=type(error).__name__, error_message=str(error)
-        )
+        queued = self._transition_locked(task, "queued", agent_name=choice.name, last_agent_name=failed_agent, fallback_count=task.fallback_count + 1, retry_after_seconds=0.0, error_type=type(error).__name__, error_message=str(error))
         self.record_event("agent_task.fallback_selected", {"task_id": task.task_id, "failed_agent_name": failed_agent, **choice.to_dict()})
         self._record_retry_scheduled(queued, 0.0)
         self._submit_locked(choice.name, task.task_id)
@@ -375,12 +336,7 @@ class TaskQueue:
 
 
 def create_task_queue(
-    tools: dict[str, dict[str, object]],
-    subagents: list[dict[str, object]],
-    run_subagent: Callable[..., dict[str, object]],
-    record_event: Callable[[str, dict[str, object]], object],
-    record_result: Callable[[dict[str, object]], None] | None = None,
-    create_shared_context: Callable[[str, str], dict[str, object]] | None = None,
+    tools: dict[str, dict[str, object]], subagents: list[dict[str, object]], run_subagent: Callable[..., dict[str, object]], record_event: Callable[[str, dict[str, object]], object], record_result: Callable[[dict[str, object]], None] | None = None, create_shared_context: Callable[[str, str], dict[str, object]] | None = None
 ) -> TaskQueue | None:
     reject_unknown_fields(tools, {"agent_tasks", "agent_groups"}, "task Skill tools")
     if "agent_tasks" not in tools:

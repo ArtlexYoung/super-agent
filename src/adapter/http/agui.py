@@ -137,21 +137,13 @@ def _read_user_content(value: object) -> str:
 
 
 def _custom_runtime_event(event: RunEvent) -> dict[str, object]:
-    return {
-        "type": "CUSTOM",
-        "name": event.event_type,
-        "value": {"runId": event.run_id, "sequence": event.sequence, "createdAt": event.created_at, "agentName": event.agent_name, "parentRunId": event.parent_run_id, "data": event.data},
-    }
+    return {"type": "CUSTOM", "name": event.event_type, "value": {"runId": event.run_id, "sequence": event.sequence, "createdAt": event.created_at, "agentName": event.agent_name, "parentRunId": event.parent_run_id, "data": event.data}}
 
 
 def _tool_call_started_events(event: RunEvent) -> list[dict[str, object]]:
     call_id = str(event.data.get("call_id") or f"tool-{event.sequence}")
     arguments = event.data.get("arguments", {})
-    return [
-        {"type": "TOOL_CALL_START", "toolCallId": call_id, "toolCallName": str(event.data.get("name", "runtime_tool"))},
-        {"type": "TOOL_CALL_ARGS", "toolCallId": call_id, "delta": json.dumps(arguments, ensure_ascii=False, separators=(",", ":"))},
-        {"type": "TOOL_CALL_END", "toolCallId": call_id},
-    ]
+    return [{"type": "TOOL_CALL_START", "toolCallId": call_id, "toolCallName": str(event.data.get("name", "runtime_tool"))}, {"type": "TOOL_CALL_ARGS", "toolCallId": call_id, "delta": json.dumps(arguments, ensure_ascii=False, separators=(",", ":"))}, {"type": "TOOL_CALL_END", "toolCallId": call_id}]
 
 
 def _tool_call_result_event(event: RunEvent) -> dict[str, object]:
@@ -162,11 +154,7 @@ def _tool_call_result_event(event: RunEvent) -> dict[str, object]:
 
 def _assistant_message_events(event: RunEvent) -> list[dict[str, str]]:
     message_id = f"message-{event.run_id}"
-    return [
-        {"type": "TEXT_MESSAGE_START", "messageId": message_id, "role": "assistant"},
-        {"type": "TEXT_MESSAGE_CONTENT", "messageId": message_id, "delta": str(event.data.get("text", ""))},
-        {"type": "TEXT_MESSAGE_END", "messageId": message_id},
-    ]
+    return [{"type": "TEXT_MESSAGE_START", "messageId": message_id, "role": "assistant"}, {"type": "TEXT_MESSAGE_CONTENT", "messageId": message_id, "delta": str(event.data.get("text", ""))}, {"type": "TEXT_MESSAGE_END", "messageId": message_id}]
 
 
 MAX_REQUEST_BYTES = 1_048_576
@@ -296,9 +284,7 @@ class AGUIRequestHandler(BaseHTTPRequestHandler):
                 self._write_sse_event(mapped)
 
         try:
-            self._server.agent.for_user(self._server.user_id).run(
-                request.prompt, conversation_id=request.thread_id, skill=request.skill, run_options=AgentRunOptions(run_id=request.run_id, event_listener=send_runtime_event)
-            )
+            self._server.agent.for_user(self._server.user_id).run(request.prompt, conversation_id=request.thread_id, skill=request.skill, run_options=AgentRunOptions(run_id=request.run_id, event_listener=send_runtime_event))
         except Exception as error:
             if not mapper.terminal_event_sent:
                 self._write_sse_event(mapper.create_error_event(error))
@@ -408,9 +394,7 @@ class AGUIRequestHandler(BaseHTTPRequestHandler):
         return cast(AGUIHTTPServer, self.server)
 
 
-def create_ag_ui_server(
-    agent: Agent, host: str = "127.0.0.1", port: int = 8765, *, user_id: str = LOCAL_USER_ID, allowed_origins: tuple[str, ...] = DEFAULT_ALLOWED_ORIGINS, static_root: str | Path | None = DEFAULT_STATIC_ROOT
-) -> AGUIHTTPServer:
+def create_ag_ui_server(agent: Agent, host: str = "127.0.0.1", port: int = 8765, *, user_id: str = LOCAL_USER_ID, allowed_origins: tuple[str, ...] = DEFAULT_ALLOWED_ORIGINS, static_root: str | Path | None = DEFAULT_STATIC_ROOT) -> AGUIHTTPServer:
     clean_host = host.strip()
     if not clean_host:
         raise ValueError("AG-UI server host cannot be empty")

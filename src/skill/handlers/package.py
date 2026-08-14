@@ -35,9 +35,7 @@ class SkillPackageManager:
     def __init__(self, skill_disclosure: ProgressiveDisclosureCore, store: EventStore, action_rules: ActionRules | None = None) -> None:
         self.store = store
         self.user_skill_root = store.private_root / "skills"
-        self.skill_disclosure = ProgressiveDisclosureCore(
-            skill_disclosure.skill_roots, user_skill_roots=[self.user_skill_root], builtin_skill_roots=skill_disclosure.builtin_skill_roots, disabled_names=skill_disclosure.disabled_names
-        )
+        self.skill_disclosure = ProgressiveDisclosureCore(skill_disclosure.skill_roots, user_skill_roots=[self.user_skill_root], builtin_skill_roots=skill_disclosure.builtin_skill_roots, disabled_names=skill_disclosure.disabled_names)
         self.actions = ActionRunner(action_rules or ActionRules(), store.append_management_action_event)
 
     def pack_skill(self, name: str, output: Path) -> Path:
@@ -320,25 +318,12 @@ def write_skill_lock_file(manifests: list[SkillManifest], path: Path) -> None:
         raise ValueError("skill lock cannot contain duplicate skill keys")
     lines = [f"schema_version = {SKILL_LOCK_SCHEMA_VERSION}", ""]
     for item in locked:
-        lines.extend(
-            [
-                "[[skills]]",
-                f"name = {json.dumps(item.name)}",
-                f"type = {json.dumps(item.skill_type)}",
-                f"version = {json.dumps(item.version)}",
-                f"sha256 = {json.dumps(item.sha256)}",
-                f"provides = {_toml_string_array(item.provides)}",
-                f"requires = {_toml_string_array(item.requires)}",
-                "",
-            ]
-        )
+        lines.extend(["[[skills]]", f"name = {json.dumps(item.name)}", f"type = {json.dumps(item.skill_type)}", f"version = {json.dumps(item.version)}", f"sha256 = {json.dumps(item.sha256)}", f"provides = {_toml_string_array(item.provides)}", f"requires = {_toml_string_array(item.requires)}", ""])
     write_bytes_atomically(path, "\n".join(lines).encode())
 
 
 def _lock_manifest(manifest: SkillManifest) -> LockedSkill:
-    return LockedSkill(
-        name=manifest.name, skill_type=manifest.skill_type, version=manifest.version, sha256=calculate_skill_directory_sha256(manifest.path), provides=sorted(manifest.provides), requires=sorted(manifest.requires)
-    )
+    return LockedSkill(name=manifest.name, skill_type=manifest.skill_type, version=manifest.version, sha256=calculate_skill_directory_sha256(manifest.path), provides=sorted(manifest.provides), requires=sorted(manifest.requires))
 
 
 def _toml_string_array(values: list[str]) -> str:

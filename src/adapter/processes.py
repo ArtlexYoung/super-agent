@@ -38,18 +38,9 @@ class GeneralToolServer:
             {
                 "name": "calculate_numbers",
                 "description": "Calculate sum, mean, minimum, maximum, or product.",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {"operation": {"type": "string", "enum": ["sum", "mean", "minimum", "maximum", "product"]}, "values": {"type": "array", "items": {"type": "number"}}},
-                    "required": ["operation", "values"],
-                    "additionalProperties": False,
-                },
+                "inputSchema": {"type": "object", "properties": {"operation": {"type": "string", "enum": ["sum", "mean", "minimum", "maximum", "product"]}, "values": {"type": "array", "items": {"type": "number"}}}, "required": ["operation", "values"], "additionalProperties": False},
             },
-            {
-                "name": "find_text",
-                "description": "Find bounded literal text positions without regular expressions.",
-                "inputSchema": {"type": "object", "properties": {"text": {"type": "string"}, "query": {"type": "string"}}, "required": ["text", "query"], "additionalProperties": False},
-            },
+            {"name": "find_text", "description": "Find bounded literal text positions without regular expressions.", "inputSchema": {"type": "object", "properties": {"text": {"type": "string"}, "query": {"type": "string"}}, "required": ["text", "query"], "additionalProperties": False}},
         ]
 
     def call_tool(self, name: str, arguments: dict[str, object]) -> dict[str, object]:
@@ -159,24 +150,8 @@ class DeclaredProcessTools:
                 ("command_number",),
                 result_kind="process",
             ),
-            SkillTool(
-                "poll_declared_process",
-                "Read current bounded output and status for one started process.",
-                {"process_id": process_id},
-                self.poll_process,
-                SkillAction((ActionEffect.READ,), "workspace:process", "process_id"),
-                ("process_id",),
-                result_kind="process",
-            ),
-            SkillTool(
-                "stop_declared_process",
-                "Stop one running process and its child process group.",
-                {"process_id": process_id},
-                self.stop_process,
-                SkillAction((ActionEffect.EXECUTE,), "workspace:process", "process_id"),
-                ("process_id",),
-                result_kind="process",
-            ),
+            SkillTool("poll_declared_process", "Read current bounded output and status for one started process.", {"process_id": process_id}, self.poll_process, SkillAction((ActionEffect.READ,), "workspace:process", "process_id"), ("process_id",), result_kind="process"),
+            SkillTool("stop_declared_process", "Stop one running process and its child process group.", {"process_id": process_id}, self.stop_process, SkillAction((ActionEffect.EXECUTE,), "workspace:process", "process_id"), ("process_id",), result_kind="process"),
             SkillTool(
                 "run_declared_check",
                 "Run one configured check and wait for its bounded result.",

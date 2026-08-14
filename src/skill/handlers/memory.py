@@ -81,13 +81,7 @@ class Memory:
         self.execute_action = execute_action
 
     def remember_long_term(self, text: str, scope: str | None = None, source_run_id: str = "") -> MemoryItem:
-        item = MemoryItem(
-            item_id=f"memory-{uuid4().hex}",
-            text=read_text(text, "memory text"),
-            scope=_clean_scope(scope or self.settings.default_scope),
-            source_run_id=self._source_run_id(source_run_id),
-            created_at=format_utc(datetime.now(UTC)),
-        )
+        item = MemoryItem(item_id=f"memory-{uuid4().hex}", text=read_text(text, "memory text"), scope=_clean_scope(scope or self.settings.default_scope), source_run_id=self._source_run_id(source_run_id), created_at=format_utc(datetime.now(UTC)))
         self._run_change((ActionEffect.CREATE,), [item.item_id], lambda: self._append_memory_event("memory.remembered", {"item": _validate_stored_item(asdict(item))}))
         return item
 

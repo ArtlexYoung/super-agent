@@ -59,25 +59,9 @@ class AgentGroups:
                 ("prompt", "purpose", "required_features"),
                 "agent-group",
             ),
-            SkillTool(
-                "wait_for_agent_group",
-                "Sleep without model calls until one decision group finishes or time expires.",
-                {"group_id": group_id, "max_wait_seconds": {"type": "number", "exclusiveMinimum": 0}},
-                self._wait_for_group,
-                SkillAction((ActionEffect.READ,), "task:group", "group_id"),
-                ("group_id", "max_wait_seconds"),
-                "agent-group",
-            ),
+            SkillTool("wait_for_agent_group", "Sleep without model calls until one decision group finishes or time expires.", {"group_id": group_id, "max_wait_seconds": {"type": "number", "exclusiveMinimum": 0}}, self._wait_for_group, SkillAction((ActionEffect.READ,), "task:group", "group_id"), ("group_id", "max_wait_seconds"), "agent-group"),
             SkillTool("list_agent_groups", "List decision groups with bounded member evidence and no shared prompts.", {}, self._list_groups, SkillAction((ActionEffect.READ,), "task:group"), result_kind="agent-group"),
-            SkillTool(
-                "cancel_agent_group",
-                "Cancel only group members that have not started running.",
-                {"group_id": group_id},
-                self._cancel_group,
-                SkillAction((ActionEffect.UPDATE,), "task:group", "group_id"),
-                ("group_id",),
-                "agent-group",
-            ),
+            SkillTool("cancel_agent_group", "Cancel only group members that have not started running.", {"group_id": group_id}, self._cancel_group, SkillAction((ActionEffect.UPDATE,), "task:group", "group_id"), ("group_id",), "agent-group"),
         )
 
     def _create_group(self, arguments: dict[str, object]) -> dict[str, object]:
@@ -189,16 +173,7 @@ class AgentGroups:
 
     def _budget_exceeded_result(self, group_id: str, request: AgentGroupRequest, choices: list[SelectedAgent]) -> dict[str, object]:
         settings = self.settings
-        result = {
-            "group_id": group_id,
-            "status": "budget_exceeded",
-            "requested_members": request.requested_members,
-            "available_members": len(choices),
-            "quorum": request.quorum,
-            "estimated_cost": choices_cost(choices[: request.requested_members]),
-            "budget_limit": settings.max_estimated_cost,
-            "created": False,
-        }
+        result = {"group_id": group_id, "status": "budget_exceeded", "requested_members": request.requested_members, "available_members": len(choices), "quorum": request.quorum, "estimated_cost": choices_cost(choices[: request.requested_members]), "budget_limit": settings.max_estimated_cost, "created": False}
         self.queue._group_failures.append(dict(result))
         self.queue.record_event("agent_group.budget_exceeded", dict(result))
         return {"group": result, "created": False}
@@ -342,9 +317,7 @@ def read_group_request(arguments: Mapping[str, object], settings: AgentGroupSett
     data = dict(arguments)
     requested, quorum, roles = _read_group_members(arguments, settings)
     estimates = tuple(read_optional_estimated_tokens(data, name) for name in ("estimated_output_tokens", "estimated_cache_creation_tokens", "estimated_cache_read_tokens"))
-    return AgentGroupRequest(
-        read_required_tool_string(data, "prompt"), read_required_tool_string(data, "purpose").strip().lower(), read_required_task_strings(arguments, "required_features"), requested, quorum, roles, estimates
-    )
+    return AgentGroupRequest(read_required_tool_string(data, "prompt"), read_required_tool_string(data, "purpose").strip().lower(), read_required_task_strings(arguments, "required_features"), requested, quorum, roles, estimates)
 
 
 def build_member_prompt(shared_prompt: str, role: str, *, uses_shared_context: bool) -> str:
@@ -377,30 +350,11 @@ def decide_group(group: AgentGroup, tasks: list[dict[str, object]], *, summary_c
             failed += 1
         counts[vote] += 1
         members.append(
-            {
-                "task_id": task_id,
-                "role": group.member_roles[index],
-                "status": "member_failed" if status == "failed" else status,
-                "agent_name": task.get("agent_name"),
-                "vote": vote,
-                "confidence": confidence,
-                "evidence": evidence[:summary_chars],
-                "evidence_sha256": hashlib.sha256(evidence.encode()).hexdigest(),
-                "evidence_chars": len(evidence),
-            }
+            {"task_id": task_id, "role": group.member_roles[index], "status": "member_failed" if status == "failed" else status, "agent_name": task.get("agent_name"), "vote": vote, "confidence": confidence, "evidence": evidence[:summary_chars], "evidence_sha256": hashlib.sha256(evidence.encode()).hexdigest(), "evidence_chars": len(evidence)}
         )
     terminal = all(str(by_id.get(task_id, {}).get("status")) in TERMINAL_TASK_STATUSES for task_id in group.task_ids)
     decision = "supported" if counts["support"] >= group.quorum else ("rejected" if counts["reject"] >= group.quorum else "inconclusive")
-    return {
-        **group.to_dict(),
-        "status": decision if terminal else "running",
-        "decision": decision if terminal else None,
-        "member_failures": failed,
-        "vote_counts": counts,
-        "members": members,
-        "quorum_met": decision != "inconclusive" and terminal,
-        "negative_evidence_required": group.quorum,
-    }
+    return {**group.to_dict(), "status": decision if terminal else "running", "decision": decision if terminal else None, "member_failures": failed, "vote_counts": counts, "members": members, "quorum_met": decision != "inconclusive" and terminal, "negative_evidence_required": group.quorum}
 
 
 def read_group_vote(text: str) -> tuple[str, str, float | None]:

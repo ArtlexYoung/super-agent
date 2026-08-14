@@ -165,11 +165,7 @@ def compact_subagent_result(value: dict[str, object], options: "SubagentRecordOp
 
     compacted = dict(value)
     if isinstance(nested, list):
-        compacted.update(
-            subagent_results_count=len(nested),
-            subagent_results=[compact_subagent_result(item, options) for item in nested[: options.nested_results] if isinstance(item, dict)],
-            subagent_results_omitted=max(0, len(nested) - options.nested_results),
-        )
+        compacted.update(subagent_results_count=len(nested), subagent_results=[compact_subagent_result(item, options) for item in nested[: options.nested_results] if isinstance(item, dict)], subagent_results_omitted=max(0, len(nested) - options.nested_results))
     elif options.is_summary:
         compacted["subagent_results_count"] = 0
 
@@ -219,16 +215,7 @@ def _prune_one_user(backend: StorageBackend, user_id: str, policy: AuditPolicy, 
         deleted = backend.delete_events(StorageEventQuery(user_id=user_id, event_ids=tuple(event.event_id for event in candidates)))
         if deleted:
             maintenance_events = _record_prune_events(backend, user_id, candidates, policy, now)
-    return AuditPruneUserReport(
-        user_id=user_id,
-        detailed_candidates=detailed_count,
-        critical_candidates=critical_count,
-        protected_events=protected_count,
-        invalid_timestamps=invalid_timestamps,
-        events_deleted=deleted,
-        maintenance_events=maintenance_events,
-        affected_agents=sorted({event.agent_name for event in candidates}),
-    )
+    return AuditPruneUserReport(user_id=user_id, detailed_candidates=detailed_count, critical_candidates=critical_count, protected_events=protected_count, invalid_timestamps=invalid_timestamps, events_deleted=deleted, maintenance_events=maintenance_events, affected_agents=sorted({event.agent_name for event in candidates}))
 
 
 def _record_prune_events(backend: StorageBackend, user_id: str, candidates: list[StorageEvent], policy: AuditPolicy, now: datetime) -> int:
@@ -239,13 +226,7 @@ def _record_prune_events(backend: StorageBackend, user_id: str, candidates: list
         counts[level] += 1
     for agent_name, counts in by_agent.items():
         backend.append_event(
-            user_id=user_id,
-            agent_name=agent_name,
-            stream_type="audit",
-            stream_id="retention",
-            event_type="audit.pruned",
-            created_at=format_utc(now),
-            data={"schema_version": 1, "detailed_days": policy.detailed_days, "critical_days": policy.critical_days, "detailed_events_deleted": counts[DETAILED], "critical_events_deleted": counts[CRITICAL]},
+            user_id=user_id, agent_name=agent_name, stream_type="audit", stream_id="retention", event_type="audit.pruned", created_at=format_utc(now), data={"schema_version": 1, "detailed_days": policy.detailed_days, "critical_days": policy.critical_days, "detailed_events_deleted": counts[DETAILED], "critical_events_deleted": counts[CRITICAL]}
         )
     return len(by_agent)
 

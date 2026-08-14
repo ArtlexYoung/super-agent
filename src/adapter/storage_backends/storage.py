@@ -197,22 +197,7 @@ class _PendingSqlEvent:
         values = (self.event_id, self.user_id, self.agent_name, self.stream_type, self.stream_id, self.event_type, self.created_at, self.data_json)
         if not hash_identifiers:
             return values
-        return (
-            self.event_id,
-            storage_text_key(self.event_id),
-            self.user_id,
-            storage_text_key(self.user_id),
-            self.agent_name,
-            storage_text_key(self.agent_name),
-            self.stream_type,
-            storage_text_key(self.stream_type),
-            self.stream_id,
-            storage_text_key(self.stream_id),
-            self.event_type,
-            storage_text_key(self.event_type),
-            self.created_at,
-            self.data_json,
-        )
+        return (self.event_id, storage_text_key(self.event_id), self.user_id, storage_text_key(self.user_id), self.agent_name, storage_text_key(self.agent_name), self.stream_type, storage_text_key(self.stream_type), self.stream_id, storage_text_key(self.stream_id), self.event_type, storage_text_key(self.event_type), self.created_at, self.data_json)
 
 
 class SqlEventStorage:
@@ -345,9 +330,7 @@ def _copy_user_events(source: StorageBackend, destination: StorageBackend, user_
             _require_matching_event(event, existing)
             already_present += 1
             continue
-        stored = destination.append_event(
-            user_id=event.user_id, agent_name=event.agent_name, stream_type=event.stream_type, stream_id=event.stream_id, event_type=event.event_type, data=event.data, event_id=event.event_id, created_at=event.created_at
-        )
+        stored = destination.append_event(user_id=event.user_id, agent_name=event.agent_name, stream_type=event.stream_type, stream_id=event.stream_id, event_type=event.event_type, data=event.data, event_id=event.event_id, created_at=event.created_at)
         _require_matching_event(event, stored)
         destination_events[event.event_id] = stored
         copied += 1

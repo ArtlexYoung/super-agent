@@ -62,16 +62,7 @@ class EventStore:
 
     def append_event(self, stream_type: str, stream_id: str, event_type: str, *, data: dict[str, object], event_id: str | None = None, created_at: str | None = None) -> StorageEvent:
         """Append one canonical event inside this user and Agent scope."""
-        return self._backend.append_event(
-            user_id=self.user_id,
-            agent_name=self.agent_name,
-            stream_type=read_text(stream_type, "stream_type"),
-            stream_id=read_text(stream_id, "stream_id"),
-            event_type=read_text(event_type, "event_type"),
-            data=dict(data),
-            event_id=event_id,
-            created_at=created_at,
-        )
+        return self._backend.append_event(user_id=self.user_id, agent_name=self.agent_name, stream_type=read_text(stream_type, "stream_type"), stream_id=read_text(stream_id, "stream_id"), event_type=read_text(event_type, "event_type"), data=dict(data), event_id=event_id, created_at=created_at)
 
     def read_events(self, stream_type: str | None = None, stream_id: str | None = None, *, event_type: str | None = None, snapshot: list[StorageEvent] | None = None) -> list[StorageEvent]:
         """Read canonical events without escaping this user and Agent scope."""
@@ -140,9 +131,7 @@ class EventStore:
         grouped: dict[str, list[StorageEvent]] = {}
         for event in self.read_events("run"):
             grouped.setdefault(event.stream_id, []).append(event)
-        snapshots = sorted(
-            (run_snapshot_from_events(self.user_id, events if include_sensitive else _redact_events_for_display(events)) for events in grouped.values()), key=lambda item: (item.started_at, item.run_id), reverse=True
-        )
+        snapshots = sorted((run_snapshot_from_events(self.user_id, events if include_sensitive else _redact_events_for_display(events)) for events in grouped.values()), key=lambda item: (item.started_at, item.run_id), reverse=True)
         if conversation_id is not None:
             snapshots = [snapshot for snapshot in snapshots if snapshot.conversation_id == conversation_id]
         return snapshots if limit is None else snapshots[:limit]

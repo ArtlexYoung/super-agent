@@ -102,14 +102,7 @@ class RegisteredMcpServer:
     settings_sha256: str
 
     def to_lock_data(self) -> dict[str, object]:
-        return {
-            "kind": "mcp_server",
-            "name": self.name,
-            "effects": [effect.value for effect in self.effects],
-            "implementation": self.implementation,
-            "code_sha256": self.code_sha256,
-            "settings_sha256": self.settings_sha256,
-        }
+        return {"kind": "mcp_server", "name": self.name, "effects": [effect.value for effect in self.effects], "implementation": self.implementation, "code_sha256": self.code_sha256, "settings_sha256": self.settings_sha256}
 
 
 class McpServers:
@@ -132,9 +125,7 @@ class McpServers:
         if ActionEffect.EXECUTE not in normalized:
             raise ValueError("MCP server effects must include execute")
         implementation = f"{type(server).__module__}.{type(server).__qualname__}"
-        self._servers[clean_name] = RegisteredMcpServer(
-            name=clean_name, server=server, effects=normalized, implementation=implementation, code_sha256=_implementation_sha256(server), settings_sha256=_settings_sha256(server)
-        )
+        self._servers[clean_name] = RegisteredMcpServer(name=clean_name, server=server, effects=normalized, implementation=implementation, code_sha256=_implementation_sha256(server), settings_sha256=_settings_sha256(server))
 
     def require_mcp_server(self, name: str) -> RegisteredMcpServer:
         clean_name = _clean_server_name(name)

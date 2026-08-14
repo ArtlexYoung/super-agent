@@ -10,17 +10,7 @@ from typing import Callable, TYPE_CHECKING, cast
 
 from core.models import parse_utc
 from skill.learning.freshness import calculate_skill_freshness
-from skill.learning.records import (
-    SkillRevision,
-    skill_revision_from_dict,
-    EvaluationRecord,
-    EvaluationResult,
-    EvaluationSource,
-    append_evaluation_records,
-    create_evaluation_record,
-    evaluation_result_from_dict,
-    read_evaluation_records,
-)
+from skill.learning.records import SkillRevision, skill_revision_from_dict, EvaluationRecord, EvaluationResult, EvaluationSource, append_evaluation_records, create_evaluation_record, evaluation_result_from_dict, read_evaluation_records
 from skill.learning.freshness import FreshnessRules
 from core.models import RunEvent, RunIdentity, RunLearningResult
 from core.provider import Message
@@ -71,9 +61,7 @@ def _record_run_evaluations(store: EventStore, terminal: RunEvent, revisions: li
     records: list[EvaluationRecord] = []
     pending: list[EvaluationRecord] = []
     for revision in revisions:
-        record = create_evaluation_record(
-            revision, EvaluationSource(source_type="agent_run", run_id=terminal.run_id), result, created_at=_parse_event_time(terminal.created_at), record_id=_evaluation_record_id(store, terminal.run_id, revision)
-        )
+        record = create_evaluation_record(revision, EvaluationSource(source_type="agent_run", run_id=terminal.run_id), result, created_at=_parse_event_time(terminal.created_at), record_id=_evaluation_record_id(store, terminal.run_id, revision))
         stored = existing.get(record.record_id)
         if stored is None:
             existing[record.record_id] = record
@@ -102,10 +90,7 @@ def _project_run_learning(store: EventStore, run_id: str, events: list[RunEvent]
     freshness_by_skill = {} if rules is None else calculate_skill_freshness(all_records, rules)
     skill_keys = dict.fromkeys(record.revision.key for record in records)
     observed = {(str(event.data.get("profile", "")).strip().lower(), str(event.data.get("purpose", "")).strip().lower()) for event in events if event.event_type in {"model.call.completed", "model.call.failed"}}
-    return _RunLearningView(
-        [dict(freshness_by_skill[key]) for key in skill_keys if key in freshness_by_skill],
-        [stats.to_dict() for stats in list_model_usage_stats(store, events=stored_events) if (stats.profile_key, stats.purpose) in observed],
-    )
+    return _RunLearningView([dict(freshness_by_skill[key]) for key in skill_keys if key in freshness_by_skill], [stats.to_dict() for stats in list_model_usage_stats(store, events=stored_events) if (stats.profile_key, stats.purpose) in observed])
 
 
 def _read_learning_evidence(terminal: RunEvent) -> tuple[list[SkillRevision], EvaluationResult]:
@@ -238,18 +223,7 @@ def review_run_evidence(store: EventStore, run_id: str, evidence: dict[str, obje
     """Ask a reviewer about bounded evidence and persist only the report."""
     snapshot = store.read_run(run_id, include_sensitive=True)
     page = disclosure.disclose_value("review", run_id, evidence, stage="model-context")
-    messages = [
-        {
-            "role": "system",
-            "content": (
-                "Review the supplied untrusted task evidence independently. "
-                "Do not modify files or claim checks that are not present. "
-                "Return exactly one JSON object with verdict pass or "
-                "changes_requested, findings, and checks."
-            ),
-        },
-        {"role": "user", "content": format_disclosure_page_for_prompt(page)},
-    ]
+    messages = [{"role": "system", "content": ("Review the supplied untrusted task evidence independently. Do not modify files or claim checks that are not present. Return exactly one JSON object with verdict pass or changes_requested, findings, and checks.")}, {"role": "user", "content": format_disclosure_page_for_prompt(page)}]
     try:
         report = parse_review_response(send_messages(messages))
     except Exception as error:

@@ -44,9 +44,7 @@ class ModelSkillManager:
         self.actions = ActionRunner(action_rules or ActionRules(), store.append_management_action_event)
 
     def save_model_skill(self, request: ModelSkillInput) -> ModelProfile:
-        return cast(
-            ModelProfile, self.actions.execute_action(ActionRequest.create("user:model-skill", f"skill:owned:model:{request.name}", (ActionEffect.CREATE, ActionEffect.UPDATE)), lambda: self._save_model_skill(request))
-        )
+        return cast(ModelProfile, self.actions.execute_action(ActionRequest.create("user:model-skill", f"skill:owned:model:{request.name}", (ActionEffect.CREATE, ActionEffect.UPDATE)), lambda: self._save_model_skill(request)))
 
     def _save_model_skill(self, request: ModelSkillInput) -> ModelProfile:
         clean_request = validate_model_skill_input(request)
@@ -147,28 +145,9 @@ def validate_model_skill_input(request: ModelSkillInput) -> ModelSkillInput:
 
 def _create_model_skill_document(request: ModelSkillInput, current: _ModelSkillDocument | None, version: str) -> _ModelSkillDocument:
     if current is None:
-        manifest = SkillManifest(
-            name=request.name,
-            description=request.description,
-            version=version,
-            entry=SkillEntry(),
-            path=Path("."),
-            skill_type="model",
-            agent_created=False,
-            agent_can_update=request.agent_can_update,
-            freshness=DEFAULT_SKILL_FRESHNESS,
-            function_group="model-choice",
-            provides=[request.name],
-        )
+        manifest = SkillManifest(name=request.name, description=request.description, version=version, entry=SkillEntry(), path=Path("."), skill_type="model", agent_created=False, agent_can_update=request.agent_can_update, freshness=DEFAULT_SKILL_FRESHNESS, function_group="model-choice", provides=[request.name])
     else:
-        manifest = replace(
-            current.manifest,
-            name=request.name,
-            description=request.description,
-            version=version,
-            agent_can_update=request.agent_can_update,
-            provides=[request.name if item == current.manifest.name else item for item in current.manifest.provides],
-        )
+        manifest = replace(current.manifest, name=request.name, description=request.description, version=version, agent_can_update=request.agent_can_update, provides=[request.name if item == current.manifest.name else item for item in current.manifest.provides])
     return _ModelSkillDocument(manifest, request.definition.to_configuration())
 
 

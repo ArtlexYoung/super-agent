@@ -72,9 +72,7 @@ def read_evaluation_records(store: EventStore, *, skill_key: str | None = None, 
 
 
 def create_evaluation_record(revision: SkillRevision, source: EvaluationSource, result: EvaluationResult, *, created_at: datetime | None = None, record_id: str | None = None) -> EvaluationRecord:
-    record = EvaluationRecord(
-        schema_version=EVALUATION_RECORD_SCHEMA_VERSION, record_id=record_id or f"evaluation-{uuid4().hex}", created_at=format_utc(created_at or datetime.now(UTC)), revision=revision, source=source, result=result
-    )
+    record = EvaluationRecord(schema_version=EVALUATION_RECORD_SCHEMA_VERSION, record_id=record_id or f"evaluation-{uuid4().hex}", created_at=format_utc(created_at or datetime.now(UTC)), revision=revision, source=source, result=result)
     evaluation_record_to_dict(record)
     return record
 
@@ -91,14 +89,7 @@ def evaluation_record_from_dict(value: object) -> EvaluationRecord:
     schema_version = read_int(data["schema_version"], "evaluation schema_version")
     if schema_version != EVALUATION_RECORD_SCHEMA_VERSION:
         raise ValueError(f"evaluation record schema_version must be {EVALUATION_RECORD_SCHEMA_VERSION}")
-    record = EvaluationRecord(
-        schema_version=schema_version,
-        record_id=read_text(data["record_id"], "evaluation record_id"),
-        created_at=read_text(data["created_at"], "evaluation created_at"),
-        revision=skill_revision_from_dict(data["revision"]),
-        source=_source_from_dict(data["source"]),
-        result=evaluation_result_from_dict(data["result"]),
-    )
+    record = EvaluationRecord(schema_version=schema_version, record_id=read_text(data["record_id"], "evaluation record_id"), created_at=read_text(data["created_at"], "evaluation created_at"), revision=skill_revision_from_dict(data["revision"]), source=_source_from_dict(data["source"]), result=evaluation_result_from_dict(data["result"]))
     _validate_evaluation_record(record)
     return record
 

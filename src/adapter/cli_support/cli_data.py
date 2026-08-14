@@ -42,14 +42,7 @@ def run_selected_cli_command(command: str | None, handlers: dict[str, Callable[[
 def configure_conversations_parser(parser: argparse.ArgumentParser) -> None:
     _add_identity_arguments(parser, inherited=False)
     subparsers = parser.add_subparsers(dest="conversations_command")
-    for name, help_text in (
-        ("list", "list stored conversations"),
-        ("show", "show one stored conversation"),
-        ("create", "create a conversation"),
-        ("rename", "rename a conversation"),
-        ("clear", "clear conversation messages"),
-        ("delete", "delete a conversation"),
-    ):
+    for name, help_text in (("list", "list stored conversations"), ("show", "show one stored conversation"), ("create", "create a conversation"), ("rename", "rename a conversation"), ("clear", "clear conversation messages"), ("delete", "delete a conversation")):
         selected = subparsers.add_parser(name, help=help_text)
         _add_identity_arguments(selected, inherited=True)
         if name in {"show", "rename", "clear", "delete"}:
@@ -266,37 +259,17 @@ def _print_plan_insight(value: object) -> None:
 
 def _print_model_call_insight(value: object) -> None:
     for call in _object_items(value):
-        print(
-            f"model-call\t{call.get('call_id', '')}"
-            f"\tprofile={call.get('profile', '')}"
-            f"\tstatus={call.get('status', '')}"
-            f"\tlatency_ms={call.get('latency_ms', '')}"
-            f"\tinput_tokens={call.get('input_tokens', '')}"
-            f"\toutput_tokens={call.get('output_tokens', '')}"
-            f"\testimated_cost={call.get('estimated_cost', '')}"
-        )
+        print(f"model-call\t{call.get('call_id', '')}\tprofile={call.get('profile', '')}\tstatus={call.get('status', '')}\tlatency_ms={call.get('latency_ms', '')}\tinput_tokens={call.get('input_tokens', '')}\toutput_tokens={call.get('output_tokens', '')}\testimated_cost={call.get('estimated_cost', '')}")
 
 
 def _print_model_usage_insight(value: object) -> None:
     for evidence in _object_items(value):
-        print(
-            f"model-usage\t{evidence.get('profile_key', '')}"
-            f"\tpurpose={evidence.get('purpose', '')}"
-            f"\tcalls={evidence.get('call_count', '')}"
-            f"\treliability={evidence.get('reliability', '')}"
-            f"\tquality={evidence.get('average_quality', '')}"
-        )
+        print(f"model-usage\t{evidence.get('profile_key', '')}\tpurpose={evidence.get('purpose', '')}\tcalls={evidence.get('call_count', '')}\treliability={evidence.get('reliability', '')}\tquality={evidence.get('average_quality', '')}")
 
 
 def _print_freshness_insight(value: object) -> None:
     for skill in _object_items(value):
-        print(
-            f"freshness\t{skill.get('skill', '')}"
-            f"\tvalue={skill.get('freshness', '')}"
-            f"\tcalls={skill.get('call_count', '')}"
-            f"\tsuccess={skill.get('success_count', '')}"
-            f"\treplacements={skill.get('same_function_successful_followups', '')}"
-        )
+        print(f"freshness\t{skill.get('skill', '')}\tvalue={skill.get('freshness', '')}\tcalls={skill.get('call_count', '')}\tsuccess={skill.get('success_count', '')}\treplacements={skill.get('same_function_successful_followups', '')}")
 
 
 def _object_items(value: object) -> list[dict[str, object]]:
@@ -380,13 +353,7 @@ def _run_prune_command(args: argparse.Namespace) -> int:
     mode = "applied" if report.applied else "preview"
     print(f"audit {mode}: detailed={report.detailed_days}d critical={report.critical_days}d")
     for result in report.users:
-        print(
-            f"{result.user_id}\tdetailed={result.detailed_candidates}"
-            f"\tcritical={result.critical_candidates}"
-            f"\tprotected={result.protected_events}"
-            f"\tinvalid_time={result.invalid_timestamps}"
-            f"\tdeleted={result.events_deleted}"
-        )
+        print(f"{result.user_id}\tdetailed={result.detailed_candidates}\tcritical={result.critical_candidates}\tprotected={result.protected_events}\tinvalid_time={result.invalid_timestamps}\tdeleted={result.events_deleted}")
     return 0
 
 

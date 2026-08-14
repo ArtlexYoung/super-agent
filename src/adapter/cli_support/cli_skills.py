@@ -104,13 +104,7 @@ def run_skills_command(args: argparse.Namespace) -> int:
 
 
 def run_skill_changes_command(args: argparse.Namespace) -> int:
-    handlers = {
-        "propose": lambda: _propose_skill_change(args),
-        "test": lambda: _test_skill_change(args),
-        "apply": lambda: _apply_skill_change(args),
-        "undo": lambda: _undo_skill_change(args),
-        "list": lambda: _list_skill_changes(args),
-    }
+    handlers = {"propose": lambda: _propose_skill_change(args), "test": lambda: _test_skill_change(args), "apply": lambda: _apply_skill_change(args), "undo": lambda: _undo_skill_change(args), "list": lambda: _list_skill_changes(args)}
     return run_selected_cli_command(args.skill_change_command, handlers, "skills changes command is required")
 
 
@@ -159,14 +153,7 @@ def _print_selected_model(config: CommonConfig, profiles: list[ModelProfile], ou
 
 def _print_model_profile(profile: ModelProfile, prefix: str = "profile") -> None:
     data = model_profile_to_dict(profile)
-    print(
-        f"{prefix}\t{profile.key}\t{data['provider']}\t{profile.model}"
-        f"\tready={str(data['ready']).lower()}"
-        f"\tdefault={str(profile.default).lower()}"
-        f"\tsource={profile.source}"
-        f"\tbase_url={data['base_url'] or ''}"
-        f"\tapi_key_env={data['api_key_env'] or ''}"
-    )
+    print(f"{prefix}\t{profile.key}\t{data['provider']}\t{profile.model}\tready={str(data['ready']).lower()}\tdefault={str(profile.default).lower()}\tsource={profile.source}\tbase_url={data['base_url'] or ''}\tapi_key_env={data['api_key_env'] or ''}")
 
 
 def _save_model_skill(config: CommonConfig, user_id: str, output: str) -> int:
@@ -200,16 +187,7 @@ def _create_model_skill_manager(config: CommonConfig, user_id: str) -> ModelSkil
 def _list_skills(config_path: Path, user_id: str) -> int:
     index = _load_skill_disclosure(config_path, user_id).prepare_skill_index()
     for entry in index.entries:
-        print(
-            f"{entry.reference.name}\t{entry.reference.skill_type}"
-            f"\tagent_created={str(entry.agent_created).lower()}"
-            f"\tagent_can_update={str(entry.agent_can_update).lower()}"
-            f"\tfreshness={entry.freshness:.2f}"
-            f"\tfunction_group={entry.function_group}"
-            f"\tprovides={','.join(entry.provides)}"
-            f"\trequires={','.join(entry.requires)}"
-            f"\t{entry.description}"
-        )
+        print(f"{entry.reference.name}\t{entry.reference.skill_type}\tagent_created={str(entry.agent_created).lower()}\tagent_can_update={str(entry.agent_can_update).lower()}\tfreshness={entry.freshness:.2f}\tfunction_group={entry.function_group}\tprovides={','.join(entry.provides)}\trequires={','.join(entry.requires)}\t{entry.description}")
     return 0
 
 
@@ -264,13 +242,7 @@ def _show_skill_freshness(config_path: Path, user_id: str) -> int:
         print("No skill freshness stats yet.")
         return 0
     for name, item in sorted(stats.items()):
-        print(
-            f"{name}\tfreshness={float(item['freshness']):.2f}"
-            f"\tcalls={int(item['call_count'])}"
-            f"\tgroup={item['function_group']}"
-            f"\tsuccess={int(item['success_count'])}"
-            f"\treplacements={int(item['same_function_successful_followups'])}"
-        )
+        print(f"{name}\tfreshness={float(item['freshness']):.2f}\tcalls={int(item['call_count'])}\tgroup={item['function_group']}\tsuccess={int(item['success_count'])}\treplacements={int(item['same_function_successful_followups'])}")
     return 0
 
 
@@ -393,13 +365,7 @@ def _read_change_cases(path: Path) -> list[SkillChangeCase]:
         if not isinstance(expected_configuration, dict):
             raise ValueError("evaluation case expected_configuration must be an object")
         cases.append(
-            SkillChangeCase(
-                name=_read_json_string(item, "name", required=True),
-                prompt=_read_json_string(item, "prompt", required=True),
-                expected_output_contains=_read_string_list(item, "expected_output_contains"),
-                forbidden_output_contains=_read_string_list(item, "forbidden_output_contains"),
-                expected_configuration=dict(expected_configuration),
-            )
+            SkillChangeCase(name=_read_json_string(item, "name", required=True), prompt=_read_json_string(item, "prompt", required=True), expected_output_contains=_read_string_list(item, "expected_output_contains"), forbidden_output_contains=_read_string_list(item, "forbidden_output_contains"), expected_configuration=dict(expected_configuration))
         )
     return cases
 

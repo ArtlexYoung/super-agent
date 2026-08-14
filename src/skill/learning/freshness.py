@@ -219,14 +219,7 @@ def _stats_from_evidence(summary: EvaluationEvidenceSummary, policy: FreshnessRu
 
 def _update_freshness(stats: dict[str, Any], now: datetime, policy: FreshnessRules) -> None:
     scores = _score_components(stats, now, policy)
-    base = (
-        policy.quality_weight * scores["quality"]
-        + policy.recency_weight * scores["recency"]
-        + policy.frequency_weight * scores["frequency"]
-        + policy.efficiency_weight * scores["efficiency"]
-        + policy.reliability_weight * scores["reliability"]
-        + policy.replacement_weight * scores["replacement"]
-    )
+    base = policy.quality_weight * scores["quality"] + policy.recency_weight * scores["recency"] + policy.frequency_weight * scores["frequency"] + policy.efficiency_weight * scores["efficiency"] + policy.reliability_weight * scores["reliability"] + policy.replacement_weight * scores["replacement"]
     confidence = scores["confidence"] / 100
     freshness = confidence * base + (1 - confidence) * policy.initial_freshness
     stats["freshness"] = round(_clamp(freshness, 0, 100), 2)

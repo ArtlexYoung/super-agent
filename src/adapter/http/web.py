@@ -139,10 +139,7 @@ def _web_skill_list(value: dict[str, object], config: CommonConfig) -> list[dict
     selected = set(config.agent.skills)
     skills = value.get("skills", [])
     return [
-        {key: field for key, field in item.items() if key not in {"manifest_cache_path", "instructions_cache_path", "configuration_cache_path", "files_cache_path"}}
-        | {"enabled": not {item["type"], item["key"], item["name"]} & disabled, "selected": item["key"] in selected or item["name"] in selected}
-        for item in skills
-        if isinstance(item, dict)
+        {key: field for key, field in item.items() if key not in {"manifest_cache_path", "instructions_cache_path", "configuration_cache_path", "files_cache_path"}} | {"enabled": not {item["type"], item["key"], item["name"]} & disabled, "selected": item["key"] in selected or item["name"] in selected} for item in skills if isinstance(item, dict)
     ]
 
 
@@ -154,17 +151,7 @@ def _subagent_tree(agent: Agent, user_id: str, seen: set[int], path: list[str]) 
     for subagent in agent.subagents:
         child_path = [*path, subagent.name]
         child = subagent.agent.for_user(user_id)
-        nodes.append(
-            {
-                "name": subagent.name,
-                "description": subagent.description,
-                "agent_name": subagent.agent.config.agent.name,
-                "created_by_agent": subagent.created_by_agent,
-                "path": child_path,
-                "runs": [asdict(item) for item in child.runs.list(50)],
-                "children": _subagent_tree(subagent.agent, user_id, next_seen, child_path),
-            }
-        )
+        nodes.append({"name": subagent.name, "description": subagent.description, "agent_name": subagent.agent.config.agent.name, "created_by_agent": subagent.created_by_agent, "path": child_path, "runs": [asdict(item) for item in child.runs.list(50)], "children": _subagent_tree(subagent.agent, user_id, next_seen, child_path)})
     return nodes
 
 

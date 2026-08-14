@@ -8,19 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Sequence
 
-from adapter.cli_support.cli_data import (
-    add_config_and_user_options,
-    add_output_format_option,
-    configure_conversations_parser,
-    configure_memory_parser,
-    configure_runs_parser,
-    configure_storage_parser,
-    print_cli_json,
-    run_conversations_command,
-    run_memory_command,
-    run_runs_command,
-    run_storage_command,
-)
+from adapter.cli_support.cli_data import add_config_and_user_options, add_output_format_option, configure_conversations_parser, configure_memory_parser, configure_runs_parser, configure_storage_parser, print_cli_json, run_conversations_command, run_memory_command, run_runs_command, run_storage_command
 from adapter.cli_support.cli_config import configure_config_parser, load_agent, load_cli_config, load_common_config, run_config_command
 from adapter.code import attach_code_config_to_agent
 from adapter.cli_support.cli_skills import configure_skills_parser, run_skills_command

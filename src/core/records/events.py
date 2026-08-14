@@ -45,15 +45,7 @@ class RunEventLog:
         clean_type = read_text(event_type, "run event type")
         content = dict(data or {})
         if self._backend is None:
-            event = RunEvent(
-                run_id=self.identity.run_id,
-                sequence=len(self._events) + 1,
-                event_type=clean_type,
-                created_at=format_utc(datetime.now(UTC)),
-                agent_name=self.identity.agent_name,
-                parent_run_id=self.identity.parent_run_id,
-                data=content,
-            )
+            event = RunEvent(run_id=self.identity.run_id, sequence=len(self._events) + 1, event_type=clean_type, created_at=format_utc(datetime.now(UTC)), agent_name=self.identity.agent_name, parent_run_id=self.identity.parent_run_id, data=content)
         else:
             stored = self._backend.append_event(user_id=self.identity.user_id, agent_name=self.identity.agent_name, stream_type="run", stream_id=self.identity.run_id, event_type=clean_type, data=content)
             event = run_event_from_storage(stored, len(self._events) + 1, self.identity.parent_run_id)
@@ -139,13 +131,7 @@ def _latest_selection_decisions(events: list[RunEvent]) -> list[object]:
 def explain_run_from_events(user_id: str, stored_events: list[StorageEvent]) -> dict[str, object]:
     snapshot = run_snapshot_from_events(user_id, stored_events)
     events = run_events_from_storage(stored_events)
-    return {
-        "schema_version": 2,
-        "snapshot": asdict(snapshot),
-        "selection_decisions": _latest_selection_decisions(events),
-        "disclosure_path": [asdict(event) for event in events if event.event_type == "content.disclosed"],
-        "events": [asdict(event) for event in events],
-    }
+    return {"schema_version": 2, "snapshot": asdict(snapshot), "selection_decisions": _latest_selection_decisions(events), "disclosure_path": [asdict(event) for event in events if event.event_type == "content.disclosed"], "events": [asdict(event) for event in events]}
 
 
 def disclosure_history_from_events(events: list[StorageEvent]) -> list[dict[str, object]]:

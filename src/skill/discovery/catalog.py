@@ -108,10 +108,7 @@ class ProgressiveDisclosureCore:
         decisions = self.explain_skill_selection(selected_names, allowed_types)
         selected = [decision.reference for decision in decisions if decision.selected]
         if self.record_event is not None:
-            self.record_event(
-                "skills.selected",
-                {"selected_keys": [reference.key for reference in selected], "decisions": [{"skill_key": decision.reference.key, "selected": decision.selected, "reason": decision.reason} for decision in decisions]},
-            )
+            self.record_event("skills.selected", {"selected_keys": [reference.key for reference in selected], "decisions": [{"skill_key": decision.reference.key, "selected": decision.selected, "reason": decision.reason} for decision in decisions]})
         return selected
 
     def explain_skill_selection(self, selected_names: list[str] | None = None, allowed_types: set[str] | None = None) -> list[SkillSelectionDecision]:
@@ -123,9 +120,7 @@ class ProgressiveDisclosureCore:
             resolved = [entry for entry in resolved if entry.reference.skill_type in handled_types]
         selected_keys = {entry.reference.key for entry in resolved}
         configured_names = {name.strip().lower() for name in selected_names or []}
-        return [
-            SkillSelectionDecision(reference=entry.reference, selected=entry.reference.key in selected_keys, reason=_explain_selection(entry, configured_names, selected_keys, handled_types)) for entry in index.entries
-        ]
+        return [SkillSelectionDecision(reference=entry.reference, selected=entry.reference.key in selected_keys, reason=_explain_selection(entry, configured_names, selected_keys, handled_types)) for entry in index.entries]
 
     def open_skill(self, name: str, expected_type: str | None = None) -> "SkillDisclosure":
         entry = self.require_prepared_skill_index().require_skill(name, expected_type)

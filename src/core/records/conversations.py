@@ -39,9 +39,7 @@ def prepare_conversation_turn(store: EventStore, action_rules: ActionRules, conv
 
 def complete_conversation_turn(pending: PendingConversationTurn, result: RunResult) -> None:
     """Apply one previously checked conversation change after a successful run."""
-    pending.action_runner.apply_action(
-        pending.prepared_action, lambda: append_conversation_turn(pending.store, pending.conversation_id, pending.prompt, result.text, run_id=result.run_id, run_result=_run_result_summary(result))
-    )
+    pending.action_runner.apply_action(pending.prepared_action, lambda: append_conversation_turn(pending.store, pending.conversation_id, pending.prompt, result.text, run_id=result.run_id, run_result=_run_result_summary(result)))
 
 
 def create_conversation(store: EventStore, title: str = "", *, conversation_id: str | None = None) -> Conversation:
@@ -91,13 +89,7 @@ def append_conversation_turn(store: EventStore, conversation_id: str, prompt: st
     selected_id = read_text(conversation_id, "conversation_id")
     existing = store.read_events("conversation", selected_id)
     turn_id = f"turn-{uuid4().hex}"
-    store.append_event(
-        "conversation",
-        selected_id,
-        "conversation.turn_added",
-        data={"title": "" if existing else prompt[:48].strip(), "user": _message_data("user", prompt, run_id), "assistant": _message_data("assistant", response, run_id, run_result=run_result)},
-        event_id=turn_id,
-    )
+    store.append_event("conversation", selected_id, "conversation.turn_added", data={"title": "" if existing else prompt[:48].strip(), "user": _message_data("user", prompt, run_id), "assistant": _message_data("assistant", response, run_id, run_result=run_result)}, event_id=turn_id)
     return read_conversation(store, selected_id)
 
 
@@ -124,26 +116,12 @@ def conversation_from_events(user_id: str, events: list[StorageEvent]) -> Conver
 
 
 def _message_data(role: str, content: str, run_id: str, *, run_result: dict[str, object] | None = None) -> dict[str, object]:
-    return {
-        "message_id": f"message-{uuid4().hex}",
-        "role": role,
-        "content": read_text(content, "conversation message content"),
-        "run_id": read_text(run_id, "conversation run_id"),
-        "run_result": None if run_result is None else dict(run_result),
-    }
+    return {"message_id": f"message-{uuid4().hex}", "role": role, "content": read_text(content, "conversation message content"), "run_id": read_text(run_id, "conversation run_id"), "run_result": None if run_result is None else dict(run_result)}
 
 
 def _run_result_summary(result: RunResult) -> dict[str, object]:
     """Store only bounded run metadata beside the durable conversation text."""
-    return {
-        "schema_version": 1,
-        "run_id": result.run_id,
-        "workflow": result.workflow,
-        "skills": list(result.skills),
-        "stop_reason": result.stop_reason,
-        "action_count": len(result.actions or []),
-        "subagent_count": len(result.subagent_results or []),
-    }
+    return {"schema_version": 1, "run_id": result.run_id, "workflow": result.workflow, "skills": list(result.skills), "stop_reason": result.stop_reason, "action_count": len(result.actions or []), "subagent_count": len(result.subagent_results or [])}
 
 
 def _turn_messages_from_event(event: StorageEvent) -> list[ConversationMessage]:
@@ -160,14 +138,7 @@ def _conversation_message_from_data(event: StorageEvent, name: str) -> Conversat
     run_result = data.get("run_result")
     if run_result is not None and not isinstance(run_result, dict):
         raise ValueError("stored conversation run_result must be an object or null")
-    return ConversationMessage(
-        message_id=_stored_string(data, "message_id"),
-        role=_stored_string(data, "role"),
-        content=_stored_string(data, "content"),
-        created_at=event.created_at,
-        run_id=_stored_string(data, "run_id"),
-        run_result=None if run_result is None else dict(run_result),
-    )
+    return ConversationMessage(message_id=_stored_string(data, "message_id"), role=_stored_string(data, "role"), content=_stored_string(data, "content"), created_at=event.created_at, run_id=_stored_string(data, "run_id"), run_result=None if run_result is None else dict(run_result))
 
 
 def _stored_string(data: dict[str, object], name: str, *, allow_empty: bool = False) -> str:

@@ -306,10 +306,7 @@ class AgentSelector:
         if circuit.state == "half_open" or (circuit.failures >= self.settings.circuit_breaker_failures):
             circuit.state = "open"
             circuit.retry_at = monotonic() + self.settings.circuit_breaker_wait_seconds
-            self.record_event(
-                "agent_task.circuit_opened",
-                {"agent_name": name, "failure_count": circuit.failures, "retry_after_seconds": self.settings.circuit_breaker_wait_seconds, "error_type": type(error).__name__, **_health_facts(health)},
-            )
+            self.record_event("agent_task.circuit_opened", {"agent_name": name, "failure_count": circuit.failures, "retry_after_seconds": self.settings.circuit_breaker_wait_seconds, "error_type": type(error).__name__, **_health_facts(health)})
 
     def retry_delay(self, purpose: str, features: tuple[str, ...]) -> float:
         now = monotonic()
@@ -338,20 +335,7 @@ class AgentSelector:
         score = base_score if self.settings.agent_selection == "rotate" else base_score / (1 + active_count)
         if commit:
             self._commit_choice(name)
-        return SelectedAgent(
-            name,
-            selected_by,
-            candidate_count,
-            active_count,
-            agent.weight,
-            dispatch.model,
-            dispatch.pricing,
-            dispatch.cost,
-            round(health.reliability, 8),
-            health.successful_tasks,
-            health.unavailable_failures,
-            round(score, 8),
-        )
+        return SelectedAgent(name, selected_by, candidate_count, active_count, agent.weight, dispatch.model, dispatch.pricing, dispatch.cost, round(health.reliability, 8), health.successful_tasks, health.unavailable_failures, round(score, 8))
 
     def _commit_choice(self, name: str) -> None:
         circuit = self._circuits[name]

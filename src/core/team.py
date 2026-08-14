@@ -45,9 +45,7 @@ class AgentTeam:
     def subagents(self) -> tuple[SubAgent, ...]:
         return tuple(self._subagents)
 
-    def add_subagent(
-        self, agent: TeamAgent, *, name: str | None = None, description: str = "", created_by_agent: bool = False, purpose: str = "auto", required_features: tuple[str, ...] = ("text",), weight: float = 1.0
-    ) -> str:
+    def add_subagent(self, agent: TeamAgent, *, name: str | None = None, description: str = "", created_by_agent: bool = False, purpose: str = "auto", required_features: tuple[str, ...] = ("text",), weight: float = 1.0) -> str:
         subagent_name = self._make_next_name() if name is None else name.strip()
         if not subagent_name:
             raise ValueError("subagent name cannot be empty")
@@ -113,21 +111,9 @@ class AgentTeam:
             index += 1
 
     def _run_subagent(self, subagent: SubAgent, prompt: str, parent_run: Run, record_options: SubagentRecordOptions, shared_context: dict[str, object] | None) -> SubAgentResult:
-        parent_run.record_event(
-            "subagent.started",
-            {
-                "name": subagent.name,
-                "agent_name": subagent.agent.config.agent.name,
-                **record_options.record_text("prompt", prompt),
-                "record_mode": record_options.mode,
-                "purpose": subagent.purpose,
-                "required_features": list(subagent.required_features),
-            },
-        )
+        parent_run.record_event("subagent.started", {"name": subagent.name, "agent_name": subagent.agent.config.agent.name, **record_options.record_text("prompt", prompt), "record_mode": record_options.mode, "purpose": subagent.purpose, "required_features": list(subagent.required_features)})
         result = subagent.agent._run_as_subagent(prompt, parent_run, purpose=subagent.purpose, required_features=subagent.required_features, record_options=record_options, shared_context=shared_context)
-        subagent_result = SubAgentResult(
-            name=subagent.name, description=subagent.description, text=result.text, prompt=prompt, created_by_agent=subagent.created_by_agent, subagent_results=result.subagent_results, run_id=result.run_id
-        )
+        subagent_result = SubAgentResult(name=subagent.name, description=subagent.description, text=result.text, prompt=prompt, created_by_agent=subagent.created_by_agent, subagent_results=result.subagent_results, run_id=result.run_id)
         parent_run.record_event("subagent.completed", {"name": subagent.name, "run_id": result.run_id, "record_mode": record_options.mode})
         return subagent_result
 

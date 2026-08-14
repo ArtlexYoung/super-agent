@@ -59,16 +59,7 @@ class AgentEvents:
 class Agent:
     """Compose one configurable Runtime and its optional child Agents."""
 
-    def __init__(
-        self,
-        config: CommonConfig | str | Path | None = None,
-        *,
-        provider: ChatProvider | None = None,
-        storage: StorageBackend | None = None,
-        use_storage: bool | None = None,
-        action_rules: ActionRules | None = None,
-        secret_lookup: UserSecretLookup | None = None,
-    ) -> None:
+    def __init__(self, config: CommonConfig | str | Path | None = None, *, provider: ChatProvider | None = None, storage: StorageBackend | None = None, use_storage: bool | None = None, action_rules: ActionRules | None = None, secret_lookup: UserSecretLookup | None = None) -> None:
         if use_storage is not None and not isinstance(use_storage, bool):
             raise TypeError("use_storage must be a boolean or None")
         if storage is not None and use_storage is False:
@@ -121,9 +112,7 @@ class Agent:
     def subagents(self) -> tuple[SubAgent, ...]:
         return self._team.subagents
 
-    def add_subagent(
-        self, agent: Agent, *, name: str | None = None, description: str = "", created_by_agent: bool = False, purpose: str = "auto", required_features: tuple[str, ...] = ("text",), weight: float = 1.0
-    ) -> str:
+    def add_subagent(self, agent: Agent, *, name: str | None = None, description: str = "", created_by_agent: bool = False, purpose: str = "auto", required_features: tuple[str, ...] = ("text",), weight: float = 1.0) -> str:
         return self._team.add_subagent(agent, name=name, description=description, created_by_agent=created_by_agent, purpose=purpose, required_features=required_features, weight=weight)
 
     def add_skill_path(self, path: str | Path) -> None:
@@ -153,17 +142,7 @@ class Agent:
     def run(self, prompt: str, *, messages: list[Message] | None = None, conversation_id: str | None = None, skill: str | None = None, run_options: AgentRunOptions | None = None) -> RunResult:
         return self._run_for_user(prompt, LOCAL_USER_ID, messages=messages, conversation_id=conversation_id, run_options=resolve_agent_run_options(run_options, skill))
 
-    def _run_for_user(
-        self,
-        prompt: str,
-        user_id: str,
-        *,
-        messages: list[Message] | None = None,
-        conversation_id: str | None = None,
-        run_options: AgentRunOptions | None = None,
-        resumed_from_run_id: str | None = None,
-        resume_checkpoint: dict[str, object] | None = None,
-    ) -> RunResult:
+    def _run_for_user(self, prompt: str, user_id: str, *, messages: list[Message] | None = None, conversation_id: str | None = None, run_options: AgentRunOptions | None = None, resumed_from_run_id: str | None = None, resume_checkpoint: dict[str, object] | None = None) -> RunResult:
         options = run_options or AgentRunOptions()
         prepared_messages, pending_turn = self._prepare_messages(prompt, user_id, messages, conversation_id, options)
         warnings = self._team.check_links() if options.include_subagents and options.check_subagent_links_before_run else []
@@ -216,21 +195,8 @@ class Agent:
             run_id, score, reason = feedback
             self._record_task_feedback(user_id, run_id, score=score, reason=reason, source="implicit")
 
-    def _run_as_subagent(
-        self, prompt: str, parent_run: Run, *, purpose: str = "auto", required_features: tuple[str, ...] = ("text",), record_options: SubagentRecordOptions, shared_context: dict[str, object] | None = None
-    ) -> RunResult:
-        request = Task(
-            prompt=prompt,
-            messages=[],
-            include_subagents=True,
-            warning_messages=[],
-            purpose=purpose,
-            required_features=required_features,
-            shared_context=shared_context,
-            allow_subscriber_failures=parent_run.allow_subscriber_failures,
-            subagent_record_options=record_options,
-            subagents=self._team.create_callbacks(),
-        )
+    def _run_as_subagent(self, prompt: str, parent_run: Run, *, purpose: str = "auto", required_features: tuple[str, ...] = ("text",), record_options: SubagentRecordOptions, shared_context: dict[str, object] | None = None) -> RunResult:
+        request = Task(prompt=prompt, messages=[], include_subagents=True, warning_messages=[], purpose=purpose, required_features=required_features, shared_context=shared_context, allow_subscriber_failures=parent_run.allow_subscriber_failures, subagent_record_options=record_options, subagents=self._team.create_callbacks())
         return self.runtime.run_task(request, RunIdentity.create(parent_run.identity.user_id, self.config.agent.name, conversation_id=parent_run.identity.conversation_id, parent_run_id=parent_run.run_id))
 
     def _create_event_store(self, user_id: str = LOCAL_USER_ID, *, feature: str | None = None) -> EventStore:
@@ -339,17 +305,7 @@ class Agent:
     def _build_runtime(self, config: CommonConfig) -> Runtime:
         if self._provider_pool is None:
             raise RuntimeError("Agent provider pool is unavailable")
-        return Runtime(
-            config,
-            self._provider_pool,
-            self._skill_handlers,
-            self._storage,
-            self._action_rules,
-            self._user_secrets,
-            _create_disclosure_storage,
-            code_model_profiles=self._code_model_profiles,
-            event_subscribers=self._event_subscribers,
-        )
+        return Runtime(config, self._provider_pool, self._skill_handlers, self._storage, self._action_rules, self._user_secrets, _create_disclosure_storage, code_model_profiles=self._code_model_profiles, event_subscribers=self._event_subscribers)
 
     def _create_bootstrap_store(self, storage: StorageBackend | None, *, config: CommonConfig | None = None):
         if storage is None:

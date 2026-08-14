@@ -45,11 +45,7 @@ class DisclosureContextBudget:
         selected_limit = limit
         if stage in CONTEXT_BUDGET_STAGES:
             selected_limit = min(limit, max(0, self.budget_chars - self.used_chars))
-        page = (
-            create_reference_disclosure_page(reference, kind, name, content, offset=offset, cache_path=cache_path)
-            if selected_limit == 0
-            else create_disclosure_page(reference, kind, name, content, offset=offset, limit=selected_limit, cache_path=cache_path)
-        )
+        page = create_reference_disclosure_page(reference, kind, name, content, offset=offset, cache_path=cache_path) if selected_limit == 0 else create_disclosure_page(reference, kind, name, content, offset=offset, limit=selected_limit, cache_path=cache_path)
         if stage in CONTEXT_BUDGET_STAGES:
             self.used_chars += len(page.content)
         return page
@@ -66,17 +62,7 @@ def create_disclosure_page(reference: str, kind: str, name: str, content: str, *
     if isinstance(limit, bool) or not isinstance(limit, int) or limit <= 0 or limit > MAX_PAGE_CHARS:
         raise ValueError(f"disclosure limit must be between 1 and {MAX_PAGE_CHARS} characters")
     end = min(len(content), offset + limit)
-    return DisclosurePage(
-        reference=reference,
-        kind=kind,
-        name=name,
-        content=content[offset:end],
-        content_sha256=hashlib.sha256(content.encode("utf-8")).hexdigest(),
-        offset=offset,
-        total_chars=len(content),
-        next_offset=end if end < len(content) else None,
-        cache_path=cache_path,
-    )
+    return DisclosurePage(reference=reference, kind=kind, name=name, content=content[offset:end], content_sha256=hashlib.sha256(content.encode("utf-8")).hexdigest(), offset=offset, total_chars=len(content), next_offset=end if end < len(content) else None, cache_path=cache_path)
 
 
 def disclosure_page_to_dict(page: DisclosurePage) -> dict[str, object]:
@@ -88,16 +74,7 @@ def disclosure_page_to_dict(page: DisclosurePage) -> dict[str, object]:
 def format_disclosure_page_for_prompt(page: DisclosurePage) -> str:
     if page.next_offset is None and page.content:
         return page.content
-    return (
-        "Progressive content page:\n"
-        f"- kind: {page.kind}\n"
-        f"- name: {page.name}\n"
-        f"- reference: {page.reference}\n"
-        f"- content_sha256: {page.content_sha256}\n"
-        f"- total_chars: {page.total_chars}\n"
-        f"- next_offset: {page.next_offset}\n"
-        "- content:\n" + page.content
-    )
+    return f"Progressive content page:\n- kind: {page.kind}\n- name: {page.name}\n- reference: {page.reference}\n- content_sha256: {page.content_sha256}\n- total_chars: {page.total_chars}\n- next_offset: {page.next_offset}\n- content:\n" + page.content
 
 
 def create_reference_disclosure_page(reference: str, kind: str, name: str, content: str, *, offset: int = 0, cache_path: Path | None = None) -> DisclosurePage:
@@ -105,17 +82,7 @@ def create_reference_disclosure_page(reference: str, kind: str, name: str, conte
     _require_content_size(content)
     if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
         raise ValueError("disclosure offset must be a non-negative integer")
-    return DisclosurePage(
-        reference=reference,
-        kind=kind,
-        name=name,
-        content="",
-        content_sha256=hashlib.sha256(content.encode("utf-8")).hexdigest(),
-        offset=offset,
-        total_chars=len(content),
-        next_offset=offset if offset < len(content) else None,
-        cache_path=cache_path,
-    )
+    return DisclosurePage(reference=reference, kind=kind, name=name, content="", content_sha256=hashlib.sha256(content.encode("utf-8")).hexdigest(), offset=offset, total_chars=len(content), next_offset=offset if offset < len(content) else None, cache_path=cache_path)
 
 
 def serialize_disclosure_value(value: object) -> str:

@@ -1939,6 +1939,17 @@ Status: implemented.
 - Remove duplicate queue validation, apply a 220-character formatter ceiling, and reduce source
   to at most 11,900 non-empty Python lines without moving task scheduling into Core.
 
+## v0.1.88: One Model Call Context
+
+Status: implemented.
+
+- Create one model call context for a task and reuse its purpose, event writer, and used-model
+  recorder across normal turns and explicit calls to another configured model.
+- Resolve one text-model event writer at construction instead of carrying storage plus a second
+  writer through every call; storage remains the explicit preferred destination when configured.
+- Inline Runtime's Skills, model-profile, user-provider, and TaskRunner assembly, apply a
+  350-character formatter ceiling, and reduce source to at most 10,900 non-empty Python lines.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

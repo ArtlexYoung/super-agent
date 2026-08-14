@@ -13,15 +13,7 @@ from skill.discovery.index import DEFAULT_PAGE_CHARS, disclosure_page_to_dict
 
 
 class RunTools:
-    def __init__(
-        self,
-        run: Run,
-        contributions: list[SkillUse] | None = None,
-        delegated_subagent_results: list[SubAgentResult] | None = None,
-        *,
-        send_text_model_messages: Callable[[list[Message]], str] | None = None,
-        extra_tools: tuple[SkillTool, ...] = (),
-    ) -> None:
+    def __init__(self, run: Run, contributions: list[SkillUse] | None = None, delegated_subagent_results: list[SubAgentResult] | None = None, *, send_text_model_messages: Callable[[list[Message]], str] | None = None, extra_tools: tuple[SkillTool, ...] = ()) -> None:
         self.run = run
         self._send_text_model_messages = send_text_model_messages
         self._subagents = run.task.subagents.list_subagents() if run.task.include_subagents else []
@@ -71,10 +63,7 @@ class RunTools:
             self._record_tool_failure(call, error)
             raise error
         try:
-            raw_result = self.run.execute_action(
-                ActionRequest(action_id=call.id, actor=f"tool:{call.name}", resource=tool.action.resolve_resource(call.arguments), effects=tool.action.effects, argument_names=tuple(call.arguments)),
-                lambda: tool.handler(call.arguments),
-            )
+            raw_result = self.run.execute_action(ActionRequest(action_id=call.id, actor=f"tool:{call.name}", resource=tool.action.resolve_resource(call.arguments), effects=tool.action.effects, argument_names=tuple(call.arguments)), lambda: tool.handler(call.arguments))
         except Exception as error:
             self._record_tool_failure(call, error)
             raise
@@ -119,11 +108,7 @@ class RunTools:
     def _disclose_skill_manifest(self, arguments: dict[str, object]) -> dict[str, object]:
         opened = self._open_requested_skill(arguments)
         manifest = opened.disclose_manifest()
-        return {
-            "key": opened.index_entry.reference.key,
-            "manifest": {"name": manifest.name, "type": manifest.skill_type, "description": manifest.description, "version": manifest.version, "provides": manifest.provides, "requires": manifest.requires},
-            "cache_path": _optional_path(opened.index_entry.manifest_cache_path),
-        }
+        return {"key": opened.index_entry.reference.key, "manifest": {"name": manifest.name, "type": manifest.skill_type, "description": manifest.description, "version": manifest.version, "provides": manifest.provides, "requires": manifest.requires}, "cache_path": _optional_path(opened.index_entry.manifest_cache_path)}
 
     def _disclose_skill_instructions(self, arguments: dict[str, object]) -> dict[str, object]:
         opened = self._open_requested_skill(arguments)
@@ -138,9 +123,7 @@ class RunTools:
 
     def _read_disclosed_content(self, arguments: dict[str, object]) -> dict[str, object]:
         reference = read_required_tool_string(arguments, "reference")
-        page = self.run.skills.disclosure.read_disclosed_content(
-            reference, offset=read_optional_non_negative_tool_integer(arguments, "offset") or 0, limit=(read_optional_positive_tool_integer(arguments, "limit") or DEFAULT_PAGE_CHARS)
-        )
+        page = self.run.skills.disclosure.read_disclosed_content(reference, offset=read_optional_non_negative_tool_integer(arguments, "offset") or 0, limit=(read_optional_positive_tool_integer(arguments, "limit") or DEFAULT_PAGE_CHARS))
         return disclosure_page_to_dict(page)
 
     def _activate_skill(self, arguments: dict[str, object]) -> dict[str, object]:
@@ -152,14 +135,7 @@ class RunTools:
         previous_tools = set(self._tools)
         loaded = self._activate_reference(reference)
         current_tools = set(self._tools)
-        return {
-            "key": reference.key,
-            "already_active": False,
-            "activated": [item.key for item, _contribution in loaded],
-            "instructions": _activation_instructions(loaded),
-            "tools": sorted(current_tools - previous_tools),
-            "removed_tools": sorted(previous_tools - current_tools),
-        }
+        return {"key": reference.key, "already_active": False, "activated": [item.key for item, _contribution in loaded], "instructions": _activation_instructions(loaded), "tools": sorted(current_tools - previous_tools), "removed_tools": sorted(previous_tools - current_tools)}
 
     def _activate_reference(self, reference: SkillReference) -> list[tuple[SkillReference, SkillUse]]:
         loaded = self._load_reference_tree(reference, set())
@@ -204,8 +180,6 @@ class RunTools:
             return None
         if len(starters) > 1 or self.skill_session is not None:
             raise ValueError("only one stateful Skill can be active in a run")
-        if self._session_context is None:
-            raise RuntimeError("stateful Skill startup is unavailable")
         return starters[0](self._session_context)
 
     def _load_reference_tree(self, reference: SkillReference, loading: set[str]) -> list[tuple[SkillReference, SkillUse]]:
@@ -270,8 +244,7 @@ class RunTools:
     def _open_requested_skill(self, arguments: dict[str, object]) -> SkillDisclosure:
         name = read_required_tool_string(arguments, "name")
         skill_type = read_optional_tool_string(arguments, "type")
-        opened = self.run.skills.disclosure.open_skill(name, expected_type=skill_type)
-        return opened
+        return self.run.skills.disclosure.open_skill(name, expected_type=skill_type)
 
     def _record_loaded_skill(self, reference: SkillReference) -> None:
         entry = self.run.skills.index.require_skill(reference.name, reference.skill_type)
@@ -287,29 +260,10 @@ def _create_disclosure_tools(run_tools: RunTools, skill_index: SkillIndex, *, re
     disclosure_effects = (ActionEffect.READ, ActionEffect.CREATE, ActionEffect.UPDATE) if records_cache else (ActionEffect.READ,)
     tools = [SkillTool("list_skills", "List every available Skill type from the central index.", {}, run_tools._list_skills, action=SkillAction((ActionEffect.READ,), "skill:index"), result_kind="skill")]
     disclosures = (("manifest", run_tools._disclose_skill_manifest), ("instructions", run_tools._disclose_skill_instructions), ("configuration", run_tools._disclose_skill_configuration))
-    tools.extend(
-        SkillTool(
-            f"disclose_skill_{part}",
-            f"Disclose one Skill's {part} through the central cache.",
-            reference,
-            handler,
-            action=SkillAction(disclosure_effects, f"skill:disclosure:{part}", "name"),
-            required=("name",),
-            result_kind="skill",
-        )
-        for part, handler in disclosures
-    )
+    tools.extend(SkillTool(f"disclose_skill_{part}", f"Disclose one Skill's {part} through the central cache.", reference, handler, action=SkillAction(disclosure_effects, f"skill:disclosure:{part}", "name"), required=("name",), result_kind="skill") for part, handler in disclosures)
     tools.extend(
         (
-            SkillTool(
-                "activate_skill",
-                "Explicitly activate one Skill and attach its registered Runtime tools.",
-                reference,
-                run_tools._activate_skill,
-                action=SkillAction((ActionEffect.READ,), "skill:active", "name"),
-                required=("name",),
-                result_kind="skill",
-            ),
+            SkillTool("activate_skill", "Explicitly activate one Skill and attach its registered Runtime tools.", reference, run_tools._activate_skill, action=SkillAction((ActionEffect.READ,), "skill:active", "name"), required=("name",), result_kind="skill"),
             SkillTool(
                 "read_disclosed_content",
                 "Read one bounded page from a reference returned by progressive disclosure.",
@@ -349,15 +303,7 @@ def _optional_path(path: Path | None) -> str | None:
 def _create_subagent_tools(run_tools: RunTools) -> tuple[SkillTool, ...]:
     return (
         SkillTool("list_subagents", "List subagents added to the current Agent in code.", {}, run_tools.list_subagents, action=SkillAction((ActionEffect.READ,), "subagent:index"), result_kind="subagent"),
-        SkillTool(
-            "run_subagent",
-            "Run one subagent added in code and return its traced result.",
-            {"name": {"type": "string"}, "prompt": {"type": "string"}},
-            run_tools.run_subagent,
-            action=SkillAction((ActionEffect.DELEGATE,), "subagent", "name"),
-            required=("name", "prompt"),
-            result_kind="subagent",
-        ),
+        SkillTool("run_subagent", "Run one subagent added in code and return its traced result.", {"name": {"type": "string"}, "prompt": {"type": "string"}}, run_tools.run_subagent, action=SkillAction((ActionEffect.DELEGATE,), "subagent", "name"), required=("name", "prompt"), result_kind="subagent"),
     )
 
 
@@ -365,15 +311,7 @@ def _create_shared_context_tools(run_tools: RunTools) -> tuple[SkillTool, ...]:
     shared = run_tools.run.task.shared_context or {}
     reference = str(shared.get("reference", ""))
     return (
-        SkillTool(
-            "read_shared_task_context",
-            "Read the shared task packet attached by the parent Agent through central disclosure.",
-            {"reference": {"type": "string", "enum": [reference]}},
-            run_tools.read_shared_task_context,
-            action=SkillAction((ActionEffect.READ,), "task:shared-context", "reference"),
-            required=("reference",),
-            result_kind=None,
-        ),
+        SkillTool("read_shared_task_context", "Read the shared task packet attached by the parent Agent through central disclosure.", {"reference": {"type": "string", "enum": [reference]}}, run_tools.read_shared_task_context, action=SkillAction((ActionEffect.READ,), "task:shared-context", "reference"), required=("reference",), result_kind=None),
     )
 
 

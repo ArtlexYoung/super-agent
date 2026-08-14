@@ -57,9 +57,7 @@ class UserConversations:
         self.user = user
 
     def create(self, title: str = "", *, conversation_id: str | None = None) -> Conversation:
-        return cast(
-            Conversation, self.user._execute(ActionRequest.create("user:conversation", "conversation:new", (ActionEffect.CREATE,)), lambda: create_conversation(self.user._store(), title, conversation_id=conversation_id))
-        )
+        return cast(Conversation, self.user._execute(ActionRequest.create("user:conversation", "conversation:new", (ActionEffect.CREATE,)), lambda: create_conversation(self.user._store(), title, conversation_id=conversation_id)))
 
     def list(self) -> list[Conversation]:
         return list_conversations(self.user._store())
@@ -68,9 +66,7 @@ class UserConversations:
         return read_conversation(self.user._store(), conversation_id)
 
     def rename(self, conversation_id: str, title: str) -> Conversation:
-        return cast(
-            Conversation, self.user._execute(ActionRequest.create("user:conversation", f"conversation:{conversation_id}", (ActionEffect.UPDATE,)), lambda: rename_conversation(self.user._store(), conversation_id, title))
-        )
+        return cast(Conversation, self.user._execute(ActionRequest.create("user:conversation", f"conversation:{conversation_id}", (ActionEffect.UPDATE,)), lambda: rename_conversation(self.user._store(), conversation_id, title)))
 
     def clear(self, conversation_id: str) -> Conversation:
         return cast(Conversation, self.user._execute(ActionRequest.create("user:conversation", f"conversation:{conversation_id}", (ActionEffect.DELETE,)), lambda: clear_conversation(self.user._store(), conversation_id)))
@@ -258,12 +254,7 @@ def _create_skill_updater(user: UserAgent) -> "SkillUpdater":
     skills = agent._create_skills(user.user_id)
     task_runner = agent._create_task_runner(user.user_id, skills)
     return SkillUpdater(
-        skills.disclosure,
-        store=store,
-        propose_model=task_runner.create_text_model(store, "skill_change_proposal"),
-        test_model=task_runner.create_text_model(store, "skill_change_test"),
-        on_skill_changed=lambda manifest: agent._reload_models(user.user_id) if manifest.skill_type == "model" else None,
-        action_rules=agent._action_rules(),
+        skills.disclosure, store=store, propose_model=task_runner.create_text_model(store, "skill_change_proposal"), test_model=task_runner.create_text_model(store, "skill_change_test"), on_skill_changed=lambda manifest: agent._reload_models(user.user_id) if manifest.skill_type == "model" else None, action_rules=agent._action_rules()
     )
 
 
@@ -299,18 +290,7 @@ def _common_config_to_toml(config: CommonConfig) -> str:
     lines = ["schema_version = 1", 'kind = "common"', "", "[agent]", f"name = {_toml_string(agent.name)}", f"system = {_toml_string(agent.system)}", f"skills = {_toml_array(agent.skills)}"]
     if agent.max_agent_chain_depth is not None:
         lines.append(f"max_agent_chain_depth = {agent.max_agent_chain_depth}")
-    lines.extend(
-        [
-            f"disabled_skills = {_toml_array(agent.disabled_skills)}",
-            "",
-            "[paths]",
-            f"skills = {_toml_array([_portable_path(path, base) for path in config.paths.skills])}",
-            "",
-            "[storage]",
-            f"backend = {_toml_string(config.storage.backend)}",
-            f"path = {_toml_string(_portable_path(config.storage.path, base))}",
-        ]
-    )
+    lines.extend([f"disabled_skills = {_toml_array(agent.disabled_skills)}", "", "[paths]", f"skills = {_toml_array([_portable_path(path, base) for path in config.paths.skills])}", "", "[storage]", f"backend = {_toml_string(config.storage.backend)}", f"path = {_toml_string(_portable_path(config.storage.path, base))}"])
     if config.storage.url_env is not None:
         lines.append(f"url_env = {_toml_string(config.storage.url_env)}")
     lines.extend(["", "[storage.audit]", f"detailed_days = {config.storage.audit.detailed_days}", f"critical_days = {config.storage.audit.critical_days}"])

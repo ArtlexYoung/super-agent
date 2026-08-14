@@ -101,11 +101,7 @@ class Run:
         if loaded is None:
             from skill.handlers.runtime import SkillContext
 
-            loaded = self.skills.handlers.handle(
-                SkillContext(
-                    self.skills.disclosure, reference, store=self.store, identity=self.identity, send_text_model_messages=send_text_model_messages, execute_action=self.execute_action, record_event=self.record_event
-                )
-            )
+            loaded = self.skills.handlers.handle(SkillContext(self.skills.disclosure, reference, store=self.store, identity=self.identity, send_text_model_messages=send_text_model_messages, execute_action=self.execute_action, record_event=self.record_event))
             loaded = replace(loaded, source=reference)
             self._loaded_skills[key] = loaded
         return loaded
@@ -124,18 +120,7 @@ class Run:
 
     def list_used_skill_evidence(self) -> list[dict[str, object]]:
         return [
-            {
-                "schema_version": 2,
-                "key": entry.reference.key,
-                "type": entry.reference.skill_type,
-                "name": entry.reference.name,
-                "version": entry.version,
-                "content_sha256": entry.content_sha256,
-                "function_group": entry.function_group,
-                "agent_created": entry.agent_created,
-                "agent_can_update": entry.agent_can_update,
-                "freshness": entry.freshness,
-            }
+            {"schema_version": 2, "key": entry.reference.key, "type": entry.reference.skill_type, "name": entry.reference.name, "version": entry.version, "content_sha256": entry.content_sha256, "function_group": entry.function_group, "agent_created": entry.agent_created, "agent_can_update": entry.agent_can_update, "freshness": entry.freshness}
             for entry in self._used_skill_entries.values()
         ]
 
@@ -224,15 +209,7 @@ class Runtime:
                 raise RuntimeError("run task loop is unavailable")
             result = run.task_runner.run_task(run)
             result = replace(result, subscriber_failures=run.list_subscriber_failures())
-            run.record_event(
-                "run.completed",
-                {
-                    "workflow": result.workflow,
-                    "used_skills": list(result.skills),
-                    "stop_reason": result.stop_reason,
-                    "learning_evidence": _create_run_learning_evidence(run, request.prompt, result.text, started_at=started_at),
-                },
-            )
+            run.record_event("run.completed", {"workflow": result.workflow, "used_skills": list(result.skills), "stop_reason": result.stop_reason, "learning_evidence": _create_run_learning_evidence(run, request.prompt, result.text, started_at=started_at)})
             final_result = replace(result, actions=list_run_actions(run), subscriber_failures=run.list_subscriber_failures(), events=run.list_recorded_events())
             failures = run.list_subscriber_failures()
             if failures and not request.allow_subscriber_failures:
@@ -259,21 +236,15 @@ def _create_run(runtime: Runtime, request: Task, identity: RunIdentity, *, event
     prompt = start_data.pop("prompt", None)
     event_log.start_run(None if prompt is None else str(prompt), extra_data=start_data)
     try:
-        skills = _create_skills(runtime, store, identity)
-        profiles = _read_model_profiles(runtime, skills, identity.user_id)
-        task_runner = _create_task_runner(runtime, profiles, identity.user_id)
-        run = Run(
-            config=runtime.config,
-            task=request,
-            skills=skills,
-            identity=identity,
-            event_log=event_log,
-            store=store,
-            task_runner=task_runner,
-            allow_subscriber_failures=request.allow_subscriber_failures,
-            create_action_rules=runtime.create_action_rules,
-            subagent_record_options=request.subagent_record_options,
-        )
+        skills = create_skills(runtime.config, handlers=runtime.skill_handlers, store=store, identity=identity if store is not None else None, include_freshness=False)
+        environment = runtime.user_secrets.get_environment_for_user(identity.user_id)
+        has_model_skill = any(entry.reference.skill_type == "model" for entry in skills.index.entries)
+        profiles = list(runtime.code_model_profiles) if runtime.code_model_profiles and not has_model_skill else read_model_profiles(skills, environment)
+        profiles = profiles or list(runtime.code_model_profiles)
+        from core.loop import TaskRunner
+
+        task_runner = TaskRunner(profiles, runtime.provider_pool.create_user_provider_pool(environment))
+        run = Run(config=runtime.config, task=request, skills=skills, identity=identity, event_log=event_log, store=store, task_runner=task_runner, allow_subscriber_failures=request.allow_subscriber_failures, create_action_rules=runtime.create_action_rules, subagent_record_options=request.subagent_record_options)
         skills.disclosure.set_event_writer(run.record_event)
         return run
     except Exception as error:
@@ -287,29 +258,6 @@ def _create_run_event_store(runtime: Runtime, identity: RunIdentity, event_log: 
     from core.records.store import EventStore
 
     return EventStore(runtime.storage, runtime.config.storage.path, identity.user_id, identity.agent_name, run_event_log=event_log, disclosure_factory=runtime.disclosure_factory)
-
-
-def _create_skills(runtime: Runtime, store, identity: RunIdentity) -> Skills:
-    return create_skills(runtime.config, handlers=runtime.skill_handlers, store=store, identity=identity if store is not None else None, include_freshness=False)
-
-
-def _read_model_profiles(runtime: Runtime, skills: Skills, user_id: str) -> list[ModelProfile]:
-    environment = runtime.user_secrets.get_environment_for_user(user_id)
-    if runtime.code_model_profiles and not _has_model_skill(skills):
-        return list(runtime.code_model_profiles)
-    profiles = read_model_profiles(skills, environment)
-    return profiles or list(runtime.code_model_profiles)
-
-
-def _has_model_skill(skills: Skills) -> bool:
-    return any(entry.reference.skill_type == "model" for entry in skills.index.entries)
-
-
-def _create_task_runner(runtime: Runtime, profiles: list[ModelProfile], user_id: str) -> TaskRunner:
-    from core.loop import TaskRunner
-
-    environment = runtime.user_secrets.get_environment_for_user(user_id)
-    return TaskRunner(profiles, runtime.provider_pool.create_user_provider_pool(environment))
 
 
 def _create_run_learning_evidence(run: Run, prompt: str, output: str, *, started_at: float, error: Exception | None = None) -> dict[str, object]:

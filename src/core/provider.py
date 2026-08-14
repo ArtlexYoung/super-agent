@@ -15,12 +15,7 @@ MOCK_PROVIDER = "mock"
 OPENAI_COMPATIBLE_PROVIDER = "openai-compatible"
 ANTHROPIC_COMPATIBLE_PROVIDER = "anthropic-compatible"
 MODEL_PRICE_FIELDS = ("input_cost_per_million", "output_cost_per_million", "cache_creation_cost_per_million", "cache_read_cost_per_million")
-MODEL_TOKEN_PRICE_FIELDS = (
-    ("input_tokens", "input_cost_per_million"),
-    ("output_tokens", "output_cost_per_million"),
-    ("cache_creation_tokens", "cache_creation_cost_per_million"),
-    ("cache_read_tokens", "cache_read_cost_per_million"),
-)
+MODEL_TOKEN_PRICE_FIELDS = (("input_tokens", "input_cost_per_million"), ("output_tokens", "output_cost_per_million"), ("cache_creation_tokens", "cache_creation_cost_per_million"), ("cache_read_tokens", "cache_read_cost_per_million"))
 
 
 @dataclass(frozen=True)
@@ -74,13 +69,7 @@ class ModelPricing:
         prices = self.resolved_dict()
         weighted = sum(count * prices[price_name] for name, price_name in MODEL_TOKEN_PRICE_FIELDS if (count := known.get(name)) is not None)
         total_tokens = sum(known.values())
-        return {
-            "tokens": counts,
-            "estimated_cost": round(weighted / 1_000_000, 12),
-            "blended_cost_per_million": round(weighted / total_tokens if total_tokens else 0.0, 8),
-            "unprovided_usage": [name for name, value in counts.items() if value is None],
-            "excludes_unprovided_usage": len(known) != len(counts),
-        }
+        return {"tokens": counts, "estimated_cost": round(weighted / 1_000_000, 12), "blended_cost_per_million": round(weighted / total_tokens if total_tokens else 0.0, 8), "unprovided_usage": [name for name, value in counts.items() if value is None], "excludes_unprovided_usage": len(known) != len(counts)}
 
 
 @dataclass(frozen=True)

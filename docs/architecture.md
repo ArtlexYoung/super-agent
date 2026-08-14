@@ -156,3 +156,6 @@ The release suite verifies the claims above as behavior:
 - The optional task Skill normalizes one selectable child-Agent fact. Queue dispatch and group
   dispatch use that same fact for feature matching, model choice, price, health, rotation, and
   circuit state; Core remains unaware of producer-consumer scheduling.
+- One `ModelCallContext` carries the task purpose and exact run recorders through the model loop
+  and configured-model tool. Text-only model users resolve one storage or run event writer before
+  their first call, never by falling back after a Provider failure.

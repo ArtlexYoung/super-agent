@@ -57,81 +57,20 @@ class CodeWorkspace:
     def _read_tools(self) -> tuple[SkillTool, ...]:
         path = _workspace_path_schema()
         return (
-            SkillTool(
-                "list_workspace_tree",
-                "List a bounded workspace tree without following symbolic links.",
-                {"path": path, "max_depth": {"type": "integer", "minimum": 1, "maximum": 20}},
-                self.list_tree,
-                SkillAction((ActionEffect.READ,), "workspace:tree", "path"),
-                result_kind="file",
-            ),
-            SkillTool(
-                "read_workspace_file",
-                "Read all or an explicit inclusive line range from one UTF-8 file.",
-                {"path": path, "start_line": {"type": "integer", "minimum": 1}, "end_line": {"type": "integer", "minimum": 1}},
-                self.read_file,
-                SkillAction((ActionEffect.READ,), "workspace:file", "path"),
-                ("path",),
-                result_kind="file",
-            ),
-            SkillTool(
-                "search_workspace",
-                "Search bounded UTF-8 workspace files.",
-                {"query": {"type": "string"}, "path": path},
-                self.search,
-                SkillAction((ActionEffect.READ,), "workspace:search", "path"),
-                ("query",),
-                result_kind="file",
-            ),
-            SkillTool(
-                "read_git_status",
-                "Read Git status with a fixed command and no optional locks.",
-                {"path": path},
-                self.read_git_status,
-                SkillAction((ActionEffect.READ, ActionEffect.EXECUTE), "workspace:git-status", "path"),
-                result_kind="git",
-            ),
-            SkillTool(
-                "read_git_diff",
-                "Read a bounded Git diff with external diff and text conversion disabled.",
-                {"path": path, "staged": {"type": "boolean"}},
-                self.read_git_diff,
-                SkillAction((ActionEffect.READ, ActionEffect.EXECUTE), "workspace:git-diff", "path"),
-                result_kind="git",
-            ),
+            SkillTool("list_workspace_tree", "List a bounded workspace tree without following symbolic links.", {"path": path, "max_depth": {"type": "integer", "minimum": 1, "maximum": 20}}, self.list_tree, SkillAction((ActionEffect.READ,), "workspace:tree", "path"), result_kind="file"),
+            SkillTool("read_workspace_file", "Read all or an explicit inclusive line range from one UTF-8 file.", {"path": path, "start_line": {"type": "integer", "minimum": 1}, "end_line": {"type": "integer", "minimum": 1}}, self.read_file, SkillAction((ActionEffect.READ,), "workspace:file", "path"), ("path",), result_kind="file"),
+            SkillTool("search_workspace", "Search bounded UTF-8 workspace files.", {"query": {"type": "string"}, "path": path}, self.search, SkillAction((ActionEffect.READ,), "workspace:search", "path"), ("query",), result_kind="file"),
+            SkillTool("read_git_status", "Read Git status with a fixed command and no optional locks.", {"path": path}, self.read_git_status, SkillAction((ActionEffect.READ, ActionEffect.EXECUTE), "workspace:git-status", "path"), result_kind="git"),
+            SkillTool("read_git_diff", "Read a bounded Git diff with external diff and text conversion disabled.", {"path": path, "staged": {"type": "boolean"}}, self.read_git_diff, SkillAction((ActionEffect.READ, ActionEffect.EXECUTE), "workspace:git-diff", "path"), result_kind="git"),
         )
 
     def _change_tools(self) -> tuple[SkillTool, ...]:
         path = _workspace_path_schema()
         digest = _workspace_digest_schema()
         return (
-            SkillTool(
-                "write_workspace_file",
-                "Create a UTF-8 file or replace only an explicitly expected version.",
-                {"path": path, "content": {"type": "string"}, "expected_sha256": digest},
-                self.write_file,
-                SkillAction((ActionEffect.CREATE, ActionEffect.UPDATE), "workspace:file", "path"),
-                ("path", "content"),
-                result_kind="file",
-            ),
-            SkillTool(
-                "patch_workspace_file",
-                "Apply non-overlapping exact replacements to an expected file version.",
-                {"path": path, "expected_sha256": digest, "replacements": _replacement_schema()},
-                self.patch_file,
-                SkillAction((ActionEffect.UPDATE,), "workspace:file", "path"),
-                ("path", "expected_sha256", "replacements"),
-                result_kind="file",
-            ),
-            SkillTool(
-                "delete_workspace_file",
-                "Delete only the explicitly expected file version.",
-                {"path": path, "expected_sha256": digest},
-                self.delete_file,
-                SkillAction((ActionEffect.DELETE,), "workspace:file", "path"),
-                ("path", "expected_sha256"),
-                result_kind="file",
-            ),
+            SkillTool("write_workspace_file", "Create a UTF-8 file or replace only an explicitly expected version.", {"path": path, "content": {"type": "string"}, "expected_sha256": digest}, self.write_file, SkillAction((ActionEffect.CREATE, ActionEffect.UPDATE), "workspace:file", "path"), ("path", "content"), result_kind="file"),
+            SkillTool("patch_workspace_file", "Apply non-overlapping exact replacements to an expected file version.", {"path": path, "expected_sha256": digest, "replacements": _replacement_schema()}, self.patch_file, SkillAction((ActionEffect.UPDATE,), "workspace:file", "path"), ("path", "expected_sha256", "replacements"), result_kind="file"),
+            SkillTool("delete_workspace_file", "Delete only the explicitly expected file version.", {"path": path, "expected_sha256": digest}, self.delete_file, SkillAction((ActionEffect.DELETE,), "workspace:file", "path"), ("path", "expected_sha256"), result_kind="file"),
         )
 
     def list_tree(self, arguments: dict[str, object]) -> dict[str, object]:

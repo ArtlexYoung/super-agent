@@ -32,6 +32,7 @@ class _LoopState:
     messages: list[Message]
     workflow: TaskPolicy
     selected_skill_names: list[str]
+    model_context: ModelCallContext
     last_text: str = ""
 
 
@@ -40,8 +41,7 @@ class _ConfiguredModelTool:
     profiles: tuple[ModelProfile, ...]
     model_caller: ModelCaller
     provider_pool: ProviderPool
-    run: Run
-    purpose: str
+    model_context: ModelCallContext
     default_model_key: str
 
     def create_tool(self) -> SkillTool | None:
@@ -64,11 +64,11 @@ class _ConfiguredModelTool:
         reason = read_required_tool_string(arguments, "reason")
         profile = self._require_other_model(model_key)
         selected = _selected_model(profile, "model_action", reason)
-        response = self.model_caller.call_model([{"role": "user", "content": prompt}], selected, ModelCallContext(self.purpose, self.run.record_event, self.run.record_model_used))
+        response = self.model_caller.call_model([{"role": "user", "content": prompt}], selected, self.model_context)
         turn = read_model_turn(response)
         if not isinstance(turn, FinalTurn):
             raise ValueError("use_model target returned actions without receiving tools")
-        self.run.record_event("model.used", {"model": selected.to_dict(), "reason": reason})
+        self.model_context.record_event("model.used", {"model": selected.to_dict(), "reason": reason})
         return {"model": model_key, "text": turn.text}
 
     def _require_other_model(self, model_key: str) -> ModelProfile:
@@ -96,17 +96,7 @@ class TaskRunner:
         decision = self.model_caller.select_task_model(request.purpose, request.required_features, run.store)
         run.record_model_used(decision.profile)
         state = self._prepare_loop(run, decision)
-        run.record_event(
-            "task.scheduled",
-            {
-                "model": decision.to_dict(),
-                "purpose": request.purpose,
-                "required_features": list(request.required_features),
-                "skills": list(state.selected_skill_names),
-                "workflow": state.workflow.name,
-                "selection": "task_runner",
-            },
-        )
+        run.record_event("task.scheduled", {"model": decision.to_dict(), "purpose": request.purpose, "required_features": list(request.required_features), "skills": list(state.selected_skill_names), "workflow": state.workflow.name, "selection": "task_runner"})
         run.create_checkpoint("task-ready", _checkpoint_facts(request, state, 0))
         try:
             result = self._run_model_turns(run, decision, state)
@@ -127,9 +117,10 @@ class TaskRunner:
         workflow = _select_workflow(contributions)
         if "tools" in request.required_features and not workflow.uses_tools:
             raise ValueError("task requires tools but the configured workflow is direct")
-        model_tool = _ConfiguredModelTool(tuple(self.model_profiles), self.model_caller, self.provider_pool, run, request.purpose, decision.profile.key).create_tool()
+        model_context = ModelCallContext(request.purpose, run.record_event, run.record_model_used)
+        model_tool = _ConfiguredModelTool(tuple(self.model_profiles), self.model_caller, self.provider_pool, model_context, decision.profile.key).create_tool()
         tools = RunTools(run, contributions, send_text_model_messages=text_model.send_messages, extra_tools=() if model_tool is None else (model_tool,))
-        return _LoopState(contributions, tools, _build_messages(run, contributions, workflow), workflow, selected_names)
+        return _LoopState(contributions, tools, _build_messages(run, contributions, workflow), workflow, selected_names, model_context)
 
     def _run_model_turns(self, run: Run, decision: SelectedModel, state: _LoopState) -> RunResult:
         request = run.task
@@ -140,7 +131,7 @@ class TaskRunner:
         step = 0
         while step < state.workflow.max_steps:
             step += 1
-            response = self.model_caller.call_model(state.messages, decision, ModelCallContext(request.purpose, run.record_event, run.record_model_used), tools=definitions)
+            response = self.model_caller.call_model(state.messages, decision, state.model_context, tools=definitions)
             turn = read_model_turn(response)
             state.last_text = response.text or state.last_text
             _record_model_turn(run, step, response, state)
@@ -273,13 +264,7 @@ def _record_model_turn(run: Run, step: int, response: ModelResponse, state: _Loo
 
 
 def _checkpoint_facts(request: Task | None, state: _LoopState, step: int, response: ModelResponse | None = None) -> dict[str, object]:
-    facts: dict[str, object] = {
-        "step": step,
-        "workflow": state.workflow.name,
-        "skills": list(state.selected_skill_names),
-        "messages_sha256": hash_checkpoint_value(state.messages),
-        "tool_names": [tool.name for tool in state.tools.list_tools()],
-    }
+    facts: dict[str, object] = {"step": step, "workflow": state.workflow.name, "skills": list(state.selected_skill_names), "messages_sha256": hash_checkpoint_value(state.messages), "tool_names": [tool.name for tool in state.tools.list_tools()]}
     if request is not None:
         facts["purpose"] = request.purpose
     if response is not None:
@@ -303,8 +288,4 @@ def _record_task_completed(run: Run, result: RunResult, contributions: list[Skil
 
 def list_run_actions(run: Run) -> list[dict[str, object]]:
     terminal = {"action.applied": "applied", "action.blocked": "blocked", "action.failed": "failed"}
-    return [
-        {"action_id": event.data.get("action_id", ""), "resource": event.data.get("resource", ""), "effects": event.data.get("effects", []), "status": terminal[event.event_type], "reason": event.data.get("reason", "")}
-        for event in run.list_recorded_events()
-        if event.event_type in terminal
-    ]
+    return [{"action_id": event.data.get("action_id", ""), "resource": event.data.get("resource", ""), "effects": event.data.get("effects", []), "status": terminal[event.event_type], "reason": event.data.get("reason", "")} for event in run.list_recorded_events() if event.event_type in terminal]

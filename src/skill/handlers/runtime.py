@@ -114,10 +114,7 @@ class SkillTool:
     result_kind: str | None = "tool"
 
     def to_provider_definition(self) -> ToolDefinition:
-        return {
-            "type": "function",
-            "function": {"name": self.name, "description": self.description, "parameters": {"type": "object", "properties": self.properties, "required": list(self.required), "additionalProperties": False}},
-        }
+        return {"type": "function", "function": {"name": self.name, "description": self.description, "parameters": {"type": "object", "properties": self.properties, "required": list(self.required), "additionalProperties": False}}}
 
 
 @dataclass(frozen=True)
@@ -364,9 +361,7 @@ def create_default_skill_handlers(mcp_servers: McpServers | None = None) -> Skil
     return handlers
 
 
-def create_progressive_skill_disclosure(
-    config: CommonConfig, *, store: EventStore | None = None, identity: RunIdentity | None = None, record_disclosures: bool | None = None, include_freshness: bool = True
-) -> ProgressiveDisclosureCore:
+def create_progressive_skill_disclosure(config: CommonConfig, *, store: EventStore | None = None, identity: RunIdentity | None = None, record_disclosures: bool | None = None, include_freshness: bool = True) -> ProgressiveDisclosureCore:
     freshness_stats = {}
     if store is not None and include_freshness and "freshness" not in config.agent.disabled_skills:
         from skill.learning.freshness import calculate_skill_freshness
@@ -383,13 +378,7 @@ def create_progressive_skill_disclosure(
     if should_record and store is None:
         raise ValueError("recording Skill disclosure requires an EventStore")
     return ProgressiveDisclosureCore(
-        roots,
-        user_skill_roots=([] if store is None else [store.private_root / "skills"]),
-        builtin_skill_roots=[_builtin_skill_root()],
-        disabled_names=config.agent.disabled_skills,
-        freshness_stats=freshness_stats,
-        recorder=(create_runtime_disclosure_recorder(store, identity) if should_record and store is not None else None),
-        record_event=None,
+        roots, user_skill_roots=([] if store is None else [store.private_root / "skills"]), builtin_skill_roots=[_builtin_skill_root()], disabled_names=config.agent.disabled_skills, freshness_stats=freshness_stats, recorder=(create_runtime_disclosure_recorder(store, identity) if should_record and store is not None else None), record_event=None
     )
 
 
@@ -411,9 +400,7 @@ def load_configured_freshness_rules_if_enabled(config: CommonConfig, *, store: E
     return load_configured_freshness_rules(config, store=store)
 
 
-def create_skills(
-    config: CommonConfig, *, handlers: SkillHandlers | None = None, store: EventStore | None = None, identity: RunIdentity | None = None, record_disclosures: bool | None = None, include_freshness: bool = True
-) -> Skills:
+def create_skills(config: CommonConfig, *, handlers: SkillHandlers | None = None, store: EventStore | None = None, identity: RunIdentity | None = None, record_disclosures: bool | None = None, include_freshness: bool = True) -> Skills:
     """Build one complete Skill snapshot through the central entry point."""
     disclosure = create_progressive_skill_disclosure(config, store=store, identity=identity, record_disclosures=record_disclosures, include_freshness=include_freshness)
     return Skills(disclosure, handlers)

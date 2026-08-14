@@ -43,16 +43,7 @@ def skill_manifest_from_dict(data: dict[str, object], path: Path) -> SkillManife
     if not isinstance(description, str):
         raise ValueError("skill description must be a non-empty string")
     instructions = "SKILL.md" if path.with_name("SKILL.md").is_file() else None
-    return SkillManifest(
-        name=name,
-        description=read_text(description, "skill description"),
-        version=read_text(data.get("version", "0.1.0"), "skill version", allow_empty=True),
-        entry=SkillEntry(instructions),
-        path=path.parent,
-        skill_type=_read_skill_type(data),
-        function_group=name,
-        provides=[name],
-    )
+    return SkillManifest(name=name, description=read_text(description, "skill description"), version=read_text(data.get("version", "0.1.0"), "skill version", allow_empty=True), entry=SkillEntry(instructions), path=path.parent, skill_type=_read_skill_type(data), function_group=name, provides=[name])
 
 
 @dataclass(frozen=True)

@@ -18,23 +18,7 @@ DEFAULT_OLLAMA_MODEL = "llama3.2"
 DEFAULT_SILICONFLOW_MODEL = "THUDM/GLM-4-9B-0414"
 DEFAULT_SILICONFLOW_BASE_URL = "https://api.siliconflow.cn/v1"
 
-MODEL_CONFIGURATION_FIELDS = (
-    "provider",
-    "model",
-    "base_url",
-    "api_key_env",
-    "supports",
-    "purposes",
-    "strengths",
-    "default",
-    "quality_score",
-    "expected_latency_ms",
-    "input_cost_per_million",
-    "output_cost_per_million",
-    "cache_creation_cost_per_million",
-    "cache_read_cost_per_million",
-    "agent_can_update_connection",
-)
+MODEL_CONFIGURATION_FIELDS = ("provider", "model", "base_url", "api_key_env", "supports", "purposes", "strengths", "default", "quality_score", "expected_latency_ms", "input_cost_per_million", "output_cost_per_million", "cache_creation_cost_per_million", "cache_read_cost_per_million", "agent_can_update_connection")
 
 
 @dataclass(frozen=True)
@@ -61,13 +45,7 @@ class ModelDefinition:
         reject_unknown_fields(data, set(MODEL_CONFIGURATION_FIELDS), "model Skill settings")
         return cls(
             model=read_text(data.get("model"), "model Skill model"),
-            connection=normalize_provider_connection(
-                ProviderConnection(
-                    provider=read_text(data.get("provider"), "model Skill provider"),
-                    base_url=read_optional_text(data.get("base_url"), "model Skill base_url"),
-                    api_key_env=read_optional_text(data.get("api_key_env"), "model Skill api_key_env"),
-                )
-            ),
+            connection=normalize_provider_connection(ProviderConnection(provider=read_text(data.get("provider"), "model Skill provider"), base_url=read_optional_text(data.get("base_url"), "model Skill base_url"), api_key_env=read_optional_text(data.get("api_key_env"), "model Skill api_key_env"))),
             traits=ModelTraits(
                 supports=read_text_list(data.get("supports", ["text"]), "model Skill supports", lower=True),
                 purposes=read_text_list(data.get("purposes", []), "model Skill purposes", lower=True),
@@ -82,22 +60,8 @@ class ModelDefinition:
 
     def to_configuration(self) -> dict[str, object]:
         traits = self.traits
-        data: dict[str, object] = {
-            "provider": self.connection.provider,
-            "model": self.model,
-            "supports": list(traits.supports),
-            "purposes": list(traits.purposes),
-            "strengths": list(traits.strengths),
-            "default": self.default,
-            "agent_can_update_connection": self.agent_can_update_connection,
-        }
-        optional = {
-            "base_url": self.connection.base_url,
-            "api_key_env": self.connection.api_key_env,
-            "quality_score": traits.quality_score,
-            "expected_latency_ms": traits.expected_latency_ms,
-            **traits.pricing.to_dict(include_missing=False),
-        }
+        data: dict[str, object] = {"provider": self.connection.provider, "model": self.model, "supports": list(traits.supports), "purposes": list(traits.purposes), "strengths": list(traits.strengths), "default": self.default, "agent_can_update_connection": self.agent_can_update_connection}
+        optional = {"base_url": self.connection.base_url, "api_key_env": self.connection.api_key_env, "quality_score": traits.quality_score, "expected_latency_ms": traits.expected_latency_ms, **traits.pricing.to_dict(include_missing=False)}
         optional.pop("total_cost_per_million", None)
         data.update({key: value for key, value in optional.items() if value is not None})
         return data
@@ -159,17 +123,7 @@ def create_model_profile_from_skill_disclosure(disclosure: SkillDisclosure) -> M
     if manifest.skill_type != "model":
         raise ValueError(f"skill does not contain a model profile: {manifest.name}")
     definition = ModelDefinition.from_dict(disclosure.read_configuration().content)
-    return ModelProfile(
-        name=manifest.name,
-        description=manifest.description.strip(),
-        version=manifest.version,
-        definition=definition,
-        source="skill",
-        skill_key=f"model:{manifest.name}",
-        content_sha256=calculate_skill_directory_sha256(manifest.path),
-        agent_created=manifest.agent_created,
-        agent_can_update=manifest.agent_can_update,
-    )
+    return ModelProfile(name=manifest.name, description=manifest.description.strip(), version=manifest.version, definition=definition, source="skill", skill_key=f"model:{manifest.name}", content_sha256=calculate_skill_directory_sha256(manifest.path), agent_created=manifest.agent_created, agent_can_update=manifest.agent_can_update)
 
 
 def read_model_profiles(skills: Skills, environment: Mapping[str, str] | None = None) -> list[ModelProfile]:
@@ -198,66 +152,24 @@ def discover_environment_model_profiles(environment: Mapping[str, str] | None = 
     if configured_provider is not None:
         profiles.append(_profile_from_super_agent_environment(env, configured_provider))
     if _environment_text(env, "OA3_SILICONFLOW_API_KEY") is not None:
-        profiles.append(
-            _create_ephemeral_profile(
-                "siliconflow",
-                "Free SiliconFlow model discovered from OA3_SILICONFLOW_API_KEY.",
-                DEFAULT_SILICONFLOW_MODEL,
-                ProviderConnection(OPENAI_COMPATIBLE_PROVIDER, DEFAULT_SILICONFLOW_BASE_URL, "OA3_SILICONFLOW_API_KEY"),
-                "environment:OA3_SILICONFLOW_API_KEY",
-                supports=["text", "tools"],
-            )
-        )
+        profiles.append(_create_ephemeral_profile("siliconflow", "Free SiliconFlow model discovered from OA3_SILICONFLOW_API_KEY.", DEFAULT_SILICONFLOW_MODEL, ProviderConnection(OPENAI_COMPATIBLE_PROVIDER, DEFAULT_SILICONFLOW_BASE_URL, "OA3_SILICONFLOW_API_KEY"), "environment:OA3_SILICONFLOW_API_KEY", supports=["text", "tools"]))
     ollama_host = _environment_text(env, "OLLAMA_HOST")
     if ollama_host is not None:
         base_url = ollama_host.rstrip("/")
         if not base_url.endswith("/v1"):
             base_url += "/v1"
-        profiles.append(
-            _create_ephemeral_profile(
-                "ollama",
-                "Local Ollama model discovered from OLLAMA_HOST.",
-                _environment_text(env, "OLLAMA_MODEL") or DEFAULT_OLLAMA_MODEL,
-                ProviderConnection(OPENAI_COMPATIBLE_PROVIDER, base_url),
-                "environment:OLLAMA_HOST",
-            )
-        )
+        profiles.append(_create_ephemeral_profile("ollama", "Local Ollama model discovered from OLLAMA_HOST.", _environment_text(env, "OLLAMA_MODEL") or DEFAULT_OLLAMA_MODEL, ProviderConnection(OPENAI_COMPATIBLE_PROVIDER, base_url), "environment:OLLAMA_HOST"))
     if _environment_text(env, "OPENAI_API_KEY") is not None:
-        profiles.append(
-            _create_ephemeral_profile(
-                "openai",
-                "OpenAI model discovered from OPENAI_API_KEY.",
-                _environment_text(env, "SUPER_AGENT_MODEL") or DEFAULT_OPENAI_MODEL,
-                ProviderConnection(OPENAI_COMPATIBLE_PROVIDER, api_key_env="OPENAI_API_KEY"),
-                "environment:OPENAI_API_KEY",
-                supports=["text", "tools"],
-            )
-        )
+        profiles.append(_create_ephemeral_profile("openai", "OpenAI model discovered from OPENAI_API_KEY.", _environment_text(env, "SUPER_AGENT_MODEL") or DEFAULT_OPENAI_MODEL, ProviderConnection(OPENAI_COMPATIBLE_PROVIDER, api_key_env="OPENAI_API_KEY"), "environment:OPENAI_API_KEY", supports=["text", "tools"]))
     if _environment_text(env, "ANTHROPIC_API_KEY") is not None:
-        profiles.append(
-            _create_ephemeral_profile(
-                "anthropic",
-                "Anthropic model discovered from ANTHROPIC_API_KEY.",
-                _environment_text(env, "SUPER_AGENT_MODEL") or DEFAULT_ANTHROPIC_MODEL,
-                ProviderConnection(ANTHROPIC_COMPATIBLE_PROVIDER, api_key_env="ANTHROPIC_API_KEY"),
-                "environment:ANTHROPIC_API_KEY",
-                supports=["text", "tools"],
-            )
-        )
+        profiles.append(_create_ephemeral_profile("anthropic", "Anthropic model discovered from ANTHROPIC_API_KEY.", _environment_text(env, "SUPER_AGENT_MODEL") or DEFAULT_ANTHROPIC_MODEL, ProviderConnection(ANTHROPIC_COMPATIBLE_PROVIDER, api_key_env="ANTHROPIC_API_KEY"), "environment:ANTHROPIC_API_KEY", supports=["text", "tools"]))
     profiles = _deduplicate_profiles(profiles)
     return [replace(profile, definition=replace(profile.definition, default=index == 0)) for index, profile in enumerate(profiles)]
 
 
 def create_direct_provider_profile() -> ModelProfile:
     """Describe a provider explicitly supplied in application code."""
-    return ModelProfile(
-        name="provided",
-        description="Provider supplied directly when creating the Agent.",
-        version="code",
-        definition=ModelDefinition("provided", ProviderConnection(MOCK_PROVIDER), ModelTraits(["text", "tools"], [], []), default=True),
-        source="code",
-        skill_key="model:provided",
-    )
+    return ModelProfile(name="provided", description="Provider supplied directly when creating the Agent.", version="code", definition=ModelDefinition("provided", ProviderConnection(MOCK_PROVIDER), ModelTraits(["text", "tools"], [], []), default=True), source="code", skill_key="model:provided")
 
 
 def model_profile_is_ready(profile: ModelProfile, environment: Mapping[str, str] | None = None) -> bool:
@@ -295,11 +207,7 @@ def model_profile_supports(profile: ModelProfile, required_features: Sequence[st
 def choose_dispatch_model(models: object, purpose: str, required_features: Sequence[str], token_counts: Mapping[str, int | None]) -> ModelDispatchChoice:
     """Choose the lowest-cost compatible declared model for one Agent dispatch."""
     required = {item.strip().lower() for item in required_features if item.strip()}
-    candidates = (
-        [item for item in models if isinstance(item, dict) and required <= {str(feature).strip().lower() for feature in item.get("supports", []) if isinstance(feature, str) and feature.strip()}]
-        if isinstance(models, list)
-        else []
-    )
+    candidates = [item for item in models if isinstance(item, dict) and required <= {str(feature).strip().lower() for feature in item.get("supports", []) if isinstance(feature, str) and feature.strip()}] if isinstance(models, list) else []
     if not candidates:
         pricing = ModelPricing()
         return ModelDispatchChoice(None, pricing.resolved_dict(), pricing.estimate_cost(token_counts))
@@ -323,20 +231,11 @@ def _profile_from_super_agent_environment(environment: Mapping[str, str], provid
             model = DEFAULT_ANTHROPIC_MODEL
         else:
             model = MOCK_PROVIDER
-    return _create_ephemeral_profile(
-        "environment",
-        "Model selected through SUPER_AGENT_PROVIDER.",
-        model,
-        ProviderConnection(clean_provider, _environment_text(environment, "SUPER_AGENT_BASE_URL"), _environment_text(environment, "SUPER_AGENT_API_KEY_ENV")),
-        "environment:SUPER_AGENT_PROVIDER",
-        supports=["text", "tools"],
-    )
+    return _create_ephemeral_profile("environment", "Model selected through SUPER_AGENT_PROVIDER.", model, ProviderConnection(clean_provider, _environment_text(environment, "SUPER_AGENT_BASE_URL"), _environment_text(environment, "SUPER_AGENT_API_KEY_ENV")), "environment:SUPER_AGENT_PROVIDER", supports=["text", "tools"])
 
 
 def _create_ephemeral_profile(name: str, description: str, model: str, connection: ProviderConnection, source: str, *, supports: list[str] | None = None) -> ModelProfile:
-    return ModelProfile(
-        name=name, description=description, version="ephemeral", definition=ModelDefinition(model, normalize_provider_connection(connection), ModelTraits(list(supports or ["text"]), [], [])), source=source, skill_key=""
-    )
+    return ModelProfile(name=name, description=description, version="ephemeral", definition=ModelDefinition(model, normalize_provider_connection(connection), ModelTraits(list(supports or ["text"]), [], [])), source=source, skill_key="")
 
 
 def _deduplicate_profiles(profiles: list[ModelProfile]) -> list[ModelProfile]:
