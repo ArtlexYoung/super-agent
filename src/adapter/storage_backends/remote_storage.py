@@ -3,23 +3,14 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
 from importlib import import_module
 from typing import Any, Protocol
 from urllib.parse import parse_qsl, unquote, urlsplit
-from uuid import uuid4
 
-from core.records.store import StorageEvent, StorageEventQuery
 from adapter.storage_backends.storage import (
-    build_sql_event_where,
     clean_storage_text,
-    encode_storage_data,
-    positive_storage_integer,
-    read_sql_event_row,
-    select_sql_events,
-    split_sql_event_id_query,
-    storage_text_key,
-    utc_now_text,
+    SqlEventDatabase,
+    SqlEventStorage,
 )
 
 
@@ -38,146 +29,22 @@ CREATE TABLE IF NOT EXISTS super_agent_storage_schema (
 _SELECT_SCHEMA_VERSION_SQL = (
     "SELECT version FROM super_agent_storage_schema WHERE component = %s"
 )
-_SELECT_EVENTS_SQL = select_sql_events("super_agent_storage_events")
 
 
-class RemoteSqlDatabaseAdapter(Protocol):
-    """Database-specific connection and SQL statements used by shared storage."""
+class RemoteSqlDatabase(SqlEventDatabase, Protocol):
+    """Remote schema statements plus the shared SQL event facts."""
 
-    name: str
-    location: str
     create_events_table_sql: str
     create_event_indexes_sql: tuple[str, ...]
     ensure_schema_version_sql: str
-    insert_event_sql: str
-
-    def connect_to_database(self) -> Any:
-        ...
-
-    def read_inserted_position(self, cursor: Any) -> int:
-        ...
 
 
-@dataclass(frozen=True)
-class _PendingEvent:
-    event_id: str
-    user_id: str
-    agent_name: str
-    stream_type: str
-    stream_id: str
-    event_type: str
-    created_at: str
-    data_json: str
-
-    def insert_parameters(self) -> tuple[object, ...]:
-        return (
-            self.event_id,
-            storage_text_key(self.event_id),
-            self.user_id,
-            storage_text_key(self.user_id),
-            self.agent_name,
-            storage_text_key(self.agent_name),
-            self.stream_type,
-            storage_text_key(self.stream_type),
-            self.stream_id,
-            storage_text_key(self.stream_id),
-            self.event_type,
-            storage_text_key(self.event_type),
-            self.created_at,
-            self.data_json,
-        )
-
-
-class RemoteSqlStorage:
+class RemoteSqlStorage(SqlEventStorage):
     """Store Runtime events with one backend-neutral remote SQL implementation."""
 
-    def __init__(self, database: RemoteSqlDatabaseAdapter) -> None:
-        self._database = database
-        self.name = database.name
+    def __init__(self, database: RemoteSqlDatabase) -> None:
+        super().__init__(database)
         self._initialize_database()
-
-    def append_event(
-        self,
-        *,
-        user_id: str,
-        agent_name: str,
-        stream_type: str,
-        stream_id: str,
-        event_type: str,
-        data: dict[str, object],
-        event_id: str | None = None,
-        created_at: str | None = None,
-    ) -> StorageEvent:
-        pending = _PendingEvent(
-            event_id=clean_storage_text(event_id or f"event-{uuid4().hex}", "event_id"),
-            user_id=clean_storage_text(user_id, "user_id"),
-            agent_name=clean_storage_text(agent_name, "agent_name"),
-            stream_type=clean_storage_text(stream_type, "stream_type"),
-            stream_id=clean_storage_text(stream_id, "stream_id"),
-            event_type=clean_storage_text(event_type, "event_type"),
-            created_at=clean_storage_text(created_at or utc_now_text(), "created_at"),
-            data_json=encode_storage_data(dict(data)),
-        )
-        connection = self._database.connect_to_database()
-        try:
-            cursor = connection.cursor()
-            cursor.execute(self._database.insert_event_sql, pending.insert_parameters())
-            position = positive_storage_integer(
-                self._database.read_inserted_position(cursor),
-                "position",
-            )
-            cursor.execute(_SELECT_EVENTS_SQL + " WHERE position = %s", (position,))
-            row = cursor.fetchone()
-            if row is None:
-                raise RuntimeError("remote SQL event disappeared before transaction commit")
-            stored = read_sql_event_row(row, self._database.location)
-            _reject_identifier_hash_collision(pending, stored)
-            connection.commit()
-            return stored
-        except Exception:
-            connection.rollback()
-            raise
-        finally:
-            connection.close()
-
-    def read_events(self, query: StorageEventQuery) -> list[StorageEvent]:
-        where, parameters = build_sql_event_where(
-            query,
-            "%s",
-            hash_identifiers=True,
-        )
-        connection = self._database.connect_to_database()
-        try:
-            cursor = connection.cursor()
-            cursor.execute(_SELECT_EVENTS_SQL + where + " ORDER BY position", parameters)
-            rows = cursor.fetchall()
-        finally:
-            connection.close()
-        return [read_sql_event_row(row, self._database.location) for row in rows]
-
-    def delete_events(self, query: StorageEventQuery) -> int:
-        connection = self._database.connect_to_database()
-        try:
-            cursor = connection.cursor()
-            deleted = 0
-            for selected in split_sql_event_id_query(query):
-                where, parameters = build_sql_event_where(
-                    selected,
-                    "%s",
-                    hash_identifiers=True,
-                )
-                cursor.execute(
-                    "DELETE FROM super_agent_storage_events" + where,
-                    parameters,
-                )
-                deleted += int(cursor.rowcount)
-            connection.commit()
-            return deleted
-        except Exception:
-            connection.rollback()
-            raise
-        finally:
-            connection.close()
 
     def _initialize_database(self) -> None:
         connection = self._database.connect_to_database()
@@ -239,6 +106,10 @@ class PostgreSqlStorage(RemoteSqlStorage):
 
 class _MySqlDatabase:
     name = "mysql"
+    table_name = "super_agent_storage_events"
+    placeholder = "%s"
+    hash_identifiers = True
+    begin_write_sql = None
     create_events_table_sql = """
     CREATE TABLE IF NOT EXISTS super_agent_storage_events (
         position BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -295,6 +166,10 @@ class _MySqlDatabase:
 
 class _PostgreSqlDatabase:
     name = "postgresql"
+    table_name = "super_agent_storage_events"
+    placeholder = "%s"
+    hash_identifiers = True
+    begin_write_sql = None
     create_events_table_sql = """
     CREATE TABLE IF NOT EXISTS super_agent_storage_events (
         position BIGSERIAL PRIMARY KEY,
@@ -442,14 +317,6 @@ def remote_database_location(
     host = parsed.hostname or "local-socket"
     port = "" if parsed.port is None else f":{parsed.port}"
     return f"{backend}:{host}{port}/{database}"
-
-
-def _reject_identifier_hash_collision(
-    pending: _PendingEvent,
-    stored: StorageEvent,
-) -> None:
-    if stored.user_id != pending.user_id or stored.event_id != pending.event_id:
-        raise RuntimeError("remote SQL storage identifier hash collision")
 
 
 def _reject_unsupported_schema_version(row: object | None, backend: str) -> None:

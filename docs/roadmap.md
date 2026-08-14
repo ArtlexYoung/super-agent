@@ -1802,6 +1802,17 @@ Status: implemented.
 - Keep Git, ZIP, deterministic locks, propose/test/apply/undo, ownership, and rollback behavior.
 - Leave every write explicit and continue restoring all targets when a multi-Skill update fails.
 
+## v0.1.76: One SQL Event Executor
+
+Status: implemented.
+
+- Run SQLite, MySQL, and PostgreSQL event append, idempotency, read, and delete behavior
+  through one transaction implementation.
+- Keep database adapters responsible only for connections, trusted SQL dialect facts, inserted
+  positions, and schema setup.
+- Preserve SQLite WAL, remote hash indexes, exact tenant checks, optional drivers, migrations,
+  batched deletion, and rollback behavior without fallback to another storage backend.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

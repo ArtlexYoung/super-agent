@@ -6,7 +6,8 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterable
+from typing import TYPE_CHECKING, Any, Iterable, Protocol
+from uuid import uuid4
 
 from core.records.store import StorageEvent, StorageEventQuery
 from core.checks import write_bytes_atomically
@@ -272,6 +273,201 @@ def _add_sql_event_ids(
         pairs.append(f"(event_key = {placeholder} AND event_id = {placeholder})")
         parameters.extend((storage_text_key(event_id), event_id))
     clauses.append("(" + " OR ".join(pairs) + ")")
+
+
+class SqlEventDatabase(Protocol):
+    """Database-specific facts needed by the shared SQL event executor."""
+
+    name: str
+    location: str | Path
+    table_name: str
+    placeholder: str
+    hash_identifiers: bool
+    begin_write_sql: str | None
+    insert_event_sql: str
+
+    def connect_to_database(self) -> Any:
+        ...
+
+    def read_inserted_position(self, cursor: Any) -> int:
+        ...
+
+
+@dataclass(frozen=True)
+class _PendingSqlEvent:
+    event_id: str
+    user_id: str
+    agent_name: str
+    stream_type: str
+    stream_id: str
+    event_type: str
+    created_at: str
+    data_json: str
+
+    def insert_parameters(self, hash_identifiers: bool) -> tuple[object, ...]:
+        values = (
+            self.event_id,
+            self.user_id,
+            self.agent_name,
+            self.stream_type,
+            self.stream_id,
+            self.event_type,
+            self.created_at,
+            self.data_json,
+        )
+        if not hash_identifiers:
+            return values
+        return (
+            self.event_id,
+            storage_text_key(self.event_id),
+            self.user_id,
+            storage_text_key(self.user_id),
+            self.agent_name,
+            storage_text_key(self.agent_name),
+            self.stream_type,
+            storage_text_key(self.stream_type),
+            self.stream_id,
+            storage_text_key(self.stream_id),
+            self.event_type,
+            storage_text_key(self.event_type),
+            self.created_at,
+            self.data_json,
+        )
+
+
+class SqlEventStorage:
+    """Apply one event and transaction contract to every SQL backend."""
+
+    def __init__(self, database: SqlEventDatabase) -> None:
+        self._database = database
+        self.name = database.name
+        self._select_events = select_sql_events(database.table_name)
+
+    def append_event(
+        self, *, user_id: str, agent_name: str, stream_type: str,
+        stream_id: str, event_type: str, data: dict[str, object],
+        event_id: str | None = None, created_at: str | None = None,
+    ) -> StorageEvent:
+        pending = _PendingSqlEvent(
+            event_id=clean_storage_text(event_id or f"event-{uuid4().hex}", "event_id"),
+            user_id=clean_storage_text(user_id, "user_id"),
+            agent_name=clean_storage_text(agent_name, "agent_name"),
+            stream_type=clean_storage_text(stream_type, "stream_type"),
+            stream_id=clean_storage_text(stream_id, "stream_id"),
+            event_type=clean_storage_text(event_type, "event_type"),
+            created_at=clean_storage_text(created_at or utc_now_text(), "created_at"),
+            data_json=encode_storage_data(dict(data)),
+        )
+        connection = self._database.connect_to_database()
+        try:
+            cursor = connection.cursor()
+            if self._database.begin_write_sql is not None:
+                cursor.execute(self._database.begin_write_sql)
+            stored = self._find_pending_event(cursor, pending)
+            if stored is None:
+                stored = self._insert_pending_event(cursor, pending)
+            connection.commit()
+            return stored
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+
+    def read_events(self, query: StorageEventQuery) -> list[StorageEvent]:
+        where, parameters = self._event_where(query)
+        connection = self._database.connect_to_database()
+        try:
+            cursor = connection.cursor()
+            cursor.execute(self._select_events + where + " ORDER BY position", parameters)
+            rows = cursor.fetchall()
+        finally:
+            connection.close()
+        return [read_sql_event_row(row, self._database.location) for row in rows]
+
+    def delete_events(self, query: StorageEventQuery) -> int:
+        connection = self._database.connect_to_database()
+        try:
+            cursor = connection.cursor()
+            if self._database.begin_write_sql is not None:
+                cursor.execute(self._database.begin_write_sql)
+            deleted = 0
+            for selected in split_sql_event_id_query(query):
+                where, parameters = self._event_where(selected)
+                cursor.execute(
+                    f"DELETE FROM {self._database.table_name}" + where,
+                    parameters,
+                )
+                deleted += int(cursor.rowcount)
+            connection.commit()
+            return deleted
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+
+    def _find_pending_event(
+        self,
+        cursor: Any,
+        pending: _PendingSqlEvent,
+    ) -> StorageEvent | None:
+        query = StorageEventQuery(
+            user_id=pending.user_id,
+            event_ids=(pending.event_id,),
+        )
+        where, parameters = self._event_where(query)
+        cursor.execute(self._select_events + where, parameters)
+        row = cursor.fetchone()
+        if row is None:
+            return None
+        stored = read_sql_event_row(row, self._database.location)
+        _require_pending_event_identity(pending, stored)
+        return stored
+
+    def _insert_pending_event(
+        self,
+        cursor: Any,
+        pending: _PendingSqlEvent,
+    ) -> StorageEvent:
+        cursor.execute(
+            self._database.insert_event_sql,
+            pending.insert_parameters(self._database.hash_identifiers),
+        )
+        position = positive_storage_integer(
+            self._database.read_inserted_position(cursor),
+            "position",
+        )
+        cursor.execute(
+            self._select_events + f" WHERE position = {self._database.placeholder}",
+            (position,),
+        )
+        row = cursor.fetchone()
+        if row is None:
+            raise RuntimeError(
+                f"{self.name} SQL event disappeared before transaction commit"
+            )
+        stored = read_sql_event_row(row, self._database.location)
+        _require_pending_event_identity(pending, stored)
+        return stored
+
+    def _event_where(
+        self,
+        query: StorageEventQuery,
+    ) -> tuple[str, tuple[str, ...]]:
+        return build_sql_event_where(
+            query,
+            self._database.placeholder,
+            hash_identifiers=self._database.hash_identifiers,
+        )
+
+
+def _require_pending_event_identity(
+    pending: _PendingSqlEvent,
+    stored: StorageEvent,
+) -> None:
+    if stored.user_id != pending.user_id or stored.event_id != pending.event_id:
+        raise RuntimeError("SQL storage identifier hash collision")
 
 
 @dataclass(frozen=True)

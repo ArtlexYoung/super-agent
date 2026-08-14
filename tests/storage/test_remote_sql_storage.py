@@ -7,13 +7,17 @@ from unittest.mock import patch
 from adapter.storage_backends.storage import (
     JsonlStorage,
     SQL_EVENT_ID_BATCH_SIZE,
+    SqlEventStorage,
     SqliteStorage,
     build_sql_event_where,
     create_storage_backend,
     split_sql_event_id_query,
 )
 from core.records.store import StorageEventQuery
-from adapter.storage_backends.remote_storage import _mysql_connection_arguments
+from adapter.storage_backends.remote_storage import (
+    RemoteSqlStorage,
+    _mysql_connection_arguments,
+)
 
 
 class RemoteSqlStorageConfigurationTests(unittest.TestCase):
@@ -117,20 +121,10 @@ class RemoteSqlStorageConfigurationTests(unittest.TestCase):
         self.assertEqual("main", batches[1].agent_name)
         self.assertEqual("run-1", batches[1].stream_id)
 
-    def test_sql_backends_use_the_shared_event_query_functions(self) -> None:
-        required = {
-            "build_sql_event_where",
-            "read_sql_event_row",
-            "select_sql_events",
-            "split_sql_event_id_query",
-        }
-        removed = {"_event_from_row", "_event_id_batches", "_query_where"}
+    def test_sql_backends_inherit_one_event_executor(self) -> None:
+        event_methods = {"append_event", "read_events", "delete_events"}
 
-        for path in (
-            Path("src/adapter/storage_backends/local_storage.py"),
-            Path("src/adapter/storage_backends/remote_storage.py"),
-        ):
-            source = path.read_text(encoding="utf-8")
-            with self.subTest(path=path):
-                self.assertTrue(all(name in source for name in required))
-                self.assertTrue(all(f"def {name}" not in source for name in removed))
+        for storage_type in (SqliteStorage, RemoteSqlStorage):
+            with self.subTest(storage_type=storage_type.__name__):
+                self.assertTrue(issubclass(storage_type, SqlEventStorage))
+                self.assertTrue(event_methods.isdisjoint(storage_type.__dict__))

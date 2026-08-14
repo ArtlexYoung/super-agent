@@ -13,13 +13,9 @@ from uuid import uuid4
 
 from core.records.store import StorageEvent, StorageEventQuery
 from adapter.storage_backends.storage import (
-    build_sql_event_where,
     clean_storage_text,
-    encode_storage_data,
     positive_storage_integer,
-    read_sql_event_row,
-    select_sql_events,
-    split_sql_event_id_query,
+    SqlEventStorage,
     utc_now_text,
 )
 
@@ -28,7 +24,6 @@ JSONL_SCHEMA_VERSION = 1
 _WRITE_LOCK = threading.RLock()
 SQLITE_SCHEMA_VERSION = 1
 SQLITE_BUSY_TIMEOUT_MILLISECONDS = 30_000
-_SELECT_EVENTS = select_sql_events("storage_events")
 
 
 class JsonlStorage:
@@ -167,93 +162,22 @@ def _write_events_atomically(path: Path, events: list[StorageEvent]) -> None:
             temporary.unlink()
 
 
-class SqliteStorage:
-    """Transactional standard-library SQLite event storage."""
-
+class _SqliteDatabase:
     name = "sqlite"
+    table_name = "storage_events"
+    placeholder = "?"
+    hash_identifiers = False
+    begin_write_sql = "BEGIN IMMEDIATE"
+    insert_event_sql = """INSERT INTO storage_events (
+        event_id, user_id, agent_name, stream_type, stream_id,
+        event_type, created_at, data_json
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"""
 
-    def __init__(self, root: str | Path) -> None:
-        self.root = Path(root).expanduser().absolute()
-        self.database_path = self.root / "events.sqlite3"
-        self.root.mkdir(parents=True, exist_ok=True)
-        self._initialize_database()
+    def __init__(self, database_path: Path) -> None:
+        self.location = database_path
 
-    def append_event(
-        self, *, user_id: str, agent_name: str, stream_type: str,
-        stream_id: str, event_type: str, data: dict[str, object],
-        event_id: str | None = None, created_at: str | None = None,
-    ) -> StorageEvent:
-        values = (
-            clean_storage_text(event_id or f"event-{uuid4().hex}", "event_id"),
-            clean_storage_text(user_id, "user_id"),
-            clean_storage_text(agent_name, "agent_name"),
-            clean_storage_text(stream_type, "stream_type"),
-            clean_storage_text(stream_id, "stream_id"),
-            clean_storage_text(event_type, "event_type"),
-            clean_storage_text(created_at or utc_now_text(), "created_at"),
-            encode_storage_data(dict(data)),
-        )
-        connection = self._connect()
-        try:
-            connection.execute("BEGIN IMMEDIATE")
-            duplicate = connection.execute(
-                _SELECT_EVENTS + " WHERE user_id = ? AND event_id = ?",
-                (values[1], values[0]),
-            ).fetchone()
-            if duplicate is not None:
-                connection.commit()
-                return read_sql_event_row(duplicate, self.database_path)
-            cursor = connection.execute(
-                """INSERT INTO storage_events (
-                    event_id, user_id, agent_name, stream_type, stream_id,
-                    event_type, created_at, data_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                values,
-            )
-            row = connection.execute(
-                _SELECT_EVENTS + " WHERE position = ?", (cursor.lastrowid,)
-            ).fetchone()
-            connection.commit()
-        except Exception:
-            connection.rollback()
-            raise
-        finally:
-            connection.close()
-        if row is None:
-            raise RuntimeError("SQLite event disappeared before transaction commit")
-        return read_sql_event_row(row, self.database_path)
-
-    def read_events(self, query: StorageEventQuery) -> list[StorageEvent]:
-        where, parameters = build_sql_event_where(query, "?")
-        connection = self._connect()
-        try:
-            rows = connection.execute(
-                _SELECT_EVENTS + where + " ORDER BY position", parameters
-            ).fetchall()
-        finally:
-            connection.close()
-        return [read_sql_event_row(row, self.database_path) for row in rows]
-
-    def delete_events(self, query: StorageEventQuery) -> int:
-        connection = self._connect()
-        try:
-            connection.execute("BEGIN IMMEDIATE")
-            deleted = 0
-            for selected in split_sql_event_id_query(query):
-                where, parameters = build_sql_event_where(selected, "?")
-                deleted += connection.execute(
-                    "DELETE FROM storage_events" + where, parameters
-                ).rowcount
-            connection.commit()
-            return deleted
-        except Exception:
-            connection.rollback()
-            raise
-        finally:
-            connection.close()
-
-    def _initialize_database(self) -> None:
-        connection = self._connect()
+    def initialize_database(self) -> None:
+        connection = self.connect_to_database()
         try:
             connection.execute("PRAGMA journal_mode = WAL")
             version = int(connection.execute("PRAGMA user_version").fetchone()[0])
@@ -278,11 +202,27 @@ class SqliteStorage:
         finally:
             connection.close()
 
-    def _connect(self) -> sqlite3.Connection:
+    def connect_to_database(self) -> sqlite3.Connection:
         connection = sqlite3.connect(
-            self.database_path,
+            self.location,
             timeout=SQLITE_BUSY_TIMEOUT_MILLISECONDS / 1_000,
         )
         connection.execute(f"PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MILLISECONDS}")
         connection.execute("PRAGMA synchronous = NORMAL")
         return connection
+
+    @staticmethod
+    def read_inserted_position(cursor: sqlite3.Cursor) -> int:
+        return int(cursor.lastrowid)
+
+
+class SqliteStorage(SqlEventStorage):
+    """Use the shared SQL event contract with standard-library SQLite."""
+
+    def __init__(self, root: str | Path) -> None:
+        self.root = Path(root).expanduser().absolute()
+        self.database_path = self.root / "events.sqlite3"
+        self.root.mkdir(parents=True, exist_ok=True)
+        database = _SqliteDatabase(self.database_path)
+        database.initialize_database()
+        super().__init__(database)
