@@ -24,9 +24,9 @@ user = Agent().for_user("alice")
 assert user.user_id == "alice"
 blocked = (
     "skill.learning",
-    "core.state.memory",
+    "skill.handlers.memory",
     "skill.learning.update",
-    "skill.runtime.files.models",
+    "skill.handlers.runtime.files.models",
 )
 print(json.dumps(sorted(name for name in sys.modules if name.startswith(blocked))))
 """
@@ -54,10 +54,10 @@ with tempfile.TemporaryDirectory() as temporary_directory:
 assert result.text == "finished"
 blocked = (
     "skill.learning.records",
-    "skill.learning.runs",
-    "core.state.memory",
+    "skill.learning",
+    "skill.handlers.memory",
     "skill.learning.update",
-    "core.state.memory_service",
+    "skill.handlers.memory_service",
 )
 print(json.dumps(sorted(name for name in sys.modules if name.startswith(blocked))))
 """
@@ -83,12 +83,12 @@ with tempfile.TemporaryDirectory() as temporary_directory:
 assert result.text == "finished"
 blocked = (
     "skill.learning.records",
-    "skill.learning.runs",
-    "core.state.memory",
-    "core.state.store",
-    "adapter.storage",
+    "skill.learning",
+    "skill.handlers.memory",
+    "core.records.store",
+    "adapter.storage_backends.storage",
     "skill.learning.update",
-    "core.state.memory_service",
+    "skill.handlers.memory_service",
 )
 print(json.dumps(sorted(name for name in sys.modules if name.startswith(blocked))))
 """
@@ -123,7 +123,7 @@ print(json.dumps(sorted(name for name in sys.modules if name.startswith(blocked)
                 for event in result.events
                 if event.event_type == "task.scheduled"
             )
-            self.assertEqual("model_loop", scheduled["selection"])
+            self.assertEqual("task_runner", scheduled["selection"])
             self.assertEqual([], scheduled["skills"])
             self.assertNotIn("runtime.locked", [event.event_type for event in result.events])
 

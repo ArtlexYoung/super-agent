@@ -17,7 +17,7 @@ from core.models import (
     resolve_agent_run_options,
     validate_user_id,
 )
-from core.state.conversations import (
+from core.records.conversations import (
     clear_conversation,
     create_conversation,
     delete_conversation,
@@ -31,13 +31,13 @@ from core.models import RunResult, TaskTrace
 if TYPE_CHECKING:
     from adapter.agent import Agent
     from core.models import AgentRunOptions, RunLearningResult
-    from core.runtime.model_calls import ModelUsageStats
-    from core.state.memory import Memory, MemoryItem
-    from core.state.store import EventStore
-    from skill.runtime.handlers import SkillCollection
-    from skill.runtime.models import ModelProfile
-    from skill.runtime.model_skills import ModelSkillInput
-    from skill.runtime.model_skills import ModelSkillManager
+    from core.model_calls import ModelUsageStats
+    from skill.handlers.memory import Memory, MemoryItem
+    from core.records.store import EventStore
+    from skill.handlers.runtime import Skills
+    from skill.handlers.models import ModelProfile
+    from skill.handlers.model_management import ModelSkillInput
+    from skill.handlers.model_management import ModelSkillManager
     from skill.learning.update import SkillUpdater
 
 
@@ -198,8 +198,8 @@ class UserRuns:
         *,
         include_sensitive: bool = False,
     ) -> dict[str, object]:
-        from skill.learning.runs import explain_run_with_insight
-        from skill.runtime.handlers import load_configured_freshness_rules_if_enabled
+        from skill.learning.run_learning import explain_run_with_insight
+        from skill.handlers.runtime import load_configured_freshness_rules_if_enabled
 
         owner, store = _find_run_owner(self.user, run_id)
         rules = load_configured_freshness_rules_if_enabled(
@@ -228,7 +228,7 @@ class UserRuns:
         )
 
     def list_checkpoints(self, run_id: str) -> list[dict[str, object]]:
-        from core.runtime.run import list_checkpoint_data
+        from core.runtime import list_checkpoint_data
 
         events = self.user._store().read_run_events(
             run_id,
@@ -243,7 +243,7 @@ class UserRuns:
         *,
         checkpoint_id: str | None = None,
     ) -> RunResult:
-        from core.runtime.run import find_checkpoint_data
+        from core.runtime import find_checkpoint_data
 
         store = self.user._store()
         events = store.read_run_events(run_id, include_sensitive=True)
@@ -274,9 +274,9 @@ class UserRuns:
         snapshot = store.read_run(run_id)
         if snapshot.agent_name != self.user.agent.config.agent.name:
             raise ValueError(f"run belongs to another Agent: {run_id}")
-        from skill.learning.runs import learn_from_run
+        from skill.learning.run_learning import learn_from_run
         from core.models import RunLearningResult
-        from skill.runtime.handlers import load_configured_freshness_rules
+        from skill.handlers.runtime import load_configured_freshness_rules
 
         rules = load_configured_freshness_rules(
             self.user.agent.config,
@@ -298,7 +298,7 @@ class UserRuns:
         self,
         purpose: str | None = None,
     ) -> list["ModelUsageStats"]:
-        from core.runtime.model_calls import list_model_usage_stats
+        from core.model_calls import list_model_usage_stats
 
         return list_model_usage_stats(
             self.user._store(),
@@ -310,13 +310,13 @@ class UserRuns:
         run_id: str,
         evidence: dict[str, object],
     ):
-        from skill.learning.runs import review_run_evidence
+        from skill.learning.run_learning import review_run_evidence
         agent = self.user.agent
         store = self.user._store()
         skills = agent._create_skills(self.user.user_id)
-        loop = agent._create_task_loop(self.user.user_id, skills)
-        decision = loop.model_calls.select_task_model("review", ("text",), store)
-        reviewer = loop.create_text_model(
+        runner = agent._create_task_runner(self.user.user_id, skills)
+        decision = runner.model_caller.select_task_model("review", ("text",), store)
+        reviewer = runner.create_text_model(
             store,
             "independent_review",
             decision=decision,
@@ -390,7 +390,7 @@ class UserMemory:
         return self._memory().usage_habits.build_prompt_instruction()
 
     def _memory(self) -> "Memory":
-        from core.state.memory import create_memory_from_skill
+        from skill.handlers.memory import create_memory_from_skill
 
         skills = self.user.agent._create_skills(self.user.user_id)
         selected = skills.index.select_one_configured_or_default_skill(
@@ -416,7 +416,7 @@ class UserSkills:
         )
 
     def create_model_manager(self) -> "ModelSkillManager":
-        from skill.runtime.model_skills import ModelSkillManager
+        from skill.handlers.model_management import ModelSkillManager
 
         return ModelSkillManager(
             self.user.agent.config,
@@ -424,7 +424,7 @@ class UserSkills:
             self.user.agent._action_rules(),
         )
 
-    def list_all(self) -> "SkillCollection":
+    def list_all(self) -> "Skills":
         from dataclasses import replace
 
         config = self.user.agent.config
@@ -437,7 +437,7 @@ class UserSkills:
         )
 
     def list_models(self) -> list[dict[str, object]]:
-        from skill.runtime.models import model_profile_to_dict, read_model_profiles
+        from skill.handlers.models import model_profile_to_dict, read_model_profiles
 
         skills = self.list_all()
         environment = self.user.agent._user_environment(self.user.user_id)
@@ -500,12 +500,12 @@ def _create_skill_updater(user: UserAgent) -> "SkillUpdater":
     agent = user.agent
     store = user._store()
     skills = agent._create_skills(user.user_id)
-    task_loop = agent._create_task_loop(user.user_id, skills)
+    task_runner = agent._create_task_runner(user.user_id, skills)
     return SkillUpdater(
         skills.disclosure,
         store=store,
-        propose_model=task_loop.create_text_model(store, "skill_change_proposal"),
-        test_model=task_loop.create_text_model(store, "skill_change_test"),
+        propose_model=task_runner.create_text_model(store, "skill_change_proposal"),
+        test_model=task_runner.create_text_model(store, "skill_change_test"),
         on_skill_changed=lambda manifest: (
             agent._reload_models(user.user_id)
             if manifest.skill_type == "model"

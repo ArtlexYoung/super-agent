@@ -7,12 +7,12 @@ from pathlib import Path
 from super_agent import Agent
 from core.provider import MockProvider, ModelResponse, ToolCall
 from core.config import CommonConfig
-from adapter.storage import JsonlStorage
-from core.state.conversations import (
+from adapter.storage_backends.storage import JsonlStorage
+from core.records.conversations import (
     append_conversation_turn,
     read_conversation,
 )
-from core.state.memory import Memory
+from skill.handlers.memory import Memory
 from skill.learning.records import read_evaluation_records
 from support import RecordingProvider, SequenceProvider
 

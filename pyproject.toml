@@ -1,6 +1,6 @@
 [project]
 name = "super-agent"
-version = "0.1.70"
+version = "0.1.71"
 description = "A simple, lightweight, self-evolving, skill-first agent runtime."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -12,7 +12,7 @@ mysql = ["PyMySQL>=1.1,<2"]
 postgresql = ["psycopg[binary]>=3.2,<4"]
 
 [project.scripts]
-super-agent = "adapter.cli_adapter.commands:main"
+super-agent = "adapter.cli:main"
 
 [build-system]
 requires = ["hatchling"]

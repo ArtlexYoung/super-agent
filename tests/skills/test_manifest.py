@@ -2,8 +2,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from skill.disclosure import ProgressiveDisclosureCore
-from skill.manifest import calculate_skill_directory_sha256, skill_manifest_to_dict
+from skill.discovery.catalog import ProgressiveDisclosureCore
+from skill.discovery.manifest import calculate_skill_directory_sha256, skill_manifest_to_dict
 
 
 class SkillManifestContractTests(unittest.TestCase):

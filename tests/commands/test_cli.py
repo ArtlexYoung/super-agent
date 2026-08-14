@@ -9,7 +9,7 @@ from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
-from adapter.cli_adapter.commands import CLI_COMMANDS, _is_terminal_request, main
+from adapter.cli import CLI_COMMANDS, _is_terminal_request, main
 from core import __version__
 from core.provider import MockProvider
 from support import write_minimal_project

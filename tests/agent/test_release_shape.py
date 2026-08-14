@@ -12,6 +12,7 @@ from pathlib import Path
 
 from core import __version__
 from scripts.verify_release import (
+    EXPECTED_DOMAIN_CHILDREN,
     MAX_TOTAL_SOURCE_FILES,
     MAX_TOTAL_SOURCE_LINES,
     _verify_owned_agent_calls,
@@ -96,10 +97,10 @@ class ReleaseShapeTests(unittest.TestCase):
 
     def test_automatic_evolution_state_machine_is_removed(self) -> None:
         self.assertFalse(Path("src/core/evolution").exists())
-        self.assertTrue(Path("src/skill/learning/runs.py").is_file())
+        self.assertTrue(Path("src/skill/learning/run_learning.py").is_file())
         self.assertTrue(Path("src/skill/learning/update.py").is_file())
         source = Path("src/skill/learning/update.py").read_text(encoding="utf-8")
-        cli_source = Path("src/adapter/cli_adapter/skills.py").read_text(
+        cli_source = Path("src/adapter/cli_support/cli_skills.py").read_text(
             encoding="utf-8"
         )
         operations = (
@@ -134,7 +135,6 @@ class ReleaseShapeTests(unittest.TestCase):
             "src/core/identity.py",
             "src/core/evaluation",
             "src/core/secrets.py",
-            "src/core/events.py",
             "src/core/files.py",
             "src/core/provider",
             "src/core/skill_use",
@@ -176,20 +176,30 @@ class ReleaseShapeTests(unittest.TestCase):
             "src/adapter/storage/sql/mysql.py",
             "src/adapter/storage/sql/postgresql.py",
             "src/adapter/worktree.py",
+            "src/adapter/ag_ui_adapter",
+            "src/adapter/cli_adapter",
+            "src/adapter/storage",
+            "src/core/runtime",
+            "src/core/state",
+            "src/skill/runtime",
+            "src/skill/disclosure.py",
+            "src/skill/index.py",
+            "src/skill/manifest.py",
         ]
 
         self.assertEqual([], [path for path in removed_paths if Path(path).exists()])
 
     def test_cli_has_explicit_function_groups(self) -> None:
-        root = Path("src/adapter/cli_adapter")
-        self.assertTrue((root / "commands.py").is_file())
+        root = Path("src/adapter")
+        support = root / "cli_support"
+        self.assertTrue((root / "cli.py").is_file())
         self.assertTrue((root / "code.py").is_file())
-        self.assertTrue((root / "configuration.py").is_file())
-        self.assertFalse((root / "loaders.py").exists())
-        self.assertTrue((root / "skills.py").is_file())
-        self.assertTrue((root / "data.py").is_file())
-        self.assertFalse((root / "manage").exists())
-        self.assertFalse((root / "run").exists())
+        self.assertTrue((support / "cli_config.py").is_file())
+        self.assertFalse((support / "cli_loaders.py").exists())
+        self.assertTrue((support / "cli_skills.py").is_file())
+        self.assertTrue((support / "cli_data.py").is_file())
+        self.assertFalse((support / "manage").exists())
+        self.assertFalse((support / "run").exists())
         for old_path in (
             "check.py",
             "serve.py",
@@ -199,7 +209,7 @@ class ReleaseShapeTests(unittest.TestCase):
             "runs.py",
             "storage.py",
         ):
-            self.assertFalse((root / old_path).exists())
+            self.assertFalse((support / old_path).exists())
 
     def test_external_adapters_use_the_owned_agent_boundaries(self) -> None:
         agent_path = Path("src/adapter/agent.py")
@@ -249,9 +259,13 @@ class ReleaseShapeTests(unittest.TestCase):
                     sys.executable,
                     "-c",
                     "from super_agent import Agent; "
-                    "from adapter.ag_ui_adapter.server import AGUIEventMapper; "
-                    "from core.runtime.run import Run; "
-                    "from skill.manifest import SkillManifest",
+                    "from adapter.http.agui import AGUIEventMapper; "
+                    "from core.loop import TaskRunner; "
+                    "from core.model_calls import ModelCaller; "
+                    "from core.runtime import Run; "
+                    "from core.tools import RunTools; "
+                    "from skill.handlers.runtime import Skills, SkillUse; "
+                    "from skill.discovery.manifest import SkillManifest",
                 ],
                 cwd=tmp,
                 check=False,
@@ -281,13 +295,15 @@ class ReleaseShapeTests(unittest.TestCase):
         environment["PYTHONPATH"] = str(Path("src").resolve())
         with tempfile.TemporaryDirectory() as tmp:
             for module_name in (
+                "adapter.ag_ui_adapter",
+                "adapter.cli_adapter",
+                "adapter.storage",
                 "core.actions",
                 "core.evaluation",
                 "core.identity",
                 "core.provider.chat",
                 "core.provider.pool",
                 "core.secrets",
-                "core.events",
                 "core.state.backend",
                 "core.state.views",
                 "core.session",
@@ -297,11 +313,17 @@ class ReleaseShapeTests(unittest.TestCase):
                 "core.state.subscribers",
                 "core.runtime.setup",
                 "core.runtime.agent",
-                "core.runtime.runtime",
+                "core.runtimetime",
                 "core.runtime.tasks.queue",
                 "core.runtime.tasks.agents",
                 "core.runtime.tasks.groups",
                 "core.runtime.tasks.group_data",
+                "core.runtime.loop",
+                "core.runtime.model_calls",
+                "core.runtime.run",
+                "core.runtime.team",
+                "core.runtime.tools",
+                "core.state",
                 "core.state.disclosure",
                 "core.skill_use",
                 "skill.runtime.loaded",
@@ -309,7 +331,12 @@ class ReleaseShapeTests(unittest.TestCase):
                 "skill.runtime.skills",
                 "skill.runtime.update",
                 "skill.runtime.workflow",
-                "skill.learning.learning",
+                "skill.catalog",
+                "skill.disclosure",
+                "skill.index",
+                "skill.manifest",
+                "skill.task_groups",
+                "skill.task_queue",
                 "adapter.cli_adapter.check",
                 "adapter.cli_adapter.conversations",
                 "adapter.cli_adapter.memory",
@@ -318,10 +345,10 @@ class ReleaseShapeTests(unittest.TestCase):
                 "adapter.cli_adapter.serve",
                 "adapter.cli_adapter.storage",
                 "adapter.cli_adapter.loaders",
-                "adapter.cli_adapter.data.conversations",
-                "adapter.cli_adapter.data.memory",
-                "adapter.cli_adapter.data.runs",
-                "adapter.cli_adapter.data.storage",
+                "adapter.cli_data.conversations",
+                "adapter.cli_data.memory",
+                "adapter.cli_data.runs",
+                "adapter.cli_data.storage",
                 "adapter.cli_adapter.manage.models",
                 "adapter.cli_adapter.manage.skills",
                 "adapter.cli_adapter.run.check",
@@ -363,17 +390,42 @@ class ReleaseShapeTests(unittest.TestCase):
 
                     self.assertNotEqual(0, completed.returncode)
 
+    def test_removed_runtime_names_cannot_be_imported(self) -> None:
+        environment = dict(os.environ)
+        environment["PYTHONPATH"] = str(Path("src").resolve())
+        statements = (
+            "from core.loop import ModelLoop",
+            "from core.model_calls import ModelCalls",
+            "from core.tools import RuntimeTools",
+            "from core.tools import RuntimeToolsContext",
+            "from core.tools import create_runtime_tools",
+            "from skill.handlers.runtime import SkillCollection",
+            "from skill.handlers.runtime import SkillResult",
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            for statement in statements:
+                with self.subTest(statement=statement):
+                    completed = subprocess.run(
+                        [sys.executable, "-c", statement],
+                        cwd=tmp,
+                        check=False,
+                        capture_output=True,
+                        text=True,
+                        env=environment,
+                    )
+                    self.assertNotEqual(0, completed.returncode)
+
     def test_core_owns_runtime_and_skill_does_not(self) -> None:
-        self.assertTrue(Path("src/core/runtime/run.py").is_file())
-        self.assertTrue(Path("src/core/runtime/loop.py").is_file())
-        self.assertFalse(Path("src/core/runtime/setup.py").exists())
-        self.assertFalse(Path("src/core/runtime/resources.py").exists())
-        self.assertFalse(Path("src/core/runtime/agent.py").exists())
-        self.assertTrue(Path("src/core/runtime/team.py").is_file())
+        self.assertTrue(Path("src/core/runtime.py").is_file())
+        self.assertTrue(Path("src/core/loop.py").is_file())
+        self.assertFalse(Path("src/core/setup.py").exists())
+        self.assertFalse(Path("src/core/resources.py").exists())
+        self.assertFalse(Path("src/core/agent.py").exists())
+        self.assertTrue(Path("src/core/team.py").is_file())
         self.assertFalse(Path("src/skill/task").exists())
 
     def test_model_skill_management_has_an_explicit_path(self) -> None:
-        self.assertTrue(Path("src/skill/runtime/model_skills.py").is_file())
+        self.assertTrue(Path("src/skill/handlers/model_management.py").is_file())
 
     def test_removed_coupled_core_domains_do_not_return(self) -> None:
         removed = [
@@ -400,7 +452,7 @@ class ReleaseShapeTests(unittest.TestCase):
     def test_task_selection_has_one_task_fact(self) -> None:
         source = "\n".join(
             path.read_text(encoding="utf-8")
-            for path in Path("src/skill/runtime/tasks").glob("*.py")
+            for path in Path("src/skill/tasks").glob("task_*.py")
         )
         self.assertNotIn("class AgentTaskEstimate", source)
         self.assertNotIn("_task_estimate", source)
@@ -487,6 +539,15 @@ class ReleaseShapeTests(unittest.TestCase):
                 crowded[str(directory)] = len(children)
 
         self.assertEqual({}, crowded)
+
+    def test_domain_roots_keep_the_readable_release_layout(self) -> None:
+        for name, expected in EXPECTED_DOMAIN_CHILDREN.items():
+            actual = {
+                path.name
+                for path in Path("src", name).iterdir()
+                if path.name not in {"__init__.py", "__pycache__"}
+            }
+            self.assertEqual(expected, actual, name)
 
 
 def _count_non_import_lines(path: Path) -> int:

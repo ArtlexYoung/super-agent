@@ -6,7 +6,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from super_agent import Agent
-from adapter.ag_ui_adapter.web_api import WebAPI
+from adapter.http.web import WebAPI
 from core.provider import MockProvider
 from core.config import CommonConfig
 

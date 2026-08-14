@@ -6,8 +6,8 @@ from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
-from adapter.cli_adapter.commands import main
-from adapter.storage import JsonlStorage
+from adapter.cli import main
+from adapter.storage_backends.storage import JsonlStorage
 from support import write_minimal_project
 
 
@@ -122,7 +122,7 @@ class StorageCliTests(unittest.TestCase):
             with patch("sys.stdout", StringIO()):
                 self.assertEqual(0, write_minimal_project(tmp))
             with patch(
-                "adapter.storage.remote.import_module",
+                "adapter.storage_backends.remote_storage.import_module",
                 side_effect=ModuleNotFoundError("psycopg is missing"),
             ):
                 error = StringIO()

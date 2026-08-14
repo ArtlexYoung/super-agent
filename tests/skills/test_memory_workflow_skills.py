@@ -5,9 +5,9 @@ from pathlib import Path
 
 from super_agent import Agent
 from core.config import CommonConfig
-from adapter.storage import create_local_event_store
+from adapter.storage_backends.storage import create_local_event_store
 from core.provider import MockProvider
-from core.state.memory import Memory
+from skill.handlers.memory import Memory
 
 
 class MemoryWorkflowSkillHandlerTests(unittest.TestCase):

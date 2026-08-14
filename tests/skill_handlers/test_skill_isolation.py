@@ -8,7 +8,7 @@ from pathlib import Path
 from super_agent import Agent
 from core.provider import MockProvider
 from core.config import CommonConfig
-from skill.disclosure import ProgressiveDisclosureCore
+from skill.discovery.catalog import ProgressiveDisclosureCore
 
 
 class SkillIsolationTests(unittest.TestCase):

@@ -3,17 +3,17 @@ import ast
 from dataclasses import replace
 from pathlib import Path
 
-from skill.runtime.handlers import create_default_skill_handlers
-from skill.runtime.handlers import (
+from skill.handlers.runtime import create_default_skill_handlers
+from skill.handlers.runtime import (
     SkillAction,
     SkillContext,
     SkillHandlers,
-    SkillResult,
+    SkillUse,
     SkillTool,
     TaskPolicy,
 )
 from core.checks import ActionEffect
-from skill.disclosure import ProgressiveDisclosureCore, SkillReference
+from skill.discovery.catalog import ProgressiveDisclosureCore, SkillReference
 
 
 class SkillHandlersTests(unittest.TestCase):
@@ -49,7 +49,7 @@ class SkillHandlersTests(unittest.TestCase):
         handlers = SkillHandlers()
         handlers.add(_ResultHandler("custom", result="invalid"))
 
-        with self.assertRaisesRegex(TypeError, "must return SkillResult"):
+        with self.assertRaisesRegex(TypeError, "must return SkillUse"):
             handlers.handle(context)
 
     def test_handlers_validate_registration(self) -> None:
@@ -60,19 +60,19 @@ class SkillHandlersTests(unittest.TestCase):
             SkillHandlers().add(handler)
 
     def test_handlers_reject_duplicate_result_tool_names(self) -> None:
-        result = SkillResult(tools=(_tool("repeat"), _tool("repeat")))
+        result = SkillUse(tools=(_tool("repeat"), _tool("repeat")))
 
         with self.assertRaisesRegex(ValueError, "duplicate names"):
             _handle_result(result)
 
     def test_handlers_validate_optional_result_fields(self) -> None:
         invalid_results = (
-            replace(SkillResult(), model_context="prompt"),
-            replace(SkillResult(), build_prompt_context="callback"),
-            replace(SkillResult(), record_task_completed="callback"),
-            replace(SkillResult(), task_completed_action="action"),
-            replace(SkillResult(), task_policy="policy"),
-            replace(SkillResult(), source="prompt:test"),
+            replace(SkillUse(), model_context="prompt"),
+            replace(SkillUse(), build_prompt_context="callback"),
+            replace(SkillUse(), record_task_completed="callback"),
+            replace(SkillUse(), task_completed_action="action"),
+            replace(SkillUse(), task_policy="policy"),
+            replace(SkillUse(), source="prompt:test"),
         )
 
         for result in invalid_results:
@@ -83,10 +83,12 @@ class SkillHandlersTests(unittest.TestCase):
         invalid = TaskPolicy("test", "unknown", "Run the task.", 1)
 
         with self.assertRaisesRegex(ValueError, "mode is invalid"):
-            _handle_result(SkillResult(task_policy=invalid))
+            _handle_result(SkillUse(task_policy=invalid))
 
     def test_skill_handlers_use_central_validation_functions(self) -> None:
-        tree = ast.parse(Path("src/skill/runtime/handlers.py").read_text(encoding="utf-8"))
+        tree = ast.parse(
+            Path("src/skill/handlers/runtime.py").read_text(encoding="utf-8")
+        )
         owner = next(
             node
             for node in tree.body
@@ -117,13 +119,13 @@ class _ResultHandler:
 
     def __init__(self, skill_type: str, result: object | None = None) -> None:
         self.skill_type = skill_type
-        self.result = SkillResult() if result is None else result
+        self.result = SkillUse() if result is None else result
 
-    def handle_skill(self, context: SkillContext) -> SkillResult:
+    def handle_skill(self, context: SkillContext) -> SkillUse:
         return self.result  # type: ignore[return-value]
 
 
-def _handle_result(result: SkillResult) -> SkillResult:
+def _handle_result(result: SkillUse) -> SkillUse:
     context = SkillContext(
         ProgressiveDisclosureCore([]),
         SkillReference("custom", "test"),

@@ -16,8 +16,8 @@ from skill.learning.records import (
     evaluation_record_to_dict,
     read_evaluation_records,
 )
-from adapter.storage import create_local_event_store
-from skill.disclosure import ProgressiveDisclosureCore
+from adapter.storage_backends.storage import create_local_event_store
+from skill.discovery.catalog import ProgressiveDisclosureCore
 from skill.learning.freshness import calculate_skill_freshness
 from skill.learning.freshness import load_freshness_rules, SkillRevision
 from support import (

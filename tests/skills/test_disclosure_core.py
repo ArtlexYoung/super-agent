@@ -11,14 +11,14 @@ from skill.learning.records import (
     create_evaluation_record,
     read_evaluation_records,
 )
-from adapter.storage import create_local_event_store
-from skill.disclosure import ProgressiveDisclosureCore
-from skill.index import format_disclosure_page_for_prompt
+from adapter.storage_backends.storage import create_local_event_store
+from skill.discovery.catalog import ProgressiveDisclosureCore
+from skill.discovery.index import format_disclosure_page_for_prompt
 from skill.learning.freshness import calculate_skill_freshness
 from skill.learning.records import SkillRevision
-from skill.runtime.handlers import create_runtime_disclosure_recorder
-from skill.runtime.handlers import SkillCollection
-from core.runtime.run import Run
+from skill.handlers.runtime import create_runtime_disclosure_recorder
+from skill.handlers.runtime import Skills
+from core.runtime import Run
 from support import load_default_freshness_rules
 
 
@@ -73,7 +73,7 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
             core.read_disclosed_content(page.reference, limit=32_001)
 
     def test_run_owns_one_central_skills_snapshot(self) -> None:
-        skills = SkillCollection(ProgressiveDisclosureCore([]))
+        skills = Skills(ProgressiveDisclosureCore([]))
         run_fields = {field.name for field in fields(Run)}
 
         self.assertIs(skills.index, skills.disclosure.require_prepared_skill_index())
@@ -405,9 +405,9 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
             self.assertIn("unknown skill manifest fields: entry", issues[0].message)
 
     def test_kind_factories_only_accept_center_disclosure(self) -> None:
-        from skill.runtime.mcp import read_mcp_skill_settings
-        from core.state.memory import create_memory_from_skill
-        from skill.runtime.handlers import create_workflow_policy_from_skill
+        from skill.handlers.mcp import read_mcp_skill_settings
+        from skill.handlers.memory import create_memory_from_skill
+        from skill.handlers.runtime import create_workflow_policy_from_skill
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

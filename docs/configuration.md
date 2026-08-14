@@ -173,7 +173,7 @@ and subagent graphs are Python choices. Task Skill selection belongs to each run
 
 ```python
 from core.checks import ActionEffect, ActionMode, ActionRules
-from skill.runtime.mcp import StdioMcpServer
+from skill.handlers.mcp import StdioMcpServer
 from super_agent import Agent
 
 agent = Agent(action_rules=ActionRules(ActionMode.READ_ONLY))

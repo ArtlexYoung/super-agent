@@ -7,10 +7,10 @@ from pathlib import Path
 
 from core.config import CommonConfig
 from core.provider import MockProvider, ModelResponse, ToolCall
-from skill.runtime.handlers import create_progressive_skill_disclosure
+from skill.handlers.runtime import create_progressive_skill_disclosure
 from skill.learning.update import SkillChangeCase
-from core.state.memory import create_memory_from_skill
-from skill.disclosure import ProgressiveDisclosureCore
+from skill.handlers.memory import create_memory_from_skill
+from skill.discovery.catalog import ProgressiveDisclosureCore
 from super_agent import Agent
 from support import SequenceProvider, write_memory_skill, write_workflow_skill
 

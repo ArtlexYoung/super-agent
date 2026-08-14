@@ -6,8 +6,8 @@ from pathlib import Path
 from super_agent import Agent
 from core.config import CommonConfig
 from core.provider import MockProvider
-from skill.disclosure import ProgressiveDisclosureCore
-from skill.runtime.package import write_skill_lock_file
+from skill.discovery.catalog import ProgressiveDisclosureCore
+from skill.handlers.package import write_skill_lock_file
 from support import write_workflow_skill
 
 

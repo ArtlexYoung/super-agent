@@ -5,13 +5,13 @@ import sys
 import unittest
 from pathlib import Path
 
-from skill.disclosure import ProgressiveDisclosureCore
-from skill.runtime.mcp import McpSkillSettings
-from skill.runtime.mcp import McpServer
-from core.state.memory import Memory
+from skill.discovery.catalog import ProgressiveDisclosureCore
+from skill.handlers.mcp import McpSkillSettings
+from skill.handlers.mcp import McpServer
+from skill.handlers.memory import Memory
 from core.models import SubAgentResult, RunResult
-from skill.runtime.handlers import create_workflow_policy_from_skill
-from skill.manifest import SkillManifest
+from skill.handlers.runtime import create_workflow_policy_from_skill
+from skill.discovery.manifest import SkillManifest
 
 
 class SkillArchitectureTests(unittest.TestCase):
@@ -62,38 +62,35 @@ class SkillArchitectureTests(unittest.TestCase):
             self.assertEqual(module_name, importlib.import_module(module_name).__name__)
 
     def test_runtime_learning_is_an_explicit_post_run_operation(self) -> None:
-        engine_source = Path("src/core/runtime/run.py").read_text(encoding="utf-8")
-        learning_source = Path(
-            "src/skill/learning/runs.py"
-        ).read_text(encoding="utf-8")
+        engine_source = Path("src/core/runtime.py").read_text(encoding="utf-8")
+        learning_source = Path("src/skill/learning/run_learning.py").read_text(
+            encoding="utf-8"
+        )
         self.assertNotIn("def _record_task_evaluation", engine_source)
         self.assertIn("def learn_from_run", learning_source)
         self.assertNotIn("EventSubscriber", learning_source)
         self.assertNotIn("learning.requested", engine_source)
-        self.assertTrue(
-            Path("src/skill/learning/records.py").is_file()
-        )
+        self.assertTrue(Path("src/skill/learning/records.py").is_file())
         self.assertFalse(Path("src/core/evolution").exists())
         self.assertTrue(Path("src/core/models.py").is_file())
-        self.assertTrue(Path("src/core/runtime/run.py").is_file())
+        self.assertTrue(Path("src/core/runtime.py").is_file())
         self.assertFalse(Path("src/core/session.py").exists())
-        self.assertTrue(Path("src/core/state/store.py").is_file())
-        self.assertFalse(Path("src/core/state/backend.py").exists())
-        self.assertFalse(Path("src/core/state/views.py").exists())
-        self.assertTrue(Path("src/adapter/storage/local.py").is_file())
+        self.assertTrue(Path("src/core/records/store.py").is_file())
+        self.assertFalse(Path("src/core/backend.py").exists())
+        self.assertFalse(Path("src/core/views.py").exists())
+        self.assertTrue(
+            Path("src/adapter/storage_backends/local_storage.py").is_file()
+        )
         self.assertFalse(Path("src/core/storage").exists())
 
-    def test_skill_package_is_passive_and_small(self) -> None:
-        sources = list(Path("src/skill").glob("*.py"))
-        self.assertLessEqual(len(sources), 5)
-        line_count = sum(
-            len(path.read_text(encoding="utf-8").splitlines()) for path in sources
+    def test_skill_root_has_five_clear_owners(self) -> None:
+        root = Path("src/skill")
+        self.assertEqual(
+            {"builtin", "discovery", "handlers", "learning", "tasks"},
+            {path.name for path in root.iterdir() if path.name != "__pycache__"},
         )
-        self.assertLessEqual(line_count, 1500)
-        for path in sources:
-            source = path.read_text(encoding="utf-8")
-            self.assertNotIn("from core", source)
-            self.assertNotIn("from adapter", source)
+        for path in root.rglob("*.py"):
+            self.assertNotIn("from adapter", path.read_text(encoding="utf-8"))
 
     def test_only_center_source_parser_reads_skill_toml(self) -> None:
         python_sources = list(Path("src").rglob("*.py"))
@@ -104,7 +101,7 @@ class SkillArchitectureTests(unittest.TestCase):
             and '"skill.toml"' in path.read_text(encoding="utf-8")
         ]
 
-        self.assertEqual([Path("src/skill/index.py")], direct_parsers)
+        self.assertEqual([Path("src/skill/discovery/index.py")], direct_parsers)
 
     def test_only_super_agent_aggregates_public_api(self) -> None:
         for module_name, attribute_name in [
@@ -114,34 +111,31 @@ class SkillArchitectureTests(unittest.TestCase):
         ]:
             module = importlib.import_module(module_name)
             self.assertFalse(hasattr(module, attribute_name))
-        for module_name in ("skill.kinds", "skill.runtime.files"):
+        for module_name in ("skill.kinds", "skill.handlers.runtime.files"):
             with self.assertRaises(ModuleNotFoundError):
                 importlib.import_module(module_name)
 
     def test_skill_file_lifecycle_has_one_operations_owner(self) -> None:
-        operations = importlib.import_module("skill.runtime.package")
+        operations = importlib.import_module("skill.handlers.package")
         self.assertEqual("validate_skill_directory", operations.validate_skill_directory.__name__)
         self.assertEqual(
             "apply_skill_directory_updates",
             operations.apply_skill_directory_updates.__name__,
         )
         for module_name in (
-            "skill.runtime.files.operations",
-            "skill.runtime.files.directory",
-            "skill.runtime.files.validation",
+            "skill.handlers.runtime.files.operations",
+            "skill.handlers.runtime.files.directory",
+            "skill.handlers.runtime.files.validation",
         ):
             with self.assertRaises(ModuleNotFoundError):
                 importlib.import_module(module_name)
 
     def test_cli_configuration_owns_cli_loading(self) -> None:
-        package = importlib.import_module("adapter.cli_adapter")
-        configuration = importlib.import_module("adapter.cli_adapter.configuration")
-        self.assertFalse(Path("src/adapter/cli_adapter/__init__.py").exists())
-        self.assertFalse(hasattr(package, "CliConfig"))
+        configuration = importlib.import_module("adapter.cli_support.cli_config")
         self.assertEqual("CliConfig", configuration.CliConfig.__name__)
         self.assertEqual("load_agent", configuration.load_agent.__name__)
         with self.assertRaises(ModuleNotFoundError):
-            importlib.import_module("adapter.cli_adapter.loaders")
+            importlib.import_module("adapter.cli_loaders")
 
     def test_real_modules_and_public_api_import_in_fresh_process(self) -> None:
         environment = dict(os.environ)
@@ -150,7 +144,7 @@ class SkillArchitectureTests(unittest.TestCase):
             [
                 sys.executable,
                 "-c",
-                "from skill.manifest import SkillManifest; "
+                "from skill.discovery.manifest import SkillManifest; "
                 "from skill.learning.update import SkillUpdater; "
                 "from super_agent import Agent",
             ],

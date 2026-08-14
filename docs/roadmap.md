@@ -1748,6 +1748,21 @@ Status: implemented.
 - Reject the removed resources, task names, modules, and forwarding paths in release tests while
   preserving dependency-free installation, stateless execution, Web checks, and the offline gate.
 
+## v0.1.71: Readable Source Ownership
+
+Status: implemented.
+
+- Organize source into five visible responsibility areas: external adapters, Core execution,
+  Skill discovery, trusted Skill handlers, and optional Skill learning and task mechanisms.
+- Keep `src/adapter`, `src/core`, and `src/skill` at 10, 10, and 5 meaningful direct children,
+  with exact release gates so old flat layouts cannot grow back unnoticed.
+- Rename the main contracts to the direct terms `Skills`, `SkillUse`, `TaskRunner`, `ModelCaller`,
+  `RunTools`, and `RunToolsContext` without aliases for the removed names.
+- Move CLI support, HTTP, storage backends, Runtime records, Skill discovery, Skill handlers, and
+  Skill task mechanisms to their final owners; delete every prior module path and forwarding shell.
+- Point the Web build directly at `src/adapter/static`, update current architecture guides to the
+  real imports, and require both new imports and old import failures in fresh-process tests.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

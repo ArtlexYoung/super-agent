@@ -10,7 +10,7 @@ from pathlib import Path
 from re import fullmatch
 
 from core.checks import ActionEffect
-from skill.runtime.handlers import (
+from skill.handlers.runtime import (
     SkillAction,
     SkillTool,
     read_required_tool_string,

@@ -15,7 +15,7 @@ pnpm dev
 ```
 
 Vite proxies `/api`, `/ag-ui`, and `/health` to `127.0.0.1:8765`. A production
-build writes to `src/adapter/ag_ui_adapter/static` for the dependency-free Python server
+build writes to `src/adapter/static` for the dependency-free Python server
 to host at `http://127.0.0.1:8765/`.
 
 ```bash

@@ -14,7 +14,7 @@ adding task tools.
 ## Contract
 
 A handler declares the lowercase `skill_type` it owns, whether it adds model context, and
-`handle_skill(context)`, which returns one `SkillResult`. `SkillContext` exposes optional
+`handle_skill(context)`, which returns one `SkillUse`. `SkillContext` exposes optional
 storage, model text, identity, and checked action services explicitly. A missing service
 fails when the handler requests it.
 
@@ -38,7 +38,7 @@ MCP has a built-in handler but requires an implementation registered in code:
 
 ```python
 from core.checks import ActionEffect
-from skill.runtime.mcp import StdioMcpServer
+from skill.handlers.mcp import StdioMcpServer
 from super_agent import Agent
 
 agent = Agent()

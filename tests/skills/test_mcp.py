@@ -8,16 +8,16 @@ from pathlib import Path
 from core import __version__
 from core.checks import ActionEffect
 from super_agent import Agent
-from skill.runtime.handlers import create_default_skill_handlers
-from skill.runtime.handlers import SkillContext
+from skill.handlers.runtime import create_default_skill_handlers
+from skill.handlers.runtime import SkillContext
 from core.config import CommonConfig
-from adapter.storage import create_local_event_store
+from adapter.storage_backends.storage import create_local_event_store
 from core.provider import MockProvider
-from skill.disclosure import ProgressiveDisclosureCore, SkillReference
-from skill.runtime.mcp import read_mcp_skill_settings
-from core.state.memory import Memory
-from skill.manifest import Skill
-from skill.runtime.mcp import McpServers, StdioMcpServer
+from skill.discovery.catalog import ProgressiveDisclosureCore, SkillReference
+from skill.handlers.mcp import read_mcp_skill_settings
+from skill.handlers.memory import Memory
+from skill.discovery.manifest import Skill
+from skill.handlers.mcp import McpServers, StdioMcpServer
 from support import write_memory_skill, write_workflow_skill
 from adapter.processes import GeneralToolServer, attach_general_tools_to_agent
 

@@ -1,6 +1,6 @@
 # Runtime
 
-`Agent.run()` is the simple entry point. `core.runtime.run.Runtime` owns the full run:
+`Agent.run()` is the simple entry point. `core.runtime.Runtime` owns the full run:
 identity, optional storage, event recording, model turns, actions, and completion.
 
 ```python
@@ -11,7 +11,7 @@ print(result.text)
 print(result.run_id)
 ```
 
-## Model Loop
+## Task Runner
 
 The default model is resolved once and must be ready before its first call. Runtime does
 not retry another Provider or substitute Mock after failure.
@@ -42,7 +42,7 @@ the run visibly.
 Optional general tools are attached in code and remain absent by default:
 
 ```python
-from adapter.general import attach_general_tools_to_agent
+from adapter.processes import attach_general_tools_to_agent
 from super_agent import Agent
 
 agent = Agent()

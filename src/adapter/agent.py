@@ -30,17 +30,17 @@ from core.provider import (
     UserSecretLookup,
     UserSecretResolver,
 )
-from core.runtime.run import Run, Runtime
-from core.runtime.team import AgentTeam, SubAgent
-from core.state.conversations import complete_conversation_turn, prepare_conversation_turn
-from skill.runtime.handlers import (
-    SkillCollection,
+from core.runtime import Run, Runtime
+from core.team import AgentTeam, SubAgent
+from core.records.conversations import complete_conversation_turn, prepare_conversation_turn
+from skill.handlers.runtime import (
+    Skills,
     SkillHandler,
     create_default_skill_handlers,
     create_skills,
 )
-from skill.runtime.mcp import McpServer, McpServers
-from skill.runtime.models import (
+from skill.handlers.mcp import McpServer, McpServers
+from skill.handlers.models import (
     ModelProfile,
     create_direct_provider_profile,
     read_model_profiles,
@@ -48,8 +48,8 @@ from skill.runtime.models import (
 )
 
 if TYPE_CHECKING:
-    from core.runtime.loop import ModelLoop
-    from core.state.store import EventStore, StorageBackend
+    from core.loop import TaskRunner
+    from core.records.store import EventStore, StorageBackend
 
 
 class AgentSkills:
@@ -320,7 +320,7 @@ class Agent:
         prompt: str,
         user_id: str,
     ) -> None:
-        from core.runtime.model_calls import infer_conversation_feedback_with_model
+        from core.model_calls import infer_conversation_feedback_with_model
 
         store = self._create_event_store(user_id)
         skills = create_skills(
@@ -339,7 +339,7 @@ class Agent:
         instructions = feedback_skill.disclose_instructions().content
         if feedback_skill.read_configuration().content:
             raise ValueError("feedback Skill configuration must be empty")
-        model = self._create_task_loop(user_id, skills).create_text_model(
+        model = self._create_task_runner(user_id, skills).create_text_model(
             store,
             "conversation_feedback",
         )
@@ -399,7 +399,7 @@ class Agent:
             if feature is not None:
                 raise RuntimeError(f"{feature} requires Runtime storage")
             raise RuntimeError("storage is disabled for this Agent")
-        from core.state.store import EventStore
+        from core.records.store import EventStore
 
         return EventStore(
             self._storage,
@@ -415,7 +415,7 @@ class Agent:
         *,
         config: CommonConfig | None = None,
         include_freshness: bool = False,
-    ) -> SkillCollection:
+    ) -> Skills:
         return create_skills(
             config or self.config,
             handlers=self._skill_handlers,
@@ -423,12 +423,12 @@ class Agent:
             include_freshness=include_freshness,
         )
 
-    def _create_task_loop(self, user_id: str, skills: SkillCollection) -> ModelLoop:
-        from core.runtime.loop import ModelLoop
+    def _create_task_runner(self, user_id: str, skills: Skills) -> TaskRunner:
+        from core.loop import TaskRunner
 
         profiles = self._read_model_profiles(skills, user_id)
         environment = self._user_secrets.get_environment_for_user(user_id)
-        return ModelLoop(
+        return TaskRunner(
             profiles,
             self.provider_pool.create_user_provider_pool(environment),
         )
@@ -586,7 +586,7 @@ class Agent:
     ):
         if storage is None:
             return None
-        from core.state.store import EventStore
+        from core.records.store import EventStore
 
         selected = config or self.config
         return EventStore(
@@ -599,7 +599,7 @@ class Agent:
 
     def _read_model_profiles(
         self,
-        skills: SkillCollection,
+        skills: Skills,
         user_id: str,
     ) -> list[ModelProfile]:
         environment = self._user_secrets.get_environment_for_user(user_id)
@@ -613,7 +613,7 @@ def _create_storage_backend(
     path: str,
     url_env: str | None,
 ) -> StorageBackend:
-    from adapter.storage import create_storage_backend
+    from adapter.storage_backends.storage import create_storage_backend
 
     return create_storage_backend(backend, path, url_env)
 
@@ -626,12 +626,12 @@ def _load_common_config(config: CommonConfig | str | Path | None) -> CommonConfi
     return CommonConfig.load_from_file(config)
 
 
-def _has_model_skill(skills: SkillCollection) -> bool:
+def _has_model_skill(skills: Skills) -> bool:
     return any(entry.reference.skill_type == "model" for entry in skills.index.entries)
 
 
 def _create_disclosure_storage(cache_root: Path, store: EventStore):
-    from adapter.storage import DisclosureStorage
+    from adapter.storage_backends.storage import DisclosureStorage
 
     return DisclosureStorage(cache_root, store)
 

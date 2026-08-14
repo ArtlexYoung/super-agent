@@ -6,7 +6,7 @@ from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
-from adapter.cli_adapter.commands import main
+from adapter.cli import main
 from support import write_minimal_project
 
 

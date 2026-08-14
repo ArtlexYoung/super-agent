@@ -5,7 +5,7 @@ Super Agent separates five responsibilities:
 ```text
 Provider supplies model intelligence
 Runtime owns one task lifecycle
-Runtime turns selected Skill content into checked instructions and tools
+Skill handlers turn selected content into checked instructions and tools
 Skill stores passive content and configuration
 Agent composes Providers, Skills, storage, rules, and subagents
 ```
@@ -23,32 +23,32 @@ src/
 
 `core` owns execution and may read passive Skill definitions. `skill` does not own the
 Runtime. `adapter` connects external interfaces and durable backends. `super_agent.py` exports
-the Agent implemented by `adapter/agent.py`; `core/runtime/resources.py` owns lazy Runtime
-resources, while `team.py` owns child Agent composition through a small protocol. Core never
+the Agent implemented by `adapter/agent.py`; `core/runtime.py` owns the task lifecycle, while
+`core/team.py` owns child Agent composition through a small protocol. Core never
 imports Adapter implementations.
-The CLI command owner is `adapter.cli_adapter.commands`; it owns direct execution, checks,
-and serving, while `manage` and `data` group stateful command domains. `src/cli.py` only makes
+The CLI command owner is `adapter.cli`; it owns direct execution, checks,
+and serving, while `cli_skills.py` and `cli_data.py` group stateful command domains. `src/cli.py` only makes
 direct source-tree execution possible.
 
 ## Ownership Map
 
 | Concern | Owner | Does not own |
 | --- | --- | --- |
-| Model protocols and calls | `core/provider.py` | Model profiles or task routing |
-| Storage protocol and records | `core/state/store.py` | Concrete JSONL, SQL, or Web I/O |
-| Scoped state store | `core/state/store.py` | Backend construction or external commands |
-| One run event log | `core/state/run.py` | Durable backend selection |
-| One run lifecycle | `core/runtime/run.py` | CLI, Web, or storage policy |
+| Model protocols and calls | `core/provider.py`, `core/model_calls.py` | Model profiles or task routing |
+| Storage protocol and records | `core/records/store.py` | Concrete JSONL, SQL, or Web I/O |
+| Scoped state store | `core/records/store.py` | Backend construction or external commands |
+| One run event log | `core/records/events.py` | Durable backend selection |
+| One run lifecycle | `core/runtime.py` | CLI, Web, or storage policy |
 | Agent composition | `adapter/agent.py` | Runtime internals or storage implementations |
-| Lazy Runtime resources and child graph | `core/runtime/resources.py`, `team.py` | External interfaces |
-| Task queues and groups | `skill/runtime/tasks/` | Generic Run lifecycle |
-| Skill discovery | `skill/disclosure.py` | Storage writes or Skill mutation |
-| Skill execution | `skill/runtime/` | Agent learning or external adapters |
-| Model Skill management | `skill/runtime/model_skills.py` | Provider calls or model routing |
+| Lazy Runtime resources and child graph | `core/runtime.py`, `core/team.py` | External interfaces |
+| Task queues and groups | `skill/tasks/` | Generic Run lifecycle |
+| Skill discovery | `skill/discovery/` | Storage writes or Skill mutation |
+| Skill execution | `skill/handlers/` | Agent learning or external adapters |
+| Model Skill management | `skill/handlers/model_management.py` | Provider calls or model routing |
 | Skill evidence and changes | `skill/learning/` | Implicit updates during a run |
-| Conversations | `core/state/conversations.py` | Storage backend construction or UI |
-| Durable storage I/O | `adapter/storage/__init__.py`, backend modules | Runtime state policy |
-| AG-UI and Web I/O | `adapter/ag_ui_adapter/server.py`, `web_api.py` | Runtime decisions |
+| Conversations | `core/records/conversations.py` | Storage backend construction or UI |
+| Durable storage I/O | `adapter/storage_backends/` | Runtime state policy |
+| AG-UI and Web I/O | `adapter/http/` | Runtime decisions |
 
 Dependencies point from adapters into Core and Skill owners. `super_agent.Agent` is the default
 Adapter composition and supplies concrete storage factories to Core. Skill discovery remains passive;
@@ -62,9 +62,9 @@ aliases or forwarding modules.
 Agent.run
   -> task Runtime creates Run identity and event log
   -> Skills builds one central index
-  -> ModelLoop selects the configured default model
+  -> TaskRunner selects the configured default model
   -> model receives the prompt, selected context, and Skill index
-  -> ModelCalls sends one measured call through core Provider adapters
+  -> ModelCaller sends one measured call through core Provider adapters
   -> model returns final text or checked tool calls, including explicit use_model delegation
   -> Runtime records completion or the exact failure
 ```
@@ -86,7 +86,8 @@ propagated without a fallback call.
 ## Progressive Disclosure
 
 `ProgressiveDisclosureCore` is the only content discovery path. Its optional recorder is a
-storage port; JSONL, SQLite, and remote storage implementations live under `adapter/storage`
+storage port; JSONL, SQLite, and remote storage implementations live under
+`adapter/storage_backends/`
 and are injected by `super_agent.Agent`:
 
 1. Build compact index entries from built-in, project, and user Skill sources.

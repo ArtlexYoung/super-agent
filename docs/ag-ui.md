@@ -77,7 +77,7 @@ from the active run and are not reconstructed from logs.
 Embed the server with the public library API:
 
 ```python
-from adapter.ag_ui_adapter.server import create_ag_ui_server
+from adapter.http.agui import create_ag_ui_server
 from super_agent import Agent
 
 server = create_ag_ui_server(Agent(use_storage=True))

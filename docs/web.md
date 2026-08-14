@@ -72,7 +72,7 @@ pnpm typecheck
 pnpm build
 ```
 
-The production build writes to `src/adapter/ag_ui_adapter/static`, so packaged Python
+The production build writes to `src/adapter/static`, so packaged Python
 distributions can serve it without Node.js.
 
 ## Network Boundary

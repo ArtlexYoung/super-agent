@@ -41,7 +41,7 @@ class PublicApiTests(unittest.TestCase):
         from core.checks import ActionRules
         from core.models import AgentRunOptions
         from core.provider import MockProvider
-        from skill.runtime.handlers import SkillHandler
+        from skill.handlers.runtime import SkillHandler
 
         self.assertIsNotNone(ActionRules)
         self.assertIsNotNone(AgentRunOptions)

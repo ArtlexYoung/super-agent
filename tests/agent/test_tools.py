@@ -3,33 +3,33 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from skill.runtime.handlers import (
+from skill.handlers.runtime import (
     create_default_skill_handlers,
     create_runtime_disclosure_recorder,
 )
-from skill.runtime.handlers import (
-    SkillCollection,
+from skill.handlers.runtime import (
+    Skills,
     SkillContext,
     SkillAction,
     SkillTool,
-    SkillResult,
+    SkillUse,
 )
-from skill.runtime.builtins import create_memory_skill_contribution
+from skill.handlers.builtins import create_memory_skill_contribution
 from core.provider import ToolCall
 from core.provider import MockProvider
-from core.runtime.tools import RuntimeTools, RuntimeToolsContext
+from core.tools import RunTools, RunToolsContext
 from core.config import CommonConfig
-from core.runtime.run import Run
+from core.runtime import Run
 from core.models import RunIdentity
 from core.checks import ActionConfirmationRequired, ActionEffect, ActionRules
-from core.state.run import RunEventLog
-from core.state.store import EventStore
-from adapter.storage import JsonlStorage
-from adapter.storage import DisclosureStorage
-from skill.disclosure import ProgressiveDisclosureCore
-from core.state.memory import Memory
-from skill.runtime.models import create_direct_provider_profile
-from skill.runtime.mcp import McpServers, StdioMcpServer
+from core.records.events import RunEventLog
+from core.records.store import EventStore
+from adapter.storage_backends.storage import JsonlStorage
+from adapter.storage_backends.storage import DisclosureStorage
+from skill.discovery.catalog import ProgressiveDisclosureCore
+from skill.handlers.memory import Memory
+from skill.handlers.models import create_direct_provider_profile
+from skill.handlers.mcp import McpServers, StdioMcpServer
 
 
 class SkillToolsTests(unittest.TestCase):
@@ -135,9 +135,9 @@ class SkillToolsTests(unittest.TestCase):
                 action=SkillAction((ActionEffect.READ,), "subagent"),
                 result_kind="subagent",
             )
-            tools = RuntimeTools(
-                RuntimeToolsContext(session=session),
-                contributions=[SkillResult(tools=(tool,))],
+            tools = RunTools(
+                RunToolsContext(session=session),
+                contributions=[SkillUse(tools=(tool,))],
             )
 
             result = tools.run_tool_call(ToolCall("delegated-1", "run_subagent", {}))
@@ -228,10 +228,10 @@ class SkillToolsTests(unittest.TestCase):
                 called = True
                 return {"ok": True}
 
-            tools = RuntimeTools(
-                RuntimeToolsContext(session=session),
+            tools = RunTools(
+                RunToolsContext(session=session),
                 contributions=[
-                    SkillResult(
+                    SkillUse(
                         tools=(
                             SkillTool(
                                 "run_external",
@@ -291,8 +291,8 @@ class SkillToolsTests(unittest.TestCase):
                     execute_action=session.execute_action,
                 )
             )
-            tools = RuntimeTools(
-                RuntimeToolsContext(session=session),
+            tools = RunTools(
+                RunToolsContext(session=session),
                 contributions=[contribution],
             )
 
@@ -350,11 +350,11 @@ def _create_tool_router(
     index,
     session: Run,
     memory: Memory | None = None,
-) -> RuntimeTools:
+) -> RunTools:
     if disclosure is not session.skills.disclosure or index is not session.skills.index:
         raise ValueError("tool router must use the Run Skill snapshot")
-    return RuntimeTools(
-        RuntimeToolsContext(
+    return RunTools(
+        RunToolsContext(
             session=session,
         ),
         contributions=(
@@ -400,7 +400,7 @@ def _create_session(
         config=config,
         model_profile=create_direct_provider_profile(),
         provider=provider,
-        skills=SkillCollection(disclosure, create_default_skill_handlers(mcp_servers)),
+        skills=Skills(disclosure, create_default_skill_handlers(mcp_servers)),
         identity=identity,
         event_log=event_log,
         store=store,

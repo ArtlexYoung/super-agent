@@ -8,7 +8,7 @@ export default defineConfig({
   plugins: [react(), tailwindcss(), removeGeneratedTrailingWhitespace()],
   build: {
     emptyOutDir: true,
-    outDir: "../src/adapter/ag_ui_adapter/static",
+    outDir: "../src/adapter/static",
   },
   server: {
     proxy: {

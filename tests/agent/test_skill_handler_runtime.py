@@ -9,17 +9,17 @@ from pathlib import Path
 from unittest.mock import patch
 
 from super_agent import Agent
-from skill.runtime.handlers import (
+from skill.handlers.runtime import (
     SkillContext,
     SkillAction,
     SkillTool,
-    SkillResult,
+    SkillUse,
 )
-from adapter.cli_adapter.commands import main
+from adapter.cli import main
 from core.provider import MockProvider, ModelResponse, ToolCall
 from core.config import CommonConfig
 from core.checks import ActionEffect
-from skill.manifest import Skill
+from skill.discovery.manifest import Skill
 from support import write_workflow_skill
 
 
@@ -217,7 +217,7 @@ class SkillHandlerRuntimeTests(unittest.TestCase):
                 event_types.index("task.completed"),
             ]
             self.assertEqual(sorted(ordered_steps), ordered_steps)
-            self.assertFalse(hasattr(agent.runtime, "task_loop"))
+            self.assertFalse(hasattr(agent.runtime, "task_runner"))
             self.assertFalse(hasattr(agent.runtime, "_create_user_model_runtime"))
             self.assertFalse(hasattr(agent.runtime, "task_scheduler"))
             self.assertFalse(hasattr(agent.runtime, "model_router"))
@@ -245,15 +245,15 @@ class SkillHandlerRuntimeTests(unittest.TestCase):
             }
             self.assertIn("RunIdentity", identity_classes)
             run_tree = ast.parse(
-                Path("src/core/runtime/run.py").read_text(encoding="utf-8")
+                Path("src/core/runtime.py").read_text(encoding="utf-8")
             )
             run_classes = {
                 node.name for node in run_tree.body if isinstance(node, ast.ClassDef)
             }
             self.assertEqual({"Run", "Runtime"}, run_classes)
-            run_source = Path("src/core/runtime/run.py").read_text(encoding="utf-8")
+            run_source = Path("src/core/runtime.py").read_text(encoding="utf-8")
             self.assertIn("model_profiles: tuple[ModelProfile, ...]", run_source)
-            self.assertIn("task_loop: ModelLoop | None", run_source)
+            self.assertIn("task_runner: TaskRunner | None", run_source)
             self.assertFalse(Path("src/core/session.py").exists())
             self.assertFalse(Path("src/core/runtime/plan.py").exists())
             self.assertFalse(Path("src/core/runtime/scheduler.py").exists())
@@ -261,13 +261,13 @@ class SkillHandlerRuntimeTests(unittest.TestCase):
             self.assertFalse(Path("src/core/task/decisions.py").exists())
 
     def test_core_exposes_one_task_entry_method(self) -> None:
-        tree = ast.parse(Path("src/core/runtime/run.py").read_text(encoding="utf-8"))
+        tree = ast.parse(Path("src/core/runtime.py").read_text(encoding="utf-8"))
         method_names = {
             node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
         }
         self.assertIn("run_task", method_names)
         self.assertNotIn("run_agent", method_names)
-        runtime = ast.parse(Path("src/core/runtime/run.py").read_text(encoding="utf-8"))
+        runtime = ast.parse(Path("src/core/runtime.py").read_text(encoding="utf-8"))
         runtime_class = next(
             node
             for node in runtime.body
@@ -282,13 +282,13 @@ class SkillHandlerRuntimeTests(unittest.TestCase):
 
     def test_runtime_does_not_import_concrete_skill_kinds(self) -> None:
         for path in (
-            Path("src/core/runtime/loop.py"),
-            Path("src/core/runtime/tools.py"),
+            Path("src/core/loop.py"),
+            Path("src/core/tools.py"),
         ):
             source = path.read_text(encoding="utf-8")
-            self.assertNotIn("core.state.memory_service", source)
-            self.assertNotIn("skill.runtime.mcp", source)
-            self.assertNotIn("skill.runtime.builtins", source)
+            self.assertNotIn("skill.handlers.memory_service", source)
+            self.assertNotIn("skill.handlers.mcp", source)
+            self.assertNotIn("skill.handlers.builtins", source)
 
 
 class _RecordingPromptSkillHandler:
@@ -298,13 +298,13 @@ class _RecordingPromptSkillHandler:
     def __init__(self) -> None:
         self.handle_count = 0
 
-    def handle_skill(self, context: SkillContext) -> SkillResult:
+    def handle_skill(self, context: SkillContext) -> SkillUse:
         self.handle_count += 1
         opened = context.disclosure.open_skill(
             context.reference.name,
             self.skill_type,
         )
-        return SkillResult(
+        return SkillUse(
             model_context=Skill(
                 manifest=opened.read_manifest(),
                 instructions="Loaded by custom SkillHandler.",
@@ -315,9 +315,9 @@ class _RecordingPromptSkillHandler:
 class _TransformSkillHandler(_RecordingPromptSkillHandler):
     skill_type = "transform"
 
-    def handle_skill(self, context: SkillContext) -> SkillResult:
+    def handle_skill(self, context: SkillContext) -> SkillUse:
         contribution = super().handle_skill(context)
-        return SkillResult(
+        return SkillUse(
             model_context=contribution.model_context,
             tools=(
                 SkillTool(
@@ -338,8 +338,8 @@ class _TransformSkillHandler(_RecordingPromptSkillHandler):
 class _MissingActionSkillHandler(_RecordingPromptSkillHandler):
     skill_type = "unsafe"
 
-    def handle_skill(self, context: SkillContext) -> SkillResult:
-        return SkillResult(
+    def handle_skill(self, context: SkillContext) -> SkillUse:
+        return SkillUse(
             tools=(
                 SkillTool(  # type: ignore[call-arg]
                     "unsafe_tool",

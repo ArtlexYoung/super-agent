@@ -4,13 +4,13 @@ Do not start by reading every file. Read one ordinary call in this order:
 
 1. `src/super_agent.py` exports the public `Agent` from `adapter/agent.py`.
 2. `src/adapter/agent.py` lazily assembles Provider, storage, Skills, and Runtime only when used.
-3. `src/core/runtime/run.py` owns one run identity and task lifecycle; `core/state/run.py`
+3. `src/core/runtime.py` owns one run identity and task lifecycle; `core/records/events.py`
    owns the ordered event log.
-4. `src/core/runtime/loop.py` gives the model selected context and checked tools.
-5. `src/skill/disclosure.py` builds the shared Skill index and opens requested content; its
-   optional cache recorder is supplied by `adapter/storage`.
+4. `src/core/loop.py` gives the model selected context and checked tools.
+5. `src/skill/discovery/catalog.py` builds the shared Skill index and opens requested
+   content; its optional cache recorder is supplied by `adapter/storage_backends`.
 6. `src/core/provider.py` makes and measures the selected Provider call.
-7. Checkpoints are recorded by `src/core/runtime/run.py` as content-free recovery facts.
+7. Checkpoints are recorded by `src/core/runtime.py` as content-free recovery facts.
 
 Everything outside this path is optional state, a Skill mechanism, or an external adapter.
 Open those owners only when the task needs them.
@@ -21,7 +21,7 @@ The short execution path is:
 super_agent.Agent
   -> Agent.run
   -> Runtime.run_task
-  -> ModelLoop.run_task
+  -> TaskRunner.run_task
   -> Skill disclosure and activation
   -> Provider call
   -> final text or checked tool actions
@@ -48,30 +48,29 @@ For a subsystem, start at its owner:
 
 - Agent actions and external wiring: `adapter.agent.Agent`.
 - Agent composition and lazy startup: `adapter.agent.Agent`.
-- Child Agent composition: `core.runtime.team.AgentTeam`.
-- Run lifecycle: `core.runtime.run.Runtime`.
-- Model loop and calls: `core.runtime.loop.ModelLoop` and `core.runtime.model_calls.ModelCalls`.
+- Child Agent composition: `core.team.AgentTeam`.
+- Run lifecycle: `core.runtime.Runtime`.
+- Task execution and model calls: `core.loop.TaskRunner` and `core.model_calls.ModelCaller`.
 - Provider protocols and pooling: `core.provider`.
-- State backend and store: `core.state.store`.
-- Run event log: `core.state.run`.
-- Skill index and disclosure: `skill.disclosure.ProgressiveDisclosureCore`.
-- Storage creation, shared values, and explicit copying: `adapter.storage`.
-- Disclosure persistence and backend creation: `adapter.storage`.
-- AG-UI transport and event mapping: `adapter.ag_ui_adapter.server`.
-- Web management operations and configuration updates: `adapter.ag_ui_adapter.web_api`.
-- Skill handling: `skill.runtime.handlers.SkillCollection` and `SkillHandlers`.
-- Model Skill management: `skill.runtime.model_skills.ModelSkillManager`.
-- Skill file lifecycle: `skill.runtime.package.SkillPackageManager` and its explicit
+- State backend and store: `core.records.store`.
+- Run event log: `core.records.events`.
+- Skill index and disclosure: `skill.discovery.catalog.ProgressiveDisclosureCore`.
+- Storage creation and persistence: `adapter.storage_backends.storage`.
+- AG-UI transport and event mapping: `adapter.http.agui`.
+- Web management operations and configuration updates: `adapter.http.web`.
+- Skill handling: `skill.handlers.runtime.Skills` and `SkillHandlers`.
+- Model Skill management: `skill.handlers.model_management.ModelSkillManager`.
+- Skill file lifecycle: `skill.handlers.package.SkillPackageManager` and its explicit
   validation functions.
-- Conversation state: `core.state.conversations`.
+- Conversation state: `core.records.conversations`.
 - Skill evidence and changes: `skill.learning`.
-- Scoped state and audit: `core.state`.
+- Scoped state and audit: `core.records.store` and `core.records.audit`.
 - Side-effect checks: `core.checks.ActionRunner`.
 - CLI, Web, and storage I/O: their modules under `adapter`.
 
 `src/cli.py` is the direct source-tree entry point. The CLI implementation belongs to
-`adapter.cli_adapter.commands`, while terminal settings and confirmation live in
-`adapter.cli_adapter.configuration`, which also owns Agent and storage construction. These modules
+`adapter.cli`, while terminal settings and confirmation live in
+`adapter.cli_support.cli_config`, which also owns Agent and storage construction. These modules
 use `adapter.agent` for the single explicit Agent access boundary and do not own task execution.
 There are no compatibility modules; import an advanced type from the file that owns it. Release
 tests import removed module paths in a fresh process and require them to fail, so obsolete owners

@@ -398,7 +398,7 @@ def _clamp(value: float, minimum: float, maximum: float) -> float:
 import math
 from dataclasses import dataclass
 
-from skill.disclosure import ProgressiveDisclosureCore, SkillDisclosure
+from skill.discovery.catalog import ProgressiveDisclosureCore, SkillDisclosure
 
 
 @dataclass(frozen=True)

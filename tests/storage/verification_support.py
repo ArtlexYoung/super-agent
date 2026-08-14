@@ -8,14 +8,14 @@ from pathlib import Path
 from time import perf_counter
 from uuid import uuid4
 
-from core.state.conversations import (
+from core.records.conversations import (
     append_conversation_turn,
     create_conversation,
     read_conversation,
 )
-from core.state.store import StorageBackend, StorageEventQuery
-from core.state.store import EventStore
-from core.state.memory import Memory
+from core.records.store import StorageBackend, StorageEventQuery
+from core.records.store import EventStore
+from skill.handlers.memory import Memory
 
 
 STORAGE_BACKEND_NAMES = ("jsonl", "sqlite", "mysql", "postgresql")
@@ -158,7 +158,7 @@ def _create_verification_storage_backend(
     root: Path,
     remote_url_environments: dict[str, str],
 ) -> StorageBackend:
-    from adapter.storage import create_storage_backend
+    from adapter.storage_backends.storage import create_storage_backend
 
     url_env = remote_url_environments.get(name)
     # Dedicated test URLs keep verification writes away from production Agent storage.
@@ -180,7 +180,7 @@ def _run_multiuser_isolation_checks(
     local_root: Path,
     user_ids: list[str],
 ) -> tuple[list[str], int]:
-    from adapter.storage import DisclosureStorage
+    from adapter.storage_backends.storage import DisclosureStorage
 
     user_a, user_b = user_ids
     agent_name = "proof-agent"

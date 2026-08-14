@@ -5,10 +5,10 @@ from pathlib import Path
 
 from super_agent import Agent
 from core.config import CommonConfig
-from adapter.storage import create_local_event_store
+from adapter.storage_backends.storage import create_local_event_store
 from core.provider import MockProvider
-from skill.disclosure import ProgressiveDisclosureCore
-from skill.runtime.handlers import create_runtime_disclosure_recorder
+from skill.discovery.catalog import ProgressiveDisclosureCore
+from skill.handlers.runtime import create_runtime_disclosure_recorder
 from support import write_workflow_skill
 
 

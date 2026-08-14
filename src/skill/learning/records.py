@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 if TYPE_CHECKING:
-    from core.state.store import EventStore
+    from core.records.store import EventStore
 
 
 EVALUATION_RECORD_SCHEMA_VERSION = 3

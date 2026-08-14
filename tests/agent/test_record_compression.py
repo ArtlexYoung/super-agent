@@ -1,8 +1,8 @@
 import unittest
 
 from core.models import SubagentRecordOptions
-from skill.runtime.tasks.queue import TaskQueue, TaskQueueSettings
-from core.state.audit import (
+from skill.tasks.task_queue import TaskQueue, TaskQueueSettings
+from core.records.audit import (
     DEFAULT_AUDIT_POLICY,
     compact_subagent_result,
 )

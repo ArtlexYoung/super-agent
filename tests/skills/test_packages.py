@@ -5,10 +5,10 @@ import unittest
 import zipfile
 from pathlib import Path
 
-from adapter.storage import create_local_event_store
-from skill.disclosure import ProgressiveDisclosureCore
-from skill.manifest import calculate_skill_directory_sha256
-from skill.runtime.package import (
+from adapter.storage_backends.storage import create_local_event_store
+from skill.discovery.catalog import ProgressiveDisclosureCore
+from skill.discovery.manifest import calculate_skill_directory_sha256
+from skill.handlers.package import (
     SkillDirectoryUpdate,
     SkillPackageManager,
     apply_skill_directory_updates,

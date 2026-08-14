@@ -7,12 +7,12 @@ from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
-from adapter.cli_adapter.configuration import TerminalActionRules
-from adapter.cli_adapter.code import CodeWorkspace, attach_code_config_to_agent
+from adapter.cli_support.cli_config import TerminalActionRules
+from adapter.code import CodeWorkspace, attach_code_config_to_agent
 from core.config import CodeConfig, CodeSettings, CommonConfig, DEFAULT_CODE_IGNORES
 from core.provider import MockProvider, ModelResponse, ToolCall
-from skill.runtime.handlers import create_progressive_skill_disclosure
-from skill.runtime.handlers import create_task_policy_from_skill
+from skill.handlers.runtime import create_progressive_skill_disclosure
+from skill.handlers.runtime import create_task_policy_from_skill
 from super_agent import Agent
 
 

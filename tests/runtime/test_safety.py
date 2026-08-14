@@ -2,11 +2,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from skill.runtime.handlers import create_default_skill_handlers
-from skill.runtime.handlers import SkillAction, SkillCollection
+from skill.handlers.runtime import create_default_skill_handlers
+from skill.handlers.runtime import SkillAction, Skills
 from core.provider import MockProvider
 from core.config import CommonConfig
-from core.runtime.run import Run
+from core.runtime import Run
 from core.models import RunIdentity
 from core.checks import (
     ActionConfirmationRequired,
@@ -16,11 +16,11 @@ from core.checks import (
     ActionRunner,
     ActionRules,
 )
-from core.state.run import RunEventLog
-from core.state.store import EventStore
-from adapter.storage import JsonlStorage
-from skill.disclosure import ProgressiveDisclosureCore
-from skill.runtime.models import create_direct_provider_profile
+from core.records.events import RunEventLog
+from core.records.store import EventStore
+from adapter.storage_backends.storage import JsonlStorage
+from skill.discovery.catalog import ProgressiveDisclosureCore
+from skill.handlers.models import create_direct_provider_profile
 
 
 class RuntimeSafetyTests(unittest.TestCase):
@@ -227,7 +227,7 @@ def _create_session(
         config=config,
         model_profile=create_direct_provider_profile(),
         provider=MockProvider(),
-        skills=SkillCollection(disclosure, create_default_skill_handlers()),
+        skills=Skills(disclosure, create_default_skill_handlers()),
         identity=identity,
         event_log=event_log,
         store=store,
@@ -244,7 +244,7 @@ def _create_session_without_action_checker() -> Run:
         config=config,
         model_profile=create_direct_provider_profile(),
         provider=MockProvider(),
-        skills=SkillCollection(
+        skills=Skills(
             ProgressiveDisclosureCore([]),
             create_default_skill_handlers(),
         ),

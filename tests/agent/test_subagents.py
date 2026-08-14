@@ -101,7 +101,7 @@ class SubAgentTests(unittest.TestCase):
             self.assertEqual([], result.subagent_results)
             self.assertEqual([], child_provider.last_messages)
 
-    def test_nested_subagents_finish_through_their_own_model_loops(self) -> None:
+    def test_nested_subagents_finish_through_their_own_task_runners(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             main = _agent(

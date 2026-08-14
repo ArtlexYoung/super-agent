@@ -3,13 +3,13 @@ import ast
 import unittest
 from pathlib import Path
 
-from skill.runtime.tasks.queue import AgentUnavailableError, create_task_queue
+from skill.tasks.task_queue import AgentUnavailableError, create_task_queue
 
 
 class AgentGroupTests(unittest.TestCase):
     def test_group_policy_does_not_own_queue_state(self) -> None:
         tree = ast.parse(
-            Path("src/skill/runtime/tasks/groups.py").read_text(encoding="utf-8")
+            Path("src/skill/tasks/task_groups.py").read_text(encoding="utf-8")
         )
         group_class = next(
             node

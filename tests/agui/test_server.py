@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 from super_agent import Agent
-from adapter.ag_ui_adapter.server import create_ag_ui_server
+from adapter.http.agui import create_ag_ui_server
 from core.provider import MockProvider
 from core.config import CommonConfig
 from support import write_workflow_skill

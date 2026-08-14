@@ -15,12 +15,12 @@ from uuid import uuid4
 from core.checks import ActionEffect, ActionRequest, ActionRunner, ActionRules
 from core.checks import write_bytes_atomically
 from core.provider import Message
-from core.runtime.model_calls import TextModel, estimate_text_tokens
-from skill.learning.runs import (
+from core.model_calls import TextModel, estimate_text_tokens
+from skill.learning.run_learning import (
     read_skill_change_report,
     skill_change_report_to_dict,
 )
-from skill.runtime.package import (
+from skill.handlers.package import (
     SkillDirectoryUpdate,
     apply_skill_directory_updates,
     check_skill_configuration,
@@ -28,9 +28,9 @@ from skill.runtime.package import (
     validate_skill_directory,
     validate_skill_replacement,
 )
-from core.state.store import EventStore
-from skill.disclosure import ProgressiveDisclosureCore
-from skill.manifest import SkillManifest, calculate_skill_directory_sha256
+from core.records.store import EventStore
+from skill.discovery.catalog import ProgressiveDisclosureCore
+from skill.discovery.manifest import SkillManifest, calculate_skill_directory_sha256
 
 
 @dataclass(frozen=True)

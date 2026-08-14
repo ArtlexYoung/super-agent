@@ -17,6 +17,17 @@ from pathlib import Path
 MAX_TOTAL_SOURCE_FILES = 48
 MAX_TOTAL_SOURCE_LINES = 18_700
 EXPECTED_SOURCE_ROOT = {"adapter", "cli.py", "core", "skill", "super_agent.py"}
+EXPECTED_DOMAIN_CHILDREN = {
+    "adapter": {
+        "agent.py", "cli.py", "cli_support", "code.py", "http", "processes.py",
+        "repository.py", "static", "storage_backends", "user.py",
+    },
+    "core": {
+        "checks.py", "config.py", "loop.py", "model_calls.py", "models.py",
+        "provider.py", "records", "runtime.py", "team.py", "tools.py",
+    },
+    "skill": {"builtin", "discovery", "handlers", "learning", "tasks"},
+}
 EXPECTED_WHEEL_ROOTS = [
     "src/adapter",
     "src/core",
@@ -52,7 +63,7 @@ PRIVATE_AGENT_CALLS = {
     "_action_rules",
     "_create_event_store",
     "_create_skills",
-    "_create_task_loop",
+    "_create_task_runner",
     "_execute_action",
     "_read_task_trace",
     "_record_task_feedback",
@@ -80,6 +91,13 @@ REMOVED_CODE_NAMES = {
     "redact_event_data_for_display",
     "redact_events_for_display",
     "create_agent_task_queue",
+    "create_runtime_tools",
+    "ModelCalls",
+    "ModelLoop",
+    "RuntimeTools",
+    "RuntimeToolsContext",
+    "SkillCollection",
+    "SkillResult",
 }
 
 
@@ -186,8 +204,8 @@ def verify_release(root: Path, expected_version: str) -> list[str]:
         errors.append("pyproject.toml project.version does not match the requested version")
     if project_data.get("dependencies") != []:
         errors.append("default project dependencies must remain empty")
-    if project_data.get("scripts", {}).get("super-agent") != "adapter.cli_adapter.commands:main":
-        errors.append("the installed CLI must point to adapter.cli_adapter.commands:main")
+    if project_data.get("scripts", {}).get("super-agent") != "adapter.cli:main":
+        errors.append("the installed CLI must point to adapter.cli:main")
 
     if _read_python_version(root / "src/core/__init__.py", errors) != expected_version:
         errors.append("src/core/__init__.py __version__ does not match the requested version")
@@ -200,6 +218,14 @@ def verify_release(root: Path, expected_version: str) -> list[str]:
     }
     if actual_root != EXPECTED_SOURCE_ROOT:
         errors.append(f"src layout changed: {sorted(actual_root)}")
+    for name, expected in EXPECTED_DOMAIN_CHILDREN.items():
+        actual = {
+            path.name
+            for path in (source_root / name).iterdir()
+            if path.name not in {"__init__.py", "__pycache__"}
+        }
+        if actual != expected:
+            errors.append(f"src/{name} layout changed: {sorted(actual)}")
 
     wheel = (
         project.get("tool", {})

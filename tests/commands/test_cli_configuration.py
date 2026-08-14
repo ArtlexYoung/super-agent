@@ -6,8 +6,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from adapter.cli_adapter.configuration import CliConfig
-from adapter.cli_adapter.commands import main
+from adapter.cli_support.cli_config import CliConfig
+from adapter.cli import main
 
 
 class CliConfigurationTests(unittest.TestCase):
