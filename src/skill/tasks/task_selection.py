@@ -11,17 +11,11 @@ from typing import Callable
 
 from core.models import SubagentRecordOptions
 from core.provider import estimate_text_tokens
+from skill.handlers.models import choose_dispatch_model
 
 
 EventWriter = Callable[[str, dict[str, object]], object]
 MAX_ESTIMATED_TOKENS = 10_000_000
-TOKEN_PRICE_FIELDS = (
-    ("input_tokens", "input_cost_per_million"),
-    ("output_tokens", "output_cost_per_million"),
-    ("cache_creation_tokens", "cache_creation_cost_per_million"),
-    ("cache_read_tokens", "cache_read_cost_per_million"),
-)
-PRICE_FIELDS = tuple(price_name for _token_name, price_name in TOKEN_PRICE_FIELDS)
 
 
 class AgentUnavailableError(RuntimeError):
@@ -318,8 +312,13 @@ class AgentSelector:
             if len(selected) >= len(tasks):
                 break
             task = tasks[len(selected)]
-            model, _pricing, _cost = _model_cost(agent, task)
-            model_key = model or f"agent:{agent['name']}"
+            dispatch = choose_dispatch_model(
+                agent.get("models"),
+                task.purpose,
+                task.required_features,
+                task.token_counts(),
+            )
+            model_key = dispatch.model or f"agent:{agent['name']}"
             if require_different_models and model_key in selected_models:
                 continue
             choice = replace(self._finish_choice(
@@ -405,7 +404,12 @@ class AgentSelector:
         task: QueuedTask,
         active: dict[str, int],
     ) -> tuple[float, float, float]:
-        _model, _pricing, cost = _model_cost(agent, task)
+        cost = choose_dispatch_model(
+            agent.get("models"),
+            task.purpose,
+            task.required_features,
+            task.token_counts(),
+        ).cost
         health = self._health[str(agent["name"])]
         base = _base_score(agent, health, cost)
         exact = float(agent.get("purpose") == task.purpose and task.purpose != "auto")
@@ -420,9 +424,14 @@ class AgentSelector:
         commit: bool,
     ) -> SelectedAgent:
         name = str(agent["name"])
-        model, pricing, cost = _model_cost(agent, task)
+        dispatch = choose_dispatch_model(
+            agent.get("models"),
+            task.purpose,
+            task.required_features,
+            task.token_counts(),
+        )
         health = self._health[name]
-        base_score = _base_score(agent, health, cost)
+        base_score = _base_score(agent, health, dispatch.cost)
         candidate_count, active_count = counts
         score = (
             base_score
@@ -437,9 +446,9 @@ class AgentSelector:
             candidate_count,
             active_count,
             float(agent["weight"]),
-            model,
-            pricing,
-            cost,
+            dispatch.model,
+            dispatch.pricing,
+            dispatch.cost,
             round(health.reliability, 8),
             health.successful_tasks,
             health.unavailable_failures,
@@ -522,62 +531,6 @@ def _matches(agent: dict[str, object], purpose: str, features: tuple[str, ...]) 
         (purpose == "auto" or agent_purpose in {"auto", purpose})
         and set(features) <= supported
     )
-
-
-def _model_cost(
-    agent: dict[str, object],
-    task: QueuedTask,
-) -> tuple[str | None, dict[str, float], dict[str, object]]:
-    models = agent.get("models", [])
-    compatible = [
-        item for item in models
-        if isinstance(item, dict)
-        and set(task.required_features) <= set(item.get("supports", []))
-    ] if isinstance(models, list) else []
-    if not compatible:
-        pricing = {**{name: 0.0 for name in PRICE_FIELDS}, "total_cost_per_million": 0.0}
-        return None, pricing, _estimate_cost(pricing, task)
-    selected = min(
-        enumerate(compatible),
-        key=lambda pair: (
-            0 if task.purpose in pair[1].get("purposes", []) else 1,
-            _estimate_cost(_read_pricing(pair[1]), task)[
-                "blended_cost_per_million"
-            ],
-            pair[0],
-        ),
-    )[1]
-    pricing = _read_pricing(selected)
-    return str(selected.get("model", "")) or None, pricing, _estimate_cost(pricing, task)
-
-
-def _read_pricing(model: dict[str, object]) -> dict[str, float]:
-    pricing = {name: float(model.get(name) or 0.0) for name in PRICE_FIELDS}
-    return {**pricing, "total_cost_per_million": sum(pricing.values())}
-
-
-def _estimate_cost(
-    pricing: dict[str, float],
-    task: QueuedTask,
-) -> dict[str, object]:
-    token_counts = task.token_counts()
-    known = {name: value for name, value in token_counts.items() if value is not None}
-    weighted_cost = sum(
-        count * pricing[price_name]
-        for name, price_name in TOKEN_PRICE_FIELDS
-        if (count := known.get(name)) is not None
-    )
-    total_tokens = sum(known.values())
-    return {
-        "tokens": token_counts,
-        "estimated_cost": round(weighted_cost / 1_000_000, 12),
-        "blended_cost_per_million": round(
-            weighted_cost / total_tokens if total_tokens else 0.0,
-            8,
-        ),
-        "unprovided_usage": [name for name, value in token_counts.items() if value is None],
-        "excludes_unprovided_usage": len(known) != len(token_counts),
-    }
 
 
 def _base_score(

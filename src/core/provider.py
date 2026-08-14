@@ -20,6 +20,12 @@ MODEL_PRICE_FIELDS = (
     "cache_creation_cost_per_million",
     "cache_read_cost_per_million",
 )
+MODEL_TOKEN_PRICE_FIELDS = (
+    ("input_tokens", "input_cost_per_million"),
+    ("output_tokens", "output_cost_per_million"),
+    ("cache_creation_tokens", "cache_creation_cost_per_million"),
+    ("cache_read_tokens", "cache_read_cost_per_million"),
+)
 
 
 @dataclass(frozen=True)
@@ -61,6 +67,35 @@ class ModelPricing:
         if not include_missing:
             data = {name: value for name, value in data.items() if value is not None}
         return {**data, "total_cost_per_million": self.total_cost_per_million}
+
+    def resolved_dict(self) -> dict[str, float]:
+        data = {name: getattr(self, name) or 0.0 for name in MODEL_PRICE_FIELDS}
+        return {**data, "total_cost_per_million": sum(data.values())}
+
+    def estimate_cost(
+        self,
+        token_counts: Mapping[str, int | None],
+    ) -> dict[str, object]:
+        """Estimate declared token costs while naming every unknown usage field."""
+        counts = {name: token_counts.get(name) for name, _ in MODEL_TOKEN_PRICE_FIELDS}
+        known = {name: value for name, value in counts.items() if value is not None}
+        prices = self.resolved_dict()
+        weighted = sum(
+            count * prices[price_name]
+            for name, price_name in MODEL_TOKEN_PRICE_FIELDS
+            if (count := known.get(name)) is not None
+        )
+        total_tokens = sum(known.values())
+        return {
+            "tokens": counts,
+            "estimated_cost": round(weighted / 1_000_000, 12),
+            "blended_cost_per_million": round(
+                weighted / total_tokens if total_tokens else 0.0,
+                8,
+            ),
+            "unprovided_usage": [name for name, value in counts.items() if value is None],
+            "excludes_unprovided_usage": len(known) != len(counts),
+        }
 
 
 @dataclass(frozen=True)

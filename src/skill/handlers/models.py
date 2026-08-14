@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 import os
 from dataclasses import dataclass, replace
-from typing import Mapping
+from typing import Mapping, Sequence
 
 from core.provider import (
     ANTHROPIC_COMPATIBLE_PROVIDER,
@@ -167,6 +167,13 @@ class ModelProfile:
     @property
     def agent_can_update_connection(self) -> bool:
         return self.definition.agent_can_update_connection
+
+
+@dataclass(frozen=True)
+class ModelDispatchChoice:
+    model: str | None
+    pricing: dict[str, float]
+    cost: dict[str, object]
 
 
 def create_model_profile_from_skill_disclosure(
@@ -344,6 +351,61 @@ def model_dispatch_to_dict(profile: ModelProfile) -> dict[str, object]:
         "key": profile.key,
         **profile.definition.to_dispatch_dict(),
     }
+
+
+def model_profile_supports(
+    profile: ModelProfile,
+    required_features: Sequence[str],
+) -> bool:
+    required = {item.strip().lower() for item in required_features if item.strip()}
+    return required <= set(profile.traits.supports)
+
+
+def choose_dispatch_model(
+    models: object,
+    purpose: str,
+    required_features: Sequence[str],
+    token_counts: Mapping[str, int | None],
+) -> ModelDispatchChoice:
+    """Choose the lowest-cost compatible declared model for one Agent dispatch."""
+    required = {item.strip().lower() for item in required_features if item.strip()}
+    candidates = [
+        item
+        for item in models if isinstance(item, dict)
+        and required <= {
+            str(feature).strip().lower()
+            for feature in item.get("supports", [])
+            if isinstance(feature, str) and feature.strip()
+        }
+    ] if isinstance(models, list) else []
+    if not candidates:
+        pricing = ModelPricing()
+        return ModelDispatchChoice(
+            None,
+            pricing.resolved_dict(),
+            pricing.estimate_cost(token_counts),
+        )
+    clean_purpose = purpose.strip().lower()
+    choices = [
+        (
+            item,
+            ModelPricing.from_mapping(item),
+        )
+        for item in candidates
+    ]
+    selected, pricing = min(
+        enumerate(choices),
+        key=lambda pair: (
+            0 if clean_purpose in pair[1][0].get("purposes", []) else 1,
+            pair[1][1].estimate_cost(token_counts)["blended_cost_per_million"],
+            pair[0],
+        ),
+    )[1]
+    return ModelDispatchChoice(
+        str(selected.get("model", "")) or None,
+        pricing.resolved_dict(),
+        pricing.estimate_cost(token_counts),
+    )
 
 
 def model_connection_fields(profile: ModelProfile) -> tuple[str, str, str | None, str | None]:

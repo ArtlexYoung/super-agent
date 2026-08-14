@@ -1773,6 +1773,15 @@ Status: implemented.
 - Protect the deep-optimization and producer-consumer task Skills as packaged resources.
 - Require source consolidation to remove duplicate implementation rather than product behavior.
 
+## v0.1.73: One Model Dispatch Fact
+
+Status: implemented.
+
+- Make model pricing parse and estimate input, output, cache-write, and cache-read costs once.
+- Use model Skill contracts to select the compatible declared model for subagent dispatch.
+- Share model readiness and feature checks between the main Runtime and task dispatch.
+- Preserve model quality evidence, Agent weight, reliability, rotation, cost, and circuit behavior.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

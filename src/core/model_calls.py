@@ -20,7 +20,11 @@ from core.provider import (
 )
 from core.provider import ProviderPool
 from core.models import Conversation
-from skill.handlers.models import ModelProfile
+from skill.handlers.models import (
+    ModelProfile,
+    model_profile_is_ready,
+    model_profile_supports,
+)
 
 if TYPE_CHECKING:
     from core.records.store import EventStore
@@ -111,7 +115,7 @@ def assign_model_for_task(
     candidates = [
         profile
         for profile in profiles
-        if required.issubset(set(profile.traits.supports))
+        if model_profile_supports(profile, required)
     ]
     if not candidates:
         features = ", ".join(sorted(required)) or "none"
@@ -176,7 +180,7 @@ class ModelCaller:
             usage,
         )
         profile = assignment.profile
-        if not _profile_is_ready(profile, self.provider_pool.environment):
+        if not model_profile_is_ready(profile, self.provider_pool.environment):
             requirement = profile.connection.api_key_env or "provider connection"
             raise RuntimeError(
                 f"selected model {profile.key} is not ready; configure {requirement}"
@@ -193,7 +197,7 @@ class ModelCaller:
             (item for item in self.model_profiles if item.default),
             self.model_profiles[0],
         )
-        if not _profile_is_ready(profile, self.provider_pool.environment):
+        if not model_profile_is_ready(profile, self.provider_pool.environment):
             requirement = profile.connection.api_key_env or "provider connection"
             raise RuntimeError(
                 f"default model {profile.key} is not ready; configure {requirement}"
@@ -474,11 +478,6 @@ def _score(value: object, default: float) -> float:
     if isinstance(value, bool) or not isinstance(value, int | float):
         return default
     return min(1.0, max(0.0, float(value)))
-
-
-def _profile_is_ready(profile: ModelProfile, environment: dict[str, str]) -> bool:
-    name = profile.connection.api_key_env
-    return name is None or bool(environment.get(name, "").strip())
 
 
 def _nonnegative_number(value: object) -> float:
