@@ -163,13 +163,7 @@ def read_memory_settings_from_skill(disclosure: SkillDisclosure) -> MemorySettin
     instructions = disclosure.read_instructions().content.strip()
     if not instructions:
         raise ValueError("memory Skill instructions cannot be empty")
-    return MemorySettings(
-        default_scope=_clean_scope(read_text(configuration.get("default_scope", "agent"), "memory default_scope")),
-        recall_limit=read_int(configuration.get("recall_limit", DEFAULT_RECALL_LIMIT), "memory recall limit", minimum=1),
-        include_in_prompt=read_bool(configuration.get("include_in_prompt", True), "memory include_in_prompt"),
-        include_usage_habits=read_bool(configuration.get("include_usage_habits", True), "memory include_usage_habits"),
-        instructions=instructions,
-    )
+    return MemorySettings(default_scope=_clean_scope(read_text(configuration.get("default_scope", "agent"), "memory default_scope")), recall_limit=read_int(configuration.get("recall_limit", DEFAULT_RECALL_LIMIT), "memory recall limit", minimum=1), include_in_prompt=read_bool(configuration.get("include_in_prompt", True), "memory include_in_prompt"), include_usage_habits=read_bool(configuration.get("include_usage_habits", True), "memory include_usage_habits"), instructions=instructions)
 
 
 def _prepare_organization(operations: list[dict[str, object]], active: dict[str, dict[str, object]], source_run_id: str) -> tuple[list[dict[str, object]], list[dict[str, object]]]:

@@ -115,21 +115,7 @@ skill_change.undone model_skill.saved model_skill.removed skill_package.installe
 skill_package.updated skill_package.removed audit.pruned review.completed review.failed
 """.split()
 )
-_CONTENT_FIELDS = {
-    "model.call.failed": ("message",),
-    "model.turn.completed": ("text",),
-    "task.completed": ("text",),
-    "tool.requested": ("arguments",),
-    "tool.completed": ("result",),
-    "tool.failed": ("message",),
-    "subagent.started": ("prompt",),
-    "runtime.subscriber.failed": ("message",),
-    "run.started": ("prompt",),
-    "run.failed": ("message",),
-    "action.failed": ("message",),
-    "learning.failed": ("message",),
-    "review.failed": ("message",),
-}
+_CONTENT_FIELDS = {"model.call.failed": ("message",), "model.turn.completed": ("text",), "task.completed": ("text",), "tool.requested": ("arguments",), "tool.completed": ("result",), "tool.failed": ("message",), "subagent.started": ("prompt",), "runtime.subscriber.failed": ("message",), "run.started": ("prompt",), "run.failed": ("message",), "action.failed": ("message",), "learning.failed": ("message",), "review.failed": ("message",)}
 _EVENT_RULES = {name: AuditEventRule(retention, _CONTENT_FIELDS.get(name, ())) for retention, names in ((DETAILED, _DETAILED_EVENTS), (CRITICAL, _CRITICAL_EVENTS)) for name in names}
 
 
@@ -225,9 +211,7 @@ def _record_prune_events(backend: StorageBackend, user_id: str, candidates: list
         level = policy.event_rule(event.stream_type, event.event_type).retention
         counts[level] += 1
     for agent_name, counts in by_agent.items():
-        backend.append_event(
-            user_id=user_id, agent_name=agent_name, stream_type="audit", stream_id="retention", event_type="audit.pruned", created_at=format_utc(now), data={"schema_version": 1, "detailed_days": policy.detailed_days, "critical_days": policy.critical_days, "detailed_events_deleted": counts[DETAILED], "critical_events_deleted": counts[CRITICAL]}
-        )
+        backend.append_event(user_id=user_id, agent_name=agent_name, stream_type="audit", stream_id="retention", event_type="audit.pruned", created_at=format_utc(now), data={"schema_version": 1, "detailed_days": policy.detailed_days, "critical_days": policy.critical_days, "detailed_events_deleted": counts[DETAILED], "critical_events_deleted": counts[CRITICAL]})
     return len(by_agent)
 
 

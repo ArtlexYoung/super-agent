@@ -146,21 +146,7 @@ class Agent:
         options = run_options or AgentRunOptions()
         prepared_messages, pending_turn = self._prepare_messages(prompt, user_id, messages, conversation_id, options)
         warnings = self._team.check_links() if options.include_subagents and options.check_subagent_links_before_run else []
-        request = Task(
-            prompt=prompt,
-            messages=prepared_messages,
-            include_subagents=options.include_subagents,
-            warning_messages=warnings,
-            learn_from_conversation=options.learn_from_conversation,
-            allow_subscriber_failures=options.allow_subscriber_failures,
-            skill=options.skill,
-            allowed_task_skills=() if options.skill is None else (options.skill,),
-            resumed_from_run_id=resumed_from_run_id,
-            resume_checkpoint=resume_checkpoint,
-            purpose=options.purpose,
-            required_features=options.required_features,
-            subagents=self._team.create_callbacks(),
-        )
+        request = Task(prompt=prompt, messages=prepared_messages, include_subagents=options.include_subagents, warning_messages=warnings, learn_from_conversation=options.learn_from_conversation, allow_subscriber_failures=options.allow_subscriber_failures, skill=options.skill, allowed_task_skills=() if options.skill is None else (options.skill,), resumed_from_run_id=resumed_from_run_id, resume_checkpoint=resume_checkpoint, purpose=options.purpose, required_features=options.required_features, subagents=self._team.create_callbacks())
         result = self.runtime.run_task(request, RunIdentity.create(user_id, self.config.agent.name, run_id=options.run_id, conversation_id=conversation_id), event_listener=options.event_listener)
         if pending_turn is not None:
             complete_conversation_turn(pending_turn, result)

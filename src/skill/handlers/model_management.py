@@ -126,15 +126,7 @@ def model_skill_input_from_dict(value: object) -> ModelSkillInput:
     metadata_fields = {"name", "description", "agent_can_update", "previous_name"}
     allowed = metadata_fields | set(MODEL_CONFIGURATION_FIELDS)
     reject_unknown_fields(value, allowed, "model Skill input fields")
-    return validate_model_skill_input(
-        ModelSkillInput(
-            name=read_text(value.get("name"), "model Skill name"),
-            description=read_text(value.get("description"), "model Skill description"),
-            definition=ModelDefinition.from_dict({name: value[name] for name in MODEL_CONFIGURATION_FIELDS if name in value}),
-            agent_can_update=read_bool(value.get("agent_can_update", False), "model Skill agent_can_update"),
-            previous_name=read_optional_text(value.get("previous_name"), "model Skill previous_name") or "",
-        )
-    )
+    return validate_model_skill_input(ModelSkillInput(name=read_text(value.get("name"), "model Skill name"), description=read_text(value.get("description"), "model Skill description"), definition=ModelDefinition.from_dict({name: value[name] for name in MODEL_CONFIGURATION_FIELDS if name in value}), agent_can_update=read_bool(value.get("agent_can_update", False), "model Skill agent_can_update"), previous_name=read_optional_text(value.get("previous_name"), "model Skill previous_name") or ""))
 
 
 def validate_model_skill_input(request: ModelSkillInput) -> ModelSkillInput:

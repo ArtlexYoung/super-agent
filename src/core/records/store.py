@@ -220,14 +220,7 @@ class StorageEventQuery:
             raise ValueError("event_ids must contain non-empty strings")
 
     def matches(self, event: StorageEvent) -> bool:
-        return (
-            event.user_id == self.user_id
-            and (self.agent_name is None or event.agent_name == self.agent_name)
-            and (self.stream_type is None or event.stream_type == self.stream_type)
-            and (self.stream_id is None or event.stream_id == self.stream_id)
-            and (self.event_type is None or event.event_type == self.event_type)
-            and (self.event_ids is None or event.event_id in self.event_ids)
-        )
+        return event.user_id == self.user_id and (self.agent_name is None or event.agent_name == self.agent_name) and (self.stream_type is None or event.stream_type == self.stream_type) and (self.stream_id is None or event.stream_id == self.stream_id) and (self.event_type is None or event.event_type == self.event_type) and (self.event_ids is None or event.event_id in self.event_ids)
 
 
 class StorageBackend(Protocol):

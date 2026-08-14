@@ -26,9 +26,10 @@ Runtime. `adapter` connects external interfaces and durable backends. `super_age
 the Agent implemented by `adapter/agent.py`; `core/runtime.py` owns the task lifecycle, while
 `core/team.py` owns child Agent composition through a small protocol. Core never
 imports Adapter implementations.
-The CLI command owner is `adapter.cli`; it owns direct execution, checks,
-and serving, while `cli_skills.py` and `cli_data.py` group stateful command domains. `src/cli.py` only makes
-direct source-tree execution possible.
+The CLI command owner is `adapter.cli`; it owns direct execution, checks, and serving, while
+`cli_skills.py` and `cli_data.py` group stateful command domains. All parsed command branches use
+the same explicit dispatcher and nested parser constructor. `src/cli.py` only makes direct
+source-tree execution possible.
 
 ## Ownership Map
 
@@ -159,3 +160,6 @@ The release suite verifies the claims above as behavior:
 - One `ModelCallContext` carries the task purpose and exact run recorders through the model loop
   and configured-model tool. Text-only model users resolve one storage or run event writer before
   their first call, never by falling back after a Provider failure.
+- External adapters share one parsed CLI dispatch boundary, one AG-UI byte-response path, and one
+  SQL cursor lifecycle; the concrete commands, HTTP routes, and database dialects remain visible
+  at their owning adapters.

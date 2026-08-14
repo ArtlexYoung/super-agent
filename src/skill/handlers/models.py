@@ -46,14 +46,7 @@ class ModelDefinition:
         return cls(
             model=read_text(data.get("model"), "model Skill model"),
             connection=normalize_provider_connection(ProviderConnection(provider=read_text(data.get("provider"), "model Skill provider"), base_url=read_optional_text(data.get("base_url"), "model Skill base_url"), api_key_env=read_optional_text(data.get("api_key_env"), "model Skill api_key_env"))),
-            traits=ModelTraits(
-                supports=read_text_list(data.get("supports", ["text"]), "model Skill supports", lower=True),
-                purposes=read_text_list(data.get("purposes", []), "model Skill purposes", lower=True),
-                strengths=read_text_list(data.get("strengths", []), "model Skill strengths", lower=True),
-                quality_score=read_optional_number(data.get("quality_score"), "model Skill quality_score", minimum=0, maximum=1),
-                expected_latency_ms=read_optional_int(data.get("expected_latency_ms"), "model Skill expected_latency_ms", minimum=0),
-                pricing=ModelPricing.from_mapping(data),
-            ),
+            traits=ModelTraits(supports=read_text_list(data.get("supports", ["text"]), "model Skill supports", lower=True), purposes=read_text_list(data.get("purposes", []), "model Skill purposes", lower=True), strengths=read_text_list(data.get("strengths", []), "model Skill strengths", lower=True), quality_score=read_optional_number(data.get("quality_score"), "model Skill quality_score", minimum=0, maximum=1), expected_latency_ms=read_optional_int(data.get("expected_latency_ms"), "model Skill expected_latency_ms", minimum=0), pricing=ModelPricing.from_mapping(data)),
             default=read_bool(data.get("default", False), "model Skill default"),
             agent_can_update_connection=read_bool(data.get("agent_can_update_connection", False), "model Skill agent_can_update_connection"),
         )
@@ -179,19 +172,7 @@ def model_profile_is_ready(profile: ModelProfile, environment: Mapping[str, str]
 
 
 def model_profile_to_dict(profile: ModelProfile, environment: Mapping[str, str] | None = None) -> dict[str, object]:
-    return {
-        "key": profile.key,
-        "name": profile.name,
-        "description": profile.description,
-        "version": profile.version,
-        **profile.definition.to_public_dict(),
-        "source": profile.source,
-        "skill_key": profile.skill_key or None,
-        "content_sha256": profile.content_sha256 or None,
-        "agent_created": profile.agent_created,
-        "agent_can_update": profile.agent_can_update,
-        "ready": model_profile_is_ready(profile, environment),
-    }
+    return {"key": profile.key, "name": profile.name, "description": profile.description, "version": profile.version, **profile.definition.to_public_dict(), "source": profile.source, "skill_key": profile.skill_key or None, "content_sha256": profile.content_sha256 or None, "agent_created": profile.agent_created, "agent_can_update": profile.agent_can_update, "ready": model_profile_is_ready(profile, environment)}
 
 
 def model_dispatch_to_dict(profile: ModelProfile) -> dict[str, object]:

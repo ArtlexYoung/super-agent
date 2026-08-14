@@ -119,10 +119,7 @@ class Run:
         self._used_skill_entries[identity] = entry
 
     def list_used_skill_evidence(self) -> list[dict[str, object]]:
-        return [
-            {"schema_version": 2, "key": entry.reference.key, "type": entry.reference.skill_type, "name": entry.reference.name, "version": entry.version, "content_sha256": entry.content_sha256, "function_group": entry.function_group, "agent_created": entry.agent_created, "agent_can_update": entry.agent_can_update, "freshness": entry.freshness}
-            for entry in self._used_skill_entries.values()
-        ]
+        return [{"schema_version": 2, "key": entry.reference.key, "type": entry.reference.skill_type, "name": entry.reference.name, "version": entry.version, "content_sha256": entry.content_sha256, "function_group": entry.function_group, "agent_created": entry.agent_created, "agent_can_update": entry.agent_can_update, "freshness": entry.freshness} for entry in self._used_skill_entries.values()]
 
 
 CHECKPOINT_STATE_BYTES = 16_384
@@ -171,19 +168,7 @@ def _encode_checkpoint_value(value: object) -> bytes:
 class Runtime:
     """Own only the lifecycle and execution of Agent tasks."""
 
-    def __init__(
-        self,
-        config: CommonConfig,
-        provider_pool: ProviderPool,
-        skill_handlers: SkillHandlers,
-        storage: StorageBackend | None,
-        create_action_rules: Callable[[], ActionRules] | None,
-        user_secrets: UserSecretResolver,
-        disclosure_factory: DisclosureStorageFactory | None,
-        *,
-        code_model_profiles: tuple[ModelProfile, ...] = (),
-        event_subscribers: RuntimeEventSubscribers | None = None,
-    ) -> None:
+    def __init__(self, config: CommonConfig, provider_pool: ProviderPool, skill_handlers: SkillHandlers, storage: StorageBackend | None, create_action_rules: Callable[[], ActionRules] | None, user_secrets: UserSecretResolver, disclosure_factory: DisclosureStorageFactory | None, *, code_model_profiles: tuple[ModelProfile, ...] = (), event_subscribers: RuntimeEventSubscribers | None = None) -> None:
         self.config = config
         self.provider_pool = provider_pool
         self.skill_handlers = skill_handlers
@@ -262,15 +247,4 @@ def _create_run_event_store(runtime: Runtime, identity: RunIdentity, event_log: 
 
 def _create_run_learning_evidence(run: Run, prompt: str, output: str, *, started_at: float, error: Exception | None = None) -> dict[str, object]:
     success = error is None
-    return {
-        "schema_version": 2,
-        "result": {
-            "success": success,
-            "score": 1.0 if success else 0.0,
-            "token_usage": {"input_tokens": estimate_text_tokens(prompt), "output_tokens": estimate_text_tokens(output)},
-            "latency_ms": max(0, round((perf_counter() - started_at) * 1000)),
-            "error_type": "" if error is None else type(error).__name__,
-            "checks": ["pass:task_completed" if success else "fail:task_completed"],
-        },
-        "skill_revisions": run.list_used_skill_evidence(),
-    }
+    return {"schema_version": 2, "result": {"success": success, "score": 1.0 if success else 0.0, "token_usage": {"input_tokens": estimate_text_tokens(prompt), "output_tokens": estimate_text_tokens(output)}, "latency_ms": max(0, round((perf_counter() - started_at) * 1000)), "error_type": "" if error is None else type(error).__name__, "checks": ["pass:task_completed" if success else "fail:task_completed"]}, "skill_revisions": run.list_used_skill_evidence()}

@@ -26,16 +26,7 @@ class TaskQueue:
 
     hidden_tools = ("run_subagent",)
 
-    def __init__(
-        self,
-        settings: TaskQueueSettings,
-        subagents: list[dict[str, object]],
-        run_subagent: Callable[..., dict[str, object]],
-        record_event: Callable[[str, dict[str, object]], object],
-        record_result: Callable[[dict[str, object]], None] | None = None,
-        group_settings: AgentGroupSettings | None = None,
-        create_shared_context: Callable[[str, str], dict[str, object]] | None = None,
-    ) -> None:
+    def __init__(self, settings: TaskQueueSettings, subagents: list[dict[str, object]], run_subagent: Callable[..., dict[str, object]], record_event: Callable[[str, dict[str, object]], object], record_result: Callable[[dict[str, object]], None] | None = None, group_settings: AgentGroupSettings | None = None, create_shared_context: Callable[[str, str], dict[str, object]] | None = None) -> None:
         self.settings = settings
         self.run_subagent = run_subagent
         self.record_event = record_event
@@ -57,25 +48,9 @@ class TaskQueue:
         task_id = {"type": "string"}
         action = SkillAction((ActionEffect.CREATE, ActionEffect.UPDATE), "task:queue")
         tools = (
-            SkillTool(
-                "create_agent_task",
-                "Create one explicit task for later dispatch to a suitable subagent.",
-                {"prompt": {"type": "string"}, "purpose": {"type": "string"}, "required_features": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 16}, "estimated_output_tokens": estimated_token_schema(), "estimated_cache_creation_tokens": estimated_token_schema(), "estimated_cache_read_tokens": estimated_token_schema()},
-                self._create_task,
-                action,
-                ("prompt", "purpose", "required_features"),
-                "agent-task",
-            ),
+            SkillTool("create_agent_task", "Create one explicit task for later dispatch to a suitable subagent.", {"prompt": {"type": "string"}, "purpose": {"type": "string"}, "required_features": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 16}, "estimated_output_tokens": estimated_token_schema(), "estimated_cache_creation_tokens": estimated_token_schema(), "estimated_cache_read_tokens": estimated_token_schema()}, self._create_task, action, ("prompt", "purpose", "required_features"), "agent-task"),
             SkillTool("dispatch_agent_task", "Queue one created task for an explicit or contract-matched subagent.", {"task_id": task_id, "agent_name": {"type": "string"}}, self._dispatch_task, SkillAction((ActionEffect.UPDATE, ActionEffect.DELEGATE), "task:queue", "task_id"), ("task_id",), "agent-task"),
-            SkillTool(
-                "wait_for_agent_tasks",
-                "Sleep without model calls until a task trigger or the configured time limit.",
-                {"trigger": {"type": "string", "enum": sorted(_TRIGGERS)}, "max_wait_seconds": {"type": "number", "exclusiveMinimum": 0}, "task_ids": {"type": "array", "items": task_id, "maxItems": 32}},
-                self._wait_for_tasks,
-                SkillAction((ActionEffect.READ,), "task:queue"),
-                ("trigger", "max_wait_seconds"),
-                "agent-task",
-            ),
+            SkillTool("wait_for_agent_tasks", "Sleep without model calls until a task trigger or the configured time limit.", {"trigger": {"type": "string", "enum": sorted(_TRIGGERS)}, "max_wait_seconds": {"type": "number", "exclusiveMinimum": 0}, "task_ids": {"type": "array", "items": task_id, "maxItems": 32}}, self._wait_for_tasks, SkillAction((ActionEffect.READ,), "task:queue"), ("trigger", "max_wait_seconds"), "agent-task"),
             SkillTool("list_agent_tasks", "List current task queue states without returning task prompts.", {}, self._list_tasks, SkillAction((ActionEffect.READ,), "task:queue"), result_kind="agent-task"),
             SkillTool("cancel_agent_task", "Cancel one task that has not started running.", {"task_id": task_id}, self._cancel_task, SkillAction((ActionEffect.UPDATE,), "task:queue", "task_id"), ("task_id",), "agent-task"),
         )
@@ -335,9 +310,7 @@ class TaskQueue:
         self._condition.notify_all()
 
 
-def create_task_queue(
-    tools: dict[str, dict[str, object]], subagents: list[dict[str, object]], run_subagent: Callable[..., dict[str, object]], record_event: Callable[[str, dict[str, object]], object], record_result: Callable[[dict[str, object]], None] | None = None, create_shared_context: Callable[[str, str], dict[str, object]] | None = None
-) -> TaskQueue | None:
+def create_task_queue(tools: dict[str, dict[str, object]], subagents: list[dict[str, object]], run_subagent: Callable[..., dict[str, object]], record_event: Callable[[str, dict[str, object]], object], record_result: Callable[[dict[str, object]], None] | None = None, create_shared_context: Callable[[str, str], dict[str, object]] | None = None) -> TaskQueue | None:
     reject_unknown_fields(tools, {"agent_tasks", "agent_groups"}, "task Skill tools")
     if "agent_tasks" not in tools:
         if "agent_groups" in tools:

@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Sequence
 
-from adapter.cli_support.cli_data import add_config_and_user_options, add_output_format_option, configure_conversations_parser, configure_memory_parser, configure_runs_parser, configure_storage_parser, print_cli_json, run_conversations_command, run_memory_command, run_runs_command, run_storage_command
+from adapter.cli_support.cli_data import add_config_and_user_options, add_output_format_option, configure_conversations_parser, configure_memory_parser, configure_runs_parser, configure_storage_parser, print_cli_json, run_conversations_command, run_memory_command, run_runs_command, run_selected_cli_command, run_storage_command
 from adapter.cli_support.cli_config import configure_config_parser, load_agent, load_cli_config, load_common_config, run_config_command
 from adapter.code import attach_code_config_to_agent
 from adapter.cli_support.cli_skills import configure_skills_parser, run_skills_command
@@ -38,11 +38,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         if _is_terminal_request(arguments):
             return _run_terminal(arguments)
-        parser = _build_parser()
-        args = parser.parse_args(arguments)
-        if args.command == "config":
-            return run_config_command(args)
-        return _run_parsed_command(args)
+        return _run_parsed_command(_build_parser().parse_args(arguments))
     except Exception as error:
         if debug:
             raise
@@ -51,11 +47,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 def _run_parsed_command(args: argparse.Namespace) -> int:
-    handlers = {"check": run_check_command, "data": _run_data_command, "serve": run_serve_command, "skills": run_skills_command}
-    handler = handlers.get(args.command)
-    if handler is None:
-        raise ValueError(f"unknown command: {args.command}")
-    return handler(args)
+    handlers = {"check": run_check_command, "config": run_config_command, "data": _run_data_command, "serve": run_serve_command, "skills": run_skills_command}
+    return run_selected_cli_command(args, "command", handlers, "command is required")
 
 
 def _run_terminal(arguments: list[str]) -> int:
@@ -195,10 +188,7 @@ def _configure_data_parser(parser: argparse.ArgumentParser) -> None:
 
 def _run_data_command(args: argparse.Namespace) -> int:
     handlers = {"conversations": run_conversations_command, "memory": run_memory_command, "runs": run_runs_command, "storage": run_storage_command}
-    handler = handlers.get(args.data_command)
-    if handler is None:
-        raise ValueError("data command is required")
-    return handler(args)
+    return run_selected_cli_command(args, "data_command", handlers, "data command is required")
 
 
 def _is_terminal_request(arguments: list[str]) -> bool:

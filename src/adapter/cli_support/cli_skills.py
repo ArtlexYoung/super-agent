@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 from adapter.cli_support.cli_config import load_agent, load_common_config, load_event_store
-from adapter.cli_support.cli_data import add_config_and_user_options, add_output_format_option, print_cli_json, run_selected_cli_command
+from adapter.cli_support.cli_data import add_config_and_user_options, add_output_format_option, add_subcommand_parsers, print_cli_json, run_selected_cli_command
 from core.checks import ActionRules
 from core.config import CommonConfig
 from core.models import LOCAL_USER_ID
@@ -21,96 +21,63 @@ from skill.handlers.model_management import ModelSkillManager, model_skill_input
 from skill.handlers.models import ModelProfile, model_profile_to_dict, read_model_profiles, select_default_model_profile
 
 
-def configure_skills_parser(parser: argparse.ArgumentParser) -> argparse._SubParsersAction:
-    subparsers = parser.add_subparsers(dest="skill_command")
-    list_parser = subparsers.add_parser("list", help="list available skills")
-    index_parser = subparsers.add_parser("index", help="print the central skill index as JSON")
-    index_parser.add_argument("--output", choices=["json"], default="json")
-    freshness_parser = subparsers.add_parser("freshness", help="show runtime skill freshness stats")
-    validate_parser = subparsers.add_parser("validate", help="validate every skill manifest")
-    graph_parser = subparsers.add_parser("graph", help="resolve a skill dependency graph")
-    _add_composition_arguments(graph_parser)
-    changes_parser = subparsers.add_parser("changes", help="manage Skill changes")
-    configure_skill_changes_parser(changes_parser)
-    packages_parser = subparsers.add_parser("packages", help="manage Skill packages")
-    configure_skill_packages_parser(packages_parser)
-    models_parser = subparsers.add_parser("models", help="manage model Skills")
-    configure_models_parser(models_parser)
-    for command_parser in (list_parser, index_parser, freshness_parser, validate_parser):
-        add_config_and_user_options(command_parser, config_default="common.toml")
-    return subparsers
+def configure_skills_parser(parser: argparse.ArgumentParser) -> None:
+    commands = add_subcommand_parsers(parser, "skill_command", (("list", "list available skills"), ("index", "print the central skill index as JSON"), ("freshness", "show runtime skill freshness stats"), ("validate", "validate every skill manifest"), ("graph", "resolve a skill dependency graph"), ("changes", "manage Skill changes"), ("packages", "manage Skill packages"), ("models", "manage model Skills")))
+    commands["index"].add_argument("--output", choices=["json"], default="json")
+    _add_composition_arguments(commands["graph"])
+    configure_skill_changes_parser(commands["changes"])
+    configure_skill_packages_parser(commands["packages"])
+    configure_models_parser(commands["models"])
+    for name in ("list", "index", "freshness", "validate"):
+        add_config_and_user_options(commands[name], config_default="common.toml")
 
 
 def configure_skill_changes_parser(parser: argparse.ArgumentParser) -> None:
-    subparsers = parser.add_subparsers(dest="skill_change_command")
-    propose = subparsers.add_parser("propose", help="propose an isolated Skill change")
-    _add_change_name_arguments(propose)
-    test = subparsers.add_parser("test", help="test a change without applying it")
-    _add_change_id_arguments(test)
-    test.add_argument("--cases", required=True)
-    apply = subparsers.add_parser("apply", help="apply a passing Skill change")
-    _add_change_id_arguments(apply)
-    undo = subparsers.add_parser("undo", help="undo an applied Skill change")
-    _add_change_id_arguments(undo)
-    list_changes = subparsers.add_parser("list", help="list proposed Skill changes")
-    add_config_and_user_options(list_changes, config_default="common.toml")
+    commands = add_subcommand_parsers(parser, "skill_change_command", (("propose", "propose an isolated Skill change"), ("test", "test a change without applying it"), ("apply", "apply a passing Skill change"), ("undo", "undo an applied Skill change"), ("list", "list proposed Skill changes")))
+    _add_change_name_arguments(commands["propose"])
+    for name in ("test", "apply", "undo"):
+        _add_change_id_arguments(commands[name])
+    commands["test"].add_argument("--cases", required=True)
+    add_config_and_user_options(commands["list"], config_default="common.toml")
 
 
 def configure_skill_packages_parser(parser: argparse.ArgumentParser) -> None:
-    subparsers = parser.add_subparsers(dest="skill_package_command")
-    lock = subparsers.add_parser("lock", help="write a deterministic Skill lock")
-    _add_composition_arguments(lock)
-    lock.add_argument("--output", default="skill.lock")
-    pack = subparsers.add_parser("pack", help="pack one Skill as a deterministic ZIP")
-    add_config_and_user_options(pack, config_default="common.toml")
-    pack.add_argument("--name", required=True)
-    pack.add_argument("--output", required=True)
-    install = subparsers.add_parser("install", help="install a local, ZIP, or Git Skill")
-    _add_package_source_arguments(install)
-    update = subparsers.add_parser("update", help="replace an installed Skill")
-    _add_package_source_arguments(update)
-    update.add_argument("--name", required=True)
-    remove = subparsers.add_parser("remove", help="remove one installed Skill")
-    add_config_and_user_options(remove, config_default="common.toml")
-    remove.add_argument("--name", required=True)
+    commands = add_subcommand_parsers(parser, "skill_package_command", (("lock", "write a deterministic Skill lock"), ("pack", "pack one Skill as a deterministic ZIP"), ("install", "install a local, ZIP, or Git Skill"), ("update", "replace an installed Skill"), ("remove", "remove one installed Skill")))
+    _add_composition_arguments(commands["lock"])
+    commands["lock"].add_argument("--output", default="skill.lock")
+    add_config_and_user_options(commands["pack"], config_default="common.toml")
+    commands["pack"].add_argument("--name", required=True)
+    commands["pack"].add_argument("--output", required=True)
+    for name in ("install", "update"):
+        _add_package_source_arguments(commands[name])
+    commands["update"].add_argument("--name", required=True)
+    add_config_and_user_options(commands["remove"], config_default="common.toml")
+    commands["remove"].add_argument("--name", required=True)
 
 
 def configure_models_parser(parser: argparse.ArgumentParser) -> None:
-    subparsers = parser.add_subparsers(dest="models_command")
-    list_parser = subparsers.add_parser("list", help="list model Skills or zero-configuration environment profiles")
-    _add_model_read_arguments(list_parser)
-    resolve_parser = subparsers.add_parser("resolve", help="show the default model profile selected for this project")
-    _add_model_read_arguments(resolve_parser)
-    save_parser = subparsers.add_parser("save", help="create or update one model Skill from JSON stdin")
-    _add_model_write_arguments(save_parser)
-    save_parser.add_argument("--request-stdin", action="store_true", required=True)
-    remove_parser = subparsers.add_parser("remove", help="remove one model Skill")
-    _add_model_write_arguments(remove_parser)
-    remove_parser.add_argument("--name", required=True)
+    commands = add_subcommand_parsers(parser, "models_command", (("list", "list model Skills or zero-configuration environment profiles"), ("resolve", "show the default model profile selected for this project"), ("save", "create or update one model Skill from JSON stdin"), ("remove", "remove one model Skill")))
+    for name in ("list", "resolve"):
+        _add_model_read_arguments(commands[name])
+    for name in ("save", "remove"):
+        _add_model_write_arguments(commands[name])
+    commands["save"].add_argument("--request-stdin", action="store_true", required=True)
+    commands["remove"].add_argument("--name", required=True)
 
 
 def run_skills_command(args: argparse.Namespace) -> int:
-    handlers = {
-        "list": lambda: _list_skills(Path(args.common_config), args.user_id),
-        "index": lambda: _print_skill_index(Path(args.common_config), args.user_id),
-        "freshness": lambda: _show_skill_freshness(Path(args.common_config), args.user_id),
-        "validate": lambda: _validate_skills(Path(args.common_config), args.user_id),
-        "graph": lambda: _show_skill_graph(args),
-        "changes": lambda: run_skill_changes_command(args),
-        "packages": lambda: run_skill_packages_command(args),
-        "models": lambda: run_models_command(args),
-    }
-    return run_selected_cli_command(args.skill_command, handlers, "skills command is required")
+    handlers = {"list": _list_skills, "index": _print_skill_index, "freshness": _show_skill_freshness, "validate": _validate_skills, "graph": _show_skill_graph, "changes": run_skill_changes_command, "packages": run_skill_packages_command, "models": run_models_command}
+    return run_selected_cli_command(args, "skill_command", handlers, "skills command is required")
 
 
 def run_skill_changes_command(args: argparse.Namespace) -> int:
-    handlers = {"propose": lambda: _propose_skill_change(args), "test": lambda: _test_skill_change(args), "apply": lambda: _apply_skill_change(args), "undo": lambda: _undo_skill_change(args), "list": lambda: _list_skill_changes(args)}
-    return run_selected_cli_command(args.skill_change_command, handlers, "skills changes command is required")
+    handlers = {"propose": _propose_skill_change, "test": _test_skill_change, "apply": _apply_skill_change, "undo": _undo_skill_change, "list": _list_skill_changes}
+    return run_selected_cli_command(args, "skill_change_command", handlers, "skills changes command is required")
 
 
 def run_skill_packages_command(args: argparse.Namespace) -> int:
-    handlers = {"lock": lambda: _write_skill_lock(args), "pack": lambda: _pack_skill(args), "install": lambda: _install_skill(args), "update": lambda: _update_skill(args), "remove": lambda: _remove_skill(args)}
-    return run_selected_cli_command(args.skill_package_command, handlers, "skills packages command is required")
+    handlers = {"lock": _write_skill_lock, "pack": _pack_skill, "install": _install_skill, "update": _update_skill, "remove": _remove_skill}
+    return run_selected_cli_command(args, "skill_package_command", handlers, "skills packages command is required")
 
 
 def run_models_command(args: argparse.Namespace) -> int:
@@ -184,15 +151,15 @@ def _create_model_skill_manager(config: CommonConfig, user_id: str) -> ModelSkil
     return ModelSkillManager(config, store, ActionRules())
 
 
-def _list_skills(config_path: Path, user_id: str) -> int:
-    index = _load_skill_disclosure(config_path, user_id).prepare_skill_index()
+def _list_skills(args: argparse.Namespace) -> int:
+    index = _load_skill_disclosure(Path(args.common_config), args.user_id).prepare_skill_index()
     for entry in index.entries:
         print(f"{entry.reference.name}\t{entry.reference.skill_type}\tagent_created={str(entry.agent_created).lower()}\tagent_can_update={str(entry.agent_can_update).lower()}\tfreshness={entry.freshness:.2f}\tfunction_group={entry.function_group}\tprovides={','.join(entry.provides)}\trequires={','.join(entry.requires)}\t{entry.description}")
     return 0
 
 
-def _print_skill_index(config_path: Path, user_id: str) -> int:
-    index = _load_skill_disclosure(config_path, user_id).prepare_skill_index()
+def _print_skill_index(args: argparse.Namespace) -> int:
+    index = _load_skill_disclosure(Path(args.common_config), args.user_id).prepare_skill_index()
     return print_cli_json(skill_index_to_dict(index))
 
 
@@ -233,9 +200,9 @@ def _list_skill_changes(args: argparse.Namespace) -> int:
     return 0
 
 
-def _show_skill_freshness(config_path: Path, user_id: str) -> int:
-    config = load_common_config(config_path)
-    store = load_event_store(config, user_id)
+def _show_skill_freshness(args: argparse.Namespace) -> int:
+    config = load_common_config(Path(args.common_config))
+    store = load_event_store(config, args.user_id)
     rules = load_configured_freshness_rules(config, store=store)
     stats = calculate_skill_freshness(read_evaluation_records(store, source_type="agent_run"), rules)
     if not stats:
@@ -246,8 +213,8 @@ def _show_skill_freshness(config_path: Path, user_id: str) -> int:
     return 0
 
 
-def _validate_skills(config_path: Path, user_id: str) -> int:
-    disclosure = _load_skill_disclosure(config_path, user_id)
+def _validate_skills(args: argparse.Namespace) -> int:
+    disclosure = _load_skill_disclosure(Path(args.common_config), args.user_id)
     issues = disclosure.validate_skill_sources()
     if issues:
         for issue in issues:
@@ -364,9 +331,7 @@ def _read_change_cases(path: Path) -> list[SkillChangeCase]:
         expected_configuration = item.get("expected_configuration", {})
         if not isinstance(expected_configuration, dict):
             raise ValueError("evaluation case expected_configuration must be an object")
-        cases.append(
-            SkillChangeCase(name=_read_json_string(item, "name", required=True), prompt=_read_json_string(item, "prompt", required=True), expected_output_contains=_read_string_list(item, "expected_output_contains"), forbidden_output_contains=_read_string_list(item, "forbidden_output_contains"), expected_configuration=dict(expected_configuration))
-        )
+        cases.append(SkillChangeCase(name=_read_json_string(item, "name", required=True), prompt=_read_json_string(item, "prompt", required=True), expected_output_contains=_read_string_list(item, "expected_output_contains"), forbidden_output_contains=_read_string_list(item, "forbidden_output_contains"), expected_configuration=dict(expected_configuration)))
     return cases
 
 

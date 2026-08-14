@@ -14,7 +14,7 @@ from urllib.parse import unquote, urlsplit
 
 from super_agent import Agent
 from core.models import AgentRunOptions, read_text
-from adapter.http.web import WebAPI, WebAPIResponse
+from adapter.http.web import WebAPI
 from core.models import LOCAL_USER_ID, RunEvent, validate_user_id
 from core.checks import ActionBlockedError
 
@@ -181,21 +181,20 @@ class AGUIRequestHandler(BaseHTTPRequestHandler):
     sys_version = ""
 
     def do_GET(self) -> None:
-        path = urlsplit(self.path).path
-        if path == "/health":
-            self._send_json(HTTPStatus.OK, {"status": "ok", "protocol": "AG-UI"})
-            return
-        if path.startswith("/api/"):
-            self._handle_web_api("GET", path)
-            return
-        self._serve_static_file(path, include_body=True)
+        self._handle_read(include_body=True)
 
     def do_HEAD(self) -> None:
+        self._handle_read(include_body=False)
+
+    def _handle_read(self, *, include_body: bool) -> None:
         path = urlsplit(self.path).path
         if path == "/health":
-            self._send_json(HTTPStatus.OK, {"status": "ok", "protocol": "AG-UI"}, include_body=False)
+            self._send_json(HTTPStatus.OK, {"status": "ok", "protocol": "AG-UI"}, include_body=include_body)
             return
-        self._serve_static_file(path, include_body=False)
+        if include_body and path.startswith("/api/"):
+            self._handle_web_api("GET", path)
+            return
+        self._serve_static_file(path, include_body=include_body)
 
     def do_OPTIONS(self) -> None:
         if not self._origin_is_allowed():
@@ -231,13 +230,10 @@ class AGUIRequestHandler(BaseHTTPRequestHandler):
         self._run_agent(request)
 
     def do_PUT(self) -> None:
-        self._handle_web_api("PUT", urlsplit(self.path).path)
+        self._handle_web_api(self.command, urlsplit(self.path).path)
 
-    def do_PATCH(self) -> None:
-        self._handle_web_api("PATCH", urlsplit(self.path).path)
-
-    def do_DELETE(self) -> None:
-        self._handle_web_api("DELETE", urlsplit(self.path).path)
+    do_PATCH = do_PUT
+    do_DELETE = do_PUT
 
     def _handle_web_api(self, method: str, path: str) -> None:
         if not path.startswith("/api/"):
@@ -250,22 +246,11 @@ class AGUIRequestHandler(BaseHTTPRequestHandler):
             body = self._read_optional_json_body(method)
             with self._server.web_api_lock:
                 response = self._server.web_api.handle(method, path, body)
-        except (json.JSONDecodeError, UnicodeDecodeError, TypeError, ValueError) as error:
-            self._send_json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
+        except (json.JSONDecodeError, UnicodeDecodeError, TypeError, ValueError, KeyError, FileExistsError, ActionBlockedError, OSError) as error:
+            status, body = _web_error_response(error)
+            self._send_json(status, body)
             return
-        except KeyError as error:
-            self._send_json(HTTPStatus.NOT_FOUND, {"error": _error_message(error)})
-            return
-        except FileExistsError as error:
-            self._send_json(HTTPStatus.CONFLICT, {"error": str(error)})
-            return
-        except ActionBlockedError as error:
-            self._send_json(HTTPStatus.FORBIDDEN, {"error": str(error), "action_id": error.request.action_id, "decision": error.decision.decision.value})
-            return
-        except OSError:
-            self._send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "unable to persist the requested change"})
-            return
-        self._send_web_api_response(response)
+        self._send_json(response.status, response.body)
 
     def _run_agent(self, request: AGUIRunInput) -> None:
         self.send_response(HTTPStatus.OK)
@@ -318,21 +303,26 @@ class AGUIRequestHandler(BaseHTTPRequestHandler):
         except OSError:
             self.close_connection = True
 
-    def _send_web_api_response(self, response: WebAPIResponse) -> None:
-        self._send_json(response.status, response.body)
-
     def _send_json(self, status: HTTPStatus, value: object, *, include_body: bool = True) -> None:
         body = json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        self._send_bytes(status, body, "application/json; charset=utf-8", include_body=include_body, cors=True, close=True)
+
+    def _send_bytes(self, status: HTTPStatus, body: bytes, content_type: str, *, include_body: bool, cors: bool = False, close: bool = False, cache_control: str | None = None) -> None:
         self.send_response(status)
-        self._send_cors_headers()
-        self.send_header("Content-Type", "application/json; charset=utf-8")
+        if cors:
+            self._send_cors_headers()
+        self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Connection", "close")
+        if close:
+            self.send_header("Connection", "close")
+        if cache_control is not None:
+            self.send_header("Cache-Control", cache_control)
         self._send_security_headers()
         self.end_headers()
         if include_body:
             self.wfile.write(body)
-        self.close_connection = True
+        if close:
+            self.close_connection = True
 
     def _serve_static_file(self, path: str, *, include_body: bool) -> None:
         root = self._server.static_root
@@ -361,14 +351,8 @@ class AGUIRequestHandler(BaseHTTPRequestHandler):
         content_type = mimetypes.guess_type(candidate.name)[0] or "application/octet-stream"
         if content_type.startswith("text/") or content_type in {"application/javascript", "application/json"}:
             content_type += "; charset=utf-8"
-        self.send_response(HTTPStatus.OK)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", ("no-cache" if candidate.name == "index.html" else "public, max-age=31536000, immutable"))
-        self._send_security_headers()
-        self.end_headers()
-        if include_body:
-            self.wfile.write(body)
+        cache_control = "no-cache" if candidate.name == "index.html" else "public, max-age=31536000, immutable"
+        self._send_bytes(HTTPStatus.OK, body, content_type, include_body=include_body, cache_control=cache_control)
 
     def _send_security_headers(self) -> None:
         self.send_header("X-Content-Type-Options", "nosniff")
@@ -405,5 +389,13 @@ def create_ag_ui_server(agent: Agent, host: str = "127.0.0.1", port: int = 8765,
     return AGUIHTTPServer((clean_host, port), agent, user_id=user_id, allowed_origins=allowed_origins, static_root=static_root)
 
 
-def _error_message(error: KeyError) -> str:
-    return str(error.args[0]) if error.args else "resource not found"
+def _web_error_response(error: Exception) -> tuple[HTTPStatus, dict[str, object]]:
+    if isinstance(error, ActionBlockedError):
+        return HTTPStatus.FORBIDDEN, {"error": str(error), "action_id": error.request.action_id, "decision": error.decision.decision.value}
+    if isinstance(error, KeyError):
+        return HTTPStatus.NOT_FOUND, {"error": str(error.args[0]) if error.args else "resource not found"}
+    if isinstance(error, FileExistsError):
+        return HTTPStatus.CONFLICT, {"error": str(error)}
+    if isinstance(error, OSError):
+        return HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "unable to persist the requested change"}
+    return HTTPStatus.BAD_REQUEST, {"error": str(error)}

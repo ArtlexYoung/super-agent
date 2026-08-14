@@ -43,17 +43,7 @@ class AgentGroups:
             SkillTool(
                 "create_agent_group",
                 "Create and dispatch one budget-checked decision group with distinct Agents.",
-                {
-                    "prompt": {"type": "string"},
-                    "purpose": {"type": "string"},
-                    "required_features": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 16},
-                    "member_count": {"type": "integer", "minimum": 2, "maximum": settings.max_members},
-                    "quorum": {"type": "integer", "minimum": 1, "maximum": settings.max_members},
-                    "roles": {"type": "array", "items": {"type": "string"}, "minItems": 2, "maxItems": settings.max_members},
-                    "estimated_output_tokens": token_estimate,
-                    "estimated_cache_creation_tokens": token_estimate,
-                    "estimated_cache_read_tokens": token_estimate,
-                },
+                {"prompt": {"type": "string"}, "purpose": {"type": "string"}, "required_features": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 16}, "member_count": {"type": "integer", "minimum": 2, "maximum": settings.max_members}, "quorum": {"type": "integer", "minimum": 1, "maximum": settings.max_members}, "roles": {"type": "array", "items": {"type": "string"}, "minItems": 2, "maxItems": settings.max_members}, "estimated_output_tokens": token_estimate, "estimated_cache_creation_tokens": token_estimate, "estimated_cache_read_tokens": token_estimate},
                 self._create_group,
                 SkillAction((ActionEffect.CREATE, ActionEffect.UPDATE, ActionEffect.DELEGATE), "task:group"),
                 ("prompt", "purpose", "required_features"),
@@ -136,20 +126,7 @@ class AgentGroups:
         tasks = []
         for index, role in enumerate(roles):
             member_prompt = build_member_prompt(request.prompt, role, uses_shared_context=uses_shared_context)
-            tasks.append(
-                QueuedTask(
-                    f"agent-task-{first_task_number + index:02d}",
-                    member_prompt,
-                    request.purpose,
-                    request.features,
-                    group_id=group_id,
-                    group_role=role,
-                    estimated_output_tokens=request.estimates[0],
-                    estimated_cache_creation_tokens=request.estimates[1],
-                    estimated_cache_read_tokens=request.estimates[2],
-                    estimated_input_tokens=estimate_text_tokens(member_prompt) + shared_tokens,
-                )
-            )
+            tasks.append(QueuedTask(f"agent-task-{first_task_number + index:02d}", member_prompt, request.purpose, request.features, group_id=group_id, group_role=role, estimated_output_tokens=request.estimates[0], estimated_cache_creation_tokens=request.estimates[1], estimated_cache_read_tokens=request.estimates[2], estimated_input_tokens=estimate_text_tokens(member_prompt) + shared_tokens))
         return tasks
 
     def _select_group_size_locked(self, group_id: str, request: AgentGroupRequest, choices: list[SelectedAgent]) -> int:
@@ -195,23 +172,7 @@ class AgentGroups:
     def _create_group_record(self, group_id: str, request: AgentGroupRequest, tasks: list[QueuedTask], choices: list[SelectedAgent], context: dict[str, object]) -> AgentGroup:
         settings = self.settings
         reference = context.get("reference")
-        return AgentGroup(
-            group_id,
-            request.purpose,
-            request.features,
-            request.roles[: len(tasks)],
-            tuple(task.task_id for task in tasks),
-            request.quorum,
-            request.requested_members,
-            len(tasks),
-            len(tasks) < request.requested_members,
-            hashlib.sha256(request.prompt.encode()).hexdigest(),
-            len(request.prompt),
-            ("inline" if not isinstance(reference, str) else "cache_reference" if context.get("cache_backed") else "run_reference"),
-            reference if isinstance(reference, str) else None,
-            choices_cost(choices),
-            settings.max_estimated_cost,
-        )
+        return AgentGroup(group_id, request.purpose, request.features, request.roles[: len(tasks)], tuple(task.task_id for task in tasks), request.quorum, request.requested_members, len(tasks), len(tasks) < request.requested_members, hashlib.sha256(request.prompt.encode()).hexdigest(), len(request.prompt), ("inline" if not isinstance(reference, str) else "cache_reference" if context.get("cache_backed") else "run_reference"), reference if isinstance(reference, str) else None, choices_cost(choices), settings.max_estimated_cost)
 
     def _start_group_locked(self, group: AgentGroup, tasks: list[QueuedTask], choices: list[SelectedAgent]) -> None:
         group_id = group.group_id
@@ -321,14 +282,7 @@ def read_group_request(arguments: Mapping[str, object], settings: AgentGroupSett
 
 
 def build_member_prompt(shared_prompt: str, role: str, *, uses_shared_context: bool) -> str:
-    instructions = (
-        "You are one independent member of a decision group.\n"
-        f"Your role: {role}\n"
-        "Review the shared packet, work independently, and do not treat another member's "
-        "opinion as evidence. Return one JSON object with exactly these useful fields: "
-        "decision (support, reject, or inconclusive), evidence, confidence. "
-        "A failed implementation or missing measurement is inconclusive, not reject."
-    )
+    instructions = f"You are one independent member of a decision group.\nYour role: {role}\nReview the shared packet, work independently, and do not treat another member's opinion as evidence. Return one JSON object with exactly these useful fields: decision (support, reject, or inconclusive), evidence, confidence. A failed implementation or missing measurement is inconclusive, not reject."
     if uses_shared_context:
         return f"{instructions}\nRead the supplied shared packet with the read_shared_task_context tool before deciding."
     return f"{instructions}\n\nShared packet:\n{shared_prompt}"
@@ -349,9 +303,7 @@ def decide_group(group: AgentGroup, tasks: list[dict[str, object]], *, summary_c
         elif status in {"failed", "cancelled"}:
             failed += 1
         counts[vote] += 1
-        members.append(
-            {"task_id": task_id, "role": group.member_roles[index], "status": "member_failed" if status == "failed" else status, "agent_name": task.get("agent_name"), "vote": vote, "confidence": confidence, "evidence": evidence[:summary_chars], "evidence_sha256": hashlib.sha256(evidence.encode()).hexdigest(), "evidence_chars": len(evidence)}
-        )
+        members.append({"task_id": task_id, "role": group.member_roles[index], "status": "member_failed" if status == "failed" else status, "agent_name": task.get("agent_name"), "vote": vote, "confidence": confidence, "evidence": evidence[:summary_chars], "evidence_sha256": hashlib.sha256(evidence.encode()).hexdigest(), "evidence_chars": len(evidence)})
     terminal = all(str(by_id.get(task_id, {}).get("status")) in TERMINAL_TASK_STATUSES for task_id in group.task_ids)
     decision = "supported" if counts["support"] >= group.quorum else ("rejected" if counts["reject"] >= group.quorum else "inconclusive")
     return {**group.to_dict(), "status": decision if terminal else "running", "decision": decision if terminal else None, "member_failures": failed, "vote_counts": counts, "members": members, "quorum_met": decision != "inconclusive" and terminal, "negative_evidence_required": group.quorum}

@@ -91,23 +91,7 @@ def run_snapshot_from_events(user_id: str, events: list[StorageEvent]) -> RunSna
     error = None
     if status == "failed":
         error = {"error_type": str(data.get("error_type", "")), "message": str(data.get("message", ""))}
-    return RunSnapshot(
-        run_id=started.stream_id,
-        user_id=user_id,
-        conversation_id=read_optional_text(started.data.get("conversation_id"), "stored conversation_id"),
-        agent_name=started.agent_name,
-        parent_run_id=read_optional_text(started.data.get("parent_run_id"), "stored parent_run_id"),
-        status=status,
-        prompt=str(started.data.get("prompt", "")),
-        started_at=started.created_at,
-        finished_at=None if terminal is None else terminal.created_at,
-        event_count=len(ordered),
-        last_event_type=ordered[-1].event_type,
-        workflow=read_optional_text(data.get("workflow"), "stored workflow"),
-        used_skills=read_text_list(data.get("used_skills", []), "stored used_skills"),
-        stop_reason=read_optional_text(data.get("stop_reason"), "stored stop_reason"),
-        error=error,
-    )
+    return RunSnapshot(run_id=started.stream_id, user_id=user_id, conversation_id=read_optional_text(started.data.get("conversation_id"), "stored conversation_id"), agent_name=started.agent_name, parent_run_id=read_optional_text(started.data.get("parent_run_id"), "stored parent_run_id"), status=status, prompt=str(started.data.get("prompt", "")), started_at=started.created_at, finished_at=None if terminal is None else terminal.created_at, event_count=len(ordered), last_event_type=ordered[-1].event_type, workflow=read_optional_text(data.get("workflow"), "stored workflow"), used_skills=read_text_list(data.get("used_skills", []), "stored used_skills"), stop_reason=read_optional_text(data.get("stop_reason"), "stored stop_reason"), error=error)
 
 
 def run_events_from_storage(events: list[StorageEvent]) -> list[RunEvent]:
@@ -136,21 +120,7 @@ def explain_run_from_events(user_id: str, stored_events: list[StorageEvent]) -> 
 
 def disclosure_history_from_events(events: list[StorageEvent]) -> list[dict[str, object]]:
     disclosed = [event for event in events if event.event_type == "content.disclosed"]
-    return [
-        {
-            "schema_version": 1,
-            "sequence": sequence,
-            "created_at": event.created_at,
-            "run_id": event.stream_id if event.stream_type == "run" else "",
-            "content_key": str(event.data["content_key"]),
-            "kind": str(event.data["kind"]),
-            "stage": str(event.data["stage"]),
-            "reference": str(event.data["reference"]),
-            "content_sha256": str(event.data["content_sha256"]),
-            "cache_hit": bool(event.data["cache_hit"]),
-        }
-        for sequence, event in enumerate(disclosed, 1)
-    ]
+    return [{"schema_version": 1, "sequence": sequence, "created_at": event.created_at, "run_id": event.stream_id if event.stream_type == "run" else "", "content_key": str(event.data["content_key"]), "kind": str(event.data["kind"]), "stage": str(event.data["stage"]), "reference": str(event.data["reference"]), "content_sha256": str(event.data["content_sha256"]), "cache_hit": bool(event.data["cache_hit"])} for sequence, event in enumerate(disclosed, 1)]
 
 
 def usage_habits_from_events(events: list[StorageEvent]) -> dict[str, object]:

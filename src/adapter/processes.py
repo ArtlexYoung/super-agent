@@ -34,14 +34,7 @@ class GeneralToolServer:
     """Expose small pure operations through the MCP Skill mechanism."""
 
     def list_tools(self) -> list[dict[str, object]]:
-        return [
-            {
-                "name": "calculate_numbers",
-                "description": "Calculate sum, mean, minimum, maximum, or product.",
-                "inputSchema": {"type": "object", "properties": {"operation": {"type": "string", "enum": ["sum", "mean", "minimum", "maximum", "product"]}, "values": {"type": "array", "items": {"type": "number"}}}, "required": ["operation", "values"], "additionalProperties": False},
-            },
-            {"name": "find_text", "description": "Find bounded literal text positions without regular expressions.", "inputSchema": {"type": "object", "properties": {"text": {"type": "string"}, "query": {"type": "string"}}, "required": ["text", "query"], "additionalProperties": False}},
-        ]
+        return [{"name": "calculate_numbers", "description": "Calculate sum, mean, minimum, maximum, or product.", "inputSchema": {"type": "object", "properties": {"operation": {"type": "string", "enum": ["sum", "mean", "minimum", "maximum", "product"]}, "values": {"type": "array", "items": {"type": "number"}}}, "required": ["operation", "values"], "additionalProperties": False}}, {"name": "find_text", "description": "Find bounded literal text positions without regular expressions.", "inputSchema": {"type": "object", "properties": {"text": {"type": "string"}, "query": {"type": "string"}}, "required": ["text", "query"], "additionalProperties": False}}]
 
     def call_tool(self, name: str, arguments: dict[str, object]) -> dict[str, object]:
         if name == "calculate_numbers":
@@ -141,26 +134,10 @@ class DeclaredProcessTools:
     def list_tools(self) -> tuple[SkillTool, ...]:
         process_id = {"type": "string", "description": "Process ID returned by start_declared_process."}
         return (
-            SkillTool(
-                "start_declared_process",
-                "Start one configured argv command with bounded time and output.",
-                {"command_number": {"type": "integer", "minimum": 1}, "timeout_seconds": {"type": "integer", "minimum": 1, "maximum": MAX_PROCESS_TIMEOUT_SECONDS}},
-                self.start_process,
-                SkillAction((ActionEffect.EXECUTE,), "workspace:command", "command_number"),
-                ("command_number",),
-                result_kind="process",
-            ),
+            SkillTool("start_declared_process", "Start one configured argv command with bounded time and output.", {"command_number": {"type": "integer", "minimum": 1}, "timeout_seconds": {"type": "integer", "minimum": 1, "maximum": MAX_PROCESS_TIMEOUT_SECONDS}}, self.start_process, SkillAction((ActionEffect.EXECUTE,), "workspace:command", "command_number"), ("command_number",), result_kind="process"),
             SkillTool("poll_declared_process", "Read current bounded output and status for one started process.", {"process_id": process_id}, self.poll_process, SkillAction((ActionEffect.READ,), "workspace:process", "process_id"), ("process_id",), result_kind="process"),
             SkillTool("stop_declared_process", "Stop one running process and its child process group.", {"process_id": process_id}, self.stop_process, SkillAction((ActionEffect.EXECUTE,), "workspace:process", "process_id"), ("process_id",), result_kind="process"),
-            SkillTool(
-                "run_declared_check",
-                "Run one configured check and wait for its bounded result.",
-                {"command_number": {"type": "integer", "minimum": 1}, "timeout_seconds": {"type": "integer", "minimum": 1, "maximum": MAX_PROCESS_TIMEOUT_SECONDS}},
-                self.run_check,
-                SkillAction((ActionEffect.EXECUTE,), "workspace:command", "command_number"),
-                ("command_number",),
-                result_kind="process",
-            ),
+            SkillTool("run_declared_check", "Run one configured check and wait for its bounded result.", {"command_number": {"type": "integer", "minimum": 1}, "timeout_seconds": {"type": "integer", "minimum": 1, "maximum": MAX_PROCESS_TIMEOUT_SECONDS}}, self.run_check, SkillAction((ActionEffect.EXECUTE,), "workspace:command", "command_number"), ("command_number",), result_kind="process"),
         )
 
     def start_process(self, arguments: dict[str, object]) -> dict[str, object]:
@@ -274,24 +251,7 @@ class DeclaredProcessTools:
             stopped = task.stopped
         stdout_text, stdout_replaced = _decode_output(stdout)
         stderr_text, stderr_replaced = _decode_output(stderr)
-        return {
-            "process_id": task.process_id,
-            "command": list(task.command),
-            "state": state,
-            "returncode": returncode,
-            "elapsed_seconds": round(time.monotonic() - task.started_at, 6),
-            "timeout_seconds": task.timeout_seconds,
-            "output_limit_bytes": task.output_limit_bytes,
-            "output_bytes": len(stdout) + len(stderr),
-            "output_complete": (returncode is not None and output_finished and not output_limit_exceeded),
-            "output_limit_exceeded": output_limit_exceeded,
-            "timed_out": timed_out,
-            "stopped": stopped,
-            "passed": returncode == 0 if returncode is not None else None,
-            "decode_replaced": stdout_replaced or stderr_replaced,
-            "stdout": stdout_text,
-            "stderr": stderr_text,
-        }
+        return {"process_id": task.process_id, "command": list(task.command), "state": state, "returncode": returncode, "elapsed_seconds": round(time.monotonic() - task.started_at, 6), "timeout_seconds": task.timeout_seconds, "output_limit_bytes": task.output_limit_bytes, "output_bytes": len(stdout) + len(stderr), "output_complete": (returncode is not None and output_finished and not output_limit_exceeded), "output_limit_exceeded": output_limit_exceeded, "timed_out": timed_out, "stopped": stopped, "passed": returncode == 0 if returncode is not None else None, "decode_replaced": stdout_replaced or stderr_replaced, "stdout": stdout_text, "stderr": stderr_text}
 
     def _require_process(self, process_id: str) -> _RunningProcess:
         task = self._processes.get(process_id)

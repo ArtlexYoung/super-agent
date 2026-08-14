@@ -49,14 +49,7 @@ class _ConfiguredModelTool:
         if not candidates:
             return None
         candidate_data = [model_profile_to_dict(profile, self.provider_pool.environment) for profile in candidates]
-        return SkillTool(
-            name="use_model",
-            description=("Give one explicit subtask to another configured model. Available models: " + json.dumps(candidate_data, ensure_ascii=False, sort_keys=True)),
-            properties={"model": {"type": "string", "enum": [profile.key for profile in candidates]}, "prompt": {"type": "string"}, "reason": {"type": "string"}},
-            handler=self.use_model,
-            action=SkillAction((ActionEffect.READ,), "model:configured", "model"),
-            required=("model", "prompt", "reason"),
-        )
+        return SkillTool(name="use_model", description=("Give one explicit subtask to another configured model. Available models: " + json.dumps(candidate_data, ensure_ascii=False, sort_keys=True)), properties={"model": {"type": "string", "enum": [profile.key for profile in candidates]}, "prompt": {"type": "string"}, "reason": {"type": "string"}}, handler=self.use_model, action=SkillAction((ActionEffect.READ,), "model:configured", "model"), required=("model", "prompt", "reason"))
 
     def use_model(self, arguments: dict[str, object]) -> dict[str, object]:
         model_key = read_required_tool_string(arguments, "model").lower()
@@ -244,18 +237,7 @@ def _create_result(run: Run, state: _LoopState, text: str, stop_reason: str) -> 
     request = run.task
     names = list(dict.fromkeys([*state.selected_skill_names, *state.tools.used_skill_names]))
     skill_results = state.tools.read_skill_results()
-    return RunResult(
-        text=text,
-        workflow=state.workflow.name,
-        skills=names,
-        subagent_results=state.tools.delegated_subagent_results,
-        agent_tasks=skill_results.get("agent_tasks"),
-        agent_groups=skill_results.get("agent_groups"),
-        warning_messages=request.warning_messages,
-        run_id=run.run_id,
-        stop_reason=("completed" if stop_reason == "model_finished" else stop_reason) or "completed",
-        actions=list_run_actions(run),
-    )
+    return RunResult(text=text, workflow=state.workflow.name, skills=names, subagent_results=state.tools.delegated_subagent_results, agent_tasks=skill_results.get("agent_tasks"), agent_groups=skill_results.get("agent_groups"), warning_messages=request.warning_messages, run_id=run.run_id, stop_reason=("completed" if stop_reason == "model_finished" else stop_reason) or "completed", actions=list_run_actions(run))
 
 
 def _record_model_turn(run: Run, step: int, response: ModelResponse, state: _LoopState) -> None:

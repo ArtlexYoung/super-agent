@@ -82,17 +82,7 @@ class IncrementalRepositoryMap:
                 _append_skip(skipped, relative, str(error))
         self._generation += 1
         entries = [self._entries[path].data for path in sorted(self._entries)]
-        return {
-            "generation": self._generation,
-            "root": ".",
-            "files": entries,
-            "file_count": len(entries),
-            "refreshed": refreshed,
-            "reused": reused,
-            "deleted": deleted,
-            "skipped": skipped,
-            "limits": {"files": REPOSITORY_MAP_FILE_LIMIT, "file_bytes": REPOSITORY_MAP_FILE_BYTES, "total_bytes": REPOSITORY_MAP_TOTAL_BYTES, "symbols_per_file": REPOSITORY_MAP_SYMBOL_LIMIT},
-        }
+        return {"generation": self._generation, "root": ".", "files": entries, "file_count": len(entries), "refreshed": refreshed, "reused": reused, "deleted": deleted, "skipped": skipped, "limits": {"files": REPOSITORY_MAP_FILE_LIMIT, "file_bytes": REPOSITORY_MAP_FILE_BYTES, "total_bytes": REPOSITORY_MAP_TOTAL_BYTES, "symbols_per_file": REPOSITORY_MAP_SYMBOL_LIMIT}}
 
     def _find_files(self) -> tuple[list[Path], list[dict[str, str]]]:
         if not self.root.is_dir():
@@ -187,11 +177,7 @@ class IsolatedWorktreeTools:
 
     def list_tools(self) -> tuple[SkillTool, ...]:
         worktree_id = {"type": "string"}
-        return (
-            SkillTool("create_isolated_worktree", "Create one detached Git worktree for an isolated task.", {"worktree_id": worktree_id}, self.create_worktree, SkillAction((ActionEffect.CREATE,), "workspace:worktree", "worktree_id"), ("worktree_id",), result_kind="worktree"),
-            SkillTool("list_isolated_worktrees", "List worktrees created below the configured repository.", {}, self.list_worktrees, SkillAction((ActionEffect.READ,), "workspace:worktree"), result_kind="worktree"),
-            SkillTool("remove_isolated_worktree", "Remove one clean isolated worktree without forcing data loss.", {"worktree_id": worktree_id}, self.remove_worktree, SkillAction((ActionEffect.DELETE,), "workspace:worktree", "worktree_id"), ("worktree_id",), result_kind="worktree"),
-        )
+        return (SkillTool("create_isolated_worktree", "Create one detached Git worktree for an isolated task.", {"worktree_id": worktree_id}, self.create_worktree, SkillAction((ActionEffect.CREATE,), "workspace:worktree", "worktree_id"), ("worktree_id",), result_kind="worktree"), SkillTool("list_isolated_worktrees", "List worktrees created below the configured repository.", {}, self.list_worktrees, SkillAction((ActionEffect.READ,), "workspace:worktree"), result_kind="worktree"), SkillTool("remove_isolated_worktree", "Remove one clean isolated worktree without forcing data loss.", {"worktree_id": worktree_id}, self.remove_worktree, SkillAction((ActionEffect.DELETE,), "workspace:worktree", "worktree_id"), ("worktree_id",), result_kind="worktree"))
 
     def create_worktree(self, arguments: dict[str, object]) -> dict[str, object]:
         worktree_id = _read_worktree_id(arguments)

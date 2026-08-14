@@ -196,25 +196,7 @@ def calculate_skill_freshness(records: list[EvaluationRecord], policy: Freshness
 
 
 def _stats_from_evidence(summary: EvaluationEvidenceSummary, policy: FreshnessRules) -> dict[str, Any]:
-    return {
-        "skill": summary.revision.key,
-        "function_group": summary.revision.function_group,
-        "freshness": policy.initial_freshness,
-        "freshness_updated_at": "",
-        "call_count": summary.sample_count,
-        "success_count": summary.success_count,
-        "error_count": summary.error_count,
-        "empty_output_count": summary.empty_output_count,
-        "success_ewma": summary.score_ewma,
-        "total_input_tokens": summary.total_input_tokens,
-        "total_output_tokens": summary.total_output_tokens,
-        "total_latency_ms": summary.total_latency_ms,
-        "latency_sample_count": summary.latency_sample_count,
-        "same_function_followups": summary.same_function_followups,
-        "same_function_successful_followups": (summary.same_function_successful_followups),
-        "first_used_at": summary.first_evaluated_at,
-        "last_used_at": summary.last_evaluated_at,
-    }
+    return {"skill": summary.revision.key, "function_group": summary.revision.function_group, "freshness": policy.initial_freshness, "freshness_updated_at": "", "call_count": summary.sample_count, "success_count": summary.success_count, "error_count": summary.error_count, "empty_output_count": summary.empty_output_count, "success_ewma": summary.score_ewma, "total_input_tokens": summary.total_input_tokens, "total_output_tokens": summary.total_output_tokens, "total_latency_ms": summary.total_latency_ms, "latency_sample_count": summary.latency_sample_count, "same_function_followups": summary.same_function_followups, "same_function_successful_followups": (summary.same_function_successful_followups), "first_used_at": summary.first_evaluated_at, "last_used_at": summary.last_evaluated_at}
 
 
 def _update_freshness(stats: dict[str, Any], now: datetime, policy: FreshnessRules) -> None:
@@ -237,15 +219,7 @@ def _score_components(stats: dict[str, Any], now: datetime, policy: FreshnessRul
     days_since_last_used = max(0.0, (now - last_used_at).total_seconds() / 86400)
     days_active = max(1.0, (now - first_used_at).total_seconds() / 86400)
     calls_per_week = call_count / days_active * 7
-    return {
-        "quality": float(stats["success_ewma"]) * 100,
-        "recency": math.exp(-days_since_last_used / policy.recency_decay_days) * 100,
-        "frequency": _clamp(calls_per_week / policy.full_frequency_calls_per_week * 100, 0, 100),
-        "efficiency": _efficiency_score(stats, average_tokens, policy),
-        "reliability": _reliability_score(stats, policy),
-        "replacement": 100 if followups == 0 else 100 * (1 - successful_followups / followups),
-        "confidence": 100 * call_count / (call_count + policy.confidence_sample_count),
-    }
+    return {"quality": float(stats["success_ewma"]) * 100, "recency": math.exp(-days_since_last_used / policy.recency_decay_days) * 100, "frequency": _clamp(calls_per_week / policy.full_frequency_calls_per_week * 100, 0, 100), "efficiency": _efficiency_score(stats, average_tokens, policy), "reliability": _reliability_score(stats, policy), "replacement": 100 if followups == 0 else 100 * (1 - successful_followups / followups), "confidence": 100 * call_count / (call_count + policy.confidence_sample_count)}
 
 
 def _efficiency_score(stats: dict[str, Any], average_tokens: float, policy: FreshnessRules) -> float:

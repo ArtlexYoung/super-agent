@@ -377,9 +377,7 @@ def create_progressive_skill_disclosure(config: CommonConfig, *, store: EventSto
     should_record = identity is not None if record_disclosures is None else record_disclosures
     if should_record and store is None:
         raise ValueError("recording Skill disclosure requires an EventStore")
-    return ProgressiveDisclosureCore(
-        roots, user_skill_roots=([] if store is None else [store.private_root / "skills"]), builtin_skill_roots=[_builtin_skill_root()], disabled_names=config.agent.disabled_skills, freshness_stats=freshness_stats, recorder=(create_runtime_disclosure_recorder(store, identity) if should_record and store is not None else None), record_event=None
-    )
+    return ProgressiveDisclosureCore(roots, user_skill_roots=([] if store is None else [store.private_root / "skills"]), builtin_skill_roots=[_builtin_skill_root()], disabled_names=config.agent.disabled_skills, freshness_stats=freshness_stats, recorder=(create_runtime_disclosure_recorder(store, identity) if should_record and store is not None else None), record_event=None)
 
 
 def load_configured_freshness_rules(config: CommonConfig, *, store: EventStore | None = None) -> FreshnessRules:
@@ -409,14 +407,7 @@ def create_skills(config: CommonConfig, *, handlers: SkillHandlers | None = None
 def create_runtime_disclosure_recorder(store: EventStore, identity: RunIdentity | None = None) -> DisclosureRecorder:
     """Adapt Runtime state recording to the storage-free disclosure contract."""
     disclosure = store.disclosure
-    return DisclosureRecorder(
-        cache_root=disclosure.cache_root,
-        history_path=disclosure.history_path,
-        write_text=lambda key, kind, stage, path, content: disclosure.write_text(identity, key, kind, stage, path, content),
-        write_json=lambda key, kind, stage, path, content: disclosure.write_json(identity, key, kind, stage, path, content),
-        read_content=disclosure.read_content,
-        read_history=disclosure.read_history,
-    )
+    return DisclosureRecorder(cache_root=disclosure.cache_root, history_path=disclosure.history_path, write_text=lambda key, kind, stage, path, content: disclosure.write_text(identity, key, kind, stage, path, content), write_json=lambda key, kind, stage, path, content: disclosure.write_json(identity, key, kind, stage, path, content), read_content=disclosure.read_content, read_history=disclosure.read_history)
 
 
 def _builtin_skill_root() -> Path:

@@ -32,17 +32,7 @@ class SelectedModel:
     evidence: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, object]:
-        return {
-            "key": self.profile.key,
-            "model": self.profile.model,
-            "provider": self.profile.connection.provider,
-            "base_url": self.profile.connection.base_url,
-            "api_key_env": self.profile.connection.api_key_env,
-            "selected_by": self.selected_by,
-            "reason": self.reason,
-            "evidence": list(self.evidence),
-            "pricing": self.profile.traits.pricing.to_dict(),
-        }
+        return {"key": self.profile.key, "model": self.profile.model, "provider": self.profile.connection.provider, "base_url": self.profile.connection.base_url, "api_key_env": self.profile.connection.api_key_env, "selected_by": self.selected_by, "reason": self.reason, "evidence": list(self.evidence), "pricing": self.profile.traits.pricing.to_dict()}
 
 
 @dataclass(frozen=True)
@@ -235,9 +225,7 @@ def _required_feedback_instructions(value: str) -> str:
 
 def _finish_stats(profile_key: str, purpose: str, accumulator: _StatsAccumulator) -> ModelUsageStats:
     calls = accumulator.calls
-    return ModelUsageStats(
-        profile_key=profile_key, purpose=purpose, call_count=calls, success_count=accumulator.successes, average_quality=accumulator.quality / calls, average_latency_ms=accumulator.latency_ms / calls, average_input_tokens=accumulator.input_tokens / calls, average_output_tokens=accumulator.output_tokens / calls, average_cost=accumulator.cost / calls
-    )
+    return ModelUsageStats(profile_key=profile_key, purpose=purpose, call_count=calls, success_count=accumulator.successes, average_quality=accumulator.quality / calls, average_latency_ms=accumulator.latency_ms / calls, average_input_tokens=accumulator.input_tokens / calls, average_output_tokens=accumulator.output_tokens / calls, average_cost=accumulator.cost / calls)
 
 
 def _score_model_candidate(profile: ModelProfile, purpose: str, required: set[str], observed: dict[tuple[str, str], ModelUsageStats]) -> ModelAssignment:

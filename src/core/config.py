@@ -126,13 +126,7 @@ def find_optional_config_file(filename: str, environment_variable: str, *, base_
 def _read_agent_settings(data: dict[str, Any]) -> AgentSettings:
     allowed = {"name", "system", "skills", "max_agent_chain_depth", "disabled_skills"}
     reject_unknown_fields(data, allowed, "agent settings")
-    return AgentSettings(
-        name=read_text(data.get("name", "super-agent"), "agent name"),
-        system=read_text(data.get("system", "You are a helpful agent."), "agent system"),
-        skills=read_text_list(data.get("skills", []), "agent skills"),
-        max_agent_chain_depth=read_optional_int(data.get("max_agent_chain_depth"), "max_agent_chain_depth", minimum=1),
-        disabled_skills=read_text_list(data.get("disabled_skills", []), "agent disabled_skills", lower=True),
-    )
+    return AgentSettings(name=read_text(data.get("name", "super-agent"), "agent name"), system=read_text(data.get("system", "You are a helpful agent."), "agent system"), skills=read_text_list(data.get("skills", []), "agent skills"), max_agent_chain_depth=read_optional_int(data.get("max_agent_chain_depth"), "max_agent_chain_depth", minimum=1), disabled_skills=read_text_list(data.get("disabled_skills", []), "agent disabled_skills", lower=True))
 
 
 def _read_paths_settings(data: dict[str, Any], base_dir: Path) -> PathsSettings:

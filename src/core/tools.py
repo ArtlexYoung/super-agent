@@ -261,34 +261,13 @@ def _create_disclosure_tools(run_tools: RunTools, skill_index: SkillIndex, *, re
     tools = [SkillTool("list_skills", "List every available Skill type from the central index.", {}, run_tools._list_skills, action=SkillAction((ActionEffect.READ,), "skill:index"), result_kind="skill")]
     disclosures = (("manifest", run_tools._disclose_skill_manifest), ("instructions", run_tools._disclose_skill_instructions), ("configuration", run_tools._disclose_skill_configuration))
     tools.extend(SkillTool(f"disclose_skill_{part}", f"Disclose one Skill's {part} through the central cache.", reference, handler, action=SkillAction(disclosure_effects, f"skill:disclosure:{part}", "name"), required=("name",), result_kind="skill") for part, handler in disclosures)
-    tools.extend(
-        (
-            SkillTool("activate_skill", "Explicitly activate one Skill and attach its registered Runtime tools.", reference, run_tools._activate_skill, action=SkillAction((ActionEffect.READ,), "skill:active", "name"), required=("name",), result_kind="skill"),
-            SkillTool(
-                "read_disclosed_content",
-                "Read one bounded page from a reference returned by progressive disclosure.",
-                {"reference": {"type": "string"}, "offset": {"type": "integer", "minimum": 0}, "limit": {"type": "integer", "minimum": 1, "maximum": 32_000}},
-                run_tools._read_disclosed_content,
-                action=SkillAction((ActionEffect.READ,), "disclosure:content", "reference"),
-                required=("reference",),
-                result_kind=None,
-            ),
-        )
-    )
+    tools.extend((SkillTool("activate_skill", "Explicitly activate one Skill and attach its registered Runtime tools.", reference, run_tools._activate_skill, action=SkillAction((ActionEffect.READ,), "skill:active", "name"), required=("name",), result_kind="skill"), SkillTool("read_disclosed_content", "Read one bounded page from a reference returned by progressive disclosure.", {"reference": {"type": "string"}, "offset": {"type": "integer", "minimum": 0}, "limit": {"type": "integer", "minimum": 1, "maximum": 32_000}}, run_tools._read_disclosed_content, action=SkillAction((ActionEffect.READ,), "disclosure:content", "reference"), required=("reference",), result_kind=None)))
     return tuple(tools)
 
 
 def _read_subagent_result(value: dict[str, object]) -> SubAgentResult:
     nested = value.get("subagent_results")
-    return SubAgentResult(
-        name=str(value["name"]),
-        description=str(value["description"]),
-        text=str(value["text"]),
-        prompt=str(value.get("prompt", "")),
-        created_by_agent=bool(value.get("created_by_agent", False)),
-        subagent_results=([_read_subagent_result(item) for item in nested if isinstance(item, dict)] if isinstance(nested, list) else None),
-        run_id=str(value.get("run_id", "")),
-    )
+    return SubAgentResult(name=str(value["name"]), description=str(value["description"]), text=str(value["text"]), prompt=str(value.get("prompt", "")), created_by_agent=bool(value.get("created_by_agent", False)), subagent_results=([_read_subagent_result(item) for item in nested if isinstance(item, dict)] if isinstance(nested, list) else None), run_id=str(value.get("run_id", "")))
 
 
 def _skill_reference_properties(skill_index: SkillIndex) -> dict[str, dict[str, object]]:
@@ -301,18 +280,13 @@ def _optional_path(path: Path | None) -> str | None:
 
 
 def _create_subagent_tools(run_tools: RunTools) -> tuple[SkillTool, ...]:
-    return (
-        SkillTool("list_subagents", "List subagents added to the current Agent in code.", {}, run_tools.list_subagents, action=SkillAction((ActionEffect.READ,), "subagent:index"), result_kind="subagent"),
-        SkillTool("run_subagent", "Run one subagent added in code and return its traced result.", {"name": {"type": "string"}, "prompt": {"type": "string"}}, run_tools.run_subagent, action=SkillAction((ActionEffect.DELEGATE,), "subagent", "name"), required=("name", "prompt"), result_kind="subagent"),
-    )
+    return (SkillTool("list_subagents", "List subagents added to the current Agent in code.", {}, run_tools.list_subagents, action=SkillAction((ActionEffect.READ,), "subagent:index"), result_kind="subagent"), SkillTool("run_subagent", "Run one subagent added in code and return its traced result.", {"name": {"type": "string"}, "prompt": {"type": "string"}}, run_tools.run_subagent, action=SkillAction((ActionEffect.DELEGATE,), "subagent", "name"), required=("name", "prompt"), result_kind="subagent"))
 
 
 def _create_shared_context_tools(run_tools: RunTools) -> tuple[SkillTool, ...]:
     shared = run_tools.run.task.shared_context or {}
     reference = str(shared.get("reference", ""))
-    return (
-        SkillTool("read_shared_task_context", "Read the shared task packet attached by the parent Agent through central disclosure.", {"reference": {"type": "string", "enum": [reference]}}, run_tools.read_shared_task_context, action=SkillAction((ActionEffect.READ,), "task:shared-context", "reference"), required=("reference",), result_kind=None),
-    )
+    return (SkillTool("read_shared_task_context", "Read the shared task packet attached by the parent Agent through central disclosure.", {"reference": {"type": "string", "enum": [reference]}}, run_tools.read_shared_task_context, action=SkillAction((ActionEffect.READ,), "task:shared-context", "reference"), required=("reference",), result_kind=None),)
 
 
 def _activation_instructions(loaded: list[tuple[SkillReference, SkillUse]]) -> list[dict[str, str]]:

@@ -35,17 +35,7 @@ class JsonlStorage:
             duplicate = next((event for event in existing if event.event_id == requested_id), None)
             if duplicate is not None:
                 return duplicate
-            event = StorageEvent(
-                event_id=requested_id,
-                position=existing[-1].position + 1 if existing else 1,
-                user_id=clean_storage_text(user_id, "user_id"),
-                agent_name=clean_storage_text(agent_name, "agent_name"),
-                stream_type=clean_storage_text(stream_type, "stream_type"),
-                stream_id=clean_storage_text(stream_id, "stream_id"),
-                event_type=clean_storage_text(event_type, "event_type"),
-                created_at=created_at or utc_now_text(),
-                data=dict(data),
-            )
+            event = StorageEvent(event_id=requested_id, position=existing[-1].position + 1 if existing else 1, user_id=clean_storage_text(user_id, "user_id"), agent_name=clean_storage_text(agent_name, "agent_name"), stream_type=clean_storage_text(stream_type, "stream_type"), stream_id=clean_storage_text(stream_id, "stream_id"), event_type=clean_storage_text(event_type, "event_type"), created_at=created_at or utc_now_text(), data=dict(data))
             path.parent.mkdir(parents=True, exist_ok=True)
             with path.open("a", encoding="utf-8") as file:
                 file.write(_event_json(event) + "\n")

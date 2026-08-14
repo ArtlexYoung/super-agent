@@ -253,9 +253,7 @@ def _create_skill_updater(user: UserAgent) -> "SkillUpdater":
     store = user._store()
     skills = agent._create_skills(user.user_id)
     task_runner = agent._create_task_runner(user.user_id, skills)
-    return SkillUpdater(
-        skills.disclosure, store=store, propose_model=task_runner.create_text_model(store, "skill_change_proposal"), test_model=task_runner.create_text_model(store, "skill_change_test"), on_skill_changed=lambda manifest: agent._reload_models(user.user_id) if manifest.skill_type == "model" else None, action_rules=agent._action_rules()
-    )
+    return SkillUpdater(skills.disclosure, store=store, propose_model=task_runner.create_text_model(store, "skill_change_proposal"), test_model=task_runner.create_text_model(store, "skill_change_test"), on_skill_changed=lambda manifest: agent._reload_models(user.user_id) if manifest.skill_type == "model" else None, action_rules=agent._action_rules())
 
 
 def _find_run_owner(user: UserAgent, run_id: str) -> tuple[UserAgent, "EventStore"]:

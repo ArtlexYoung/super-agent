@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import json
 import hashlib
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Iterable, Protocol
+from typing import TYPE_CHECKING, Any, Iterable, Iterator, Protocol
 from uuid import uuid4
 
 from core.records.store import StorageEvent, StorageEventQuery
@@ -209,58 +210,43 @@ class SqlEventStorage:
         self._select_events = f"SELECT {_SQL_EVENT_COLUMNS} FROM {database.table_name}"
 
     def append_event(self, *, user_id: str, agent_name: str, stream_type: str, stream_id: str, event_type: str, data: dict[str, object], event_id: str | None = None, created_at: str | None = None) -> StorageEvent:
-        pending = _PendingSqlEvent(
-            event_id=clean_storage_text(event_id or f"event-{uuid4().hex}", "event_id"),
-            user_id=clean_storage_text(user_id, "user_id"),
-            agent_name=clean_storage_text(agent_name, "agent_name"),
-            stream_type=clean_storage_text(stream_type, "stream_type"),
-            stream_id=clean_storage_text(stream_id, "stream_id"),
-            event_type=clean_storage_text(event_type, "event_type"),
-            created_at=clean_storage_text(created_at or utc_now_text(), "created_at"),
-            data_json=encode_storage_data(dict(data)),
-        )
-        connection = self._database.connect_to_database()
-        try:
-            cursor = connection.cursor()
-            if self._database.begin_write_sql is not None:
-                cursor.execute(self._database.begin_write_sql)
+        pending = _PendingSqlEvent(event_id=clean_storage_text(event_id or f"event-{uuid4().hex}", "event_id"), user_id=clean_storage_text(user_id, "user_id"), agent_name=clean_storage_text(agent_name, "agent_name"), stream_type=clean_storage_text(stream_type, "stream_type"), stream_id=clean_storage_text(stream_id, "stream_id"), event_type=clean_storage_text(event_type, "event_type"), created_at=clean_storage_text(created_at or utc_now_text(), "created_at"), data_json=encode_storage_data(dict(data)))
+        with self._cursor(write=True) as cursor:
             stored = self._find_pending_event(cursor, pending)
             if stored is None:
                 stored = self._insert_pending_event(cursor, pending)
-            connection.commit()
-            return stored
-        except Exception:
-            connection.rollback()
-            raise
-        finally:
-            connection.close()
+        return stored
 
     def read_events(self, query: StorageEventQuery) -> list[StorageEvent]:
         where, parameters = self._event_where(query)
-        connection = self._database.connect_to_database()
-        try:
-            cursor = connection.cursor()
+        with self._cursor() as cursor:
             cursor.execute(self._select_events + where + " ORDER BY position", parameters)
             rows = cursor.fetchall()
-        finally:
-            connection.close()
         return [read_sql_event_row(row, self._database.location) for row in rows]
 
     def delete_events(self, query: StorageEventQuery) -> int:
-        connection = self._database.connect_to_database()
-        try:
-            cursor = connection.cursor()
-            if self._database.begin_write_sql is not None:
-                cursor.execute(self._database.begin_write_sql)
+        with self._cursor(write=True) as cursor:
             deleted = 0
             for selected in split_sql_event_id_query(query):
                 where, parameters = self._event_where(selected)
                 cursor.execute(f"DELETE FROM {self._database.table_name}" + where, parameters)
                 deleted += int(cursor.rowcount)
-            connection.commit()
-            return deleted
+        return deleted
+
+    @contextmanager
+    def _cursor(self, *, write: bool = False) -> Iterator[Any]:
+        """Close every connection and commit only successful explicit writes."""
+        connection = self._database.connect_to_database()
+        try:
+            cursor = connection.cursor()
+            if write and self._database.begin_write_sql is not None:
+                cursor.execute(self._database.begin_write_sql)
+            yield cursor
+            if write:
+                connection.commit()
         except Exception:
-            connection.rollback()
+            if write:
+                connection.rollback()
             raise
         finally:
             connection.close()

@@ -81,19 +81,7 @@ class AgentTeam:
         return SubagentCallbacks(list_subagents=self.list_for_model, run_named_subagent=self.run_named_for_model)
 
     def list_for_model(self) -> list[dict[str, object]]:
-        return [
-            {
-                "name": subagent.name,
-                "description": subagent.description,
-                "created_by_agent": subagent.created_by_agent,
-                "purpose": subagent.purpose,
-                "required_features": list(subagent.required_features),
-                "agent_name": subagent.agent.config.agent.name,
-                "weight": subagent.weight,
-                "models": [model_dispatch_to_dict(profile) for profile in subagent.agent.model_profiles],
-            }
-            for subagent in self._subagents
-        ]
+        return [{"name": subagent.name, "description": subagent.description, "created_by_agent": subagent.created_by_agent, "purpose": subagent.purpose, "required_features": list(subagent.required_features), "agent_name": subagent.agent.config.agent.name, "weight": subagent.weight, "models": [model_dispatch_to_dict(profile) for profile in subagent.agent.model_profiles]} for subagent in self._subagents]
 
     def run_named_for_model(self, name: str, prompt: str, run: Run, record_options: SubagentRecordOptions, shared_context: dict[str, object] | None = None) -> dict[str, object]:
         subagent = next((item for item in self._subagents if item.name == name), None)

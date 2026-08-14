@@ -117,18 +117,7 @@ def _create_task_plan_tools(context: SkillContext) -> tuple[SkillTool, ...]:
         return ()
     plan = _TaskPlan(context.record_event)
     action = SkillAction((ActionEffect.CREATE, ActionEffect.UPDATE), "task:plan")
-    return (
-        SkillTool("set_task_plan", "Set a bounded task plan when the task benefits from explicit steps.", {"goal": {"type": "string"}, "steps": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 20}}, plan.set_plan, action, required=("goal", "steps"), result_kind="task-plan"),
-        SkillTool(
-            "update_task_plan_step",
-            "Update one planned step with an explicit status and optional evidence.",
-            {"step": {"type": "integer", "minimum": 1}, "status": {"type": "string", "enum": ["pending", "in_progress", "completed", "blocked"]}, "evidence": {"type": "string"}},
-            plan.update_step,
-            action,
-            required=("step", "status"),
-            result_kind="task-plan",
-        ),
-    )
+    return (SkillTool("set_task_plan", "Set a bounded task plan when the task benefits from explicit steps.", {"goal": {"type": "string"}, "steps": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 20}}, plan.set_plan, action, required=("goal", "steps"), result_kind="task-plan"), SkillTool("update_task_plan_step", "Update one planned step with an explicit status and optional evidence.", {"step": {"type": "integer", "minimum": 1}, "status": {"type": "string", "enum": ["pending", "in_progress", "completed", "blocked"]}, "evidence": {"type": "string"}}, plan.update_step, action, required=("step", "status"), result_kind="task-plan"))
 
 
 class _TaskPlan:
@@ -174,29 +163,8 @@ def _create_memory_tools(memory: Memory) -> tuple[SkillTool, ...]:
     return (
         SkillTool("list_long_term_memory", "List durable memory. Conversation messages are the short-term memory.", {"scope": scope}, lambda arguments: _list_long_term_memory(memory, arguments), action=SkillAction((ActionEffect.READ,), "memory:long-term", "scope"), result_kind="memory"),
         SkillTool("remember_long_term", "Remember abstract, critical, stable, or habitual knowledge for future conversations.", {"text": {"type": "string"}, "scope": scope}, lambda arguments: _remember_long_term(memory, arguments), action=SkillAction((ActionEffect.CREATE,), "memory:long-term", "scope"), required=("text",), result_kind="memory"),
-        SkillTool(
-            "recall_long_term_memory",
-            "Read and rank durable memory without changing it.",
-            {"query": {"type": "string"}, "scope": scope, "limit": {"type": "integer", "minimum": 1}},
-            lambda arguments: _recall_long_term_memory(memory, arguments),
-            action=SkillAction((ActionEffect.READ,), "memory:long-term", "scope"),
-            required=("query",),
-            result_kind="memory",
-        ),
-        SkillTool(
-            "organize_long_term_memory",
-            "Explicitly merge, replace, or forget recalled long-term items in one checked action.",
-            {
-                "operations": {
-                    "type": "array",
-                    "items": {"type": "object", "properties": {"operation": {"type": "string", "enum": ["merge", "replace", "forget"]}, "item_ids": {"type": "array", "items": {"type": "string"}}, "text": {"type": "string"}, "reason": {"type": "string"}}, "required": ["operation", "item_ids"], "additionalProperties": False},
-                }
-            },
-            lambda arguments: _organize_long_term_memory(memory, arguments),
-            action=SkillAction((ActionEffect.CREATE, ActionEffect.UPDATE, ActionEffect.DELETE), "memory:long-term"),
-            required=("operations",),
-            result_kind="memory",
-        ),
+        SkillTool("recall_long_term_memory", "Read and rank durable memory without changing it.", {"query": {"type": "string"}, "scope": scope, "limit": {"type": "integer", "minimum": 1}}, lambda arguments: _recall_long_term_memory(memory, arguments), action=SkillAction((ActionEffect.READ,), "memory:long-term", "scope"), required=("query",), result_kind="memory"),
+        SkillTool("organize_long_term_memory", "Explicitly merge, replace, or forget recalled long-term items in one checked action.", {"operations": {"type": "array", "items": {"type": "object", "properties": {"operation": {"type": "string", "enum": ["merge", "replace", "forget"]}, "item_ids": {"type": "array", "items": {"type": "string"}}, "text": {"type": "string"}, "reason": {"type": "string"}}, "required": ["operation", "item_ids"], "additionalProperties": False}}}, lambda arguments: _organize_long_term_memory(memory, arguments), action=SkillAction((ActionEffect.CREATE, ActionEffect.UPDATE, ActionEffect.DELETE), "memory:long-term"), required=("operations",), result_kind="memory"),
         SkillTool("forget_long_term_memory", "Explicitly forget one durable memory item by ID.", {"item_id": {"type": "string"}, "reason": {"type": "string"}}, lambda arguments: _forget_long_term_memory(memory, arguments), action=SkillAction((ActionEffect.DELETE,), "memory:long-term", "item_id"), required=("item_id",), result_kind="memory"),
     )
 
@@ -234,10 +202,7 @@ def _forget_long_term_memory(memory: Memory, arguments: dict[str, object]) -> di
 
 def _create_mcp_tools(registered: RegisteredMcpServer, list_tool_name: str, run_tool_name: str) -> tuple[SkillTool, ...]:
     action = SkillAction(registered.effects, f"skill:registered:mcp:{registered.name}")
-    return (
-        SkillTool(list_tool_name, f"List tools exposed by the {registered.name} MCP server.", {}, lambda arguments: {"name": registered.name, "tools": registered.server.list_tools()}, action=action),
-        SkillTool(run_tool_name, f"Call one tool from the {registered.name} MCP server.", {"tool": {"type": "string"}, "arguments": {"type": "object"}}, lambda arguments: _run_mcp_tool(registered, arguments), action=action, required=("tool", "arguments")),
-    )
+    return (SkillTool(list_tool_name, f"List tools exposed by the {registered.name} MCP server.", {}, lambda arguments: {"name": registered.name, "tools": registered.server.list_tools()}, action=action), SkillTool(run_tool_name, f"Call one tool from the {registered.name} MCP server.", {"tool": {"type": "string"}, "arguments": {"type": "object"}}, lambda arguments: _run_mcp_tool(registered, arguments), action=action, required=("tool", "arguments")))
 
 
 def _run_mcp_tool(registered: RegisteredMcpServer, arguments: dict[str, object]) -> dict[str, object]:

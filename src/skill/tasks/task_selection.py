@@ -143,20 +143,7 @@ class SelectedAgent:
     selection_key: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, object]:
-        return {
-            "agent_name": self.name,
-            "selected_by": self.selected_by,
-            "eligible_agent_count": self.candidate_count,
-            "active_task_count": self.active_task_count,
-            "weight": self.weight,
-            "estimated_model": self.model,
-            "pricing": dict(self.pricing),
-            "cost_estimate": dict(self.cost_estimate),
-            "reliability": self.reliability,
-            "successful_tasks": self.successful_tasks,
-            "unavailable_failures": self.unavailable_failures,
-            "selection_score": self.score,
-        }
+        return {"agent_name": self.name, "selected_by": self.selected_by, "eligible_agent_count": self.candidate_count, "active_task_count": self.active_task_count, "weight": self.weight, "estimated_model": self.model, "pricing": dict(self.pricing), "cost_estimate": dict(self.cost_estimate), "reliability": self.reliability, "successful_tasks": self.successful_tasks, "unavailable_failures": self.unavailable_failures, "selection_score": self.score}
 
 
 @dataclass

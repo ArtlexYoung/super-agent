@@ -1950,6 +1950,19 @@ Status: implemented.
 - Inline Runtime's Skills, model-profile, user-provider, and TaskRunner assembly, apply a
   350-character formatter ceiling, and reduce source to at most 10,900 non-empty Python lines.
 
+## v0.1.89: One External Request Path
+
+Status: implemented.
+
+- Dispatch root, data, and Skill CLI commands through one explicit parsed-command function and
+  create repeated nested parsers from one named command list.
+- Parse Web configuration directly into Agent settings and share AG-UI read routing, byte
+  responses, and expected HTTP error projection without changing protocol fields or status codes.
+- Execute SQL reads and writes through one cursor context that closes every connection, commits
+  only completed writes, and rolls back the original error path.
+- Preserve every CLI command, AG-UI and Web endpoint, code and process tool, storage backend, and
+  management action while reducing source to at most 10,200 non-empty Python lines.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

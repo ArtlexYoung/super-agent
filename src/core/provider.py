@@ -253,17 +253,7 @@ def _provider_call_metrics(call: ProviderCall, input_tokens: int, output: str, s
     output_tokens = estimate_text_tokens(output)
     input_cost = input_tokens * (call.pricing.input_cost_per_million or 0.0)
     output_cost = output_tokens * (call.pricing.output_cost_per_million or 0.0)
-    return {
-        "profile": call.profile_key,
-        "model": call.model,
-        "purpose": call.purpose,
-        "latency_ms": max(0, round((perf_counter() - started_at) * 1000)),
-        "input_tokens": input_tokens,
-        "output_tokens": output_tokens,
-        "estimated_cost": (input_cost + output_cost) / 1_000_000,
-        "pricing": call.pricing.to_dict(),
-        "estimated_cost_excludes_cache": bool(call.pricing.cache_creation_cost_per_million or call.pricing.cache_read_cost_per_million),
-    }
+    return {"profile": call.profile_key, "model": call.model, "purpose": call.purpose, "latency_ms": max(0, round((perf_counter() - started_at) * 1000)), "input_tokens": input_tokens, "output_tokens": output_tokens, "estimated_cost": (input_cost + output_cost) / 1_000_000, "pricing": call.pricing.to_dict(), "estimated_cost_excludes_cache": bool(call.pricing.cache_creation_cost_per_million or call.pricing.cache_read_cost_per_million)}
 
 
 def _model_response_text(response: ModelResponse) -> str:

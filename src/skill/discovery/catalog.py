@@ -6,27 +6,7 @@ from pathlib import Path
 from typing import Callable, Mapping
 from urllib.parse import quote
 
-from skill.discovery.index import (
-    DEFAULT_INLINE_CHARS,
-    DEFAULT_PAGE_CHARS,
-    DisclosureContextBudget,
-    DisclosurePage,
-    serialize_disclosure_value,
-    DisclosedConfiguration,
-    DisclosedSkillFile,
-    DisclosedSkillFiles,
-    DisclosedText,
-    DisclosureEvent,
-    SkillIndex,
-    SkillIndexEntry,
-    SkillReference,
-    SkillSelectionDecision,
-    SkillSource,
-    SkillSourceScan,
-    SkillValidationIssue,
-    read_skill_sources,
-    skill_index_to_dict,
-)
+from skill.discovery.index import DEFAULT_INLINE_CHARS, DEFAULT_PAGE_CHARS, DisclosureContextBudget, DisclosurePage, serialize_disclosure_value, DisclosedConfiguration, DisclosedSkillFile, DisclosedSkillFiles, DisclosedText, DisclosureEvent, SkillIndex, SkillIndexEntry, SkillReference, SkillSelectionDecision, SkillSource, SkillSourceScan, SkillValidationIssue, read_skill_sources, skill_index_to_dict
 from skill.discovery.manifest import SkillManifest, calculate_skill_directory_sha256, skill_manifest_to_dict
 
 
@@ -50,18 +30,7 @@ class DisclosureRecorder:
 
 
 class ProgressiveDisclosureCore:
-    def __init__(
-        self,
-        skill_roots: list[Path],
-        *,
-        user_skill_roots: list[Path] | None = None,
-        builtin_skill_roots: list[Path] | None = None,
-        disabled_names: list[str] | None = None,
-        freshness_stats: Mapping[str, Mapping[str, object]] | None = None,
-        recorder: DisclosureRecorder | None = None,
-        record_event: RecordEvent | None = None,
-        context_budget_chars: int = 24_000,
-    ) -> None:
+    def __init__(self, skill_roots: list[Path], *, user_skill_roots: list[Path] | None = None, builtin_skill_roots: list[Path] | None = None, disabled_names: list[str] | None = None, freshness_stats: Mapping[str, Mapping[str, object]] | None = None, recorder: DisclosureRecorder | None = None, record_event: RecordEvent | None = None, context_budget_chars: int = 24_000) -> None:
         self.skill_roots = [path.expanduser() for path in skill_roots]
         self.user_skill_roots = [path.expanduser() for path in user_skill_roots or []]
         self.builtin_skill_roots = [path.expanduser() for path in builtin_skill_roots or []]

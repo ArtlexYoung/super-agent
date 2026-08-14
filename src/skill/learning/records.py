@@ -183,17 +183,7 @@ def skill_revision_from_dict(value: object) -> SkillRevision:
         raise ValueError("Skill revision fields do not match schema v2")
     if value["schema_version"] != SKILL_REVISION_SCHEMA_VERSION:
         raise ValueError(f"unsupported Skill revision schema: {value['schema_version']}")
-    revision = SkillRevision(
-        key=read_text(value["key"], "Skill revision key"),
-        skill_type=read_text(value["type"], "Skill revision type"),
-        name=read_text(value["name"], "Skill revision name"),
-        version=read_text(value["version"], "Skill revision version"),
-        content_sha256=read_text(value["content_sha256"], "Skill revision content_sha256"),
-        function_group=read_text(value["function_group"], "Skill revision function_group"),
-        agent_created=read_bool(value["agent_created"], "Skill revision agent_created"),
-        agent_can_update=read_bool(value["agent_can_update"], "Skill revision agent_can_update"),
-        freshness=_read_freshness(value["freshness"]),
-    )
+    revision = SkillRevision(key=read_text(value["key"], "Skill revision key"), skill_type=read_text(value["type"], "Skill revision type"), name=read_text(value["name"], "Skill revision name"), version=read_text(value["version"], "Skill revision version"), content_sha256=read_text(value["content_sha256"], "Skill revision content_sha256"), function_group=read_text(value["function_group"], "Skill revision function_group"), agent_created=read_bool(value["agent_created"], "Skill revision agent_created"), agent_can_update=read_bool(value["agent_can_update"], "Skill revision agent_can_update"), freshness=_read_freshness(value["freshness"]))
     validate_skill_revision(revision)
     return revision
 

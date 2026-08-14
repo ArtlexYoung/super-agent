@@ -11,7 +11,7 @@ from typing import Callable
 from adapter.cli_support.cli_config import load_agent, load_common_config
 from adapter.storage_backends.storage import DisclosureStorage, copy_storage_events, create_storage_backend
 from core.config import CommonConfig
-from core.models import LOCAL_USER_ID, RunSnapshot
+from core.models import LOCAL_USER_ID, RunSnapshot, read_object
 from core.records.audit import AuditPruneReport
 from skill.handlers.memory import MemoryItem
 from core.records.store import StorageBackend
@@ -26,24 +26,30 @@ def add_output_format_option(parser: argparse.ArgumentParser, *, default: str | 
     parser.add_argument("--output", choices=["text", "json"], default=default)
 
 
+def add_subcommand_parsers(parser: argparse.ArgumentParser, command_field: str, commands: tuple[tuple[str, str], ...]) -> dict[str, argparse.ArgumentParser]:
+    """Create a named CLI branch from one visible command list."""
+    subparsers = parser.add_subparsers(dest=command_field)
+    return {name: subparsers.add_parser(name, help=help_text) for name, help_text in commands}
+
+
 def print_cli_json(value: object, *, pretty: bool = True) -> int:
     serialized = json.dumps(value, ensure_ascii=False, indent=2 if pretty else None, sort_keys=pretty)
     print(serialized)
     return 0
 
 
-def run_selected_cli_command(command: str | None, handlers: dict[str, Callable[[], int]], missing_message: str) -> int:
-    handler = handlers.get(command or "")
+def run_selected_cli_command(args: argparse.Namespace, command_field: str, handlers: dict[str, Callable[[argparse.Namespace], int]], missing_message: str, *, default: str | None = None) -> int:
+    """Dispatch one parsed command without a second adapter-specific router."""
+    handler = handlers.get(getattr(args, command_field, None) or default or "")
     if handler is None:
         raise ValueError(missing_message)
-    return handler()
+    return handler(args)
 
 
 def configure_conversations_parser(parser: argparse.ArgumentParser) -> None:
     _add_identity_arguments(parser, inherited=False)
-    subparsers = parser.add_subparsers(dest="conversations_command")
-    for name, help_text in (("list", "list stored conversations"), ("show", "show one stored conversation"), ("create", "create a conversation"), ("rename", "rename a conversation"), ("clear", "clear conversation messages"), ("delete", "delete a conversation")):
-        selected = subparsers.add_parser(name, help=help_text)
+    commands = add_subcommand_parsers(parser, "conversations_command", (("list", "list stored conversations"), ("show", "show one stored conversation"), ("create", "create a conversation"), ("rename", "rename a conversation"), ("clear", "clear conversation messages"), ("delete", "delete a conversation")))
+    for name, selected in commands.items():
         _add_identity_arguments(selected, inherited=True)
         if name in {"show", "rename", "clear", "delete"}:
             selected.add_argument("--conversation-id", required=True)
@@ -56,26 +62,19 @@ def configure_conversations_parser(parser: argparse.ArgumentParser) -> None:
 def run_conversations_command(args: argparse.Namespace) -> int:
     command = args.conversations_command or "list"
     conversations = load_agent(args.common_config).for_user(args.user_id).conversations
-    if command == "list":
-        return print_cli_json({"schema_version": 1, "conversations": [asdict(item) for item in conversations.list()]})
-    if command == "show":
-        return print_cli_json(asdict(conversations.read(args.conversation_id)))
-    if command == "create":
-        return print_cli_json(asdict(conversations.create(args.title, conversation_id=args.conversation_id)))
-    if command == "rename":
-        return print_cli_json(asdict(conversations.rename(args.conversation_id, args.title)))
-    if command == "clear":
-        return print_cli_json(asdict(conversations.clear(args.conversation_id)))
     if command == "delete":
         conversations.delete(args.conversation_id)
         return print_cli_json({"conversation_id": args.conversation_id, "deleted": True})
-    raise ValueError(f"unknown conversations command: {command}")
+    readers = {"list": lambda: {"schema_version": 1, "conversations": [asdict(item) for item in conversations.list()]}, "show": lambda: asdict(conversations.read(args.conversation_id)), "create": lambda: asdict(conversations.create(args.title, conversation_id=args.conversation_id)), "rename": lambda: asdict(conversations.rename(args.conversation_id, args.title)), "clear": lambda: asdict(conversations.clear(args.conversation_id))}
+    reader = readers.get(command)
+    if reader is None:
+        raise ValueError(f"unknown conversations command: {command}")
+    return print_cli_json(reader())
 
 
 def configure_memory_parser(parser: argparse.ArgumentParser) -> None:
-    subparsers = parser.add_subparsers(dest="memory_command")
-    for name, help_text in (("habits", "show learned usage habits"), ("list", "list long-term memory"), ("add", "add long-term memory"), ("recall", "recall long-term memory"), ("forget", "forget long-term memory")):
-        selected = subparsers.add_parser(name, help=help_text)
+    commands = add_subcommand_parsers(parser, "memory_command", (("habits", "show learned usage habits"), ("list", "list long-term memory"), ("add", "add long-term memory"), ("recall", "recall long-term memory"), ("forget", "forget long-term memory")))
+    for name, selected in commands.items():
         _add_identity_arguments(selected, inherited=False, default_config="common.toml")
         if name in {"list", "add", "recall"}:
             selected.add_argument("--scope")
@@ -109,53 +108,40 @@ def run_memory_command(args: argparse.Namespace) -> int:
 
 
 def configure_runs_parser(parser: argparse.ArgumentParser) -> None:
-    subparsers = parser.add_subparsers(dest="runs_command")
-    status_parser = subparsers.add_parser("status", help="show recent run snapshot status")
-    add_config_and_user_options(status_parser)
+    commands = add_subcommand_parsers(parser, "runs_command", (("status", "show recent run snapshot status"), ("explain", "explain one run from its ordered events"), ("export", "export one run snapshot and event stream"), ("feedback", "record a quality score for one completed task"), ("learn", "explicitly evaluate and improve Skills from one finished run")))
+    for selected in commands.values():
+        add_config_and_user_options(selected)
+    status_parser = commands["status"]
     status_parser.add_argument("--run-id")
     status_parser.add_argument("--conversation-id")
     status_parser.add_argument("--limit", type=_positive_integer, default=20)
     add_output_format_option(status_parser)
     _add_sensitive_output_argument(status_parser)
 
-    explain_parser = subparsers.add_parser("explain", help="explain one run from its ordered events")
-    add_config_and_user_options(explain_parser)
+    explain_parser = commands["explain"]
     explain_parser.add_argument("--run-id")
     add_output_format_option(explain_parser)
     _add_sensitive_output_argument(explain_parser)
 
-    export_parser = subparsers.add_parser("export", help="export one run snapshot and event stream")
-    add_config_and_user_options(export_parser)
+    export_parser = commands["export"]
     export_parser.add_argument("--run-id")
     export_parser.add_argument("--output")
     _add_sensitive_output_argument(export_parser)
 
-    feedback_parser = subparsers.add_parser("feedback", help="record a quality score for one completed task")
-    add_config_and_user_options(feedback_parser)
+    feedback_parser = commands["feedback"]
     feedback_parser.add_argument("--run-id", required=True)
     feedback_parser.add_argument("--score", required=True, type=_feedback_score)
     feedback_parser.add_argument("--reason", default="")
     add_output_format_option(feedback_parser)
 
-    learn_parser = subparsers.add_parser("learn", help="explicitly evaluate and improve Skills from one finished run")
-    add_config_and_user_options(learn_parser)
+    learn_parser = commands["learn"]
     learn_parser.add_argument("--run-id", required=True)
     add_output_format_option(learn_parser)
 
 
 def run_runs_command(args: argparse.Namespace) -> int:
-    command = args.runs_command or "status"
-    if command == "status":
-        return _show_run_status(args)
-    if command == "explain":
-        return _explain_run(args)
-    if command == "export":
-        return _export_run(args)
-    if command == "feedback":
-        return _record_run_feedback(args)
-    if command == "learn":
-        return _learn_from_run(args)
-    raise ValueError(f"unknown runs command: {command}")
+    handlers = {"status": _show_run_status, "explain": _explain_run, "export": _export_run, "feedback": _record_run_feedback, "learn": _learn_from_run}
+    return run_selected_cli_command(args, "runs_command", handlers, "runs command is required", default="status")
 
 
 def _show_run_status(args: argparse.Namespace) -> int:
@@ -226,7 +212,7 @@ def _run_status_line(snapshot: RunSnapshot) -> str:
 
 
 def _print_run_explanation(explanation: dict[str, object]) -> None:
-    snapshot = _required_object(explanation, "snapshot")
+    snapshot = read_object(explanation.get("snapshot"), "run explanation snapshot")
     print(f"run\t{snapshot['run_id']}\tstatus={snapshot['status']}\tagent={snapshot['agent_name']}\tevents={snapshot['event_count']}")
     for decision in explanation.get("selection_decisions", []):
         if isinstance(decision, dict):
@@ -273,22 +259,11 @@ def _print_freshness_insight(value: object) -> None:
 
 
 def _object_items(value: object) -> list[dict[str, object]]:
-    if not isinstance(value, list):
-        return []
-    return [item for item in value if isinstance(item, dict)]
+    return [item for item in value if isinstance(item, dict)] if isinstance(value, list) else []
 
 
 def _string_items(value: object) -> list[str]:
-    if not isinstance(value, list):
-        return []
-    return [str(item) for item in value]
-
-
-def _required_object(data: dict[str, object], name: str) -> dict[str, object]:
-    value = data.get(name)
-    if not isinstance(value, dict):
-        raise ValueError(f"run explanation {name} must be an object")
-    return value
+    return [str(item) for item in value] if isinstance(value, list) else []
 
 
 def _add_sensitive_output_argument(parser: argparse.ArgumentParser) -> None:
@@ -310,15 +285,15 @@ def _feedback_score(value: str) -> float:
 
 
 def configure_storage_parser(parser: argparse.ArgumentParser) -> None:
-    subparsers = parser.add_subparsers(dest="storage_command")
-    copy_parser = subparsers.add_parser("copy", help="copy selected user event streams to another backend")
+    commands = add_subcommand_parsers(parser, "storage_command", (("copy", "copy selected user event streams to another backend"), ("prune", "preview or explicitly delete expired audit events")))
+    copy_parser = commands["copy"]
     copy_parser.add_argument("--common-config")
     copy_parser.add_argument("--to-backend", choices=["jsonl", "sqlite", "mysql", "postgresql"], required=True)
     copy_parser.add_argument("--to-path", default=".super-agent-copy")
     copy_parser.add_argument("--to-url-env")
     copy_parser.add_argument("--user-id", action="append")
     add_output_format_option(copy_parser)
-    prune_parser = subparsers.add_parser("prune", help="preview or explicitly delete expired audit events")
+    prune_parser = commands["prune"]
     prune_parser.add_argument("--common-config")
     prune_parser.add_argument("--user-id", action="append")
     prune_parser.add_argument("--apply", action="store_true")
@@ -326,10 +301,8 @@ def configure_storage_parser(parser: argparse.ArgumentParser) -> None:
 
 
 def run_storage_command(args: argparse.Namespace) -> int:
-    if args.storage_command == "prune":
-        return _run_prune_command(args)
     if args.storage_command != "copy":
-        raise ValueError("storage command is required")
+        return run_selected_cli_command(args, "storage_command", {"prune": _run_prune_command}, "storage command is required")
     config = load_common_config(args.common_config)
     source = create_storage_backend(config.storage.backend, str(config.storage.path), config.storage.url_env)
     path = _resolve_destination_path(args.to_path, config.source.parent)
