@@ -17,9 +17,7 @@ from skill.handlers.memory import MemoryItem
 from core.records.store import StorageBackend
 
 
-def add_config_and_user_options(
-    parser: argparse.ArgumentParser, *, config_default: str | None = None, config_required: bool = False, user_default: str | None = LOCAL_USER_ID
-) -> None:
+def add_config_and_user_options(parser: argparse.ArgumentParser, *, config_default: str | None = None, config_required: bool = False, user_default: str | None = LOCAL_USER_ID) -> None:
     parser.add_argument("--common-config", default=config_default, required=config_required)
     parser.add_argument("--user-id", default=user_default)
 
@@ -83,13 +81,7 @@ def run_conversations_command(args: argparse.Namespace) -> int:
 
 def configure_memory_parser(parser: argparse.ArgumentParser) -> None:
     subparsers = parser.add_subparsers(dest="memory_command")
-    for name, help_text in (
-        ("habits", "show learned usage habits"),
-        ("list", "list long-term memory"),
-        ("add", "add long-term memory"),
-        ("recall", "recall long-term memory"),
-        ("forget", "forget long-term memory"),
-    ):
+    for name, help_text in (("habits", "show learned usage habits"), ("list", "list long-term memory"), ("add", "add long-term memory"), ("recall", "recall long-term memory"), ("forget", "forget long-term memory")):
         selected = subparsers.add_parser(name, help=help_text)
         _add_identity_arguments(selected, inherited=False, default_config="common.toml")
         if name in {"list", "add", "recall"}:
@@ -175,11 +167,7 @@ def run_runs_command(args: argparse.Namespace) -> int:
 
 def _show_run_status(args: argparse.Namespace) -> int:
     runs = load_agent(args.common_config).for_user(args.user_id).runs
-    snapshots = (
-        [runs.read(args.run_id, include_sensitive=args.include_sensitive)]
-        if args.run_id
-        else runs.list(args.limit, conversation_id=args.conversation_id, include_sensitive=args.include_sensitive)
-    )
+    snapshots = [runs.read(args.run_id, include_sensitive=args.include_sensitive)] if args.run_id else runs.list(args.limit, conversation_id=args.conversation_id, include_sensitive=args.include_sensitive)
     if args.output == "json":
         return print_cli_json({"schema_version": 1, "runs": [asdict(item) for item in snapshots]})
     if not snapshots:
@@ -241,11 +229,7 @@ def _resolve_run_id(snapshots: list[RunSnapshot], requested: str | None) -> str 
 
 def _run_status_line(snapshot: RunSnapshot) -> str:
     skills = ",".join(snapshot.used_skills)
-    return (
-        f"{snapshot.run_id}\t{snapshot.status}\tagent={snapshot.agent_name}"
-        f"\tstarted={snapshot.started_at}\tworkflow={snapshot.workflow or ''}"
-        f"\tstop_reason={snapshot.stop_reason or ''}\tskills={skills}"
-    )
+    return f"{snapshot.run_id}\t{snapshot.status}\tagent={snapshot.agent_name}\tstarted={snapshot.started_at}\tworkflow={snapshot.workflow or ''}\tstop_reason={snapshot.stop_reason or ''}\tskills={skills}"
 
 
 def _print_run_explanation(explanation: dict[str, object]) -> None:
@@ -274,11 +258,7 @@ def _print_run_explanation(explanation: dict[str, object]) -> None:
 def _print_plan_insight(value: object) -> None:
     if not isinstance(value, dict):
         return
-    print(
-        f"run-plan\tpurpose={value.get('purpose', '')}"
-        f"\tworkflow={value.get('workflow', '')}"
-        f"\tfeatures={','.join(_string_items(value.get('required_features')))}"
-    )
+    print(f"run-plan\tpurpose={value.get('purpose', '')}\tworkflow={value.get('workflow', '')}\tfeatures={','.join(_string_items(value.get('required_features')))}")
     model = value.get("model")
     if isinstance(model, dict):
         print(f"run-model\t{model.get('key', '')}\tselected_by={model.get('selected_by', '')}\treason={model.get('reason', '')}")

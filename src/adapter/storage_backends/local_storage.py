@@ -27,18 +27,7 @@ class JsonlStorage:
     def __init__(self, root: str | Path) -> None:
         self.root = Path(root).expanduser().absolute()
 
-    def append_event(
-        self,
-        *,
-        user_id: str,
-        agent_name: str,
-        stream_type: str,
-        stream_id: str,
-        event_type: str,
-        data: dict[str, object],
-        event_id: str | None = None,
-        created_at: str | None = None,
-    ) -> StorageEvent:
+    def append_event(self, *, user_id: str, agent_name: str, stream_type: str, stream_id: str, event_type: str, data: dict[str, object], event_id: str | None = None, created_at: str | None = None) -> StorageEvent:
         path = self._events_path(user_id)
         with _WRITE_LOCK:
             existing = self._read_path(path)

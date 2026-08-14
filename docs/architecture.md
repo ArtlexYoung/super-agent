@@ -153,3 +153,6 @@ The release suite verifies the claims above as behavior:
 - Skill package, model, and evolution writes share `apply_skill_directory_updates`; the verified
   transaction returns its post-apply value and restores every activated target before surfacing
   a failure.
+- The optional task Skill normalizes one selectable child-Agent fact. Queue dispatch and group
+  dispatch use that same fact for feature matching, model choice, price, health, rotation, and
+  circuit state; Core remains unaware of producer-consumer scheduling.

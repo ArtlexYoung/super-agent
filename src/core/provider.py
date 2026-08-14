@@ -154,9 +154,7 @@ def call_chat_model(call: ProviderCall, provider: ChatProvider, record_event: Ev
     try:
         response = _send_provider_call(call, provider)
     except Exception as error:
-        record_event(
-            "model.call.failed", {**_provider_call_metrics(call, input_tokens, "", started_at), "error_type": type(error).__name__, "message": str(error)}
-        )
+        record_event("model.call.failed", {**_provider_call_metrics(call, input_tokens, "", started_at), "error_type": type(error).__name__, "message": str(error)})
         raise
     output = response.text if not response.tool_calls else _model_response_text(response)
     record_event("model.call.completed", _provider_call_metrics(call, input_tokens, output, started_at))
@@ -233,13 +231,7 @@ class AnthropicCompatibleProvider:
 
     def send_chat_messages_with_tools(self, messages: list[Message], model: str, tools: list[ToolDefinition]) -> ModelResponse:
         system, non_system_messages = _split_system_message_from_user_messages(messages)
-        payload = {
-            "model": model,
-            "max_tokens": 4096,
-            "system": system,
-            "messages": _to_anthropic_messages(non_system_messages),
-            "tools": [_to_anthropic_tool_definition(tool) for tool in tools],
-        }
+        payload = {"model": model, "max_tokens": 4096, "system": system, "messages": _to_anthropic_messages(non_system_messages), "tools": [_to_anthropic_tool_definition(tool) for tool in tools]}
         data = self._send_request(payload)
         calls = [_read_anthropic_tool_call(block) for block in data.get("content", []) if block.get("type") == "tool_use"]
         return ModelResponse(text=_read_anthropic_text(data), tool_calls=calls, stop_reason="tool_calls" if calls else "model_finished")
@@ -286,11 +278,7 @@ def _provider_call_metrics(call: ProviderCall, input_tokens: int, output: str, s
 
 
 def _model_response_text(response: ModelResponse) -> str:
-    return json.dumps(
-        {"text": response.text, "tool_calls": [{"name": call.name, "arguments": call.arguments} for call in response.tool_calls]},
-        ensure_ascii=False,
-        sort_keys=True,
-    )
+    return json.dumps({"text": response.text, "tool_calls": [{"name": call.name, "arguments": call.arguments} for call in response.tool_calls]}, ensure_ascii=False, sort_keys=True)
 
 
 def normalize_provider_connection(connection: ProviderConnection) -> ProviderConnection:
@@ -342,11 +330,7 @@ def _read_anthropic_tool_call(data: dict[str, Any]) -> ToolCall:
 
 def _to_anthropic_tool_definition(tool: ToolDefinition) -> dict[str, object]:
     function = tool.get("function", {})
-    return {
-        "name": str(function.get("name", "")),
-        "description": str(function.get("description", "")),
-        "input_schema": function.get("parameters", {"type": "object", "properties": {}}),
-    }
+    return {"name": str(function.get("name", "")), "description": str(function.get("description", "")), "input_schema": function.get("parameters", {"type": "object", "properties": {}})}
 
 
 def _to_anthropic_messages(messages: list[Message]) -> list[Message]:

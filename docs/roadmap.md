@@ -1928,6 +1928,17 @@ Status: implemented.
 - Apply a 160-character formatter ceiling and reduce source to at most 13,000 non-empty Python
   lines while preserving separate propose, test, apply, and undo operations.
 
+## v0.1.87: One Selectable Agent Fact
+
+Status: implemented.
+
+- Normalize each child Agent's name, purpose, features, weight, and model choices once inside the
+  task Skill; single-task and group selection consume the same immutable fact.
+- Keep weighted price and reliability ranking, model diversity, rotation, circuit breakers,
+  retries, producer sleep and triggers, nested queues, and adaptive records executable.
+- Remove duplicate queue validation, apply a 220-character formatter ceiling, and reduce source
+  to at most 11,900 non-empty Python lines without moving task scheduling into Core.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

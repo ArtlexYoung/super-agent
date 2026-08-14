@@ -9,20 +9,7 @@ from typing import TYPE_CHECKING
 
 from core.checks import ActionEffect, ActionRequest, ActionRunner, ActionRules
 from core.config import CommonConfig
-from core.models import (
-    LOCAL_USER_ID,
-    AgentRunOptions,
-    Conversation,
-    RunEvent,
-    RunResult,
-    RuntimeEventSubscriber,
-    RuntimeEventSubscribers,
-    SubagentRecordOptions,
-    RunIdentity,
-    Task,
-    TaskTrace,
-    resolve_agent_run_options,
-)
+from core.models import LOCAL_USER_ID, AgentRunOptions, Conversation, RunEvent, RunResult, RuntimeEventSubscriber, RuntimeEventSubscribers, SubagentRecordOptions, RunIdentity, Task, TaskTrace, resolve_agent_run_options
 from core.provider import ChatProvider, Message, ProviderPool, UserSecretLookup, UserSecretResolver
 from core.runtime import Run, Runtime
 from core.team import AgentTeam, SubAgent
@@ -135,19 +122,9 @@ class Agent:
         return self._team.subagents
 
     def add_subagent(
-        self,
-        agent: Agent,
-        *,
-        name: str | None = None,
-        description: str = "",
-        created_by_agent: bool = False,
-        purpose: str = "auto",
-        required_features: tuple[str, ...] = ("text",),
-        weight: float = 1.0,
+        self, agent: Agent, *, name: str | None = None, description: str = "", created_by_agent: bool = False, purpose: str = "auto", required_features: tuple[str, ...] = ("text",), weight: float = 1.0
     ) -> str:
-        return self._team.add_subagent(
-            agent, name=name, description=description, created_by_agent=created_by_agent, purpose=purpose, required_features=required_features, weight=weight
-        )
+        return self._team.add_subagent(agent, name=name, description=description, created_by_agent=created_by_agent, purpose=purpose, required_features=required_features, weight=weight)
 
     def add_skill_path(self, path: str | Path) -> None:
         selected = Path(path).expanduser().absolute()
@@ -173,18 +150,8 @@ class Agent:
 
         return UserAgent(self, user_id)
 
-    def run(
-        self,
-        prompt: str,
-        *,
-        messages: list[Message] | None = None,
-        conversation_id: str | None = None,
-        skill: str | None = None,
-        run_options: AgentRunOptions | None = None,
-    ) -> RunResult:
-        return self._run_for_user(
-            prompt, LOCAL_USER_ID, messages=messages, conversation_id=conversation_id, run_options=resolve_agent_run_options(run_options, skill)
-        )
+    def run(self, prompt: str, *, messages: list[Message] | None = None, conversation_id: str | None = None, skill: str | None = None, run_options: AgentRunOptions | None = None) -> RunResult:
+        return self._run_for_user(prompt, LOCAL_USER_ID, messages=messages, conversation_id=conversation_id, run_options=resolve_agent_run_options(run_options, skill))
 
     def _run_for_user(
         self,
@@ -215,11 +182,7 @@ class Agent:
             required_features=options.required_features,
             subagents=self._team.create_callbacks(),
         )
-        result = self.runtime.run_task(
-            request,
-            RunIdentity.create(user_id, self.config.agent.name, run_id=options.run_id, conversation_id=conversation_id),
-            event_listener=options.event_listener,
-        )
+        result = self.runtime.run_task(request, RunIdentity.create(user_id, self.config.agent.name, run_id=options.run_id, conversation_id=conversation_id), event_listener=options.event_listener)
         if pending_turn is not None:
             complete_conversation_turn(pending_turn, result)
         return result
@@ -230,9 +193,7 @@ class Agent:
             return prepared_messages, None
         if messages:
             raise ValueError("conversation_id cannot be combined with explicit messages")
-        prepared_messages, pending_turn = prepare_conversation_turn(
-            self._create_event_store(user_id, feature="conversation history"), self._action_rules(), conversation_id, prompt
-        )
+        prepared_messages, pending_turn = prepare_conversation_turn(self._create_event_store(user_id, feature="conversation history"), self._action_rules(), conversation_id, prompt)
         if pending_turn.conversation is not None and options.learn_from_conversation:
             self._record_conversation_feedback(pending_turn.conversation, prompt, user_id)
         return prepared_messages, pending_turn
@@ -256,14 +217,7 @@ class Agent:
             self._record_task_feedback(user_id, run_id, score=score, reason=reason, source="implicit")
 
     def _run_as_subagent(
-        self,
-        prompt: str,
-        parent_run: Run,
-        *,
-        purpose: str = "auto",
-        required_features: tuple[str, ...] = ("text",),
-        record_options: SubagentRecordOptions,
-        shared_context: dict[str, object] | None = None,
+        self, prompt: str, parent_run: Run, *, purpose: str = "auto", required_features: tuple[str, ...] = ("text",), record_options: SubagentRecordOptions, shared_context: dict[str, object] | None = None
     ) -> RunResult:
         request = Task(
             prompt=prompt,
@@ -277,12 +231,7 @@ class Agent:
             subagent_record_options=record_options,
             subagents=self._team.create_callbacks(),
         )
-        return self.runtime.run_task(
-            request,
-            RunIdentity.create(
-                parent_run.identity.user_id, self.config.agent.name, conversation_id=parent_run.identity.conversation_id, parent_run_id=parent_run.run_id
-            ),
-        )
+        return self.runtime.run_task(request, RunIdentity.create(parent_run.identity.user_id, self.config.agent.name, conversation_id=parent_run.identity.conversation_id, parent_run_id=parent_run.run_id))
 
     def _create_event_store(self, user_id: str = LOCAL_USER_ID, *, feature: str | None = None) -> EventStore:
         self._ensure_initialized()
@@ -325,13 +274,7 @@ class Agent:
             raise TypeError("task feedback reason must be a string")
         store = self._create_event_store(user_id)
         snapshot = store.read_run(run_id)
-        identity = RunIdentity(
-            user_id=snapshot.user_id,
-            agent_name=snapshot.agent_name,
-            run_id=snapshot.run_id,
-            conversation_id=snapshot.conversation_id,
-            parent_run_id=snapshot.parent_run_id,
-        )
+        identity = RunIdentity(user_id=snapshot.user_id, agent_name=snapshot.agent_name, run_id=snapshot.run_id, conversation_id=snapshot.conversation_id, parent_run_id=snapshot.parent_run_id)
         return store.append_run_event(identity, "task.feedback.recorded", {"score": clean_score, "reason": reason.strip(), "source": source})
 
     def _user_environment(self, user_id: str) -> dict[str, str]:
@@ -349,9 +292,7 @@ class Agent:
                 self.config = config
                 return
             runtime = self._build_runtime(config)
-            skills = create_skills(
-                config, handlers=self._skill_handlers, store=self._create_bootstrap_store(self._storage, config=config), include_freshness=False
-            )
+            skills = create_skills(config, handlers=self._skill_handlers, store=self._create_bootstrap_store(self._storage, config=config), include_freshness=False)
             profiles = self._read_model_profiles(skills, LOCAL_USER_ID)
             profile = select_default_model_profile(profiles) if profiles else None
             self.config = config

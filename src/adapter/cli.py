@@ -117,9 +117,7 @@ def _build_terminal_parser() -> argparse.ArgumentParser:
     parser.add_argument("--conversation-id")
     parser.add_argument("--skill", help="explicit task Skill name or task:name key")
     parser.add_argument("--save", action=argparse.BooleanOptionalAction, default=None, help="save run events or chat messages using configured storage")
-    parser.add_argument(
-        "--show-summary", action=argparse.BooleanOptionalAction, default=None, help="show model, Skill, workflow, and run details after text output"
-    )
+    parser.add_argument("--show-summary", action=argparse.BooleanOptionalAction, default=None, help="show model, Skill, workflow, and run details after text output")
     return parser
 
 
@@ -221,9 +219,7 @@ def _is_terminal_request(arguments: list[str]) -> bool:
     return arguments[0] not in CLI_COMMANDS | {"-h", "--help", "--version"}
 
 
-def _run_prompt_command(
-    common_config_path: Path | None, request: CliRequest, output: str, *, save: bool, show_summary: bool, code_config_path: Path | None = None
-) -> int:
+def _run_prompt_command(common_config_path: Path | None, request: CliRequest, output: str, *, save: bool, show_summary: bool, code_config_path: Path | None = None) -> int:
     use_storage = save or request.conversation_id is not None
     agent = load_agent(common_config_path, use_storage=use_storage)
     attach_code_config_to_agent(agent, code_config_path)
@@ -239,9 +235,7 @@ def _run_prompt_command(
     return 0
 
 
-def _run_chat_command(
-    common_config_path: Path | None, user_id: str, conversation_id: str | None, skill: str | None, *, save: bool, code_config_path: Path | None = None
-) -> int:
+def _run_chat_command(common_config_path: Path | None, user_id: str, conversation_id: str | None, skill: str | None, *, save: bool, code_config_path: Path | None = None) -> int:
     use_storage = save or conversation_id is not None
     agent = load_agent(common_config_path, use_storage=use_storage)
     attach_code_config_to_agent(agent, code_config_path)
@@ -269,11 +263,7 @@ def _run_chat_command(
             if handled:
                 return 0
             continue
-        result = (
-            user.run(prompt, conversation_id=conversation.conversation_id, skill=skill)
-            if conversation is not None
-            else user.run(prompt, messages=messages, skill=skill)
-        )
+        result = user.run(prompt, conversation_id=conversation.conversation_id, skill=skill) if conversation is not None else user.run(prompt, messages=messages, skill=skill)
         if conversation is None:
             messages.extend([{"role": "user", "content": prompt}, {"role": "assistant", "content": result.text}])
         print(f"Agent: {result.text}")

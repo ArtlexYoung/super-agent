@@ -130,11 +130,7 @@ _CONTENT_FIELDS = {
     "learning.failed": ("message",),
     "review.failed": ("message",),
 }
-_EVENT_RULES = {
-    name: AuditEventRule(retention, _CONTENT_FIELDS.get(name, ()))
-    for retention, names in ((DETAILED, _DETAILED_EVENTS), (CRITICAL, _CRITICAL_EVENTS))
-    for name in names
-}
+_EVENT_RULES = {name: AuditEventRule(retention, _CONTENT_FIELDS.get(name, ())) for retention, names in ((DETAILED, _DETAILED_EVENTS), (CRITICAL, _CRITICAL_EVENTS)) for name in names}
 
 
 @dataclass(frozen=True)
@@ -184,12 +180,7 @@ def compact_subagent_result(value: dict[str, object], options: "SubagentRecordOp
         if "text" in compacted:
             text = str(compacted["text"])
             text_digest = _content_digest(text)
-            compacted.update(
-                text=text[: options.summary_chars],
-                text_sha256=text_digest["sha256"],
-                text_chars=text_digest["characters"],
-                text_truncated=len(text) > options.summary_chars,
-            )
+            compacted.update(text=text[: options.summary_chars], text_sha256=text_digest["sha256"], text_chars=text_digest["characters"], text_truncated=len(text) > options.summary_chars)
         result_digest = _content_digest(value)
         compacted.update(result_sha256=result_digest["sha256"], result_chars=result_digest["characters"], record_mode=options.mode)
     return compacted
@@ -254,13 +245,7 @@ def _record_prune_events(backend: StorageBackend, user_id: str, candidates: list
             stream_id="retention",
             event_type="audit.pruned",
             created_at=format_utc(now),
-            data={
-                "schema_version": 1,
-                "detailed_days": policy.detailed_days,
-                "critical_days": policy.critical_days,
-                "detailed_events_deleted": counts[DETAILED],
-                "critical_events_deleted": counts[CRITICAL],
-            },
+            data={"schema_version": 1, "detailed_days": policy.detailed_days, "critical_days": policy.critical_days, "detailed_events_deleted": counts[DETAILED], "critical_events_deleted": counts[CRITICAL]},
         )
     return len(by_agent)
 

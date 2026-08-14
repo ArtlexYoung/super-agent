@@ -115,13 +115,7 @@ def run_skill_changes_command(args: argparse.Namespace) -> int:
 
 
 def run_skill_packages_command(args: argparse.Namespace) -> int:
-    handlers = {
-        "lock": lambda: _write_skill_lock(args),
-        "pack": lambda: _pack_skill(args),
-        "install": lambda: _install_skill(args),
-        "update": lambda: _update_skill(args),
-        "remove": lambda: _remove_skill(args),
-    }
+    handlers = {"lock": lambda: _write_skill_lock(args), "pack": lambda: _pack_skill(args), "install": lambda: _install_skill(args), "update": lambda: _update_skill(args), "remove": lambda: _remove_skill(args)}
     return run_selected_cli_command(args.skill_package_command, handlers, "skills packages command is required")
 
 

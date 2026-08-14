@@ -92,11 +92,7 @@ class ProgressiveDisclosureCore:
             raise ValueError(f"invalid skill sources: {messages}")
         cache_root = None if self.recorder is None else self.recorder.cache_root
         entries = [_build_index_entry(source, cache_root, self.freshness_stats) for source in scan.sources]
-        self._index = SkillIndex(
-            entries,
-            index_path=None if cache_root is None else cache_root / "index.json",
-            history_path=None if self.recorder is None else self.recorder.history_path,
-        )
+        self._index = SkillIndex(entries, index_path=None if cache_root is None else cache_root / "index.json", history_path=None if self.recorder is None else self.recorder.history_path)
         self._sources_by_key = {source.reference.key: source for source in scan.sources}
         self._disabled_references = scan.disabled_references
         if self.recorder is not None:
@@ -114,10 +110,7 @@ class ProgressiveDisclosureCore:
         if self.record_event is not None:
             self.record_event(
                 "skills.selected",
-                {
-                    "selected_keys": [reference.key for reference in selected],
-                    "decisions": [{"skill_key": decision.reference.key, "selected": decision.selected, "reason": decision.reason} for decision in decisions],
-                },
+                {"selected_keys": [reference.key for reference in selected], "decisions": [{"skill_key": decision.reference.key, "selected": decision.selected, "reason": decision.reason} for decision in decisions]},
             )
         return selected
 
@@ -131,21 +124,14 @@ class ProgressiveDisclosureCore:
         selected_keys = {entry.reference.key for entry in resolved}
         configured_names = {name.strip().lower() for name in selected_names or []}
         return [
-            SkillSelectionDecision(
-                reference=entry.reference,
-                selected=entry.reference.key in selected_keys,
-                reason=_explain_selection(entry, configured_names, selected_keys, handled_types),
-            )
-            for entry in index.entries
+            SkillSelectionDecision(reference=entry.reference, selected=entry.reference.key in selected_keys, reason=_explain_selection(entry, configured_names, selected_keys, handled_types)) for entry in index.entries
         ]
 
     def open_skill(self, name: str, expected_type: str | None = None) -> "SkillDisclosure":
         entry = self.require_prepared_skill_index().require_skill(name, expected_type)
         return SkillDisclosure(self._sources_by_key[entry.reference.key], entry, self)
 
-    def disclose_content(
-        self, kind: str, name: str, content: str, *, stage: str = "content", cache_path: Path | None = None, inline_chars: int = DEFAULT_INLINE_CHARS
-    ) -> DisclosurePage:
+    def disclose_content(self, kind: str, name: str, content: str, *, stage: str = "content", cache_path: Path | None = None, inline_chars: int = DEFAULT_INLINE_CHARS) -> DisclosurePage:
         """Register one source and return its first bounded page."""
         clean_kind = _clean_content_label(kind, "kind")
         clean_name = _clean_content_label(name, "name")
@@ -311,9 +297,7 @@ def _read_skill_directory_files(skill_root: Path) -> list[DisclosedSkillFile]:
             content = data.decode("utf-8")
         except UnicodeDecodeError:
             content = None
-        files.append(
-            DisclosedSkillFile(relative_path=path.relative_to(skill_root).as_posix(), size=len(data), sha256=hashlib.sha256(data).hexdigest(), content=content)
-        )
+        files.append(DisclosedSkillFile(relative_path=path.relative_to(skill_root).as_posix(), size=len(data), sha256=hashlib.sha256(data).hexdigest(), content=content))
     return files
 
 

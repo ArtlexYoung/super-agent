@@ -45,11 +45,7 @@ class ModelSkillManager:
 
     def save_model_skill(self, request: ModelSkillInput) -> ModelProfile:
         return cast(
-            ModelProfile,
-            self.actions.execute_action(
-                ActionRequest.create("user:model-skill", f"skill:owned:model:{request.name}", (ActionEffect.CREATE, ActionEffect.UPDATE)),
-                lambda: self._save_model_skill(request),
-            ),
+            ModelProfile, self.actions.execute_action(ActionRequest.create("user:model-skill", f"skill:owned:model:{request.name}", (ActionEffect.CREATE, ActionEffect.UPDATE)), lambda: self._save_model_skill(request))
         )
 
     def _save_model_skill(self, request: ModelSkillInput) -> ModelProfile:
@@ -82,9 +78,7 @@ class ModelSkillManager:
         return self._read_profile(clean_request.name)
 
     def remove_model_skill(self, name: str) -> None:
-        self.actions.execute_action(
-            ActionRequest.create("user:model-skill", f"skill:owned:model:{name}", (ActionEffect.DELETE,)), lambda: self._remove_model_skill(name)
-        )
+        self.actions.execute_action(ActionRequest.create("user:model-skill", f"skill:owned:model:{name}", (ActionEffect.DELETE,)), lambda: self._remove_model_skill(name))
 
     def _remove_model_skill(self, name: str) -> None:
         clean_name = _clean_skill_name(name)
@@ -103,9 +97,7 @@ class ModelSkillManager:
             replacement = sorted(remaining, key=lambda item: item.reference.key)[0]
             replacement_opened = disclosure.open_skill(replacement.reference.name, "model")
             replacement_document = _read_model_skill_document(replacement_opened)
-            updates.append(
-                (self.user_skill_root / "model" / replacement.reference.name, replacement_document.manifest.path, _with_default(replacement_document, True))
-            )
+            updates.append((self.user_skill_root / "model" / replacement.reference.name, replacement_document.manifest.path, _with_default(replacement_document, True)))
         _apply_model_skill_updates(updates, removed_path=removed_path)
 
     def _default_removal_updates(self, disclosure: ProgressiveDisclosureCore, excluded_names: set[str]) -> list[tuple[Path, Path | None, _ModelSkillDocument]]:
@@ -150,13 +142,7 @@ def model_skill_input_from_dict(value: object) -> ModelSkillInput:
 def validate_model_skill_input(request: ModelSkillInput) -> ModelSkillInput:
     name = _clean_skill_name(request.name)
     previous_name = "" if not request.previous_name else _clean_skill_name(request.previous_name)
-    return replace(
-        request,
-        name=name,
-        previous_name=previous_name,
-        description=read_text(request.description, "model Skill description"),
-        definition=ModelDefinition.from_dict(request.definition.to_configuration()),
-    )
+    return replace(request, name=name, previous_name=previous_name, description=read_text(request.description, "model Skill description"), definition=ModelDefinition.from_dict(request.definition.to_configuration()))
 
 
 def _create_model_skill_document(request: ModelSkillInput, current: _ModelSkillDocument | None, version: str) -> _ModelSkillDocument:
@@ -205,11 +191,7 @@ def _apply_model_skill_updates(updates: list[tuple[Path, Path | None, _ModelSkil
             stage = candidates.enter_context(create_skill_candidate(target, source))
             stage.joinpath("skill.toml").write_text(_model_skill_toml(document), encoding="utf-8")
             validate_skill_directory(stage, expected_type="model", expected_name=document.manifest.name)
-            changes.append(
-                SkillDirectoryUpdate(
-                    stage, target, calculate_skill_directory_sha256(stage), calculate_skill_directory_sha256(target) if target.is_dir() else ""
-                )
-            )
+            changes.append(SkillDirectoryUpdate(stage, target, calculate_skill_directory_sha256(stage), calculate_skill_directory_sha256(target) if target.is_dir() else ""))
             affected.add(target)
         if removed_path is not None and removed_path not in affected:
             changes.append(SkillDirectoryUpdate(None, removed_path, "", calculate_skill_directory_sha256(removed_path)))

@@ -58,13 +58,7 @@ def _create_task_policy(disclosure: SkillDisclosure, expected_type: str) -> Task
     instruction = disclosure.read_instructions().content.strip()
     if not instruction:
         raise ValueError(f"{expected_type} Skill instructions cannot be empty")
-    return TaskPolicy(
-        manifest.name,
-        mode,
-        instruction,
-        read_int(data["max_steps"], f"{expected_type} max_steps", minimum=1),
-        _read_policy_tools(data.get("tools", {}), expected_type),
-    )
+    return TaskPolicy(manifest.name, mode, instruction, read_int(data["max_steps"], f"{expected_type} max_steps", minimum=1), _read_policy_tools(data.get("tools", {}), expected_type))
 
 
 def _read_policy_tools(value: object, skill_type: str) -> dict[str, dict[str, object]]:
@@ -122,11 +116,7 @@ class SkillTool:
     def to_provider_definition(self) -> ToolDefinition:
         return {
             "type": "function",
-            "function": {
-                "name": self.name,
-                "description": self.description,
-                "parameters": {"type": "object", "properties": self.properties, "required": list(self.required), "additionalProperties": False},
-            },
+            "function": {"name": self.name, "description": self.description, "parameters": {"type": "object", "properties": self.properties, "required": list(self.required), "additionalProperties": False}},
         }
 
 
@@ -375,12 +365,7 @@ def create_default_skill_handlers(mcp_servers: McpServers | None = None) -> Skil
 
 
 def create_progressive_skill_disclosure(
-    config: CommonConfig,
-    *,
-    store: EventStore | None = None,
-    identity: RunIdentity | None = None,
-    record_disclosures: bool | None = None,
-    include_freshness: bool = True,
+    config: CommonConfig, *, store: EventStore | None = None, identity: RunIdentity | None = None, record_disclosures: bool | None = None, include_freshness: bool = True
 ) -> ProgressiveDisclosureCore:
     freshness_stats = {}
     if store is not None and include_freshness and "freshness" not in config.agent.disabled_skills:
@@ -427,18 +412,10 @@ def load_configured_freshness_rules_if_enabled(config: CommonConfig, *, store: E
 
 
 def create_skills(
-    config: CommonConfig,
-    *,
-    handlers: SkillHandlers | None = None,
-    store: EventStore | None = None,
-    identity: RunIdentity | None = None,
-    record_disclosures: bool | None = None,
-    include_freshness: bool = True,
+    config: CommonConfig, *, handlers: SkillHandlers | None = None, store: EventStore | None = None, identity: RunIdentity | None = None, record_disclosures: bool | None = None, include_freshness: bool = True
 ) -> Skills:
     """Build one complete Skill snapshot through the central entry point."""
-    disclosure = create_progressive_skill_disclosure(
-        config, store=store, identity=identity, record_disclosures=record_disclosures, include_freshness=include_freshness
-    )
+    disclosure = create_progressive_skill_disclosure(config, store=store, identity=identity, record_disclosures=record_disclosures, include_freshness=include_freshness)
     return Skills(disclosure, handlers)
 
 

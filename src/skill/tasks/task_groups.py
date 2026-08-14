@@ -12,15 +12,7 @@ from typing import TYPE_CHECKING, Callable, Mapping
 from core.checks import ActionEffect
 from core.models import read_bool, read_int, read_number, read_required_tool_string, read_text_list, reject_unknown_fields
 from core.provider import estimate_text_tokens
-from skill.tasks.task_selection import (
-    AgentUnavailableError,
-    QueuedTask,
-    SelectedAgent,
-    TERMINAL_TASK_STATUSES,
-    estimated_token_schema,
-    read_optional_estimated_tokens,
-    read_required_task_strings,
-)
+from skill.tasks.task_selection import AgentUnavailableError, QueuedTask, SelectedAgent, TERMINAL_TASK_STATUSES, estimated_token_schema, read_optional_estimated_tokens, read_required_task_strings
 from skill.handlers.runtime import SkillAction, SkillTool
 
 if TYPE_CHECKING:
@@ -76,14 +68,7 @@ class AgentGroups:
                 ("group_id", "max_wait_seconds"),
                 "agent-group",
             ),
-            SkillTool(
-                "list_agent_groups",
-                "List decision groups with bounded member evidence and no shared prompts.",
-                {},
-                self._list_groups,
-                SkillAction((ActionEffect.READ,), "task:group"),
-                result_kind="agent-group",
-            ),
+            SkillTool("list_agent_groups", "List decision groups with bounded member evidence and no shared prompts.", {}, self._list_groups, SkillAction((ActionEffect.READ,), "task:group"), result_kind="agent-group"),
             SkillTool(
                 "cancel_agent_group",
                 "Cancel only group members that have not started running.",
@@ -102,9 +87,7 @@ class AgentGroups:
             group_id = self._next_group_id_locked()
             self._validate_group_capacity_locked(request.requested_members)
             member_tasks = self._build_group_tasks(group_id, request, request.roles, uses_shared_context=self.create_shared_context is not None)
-            choices = self.queue._agent_pool.choose_group(
-                member_tasks, self.queue._active_task_counts_locked(), require_different_models=settings.require_different_models, commit=False
-            )
+            choices = self.queue._agent_pool.choose_group(member_tasks, self.queue._active_task_counts_locked(), require_different_models=settings.require_different_models, commit=False)
             selected_count = self._select_group_size_locked(group_id, request, choices)
             if selected_count == 0:
                 return self._budget_exceeded_result(group_id, request, choices)
@@ -234,9 +217,7 @@ class AgentGroups:
             raise ValueError("group shared-context writer changed the task packet")
         return dict(context)
 
-    def _create_group_record(
-        self, group_id: str, request: AgentGroupRequest, tasks: list[QueuedTask], choices: list[SelectedAgent], context: dict[str, object]
-    ) -> AgentGroup:
+    def _create_group_record(self, group_id: str, request: AgentGroupRequest, tasks: list[QueuedTask], choices: list[SelectedAgent], context: dict[str, object]) -> AgentGroup:
         settings = self.settings
         reference = context.get("reference")
         return AgentGroup(
@@ -311,11 +292,7 @@ class AgentGroupSettings:
         reject_unknown_fields(value, set(cls.__dataclass_fields__), "agent_groups settings")
         settings = cls(**dict(value))
         read_int(settings.max_groups, "agent_groups max_groups", minimum=1)
-        for name, minimum, maximum in (
-            ("max_members", 2, MAX_GROUP_MEMBERS),
-            ("default_members", 2, settings.max_members),
-            ("quorum", 1, settings.default_members),
-        ):
+        for name, minimum, maximum in (("max_members", 2, MAX_GROUP_MEMBERS), ("default_members", 2, settings.max_members), ("quorum", 1, settings.default_members)):
             read_int(getattr(settings, name), f"agent_groups {name}", minimum=minimum, maximum=maximum)
         read_number(settings.max_estimated_cost, "agent_groups max_estimated_cost", minimum=0)
         for name in ("allow_reduced_group", "require_different_models"):
@@ -364,17 +341,9 @@ class AgentGroup:
 def read_group_request(arguments: Mapping[str, object], settings: AgentGroupSettings) -> AgentGroupRequest:
     data = dict(arguments)
     requested, quorum, roles = _read_group_members(arguments, settings)
-    estimates = tuple(
-        read_optional_estimated_tokens(data, name) for name in ("estimated_output_tokens", "estimated_cache_creation_tokens", "estimated_cache_read_tokens")
-    )
+    estimates = tuple(read_optional_estimated_tokens(data, name) for name in ("estimated_output_tokens", "estimated_cache_creation_tokens", "estimated_cache_read_tokens"))
     return AgentGroupRequest(
-        read_required_tool_string(data, "prompt"),
-        read_required_tool_string(data, "purpose").strip().lower(),
-        read_required_task_strings(arguments, "required_features"),
-        requested,
-        quorum,
-        roles,
-        estimates,
+        read_required_tool_string(data, "prompt"), read_required_tool_string(data, "purpose").strip().lower(), read_required_task_strings(arguments, "required_features"), requested, quorum, roles, estimates
     )
 
 

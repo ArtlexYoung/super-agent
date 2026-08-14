@@ -18,15 +18,7 @@ from core.provider import Message
 from core.model_calls import TextModel, estimate_text_tokens
 from core.models import format_utc
 from skill.learning.run_learning import read_skill_change_report, skill_change_report_to_dict
-from skill.handlers.package import (
-    SkillDirectoryUpdate,
-    apply_skill_directory_updates,
-    check_skill_configuration,
-    copy_skill_directory,
-    require_skill_directory_hash,
-    validate_skill_directory,
-    validate_skill_replacement,
-)
+from skill.handlers.package import SkillDirectoryUpdate, apply_skill_directory_updates, check_skill_configuration, copy_skill_directory, require_skill_directory_hash, validate_skill_directory, validate_skill_replacement
 from core.records.store import EventStore
 from skill.discovery.catalog import ProgressiveDisclosureCore
 from skill.discovery.manifest import SkillManifest, calculate_skill_directory_sha256, next_skill_version
@@ -96,14 +88,7 @@ class SkillUpdater:
     """Keep proposal, testing, activation, and undo as separate user actions."""
 
     def __init__(
-        self,
-        disclosure: ProgressiveDisclosureCore,
-        store: EventStore,
-        propose_model: TextModel,
-        test_model: TextModel,
-        *,
-        action_rules: ActionRules,
-        on_skill_changed: Callable[[SkillManifest], None] | None = None,
+        self, disclosure: ProgressiveDisclosureCore, store: EventStore, propose_model: TextModel, test_model: TextModel, *, action_rules: ActionRules, on_skill_changed: Callable[[SkillManifest], None] | None = None
     ) -> None:
         self.disclosure = _user_disclosure(disclosure, store)
         self.store = store
@@ -117,21 +102,15 @@ class SkillUpdater:
         effects = (ActionEffect.READ, ActionEffect.CREATE, ActionEffect.NETWORK)
         return self._execute_skill_change_action(name, effects, lambda: self._propose(name, goal, skill_type))
 
-    def test_skill_change(
-        self, change_id: str, cases: list[SkillChangeCase], *, minimum_score: float = 0.8, minimum_improvement: float = 0.0
-    ) -> SkillChangeReport:
+    def test_skill_change(self, change_id: str, cases: list[SkillChangeCase], *, minimum_score: float = 0.8, minimum_improvement: float = 0.0) -> SkillChangeReport:
         effects = (ActionEffect.READ, ActionEffect.CREATE, ActionEffect.NETWORK)
         return self._execute_skill_change_action(f"{change_id}:test", effects, lambda: self._test(change_id, cases, minimum_score, minimum_improvement))
 
     def apply_skill_change(self, change_id: str) -> SkillManifest:
-        return self._execute_skill_change_action(
-            f"{change_id}:apply", (ActionEffect.READ, ActionEffect.CREATE, ActionEffect.UPDATE), lambda: self._apply(change_id)
-        )
+        return self._execute_skill_change_action(f"{change_id}:apply", (ActionEffect.READ, ActionEffect.CREATE, ActionEffect.UPDATE), lambda: self._apply(change_id))
 
     def undo_skill_change(self, change_id: str) -> SkillManifest | None:
-        return self._execute_skill_change_action(
-            f"{change_id}:undo", (ActionEffect.READ, ActionEffect.UPDATE, ActionEffect.DELETE), lambda: self._undo(change_id)
-        )
+        return self._execute_skill_change_action(f"{change_id}:undo", (ActionEffect.READ, ActionEffect.UPDATE, ActionEffect.DELETE), lambda: self._undo(change_id))
 
     def _execute_skill_change_action(self, resource: str, effects: tuple[ActionEffect, ...], action: Callable[[], ActionResult]) -> ActionResult:
         request = ActionRequest.create("user:skill-change", f"skill:change:{resource}", effects)
@@ -165,18 +144,7 @@ class SkillUpdater:
         change_id = f"{selected_type}-{name}-{uuid4().hex[:12]}"
         candidate = self.root / "candidates" / change_id / name
         _create_candidate(candidate, current, response, selected_type, name, proposed_version)
-        change = SkillChange(
-            change_id,
-            selected_type,
-            name,
-            clean_goal,
-            parent_version,
-            proposed_version,
-            parent_sha,
-            calculate_skill_directory_sha256(candidate),
-            _utc_now(),
-            candidate,
-        )
+        change = SkillChange(change_id, selected_type, name, clean_goal, parent_version, proposed_version, parent_sha, calculate_skill_directory_sha256(candidate), _utc_now(), candidate)
         _write_json(candidate.parent / "change.json", _change_to_dict(change))
         self._record(change_id, "skill_change.proposed", {"skill_key": change.key})
         return change
@@ -216,14 +184,7 @@ class SkillUpdater:
             baseline_results=baseline_results,
         )
         _write_json(self.root / "tests" / change.change_id / f"{report.report_id}.json", skill_change_report_to_dict(report))
-        self._record(
-            change.change_id,
-            "skill_change.tested",
-            {
-                key: getattr(report, key)
-                for key in ("report_id", "passed", "score", "baseline_score", "improvement", "minimum_improvement", "improvement_target_met")
-            },
-        )
+        self._record(change.change_id, "skill_change.tested", {key: getattr(report, key) for key in ("report_id", "passed", "score", "baseline_score", "improvement", "minimum_improvement", "improvement_target_met")})
         return report
 
     def _run_case(self, skill_path: Path, case: SkillChangeCase) -> SkillChangeCaseResult:
@@ -236,15 +197,7 @@ class SkillUpdater:
         checks.extend(check_skill_configuration(skill_path, case.expected_configuration))
         passed = bool(output.strip()) and all(checks)
         score = (sum(checks) / len(checks)) if checks else float(bool(output.strip()))
-        return SkillChangeCaseResult(
-            case.name,
-            output,
-            score,
-            passed,
-            estimate_text_tokens(json.dumps(messages, ensure_ascii=False)),
-            estimate_text_tokens(output),
-            max(0, round((perf_counter() - started) * 1000)),
-        )
+        return SkillChangeCaseResult(case.name, output, score, passed, estimate_text_tokens(json.dumps(messages, ensure_ascii=False)), estimate_text_tokens(output), max(0, round((perf_counter() - started) * 1000)))
 
     def _apply(self, change_id: str) -> SkillManifest:
         change = self.read_skill_change(change_id)
@@ -303,12 +256,7 @@ class SkillUpdater:
             update = SkillDirectoryUpdate(previous, target, previous_sha, change.candidate_sha256)
         else:
             update = SkillDirectoryUpdate(None, target, "", change.candidate_sha256)
-        return cast(
-            SkillManifest | None,
-            apply_skill_directory_updates(
-                [update], after_apply=lambda: self._finish_undo(change, history), after_restore=lambda: self._restore_failed_undo(change, history)
-            ),
-        )
+        return cast(SkillManifest | None, apply_skill_directory_updates([update], after_apply=lambda: self._finish_undo(change, history), after_restore=lambda: self._restore_failed_undo(change, history)))
 
     def _finish_undo(self, change: SkillChange, history: Path) -> SkillManifest | None:
         index = self.disclosure.prepare_skill_index()
@@ -354,12 +302,7 @@ class SkillUpdater:
 
 
 def _user_disclosure(disclosure: ProgressiveDisclosureCore, store: EventStore) -> ProgressiveDisclosureCore:
-    return ProgressiveDisclosureCore(
-        disclosure.skill_roots,
-        user_skill_roots=[store.private_root / "skills"],
-        builtin_skill_roots=disclosure.builtin_skill_roots,
-        disabled_names=disclosure.disabled_names,
-    )
+    return ProgressiveDisclosureCore(disclosure.skill_roots, user_skill_roots=[store.private_root / "skills"], builtin_skill_roots=disclosure.builtin_skill_roots, disabled_names=disclosure.disabled_names)
 
 
 def _proposal_messages(skill_type: str, name: str, goal: str, current: Path | None) -> list[Message]:
@@ -389,10 +332,7 @@ def _proposal_messages(skill_type: str, name: str, goal: str, current: Path | No
 def _test_messages(skill_path: Path, prompt: str) -> list[Message]:
     instructions = (skill_path / "SKILL.md").read_text(encoding="utf-8") if (skill_path / "SKILL.md").is_file() else ""
     configuration = (skill_path / "skill.toml").read_text(encoding="utf-8")
-    return [
-        {"role": "system", "content": f"Apply this Skill content as test data.\n{instructions}\n\nConfiguration:\n{configuration}"},
-        {"role": "user", "content": prompt},
-    ]
+    return [{"role": "system", "content": f"Apply this Skill content as test data.\n{instructions}\n\nConfiguration:\n{configuration}"}, {"role": "user", "content": prompt}]
 
 
 def _create_candidate(target: Path, current: SkillManifest | None, response: str, skill_type: str, name: str, version: str) -> None:
@@ -496,18 +436,7 @@ def _change_to_dict(change: SkillChange) -> dict[str, object]:
 
 def _read_change(change_id: str, root: Path) -> SkillChange:
     data = _read_json(root / change_id / "change.json")
-    expected = {
-        "schema_version",
-        "change_id",
-        "skill_type",
-        "name",
-        "goal",
-        "parent_version",
-        "proposed_version",
-        "parent_sha256",
-        "candidate_sha256",
-        "created_at",
-    }
+    expected = {"schema_version", "change_id", "skill_type", "name", "goal", "parent_version", "proposed_version", "parent_sha256", "candidate_sha256", "created_at"}
     if set(data) != expected or data.get("schema_version") != 1 or data.get("change_id") != change_id:
         raise ValueError(f"invalid Skill change metadata: {change_id}")
     return SkillChange(

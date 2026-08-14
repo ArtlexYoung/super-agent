@@ -10,16 +10,7 @@ from time import perf_counter
 from typing import TYPE_CHECKING, Callable
 from uuid import uuid4
 
-from core.models import (
-    RunEvent,
-    RunIdentity,
-    RunResult,
-    RuntimeEventSubscriber,
-    RuntimeEventSubscriberError,
-    RuntimeEventSubscribers,
-    SubagentRecordOptions,
-    Task,
-)
+from core.models import RunEvent, RunIdentity, RunResult, RuntimeEventSubscriber, RuntimeEventSubscriberError, RuntimeEventSubscribers, SubagentRecordOptions, Task
 from core.provider import ProviderPool, UserSecretResolver
 from core.model_calls import estimate_text_tokens
 from skill.handlers.runtime import create_skills
@@ -112,13 +103,7 @@ class Run:
 
             loaded = self.skills.handlers.handle(
                 SkillContext(
-                    self.skills.disclosure,
-                    reference,
-                    store=self.store,
-                    identity=self.identity,
-                    send_text_model_messages=send_text_model_messages,
-                    execute_action=self.execute_action,
-                    record_event=self.record_event,
+                    self.skills.disclosure, reference, store=self.store, identity=self.identity, send_text_model_messages=send_text_model_messages, execute_action=self.execute_action, record_event=self.record_event
                 )
             )
             loaded = replace(loaded, source=reference)
@@ -171,13 +156,7 @@ def create_checkpoint_data(run_id: str, label: str, facts: dict[str, object]) ->
         raise ValueError("checkpoint facts must be JSON-compatible") from error
     if len(encoded) > CHECKPOINT_STATE_BYTES:
         raise ValueError("checkpoint facts exceed 16384 bytes")
-    return {
-        "checkpoint_id": f"checkpoint-{uuid4().hex}",
-        "run_id": run_id,
-        "label": clean_label,
-        "state_sha256": hashlib.sha256(encoded).hexdigest(),
-        "state_keys": sorted(str(key) for key in facts),
-    }
+    return {"checkpoint_id": f"checkpoint-{uuid4().hex}", "run_id": run_id, "label": clean_label, "state_sha256": hashlib.sha256(encoded).hexdigest(), "state_keys": sorted(str(key) for key in facts)}
 
 
 def list_checkpoint_data(events: Iterable[RunEvent]) -> list[dict[str, object]]:
@@ -238,23 +217,9 @@ class Runtime:
         run = _create_run(self, request, identity, event_listener=event_listener)
         started_at = perf_counter()
         try:
-            run.record_event(
-                "task.started",
-                {
-                    "purpose": request.purpose,
-                    "required_features": list(request.required_features),
-                    "requested_skill": request.skill,
-                    "resumed_from_run_id": request.resumed_from_run_id,
-                },
-            )
+            run.record_event("task.started", {"purpose": request.purpose, "required_features": list(request.required_features), "requested_skill": request.skill, "resumed_from_run_id": request.resumed_from_run_id})
             if request.resumed_from_run_id is not None:
-                run.record_event(
-                    "run.resumed",
-                    {
-                        "source_run_id": request.resumed_from_run_id,
-                        "checkpoint_id": (None if request.resume_checkpoint is None else request.resume_checkpoint.get("checkpoint_id")),
-                    },
-                )
+                run.record_event("run.resumed", {"source_run_id": request.resumed_from_run_id, "checkpoint_id": (None if request.resume_checkpoint is None else request.resume_checkpoint.get("checkpoint_id"))})
             if run.task_runner is None:
                 raise RuntimeError("run task loop is unavailable")
             result = run.task_runner.run_task(run)
@@ -277,14 +242,7 @@ class Runtime:
             raise
         except Exception as error:
             try:
-                run.record_event(
-                    "run.failed",
-                    {
-                        "error_type": type(error).__name__,
-                        "message": str(error),
-                        "learning_evidence": _create_run_learning_evidence(run, request.prompt, "", started_at=started_at, error=error),
-                    },
-                )
+                run.record_event("run.failed", {"error_type": type(error).__name__, "message": str(error), "learning_evidence": _create_run_learning_evidence(run, request.prompt, "", started_at=started_at, error=error)})
             except Exception as recording_error:
                 error.add_note(f"Could not record run failure: {type(recording_error).__name__}: {recording_error}")
             raise
@@ -293,9 +251,7 @@ class Runtime:
 def _create_run(runtime: Runtime, request: Task, identity: RunIdentity, *, event_listener: Callable[[RunEvent], None] | None) -> Run:
     from core.records.events import RunEventLog
 
-    event_log = RunEventLog(
-        identity, backend=runtime.storage, event_listener=event_listener, subscribers=RuntimeEventSubscribers(runtime.event_subscribers.list_subscribers())
-    )
+    event_log = RunEventLog(identity, backend=runtime.storage, event_listener=event_listener, subscribers=RuntimeEventSubscribers(runtime.event_subscribers.list_subscribers()))
     store = _create_run_event_store(runtime, identity, event_log)
     start_data = {"prompt": request.prompt}
     if request.subagent_record_options is not None:
@@ -330,20 +286,11 @@ def _create_run_event_store(runtime: Runtime, identity: RunIdentity, event_log: 
         return None
     from core.records.store import EventStore
 
-    return EventStore(
-        runtime.storage,
-        runtime.config.storage.path,
-        identity.user_id,
-        identity.agent_name,
-        run_event_log=event_log,
-        disclosure_factory=runtime.disclosure_factory,
-    )
+    return EventStore(runtime.storage, runtime.config.storage.path, identity.user_id, identity.agent_name, run_event_log=event_log, disclosure_factory=runtime.disclosure_factory)
 
 
 def _create_skills(runtime: Runtime, store, identity: RunIdentity) -> Skills:
-    return create_skills(
-        runtime.config, handlers=runtime.skill_handlers, store=store, identity=identity if store is not None else None, include_freshness=False
-    )
+    return create_skills(runtime.config, handlers=runtime.skill_handlers, store=store, identity=identity if store is not None else None, include_freshness=False)
 
 
 def _read_model_profiles(runtime: Runtime, skills: Skills, user_id: str) -> list[ModelProfile]:

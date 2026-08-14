@@ -41,8 +41,7 @@ class McpSkillHandler:
         instructions = opened.disclose_instructions().content
         runtime_context = f"Registered MCP server: {registered.name}\nRuntime tools: {list_tool_name}, {run_tool_name}"
         return SkillUse(
-            model_context=Skill(manifest=opened.disclose_manifest(), instructions="\n\n".join(part for part in (instructions, runtime_context) if part)),
-            tools=_create_mcp_tools(registered, list_tool_name, run_tool_name),
+            model_context=Skill(manifest=opened.disclose_manifest(), instructions="\n\n".join(part for part in (instructions, runtime_context) if part)), tools=_create_mcp_tools(registered, list_tool_name, run_tool_name)
         )
 
     def list_code_registrations(self) -> list[dict[str, object]]:
@@ -143,11 +142,7 @@ def _create_task_plan_tools(context: SkillContext) -> tuple[SkillTool, ...]:
         SkillTool(
             "update_task_plan_step",
             "Update one planned step with an explicit status and optional evidence.",
-            {
-                "step": {"type": "integer", "minimum": 1},
-                "status": {"type": "string", "enum": ["pending", "in_progress", "completed", "blocked"]},
-                "evidence": {"type": "string"},
-            },
+            {"step": {"type": "integer", "minimum": 1}, "status": {"type": "string", "enum": ["pending", "in_progress", "completed", "blocked"]}, "evidence": {"type": "string"}},
             plan.update_step,
             action,
             required=("step", "status"),
@@ -293,13 +288,7 @@ def _forget_long_term_memory(memory: Memory, arguments: dict[str, object]) -> di
 def _create_mcp_tools(registered: RegisteredMcpServer, list_tool_name: str, run_tool_name: str) -> tuple[SkillTool, ...]:
     action = SkillAction(registered.effects, f"skill:registered:mcp:{registered.name}")
     return (
-        SkillTool(
-            list_tool_name,
-            f"List tools exposed by the {registered.name} MCP server.",
-            {},
-            lambda arguments: {"name": registered.name, "tools": registered.server.list_tools()},
-            action=action,
-        ),
+        SkillTool(list_tool_name, f"List tools exposed by the {registered.name} MCP server.", {}, lambda arguments: {"name": registered.name, "tools": registered.server.list_tools()}, action=action),
         SkillTool(
             run_tool_name,
             f"Call one tool from the {registered.name} MCP server.",

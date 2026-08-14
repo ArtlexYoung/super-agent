@@ -217,13 +217,7 @@ def _mysql_connection_arguments(connection_url: str) -> dict[str, object]:
     parsed = urlsplit(connection_url)
     remote_database_location(connection_url, "mysql", _MYSQL_SCHEMES)
     options = _mysql_url_options(parsed.query)
-    arguments: dict[str, object] = {
-        "host": parsed.hostname or "localhost",
-        "port": parsed.port or 3306,
-        "database": unquote(parsed.path.lstrip("/")),
-        "charset": options.pop("charset", "utf8mb4"),
-        "autocommit": False,
-    }
+    arguments: dict[str, object] = {"host": parsed.hostname or "localhost", "port": parsed.port or 3306, "database": unquote(parsed.path.lstrip("/")), "charset": options.pop("charset", "utf8mb4"), "autocommit": False}
     if parsed.username is not None:
         arguments["user"] = unquote(parsed.username)
     if parsed.password is not None:

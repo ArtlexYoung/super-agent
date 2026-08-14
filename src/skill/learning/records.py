@@ -58,42 +58,22 @@ EVALUATION_TOKEN_USAGE_FIELDS = set(EvaluationTokenUsage.__dataclass_fields__)
 def append_evaluation_records(store: EventStore, records: list[EvaluationRecord]) -> None:
     """Append validated evaluation records to their canonical event streams."""
     for record in records:
-        store.append_event(
-            "skill_evaluation",
-            record.record_id,
-            "evaluation.recorded",
-            data=evaluation_record_to_dict(record),
-            event_id=record.record_id,
-            created_at=record.created_at,
-        )
+        store.append_event("skill_evaluation", record.record_id, "evaluation.recorded", data=evaluation_record_to_dict(record), event_id=record.record_id, created_at=record.created_at)
 
 
-def read_evaluation_records(
-    store: EventStore, *, skill_key: str | None = None, source_type: str | None = None, events: list[StorageEvent] | None = None
-) -> list[EvaluationRecord]:
+def read_evaluation_records(store: EventStore, *, skill_key: str | None = None, source_type: str | None = None, events: list[StorageEvent] | None = None) -> list[EvaluationRecord]:
     """Project evaluation records from one scoped event store."""
     selected_events = store.read_events("skill_evaluation", snapshot=events)
     unknown = sorted({event.event_type for event in selected_events} - {"evaluation.recorded"})
     if unknown:
         raise ValueError("unknown evaluation event types: " + ", ".join(unknown))
     records = [evaluation_record_from_dict(event.data) for event in selected_events]
-    return [
-        record
-        for record in records
-        if (skill_key is None or record.revision.key == skill_key) and (source_type is None or record.source.source_type == source_type)
-    ]
+    return [record for record in records if (skill_key is None or record.revision.key == skill_key) and (source_type is None or record.source.source_type == source_type)]
 
 
-def create_evaluation_record(
-    revision: SkillRevision, source: EvaluationSource, result: EvaluationResult, *, created_at: datetime | None = None, record_id: str | None = None
-) -> EvaluationRecord:
+def create_evaluation_record(revision: SkillRevision, source: EvaluationSource, result: EvaluationResult, *, created_at: datetime | None = None, record_id: str | None = None) -> EvaluationRecord:
     record = EvaluationRecord(
-        schema_version=EVALUATION_RECORD_SCHEMA_VERSION,
-        record_id=record_id or f"evaluation-{uuid4().hex}",
-        created_at=format_utc(created_at or datetime.now(UTC)),
-        revision=revision,
-        source=source,
-        result=result,
+        schema_version=EVALUATION_RECORD_SCHEMA_VERSION, record_id=record_id or f"evaluation-{uuid4().hex}", created_at=format_utc(created_at or datetime.now(UTC)), revision=revision, source=source, result=result
     )
     evaluation_record_to_dict(record)
     return record
@@ -135,9 +115,7 @@ def evaluation_result_to_dict(result: EvaluationResult) -> dict[str, object]:
 def evaluation_result_from_dict(value: object) -> EvaluationResult:
     data = read_object(value, "evaluation result schema", EVALUATION_RESULT_FIELDS)
     tokens = read_object(data["token_usage"], "evaluation token usage schema", EVALUATION_TOKEN_USAGE_FIELDS)
-    return _validate_result(
-        EvaluationResult(data["success"], data["score"], EvaluationTokenUsage(**tokens), data["latency_ms"], data["error_type"], data["checks"])
-    )
+    return _validate_result(EvaluationResult(data["success"], data["score"], EvaluationTokenUsage(**tokens), data["latency_ms"], data["error_type"], data["checks"]))
 
 
 def _validate_evaluation_record(record: EvaluationRecord) -> None:
@@ -174,10 +152,7 @@ def _validate_result(result: EvaluationResult) -> EvaluationResult:
     score = read_number(result.score, "evaluation result score", minimum=0, maximum=1)
     if not isinstance(result.token_usage, EvaluationTokenUsage):
         raise ValueError("evaluation token_usage must be EvaluationTokenUsage")
-    tokens = EvaluationTokenUsage(
-        read_int(result.token_usage.input_tokens, "evaluation input_tokens", minimum=0),
-        read_int(result.token_usage.output_tokens, "evaluation output_tokens", minimum=0),
-    )
+    tokens = EvaluationTokenUsage(read_int(result.token_usage.input_tokens, "evaluation input_tokens", minimum=0), read_int(result.token_usage.output_tokens, "evaluation output_tokens", minimum=0))
     latency = read_optional_int(result.latency_ms, "evaluation latency_ms", minimum=0)
     error_type = read_text(result.error_type, "evaluation error_type", allow_empty=True)
     return EvaluationResult(success, score, tokens, latency, error_type, read_text_list(result.checks, "evaluation checks"))

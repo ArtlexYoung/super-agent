@@ -36,17 +36,12 @@ class SkillPackageManager:
         self.store = store
         self.user_skill_root = store.private_root / "skills"
         self.skill_disclosure = ProgressiveDisclosureCore(
-            skill_disclosure.skill_roots,
-            user_skill_roots=[self.user_skill_root],
-            builtin_skill_roots=skill_disclosure.builtin_skill_roots,
-            disabled_names=skill_disclosure.disabled_names,
+            skill_disclosure.skill_roots, user_skill_roots=[self.user_skill_root], builtin_skill_roots=skill_disclosure.builtin_skill_roots, disabled_names=skill_disclosure.disabled_names
         )
         self.actions = ActionRunner(action_rules or ActionRules(), store.append_management_action_event)
 
     def pack_skill(self, name: str, output: Path) -> Path:
-        return self._execute_package_action(
-            f"file:{output.expanduser().absolute()}", (ActionEffect.READ, ActionEffect.CREATE), lambda: self._pack_skill(name, output)
-        )
+        return self._execute_package_action(f"file:{output.expanduser().absolute()}", (ActionEffect.READ, ActionEffect.CREATE), lambda: self._pack_skill(name, output))
 
     def _pack_skill(self, name: str, output: Path) -> Path:
         skill_name, expected_type = _split_skill_reference(name)
@@ -155,9 +150,7 @@ def _stage_git_source(source: str, temporary_root: Path) -> Path:
     clone_path = temporary_root / "repository"
     environment = dict(os.environ)
     environment["GIT_TERMINAL_PROMPT"] = "0"
-    completed = subprocess.run(
-        ["git", "clone", "--quiet", "--depth", "1", "--", repository, str(clone_path)], check=False, capture_output=True, text=True, env=environment
-    )
+    completed = subprocess.run(["git", "clone", "--quiet", "--depth", "1", "--", repository, str(clone_path)], check=False, capture_output=True, text=True, env=environment)
     if completed.returncode != 0:
         message = completed.stderr.strip() or completed.stdout.strip()
         raise RuntimeError(f"Git skill clone failed: {message}")
@@ -344,12 +337,7 @@ def write_skill_lock_file(manifests: list[SkillManifest], path: Path) -> None:
 
 def _lock_manifest(manifest: SkillManifest) -> LockedSkill:
     return LockedSkill(
-        name=manifest.name,
-        skill_type=manifest.skill_type,
-        version=manifest.version,
-        sha256=calculate_skill_directory_sha256(manifest.path),
-        provides=sorted(manifest.provides),
-        requires=sorted(manifest.requires),
+        name=manifest.name, skill_type=manifest.skill_type, version=manifest.version, sha256=calculate_skill_directory_sha256(manifest.path), provides=sorted(manifest.provides), requires=sorted(manifest.requires)
     )
 
 
@@ -382,9 +370,7 @@ class SkillDirectoryUpdate:
     expected_target_sha256: str
 
 
-def apply_skill_directory_updates(
-    updates: list[SkillDirectoryUpdate], *, after_apply: Callable[[], TransactionResult] | None = None, after_restore: Callable[[], None] | None = None
-) -> TransactionResult | None:
+def apply_skill_directory_updates(updates: list[SkillDirectoryUpdate], *, after_apply: Callable[[], TransactionResult] | None = None, after_restore: Callable[[], None] | None = None) -> TransactionResult | None:
     """Apply one verified directory transaction and restore all targets on failure."""
     if not updates:
         return

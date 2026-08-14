@@ -40,10 +40,7 @@ class GeneralToolServer:
                 "description": "Calculate sum, mean, minimum, maximum, or product.",
                 "inputSchema": {
                     "type": "object",
-                    "properties": {
-                        "operation": {"type": "string", "enum": ["sum", "mean", "minimum", "maximum", "product"]},
-                        "values": {"type": "array", "items": {"type": "number"}},
-                    },
+                    "properties": {"operation": {"type": "string", "enum": ["sum", "mean", "minimum", "maximum", "product"]}, "values": {"type": "array", "items": {"type": "number"}}},
                     "required": ["operation", "values"],
                     "additionalProperties": False,
                 },
@@ -51,12 +48,7 @@ class GeneralToolServer:
             {
                 "name": "find_text",
                 "description": "Find bounded literal text positions without regular expressions.",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {"text": {"type": "string"}, "query": {"type": "string"}},
-                    "required": ["text", "query"],
-                    "additionalProperties": False,
-                },
+                "inputSchema": {"type": "object", "properties": {"text": {"type": "string"}, "query": {"type": "string"}}, "required": ["text", "query"], "additionalProperties": False},
             },
         ]
 
@@ -161,10 +153,7 @@ class DeclaredProcessTools:
             SkillTool(
                 "start_declared_process",
                 "Start one configured argv command with bounded time and output.",
-                {
-                    "command_number": {"type": "integer", "minimum": 1},
-                    "timeout_seconds": {"type": "integer", "minimum": 1, "maximum": MAX_PROCESS_TIMEOUT_SECONDS},
-                },
+                {"command_number": {"type": "integer", "minimum": 1}, "timeout_seconds": {"type": "integer", "minimum": 1, "maximum": MAX_PROCESS_TIMEOUT_SECONDS}},
                 self.start_process,
                 SkillAction((ActionEffect.EXECUTE,), "workspace:command", "command_number"),
                 ("command_number",),
@@ -191,10 +180,7 @@ class DeclaredProcessTools:
             SkillTool(
                 "run_declared_check",
                 "Run one configured check and wait for its bounded result.",
-                {
-                    "command_number": {"type": "integer", "minimum": 1},
-                    "timeout_seconds": {"type": "integer", "minimum": 1, "maximum": MAX_PROCESS_TIMEOUT_SECONDS},
-                },
+                {"command_number": {"type": "integer", "minimum": 1}, "timeout_seconds": {"type": "integer", "minimum": 1, "maximum": MAX_PROCESS_TIMEOUT_SECONDS}},
                 self.run_check,
                 SkillAction((ActionEffect.EXECUTE,), "workspace:command", "command_number"),
                 ("command_number",),
@@ -214,9 +200,7 @@ class DeclaredProcessTools:
         if timeout > MAX_PROCESS_TIMEOUT_SECONDS:
             raise ValueError("process timeout cannot exceed 300 seconds")
         command = self.commands[number - 1]
-        process = subprocess.Popen(
-            command, cwd=self.root, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=False, start_new_session=os.name == "posix"
-        )
+        process = subprocess.Popen(command, cwd=self.root, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=False, start_new_session=os.name == "posix")
         process_id = f"process-{uuid4().hex}"
         task = _RunningProcess(process_id, command, process, time.monotonic(), timeout, self.limits.output_bytes)
         self._processes[process_id] = task

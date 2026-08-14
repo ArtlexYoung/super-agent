@@ -40,16 +40,7 @@ def _create_scope_digest(value: str) -> str:
 class EventStore:
     """Expose domain operations while keeping backend details out of Skill handlers."""
 
-    def __init__(
-        self,
-        backend: StorageBackend,
-        local_root: Path,
-        user_id: str,
-        agent_name: str,
-        *,
-        run_event_log: RunEventLog | None = None,
-        disclosure_factory: DisclosureStorageFactory | None = None,
-    ) -> None:
+    def __init__(self, backend: StorageBackend, local_root: Path, user_id: str, agent_name: str, *, run_event_log: RunEventLog | None = None, disclosure_factory: DisclosureStorageFactory | None = None) -> None:
         self._backend = backend
         self.local_root = local_root.expanduser().absolute()
         self.user_id = validate_user_id(user_id)
@@ -69,9 +60,7 @@ class EventStore:
             self._disclosure = self._disclosure_factory(self.private_root / "cache", self)
         return self._disclosure
 
-    def append_event(
-        self, stream_type: str, stream_id: str, event_type: str, *, data: dict[str, object], event_id: str | None = None, created_at: str | None = None
-    ) -> StorageEvent:
+    def append_event(self, stream_type: str, stream_id: str, event_type: str, *, data: dict[str, object], event_id: str | None = None, created_at: str | None = None) -> StorageEvent:
         """Append one canonical event inside this user and Agent scope."""
         return self._backend.append_event(
             user_id=self.user_id,
@@ -84,9 +73,7 @@ class EventStore:
             created_at=created_at,
         )
 
-    def read_events(
-        self, stream_type: str | None = None, stream_id: str | None = None, *, event_type: str | None = None, snapshot: list[StorageEvent] | None = None
-    ) -> list[StorageEvent]:
+    def read_events(self, stream_type: str | None = None, stream_id: str | None = None, *, event_type: str | None = None, snapshot: list[StorageEvent] | None = None) -> list[StorageEvent]:
         """Read canonical events without escaping this user and Agent scope."""
         query = self._scope_query(stream_type, stream_id, event_type)
         if snapshot is not None:
@@ -121,9 +108,7 @@ class EventStore:
             return self._run_event_log.start_run(prompt)
         if self.read_events("run", identity.run_id):
             raise ValueError(f"run already exists: {identity.run_id}")
-        return self.append_run_event(
-            identity, "run.started", {"prompt": prompt, "conversation_id": identity.conversation_id, "parent_run_id": identity.parent_run_id}
-        )
+        return self.append_run_event(identity, "run.started", {"prompt": prompt, "conversation_id": identity.conversation_id, "parent_run_id": identity.parent_run_id})
 
     def append_run_event(self, identity: RunIdentity, event_type: str, data: dict[str, object] | None = None) -> RunEvent:
         self._require_identity_scope(identity)
@@ -156,9 +141,7 @@ class EventStore:
         for event in self.read_events("run"):
             grouped.setdefault(event.stream_id, []).append(event)
         snapshots = sorted(
-            (run_snapshot_from_events(self.user_id, events if include_sensitive else _redact_events_for_display(events)) for events in grouped.values()),
-            key=lambda item: (item.started_at, item.run_id),
-            reverse=True,
+            (run_snapshot_from_events(self.user_id, events if include_sensitive else _redact_events_for_display(events)) for events in grouped.values()), key=lambda item: (item.started_at, item.run_id), reverse=True
         )
         if conversation_id is not None:
             snapshots = [snapshot for snapshot in snapshots if snapshot.conversation_id == conversation_id]
@@ -261,18 +244,7 @@ class StorageEventQuery:
 class StorageBackend(Protocol):
     name: str
 
-    def append_event(
-        self,
-        *,
-        user_id: str,
-        agent_name: str,
-        stream_type: str,
-        stream_id: str,
-        event_type: str,
-        data: dict[str, object],
-        event_id: str | None = None,
-        created_at: str | None = None,
-    ) -> StorageEvent: ...
+    def append_event(self, *, user_id: str, agent_name: str, stream_type: str, stream_id: str, event_type: str, data: dict[str, object], event_id: str | None = None, created_at: str | None = None) -> StorageEvent: ...
 
     def read_events(self, query: StorageEventQuery) -> list[StorageEvent]: ...
 

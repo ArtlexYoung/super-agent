@@ -57,9 +57,7 @@ class StdioMcpServer:
     environment: tuple[tuple[str, str], ...]
     timeout_seconds: float
 
-    def __init__(
-        self, command: str, *, arguments: Iterable[str] = (), environment: Mapping[str, str] | None = None, timeout_seconds: float = DEFAULT_MCP_TIMEOUT_SECONDS
-    ) -> None:
+    def __init__(self, command: str, *, arguments: Iterable[str] = (), environment: Mapping[str, str] | None = None, timeout_seconds: float = DEFAULT_MCP_TIMEOUT_SECONDS) -> None:
         clean_command = command.strip() if isinstance(command, str) else ""
         if not clean_command:
             raise ValueError("MCP stdio command must be a non-empty string")
@@ -91,13 +89,7 @@ class StdioMcpServer:
             return session.send_request("tools/call", {"name": name, "arguments": arguments})
 
     def describe_registration(self) -> dict[str, object]:
-        return {
-            "transport": "stdio",
-            "command": self.command,
-            "arguments": list(self.arguments),
-            "environment_names": [name for name, _ in self.environment],
-            "timeout_seconds": self.timeout_seconds,
-        }
+        return {"transport": "stdio", "command": self.command, "arguments": list(self.arguments), "environment_names": [name for name, _ in self.environment], "timeout_seconds": self.timeout_seconds}
 
 
 @dataclass(frozen=True)
@@ -141,12 +133,7 @@ class McpServers:
             raise ValueError("MCP server effects must include execute")
         implementation = f"{type(server).__module__}.{type(server).__qualname__}"
         self._servers[clean_name] = RegisteredMcpServer(
-            name=clean_name,
-            server=server,
-            effects=normalized,
-            implementation=implementation,
-            code_sha256=_implementation_sha256(server),
-            settings_sha256=_settings_sha256(server),
+            name=clean_name, server=server, effects=normalized, implementation=implementation, code_sha256=_implementation_sha256(server), settings_sha256=_settings_sha256(server)
         )
 
     def require_mcp_server(self, name: str) -> RegisteredMcpServer:
@@ -169,19 +156,9 @@ class _McpStdioSession:
     def __enter__(self) -> "_McpStdioSession":
         environment = os.environ.copy()
         environment.update(dict(self.server.environment))
-        self.process = subprocess.Popen(
-            [self.server.command, *self.server.arguments],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            text=True,
-            bufsize=1,
-            env=environment,
-        )
+        self.process = subprocess.Popen([self.server.command, *self.server.arguments], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, bufsize=1, env=environment)
         try:
-            self.send_request(
-                "initialize", {"protocolVersion": MCP_PROTOCOL_VERSION, "capabilities": {}, "clientInfo": {"name": "super-agent", "version": __version__}}
-            )
+            self.send_request("initialize", {"protocolVersion": MCP_PROTOCOL_VERSION, "capabilities": {}, "clientInfo": {"name": "super-agent", "version": __version__}})
             self.send_notification("notifications/initialized", {})
         except Exception:
             self._close_process()

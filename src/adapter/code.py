@@ -159,14 +159,7 @@ class CodeWorkspace:
         if lines and start > len(lines):
             raise ValueError(f"workspace start_line exceeds file length: {len(lines)}")
         end = len(lines) if requested_end is None else min(requested_end, len(lines))
-        return {
-            "path": self._relative(selected),
-            "content": "".join(lines[start - 1 : end]),
-            "sha256": _text_sha256(content),
-            "start_line": start,
-            "end_line": end,
-            "total_lines": len(lines),
-        }
+        return {"path": self._relative(selected), "content": "".join(lines[start - 1 : end]), "sha256": _text_sha256(content), "start_line": start, "end_line": end, "total_lines": len(lines)}
 
     def search(self, arguments: dict[str, object]) -> dict[str, object]:
         self._require_read()
@@ -240,13 +233,7 @@ class CodeWorkspace:
         elif expected is not None:
             raise ValueError("expected_sha256 cannot be used when creating a new file")
         write_bytes_atomically(selected, content.encode("utf-8"))
-        return {
-            "path": self._relative(selected),
-            "created": not existed,
-            "updated": existed,
-            "previous_sha256": previous_sha256,
-            "sha256": _text_sha256(content),
-        }
+        return {"path": self._relative(selected), "created": not existed, "updated": existed, "previous_sha256": previous_sha256, "sha256": _text_sha256(content)}
 
     def patch_file(self, arguments: dict[str, object]) -> dict[str, object]:
         self._require_setting("write")
@@ -373,15 +360,7 @@ def _workspace_digest_schema() -> dict[str, object]:
 
 
 def _replacement_schema() -> dict[str, object]:
-    return {
-        "type": "array",
-        "items": {
-            "type": "object",
-            "properties": {"old_text": {"type": "string"}, "new_text": {"type": "string"}},
-            "required": ["old_text", "new_text"],
-            "additionalProperties": False,
-        },
-    }
+    return {"type": "array", "items": {"type": "object", "properties": {"old_text": {"type": "string"}, "new_text": {"type": "string"}}, "required": ["old_text", "new_text"], "additionalProperties": False}}
 
 
 def _workspace_path_kind(path: Path) -> str:

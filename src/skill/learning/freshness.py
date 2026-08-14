@@ -96,11 +96,7 @@ def _apply_record(accumulator: _EvidenceAccumulator, record: EvaluationRecord) -
     accumulator.last_evaluated_at = record.created_at
 
 
-def _record_replacement_followup(
-    accumulators: dict[tuple[str, ...], _EvidenceAccumulator],
-    last_by_function_group: dict[str, tuple[tuple[str, ...], EvaluationRecord]],
-    record: EvaluationRecord,
-) -> None:
+def _record_replacement_followup(accumulators: dict[tuple[str, ...], _EvidenceAccumulator], last_by_function_group: dict[str, tuple[tuple[str, ...], EvaluationRecord]], record: EvaluationRecord) -> None:
     previous = last_by_function_group.get(record.revision.function_group)
     if previous is None:
         return
@@ -319,13 +315,7 @@ def read_freshness_rules(disclosure: SkillDisclosure) -> FreshnessRules:
     value = disclosure.read_configuration().content
     weights = ("quality_weight", "recency_weight", "frequency_weight", "efficiency_weight", "reliability_weight", "replacement_weight")
     unit_values = (*weights, "token_efficiency_weight", "empty_output_penalty", "error_penalty")
-    positive_values = (
-        "recency_decay_days",
-        "full_frequency_calls_per_week",
-        "confidence_sample_count",
-        "tokens_per_penalty_point",
-        "latency_per_penalty_point",
-    )
+    positive_values = ("recency_decay_days", "full_frequency_calls_per_week", "confidence_sample_count", "tokens_per_penalty_point", "latency_per_penalty_point")
     non_negative_values = ("token_free_budget", "latency_free_ms")
     expected = {"initial", *unit_values, *positive_values, *non_negative_values}
     read_object(value, "freshness settings schema", expected)

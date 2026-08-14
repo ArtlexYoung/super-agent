@@ -68,13 +68,7 @@ class DisclosureStorage:
 
 SQL_EVENT_ID_BATCH_SIZE = 500
 _SQL_EVENT_COLUMNS = "position, event_id, user_id, agent_name, stream_type, stream_id, event_type, created_at, data_json"
-_SQL_QUERY_FIELDS = (
-    ("user_id", "user_key"),
-    ("agent_name", "agent_key"),
-    ("stream_type", "stream_type_key"),
-    ("stream_id", "stream_id_key"),
-    ("event_type", "event_type_key"),
-)
+_SQL_QUERY_FIELDS = (("user_id", "user_key"), ("agent_name", "agent_key"), ("stream_type", "stream_type_key"), ("stream_id", "stream_id_key"), ("event_type", "event_type_key"))
 
 
 def create_storage_backend(backend: str, path: str, url_env: str | None = None) -> StorageBackend:
@@ -142,9 +136,7 @@ def split_sql_event_id_query(query: StorageEventQuery) -> list[StorageEventQuery
     """Split large event-ID deletes without changing any other query field."""
     if query.event_ids is None:
         return [query]
-    return [
-        replace(query, event_ids=query.event_ids[index : index + SQL_EVENT_ID_BATCH_SIZE]) for index in range(0, len(query.event_ids), SQL_EVENT_ID_BATCH_SIZE)
-    ]
+    return [replace(query, event_ids=query.event_ids[index : index + SQL_EVENT_ID_BATCH_SIZE]) for index in range(0, len(query.event_ids), SQL_EVENT_ID_BATCH_SIZE)]
 
 
 def read_sql_event_row(row: Iterable[object], location: str | Path) -> StorageEvent:
@@ -231,18 +223,7 @@ class SqlEventStorage:
         self.name = database.name
         self._select_events = f"SELECT {_SQL_EVENT_COLUMNS} FROM {database.table_name}"
 
-    def append_event(
-        self,
-        *,
-        user_id: str,
-        agent_name: str,
-        stream_type: str,
-        stream_id: str,
-        event_type: str,
-        data: dict[str, object],
-        event_id: str | None = None,
-        created_at: str | None = None,
-    ) -> StorageEvent:
+    def append_event(self, *, user_id: str, agent_name: str, stream_type: str, stream_id: str, event_type: str, data: dict[str, object], event_id: str | None = None, created_at: str | None = None) -> StorageEvent:
         pending = _PendingSqlEvent(
             event_id=clean_storage_text(event_id or f"event-{uuid4().hex}", "event_id"),
             user_id=clean_storage_text(user_id, "user_id"),
@@ -365,14 +346,7 @@ def _copy_user_events(source: StorageBackend, destination: StorageBackend, user_
             already_present += 1
             continue
         stored = destination.append_event(
-            user_id=event.user_id,
-            agent_name=event.agent_name,
-            stream_type=event.stream_type,
-            stream_id=event.stream_id,
-            event_type=event.event_type,
-            data=event.data,
-            event_id=event.event_id,
-            created_at=event.created_at,
+            user_id=event.user_id, agent_name=event.agent_name, stream_type=event.stream_type, stream_id=event.stream_id, event_type=event.event_type, data=event.data, event_id=event.event_id, created_at=event.created_at
         )
         _require_matching_event(event, stored)
         destination_events[event.event_id] = stored
@@ -395,14 +369,4 @@ def _event_value_without_position(event: StorageEvent) -> tuple[object, ...]:
 from adapter.storage_backends.local_storage import JsonlStorage, SqliteStorage
 from adapter.storage_backends.remote_storage import MySqlStorage, PostgreSqlStorage
 
-__all__ = [
-    "JsonlStorage",
-    "MySqlStorage",
-    "PostgreSqlStorage",
-    "SqliteStorage",
-    "StorageCopyReport",
-    "StorageCopyUserResult",
-    "copy_storage_events",
-    "create_storage_backend",
-    "create_local_event_store",
-]
+__all__ = ["JsonlStorage", "MySqlStorage", "PostgreSqlStorage", "SqliteStorage", "StorageCopyReport", "StorageCopyUserResult", "copy_storage_events", "create_storage_backend", "create_local_event_store"]

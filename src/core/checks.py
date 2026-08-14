@@ -57,18 +57,10 @@ class ActionRequest:
         object.__setattr__(self, "argument_names", tuple(sorted(self.argument_names)))
 
     def to_event_data(self) -> dict[str, object]:
-        return {
-            "action_id": self.action_id,
-            "actor": self.actor,
-            "resource": self.resource,
-            "effects": [effect.value for effect in self.effects],
-            "argument_names": list(self.argument_names),
-        }
+        return {"action_id": self.action_id, "actor": self.actor, "resource": self.resource, "effects": [effect.value for effect in self.effects], "argument_names": list(self.argument_names)}
 
     @classmethod
-    def create(
-        cls, actor: str, resource: str, effects: tuple[ActionEffect, ...], *, action_id: str | None = None, argument_names: tuple[str, ...] = ()
-    ) -> "ActionRequest":
+    def create(cls, actor: str, resource: str, effects: tuple[ActionEffect, ...], *, action_id: str | None = None, argument_names: tuple[str, ...] = ()) -> "ActionRequest":
         return cls(action_id or f"action-{uuid4().hex}", actor, resource, effects, argument_names)
 
 

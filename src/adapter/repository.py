@@ -100,12 +100,7 @@ class IncrementalRepositoryMap:
             "reused": reused,
             "deleted": deleted,
             "skipped": skipped,
-            "limits": {
-                "files": REPOSITORY_MAP_FILE_LIMIT,
-                "file_bytes": REPOSITORY_MAP_FILE_BYTES,
-                "total_bytes": REPOSITORY_MAP_TOTAL_BYTES,
-                "symbols_per_file": REPOSITORY_MAP_SYMBOL_LIMIT,
-            },
+            "limits": {"files": REPOSITORY_MAP_FILE_LIMIT, "file_bytes": REPOSITORY_MAP_FILE_BYTES, "total_bytes": REPOSITORY_MAP_TOTAL_BYTES, "symbols_per_file": REPOSITORY_MAP_SYMBOL_LIMIT},
         }
 
     def _find_files(self) -> tuple[list[Path], list[dict[str, str]]]:
@@ -150,14 +145,7 @@ def _summarize_file(path: Path, relative: str, content: bytes, digest: str) -> d
     except UnicodeDecodeError as error:
         raise ValueError("repository map file is not UTF-8 text") from error
     symbols, parser, parse_error = _extract_symbols(path, text)
-    data: dict[str, object] = {
-        "path": relative,
-        "bytes": len(content),
-        "lines": len(text.splitlines()),
-        "sha256": digest,
-        "symbol_parser": parser,
-        "symbols": symbols,
-    }
+    data: dict[str, object] = {"path": relative, "bytes": len(content), "lines": len(text.splitlines()), "sha256": digest, "symbol_parser": parser, "symbols": symbols}
     if parse_error is not None:
         data["parse_error"] = parse_error
     return data
@@ -218,14 +206,7 @@ class IsolatedWorktreeTools:
                 ("worktree_id",),
                 result_kind="worktree",
             ),
-            SkillTool(
-                "list_isolated_worktrees",
-                "List worktrees created below the configured repository.",
-                {},
-                self.list_worktrees,
-                SkillAction((ActionEffect.READ,), "workspace:worktree"),
-                result_kind="worktree",
-            ),
+            SkillTool("list_isolated_worktrees", "List worktrees created below the configured repository.", {}, self.list_worktrees, SkillAction((ActionEffect.READ,), "workspace:worktree"), result_kind="worktree"),
             SkillTool(
                 "remove_isolated_worktree",
                 "Remove one clean isolated worktree without forcing data loss.",

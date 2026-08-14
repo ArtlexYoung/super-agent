@@ -33,19 +33,14 @@ def prepare_conversation_turn(store: EventStore, action_rules: ActionRules, conv
         conversation = None
     messages: list[Message] = [] if conversation is None else [{"role": message.role, "content": message.content} for message in conversation.messages]
     action_runner = ActionRunner(action_rules, store.append_management_action_event)
-    prepared_action = action_runner.prepare_action(
-        ActionRequest.create("agent:conversation", f"conversation:{selected_id}", (ActionEffect.CREATE, ActionEffect.UPDATE))
-    )
+    prepared_action = action_runner.prepare_action(ActionRequest.create("agent:conversation", f"conversation:{selected_id}", (ActionEffect.CREATE, ActionEffect.UPDATE)))
     return messages, PendingConversationTurn(store, action_runner, prepared_action, conversation, selected_id, prompt)
 
 
 def complete_conversation_turn(pending: PendingConversationTurn, result: RunResult) -> None:
     """Apply one previously checked conversation change after a successful run."""
     pending.action_runner.apply_action(
-        pending.prepared_action,
-        lambda: append_conversation_turn(
-            pending.store, pending.conversation_id, pending.prompt, result.text, run_id=result.run_id, run_result=_run_result_summary(result)
-        ),
+        pending.prepared_action, lambda: append_conversation_turn(pending.store, pending.conversation_id, pending.prompt, result.text, run_id=result.run_id, run_result=_run_result_summary(result))
     )
 
 
@@ -69,9 +64,7 @@ def list_conversations(store: EventStore) -> list[Conversation]:
     grouped: dict[str, list[StorageEvent]] = {}
     for event in store.read_events("conversation"):
         grouped.setdefault(event.stream_id, []).append(event)
-    return sorted(
-        (conversation_from_events(store.user_id, events) for events in grouped.values()), key=lambda item: (item.updated_at, item.conversation_id), reverse=True
-    )
+    return sorted((conversation_from_events(store.user_id, events) for events in grouped.values()), key=lambda item: (item.updated_at, item.conversation_id), reverse=True)
 
 
 def rename_conversation(store: EventStore, conversation_id: str, title: str) -> Conversation:
@@ -93,9 +86,7 @@ def delete_conversation(store: EventStore, conversation_id: str) -> None:
     store.delete_events("conversation", conversation.conversation_id)
 
 
-def append_conversation_turn(
-    store: EventStore, conversation_id: str, prompt: str, response: str, *, run_id: str, run_result: dict[str, object]
-) -> Conversation:
+def append_conversation_turn(store: EventStore, conversation_id: str, prompt: str, response: str, *, run_id: str, run_result: dict[str, object]) -> Conversation:
     """Commit one complete user and assistant turn as one storage event."""
     selected_id = read_text(conversation_id, "conversation_id")
     existing = store.read_events("conversation", selected_id)
@@ -104,11 +95,7 @@ def append_conversation_turn(
         "conversation",
         selected_id,
         "conversation.turn_added",
-        data={
-            "title": "" if existing else prompt[:48].strip(),
-            "user": _message_data("user", prompt, run_id),
-            "assistant": _message_data("assistant", response, run_id, run_result=run_result),
-        },
+        data={"title": "" if existing else prompt[:48].strip(), "user": _message_data("user", prompt, run_id), "assistant": _message_data("assistant", response, run_id, run_result=run_result)},
         event_id=turn_id,
     )
     return read_conversation(store, selected_id)
@@ -133,15 +120,7 @@ def conversation_from_events(user_id: str, events: list[StorageEvent]) -> Conver
             messages.extend(_turn_messages_from_event(event))
         else:
             raise ValueError(f"unknown conversation event type: {event.event_type}")
-    return Conversation(
-        conversation_id=first.stream_id,
-        user_id=user_id,
-        agent_name=first.agent_name,
-        title=title,
-        created_at=first.created_at,
-        updated_at=ordered[-1].created_at,
-        messages=messages,
-    )
+    return Conversation(conversation_id=first.stream_id, user_id=user_id, agent_name=first.agent_name, title=title, created_at=first.created_at, updated_at=ordered[-1].created_at, messages=messages)
 
 
 def _message_data(role: str, content: str, run_id: str, *, run_result: dict[str, object] | None = None) -> dict[str, object]:

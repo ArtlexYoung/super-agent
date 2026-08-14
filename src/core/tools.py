@@ -5,14 +5,7 @@ from typing import Callable
 
 from skill.handlers.runtime import SkillAction, SkillSession, SkillSessionContext, SkillTool, SkillUse, TaskPolicy
 from core.provider import Message, ToolCall, ToolDefinition
-from core.models import (
-    SubAgentResult,
-    SubagentRecordOptions,
-    read_optional_non_negative_tool_integer,
-    read_optional_positive_tool_integer,
-    read_optional_tool_string,
-    read_required_tool_string,
-)
+from core.models import SubAgentResult, SubagentRecordOptions, read_optional_non_negative_tool_integer, read_optional_positive_tool_integer, read_optional_tool_string, read_required_tool_string
 from core.runtime import Run
 from core.checks import ActionEffect, ActionRequest
 from skill.discovery.catalog import SkillDisclosure, SkillIndex, SkillReference, skill_index_to_dict
@@ -39,9 +32,7 @@ class RunTools:
         self.delegated_subagent_results = [] if delegated_subagent_results is None else delegated_subagent_results
         self.skill_session: SkillSession | None = None
         self.task_policy: TaskPolicy | None = None
-        self._session_context = SkillSessionContext(
-            self._subagents, self._run_named_subagent, run.record_event, self._record_subagent_result, self._create_shared_context
-        )
+        self._session_context = SkillSessionContext(self._subagents, self._run_named_subagent, run.record_event, self._record_subagent_result, self._create_shared_context)
         self._tools: dict[str, SkillTool] = {}
         disclosure = run.skills.disclosure
         self._add_tools(_create_disclosure_tools(self, run.skills.index, records_cache=disclosure.recorder is not None))
@@ -81,13 +72,7 @@ class RunTools:
             raise error
         try:
             raw_result = self.run.execute_action(
-                ActionRequest(
-                    action_id=call.id,
-                    actor=f"tool:{call.name}",
-                    resource=tool.action.resolve_resource(call.arguments),
-                    effects=tool.action.effects,
-                    argument_names=tuple(call.arguments),
-                ),
+                ActionRequest(action_id=call.id, actor=f"tool:{call.name}", resource=tool.action.resolve_resource(call.arguments), effects=tool.action.effects, argument_names=tuple(call.arguments)),
                 lambda: tool.handler(call.arguments),
             )
         except Exception as error:
@@ -136,14 +121,7 @@ class RunTools:
         manifest = opened.disclose_manifest()
         return {
             "key": opened.index_entry.reference.key,
-            "manifest": {
-                "name": manifest.name,
-                "type": manifest.skill_type,
-                "description": manifest.description,
-                "version": manifest.version,
-                "provides": manifest.provides,
-                "requires": manifest.requires,
-            },
+            "manifest": {"name": manifest.name, "type": manifest.skill_type, "description": manifest.description, "version": manifest.version, "provides": manifest.provides, "requires": manifest.requires},
             "cache_path": _optional_path(opened.index_entry.manifest_cache_path),
         }
 
@@ -161,9 +139,7 @@ class RunTools:
     def _read_disclosed_content(self, arguments: dict[str, object]) -> dict[str, object]:
         reference = read_required_tool_string(arguments, "reference")
         page = self.run.skills.disclosure.read_disclosed_content(
-            reference,
-            offset=read_optional_non_negative_tool_integer(arguments, "offset") or 0,
-            limit=(read_optional_positive_tool_integer(arguments, "limit") or DEFAULT_PAGE_CHARS),
+            reference, offset=read_optional_non_negative_tool_integer(arguments, "offset") or 0, limit=(read_optional_positive_tool_integer(arguments, "limit") or DEFAULT_PAGE_CHARS)
         )
         return disclosure_page_to_dict(page)
 
@@ -265,9 +241,7 @@ class RunTools:
             raise RuntimeError("subagent tools require subagents added in code")
         return self._run_named_subagent(read_required_tool_string(arguments, "name"), read_required_tool_string(arguments, "prompt"))
 
-    def _run_named_subagent(
-        self, name: str, prompt: str, record_options: SubagentRecordOptions | None = None, shared_context: dict[str, object] | None = None
-    ) -> dict[str, object]:
+    def _run_named_subagent(self, name: str, prompt: str, record_options: SubagentRecordOptions | None = None, shared_context: dict[str, object] | None = None) -> dict[str, object]:
         value = self.run.task.subagents.run_named_subagent(name, prompt, self.run, record_options or SubagentRecordOptions(), shared_context)
         if record_options is None:
             self._record_subagent_result(value)
@@ -278,14 +252,7 @@ class RunTools:
 
     def _create_shared_context(self, group_id: str, content: str) -> dict[str, object]:
         page = self.run.skills.disclosure.disclose_content("agent-group", group_id, content, stage="group-context")
-        return {
-            "group_id": group_id,
-            "content": content,
-            "reference": page.reference,
-            "content_sha256": page.content_sha256,
-            "total_chars": page.total_chars,
-            "cache_backed": page.cache_path is not None,
-        }
+        return {"group_id": group_id, "content": content, "reference": page.reference, "content_sha256": page.content_sha256, "total_chars": page.total_chars, "cache_backed": page.cache_path is not None}
 
     def read_shared_task_context(self, arguments: dict[str, object]) -> dict[str, object]:
         shared = self.run.task.shared_context
@@ -318,21 +285,8 @@ class RunTools:
 def _create_disclosure_tools(run_tools: RunTools, skill_index: SkillIndex, *, records_cache: bool) -> tuple[SkillTool, ...]:
     reference = _skill_reference_properties(skill_index)
     disclosure_effects = (ActionEffect.READ, ActionEffect.CREATE, ActionEffect.UPDATE) if records_cache else (ActionEffect.READ,)
-    tools = [
-        SkillTool(
-            "list_skills",
-            "List every available Skill type from the central index.",
-            {},
-            run_tools._list_skills,
-            action=SkillAction((ActionEffect.READ,), "skill:index"),
-            result_kind="skill",
-        )
-    ]
-    disclosures = (
-        ("manifest", run_tools._disclose_skill_manifest),
-        ("instructions", run_tools._disclose_skill_instructions),
-        ("configuration", run_tools._disclose_skill_configuration),
-    )
+    tools = [SkillTool("list_skills", "List every available Skill type from the central index.", {}, run_tools._list_skills, action=SkillAction((ActionEffect.READ,), "skill:index"), result_kind="skill")]
+    disclosures = (("manifest", run_tools._disclose_skill_manifest), ("instructions", run_tools._disclose_skill_instructions), ("configuration", run_tools._disclose_skill_configuration))
     tools.extend(
         SkillTool(
             f"disclose_skill_{part}",
@@ -394,14 +348,7 @@ def _optional_path(path: Path | None) -> str | None:
 
 def _create_subagent_tools(run_tools: RunTools) -> tuple[SkillTool, ...]:
     return (
-        SkillTool(
-            "list_subagents",
-            "List subagents added to the current Agent in code.",
-            {},
-            run_tools.list_subagents,
-            action=SkillAction((ActionEffect.READ,), "subagent:index"),
-            result_kind="subagent",
-        ),
+        SkillTool("list_subagents", "List subagents added to the current Agent in code.", {}, run_tools.list_subagents, action=SkillAction((ActionEffect.READ,), "subagent:index"), result_kind="subagent"),
         SkillTool(
             "run_subagent",
             "Run one subagent added in code and return its traced result.",
@@ -434,10 +381,7 @@ def _activation_instructions(loaded: list[tuple[SkillReference, SkillUse]]) -> l
     instructions: list[dict[str, str]] = []
     added: set[tuple[str, str]] = set()
     for reference, contribution in loaded:
-        candidates = (
-            None if contribution.model_context is None else contribution.model_context.instructions,
-            None if contribution.task_policy is None else contribution.task_policy.instruction,
-        )
+        candidates = (None if contribution.model_context is None else contribution.model_context.instructions, None if contribution.task_policy is None else contribution.task_policy.instruction)
         for content in candidates:
             if not content or (reference.key, content) in added:
                 continue

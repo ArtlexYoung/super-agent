@@ -71,14 +71,7 @@ class UsageHabits:
 class Memory:
     """Expose only durable memory; conversation messages are short-term memory."""
 
-    def __init__(
-        self,
-        store: EventStore,
-        identity: RunIdentity | None = None,
-        settings: MemorySettings | None = None,
-        *,
-        execute_action: MemoryActionRunner | None = None,
-    ) -> None:
+    def __init__(self, store: EventStore, identity: RunIdentity | None = None, settings: MemorySettings | None = None, *, execute_action: MemoryActionRunner | None = None) -> None:
         if identity is not None and execute_action is None:
             raise ValueError("Runtime memory requires an action executor")
         self.store = store
@@ -95,17 +88,12 @@ class Memory:
             source_run_id=self._source_run_id(source_run_id),
             created_at=format_utc(datetime.now(UTC)),
         )
-        self._run_change(
-            (ActionEffect.CREATE,), [item.item_id], lambda: self._append_memory_event("memory.remembered", {"item": _validate_stored_item(asdict(item))})
-        )
+        self._run_change((ActionEffect.CREATE,), [item.item_id], lambda: self._append_memory_event("memory.remembered", {"item": _validate_stored_item(asdict(item))}))
         return item
 
     def list_long_term(self, scope: str | None = None) -> list[MemoryItem]:
         selected_scope = None if scope is None else _clean_scope(scope)
-        return [
-            _item_from_dict(item)
-            for item in _sort_items(item for item in self._active_items().values() if selected_scope is None or item["scope"] == selected_scope)
-        ]
+        return [_item_from_dict(item) for item in _sort_items(item for item in self._active_items().values() if selected_scope is None or item["scope"] == selected_scope)]
 
     def recall_long_term(self, query: str, scope: str | None = None, limit: int | None = None) -> list[MemoryItem]:
         text = read_text(query, "memory text")
@@ -139,9 +127,7 @@ class Memory:
     def _run_change(self, effects: tuple[ActionEffect, ...], item_ids: list[str], change: Callable[[], object]) -> object:
         if self.execute_action is None:
             return change()
-        return self.execute_action(
-            ActionRequest.create("agent:memory", "memory:long-term:" + ",".join(item_ids), effects, argument_names=("item_ids",)), change
-        )
+        return self.execute_action(ActionRequest.create("agent:memory", "memory:long-term:" + ",".join(item_ids), effects, argument_names=("item_ids",)), change)
 
     def _source_run_id(self, source_run_id: str) -> str:
         selected = source_run_id.strip()
@@ -169,9 +155,7 @@ class Memory:
         self.store.append_event("memory", MEMORY_STREAM, event_type, data=data)
 
 
-def create_memory_from_skill(
-    disclosure: SkillDisclosure, store: EventStore, identity: RunIdentity | None = None, *, execute_action: MemoryActionRunner | None = None
-) -> Memory:
+def create_memory_from_skill(disclosure: SkillDisclosure, store: EventStore, identity: RunIdentity | None = None, *, execute_action: MemoryActionRunner | None = None) -> Memory:
     return Memory(store, identity, read_memory_settings_from_skill(disclosure), execute_action=execute_action)
 
 
@@ -194,9 +178,7 @@ def read_memory_settings_from_skill(disclosure: SkillDisclosure) -> MemorySettin
     )
 
 
-def _prepare_organization(
-    operations: list[dict[str, object]], active: dict[str, dict[str, object]], source_run_id: str
-) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+def _prepare_organization(operations: list[dict[str, object]], active: dict[str, dict[str, object]], source_run_id: str) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
     if not isinstance(operations, list) or not operations:
         raise ValueError("memory organization requires at least one operation")
     used: set[str] = set()
@@ -210,9 +192,7 @@ def _prepare_organization(
     return changes, replacements
 
 
-def _prepare_operation(
-    value: dict[str, object], active: dict[str, dict[str, object]], used: set[str], source_run_id: str
-) -> tuple[dict[str, object], dict[str, object] | None]:
+def _prepare_operation(value: dict[str, object], active: dict[str, dict[str, object]], used: set[str], source_run_id: str) -> tuple[dict[str, object], dict[str, object] | None]:
     if not isinstance(value, dict) or set(value) - {"operation", "item_ids", "text", "reason"}:
         raise ValueError("memory organization operation has invalid fields")
     operation = value.get("operation")

@@ -47,9 +47,6 @@ class TaskQueue:
         group_settings: AgentGroupSettings | None = None,
         create_shared_context: Callable[[str, str], dict[str, object]] | None = None,
     ) -> None:
-        names = [str(item.get("name", "")).strip() for item in subagents]
-        if not names or any(not name for name in names) or len(names) != len(set(names)):
-            raise ValueError("agent_tasks requires uniquely named subagents")
         self.settings = settings
         self.run_subagent = run_subagent
         self.record_event = record_event
@@ -99,32 +96,15 @@ class TaskQueue:
             SkillTool(
                 "wait_for_agent_tasks",
                 "Sleep without model calls until a task trigger or the configured time limit.",
-                {
-                    "trigger": {"type": "string", "enum": sorted(_TRIGGERS)},
-                    "max_wait_seconds": {"type": "number", "exclusiveMinimum": 0},
-                    "task_ids": {"type": "array", "items": task_id, "maxItems": 32},
-                },
+                {"trigger": {"type": "string", "enum": sorted(_TRIGGERS)}, "max_wait_seconds": {"type": "number", "exclusiveMinimum": 0}, "task_ids": {"type": "array", "items": task_id, "maxItems": 32}},
                 self._wait_for_tasks,
                 SkillAction((ActionEffect.READ,), "task:queue"),
                 ("trigger", "max_wait_seconds"),
                 "agent-task",
             ),
+            SkillTool("list_agent_tasks", "List current task queue states without returning task prompts.", {}, self._list_tasks, SkillAction((ActionEffect.READ,), "task:queue"), result_kind="agent-task"),
             SkillTool(
-                "list_agent_tasks",
-                "List current task queue states without returning task prompts.",
-                {},
-                self._list_tasks,
-                SkillAction((ActionEffect.READ,), "task:queue"),
-                result_kind="agent-task",
-            ),
-            SkillTool(
-                "cancel_agent_task",
-                "Cancel one task that has not started running.",
-                {"task_id": task_id},
-                self._cancel_task,
-                SkillAction((ActionEffect.UPDATE,), "task:queue", "task_id"),
-                ("task_id",),
-                "agent-task",
+                "cancel_agent_task", "Cancel one task that has not started running.", {"task_id": task_id}, self._cancel_task, SkillAction((ActionEffect.UPDATE,), "task:queue", "task_id"), ("task_id",), "agent-task"
             ),
         )
         return tools if self._groups is None else (*tools, *self._groups.list_tools())
@@ -163,23 +143,14 @@ class TaskQueue:
         prompt = read_required_tool_string(arguments, "prompt")
         purpose = read_required_tool_string(arguments, "purpose").strip().lower()
         features = read_required_task_strings(arguments, "required_features")
-        estimates = tuple(
-            read_optional_estimated_tokens(arguments, name)
-            for name in ("estimated_output_tokens", "estimated_cache_creation_tokens", "estimated_cache_read_tokens")
-        )
+        estimates = tuple(read_optional_estimated_tokens(arguments, name) for name in ("estimated_output_tokens", "estimated_cache_creation_tokens", "estimated_cache_read_tokens"))
         with self._condition:
             if self._closed:
                 raise RuntimeError("agent task queue is closed")
             if len(self._tasks) >= self.settings.max_tasks:
                 raise ValueError(f"agent task limit reached: {self.settings.max_tasks}")
             task = QueuedTask(
-                f"agent-task-{len(self._tasks) + 1:02d}",
-                prompt,
-                purpose,
-                features,
-                estimated_output_tokens=estimates[0],
-                estimated_cache_creation_tokens=estimates[1],
-                estimated_cache_read_tokens=estimates[2],
+                f"agent-task-{len(self._tasks) + 1:02d}", prompt, purpose, features, estimated_output_tokens=estimates[0], estimated_cache_creation_tokens=estimates[1], estimated_cache_read_tokens=estimates[2]
             )
             self._tasks[task.task_id] = task
             self._record_locked("agent_task.created", task)
@@ -194,11 +165,7 @@ class TaskQueue:
                 raise ValueError(f"agent task cannot be dispatched from {task.status}: {task_id}")
             choice = self._select_agent_locked(task, requested_agent)
             queued = self._queue_selected_task_locked(task, choice)
-            return {
-                "task": queued.to_dict(),
-                **choice.to_dict(),
-                "rotation_limited": (self.settings.agent_selection == "rotate" and choice.candidate_count < 2),
-            }
+            return {"task": queued.to_dict(), **choice.to_dict(), "rotation_limited": (self.settings.agent_selection == "rotate" and choice.candidate_count < 2)}
 
     def _queue_selected_task_locked(self, task: QueuedTask, choice: SelectedAgent, *, group_id: str | None = None) -> QueuedTask:
         queued = self._transition_locked(task, "queued", agent_name=choice.name)
@@ -220,14 +187,7 @@ class TaskQueue:
                     return
                 self._started_task_count += 1
                 record_options = self.settings.record_options_for_task(self._started_task_count)
-                running = self._transition_locked(
-                    task,
-                    "running",
-                    record_mode=record_options.mode,
-                    record_task_number=self._started_task_count,
-                    attempt_count=task.attempt_count + 1,
-                    retry_after_seconds=None,
-                )
+                running = self._transition_locked(task, "running", record_mode=record_options.mode, record_task_number=self._started_task_count, attempt_count=task.attempt_count + 1, retry_after_seconds=None)
             if running.shared_context is None:
                 result = self.run_subagent(str(running.agent_name), running.prompt, record_options)
             else:
@@ -258,9 +218,7 @@ class TaskQueue:
         if trigger == "selected_tasks_finished" and not task_ids:
             raise ValueError("selected_tasks_finished requires task_ids")
         started = monotonic()
-        self.record_event(
-            "agent_task.wait.started", {"trigger": trigger, "task_ids": list(task_ids), "requested_wait_seconds": requested_wait, "wait_seconds": wait_seconds}
-        )
+        self.record_event("agent_task.wait.started", {"trigger": trigger, "task_ids": list(task_ids), "requested_wait_seconds": requested_wait, "wait_seconds": wait_seconds})
         with self._condition:
             self._validate_wait_task_ids_locked(task_ids)
             if trigger == "timeout":
@@ -316,26 +274,11 @@ class TaskQueue:
             choice = self._select_agent_locked(task, None, {failed_agent})
         except AgentUnavailableError:
             delay = self._agent_pool.retry_delay(task.purpose, task.required_features)
-            queued = self._transition_locked(
-                task,
-                "queued",
-                agent_name=None,
-                last_agent_name=failed_agent,
-                retry_after_seconds=round(delay, 3),
-                error_type=type(error).__name__,
-                error_message=str(error),
-            )
+            queued = self._transition_locked(task, "queued", agent_name=None, last_agent_name=failed_agent, retry_after_seconds=round(delay, 3), error_type=type(error).__name__, error_message=str(error))
             self._schedule_retry_locked(queued, delay)
             return
         queued = self._transition_locked(
-            task,
-            "queued",
-            agent_name=choice.name,
-            last_agent_name=failed_agent,
-            fallback_count=task.fallback_count + 1,
-            retry_after_seconds=0.0,
-            error_type=type(error).__name__,
-            error_message=str(error),
+            task, "queued", agent_name=choice.name, last_agent_name=failed_agent, fallback_count=task.fallback_count + 1, retry_after_seconds=0.0, error_type=type(error).__name__, error_message=str(error)
         )
         self.record_event("agent_task.fallback_selected", {"task_id": task.task_id, "failed_agent_name": failed_agent, **choice.to_dict()})
         self._record_retry_scheduled(queued, 0.0)
@@ -445,6 +388,4 @@ def create_task_queue(
             raise ValueError("agent_groups requires agent_tasks in the same task Skill")
         return None
     group_settings = None if "agent_groups" not in tools else AgentGroupSettings.from_dict(tools["agent_groups"])
-    return TaskQueue(
-        TaskQueueSettings.from_dict(tools["agent_tasks"]), subagents, run_subagent, record_event, record_result, group_settings, create_shared_context
-    )
+    return TaskQueue(TaskQueueSettings.from_dict(tools["agent_tasks"]), subagents, run_subagent, record_event, record_result, group_settings, create_shared_context)

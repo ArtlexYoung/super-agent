@@ -54,12 +54,7 @@ class CommonConfig:
         require_config_header(data, "common")
         reject_unknown_fields(data, {"schema_version", "kind", "agent", "paths", "storage"}, "common configuration tables")
         base_dir = source.parent
-        return cls(
-            agent=_read_agent_settings(data.get("agent", {})),
-            paths=_read_paths_settings(data.get("paths", {}), base_dir),
-            storage=_read_storage_settings(data.get("storage", {}), base_dir),
-            source=source,
-        )
+        return cls(agent=_read_agent_settings(data.get("agent", {})), paths=_read_paths_settings(data.get("paths", {}), base_dir), storage=_read_storage_settings(data.get("storage", {}), base_dir), source=source)
 
     @classmethod
     def load_automatically(cls, base_directory: str | Path | None = None, environment: Mapping[str, str] | None = None) -> "CommonConfig":
@@ -69,9 +64,7 @@ class CommonConfig:
     @classmethod
     def create_default(cls, base_directory: str | Path | None = None) -> "CommonConfig":
         base = Path.cwd() if base_directory is None else Path(base_directory).expanduser().absolute()
-        return cls(
-            agent=_read_agent_settings({}), paths=PathsSettings(skills=[base / "skills"]), storage=_read_storage_settings({}, base), source=base / "common.toml"
-        )
+        return cls(agent=_read_agent_settings({}), paths=PathsSettings(skills=[base / "skills"]), storage=_read_storage_settings({}, base), source=base / "common.toml")
 
 
 @dataclass(frozen=True)
@@ -101,17 +94,7 @@ class CodeConfig:
         workspace = _read_code_workspace(data.get("workspace", {}), base)
         actions = _read_code_actions(data.get("actions", {}))
         verification = _read_verification_commands(data.get("verification", {}))
-        return cls(
-            CodeSettings(
-                root=workspace["root"],
-                ignored_paths=workspace["ignored_paths"],
-                read=actions["read"],
-                write=actions["write"],
-                execute=actions["execute"],
-                verification_commands=verification,
-            ),
-            source,
-        )
+        return cls(CodeSettings(root=workspace["root"], ignored_paths=workspace["ignored_paths"], read=actions["read"], write=actions["write"], execute=actions["execute"], verification_commands=verification), source)
 
     @classmethod
     def load_automatically(cls, base_directory: str | Path | None = None, environment: Mapping[str, str] | None = None) -> "CodeConfig":
@@ -126,9 +109,7 @@ def require_config_header(data: dict[str, Any], expected_kind: str) -> None:
         raise ValueError(f"configuration kind must be {expected_kind!r}")
 
 
-def find_optional_config_file(
-    filename: str, environment_variable: str, *, base_directory: str | Path | None = None, environment: Mapping[str, str] | None = None
-) -> tuple[Path, Path | None]:
+def find_optional_config_file(filename: str, environment_variable: str, *, base_directory: str | Path | None = None, environment: Mapping[str, str] | None = None) -> tuple[Path, Path | None]:
     base = Path.cwd() if base_directory is None else Path(base_directory).expanduser().absolute()
     env = os.environ if environment is None else environment
     configured = read_optional_text(env.get(environment_variable), environment_variable)
@@ -176,10 +157,7 @@ def _read_audit_settings(data: Any) -> AuditPolicy:
     if not isinstance(data, dict):
         raise ValueError("storage audit settings must be a table")
     reject_unknown_fields(data, {"detailed_days", "critical_days"}, "storage audit settings")
-    return AuditPolicy(
-        detailed_days=read_int(data.get("detailed_days", 180), "audit detailed_days", minimum=1),
-        critical_days=read_int(data.get("critical_days", 365), "audit critical_days", minimum=1),
-    )
+    return AuditPolicy(detailed_days=read_int(data.get("detailed_days", 180), "audit detailed_days", minimum=1), critical_days=read_int(data.get("critical_days", 365), "audit critical_days", minimum=1))
 
 
 def _read_code_workspace(data: dict[str, Any], base_dir: Path) -> dict[str, Any]:
@@ -202,9 +180,7 @@ def _read_code_actions(data: dict[str, Any]) -> dict[str, str]:
 def _read_verification_commands(data: dict[str, Any]) -> list[list[str]]:
     reject_unknown_fields(data, {"commands"}, "code verification settings")
     commands = data.get("commands", [])
-    if not isinstance(commands, list) or not all(
-        isinstance(command, list) and command and all(isinstance(argument, str) and argument for argument in command) for command in commands
-    ):
+    if not isinstance(commands, list) or not all(isinstance(command, list) and command and all(isinstance(argument, str) and argument for argument in command) for command in commands):
         raise ValueError("code verification commands must be non-empty string arrays")
     return [list(command) for command in commands]
 

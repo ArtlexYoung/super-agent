@@ -20,16 +20,7 @@ class TeamAgent(Protocol):
     model_profiles: list[Any]
     subagents: tuple[SubAgent, ...]
 
-    def _run_as_subagent(
-        self,
-        prompt: str,
-        parent_run: Run,
-        *,
-        purpose: str,
-        required_features: tuple[str, ...],
-        record_options: SubagentRecordOptions,
-        shared_context: dict[str, object] | None,
-    ): ...
+    def _run_as_subagent(self, prompt: str, parent_run: Run, *, purpose: str, required_features: tuple[str, ...], record_options: SubagentRecordOptions, shared_context: dict[str, object] | None): ...
 
 
 @dataclass(frozen=True)
@@ -55,15 +46,7 @@ class AgentTeam:
         return tuple(self._subagents)
 
     def add_subagent(
-        self,
-        agent: TeamAgent,
-        *,
-        name: str | None = None,
-        description: str = "",
-        created_by_agent: bool = False,
-        purpose: str = "auto",
-        required_features: tuple[str, ...] = ("text",),
-        weight: float = 1.0,
+        self, agent: TeamAgent, *, name: str | None = None, description: str = "", created_by_agent: bool = False, purpose: str = "auto", required_features: tuple[str, ...] = ("text",), weight: float = 1.0
     ) -> str:
         subagent_name = self._make_next_name() if name is None else name.strip()
         if not subagent_name:
@@ -81,17 +64,7 @@ class AgentTeam:
         clean_weight = float(weight)
         if not math.isfinite(clean_weight) or clean_weight <= 0:
             raise ValueError("subagent weight must be finite and positive")
-        self._subagents.append(
-            SubAgent(
-                name=subagent_name,
-                agent=agent,
-                description=description,
-                created_by_agent=created_by_agent,
-                purpose=clean_purpose,
-                required_features=clean_features,
-                weight=clean_weight,
-            )
-        )
+        self._subagents.append(SubAgent(name=subagent_name, agent=agent, description=description, created_by_agent=created_by_agent, purpose=clean_purpose, required_features=clean_features, weight=clean_weight))
         return subagent_name
 
     def check_links(self) -> list[str]:
@@ -103,9 +76,7 @@ class AgentTeam:
         if max_depth is not None:
             longest_chain = find_longest_agent_chain(self.owner, root_chain, set())
             if len(longest_chain) > max_depth:
-                warnings.append(
-                    f"Agent chain depth is {len(longest_chain)} layers, configured max_agent_chain_depth is {max_depth}: " + " -> ".join(longest_chain)
-                )
+                warnings.append(f"Agent chain depth is {len(longest_chain)} layers, configured max_agent_chain_depth is {max_depth}: " + " -> ".join(longest_chain))
         return warnings
 
     def create_callbacks(self) -> SubagentCallbacks:
@@ -126,9 +97,7 @@ class AgentTeam:
             for subagent in self._subagents
         ]
 
-    def run_named_for_model(
-        self, name: str, prompt: str, run: Run, record_options: SubagentRecordOptions, shared_context: dict[str, object] | None = None
-    ) -> dict[str, object]:
+    def run_named_for_model(self, name: str, prompt: str, run: Run, record_options: SubagentRecordOptions, shared_context: dict[str, object] | None = None) -> dict[str, object]:
         subagent = next((item for item in self._subagents if item.name == name), None)
         if subagent is None:
             raise KeyError(f"subagent not found: {name}")
@@ -143,9 +112,7 @@ class AgentTeam:
                 return candidate
             index += 1
 
-    def _run_subagent(
-        self, subagent: SubAgent, prompt: str, parent_run: Run, record_options: SubagentRecordOptions, shared_context: dict[str, object] | None
-    ) -> SubAgentResult:
+    def _run_subagent(self, subagent: SubAgent, prompt: str, parent_run: Run, record_options: SubagentRecordOptions, shared_context: dict[str, object] | None) -> SubAgentResult:
         parent_run.record_event(
             "subagent.started",
             {
@@ -157,22 +124,9 @@ class AgentTeam:
                 "required_features": list(subagent.required_features),
             },
         )
-        result = subagent.agent._run_as_subagent(
-            prompt,
-            parent_run,
-            purpose=subagent.purpose,
-            required_features=subagent.required_features,
-            record_options=record_options,
-            shared_context=shared_context,
-        )
+        result = subagent.agent._run_as_subagent(prompt, parent_run, purpose=subagent.purpose, required_features=subagent.required_features, record_options=record_options, shared_context=shared_context)
         subagent_result = SubAgentResult(
-            name=subagent.name,
-            description=subagent.description,
-            text=result.text,
-            prompt=prompt,
-            created_by_agent=subagent.created_by_agent,
-            subagent_results=result.subagent_results,
-            run_id=result.run_id,
+            name=subagent.name, description=subagent.description, text=result.text, prompt=prompt, created_by_agent=subagent.created_by_agent, subagent_results=result.subagent_results, run_id=result.run_id
         )
         parent_run.record_event("subagent.completed", {"name": subagent.name, "run_id": result.run_id, "record_mode": record_options.mode})
         return subagent_result

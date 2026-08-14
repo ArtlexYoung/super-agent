@@ -39,18 +39,7 @@ class DisclosureContextBudget:
         self.budget_chars = budget_chars
         self.used_chars = 0
 
-    def create_page(
-        self,
-        reference: str,
-        kind: str,
-        name: str,
-        content: str,
-        stage: str,
-        *,
-        offset: int = 0,
-        limit: int = DEFAULT_INLINE_CHARS,
-        cache_path: Path | None = None,
-    ) -> DisclosurePage:
+    def create_page(self, reference: str, kind: str, name: str, content: str, stage: str, *, offset: int = 0, limit: int = DEFAULT_INLINE_CHARS, cache_path: Path | None = None) -> DisclosurePage:
         if isinstance(limit, bool) or not isinstance(limit, int) or limit <= 0 or limit > MAX_PAGE_CHARS:
             raise ValueError(f"disclosure limit must be between 1 and {MAX_PAGE_CHARS} characters")
         selected_limit = limit
@@ -69,9 +58,7 @@ class DisclosureContextBudget:
         return {"used_chars": self.used_chars, "budget_chars": self.budget_chars, "remaining_chars": max(0, self.budget_chars - self.used_chars)}
 
 
-def create_disclosure_page(
-    reference: str, kind: str, name: str, content: str, *, offset: int = 0, limit: int = DEFAULT_INLINE_CHARS, cache_path: Path | None = None
-) -> DisclosurePage:
+def create_disclosure_page(reference: str, kind: str, name: str, content: str, *, offset: int = 0, limit: int = DEFAULT_INLINE_CHARS, cache_path: Path | None = None) -> DisclosurePage:
     """Return one bounded page without changing or discarding source content."""
     _require_content_size(content)
     if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
@@ -177,9 +164,7 @@ class SkillSourceScan:
     issues: list[SkillValidationIssue]
 
 
-def read_skill_sources(
-    skill_roots: list[Path], disabled_names: list[str], builtin_skill_roots: list[Path] | None = None, user_skill_roots: list[Path] | None = None
-) -> SkillSourceScan:
+def read_skill_sources(skill_roots: list[Path], disabled_names: list[str], builtin_skill_roots: list[Path] | None = None, user_skill_roots: list[Path] | None = None) -> SkillSourceScan:
     """Scan user, project, and built-in Skills in override order."""
     user = _read_source_group(user_skill_roots or [], disabled_names, "user")
     project = _read_source_group(skill_roots, disabled_names, "project", {source.reference.key: source for source in user.sources})
@@ -188,9 +173,7 @@ def read_skill_sources(
     return SkillSourceScan(builtin.sources, sorted(disabled.values(), key=lambda item: item.key), [*user.issues, *project.issues, *builtin.issues])
 
 
-def _read_source_group(
-    roots: list[Path], disabled_names: list[str], source_layer: str, existing_sources: dict[str, SkillSource] | None = None
-) -> SkillSourceScan:
+def _read_source_group(roots: list[Path], disabled_names: list[str], source_layer: str, existing_sources: dict[str, SkillSource] | None = None) -> SkillSourceScan:
     sources = dict(existing_sources or {})
     higher_keys = set(sources)
     disabled: dict[str, SkillReference] = {}
@@ -420,14 +403,7 @@ def _providers_by_type(entries: list[SkillIndexEntry]) -> dict[str, list[SkillIn
     return providers
 
 
-def _visit_entry(
-    entry: SkillIndexEntry,
-    index: SkillIndex,
-    providers: dict[str, list[SkillIndexEntry]],
-    visit_states: dict[str, str],
-    stack: list[str],
-    resolved: list[SkillIndexEntry],
-) -> None:
+def _visit_entry(entry: SkillIndexEntry, index: SkillIndex, providers: dict[str, list[SkillIndexEntry]], visit_states: dict[str, str], stack: list[str], resolved: list[SkillIndexEntry]) -> None:
     key = entry.reference.key
     state = visit_states.get(key)
     if state == "visited":

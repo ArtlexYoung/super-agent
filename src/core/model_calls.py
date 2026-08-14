@@ -140,18 +140,9 @@ class ModelCaller:
     def create_text_model(self, store: EventStore | None, purpose: str, decision: SelectedModel, record_event: EventWriter | None = None) -> TextModel:
         if store is None and record_event is None:
             raise ValueError("a text model requires storage or an event writer")
-        return _TextModel(
-            model_caller=self,
-            store=store,
-            record_event=record_event,
-            purpose=purpose.strip().lower(),
-            decision=decision,
-            operation_id=f"model-operation-{uuid4().hex}",
-        )
+        return _TextModel(model_caller=self, store=store, record_event=record_event, purpose=purpose.strip().lower(), decision=decision, operation_id=f"model-operation-{uuid4().hex}")
 
-    def call_model(
-        self, messages: list[Message], decision: SelectedModel, context: ModelCallContext, *, tools: list[ToolDefinition] | None = None
-    ) -> ModelResponse:
+    def call_model(self, messages: list[Message], decision: SelectedModel, context: ModelCallContext, *, tools: list[ToolDefinition] | None = None) -> ModelResponse:
         provider = self._prepare_model_call(decision, context)
         return call_chat_model(_to_provider_call(decision, context, messages, tools), provider, context.record_event)
 
@@ -212,24 +203,12 @@ def list_model_usage_stats(store: EventStore, purpose: str | None = None, *, eve
         accumulator.input_tokens += _nonnegative_number(event.data.get("input_tokens"))
         accumulator.output_tokens += _nonnegative_number(event.data.get("output_tokens"))
         accumulator.cost += _nonnegative_number(event.data.get("estimated_cost"))
-    return sorted(
-        (_finish_stats(profile_key, event_purpose, accumulator) for (profile_key, event_purpose), accumulator in accumulators.items()),
-        key=lambda item: (item.purpose, item.profile_key),
-    )
+    return sorted((_finish_stats(profile_key, event_purpose, accumulator) for (profile_key, event_purpose), accumulator in accumulators.items()), key=lambda item: (item.purpose, item.profile_key))
 
 
-def infer_conversation_feedback_with_model(
-    conversation: Conversation, prompt: str, instructions: str, send_messages: Callable[[list[Message]], str]
-) -> tuple[str, float, str] | None:
+def infer_conversation_feedback_with_model(conversation: Conversation, prompt: str, instructions: str, send_messages: Callable[[list[Message]], str]) -> tuple[str, float, str] | None:
     policy = _required_feedback_instructions(instructions)
-    previous_assistant_index = next(
-        (
-            index
-            for index in range(len(conversation.messages) - 1, -1, -1)
-            if conversation.messages[index].role == "assistant" and conversation.messages[index].run_id
-        ),
-        None,
-    )
+    previous_assistant_index = next((index for index in range(len(conversation.messages) - 1, -1, -1) if conversation.messages[index].role == "assistant" and conversation.messages[index].run_id), None)
     if previous_assistant_index is None:
         return None
     previous_user_prompt = next((message.content for message in reversed(conversation.messages[:previous_assistant_index]) if message.role == "user"), "")
@@ -238,11 +217,7 @@ def infer_conversation_feedback_with_model(
         "previous_task": previous_user_prompt,
         "previous_response": previous_response,
         "follow_up": prompt,
-        "response_contract": {
-            "is_feedback": "boolean",
-            "score": "number from 0 to 1 when is_feedback is true, otherwise null",
-            "reason": "concise evidence-based reason",
-        },
+        "response_contract": {"is_feedback": "boolean", "score": "number from 0 to 1 when is_feedback is true, otherwise null", "reason": "concise evidence-based reason"},
     }
     text = send_messages([{"role": "system", "content": policy}, {"role": "user", "content": json.dumps(payload, ensure_ascii=False, sort_keys=True)}])
     try:
@@ -308,9 +283,7 @@ def _score_model_candidate(profile: ModelProfile, purpose: str, required: set[st
     evidence.append(f"configured_total_cost={traits.pricing.total_cost_per_million:.4f}")
     if stats is not None and stats.call_count:
         score += stats.reliability + stats.average_quality
-        evidence.extend(
-            [f"observed_calls={stats.call_count}", f"observed_reliability={stats.reliability:.4f}", f"observed_quality={stats.average_quality:.4f}"]
-        )
+        evidence.extend([f"observed_calls={stats.call_count}", f"observed_reliability={stats.reliability:.4f}", f"observed_quality={stats.average_quality:.4f}"])
     if profile.default:
         score += 0.01
         evidence.append("configured_default=true")
@@ -330,13 +303,7 @@ def _nonnegative_number(value: object) -> float:
 
 
 def assistant_tool_call_message(text: str, calls: list[ToolCall]) -> Message:
-    return {
-        "role": "assistant",
-        "content": text,
-        "tool_calls": [
-            {"id": call.id, "type": "function", "function": {"name": call.name, "arguments": json.dumps(call.arguments, ensure_ascii=False)}} for call in calls
-        ],
-    }
+    return {"role": "assistant", "content": text, "tool_calls": [{"id": call.id, "type": "function", "function": {"name": call.name, "arguments": json.dumps(call.arguments, ensure_ascii=False)}} for call in calls]}
 
 
 def tool_result_message(call: ToolCall, result: dict[str, object]) -> Message:

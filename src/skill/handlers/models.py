@@ -7,15 +7,7 @@ from dataclasses import dataclass, replace
 from typing import Mapping, Sequence
 
 from core.models import read_bool, read_optional_int, read_optional_number, read_optional_text, read_text, read_text_list, reject_unknown_fields
-from core.provider import (
-    ANTHROPIC_COMPATIBLE_PROVIDER,
-    MOCK_PROVIDER,
-    OPENAI_COMPATIBLE_PROVIDER,
-    MODEL_PRICE_FIELDS,
-    ModelPricing,
-    ProviderConnection,
-    normalize_provider_connection,
-)
+from core.provider import ANTHROPIC_COMPATIBLE_PROVIDER, MOCK_PROVIDER, OPENAI_COMPATIBLE_PROVIDER, MODEL_PRICE_FIELDS, ModelPricing, ProviderConnection, normalize_provider_connection
 from skill.discovery.catalog import SkillDisclosure
 from skill.handlers.runtime import Skills
 from skill.discovery.manifest import calculate_skill_directory_sha256
@@ -304,12 +296,7 @@ def choose_dispatch_model(models: object, purpose: str, required_features: Seque
     """Choose the lowest-cost compatible declared model for one Agent dispatch."""
     required = {item.strip().lower() for item in required_features if item.strip()}
     candidates = (
-        [
-            item
-            for item in models
-            if isinstance(item, dict)
-            and required <= {str(feature).strip().lower() for feature in item.get("supports", []) if isinstance(feature, str) and feature.strip()}
-        ]
+        [item for item in models if isinstance(item, dict) and required <= {str(feature).strip().lower() for feature in item.get("supports", []) if isinstance(feature, str) and feature.strip()}]
         if isinstance(models, list)
         else []
     )
@@ -318,14 +305,7 @@ def choose_dispatch_model(models: object, purpose: str, required_features: Seque
         return ModelDispatchChoice(None, pricing.resolved_dict(), pricing.estimate_cost(token_counts))
     clean_purpose = purpose.strip().lower()
     choices = [(item, ModelPricing.from_mapping(item)) for item in candidates]
-    selected, pricing = min(
-        enumerate(choices),
-        key=lambda pair: (
-            0 if clean_purpose in pair[1][0].get("purposes", []) else 1,
-            pair[1][1].estimate_cost(token_counts)["blended_cost_per_million"],
-            pair[0],
-        ),
-    )[1]
+    selected, pricing = min(enumerate(choices), key=lambda pair: (0 if clean_purpose in pair[1][0].get("purposes", []) else 1, pair[1][1].estimate_cost(token_counts)["blended_cost_per_million"], pair[0]))[1]
     return ModelDispatchChoice(str(selected.get("model", "")) or None, pricing.resolved_dict(), pricing.estimate_cost(token_counts))
 
 
@@ -353,16 +333,9 @@ def _profile_from_super_agent_environment(environment: Mapping[str, str], provid
     )
 
 
-def _create_ephemeral_profile(
-    name: str, description: str, model: str, connection: ProviderConnection, source: str, *, supports: list[str] | None = None
-) -> ModelProfile:
+def _create_ephemeral_profile(name: str, description: str, model: str, connection: ProviderConnection, source: str, *, supports: list[str] | None = None) -> ModelProfile:
     return ModelProfile(
-        name=name,
-        description=description,
-        version="ephemeral",
-        definition=ModelDefinition(model, normalize_provider_connection(connection), ModelTraits(list(supports or ["text"]), [], [])),
-        source=source,
-        skill_key="",
+        name=name, description=description, version="ephemeral", definition=ModelDefinition(model, normalize_provider_connection(connection), ModelTraits(list(supports or ["text"]), [], [])), source=source, skill_key=""
     )
 
 

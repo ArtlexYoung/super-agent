@@ -7,18 +7,7 @@ from dataclasses import asdict
 from threading import RLock
 from typing import TYPE_CHECKING, Callable
 
-from core.models import (
-    format_utc,
-    read_optional_text,
-    read_text,
-    read_text_list,
-    RunEvent,
-    RunIdentity,
-    RunSnapshot,
-    RuntimeEventSubscriber,
-    RuntimeEventSubscribers,
-    SubscriberFailure,
-)
+from core.models import format_utc, read_optional_text, read_text, read_text_list, RunEvent, RunIdentity, RunSnapshot, RuntimeEventSubscriber, RuntimeEventSubscribers, SubscriberFailure
 
 if TYPE_CHECKING:
     from core.records.store import StorageBackend, StorageEvent
@@ -30,14 +19,7 @@ RunEventListener = Callable[[RunEvent], None]
 class RunEventLog:
     """Persist, publish, and retain one ordered run event stream."""
 
-    def __init__(
-        self,
-        identity: RunIdentity,
-        *,
-        backend: StorageBackend | None = None,
-        event_listener: RunEventListener | None = None,
-        subscribers: RuntimeEventSubscribers | None = None,
-    ) -> None:
+    def __init__(self, identity: RunIdentity, *, backend: StorageBackend | None = None, event_listener: RunEventListener | None = None, subscribers: RuntimeEventSubscribers | None = None) -> None:
         self.identity = identity
         self._backend = backend
         self._event_listener = event_listener
@@ -73,14 +55,7 @@ class RunEventLog:
                 data=content,
             )
         else:
-            stored = self._backend.append_event(
-                user_id=self.identity.user_id,
-                agent_name=self.identity.agent_name,
-                stream_type="run",
-                stream_id=self.identity.run_id,
-                event_type=clean_type,
-                data=content,
-            )
+            stored = self._backend.append_event(user_id=self.identity.user_id, agent_name=self.identity.agent_name, stream_type="run", stream_id=self.identity.run_id, event_type=clean_type, data=content)
             event = run_event_from_storage(stored, len(self._events) + 1, self.identity.parent_run_id)
         self._events.append(event)
         if self._event_listener is not None:
@@ -112,9 +87,7 @@ class RunEventLog:
             return []
         from core.records.store import StorageEventQuery
 
-        return self._backend.read_events(
-            StorageEventQuery(user_id=self.identity.user_id, agent_name=self.identity.agent_name, stream_type="run", stream_id=self.identity.run_id)
-        )
+        return self._backend.read_events(StorageEventQuery(user_id=self.identity.user_id, agent_name=self.identity.agent_name, stream_type="run", stream_id=self.identity.run_id))
 
 
 def run_snapshot_from_events(user_id: str, events: list[StorageEvent]) -> RunSnapshot:
@@ -152,15 +125,7 @@ def run_events_from_storage(events: list[StorageEvent]) -> list[RunEvent]:
 
 
 def run_event_from_storage(event: StorageEvent, sequence: int, parent_run_id: str | None) -> RunEvent:
-    return RunEvent(
-        run_id=event.stream_id,
-        sequence=sequence,
-        event_type=event.event_type,
-        created_at=event.created_at,
-        agent_name=event.agent_name,
-        parent_run_id=parent_run_id,
-        data=dict(event.data),
-    )
+    return RunEvent(run_id=event.stream_id, sequence=sequence, event_type=event.event_type, created_at=event.created_at, agent_name=event.agent_name, parent_run_id=parent_run_id, data=dict(event.data))
 
 
 def _latest_selection_decisions(events: list[RunEvent]) -> list[object]:
@@ -224,10 +189,7 @@ def _ordered_run_events(events: list[StorageEvent]) -> list[StorageEvent]:
         raise ValueError("run event stream cannot be empty")
     ordered = sorted(events, key=lambda event: event.position)
     first = ordered[0]
-    if any(
-        event.stream_type != "run" or event.stream_id != first.stream_id or event.user_id != first.user_id or event.agent_name != first.agent_name
-        for event in ordered
-    ):
+    if any(event.stream_type != "run" or event.stream_id != first.stream_id or event.user_id != first.user_id or event.agent_name != first.agent_name for event in ordered):
         raise ValueError("run projection cannot combine event streams")
     if first.event_type != "run.started":
         raise ValueError(f"run stream does not start with run.started: {first.stream_id}")

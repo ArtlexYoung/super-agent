@@ -81,9 +81,7 @@ class AGUIEventMapper:
             return [{"type": "RUN_FINISHED", "threadId": self.thread_id, "runId": self.run_id, "result": event.data, "outcome": {"type": "success"}}]
         if event_type == "run.failed":
             self.terminal_event_sent = True
-            return [
-                {"type": "RUN_ERROR", "message": str(event.data.get("message", "Agent run failed")), "code": str(event.data.get("error_type", "RuntimeError"))}
-            ]
+            return [{"type": "RUN_ERROR", "message": str(event.data.get("message", "Agent run failed")), "code": str(event.data.get("error_type", "RuntimeError"))}]
         return []
 
     def _run_started(self, event: RunEvent) -> dict[str, Any]:
@@ -142,14 +140,7 @@ def _custom_runtime_event(event: RunEvent) -> dict[str, object]:
     return {
         "type": "CUSTOM",
         "name": event.event_type,
-        "value": {
-            "runId": event.run_id,
-            "sequence": event.sequence,
-            "createdAt": event.created_at,
-            "agentName": event.agent_name,
-            "parentRunId": event.parent_run_id,
-            "data": event.data,
-        },
+        "value": {"runId": event.run_id, "sequence": event.sequence, "createdAt": event.created_at, "agentName": event.agent_name, "parentRunId": event.parent_run_id, "data": event.data},
     }
 
 
@@ -165,18 +156,8 @@ def _tool_call_started_events(event: RunEvent) -> list[dict[str, object]]:
 
 def _tool_call_result_event(event: RunEvent) -> dict[str, object]:
     call_id = str(event.data.get("call_id") or f"tool-{event.sequence}")
-    content = (
-        event.data.get("result")
-        if event.event_type == "tool.completed"
-        else {"error": str(event.data.get("message", "Tool call failed")), "errorType": str(event.data.get("error_type", "RuntimeError"))}
-    )
-    return {
-        "type": "TOOL_CALL_RESULT",
-        "messageId": f"{call_id}-result",
-        "toolCallId": call_id,
-        "content": json.dumps(content, ensure_ascii=False, separators=(",", ":")),
-        "role": "tool",
-    }
+    content = event.data.get("result") if event.event_type == "tool.completed" else {"error": str(event.data.get("message", "Tool call failed")), "errorType": str(event.data.get("error_type", "RuntimeError"))}
+    return {"type": "TOOL_CALL_RESULT", "messageId": f"{call_id}-result", "toolCallId": call_id, "content": json.dumps(content, ensure_ascii=False, separators=(",", ":")), "role": "tool"}
 
 
 def _assistant_message_events(event: RunEvent) -> list[dict[str, str]]:
@@ -196,15 +177,7 @@ DEFAULT_STATIC_ROOT = Path(__file__).resolve().parents[1] / "static"
 class AGUIHTTPServer(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(
-        self,
-        address: tuple[str, int],
-        agent: Agent,
-        *,
-        user_id: str = LOCAL_USER_ID,
-        allowed_origins: tuple[str, ...] = DEFAULT_ALLOWED_ORIGINS,
-        static_root: str | Path | None = DEFAULT_STATIC_ROOT,
-    ) -> None:
+    def __init__(self, address: tuple[str, int], agent: Agent, *, user_id: str = LOCAL_USER_ID, allowed_origins: tuple[str, ...] = DEFAULT_ALLOWED_ORIGINS, static_root: str | Path | None = DEFAULT_STATIC_ROOT) -> None:
         self.agent = agent
         self.user_id = validate_user_id(user_id)
         self.allowed_origins = frozenset(allowed_origins)
@@ -324,10 +297,7 @@ class AGUIRequestHandler(BaseHTTPRequestHandler):
 
         try:
             self._server.agent.for_user(self._server.user_id).run(
-                request.prompt,
-                conversation_id=request.thread_id,
-                skill=request.skill,
-                run_options=AgentRunOptions(run_id=request.run_id, event_listener=send_runtime_event),
+                request.prompt, conversation_id=request.thread_id, skill=request.skill, run_options=AgentRunOptions(run_id=request.run_id, event_listener=send_runtime_event)
             )
         except Exception as error:
             if not mapper.terminal_event_sent:
@@ -418,12 +388,7 @@ class AGUIRequestHandler(BaseHTTPRequestHandler):
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("X-Frame-Options", "DENY")
-        self.send_header(
-            "Content-Security-Policy",
-            "default-src 'self'; connect-src 'self'; img-src 'self' data:; "
-            "style-src 'self' 'unsafe-inline'; script-src 'self'; "
-            "base-uri 'none'; frame-ancestors 'none'",
-        )
+        self.send_header("Content-Security-Policy", "default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; base-uri 'none'; frame-ancestors 'none'")
 
     def _origin_is_allowed(self) -> bool:
         origin = self.headers.get("Origin")
@@ -444,13 +409,7 @@ class AGUIRequestHandler(BaseHTTPRequestHandler):
 
 
 def create_ag_ui_server(
-    agent: Agent,
-    host: str = "127.0.0.1",
-    port: int = 8765,
-    *,
-    user_id: str = LOCAL_USER_ID,
-    allowed_origins: tuple[str, ...] = DEFAULT_ALLOWED_ORIGINS,
-    static_root: str | Path | None = DEFAULT_STATIC_ROOT,
+    agent: Agent, host: str = "127.0.0.1", port: int = 8765, *, user_id: str = LOCAL_USER_ID, allowed_origins: tuple[str, ...] = DEFAULT_ALLOWED_ORIGINS, static_root: str | Path | None = DEFAULT_STATIC_ROOT
 ) -> AGUIHTTPServer:
     clean_host = host.strip()
     if not clean_host:

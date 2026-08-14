@@ -377,9 +377,7 @@ class RunIdentity:
     parent_run_id: str | None = None
 
     @classmethod
-    def create(
-        cls, user_id: str, agent_name: str, *, run_id: str | None = None, conversation_id: str | None = None, parent_run_id: str | None = None
-    ) -> "RunIdentity":
+    def create(cls, user_id: str, agent_name: str, *, run_id: str | None = None, conversation_id: str | None = None, parent_run_id: str | None = None) -> "RunIdentity":
         return cls(
             user_id=validate_user_id(user_id),
             agent_name=validate_agent_name(agent_name),

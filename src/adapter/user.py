@@ -40,18 +40,8 @@ class UserAgent:
         self.skills = UserSkills(self)
         self.configuration = UserConfiguration(self)
 
-    def run(
-        self,
-        prompt: str,
-        *,
-        messages: list[Message] | None = None,
-        conversation_id: str | None = None,
-        skill: str | None = None,
-        run_options: "AgentRunOptions | None" = None,
-    ) -> RunResult:
-        return self.agent._run_for_user(
-            prompt, self.user_id, messages=messages, conversation_id=conversation_id, run_options=resolve_agent_run_options(run_options, skill)
-        )
+    def run(self, prompt: str, *, messages: list[Message] | None = None, conversation_id: str | None = None, skill: str | None = None, run_options: "AgentRunOptions | None" = None) -> RunResult:
+        return self.agent._run_for_user(prompt, self.user_id, messages=messages, conversation_id=conversation_id, run_options=resolve_agent_run_options(run_options, skill))
 
     def _store(self):
         return self.agent._create_event_store(self.user_id)
@@ -68,11 +58,7 @@ class UserConversations:
 
     def create(self, title: str = "", *, conversation_id: str | None = None) -> Conversation:
         return cast(
-            Conversation,
-            self.user._execute(
-                ActionRequest.create("user:conversation", "conversation:new", (ActionEffect.CREATE,)),
-                lambda: create_conversation(self.user._store(), title, conversation_id=conversation_id),
-            ),
+            Conversation, self.user._execute(ActionRequest.create("user:conversation", "conversation:new", (ActionEffect.CREATE,)), lambda: create_conversation(self.user._store(), title, conversation_id=conversation_id))
         )
 
     def list(self) -> list[Conversation]:
@@ -83,27 +69,14 @@ class UserConversations:
 
     def rename(self, conversation_id: str, title: str) -> Conversation:
         return cast(
-            Conversation,
-            self.user._execute(
-                ActionRequest.create("user:conversation", f"conversation:{conversation_id}", (ActionEffect.UPDATE,)),
-                lambda: rename_conversation(self.user._store(), conversation_id, title),
-            ),
+            Conversation, self.user._execute(ActionRequest.create("user:conversation", f"conversation:{conversation_id}", (ActionEffect.UPDATE,)), lambda: rename_conversation(self.user._store(), conversation_id, title))
         )
 
     def clear(self, conversation_id: str) -> Conversation:
-        return cast(
-            Conversation,
-            self.user._execute(
-                ActionRequest.create("user:conversation", f"conversation:{conversation_id}", (ActionEffect.DELETE,)),
-                lambda: clear_conversation(self.user._store(), conversation_id),
-            ),
-        )
+        return cast(Conversation, self.user._execute(ActionRequest.create("user:conversation", f"conversation:{conversation_id}", (ActionEffect.DELETE,)), lambda: clear_conversation(self.user._store(), conversation_id)))
 
     def delete(self, conversation_id: str) -> None:
-        self.user._execute(
-            ActionRequest.create("user:conversation", f"conversation:{conversation_id}", (ActionEffect.DELETE,)),
-            lambda: delete_conversation(self.user._store(), conversation_id),
-        )
+        self.user._execute(ActionRequest.create("user:conversation", f"conversation:{conversation_id}", (ActionEffect.DELETE,)), lambda: delete_conversation(self.user._store(), conversation_id))
 
 
 class UserRuns:
@@ -161,9 +134,7 @@ class UserRuns:
         from skill.handlers.runtime import load_configured_freshness_rules
 
         rules = load_configured_freshness_rules(self.user.agent.config, store=store)
-        result = self.user._execute(
-            ActionRequest.create("user:run-learning", f"run:{run_id}", (ActionEffect.CREATE, ActionEffect.UPDATE)), lambda: learn_from_run(store, run_id, rules)
-        )
+        result = self.user._execute(ActionRequest.create("user:run-learning", f"run:{run_id}", (ActionEffect.CREATE, ActionEffect.UPDATE)), lambda: learn_from_run(store, run_id, rules))
         if not isinstance(result, RunLearningResult):
             raise TypeError("run learning must return RunLearningResult")
         return result
@@ -182,10 +153,7 @@ class UserRuns:
         runner = agent._create_task_runner(self.user.user_id, skills)
         decision = runner.model_caller.select_task_model("review", ("text",), store)
         reviewer = runner.create_text_model(store, "independent_review", decision=decision)
-        return self.user._execute(
-            ActionRequest.create("user:run-review", f"run:{run_id}", (ActionEffect.CREATE,)),
-            lambda: review_run_evidence(store, run_id, evidence, reviewer.send_messages, skills.disclosure),
-        )
+        return self.user._execute(ActionRequest.create("user:run-review", f"run:{run_id}", (ActionEffect.CREATE,)), lambda: review_run_evidence(store, run_id, evidence, reviewer.send_messages, skills.disclosure))
 
 
 class UserMemory:
@@ -201,18 +169,10 @@ class UserMemory:
         return self._memory().recall_long_term(query, scope, limit)
 
     def remember(self, text: str, scope: str | None = None, source_run_id: str = "") -> "MemoryItem":
-        return cast(
-            "MemoryItem",
-            self.user._execute(
-                ActionRequest.create("user:memory", "memory:long-term", (ActionEffect.CREATE,)),
-                lambda: self._memory().remember_long_term(text, scope, source_run_id),
-            ),
-        )
+        return cast("MemoryItem", self.user._execute(ActionRequest.create("user:memory", "memory:long-term", (ActionEffect.CREATE,)), lambda: self._memory().remember_long_term(text, scope, source_run_id)))
 
     def forget(self, item_id: str, reason: str = "") -> None:
-        self.user._execute(
-            ActionRequest.create("user:memory", f"memory:long-term:{item_id}", (ActionEffect.DELETE,)), lambda: self._memory().forget_long_term(item_id, reason)
-        )
+        self.user._execute(ActionRequest.create("user:memory", f"memory:long-term:{item_id}", (ActionEffect.DELETE,)), lambda: self._memory().forget_long_term(item_id, reason))
 
     def usage_habits_instruction(self) -> str:
         return self._memory().usage_habits.build_prompt_instruction()
@@ -336,15 +296,7 @@ def _find_attached_run_owner(user: UserAgent, run_id: str, seen: set[int]) -> tu
 def _common_config_to_toml(config: CommonConfig) -> str:
     agent = config.agent
     base = config.source.parent
-    lines = [
-        "schema_version = 1",
-        'kind = "common"',
-        "",
-        "[agent]",
-        f"name = {_toml_string(agent.name)}",
-        f"system = {_toml_string(agent.system)}",
-        f"skills = {_toml_array(agent.skills)}",
-    ]
+    lines = ["schema_version = 1", 'kind = "common"', "", "[agent]", f"name = {_toml_string(agent.name)}", f"system = {_toml_string(agent.system)}", f"skills = {_toml_array(agent.skills)}"]
     if agent.max_agent_chain_depth is not None:
         lines.append(f"max_agent_chain_depth = {agent.max_agent_chain_depth}")
     lines.extend(
