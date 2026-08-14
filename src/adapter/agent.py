@@ -275,9 +275,12 @@ class Agent:
         )
         result = self.runtime.run_task(
             request,
-            user_id=user_id,
-            run_id=options.run_id,
-            conversation_id=conversation_id,
+            RunIdentity.create(
+                user_id,
+                self.config.agent.name,
+                run_id=options.run_id,
+                conversation_id=conversation_id,
+            ),
             event_listener=options.event_listener,
         )
         if pending_turn is not None:
@@ -383,9 +386,12 @@ class Agent:
         )
         return self.runtime.run_task(
             request,
-            user_id=parent_run.identity.user_id,
-            conversation_id=parent_run.identity.conversation_id,
-            parent_run_id=parent_run.run_id,
+            RunIdentity.create(
+                parent_run.identity.user_id,
+                self.config.agent.name,
+                conversation_id=parent_run.identity.conversation_id,
+                parent_run_id=parent_run.run_id,
+            ),
         )
 
     def _create_event_store(

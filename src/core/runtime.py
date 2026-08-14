@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING, Callable
 from uuid import uuid4
 
 from core.models import (
-    LOCAL_USER_ID,
     RunEvent,
     RunIdentity,
     RunResult,
@@ -36,7 +35,7 @@ from core.checks import (
 if TYPE_CHECKING:
     from core.config import CommonConfig
     from core.records.store import StorageBackend
-    from core.provider import ChatProvider, Message
+    from core.provider import Message
     from core.loop import TaskRunner
     from core.records.store import EventStore
     from core.records.store import DisclosureStorageFactory
@@ -48,13 +47,11 @@ if TYPE_CHECKING:
 @dataclass
 class Run:
     config: CommonConfig
-    model_profile: ModelProfile | None
-    provider: ChatProvider | None
+    task: Task
     skills: Skills
     identity: RunIdentity
     event_log: RunEventLog
     store: EventStore | None
-    model_profiles: tuple[ModelProfile, ...] = ()
     task_runner: TaskRunner | None = field(default=None, repr=False)
     allow_subscriber_failures: bool = False
     create_action_rules: Callable[[], ActionRules] | None = field(
@@ -170,11 +167,6 @@ class Run:
             loaded = replace(loaded, source=reference)
             self._loaded_skills[key] = loaded
         return loaded
-
-    def select_model(self, profile: ModelProfile, provider: ChatProvider) -> None:
-        self.record_model_used(profile)
-        self.model_profile = profile
-        self.provider = provider
 
     def record_model_used(self, profile: ModelProfile) -> None:
         entry = self.skills.index.find_skill(profile.key)
@@ -307,22 +299,14 @@ class Runtime:
     def run_task(
         self,
         request: Task,
+        identity: RunIdentity,
         *,
-        user_id: str = LOCAL_USER_ID,
-        run_id: str | None = None,
-        conversation_id: str | None = None,
-        parent_run_id: str | None = None,
         event_listener: Callable[[RunEvent], None] | None = None,
     ) -> RunResult:
         from core.loop import list_run_actions
 
-        identity = RunIdentity.create(
-            user_id,
-            self.config.agent.name,
-            run_id=run_id,
-            conversation_id=conversation_id,
-            parent_run_id=parent_run_id,
-        )
+        if identity.agent_name != self.config.agent.name:
+            raise ValueError("run identity agent_name does not match Runtime configuration")
         run = _create_run(
             self,
             request,
@@ -354,7 +338,7 @@ class Runtime:
                 )
             if run.task_runner is None:
                 raise RuntimeError("run task loop is unavailable")
-            result = run.task_runner.run_task(request, run)
+            result = run.task_runner.run_task(run)
             result = replace(result, subscriber_failures=run.list_subscriber_failures())
             run.record_event(
                 "run.completed",
@@ -441,13 +425,11 @@ def _create_run(
         task_runner = _create_task_runner(runtime, profiles, identity.user_id)
         run = Run(
             config=runtime.config,
-            model_profile=None,
-            provider=None,
+            task=request,
             skills=skills,
             identity=identity,
             event_log=event_log,
             store=store,
-            model_profiles=tuple(profiles),
             task_runner=task_runner,
             allow_subscriber_failures=request.allow_subscriber_failures,
             create_action_rules=runtime.create_action_rules,

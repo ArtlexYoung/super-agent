@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
@@ -17,37 +16,33 @@ from skill.handlers.runtime import (
     read_required_tool_string,
 )
 from core.provider import Message, ToolCall, ToolDefinition
-from core.models import SubAgentResult, SubagentRecordOptions, Task
+from core.models import SubAgentResult, SubagentRecordOptions
 from core.runtime import Run
 from core.checks import ActionEffect, ActionRequest
 from skill.discovery.catalog import SkillDisclosure, SkillIndex, SkillReference, skill_index_to_dict
 from skill.discovery.index import DEFAULT_PAGE_CHARS, disclosure_page_to_dict
 
 
-@dataclass(frozen=True)
-class RunToolsContext:
-    session: Run
-    list_subagents: Callable[[], list[dict[str, object]]] | None = None
-    run_subagent: Callable[[str, str], dict[str, object]] | None = None
-    send_text_model_messages: Callable[[list[Message]], str] | None = None
-    allowed_task_skills: tuple[str, ...] = ()
-    shared_context: dict[str, object] | None = None
-
-
 class RunTools:
     def __init__(
         self,
-        context: RunToolsContext,
+        run: Run,
         contributions: list[SkillUse] | None = None,
         delegated_subagent_results: list[SubAgentResult] | None = None,
         *,
+        send_text_model_messages: Callable[[list[Message]], str] | None = None,
         extra_tools: tuple[SkillTool, ...] = (),
-        session_context: SkillSessionContext | None = None,
     ) -> None:
-        self.context = context
+        self.run = run
+        self._send_text_model_messages = send_text_model_messages
+        self._subagents = (
+            run.task.subagents.list_subagents()
+            if run.task.include_subagents
+            else []
+        )
         self.used_skill_names: list[str] = []
         self._activated_skill_keys = {
-            str(item["key"]) for item in context.session.list_used_skill_evidence()
+            str(item["key"]) for item in run.list_used_skill_evidence()
         }
         self._active_task_skill = next(
             (
@@ -65,20 +60,26 @@ class RunTools:
         )
         self.skill_session: SkillSession | None = None
         self.task_policy: TaskPolicy | None = None
-        self._session_context = session_context
+        self._session_context = SkillSessionContext(
+            self._subagents,
+            self._run_named_subagent,
+            run.record_event,
+            self._record_subagent_result,
+            self._create_shared_context,
+        )
         self._tools: dict[str, SkillTool] = {}
-        disclosure = context.session.skills.disclosure
+        disclosure = run.skills.disclosure
         self._add_tools(
             _create_disclosure_tools(
                 self,
-                context.session.skills.index,
+                run.skills.index,
                 records_cache=disclosure.recorder is not None,
             )
         )
         self._add_tools(extra_tools)
-        if context.shared_context is not None:
+        if run.task.shared_context is not None:
             self._add_tools(_create_shared_context_tools(self))
-        if context.list_subagents is not None:
+        if self._subagents:
             self._add_tools(_create_subagent_tools(self))
         self._install_contributions(contributions or [])
 
@@ -103,7 +104,7 @@ class RunTools:
         return tuple(self._tools.values())
 
     def run_tool_call(self, call: ToolCall) -> dict[str, object]:
-        self.context.session.record_event(
+        self.run.record_event(
             "tool.requested",
             {"call_id": call.id, "name": call.name, "arguments": call.arguments},
         )
@@ -113,7 +114,7 @@ class RunTools:
             self._record_tool_failure(call, error)
             raise error
         try:
-            raw_result = self.context.session.execute_action(
+            raw_result = self.run.execute_action(
                 ActionRequest(
                     action_id=call.id,
                     actor=f"tool:{call.name}",
@@ -127,7 +128,7 @@ class RunTools:
             self._record_tool_failure(call, error)
             raise
         result = self._prepare_result(tool, call, raw_result)
-        self.context.session.record_event(
+        self.run.record_event(
             "tool.completed",
             {"call_id": call.id, "name": call.name, "result": result},
         )
@@ -143,7 +144,7 @@ class RunTools:
             raise TypeError(f"Skill tool must return an object: {tool.name}")
         if tool.result_kind is None:
             return result
-        page = self.context.session.skills.disclosure.disclose_value(
+        page = self.run.skills.disclosure.disclose_value(
             tool.result_kind,
             call.id,
             result,
@@ -154,7 +155,7 @@ class RunTools:
         return {"progressive_disclosure": disclosure_page_to_dict(page)}
 
     def _record_tool_failure(self, call: ToolCall, error: Exception) -> None:
-        self.context.session.record_event(
+        self.run.record_event(
             "tool.failed",
             {
                 "call_id": call.id,
@@ -183,7 +184,7 @@ class RunTools:
                 raise ValueError(f"runtime tool name already exists: {tool.name}")
 
     def _list_skills(self, arguments: dict[str, object]) -> dict[str, object]:
-        return skill_index_to_dict(self.context.session.skills.index)
+        return skill_index_to_dict(self.run.skills.index)
     def _disclose_skill_manifest(self, arguments: dict[str, object]) -> dict[str, object]:
         opened = self._open_requested_skill(arguments)
         manifest = opened.disclose_manifest()
@@ -221,7 +222,7 @@ class RunTools:
 
     def _read_disclosed_content(self, arguments: dict[str, object]) -> dict[str, object]:
         reference = read_required_tool_string(arguments, "reference")
-        page = self.context.session.skills.disclosure.read_disclosed_content(
+        page = self.run.skills.disclosure.read_disclosed_content(
             reference,
             offset=read_optional_non_negative_tool_integer(arguments, "offset") or 0,
             limit=(
@@ -316,13 +317,13 @@ class RunTools:
             return []
         if reference.key in loading:
             raise ValueError(f"Skill activation cycle: {reference.key}")
-        if self.context.session.skills.handlers.find(reference.skill_type) is None:
+        if self.run.skills.handlers.find(reference.skill_type) is None:
             raise KeyError(
                 f"Skill handler not found for Skill type: {reference.skill_type}"
             )
-        contribution = self.context.session.load_skill(
+        contribution = self.run.load_skill(
             reference,
-            self.context.send_text_model_messages,
+            self._send_text_model_messages,
         )
         loaded = [(reference, contribution)]
         next_loading = loading | {reference.key}
@@ -335,8 +336,8 @@ class RunTools:
         if reference.skill_type != "task":
             return
         if (
-            self.context.allowed_task_skills
-            and reference.name not in self.context.allowed_task_skills
+            self.run.task.allowed_task_skills
+            and reference.name not in self.run.task.allowed_task_skills
         ):
             raise PermissionError(
                 f"task Skill is outside this run's allowed Skills: {reference.key}"
@@ -348,20 +349,57 @@ class RunTools:
             )
 
     def list_subagents(self, arguments: dict[str, object]) -> dict[str, object]:
-        if self.context.list_subagents is None:
+        if not self._subagents:
             raise RuntimeError("subagent tools require subagents added in code")
-        return {"subagents": self.context.list_subagents()}
+        return {"subagents": self.run.task.subagents.list_subagents()}
 
     def run_subagent(self, arguments: dict[str, object]) -> dict[str, object]:
-        if self.context.run_subagent is None:
+        if not self._subagents:
             raise RuntimeError("subagent tools require subagents added in code")
-        return self.context.run_subagent(
+        return self._run_named_subagent(
             read_required_tool_string(arguments, "name"),
             read_required_tool_string(arguments, "prompt"),
         )
 
+    def _run_named_subagent(
+        self,
+        name: str,
+        prompt: str,
+        record_options: SubagentRecordOptions | None = None,
+        shared_context: dict[str, object] | None = None,
+    ) -> dict[str, object]:
+        value = self.run.task.subagents.run_named_subagent(
+            name,
+            prompt,
+            self.run,
+            record_options or SubagentRecordOptions(),
+            shared_context,
+        )
+        if record_options is None:
+            self._record_subagent_result(value)
+        return value
+
+    def _record_subagent_result(self, value: dict[str, object]) -> None:
+        self.delegated_subagent_results.append(_read_subagent_result(value))
+
+    def _create_shared_context(self, group_id: str, content: str) -> dict[str, object]:
+        page = self.run.skills.disclosure.disclose_content(
+            "agent-group",
+            group_id,
+            content,
+            stage="group-context",
+        )
+        return {
+            "group_id": group_id,
+            "content": content,
+            "reference": page.reference,
+            "content_sha256": page.content_sha256,
+            "total_chars": page.total_chars,
+            "cache_backed": page.cache_path is not None,
+        }
+
     def read_shared_task_context(self, arguments: dict[str, object]) -> dict[str, object]:
-        shared = self.context.shared_context
+        shared = self.run.task.shared_context
         if shared is None:
             raise RuntimeError("this task has no shared context")
         reference = read_required_tool_string(arguments, "reference")
@@ -370,7 +408,7 @@ class RunTools:
         content = shared.get("content")
         if not isinstance(content, str):
             raise TypeError("shared task context content must be text")
-        page = self.context.session.skills.disclosure.disclose_content(
+        page = self.run.skills.disclosure.disclose_content(
             "agent-group", str(shared.get("group_id", "shared-task")), content,
             stage="reference-read",
         )
@@ -379,24 +417,26 @@ class RunTools:
     def _open_requested_skill(self, arguments: dict[str, object]) -> SkillDisclosure:
         name = read_required_tool_string(arguments, "name")
         skill_type = read_optional_tool_string(arguments, "type")
-        opened = self.context.session.skills.disclosure.open_skill(
+        opened = self.run.skills.disclosure.open_skill(
             name,
             expected_type=skill_type,
         )
         return opened
 
     def _record_loaded_skill(self, reference: SkillReference) -> None:
-        entry = self.context.session.skills.index.require_skill(
+        entry = self.run.skills.index.require_skill(
             reference.name,
             reference.skill_type,
         )
-        if self.context.session.skills.handlers.find(reference.skill_type) is None:
+        if self.run.skills.handlers.find(reference.skill_type) is None:
             raise KeyError(
                 f"Skill handler not found for Skill type: {reference.skill_type}"
             )
-        self.context.session.record_skill_used(entry)
+        self.run.record_skill_used(entry)
         if reference.key not in self.used_skill_names:
             self.used_skill_names.append(reference.key)
+
+
 def _create_disclosure_tools(
     run_tools: RunTools,
     skill_index: SkillIndex,
@@ -466,67 +506,6 @@ def _create_disclosure_tools(
     return tuple(tools)
 
 
-def create_run_tools(
-    request: Task, run: Run, contributions: list[SkillUse],
-    send_text_model_messages: Callable[[list[Message]], str],
-    model_tool: SkillTool | None,
-) -> RunTools:
-    results: list[SubAgentResult] = []
-    subagents = request.subagents.list_subagents() if request.include_subagents else []
-
-    def run_subagent(
-        name: str, prompt: str, record_options: SubagentRecordOptions | None = None,
-        shared_context: dict[str, object] | None = None,
-    ) -> dict[str, object]:
-        value = request.subagents.run_named_subagent(
-            name,
-            prompt,
-            run,
-            record_options or SubagentRecordOptions(),
-            shared_context,
-        )
-        if record_options is None:
-            results.append(_read_subagent_result(value))
-        return value
-
-    def record_queue_result(value: dict[str, object]) -> None:
-        results.append(_read_subagent_result(value))
-
-    def create_shared_context(group_id: str, content: str) -> dict[str, object]:
-        page = run.skills.disclosure.disclose_content(
-            "agent-group", group_id, content, stage="group-context"
-        )
-        return {
-            "group_id": group_id, "content": content, "reference": page.reference,
-            "content_sha256": page.content_sha256,
-            "total_chars": page.total_chars, "cache_backed": page.cache_path is not None,
-        }
-
-    session_context = SkillSessionContext(
-        subagents,
-        run_subagent,
-        run.record_event,
-        record_queue_result,
-        create_shared_context,
-    )
-
-    extra_tools = [tool for tool in (model_tool,) if tool is not None]
-    return RunTools(
-        RunToolsContext(
-            session=run,
-            list_subagents=request.subagents.list_subagents if subagents else None,
-            run_subagent=run_subagent if subagents else None,
-            send_text_model_messages=send_text_model_messages,
-            allowed_task_skills=request.allowed_task_skills,
-            shared_context=request.shared_context,
-        ),
-        contributions,
-        results,
-        extra_tools=tuple(extra_tools),
-        session_context=session_context,
-    )
-
-
 def _read_subagent_result(value: dict[str, object]) -> SubAgentResult:
     nested = value.get("subagent_results")
     return SubAgentResult(
@@ -561,7 +540,7 @@ def _optional_path(path: Path | None) -> str | None:
 
 
 def _create_subagent_tools(run_tools: RunTools) -> tuple[SkillTool, ...]:
-    tools = [
+    return (
         SkillTool(
             "list_subagents",
             "List subagents added to the current Agent in code.",
@@ -570,9 +549,7 @@ def _create_subagent_tools(run_tools: RunTools) -> tuple[SkillTool, ...]:
             action=SkillAction((ActionEffect.READ,), "subagent:index"),
             result_kind="subagent",
         ),
-    ]
-    if run_tools.context.run_subagent is not None:
-        tools.append(SkillTool(
+        SkillTool(
             "run_subagent",
             "Run one subagent added in code and return its traced result.",
             {
@@ -583,12 +560,12 @@ def _create_subagent_tools(run_tools: RunTools) -> tuple[SkillTool, ...]:
             action=SkillAction((ActionEffect.DELEGATE,), "subagent", "name"),
             required=("name", "prompt"),
             result_kind="subagent",
-        ))
-    return tuple(tools)
+        ),
+    )
 
 
 def _create_shared_context_tools(run_tools: RunTools) -> tuple[SkillTool, ...]:
-    shared = run_tools.context.shared_context or {}
+    shared = run_tools.run.task.shared_context or {}
     reference = str(shared.get("reference", ""))
     return (
         SkillTool(

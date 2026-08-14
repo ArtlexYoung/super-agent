@@ -1823,6 +1823,17 @@ Status: implemented.
 - Protect the complete nested command tree, terminal exit behavior, output formats, and isolated
   `cli.toml` settings with command-level tests.
 
+## v0.1.78: One Run Session Context
+
+Status: implemented.
+
+- Make each `Run` own its immutable task beside identity, Skill snapshot, events, and storage.
+- Pass one validated `RunIdentity` into Runtime and reject Agent-name mismatches explicitly.
+- Let `RunTools` own subagent dispatch, shared task context, and dynamic Skill activation without
+  a second context object or forwarding factory.
+- Record selected model Skills without retaining duplicate provider and model-profile state on
+  the run, while preserving model routing, tool checks, nested Agents, and progressive disclosure.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

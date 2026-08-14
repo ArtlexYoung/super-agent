@@ -252,8 +252,11 @@ class SkillHandlerRuntimeTests(unittest.TestCase):
             }
             self.assertEqual({"Run", "Runtime"}, run_classes)
             run_source = Path("src/core/runtime.py").read_text(encoding="utf-8")
-            self.assertIn("model_profiles: tuple[ModelProfile, ...]", run_source)
+            self.assertIn("task: Task", run_source)
             self.assertIn("task_runner: TaskRunner | None", run_source)
+            tools_source = Path("src/core/tools.py").read_text(encoding="utf-8")
+            self.assertNotIn("RunToolsContext", tools_source)
+            self.assertNotIn("create_run_tools", tools_source)
             self.assertFalse(Path("src/core/session.py").exists())
             self.assertFalse(Path("src/core/runtime/plan.py").exists())
             self.assertFalse(Path("src/core/runtime/scheduler.py").exists())

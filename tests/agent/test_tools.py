@@ -16,11 +16,10 @@ from skill.handlers.runtime import (
 )
 from skill.handlers.builtins import create_memory_skill_contribution
 from core.provider import ToolCall
-from core.provider import MockProvider
-from core.tools import RunTools, RunToolsContext
+from core.tools import RunTools
 from core.config import CommonConfig
 from core.runtime import Run
-from core.models import RunIdentity
+from core.models import RunIdentity, SubagentCallbacks, Task
 from core.checks import ActionConfirmationRequired, ActionEffect, ActionRules
 from core.records.events import RunEventLog
 from core.records.store import EventStore
@@ -28,7 +27,6 @@ from adapter.storage_backends.storage import JsonlStorage
 from adapter.storage_backends.storage import DisclosureStorage
 from skill.discovery.catalog import ProgressiveDisclosureCore
 from skill.handlers.memory import Memory
-from skill.handlers.models import create_direct_provider_profile
 from skill.handlers.mcp import McpServers, StdioMcpServer
 
 
@@ -102,7 +100,7 @@ class SkillToolsTests(unittest.TestCase):
                 )
             )
 
-            evidence = tools.context.session.list_used_skill_evidence()
+            evidence = tools.run.list_used_skill_evidence()
             self.assertEqual([], evidence)
             self.assertEqual([], tools.used_skill_names)
 
@@ -136,7 +134,7 @@ class SkillToolsTests(unittest.TestCase):
                 result_kind="subagent",
             )
             tools = RunTools(
-                RunToolsContext(session=session),
+                session,
                 contributions=[SkillUse(tools=(tool,))],
             )
 
@@ -229,7 +227,7 @@ class SkillToolsTests(unittest.TestCase):
                 return {"ok": True}
 
             tools = RunTools(
-                RunToolsContext(session=session),
+                session,
                 contributions=[
                     SkillUse(
                         tools=(
@@ -292,7 +290,7 @@ class SkillToolsTests(unittest.TestCase):
                 )
             )
             tools = RunTools(
-                RunToolsContext(session=session),
+                session,
                 contributions=[contribution],
             )
 
@@ -354,9 +352,7 @@ def _create_tool_router(
     if disclosure is not session.skills.disclosure or index is not session.skills.index:
         raise ValueError("tool router must use the Run Skill snapshot")
     return RunTools(
-        RunToolsContext(
-            session=session,
-        ),
+        session,
         contributions=(
             []
             if memory is None
@@ -372,7 +368,6 @@ def _create_session(
     mcp_servers: McpServers | None = None,
 ) -> Run:
     config = CommonConfig.create_default(root)
-    provider = MockProvider()
     identity = RunIdentity.create(
         "local",
         config.agent.name,
@@ -398,11 +393,24 @@ def _create_session(
     )
     return Run(
         config=config,
-        model_profile=create_direct_provider_profile(),
-        provider=provider,
+        task=_create_task(),
         skills=Skills(disclosure, create_default_skill_handlers(mcp_servers)),
         identity=identity,
         event_log=event_log,
         store=store,
         create_action_rules=ActionRules,
     )
+
+
+def _create_task() -> Task:
+    return Task(
+        prompt="question",
+        messages=[],
+        include_subagents=False,
+        warning_messages=[],
+        subagents=SubagentCallbacks(lambda: [], _unexpected_subagent_run),
+    )
+
+
+def _unexpected_subagent_run(*args, **kwargs) -> dict[str, object]:
+    raise AssertionError("subagent callback should not run")
