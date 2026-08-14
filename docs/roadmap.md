@@ -1813,6 +1813,16 @@ Status: implemented.
 - Preserve SQLite WAL, remote hash indexes, exact tenant checks, optional drivers, migrations,
   batched deletion, and rollback behavior without fallback to another storage backend.
 
+## v0.1.77: One CLI Command Assembly
+
+Status: implemented.
+
+- Use one JSON writer, one output-format option, and one explicit config/user option pair across
+  direct runs, data commands, and Skill management.
+- Share the identical Skill subcommand selection path while keeping root and data dispatch direct.
+- Protect the complete nested command tree, terminal exit behavior, output formats, and isolated
+  `cli.toml` settings with command-level tests.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

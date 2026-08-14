@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import sys
 from dataclasses import asdict
@@ -10,10 +9,13 @@ from pathlib import Path
 from typing import Callable, Sequence
 
 from adapter.cli_support.cli_data import (
+    add_config_and_user_options,
+    add_output_format_option,
     configure_conversations_parser,
     configure_memory_parser,
     configure_runs_parser,
     configure_storage_parser,
+    print_cli_json,
     run_conversations_command,
     run_memory_command,
     run_runs_command,
@@ -155,11 +157,10 @@ def _build_parser() -> argparse.ArgumentParser:
 def _build_terminal_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="super-agent", description="Chat or run one prompt.")
     parser.add_argument("prompt", nargs="*")
-    parser.add_argument("--common-config")
+    add_config_and_user_options(parser, user_default=None)
     parser.add_argument("--cli-config")
     parser.add_argument("--code-config")
-    parser.add_argument("--output", choices=["text", "json"])
-    parser.add_argument("--user-id")
+    add_output_format_option(parser, default=None)
     parser.add_argument("--conversation-id")
     parser.add_argument("--skill", help="explicit task Skill name or task:name key")
     parser.add_argument(
@@ -179,7 +180,7 @@ def _build_terminal_parser() -> argparse.ArgumentParser:
 
 def configure_check_parser(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--common-config")
-    parser.add_argument("--output", choices=("text", "json"), default="text")
+    add_output_format_option(parser)
 
 
 def run_check_command(args: argparse.Namespace) -> int:
@@ -221,7 +222,7 @@ def run_check_command(args: argparse.Namespace) -> int:
 
     result = {"ok": all(bool(item["ok"]) for item in checks), "checks": checks}
     if args.output == "json":
-        print(json.dumps(result, ensure_ascii=False))
+        print_cli_json(result, pretty=False)
     else:
         for item in checks:
             status = "OK" if item["ok"] else "FAIL"
@@ -236,10 +237,9 @@ def _check(name: str, ok: bool, detail: str) -> dict[str, object]:
 
 
 def configure_serve_parser(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--common-config")
+    add_config_and_user_options(parser)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
-    parser.add_argument("--user-id", default=LOCAL_USER_ID)
     parser.add_argument(
         "--allow-origin",
         action="append",
@@ -323,8 +323,7 @@ def _run_prompt_command(
         skill=request.skill,
     )
     if output == "json":
-        print(json.dumps(asdict(result), ensure_ascii=False))
-        return 0
+        return print_cli_json(asdict(result), pretty=False)
     for warning in result.warning_messages or []:
         print(f"Warning: {warning}")
     print(result.text)

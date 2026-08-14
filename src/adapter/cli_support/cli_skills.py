@@ -6,6 +6,12 @@ import sys
 from pathlib import Path
 
 from adapter.cli_support.cli_config import load_agent, load_common_config, load_event_store
+from adapter.cli_support.cli_data import (
+    add_config_and_user_options,
+    add_output_format_option,
+    print_cli_json,
+    run_selected_cli_command,
+)
 from core.checks import ActionRules
 from core.config import CommonConfig
 from core.models import LOCAL_USER_ID
@@ -34,14 +40,10 @@ def configure_skills_parser(
 ) -> argparse._SubParsersAction:
     subparsers = parser.add_subparsers(dest="skill_command")
     list_parser = subparsers.add_parser("list", help="list available skills")
-    list_parser.add_argument("--common-config", default="common.toml")
     index_parser = subparsers.add_parser("index", help="print the central skill index as JSON")
-    index_parser.add_argument("--common-config", default="common.toml")
     index_parser.add_argument("--output", choices=["json"], default="json")
     freshness_parser = subparsers.add_parser("freshness", help="show runtime skill freshness stats")
-    freshness_parser.add_argument("--common-config", default="common.toml")
     validate_parser = subparsers.add_parser("validate", help="validate every skill manifest")
-    validate_parser.add_argument("--common-config", default="common.toml")
     graph_parser = subparsers.add_parser("graph", help="resolve a skill dependency graph")
     _add_composition_arguments(graph_parser)
     changes_parser = subparsers.add_parser("changes", help="manage Skill changes")
@@ -55,9 +57,8 @@ def configure_skills_parser(
         index_parser,
         freshness_parser,
         validate_parser,
-        graph_parser,
     ):
-        command_parser.add_argument("--user-id", default=LOCAL_USER_ID)
+        add_config_and_user_options(command_parser, config_default="common.toml")
     return subparsers
 
 
@@ -73,9 +74,7 @@ def configure_skill_changes_parser(parser: argparse.ArgumentParser) -> None:
     undo = subparsers.add_parser("undo", help="undo an applied Skill change")
     _add_change_id_arguments(undo)
     list_changes = subparsers.add_parser("list", help="list proposed Skill changes")
-    list_changes.add_argument("--common-config", default="common.toml")
-    for command_parser in (propose, test, apply, undo, list_changes):
-        command_parser.add_argument("--user-id", default=LOCAL_USER_ID)
+    add_config_and_user_options(list_changes, config_default="common.toml")
 
 
 def configure_skill_packages_parser(parser: argparse.ArgumentParser) -> None:
@@ -84,7 +83,7 @@ def configure_skill_packages_parser(parser: argparse.ArgumentParser) -> None:
     _add_composition_arguments(lock)
     lock.add_argument("--output", default="skill.lock")
     pack = subparsers.add_parser("pack", help="pack one Skill as a deterministic ZIP")
-    pack.add_argument("--common-config", default="common.toml")
+    add_config_and_user_options(pack, config_default="common.toml")
     pack.add_argument("--name", required=True)
     pack.add_argument("--output", required=True)
     install = subparsers.add_parser("install", help="install a local, ZIP, or Git Skill")
@@ -93,10 +92,8 @@ def configure_skill_packages_parser(parser: argparse.ArgumentParser) -> None:
     _add_package_source_arguments(update)
     update.add_argument("--name", required=True)
     remove = subparsers.add_parser("remove", help="remove one installed Skill")
-    remove.add_argument("--common-config", default="common.toml")
+    add_config_and_user_options(remove, config_default="common.toml")
     remove.add_argument("--name", required=True)
-    for command_parser in (lock, pack, install, update, remove):
-        command_parser.add_argument("--user-id", default=LOCAL_USER_ID)
 
 
 def configure_models_parser(parser: argparse.ArgumentParser) -> None:
@@ -133,10 +130,7 @@ def run_skills_command(args: argparse.Namespace) -> int:
         "packages": lambda: run_skill_packages_command(args),
         "models": lambda: run_models_command(args),
     }
-    handler = handlers.get(args.skill_command)
-    if handler is None:
-        raise ValueError("skills command is required")
-    return handler()
+    return run_selected_cli_command(args.skill_command, handlers, "skills command is required")
 
 
 def run_skill_changes_command(args: argparse.Namespace) -> int:
@@ -147,10 +141,9 @@ def run_skill_changes_command(args: argparse.Namespace) -> int:
         "undo": lambda: _undo_skill_change(args),
         "list": lambda: _list_skill_changes(args),
     }
-    handler = handlers.get(args.skill_change_command)
-    if handler is None:
-        raise ValueError("skills changes command is required")
-    return handler()
+    return run_selected_cli_command(
+        args.skill_change_command, handlers, "skills changes command is required"
+    )
 
 
 def run_skill_packages_command(args: argparse.Namespace) -> int:
@@ -161,10 +154,9 @@ def run_skill_packages_command(args: argparse.Namespace) -> int:
         "update": lambda: _update_skill(args),
         "remove": lambda: _remove_skill(args),
     }
-    handler = handlers.get(args.skill_package_command)
-    if handler is None:
-        raise ValueError("skills packages command is required")
-    return handler()
+    return run_selected_cli_command(
+        args.skill_package_command, handlers, "skills packages command is required"
+    )
 
 
 def run_models_command(args: argparse.Namespace) -> int:
@@ -199,19 +191,11 @@ def _print_model_profiles(
     output: str,
 ) -> int:
     if output == "json":
-        print(
-            json.dumps(
-                {
-                    "schema_version": 2,
-                    "config_path": str(config.source),
-                    "models": [model_profile_to_dict(profile) for profile in profiles],
-                },
-                ensure_ascii=False,
-                indent=2,
-                sort_keys=True,
-            )
-        )
-        return 0
+        return print_cli_json({
+            "schema_version": 2,
+            "config_path": str(config.source),
+            "models": [model_profile_to_dict(profile) for profile in profiles],
+        })
     for profile in profiles:
         _print_model_profile(profile)
     return 0
@@ -229,8 +213,7 @@ def _print_selected_model(
         "model": model_profile_to_dict(selected),
     }
     if output == "json":
-        print(json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True))
-        return 0
+        return print_cli_json(data)
     _print_model_profile(selected, prefix="selected")
     print(f"config\t{config.source}")
     return 0
@@ -263,9 +246,8 @@ def _remove_model_skill(
     _create_model_skill_manager(config, user_id).remove_model_skill(name)
     data = {"schema_version": 1, "name": name, "removed": True}
     if output == "json":
-        print(json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True))
-    else:
-        print(f"Removed model Skill: model:{name}")
+        return print_cli_json(data)
+    print(f"Removed model Skill: model:{name}")
     return 0
 
 
@@ -276,9 +258,8 @@ def _print_model_change(profile: ModelProfile, output: str, action: str) -> int:
         "model": model_profile_to_dict(profile),
     }
     if output == "json":
-        print(json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True))
-    else:
-        _print_model_profile(profile, prefix=action)
+        return print_cli_json(data)
+    _print_model_profile(profile, prefix=action)
     return 0
 
 
@@ -308,8 +289,7 @@ def _list_skills(config_path: Path, user_id: str) -> int:
 
 def _print_skill_index(config_path: Path, user_id: str) -> int:
     index = _load_skill_disclosure(config_path, user_id).prepare_skill_index()
-    print(json.dumps(skill_index_to_dict(index), ensure_ascii=False, indent=2, sort_keys=True))
-    return 0
+    return print_cli_json(skill_index_to_dict(index))
 
 
 def _propose_skill_change(args: argparse.Namespace) -> int:
@@ -489,38 +469,36 @@ def _load_package_manager(config_path: Path, user_id: str) -> SkillPackageManage
 
 
 def _add_change_name_arguments(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--common-config", default="common.toml")
+    add_config_and_user_options(parser, config_default="common.toml")
     parser.add_argument("--name", required=True)
     parser.add_argument("--goal", required=True)
     parser.add_argument("--type", dest="skill_type")
 
 
 def _add_change_id_arguments(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--common-config", default="common.toml")
+    add_config_and_user_options(parser, config_default="common.toml")
     parser.add_argument("--change-id", required=True)
 
 
 def _add_composition_arguments(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--common-config", default="common.toml")
+    add_config_and_user_options(parser, config_default="common.toml")
     parser.add_argument("--name", action="append", required=True)
 
 
 def _add_package_source_arguments(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--common-config", default="common.toml")
+    add_config_and_user_options(parser, config_default="common.toml")
     parser.add_argument("--source", required=True)
     parser.add_argument("--expected-sha256", default="")
 
 
 def _add_model_read_arguments(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--common-config")
-    parser.add_argument("--user-id", default=LOCAL_USER_ID)
-    parser.add_argument("--output", choices=["text", "json"], default="text")
+    add_config_and_user_options(parser)
+    add_output_format_option(parser)
 
 
 def _add_model_write_arguments(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--common-config", required=True)
-    parser.add_argument("--user-id", default=LOCAL_USER_ID)
-    parser.add_argument("--output", choices=["text", "json"], default="text")
+    add_config_and_user_options(parser, config_required=True)
+    add_output_format_option(parser)
 
 
 def _read_change_cases(path: Path) -> list[SkillChangeCase]:

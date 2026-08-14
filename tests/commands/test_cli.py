@@ -1,3 +1,4 @@
+import argparse
 import tempfile
 import unittest
 import json
@@ -9,7 +10,7 @@ from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
-from adapter.cli import CLI_COMMANDS, _is_terminal_request, main
+from adapter.cli import CLI_COMMANDS, _build_parser, _is_terminal_request, main
 from core import __version__
 from core.provider import MockProvider
 from support import write_minimal_project
@@ -60,6 +61,29 @@ class CliTests(unittest.TestCase):
         self.assertTrue(_is_terminal_request([]))
         self.assertTrue(_is_terminal_request(["setup"]))
         self.assertTrue(_is_terminal_request(["--skill", "code", "inspect this"]))
+
+    def test_management_command_tree_remains_complete(self) -> None:
+        parser = _build_parser()
+        expected = {
+            (): {"check", "config", "skills", "data", "serve"},
+            ("config",): {"show", "validate"},
+            ("skills",): {
+                "list", "index", "freshness", "validate", "graph",
+                "changes", "packages", "models",
+            },
+            ("skills", "changes"): {"propose", "test", "apply", "undo", "list"},
+            ("skills", "packages"): {"lock", "pack", "install", "update", "remove"},
+            ("skills", "models"): {"list", "resolve", "save", "remove"},
+            ("data",): {"conversations", "memory", "runs", "storage"},
+            ("data", "conversations"): {"list", "show", "create", "rename", "clear", "delete"},
+            ("data", "memory"): {"habits", "list", "add", "recall", "forget"},
+            ("data", "runs"): {"status", "explain", "export", "feedback", "learn"},
+            ("data", "storage"): {"copy", "prune"},
+        }
+
+        for path, commands in expected.items():
+            with self.subTest(path=path):
+                self.assertEqual(commands, _subcommands(_select_parser(parser, path)))
 
     def test_models_list_reports_discovered_models_without_secret_values(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, chdir(tmp):
@@ -506,6 +530,32 @@ max_steps = 8
             self.assertEqual(0, remove_code)
             self.assertFalse(installed.exists())
             self.assertTrue((root / "skills" / "task" / "default").is_dir())
+
+
+def _select_parser(
+    parser: argparse.ArgumentParser,
+    path: tuple[str, ...],
+) -> argparse.ArgumentParser:
+    selected = parser
+    for name in path:
+        selected = _subparser_choices(selected)[name]
+    return selected
+
+
+def _subcommands(parser: argparse.ArgumentParser) -> set[str]:
+    return set(_subparser_choices(parser))
+
+
+def _subparser_choices(
+    parser: argparse.ArgumentParser,
+) -> dict[str, argparse.ArgumentParser]:
+    action = next(
+        item
+        for item in parser._actions
+        if isinstance(item, argparse._SubParsersAction)
+    )
+    return action.choices
+
 
 def _find_user_skill(root: Path, skill_type: str, name: str) -> Path:
     matches = [

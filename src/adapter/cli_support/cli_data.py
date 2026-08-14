@@ -1,9 +1,12 @@
+"""Data commands and shared CLI parsing and output helpers."""
+
 from __future__ import annotations
 
 import argparse
 import json
 from dataclasses import asdict
 from pathlib import Path
+from typing import Callable
 
 from adapter.cli_support.cli_config import load_agent, load_common_config
 from adapter.storage_backends.storage import DisclosureStorage, copy_storage_events, create_storage_backend
@@ -12,6 +15,48 @@ from core.models import LOCAL_USER_ID, RunSnapshot
 from core.records.audit import AuditPruneReport
 from skill.handlers.memory import MemoryItem
 from core.records.store import StorageBackend
+
+
+def add_config_and_user_options(
+    parser: argparse.ArgumentParser,
+    *,
+    config_default: str | None = None,
+    config_required: bool = False,
+    user_default: str | None = LOCAL_USER_ID,
+) -> None:
+    parser.add_argument(
+        "--common-config",
+        default=config_default,
+        required=config_required,
+    )
+    parser.add_argument("--user-id", default=user_default)
+
+
+def add_output_format_option(
+    parser: argparse.ArgumentParser,
+    *,
+    default: str | None = "text",
+) -> None:
+    parser.add_argument("--output", choices=["text", "json"], default=default)
+
+
+def print_cli_json(value: object, *, pretty: bool = True) -> int:
+    serialized = json.dumps(
+        value, ensure_ascii=False, indent=2 if pretty else None, sort_keys=pretty
+    )
+    print(serialized)
+    return 0
+
+
+def run_selected_cli_command(
+    command: str | None,
+    handlers: dict[str, Callable[[], int]],
+    missing_message: str,
+) -> int:
+    handler = handlers.get(command or "")
+    if handler is None:
+        raise ValueError(missing_message)
+    return handler()
 
 
 def configure_conversations_parser(parser: argparse.ArgumentParser) -> None:
@@ -40,23 +85,23 @@ def run_conversations_command(args: argparse.Namespace) -> int:
     command = args.conversations_command or "list"
     conversations = load_agent(args.common_config).for_user(args.user_id).conversations
     if command == "list":
-        return _print_json({
+        return print_cli_json({
             "schema_version": 1,
             "conversations": [asdict(item) for item in conversations.list()],
         })
     if command == "show":
-        return _print_json(asdict(conversations.read(args.conversation_id)))
+        return print_cli_json(asdict(conversations.read(args.conversation_id)))
     if command == "create":
-        return _print_json(asdict(conversations.create(
+        return print_cli_json(asdict(conversations.create(
             args.title, conversation_id=args.conversation_id
         )))
     if command == "rename":
-        return _print_json(asdict(conversations.rename(args.conversation_id, args.title)))
+        return print_cli_json(asdict(conversations.rename(args.conversation_id, args.title)))
     if command == "clear":
-        return _print_json(asdict(conversations.clear(args.conversation_id)))
+        return print_cli_json(asdict(conversations.clear(args.conversation_id)))
     if command == "delete":
         conversations.delete(args.conversation_id)
-        return _print_json({"conversation_id": args.conversation_id, "deleted": True})
+        return print_cli_json({"conversation_id": args.conversation_id, "deleted": True})
     raise ValueError(f"unknown conversations command: {command}")
 
 
@@ -91,14 +136,15 @@ def run_memory_command(args: argparse.Namespace) -> int:
     elif args.memory_command == "list":
         _print_memory_items(memory.list(args.scope))
     elif args.memory_command == "add":
-        print(json.dumps(asdict(memory.remember(
-            args.text, args.scope, args.source_run_id
-        )), ensure_ascii=False))
+        print_cli_json(
+            asdict(memory.remember(args.text, args.scope, args.source_run_id)),
+            pretty=False,
+        )
     elif args.memory_command == "recall":
         _print_memory_items(memory.recall(args.query, args.scope, args.limit))
     elif args.memory_command == "forget":
         memory.forget(args.item_id, args.reason)
-        print(json.dumps({"item_id": args.item_id, "forgotten": True}, ensure_ascii=False))
+        print_cli_json({"item_id": args.item_id, "forgotten": True}, pretty=False)
     else:
         raise ValueError("memory command is required")
     return 0
@@ -110,30 +156,27 @@ def configure_runs_parser(parser: argparse.ArgumentParser) -> None:
         "status",
         help="show recent run snapshot status",
     )
-    _add_config_argument(status_parser)
-    _add_user_argument(status_parser)
+    add_config_and_user_options(status_parser)
     status_parser.add_argument("--run-id")
     status_parser.add_argument("--conversation-id")
     status_parser.add_argument("--limit", type=_positive_integer, default=20)
-    status_parser.add_argument("--output", choices=["text", "json"], default="text")
+    add_output_format_option(status_parser)
     _add_sensitive_output_argument(status_parser)
 
     explain_parser = subparsers.add_parser(
         "explain",
         help="explain one run from its ordered events",
     )
-    _add_config_argument(explain_parser)
-    _add_user_argument(explain_parser)
+    add_config_and_user_options(explain_parser)
     explain_parser.add_argument("--run-id")
-    explain_parser.add_argument("--output", choices=["text", "json"], default="text")
+    add_output_format_option(explain_parser)
     _add_sensitive_output_argument(explain_parser)
 
     export_parser = subparsers.add_parser(
         "export",
         help="export one run snapshot and event stream",
     )
-    _add_config_argument(export_parser)
-    _add_user_argument(export_parser)
+    add_config_and_user_options(export_parser)
     export_parser.add_argument("--run-id")
     export_parser.add_argument("--output")
     _add_sensitive_output_argument(export_parser)
@@ -142,25 +185,19 @@ def configure_runs_parser(parser: argparse.ArgumentParser) -> None:
         "feedback",
         help="record a quality score for one completed task",
     )
-    _add_config_argument(feedback_parser)
-    _add_user_argument(feedback_parser)
+    add_config_and_user_options(feedback_parser)
     feedback_parser.add_argument("--run-id", required=True)
     feedback_parser.add_argument("--score", required=True, type=_feedback_score)
     feedback_parser.add_argument("--reason", default="")
-    feedback_parser.add_argument(
-        "--output",
-        choices=["text", "json"],
-        default="text",
-    )
+    add_output_format_option(feedback_parser)
 
     learn_parser = subparsers.add_parser(
         "learn",
         help="explicitly evaluate and improve Skills from one finished run",
     )
-    _add_config_argument(learn_parser)
-    _add_user_argument(learn_parser)
+    add_config_and_user_options(learn_parser)
     learn_parser.add_argument("--run-id", required=True)
-    learn_parser.add_argument("--output", choices=["text", "json"], default="text")
+    add_output_format_option(learn_parser)
 
 
 def run_runs_command(args: argparse.Namespace) -> int:
@@ -190,18 +227,10 @@ def _show_run_status(args: argparse.Namespace) -> int:
         )
     )
     if args.output == "json":
-        print(
-            json.dumps(
-                {
-                    "schema_version": 1,
-                    "runs": [asdict(item) for item in snapshots],
-                },
-                ensure_ascii=False,
-                indent=2,
-                sort_keys=True,
-            )
-        )
-        return 0
+        return print_cli_json({
+            "schema_version": 1,
+            "runs": [asdict(item) for item in snapshots],
+        })
     if not snapshots:
         print("No run snapshots yet.")
         return 0
@@ -221,8 +250,7 @@ def _explain_run(args: argparse.Namespace) -> int:
         include_sensitive=args.include_sensitive,
     )
     if args.output == "json":
-        print(json.dumps(explanation, ensure_ascii=False, indent=2, sort_keys=True))
-        return 0
+        return print_cli_json(explanation)
     _print_run_explanation(explanation)
     return 0
 
@@ -250,7 +278,7 @@ def _record_run_feedback(args: argparse.Namespace) -> int:
         args.reason,
     )
     if args.output == "json":
-        print(json.dumps(asdict(event), ensure_ascii=False, indent=2, sort_keys=True))
+        return print_cli_json(asdict(event))
     else:
         print(f"Recorded feedback: {event.run_id} score={args.score:.3f}")
     return 0
@@ -259,7 +287,7 @@ def _record_run_feedback(args: argparse.Namespace) -> int:
 def _learn_from_run(args: argparse.Namespace) -> int:
     result = load_agent(args.common_config).for_user(args.user_id).runs.learn(args.run_id)
     if args.output == "json":
-        print(json.dumps(asdict(result), ensure_ascii=False, indent=2, sort_keys=True))
+        return print_cli_json(asdict(result))
     else:
         print(
             f"Learned from run: {result.run_id} "
@@ -386,14 +414,6 @@ def _required_object(data: dict[str, object], name: str) -> dict[str, object]:
     return value
 
 
-def _add_config_argument(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--common-config")
-
-
-def _add_user_argument(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--user-id", default=LOCAL_USER_ID)
-
-
 def _add_sensitive_output_argument(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--include-sensitive",
@@ -430,14 +450,14 @@ def configure_storage_parser(parser: argparse.ArgumentParser) -> None:
     copy_parser.add_argument("--to-path", default=".super-agent-copy")
     copy_parser.add_argument("--to-url-env")
     copy_parser.add_argument("--user-id", action="append")
-    copy_parser.add_argument("--output", choices=["text", "json"], default="text")
+    add_output_format_option(copy_parser)
     prune_parser = subparsers.add_parser(
         "prune", help="preview or explicitly delete expired audit events"
     )
     prune_parser.add_argument("--common-config")
     prune_parser.add_argument("--user-id", action="append")
     prune_parser.add_argument("--apply", action="store_true")
-    prune_parser.add_argument("--output", choices=["text", "json"], default="text")
+    add_output_format_option(prune_parser)
 
 
 def run_storage_command(args: argparse.Namespace) -> int:
@@ -453,7 +473,7 @@ def run_storage_command(args: argparse.Namespace) -> int:
     destination = create_storage_backend(args.to_backend, str(path), args.to_url_env)
     report = copy_storage_events(source, destination, args.user_id or [LOCAL_USER_ID])
     if args.output == "json":
-        return _print_json(asdict(report))
+        return print_cli_json(asdict(report))
     for result in report.users:
         print(
             f"{result.user_id}\tread={result.events_read}"
@@ -474,7 +494,7 @@ def _run_prune_command(args: argparse.Namespace) -> int:
     if args.apply:
         _refresh_disclosure_histories(config, backend, report)
     if args.output == "json":
-        return _print_json(asdict(report))
+        return print_cli_json(asdict(report))
     mode = "applied" if report.applied else "preview"
     print(f"audit {mode}: detailed={report.detailed_days}d critical={report.critical_days}d")
     for result in report.users:
@@ -520,17 +540,13 @@ def _add_identity_arguments(
     default_config: str | None = None,
 ) -> None:
     default = argparse.SUPPRESS if inherited else default_config
-    parser.add_argument("--common-config", default=default)
-    parser.add_argument(
-        "--user-id", default=argparse.SUPPRESS if inherited else LOCAL_USER_ID
+    add_config_and_user_options(
+        parser,
+        config_default=default,
+        user_default=argparse.SUPPRESS if inherited else LOCAL_USER_ID,
     )
 
 
 def _print_memory_items(items: list[MemoryItem]) -> None:
     for item in items:
-        print(json.dumps(asdict(item), ensure_ascii=False))
-
-
-def _print_json(value: object) -> int:
-    print(json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True))
-    return 0
+        print_cli_json(asdict(item), pretty=False)
