@@ -16,16 +16,15 @@ from skill.tasks.task_selection import (
     AgentUnavailableError,
     QueuedTask,
     SelectedAgent,
+    TERMINAL_TASK_STATUSES,
     estimated_token_schema,
     read_optional_estimated_tokens,
+    read_required_task_strings,
 )
 from skill.handlers.runtime import SkillAction, SkillTool, read_required_tool_string
 
 if TYPE_CHECKING:
     from skill.tasks.task_queue import TaskQueue
-
-
-_TERMINAL_STATUSES = {"completed", "failed", "cancelled"}
 
 
 class AgentGroups:
@@ -172,11 +171,7 @@ class AgentGroups:
 
     def _wait_for_group(self, arguments: dict[str, object]) -> dict[str, object]:
         group_id = read_required_tool_string(arguments, "group_id")
-        value = arguments.get("max_wait_seconds")
-        if isinstance(value, bool) or not isinstance(value, int | float) or value <= 0:
-            raise ValueError("tool argument 'max_wait_seconds' must be a positive number")
-        requested_wait = float(value)
-        wait_seconds = min(requested_wait, self.queue.settings.max_wait_seconds)
+        requested_wait, wait_seconds = self.queue._read_wait_seconds(arguments)
         started = monotonic()
         self.queue.record_event(
             "agent_group.wait.started",
@@ -189,7 +184,7 @@ class AgentGroups:
         with self.queue._condition:
             group = self._require_group_locked(group_id)
             self.queue._condition.wait_for(
-                lambda: self._group_is_terminal_locked(group),
+                lambda: self.queue._tasks_are_terminal_locked(group.task_ids),
                 timeout=wait_seconds,
             )
             result = self._group_result_locked(group)
@@ -390,21 +385,17 @@ class AgentGroups:
 
     def _group_result_locked(self, group: AgentGroup) -> dict[str, object]:
         settings = self.settings
-        tasks = [
-            self.queue._require_task_locked(task_id).to_dict(include_result=True)
-            for task_id in group.task_ids
-        ]
-        return decide_group(group, tasks, summary_chars=settings.summary_chars)
-
-    def _group_is_terminal_locked(self, group: AgentGroup) -> bool:
-        return all(
-            self.queue._require_task_locked(task_id).status in _TERMINAL_STATUSES
-            for task_id in group.task_ids
+        tasks = self.queue._task_snapshots_locked(
+            group.task_ids,
+            include_result=True,
         )
+        return decide_group(group, tasks, summary_chars=settings.summary_chars)
 
     def refresh(self, group_id: str) -> None:
         group = self.queue._group_records[group_id]
-        if group.status != "running" or not self._group_is_terminal_locked(group):
+        if group.status != "running" or not self.queue._tasks_are_terminal_locked(
+            group.task_ids
+        ):
             return
         result = self._group_result_locked(group)
         self.queue._group_records[group_id] = replace(
@@ -428,7 +419,6 @@ class AgentGroups:
 GROUP_VOTES = {"support", "reject", "inconclusive"}
 MAX_GROUP_MEMBERS = 16
 _JSON_BLOCK = re.compile(r"\{.*\}", re.DOTALL)
-_TERMINAL_STATUSES = {"completed", "failed", "cancelled"}
 
 
 @dataclass(frozen=True)
@@ -514,7 +504,7 @@ def read_group_request(
     return AgentGroupRequest(
         read_required_tool_string(data, "prompt"),
         read_required_tool_string(data, "purpose").strip().lower(),
-        _read_string_list(arguments, "required_features"),
+        read_required_task_strings(arguments, "required_features"),
         requested, quorum, roles, estimates,
     )
 
@@ -574,7 +564,7 @@ def decide_group(
             "evidence_chars": len(evidence),
         })
     terminal = all(
-        str(by_id.get(task_id, {}).get("status")) in _TERMINAL_STATUSES
+        str(by_id.get(task_id, {}).get("status")) in TERMINAL_TASK_STATUSES
         for task_id in group.task_ids
     )
     decision = "supported" if counts["support"] >= group.quorum else (
@@ -659,14 +649,3 @@ def _nonnegative_number(value: object, name: str) -> None:
     invalid = isinstance(value, bool) or not isinstance(value, int | float)
     if invalid or not math.isfinite(float(value)) or value < 0:
         raise ValueError(f"agent_groups {name} must be a finite non-negative number")
-
-
-def _read_string_list(arguments: Mapping[str, object], name: str) -> tuple[str, ...]:
-    value = arguments.get(name)
-    if not isinstance(value, list) or not 1 <= len(value) <= 16:
-        raise ValueError(f"tool argument {name!r} must contain 1 to 16 strings")
-    cleaned = tuple(dict.fromkeys(
-        item.strip().lower() for item in value if isinstance(item, str) and item.strip()))
-    if len(cleaned) != len(value):
-        raise ValueError(f"tool argument {name!r} must contain unique non-empty strings")
-    return cleaned

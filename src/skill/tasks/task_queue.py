@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from threading import Condition, RLock, Timer
@@ -17,9 +18,11 @@ from skill.tasks.task_selection import (
     AgentUnavailableError,
     QueuedTask,
     SelectedAgent,
+    TERMINAL_TASK_STATUSES,
     estimated_token_schema,
     is_agent_unavailable,
     read_optional_estimated_tokens,
+    read_required_task_strings,
 )
 from skill.tasks.task_groups import (
     AgentGroup,
@@ -34,7 +37,6 @@ from skill.handlers.runtime import (
 )
 
 
-_TERMINAL_STATUSES = {"completed", "failed", "cancelled"}
 _TRIGGERS = {
     "timeout",
     "any_task_finished",
@@ -176,7 +178,7 @@ class TaskQueue:
             unfinished = [
                 task.task_id
                 for task in self._tasks.values()
-                if task.status not in _TERMINAL_STATUSES
+                if task.status not in TERMINAL_TASK_STATUSES
             ]
         if unfinished:
             raise RuntimeError("agent tasks are still unfinished: " + ", ".join(unfinished))
@@ -200,7 +202,7 @@ class TaskQueue:
     def _create_task(self, arguments: dict[str, object]) -> dict[str, object]:
         prompt = read_required_tool_string(arguments, "prompt")
         purpose = read_required_tool_string(arguments, "purpose").strip().lower()
-        features = _read_string_list(arguments, "required_features")
+        features = read_required_task_strings(arguments, "required_features")
         estimates = tuple(
             read_optional_estimated_tokens(arguments, name)
             for name in (
@@ -330,11 +332,10 @@ class TaskQueue:
         trigger = read_required_tool_string(arguments, "trigger").strip().lower()
         if trigger not in _TRIGGERS:
             raise ValueError(f"unknown agent task trigger: {trigger}")
-        requested_wait = _read_positive_number(arguments, "max_wait_seconds")
+        requested_wait, wait_seconds = self._read_wait_seconds(arguments)
         task_ids = _read_optional_string_list(arguments, "task_ids")
         if trigger == "selected_tasks_finished" and not task_ids:
             raise ValueError("selected_tasks_finished requires task_ids")
-        wait_seconds = min(requested_wait, self.settings.max_wait_seconds)
         started = monotonic()
         self.record_event(
             "agent_task.wait.started",
@@ -357,7 +358,7 @@ class TaskQueue:
                 )
                 matched = self._matching_tasks_locked(trigger, task_ids)
             self._observed_terminal.update(matched)
-            tasks = [task.to_dict(include_result=True) for task in self._tasks.values()]
+            tasks = self._task_snapshots_locked(include_result=True)
         waited = max(0.0, monotonic() - started)
         reason = trigger if matched else "timeout"
         self.record_event(
@@ -379,11 +380,7 @@ class TaskQueue:
 
     def _list_tasks(self, arguments: dict[str, object]) -> dict[str, object]:
         with self._condition:
-            return {
-                "tasks": [
-                    task.to_dict(include_result=True) for task in self._tasks.values()
-                ]
-            }
+            return {"tasks": self._task_snapshots_locked(include_result=True)}
 
     def _cancel_task(self, arguments: dict[str, object]) -> dict[str, object]:
         task_id = read_required_tool_string(arguments, "task_id")
@@ -522,17 +519,47 @@ class TaskQueue:
         tasks = list(self._tasks.values())
         unseen = [task for task in tasks if task.task_id not in self._observed_terminal]
         if trigger == "any_task_finished":
-            return [task.task_id for task in unseen if task.status in _TERMINAL_STATUSES]
+            return [
+                task.task_id for task in unseen
+                if task.status in TERMINAL_TASK_STATUSES
+            ]
         if trigger == "any_task_completed":
             return [task.task_id for task in unseen if task.status == "completed"]
         if trigger == "any_task_failed":
             return [task.task_id for task in unseen if task.status == "failed"]
         selected = tasks if trigger == "all_tasks_finished" else [self._tasks[item] for item in task_ids]
-        return (
-            [task.task_id for task in selected]
-            if selected and all(task.status in _TERMINAL_STATUSES for task in selected)
-            else []
+        return [task.task_id for task in selected] if (
+            selected and self._tasks_are_terminal_locked(task.task_id for task in selected)
+        ) else []
+
+    def _task_snapshots_locked(
+        self,
+        task_ids: tuple[str, ...] | None = None,
+        *,
+        include_result: bool = False,
+    ) -> list[dict[str, object]]:
+        tasks = (
+            self._tasks.values()
+            if task_ids is None
+            else (self._require_task_locked(task_id) for task_id in task_ids)
         )
+        return [task.to_dict(include_result=include_result) for task in tasks]
+
+    def _tasks_are_terminal_locked(self, task_ids: Iterable[str]) -> bool:
+        return all(
+            self._require_task_locked(task_id).status in TERMINAL_TASK_STATUSES
+            for task_id in task_ids
+        )
+
+    def _read_wait_seconds(
+        self,
+        arguments: dict[str, object],
+    ) -> tuple[float, float]:
+        value = arguments.get("max_wait_seconds")
+        if isinstance(value, bool) or not isinstance(value, int | float) or value <= 0:
+            raise ValueError("tool argument 'max_wait_seconds' must be a positive number")
+        requested = float(value)
+        return requested, min(requested, self.settings.max_wait_seconds)
 
     def _validate_wait_task_ids_locked(self, task_ids: tuple[str, ...]) -> None:
         missing = [task_id for task_id in task_ids if task_id not in self._tasks]
@@ -556,7 +583,7 @@ class TaskQueue:
         updated = replace(task, status=status, **changes)
         self._tasks[task.task_id] = updated
         self._record_locked(f"agent_task.{status}", updated)
-        if updated.group_id is not None and status in _TERMINAL_STATUSES:
+        if updated.group_id is not None and status in TERMINAL_TASK_STATUSES:
             if self._groups is None:
                 raise RuntimeError("group task exists without an active group queue")
             self._groups.refresh(updated.group_id)
@@ -599,18 +626,6 @@ def create_task_queue(
     )
 
 
-def _read_string_list(arguments: dict[str, object], name: str) -> tuple[str, ...]:
-    value = arguments.get(name)
-    if not isinstance(value, list) or not 1 <= len(value) <= 16:
-        raise ValueError(f"tool argument {name!r} must contain 1 to 16 strings")
-    cleaned = tuple(dict.fromkeys(
-        item.strip().lower() for item in value if isinstance(item, str) and item.strip()
-    ))
-    if len(cleaned) != len(value):
-        raise ValueError(f"tool argument {name!r} must contain unique non-empty strings")
-    return cleaned
-
-
 def _read_optional_string_list(
     arguments: dict[str, object],
     name: str,
@@ -624,10 +639,3 @@ def _read_optional_string_list(
     if len(cleaned) != len(value):
         raise ValueError(f"tool argument {name!r} must contain unique non-empty strings")
     return cleaned
-
-
-def _read_positive_number(arguments: dict[str, object], name: str) -> float:
-    value = arguments.get(name)
-    if isinstance(value, bool) or not isinstance(value, int | float) or value <= 0:
-        raise ValueError(f"tool argument {name!r} must be a positive number")
-    return float(value)

@@ -7,7 +7,7 @@ import math
 import urllib.error
 from dataclasses import dataclass, replace
 from time import monotonic
-from typing import Callable
+from typing import Callable, Mapping
 
 from core.models import SubagentRecordOptions
 from core.provider import estimate_text_tokens
@@ -16,6 +16,7 @@ from skill.handlers.models import choose_dispatch_model
 
 EventWriter = Callable[[str, dict[str, object]], object]
 MAX_ESTIMATED_TOKENS = 10_000_000
+TERMINAL_TASK_STATUSES = frozenset({"completed", "failed", "cancelled"})
 
 
 class AgentUnavailableError(RuntimeError):
@@ -504,6 +505,27 @@ def read_optional_estimated_tokens(
             f"{MAX_ESTIMATED_TOKENS}"
         )
     return value
+
+
+def read_required_task_strings(
+    arguments: Mapping[str, object],
+    name: str,
+    *,
+    maximum: int = 16,
+) -> tuple[str, ...]:
+    value = arguments.get(name)
+    if not isinstance(value, list) or not 1 <= len(value) <= maximum:
+        raise ValueError(
+            f"tool argument {name!r} must contain 1 to {maximum} strings"
+        )
+    cleaned = tuple(dict.fromkeys(
+        item.strip().lower()
+        for item in value
+        if isinstance(item, str) and item.strip()
+    ))
+    if len(cleaned) != len(value):
+        raise ValueError(f"tool argument {name!r} must contain unique non-empty strings")
+    return cleaned
 
 
 def _validated_agent(value: dict[str, object]) -> dict[str, object]:

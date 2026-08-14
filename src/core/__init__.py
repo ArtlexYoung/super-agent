@@ -1,3 +1,3 @@
 """Minimal agent runtime implementations."""
 
-__version__ = "0.1.73"
+__version__ = "0.1.74"

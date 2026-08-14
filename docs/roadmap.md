@@ -1782,6 +1782,16 @@ Status: implemented.
 - Share model readiness and feature checks between the main Runtime and task dispatch.
 - Preserve model quality evidence, Agent weight, reliability, rotation, cost, and circuit behavior.
 
+## v0.1.74: One Advanced Task State
+
+Status: implemented.
+
+- Use one terminal-status fact for ordinary tasks, group members, retries, cancellation, and waits.
+- Make task and group tools share strict feature parsing, wait limits, task snapshots, and terminal
+  checks through the queue that owns their state.
+- Keep group voting and budget policy independent while removing its duplicate task-lifecycle view.
+- Preserve nested queues, triggers, wakeups, Agent rotation, parallel groups, and compact records.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof
