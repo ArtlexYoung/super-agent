@@ -51,9 +51,7 @@ def read_choice(value: object, label: str, allowed: set[str]) -> str:
     return selected
 
 
-def read_int(
-    value: object, label: str, *, minimum: int | None = None, maximum: int | None = None
-) -> int:
+def read_int(value: object, label: str, *, minimum: int | None = None, maximum: int | None = None) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         if minimum is not None and maximum is not None:
             raise ValueError(f"{label} must be an integer from {minimum} to {maximum}")
@@ -130,9 +128,7 @@ def read_optional_positive_tool_integer(arguments: Mapping[str, object], name: s
     return read_optional_int(arguments.get(name), f"tool argument {name!r}", minimum=1)
 
 
-def read_optional_non_negative_tool_integer(
-    arguments: Mapping[str, object], name: str
-) -> int | None:
+def read_optional_non_negative_tool_integer(arguments: Mapping[str, object], name: str) -> int | None:
     return read_optional_int(arguments.get(name), f"tool argument {name!r}", minimum=0)
 
 
@@ -300,9 +296,7 @@ class RuntimeEventSubscribers:
             try:
                 subscriber.handle_event(event)
             except Exception as error:
-                failures.append(
-                    SubscriberFailure(name, event.event_type, type(error).__name__, str(error))
-                )
+                failures.append(SubscriberFailure(name, event.event_type, type(error).__name__, str(error)))
         return failures
 
 
@@ -360,10 +354,7 @@ class SubagentRecordOptions:
     def record_text(self, name: str, value: str) -> dict[str, object]:
         if not self.is_summary:
             return {name: value}
-        return {
-            f"{name}_sha256": sha256(value.encode("utf-8")).hexdigest(),
-            f"{name}_chars": len(value),
-        }
+        return {f"{name}_sha256": sha256(value.encode("utf-8")).hexdigest(), f"{name}_chars": len(value)}
 
 
 @dataclass(frozen=True)
@@ -379,9 +370,7 @@ class AgentRunOptions:
     required_features: tuple[str, ...] = ("text",)
 
 
-def resolve_agent_run_options(
-    options: AgentRunOptions | None, skill: str | None
-) -> AgentRunOptions | None:
+def resolve_agent_run_options(options: AgentRunOptions | None, skill: str | None) -> AgentRunOptions | None:
     if skill is None:
         return options
     resolved = options or AgentRunOptions()
@@ -416,9 +405,7 @@ class RunIdentity:
         return cls(
             user_id=validate_user_id(user_id),
             agent_name=validate_agent_name(agent_name),
-            run_id=(
-                f"run-{uuid4().hex}" if run_id is None else _clean_identity_value(run_id, "run_id")
-            ),
+            run_id=(f"run-{uuid4().hex}" if run_id is None else _clean_identity_value(run_id, "run_id")),
             conversation_id=_clean_optional_identity_value(conversation_id, "conversation_id"),
             parent_run_id=_clean_optional_identity_value(parent_run_id, "parent_run_id"),
         )
@@ -428,14 +415,10 @@ class RunIdentity:
         object.__setattr__(self, "agent_name", validate_agent_name(self.agent_name))
         object.__setattr__(self, "run_id", _clean_identity_value(self.run_id, "run_id"))
         object.__setattr__(
-            self,
-            "conversation_id",
-            _clean_optional_identity_value(self.conversation_id, "conversation_id"),
+            self, "conversation_id", _clean_optional_identity_value(self.conversation_id, "conversation_id")
         )
         object.__setattr__(
-            self,
-            "parent_run_id",
-            _clean_optional_identity_value(self.parent_run_id, "parent_run_id"),
+            self, "parent_run_id", _clean_optional_identity_value(self.parent_run_id, "parent_run_id")
         )
 
 

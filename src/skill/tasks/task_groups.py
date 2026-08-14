@@ -75,11 +75,7 @@ class AgentGroups:
                         "minItems": 1,
                         "maxItems": 16,
                     },
-                    "member_count": {
-                        "type": "integer",
-                        "minimum": 2,
-                        "maximum": settings.max_members,
-                    },
+                    "member_count": {"type": "integer", "minimum": 2, "maximum": settings.max_members},
                     "quorum": {"type": "integer", "minimum": 1, "maximum": settings.max_members},
                     "roles": {
                         "type": "array",
@@ -92,19 +88,14 @@ class AgentGroups:
                     "estimated_cache_read_tokens": token_estimate,
                 },
                 self._create_group,
-                SkillAction(
-                    (ActionEffect.CREATE, ActionEffect.UPDATE, ActionEffect.DELEGATE), "task:group"
-                ),
+                SkillAction((ActionEffect.CREATE, ActionEffect.UPDATE, ActionEffect.DELEGATE), "task:group"),
                 ("prompt", "purpose", "required_features"),
                 "agent-group",
             ),
             SkillTool(
                 "wait_for_agent_group",
                 "Sleep without model calls until one decision group finishes or time expires.",
-                {
-                    "group_id": group_id,
-                    "max_wait_seconds": {"type": "number", "exclusiveMinimum": 0},
-                },
+                {"group_id": group_id, "max_wait_seconds": {"type": "number", "exclusiveMinimum": 0}},
                 self._wait_for_group,
                 SkillAction((ActionEffect.READ,), "task:group", "group_id"),
                 ("group_id", "max_wait_seconds"),
@@ -136,10 +127,7 @@ class AgentGroups:
             group_id = self._next_group_id_locked()
             self._validate_group_capacity_locked(request.requested_members)
             member_tasks = self._build_group_tasks(
-                group_id,
-                request,
-                request.roles,
-                uses_shared_context=self.create_shared_context is not None,
+                group_id, request, request.roles, uses_shared_context=self.create_shared_context is not None
             )
             choices = self.queue._agent_pool.choose_group(
                 member_tasks,
@@ -166,11 +154,7 @@ class AgentGroups:
         started = monotonic()
         self.queue.record_event(
             "agent_group.wait.started",
-            {
-                "group_id": group_id,
-                "requested_wait_seconds": requested_wait,
-                "wait_seconds": wait_seconds,
-            },
+            {"group_id": group_id, "requested_wait_seconds": requested_wait, "wait_seconds": wait_seconds},
         )
         with self.queue._condition:
             group = self._require_group_locked(group_id)
@@ -227,20 +211,13 @@ class AgentGroups:
             raise ValueError(f"agent task limit reached: {self.queue.settings.max_tasks}")
 
     def _build_group_tasks(
-        self,
-        group_id: str,
-        request: AgentGroupRequest,
-        roles: tuple[str, ...],
-        *,
-        uses_shared_context: bool,
+        self, group_id: str, request: AgentGroupRequest, roles: tuple[str, ...], *, uses_shared_context: bool
     ) -> list[QueuedTask]:
         shared_tokens = estimate_text_tokens(request.prompt) if uses_shared_context else 0
         first_task_number = len(self.queue._tasks) + 1
         tasks = []
         for index, role in enumerate(roles):
-            member_prompt = build_member_prompt(
-                request.prompt, role, uses_shared_context=uses_shared_context
-            )
+            member_prompt = build_member_prompt(request.prompt, role, uses_shared_context=uses_shared_context)
             tasks.append(
                 QueuedTask(
                     f"agent-task-{first_task_number + index:02d}",
@@ -413,9 +390,7 @@ class AgentGroupSettings:
             ("default_members", 2, settings.max_members),
             ("quorum", 1, settings.default_members),
         ):
-            read_int(
-                getattr(settings, name), f"agent_groups {name}", minimum=minimum, maximum=maximum
-            )
+            read_int(getattr(settings, name), f"agent_groups {name}", minimum=minimum, maximum=maximum)
         read_number(settings.max_estimated_cost, "agent_groups max_estimated_cost", minimum=0)
         for name in ("allow_reduced_group", "require_different_models"):
             read_bool(getattr(settings, name), f"agent_groups {name}")
@@ -460,9 +435,7 @@ class AgentGroup:
         return data
 
 
-def read_group_request(
-    arguments: Mapping[str, object], settings: AgentGroupSettings
-) -> AgentGroupRequest:
+def read_group_request(arguments: Mapping[str, object], settings: AgentGroupSettings) -> AgentGroupRequest:
     data = dict(arguments)
     requested, quorum, roles = _read_group_members(arguments, settings)
     estimates = tuple(
@@ -529,8 +502,7 @@ def decide_group(
             }
         )
     terminal = all(
-        str(by_id.get(task_id, {}).get("status")) in TERMINAL_TASK_STATUSES
-        for task_id in group.task_ids
+        str(by_id.get(task_id, {}).get("status")) in TERMINAL_TASK_STATUSES for task_id in group.task_ids
     )
     decision = (
         "supported"
@@ -589,9 +561,7 @@ def _read_group_members(
         maximum=settings.max_members,
     )
     roles = _read_roles(arguments.get("roles"), requested)
-    quorum = read_int(
-        arguments.get("quorum", settings.quorum), "group quorum", minimum=1, maximum=requested
-    )
+    quorum = read_int(arguments.get("quorum", settings.quorum), "group quorum", minimum=1, maximum=requested)
     return requested, quorum, roles
 
 

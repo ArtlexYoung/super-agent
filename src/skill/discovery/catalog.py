@@ -27,11 +27,7 @@ from skill.discovery.index import (
     read_skill_sources,
     skill_index_to_dict,
 )
-from skill.discovery.manifest import (
-    SkillManifest,
-    calculate_skill_directory_sha256,
-    skill_manifest_to_dict,
-)
+from skill.discovery.manifest import SkillManifest, calculate_skill_directory_sha256, skill_manifest_to_dict
 
 
 WriteText = Callable[[str, str, str, Path, str], None]
@@ -95,9 +91,7 @@ class ProgressiveDisclosureCore:
             messages = "; ".join(f"{issue.path}: {issue.message}" for issue in scan.issues)
             raise ValueError(f"invalid skill sources: {messages}")
         cache_root = None if self.recorder is None else self.recorder.cache_root
-        entries = [
-            _build_index_entry(source, cache_root, self.freshness_stats) for source in scan.sources
-        ]
+        entries = [_build_index_entry(source, cache_root, self.freshness_stats) for source in scan.sources]
         self._index = SkillIndex(
             entries,
             index_path=None if cache_root is None else cache_root / "index.json",
@@ -204,13 +198,7 @@ class ProgressiveDisclosureCore:
             )
         self._disclosed_content[reference] = (clean_kind, clean_name, content, selected_path)
         return self.context_budget.create_page(
-            reference,
-            clean_kind,
-            clean_name,
-            content,
-            stage,
-            limit=inline_chars,
-            cache_path=selected_path,
+            reference, clean_kind, clean_name, content, stage, limit=inline_chars, cache_path=selected_path
         )
 
     def disclose_value(
@@ -239,14 +227,7 @@ class ProgressiveDisclosureCore:
             self._disclosed_content[selected] = cached
         kind, name, content, cache_path = cached
         return self.context_budget.create_page(
-            selected,
-            kind,
-            name,
-            content,
-            "reference-read",
-            offset=offset,
-            limit=limit,
-            cache_path=cache_path,
+            selected, kind, name, content, "reference-read", offset=offset, limit=limit, cache_path=cache_path
         )
 
     def context_usage(self) -> dict[str, int]:
@@ -345,9 +326,7 @@ class SkillDisclosure:
         )
         return DisclosedText(
             content=disclosed.content,
-            cache_path=(
-                None if self.core.recorder is None else self.index_entry.instructions_cache_path
-            ),
+            cache_path=(None if self.core.recorder is None else self.index_entry.instructions_cache_path),
         )
 
     def read_configuration(self) -> DisclosedConfiguration:
@@ -366,9 +345,7 @@ class SkillDisclosure:
         )
         return DisclosedConfiguration(
             content=disclosed.content,
-            cache_path=(
-                None if self.core.recorder is None else self.index_entry.configuration_cache_path
-            ),
+            cache_path=(None if self.core.recorder is None else self.index_entry.configuration_cache_path),
         )
 
     def read_skill_files(self) -> DisclosedSkillFiles:
@@ -440,14 +417,10 @@ def _build_index_entry(
         agent_can_update=manifest.agent_can_update,
         freshness=float(runtime.get("freshness", manifest.freshness)),
         function_group=str(runtime.get("function_group", manifest.function_group)),
-        freshness_updated_at=str(
-            runtime.get("freshness_updated_at", manifest.freshness_updated_at)
-        ),
+        freshness_updated_at=str(runtime.get("freshness_updated_at", manifest.freshness_updated_at)),
         call_count=int(runtime.get("call_count", 0)),
         success_count=int(runtime.get("success_count", 0)),
-        same_function_successful_followups=int(
-            runtime.get("same_function_successful_followups", 0)
-        ),
+        same_function_successful_followups=int(runtime.get("same_function_successful_followups", 0)),
         is_default=manifest.is_default,
     )
 

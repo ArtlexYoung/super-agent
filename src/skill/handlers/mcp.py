@@ -134,9 +134,7 @@ class McpServers:
     def __init__(self) -> None:
         self._servers: dict[str, RegisteredMcpServer] = {}
 
-    def add_mcp_server(
-        self, name: str, server: McpServer, *, effects: tuple[ActionEffect, ...]
-    ) -> None:
+    def add_mcp_server(self, name: str, server: McpServer, *, effects: tuple[ActionEffect, ...]) -> None:
         clean_name = _clean_server_name(name)
         if clean_name in self._servers:
             raise ValueError(f"MCP server already registered: {clean_name}")
@@ -213,9 +211,7 @@ class _McpStdioSession:
     def send_request(self, method: str, params: dict[str, object]) -> dict[str, Any]:
         request_id = self._next_request_id
         self._next_request_id += 1
-        self._write_message(
-            {"jsonrpc": "2.0", "id": request_id, "method": method, "params": params}
-        )
+        self._write_message({"jsonrpc": "2.0", "id": request_id, "method": method, "params": params})
         response = self._read_response(request_id)
         if "error" in response:
             raise RuntimeError(f"MCP {method} failed: {response['error']}")

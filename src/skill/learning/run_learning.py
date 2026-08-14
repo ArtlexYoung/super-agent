@@ -57,9 +57,7 @@ def learn_from_run(store: EventStore, run_id: str, rules: FreshnessRules) -> Run
         record_ids = [record.record_id for record in records]
         stage = "completion"
         completed = store.append_run_event(
-            identity,
-            LEARNING_COMPLETED_EVENT,
-            {"schema_version": 3, "evaluation_record_ids": record_ids},
+            identity, LEARNING_COMPLETED_EVENT, {"schema_version": 3, "evaluation_record_ids": record_ids}
         )
     except Exception as error:
         try:
@@ -87,8 +85,7 @@ def _record_run_evaluations(
     store: EventStore, terminal: RunEvent, revisions: list[SkillRevision], result: EvaluationResult
 ) -> list[EvaluationRecord]:
     existing = {
-        record.record_id: record
-        for record in read_evaluation_records(store, source_type="agent_run")
+        record.record_id: record for record in read_evaluation_records(store, source_type="agent_run")
     }
     records: list[EvaluationRecord] = []
     pending: list[EvaluationRecord] = []
@@ -179,9 +176,7 @@ def _result_from_completed_event(
     if set(completed.data) != expected or completed.data.get("schema_version") != 3:
         raise ValueError("run learning completion fields do not match schema v3")
     record_ids = _string_list(completed.data.get("evaluation_record_ids"), "evaluation_record_ids")
-    view = _project_run_learning(
-        store, completed.run_id, events, rules=rules, record_ids=record_ids
-    )
+    view = _project_run_learning(store, completed.run_id, events, rules=rules, record_ids=record_ids)
     return RunLearningResult(
         run_id=completed.run_id,
         evaluation_record_ids=record_ids,
@@ -209,8 +204,7 @@ def _require_terminal_event(events: list[RunEvent]) -> RunEvent:
     if not events:
         raise KeyError("run not found")
     terminal = next(
-        (item for item in reversed(events) if item.event_type in {"run.completed", "run.failed"}),
-        None,
+        (item for item in reversed(events) if item.event_type in {"run.completed", "run.failed"}), None
     )
     if terminal is None:
         raise ValueError(f"run has not finished: {events[0].run_id}")
@@ -240,11 +234,7 @@ def _string_list(value: object, name: str) -> list[str]:
 
 
 def explain_run_with_insight(
-    store: EventStore,
-    run_id: str,
-    policy: FreshnessRules | None,
-    *,
-    include_sensitive: bool = False,
+    store: EventStore, run_id: str, policy: FreshnessRules | None, *, include_sensitive: bool = False
 ) -> dict[str, object]:
     explanation = store.explain_run(run_id, include_sensitive=include_sensitive)
     events = store.read_run_events(run_id, include_sensitive=include_sensitive)
@@ -410,9 +400,7 @@ def read_skill_change_report(data: dict[str, object]) -> "SkillChangeReport":
     from skill.learning.update import SkillChangeCaseResult, SkillChangeReport
 
     results = [SkillChangeCaseResult(**item) for item in cast(list[dict], data["results"])]
-    baseline = [
-        SkillChangeCaseResult(**item) for item in cast(list[dict], data["baseline_results"])
-    ]
+    baseline = [SkillChangeCaseResult(**item) for item in cast(list[dict], data["baseline_results"])]
     return SkillChangeReport(
         str(data["report_id"]),
         str(data["change_id"]),

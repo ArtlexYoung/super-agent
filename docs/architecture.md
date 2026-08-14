@@ -146,3 +146,5 @@ The release suite verifies the claims above as behavior:
   retain only rules that carry domain-specific meaning or public error contracts.
 - `StorageEventQuery` owns in-memory event matching. EventStore adds the trusted user and Agent
   scope, while each backend implements only its physical query execution.
+- `StorageEvent` owns canonical field validation and immutable data copying. Storage adapters
+  decode physical rows and preserve their transaction, schema, and connection responsibilities.

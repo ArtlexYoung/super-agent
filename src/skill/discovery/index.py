@@ -15,14 +15,7 @@ MAX_PAGE_CHARS = 32_000
 MAX_CONTENT_CHARS = 2_000_000
 DEFAULT_CONTEXT_BUDGET_CHARS = 24_000
 CONTEXT_BUDGET_STAGES = frozenset(
-    {
-        "model-context",
-        "tool-result",
-        "memory-context",
-        "subagent-result",
-        "checkpoint",
-        "reference-read",
-    }
+    {"model-context", "tool-result", "memory-context", "subagent-result", "checkpoint", "reference-read"}
 )
 
 
@@ -60,12 +53,7 @@ class DisclosureContextBudget:
         limit: int = DEFAULT_INLINE_CHARS,
         cache_path: Path | None = None,
     ) -> DisclosurePage:
-        if (
-            isinstance(limit, bool)
-            or not isinstance(limit, int)
-            or limit <= 0
-            or limit > MAX_PAGE_CHARS
-        ):
+        if isinstance(limit, bool) or not isinstance(limit, int) or limit <= 0 or limit > MAX_PAGE_CHARS:
             raise ValueError(f"disclosure limit must be between 1 and {MAX_PAGE_CHARS} characters")
         selected_limit = limit
         if stage in CONTEXT_BUDGET_STAGES:
@@ -76,13 +64,7 @@ class DisclosureContextBudget:
             )
             if selected_limit == 0
             else create_disclosure_page(
-                reference,
-                kind,
-                name,
-                content,
-                offset=offset,
-                limit=selected_limit,
-                cache_path=cache_path,
+                reference, kind, name, content, offset=offset, limit=selected_limit, cache_path=cache_path
             )
         )
         if stage in CONTEXT_BUDGET_STAGES:
@@ -111,12 +93,7 @@ def create_disclosure_page(
     _require_content_size(content)
     if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
         raise ValueError("disclosure offset must be a non-negative integer")
-    if (
-        isinstance(limit, bool)
-        or not isinstance(limit, int)
-        or limit <= 0
-        or limit > MAX_PAGE_CHARS
-    ):
+    if isinstance(limit, bool) or not isinstance(limit, int) or limit <= 0 or limit > MAX_PAGE_CHARS:
         raise ValueError(f"disclosure limit must be between 1 and {MAX_PAGE_CHARS} characters")
     end = min(len(content), offset + limit)
     return DisclosurePage(
@@ -154,13 +131,7 @@ def format_disclosure_page_for_prompt(page: DisclosurePage) -> str:
 
 
 def create_reference_disclosure_page(
-    reference: str,
-    kind: str,
-    name: str,
-    content: str,
-    *,
-    offset: int = 0,
-    cache_path: Path | None = None,
+    reference: str, kind: str, name: str, content: str, *, offset: int = 0, cache_path: Path | None = None
 ) -> DisclosurePage:
     """Return metadata without spending context characters on source content."""
     _require_content_size(content)
@@ -190,9 +161,7 @@ def _require_content_size(content: str) -> None:
     if not isinstance(content, str):
         raise TypeError("disclosure content must be a string")
     if len(content) > MAX_CONTENT_CHARS:
-        raise ValueError(
-            f"disclosure content exceeds the explicit {MAX_CONTENT_CHARS} character limit"
-        )
+        raise ValueError(f"disclosure content exceeds the explicit {MAX_CONTENT_CHARS} character limit")
 
 
 @dataclass(frozen=True)
@@ -236,10 +205,7 @@ def read_skill_sources(
     """Scan user, project, and built-in Skills in override order."""
     user = _read_source_group(user_skill_roots or [], disabled_names, "user")
     project = _read_source_group(
-        skill_roots,
-        disabled_names,
-        "project",
-        {source.reference.key: source for source in user.sources},
+        skill_roots, disabled_names, "project", {source.reference.key: source for source in user.sources}
     )
     builtin = _read_source_group(
         builtin_skill_roots or [],
@@ -289,9 +255,7 @@ def _read_source_group(
                 continue
             elif reference.key in sources:
                 previous = sources[reference.key]
-                raise ValueError(
-                    f"duplicate skill key {reference.key}: {previous.manifest_path} and {path}"
-                )
+                raise ValueError(f"duplicate skill key {reference.key}: {previous.manifest_path} and {path}")
             else:
                 sources[reference.key] = source
         except (OSError, ValueError, tomllib.TOMLDecodeError) as error:
@@ -314,18 +278,12 @@ def _read_skill_source(path: Path, source_layer: str) -> SkillSource:
         root = manifest.path.resolve()
         instructions = (manifest.path / manifest.entry.instructions).resolve()
         if instructions != root and root not in instructions.parents:
-            raise ValueError(
-                f"skill instruction path leaves skill directory: {manifest.entry.instructions}"
-            )
+            raise ValueError(f"skill instruction path leaves skill directory: {manifest.entry.instructions}")
     configuration = data.get("configuration", {})
     if not isinstance(configuration, dict):
         raise ValueError(f"skill configuration must be a TOML table: {path}")
     return SkillSource(
-        SkillReference(manifest.skill_type, manifest.name),
-        manifest,
-        dict(configuration),
-        path,
-        source_layer,
+        SkillReference(manifest.skill_type, manifest.name), manifest, dict(configuration), path, source_layer
     )
 
 
@@ -373,9 +331,7 @@ class SkillIndex:
     _entries_by_key: dict[str, SkillIndexEntry] = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "_entries_by_key", {entry.reference.key: entry for entry in self.entries}
-        )
+        object.__setattr__(self, "_entries_by_key", {entry.reference.key: entry for entry in self.entries})
 
     def find_skill(self, name: str, expected_type: str | None = None) -> SkillIndexEntry | None:
         clean_name = _clean_name(name)
@@ -423,9 +379,7 @@ class SkillIndex:
         if not defaults and len(entries) == 1:
             return entries[0]
         keys = ", ".join(entry.reference.key for entry in defaults or entries)
-        raise ValueError(
-            f"select exactly one default {selected_type} Skill" + (f": {keys}" if keys else "")
-        )
+        raise ValueError(f"select exactly one default {selected_type} Skill" + (f": {keys}" if keys else ""))
 
     def resolve_skill_dependencies(self, names: list[str]) -> list[SkillIndexEntry]:
         requested = sorted({_clean_name(name) for name in names})

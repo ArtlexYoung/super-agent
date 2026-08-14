@@ -10,13 +10,7 @@ from typing import TYPE_CHECKING, cast
 from core.provider import Message
 from core.config import AgentSettings, CommonConfig
 from core.checks import write_bytes_atomically
-from core.models import (
-    Conversation,
-    RunEvent,
-    RunSnapshot,
-    resolve_agent_run_options,
-    validate_user_id,
-)
+from core.models import Conversation, RunEvent, RunSnapshot, resolve_agent_run_options, validate_user_id
 from core.records.conversations import (
     clear_conversation,
     create_conversation,
@@ -87,12 +81,8 @@ class UserConversations:
         return cast(
             Conversation,
             self.user._execute(
-                ActionRequest.create(
-                    "user:conversation", "conversation:new", (ActionEffect.CREATE,)
-                ),
-                lambda: create_conversation(
-                    self.user._store(), title, conversation_id=conversation_id
-                ),
+                ActionRequest.create("user:conversation", "conversation:new", (ActionEffect.CREATE,)),
+                lambda: create_conversation(self.user._store(), title, conversation_id=conversation_id),
             ),
         )
 
@@ -143,11 +133,7 @@ class UserRuns:
         return self.user.agent._read_task_trace(self.user.user_id, run_id)
 
     def list(
-        self,
-        limit: int | None = None,
-        *,
-        conversation_id: str | None = None,
-        include_sensitive: bool = False,
+        self, limit: int | None = None, *, conversation_id: str | None = None, include_sensitive: bool = False
     ) -> list[RunSnapshot]:
         return self.user._store().list_runs(
             limit, conversation_id=conversation_id, include_sensitive=include_sensitive
@@ -167,9 +153,7 @@ class UserRuns:
 
     def export(self, run_id: str, path: str | Path, *, include_sensitive: bool = False) -> Path:
         _, store = _find_run_owner(self.user, run_id)
-        return store.export_run(
-            run_id, Path(path).expanduser(), include_sensitive=include_sensitive
-        )
+        return store.export_run(run_id, Path(path).expanduser(), include_sensitive=include_sensitive)
 
     def list_checkpoints(self, run_id: str) -> list[dict[str, object]]:
         from core.runtime import list_checkpoint_data
@@ -228,9 +212,7 @@ class UserRuns:
         reviewer = runner.create_text_model(store, "independent_review", decision=decision)
         return self.user._execute(
             ActionRequest.create("user:run-review", f"run:{run_id}", (ActionEffect.CREATE,)),
-            lambda: review_run_evidence(
-                store, run_id, evidence, reviewer.send_messages, skills.disclosure
-            ),
+            lambda: review_run_evidence(store, run_id, evidence, reviewer.send_messages, skills.disclosure),
         )
 
 
@@ -243,14 +225,10 @@ class UserMemory:
     def list(self, scope: str | None = None) -> list["MemoryItem"]:
         return self._memory().list_long_term(scope)
 
-    def recall(
-        self, query: str, scope: str | None = None, limit: int | None = None
-    ) -> list["MemoryItem"]:
+    def recall(self, query: str, scope: str | None = None, limit: int | None = None) -> list["MemoryItem"]:
         return self._memory().recall_long_term(query, scope, limit)
 
-    def remember(
-        self, text: str, scope: str | None = None, source_run_id: str = ""
-    ) -> "MemoryItem":
+    def remember(self, text: str, scope: str | None = None, source_run_id: str = "") -> "MemoryItem":
         return cast(
             "MemoryItem",
             self.user._execute(
@@ -261,9 +239,7 @@ class UserMemory:
 
     def forget(self, item_id: str, reason: str = "") -> None:
         self.user._execute(
-            ActionRequest.create(
-                "user:memory", f"memory:long-term:{item_id}", (ActionEffect.DELETE,)
-            ),
+            ActionRequest.create("user:memory", f"memory:long-term:{item_id}", (ActionEffect.DELETE,)),
             lambda: self._memory().forget_long_term(item_id, reason),
         )
 
@@ -292,17 +268,14 @@ class UserSkills:
     def create_model_manager(self) -> "ModelSkillManager":
         from skill.handlers.model_management import ModelSkillManager
 
-        return ModelSkillManager(
-            self.user.agent.config, self.user._store(), self.user.agent._action_rules()
-        )
+        return ModelSkillManager(self.user.agent.config, self.user._store(), self.user.agent._action_rules())
 
     def list_all(self) -> "Skills":
         from dataclasses import replace
 
         config = self.user.agent.config
         return self.user.agent._create_skills(
-            self.user.user_id,
-            config=replace(config, agent=replace(config.agent, disabled_skills=[])),
+            self.user.user_id, config=replace(config, agent=replace(config.agent, disabled_skills=[]))
         )
 
     def list_models(self) -> list[dict[str, object]]:
@@ -310,9 +283,7 @@ class UserSkills:
 
         skills = self.list_all()
         environment = self.user.agent._user_environment(self.user.user_id)
-        has_model_skill = any(
-            entry.reference.skill_type == "model" for entry in skills.index.entries
-        )
+        has_model_skill = any(entry.reference.skill_type == "model" for entry in skills.index.entries)
         if self.user.agent._uses_direct_provider() and not has_model_skill:
             environment = {}
         return [
@@ -350,8 +321,7 @@ class UserConfiguration:
             return loaded
 
         updated = self.user._execute(
-            ActionRequest.create("user:configuration", "config:agent", (ActionEffect.UPDATE,)),
-            update,
+            ActionRequest.create("user:configuration", "config:agent", (ActionEffect.UPDATE,)), update
         )
         if not isinstance(updated, CommonConfig):
             raise TypeError("configuration update must return CommonConfig")
@@ -384,9 +354,7 @@ def _find_run_owner(user: UserAgent, run_id: str) -> tuple[UserAgent, "EventStor
         return user, user._store().store_for_run(run_id)
 
 
-def _find_attached_run_owner(
-    user: UserAgent, run_id: str, seen: set[int]
-) -> tuple[UserAgent, "EventStore"]:
+def _find_attached_run_owner(user: UserAgent, run_id: str, seen: set[int]) -> tuple[UserAgent, "EventStore"]:
     if id(user.agent) in seen:
         raise KeyError(f"run not found: {run_id}")
     seen.add(id(user.agent))

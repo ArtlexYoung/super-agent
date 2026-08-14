@@ -35,11 +35,7 @@ from core import __version__
 from core.provider import Message
 from core.models import LOCAL_USER_ID, RunResult
 from skill.handlers.runtime import create_default_skill_handlers, create_skills
-from skill.handlers.models import (
-    model_profile_is_ready,
-    read_model_profiles,
-    select_default_model_profile,
-)
+from skill.handlers.models import model_profile_is_ready, read_model_profiles, select_default_model_profile
 
 
 CLI_COMMANDS = frozenset({"check", "config", "data", "serve", "skills"})
@@ -118,15 +114,12 @@ def _run_terminal(arguments: list[str]) -> int:
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="super-agent",
-        description="Chat with an Agent, or pass a prompt directly without a command.",
+        prog="super-agent", description="Chat with an Agent, or pass a prompt directly without a command."
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     subparsers = parser.add_subparsers(dest="command")
 
-    check_parser = subparsers.add_parser(
-        "check", help="check configuration, Skills, and the default model"
-    )
+    check_parser = subparsers.add_parser("check", help="check configuration, Skills, and the default model")
     configure_check_parser(check_parser)
 
     config_parser = subparsers.add_parser("config", help="show or validate CLI-only configuration")
@@ -174,21 +167,15 @@ def run_check_command(args: argparse.Namespace) -> int:
     checks: list[dict[str, object]] = []
     stage = "configuration"
     try:
-        config = load_common_config(
-            None if args.common_config is None else Path(args.common_config)
-        )
+        config = load_common_config(None if args.common_config is None else Path(args.common_config))
         source = str(config.source) if config.source.is_file() else "built-in defaults"
         checks.append(_check("configuration", True, source))
 
         stage = "skills"
-        skills = create_skills(
-            config, handlers=create_default_skill_handlers(), include_freshness=False
-        )
+        skills = create_skills(config, handlers=create_default_skill_handlers(), include_freshness=False)
         selected = skills.index.resolve_skill_dependencies(config.agent.skills)
         checks.append(
-            _check(
-                "skills", True, f"{len(skills.index.entries)} available, {len(selected)} configured"
-            )
+            _check("skills", True, f"{len(skills.index.entries)} available, {len(selected)} configured")
         )
 
         stage = "model"
@@ -234,9 +221,7 @@ def configure_serve_parser(parser: argparse.ArgumentParser) -> None:
 def run_serve_command(args: argparse.Namespace) -> int:
     agent = load_agent(args.common_config)
     origins = tuple(args.allowed_origins or DEFAULT_ALLOWED_ORIGINS)
-    server = create_ag_ui_server(
-        agent, args.host, args.port, user_id=args.user_id, allowed_origins=origins
-    )
+    server = create_ag_ui_server(agent, args.host, args.port, user_id=args.user_id, allowed_origins=origins)
     host, port = server.server_address[:2]
     base_url = f"http://{host}:{port}"
     print(f"Super Agent Web UI: {base_url}/")
@@ -394,10 +379,7 @@ def _read_runtime_request_from_args(args: argparse.Namespace, default_user_id: s
     if not prompt:
         raise ValueError("run prompt cannot be empty")
     return CliRequest(
-        prompt=prompt,
-        user_id=default_user_id,
-        conversation_id=args.conversation_id,
-        skill=args.skill,
+        prompt=prompt, user_id=default_user_id, conversation_id=args.conversation_id, skill=args.skill
     )
 
 

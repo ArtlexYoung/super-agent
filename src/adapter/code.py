@@ -37,12 +37,9 @@ def attach_code_config_to_agent(agent: Agent, source: str | Path | None = None) 
     def read_code_workspace(context: SkillContext) -> tuple[str, tuple[SkillTool, ...]]:
         if context.reference.name != "code":
             return "", ()
-        config = (
-            CodeConfig.load_automatically() if source is None else CodeConfig.load_from_file(source)
-        )
-        instructions = (
-            "# Coding workspace (does not grant file or process authority)\n"
-            + json.dumps(asdict(config.settings), default=str)
+        config = CodeConfig.load_automatically() if source is None else CodeConfig.load_from_file(source)
+        instructions = "# Coding workspace (does not grant file or process authority)\n" + json.dumps(
+            asdict(config.settings), default=str
         )
         return instructions, CodeWorkspace(config.settings).list_tools()
 
@@ -56,9 +53,7 @@ class CodeWorkspace:
         self.settings = settings
         self.root = settings.root.resolve()
         self.ignored = tuple((self.root / item).resolve() for item in settings.ignored_paths)
-        self.processes = DeclaredProcessTools(
-            self.root, settings.verification_commands, settings.execute
-        )
+        self.processes = DeclaredProcessTools(self.root, settings.verification_commands, settings.execute)
         self.repository = IncrementalRepositoryMap(self.root, settings.ignored_paths)
         self.worktrees = IsolatedWorktreeTools(self.root)
 
@@ -109,9 +104,7 @@ class CodeWorkspace:
                 "Read Git status with a fixed command and no optional locks.",
                 {"path": path},
                 self.read_git_status,
-                SkillAction(
-                    (ActionEffect.READ, ActionEffect.EXECUTE), "workspace:git-status", "path"
-                ),
+                SkillAction((ActionEffect.READ, ActionEffect.EXECUTE), "workspace:git-status", "path"),
                 result_kind="git",
             ),
             SkillTool(
@@ -119,9 +112,7 @@ class CodeWorkspace:
                 "Read a bounded Git diff with external diff and text conversion disabled.",
                 {"path": path, "staged": {"type": "boolean"}},
                 self.read_git_diff,
-                SkillAction(
-                    (ActionEffect.READ, ActionEffect.EXECUTE), "workspace:git-diff", "path"
-                ),
+                SkillAction((ActionEffect.READ, ActionEffect.EXECUTE), "workspace:git-diff", "path"),
                 result_kind="git",
             ),
         )
@@ -280,9 +271,7 @@ class CodeWorkspace:
         selected = self._resolve(read_required_tool_string(arguments, "path"), allow_symlink=False)
         current = self._read_text(selected)
         previous_sha256 = _text_sha256(current)
-        _require_expected_sha256(
-            read_required_tool_string(arguments, "expected_sha256"), previous_sha256
-        )
+        _require_expected_sha256(read_required_tool_string(arguments, "expected_sha256"), previous_sha256)
         updated = _apply_exact_replacements(current, arguments.get("replacements"))
         if updated == current:
             raise ValueError("structured patch must change file content")
@@ -300,15 +289,9 @@ class CodeWorkspace:
         if not selected.is_file():
             raise FileNotFoundError(f"workspace file not found: {selected}")
         current_sha256 = _text_sha256(self._read_text(selected))
-        _require_expected_sha256(
-            read_required_tool_string(arguments, "expected_sha256"), current_sha256
-        )
+        _require_expected_sha256(read_required_tool_string(arguments, "expected_sha256"), current_sha256)
         selected.unlink()
-        return {
-            "path": self._relative(selected),
-            "deleted": True,
-            "previous_sha256": current_sha256,
-        }
+        return {"path": self._relative(selected), "deleted": True, "previous_sha256": current_sha256}
 
     def _walk_entries(self, selected: Path, max_depth: int) -> list[dict[str, object]]:
         entries: list[dict[str, object]] = []
@@ -320,11 +303,7 @@ class CodeWorkspace:
                     continue
                 child_depth = depth + 1
                 kind = _workspace_path_kind(child)
-                entry: dict[str, object] = {
-                    "path": self._relative(child),
-                    "type": kind,
-                    "depth": child_depth,
-                }
+                entry: dict[str, object] = {"path": self._relative(child), "type": kind, "depth": child_depth}
                 if kind == "file":
                     entry["size"] = child.stat().st_size
                 entries.append(entry)
@@ -385,9 +364,7 @@ class CodeWorkspace:
             raise RuntimeError(completed.stderr.strip() or "Git command failed")
         output_bytes = len(completed.stdout.encode("utf-8")) + len(completed.stderr.encode("utf-8"))
         if output_bytes > WORKSPACE_GIT_OUTPUT_LIMIT:
-            raise ValueError(
-                f"Git output exceeds {WORKSPACE_GIT_OUTPUT_LIMIT} bytes; narrow the path"
-            )
+            raise ValueError(f"Git output exceeds {WORKSPACE_GIT_OUTPUT_LIMIT} bytes; narrow the path")
         return {
             "command": command,
             "returncode": completed.returncode,
@@ -483,11 +460,7 @@ def _require_expected_sha256(expected: str | None, actual: str) -> None:
 
 
 def _apply_exact_replacements(content: str, value: object) -> str:
-    if (
-        not isinstance(value, list)
-        or not value
-        or not all(isinstance(item, dict) for item in value)
-    ):
+    if not isinstance(value, list) or not value or not all(isinstance(item, dict) for item in value):
         raise ValueError("replacements must be a non-empty array of objects")
     edits: list[tuple[int, int, str]] = []
     for replacement in value:

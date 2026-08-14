@@ -68,9 +68,7 @@ class IncrementalRepositoryMap:
             try:
                 stat = path.stat()
                 if stat.st_size > REPOSITORY_MAP_FILE_BYTES:
-                    raise ValueError(
-                        f"repository map file exceeds {REPOSITORY_MAP_FILE_BYTES} bytes"
-                    )
+                    raise ValueError(f"repository map file exceeds {REPOSITORY_MAP_FILE_BYTES} bytes")
                 content = _read_bounded_file(path)
             except (OSError, ValueError) as error:
                 self._entries.pop(relative, None)
@@ -132,9 +130,7 @@ class IncrementalRepositoryMap:
                 elif child.is_file():
                     files.append(child)
                     if len(files) > REPOSITORY_MAP_FILE_LIMIT:
-                        raise ValueError(
-                            "repository map has more than 1000 files; configure ignores"
-                        )
+                        raise ValueError("repository map has more than 1000 files; configure ignores")
         return files, skipped
 
     def _is_ignored(self, path: Path) -> bool:
@@ -169,9 +165,7 @@ def _summarize_file(path: Path, relative: str, content: bytes, digest: str) -> d
     return data
 
 
-def _extract_symbols(
-    path: Path, content: str
-) -> tuple[list[dict[str, object]], str | None, str | None]:
+def _extract_symbols(path: Path, content: str) -> tuple[list[dict[str, object]], str | None, str | None]:
     if path.suffix.lower() != ".py":
         return [], None, None
     try:

@@ -1895,6 +1895,17 @@ Status: implemented.
 - Remove historical trailing-comma expansion, keep source lines at 100 characters or fewer, and
   reduce source to at most 16,200 non-empty Python lines without changing behavior.
 
+## v0.1.84: One Storage Event Boundary
+
+Status: implemented.
+
+- Validate and normalize every persisted event in `StorageEvent` regardless of whether it came
+  from JSONL, SQLite, MySQL, PostgreSQL, a copy, or direct application code.
+- Keep backend decoders responsible only for their physical schema and decode canonical SQL rows
+  and JSONL objects without duplicating nine field validators.
+- Use an explicit 110-character formatting ceiling to balance compact source with readable code,
+  and reduce source to at most 15,300 non-empty Python lines without removing storage behavior.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

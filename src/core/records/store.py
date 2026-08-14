@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Protocol
 
@@ -11,6 +12,8 @@ from core.models import (
     RunEvent,
     RunIdentity,
     RunSnapshot,
+    read_int,
+    read_object,
     read_text,
     validate_agent_name,
     validate_user_id,
@@ -26,13 +29,7 @@ class DisclosureStorage(Protocol):
     cache_root: Path
 
     def write_text(
-        self,
-        identity: RunIdentity | None,
-        content_key: str,
-        kind: str,
-        stage: str,
-        path: Path,
-        content: str,
+        self, identity: RunIdentity | None, content_key: str, kind: str, stage: str, path: Path, content: str
     ) -> None: ...
 
     def write_json(
@@ -131,8 +128,7 @@ class EventStore:
         query = self._scope_query(stream_type, stream_id, event_type)
         if snapshot is not None:
             if any(
-                event.user_id != self.user_id or event.agent_name != self.agent_name
-                for event in snapshot
+                event.user_id != self.user_id or event.agent_name != self.agent_name for event in snapshot
             ):
                 raise ValueError("event snapshot does not match store scope")
             return [event for event in snapshot if query.matches(event)]
@@ -209,11 +205,7 @@ class EventStore:
         return run_snapshot_from_events(self.user_id, visible)
 
     def list_runs(
-        self,
-        limit: int | None = None,
-        *,
-        conversation_id: str | None = None,
-        include_sensitive: bool = False,
+        self, limit: int | None = None, *, conversation_id: str | None = None, include_sensitive: bool = False
     ) -> list[RunSnapshot]:
         from core.records.events import run_snapshot_from_events
 
@@ -225,8 +217,7 @@ class EventStore:
         snapshots = sorted(
             (
                 run_snapshot_from_events(
-                    self.user_id,
-                    events if include_sensitive else _redact_events_for_display(events),
+                    self.user_id, events if include_sensitive else _redact_events_for_display(events)
                 )
                 for events in grouped.values()
             ),
@@ -234,9 +225,7 @@ class EventStore:
             reverse=True,
         )
         if conversation_id is not None:
-            snapshots = [
-                snapshot for snapshot in snapshots if snapshot.conversation_id == conversation_id
-            ]
+            snapshots = [snapshot for snapshot in snapshots if snapshot.conversation_id == conversation_id]
         return snapshots if limit is None else snapshots[:limit]
 
     def read_run_events(self, run_id: str, *, include_sensitive: bool = False) -> list[RunEvent]:
@@ -261,16 +250,9 @@ class EventStore:
         from core.checks import write_bytes_atomically
 
         explanation = self.explain_run(run_id, include_sensitive=include_sensitive)
-        document = {
-            "schema_version": 2,
-            "snapshot": explanation["snapshot"],
-            "events": explanation["events"],
-        }
+        document = {"schema_version": 2, "snapshot": explanation["snapshot"], "events": explanation["events"]}
         write_bytes_atomically(
-            path,
-            (json.dumps(document, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode(
-                "utf-8"
-            ),
+            path, (json.dumps(document, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode("utf-8")
         )
         return path
 
@@ -284,9 +266,7 @@ class EventStore:
             data=dict(data),
         )
 
-    def append_management_action_event(
-        self, event_type: str, data: dict[str, object]
-    ) -> StorageEvent:
+    def append_management_action_event(self, event_type: str, data: dict[str, object]) -> StorageEvent:
         return self.append_event("action", "management", event_type, data=data)
 
     def _require_identity_scope(self, identity: RunIdentity) -> None:
@@ -305,9 +285,9 @@ def _redact_events_for_display(events: list[StorageEvent]) -> list[StorageEvent]
     return DEFAULT_AUDIT_POLICY.redact_events(events)
 
 
-# Backend-neutral records define the storage contract used by this store.
-from dataclasses import dataclass
-from typing import Protocol
+_STORAGE_EVENT_TEXT_FIELDS = (
+    "event_id user_id agent_name stream_type stream_id event_type created_at".split()
+)
 
 
 @dataclass(frozen=True)
@@ -321,6 +301,12 @@ class StorageEvent:
     event_type: str
     created_at: str
     data: dict[str, object]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "position", read_int(self.position, "storage event position", minimum=1))
+        for name in _STORAGE_EVENT_TEXT_FIELDS:
+            object.__setattr__(self, name, read_text(getattr(self, name), f"storage event {name}"))
+        object.__setattr__(self, "data", dict(read_object(self.data, "storage event data")))
 
 
 @dataclass(frozen=True)

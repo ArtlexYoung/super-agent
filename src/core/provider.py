@@ -157,9 +157,7 @@ class ChatProvider(Protocol):
     ) -> ModelResponse: ...
 
 
-def call_chat_model(
-    call: ProviderCall, provider: ChatProvider, record_event: EventWriter
-) -> ModelResponse:
+def call_chat_model(call: ProviderCall, provider: ChatProvider, record_event: EventWriter) -> ModelResponse:
     selected = {
         "profile": call.profile_key,
         "model": call.model,
@@ -169,11 +167,7 @@ def call_chat_model(
     }
     record_event("model.call.selected", selected)
     input_tokens = estimate_text_tokens(
-        json.dumps(
-            {"messages": call.messages, "tools": call.tools or ()},
-            ensure_ascii=False,
-            sort_keys=True,
-        )
+        json.dumps({"messages": call.messages, "tools": call.tools or ()}, ensure_ascii=False, sort_keys=True)
     )
     started_at = perf_counter()
     try:
@@ -189,19 +183,14 @@ def call_chat_model(
         )
         raise
     output = response.text if not response.tool_calls else _model_response_text(response)
-    record_event(
-        "model.call.completed", _provider_call_metrics(call, input_tokens, output, started_at)
-    )
+    record_event("model.call.completed", _provider_call_metrics(call, input_tokens, output, started_at))
     return response
 
 
 def read_model_turn(response: ModelResponse) -> ModelTurn:
     if response.tool_calls:
         return ActionTurn(
-            tuple(
-                ModelAction(call.id, call.name, dict(call.arguments))
-                for call in response.tool_calls
-            ),
+            tuple(ModelAction(call.id, call.name, dict(call.arguments)) for call in response.tool_calls),
             response.text,
         )
     if not response.text.strip():
@@ -355,9 +344,7 @@ def _model_response_text(response: ModelResponse) -> str:
     return json.dumps(
         {
             "text": response.text,
-            "tool_calls": [
-                {"name": call.name, "arguments": call.arguments} for call in response.tool_calls
-            ],
+            "tool_calls": [{"name": call.name, "arguments": call.arguments} for call in response.tool_calls],
         },
         ensure_ascii=False,
         sort_keys=True,
@@ -373,9 +360,7 @@ def normalize_provider_connection(connection: ProviderConnection) -> ProviderCon
     base_url = _optional_text(connection.base_url) or _default_base_url(provider)
     api_key_env = _optional_text(connection.api_key_env)
     if api_key_env is None and not _is_local_url(base_url):
-        api_key_env = (
-            "OPENAI_API_KEY" if provider == OPENAI_COMPATIBLE_PROVIDER else "ANTHROPIC_API_KEY"
-        )
+        api_key_env = "OPENAI_API_KEY" if provider == OPENAI_COMPATIBLE_PROVIDER else "ANTHROPIC_API_KEY"
     return ProviderConnection(provider, base_url, api_key_env)
 
 
@@ -392,9 +377,7 @@ def _mock_structured_response(messages: list[Message], feedback_response: str | 
     if not isinstance(contract, dict):
         return None
     if set(contract) == {"is_feedback", "score", "reason"}:
-        return feedback_response or json.dumps(
-            {"is_feedback": False, "score": None, "reason": "no feedback"}
-        )
+        return feedback_response or json.dumps({"is_feedback": False, "score": None, "reason": "no feedback"})
     return None
 
 
@@ -405,9 +388,7 @@ def _read_openai_tool_call(data: dict[str, Any]) -> ToolCall:
         arguments = json.loads(arguments or "{}")
     if not isinstance(arguments, dict):
         raise ValueError("OpenAI tool call arguments must be an object")
-    return ToolCall(
-        id=str(data.get("id", "")), name=str(function.get("name", "")), arguments=arguments
-    )
+    return ToolCall(id=str(data.get("id", "")), name=str(function.get("name", "")), arguments=arguments)
 
 
 def _read_anthropic_tool_call(data: dict[str, Any]) -> ToolCall:
@@ -442,11 +423,7 @@ def _to_anthropic_messages(messages: list[Message]) -> list[Message]:
                 "tool_use_id": str(message.get("tool_call_id", "")),
                 "content": str(message.get("content", "")),
             }
-            if (
-                converted
-                and converted[-1]["role"] == "user"
-                and isinstance(converted[-1]["content"], list)
-            ):
+            if converted and converted[-1]["role"] == "user" and isinstance(converted[-1]["content"], list):
                 converted[-1]["content"].append(block)
             else:
                 converted.append({"role": "user", "content": [block]})
@@ -526,14 +503,10 @@ class UserSecretResolver:
     """Create a non-enumerable environment view for one validated user."""
 
     def __init__(
-        self,
-        lookup: UserSecretLookup | None = None,
-        process_environment: Mapping[str, str] | None = None,
+        self, lookup: UserSecretLookup | None = None, process_environment: Mapping[str, str] | None = None
     ) -> None:
         self.lookup = lookup
-        self.process_environment = (
-            os.environ if process_environment is None else process_environment
-        )
+        self.process_environment = os.environ if process_environment is None else process_environment
 
     def get_environment_for_user(self, user_id: str) -> Mapping[str, str]:
         from core.models import validate_user_id

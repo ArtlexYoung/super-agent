@@ -181,9 +181,7 @@ class ActionRunner:
         self._require_action_not_prepared(request)
         prepared = PreparedAction(request, decision)
         self._prepared_actions[request.action_id] = prepared
-        self.record_event(
-            "action.prepared", {**request.to_event_data(), **decision.to_event_data()}
-        )
+        self.record_event("action.prepared", {**request.to_event_data(), **decision.to_event_data()})
         return prepared
 
     def apply_action(self, prepared: PreparedAction, action: Callable[[], Result]) -> Result:
@@ -220,11 +218,7 @@ class ActionRunner:
         except Exception as error:
             self.record_event(
                 "action.failed",
-                {
-                    **request.to_event_data(),
-                    "error_type": type(error).__name__,
-                    "message": str(error),
-                },
+                {**request.to_event_data(), "error_type": type(error).__name__, "message": str(error)},
             )
             raise
         self.record_event("action.applied", request.to_event_data())

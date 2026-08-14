@@ -89,9 +89,7 @@ class AuditPolicy:
     def redact_events(self, events: list[StorageEvent]) -> list[StorageEvent]:
         """Build a dynamically redacted view of canonical storage events."""
         return [
-            replace(
-                event, data=self.redact_event_data(event.stream_type, event.event_type, event.data)
-            )
+            replace(event, data=self.redact_event_data(event.stream_type, event.event_type, event.data))
             for event in events
         ]
 
@@ -185,9 +183,7 @@ class AuditPruneReport:
     users: list[AuditPruneUserReport]
 
 
-def compact_subagent_result(
-    value: dict[str, object], options: "SubagentRecordOptions"
-) -> dict[str, object]:
+def compact_subagent_result(value: dict[str, object], options: "SubagentRecordOptions") -> dict[str, object]:
     """Keep a bounded child result while preserving evidence for its source."""
     if not isinstance(value, dict):
         raise TypeError("subagent result must be an object")
@@ -213,9 +209,7 @@ def compact_subagent_result(
     if options.is_summary:
         if "prompt" in compacted:
             prompt_digest = _content_digest(compacted.pop("prompt"))
-            compacted.update(
-                prompt_sha256=prompt_digest["sha256"], prompt_chars=prompt_digest["characters"]
-            )
+            compacted.update(prompt_sha256=prompt_digest["sha256"], prompt_chars=prompt_digest["characters"])
         if "text" in compacted:
             text = str(compacted["text"])
             text_digest = _content_digest(text)
@@ -267,9 +261,7 @@ def _prune_one_user(
     maintenance_events = 0
     if apply and candidates:
         deleted = backend.delete_events(
-            StorageEventQuery(
-                user_id=user_id, event_ids=tuple(event.event_id for event in candidates)
-            )
+            StorageEventQuery(user_id=user_id, event_ids=tuple(event.event_id for event in candidates))
         )
         if deleted:
             maintenance_events = _record_prune_events(backend, user_id, candidates, policy, now)
@@ -286,11 +278,7 @@ def _prune_one_user(
 
 
 def _record_prune_events(
-    backend: StorageBackend,
-    user_id: str,
-    candidates: list[StorageEvent],
-    policy: AuditPolicy,
-    now: datetime,
+    backend: StorageBackend, user_id: str, candidates: list[StorageEvent], policy: AuditPolicy, now: datetime
 ) -> int:
     by_agent: dict[str, dict[str, int]] = {}
     for event in candidates:

@@ -66,11 +66,7 @@ def summarize_evaluation_evidence(
     records: list[EvaluationRecord], *, combine_versions: bool = False
 ) -> list[EvaluationEvidenceSummary]:
     ordered = sorted(
-        records,
-        key=lambda record: (
-            parse_utc(record.created_at, "evaluation created_at"),
-            record.record_id,
-        ),
+        records, key=lambda record: (parse_utc(record.created_at, "evaluation created_at"), record.record_id)
     )
     accumulators: dict[tuple[str, ...], _EvidenceAccumulator] = {}
     last_by_function_group: dict[str, tuple[tuple[str, ...], EvaluationRecord]] = {}
@@ -98,9 +94,7 @@ def _apply_record(accumulator: _EvidenceAccumulator, record: EvaluationRecord) -
     accumulator.error_count += int(bool(result.error_type))
     accumulator.empty_output_count += int(result.token_usage.output_tokens == 0)
     accumulator.score_total += result.score
-    accumulator.score_ewma = _update_ewma(
-        accumulator.score_ewma, _evaluation_reward(record), sample_count
-    )
+    accumulator.score_ewma = _update_ewma(accumulator.score_ewma, _evaluation_reward(record), sample_count)
     accumulator.total_input_tokens += result.token_usage.input_tokens
     accumulator.total_output_tokens += result.token_usage.output_tokens
     if result.latency_ms is not None:
@@ -222,9 +216,7 @@ def calculate_skill_freshness(
     return stats_by_skill
 
 
-def _stats_from_evidence(
-    summary: EvaluationEvidenceSummary, policy: FreshnessRules
-) -> dict[str, Any]:
+def _stats_from_evidence(summary: EvaluationEvidenceSummary, policy: FreshnessRules) -> dict[str, Any]:
     return {
         "skill": summary.revision.key,
         "function_group": summary.revision.function_group,
@@ -262,9 +254,7 @@ def _update_freshness(stats: dict[str, Any], now: datetime, policy: FreshnessRul
     stats["freshness_updated_at"] = format_utc(now)
 
 
-def _score_components(
-    stats: dict[str, Any], now: datetime, policy: FreshnessRules
-) -> dict[str, float]:
+def _score_components(stats: dict[str, Any], now: datetime, policy: FreshnessRules) -> dict[str, float]:
     call_count = int(stats["call_count"])
     first_used_at = parse_utc(stats["first_used_at"] or stats["last_used_at"], "first_used_at")
     last_used_at = parse_utc(stats["last_used_at"], "last_used_at")
@@ -286,27 +276,18 @@ def _score_components(
     }
 
 
-def _efficiency_score(
-    stats: dict[str, Any], average_tokens: float, policy: FreshnessRules
-) -> float:
+def _efficiency_score(stats: dict[str, Any], average_tokens: float, policy: FreshnessRules) -> float:
     token_score = _clamp(
-        100 - max(0, average_tokens - policy.token_free_budget) / policy.tokens_per_penalty_point,
-        0,
-        100,
+        100 - max(0, average_tokens - policy.token_free_budget) / policy.tokens_per_penalty_point, 0, 100
     )
     latency_samples = int(stats["latency_sample_count"])
     if latency_samples == 0:
         return token_score
     average_latency = int(stats["total_latency_ms"]) / latency_samples
     latency_score = _clamp(
-        100 - max(0, average_latency - policy.latency_free_ms) / policy.latency_per_penalty_point,
-        0,
-        100,
+        100 - max(0, average_latency - policy.latency_free_ms) / policy.latency_per_penalty_point, 0, 100
     )
-    return (
-        policy.token_efficiency_weight * token_score
-        + (1 - policy.token_efficiency_weight) * latency_score
-    )
+    return policy.token_efficiency_weight * token_score + (1 - policy.token_efficiency_weight) * latency_score
 
 
 def _reliability_score(stats: dict[str, Any], policy: FreshnessRules) -> float:
@@ -315,12 +296,7 @@ def _reliability_score(stats: dict[str, Any], policy: FreshnessRules) -> float:
     empty_rate = int(stats["empty_output_count"]) / call_count
     error_rate = int(stats["error_count"]) / call_count
     return _clamp(
-        (
-            success_rate
-            - policy.empty_output_penalty * empty_rate
-            - policy.error_penalty * error_rate
-        )
-        * 100,
+        (success_rate - policy.empty_output_penalty * empty_rate - policy.error_penalty * error_rate) * 100,
         0,
         100,
     )
@@ -397,16 +373,12 @@ def read_freshness_rules(disclosure: SkillDisclosure) -> FreshnessRules:
     ):
         settings.update(
             {
-                name: read_number(
-                    value[name], f"freshness {name}", minimum=minimum, maximum=maximum
-                )
+                name: read_number(value[name], f"freshness {name}", minimum=minimum, maximum=maximum)
                 for name in names
             }
         )
     rules = FreshnessRules(
-        manifest.name,
-        read_number(value["initial"], "freshness initial", minimum=0, maximum=100),
-        **settings,
+        manifest.name, read_number(value["initial"], "freshness initial", minimum=0, maximum=100), **settings
     )
     if not math.isclose(sum(getattr(rules, name) for name in weights), 1.0, abs_tol=1e-9):
         raise ValueError("freshness component weights must sum to 1")

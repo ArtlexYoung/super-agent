@@ -146,9 +146,7 @@ class ModelCaller:
         profile = assignment.profile
         if not model_profile_is_ready(profile, self.provider_pool.environment):
             requirement = profile.connection.api_key_env or "provider connection"
-            raise RuntimeError(
-                f"selected model {profile.key} is not ready; configure {requirement}"
-            )
+            raise RuntimeError(f"selected model {profile.key} is not ready; configure {requirement}")
         return SelectedModel(
             profile=profile,
             selected_by="task_evidence",
@@ -157,15 +155,11 @@ class ModelCaller:
         )
 
     def select_default_model(self) -> SelectedModel:
-        profile = next(
-            (item for item in self.model_profiles if item.default), self.model_profiles[0]
-        )
+        profile = next((item for item in self.model_profiles if item.default), self.model_profiles[0])
         if not model_profile_is_ready(profile, self.provider_pool.environment):
             requirement = profile.connection.api_key_env or "provider connection"
             raise RuntimeError(f"default model {profile.key} is not ready; configure {requirement}")
-        return SelectedModel(
-            profile=profile, selected_by="default", reason="configured default model"
-        )
+        return SelectedModel(profile=profile, selected_by="default", reason="configured default model")
 
     def create_text_model(
         self,
@@ -198,9 +192,7 @@ class ModelCaller:
             _to_provider_call(decision, context, messages, tools), provider, context.record_event
         )
 
-    def _prepare_model_call(
-        self, decision: SelectedModel, context: ModelCallContext
-    ) -> ChatProvider:
+    def _prepare_model_call(self, decision: SelectedModel, context: ModelCallContext) -> ChatProvider:
         profile = decision.profile
         provider = self.provider_pool.get_chat_provider(profile.key, profile.connection)
         if context.record_model_used is not None:
@@ -271,18 +263,14 @@ def list_model_usage_stats(
 
 
 def infer_conversation_feedback_with_model(
-    conversation: Conversation,
-    prompt: str,
-    instructions: str,
-    send_messages: Callable[[list[Message]], str],
+    conversation: Conversation, prompt: str, instructions: str, send_messages: Callable[[list[Message]], str]
 ) -> tuple[str, float, str] | None:
     policy = _required_feedback_instructions(instructions)
     previous_assistant_index = next(
         (
             index
             for index in range(len(conversation.messages) - 1, -1, -1)
-            if conversation.messages[index].role == "assistant"
-            and conversation.messages[index].run_id
+            if conversation.messages[index].role == "assistant" and conversation.messages[index].run_id
         ),
         None,
     )
@@ -316,13 +304,9 @@ def infer_conversation_feedback_with_model(
     try:
         value = json.loads(text)
     except json.JSONDecodeError as error:
-        raise ValueError(
-            f"conversation feedback response must be one JSON object: {error}"
-        ) from error
+        raise ValueError(f"conversation feedback response must be one JSON object: {error}") from error
     if not isinstance(value, dict) or set(value) != {"is_feedback", "score", "reason"}:
-        raise ValueError(
-            "conversation feedback response fields must be is_feedback, score, and reason"
-        )
+        raise ValueError("conversation feedback response fields must be is_feedback, score, and reason")
     is_feedback = value["is_feedback"]
     if not isinstance(is_feedback, bool):
         raise TypeError("conversation feedback is_feedback must be a boolean")
@@ -349,9 +333,7 @@ def _required_feedback_instructions(value: str) -> str:
     return instructions
 
 
-def _finish_stats(
-    profile_key: str, purpose: str, accumulator: _StatsAccumulator
-) -> ModelUsageStats:
+def _finish_stats(profile_key: str, purpose: str, accumulator: _StatsAccumulator) -> ModelUsageStats:
     calls = accumulator.calls
     return ModelUsageStats(
         profile_key=profile_key,
@@ -367,10 +349,7 @@ def _finish_stats(
 
 
 def _score_model_candidate(
-    profile: ModelProfile,
-    purpose: str,
-    required: set[str],
-    observed: dict[tuple[str, str], ModelUsageStats],
+    profile: ModelProfile, purpose: str, required: set[str], observed: dict[tuple[str, str], ModelUsageStats]
 ) -> ModelAssignment:
     traits = profile.traits
     purpose_match = purpose != "auto" and purpose in traits.purposes
@@ -420,10 +399,7 @@ def assistant_tool_call_message(text: str, calls: list[ToolCall]) -> Message:
             {
                 "id": call.id,
                 "type": "function",
-                "function": {
-                    "name": call.name,
-                    "arguments": json.dumps(call.arguments, ensure_ascii=False),
-                },
+                "function": {"name": call.name, "arguments": json.dumps(call.arguments, ensure_ascii=False)},
             }
             for call in calls
         ],

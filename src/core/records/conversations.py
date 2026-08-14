@@ -36,16 +36,12 @@ def prepare_conversation_turn(
     messages: list[Message] = (
         []
         if conversation is None
-        else [
-            {"role": message.role, "content": message.content} for message in conversation.messages
-        ]
+        else [{"role": message.role, "content": message.content} for message in conversation.messages]
     )
     action_runner = ActionRunner(action_rules, store.append_management_action_event)
     prepared_action = action_runner.prepare_action(
         ActionRequest.create(
-            "agent:conversation",
-            f"conversation:{selected_id}",
-            (ActionEffect.CREATE, ActionEffect.UPDATE),
+            "agent:conversation", f"conversation:{selected_id}", (ActionEffect.CREATE, ActionEffect.UPDATE)
         )
     )
     return messages, PendingConversationTurn(
@@ -71,9 +67,7 @@ def complete_conversation_turn(pending: PendingConversationTurn, result: RunResu
 def create_conversation(
     store: EventStore, title: str = "", *, conversation_id: str | None = None
 ) -> Conversation:
-    selected_id = (
-        str(uuid4()) if conversation_id is None else read_text(conversation_id, "conversation_id")
-    )
+    selected_id = str(uuid4()) if conversation_id is None else read_text(conversation_id, "conversation_id")
     if store.read_events("conversation", selected_id):
         raise ValueError(f"conversation already exists: {selected_id}")
     store.append_event(
@@ -109,19 +103,14 @@ def rename_conversation(store: EventStore, conversation_id: str, title: str) -> 
     clean_title = read_text(title, "conversation title")
     if conversation.title != clean_title:
         store.append_event(
-            "conversation",
-            conversation.conversation_id,
-            "conversation.renamed",
-            data={"title": clean_title},
+            "conversation", conversation.conversation_id, "conversation.renamed", data={"title": clean_title}
         )
     return read_conversation(store, conversation.conversation_id)
 
 
 def clear_conversation(store: EventStore, conversation_id: str) -> Conversation:
     conversation = read_conversation(store, conversation_id)
-    store.append_event(
-        "conversation", conversation.conversation_id, "conversation.cleared", data={}
-    )
+    store.append_event("conversation", conversation.conversation_id, "conversation.cleared", data={})
     return read_conversation(store, conversation.conversation_id)
 
 

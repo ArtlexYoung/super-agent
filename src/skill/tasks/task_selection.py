@@ -129,22 +129,14 @@ class TaskQueueSettings:
         settings = cls(**value)
         read_int(settings.max_tasks, "agent_tasks max_tasks", minimum=1)
         read_number(settings.max_wait_seconds, "agent_tasks max_wait_seconds", minimum=0)
-        read_choice(
-            settings.record_mode, "agent_tasks record_mode", {"full", "summary", "adaptive"}
-        )
+        read_choice(settings.record_mode, "agent_tasks record_mode", {"full", "summary", "adaptive"})
         read_int(settings.compress_after_tasks, "agent_tasks compress_after_tasks", minimum=1)
         read_int(settings.summary_chars, "agent_tasks summary_chars", minimum=1)
         read_int(settings.max_nested_results, "agent_tasks max_nested_results", minimum=0)
-        read_choice(
-            settings.agent_selection, "agent_tasks agent_selection", {"least_busy", "rotate"}
-        )
-        read_int(
-            settings.circuit_breaker_failures, "agent_tasks circuit_breaker_failures", minimum=1
-        )
+        read_choice(settings.agent_selection, "agent_tasks agent_selection", {"least_busy", "rotate"})
+        read_int(settings.circuit_breaker_failures, "agent_tasks circuit_breaker_failures", minimum=1)
         read_number(
-            settings.circuit_breaker_wait_seconds,
-            "agent_tasks circuit_breaker_wait_seconds",
-            minimum=0,
+            settings.circuit_breaker_wait_seconds, "agent_tasks circuit_breaker_wait_seconds", minimum=0
         )
         read_int(settings.retry_unavailable_times, "agent_tasks retry_unavailable_times", minimum=0)
         return settings
@@ -210,10 +202,7 @@ class AgentSelector:
     """Choose available Agents and own their circuit state for one queue."""
 
     def __init__(
-        self,
-        settings: TaskQueueSettings,
-        subagents: list[dict[str, object]],
-        record_event: EventWriter,
+        self, settings: TaskQueueSettings, subagents: list[dict[str, object]], record_event: EventWriter
     ) -> None:
         self.settings = settings
         self.subagents = tuple(_validated_agent(item) for item in subagents)
@@ -234,14 +223,11 @@ class AgentSelector:
         *,
         commit: bool = True,
     ) -> SelectedAgent:
-        matching = [
-            item for item in self.subagents if _matches(item, task.purpose, task.required_features)
-        ]
+        matching = [item for item in self.subagents if _matches(item, task.purpose, task.required_features)]
         available = [
             item
             for item in matching
-            if str(item["name"]) not in (excluded or set())
-            and self._is_available(str(item["name"]))
+            if str(item["name"]) not in (excluded or set()) and self._is_available(str(item["name"]))
         ]
         available_count = len(available)
         if requested is not None:
@@ -275,20 +261,11 @@ class AgentSelector:
             selected = ranked[0]
             selected_by = "weighted_cost_reliability"
         return self._finish_choice(
-            selected,
-            selected_by,
-            (available_count, active.get(str(selected["name"]), 0)),
-            task,
-            commit,
+            selected, selected_by, (available_count, active.get(str(selected["name"]), 0)), task, commit
         )
 
     def choose_group(
-        self,
-        tasks: list[QueuedTask],
-        active: dict[str, int],
-        *,
-        require_different_models: bool,
-        commit: bool,
+        self, tasks: list[QueuedTask], active: dict[str, int], *, require_different_models: bool, commit: bool
     ) -> list[SelectedAgent]:
         """Select one distinct Agent per member and optionally require model diversity."""
         if not tasks:
@@ -337,9 +314,9 @@ class AgentSelector:
             selected_models.add(model_key)
             virtual_active[choice.name] = virtual_active.get(choice.name, 0) + 1
         if commit and self.settings.agent_selection == "rotate" and rotation_key:
-            self._rotation_positions[rotation_key] = self._rotation_positions.get(
-                rotation_key, 0
-            ) + len(selected)
+            self._rotation_positions[rotation_key] = self._rotation_positions.get(rotation_key, 0) + len(
+                selected
+            )
         return selected
 
     def commit_group(self, choices: list[SelectedAgent]) -> None:
@@ -348,9 +325,9 @@ class AgentSelector:
             self._commit_choice(choice.name)
         if self.settings.agent_selection == "rotate" and choices:
             rotation_key = choices[0].selection_key
-            self._rotation_positions[rotation_key] = self._rotation_positions.get(
-                rotation_key, 0
-            ) + len(choices)
+            self._rotation_positions[rotation_key] = self._rotation_positions.get(rotation_key, 0) + len(
+                choices
+            )
 
     def record_success(self, name: str) -> None:
         health = self._health[name]
@@ -361,18 +338,14 @@ class AgentSelector:
         circuit.state = "closed"
         circuit.retry_at = 0.0
         if previous != "closed":
-            self.record_event(
-                "agent_task.circuit_closed", {"agent_name": name, **_health_facts(health)}
-            )
+            self.record_event("agent_task.circuit_closed", {"agent_name": name, **_health_facts(health)})
 
     def record_unavailable(self, name: str, error: Exception) -> None:
         health = self._health[name]
         health.unavailable_failures += 1
         circuit = self._circuits[name]
         circuit.failures += 1
-        if circuit.state == "half_open" or (
-            circuit.failures >= self.settings.circuit_breaker_failures
-        ):
+        if circuit.state == "half_open" or (circuit.failures >= self.settings.circuit_breaker_failures):
             circuit.state = "open"
             circuit.retry_at = monotonic() + self.settings.circuit_breaker_wait_seconds
             self.record_event(
@@ -391,8 +364,7 @@ class AgentSelector:
         retry_times = [
             self._circuits[str(item["name"])].retry_at
             for item in self.subagents
-            if _matches(item, purpose, features)
-            and self._circuits[str(item["name"])].state == "open"
+            if _matches(item, purpose, features) and self._circuits[str(item["name"])].state == "open"
         ]
         return max(0.001, min(retry_times, default=now) - now)
 
@@ -428,11 +400,7 @@ class AgentSelector:
         health = self._health[name]
         base_score = _base_score(agent, health, dispatch.cost)
         candidate_count, active_count = counts
-        score = (
-            base_score
-            if self.settings.agent_selection == "rotate"
-            else base_score / (1 + active_count)
-        )
+        score = base_score if self.settings.agent_selection == "rotate" else base_score / (1 + active_count)
         if commit:
             self._commit_choice(name)
         return SelectedAgent(
@@ -492,9 +460,7 @@ def read_required_task_strings(
     arguments: Mapping[str, object], name: str, *, maximum: int = 16
 ) -> tuple[str, ...]:
     return tuple(
-        read_text_list(
-            arguments.get(name), f"tool argument {name!r}", minimum=1, maximum=maximum, lower=True
-        )
+        read_text_list(arguments.get(name), f"tool argument {name!r}", minimum=1, maximum=maximum, lower=True)
     )
 
 

@@ -46,9 +46,7 @@ class RunEventLog:
         self._subscriber_failures: list[SubscriberFailure] = []
         self._lock = RLock()
 
-    def start_run(
-        self, prompt: str | None, *, extra_data: dict[str, object] | None = None
-    ) -> RunEvent:
+    def start_run(self, prompt: str | None, *, extra_data: dict[str, object] | None = None) -> RunEvent:
         with self._lock:
             if self._events or self._read_stored_events():
                 raise ValueError(f"run already exists: {self.identity.run_id}")
@@ -92,9 +90,7 @@ class RunEventLog:
                 event_type=clean_type,
                 data=content,
             )
-            event = run_event_from_storage(
-                stored, len(self._events) + 1, self.identity.parent_run_id
-            )
+            event = run_event_from_storage(stored, len(self._events) + 1, self.identity.parent_run_id)
         self._events.append(event)
         if self._event_listener is not None:
             self._event_listener(event)
@@ -118,9 +114,7 @@ class RunEventLog:
         failures = self._subscribers.publish_event(event)
         self._subscriber_failures.extend(failures)
         for failure in failures:
-            self._append_event(
-                "runtime.subscriber.failed", failure.to_dict(), publish_to_subscribers=False
-            )
+            self._append_event("runtime.subscriber.failed", failure.to_dict(), publish_to_subscribers=False)
 
     def _read_stored_events(self) -> list[StorageEvent]:
         if self._backend is None:
@@ -141,27 +135,17 @@ def run_snapshot_from_events(user_id: str, events: list[StorageEvent]) -> RunSna
     ordered = _ordered_run_events(events)
     started = ordered[0]
     terminal = next(
-        (
-            event
-            for event in reversed(ordered)
-            if event.event_type in {"run.completed", "run.failed"}
-        ),
-        None,
+        (event for event in reversed(ordered) if event.event_type in {"run.completed", "run.failed"}), None
     )
     status = "running" if terminal is None else terminal.event_type.removeprefix("run.")
     data = {} if terminal is None else terminal.data
     error = None
     if status == "failed":
-        error = {
-            "error_type": str(data.get("error_type", "")),
-            "message": str(data.get("message", "")),
-        }
+        error = {"error_type": str(data.get("error_type", "")), "message": str(data.get("message", ""))}
     return RunSnapshot(
         run_id=started.stream_id,
         user_id=user_id,
-        conversation_id=read_optional_text(
-            started.data.get("conversation_id"), "stored conversation_id"
-        ),
+        conversation_id=read_optional_text(started.data.get("conversation_id"), "stored conversation_id"),
         agent_name=started.agent_name,
         parent_run_id=read_optional_text(started.data.get("parent_run_id"), "stored parent_run_id"),
         status=status,
@@ -181,14 +165,11 @@ def run_events_from_storage(events: list[StorageEvent]) -> list[RunEvent]:
     ordered = _ordered_run_events(events)
     parent_run_id = read_optional_text(ordered[0].data.get("parent_run_id"), "stored parent_run_id")
     return [
-        run_event_from_storage(event, sequence, parent_run_id)
-        for sequence, event in enumerate(ordered, 1)
+        run_event_from_storage(event, sequence, parent_run_id) for sequence, event in enumerate(ordered, 1)
     ]
 
 
-def run_event_from_storage(
-    event: StorageEvent, sequence: int, parent_run_id: str | None
-) -> RunEvent:
+def run_event_from_storage(event: StorageEvent, sequence: int, parent_run_id: str | None) -> RunEvent:
     return RunEvent(
         run_id=event.stream_id,
         sequence=sequence,
@@ -215,9 +196,7 @@ def explain_run_from_events(user_id: str, stored_events: list[StorageEvent]) -> 
         "schema_version": 2,
         "snapshot": asdict(snapshot),
         "selection_decisions": _latest_selection_decisions(events),
-        "disclosure_path": [
-            asdict(event) for event in events if event.event_type == "content.disclosed"
-        ],
+        "disclosure_path": [asdict(event) for event in events if event.event_type == "content.disclosed"],
         "events": [asdict(event) for event in events],
     }
 

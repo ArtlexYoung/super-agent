@@ -30,9 +30,7 @@ class CommonConfigurationInput:
         return cls(
             name=read_text(value.get("name"), "agent configuration name"),
             system=read_text(value.get("system"), "agent configuration system"),
-            skills=read_text_list(
-                value.get("skills", []), "agent configuration skills", lower=True
-            ),
+            skills=read_text_list(value.get("skills", []), "agent configuration skills", lower=True),
             max_agent_chain_depth=(
                 None
                 if value.get("max_agent_chain_depth") is None
@@ -91,9 +89,7 @@ class WebAPI:
             return _ok(self._read_bootstrap())
         return WebAPIResponse(HTTPStatus.NOT_FOUND, {"error": "route not found"})
 
-    def _handle_conversations(
-        self, method: str, parts: list[str], body: object | None
-    ) -> WebAPIResponse:
+    def _handle_conversations(self, method: str, parts: list[str], body: object | None) -> WebAPIResponse:
         if method == "POST" and not parts:
             title = _optional_body_text(body, "title")
             conversation = self.user.conversations.create(title)
@@ -182,9 +178,7 @@ def _web_skill_list(value: dict[str, object], config: CommonConfig) -> list[dict
     ]
 
 
-def _subagent_tree(
-    agent: Agent, user_id: str, seen: set[int], path: list[str]
-) -> list[dict[str, object]]:
+def _subagent_tree(agent: Agent, user_id: str, seen: set[int], path: list[str]) -> list[dict[str, object]]:
     if id(agent) in seen:
         return []
     next_seen = seen | {id(agent)}

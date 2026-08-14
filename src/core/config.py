@@ -60,9 +60,7 @@ class CommonConfig:
         data = tomllib.loads(source.read_text(encoding="utf-8"))
         require_config_header(data, "common")
         reject_unknown_fields(
-            data,
-            {"schema_version", "kind", "agent", "paths", "storage"},
-            "common configuration tables",
+            data, {"schema_version", "kind", "agent", "paths", "storage"}, "common configuration tables"
         )
         base_dir = source.parent
         return cls(
@@ -77,18 +75,13 @@ class CommonConfig:
         cls, base_directory: str | Path | None = None, environment: Mapping[str, str] | None = None
     ) -> "CommonConfig":
         base, source = find_optional_config_file(
-            "common.toml",
-            "SUPER_AGENT_COMMON_CONFIG",
-            base_directory=base_directory,
-            environment=environment,
+            "common.toml", "SUPER_AGENT_COMMON_CONFIG", base_directory=base_directory, environment=environment
         )
         return cls.load_from_file(source) if source else cls.create_default(base)
 
     @classmethod
     def create_default(cls, base_directory: str | Path | None = None) -> "CommonConfig":
-        base = (
-            Path.cwd() if base_directory is None else Path(base_directory).expanduser().absolute()
-        )
+        base = Path.cwd() if base_directory is None else Path(base_directory).expanduser().absolute()
         return cls(
             agent=_read_agent_settings({}),
             paths=PathsSettings(skills=[base / "skills"]),
@@ -145,17 +138,13 @@ class CodeConfig:
         cls, base_directory: str | Path | None = None, environment: Mapping[str, str] | None = None
     ) -> "CodeConfig":
         base, source = find_optional_config_file(
-            "code.toml",
-            "SUPER_AGENT_CODE_CONFIG",
-            base_directory=base_directory,
-            environment=environment,
+            "code.toml", "SUPER_AGENT_CODE_CONFIG", base_directory=base_directory, environment=environment
         )
         return (
             cls.load_from_file(source)
             if source
             else cls(
-                CodeSettings(base, list(DEFAULT_CODE_IGNORES), "allow", "ask", "ask", []),
-                base / "code.toml",
+                CodeSettings(base, list(DEFAULT_CODE_IGNORES), "allow", "ask", "ask", []), base / "code.toml"
             )
         )
 
@@ -197,9 +186,7 @@ def _read_agent_settings(data: dict[str, Any]) -> AgentSettings:
         max_agent_chain_depth=read_optional_int(
             data.get("max_agent_chain_depth"), "max_agent_chain_depth", minimum=1
         ),
-        disabled_skills=read_text_list(
-            data.get("disabled_skills", []), "agent disabled_skills", lower=True
-        ),
+        disabled_skills=read_text_list(data.get("disabled_skills", []), "agent disabled_skills", lower=True),
     )
 
 
@@ -248,9 +235,7 @@ def _read_code_workspace(data: dict[str, Any], base_dir: Path) -> dict[str, Any]
 def _read_code_actions(data: dict[str, Any]) -> dict[str, str]:
     reject_unknown_fields(data, {"read", "write", "execute"}, "code action settings")
     values = {
-        name: read_text(
-            data.get(name, "ask" if name != "read" else "allow"), f"code action {name}"
-        ).lower()
+        name: read_text(data.get(name, "ask" if name != "read" else "allow"), f"code action {name}").lower()
         for name in ("read", "write", "execute")
     }
     if any(value not in {"allow", "ask", "deny"} for value in values.values()):

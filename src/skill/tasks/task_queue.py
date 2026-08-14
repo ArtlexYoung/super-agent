@@ -81,9 +81,7 @@ class TaskQueue:
         self._started_task_count = 0
         self._agent_pool = AgentSelector(settings, subagents, record_event)
         self._groups = (
-            None
-            if group_settings is None
-            else AgentGroups(self, group_settings, create_shared_context)
+            None if group_settings is None else AgentGroups(self, group_settings, create_shared_context)
         )
         self._retry_timers: list[Timer] = []
         self._closed = False
@@ -169,9 +167,7 @@ class TaskQueue:
                     return
                 raise RuntimeError("agent_tasks Skill must create at least one task")
             unfinished = [
-                task.task_id
-                for task in self._tasks.values()
-                if task.status not in TERMINAL_TASK_STATUSES
+                task.task_id for task in self._tasks.values() if task.status not in TERMINAL_TASK_STATUSES
             ]
         if unfinished:
             raise RuntimeError("agent tasks are still unfinished: " + ", ".join(unfinished))
@@ -327,8 +323,7 @@ class TaskQueue:
                 matched: list[str] = []
             else:
                 self._condition.wait_for(
-                    lambda: bool(self._matching_tasks_locked(trigger, task_ids)),
-                    timeout=wait_seconds,
+                    lambda: bool(self._matching_tasks_locked(trigger, task_ids)), timeout=wait_seconds
                 )
                 matched = self._matching_tasks_locked(trigger, task_ids)
             self._observed_terminal.update(matched)
@@ -364,9 +359,7 @@ class TaskQueue:
         self, task: QueuedTask, requested_agent: str | None, excluded: set[str] | None = None
     ) -> SelectedAgent:
         try:
-            return self._agent_pool.choose(
-                task, self._active_task_counts_locked(), requested_agent, excluded
-            )
+            return self._agent_pool.choose(task, self._active_task_counts_locked(), requested_agent, excluded)
         except ValueError as error:
             if str(error) == "no suitable subagent for task":
                 raise ValueError(f"no suitable subagent for task: {task.task_id}") from error
@@ -432,16 +425,10 @@ class TaskQueue:
                 self._schedule_retry_locked(task, delay)
                 return
             updated = replace(
-                task,
-                agent_name=choice.name,
-                retry_after_seconds=None,
-                error_type=None,
-                error_message=None,
+                task, agent_name=choice.name, retry_after_seconds=None, error_type=None, error_message=None
             )
             self._tasks[task_id] = updated
-            self.record_event(
-                "agent_task.retry_dispatched", {"task_id": task_id, **choice.to_dict()}
-            )
+            self.record_event("agent_task.retry_dispatched", {"task_id": task_id, **choice.to_dict()})
             self._condition.notify_all()
             self._submit_locked(choice.name, task_id)
 
@@ -462,9 +449,7 @@ class TaskQueue:
         )
 
     def _fail_task_locked(self, task: QueuedTask, error: Exception) -> None:
-        self._transition_locked(
-            task, "failed", error_type=type(error).__name__, error_message=str(error)
-        )
+        self._transition_locked(task, "failed", error_type=type(error).__name__, error_message=str(error))
 
     def _matching_tasks_locked(self, trigger: str, task_ids: tuple[str, ...]) -> list[str]:
         tasks = list(self._tasks.values())
@@ -475,9 +460,7 @@ class TaskQueue:
             return [task.task_id for task in unseen if task.status == "completed"]
         if trigger == "any_task_failed":
             return [task.task_id for task in unseen if task.status == "failed"]
-        selected = (
-            tasks if trigger == "all_tasks_finished" else [self._tasks[item] for item in task_ids]
-        )
+        selected = tasks if trigger == "all_tasks_finished" else [self._tasks[item] for item in task_ids]
         return (
             [task.task_id for task in selected]
             if (selected and self._tasks_are_terminal_locked(task.task_id for task in selected))
@@ -496,8 +479,7 @@ class TaskQueue:
 
     def _tasks_are_terminal_locked(self, task_ids: Iterable[str]) -> bool:
         return all(
-            self._require_task_locked(task_id).status in TERMINAL_TASK_STATUSES
-            for task_id in task_ids
+            self._require_task_locked(task_id).status in TERMINAL_TASK_STATUSES for task_id in task_ids
         )
 
     def _read_wait_seconds(self, arguments: dict[str, object]) -> tuple[float, float]:

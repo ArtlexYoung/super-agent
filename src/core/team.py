@@ -127,9 +127,7 @@ class AgentTeam:
                 "required_features": list(subagent.required_features),
                 "agent_name": subagent.agent.config.agent.name,
                 "weight": subagent.weight,
-                "models": [
-                    model_dispatch_to_dict(profile) for profile in subagent.agent.model_profiles
-                ],
+                "models": [model_dispatch_to_dict(profile) for profile in subagent.agent.model_profiles],
             }
             for subagent in self._subagents
         ]
@@ -217,9 +215,7 @@ def find_longest_agent_chain(agent: TeamAgent, chain: list[str], seen_ids: set[i
     longest = chain
     next_seen_ids = seen_ids | {agent_id}
     for subagent in agent.subagents:
-        child_chain = find_longest_agent_chain(
-            subagent.agent, chain + [subagent.name], next_seen_ids
-        )
+        child_chain = find_longest_agent_chain(subagent.agent, chain + [subagent.name], next_seen_ids)
         if len(child_chain) > len(longest):
             longest = child_chain
     return longest

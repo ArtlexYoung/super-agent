@@ -37,9 +37,7 @@ class CliConfig:
         run = data.get("run", {})
         if not isinstance(run, dict):
             raise ValueError("CLI run settings must be a table")
-        reject_unknown_fields(
-            run, {"user_id", "output", "save", "show_summary"}, "CLI run settings"
-        )
+        reject_unknown_fields(run, {"user_id", "output", "save", "show_summary"}, "CLI run settings")
         user_id = str(run.get("user_id", LOCAL_USER_ID)).strip()
         if not user_id:
             raise ValueError("CLI run user_id cannot be empty")
@@ -59,18 +57,13 @@ class CliConfig:
         cls, base_directory: str | Path | None = None, environment: dict[str, str] | None = None
     ) -> "CliConfig":
         base, source = find_optional_config_file(
-            "cli.toml",
-            "SUPER_AGENT_CLI_CONFIG",
-            base_directory=base_directory,
-            environment=environment,
+            "cli.toml", "SUPER_AGENT_CLI_CONFIG", base_directory=base_directory, environment=environment
         )
         return cls.load_from_file(source) if source else cls.create_default(base)
 
     @classmethod
     def create_default(cls, base_directory: str | Path | None = None) -> "CliConfig":
-        base = (
-            Path.cwd() if base_directory is None else Path(base_directory).expanduser().absolute()
-        )
+        base = Path.cwd() if base_directory is None else Path(base_directory).expanduser().absolute()
         return cls(LOCAL_USER_ID, "text", False, True, base / "cli.toml")
 
 
@@ -88,9 +81,7 @@ class TerminalActionRules(ActionRules):
         except (EOFError, KeyboardInterrupt):
             answer = ""
         if answer in {"y", "yes"}:
-            return ActionDecision(
-                ActionDecisionType.ALLOW, "terminal user confirmed the action", True
-            )
+            return ActionDecision(ActionDecisionType.ALLOW, "terminal user confirmed the action", True)
         return decision
 
 
@@ -107,34 +98,23 @@ def load_common_config(source: CommonConfigSource = None) -> CommonConfig:
 
 
 def load_agent(source: CommonConfigSource = None, *, use_storage: bool = True) -> Agent:
-    return Agent(
-        load_common_config(source), use_storage=use_storage, action_rules=TerminalActionRules()
-    )
+    return Agent(load_common_config(source), use_storage=use_storage, action_rules=TerminalActionRules())
 
 
 def load_event_store(source: CommonConfigSource = None, user_id: str = LOCAL_USER_ID) -> EventStore:
     from adapter.storage_backends.storage import DisclosureStorage, create_storage_backend
 
     config = load_common_config(source)
-    backend = create_storage_backend(
-        config.storage.backend, str(config.storage.path), config.storage.url_env
-    )
+    backend = create_storage_backend(config.storage.backend, str(config.storage.path), config.storage.url_env)
     return EventStore(
-        backend,
-        config.storage.path,
-        user_id,
-        config.agent.name,
-        disclosure_factory=DisclosureStorage,
+        backend, config.storage.path, user_id, config.agent.name, disclosure_factory=DisclosureStorage
     )
 
 
 def configure_config_parser(parser: argparse.ArgumentParser) -> None:
     parser.set_defaults(cli_config=None)
     subparsers = parser.add_subparsers(dest="config_command")
-    for name, help_text in (
-        ("show", "show active CLI settings"),
-        ("validate", "validate CLI settings"),
-    ):
+    for name, help_text in (("show", "show active CLI settings"), ("validate", "validate CLI settings")):
         subparsers.add_parser(name, help=help_text).add_argument("--cli-config")
 
 

@@ -228,11 +228,7 @@ class SkillHandlers:
         return tuple(self._handlers[key] for key in sorted(self._handlers))
 
     def model_context_types(self) -> set[str]:
-        return {
-            skill_type
-            for skill_type, handler in self._handlers.items()
-            if handler.adds_model_context
-        }
+        return {skill_type for skill_type, handler in self._handlers.items() if handler.adds_model_context}
 
     def handle(self, context: SkillContext) -> SkillUse:
         handler = self.find(context.reference.skill_type)
@@ -246,9 +242,7 @@ class SkillHandlers:
 class Skills:
     """Keep one progressive disclosure snapshot with its trusted handlers."""
 
-    def __init__(
-        self, disclosure: ProgressiveDisclosureCore, handlers: SkillHandlers | None = None
-    ) -> None:
+    def __init__(self, disclosure: ProgressiveDisclosureCore, handlers: SkillHandlers | None = None) -> None:
         self.disclosure = disclosure
         self.handlers = handlers or SkillHandlers()
         self.index = disclosure.prepare_skill_index()

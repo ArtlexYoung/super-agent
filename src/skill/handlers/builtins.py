@@ -35,8 +35,7 @@ class PromptSkillHandler:
         opened = context.open_skill()
         return SkillUse(
             model_context=Skill(
-                manifest=opened.disclose_manifest(),
-                instructions=opened.disclose_instructions().content,
+                manifest=opened.disclose_manifest(), instructions=opened.disclose_instructions().content
             )
         )
 
@@ -57,7 +56,9 @@ class McpSkillHandler:
         registered = self.servers.require_mcp_server(settings.server_name)
         list_tool_name, run_tool_name = _mcp_tool_names(context.reference.name)
         instructions = opened.disclose_instructions().content
-        runtime_context = f"Registered MCP server: {registered.name}\nRuntime tools: {list_tool_name}, {run_tool_name}"
+        runtime_context = (
+            f"Registered MCP server: {registered.name}\nRuntime tools: {list_tool_name}, {run_tool_name}"
+        )
         return SkillUse(
             model_context=Skill(
                 manifest=opened.disclose_manifest(),
@@ -109,8 +110,7 @@ class TaskSkillHandler:
     adds_model_context = True
 
     def __init__(
-        self,
-        read_additions: Callable[[SkillContext], tuple[str, tuple[SkillTool, ...]]] | None = None,
+        self, read_additions: Callable[[SkillContext], tuple[str, tuple[SkillTool, ...]]] | None = None
     ) -> None:
         self._read_additions = read_additions
 
@@ -129,9 +129,7 @@ class TaskSkillHandler:
             tools=(*tools, *_create_task_plan_tools(context)),
             task_policy=policy,
             start_session=(
-                None
-                if not policy.tools
-                else lambda session: _start_task_session(policy.tools, session)
+                None if not policy.tools else lambda session: _start_task_session(policy.tools, session)
             ),
         )
 
@@ -146,9 +144,7 @@ def create_builtin_skill_handlers(mcp_servers: McpServers) -> tuple[SkillHandler
     )
 
 
-def _start_task_session(
-    tools: dict[str, dict[str, object]], context: SkillSessionContext
-) -> SkillSession:
+def _start_task_session(tools: dict[str, dict[str, object]], context: SkillSessionContext) -> SkillSession:
     from skill.tasks.task_queue import create_task_queue
 
     queue = create_task_queue(
@@ -184,12 +180,7 @@ def _create_task_plan_tools(context: SkillContext) -> tuple[SkillTool, ...]:
             "Set a bounded task plan when the task benefits from explicit steps.",
             {
                 "goal": {"type": "string"},
-                "steps": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "minItems": 1,
-                    "maxItems": 20,
-                },
+                "steps": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 20},
             },
             plan.set_plan,
             action,
@@ -201,10 +192,7 @@ def _create_task_plan_tools(context: SkillContext) -> tuple[SkillTool, ...]:
             "Update one planned step with an explicit status and optional evidence.",
             {
                 "step": {"type": "integer", "minimum": 1},
-                "status": {
-                    "type": "string",
-                    "enum": ["pending", "in_progress", "completed", "blocked"],
-                },
+                "status": {"type": "string", "enum": ["pending", "in_progress", "completed", "blocked"]},
                 "evidence": {"type": "string"},
             },
             plan.update_step,
@@ -235,10 +223,7 @@ class _TaskPlan:
         ]
         self.record_event(
             "task.plan.set",
-            {
-                "goal_sha256": hashlib.sha256(goal.encode()).hexdigest(),
-                "step_count": len(self.steps),
-            },
+            {"goal_sha256": hashlib.sha256(goal.encode()).hexdigest(), "step_count": len(self.steps)},
         )
         return self._result()
 
@@ -294,11 +279,7 @@ def _create_memory_tools(memory: Memory) -> tuple[SkillTool, ...]:
         SkillTool(
             "recall_long_term_memory",
             "Read and rank durable memory without changing it.",
-            {
-                "query": {"type": "string"},
-                "scope": scope,
-                "limit": {"type": "integer", "minimum": 1},
-            },
+            {"query": {"type": "string"}, "scope": scope, "limit": {"type": "integer", "minimum": 1}},
             lambda arguments: _recall_long_term_memory(memory, arguments),
             action=SkillAction((ActionEffect.READ,), "memory:long-term", "scope"),
             required=("query",),
@@ -400,9 +381,7 @@ def _create_mcp_tools(
     )
 
 
-def _run_mcp_tool(
-    registered: RegisteredMcpServer, arguments: dict[str, object]
-) -> dict[str, object]:
+def _run_mcp_tool(registered: RegisteredMcpServer, arguments: dict[str, object]) -> dict[str, object]:
     tool = read_required_tool_string(arguments, "tool")
     result = registered.server.call_tool(tool, read_tool_object(arguments, "arguments"))
     return {"name": registered.name, "tool": tool, "result": result}
@@ -410,8 +389,7 @@ def _run_mcp_tool(
 
 def _mcp_tool_names(skill_name: str) -> tuple[str, str]:
     clean = "".join(
-        character if character.isascii() and character.isalnum() else "_"
-        for character in skill_name.lower()
+        character if character.isascii() and character.isalnum() else "_" for character in skill_name.lower()
     ).strip("_")
     if not clean:
         clean = hashlib.sha256(skill_name.encode()).hexdigest()[:12]

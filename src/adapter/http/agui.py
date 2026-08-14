@@ -79,10 +79,7 @@ class AGUIEventMapper:
         if event_type in {"tool.completed", "tool.failed"}:
             return [_tool_call_result_event(event)]
         if event_type == "task.completed":
-            return [
-                *_assistant_message_events(event),
-                {"type": "STEP_FINISHED", "stepName": "task"},
-            ]
+            return [*_assistant_message_events(event), {"type": "STEP_FINISHED", "stepName": "task"}]
         if event_type == "run.completed":
             self.terminal_event_sent = True
             return [
@@ -106,11 +103,7 @@ class AGUIEventMapper:
         return []
 
     def _run_started(self, event: RunEvent) -> dict[str, Any]:
-        mapped: dict[str, Any] = {
-            "type": "RUN_STARTED",
-            "threadId": self.thread_id,
-            "runId": self.run_id,
-        }
+        mapped: dict[str, Any] = {"type": "RUN_STARTED", "threadId": self.thread_id, "runId": self.run_id}
         if event.parent_run_id:
             mapped["parentRunId"] = event.parent_run_id
         return mapped
@@ -221,11 +214,7 @@ def _assistant_message_events(event: RunEvent) -> list[dict[str, str]]:
     message_id = f"message-{event.run_id}"
     return [
         {"type": "TEXT_MESSAGE_START", "messageId": message_id, "role": "assistant"},
-        {
-            "type": "TEXT_MESSAGE_CONTENT",
-            "messageId": message_id,
-            "delta": str(event.data.get("text", "")),
-        },
+        {"type": "TEXT_MESSAGE_CONTENT", "messageId": message_id, "delta": str(event.data.get("text", ""))},
         {"type": "TEXT_MESSAGE_END", "messageId": message_id},
     ]
 
@@ -274,9 +263,7 @@ class AGUIRequestHandler(BaseHTTPRequestHandler):
     def do_HEAD(self) -> None:
         path = urlsplit(self.path).path
         if path == "/health":
-            self._send_json(
-                HTTPStatus.OK, {"status": "ok", "protocol": "AG-UI"}, include_body=False
-            )
+            self._send_json(HTTPStatus.OK, {"status": "ok", "protocol": "AG-UI"}, include_body=False)
             return
         self._serve_static_file(path, include_body=False)
 
@@ -287,9 +274,7 @@ class AGUIRequestHandler(BaseHTTPRequestHandler):
         self.send_response(HTTPStatus.NO_CONTENT)
         self._send_cors_headers()
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
-        self.send_header(
-            "Access-Control-Allow-Methods", "GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS"
-        )
+        self.send_header("Access-Control-Allow-Methods", "GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS")
         self.send_header("Content-Length", "0")
         self._send_security_headers()
         self.end_headers()
@@ -307,8 +292,7 @@ class AGUIRequestHandler(BaseHTTPRequestHandler):
             return
         if self.headers.get_content_type() != "application/json":
             self._send_json(
-                HTTPStatus.UNSUPPORTED_MEDIA_TYPE,
-                {"error": "Content-Type must be application/json"},
+                HTTPStatus.UNSUPPORTED_MEDIA_TYPE, {"error": "Content-Type must be application/json"}
             )
             return
         try:
@@ -359,8 +343,7 @@ class AGUIRequestHandler(BaseHTTPRequestHandler):
             return
         except OSError:
             self._send_json(
-                HTTPStatus.INTERNAL_SERVER_ERROR,
-                {"error": "unable to persist the requested change"},
+                HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "unable to persist the requested change"}
             )
             return
         self._send_web_api_response(response)
@@ -386,9 +369,7 @@ class AGUIRequestHandler(BaseHTTPRequestHandler):
                 request.prompt,
                 conversation_id=request.thread_id,
                 skill=request.skill,
-                run_options=AgentRunOptions(
-                    run_id=request.run_id, event_listener=send_runtime_event
-                ),
+                run_options=AgentRunOptions(run_id=request.run_id, event_listener=send_runtime_event),
             )
         except Exception as error:
             if not mapper.terminal_event_sent:
@@ -464,21 +445,14 @@ class AGUIRequestHandler(BaseHTTPRequestHandler):
             self._send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "unable to read web asset"})
             return
         content_type = mimetypes.guess_type(candidate.name)[0] or "application/octet-stream"
-        if content_type.startswith("text/") or content_type in {
-            "application/javascript",
-            "application/json",
-        }:
+        if content_type.startswith("text/") or content_type in {"application/javascript", "application/json"}:
             content_type += "; charset=utf-8"
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.send_header(
             "Cache-Control",
-            (
-                "no-cache"
-                if candidate.name == "index.html"
-                else "public, max-age=31536000, immutable"
-            ),
+            ("no-cache" if candidate.name == "index.html" else "public, max-age=31536000, immutable"),
         )
         self._send_security_headers()
         self.end_headers()
@@ -531,11 +505,7 @@ def create_ag_ui_server(
     if not user_id.strip():
         raise ValueError("AG-UI server user_id cannot be empty")
     return AGUIHTTPServer(
-        (clean_host, port),
-        agent,
-        user_id=user_id,
-        allowed_origins=allowed_origins,
-        static_root=static_root,
+        (clean_host, port), agent, user_id=user_id, allowed_origins=allowed_origins, static_root=static_root
     )
 
 

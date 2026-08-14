@@ -55,9 +55,7 @@ class Run:
         default_factory=dict, init=False, repr=False
     )
     _action_runner: ActionRunner | None = field(default=None, init=False, repr=False)
-    _loaded_skills: dict[tuple[str, bool], SkillUse] = field(
-        default_factory=dict, init=False, repr=False
-    )
+    _loaded_skills: dict[tuple[str, bool], SkillUse] = field(default_factory=dict, init=False, repr=False)
 
     @property
     def run_id(self) -> str:
@@ -194,9 +192,7 @@ def list_checkpoint_data(events: Iterable[RunEvent]) -> list[dict[str, object]]:
     return [dict(event.data) for event in events if event.event_type == "run.checkpoint.created"]
 
 
-def find_checkpoint_data(
-    events: Iterable[RunEvent], checkpoint_id: str | None = None
-) -> dict[str, object]:
+def find_checkpoint_data(events: Iterable[RunEvent], checkpoint_id: str | None = None) -> dict[str, object]:
     checkpoints = list_checkpoint_data(events)
     if not checkpoints:
         raise KeyError("run has no checkpoints")
@@ -215,9 +211,7 @@ def hash_checkpoint_value(value: object) -> str:
 
 
 def _encode_checkpoint_value(value: object) -> bytes:
-    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode(
-        "utf-8"
-    )
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
 
 
 class Runtime:
@@ -367,9 +361,7 @@ def _create_run(
         skills.disclosure.set_event_writer(run.record_event)
         return run
     except Exception as error:
-        event_log.append_event(
-            "run.failed", {"error_type": type(error).__name__, "message": str(error)}
-        )
+        event_log.append_event("run.failed", {"error_type": type(error).__name__, "message": str(error)})
         raise
 
 

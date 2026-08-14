@@ -99,9 +99,7 @@ def configure_models_parser(parser: argparse.ArgumentParser) -> None:
         "resolve", help="show the default model profile selected for this project"
     )
     _add_model_read_arguments(resolve_parser)
-    save_parser = subparsers.add_parser(
-        "save", help="create or update one model Skill from JSON stdin"
-    )
+    save_parser = subparsers.add_parser("save", help="create or update one model Skill from JSON stdin")
     _add_model_write_arguments(save_parser)
     save_parser.add_argument("--request-stdin", action="store_true", required=True)
     remove_parser = subparsers.add_parser("remove", help="remove one model Skill")
@@ -131,9 +129,7 @@ def run_skill_changes_command(args: argparse.Namespace) -> int:
         "undo": lambda: _undo_skill_change(args),
         "list": lambda: _list_skill_changes(args),
     }
-    return run_selected_cli_command(
-        args.skill_change_command, handlers, "skills changes command is required"
-    )
+    return run_selected_cli_command(args.skill_change_command, handlers, "skills changes command is required")
 
 
 def run_skill_packages_command(args: argparse.Namespace) -> int:
@@ -185,11 +181,7 @@ def _print_model_profiles(config: CommonConfig, profiles: list[ModelProfile], ou
 
 def _print_selected_model(config: CommonConfig, profiles: list[ModelProfile], output: str) -> int:
     selected = select_default_model_profile(profiles)
-    data = {
-        "schema_version": 2,
-        "config_path": str(config.source),
-        "model": model_profile_to_dict(selected),
-    }
+    data = {"schema_version": 2, "config_path": str(config.source), "model": model_profile_to_dict(selected)}
     if output == "json":
         return print_cli_json(data)
     _print_model_profile(selected, prefix="selected")
@@ -303,9 +295,7 @@ def _show_skill_freshness(config_path: Path, user_id: str) -> int:
     config = load_common_config(config_path)
     store = load_event_store(config, user_id)
     rules = load_configured_freshness_rules(config, store=store)
-    stats = calculate_skill_freshness(
-        read_evaluation_records(store, source_type="agent_run"), rules
-    )
+    stats = calculate_skill_freshness(read_evaluation_records(store, source_type="agent_run"), rules)
     if not stats:
         print("No skill freshness stats yet.")
         return 0
@@ -402,9 +392,7 @@ def _load_skill_disclosure(config_path: Path, user_id: str) -> ProgressiveDisclo
 def _load_package_manager(config_path: Path, user_id: str) -> SkillPackageManager:
     config = load_common_config(config_path)
     store = load_event_store(config, user_id)
-    return SkillPackageManager(
-        create_progressive_skill_disclosure(config, store=store), store, ActionRules()
-    )
+    return SkillPackageManager(create_progressive_skill_disclosure(config, store=store), store, ActionRules())
 
 
 def _add_change_name_arguments(parser: argparse.ArgumentParser) -> None:
@@ -456,9 +444,7 @@ def _read_change_cases(path: Path) -> list[SkillChangeCase]:
             "expected_configuration",
         }
         if set(item) - allowed:
-            raise ValueError(
-                "unknown evaluation case fields: " + ", ".join(sorted(set(item) - allowed))
-            )
+            raise ValueError("unknown evaluation case fields: " + ", ".join(sorted(set(item) - allowed)))
         expected_configuration = item.get("expected_configuration", {})
         if not isinstance(expected_configuration, dict):
             raise ValueError("evaluation case expected_configuration must be an object")

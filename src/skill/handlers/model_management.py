@@ -59,9 +59,7 @@ class ModelSkillManager:
         self.config = config
         self.store = store
         self.user_skill_root = store.private_root / "skills"
-        self.actions = ActionRunner(
-            action_rules or ActionRules(), store.append_management_action_event
-        )
+        self.actions = ActionRunner(action_rules or ActionRules(), store.append_management_action_event)
 
     def save_model_skill(self, request: ModelSkillInput) -> ModelProfile:
         return cast(
@@ -94,18 +92,14 @@ class ModelSkillManager:
             source_path = source_document.manifest.path
             if previous_name != clean_request.name and source.source != "user":
                 raise ValueError("a shared model Skill cannot be renamed by a user overlay")
-        version = next_skill_version(
-            "" if source_document is None else source_document.manifest.version
-        )
+        version = next_skill_version("" if source_document is None else source_document.manifest.version)
         document = _create_model_skill_document(clean_request, source_document, version)
         target = self.user_skill_root / "model" / clean_request.name
         if target.exists() and source_path != target:
             raise FileExistsError(f"model Skill target already exists: {target}")
         updates = [(target, source_path, document)]
         if clean_request.definition.default:
-            updates.extend(
-                self._default_removal_updates(disclosure, {clean_request.name, previous_name})
-            )
+            updates.extend(self._default_removal_updates(disclosure, {clean_request.name, previous_name}))
         _apply_model_skill_updates(
             updates,
             removed_path=(
@@ -118,9 +112,7 @@ class ModelSkillManager:
 
     def remove_model_skill(self, name: str) -> None:
         self.actions.execute_action(
-            ActionRequest.create(
-                "user:model-skill", f"skill:owned:model:{name}", (ActionEffect.DELETE,)
-            ),
+            ActionRequest.create("user:model-skill", f"skill:owned:model:{name}", (ActionEffect.DELETE,)),
             lambda: self._remove_model_skill(name),
         )
 
@@ -181,9 +173,7 @@ class ModelSkillManager:
         return create_model_profile_from_skill_disclosure(disclosure.open_skill(name, "model"))
 
     def _create_disclosure(self) -> ProgressiveDisclosureCore:
-        return ProgressiveDisclosureCore(
-            self.config.paths.skills, user_skill_roots=[self.user_skill_root]
-        )
+        return ProgressiveDisclosureCore(self.config.paths.skills, user_skill_roots=[self.user_skill_root])
 
 
 def model_skill_input_from_dict(value: object) -> ModelSkillInput:
@@ -199,13 +189,8 @@ def model_skill_input_from_dict(value: object) -> ModelSkillInput:
             definition=ModelDefinition.from_dict(
                 {name: value[name] for name in MODEL_CONFIGURATION_FIELDS if name in value}
             ),
-            agent_can_update=read_bool(
-                value.get("agent_can_update", False), "model Skill agent_can_update"
-            ),
-            previous_name=read_optional_text(
-                value.get("previous_name"), "model Skill previous_name"
-            )
-            or "",
+            agent_can_update=read_bool(value.get("agent_can_update", False), "model Skill agent_can_update"),
+            previous_name=read_optional_text(value.get("previous_name"), "model Skill previous_name") or "",
         )
     )
 
@@ -247,8 +232,7 @@ def _create_model_skill_document(
             version=version,
             agent_can_update=request.agent_can_update,
             provides=[
-                request.name if item == current.manifest.name else item
-                for item in current.manifest.provides
+                request.name if item == current.manifest.name else item for item in current.manifest.provides
             ],
         )
     return _ModelSkillDocument(manifest, request.definition.to_configuration())
@@ -274,9 +258,7 @@ def _apply_model_skill_updates(
         for target, source, document in updates:
             stage = candidates.enter_context(create_skill_candidate(target, source))
             stage.joinpath("skill.toml").write_text(_model_skill_toml(document), encoding="utf-8")
-            validate_skill_directory(
-                stage, expected_type="model", expected_name=document.manifest.name
-            )
+            validate_skill_directory(stage, expected_type="model", expected_name=document.manifest.name)
             changes.append(
                 SkillDirectoryUpdate(
                     stage,
@@ -288,9 +270,7 @@ def _apply_model_skill_updates(
             affected.add(target)
         if removed_path is not None and removed_path not in affected:
             changes.append(
-                SkillDirectoryUpdate(
-                    None, removed_path, "", calculate_skill_directory_sha256(removed_path)
-                )
+                SkillDirectoryUpdate(None, removed_path, "", calculate_skill_directory_sha256(removed_path))
             )
         apply_skill_directory_updates(changes)
 

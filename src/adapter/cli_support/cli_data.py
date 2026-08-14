@@ -9,11 +9,7 @@ from pathlib import Path
 from typing import Callable
 
 from adapter.cli_support.cli_config import load_agent, load_common_config
-from adapter.storage_backends.storage import (
-    DisclosureStorage,
-    copy_storage_events,
-    create_storage_backend,
-)
+from adapter.storage_backends.storage import DisclosureStorage, copy_storage_events, create_storage_backend
 from core.config import CommonConfig
 from core.models import LOCAL_USER_ID, RunSnapshot
 from core.records.audit import AuditPruneReport
@@ -32,16 +28,12 @@ def add_config_and_user_options(
     parser.add_argument("--user-id", default=user_default)
 
 
-def add_output_format_option(
-    parser: argparse.ArgumentParser, *, default: str | None = "text"
-) -> None:
+def add_output_format_option(parser: argparse.ArgumentParser, *, default: str | None = "text") -> None:
     parser.add_argument("--output", choices=["text", "json"], default=default)
 
 
 def print_cli_json(value: object, *, pretty: bool = True) -> int:
-    serialized = json.dumps(
-        value, ensure_ascii=False, indent=2 if pretty else None, sort_keys=pretty
-    )
+    serialized = json.dumps(value, ensure_ascii=False, indent=2 if pretty else None, sort_keys=pretty)
     print(serialized)
     return 0
 
@@ -88,9 +80,7 @@ def run_conversations_command(args: argparse.Namespace) -> int:
     if command == "show":
         return print_cli_json(asdict(conversations.read(args.conversation_id)))
     if command == "create":
-        return print_cli_json(
-            asdict(conversations.create(args.title, conversation_id=args.conversation_id))
-        )
+        return print_cli_json(asdict(conversations.create(args.title, conversation_id=args.conversation_id)))
     if command == "rename":
         return print_cli_json(asdict(conversations.rename(args.conversation_id, args.title)))
     if command == "clear":
@@ -132,9 +122,7 @@ def run_memory_command(args: argparse.Namespace) -> int:
     elif args.memory_command == "list":
         _print_memory_items(memory.list(args.scope))
     elif args.memory_command == "add":
-        print_cli_json(
-            asdict(memory.remember(args.text, args.scope, args.source_run_id)), pretty=False
-        )
+        print_cli_json(asdict(memory.remember(args.text, args.scope, args.source_run_id)), pretty=False)
     elif args.memory_command == "recall":
         _print_memory_items(memory.recall(args.query, args.scope, args.limit))
     elif args.memory_command == "forget":
@@ -155,9 +143,7 @@ def configure_runs_parser(parser: argparse.ArgumentParser) -> None:
     add_output_format_option(status_parser)
     _add_sensitive_output_argument(status_parser)
 
-    explain_parser = subparsers.add_parser(
-        "explain", help="explain one run from its ordered events"
-    )
+    explain_parser = subparsers.add_parser("explain", help="explain one run from its ordered events")
     add_config_and_user_options(explain_parser)
     explain_parser.add_argument("--run-id")
     add_output_format_option(explain_parser)
@@ -169,9 +155,7 @@ def configure_runs_parser(parser: argparse.ArgumentParser) -> None:
     export_parser.add_argument("--output")
     _add_sensitive_output_argument(export_parser)
 
-    feedback_parser = subparsers.add_parser(
-        "feedback", help="record a quality score for one completed task"
-    )
+    feedback_parser = subparsers.add_parser("feedback", help="record a quality score for one completed task")
     add_config_and_user_options(feedback_parser)
     feedback_parser.add_argument("--run-id", required=True)
     feedback_parser.add_argument("--score", required=True, type=_feedback_score)
@@ -207,9 +191,7 @@ def _show_run_status(args: argparse.Namespace) -> int:
         [runs.read(args.run_id, include_sensitive=args.include_sensitive)]
         if args.run_id
         else runs.list(
-            args.limit,
-            conversation_id=args.conversation_id,
-            include_sensitive=args.include_sensitive,
+            args.limit, conversation_id=args.conversation_id, include_sensitive=args.include_sensitive
         )
     )
     if args.output == "json":
@@ -404,9 +386,7 @@ def _feedback_score(value: str) -> float:
 
 def configure_storage_parser(parser: argparse.ArgumentParser) -> None:
     subparsers = parser.add_subparsers(dest="storage_command")
-    copy_parser = subparsers.add_parser(
-        "copy", help="copy selected user event streams to another backend"
-    )
+    copy_parser = subparsers.add_parser("copy", help="copy selected user event streams to another backend")
     copy_parser.add_argument("--common-config")
     copy_parser.add_argument(
         "--to-backend", choices=["jsonl", "sqlite", "mysql", "postgresql"], required=True
@@ -415,9 +395,7 @@ def configure_storage_parser(parser: argparse.ArgumentParser) -> None:
     copy_parser.add_argument("--to-url-env")
     copy_parser.add_argument("--user-id", action="append")
     add_output_format_option(copy_parser)
-    prune_parser = subparsers.add_parser(
-        "prune", help="preview or explicitly delete expired audit events"
-    )
+    prune_parser = subparsers.add_parser("prune", help="preview or explicitly delete expired audit events")
     prune_parser.add_argument("--common-config")
     prune_parser.add_argument("--user-id", action="append")
     prune_parser.add_argument("--apply", action="store_true")
@@ -430,9 +408,7 @@ def run_storage_command(args: argparse.Namespace) -> int:
     if args.storage_command != "copy":
         raise ValueError("storage command is required")
     config = load_common_config(args.common_config)
-    source = create_storage_backend(
-        config.storage.backend, str(config.storage.path), config.storage.url_env
-    )
+    source = create_storage_backend(config.storage.backend, str(config.storage.path), config.storage.url_env)
     path = _resolve_destination_path(args.to_path, config.source.parent)
     destination = create_storage_backend(args.to_backend, str(path), args.to_url_env)
     report = copy_storage_events(source, destination, args.user_id or [LOCAL_USER_ID])
@@ -447,9 +423,7 @@ def run_storage_command(args: argparse.Namespace) -> int:
 
 def _run_prune_command(args: argparse.Namespace) -> int:
     config = load_common_config(args.common_config)
-    backend = create_storage_backend(
-        config.storage.backend, str(config.storage.path), config.storage.url_env
-    )
+    backend = create_storage_backend(config.storage.backend, str(config.storage.path), config.storage.url_env)
     report = config.storage.audit.prune_expired_events(
         backend, args.user_id or [LOCAL_USER_ID], apply=args.apply
     )
@@ -498,9 +472,7 @@ def _add_identity_arguments(
 ) -> None:
     default = argparse.SUPPRESS if inherited else default_config
     add_config_and_user_options(
-        parser,
-        config_default=default,
-        user_default=argparse.SUPPRESS if inherited else LOCAL_USER_ID,
+        parser, config_default=default, user_default=argparse.SUPPRESS if inherited else LOCAL_USER_ID
     )
 
 

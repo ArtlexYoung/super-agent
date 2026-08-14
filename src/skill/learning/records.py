@@ -131,9 +131,7 @@ def evaluation_record_from_dict(value: object) -> EvaluationRecord:
     data = read_object(value, "evaluation record schema", EVALUATION_RECORD_FIELDS)
     schema_version = read_int(data["schema_version"], "evaluation schema_version")
     if schema_version != EVALUATION_RECORD_SCHEMA_VERSION:
-        raise ValueError(
-            f"evaluation record schema_version must be {EVALUATION_RECORD_SCHEMA_VERSION}"
-        )
+        raise ValueError(f"evaluation record schema_version must be {EVALUATION_RECORD_SCHEMA_VERSION}")
     record = EvaluationRecord(
         schema_version=schema_version,
         record_id=read_text(data["record_id"], "evaluation record_id"),
@@ -157,9 +155,7 @@ def evaluation_result_to_dict(result: EvaluationResult) -> dict[str, object]:
 
 def evaluation_result_from_dict(value: object) -> EvaluationResult:
     data = read_object(value, "evaluation result schema", EVALUATION_RESULT_FIELDS)
-    tokens = read_object(
-        data["token_usage"], "evaluation token usage schema", EVALUATION_TOKEN_USAGE_FIELDS
-    )
+    tokens = read_object(data["token_usage"], "evaluation token usage schema", EVALUATION_TOKEN_USAGE_FIELDS)
     return _validate_result(
         EvaluationResult(
             data["success"],
@@ -174,9 +170,7 @@ def evaluation_result_from_dict(value: object) -> EvaluationResult:
 
 def _validate_evaluation_record(record: EvaluationRecord) -> None:
     if record.schema_version != EVALUATION_RECORD_SCHEMA_VERSION:
-        raise ValueError(
-            f"evaluation record schema_version must be {EVALUATION_RECORD_SCHEMA_VERSION}"
-        )
+        raise ValueError(f"evaluation record schema_version must be {EVALUATION_RECORD_SCHEMA_VERSION}")
     if not isinstance(record.record_id, str) or not record.record_id.strip():
         raise ValueError("evaluation record_id cannot be empty")
     if not isinstance(record.created_at, str):
@@ -215,12 +209,7 @@ def _validate_result(result: EvaluationResult) -> EvaluationResult:
     latency = read_optional_int(result.latency_ms, "evaluation latency_ms", minimum=0)
     error_type = read_text(result.error_type, "evaluation error_type", allow_empty=True)
     return EvaluationResult(
-        success,
-        score,
-        tokens,
-        latency,
-        error_type,
-        read_text_list(result.checks, "evaluation checks"),
+        success, score, tokens, latency, error_type, read_text_list(result.checks, "evaluation checks")
     )
 
 

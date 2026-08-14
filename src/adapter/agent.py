@@ -27,12 +27,7 @@ from core.provider import ChatProvider, Message, ProviderPool, UserSecretLookup,
 from core.runtime import Run, Runtime
 from core.team import AgentTeam, SubAgent
 from core.records.conversations import complete_conversation_turn, prepare_conversation_turn
-from skill.handlers.runtime import (
-    Skills,
-    SkillHandler,
-    create_default_skill_handlers,
-    create_skills,
-)
+from skill.handlers.runtime import Skills, SkillHandler, create_default_skill_handlers, create_skills
 from skill.handlers.mcp import McpServer, McpServers
 from skill.handlers.models import (
     ModelProfile,
@@ -173,8 +168,7 @@ class Agent:
             return
         self._replace_configuration(
             replace(
-                self.config,
-                paths=replace(self.config.paths, skills=[*self.config.paths.skills, selected]),
+                self.config, paths=replace(self.config.paths, skills=[*self.config.paths.skills, selected])
             )
         )
 
@@ -251,10 +245,7 @@ class Agent:
         result = self.runtime.run_task(
             request,
             RunIdentity.create(
-                user_id,
-                self.config.agent.name,
-                run_id=options.run_id,
-                conversation_id=conversation_id,
+                user_id, self.config.agent.name, run_id=options.run_id, conversation_id=conversation_id
             ),
             event_listener=options.event_listener,
         )
@@ -285,35 +276,27 @@ class Agent:
             self._record_conversation_feedback(pending_turn.conversation, prompt, user_id)
         return prepared_messages, pending_turn
 
-    def _record_conversation_feedback(
-        self, conversation: Conversation, prompt: str, user_id: str
-    ) -> None:
+    def _record_conversation_feedback(self, conversation: Conversation, prompt: str, user_id: str) -> None:
         from core.model_calls import infer_conversation_feedback_with_model
 
         store = self._create_event_store(user_id)
         skills = create_skills(
             self.config, handlers=self._skill_handlers, store=store, include_freshness=False
         )
-        entry = skills.index.select_one_configured_or_default_skill(
-            "feedback", self.config.agent.skills
-        )
+        entry = skills.index.select_one_configured_or_default_skill("feedback", self.config.agent.skills)
         feedback_skill = skills.open(entry.reference)
         feedback_skill.disclose_manifest()
         feedback_skill.disclose_configuration()
         instructions = feedback_skill.disclose_instructions().content
         if feedback_skill.read_configuration().content:
             raise ValueError("feedback Skill configuration must be empty")
-        model = self._create_task_runner(user_id, skills).create_text_model(
-            store, "conversation_feedback"
-        )
+        model = self._create_task_runner(user_id, skills).create_text_model(store, "conversation_feedback")
         feedback = infer_conversation_feedback_with_model(
             conversation, prompt, instructions, model.send_messages
         )
         if feedback is not None:
             run_id, score, reason = feedback
-            self._record_task_feedback(
-                user_id, run_id, score=score, reason=reason, source="implicit"
-            )
+            self._record_task_feedback(user_id, run_id, score=score, reason=reason, source="implicit")
 
     def _run_as_subagent(
         self,
@@ -347,9 +330,7 @@ class Agent:
             ),
         )
 
-    def _create_event_store(
-        self, user_id: str = LOCAL_USER_ID, *, feature: str | None = None
-    ) -> EventStore:
+    def _create_event_store(self, user_id: str = LOCAL_USER_ID, *, feature: str | None = None) -> EventStore:
         self._ensure_initialized()
         if self._storage is None:
             if feature is not None:
@@ -390,9 +371,9 @@ class Agent:
 
     def _execute_action(self, user_id: str, request: ActionRequest, action) -> object:
         store = self._create_event_store(user_id)
-        return ActionRunner(
-            self._action_rules(), store.append_management_action_event
-        ).execute_action(request, action)
+        return ActionRunner(self._action_rules(), store.append_management_action_event).execute_action(
+            request, action
+        )
 
     def _read_task_trace(self, user_id: str, run_id: str) -> TaskTrace:
         store = self._create_event_store(user_id)
@@ -467,9 +448,7 @@ class Agent:
             storage = self._configured_storage
             if storage is None and self._use_storage:
                 storage = _create_storage_backend(
-                    self.config.storage.backend,
-                    str(self.config.storage.path),
-                    self.config.storage.url_env,
+                    self.config.storage.backend, str(self.config.storage.path), self.config.storage.url_env
                 )
             store = self._create_bootstrap_store(storage)
             skills = create_skills(
@@ -507,9 +486,7 @@ class Agent:
             event_subscribers=self._event_subscribers,
         )
 
-    def _create_bootstrap_store(
-        self, storage: StorageBackend | None, *, config: CommonConfig | None = None
-    ):
+    def _create_bootstrap_store(self, storage: StorageBackend | None, *, config: CommonConfig | None = None):
         if storage is None:
             return None
         from core.records.store import EventStore

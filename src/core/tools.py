@@ -60,9 +60,7 @@ class RunTools:
         self._tools: dict[str, SkillTool] = {}
         disclosure = run.skills.disclosure
         self._add_tools(
-            _create_disclosure_tools(
-                self, run.skills.index, records_cache=disclosure.recorder is not None
-            )
+            _create_disclosure_tools(self, run.skills.index, records_cache=disclosure.recorder is not None)
         )
         self._add_tools(extra_tools)
         if run.task.shared_context is not None:
@@ -115,9 +113,7 @@ class RunTools:
             self._record_tool_failure(call, error)
             raise
         result = self._prepare_result(tool, call, raw_result)
-        self.run.record_event(
-            "tool.completed", {"call_id": call.id, "name": call.name, "result": result}
-        )
+        self.run.record_event("tool.completed", {"call_id": call.id, "name": call.name, "result": result})
         return result
 
     def _prepare_result(
@@ -228,9 +224,7 @@ class RunTools:
             "removed_tools": sorted(previous_tools - current_tools),
         }
 
-    def _activate_reference(
-        self, reference: SkillReference
-    ) -> list[tuple[SkillReference, SkillUse]]:
+    def _activate_reference(self, reference: SkillReference) -> list[tuple[SkillReference, SkillUse]]:
         loaded = self._load_reference_tree(reference, set())
         self._install_contributions([item for _reference, item in loaded])
         for item, loaded_contribution in loaded:
@@ -297,13 +291,8 @@ class RunTools:
     def _check_task_skill_access(self, reference: SkillReference) -> None:
         if reference.skill_type != "task":
             return
-        if (
-            self.run.task.allowed_task_skills
-            and reference.name not in self.run.task.allowed_task_skills
-        ):
-            raise PermissionError(
-                f"task Skill is outside this run's allowed Skills: {reference.key}"
-            )
+        if self.run.task.allowed_task_skills and reference.name not in self.run.task.allowed_task_skills:
+            raise PermissionError(f"task Skill is outside this run's allowed Skills: {reference.key}")
         if self._active_task_skill not in {None, reference.key}:
             raise PermissionError(
                 f"only one task Skill can be active in a run: {self._active_task_skill}, {reference.key}"
@@ -318,8 +307,7 @@ class RunTools:
         if not self._subagents:
             raise RuntimeError("subagent tools require subagents added in code")
         return self._run_named_subagent(
-            read_required_tool_string(arguments, "name"),
-            read_required_tool_string(arguments, "prompt"),
+            read_required_tool_string(arguments, "name"), read_required_tool_string(arguments, "prompt")
         )
 
     def _run_named_subagent(
@@ -363,10 +351,7 @@ class RunTools:
         if not isinstance(content, str):
             raise TypeError("shared task context content must be text")
         page = self.run.skills.disclosure.disclose_content(
-            "agent-group",
-            str(shared.get("group_id", "shared-task")),
-            content,
-            stage="reference-read",
+            "agent-group", str(shared.get("group_id", "shared-task")), content, stage="reference-read"
         )
         return disclosure_page_to_dict(page)
 

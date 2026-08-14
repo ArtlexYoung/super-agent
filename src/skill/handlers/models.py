@@ -81,21 +81,13 @@ class ModelDefinition:
                 ProviderConnection(
                     provider=read_text(data.get("provider"), "model Skill provider"),
                     base_url=read_optional_text(data.get("base_url"), "model Skill base_url"),
-                    api_key_env=read_optional_text(
-                        data.get("api_key_env"), "model Skill api_key_env"
-                    ),
+                    api_key_env=read_optional_text(data.get("api_key_env"), "model Skill api_key_env"),
                 )
             ),
             traits=ModelTraits(
-                supports=read_text_list(
-                    data.get("supports", ["text"]), "model Skill supports", lower=True
-                ),
-                purposes=read_text_list(
-                    data.get("purposes", []), "model Skill purposes", lower=True
-                ),
-                strengths=read_text_list(
-                    data.get("strengths", []), "model Skill strengths", lower=True
-                ),
+                supports=read_text_list(data.get("supports", ["text"]), "model Skill supports", lower=True),
+                purposes=read_text_list(data.get("purposes", []), "model Skill purposes", lower=True),
+                strengths=read_text_list(data.get("strengths", []), "model Skill strengths", lower=True),
                 quality_score=read_optional_number(
                     data.get("quality_score"), "model Skill quality_score", minimum=0, maximum=1
                 ),
@@ -106,8 +98,7 @@ class ModelDefinition:
             ),
             default=read_bool(data.get("default", False), "model Skill default"),
             agent_can_update_connection=read_bool(
-                data.get("agent_can_update_connection", False),
-                "model Skill agent_can_update_connection",
+                data.get("agent_can_update_connection", False), "model Skill agent_can_update_connection"
             ),
         )
 
@@ -211,17 +202,12 @@ def create_model_profile_from_skill_disclosure(disclosure: SkillDisclosure) -> M
     )
 
 
-def read_model_profiles(
-    skills: Skills, environment: Mapping[str, str] | None = None
-) -> list[ModelProfile]:
-    model_entries = [
-        entry for entry in skills.index.entries if entry.reference.skill_type == "model"
-    ]
+def read_model_profiles(skills: Skills, environment: Mapping[str, str] | None = None) -> list[ModelProfile]:
+    model_entries = [entry for entry in skills.index.entries if entry.reference.skill_type == "model"]
     if not model_entries:
         return discover_environment_model_profiles(environment)
     profiles = [
-        create_model_profile_from_skill_disclosure(skills.open(entry.reference))
-        for entry in model_entries
+        create_model_profile_from_skill_disclosure(skills.open(entry.reference)) for entry in model_entries
     ]
     select_default_model_profile(profiles)
     return profiles
@@ -239,9 +225,7 @@ def select_default_model_profile(profiles: list[ModelProfile]) -> ModelProfile:
     return defaults[0] if defaults else profiles[0]
 
 
-def discover_environment_model_profiles(
-    environment: Mapping[str, str] | None = None,
-) -> list[ModelProfile]:
+def discover_environment_model_profiles(environment: Mapping[str, str] | None = None) -> list[ModelProfile]:
     env = os.environ if environment is None else environment
     profiles: list[ModelProfile] = []
     configured_provider = _environment_text(env, "SUPER_AGENT_PROVIDER")
@@ -254,9 +238,7 @@ def discover_environment_model_profiles(
                 "Free SiliconFlow model discovered from OA3_SILICONFLOW_API_KEY.",
                 DEFAULT_SILICONFLOW_MODEL,
                 ProviderConnection(
-                    OPENAI_COMPATIBLE_PROVIDER,
-                    DEFAULT_SILICONFLOW_BASE_URL,
-                    "OA3_SILICONFLOW_API_KEY",
+                    OPENAI_COMPATIBLE_PROVIDER, DEFAULT_SILICONFLOW_BASE_URL, "OA3_SILICONFLOW_API_KEY"
                 ),
                 "environment:OA3_SILICONFLOW_API_KEY",
                 supports=["text", "tools"],
@@ -322,9 +304,7 @@ def create_direct_provider_profile() -> ModelProfile:
     )
 
 
-def model_profile_is_ready(
-    profile: ModelProfile, environment: Mapping[str, str] | None = None
-) -> bool:
+def model_profile_is_ready(profile: ModelProfile, environment: Mapping[str, str] | None = None) -> bool:
     env = os.environ if environment is None else environment
     name = profile.connection.api_key_env
     return name is None or bool(env.get(name, "").strip())
@@ -359,10 +339,7 @@ def model_profile_supports(profile: ModelProfile, required_features: Sequence[st
 
 
 def choose_dispatch_model(
-    models: object,
-    purpose: str,
-    required_features: Sequence[str],
-    token_counts: Mapping[str, int | None],
+    models: object, purpose: str, required_features: Sequence[str], token_counts: Mapping[str, int | None]
 ) -> ModelDispatchChoice:
     """Choose the lowest-cost compatible declared model for one Agent dispatch."""
     required = {item.strip().lower() for item in required_features if item.strip()}
@@ -383,9 +360,7 @@ def choose_dispatch_model(
     )
     if not candidates:
         pricing = ModelPricing()
-        return ModelDispatchChoice(
-            None, pricing.resolved_dict(), pricing.estimate_cost(token_counts)
-        )
+        return ModelDispatchChoice(None, pricing.resolved_dict(), pricing.estimate_cost(token_counts))
     clean_purpose = purpose.strip().lower()
     choices = [(item, ModelPricing.from_mapping(item)) for item in candidates]
     selected, pricing = min(
@@ -397,9 +372,7 @@ def choose_dispatch_model(
         ),
     )[1]
     return ModelDispatchChoice(
-        str(selected.get("model", "")) or None,
-        pricing.resolved_dict(),
-        pricing.estimate_cost(token_counts),
+        str(selected.get("model", "")) or None, pricing.resolved_dict(), pricing.estimate_cost(token_counts)
     )
 
 
@@ -412,9 +385,7 @@ def model_connection_fields(profile: ModelProfile) -> tuple[str, str, str | None
     )
 
 
-def _profile_from_super_agent_environment(
-    environment: Mapping[str, str], provider: str
-) -> ModelProfile:
+def _profile_from_super_agent_environment(environment: Mapping[str, str], provider: str) -> ModelProfile:
     clean_provider = provider.strip().lower()
     model = _environment_text(environment, "SUPER_AGENT_MODEL")
     if model is None:
@@ -452,9 +423,7 @@ def _create_ephemeral_profile(
         description=description,
         version="ephemeral",
         definition=ModelDefinition(
-            model,
-            normalize_provider_connection(connection),
-            ModelTraits(list(supports or ["text"]), [], []),
+            model, normalize_provider_connection(connection), ModelTraits(list(supports or ["text"]), [], [])
         ),
         source=source,
         skill_key="",

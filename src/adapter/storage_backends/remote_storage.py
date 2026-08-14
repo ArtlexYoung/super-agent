@@ -51,8 +51,7 @@ class RemoteSqlStorage(SqlEventStorage):
             for statement in self._database.create_event_indexes_sql:
                 cursor.execute(statement)
             cursor.execute(
-                self._database.ensure_schema_version_sql,
-                (_SCHEMA_COMPONENT, REMOTE_SQL_SCHEMA_VERSION),
+                self._database.ensure_schema_version_sql, (_SCHEMA_COMPONENT, REMOTE_SQL_SCHEMA_VERSION)
             )
             cursor.execute(_SELECT_SCHEMA_VERSION_SQL, (_SCHEMA_COMPONENT,))
             _require_current_schema_version(cursor.fetchone(), self.name)
@@ -88,9 +87,7 @@ class PostgreSqlStorage(RemoteSqlStorage):
             raise RuntimeError(
                 "PostgreSQL storage requires the optional dependency: pip install 'super-agent[postgresql]'"
             ) from error
-        connection_url = read_storage_connection_url(
-            "postgresql", url_env, DEFAULT_POSTGRESQL_URL_ENV
-        )
+        connection_url = read_storage_connection_url("postgresql", url_env, DEFAULT_POSTGRESQL_URL_ENV)
         super().__init__(_PostgreSqlDatabase(driver, connection_url))
 
 

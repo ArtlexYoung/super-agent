@@ -166,11 +166,7 @@ class DeclaredProcessTools:
     """Run only configured argv commands with explicit bounded state."""
 
     def __init__(
-        self,
-        root: Path,
-        commands: list[list[str]],
-        execute_setting: str,
-        limits: ProcessLimits | None = None,
+        self, root: Path, commands: list[list[str]], execute_setting: str, limits: ProcessLimits | None = None
     ) -> None:
         if execute_setting not in {"allow", "ask", "deny"}:
             raise ValueError("process execute setting must be allow, ask, or deny")
@@ -186,10 +182,7 @@ class DeclaredProcessTools:
         self._processes: dict[str, _RunningProcess] = {}
 
     def list_tools(self) -> tuple[SkillTool, ...]:
-        process_id = {
-            "type": "string",
-            "description": "Process ID returned by start_declared_process.",
-        }
+        process_id = {"type": "string", "description": "Process ID returned by start_declared_process."}
         return (
             SkillTool(
                 "start_declared_process",
@@ -250,12 +243,9 @@ class DeclaredProcessTools:
         if number is None or number > len(self.commands):
             raise ValueError(f"declared command number must be between 1 and {len(self.commands)}")
         if len(self._processes) >= MAX_ACTIVE_PROCESSES:
-            raise RuntimeError(
-                f"process history limit reached for this run: {MAX_ACTIVE_PROCESSES}"
-            )
+            raise RuntimeError(f"process history limit reached for this run: {MAX_ACTIVE_PROCESSES}")
         timeout = (
-            read_optional_positive_tool_integer(arguments, "timeout_seconds")
-            or self.limits.timeout_seconds
+            read_optional_positive_tool_integer(arguments, "timeout_seconds") or self.limits.timeout_seconds
         )
         if timeout > MAX_PROCESS_TIMEOUT_SECONDS:
             raise ValueError("process timeout cannot exceed 300 seconds")
@@ -309,9 +299,7 @@ class DeclaredProcessTools:
         for stream, output in streams:
             if stream is None:
                 raise RuntimeError("process output pipe is unavailable")
-            threading.Thread(
-                target=self._read_stream, args=(task, stream, output), daemon=True
-            ).start()
+            threading.Thread(target=self._read_stream, args=(task, stream, output), daemon=True).start()
         threading.Thread(target=self._watch_timeout, args=(task,), daemon=True).start()
 
     def _read_stream(self, task: _RunningProcess, stream: BinaryIO, output: bytearray) -> None:
@@ -380,9 +368,7 @@ class DeclaredProcessTools:
             "timeout_seconds": task.timeout_seconds,
             "output_limit_bytes": task.output_limit_bytes,
             "output_bytes": len(stdout) + len(stderr),
-            "output_complete": (
-                returncode is not None and output_finished and not output_limit_exceeded
-            ),
+            "output_complete": (returncode is not None and output_finished and not output_limit_exceeded),
             "output_limit_exceeded": output_limit_exceeded,
             "timed_out": timed_out,
             "stopped": stopped,

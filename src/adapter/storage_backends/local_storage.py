@@ -12,12 +12,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from core.records.store import StorageEvent, StorageEventQuery
-from adapter.storage_backends.storage import (
-    clean_storage_text,
-    positive_storage_integer,
-    SqlEventStorage,
-    utc_now_text,
-)
+from adapter.storage_backends.storage import clean_storage_text, SqlEventStorage, utc_now_text
 
 
 JSONL_SCHEMA_VERSION = 1
@@ -70,11 +65,7 @@ class JsonlStorage:
             return event
 
     def read_events(self, query: StorageEventQuery) -> list[StorageEvent]:
-        return [
-            event
-            for event in self._read_path(self._events_path(query.user_id))
-            if query.matches(event)
-        ]
+        return [event for event in self._read_path(self._events_path(query.user_id)) if query.matches(event)]
 
     def delete_events(self, query: StorageEventQuery) -> int:
         path = self._events_path(query.user_id)
@@ -122,28 +113,16 @@ def _event_from_json(line: str, path: Path, line_number: int) -> StorageEvent:
     if not isinstance(value, dict) or value.pop("schema_version", None) != JSONL_SCHEMA_VERSION:
         raise ValueError(f"unsupported storage event at {path}:{line_number}")
     expected = set(StorageEvent.__dataclass_fields__)
-    if set(value) != expected or not isinstance(value.get("data"), dict):
+    if set(value) != expected:
         raise ValueError(f"storage event fields do not match schema at {path}:{line_number}")
-    return StorageEvent(
-        event_id=clean_storage_text(value["event_id"], "event_id"),
-        position=positive_storage_integer(value["position"], "position"),
-        user_id=clean_storage_text(value["user_id"], "user_id"),
-        agent_name=clean_storage_text(value["agent_name"], "agent_name"),
-        stream_type=clean_storage_text(value["stream_type"], "stream_type"),
-        stream_id=clean_storage_text(value["stream_id"], "stream_id"),
-        event_type=clean_storage_text(value["event_type"], "event_type"),
-        created_at=clean_storage_text(value["created_at"], "created_at"),
-        data=dict(value["data"]),
-    )
+    return StorageEvent(**value)
 
 
 def _write_events_atomically(path: Path, events: list[StorageEvent]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.parent / f".{path.name}.{uuid4().hex}.tmp"
     try:
-        temporary.write_text(
-            "".join(_event_json(event) + "\n" for event in events), encoding="utf-8"
-        )
+        temporary.write_text("".join(_event_json(event) + "\n" for event in events), encoding="utf-8")
         os.replace(temporary, path)
     finally:
         if temporary.exists():
@@ -191,9 +170,7 @@ class _SqliteDatabase:
             connection.close()
 
     def connect_to_database(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(
-            self.location, timeout=SQLITE_BUSY_TIMEOUT_MILLISECONDS / 1_000
-        )
+        connection = sqlite3.connect(self.location, timeout=SQLITE_BUSY_TIMEOUT_MILLISECONDS / 1_000)
         connection.execute(f"PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MILLISECONDS}")
         connection.execute("PRAGMA synchronous = NORMAL")
         return connection
