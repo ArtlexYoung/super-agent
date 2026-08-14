@@ -16,7 +16,6 @@ from core.models import (
 )
 
 if TYPE_CHECKING:
-    from skill.handlers.memory import RuntimeMemoryStore
     from core.records.events import RunEventLog
 
 
@@ -86,7 +85,6 @@ class EventStore:
             / _create_scope_digest(self.agent_name)
         )
         self._disclosure: DisclosureStorage | None = None
-        self._memory: RuntimeMemoryStore | None = None
         if run_event_log is not None:
             self._require_identity_scope(run_event_log.identity)
 
@@ -102,14 +100,6 @@ class EventStore:
                 self,
             )
         return self._disclosure
-
-    @property
-    def memory(self) -> RuntimeMemoryStore:
-        if self._memory is None:
-            from skill.handlers.memory import RuntimeMemoryStore
-
-            self._memory = RuntimeMemoryStore(self)
-        return self._memory
 
     def append_event(
         self,
@@ -139,8 +129,22 @@ class EventStore:
         stream_id: str | None = None,
         *,
         event_type: str | None = None,
+        snapshot: list[StorageEvent] | None = None,
     ) -> list[StorageEvent]:
         """Read canonical events without escaping this user and Agent scope."""
+        if snapshot is not None:
+            if any(
+                event.user_id != self.user_id or event.agent_name != self.agent_name
+                for event in snapshot
+            ):
+                raise ValueError("event snapshot does not match store scope")
+            return [
+                event
+                for event in snapshot
+                if (stream_type is None or event.stream_type == stream_type)
+                and (stream_id is None or event.stream_id == stream_id)
+                and (event_type is None or event.event_type == event_type)
+            ]
         return self._backend.read_events(
             StorageEventQuery(
                 user_id=self.user_id,

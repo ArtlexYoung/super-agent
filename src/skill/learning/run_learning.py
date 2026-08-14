@@ -35,6 +35,12 @@ if TYPE_CHECKING:
 LEARNING_COMPLETED_EVENT = "learning.completed"
 
 
+@dataclass(frozen=True)
+class _RunLearningView:
+    skill_freshness: list[dict[str, object]]
+    model_usage: list[dict[str, object]]
+
+
 def learn_from_run(
     store: EventStore,
     run_id: str,
@@ -98,6 +104,7 @@ def _record_run_evaluations(
         for record in read_evaluation_records(store, source_type="agent_run")
     }
     records: list[EvaluationRecord] = []
+    pending: list[EvaluationRecord] = []
     for revision in revisions:
         record = create_evaluation_record(
             revision,
@@ -107,48 +114,73 @@ def _record_run_evaluations(
             record_id=_evaluation_record_id(store, terminal.run_id, revision),
         )
         stored = existing.get(record.record_id)
-        if stored is not None:
+        if stored is None:
+            existing[record.record_id] = record
+            pending.append(record)
+        else:
             if (stored.revision, stored.source, stored.result) != (
                 record.revision, record.source, record.result
             ):
                 raise ValueError(f"run evaluation record conflicts: {record.record_id}")
-            records.append(stored)
-            continue
-        append_evaluation_records(store, [record])
-        records.append(record)
+        records.append(existing[record.record_id])
+    append_evaluation_records(store, pending)
     return records
 
 
-def _calculate_current_freshness(
+def _project_run_learning(
     store: EventStore,
-    records: list[EvaluationRecord],
-    rules: FreshnessRules,
-) -> list[dict[str, object]]:
-    by_skill = calculate_skill_freshness(
-        read_evaluation_records(store, source_type="agent_run"),
-        rules,
+    run_id: str,
+    events: list[RunEvent],
+    *,
+    rules: FreshnessRules | None,
+    record_ids: list[str] | None = None,
+) -> _RunLearningView:
+    stored_events = store.read_events()
+    all_records = read_evaluation_records(
+        store,
+        source_type="agent_run",
+        events=stored_events,
     )
-    return [
-        dict(by_skill[key])
-        for key in dict.fromkeys(record.revision.key for record in records)
-        if key in by_skill
-    ]
-
-
-def _read_run_model_usage(store: EventStore, run_id: str) -> list[dict[str, object]]:
+    if record_ids is None:
+        records = [
+            record for record in all_records if record.source.run_id == run_id
+        ]
+    else:
+        records_by_id = {record.record_id: record for record in all_records}
+        missing = [
+            record_id for record_id in record_ids if record_id not in records_by_id
+        ]
+        if missing:
+            raise ValueError(f"run learning evaluation records are missing: {missing}")
+        records = [records_by_id[record_id] for record_id in record_ids]
+        if any(record.source.run_id != run_id for record in records):
+            raise ValueError("run learning evaluation record belongs to another run")
+    freshness_by_skill = (
+        {}
+        if rules is None
+        else calculate_skill_freshness(all_records, rules)
+    )
+    skill_keys = dict.fromkeys(record.revision.key for record in records)
     observed = {
         (
             str(event.data.get("profile", "")).strip().lower(),
             str(event.data.get("purpose", "")).strip().lower(),
         )
-        for event in store.read_run_events(run_id, include_sensitive=True)
+        for event in events
         if event.event_type in {"model.call.completed", "model.call.failed"}
     }
-    return [
-        stats.to_dict()
-        for stats in list_model_usage_stats(store)
-        if (stats.profile_key, stats.purpose) in observed
-    ]
+    return _RunLearningView(
+        [
+            dict(freshness_by_skill[key])
+            for key in skill_keys
+            if key in freshness_by_skill
+        ],
+        [
+            stats.to_dict()
+            for stats in list_model_usage_stats(store, events=stored_events)
+            if (stats.profile_key, stats.purpose) in observed
+        ],
+    )
 
 
 def _read_learning_evidence(
@@ -181,21 +213,18 @@ def _result_from_completed_event(
     record_ids = _string_list(
         completed.data.get("evaluation_record_ids"), "evaluation_record_ids"
     )
-    records_by_id = {
-        record.record_id: record
-        for record in read_evaluation_records(store, source_type="agent_run")
-    }
-    missing = [record_id for record_id in record_ids if record_id not in records_by_id]
-    if missing:
-        raise ValueError(f"run learning evaluation records are missing: {missing}")
-    records = [records_by_id[record_id] for record_id in record_ids]
-    if any(record.source.run_id != completed.run_id for record in records):
-        raise ValueError("run learning evaluation record belongs to another run")
+    view = _project_run_learning(
+        store,
+        completed.run_id,
+        events,
+        rules=rules,
+        record_ids=record_ids,
+    )
     return RunLearningResult(
         run_id=completed.run_id,
         evaluation_record_ids=record_ids,
-        skill_freshness=_calculate_current_freshness(store, records, rules),
-        model_usage=_read_run_model_usage(store, completed.run_id),
+        skill_freshness=view.skill_freshness,
+        model_usage=view.model_usage,
         events=list(events),
     )
 
@@ -255,14 +284,6 @@ def _string_list(value: object, name: str) -> list[str]:
     return list(value)
 
 
-# UI projections are derived from the same canonical run evidence.
-from core.model_calls import list_model_usage_stats
-from core.records.store import EventStore
-from skill.learning.freshness import calculate_skill_freshness
-from skill.learning.records import read_evaluation_records
-from skill.learning.freshness import FreshnessRules
-
-
 def explain_run_with_insight(
     store: EventStore,
     run_id: str,
@@ -272,19 +293,15 @@ def explain_run_with_insight(
 ) -> dict[str, object]:
     explanation = store.explain_run(run_id, include_sensitive=include_sensitive)
     events = store.read_run_events(run_id, include_sensitive=include_sensitive)
+    view = _project_run_learning(store, run_id, events, rules=policy)
     plan = _latest_event_data(events, "task.scheduled")
-    purposes = _model_purposes_for_run(events)
     explanation.update(
         {
             "schema_version": 9,
             "plan": plan,
             "model_calls": project_model_calls(events),
-            "model_usage": [
-                item.to_dict()
-                for item in list_model_usage_stats(store)
-                if item.purpose in purposes
-            ],
-            "skill_freshness": _skill_freshness_for_run(store, run_id, policy),
+            "model_usage": view.model_usage,
+            "skill_freshness": view.skill_freshness,
         }
     )
     return explanation
@@ -329,28 +346,6 @@ def project_model_calls(events: list[RunEvent]) -> list[dict[str, object]]:
     return calls
 
 
-def _skill_freshness_for_run(
-    store: EventStore,
-    run_id: str,
-    policy: FreshnessRules | None,
-) -> list[dict[str, object]]:
-    if policy is None:
-        return []
-    run_records = [
-        record
-        for record in read_evaluation_records(store, source_type="agent_run")
-        if record.source.run_id == run_id
-    ]
-    run_skill_keys = {record.revision.key for record in run_records}
-    if not run_skill_keys:
-        return []
-    current = calculate_skill_freshness(
-        read_evaluation_records(store, source_type="agent_run"),
-        policy,
-    )
-    return [current[key] for key in sorted(run_skill_keys) if key in current]
-
-
 def _latest_event_data(
     events: list[RunEvent],
     event_type: str,
@@ -359,15 +354,6 @@ def _latest_event_data(
         if event.event_type == event_type:
             return dict(event.data)
     return {}
-
-
-def _model_purposes_for_run(events: list[RunEvent]) -> set[str]:
-    purposes = {
-        str(event.data.get("purpose", "answer")).strip().lower()
-        for event in events
-        if event.event_type in {"model.call.completed", "model.call.failed"}
-    }
-    return purposes or {"answer"}
 
 REVIEW_RESPONSE_FIELDS = {"verdict", "findings", "checks"}
 FINDING_FIELDS = {"severity", "title", "evidence", "action"}

@@ -43,95 +43,22 @@ class MemoryItem:
     created_at: str
 
 
-class RuntimeMemoryStore:
-    """Rebuild the active long-term memory view from immutable events."""
-
-    def __init__(self, store: EventStore) -> None:
-        self._store = store
-
-    def add_item(self, item: dict[str, object]) -> None:
-        validated = _validate_stored_item(item)
-        self._store.append_event(
-            "memory",
-            MEMORY_STREAM,
-            "memory.remembered",
-            data={"item": validated},
-        )
-
-    def list_items(self, scope: str | None = None) -> list[dict[str, object]]:
-        active = _replay_memory(self._events())
-        return _sort_items(
-            item
-            for item in active.values()
-            if scope is None or item["scope"] == scope
-        )
-
-    def forget_items(self, item_ids: list[str], reason: str = "") -> None:
-        selected = self._require_active_items(item_ids)
-        self._store.append_event(
-            "memory",
-            MEMORY_STREAM,
-            "memory.forgotten",
-            data={"item_ids": selected, "reason": reason.strip()},
-        )
-
-    def organize_items(
-        self,
-        operations: list[dict[str, object]],
-        source_run_id: str,
-    ) -> list[dict[str, object]]:
-        active = _replay_memory(self._events())
-        changes, replacements = _prepare_organization(
-            operations,
-            active,
-            source_run_id,
-        )
-        self._store.append_event(
-            "memory",
-            MEMORY_STREAM,
-            "memory.organized",
-            data={"operations": changes},
-        )
-        return replacements
-
-    def record_usage_habits(self, workflow: str, skills: list[str]) -> None:
-        self._store.append_event(
-            "habit",
-            "usage",
-            "agent.completed",
-            data={"workflow": workflow, "skills": list(skills)},
-        )
-
-    def read_usage_habits(self) -> dict[str, object]:
-        return usage_habits_from_events(self._store.read_events("habit", "usage"))
-
-    def _events(self) -> list[StorageEvent]:
-        events = self._store.read_events("memory")
-        unknown = sorted({event.stream_id for event in events if event.stream_id != MEMORY_STREAM})
-        if unknown:
-            raise ValueError("unknown memory streams: " + ", ".join(unknown))
-        return events
-
-    def _require_active_items(self, item_ids: list[str]) -> list[str]:
-        selected = _clean_item_ids(item_ids)
-        active = _replay_memory(self._events())
-        missing = sorted(set(selected) - set(active))
-        if missing:
-            raise KeyError("active long-term memory not found: " + ", ".join(missing))
-        return selected
-
-
 class UsageHabits:
     def __init__(
         self,
-        store: RuntimeMemoryStore,
+        store: EventStore,
         execute_action: MemoryActionRunner | None,
     ) -> None:
         self.store = store
         self.execute_action = execute_action
 
     def record_agent_run(self, workflow: str, skills: list[str]) -> None:
-        change = lambda: self.store.record_usage_habits(workflow, skills)
+        change = lambda: self.store.append_event(
+            "habit",
+            "usage",
+            "agent.completed",
+            data={"workflow": workflow, "skills": list(skills)},
+        )
         if self.execute_action is None:
             change()
             return
@@ -146,7 +73,7 @@ class UsageHabits:
         )
 
     def read_usage_habits(self) -> dict[str, object]:
-        return self.store.read_usage_habits()
+        return usage_habits_from_events(self.store.read_events("habit", "usage"))
 
     def build_prompt_instruction(self) -> str:
         data = self.read_usage_habits()
@@ -174,7 +101,7 @@ class Memory:
         self.store = store
         self.identity = identity
         self.settings = settings or MemorySettings()
-        self.usage_habits = UsageHabits(store.memory, execute_action)
+        self.usage_habits = UsageHabits(store, execute_action)
         self.execute_action = execute_action
 
     def remember_long_term(
@@ -193,7 +120,10 @@ class Memory:
         self._run_change(
             (ActionEffect.CREATE,),
             [item.item_id],
-            lambda: self.store.memory.add_item(asdict(item)),
+            lambda: self._append_memory_event(
+                "memory.remembered",
+                {"item": _validate_stored_item(asdict(item))},
+            ),
         )
         return item
 
@@ -201,7 +131,11 @@ class Memory:
         selected_scope = None if scope is None else _clean_scope(scope)
         return [
             _item_from_dict(item)
-            for item in self.store.memory.list_items(selected_scope)
+            for item in _sort_items(
+                item
+                for item in self._active_items().values()
+                if selected_scope is None or item["scope"] == selected_scope
+            )
         ]
 
     def recall_long_term(
@@ -233,10 +167,7 @@ class Memory:
         replacements = self._run_change(
             (ActionEffect.CREATE, ActionEffect.UPDATE, ActionEffect.DELETE),
             item_ids,
-            lambda: self.store.memory.organize_items(
-                operations,
-                self._source_run_id(""),
-            ),
+            lambda: self._organize_items(operations),
         )
         return [_item_from_dict(item) for item in replacements]
 
@@ -245,7 +176,7 @@ class Memory:
         self._run_change(
             (ActionEffect.DELETE,),
             [selected],
-            lambda: self.store.memory.forget_items([selected], reason),
+            lambda: self._forget_items([selected], reason),
         )
 
     def build_prompt_instruction(self, query: str = "") -> str:
@@ -285,6 +216,41 @@ class Memory:
         if selected:
             return selected
         return "" if self.identity is None else self.identity.run_id
+
+    def _organize_items(
+        self,
+        operations: list[dict[str, object]],
+    ) -> list[dict[str, object]]:
+        changes, replacements = _prepare_organization(
+            operations,
+            self._active_items(),
+            self._source_run_id(""),
+        )
+        self._append_memory_event("memory.organized", {"operations": changes})
+        return replacements
+
+    def _forget_items(self, item_ids: list[str], reason: str) -> None:
+        selected = _require_active_item_ids(self._active_items(), item_ids)
+        self._append_memory_event(
+            "memory.forgotten",
+            {"item_ids": selected, "reason": reason.strip()},
+        )
+
+    def _active_items(self) -> dict[str, dict[str, object]]:
+        events = self.store.read_events("memory")
+        unknown = sorted(
+            {event.stream_id for event in events if event.stream_id != MEMORY_STREAM}
+        )
+        if unknown:
+            raise ValueError("unknown memory streams: " + ", ".join(unknown))
+        return _replay_memory(events)
+
+    def _append_memory_event(
+        self,
+        event_type: str,
+        data: dict[str, object],
+    ) -> None:
+        self.store.append_event("memory", MEMORY_STREAM, event_type, data=data)
 
 
 def create_memory_from_skill(
@@ -388,10 +354,9 @@ def _replay_memory(events: list[StorageEvent]) -> dict[str, dict[str, object]]:
         if event.stream_id != MEMORY_STREAM:
             raise ValueError(f"unknown memory stream: {event.stream_id}")
         if event.event_type == "memory.remembered":
-            item = _validate_stored_item(event.data.get("item"))
-            active[str(item["item_id"])] = item
+            _add_active_item(active, event.data.get("item"))
         elif event.event_type == "memory.forgotten":
-            _remove_items(active, event.data.get("item_ids"))
+            _replace_active_items(active, event.data.get("item_ids"), None)
         elif event.event_type == "memory.organized":
             _replay_organization(active, event.data.get("operations"))
         else:
@@ -403,18 +368,13 @@ def _replay_organization(active: dict[str, dict[str, object]], value: object) ->
     if not isinstance(value, list):
         raise ValueError("stored memory operations must be an array")
     for value in value:
-        operation, item_ids, replacement = _validate_stored_operation(value)
-        missing = sorted(set(item_ids) - set(active))
-        if missing:
-            raise ValueError("stored memory operation references inactive items")
-        _remove_items(active, item_ids)
-        if replacement is not None:
-            active[str(replacement["item_id"])] = replacement
+        item_ids, replacement = _validate_stored_operation(value)
+        _replace_active_items(active, item_ids, replacement)
 
 
 def _validate_stored_operation(
     value: object,
-) -> tuple[str, list[str], dict[str, object] | None]:
+) -> tuple[list[str], dict[str, object] | None]:
     fields = {"operation", "item_ids", "reason", "replacement"}
     if not isinstance(value, dict) or set(value) != fields:
         raise ValueError("stored memory operation fields do not match schema")
@@ -432,7 +392,46 @@ def _validate_stored_operation(
         if replacement_value is None
         else _validate_stored_item(replacement_value)
     )
-    return str(operation), item_ids, replacement
+    return item_ids, replacement
+
+
+def _add_active_item(
+    active: dict[str, dict[str, object]],
+    value: object,
+) -> None:
+    item = _validate_stored_item(value)
+    item_id = str(item["item_id"])
+    if item_id in active:
+        raise ValueError(f"stored memory item already exists: {item_id}")
+    active[item_id] = item
+
+
+def _replace_active_items(
+    active: dict[str, dict[str, object]],
+    value: object,
+    replacement: dict[str, object] | None,
+) -> None:
+    item_ids = _clean_item_ids(value)
+    missing = sorted(set(item_ids) - set(active))
+    if missing:
+        raise ValueError(
+            "stored memory change references inactive items: " + ", ".join(missing)
+        )
+    for item_id in item_ids:
+        del active[item_id]
+    if replacement is not None:
+        _add_active_item(active, replacement)
+
+
+def _require_active_item_ids(
+    active: dict[str, dict[str, object]],
+    value: object,
+) -> list[str]:
+    selected = _clean_item_ids(value)
+    missing = sorted(set(selected) - set(active))
+    if missing:
+        raise KeyError("active long-term memory not found: " + ", ".join(missing))
+    return selected
 
 
 def _validate_stored_item(value: object) -> dict[str, object]:
@@ -531,11 +530,6 @@ def _read_bool(data: dict[str, object], name: str, default: bool) -> bool:
     if not isinstance(value, bool):
         raise ValueError(f"memory {name} must be a boolean")
     return value
-
-
-def _remove_items(active: dict[str, dict[str, object]], value: object) -> None:
-    for item_id in _clean_item_ids(value):
-        active.pop(item_id, None)
 
 
 def _sort_items(items: Iterable[dict[str, object]]) -> list[dict[str, object]]:

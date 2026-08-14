@@ -60,6 +60,27 @@ class RuntimeInsightTests(unittest.TestCase):
             [call["status"] for call in calls],
         )
 
+    def test_run_insight_excludes_models_not_observed_by_that_run(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            agent = Agent(
+                CommonConfig.create_default(Path(tmp)),
+                provider=SequenceProvider(["answer"]),
+                use_storage=True,
+            )
+            result = agent.run("inspect this")
+            agent._create_event_store().append_model_call_event(
+                "unrelated-operation",
+                "model.call.completed",
+                {"profile": "model:unrelated", "purpose": "auto"},
+            )
+
+            explanation = agent.for_user("local").runs.explain(result.run_id)
+
+            profiles = {
+                item["profile_key"] for item in explanation["model_usage"]
+            }
+            self.assertNotIn("model:unrelated", profiles)
+
 
 def _event(sequence: int, event_type: str) -> RunEvent:
     return RunEvent(

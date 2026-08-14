@@ -92,6 +92,21 @@ class MemoryTests(unittest.TestCase):
             )
             self.assertEqual("no longer useful", events[-1].data["reason"])
 
+    def test_replay_rejects_a_second_forget_of_an_inactive_item(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            memory = _memory(Path(tmp))
+            item = memory.remember_long_term("Disposable fact.")
+            memory.forget_long_term(item.item_id)
+            memory.store.append_event(
+                "memory",
+                "long-term",
+                "memory.forgotten",
+                data={"item_ids": [item.item_id], "reason": "duplicate"},
+            )
+
+            with self.assertRaisesRegex(ValueError, "inactive items"):
+                memory.list_long_term()
+
     def test_organization_applies_multiple_changes_in_one_event(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             memory = _memory(Path(tmp))

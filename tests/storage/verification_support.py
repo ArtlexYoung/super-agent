@@ -255,8 +255,9 @@ def _write_isolated_domain_state(store: EventStore, marker: str) -> None:
         run_id=f"{marker}-run",
         run_result={"run_id": f"{marker}-run"},
     )
-    Memory(store).remember_long_term(f"{marker}-only")
-    store.memory.record_usage_habits("direct", [f"{marker}-skill"])
+    memory = Memory(store)
+    memory.remember_long_term(f"{marker}-only")
+    memory.usage_habits.record_agent_run("direct", [f"{marker}-skill"])
     store.append_event(
         "skill_change",
         f"change-{marker}",
@@ -292,7 +293,7 @@ def _require_memory_isolation(store: EventStore, marker: str) -> str:
 
 
 def _require_habit_isolation(store: EventStore, skill_name: str) -> str:
-    habits = store.memory.read_usage_habits()
+    habits = Memory(store).usage_habits.read_usage_habits()
     if habits["skills"] != {skill_name: 1}:
         raise AssertionError("usage habit user isolation failed")
     return "skill_usage_user_isolation"

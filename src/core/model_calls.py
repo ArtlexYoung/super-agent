@@ -27,7 +27,7 @@ from skill.handlers.models import (
 )
 
 if TYPE_CHECKING:
-    from core.records.store import EventStore
+    from core.records.store import EventStore, StorageEvent
 
 
 EventWriter = Callable[[str, dict[str, object]], object]
@@ -284,11 +284,13 @@ class _TextModel:
 def list_model_usage_stats(
     store: EventStore,
     purpose: str | None = None,
+    *,
+    events: list[StorageEvent] | None = None,
 ) -> list[ModelUsageStats]:
-    events = store.read_events()
+    selected_events = store.read_events(snapshot=events)
     implicit_feedback: dict[str, float] = {}
     explicit_feedback: dict[str, float] = {}
-    for event in events:
+    for event in selected_events:
         if event.event_type != "task.feedback.recorded":
             continue
         target = (
@@ -300,7 +302,7 @@ def list_model_usage_stats(
     feedback_by_run = {**implicit_feedback, **explicit_feedback}
     selected_purpose = None if purpose is None else purpose.strip().lower()
     accumulators: dict[tuple[str, str], _StatsAccumulator] = {}
-    for event in events:
+    for event in selected_events:
         if event.event_type not in {"model.call.completed", "model.call.failed"}:
             continue
         profile_key = str(event.data.get("profile", "")).strip().lower()

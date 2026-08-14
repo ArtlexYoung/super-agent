@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from skill.discovery.catalog import ProgressiveDisclosureCore, SkillDisclosure
 from skill.learning.records import EvaluationRecord, SkillRevision, evaluation_record_to_dict
 
 
@@ -393,13 +394,6 @@ def _format_datetime(value: datetime) -> str:
 
 def _clamp(value: float, minimum: float, maximum: float) -> float:
     return min(max(value, minimum), maximum)
-
-# Freshness settings and their validation stay beside the freshness calculation.
-import math
-from dataclasses import dataclass
-
-from skill.discovery.catalog import ProgressiveDisclosureCore, SkillDisclosure
-
 
 @dataclass(frozen=True)
 class FreshnessRules:

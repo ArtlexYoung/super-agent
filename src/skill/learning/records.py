@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 if TYPE_CHECKING:
-    from core.records.store import EventStore
+    from core.records.store import EventStore, StorageEvent
 
 
 EVALUATION_RECORD_SCHEMA_VERSION = 3
@@ -86,12 +86,19 @@ def read_evaluation_records(
     *,
     skill_key: str | None = None,
     source_type: str | None = None,
+    events: list[StorageEvent] | None = None,
 ) -> list[EvaluationRecord]:
     """Project evaluation records from one scoped event store."""
+    selected_events = store.read_events("skill_evaluation", snapshot=events)
+    unknown = sorted(
+        {event.event_type for event in selected_events}
+        - {"evaluation.recorded"}
+    )
+    if unknown:
+        raise ValueError("unknown evaluation event types: " + ", ".join(unknown))
     records = [
         evaluation_record_from_dict(event.data)
-        for event in store.read_events("skill_evaluation")
-        if event.event_type == "evaluation.recorded"
+        for event in selected_events
     ]
     return [
         record

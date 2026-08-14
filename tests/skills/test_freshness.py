@@ -76,6 +76,32 @@ description = "Research helper"
             self.assertEqual(1, len(records))
             self.assertFalse((root / "skill_events.jsonl").exists())
 
+    def test_evaluation_projection_rejects_unknown_event_types(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            store = create_local_event_store(Path(tmp))
+            store.append_event(
+                "skill_evaluation",
+                "evaluation-unknown",
+                "evaluation.unknown",
+                data={},
+            )
+
+            with self.assertRaisesRegex(ValueError, "unknown evaluation event types"):
+                read_evaluation_records(store)
+
+    def test_evaluation_projection_rejects_a_foreign_event_snapshot(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            alpha = create_local_event_store(root, user_id="alpha")
+            beta = create_local_event_store(root, user_id="beta")
+            append_evaluation_records(
+                alpha,
+                [_skill_evaluation_record("prompt:research", "search", datetime.now(UTC))],
+            )
+
+            with self.assertRaisesRegex(ValueError, "store scope"):
+                read_evaluation_records(beta, events=alpha.read_events())
+
     def test_custom_freshness_skill_changes_calculation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

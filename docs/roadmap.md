@@ -1834,6 +1834,19 @@ Status: implemented.
 - Record selected model Skills without retaining duplicate provider and model-profile state on
   the run, while preserving model routing, tool checks, nested Agents, and progressive disclosure.
 
+## v0.1.79: One Learning and Memory Projection
+
+Status: implemented.
+
+- Reuse one user-and-Agent-scoped event snapshot to derive run evaluations, current Skill
+  freshness, and exact model-profile usage without repeated storage scans.
+- Reject foreign snapshots and unknown evaluation events instead of silently weakening user
+  isolation or omitting learning evidence.
+- Let the `Memory` Skill directly own long-term memory and usage-habit events; remove Core's
+  memory cache and the intermediate Runtime memory store.
+- Replay forget and organize changes through one strict remove-and-replace path while preserving
+  explicit action checks, atomic organization events, storage backends, and event names.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof
