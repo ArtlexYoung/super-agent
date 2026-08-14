@@ -63,13 +63,14 @@ class _EvidenceAccumulator:
 
 
 def summarize_evaluation_evidence(
-    records: list[EvaluationRecord],
-    *,
-    combine_versions: bool = False,
+    records: list[EvaluationRecord], *, combine_versions: bool = False
 ) -> list[EvaluationEvidenceSummary]:
     ordered = sorted(
         records,
-        key=lambda record: (parse_utc(record.created_at, "evaluation created_at"), record.record_id),
+        key=lambda record: (
+            parse_utc(record.created_at, "evaluation created_at"),
+            record.record_id,
+        ),
     )
     accumulators: dict[tuple[str, ...], _EvidenceAccumulator] = {}
     last_by_function_group: dict[str, tuple[tuple[str, ...], EvaluationRecord]] = {}
@@ -82,17 +83,11 @@ def summarize_evaluation_evidence(
         last_by_function_group[record.revision.function_group] = (key, record)
     return [
         _create_summary(accumulator)
-        for _, accumulator in sorted(
-            accumulators.items(),
-            key=lambda item: item[0],
-        )
+        for _, accumulator in sorted(accumulators.items(), key=lambda item: item[0])
     ]
 
 
-def _apply_record(
-    accumulator: _EvidenceAccumulator,
-    record: EvaluationRecord,
-) -> None:
+def _apply_record(accumulator: _EvidenceAccumulator, record: EvaluationRecord) -> None:
     result = record.result
     sample_count = len(accumulator.record_ids) + 1
     if sample_count == 1:
@@ -104,9 +99,7 @@ def _apply_record(
     accumulator.empty_output_count += int(result.token_usage.output_tokens == 0)
     accumulator.score_total += result.score
     accumulator.score_ewma = _update_ewma(
-        accumulator.score_ewma,
-        _evaluation_reward(record),
-        sample_count,
+        accumulator.score_ewma, _evaluation_reward(record), sample_count
     )
     accumulator.total_input_tokens += result.token_usage.input_tokens
     accumulator.total_output_tokens += result.token_usage.output_tokens
@@ -133,31 +126,25 @@ def _record_replacement_followup(
         previous_accumulator.same_function_successful_followups += 1
 
 
-def _is_replacement_followup(
-    previous: EvaluationRecord,
-    current: EvaluationRecord,
-) -> bool:
+def _is_replacement_followup(previous: EvaluationRecord, current: EvaluationRecord) -> bool:
     if previous.revision.key == current.revision.key:
         return False
     if previous.source.run_id == current.source.run_id:
         return False
-    elapsed = parse_utc(current.created_at, "evaluation created_at") - parse_utc(previous.created_at, "evaluation created_at")
+    elapsed = parse_utc(current.created_at, "evaluation created_at") - parse_utc(
+        previous.created_at, "evaluation created_at"
+    )
     return timedelta(0) <= elapsed <= timedelta(minutes=FOLLOWUP_WINDOW_MINUTES)
 
 
-def _create_summary(
-    accumulator: _EvidenceAccumulator,
-) -> EvaluationEvidenceSummary:
+def _create_summary(accumulator: _EvidenceAccumulator) -> EvaluationEvidenceSummary:
     sample_count = len(accumulator.record_ids)
     total_tokens = accumulator.total_input_tokens + accumulator.total_output_tokens
     followups = accumulator.same_function_followups
     successful_followups = accumulator.same_function_successful_followups
     return EvaluationEvidenceSummary(
         revision=accumulator.revision,
-        evidence_sha256=_evidence_sha256(
-            accumulator.revision,
-            accumulator.record_sha256s,
-        ),
+        evidence_sha256=_evidence_sha256(accumulator.revision, accumulator.record_sha256s),
         record_ids=tuple(accumulator.record_ids),
         sample_count=sample_count,
         success_count=accumulator.success_count,
@@ -174,10 +161,7 @@ def _create_summary(
         average_latency_ms=(
             None
             if accumulator.latency_sample_count == 0
-            else round(
-                accumulator.total_latency_ms / accumulator.latency_sample_count,
-                2,
-            )
+            else round(accumulator.total_latency_ms / accumulator.latency_sample_count, 2)
         ),
         same_function_followups=followups,
         same_function_successful_followups=successful_followups,
@@ -187,17 +171,10 @@ def _create_summary(
     )
 
 
-def _evidence_key(
-    revision: SkillRevision,
-    combine_versions: bool,
-) -> tuple[str, ...]:
+def _evidence_key(revision: SkillRevision, combine_versions: bool) -> tuple[str, ...]:
     if combine_versions:
         return (revision.key,)
-    return (
-        revision.key,
-        revision.version,
-        revision.content_sha256,
-    )
+    return (revision.key, revision.version, revision.content_sha256)
 
 
 def _evaluation_reward(record: EvaluationRecord) -> float:
@@ -220,31 +197,21 @@ def _update_ewma(previous: float, value: float, sample_count: int) -> float:
 
 def _evaluation_record_sha256(record: EvaluationRecord) -> str:
     content = json.dumps(
-        evaluation_record_to_dict(record),
-        ensure_ascii=False,
-        separators=(",", ":"),
-        sort_keys=True,
+        evaluation_record_to_dict(record), ensure_ascii=False, separators=(",", ":"), sort_keys=True
     ).encode("utf-8")
     return hashlib.sha256(content).hexdigest()
 
 
 def _evidence_sha256(revision: SkillRevision, record_sha256s: list[str]) -> str:
     digest = hashlib.sha256()
-    for value in (
-        revision.key,
-        revision.version,
-        revision.content_sha256,
-        *record_sha256s,
-    ):
+    for value in (revision.key, revision.version, revision.content_sha256, *record_sha256s):
         digest.update(value.encode("utf-8"))
         digest.update(b"\0")
     return digest.hexdigest()
 
 
 def calculate_skill_freshness(
-    records: list[EvaluationRecord],
-    policy: FreshnessRules,
-    current_time: datetime | None = None,
+    records: list[EvaluationRecord], policy: FreshnessRules, current_time: datetime | None = None
 ) -> dict[str, dict[str, Any]]:
     now = current_time or datetime.now(UTC)
     stats_by_skill: dict[str, dict[str, Any]] = {}
@@ -256,8 +223,7 @@ def calculate_skill_freshness(
 
 
 def _stats_from_evidence(
-    summary: EvaluationEvidenceSummary,
-    policy: FreshnessRules,
+    summary: EvaluationEvidenceSummary, policy: FreshnessRules
 ) -> dict[str, Any]:
     return {
         "skill": summary.revision.key,
@@ -280,11 +246,7 @@ def _stats_from_evidence(
     }
 
 
-def _update_freshness(
-    stats: dict[str, Any],
-    now: datetime,
-    policy: FreshnessRules,
-) -> None:
+def _update_freshness(stats: dict[str, Any], now: datetime, policy: FreshnessRules) -> None:
     scores = _score_components(stats, now, policy)
     base = (
         policy.quality_weight * scores["quality"]
@@ -301,9 +263,7 @@ def _update_freshness(
 
 
 def _score_components(
-    stats: dict[str, Any],
-    now: datetime,
-    policy: FreshnessRules,
+    stats: dict[str, Any], now: datetime, policy: FreshnessRules
 ) -> dict[str, float]:
     call_count = int(stats["call_count"])
     first_used_at = parse_utc(stats["first_used_at"] or stats["last_used_at"], "first_used_at")
@@ -318,11 +278,7 @@ def _score_components(
     return {
         "quality": float(stats["success_ewma"]) * 100,
         "recency": math.exp(-days_since_last_used / policy.recency_decay_days) * 100,
-        "frequency": _clamp(
-            calls_per_week / policy.full_frequency_calls_per_week * 100,
-            0,
-            100,
-        ),
+        "frequency": _clamp(calls_per_week / policy.full_frequency_calls_per_week * 100, 0, 100),
         "efficiency": _efficiency_score(stats, average_tokens, policy),
         "reliability": _reliability_score(stats, policy),
         "replacement": 100 if followups == 0 else 100 * (1 - successful_followups / followups),
@@ -331,9 +287,7 @@ def _score_components(
 
 
 def _efficiency_score(
-    stats: dict[str, Any],
-    average_tokens: float,
-    policy: FreshnessRules,
+    stats: dict[str, Any], average_tokens: float, policy: FreshnessRules
 ) -> float:
     token_score = _clamp(
         100 - max(0, average_tokens - policy.token_free_budget) / policy.tokens_per_penalty_point,
@@ -349,19 +303,24 @@ def _efficiency_score(
         0,
         100,
     )
-    return policy.token_efficiency_weight * token_score + (1 - policy.token_efficiency_weight) * latency_score
+    return (
+        policy.token_efficiency_weight * token_score
+        + (1 - policy.token_efficiency_weight) * latency_score
+    )
 
 
-def _reliability_score(
-    stats: dict[str, Any],
-    policy: FreshnessRules,
-) -> float:
+def _reliability_score(stats: dict[str, Any], policy: FreshnessRules) -> float:
     call_count = max(int(stats["call_count"]), 1)
     success_rate = int(stats["success_count"]) / call_count
     empty_rate = int(stats["empty_output_count"]) / call_count
     error_rate = int(stats["error_count"]) / call_count
     return _clamp(
-        (success_rate - policy.empty_output_penalty * empty_rate - policy.error_penalty * error_rate) * 100,
+        (
+            success_rate
+            - policy.empty_output_penalty * empty_rate
+            - policy.error_penalty * error_rate
+        )
+        * 100,
         0,
         100,
     )
@@ -394,14 +353,10 @@ class FreshnessRules:
 
 
 def load_freshness_rules(
-    disclosure: ProgressiveDisclosureCore,
-    configured_skills: list[str],
-    *,
-    disclose: bool = True,
+    disclosure: ProgressiveDisclosureCore, configured_skills: list[str], *, disclose: bool = True
 ) -> FreshnessRules:
     selected = disclosure.require_prepared_skill_index().select_one_configured_or_default_skill(
-        "freshness",
-        configured_skills,
+        "freshness", configured_skills
     )
     opened = disclosure.open_skill(selected.reference.name, selected.reference.skill_type)
     if disclose:
@@ -415,7 +370,14 @@ def read_freshness_rules(disclosure: SkillDisclosure) -> FreshnessRules:
     if manifest.skill_type != "freshness":
         raise ValueError(f"skill does not use the freshness type: {manifest.name}")
     value = disclosure.read_configuration().content
-    weights = ("quality_weight", "recency_weight", "frequency_weight", "efficiency_weight", "reliability_weight", "replacement_weight")
+    weights = (
+        "quality_weight",
+        "recency_weight",
+        "frequency_weight",
+        "efficiency_weight",
+        "reliability_weight",
+        "replacement_weight",
+    )
     unit_values = (*weights, "token_efficiency_weight", "empty_output_penalty", "error_penalty")
     positive_values = (
         "recency_decay_days",
@@ -428,9 +390,24 @@ def read_freshness_rules(disclosure: SkillDisclosure) -> FreshnessRules:
     expected = {"initial", *unit_values, *positive_values, *non_negative_values}
     read_object(value, "freshness settings schema", expected)
     settings: dict[str, float] = {}
-    for names, minimum, maximum in ((unit_values, 0, 1), (positive_values, 0.000001, None), (non_negative_values, 0, None)):
-        settings.update({name: read_number(value[name], f"freshness {name}", minimum=minimum, maximum=maximum) for name in names})
-    rules = FreshnessRules(manifest.name, read_number(value["initial"], "freshness initial", minimum=0, maximum=100), **settings)
+    for names, minimum, maximum in (
+        (unit_values, 0, 1),
+        (positive_values, 0.000001, None),
+        (non_negative_values, 0, None),
+    ):
+        settings.update(
+            {
+                name: read_number(
+                    value[name], f"freshness {name}", minimum=minimum, maximum=maximum
+                )
+                for name in names
+            }
+        )
+    rules = FreshnessRules(
+        manifest.name,
+        read_number(value["initial"], "freshness initial", minimum=0, maximum=100),
+        **settings,
+    )
     if not math.isclose(sum(getattr(rules, name) for name in weights), 1.0, abs_tol=1e-9):
         raise ValueError("freshness component weights must sum to 1")
     return rules

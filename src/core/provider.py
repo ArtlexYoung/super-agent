@@ -72,25 +72,21 @@ class ModelPricing:
         data = {name: getattr(self, name) or 0.0 for name in MODEL_PRICE_FIELDS}
         return {**data, "total_cost_per_million": sum(data.values())}
 
-    def estimate_cost(
-        self,
-        token_counts: Mapping[str, int | None],
-    ) -> dict[str, object]:
+    def estimate_cost(self, token_counts: Mapping[str, int | None]) -> dict[str, object]:
         """Estimate declared token costs while naming every unknown usage field."""
         counts = {name: token_counts.get(name) for name, _ in MODEL_TOKEN_PRICE_FIELDS}
         known = {name: value for name, value in counts.items() if value is not None}
         prices = self.resolved_dict()
         weighted = sum(
-            count * prices[price_name] for name, price_name in MODEL_TOKEN_PRICE_FIELDS if (count := known.get(name)) is not None
+            count * prices[price_name]
+            for name, price_name in MODEL_TOKEN_PRICE_FIELDS
+            if (count := known.get(name)) is not None
         )
         total_tokens = sum(known.values())
         return {
             "tokens": counts,
             "estimated_cost": round(weighted / 1_000_000, 12),
-            "blended_cost_per_million": round(
-                weighted / total_tokens if total_tokens else 0.0,
-                8,
-            ),
+            "blended_cost_per_million": round(weighted / total_tokens if total_tokens else 0.0, 8),
             "unprovided_usage": [name for name, value in counts.items() if value is None],
             "excludes_unprovided_usage": len(known) != len(counts),
         }
@@ -157,17 +153,12 @@ class ChatProvider(Protocol):
     def send_chat_messages(self, messages: list[Message], model: str) -> str: ...
 
     def send_chat_messages_with_tools(
-        self,
-        messages: list[Message],
-        model: str,
-        tools: list[ToolDefinition],
+        self, messages: list[Message], model: str, tools: list[ToolDefinition]
     ) -> ModelResponse: ...
 
 
 def call_chat_model(
-    call: ProviderCall,
-    provider: ChatProvider,
-    record_event: EventWriter,
+    call: ProviderCall, provider: ChatProvider, record_event: EventWriter
 ) -> ModelResponse:
     selected = {
         "profile": call.profile_key,
@@ -199,8 +190,7 @@ def call_chat_model(
         raise
     output = response.text if not response.tool_calls else _model_response_text(response)
     record_event(
-        "model.call.completed",
-        _provider_call_metrics(call, input_tokens, output, started_at),
+        "model.call.completed", _provider_call_metrics(call, input_tokens, output, started_at)
     )
     return response
 
@@ -208,7 +198,10 @@ def call_chat_model(
 def read_model_turn(response: ModelResponse) -> ModelTurn:
     if response.tool_calls:
         return ActionTurn(
-            tuple(ModelAction(call.id, call.name, dict(call.arguments)) for call in response.tool_calls),
+            tuple(
+                ModelAction(call.id, call.name, dict(call.arguments))
+                for call in response.tool_calls
+            ),
             response.text,
         )
     if not response.text.strip():
@@ -236,19 +229,13 @@ class MockProvider:
 
     def send_chat_messages(self, messages: list[Message], model: str) -> str:
         self.last_messages = messages
-        structured = _mock_structured_response(
-            messages,
-            self.feedback_response,
-        )
+        structured = _mock_structured_response(messages, self.feedback_response)
         if structured is not None:
             return structured
         return self.response
 
     def send_chat_messages_with_tools(
-        self,
-        messages: list[Message],
-        model: str,
-        tools: list[ToolDefinition],
+        self, messages: list[Message], model: str, tools: list[ToolDefinition]
     ) -> ModelResponse:
         self.last_messages = messages
         self.tool_requests.append((list(messages), list(tools)))
@@ -267,10 +254,7 @@ class OpenAICompatibleProvider:
         return str(data["choices"][0]["message"]["content"])
 
     def send_chat_messages_with_tools(
-        self,
-        messages: list[Message],
-        model: str,
-        tools: list[ToolDefinition],
+        self, messages: list[Message], model: str, tools: list[ToolDefinition]
     ) -> ModelResponse:
         data = self._send_request({"model": model, "messages": messages, "tools": tools})
         choice = data["choices"][0]
@@ -278,9 +262,7 @@ class OpenAICompatibleProvider:
         calls = [_read_openai_tool_call(item) for item in message.get("tool_calls", [])]
         stop_reason = "tool_calls" if calls else "model_finished"
         return ModelResponse(
-            text=str(message.get("content") or ""),
-            tool_calls=calls,
-            stop_reason=stop_reason,
+            text=str(message.get("content") or ""), tool_calls=calls, stop_reason=stop_reason
         )
 
     def _send_request(self, payload: dict[str, object]) -> dict[str, Any]:
@@ -300,10 +282,7 @@ class AnthropicCompatibleProvider:
         return _read_anthropic_text(data)
 
     def send_chat_messages_with_tools(
-        self,
-        messages: list[Message],
-        model: str,
-        tools: list[ToolDefinition],
+        self, messages: list[Message], model: str, tools: list[ToolDefinition]
     ) -> ModelResponse:
         system, non_system_messages = _split_system_message_from_user_messages(messages)
         payload = {
@@ -314,7 +293,11 @@ class AnthropicCompatibleProvider:
             "tools": [_to_anthropic_tool_definition(tool) for tool in tools],
         }
         data = self._send_request(payload)
-        calls = [_read_anthropic_tool_call(block) for block in data.get("content", []) if block.get("type") == "tool_use"]
+        calls = [
+            _read_anthropic_tool_call(block)
+            for block in data.get("content", [])
+            if block.get("type") == "tool_use"
+        ]
         return ModelResponse(
             text=_read_anthropic_text(data),
             tool_calls=calls,
@@ -327,8 +310,7 @@ class AnthropicCompatibleProvider:
 
 
 def create_chat_provider(
-    connection: ProviderConnection,
-    environment: Mapping[str, str] | None = None,
+    connection: ProviderConnection, environment: Mapping[str, str] | None = None
 ) -> ChatProvider:
     settings = normalize_provider_connection(connection)
     provider = settings.provider
@@ -341,29 +323,15 @@ def create_chat_provider(
     return AnthropicCompatibleProvider(settings.base_url or "", api_key)
 
 
-def _send_provider_call(
-    call: ProviderCall,
-    provider: ChatProvider,
-) -> ModelResponse:
+def _send_provider_call(call: ProviderCall, provider: ChatProvider) -> ModelResponse:
     messages = list(call.messages)
     if call.tools is None:
-        return ModelResponse(
-            provider.send_chat_messages(messages, call.model),
-            [],
-            "completed",
-        )
-    return provider.send_chat_messages_with_tools(
-        messages,
-        call.model,
-        list(call.tools),
-    )
+        return ModelResponse(provider.send_chat_messages(messages, call.model), [], "completed")
+    return provider.send_chat_messages_with_tools(messages, call.model, list(call.tools))
 
 
 def _provider_call_metrics(
-    call: ProviderCall,
-    input_tokens: int,
-    output: str,
-    started_at: float,
+    call: ProviderCall, input_tokens: int, output: str, started_at: float
 ) -> dict[str, object]:
     output_tokens = estimate_text_tokens(output)
     input_cost = input_tokens * (call.pricing.input_cost_per_million or 0.0)
@@ -377,7 +345,9 @@ def _provider_call_metrics(
         "output_tokens": output_tokens,
         "estimated_cost": (input_cost + output_cost) / 1_000_000,
         "pricing": call.pricing.to_dict(),
-        "estimated_cost_excludes_cache": bool(call.pricing.cache_creation_cost_per_million or call.pricing.cache_read_cost_per_million),
+        "estimated_cost_excludes_cache": bool(
+            call.pricing.cache_creation_cost_per_million or call.pricing.cache_read_cost_per_million
+        ),
     }
 
 
@@ -385,36 +355,31 @@ def _model_response_text(response: ModelResponse) -> str:
     return json.dumps(
         {
             "text": response.text,
-            "tool_calls": [{"name": call.name, "arguments": call.arguments} for call in response.tool_calls],
+            "tool_calls": [
+                {"name": call.name, "arguments": call.arguments} for call in response.tool_calls
+            ],
         },
         ensure_ascii=False,
         sort_keys=True,
     )
 
 
-def normalize_provider_connection(
-    connection: ProviderConnection,
-) -> ProviderConnection:
+def normalize_provider_connection(connection: ProviderConnection) -> ProviderConnection:
     provider = connection.provider.strip().lower()
-    if provider not in {
-        MOCK_PROVIDER,
-        OPENAI_COMPATIBLE_PROVIDER,
-        ANTHROPIC_COMPATIBLE_PROVIDER,
-    }:
+    if provider not in {MOCK_PROVIDER, OPENAI_COMPATIBLE_PROVIDER, ANTHROPIC_COMPATIBLE_PROVIDER}:
         raise ValueError(f"unknown provider: {connection.provider}")
     if provider == MOCK_PROVIDER:
         return ProviderConnection(provider=provider)
     base_url = _optional_text(connection.base_url) or _default_base_url(provider)
     api_key_env = _optional_text(connection.api_key_env)
     if api_key_env is None and not _is_local_url(base_url):
-        api_key_env = "OPENAI_API_KEY" if provider == OPENAI_COMPATIBLE_PROVIDER else "ANTHROPIC_API_KEY"
+        api_key_env = (
+            "OPENAI_API_KEY" if provider == OPENAI_COMPATIBLE_PROVIDER else "ANTHROPIC_API_KEY"
+        )
     return ProviderConnection(provider, base_url, api_key_env)
 
 
-def _mock_structured_response(
-    messages: list[Message],
-    feedback_response: str | None,
-) -> str | None:
+def _mock_structured_response(messages: list[Message], feedback_response: str | None) -> str | None:
     if not messages:
         return None
     try:
@@ -427,7 +392,9 @@ def _mock_structured_response(
     if not isinstance(contract, dict):
         return None
     if set(contract) == {"is_feedback", "score", "reason"}:
-        return feedback_response or json.dumps({"is_feedback": False, "score": None, "reason": "no feedback"})
+        return feedback_response or json.dumps(
+            {"is_feedback": False, "score": None, "reason": "no feedback"}
+        )
     return None
 
 
@@ -438,7 +405,9 @@ def _read_openai_tool_call(data: dict[str, Any]) -> ToolCall:
         arguments = json.loads(arguments or "{}")
     if not isinstance(arguments, dict):
         raise ValueError("OpenAI tool call arguments must be an object")
-    return ToolCall(id=str(data.get("id", "")), name=str(function.get("name", "")), arguments=arguments)
+    return ToolCall(
+        id=str(data.get("id", "")), name=str(function.get("name", "")), arguments=arguments
+    )
 
 
 def _read_anthropic_tool_call(data: dict[str, Any]) -> ToolCall:
@@ -473,7 +442,11 @@ def _to_anthropic_messages(messages: list[Message]) -> list[Message]:
                 "tool_use_id": str(message.get("tool_call_id", "")),
                 "content": str(message.get("content", "")),
             }
-            if converted and converted[-1]["role"] == "user" and isinstance(converted[-1]["content"], list):
+            if (
+                converted
+                and converted[-1]["role"] == "user"
+                and isinstance(converted[-1]["content"], list)
+            ):
                 converted[-1]["content"].append(block)
             else:
                 converted.append({"role": "user", "content": [block]})
@@ -500,10 +473,7 @@ def _read_anthropic_text(data: dict[str, Any]) -> str:
     return "".join(str(block.get("text", "")) for block in blocks if block.get("type") == "text")
 
 
-def _read_api_key_from_environment(
-    name: str | None,
-    environment: Mapping[str, str],
-) -> str:
+def _read_api_key_from_environment(name: str | None, environment: Mapping[str, str]) -> str:
     if not name:
         return ""
     value = environment.get(name)
@@ -534,19 +504,11 @@ def _optional_text(value: str | None) -> str | None:
 
 def _send_json_post_request(url: str, payload: dict[str, object], api_key: str) -> dict[str, Any]:
     body = json.dumps(payload).encode("utf-8")
-    headers = {
-        "content-type": "application/json",
-        "anthropic-version": "2023-06-01",
-    }
+    headers = {"content-type": "application/json", "anthropic-version": "2023-06-01"}
     if api_key:
         headers["authorization"] = f"Bearer {api_key}"
         headers["x-api-key"] = api_key
-    request = urllib.request.Request(
-        url,
-        data=body,
-        headers=headers,
-        method="POST",
-    )
+    request = urllib.request.Request(url, data=body, headers=headers, method="POST")
     with urllib.request.urlopen(request, timeout=60) as response:
         return json.loads(response.read().decode("utf-8"))
 
@@ -569,7 +531,9 @@ class UserSecretResolver:
         process_environment: Mapping[str, str] | None = None,
     ) -> None:
         self.lookup = lookup
-        self.process_environment = os.environ if process_environment is None else process_environment
+        self.process_environment = (
+            os.environ if process_environment is None else process_environment
+        )
 
     def get_environment_for_user(self, user_id: str) -> Mapping[str, str]:
         from core.models import validate_user_id
@@ -616,19 +580,12 @@ class ProviderPool:
             raise ValueError(f"model profile already has a provider: {key}")
         self._providers_by_profile[key] = provider
 
-    def create_user_provider_pool(
-        self,
-        environment: Mapping[str, str],
-    ) -> "ProviderPool":
+    def create_user_provider_pool(self, environment: Mapping[str, str]) -> "ProviderPool":
         pool = ProviderPool(environment)
         pool._providers_by_profile = dict(self._providers_by_profile)
         return pool
 
-    def get_chat_provider(
-        self,
-        profile_key: str,
-        connection: ProviderConnection,
-    ) -> ChatProvider:
+    def get_chat_provider(self, profile_key: str, connection: ProviderConnection) -> ChatProvider:
         key = _clean_profile_key(profile_key)
         selected = self._providers_by_profile.get(key)
         if selected is not None:

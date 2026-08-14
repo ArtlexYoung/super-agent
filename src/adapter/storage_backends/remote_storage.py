@@ -7,11 +7,7 @@ from importlib import import_module
 from typing import Any, Protocol
 from urllib.parse import parse_qsl, unquote, urlsplit
 
-from adapter.storage_backends.storage import (
-    clean_storage_text,
-    SqlEventDatabase,
-    SqlEventStorage,
-)
+from adapter.storage_backends.storage import clean_storage_text, SqlEventDatabase, SqlEventStorage
 
 
 REMOTE_SQL_SCHEMA_VERSION = 1
@@ -75,7 +71,9 @@ class MySqlStorage(RemoteSqlStorage):
         try:
             driver = import_module("pymysql")
         except ImportError as error:
-            raise RuntimeError("MySQL storage requires the optional dependency: pip install 'super-agent[mysql]'") from error
+            raise RuntimeError(
+                "MySQL storage requires the optional dependency: pip install 'super-agent[mysql]'"
+            ) from error
         connection_url = read_storage_connection_url("mysql", url_env, DEFAULT_MYSQL_URL_ENV)
         super().__init__(_MySqlDatabase(driver, connection_url))
 
@@ -87,8 +85,12 @@ class PostgreSqlStorage(RemoteSqlStorage):
         try:
             driver = import_module("psycopg")
         except ImportError as error:
-            raise RuntimeError("PostgreSQL storage requires the optional dependency: pip install 'super-agent[postgresql]'") from error
-        connection_url = read_storage_connection_url("postgresql", url_env, DEFAULT_POSTGRESQL_URL_ENV)
+            raise RuntimeError(
+                "PostgreSQL storage requires the optional dependency: pip install 'super-agent[postgresql]'"
+            ) from error
+        connection_url = read_storage_connection_url(
+            "postgresql", url_env, DEFAULT_POSTGRESQL_URL_ENV
+        )
         super().__init__(_PostgreSqlDatabase(driver, connection_url))
 
 
@@ -249,10 +251,7 @@ def _mysql_url_options(query: str) -> dict[str, str]:
     return options
 
 
-def _move_mysql_options(
-    source: dict[str, str],
-    destination: dict[str, object],
-) -> None:
+def _move_mysql_options(source: dict[str, str], destination: dict[str, object]) -> None:
     for name in ("unix_socket", "ssl_ca", "ssl_cert", "ssl_key"):
         if name in source:
             destination[name] = source.pop(name)
@@ -270,11 +269,7 @@ def _move_mysql_options(
             destination[name] = value == "true"
 
 
-def read_storage_connection_url(
-    backend: str,
-    url_env: str | None,
-    default_url_env: str,
-) -> str:
+def read_storage_connection_url(backend: str, url_env: str | None, default_url_env: str) -> str:
     environment_name = clean_storage_text(url_env or default_url_env, "url_env")
     connection_url = os.environ.get(environment_name, "").strip()
     if not connection_url:
@@ -282,11 +277,7 @@ def read_storage_connection_url(
     return connection_url
 
 
-def remote_database_location(
-    connection_url: str,
-    backend: str,
-    allowed_schemes: set[str],
-) -> str:
+def remote_database_location(connection_url: str, backend: str, allowed_schemes: set[str]) -> str:
     parsed = urlsplit(connection_url)
     if parsed.scheme.lower() not in allowed_schemes:
         expected = ", ".join(sorted(allowed_schemes))

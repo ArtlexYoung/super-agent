@@ -20,11 +20,7 @@ from core.provider import (
 )
 from core.provider import ProviderPool
 from core.models import Conversation
-from skill.handlers.models import (
-    ModelProfile,
-    model_profile_is_ready,
-    model_profile_supports,
-)
+from skill.handlers.models import ModelProfile, model_profile_is_ready, model_profile_supports
 
 if TYPE_CHECKING:
     from core.records.store import EventStore, StorageEvent
@@ -107,11 +103,10 @@ def assign_model_for_task(
         raise ValueError(f"no configured model supports required features: {features}")
     observed = {(item.profile_key, item.purpose): item for item in usage}
     clean_purpose = purpose.strip().lower() or "auto"
-    assignments = [_score_model_candidate(profile, clean_purpose, required, observed) for profile in candidates]
-    return max(
-        assignments,
-        key=lambda item: (item.score, -profiles.index(item.profile)),
-    )
+    assignments = [
+        _score_model_candidate(profile, clean_purpose, required, observed) for profile in candidates
+    ]
+    return max(assignments, key=lambda item: (item.score, -profiles.index(item.profile)))
 
 
 @dataclass
@@ -139,31 +134,21 @@ class ModelCallContext:
 class ModelCaller:
     """Call configured models and record their exact outcomes."""
 
-    def __init__(
-        self,
-        model_profiles: list[ModelProfile],
-        provider_pool: ProviderPool,
-    ) -> None:
+    def __init__(self, model_profiles: list[ModelProfile], provider_pool: ProviderPool) -> None:
         self.model_profiles = list(model_profiles)
         self.provider_pool = provider_pool
 
     def select_task_model(
-        self,
-        purpose: str,
-        required_features: tuple[str, ...],
-        store: EventStore | None,
+        self, purpose: str, required_features: tuple[str, ...], store: EventStore | None
     ) -> SelectedModel:
         usage = [] if store is None else list_model_usage_stats(store, purpose)
-        assignment = assign_model_for_task(
-            self.model_profiles,
-            purpose,
-            required_features,
-            usage,
-        )
+        assignment = assign_model_for_task(self.model_profiles, purpose, required_features, usage)
         profile = assignment.profile
         if not model_profile_is_ready(profile, self.provider_pool.environment):
             requirement = profile.connection.api_key_env or "provider connection"
-            raise RuntimeError(f"selected model {profile.key} is not ready; configure {requirement}")
+            raise RuntimeError(
+                f"selected model {profile.key} is not ready; configure {requirement}"
+            )
         return SelectedModel(
             profile=profile,
             selected_by="task_evidence",
@@ -173,16 +158,13 @@ class ModelCaller:
 
     def select_default_model(self) -> SelectedModel:
         profile = next(
-            (item for item in self.model_profiles if item.default),
-            self.model_profiles[0],
+            (item for item in self.model_profiles if item.default), self.model_profiles[0]
         )
         if not model_profile_is_ready(profile, self.provider_pool.environment):
             requirement = profile.connection.api_key_env or "provider connection"
             raise RuntimeError(f"default model {profile.key} is not ready; configure {requirement}")
         return SelectedModel(
-            profile=profile,
-            selected_by="default",
-            reason="configured default model",
+            profile=profile, selected_by="default", reason="configured default model"
         )
 
     def create_text_model(
@@ -213,21 +195,14 @@ class ModelCaller:
     ) -> ModelResponse:
         provider = self._prepare_model_call(decision, context)
         return call_chat_model(
-            _to_provider_call(decision, context, messages, tools),
-            provider,
-            context.record_event,
+            _to_provider_call(decision, context, messages, tools), provider, context.record_event
         )
 
     def _prepare_model_call(
-        self,
-        decision: SelectedModel,
-        context: ModelCallContext,
+        self, decision: SelectedModel, context: ModelCallContext
     ) -> ChatProvider:
         profile = decision.profile
-        provider = self.provider_pool.get_chat_provider(
-            profile.key,
-            profile.connection,
-        )
+        provider = self.provider_pool.get_chat_provider(profile.key, profile.connection)
         if context.record_model_used is not None:
             context.record_model_used(profile)
         return provider
@@ -244,9 +219,7 @@ class _TextModel:
 
     def send_messages(self, messages: list[Message]) -> str:
         response = self.model_caller.call_model(
-            messages,
-            self.decision,
-            ModelCallContext(self.purpose, self._record_event),
+            messages, self.decision, ModelCallContext(self.purpose, self._record_event)
         )
         return response.text
 
@@ -259,10 +232,7 @@ class _TextModel:
 
 
 def list_model_usage_stats(
-    store: EventStore,
-    purpose: str | None = None,
-    *,
-    events: list[StorageEvent] | None = None,
+    store: EventStore, purpose: str | None = None, *, events: list[StorageEvent] | None = None
 ) -> list[ModelUsageStats]:
     selected_events = store.read_events(snapshot=events)
     implicit_feedback: dict[str, float] = {}
@@ -282,10 +252,7 @@ def list_model_usage_stats(
         event_purpose = str(event.data.get("purpose", "answer")).strip().lower()
         if not profile_key or (selected_purpose and event_purpose != selected_purpose):
             continue
-        accumulator = accumulators.setdefault(
-            (profile_key, event_purpose),
-            _StatsAccumulator(),
-        )
+        accumulator = accumulators.setdefault((profile_key, event_purpose), _StatsAccumulator())
         success = event.event_type == "model.call.completed"
         accumulator.calls += 1
         accumulator.successes += int(success)
@@ -295,7 +262,10 @@ def list_model_usage_stats(
         accumulator.output_tokens += _nonnegative_number(event.data.get("output_tokens"))
         accumulator.cost += _nonnegative_number(event.data.get("estimated_cost"))
     return sorted(
-        (_finish_stats(profile_key, event_purpose, accumulator) for (profile_key, event_purpose), accumulator in accumulators.items()),
+        (
+            _finish_stats(profile_key, event_purpose, accumulator)
+            for (profile_key, event_purpose), accumulator in accumulators.items()
+        ),
         key=lambda item: (item.purpose, item.profile_key),
     )
 
@@ -311,14 +281,19 @@ def infer_conversation_feedback_with_model(
         (
             index
             for index in range(len(conversation.messages) - 1, -1, -1)
-            if conversation.messages[index].role == "assistant" and conversation.messages[index].run_id
+            if conversation.messages[index].role == "assistant"
+            and conversation.messages[index].run_id
         ),
         None,
     )
     if previous_assistant_index is None:
         return None
     previous_user_prompt = next(
-        (message.content for message in reversed(conversation.messages[:previous_assistant_index]) if message.role == "user"),
+        (
+            message.content
+            for message in reversed(conversation.messages[:previous_assistant_index])
+            if message.role == "user"
+        ),
         "",
     )
     previous_response = conversation.messages[previous_assistant_index].content
@@ -334,22 +309,20 @@ def infer_conversation_feedback_with_model(
     }
     text = send_messages(
         [
-            {
-                "role": "system",
-                "content": policy,
-            },
-            {
-                "role": "user",
-                "content": json.dumps(payload, ensure_ascii=False, sort_keys=True),
-            },
+            {"role": "system", "content": policy},
+            {"role": "user", "content": json.dumps(payload, ensure_ascii=False, sort_keys=True)},
         ]
     )
     try:
         value = json.loads(text)
     except json.JSONDecodeError as error:
-        raise ValueError(f"conversation feedback response must be one JSON object: {error}") from error
+        raise ValueError(
+            f"conversation feedback response must be one JSON object: {error}"
+        ) from error
     if not isinstance(value, dict) or set(value) != {"is_feedback", "score", "reason"}:
-        raise ValueError("conversation feedback response fields must be is_feedback, score, and reason")
+        raise ValueError(
+            "conversation feedback response fields must be is_feedback, score, and reason"
+        )
     is_feedback = value["is_feedback"]
     if not isinstance(is_feedback, bool):
         raise TypeError("conversation feedback is_feedback must be a boolean")
@@ -377,9 +350,7 @@ def _required_feedback_instructions(value: str) -> str:
 
 
 def _finish_stats(
-    profile_key: str,
-    purpose: str,
-    accumulator: _StatsAccumulator,
+    profile_key: str, purpose: str, accumulator: _StatsAccumulator
 ) -> ModelUsageStats:
     calls = accumulator.calls
     return ModelUsageStats(

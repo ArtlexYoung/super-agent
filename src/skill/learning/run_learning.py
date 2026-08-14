@@ -42,11 +42,7 @@ class _RunLearningView:
     model_usage: list[dict[str, object]]
 
 
-def learn_from_run(
-    store: EventStore,
-    run_id: str,
-    rules: FreshnessRules,
-) -> RunLearningResult:
+def learn_from_run(store: EventStore, run_id: str, rules: FreshnessRules) -> RunLearningResult:
     """Record observations for one completed run without changing any Skill."""
     events = store.read_run_events(run_id, include_sensitive=True)
     completed = _find_event(events, LEARNING_COMPLETED_EVENT)
@@ -63,10 +59,7 @@ def learn_from_run(
         completed = store.append_run_event(
             identity,
             LEARNING_COMPLETED_EVENT,
-            {
-                "schema_version": 3,
-                "evaluation_record_ids": record_ids,
-            },
+            {"schema_version": 3, "evaluation_record_ids": record_ids},
         )
     except Exception as error:
         try:
@@ -81,23 +74,22 @@ def learn_from_run(
                 },
             )
         except Exception as recording_error:
-            error.add_note(f"Could not record learning failure: {type(recording_error).__name__}: {recording_error}")
+            error.add_note(
+                f"Could not record learning failure: {type(recording_error).__name__}: {recording_error}"
+            )
         raise
     return _result_from_completed_event(
-        store,
-        completed,
-        store.read_run_events(run_id, include_sensitive=True),
-        rules,
+        store, completed, store.read_run_events(run_id, include_sensitive=True), rules
     )
 
 
 def _record_run_evaluations(
-    store: EventStore,
-    terminal: RunEvent,
-    revisions: list[SkillRevision],
-    result: EvaluationResult,
+    store: EventStore, terminal: RunEvent, revisions: list[SkillRevision], result: EvaluationResult
 ) -> list[EvaluationRecord]:
-    existing = {record.record_id: record for record in read_evaluation_records(store, source_type="agent_run")}
+    existing = {
+        record.record_id: record
+        for record in read_evaluation_records(store, source_type="agent_run")
+    }
     records: list[EvaluationRecord] = []
     pending: list[EvaluationRecord] = []
     for revision in revisions:
@@ -113,7 +105,11 @@ def _record_run_evaluations(
             existing[record.record_id] = record
             pending.append(record)
         else:
-            if (stored.revision, stored.source, stored.result) != (record.revision, record.source, record.result):
+            if (stored.revision, stored.source, stored.result) != (
+                record.revision,
+                record.source,
+                record.result,
+            ):
                 raise ValueError(f"run evaluation record conflicts: {record.record_id}")
         records.append(existing[record.record_id])
     append_evaluation_records(store, pending)
@@ -129,11 +125,7 @@ def _project_run_learning(
     record_ids: list[str] | None = None,
 ) -> _RunLearningView:
     stored_events = store.read_events()
-    all_records = read_evaluation_records(
-        store,
-        source_type="agent_run",
-        events=stored_events,
-    )
+    all_records = read_evaluation_records(store, source_type="agent_run", events=stored_events)
     if record_ids is None:
         records = [record for record in all_records if record.source.run_id == run_id]
     else:
@@ -164,9 +156,7 @@ def _project_run_learning(
     )
 
 
-def _read_learning_evidence(
-    terminal: RunEvent,
-) -> tuple[list[SkillRevision], EvaluationResult]:
+def _read_learning_evidence(terminal: RunEvent) -> tuple[list[SkillRevision], EvaluationResult]:
     evidence = terminal.data.get("learning_evidence")
     expected = {"schema_version", "result", "skill_revisions"}
     if not isinstance(evidence, dict) or set(evidence) != expected:
@@ -183,21 +173,14 @@ def _read_learning_evidence(
 
 
 def _result_from_completed_event(
-    store: EventStore,
-    completed: RunEvent,
-    events: list[RunEvent],
-    rules: FreshnessRules,
+    store: EventStore, completed: RunEvent, events: list[RunEvent], rules: FreshnessRules
 ) -> RunLearningResult:
     expected = {"schema_version", "evaluation_record_ids"}
     if set(completed.data) != expected or completed.data.get("schema_version") != 3:
         raise ValueError("run learning completion fields do not match schema v3")
     record_ids = _string_list(completed.data.get("evaluation_record_ids"), "evaluation_record_ids")
     view = _project_run_learning(
-        store,
-        completed.run_id,
-        events,
-        rules=rules,
-        record_ids=record_ids,
+        store, completed.run_id, events, rules=rules, record_ids=record_ids
     )
     return RunLearningResult(
         run_id=completed.run_id,
@@ -238,11 +221,7 @@ def _find_event(events: list[RunEvent], event_type: str) -> RunEvent | None:
     return next((item for item in reversed(events) if item.event_type == event_type), None)
 
 
-def _evaluation_record_id(
-    store: EventStore,
-    run_id: str,
-    revision: SkillRevision,
-) -> str:
+def _evaluation_record_id(store: EventStore, run_id: str, revision: SkillRevision) -> str:
     digest = hashlib.sha256()
     for value in (store.user_id, store.agent_name, run_id, *revision.identity):
         digest.update(value.encode("utf-8"))
@@ -287,26 +266,13 @@ def project_model_calls(events: list[RunEvent]) -> list[dict[str, object]]:
     calls: list[dict[str, object]] = []
     for event in events:
         event_type = event.event_type
-        if event_type not in {
-            "model.call.selected",
-            "model.call.completed",
-            "model.call.failed",
-        }:
+        if event_type not in {"model.call.selected", "model.call.completed", "model.call.failed"}:
             continue
         data = dict(event.data)
         if event_type == "model.call.selected":
-            calls.append(
-                {
-                    "call_id": len(calls) + 1,
-                    "status": "selected",
-                    **data,
-                }
-            )
+            calls.append({"call_id": len(calls) + 1, "status": "selected", **data})
             continue
-        projected = next(
-            (call for call in reversed(calls) if call["status"] == "selected"),
-            None,
-        )
+        projected = next((call for call in reversed(calls) if call["status"] == "selected"), None)
         if projected is None:
             projected = {"call_id": len(calls) + 1}
             calls.append(projected)
@@ -318,10 +284,7 @@ def project_model_calls(events: list[RunEvent]) -> list[dict[str, object]]:
     return calls
 
 
-def _latest_event_data(
-    events: list[RunEvent],
-    event_type: str,
-) -> dict[str, object]:
+def _latest_event_data(events: list[RunEvent], event_type: str) -> dict[str, object]:
     for event in reversed(events):
         if event.event_type == event_type:
             return dict(event.data)
@@ -364,12 +327,7 @@ def review_run_evidence(
 ) -> ReviewReport:
     """Ask a reviewer about bounded evidence and persist only the report."""
     snapshot = store.read_run(run_id, include_sensitive=True)
-    page = disclosure.disclose_value(
-        "review",
-        run_id,
-        evidence,
-        stage="model-context",
-    )
+    page = disclosure.disclose_value("review", run_id, evidence, stage="model-context")
     messages = [
         {
             "role": "system",
@@ -380,21 +338,14 @@ def review_run_evidence(
                 "changes_requested, findings, and checks."
             ),
         },
-        {
-            "role": "user",
-            "content": format_disclosure_page_for_prompt(page),
-        },
+        {"role": "user", "content": format_disclosure_page_for_prompt(page)},
     ]
     try:
         report = parse_review_response(send_messages(messages))
     except Exception as error:
         _record_review_failure(store, snapshot, error)
         raise
-    store.append_run_event(
-        _identity_from_snapshot(snapshot),
-        "review.completed",
-        report.to_dict(),
-    )
+    store.append_run_event(_identity_from_snapshot(snapshot), "review.completed", report.to_dict())
     return report
 
 
@@ -446,15 +397,11 @@ def _identity_from_snapshot(snapshot) -> RunIdentity:
 
 def _record_review_failure(store: EventStore, snapshot, error: Exception) -> None:
     store.append_run_event(
-        _identity_from_snapshot(snapshot),
-        "review.failed",
-        {"error_type": type(error).__name__},
+        _identity_from_snapshot(snapshot), "review.failed", {"error_type": type(error).__name__}
     )
 
 
-def skill_change_report_to_dict(
-    report: "SkillChangeReport",
-) -> dict[str, object]:
+def skill_change_report_to_dict(report: "SkillChangeReport") -> dict[str, object]:
     """Serialize one comparative Skill report without model output."""
     return {"schema_version": 1, **asdict(report)}
 
@@ -463,7 +410,9 @@ def read_skill_change_report(data: dict[str, object]) -> "SkillChangeReport":
     from skill.learning.update import SkillChangeCaseResult, SkillChangeReport
 
     results = [SkillChangeCaseResult(**item) for item in cast(list[dict], data["results"])]
-    baseline = [SkillChangeCaseResult(**item) for item in cast(list[dict], data["baseline_results"])]
+    baseline = [
+        SkillChangeCaseResult(**item) for item in cast(list[dict], data["baseline_results"])
+    ]
     return SkillChangeReport(
         str(data["report_id"]),
         str(data["change_id"]),

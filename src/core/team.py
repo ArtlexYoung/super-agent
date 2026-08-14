@@ -6,11 +6,7 @@ import math
 from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING, Any, Protocol
 
-from core.models import (
-    SubAgentResult,
-    SubagentCallbacks,
-    SubagentRecordOptions,
-)
+from core.models import SubAgentResult, SubagentCallbacks, SubagentRecordOptions
 from skill.handlers.models import model_dispatch_to_dict
 
 if TYPE_CHECKING:
@@ -77,7 +73,9 @@ class AgentTeam:
         clean_purpose = purpose.strip().lower()
         if not clean_purpose:
             raise ValueError("subagent purpose cannot be empty")
-        clean_features = tuple(dict.fromkeys(item.strip().lower() for item in required_features if item.strip()))
+        clean_features = tuple(
+            dict.fromkeys(item.strip().lower() for item in required_features if item.strip())
+        )
         if not clean_features:
             raise ValueError("subagent required_features cannot be empty")
         if isinstance(weight, bool) or not isinstance(weight, int | float):
@@ -105,11 +103,7 @@ class AgentTeam:
             warnings.append(f"Agent chain has cycle: {' -> '.join(chain)}")
         max_depth = self.owner.config.agent.max_agent_chain_depth
         if max_depth is not None:
-            longest_chain = find_longest_agent_chain(
-                self.owner,
-                root_chain,
-                set(),
-            )
+            longest_chain = find_longest_agent_chain(self.owner, root_chain, set())
             if len(longest_chain) > max_depth:
                 warnings.append(
                     "Agent chain depth is "
@@ -120,8 +114,7 @@ class AgentTeam:
 
     def create_callbacks(self) -> SubagentCallbacks:
         return SubagentCallbacks(
-            list_subagents=self.list_for_model,
-            run_named_subagent=self.run_named_for_model,
+            list_subagents=self.list_for_model, run_named_subagent=self.run_named_for_model
         )
 
     def list_for_model(self) -> list[dict[str, object]]:
@@ -134,7 +127,9 @@ class AgentTeam:
                 "required_features": list(subagent.required_features),
                 "agent_name": subagent.agent.config.agent.name,
                 "weight": subagent.weight,
-                "models": [model_dispatch_to_dict(profile) for profile in subagent.agent.model_profiles],
+                "models": [
+                    model_dispatch_to_dict(profile) for profile in subagent.agent.model_profiles
+                ],
             }
             for subagent in self._subagents
         ]
@@ -150,15 +145,7 @@ class AgentTeam:
         subagent = next((item for item in self._subagents if item.name == name), None)
         if subagent is None:
             raise KeyError(f"subagent not found: {name}")
-        return asdict(
-            self._run_subagent(
-                subagent,
-                prompt,
-                run,
-                record_options,
-                shared_context,
-            )
-        )
+        return asdict(self._run_subagent(subagent, prompt, run, record_options, shared_context))
 
     def _make_next_name(self) -> str:
         index = 1
@@ -207,41 +194,23 @@ class AgentTeam:
         )
         parent_run.record_event(
             "subagent.completed",
-            {
-                "name": subagent.name,
-                "run_id": result.run_id,
-                "record_mode": record_options.mode,
-            },
+            {"name": subagent.name, "run_id": result.run_id, "record_mode": record_options.mode},
         )
         return subagent_result
 
 
-def find_cycle_chains(
-    agent: TeamAgent,
-    chain: list[str],
-    seen_ids: set[int],
-) -> list[list[str]]:
+def find_cycle_chains(agent: TeamAgent, chain: list[str], seen_ids: set[int]) -> list[list[str]]:
     agent_id = id(agent)
     if agent_id in seen_ids:
         return [chain]
     next_seen_ids = seen_ids | {agent_id}
     cycles: list[list[str]] = []
     for subagent in agent.subagents:
-        cycles.extend(
-            find_cycle_chains(
-                subagent.agent,
-                chain + [subagent.name],
-                next_seen_ids,
-            )
-        )
+        cycles.extend(find_cycle_chains(subagent.agent, chain + [subagent.name], next_seen_ids))
     return cycles
 
 
-def find_longest_agent_chain(
-    agent: TeamAgent,
-    chain: list[str],
-    seen_ids: set[int],
-) -> list[str]:
+def find_longest_agent_chain(agent: TeamAgent, chain: list[str], seen_ids: set[int]) -> list[str]:
     agent_id = id(agent)
     if agent_id in seen_ids:
         return chain
@@ -249,9 +218,7 @@ def find_longest_agent_chain(
     next_seen_ids = seen_ids | {agent_id}
     for subagent in agent.subagents:
         child_chain = find_longest_agent_chain(
-            subagent.agent,
-            chain + [subagent.name],
-            next_seen_ids,
+            subagent.agent, chain + [subagent.name], next_seen_ids
         )
         if len(child_chain) > len(longest):
             longest = child_chain

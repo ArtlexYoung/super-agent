@@ -60,10 +60,7 @@ class AuditPolicy:
         return None
 
     def redact_event_data(
-        self,
-        stream_type: str,
-        event_type: str,
-        data: dict[str, object],
+        self, stream_type: str, event_type: str, data: dict[str, object]
     ) -> dict[str, object]:
         """Return a redacted copy while leaving the canonical event unchanged."""
         prepared = dict(data)
@@ -75,10 +72,7 @@ class AuditPolicy:
         return prepared
 
     def compact_event_data(
-        self,
-        event_type: str,
-        data: dict[str, object],
-        options: "SubagentRecordOptions",
+        self, event_type: str, data: dict[str, object], options: "SubagentRecordOptions"
     ) -> dict[str, object]:
         """Remove detailed content before a summary child event is persisted."""
         if not options.is_summary:
@@ -96,12 +90,7 @@ class AuditPolicy:
         """Build a dynamically redacted view of canonical storage events."""
         return [
             replace(
-                event,
-                data=self.redact_event_data(
-                    event.stream_type,
-                    event.event_type,
-                    event.data,
-                ),
+                event, data=self.redact_event_data(event.stream_type, event.event_type, event.data)
             )
             for event in events
         ]
@@ -116,7 +105,10 @@ class AuditPolicy:
     ) -> AuditPruneReport:
         """Preview or explicitly delete expired detailed and critical events."""
         current_time = _normalise_now(now)
-        reports = [_prune_one_user(backend, user_id, self, current_time, apply) for user_id in _unique_user_ids(user_ids)]
+        reports = [
+            _prune_one_user(backend, user_id, self, current_time, apply)
+            for user_id in _unique_user_ids(user_ids)
+        ]
         return AuditPruneReport(
             applied=apply,
             now=format_utc(current_time),
@@ -127,71 +119,48 @@ class AuditPolicy:
 
 
 _PROTECTED_EVENT_RULE = AuditEventRule(PROTECTED)
+_DETAILED_EVENTS = frozenset(
+    """
+model.call.selected model.call.completed model.call.failed model.turn.completed model.used
+task.started task.scheduled task.completed task.plan.set task.plan.step.updated
+tool.requested tool.completed tool.failed skills.disclosed skills.selected content.disclosed
+subagent.started subagent.completed runtime.subscriber.failed
+agent_task.created agent_task.queued agent_task.dispatched agent_task.running agent_task.completed
+agent_task.failed agent_task.cancelled agent_task.wait.started agent_task.wait.woke
+agent_task.fallback_selected agent_task.retry_scheduled agent_task.retry_dispatched
+agent_task.circuit_opened agent_task.circuit_half_open agent_task.circuit_closed
+agent_group.created agent_group.reduced agent_group.budget_exceeded agent_group.completed
+agent_group.wait.started agent_group.wait.woke
+""".split()
+)
+_CRITICAL_EVENTS = frozenset(
+    """
+run.started run.completed run.failed task.feedback.recorded
+action.checked action.prepared action.applying action.applied action.blocked action.failed
+learning.completed learning.failed skill_change.proposed skill_change.tested skill_change.applied
+skill_change.undone model_skill.saved model_skill.removed skill_package.installed
+skill_package.updated skill_package.removed audit.pruned review.completed review.failed
+""".split()
+)
+_CONTENT_FIELDS = {
+    "model.call.failed": ("message",),
+    "model.turn.completed": ("text",),
+    "task.completed": ("text",),
+    "tool.requested": ("arguments",),
+    "tool.completed": ("result",),
+    "tool.failed": ("message",),
+    "subagent.started": ("prompt",),
+    "runtime.subscriber.failed": ("message",),
+    "run.started": ("prompt",),
+    "run.failed": ("message",),
+    "action.failed": ("message",),
+    "learning.failed": ("message",),
+    "review.failed": ("message",),
+}
 _EVENT_RULES = {
-    "model.call.selected": AuditEventRule(DETAILED),
-    "model.call.completed": AuditEventRule(DETAILED),
-    "model.call.failed": AuditEventRule(DETAILED, ("message",)),
-    "model.turn.completed": AuditEventRule(DETAILED, ("text",)),
-    "model.used": AuditEventRule(DETAILED),
-    "task.started": AuditEventRule(DETAILED),
-    "task.scheduled": AuditEventRule(DETAILED),
-    "task.completed": AuditEventRule(DETAILED, ("text",)),
-    "tool.requested": AuditEventRule(DETAILED, ("arguments",)),
-    "tool.completed": AuditEventRule(DETAILED, ("result",)),
-    "tool.failed": AuditEventRule(DETAILED, ("message",)),
-    "skills.disclosed": AuditEventRule(DETAILED),
-    "skills.selected": AuditEventRule(DETAILED),
-    "content.disclosed": AuditEventRule(DETAILED),
-    "subagent.started": AuditEventRule(DETAILED, ("prompt",)),
-    "subagent.completed": AuditEventRule(DETAILED),
-    "runtime.subscriber.failed": AuditEventRule(DETAILED, ("message",)),
-    "task.plan.set": AuditEventRule(DETAILED),
-    "task.plan.step.updated": AuditEventRule(DETAILED),
-    "agent_task.created": AuditEventRule(DETAILED),
-    "agent_task.queued": AuditEventRule(DETAILED),
-    "agent_task.dispatched": AuditEventRule(DETAILED),
-    "agent_task.running": AuditEventRule(DETAILED),
-    "agent_task.completed": AuditEventRule(DETAILED),
-    "agent_task.failed": AuditEventRule(DETAILED),
-    "agent_task.cancelled": AuditEventRule(DETAILED),
-    "agent_task.wait.started": AuditEventRule(DETAILED),
-    "agent_task.wait.woke": AuditEventRule(DETAILED),
-    "agent_task.fallback_selected": AuditEventRule(DETAILED),
-    "agent_task.retry_scheduled": AuditEventRule(DETAILED),
-    "agent_task.retry_dispatched": AuditEventRule(DETAILED),
-    "agent_task.circuit_opened": AuditEventRule(DETAILED),
-    "agent_task.circuit_half_open": AuditEventRule(DETAILED),
-    "agent_task.circuit_closed": AuditEventRule(DETAILED),
-    "agent_group.created": AuditEventRule(DETAILED),
-    "agent_group.reduced": AuditEventRule(DETAILED),
-    "agent_group.budget_exceeded": AuditEventRule(DETAILED),
-    "agent_group.completed": AuditEventRule(DETAILED),
-    "agent_group.wait.started": AuditEventRule(DETAILED),
-    "agent_group.wait.woke": AuditEventRule(DETAILED),
-    "run.started": AuditEventRule(CRITICAL, ("prompt",)),
-    "run.completed": AuditEventRule(CRITICAL),
-    "run.failed": AuditEventRule(CRITICAL, ("message",)),
-    "task.feedback.recorded": AuditEventRule(CRITICAL),
-    "action.checked": AuditEventRule(CRITICAL),
-    "action.prepared": AuditEventRule(CRITICAL),
-    "action.applying": AuditEventRule(CRITICAL),
-    "action.applied": AuditEventRule(CRITICAL),
-    "action.blocked": AuditEventRule(CRITICAL),
-    "action.failed": AuditEventRule(CRITICAL, ("message",)),
-    "learning.completed": AuditEventRule(CRITICAL),
-    "learning.failed": AuditEventRule(CRITICAL, ("message",)),
-    "skill_change.proposed": AuditEventRule(CRITICAL),
-    "skill_change.tested": AuditEventRule(CRITICAL),
-    "skill_change.applied": AuditEventRule(CRITICAL),
-    "skill_change.undone": AuditEventRule(CRITICAL),
-    "model_skill.saved": AuditEventRule(CRITICAL),
-    "model_skill.removed": AuditEventRule(CRITICAL),
-    "skill_package.installed": AuditEventRule(CRITICAL),
-    "skill_package.updated": AuditEventRule(CRITICAL),
-    "skill_package.removed": AuditEventRule(CRITICAL),
-    "audit.pruned": AuditEventRule(CRITICAL),
-    "review.completed": AuditEventRule(CRITICAL),
-    "review.failed": AuditEventRule(CRITICAL),
+    name: AuditEventRule(retention, _CONTENT_FIELDS.get(name, ()))
+    for retention, names in ((DETAILED, _DETAILED_EVENTS), (CRITICAL, _CRITICAL_EVENTS))
+    for name in names
 }
 
 
@@ -217,8 +186,7 @@ class AuditPruneReport:
 
 
 def compact_subagent_result(
-    value: dict[str, object],
-    options: "SubagentRecordOptions",
+    value: dict[str, object], options: "SubagentRecordOptions"
 ) -> dict[str, object]:
     """Keep a bounded child result while preserving evidence for its source."""
     if not isinstance(value, dict):
@@ -233,7 +201,9 @@ def compact_subagent_result(
         compacted.update(
             subagent_results_count=len(nested),
             subagent_results=[
-                compact_subagent_result(item, options) for item in nested[: options.nested_results] if isinstance(item, dict)
+                compact_subagent_result(item, options)
+                for item in nested[: options.nested_results]
+                if isinstance(item, dict)
             ],
             subagent_results_omitted=max(0, len(nested) - options.nested_results),
         )
@@ -244,8 +214,7 @@ def compact_subagent_result(
         if "prompt" in compacted:
             prompt_digest = _content_digest(compacted.pop("prompt"))
             compacted.update(
-                prompt_sha256=prompt_digest["sha256"],
-                prompt_chars=prompt_digest["characters"],
+                prompt_sha256=prompt_digest["sha256"], prompt_chars=prompt_digest["characters"]
             )
         if "text" in compacted:
             text = str(compacted["text"])
@@ -266,11 +235,7 @@ def compact_subagent_result(
 
 
 def _prune_one_user(
-    backend: StorageBackend,
-    user_id: str,
-    policy: AuditPolicy,
-    now: datetime,
-    apply: bool,
+    backend: StorageBackend, user_id: str, policy: AuditPolicy, now: datetime, apply: bool
 ) -> AuditPruneUserReport:
     from core.records.store import StorageEventQuery
 
@@ -303,18 +268,11 @@ def _prune_one_user(
     if apply and candidates:
         deleted = backend.delete_events(
             StorageEventQuery(
-                user_id=user_id,
-                event_ids=tuple(event.event_id for event in candidates),
+                user_id=user_id, event_ids=tuple(event.event_id for event in candidates)
             )
         )
         if deleted:
-            maintenance_events = _record_prune_events(
-                backend,
-                user_id,
-                candidates,
-                policy,
-                now,
-            )
+            maintenance_events = _record_prune_events(backend, user_id, candidates, policy, now)
     return AuditPruneUserReport(
         user_id=user_id,
         detailed_candidates=detailed_count,
@@ -364,11 +322,7 @@ def _content_digest(value: object) -> dict[str, object]:
     else:
         text = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     encoded = text.encode("utf-8")
-    return {
-        "sha256": sha256(encoded).hexdigest(),
-        "bytes": len(encoded),
-        "characters": len(text),
-    }
+    return {"sha256": sha256(encoded).hexdigest(), "bytes": len(encoded), "characters": len(text)}
 
 
 def _unique_user_ids(user_ids: list[str]) -> list[str]:

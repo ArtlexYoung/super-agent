@@ -60,13 +60,20 @@ class DisclosureContextBudget:
         limit: int = DEFAULT_INLINE_CHARS,
         cache_path: Path | None = None,
     ) -> DisclosurePage:
-        if isinstance(limit, bool) or not isinstance(limit, int) or limit <= 0 or limit > MAX_PAGE_CHARS:
+        if (
+            isinstance(limit, bool)
+            or not isinstance(limit, int)
+            or limit <= 0
+            or limit > MAX_PAGE_CHARS
+        ):
             raise ValueError(f"disclosure limit must be between 1 and {MAX_PAGE_CHARS} characters")
         selected_limit = limit
         if stage in CONTEXT_BUDGET_STAGES:
             selected_limit = min(limit, max(0, self.budget_chars - self.used_chars))
         page = (
-            create_reference_disclosure_page(reference, kind, name, content, offset=offset, cache_path=cache_path)
+            create_reference_disclosure_page(
+                reference, kind, name, content, offset=offset, cache_path=cache_path
+            )
             if selected_limit == 0
             else create_disclosure_page(
                 reference,
@@ -104,7 +111,12 @@ def create_disclosure_page(
     _require_content_size(content)
     if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
         raise ValueError("disclosure offset must be a non-negative integer")
-    if isinstance(limit, bool) or not isinstance(limit, int) or limit <= 0 or limit > MAX_PAGE_CHARS:
+    if (
+        isinstance(limit, bool)
+        or not isinstance(limit, int)
+        or limit <= 0
+        or limit > MAX_PAGE_CHARS
+    ):
         raise ValueError(f"disclosure limit must be between 1 and {MAX_PAGE_CHARS} characters")
     end = min(len(content), offset + limit)
     return DisclosurePage(
@@ -178,7 +190,9 @@ def _require_content_size(content: str) -> None:
     if not isinstance(content, str):
         raise TypeError("disclosure content must be a string")
     if len(content) > MAX_CONTENT_CHARS:
-        raise ValueError(f"disclosure content exceeds the explicit {MAX_CONTENT_CHARS} character limit")
+        raise ValueError(
+            f"disclosure content exceeds the explicit {MAX_CONTENT_CHARS} character limit"
+        )
 
 
 @dataclass(frozen=True)
@@ -258,7 +272,13 @@ def _read_source_group(
     higher_keys = set(sources)
     disabled: dict[str, SkillReference] = {}
     issues = []
-    paths = sorted(path for root in roots if root.expanduser().is_dir() for path in root.expanduser().rglob("skill.toml") if path.is_file())
+    paths = sorted(
+        path
+        for root in roots
+        if root.expanduser().is_dir()
+        for path in root.expanduser().rglob("skill.toml")
+        if path.is_file()
+    )
     for path in paths:
         try:
             source = _read_skill_source(path, source_layer)
@@ -269,7 +289,9 @@ def _read_source_group(
                 continue
             elif reference.key in sources:
                 previous = sources[reference.key]
-                raise ValueError(f"duplicate skill key {reference.key}: {previous.manifest_path} and {path}")
+                raise ValueError(
+                    f"duplicate skill key {reference.key}: {previous.manifest_path} and {path}"
+                )
             else:
                 sources[reference.key] = source
         except (OSError, ValueError, tomllib.TOMLDecodeError) as error:
@@ -292,7 +314,9 @@ def _read_skill_source(path: Path, source_layer: str) -> SkillSource:
         root = manifest.path.resolve()
         instructions = (manifest.path / manifest.entry.instructions).resolve()
         if instructions != root and root not in instructions.parents:
-            raise ValueError(f"skill instruction path leaves skill directory: {manifest.entry.instructions}")
+            raise ValueError(
+                f"skill instruction path leaves skill directory: {manifest.entry.instructions}"
+            )
     configuration = data.get("configuration", {})
     if not isinstance(configuration, dict):
         raise ValueError(f"skill configuration must be a TOML table: {path}")
@@ -349,13 +373,11 @@ class SkillIndex:
     _entries_by_key: dict[str, SkillIndexEntry] = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "_entries_by_key", {entry.reference.key: entry for entry in self.entries})
+        object.__setattr__(
+            self, "_entries_by_key", {entry.reference.key: entry for entry in self.entries}
+        )
 
-    def find_skill(
-        self,
-        name: str,
-        expected_type: str | None = None,
-    ) -> SkillIndexEntry | None:
+    def find_skill(self, name: str, expected_type: str | None = None) -> SkillIndexEntry | None:
         clean_name = _clean_name(name)
         if expected_type is not None:
             return self._entries_by_key.get(f"{expected_type.strip().lower()}:{clean_name}")
@@ -366,11 +388,7 @@ class SkillIndex:
             raise ValueError(f"ambiguous Skill name {clean_name}; use type:name")
         return matches[0] if matches else None
 
-    def require_skill(
-        self,
-        name: str,
-        expected_type: str | None = None,
-    ) -> SkillIndexEntry:
+    def require_skill(self, name: str, expected_type: str | None = None) -> SkillIndexEntry:
         entry = self.find_skill(name, expected_type)
         if entry is None:
             type_text = "" if expected_type is None else f"{expected_type}:"
@@ -378,14 +396,16 @@ class SkillIndex:
         return entry
 
     def select_one_configured_or_default_skill(
-        self,
-        skill_type: str,
-        configured_skills: list[str],
+        self, skill_type: str, configured_skills: list[str]
     ) -> SkillIndexEntry:
         """Select one support Skill without interpreting task text."""
         selected_type = _clean_name(skill_type)
         entries = [entry for entry in self.entries if entry.reference.skill_type == selected_type]
-        configured = [self.require_skill(value) for value in configured_skills if value.strip().lower().startswith(f"{selected_type}:")]
+        configured = [
+            self.require_skill(value)
+            for value in configured_skills
+            if value.strip().lower().startswith(f"{selected_type}:")
+        ]
         if len(configured) > 1:
             keys = ", ".join(entry.reference.key for entry in configured)
             raise ValueError(f"select only one configured {selected_type} Skill: {keys}")
@@ -403,7 +423,9 @@ class SkillIndex:
         if not defaults and len(entries) == 1:
             return entries[0]
         keys = ", ".join(entry.reference.key for entry in defaults or entries)
-        raise ValueError(f"select exactly one default {selected_type} Skill" + (f": {keys}" if keys else ""))
+        raise ValueError(
+            f"select exactly one default {selected_type} Skill" + (f": {keys}" if keys else "")
+        )
 
     def resolve_skill_dependencies(self, names: list[str]) -> list[SkillIndexEntry]:
         requested = sorted({_clean_name(name) for name in names})
@@ -421,12 +443,7 @@ class SkillIndex:
         """Describe available Skills and include cache paths only when recorded."""
         lines = ["Progressive skill disclosure:"]
         if self.index_path is not None and self.history_path is not None:
-            lines.extend(
-                [
-                    f"- index: {self.index_path}",
-                    f"- history: {self.history_path}",
-                ]
-            )
+            lines.extend([f"- index: {self.index_path}", f"- history: {self.history_path}"])
         for entry in self.entries:
             summary = f"- {entry.reference.key}: {entry.description}"
             if entry.manifest_cache_path is not None:
@@ -561,9 +578,7 @@ def _visit_entry(
 
 
 def _find_required_entry(
-    skill_type: str,
-    index: SkillIndex,
-    providers: dict[str, list[SkillIndexEntry]],
+    skill_type: str, index: SkillIndex, providers: dict[str, list[SkillIndexEntry]]
 ) -> SkillIndexEntry:
     try:
         named = index.find_skill(skill_type)

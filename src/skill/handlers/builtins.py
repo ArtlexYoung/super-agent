@@ -101,16 +101,17 @@ class WorkflowSkillHandler:
         opened.disclose_manifest()
         opened.disclose_configuration()
         opened.disclose_instructions()
-        return SkillUse(
-            task_policy=create_workflow_policy_from_skill(opened),
-        )
+        return SkillUse(task_policy=create_workflow_policy_from_skill(opened))
 
 
 class TaskSkillHandler:
     skill_type = "task"
     adds_model_context = True
 
-    def __init__(self, read_additions: Callable[[SkillContext], tuple[str, tuple[SkillTool, ...]]] | None = None) -> None:
+    def __init__(
+        self,
+        read_additions: Callable[[SkillContext], tuple[str, tuple[SkillTool, ...]]] | None = None,
+    ) -> None:
         self._read_additions = read_additions
 
     def handle_skill(self, context: SkillContext) -> SkillUse:
@@ -127,13 +128,15 @@ class TaskSkillHandler:
             model_context=Skill(manifest=opened.disclose_manifest(), instructions=instructions),
             tools=(*tools, *_create_task_plan_tools(context)),
             task_policy=policy,
-            start_session=(None if not policy.tools else lambda session: _start_task_session(policy.tools, session)),
+            start_session=(
+                None
+                if not policy.tools
+                else lambda session: _start_task_session(policy.tools, session)
+            ),
         )
 
 
-def create_builtin_skill_handlers(
-    mcp_servers: McpServers,
-) -> tuple[SkillHandler, ...]:
+def create_builtin_skill_handlers(mcp_servers: McpServers) -> tuple[SkillHandler, ...]:
     return (
         PromptSkillHandler(),
         McpSkillHandler(mcp_servers),
@@ -144,8 +147,7 @@ def create_builtin_skill_handlers(
 
 
 def _start_task_session(
-    tools: dict[str, dict[str, object]],
-    context: SkillSessionContext,
+    tools: dict[str, dict[str, object]], context: SkillSessionContext
 ) -> SkillSession:
     from skill.tasks.task_queue import create_task_queue
 
@@ -167,10 +169,7 @@ def create_memory_skill_contribution(memory: Memory) -> SkillUse:
         build_prompt_context=memory.build_prompt_instruction,
         tools=_create_memory_tools(memory),
         record_task_completed=memory.usage_habits.record_agent_run,
-        task_completed_action=SkillAction(
-            (ActionEffect.UPDATE,),
-            "memory:habits",
-        ),
+        task_completed_action=SkillAction((ActionEffect.UPDATE,), "memory:habits"),
     )
 
 
@@ -230,7 +229,10 @@ class _TaskPlan:
         if not all(isinstance(item, str) and item.strip() for item in value):
             raise ValueError("task plan steps must contain non-empty text")
         self.goal = goal
-        self.steps = [{"step": index, "text": item.strip(), "status": "pending", "evidence": ""} for index, item in enumerate(value, 1)]
+        self.steps = [
+            {"step": index, "text": item.strip(), "status": "pending", "evidence": ""}
+            for index, item in enumerate(value, 1)
+        ]
         self.record_event(
             "task.plan.set",
             {
@@ -250,7 +252,9 @@ class _TaskPlan:
             raise ValueError("task plan status is invalid")
         if not isinstance(evidence, str):
             raise ValueError("task plan evidence must be text")
-        if status == "in_progress" and any(item["status"] == "in_progress" and item["step"] != step for item in self.steps):
+        if status == "in_progress" and any(
+            item["status"] == "in_progress" and item["step"] != step for item in self.steps
+        ):
             raise ValueError("task plan can have only one in-progress step")
         self.steps[step - 1].update(status=status, evidence=evidence)
         self.record_event(
@@ -268,21 +272,14 @@ class _TaskPlan:
 
 
 def _create_memory_tools(memory: Memory) -> tuple[SkillTool, ...]:
-    scope = {
-        "type": "string",
-        "description": "Memory scope such as agent, user, or project.",
-    }
+    scope = {"type": "string", "description": "Memory scope such as agent, user, or project."}
     return (
         SkillTool(
             "list_long_term_memory",
             "List durable memory. Conversation messages are the short-term memory.",
             {"scope": scope},
             lambda arguments: _list_long_term_memory(memory, arguments),
-            action=SkillAction(
-                (ActionEffect.READ,),
-                "memory:long-term",
-                "scope",
-            ),
+            action=SkillAction((ActionEffect.READ,), "memory:long-term", "scope"),
             result_kind="memory",
         ),
         SkillTool(
@@ -290,11 +287,7 @@ def _create_memory_tools(memory: Memory) -> tuple[SkillTool, ...]:
             "Remember abstract, critical, stable, or habitual knowledge for future conversations.",
             {"text": {"type": "string"}, "scope": scope},
             lambda arguments: _remember_long_term(memory, arguments),
-            action=SkillAction(
-                (ActionEffect.CREATE,),
-                "memory:long-term",
-                "scope",
-            ),
+            action=SkillAction((ActionEffect.CREATE,), "memory:long-term", "scope"),
             required=("text",),
             result_kind="memory",
         ),
@@ -307,11 +300,7 @@ def _create_memory_tools(memory: Memory) -> tuple[SkillTool, ...]:
                 "limit": {"type": "integer", "minimum": 1},
             },
             lambda arguments: _recall_long_term_memory(memory, arguments),
-            action=SkillAction(
-                (ActionEffect.READ,),
-                "memory:long-term",
-                "scope",
-            ),
+            action=SkillAction((ActionEffect.READ,), "memory:long-term", "scope"),
             required=("query",),
             result_kind="memory",
         ),
@@ -324,26 +313,19 @@ def _create_memory_tools(memory: Memory) -> tuple[SkillTool, ...]:
                     "items": {
                         "type": "object",
                         "properties": {
-                            "operation": {
-                                "type": "string",
-                                "enum": ["merge", "replace", "forget"],
-                            },
-                            "item_ids": {
-                                "type": "array",
-                                "items": {"type": "string"},
-                            },
+                            "operation": {"type": "string", "enum": ["merge", "replace", "forget"]},
+                            "item_ids": {"type": "array", "items": {"type": "string"}},
                             "text": {"type": "string"},
                             "reason": {"type": "string"},
                         },
                         "required": ["operation", "item_ids"],
                         "additionalProperties": False,
                     },
-                },
+                }
             },
             lambda arguments: _organize_long_term_memory(memory, arguments),
             action=SkillAction(
-                (ActionEffect.CREATE, ActionEffect.UPDATE, ActionEffect.DELETE),
-                "memory:long-term",
+                (ActionEffect.CREATE, ActionEffect.UPDATE, ActionEffect.DELETE), "memory:long-term"
             ),
             required=("operations",),
             result_kind="memory",
@@ -353,41 +335,25 @@ def _create_memory_tools(memory: Memory) -> tuple[SkillTool, ...]:
             "Explicitly forget one durable memory item by ID.",
             {"item_id": {"type": "string"}, "reason": {"type": "string"}},
             lambda arguments: _forget_long_term_memory(memory, arguments),
-            action=SkillAction(
-                (ActionEffect.DELETE,),
-                "memory:long-term",
-                "item_id",
-            ),
+            action=SkillAction((ActionEffect.DELETE,), "memory:long-term", "item_id"),
             required=("item_id",),
             result_kind="memory",
         ),
     )
 
 
-def _list_long_term_memory(
-    memory: Memory,
-    arguments: dict[str, object],
-) -> dict[str, object]:
+def _list_long_term_memory(memory: Memory, arguments: dict[str, object]) -> dict[str, object]:
     scope = read_optional_tool_string(arguments, "scope")
     return {"items": [asdict(item) for item in memory.list_long_term(scope)]}
 
 
-def _remember_long_term(
-    memory: Memory,
-    arguments: dict[str, object],
-) -> dict[str, object]:
+def _remember_long_term(memory: Memory, arguments: dict[str, object]) -> dict[str, object]:
     scope = read_optional_tool_string(arguments, "scope") or memory.settings.default_scope
-    item = memory.remember_long_term(
-        read_required_tool_string(arguments, "text"),
-        scope=scope,
-    )
+    item = memory.remember_long_term(read_required_tool_string(arguments, "text"), scope=scope)
     return {"item": asdict(item)}
 
 
-def _recall_long_term_memory(
-    memory: Memory,
-    arguments: dict[str, object],
-) -> dict[str, object]:
+def _recall_long_term_memory(memory: Memory, arguments: dict[str, object]) -> dict[str, object]:
     scope = read_optional_tool_string(arguments, "scope") or memory.settings.default_scope
     items = memory.recall_long_term(
         read_required_tool_string(arguments, "query"),
@@ -397,10 +363,7 @@ def _recall_long_term_memory(
     return {"items": [asdict(item) for item in items]}
 
 
-def _organize_long_term_memory(
-    memory: Memory,
-    arguments: dict[str, object],
-) -> dict[str, object]:
+def _organize_long_term_memory(memory: Memory, arguments: dict[str, object]) -> dict[str, object]:
     operations = arguments.get("operations")
     if not isinstance(operations, list) or not all(isinstance(item, dict) for item in operations):
         raise ValueError("tool argument 'operations' must be an array of objects")
@@ -408,36 +371,22 @@ def _organize_long_term_memory(
     return {"items": [asdict(item) for item in items], "applied": True}
 
 
-def _forget_long_term_memory(
-    memory: Memory,
-    arguments: dict[str, object],
-) -> dict[str, object]:
+def _forget_long_term_memory(memory: Memory, arguments: dict[str, object]) -> dict[str, object]:
     item_id = read_required_tool_string(arguments, "item_id")
-    memory.forget_long_term(
-        item_id,
-        read_optional_tool_string(arguments, "reason") or "",
-    )
+    memory.forget_long_term(item_id, read_optional_tool_string(arguments, "reason") or "")
     return {"item_id": item_id, "forgotten": True}
 
 
 def _create_mcp_tools(
-    registered: RegisteredMcpServer,
-    list_tool_name: str,
-    run_tool_name: str,
+    registered: RegisteredMcpServer, list_tool_name: str, run_tool_name: str
 ) -> tuple[SkillTool, ...]:
-    action = SkillAction(
-        registered.effects,
-        f"skill:registered:mcp:{registered.name}",
-    )
+    action = SkillAction(registered.effects, f"skill:registered:mcp:{registered.name}")
     return (
         SkillTool(
             list_tool_name,
             f"List tools exposed by the {registered.name} MCP server.",
             {},
-            lambda arguments: {
-                "name": registered.name,
-                "tools": registered.server.list_tools(),
-            },
+            lambda arguments: {"name": registered.name, "tools": registered.server.list_tools()},
             action=action,
         ),
         SkillTool(
@@ -452,19 +401,18 @@ def _create_mcp_tools(
 
 
 def _run_mcp_tool(
-    registered: RegisteredMcpServer,
-    arguments: dict[str, object],
+    registered: RegisteredMcpServer, arguments: dict[str, object]
 ) -> dict[str, object]:
     tool = read_required_tool_string(arguments, "tool")
-    result = registered.server.call_tool(
-        tool,
-        read_tool_object(arguments, "arguments"),
-    )
+    result = registered.server.call_tool(tool, read_tool_object(arguments, "arguments"))
     return {"name": registered.name, "tool": tool, "result": result}
 
 
 def _mcp_tool_names(skill_name: str) -> tuple[str, str]:
-    clean = "".join(character if character.isascii() and character.isalnum() else "_" for character in skill_name.lower()).strip("_")
+    clean = "".join(
+        character if character.isascii() and character.isalnum() else "_"
+        for character in skill_name.lower()
+    ).strip("_")
     if not clean:
         clean = hashlib.sha256(skill_name.encode()).hexdigest()[:12]
     if len(clean) > 40:

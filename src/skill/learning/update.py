@@ -17,10 +17,7 @@ from core.checks import write_bytes_atomically
 from core.provider import Message
 from core.model_calls import TextModel, estimate_text_tokens
 from core.models import format_utc
-from skill.learning.run_learning import (
-    read_skill_change_report,
-    skill_change_report_to_dict,
-)
+from skill.learning.run_learning import read_skill_change_report, skill_change_report_to_dict
 from skill.handlers.package import (
     SkillDirectoryUpdate,
     apply_skill_directory_updates,
@@ -125,11 +122,7 @@ class SkillUpdater:
         self.actions = ActionRunner(action_rules, store.append_management_action_event)
 
     def propose_skill_change(
-        self,
-        name: str,
-        goal: str,
-        *,
-        skill_type: str | None = None,
+        self, name: str, goal: str, *, skill_type: str | None = None
     ) -> SkillChange:
         effects = (ActionEffect.READ, ActionEffect.CREATE, ActionEffect.NETWORK)
         return cast(
@@ -152,7 +145,9 @@ class SkillUpdater:
         return cast(
             SkillChangeReport,
             self.actions.execute_action(
-                ActionRequest.create("user:skill-change", f"skill:change:{change_id}:test", effects),
+                ActionRequest.create(
+                    "user:skill-change", f"skill:change:{change_id}:test", effects
+                ),
                 lambda: self._test(change_id, cases, minimum_score, minimum_improvement),
             ),
         )
@@ -187,7 +182,11 @@ class SkillUpdater:
         candidate_root = self.root / "candidates"
         if not candidate_root.is_dir():
             return []
-        return [_read_change(path.name, candidate_root) for path in sorted(candidate_root.iterdir()) if path.is_dir()]
+        return [
+            _read_change(path.name, candidate_root)
+            for path in sorted(candidate_root.iterdir())
+            if path.is_dir()
+        ]
 
     def read_skill_change(self, change_id: str) -> SkillChange:
         return _read_change(_clean_id(change_id), self.root / "candidates")
@@ -200,13 +199,21 @@ class SkillUpdater:
         entry = self.disclosure.prepare_skill_index().find_skill(name, requested_type)
         if entry is not None and not entry.agent_can_update:
             raise PermissionError(f"Skill does not allow Agent updates: {entry.reference.key}")
-        selected_type = entry.reference.skill_type if entry is not None else requested_type or "prompt"
-        current = None if entry is None else self.disclosure.open_skill(name, selected_type).read_manifest()
+        selected_type = (
+            entry.reference.skill_type if entry is not None else requested_type or "prompt"
+        )
+        current = (
+            None
+            if entry is None
+            else self.disclosure.open_skill(name, selected_type).read_manifest()
+        )
         parent_sha = "" if current is None else calculate_skill_directory_sha256(current.path)
         parent_version = "" if current is None else current.version
         proposed_version = next_skill_version(parent_version)
         response = self.propose_model.send_messages(
-            _proposal_messages(selected_type, name, clean_goal, None if current is None else current.path)
+            _proposal_messages(
+                selected_type, name, clean_goal, None if current is None else current.path
+            )
         )
         if current is not None and calculate_skill_directory_sha256(current.path) != parent_sha:
             raise ValueError(f"active Skill changed during proposal: {selected_type}:{name}")
@@ -246,18 +253,29 @@ class SkillUpdater:
         require_skill_directory_hash(change.candidate_path, change.candidate_sha256, "candidate")
         baseline = self._require_parent(change)
         candidate_results = [self._run_case(change.candidate_path, case) for case in cases]
-        baseline_results = [] if baseline is None else [self._run_case(baseline, case) for case in cases]
+        baseline_results = (
+            [] if baseline is None else [self._run_case(baseline, case) for case in cases]
+        )
         score = sum(item.score for item in candidate_results) / len(candidate_results)
-        baseline_score = None if not baseline_results else sum(item.score for item in baseline_results) / len(baseline_results)
+        baseline_score = (
+            None
+            if not baseline_results
+            else sum(item.score for item in baseline_results) / len(baseline_results)
+        )
         no_regression = baseline_score is None or score >= baseline_score
         improvement = None if baseline_score is None else round(score - baseline_score, 4)
-        improvement_target_met = baseline_score is None or score - baseline_score >= minimum_improvement
+        improvement_target_met = (
+            baseline_score is None or score - baseline_score >= minimum_improvement
+        )
         report = SkillChangeReport(
             report_id=f"test-{uuid4().hex}",
             change_id=change.change_id,
             score=round(score, 4),
             baseline_score=None if baseline_score is None else round(baseline_score, 4),
-            passed=score >= minimum_score and no_regression and improvement_target_met and all(item.passed for item in candidate_results),
+            passed=score >= minimum_score
+            and no_regression
+            and improvement_target_met
+            and all(item.passed for item in candidate_results),
             minimum_score=minimum_score,
             no_regression=no_regression,
             improvement=improvement,
@@ -317,7 +335,10 @@ class SkillUpdater:
         report = self._read_latest_report(change)
         if not report.passed:
             raise ValueError(f"Skill change did not pass testing: {change.change_id}")
-        if report.candidate_sha256 != change.candidate_sha256 or report.parent_sha256 != change.parent_sha256:
+        if (
+            report.candidate_sha256 != change.candidate_sha256
+            or report.parent_sha256 != change.parent_sha256
+        ):
             raise ValueError("Skill change test report does not match the proposed files")
         current = self._require_parent(change)
         changed_manifest = replace(
@@ -329,25 +350,19 @@ class SkillUpdater:
         target_sha = calculate_skill_directory_sha256(target) if target.is_dir() else ""
         history = self._prepare_apply_history(change, target, target_sha)
         return self._activate_change(
-            change,
-            current,
-            changed_manifest,
-            _ApplyPaths(target, target_sha, history),
+            change, current, changed_manifest, _ApplyPaths(target, target_sha, history)
         )
 
-    def _prepare_apply_history(
-        self,
-        change: SkillChange,
-        target: Path,
-        target_sha: str,
-    ) -> Path:
+    def _prepare_apply_history(self, change: SkillChange, target: Path, target_sha: str) -> Path:
         history = self.root / "history" / change.change_id
         if history.exists():
             raise ValueError(f"Skill change was already applied: {change.change_id}")
         history.mkdir(parents=True)
         if target.is_dir():
             copy_skill_directory(target, history / "previous")
-        _write_json(history / "apply.json", {"target_sha256": target_sha, "had_user_skill": target.is_dir()})
+        _write_json(
+            history / "apply.json", {"target_sha256": target_sha, "had_user_skill": target.is_dir()}
+        )
         return history
 
     def _activate_change(
@@ -371,22 +386,20 @@ class SkillUpdater:
                     )
                 ],
                 after_apply=lambda: activated.append(self._finish_activation(change, paths.target)),
-                after_restore=(None if self.on_skill_changed is None else lambda: self.on_skill_changed(changed_manifest)),
+                after_restore=(
+                    None
+                    if self.on_skill_changed is None
+                    else lambda: self.on_skill_changed(changed_manifest)
+                ),
             )
         except Exception:
             shutil.rmtree(paths.history)
             raise
         return activated[0]
 
-    def _finish_activation(
-        self,
-        change: SkillChange,
-        target: Path,
-    ) -> SkillManifest:
+    def _finish_activation(self, change: SkillChange, target: Path) -> SkillManifest:
         manifest = replace(
-            validate_skill_directory(target),
-            agent_created=True,
-            agent_can_update=True,
+            validate_skill_directory(target), agent_created=True, agent_can_update=True
         )
         if self.on_skill_changed is not None:
             self.on_skill_changed(manifest)
@@ -403,19 +416,9 @@ class SkillUpdater:
         previous_sha = str(application.get("target_sha256", ""))
         restored: list[SkillManifest | None] = []
         if application.get("had_user_skill") is True:
-            update = SkillDirectoryUpdate(
-                previous,
-                target,
-                previous_sha,
-                change.candidate_sha256,
-            )
+            update = SkillDirectoryUpdate(previous, target, previous_sha, change.candidate_sha256)
         else:
-            update = SkillDirectoryUpdate(
-                None,
-                target,
-                "",
-                change.candidate_sha256,
-            )
+            update = SkillDirectoryUpdate(None, target, "", change.candidate_sha256)
         apply_skill_directory_updates(
             [update],
             after_apply=lambda: restored.append(self._finish_undo(change, history)),
@@ -423,14 +426,14 @@ class SkillUpdater:
         )
         return restored[0]
 
-    def _finish_undo(
-        self,
-        change: SkillChange,
-        history: Path,
-    ) -> SkillManifest | None:
+    def _finish_undo(self, change: SkillChange, history: Path) -> SkillManifest | None:
         index = self.disclosure.prepare_skill_index()
         entry = index.find_skill(change.name, change.skill_type)
-        manifest = None if entry is None else self.disclosure.open_skill(change.name, change.skill_type).read_manifest()
+        manifest = (
+            None
+            if entry is None
+            else self.disclosure.open_skill(change.name, change.skill_type).read_manifest()
+        )
         if self.on_skill_changed is not None:
             self.on_skill_changed(manifest or validate_skill_directory(change.candidate_path))
         _write_json(history / "undo.json", {"undone_at": _utc_now()})
@@ -470,7 +473,9 @@ class SkillUpdater:
         self.store.append_event("skill_change", change_id, event_type, data=data)
 
 
-def _user_disclosure(disclosure: ProgressiveDisclosureCore, store: EventStore) -> ProgressiveDisclosureCore:
+def _user_disclosure(
+    disclosure: ProgressiveDisclosureCore, store: EventStore
+) -> ProgressiveDisclosureCore:
     return ProgressiveDisclosureCore(
         disclosure.skill_roots,
         user_skill_roots=[store.private_root / "skills"],
@@ -479,7 +484,9 @@ def _user_disclosure(disclosure: ProgressiveDisclosureCore, store: EventStore) -
     )
 
 
-def _proposal_messages(skill_type: str, name: str, goal: str, current: Path | None) -> list[Message]:
+def _proposal_messages(
+    skill_type: str, name: str, goal: str, current: Path | None
+) -> list[Message]:
     files = "No active Skill exists. Create skill.toml and any required files."
     if current is not None:
         sections = []
@@ -499,12 +506,19 @@ def _proposal_messages(skill_type: str, name: str, goal: str, current: Path | No
                 "(relative paths). Keep identity and connection ownership unchanged."
             ),
         },
-        {"role": "user", "content": f"Skill: {skill_type}:{name}\nGoal: {goal}\n\nCurrent files:\n{files}"},
+        {
+            "role": "user",
+            "content": f"Skill: {skill_type}:{name}\nGoal: {goal}\n\nCurrent files:\n{files}",
+        },
     ]
 
 
 def _test_messages(skill_path: Path, prompt: str) -> list[Message]:
-    instructions = (skill_path / "SKILL.md").read_text(encoding="utf-8") if (skill_path / "SKILL.md").is_file() else ""
+    instructions = (
+        (skill_path / "SKILL.md").read_text(encoding="utf-8")
+        if (skill_path / "SKILL.md").is_file()
+        else ""
+    )
     configuration = (skill_path / "skill.toml").read_text(encoding="utf-8")
     return [
         {
@@ -553,7 +567,9 @@ def _read_file_changes(response: str) -> dict[str, object]:
     if not isinstance(value, dict) or set(value) != {"write_files", "delete_files"}:
         raise ValueError("Skill change JSON fields must be write_files and delete_files")
     writes, deletes = value["write_files"], value["delete_files"]
-    if not isinstance(writes, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in writes.items()):
+    if not isinstance(writes, dict) or not all(
+        isinstance(k, str) and isinstance(v, str) for k, v in writes.items()
+    ):
         raise ValueError("write_files must map paths to UTF-8 text")
     if not isinstance(deletes, list) or not all(isinstance(item, str) for item in deletes):
         raise ValueError("delete_files must be a string array")
@@ -575,7 +591,9 @@ def _safe_file(root: Path, value: str) -> Path:
 def _set_manifest_version(path: Path, version: str) -> None:
     lines = path.read_text(encoding="utf-8").splitlines()
     table = next((i for i, line in enumerate(lines) if line.lstrip().startswith("[")), len(lines))
-    index = next((i for i, line in enumerate(lines[:table]) if re.match(r"^\s*version\s*=", line)), None)
+    index = next(
+        (i for i, line in enumerate(lines[:table]) if re.match(r"^\s*version\s*=", line)), None
+    )
     line = f"version = {json.dumps(version)}"
     lines.insert(table, line) if index is None else lines.__setitem__(index, line)
     path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
@@ -635,7 +653,11 @@ def _read_change(change_id: str, root: Path) -> SkillChange:
         "candidate_sha256",
         "created_at",
     }
-    if set(data) != expected or data.get("schema_version") != 1 or data.get("change_id") != change_id:
+    if (
+        set(data) != expected
+        or data.get("schema_version") != 1
+        or data.get("change_id") != change_id
+    ):
         raise ValueError(f"invalid Skill change metadata: {change_id}")
     return SkillChange(
         change_id,
@@ -652,7 +674,9 @@ def _read_change(change_id: str, root: Path) -> SkillChange:
 
 
 def _write_json(path: Path, value: dict[str, object]) -> None:
-    write_bytes_atomically(path, (json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode())
+    write_bytes_atomically(
+        path, (json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode()
+    )
 
 
 def _read_json(path: Path) -> dict[str, object]:

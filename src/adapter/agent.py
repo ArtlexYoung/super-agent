@@ -23,13 +23,7 @@ from core.models import (
     TaskTrace,
     resolve_agent_run_options,
 )
-from core.provider import (
-    ChatProvider,
-    Message,
-    ProviderPool,
-    UserSecretLookup,
-    UserSecretResolver,
-)
+from core.provider import ChatProvider, Message, ProviderPool, UserSecretLookup, UserSecretResolver
 from core.runtime import Run, Runtime
 from core.team import AgentTeam, SubAgent
 from core.records.conversations import complete_conversation_turn, prepare_conversation_turn
@@ -68,13 +62,7 @@ class AgentSkills:
         if selected in config.agent.skills:
             return
         self._agent._replace_configuration(
-            replace(
-                config,
-                agent=replace(
-                    config.agent,
-                    skills=[*config.agent.skills, selected],
-                ),
-            )
+            replace(config, agent=replace(config.agent, skills=[*config.agent.skills, selected]))
         )
 
     def add_handler(self, handler: SkillHandler) -> None:
@@ -186,20 +174,11 @@ class Agent:
         self._replace_configuration(
             replace(
                 self.config,
-                paths=replace(
-                    self.config.paths,
-                    skills=[*self.config.paths.skills, selected],
-                ),
+                paths=replace(self.config.paths, skills=[*self.config.paths.skills, selected]),
             )
         )
 
-    def add_tool(
-        self,
-        name: str,
-        server: McpServer,
-        *,
-        effects: tuple[ActionEffect, ...],
-    ) -> None:
+    def add_tool(self, name: str, server: McpServer, *, effects: tuple[ActionEffect, ...]) -> None:
         with self._lock:
             self._mcp_servers.add_mcp_server(name, server, effects=effects)
 
@@ -247,13 +226,13 @@ class Agent:
     ) -> RunResult:
         options = run_options or AgentRunOptions()
         prepared_messages, pending_turn = self._prepare_messages(
-            prompt,
-            user_id,
-            messages,
-            conversation_id,
-            options,
+            prompt, user_id, messages, conversation_id, options
         )
-        warnings = self._team.check_links() if options.include_subagents and options.check_subagent_links_before_run else []
+        warnings = (
+            self._team.check_links()
+            if options.include_subagents and options.check_subagent_links_before_run
+            else []
+        )
         request = Task(
             prompt=prompt,
             messages=prepared_messages,
@@ -297,40 +276,26 @@ class Agent:
         if messages:
             raise ValueError("conversation_id cannot be combined with explicit messages")
         prepared_messages, pending_turn = prepare_conversation_turn(
-            self._create_event_store(
-                user_id,
-                feature="conversation history",
-            ),
+            self._create_event_store(user_id, feature="conversation history"),
             self._action_rules(),
             conversation_id,
             prompt,
         )
         if pending_turn.conversation is not None and options.learn_from_conversation:
-            self._record_conversation_feedback(
-                pending_turn.conversation,
-                prompt,
-                user_id,
-            )
+            self._record_conversation_feedback(pending_turn.conversation, prompt, user_id)
         return prepared_messages, pending_turn
 
     def _record_conversation_feedback(
-        self,
-        conversation: Conversation,
-        prompt: str,
-        user_id: str,
+        self, conversation: Conversation, prompt: str, user_id: str
     ) -> None:
         from core.model_calls import infer_conversation_feedback_with_model
 
         store = self._create_event_store(user_id)
         skills = create_skills(
-            self.config,
-            handlers=self._skill_handlers,
-            store=store,
-            include_freshness=False,
+            self.config, handlers=self._skill_handlers, store=store, include_freshness=False
         )
         entry = skills.index.select_one_configured_or_default_skill(
-            "feedback",
-            self.config.agent.skills,
+            "feedback", self.config.agent.skills
         )
         feedback_skill = skills.open(entry.reference)
         feedback_skill.disclose_manifest()
@@ -339,23 +304,15 @@ class Agent:
         if feedback_skill.read_configuration().content:
             raise ValueError("feedback Skill configuration must be empty")
         model = self._create_task_runner(user_id, skills).create_text_model(
-            store,
-            "conversation_feedback",
+            store, "conversation_feedback"
         )
         feedback = infer_conversation_feedback_with_model(
-            conversation,
-            prompt,
-            instructions,
-            model.send_messages,
+            conversation, prompt, instructions, model.send_messages
         )
         if feedback is not None:
             run_id, score, reason = feedback
             self._record_task_feedback(
-                user_id,
-                run_id,
-                score=score,
-                reason=reason,
-                source="implicit",
+                user_id, run_id, score=score, reason=reason, source="implicit"
             )
 
     def _run_as_subagent(
@@ -391,10 +348,7 @@ class Agent:
         )
 
     def _create_event_store(
-        self,
-        user_id: str = LOCAL_USER_ID,
-        *,
-        feature: str | None = None,
+        self, user_id: str = LOCAL_USER_ID, *, feature: str | None = None
     ) -> EventStore:
         self._ensure_initialized()
         if self._storage is None:
@@ -412,11 +366,7 @@ class Agent:
         )
 
     def _create_skills(
-        self,
-        user_id: str,
-        *,
-        config: CommonConfig | None = None,
-        include_freshness: bool = False,
+        self, user_id: str, *, config: CommonConfig | None = None, include_freshness: bool = False
     ) -> Skills:
         return create_skills(
             config or self.config,
@@ -430,10 +380,7 @@ class Agent:
 
         profiles = self._read_model_profiles(skills, user_id)
         environment = self._user_secrets.get_environment_for_user(user_id)
-        return TaskRunner(
-            profiles,
-            self.provider_pool.create_user_provider_pool(environment),
-        )
+        return TaskRunner(profiles, self.provider_pool.create_user_provider_pool(environment))
 
     def _action_rules(self) -> ActionRules:
         with self._lock:
@@ -441,16 +388,10 @@ class Agent:
                 self._action_rules_value = ActionRules()
             return self._action_rules_value
 
-    def _execute_action(
-        self,
-        user_id: str,
-        request: ActionRequest,
-        action,
-    ) -> object:
+    def _execute_action(self, user_id: str, request: ActionRequest, action) -> object:
         store = self._create_event_store(user_id)
         return ActionRunner(
-            self._action_rules(),
-            store.append_management_action_event,
+            self._action_rules(), store.append_management_action_event
         ).execute_action(request, action)
 
     def _read_task_trace(self, user_id: str, run_id: str) -> TaskTrace:
@@ -459,13 +400,7 @@ class Agent:
         return TaskTrace(run_id, snapshot.parent_run_id, store.read_run_events(run_id))
 
     def _record_task_feedback(
-        self,
-        user_id: str,
-        run_id: str,
-        *,
-        score: float,
-        reason: str,
-        source: str,
+        self, user_id: str, run_id: str, *, score: float, reason: str, source: str
     ) -> RunEvent:
         clean_score = _validate_feedback_score(score)
         if not isinstance(reason, str):
@@ -516,10 +451,7 @@ class Agent:
     def _reload_models(self, user_id: str) -> None:
         store = None if self._storage is None else self._create_event_store(user_id)
         skills = create_skills(
-            self.config,
-            handlers=self._skill_handlers,
-            store=store,
-            include_freshness=False,
+            self.config, handlers=self._skill_handlers, store=store, include_freshness=False
         )
         profiles = self._read_model_profiles(skills, user_id)
         if user_id == LOCAL_USER_ID:
@@ -541,10 +473,7 @@ class Agent:
                 )
             store = self._create_bootstrap_store(storage)
             skills = create_skills(
-                self.config,
-                handlers=self._skill_handlers,
-                store=store,
-                include_freshness=False,
+                self.config, handlers=self._skill_handlers, store=store, include_freshness=False
             )
             environment = self._user_secrets.get_environment_for_user(LOCAL_USER_ID)
             profiles = read_model_profiles(skills, environment)
@@ -579,10 +508,7 @@ class Agent:
         )
 
     def _create_bootstrap_store(
-        self,
-        storage: StorageBackend | None,
-        *,
-        config: CommonConfig | None = None,
+        self, storage: StorageBackend | None, *, config: CommonConfig | None = None
     ):
         if storage is None:
             return None
@@ -597,22 +523,14 @@ class Agent:
             disclosure_factory=_create_disclosure_storage,
         )
 
-    def _read_model_profiles(
-        self,
-        skills: Skills,
-        user_id: str,
-    ) -> list[ModelProfile]:
+    def _read_model_profiles(self, skills: Skills, user_id: str) -> list[ModelProfile]:
         environment = self._user_secrets.get_environment_for_user(user_id)
         if self._provided_provider is not None and not _has_model_skill(skills):
             return list(self._code_model_profiles)
         return read_model_profiles(skills, environment) or list(self._code_model_profiles)
 
 
-def _create_storage_backend(
-    backend: str,
-    path: str,
-    url_env: str | None,
-) -> StorageBackend:
+def _create_storage_backend(backend: str, path: str, url_env: str | None) -> StorageBackend:
     from adapter.storage_backends.storage import create_storage_backend
 
     return create_storage_backend(backend, path, url_env)

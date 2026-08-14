@@ -11,10 +11,7 @@ from re import fullmatch
 
 from core.checks import ActionEffect
 from core.models import read_required_tool_string
-from skill.handlers.runtime import (
-    SkillAction,
-    SkillTool,
-)
+from skill.handlers.runtime import SkillAction, SkillTool
 
 
 REPOSITORY_MAP_FILE_LIMIT = 1_000
@@ -57,10 +54,7 @@ class IncrementalRepositoryMap:
             ),
         )
 
-    def refresh_repository_map(
-        self,
-        arguments: dict[str, object],
-    ) -> dict[str, object]:
+    def refresh_repository_map(self, arguments: dict[str, object]) -> dict[str, object]:
         files, skipped = self._find_files()
         current_paths = {path.relative_to(self.root).as_posix() for path in files}
         deleted = sorted(set(self._entries) - current_paths)
@@ -74,7 +68,9 @@ class IncrementalRepositoryMap:
             try:
                 stat = path.stat()
                 if stat.st_size > REPOSITORY_MAP_FILE_BYTES:
-                    raise ValueError(f"repository map file exceeds {REPOSITORY_MAP_FILE_BYTES} bytes")
+                    raise ValueError(
+                        f"repository map file exceeds {REPOSITORY_MAP_FILE_BYTES} bytes"
+                    )
                 content = _read_bounded_file(path)
             except (OSError, ValueError) as error:
                 self._entries.pop(relative, None)
@@ -91,8 +87,7 @@ class IncrementalRepositoryMap:
                     reused += 1
                     continue
                 self._entries[relative] = _CachedMapEntry(
-                    stamp,
-                    _summarize_file(path, relative, content, digest),
+                    stamp, _summarize_file(path, relative, content, digest)
                 )
                 refreshed += 1
             except ValueError as error:
@@ -137,7 +132,9 @@ class IncrementalRepositoryMap:
                 elif child.is_file():
                     files.append(child)
                     if len(files) > REPOSITORY_MAP_FILE_LIMIT:
-                        raise ValueError("repository map has more than 1000 files; configure ignores")
+                        raise ValueError(
+                            "repository map has more than 1000 files; configure ignores"
+                        )
         return files, skipped
 
     def _is_ignored(self, path: Path) -> bool:
@@ -153,12 +150,7 @@ def _read_bounded_file(path: Path) -> bytes:
     return content
 
 
-def _summarize_file(
-    path: Path,
-    relative: str,
-    content: bytes,
-    digest: str,
-) -> dict[str, object]:
+def _summarize_file(path: Path, relative: str, content: bytes, digest: str) -> dict[str, object]:
     try:
         text = content.decode("utf-8")
     except UnicodeDecodeError as error:
@@ -178,8 +170,7 @@ def _summarize_file(
 
 
 def _extract_symbols(
-    path: Path,
-    content: str,
+    path: Path, content: str
 ) -> tuple[list[dict[str, object]], str | None, str | None]:
     if path.suffix.lower() != ".py":
         return [], None, None
@@ -206,11 +197,7 @@ def _symbol(name: str, kind: str, line: int) -> dict[str, object]:
     return {"name": name, "kind": kind, "line": line}
 
 
-def _append_skip(
-    skipped: list[dict[str, str]],
-    path: str,
-    error: str,
-) -> None:
+def _append_skip(skipped: list[dict[str, str]], path: str, error: str) -> None:
     if len(skipped) >= REPOSITORY_MAP_SKIP_LIMIT:
         raise ValueError("repository map has more than 200 skipped paths")
     skipped.append({"path": path, "error": error})

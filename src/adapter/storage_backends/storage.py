@@ -66,7 +66,9 @@ class DisclosureStorage:
     ) -> None:
         cache_path = self._require_cache_path(path)
         digest = hashlib.sha256(content).hexdigest()
-        cache_hit = cache_path.is_file() and hashlib.sha256(cache_path.read_bytes()).hexdigest() == digest
+        cache_hit = (
+            cache_path.is_file() and hashlib.sha256(cache_path.read_bytes()).hexdigest() == digest
+        )
         if not cache_hit:
             write_bytes_atomically(cache_path, content)
         data = {
@@ -86,7 +88,9 @@ class DisclosureStorage:
     def refresh_history(self) -> None:
         if not self.cache_root.exists() and not self.history_path.exists():
             return
-        content = json.dumps(self.read_history(), ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+        content = (
+            json.dumps(self.read_history(), ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+        )
         write_bytes_atomically(self.history_path, content.encode())
 
     def _require_cache_path(self, path: str | Path) -> Path:
@@ -108,11 +112,7 @@ _SQL_QUERY_FIELDS = (
 )
 
 
-def create_storage_backend(
-    backend: str,
-    path: str,
-    url_env: str | None = None,
-) -> StorageBackend:
+def create_storage_backend(backend: str, path: str, url_env: str | None = None) -> StorageBackend:
     if backend == "jsonl":
         return JsonlStorage(path)
     if backend == "sqlite":
@@ -125,10 +125,7 @@ def create_storage_backend(
 
 
 def create_local_event_store(
-    root: str | Path,
-    *,
-    user_id: str = "local",
-    agent_name: str = "super-agent",
+    root: str | Path, *, user_id: str = "local", agent_name: str = "super-agent"
 ) -> EventStore:
     """Create a JSONL EventStore for tests and local Skill tooling."""
     from core.records.store import EventStore
@@ -139,10 +136,7 @@ def create_local_event_store(
         path,
         user_id,
         agent_name,
-        disclosure_factory=lambda cache_root, store: DisclosureStorage(
-            cache_root,
-            store,
-        ),
+        disclosure_factory=lambda cache_root, store: DisclosureStorage(cache_root, store),
     )
 
 
@@ -159,12 +153,7 @@ def positive_storage_integer(value: object, name: str) -> int:
 
 
 def encode_storage_data(data: dict[str, object]) -> str:
-    return json.dumps(
-        data,
-        ensure_ascii=False,
-        separators=(",", ":"),
-        sort_keys=True,
-    )
+    return json.dumps(data, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
 
 
 def decode_storage_data(text: str, location: str) -> dict[str, object]:
@@ -187,10 +176,7 @@ def select_sql_events(table: str) -> str:
 
 
 def build_sql_event_where(
-    query: StorageEventQuery,
-    placeholder: str,
-    *,
-    hash_identifiers: bool = False,
+    query: StorageEventQuery, placeholder: str, *, hash_identifiers: bool = False
 ) -> tuple[str, tuple[str, ...]]:
     """Build one exact event query for local or hash-indexed remote SQL."""
     clauses: list[str] = []
@@ -216,25 +202,17 @@ def build_sql_event_where(
     return " WHERE " + " AND ".join(clauses), tuple(parameters)
 
 
-def split_sql_event_id_query(
-    query: StorageEventQuery,
-) -> list[StorageEventQuery]:
+def split_sql_event_id_query(query: StorageEventQuery) -> list[StorageEventQuery]:
     """Split large event-ID deletes without changing any other query field."""
     if query.event_ids is None:
         return [query]
     return [
-        replace(
-            query,
-            event_ids=query.event_ids[index : index + SQL_EVENT_ID_BATCH_SIZE],
-        )
+        replace(query, event_ids=query.event_ids[index : index + SQL_EVENT_ID_BATCH_SIZE])
         for index in range(0, len(query.event_ids), SQL_EVENT_ID_BATCH_SIZE)
     ]
 
 
-def read_sql_event_row(
-    row: Iterable[object],
-    location: str | Path,
-) -> StorageEvent:
+def read_sql_event_row(row: Iterable[object], location: str | Path) -> StorageEvent:
     """Decode the canonical nine-column SQL event projection."""
     values = tuple(row)
     if len(values) != 9:
@@ -249,8 +227,7 @@ def read_sql_event_row(
         event_type=clean_storage_text(values[6], "event_type"),
         created_at=clean_storage_text(values[7], "created_at"),
         data=decode_storage_data(
-            clean_storage_text(values[8], "data_json"),
-            f"{location}:{values[0]}",
+            clean_storage_text(values[8], "data_json"), f"{location}:{values[0]}"
         ),
     )
 
@@ -404,10 +381,7 @@ class SqlEventStorage:
             deleted = 0
             for selected in split_sql_event_id_query(query):
                 where, parameters = self._event_where(selected)
-                cursor.execute(
-                    f"DELETE FROM {self._database.table_name}" + where,
-                    parameters,
-                )
+                cursor.execute(f"DELETE FROM {self._database.table_name}" + where, parameters)
                 deleted += int(cursor.rowcount)
             connection.commit()
             return deleted
@@ -417,15 +391,8 @@ class SqlEventStorage:
         finally:
             connection.close()
 
-    def _find_pending_event(
-        self,
-        cursor: Any,
-        pending: _PendingSqlEvent,
-    ) -> StorageEvent | None:
-        query = StorageEventQuery(
-            user_id=pending.user_id,
-            event_ids=(pending.event_id,),
-        )
+    def _find_pending_event(self, cursor: Any, pending: _PendingSqlEvent) -> StorageEvent | None:
+        query = StorageEventQuery(user_id=pending.user_id, event_ids=(pending.event_id,))
         where, parameters = self._event_where(query)
         cursor.execute(self._select_events + where, parameters)
         row = cursor.fetchone()
@@ -435,22 +402,16 @@ class SqlEventStorage:
         _require_pending_event_identity(pending, stored)
         return stored
 
-    def _insert_pending_event(
-        self,
-        cursor: Any,
-        pending: _PendingSqlEvent,
-    ) -> StorageEvent:
+    def _insert_pending_event(self, cursor: Any, pending: _PendingSqlEvent) -> StorageEvent:
         cursor.execute(
             self._database.insert_event_sql,
             pending.insert_parameters(self._database.hash_identifiers),
         )
         position = positive_storage_integer(
-            self._database.read_inserted_position(cursor),
-            "position",
+            self._database.read_inserted_position(cursor), "position"
         )
         cursor.execute(
-            self._select_events + f" WHERE position = {self._database.placeholder}",
-            (position,),
+            self._select_events + f" WHERE position = {self._database.placeholder}", (position,)
         )
         row = cursor.fetchone()
         if row is None:
@@ -459,21 +420,13 @@ class SqlEventStorage:
         _require_pending_event_identity(pending, stored)
         return stored
 
-    def _event_where(
-        self,
-        query: StorageEventQuery,
-    ) -> tuple[str, tuple[str, ...]]:
+    def _event_where(self, query: StorageEventQuery) -> tuple[str, tuple[str, ...]]:
         return build_sql_event_where(
-            query,
-            self._database.placeholder,
-            hash_identifiers=self._database.hash_identifiers,
+            query, self._database.placeholder, hash_identifiers=self._database.hash_identifiers
         )
 
 
-def _require_pending_event_identity(
-    pending: _PendingSqlEvent,
-    stored: StorageEvent,
-) -> None:
+def _require_pending_event_identity(pending: _PendingSqlEvent, stored: StorageEvent) -> None:
     if stored.user_id != pending.user_id or stored.event_id != pending.event_id:
         raise RuntimeError("SQL storage identifier hash collision")
 
@@ -494,28 +447,25 @@ class StorageCopyReport:
 
 
 def copy_storage_events(
-    source: StorageBackend,
-    destination: StorageBackend,
-    user_ids: list[str],
+    source: StorageBackend, destination: StorageBackend, user_ids: list[str]
 ) -> StorageCopyReport:
     selected_users = list(dict.fromkeys(user_id.strip() for user_id in user_ids))
     if not selected_users or any(not user_id for user_id in selected_users):
         raise ValueError("storage copy requires at least one non-empty user_id")
     results = [_copy_user_events(source, destination, user_id) for user_id in selected_users]
     return StorageCopyReport(
-        source_backend=source.name,
-        destination_backend=destination.name,
-        users=results,
+        source_backend=source.name, destination_backend=destination.name, users=results
     )
 
 
 def _copy_user_events(
-    source: StorageBackend,
-    destination: StorageBackend,
-    user_id: str,
+    source: StorageBackend, destination: StorageBackend, user_id: str
 ) -> StorageCopyUserResult:
     source_events = source.read_events(StorageEventQuery(user_id=user_id))
-    destination_events = {event.event_id: event for event in destination.read_events(StorageEventQuery(user_id=user_id))}
+    destination_events = {
+        event.event_id: event
+        for event in destination.read_events(StorageEventQuery(user_id=user_id))
+    }
     copied = 0
     already_present = 0
     for event in source_events:
@@ -549,7 +499,9 @@ def _require_matching_event(source: StorageEvent, destination: StorageEvent) -> 
     source_value = _event_value_without_position(source)
     destination_value = _event_value_without_position(destination)
     if source_value != destination_value:
-        raise ValueError(f"storage copy found conflicting event_id for user {source.user_id}: {source.event_id}")
+        raise ValueError(
+            f"storage copy found conflicting event_id for user {source.user_id}: {source.event_id}"
+        )
 
 
 def _event_value_without_position(event: StorageEvent) -> tuple[object, ...]:

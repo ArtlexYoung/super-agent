@@ -144,3 +144,5 @@ The release suite verifies the claims above as behavior:
   enforced.
 - Primitive input and persisted-record validation enters through `core.models`; domain modules
   retain only rules that carry domain-specific meaning or public error contracts.
+- `StorageEventQuery` owns in-memory event matching. EventStore adds the trusted user and Agent
+  scope, while each backend implements only its physical query execution.

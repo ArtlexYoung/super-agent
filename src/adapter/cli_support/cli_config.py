@@ -8,17 +8,8 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
-from core.checks import (
-    ActionDecision,
-    ActionDecisionType,
-    ActionRequest,
-    ActionRules,
-)
-from core.config import (
-    CommonConfig,
-    find_optional_config_file,
-    require_config_header,
-)
+from core.checks import ActionDecision, ActionDecisionType, ActionRequest, ActionRules
+from core.config import CommonConfig, find_optional_config_file, require_config_header
 from core.models import LOCAL_USER_ID, reject_unknown_fields
 from core.records.store import EventStore
 from super_agent import Agent
@@ -42,18 +33,12 @@ class CliConfig:
         source = Path(path).expanduser().absolute()
         data = tomllib.loads(source.read_text(encoding="utf-8"))
         require_config_header(data, "cli")
-        reject_unknown_fields(
-            data,
-            {"schema_version", "kind", "run"},
-            "CLI configuration tables",
-        )
+        reject_unknown_fields(data, {"schema_version", "kind", "run"}, "CLI configuration tables")
         run = data.get("run", {})
         if not isinstance(run, dict):
             raise ValueError("CLI run settings must be a table")
         reject_unknown_fields(
-            run,
-            {"user_id", "output", "save", "show_summary"},
-            "CLI run settings",
+            run, {"user_id", "output", "save", "show_summary"}, "CLI run settings"
         )
         user_id = str(run.get("user_id", LOCAL_USER_ID)).strip()
         if not user_id:
@@ -71,9 +56,7 @@ class CliConfig:
 
     @classmethod
     def load_automatically(
-        cls,
-        base_directory: str | Path | None = None,
-        environment: dict[str, str] | None = None,
+        cls, base_directory: str | Path | None = None, environment: dict[str, str] | None = None
     ) -> "CliConfig":
         base, source = find_optional_config_file(
             "cli.toml",
@@ -85,7 +68,9 @@ class CliConfig:
 
     @classmethod
     def create_default(cls, base_directory: str | Path | None = None) -> "CliConfig":
-        base = Path.cwd() if base_directory is None else Path(base_directory).expanduser().absolute()
+        base = (
+            Path.cwd() if base_directory is None else Path(base_directory).expanduser().absolute()
+        )
         return cls(LOCAL_USER_ID, "text", False, True, base / "cli.toml")
 
 
@@ -97,21 +82,14 @@ class TerminalActionRules(ActionRules):
         if decision.decision != ActionDecisionType.REQUIRE_CONFIRMATION:
             return decision
         effects = ", ".join(effect.value for effect in request.effects)
-        print(
-            f"Allow {effects} on {request.resource}? [y/N]",
-            file=sys.stderr,
-            end=" ",
-            flush=True,
-        )
+        print(f"Allow {effects} on {request.resource}? [y/N]", file=sys.stderr, end=" ", flush=True)
         try:
             answer = sys.stdin.readline().strip().lower()
         except (EOFError, KeyboardInterrupt):
             answer = ""
         if answer in {"y", "yes"}:
             return ActionDecision(
-                ActionDecisionType.ALLOW,
-                "terminal user confirmed the action",
-                True,
+                ActionDecisionType.ALLOW, "terminal user confirmed the action", True
             )
         return decision
 
@@ -128,29 +106,18 @@ def load_common_config(source: CommonConfigSource = None) -> CommonConfig:
     return CommonConfig.load_from_file(source)
 
 
-def load_agent(
-    source: CommonConfigSource = None,
-    *,
-    use_storage: bool = True,
-) -> Agent:
+def load_agent(source: CommonConfigSource = None, *, use_storage: bool = True) -> Agent:
     return Agent(
-        load_common_config(source),
-        use_storage=use_storage,
-        action_rules=TerminalActionRules(),
+        load_common_config(source), use_storage=use_storage, action_rules=TerminalActionRules()
     )
 
 
-def load_event_store(
-    source: CommonConfigSource = None,
-    user_id: str = LOCAL_USER_ID,
-) -> EventStore:
+def load_event_store(source: CommonConfigSource = None, user_id: str = LOCAL_USER_ID) -> EventStore:
     from adapter.storage_backends.storage import DisclosureStorage, create_storage_backend
 
     config = load_common_config(source)
     backend = create_storage_backend(
-        config.storage.backend,
-        str(config.storage.path),
-        config.storage.url_env,
+        config.storage.backend, str(config.storage.path), config.storage.url_env
     )
     return EventStore(
         backend,

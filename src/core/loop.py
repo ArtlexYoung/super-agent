@@ -8,26 +8,10 @@ from typing import TYPE_CHECKING, Callable
 
 from core.checks import ActionEffect, ActionRequest
 from core.models import RunResult, Task, read_required_tool_string
-from core.provider import (
-    ActionTurn,
-    FinalTurn,
-    Message,
-    ModelResponse,
-    ToolCall,
-    read_model_turn,
-)
+from core.provider import ActionTurn, FinalTurn, Message, ModelResponse, ToolCall, read_model_turn
 from core.provider import ProviderPool
-from skill.handlers.runtime import (
-    SkillUse,
-    SkillAction,
-    SkillTool,
-    TaskPolicy,
-)
-from skill.handlers.models import (
-    ModelProfile,
-    model_profile_is_ready,
-    model_profile_to_dict,
-)
+from skill.handlers.runtime import SkillUse, SkillAction, SkillTool, TaskPolicy
+from skill.handlers.models import ModelProfile, model_profile_is_ready, model_profile_to_dict
 from core.model_calls import (
     ModelCaller,
     ModelCallContext,
@@ -46,11 +30,7 @@ if TYPE_CHECKING:
 
 
 DEFAULT_MAX_STEPS = 8
-NON_EXECUTION_SKILL_TYPES = {
-    "feedback",
-    "freshness",
-    "model",
-}
+NON_EXECUTION_SKILL_TYPES = {"feedback", "freshness", "model"}
 
 
 @dataclass
@@ -76,27 +56,23 @@ class _ConfiguredModelTool:
         candidates = [profile for profile in self.profiles if profile.key != self.default_model_key]
         if not candidates:
             return None
-        candidate_data = [model_profile_to_dict(profile, self.provider_pool.environment) for profile in candidates]
+        candidate_data = [
+            model_profile_to_dict(profile, self.provider_pool.environment) for profile in candidates
+        ]
         return SkillTool(
             name="use_model",
             description=(
                 "Give one explicit subtask to another configured model. "
-                "Available models: " + json.dumps(candidate_data, ensure_ascii=False, sort_keys=True)
+                "Available models: "
+                + json.dumps(candidate_data, ensure_ascii=False, sort_keys=True)
             ),
             properties={
-                "model": {
-                    "type": "string",
-                    "enum": [profile.key for profile in candidates],
-                },
+                "model": {"type": "string", "enum": [profile.key for profile in candidates]},
                 "prompt": {"type": "string"},
                 "reason": {"type": "string"},
             },
             handler=self.use_model,
-            action=SkillAction(
-                (ActionEffect.READ,),
-                "model:configured",
-                "model",
-            ),
+            action=SkillAction((ActionEffect.READ,), "model:configured", "model"),
             required=("model", "prompt", "reason"),
         )
 
@@ -109,29 +85,16 @@ class _ConfiguredModelTool:
         response = self.model_caller.call_model(
             [{"role": "user", "content": prompt}],
             selected,
-            ModelCallContext(
-                self.purpose,
-                self.run.record_event,
-                self.run.record_model_used,
-            ),
+            ModelCallContext(self.purpose, self.run.record_event, self.run.record_model_used),
         )
         turn = read_model_turn(response)
         if not isinstance(turn, FinalTurn):
             raise ValueError("use_model target returned actions without receiving tools")
-        self.run.record_event(
-            "model.used",
-            {
-                "model": selected.to_dict(),
-                "reason": reason,
-            },
-        )
+        self.run.record_event("model.used", {"model": selected.to_dict(), "reason": reason})
         return {"model": model_key, "text": turn.text}
 
     def _require_other_model(self, model_key: str) -> ModelProfile:
-        profile = next(
-            (item for item in self.profiles if item.key == model_key),
-            None,
-        )
+        profile = next((item for item in self.profiles if item.key == model_key), None)
         if profile is None or profile.key == self.default_model_key:
             raise KeyError(f"configured non-default model not found: {model_key}")
         if not model_profile_is_ready(profile, self.provider_pool.environment):
@@ -143,11 +106,7 @@ class _ConfiguredModelTool:
 class TaskRunner:
     """Let one selected model finish directly or request checked actions."""
 
-    def __init__(
-        self,
-        model_profiles: list[ModelProfile],
-        provider_pool: ProviderPool,
-    ) -> None:
+    def __init__(self, model_profiles: list[ModelProfile], provider_pool: ProviderPool) -> None:
         if not model_profiles:
             raise RuntimeError(
                 "No model is configured. Add a model Skill, configure a provider through the environment, or pass provider= to Agent."
@@ -159,9 +118,7 @@ class TaskRunner:
     def run_task(self, run: Run) -> RunResult:
         request = run.task
         decision = self.model_caller.select_task_model(
-            request.purpose,
-            request.required_features,
-            run.store,
+            request.purpose, request.required_features, run.store
         )
         run.record_model_used(decision.profile)
         state = self._prepare_loop(run, decision)
@@ -193,34 +150,23 @@ class TaskRunner:
         decision: SelectedModel | None = None,
     ) -> TextModel:
         selected = decision or self.model_caller.select_default_model()
-        return self.model_caller.create_text_model(
-            store,
-            purpose,
-            selected,
-            record_event,
-        )
+        return self.model_caller.create_text_model(store, purpose, selected, record_event)
 
-    def _prepare_loop(
-        self,
-        run: Run,
-        decision: SelectedModel,
-    ) -> _LoopState:
+    def _prepare_loop(self, run: Run, decision: SelectedModel) -> _LoopState:
         request = run.task
         text_model = self.create_text_model(
-            run.store,
-            "skill_context",
-            run.record_event,
-            decision=decision,
+            run.store, "skill_context", run.record_event, decision=decision
         )
-        contributions, selected_names = _load_configured_skills(
-            run,
-            text_model.send_messages,
-        )
+        contributions, selected_names = _load_configured_skills(run, text_model.send_messages)
         run.record_event(
             "skills.disclosed",
             {
                 "names": list(selected_names),
-                "index_path": (None if run.skills.index.index_path is None else str(run.skills.index.index_path)),
+                "index_path": (
+                    None
+                    if run.skills.index.index_path is None
+                    else str(run.skills.index.index_path)
+                ),
             },
         )
         workflow = _select_workflow(contributions)
@@ -248,28 +194,23 @@ class TaskRunner:
             selected_names,
         )
 
-    def _run_model_turns(
-        self,
-        run: Run,
-        decision: SelectedModel,
-        state: _LoopState,
-    ) -> RunResult:
+    def _run_model_turns(self, run: Run, decision: SelectedModel, state: _LoopState) -> RunResult:
         request = run.task
         supports_tools = "tools" in decision.profile.traits.supports
         if "tools" in request.required_features and not supports_tools:
             raise ValueError(f"model {decision.profile.key} does not support tools")
-        definitions = state.tools.get_tool_definitions() if state.workflow.uses_tools and supports_tools else None
+        definitions = (
+            state.tools.get_tool_definitions()
+            if state.workflow.uses_tools and supports_tools
+            else None
+        )
         step = 0
         while step < state.workflow.max_steps:
             step += 1
             response = self.model_caller.call_model(
                 state.messages,
                 decision,
-                ModelCallContext(
-                    request.purpose,
-                    run.record_event,
-                    run.record_model_used,
-                ),
+                ModelCallContext(request.purpose, run.record_event, run.record_model_used),
                 tools=definitions,
             )
             turn = read_model_turn(response)
@@ -281,7 +222,11 @@ class TaskRunner:
             if definitions is None:
                 raise RuntimeError("model requested actions when actions are unavailable")
             self._run_actions(state, turn)
-            definitions = state.tools.get_tool_definitions() if state.workflow.uses_tools and supports_tools else None
+            definitions = (
+                state.tools.get_tool_definitions()
+                if state.workflow.uses_tools and supports_tools
+                else None
+            )
         state.tools.finish()
         return _create_result(run, state, state.last_text, "max_steps")
 
@@ -297,8 +242,7 @@ class TaskRunner:
 
 
 def _load_configured_skills(
-    run: Run,
-    send_text_model_messages: Callable[[list[Message]], str],
+    run: Run, send_text_model_messages: Callable[[list[Message]], str]
 ) -> tuple[list[SkillUse], list[str]]:
     request = run.task
     configured = list(run.config.agent.skills)
@@ -307,24 +251,29 @@ def _load_configured_skills(
         task_entry = run.skills.index.require_skill(request.skill, "task")
         allowed = {f"task:{name}" for name in request.allowed_task_skills}
         if allowed and task_entry.reference.key not in allowed:
-            raise ValueError("requested task Skill is outside the run policy: " + task_entry.reference.key)
-        task_contribution = run.load_skill(
-            task_entry.reference,
-            send_text_model_messages,
-        )
+            raise ValueError(
+                "requested task Skill is outside the run policy: " + task_entry.reference.key
+            )
+        task_contribution = run.load_skill(task_entry.reference, send_text_model_messages)
         run.record_skill_used(task_entry)
         configured = [
             task_entry.reference.key,
             *[item for item in configured if not _has_skill_type(item, {"task"})],
         ]
-    loader_types = {handler.skill_type for handler in run.skills.handlers.list() if handler.skill_type not in NON_EXECUTION_SKILL_TYPES}
+    loader_types = {
+        handler.skill_type
+        for handler in run.skills.handlers.list()
+        if handler.skill_type not in NON_EXECUTION_SKILL_TYPES
+    }
     references = run.skills.disclosure.select_skill_references(
         [item for item in configured if not _has_skill_type(item, NON_EXECUTION_SKILL_TYPES)],
         loader_types,
     )
     if request.skill is not None:
         references = [
-            reference for reference in references if reference.skill_type != "task" or reference.name == task_entry.reference.name
+            reference
+            for reference in references
+            if reference.skill_type != "task" or reference.name == task_entry.reference.name
         ]
     contributions: list[SkillUse] = []
     names: list[str] = []
@@ -354,40 +303,26 @@ def _select_workflow(contributions: list[SkillUse]) -> TaskPolicy:
 
 
 def _selected_model(
-    profile: ModelProfile,
-    selected_by: str,
-    reason: str,
-    evidence: tuple[str, ...] = (),
+    profile: ModelProfile, selected_by: str, reason: str, evidence: tuple[str, ...] = ()
 ) -> SelectedModel:
-    return SelectedModel(
-        profile=profile,
-        selected_by=selected_by,
-        reason=reason,
-        evidence=evidence,
-    )
+    return SelectedModel(profile=profile, selected_by=selected_by, reason=reason, evidence=evidence)
 
 
-def _build_messages(
-    run: Run,
-    contributions: list[SkillUse],
-    workflow: TaskPolicy,
-) -> list[Message]:
+def _build_messages(run: Run, contributions: list[SkillUse], workflow: TaskPolicy) -> list[Message]:
     request = run.task
     trusted = [run.config.agent.system, UNTRUSTED_CONTEXT_POLICY]
     untrusted: list[str] = []
     if workflow.instruction:
-        untrusted.append(_disclose_prompt_content(run, "workflow", workflow.name, workflow.instruction))
+        untrusted.append(
+            _disclose_prompt_content(run, "workflow", workflow.name, workflow.instruction)
+        )
     if request.resume_checkpoint is not None:
         untrusted.append(
             _disclose_prompt_content(
                 run,
                 "checkpoint",
                 str(request.resume_checkpoint["checkpoint_id"]),
-                json.dumps(
-                    request.resume_checkpoint,
-                    ensure_ascii=False,
-                    sort_keys=True,
-                ),
+                json.dumps(request.resume_checkpoint, ensure_ascii=False, sort_keys=True),
             )
         )
     for contribution in contributions:
@@ -406,7 +341,11 @@ def _build_messages(
     if index:
         untrusted.append(index)
     if untrusted:
-        trusted.append("<untrusted_runtime_context>\n" + "\n\n".join(untrusted) + "\n</untrusted_runtime_context>")
+        trusted.append(
+            "<untrusted_runtime_context>\n"
+            + "\n\n".join(untrusted)
+            + "\n</untrusted_runtime_context>"
+        )
     messages: list[Message] = [{"role": "system", "content": "\n\n".join(trusted)}]
     messages.extend(
         {"role": str(item["role"]), "content": str(item.get("content", ""))}
@@ -419,21 +358,11 @@ def _build_messages(
 
 
 def _disclose_prompt_content(run: Run, kind: str, name: str, content: str) -> str:
-    page = run.skills.disclosure.disclose_content(
-        kind,
-        name,
-        content,
-        stage="model-context",
-    )
+    page = run.skills.disclosure.disclose_content(kind, name, content, stage="model-context")
     return format_disclosure_page_for_prompt(page)
 
 
-def _create_result(
-    run: Run,
-    state: _LoopState,
-    text: str,
-    stop_reason: str,
-) -> RunResult:
+def _create_result(run: Run, state: _LoopState, text: str, stop_reason: str) -> RunResult:
     request = run.task
     names = list(dict.fromkeys([*state.selected_skill_names, *state.tools.used_skill_names]))
     skill_results = state.tools.read_skill_results()
@@ -446,17 +375,13 @@ def _create_result(
         agent_groups=skill_results.get("agent_groups"),
         warning_messages=request.warning_messages,
         run_id=run.run_id,
-        stop_reason=("completed" if stop_reason == "model_finished" else stop_reason) or "completed",
+        stop_reason=("completed" if stop_reason == "model_finished" else stop_reason)
+        or "completed",
         actions=list_run_actions(run),
     )
 
 
-def _record_model_turn(
-    run: Run,
-    step: int,
-    response: ModelResponse,
-    state: _LoopState,
-) -> None:
+def _record_model_turn(run: Run, step: int, response: ModelResponse, state: _LoopState) -> None:
     run.record_event(
         "model.turn.completed",
         {
@@ -470,10 +395,7 @@ def _record_model_turn(
 
 
 def _checkpoint_facts(
-    request: Task | None,
-    state: _LoopState,
-    step: int,
-    response: ModelResponse | None = None,
+    request: Task | None, state: _LoopState, step: int, response: ModelResponse | None = None
 ) -> dict[str, object]:
     facts: dict[str, object] = {
         "step": step,
@@ -490,11 +412,7 @@ def _checkpoint_facts(
     return facts
 
 
-def _record_task_completed(
-    run: Run,
-    result: RunResult,
-    contributions: list[SkillUse],
-) -> None:
+def _record_task_completed(run: Run, result: RunResult, contributions: list[SkillUse]) -> None:
     run.record_event(
         "task.completed",
         {
@@ -513,24 +431,15 @@ def _record_task_completed(
         if action is None:
             raise TypeError("a Skill completion callback must declare one SkillAction")
         run.execute_action(
-            ActionRequest.create(
-                "skill:task-completed",
-                action.resource,
-                action.effects,
-            ),
+            ActionRequest.create("skill:task-completed", action.resource, action.effects),
             lambda callback=contribution.record_task_completed: callback(
-                result.workflow,
-                result.skills,
+                result.workflow, result.skills
             ),
         )
 
 
 def list_run_actions(run: Run) -> list[dict[str, object]]:
-    terminal = {
-        "action.applied": "applied",
-        "action.blocked": "blocked",
-        "action.failed": "failed",
-    }
+    terminal = {"action.applied": "applied", "action.blocked": "blocked", "action.failed": "failed"}
     return [
         {
             "action_id": event.data.get("action_id", ""),

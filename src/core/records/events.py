@@ -47,10 +47,7 @@ class RunEventLog:
         self._lock = RLock()
 
     def start_run(
-        self,
-        prompt: str | None,
-        *,
-        extra_data: dict[str, object] | None = None,
+        self, prompt: str | None, *, extra_data: dict[str, object] | None = None
     ) -> RunEvent:
         with self._lock:
             if self._events or self._read_stored_events():
@@ -67,20 +64,12 @@ class RunEventLog:
                 },
             )
 
-    def append_event(
-        self,
-        event_type: str,
-        data: dict[str, object] | None = None,
-    ) -> RunEvent:
+    def append_event(self, event_type: str, data: dict[str, object] | None = None) -> RunEvent:
         with self._lock:
             return self._append_event(event_type, data, publish_to_subscribers=True)
 
     def _append_event(
-        self,
-        event_type: str,
-        data: dict[str, object] | None,
-        *,
-        publish_to_subscribers: bool,
+        self, event_type: str, data: dict[str, object] | None, *, publish_to_subscribers: bool
     ) -> RunEvent:
         clean_type = read_text(event_type, "run event type")
         content = dict(data or {})
@@ -104,9 +93,7 @@ class RunEventLog:
                 data=content,
             )
             event = run_event_from_storage(
-                stored,
-                len(self._events) + 1,
-                self.identity.parent_run_id,
+                stored, len(self._events) + 1, self.identity.parent_run_id
             )
         self._events.append(event)
         if self._event_listener is not None:
@@ -132,9 +119,7 @@ class RunEventLog:
         self._subscriber_failures.extend(failures)
         for failure in failures:
             self._append_event(
-                "runtime.subscriber.failed",
-                failure.to_dict(),
-                publish_to_subscribers=False,
+                "runtime.subscriber.failed", failure.to_dict(), publish_to_subscribers=False
             )
 
     def _read_stored_events(self) -> list[StorageEvent]:
@@ -156,7 +141,11 @@ def run_snapshot_from_events(user_id: str, events: list[StorageEvent]) -> RunSna
     ordered = _ordered_run_events(events)
     started = ordered[0]
     terminal = next(
-        (event for event in reversed(ordered) if event.event_type in {"run.completed", "run.failed"}),
+        (
+            event
+            for event in reversed(ordered)
+            if event.event_type in {"run.completed", "run.failed"}
+        ),
         None,
     )
     status = "running" if terminal is None else terminal.event_type.removeprefix("run.")
@@ -170,7 +159,9 @@ def run_snapshot_from_events(user_id: str, events: list[StorageEvent]) -> RunSna
     return RunSnapshot(
         run_id=started.stream_id,
         user_id=user_id,
-        conversation_id=read_optional_text(started.data.get("conversation_id"), "stored conversation_id"),
+        conversation_id=read_optional_text(
+            started.data.get("conversation_id"), "stored conversation_id"
+        ),
         agent_name=started.agent_name,
         parent_run_id=read_optional_text(started.data.get("parent_run_id"), "stored parent_run_id"),
         status=status,
@@ -189,13 +180,14 @@ def run_snapshot_from_events(user_id: str, events: list[StorageEvent]) -> RunSna
 def run_events_from_storage(events: list[StorageEvent]) -> list[RunEvent]:
     ordered = _ordered_run_events(events)
     parent_run_id = read_optional_text(ordered[0].data.get("parent_run_id"), "stored parent_run_id")
-    return [run_event_from_storage(event, sequence, parent_run_id) for sequence, event in enumerate(ordered, 1)]
+    return [
+        run_event_from_storage(event, sequence, parent_run_id)
+        for sequence, event in enumerate(ordered, 1)
+    ]
 
 
 def run_event_from_storage(
-    event: StorageEvent,
-    sequence: int,
-    parent_run_id: str | None,
+    event: StorageEvent, sequence: int, parent_run_id: str | None
 ) -> RunEvent:
     return RunEvent(
         run_id=event.stream_id,
@@ -216,24 +208,21 @@ def _latest_selection_decisions(events: list[RunEvent]) -> list[object]:
     return []
 
 
-def explain_run_from_events(
-    user_id: str,
-    stored_events: list[StorageEvent],
-) -> dict[str, object]:
+def explain_run_from_events(user_id: str, stored_events: list[StorageEvent]) -> dict[str, object]:
     snapshot = run_snapshot_from_events(user_id, stored_events)
     events = run_events_from_storage(stored_events)
     return {
         "schema_version": 2,
         "snapshot": asdict(snapshot),
         "selection_decisions": _latest_selection_decisions(events),
-        "disclosure_path": [asdict(event) for event in events if event.event_type == "content.disclosed"],
+        "disclosure_path": [
+            asdict(event) for event in events if event.event_type == "content.disclosed"
+        ],
         "events": [asdict(event) for event in events],
     }
 
 
-def disclosure_history_from_events(
-    events: list[StorageEvent],
-) -> list[dict[str, object]]:
+def disclosure_history_from_events(events: list[StorageEvent]) -> list[dict[str, object]]:
     disclosed = [event for event in events if event.event_type == "content.disclosed"]
     return [
         {

@@ -157,7 +157,11 @@ def _read_user_content(value: object) -> str:
         return value.strip()
     if not isinstance(value, list):
         return ""
-    parts = [str(item.get("text", "")).strip() for item in value if isinstance(item, dict) and item.get("type") == "text"]
+    parts = [
+        str(item.get("text", "")).strip()
+        for item in value
+        if isinstance(item, dict) and item.get("type") == "text"
+    ]
     return "\n".join(part for part in parts if part)
 
 
@@ -227,10 +231,7 @@ def _assistant_message_events(event: RunEvent) -> list[dict[str, str]]:
 
 
 MAX_REQUEST_BYTES = 1_048_576
-DEFAULT_ALLOWED_ORIGINS = (
-    "http://127.0.0.1:5173",
-    "http://localhost:5173",
-)
+DEFAULT_ALLOWED_ORIGINS = ("http://127.0.0.1:5173", "http://localhost:5173")
 DEFAULT_STATIC_ROOT = Path(__file__).resolve().parents[1] / "static"
 
 
@@ -274,9 +275,7 @@ class AGUIRequestHandler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         if path == "/health":
             self._send_json(
-                HTTPStatus.OK,
-                {"status": "ok", "protocol": "AG-UI"},
-                include_body=False,
+                HTTPStatus.OK, {"status": "ok", "protocol": "AG-UI"}, include_body=False
             )
             return
         self._serve_static_file(path, include_body=False)
@@ -289,8 +288,7 @@ class AGUIRequestHandler(BaseHTTPRequestHandler):
         self._send_cors_headers()
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.send_header(
-            "Access-Control-Allow-Methods",
-            "GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS",
+            "Access-Control-Allow-Methods", "GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS"
         )
         self.send_header("Content-Length", "0")
         self._send_security_headers()
@@ -389,8 +387,7 @@ class AGUIRequestHandler(BaseHTTPRequestHandler):
                 conversation_id=request.thread_id,
                 skill=request.skill,
                 run_options=AgentRunOptions(
-                    run_id=request.run_id,
-                    event_listener=send_runtime_event,
+                    run_id=request.run_id, event_listener=send_runtime_event
                 ),
             )
         except Exception as error:
@@ -429,13 +426,7 @@ class AGUIRequestHandler(BaseHTTPRequestHandler):
     def _send_web_api_response(self, response: WebAPIResponse) -> None:
         self._send_json(response.status, response.body)
 
-    def _send_json(
-        self,
-        status: HTTPStatus,
-        value: object,
-        *,
-        include_body: bool = True,
-    ) -> None:
+    def _send_json(self, status: HTTPStatus, value: object, *, include_body: bool = True) -> None:
         body = json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         self.send_response(status)
         self._send_cors_headers()
@@ -470,10 +461,7 @@ class AGUIRequestHandler(BaseHTTPRequestHandler):
         try:
             body = candidate.read_bytes()
         except OSError:
-            self._send_json(
-                HTTPStatus.INTERNAL_SERVER_ERROR,
-                {"error": "unable to read web asset"},
-            )
+            self._send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "unable to read web asset"})
             return
         content_type = mimetypes.guess_type(candidate.name)[0] or "application/octet-stream"
         if content_type.startswith("text/") or content_type in {
@@ -486,7 +474,11 @@ class AGUIRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.send_header(
             "Cache-Control",
-            ("no-cache" if candidate.name == "index.html" else "public, max-age=31536000, immutable"),
+            (
+                "no-cache"
+                if candidate.name == "index.html"
+                else "public, max-age=31536000, immutable"
+            ),
         )
         self._send_security_headers()
         self.end_headers()

@@ -45,11 +45,7 @@ def read_mcp_skill_settings(disclosure: SkillDisclosure) -> McpSkillSettings:
 class McpServer(Protocol):
     def list_tools(self) -> list[dict[str, Any]]: ...
 
-    def call_tool(
-        self,
-        name: str,
-        arguments: dict[str, object],
-    ) -> dict[str, Any]: ...
+    def call_tool(self, name: str, arguments: dict[str, object]) -> dict[str, Any]: ...
 
 
 @dataclass(frozen=True, init=False)
@@ -76,7 +72,10 @@ class StdioMcpServer:
         if not all(isinstance(item, str) for item in clean_arguments):
             raise TypeError("MCP stdio arguments must contain only strings")
         values = dict(environment or {})
-        if not all(isinstance(key, str) and bool(key.strip()) and isinstance(value, str) for key, value in values.items()):
+        if not all(
+            isinstance(key, str) and bool(key.strip()) and isinstance(value, str)
+            for key, value in values.items()
+        ):
             raise TypeError("MCP stdio environment must map names to strings")
         if isinstance(timeout_seconds, bool) or timeout_seconds <= 0:
             raise ValueError("MCP stdio timeout must be positive")
@@ -93,18 +92,11 @@ class StdioMcpServer:
             raise ValueError("MCP tools/list returned invalid tools")
         return [dict(item) for item in tools if isinstance(item, dict)]
 
-    def call_tool(
-        self,
-        name: str,
-        arguments: dict[str, object],
-    ) -> dict[str, Any]:
+    def call_tool(self, name: str, arguments: dict[str, object]) -> dict[str, Any]:
         if not name.strip():
             raise ValueError("MCP tool name cannot be empty")
         with _McpStdioSession(self) as session:
-            return session.send_request(
-                "tools/call",
-                {"name": name, "arguments": arguments},
-            )
+            return session.send_request("tools/call", {"name": name, "arguments": arguments})
 
     def describe_registration(self) -> dict[str, object]:
         return {
@@ -143,16 +135,14 @@ class McpServers:
         self._servers: dict[str, RegisteredMcpServer] = {}
 
     def add_mcp_server(
-        self,
-        name: str,
-        server: McpServer,
-        *,
-        effects: tuple[ActionEffect, ...],
+        self, name: str, server: McpServer, *, effects: tuple[ActionEffect, ...]
     ) -> None:
         clean_name = _clean_server_name(name)
         if clean_name in self._servers:
             raise ValueError(f"MCP server already registered: {clean_name}")
-        if not callable(getattr(server, "list_tools", None)) or not callable(getattr(server, "call_tool", None)):
+        if not callable(getattr(server, "list_tools", None)) or not callable(
+            getattr(server, "call_tool", None)
+        ):
             raise TypeError("MCP server must define list_tools and call_tool")
         normalized = tuple(ActionEffect(effect) for effect in effects)
         if not normalized:
@@ -175,7 +165,9 @@ class McpServers:
         clean_name = _clean_server_name(name)
         registered = self._servers.get(clean_name)
         if registered is None:
-            raise KeyError(f"MCP server is not registered in code: {clean_name}; call Agent.add_tool(...) before running")
+            raise KeyError(
+                f"MCP server is not registered in code: {clean_name}; call Agent.add_tool(...) before running"
+            )
         return registered
 
     def list_code_registrations(self) -> list[dict[str, object]]:
@@ -218,20 +210,11 @@ class _McpStdioSession:
     def __exit__(self, error_type: object, error: object, traceback: object) -> None:
         self._close_process()
 
-    def send_request(
-        self,
-        method: str,
-        params: dict[str, object],
-    ) -> dict[str, Any]:
+    def send_request(self, method: str, params: dict[str, object]) -> dict[str, Any]:
         request_id = self._next_request_id
         self._next_request_id += 1
         self._write_message(
-            {
-                "jsonrpc": "2.0",
-                "id": request_id,
-                "method": method,
-                "params": params,
-            }
+            {"jsonrpc": "2.0", "id": request_id, "method": method, "params": params}
         )
         response = self._read_response(request_id)
         if "error" in response:
@@ -260,7 +243,9 @@ class _McpStdioSession:
         try:
             while True:
                 if not selector.select(self.server.timeout_seconds):
-                    raise TimeoutError(f"MCP response timed out after {self.server.timeout_seconds:g} seconds")
+                    raise TimeoutError(
+                        f"MCP response timed out after {self.server.timeout_seconds:g} seconds"
+                    )
                 line = process.stdout.readline()
                 if not line:
                     raise RuntimeError(f"MCP process exited before response: {process.poll()}")

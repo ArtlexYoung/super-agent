@@ -25,12 +25,7 @@ from core.model_calls import estimate_text_tokens
 from skill.handlers.runtime import create_skills
 from skill.handlers.runtime import Skills, SkillHandlers
 from skill.handlers.models import ModelProfile, read_model_profiles
-from core.checks import (
-    ActionRequest,
-    ActionRunner,
-    ActionRules,
-    action_requires_checker,
-)
+from core.checks import ActionRequest, ActionRunner, ActionRules, action_requires_checker
 
 if TYPE_CHECKING:
     from core.config import CommonConfig
@@ -54,42 +49,26 @@ class Run:
     store: EventStore | None
     task_runner: TaskRunner | None = field(default=None, repr=False)
     allow_subscriber_failures: bool = False
-    create_action_rules: Callable[[], ActionRules] | None = field(
-        default=None,
-        repr=False,
-    )
-    subagent_record_options: SubagentRecordOptions | None = field(
-        default=None,
-        repr=False,
-    )
+    create_action_rules: Callable[[], ActionRules] | None = field(default=None, repr=False)
+    subagent_record_options: SubagentRecordOptions | None = field(default=None, repr=False)
     _used_skill_entries: dict[tuple[str, str, str], SkillIndexEntry] = field(
-        default_factory=dict,
-        init=False,
-        repr=False,
+        default_factory=dict, init=False, repr=False
     )
     _action_runner: ActionRunner | None = field(default=None, init=False, repr=False)
     _loaded_skills: dict[tuple[str, bool], SkillUse] = field(
-        default_factory=dict,
-        init=False,
-        repr=False,
+        default_factory=dict, init=False, repr=False
     )
 
     @property
     def run_id(self) -> str:
         return self.identity.run_id
 
-    def record_event(
-        self,
-        event_type: str,
-        data: dict[str, object] | None = None,
-    ) -> RunEvent:
+    def record_event(self, event_type: str, data: dict[str, object] | None = None) -> RunEvent:
         if self.subagent_record_options is not None:
             from core.records.audit import DEFAULT_AUDIT_POLICY
 
             data = DEFAULT_AUDIT_POLICY.compact_event_data(
-                event_type,
-                data or {},
-                self.subagent_record_options,
+                event_type, data or {}, self.subagent_record_options
             )
         return self.event_log.append_event(event_type, data)
 
@@ -102,11 +81,7 @@ class Run:
     def list_recorded_events(self) -> list[RunEvent]:
         return self.event_log.list_events()
 
-    def create_checkpoint(
-        self,
-        label: str,
-        facts: dict[str, object],
-    ) -> dict[str, object]:
+    def create_checkpoint(self, label: str, facts: dict[str, object]) -> dict[str, object]:
         data = create_checkpoint_data(self.run_id, label, facts)
         self.record_event("run.checkpoint.created", data)
         return data
@@ -119,11 +94,7 @@ class Run:
             raise RuntimeError(f"{feature} requires Runtime storage")
         return self.store
 
-    def execute_action(
-        self,
-        request: ActionRequest,
-        action: Callable[[], object],
-    ) -> object:
+    def execute_action(self, request: ActionRequest, action: Callable[[], object]) -> object:
         if self.create_action_rules is None:
             if action_requires_checker(request.effects):
                 effects = ", ".join(effect.value for effect in request.effects)
@@ -133,10 +104,7 @@ class Run:
             action_rules = self.create_action_rules()
             if not isinstance(action_rules, ActionRules):
                 raise TypeError("action rules factory must return ActionRules")
-            self._action_runner = ActionRunner(
-                action_rules,
-                self.record_event,
-            )
+            self._action_runner = ActionRunner(action_rules, self.record_event)
         return self._action_runner.execute_action(request, action)
 
     def has_action_checker(self) -> bool:
@@ -200,11 +168,7 @@ class Run:
 CHECKPOINT_STATE_BYTES = 16_384
 
 
-def create_checkpoint_data(
-    run_id: str,
-    label: str,
-    facts: dict[str, object],
-) -> dict[str, object]:
+def create_checkpoint_data(run_id: str, label: str, facts: dict[str, object]) -> dict[str, object]:
     """Create a content-free checkpoint record for explicit task resumption."""
     clean_label = label.strip()
     if not clean_label:
@@ -231,8 +195,7 @@ def list_checkpoint_data(events: Iterable[RunEvent]) -> list[dict[str, object]]:
 
 
 def find_checkpoint_data(
-    events: Iterable[RunEvent],
-    checkpoint_id: str | None = None,
+    events: Iterable[RunEvent], checkpoint_id: str | None = None
 ) -> dict[str, object]:
     checkpoints = list_checkpoint_data(events)
     if not checkpoints:
@@ -240,8 +203,7 @@ def find_checkpoint_data(
     if checkpoint_id is None:
         return checkpoints[-1]
     selected = next(
-        (item for item in checkpoints if item.get("checkpoint_id") == checkpoint_id.strip()),
-        None,
+        (item for item in checkpoints if item.get("checkpoint_id") == checkpoint_id.strip()), None
     )
     if selected is None:
         raise KeyError(f"checkpoint not found: {checkpoint_id}")
@@ -253,12 +215,9 @@ def hash_checkpoint_value(value: object) -> str:
 
 
 def _encode_checkpoint_value(value: object) -> bytes:
-    return json.dumps(
-        value,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode(
+        "utf-8"
+    )
 
 
 class Runtime:
@@ -298,12 +257,7 @@ class Runtime:
 
         if identity.agent_name != self.config.agent.name:
             raise ValueError("run identity agent_name does not match Runtime configuration")
-        run = _create_run(
-            self,
-            request,
-            identity,
-            event_listener=event_listener,
-        )
+        run = _create_run(self, request, identity, event_listener=event_listener)
         started_at = perf_counter()
         try:
             run.record_event(
@@ -320,7 +274,11 @@ class Runtime:
                     "run.resumed",
                     {
                         "source_run_id": request.resumed_from_run_id,
-                        "checkpoint_id": (None if request.resume_checkpoint is None else request.resume_checkpoint.get("checkpoint_id")),
+                        "checkpoint_id": (
+                            None
+                            if request.resume_checkpoint is None
+                            else request.resume_checkpoint.get("checkpoint_id")
+                        ),
                     },
                 )
             if run.task_runner is None:
@@ -334,10 +292,7 @@ class Runtime:
                     "used_skills": list(result.skills),
                     "stop_reason": result.stop_reason,
                     "learning_evidence": _create_run_learning_evidence(
-                        run,
-                        request.prompt,
-                        result.text,
-                        started_at=started_at,
+                        run, request.prompt, result.text, started_at=started_at
                     ),
                 },
             )
@@ -361,16 +316,14 @@ class Runtime:
                         "error_type": type(error).__name__,
                         "message": str(error),
                         "learning_evidence": _create_run_learning_evidence(
-                            run,
-                            request.prompt,
-                            "",
-                            started_at=started_at,
-                            error=error,
+                            run, request.prompt, "", started_at=started_at, error=error
                         ),
                     },
                 )
             except Exception as recording_error:
-                error.add_note(f"Could not record run failure: {type(recording_error).__name__}: {recording_error}")
+                error.add_note(
+                    f"Could not record run failure: {type(recording_error).__name__}: {recording_error}"
+                )
             raise
 
 
@@ -392,15 +345,9 @@ def _create_run(
     store = _create_run_event_store(runtime, identity, event_log)
     start_data = {"prompt": request.prompt}
     if request.subagent_record_options is not None:
-        start_data = request.subagent_record_options.record_text(
-            "prompt",
-            request.prompt,
-        )
+        start_data = request.subagent_record_options.record_text("prompt", request.prompt)
     prompt = start_data.pop("prompt", None)
-    event_log.start_run(
-        None if prompt is None else str(prompt),
-        extra_data=start_data,
-    )
+    event_log.start_run(None if prompt is None else str(prompt), extra_data=start_data)
     try:
         skills = _create_skills(runtime, store, identity)
         profiles = _read_model_profiles(runtime, skills, identity.user_id)
@@ -421,17 +368,12 @@ def _create_run(
         return run
     except Exception as error:
         event_log.append_event(
-            "run.failed",
-            {"error_type": type(error).__name__, "message": str(error)},
+            "run.failed", {"error_type": type(error).__name__, "message": str(error)}
         )
         raise
 
 
-def _create_run_event_store(
-    runtime: Runtime,
-    identity: RunIdentity,
-    event_log: RunEventLog,
-):
+def _create_run_event_store(runtime: Runtime, identity: RunIdentity, event_log: RunEventLog):
     if runtime.storage is None:
         return None
     from core.records.store import EventStore
@@ -446,11 +388,7 @@ def _create_run_event_store(
     )
 
 
-def _create_skills(
-    runtime: Runtime,
-    store,
-    identity: RunIdentity,
-) -> Skills:
+def _create_skills(runtime: Runtime, store, identity: RunIdentity) -> Skills:
     return create_skills(
         runtime.config,
         handlers=runtime.skill_handlers,
@@ -460,11 +398,7 @@ def _create_skills(
     )
 
 
-def _read_model_profiles(
-    runtime: Runtime,
-    skills: Skills,
-    user_id: str,
-) -> list[ModelProfile]:
+def _read_model_profiles(runtime: Runtime, skills: Skills, user_id: str) -> list[ModelProfile]:
     environment = runtime.user_secrets.get_environment_for_user(user_id)
     if runtime.code_model_profiles and not _has_model_skill(skills):
         return list(runtime.code_model_profiles)
@@ -476,27 +410,15 @@ def _has_model_skill(skills: Skills) -> bool:
     return any(entry.reference.skill_type == "model" for entry in skills.index.entries)
 
 
-def _create_task_runner(
-    runtime: Runtime,
-    profiles: list[ModelProfile],
-    user_id: str,
-) -> TaskRunner:
+def _create_task_runner(runtime: Runtime, profiles: list[ModelProfile], user_id: str) -> TaskRunner:
     from core.loop import TaskRunner
 
     environment = runtime.user_secrets.get_environment_for_user(user_id)
-    return TaskRunner(
-        profiles,
-        runtime.provider_pool.create_user_provider_pool(environment),
-    )
+    return TaskRunner(profiles, runtime.provider_pool.create_user_provider_pool(environment))
 
 
 def _create_run_learning_evidence(
-    run: Run,
-    prompt: str,
-    output: str,
-    *,
-    started_at: float,
-    error: Exception | None = None,
+    run: Run, prompt: str, output: str, *, started_at: float, error: Exception | None = None
 ) -> dict[str, object]:
     success = error is None
     return {

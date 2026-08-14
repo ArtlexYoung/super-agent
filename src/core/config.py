@@ -74,9 +74,7 @@ class CommonConfig:
 
     @classmethod
     def load_automatically(
-        cls,
-        base_directory: str | Path | None = None,
-        environment: Mapping[str, str] | None = None,
+        cls, base_directory: str | Path | None = None, environment: Mapping[str, str] | None = None
     ) -> "CommonConfig":
         base, source = find_optional_config_file(
             "common.toml",
@@ -88,7 +86,9 @@ class CommonConfig:
 
     @classmethod
     def create_default(cls, base_directory: str | Path | None = None) -> "CommonConfig":
-        base = Path.cwd() if base_directory is None else Path(base_directory).expanduser().absolute()
+        base = (
+            Path.cwd() if base_directory is None else Path(base_directory).expanduser().absolute()
+        )
         return cls(
             agent=_read_agent_settings({}),
             paths=PathsSettings(skills=[base / "skills"]),
@@ -142,9 +142,7 @@ class CodeConfig:
 
     @classmethod
     def load_automatically(
-        cls,
-        base_directory: str | Path | None = None,
-        environment: Mapping[str, str] | None = None,
+        cls, base_directory: str | Path | None = None, environment: Mapping[str, str] | None = None
     ) -> "CodeConfig":
         base, source = find_optional_config_file(
             "code.toml",
@@ -156,14 +154,7 @@ class CodeConfig:
             cls.load_from_file(source)
             if source
             else cls(
-                CodeSettings(
-                    base,
-                    list(DEFAULT_CODE_IGNORES),
-                    "allow",
-                    "ask",
-                    "ask",
-                    [],
-                ),
+                CodeSettings(base, list(DEFAULT_CODE_IGNORES), "allow", "ask", "ask", []),
                 base / "code.toml",
             )
         )
@@ -197,37 +188,29 @@ def find_optional_config_file(
 
 
 def _read_agent_settings(data: dict[str, Any]) -> AgentSettings:
-    allowed = {
-        "name",
-        "system",
-        "skills",
-        "max_agent_chain_depth",
-        "disabled_skills",
-    }
+    allowed = {"name", "system", "skills", "max_agent_chain_depth", "disabled_skills"}
     reject_unknown_fields(data, allowed, "agent settings")
     return AgentSettings(
         name=read_text(data.get("name", "super-agent"), "agent name"),
         system=read_text(data.get("system", "You are a helpful agent."), "agent system"),
         skills=read_text_list(data.get("skills", []), "agent skills"),
-        max_agent_chain_depth=read_optional_int(data.get("max_agent_chain_depth"), "max_agent_chain_depth", minimum=1),
-        disabled_skills=read_text_list(data.get("disabled_skills", []), "agent disabled_skills", lower=True),
+        max_agent_chain_depth=read_optional_int(
+            data.get("max_agent_chain_depth"), "max_agent_chain_depth", minimum=1
+        ),
+        disabled_skills=read_text_list(
+            data.get("disabled_skills", []), "agent disabled_skills", lower=True
+        ),
     )
 
 
 def _read_paths_settings(data: dict[str, Any], base_dir: Path) -> PathsSettings:
     reject_unknown_fields(data, {"skills"}, "paths settings")
     skill_paths = read_text_list(data.get("skills", ["skills"]), "paths skills")
-    return PathsSettings(
-        skills=[_resolve_path(base_dir, Path(str(item))) for item in skill_paths],
-    )
+    return PathsSettings(skills=[_resolve_path(base_dir, Path(str(item))) for item in skill_paths])
 
 
 def _read_storage_settings(data: dict[str, Any], base_dir: Path) -> StorageSettings:
-    reject_unknown_fields(
-        data,
-        {"backend", "path", "url_env", "audit"},
-        "storage settings",
-    )
+    reject_unknown_fields(data, {"backend", "path", "url_env", "audit"}, "storage settings")
     backend = read_text(data.get("backend", "jsonl"), "storage backend").lower()
     if backend not in {"jsonl", "sqlite", "mysql", "postgresql"}:
         raise ValueError(f"unknown storage backend: {backend}")
@@ -246,21 +229,14 @@ def _read_audit_settings(data: Any) -> AuditPolicy:
 
     if not isinstance(data, dict):
         raise ValueError("storage audit settings must be a table")
-    reject_unknown_fields(
-        data,
-        {"detailed_days", "critical_days"},
-        "storage audit settings",
-    )
+    reject_unknown_fields(data, {"detailed_days", "critical_days"}, "storage audit settings")
     return AuditPolicy(
         detailed_days=read_int(data.get("detailed_days", 180), "audit detailed_days", minimum=1),
         critical_days=read_int(data.get("critical_days", 365), "audit critical_days", minimum=1),
     )
 
 
-def _read_code_workspace(
-    data: dict[str, Any],
-    base_dir: Path,
-) -> dict[str, Any]:
+def _read_code_workspace(data: dict[str, Any], base_dir: Path) -> dict[str, Any]:
     reject_unknown_fields(data, {"root", "ignore"}, "code workspace settings")
     root = _resolve_path(base_dir, Path(str(data.get("root", "."))))
     ignored = read_text_list(data.get("ignore", []), "code workspace ignore")
@@ -273,8 +249,7 @@ def _read_code_actions(data: dict[str, Any]) -> dict[str, str]:
     reject_unknown_fields(data, {"read", "write", "execute"}, "code action settings")
     values = {
         name: read_text(
-            data.get(name, "ask" if name != "read" else "allow"),
-            f"code action {name}",
+            data.get(name, "ask" if name != "read" else "allow"), f"code action {name}"
         ).lower()
         for name in ("read", "write", "execute")
     }
@@ -287,7 +262,9 @@ def _read_verification_commands(data: dict[str, Any]) -> list[list[str]]:
     reject_unknown_fields(data, {"commands"}, "code verification settings")
     commands = data.get("commands", [])
     if not isinstance(commands, list) or not all(
-        isinstance(command, list) and command and all(isinstance(argument, str) and argument for argument in command)
+        isinstance(command, list)
+        and command
+        and all(isinstance(argument, str) and argument for argument in command)
         for command in commands
     ):
         raise ValueError("code verification commands must be non-empty string arrays")

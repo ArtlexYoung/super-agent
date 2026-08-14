@@ -16,10 +16,7 @@ from uuid import uuid4
 from core.checks import ActionEffect
 from core.models import read_optional_positive_tool_integer, read_required_tool_string
 from super_agent import Agent
-from skill.handlers.runtime import (
-    SkillAction,
-    SkillTool,
-)
+from skill.handlers.runtime import SkillAction, SkillTool
 
 
 DEFAULT_PROCESS_TIMEOUT_SECONDS = 60
@@ -59,10 +56,7 @@ class GeneralToolServer:
                 "description": "Find bounded literal text positions without regular expressions.",
                 "inputSchema": {
                     "type": "object",
-                    "properties": {
-                        "text": {"type": "string"},
-                        "query": {"type": "string"},
-                    },
+                    "properties": {"text": {"type": "string"}, "query": {"type": "string"}},
                     "required": ["text", "query"],
                     "additionalProperties": False,
                 },
@@ -141,7 +135,11 @@ class ProcessLimits:
             or not 1 <= self.timeout_seconds <= MAX_PROCESS_TIMEOUT_SECONDS
         ):
             raise ValueError("process timeout must be between 1 and 300 seconds")
-        if isinstance(self.output_bytes, bool) or not isinstance(self.output_bytes, int) or self.output_bytes <= 0:
+        if (
+            isinstance(self.output_bytes, bool)
+            or not isinstance(self.output_bytes, int)
+            or self.output_bytes <= 0
+        ):
             raise ValueError("process output limit must be greater than 0")
 
 
@@ -176,7 +174,10 @@ class DeclaredProcessTools:
     ) -> None:
         if execute_setting not in {"allow", "ask", "deny"}:
             raise ValueError("process execute setting must be allow, ask, or deny")
-        if not all(command and all(isinstance(argument, str) and argument for argument in command) for command in commands):
+        if not all(
+            command and all(isinstance(argument, str) and argument for argument in command)
+            for command in commands
+        ):
             raise ValueError("declared commands must be non-empty string arrays")
         self.root = root.resolve()
         self.commands = tuple(tuple(command) for command in commands)
@@ -202,11 +203,7 @@ class DeclaredProcessTools:
                     },
                 },
                 self.start_process,
-                SkillAction(
-                    (ActionEffect.EXECUTE,),
-                    "workspace:command",
-                    "command_number",
-                ),
+                SkillAction((ActionEffect.EXECUTE,), "workspace:command", "command_number"),
                 ("command_number",),
                 result_kind="process",
             ),
@@ -240,11 +237,7 @@ class DeclaredProcessTools:
                     },
                 },
                 self.run_check,
-                SkillAction(
-                    (ActionEffect.EXECUTE,),
-                    "workspace:command",
-                    "command_number",
-                ),
+                SkillAction((ActionEffect.EXECUTE,), "workspace:command", "command_number"),
                 ("command_number",),
                 result_kind="process",
             ),
@@ -257,8 +250,13 @@ class DeclaredProcessTools:
         if number is None or number > len(self.commands):
             raise ValueError(f"declared command number must be between 1 and {len(self.commands)}")
         if len(self._processes) >= MAX_ACTIVE_PROCESSES:
-            raise RuntimeError(f"process history limit reached for this run: {MAX_ACTIVE_PROCESSES}")
-        timeout = read_optional_positive_tool_integer(arguments, "timeout_seconds") or self.limits.timeout_seconds
+            raise RuntimeError(
+                f"process history limit reached for this run: {MAX_ACTIVE_PROCESSES}"
+            )
+        timeout = (
+            read_optional_positive_tool_integer(arguments, "timeout_seconds")
+            or self.limits.timeout_seconds
+        )
         if timeout > MAX_PROCESS_TIMEOUT_SECONDS:
             raise ValueError("process timeout cannot exceed 300 seconds")
         command = self.commands[number - 1]
@@ -273,12 +271,7 @@ class DeclaredProcessTools:
         )
         process_id = f"process-{uuid4().hex}"
         task = _RunningProcess(
-            process_id,
-            command,
-            process,
-            time.monotonic(),
-            timeout,
-            self.limits.output_bytes,
+            process_id, command, process, time.monotonic(), timeout, self.limits.output_bytes
         )
         self._processes[process_id] = task
         self._start_watchers(task)
@@ -317,18 +310,11 @@ class DeclaredProcessTools:
             if stream is None:
                 raise RuntimeError("process output pipe is unavailable")
             threading.Thread(
-                target=self._read_stream,
-                args=(task, stream, output),
-                daemon=True,
+                target=self._read_stream, args=(task, stream, output), daemon=True
             ).start()
         threading.Thread(target=self._watch_timeout, args=(task,), daemon=True).start()
 
-    def _read_stream(
-        self,
-        task: _RunningProcess,
-        stream: BinaryIO,
-        output: bytearray,
-    ) -> None:
+    def _read_stream(self, task: _RunningProcess, stream: BinaryIO, output: bytearray) -> None:
         try:
             while True:
                 chunk = stream.read(PROCESS_READ_CHUNK)
@@ -394,7 +380,9 @@ class DeclaredProcessTools:
             "timeout_seconds": task.timeout_seconds,
             "output_limit_bytes": task.output_limit_bytes,
             "output_bytes": len(stdout) + len(stderr),
-            "output_complete": (returncode is not None and output_finished and not output_limit_exceeded),
+            "output_complete": (
+                returncode is not None and output_finished and not output_limit_exceeded
+            ),
             "output_limit_exceeded": output_limit_exceeded,
             "timed_out": timed_out,
             "stopped": stopped,
@@ -423,11 +411,7 @@ def _signal_process(process: subprocess.Popen[bytes], selected_signal: signal.Si
         return
 
 
-def _process_state(
-    task: _RunningProcess,
-    returncode: int | None,
-    output_finished: bool,
-) -> str:
+def _process_state(task: _RunningProcess, returncode: int | None, output_finished: bool) -> str:
     if task.output_limit_exceeded:
         return "output_limit_exceeded"
     if task.timed_out:

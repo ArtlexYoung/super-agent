@@ -79,7 +79,11 @@ class EventStore:
         self._run_event_log = run_event_log
         self._disclosure_factory = disclosure_factory
         self.private_root = (
-            self.local_root / "users" / _create_scope_digest(self.user_id) / "agents" / _create_scope_digest(self.agent_name)
+            self.local_root
+            / "users"
+            / _create_scope_digest(self.user_id)
+            / "agents"
+            / _create_scope_digest(self.agent_name)
         )
         self._disclosure: DisclosureStorage | None = None
         if run_event_log is not None:
@@ -90,10 +94,7 @@ class EventStore:
         if self._disclosure is None:
             if self._disclosure_factory is None:
                 raise RuntimeError("Skill disclosure storage is unavailable for this EventStore")
-            self._disclosure = self._disclosure_factory(
-                self.private_root / "cache",
-                self,
-            )
+            self._disclosure = self._disclosure_factory(self.private_root / "cache", self)
         return self._disclosure
 
     def append_event(
@@ -127,46 +128,27 @@ class EventStore:
         snapshot: list[StorageEvent] | None = None,
     ) -> list[StorageEvent]:
         """Read canonical events without escaping this user and Agent scope."""
+        query = self._scope_query(stream_type, stream_id, event_type)
         if snapshot is not None:
-            if any(event.user_id != self.user_id or event.agent_name != self.agent_name for event in snapshot):
-                raise ValueError("event snapshot does not match store scope")
-            return [
-                event
+            if any(
+                event.user_id != self.user_id or event.agent_name != self.agent_name
                 for event in snapshot
-                if (stream_type is None or event.stream_type == stream_type)
-                and (stream_id is None or event.stream_id == stream_id)
-                and (event_type is None or event.event_type == event_type)
-            ]
-        return self._backend.read_events(
-            StorageEventQuery(
-                user_id=self.user_id,
-                agent_name=self.agent_name,
-                stream_type=stream_type,
-                stream_id=stream_id,
-                event_type=event_type,
-            )
-        )
+            ):
+                raise ValueError("event snapshot does not match store scope")
+            return [event for event in snapshot if query.matches(event)]
+        return self._backend.read_events(query)
 
     def delete_events(self, stream_type: str, stream_id: str | None = None) -> int:
         """Explicitly delete one scoped event stream or stream type."""
         return self._backend.delete_events(
-            StorageEventQuery(
-                user_id=self.user_id,
-                agent_name=self.agent_name,
-                stream_type=read_text(stream_type, "stream_type"),
-                stream_id=stream_id,
-            )
+            self._scope_query(read_text(stream_type, "stream_type"), stream_id)
         )
 
     def store_for_run(self, run_id: str) -> EventStore:
         """Select the Agent-scoped store for one run inside this user scope."""
         selected_id = read_text(run_id, "run_id")
         events = self._backend.read_events(
-            StorageEventQuery(
-                user_id=self.user_id,
-                stream_type="run",
-                stream_id=selected_id,
-            )
+            StorageEventQuery(user_id=self.user_id, stream_type="run", stream_id=selected_id)
         )
         if not events:
             raise KeyError(f"run not found: {selected_id}")
@@ -203,34 +185,21 @@ class EventStore:
         )
 
     def append_run_event(
-        self,
-        identity: RunIdentity,
-        event_type: str,
-        data: dict[str, object] | None = None,
+        self, identity: RunIdentity, event_type: str, data: dict[str, object] | None = None
     ) -> RunEvent:
         self._require_identity_scope(identity)
         if self._run_event_log is not None:
             if identity != self._run_event_log.identity:
                 raise ValueError("run identity does not match the active event log")
             return self._run_event_log.append_event(event_type, data)
-        stored = self.append_event(
-            "run",
-            identity.run_id,
-            event_type,
-            data=dict(data or {}),
-        )
+        stored = self.append_event("run", identity.run_id, event_type, data=dict(data or {}))
         events = self.read_events("run", identity.run_id)
         from core.records.events import run_event_from_storage
 
         event = run_event_from_storage(stored, len(events), identity.parent_run_id)
         return event
 
-    def read_run(
-        self,
-        run_id: str,
-        *,
-        include_sensitive: bool = False,
-    ) -> RunSnapshot:
+    def read_run(self, run_id: str, *, include_sensitive: bool = False) -> RunSnapshot:
         from core.records.events import run_snapshot_from_events
 
         events = self.read_events("run", run_id)
@@ -265,15 +234,12 @@ class EventStore:
             reverse=True,
         )
         if conversation_id is not None:
-            snapshots = [snapshot for snapshot in snapshots if snapshot.conversation_id == conversation_id]
+            snapshots = [
+                snapshot for snapshot in snapshots if snapshot.conversation_id == conversation_id
+            ]
         return snapshots if limit is None else snapshots[:limit]
 
-    def read_run_events(
-        self,
-        run_id: str,
-        *,
-        include_sensitive: bool = False,
-    ) -> list[RunEvent]:
+    def read_run_events(self, run_id: str, *, include_sensitive: bool = False) -> list[RunEvent]:
         from core.records.events import run_events_from_storage
 
         events = self.read_events("run", run_id)
@@ -282,12 +248,7 @@ class EventStore:
         visible = events if include_sensitive else _redact_events_for_display(events)
         return run_events_from_storage(visible)
 
-    def explain_run(
-        self,
-        run_id: str,
-        *,
-        include_sensitive: bool = False,
-    ) -> dict[str, object]:
+    def explain_run(self, run_id: str, *, include_sensitive: bool = False) -> dict[str, object]:
         from core.records.events import explain_run_from_events
 
         events = self.read_events("run", run_id)
@@ -296,19 +257,10 @@ class EventStore:
         visible = events if include_sensitive else _redact_events_for_display(events)
         return explain_run_from_events(self.user_id, visible)
 
-    def export_run(
-        self,
-        run_id: str,
-        path: Path,
-        *,
-        include_sensitive: bool = False,
-    ) -> Path:
+    def export_run(self, run_id: str, path: Path, *, include_sensitive: bool = False) -> Path:
         from core.checks import write_bytes_atomically
 
-        explanation = self.explain_run(
-            run_id,
-            include_sensitive=include_sensitive,
-        )
+        explanation = self.explain_run(run_id, include_sensitive=include_sensitive)
         document = {
             "schema_version": 2,
             "snapshot": explanation["snapshot"],
@@ -316,15 +268,14 @@ class EventStore:
         }
         write_bytes_atomically(
             path,
-            (json.dumps(document, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode("utf-8"),
+            (json.dumps(document, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode(
+                "utf-8"
+            ),
         )
         return path
 
     def append_model_call_event(
-        self,
-        operation_id: str,
-        event_type: str,
-        data: dict[str, object],
+        self, operation_id: str, event_type: str, data: dict[str, object]
     ) -> StorageEvent:
         return self.append_event(
             "model_call",
@@ -334,20 +285,18 @@ class EventStore:
         )
 
     def append_management_action_event(
-        self,
-        event_type: str,
-        data: dict[str, object],
+        self, event_type: str, data: dict[str, object]
     ) -> StorageEvent:
-        return self.append_event(
-            "action",
-            "management",
-            event_type,
-            data=data,
-        )
+        return self.append_event("action", "management", event_type, data=data)
 
     def _require_identity_scope(self, identity: RunIdentity) -> None:
         if identity.user_id != self.user_id or identity.agent_name != self.agent_name:
             raise ValueError("run identity does not match runtime store scope")
+
+    def _scope_query(
+        self, stream_type: str | None, stream_id: str | None, event_type: str | None = None
+    ) -> StorageEventQuery:
+        return StorageEventQuery(self.user_id, self.agent_name, stream_type, stream_id, event_type)
 
 
 def _redact_events_for_display(events: list[StorageEvent]) -> list[StorageEvent]:
@@ -386,8 +335,20 @@ class StorageEventQuery:
     def __post_init__(self) -> None:
         if self.event_ids is not None and not self.event_ids:
             raise ValueError("event_ids cannot be empty")
-        if self.event_ids is not None and any(not isinstance(event_id, str) or not event_id.strip() for event_id in self.event_ids):
+        if self.event_ids is not None and any(
+            not isinstance(event_id, str) or not event_id.strip() for event_id in self.event_ids
+        ):
             raise ValueError("event_ids must contain non-empty strings")
+
+    def matches(self, event: StorageEvent) -> bool:
+        return (
+            event.user_id == self.user_id
+            and (self.agent_name is None or event.agent_name == self.agent_name)
+            and (self.stream_type is None or event.stream_type == self.stream_type)
+            and (self.stream_id is None or event.stream_id == self.stream_id)
+            and (self.event_type is None or event.event_type == self.event_type)
+            and (self.event_ids is None or event.event_id in self.event_ids)
+        )
 
 
 class StorageBackend(Protocol):

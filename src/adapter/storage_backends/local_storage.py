@@ -70,13 +70,17 @@ class JsonlStorage:
             return event
 
     def read_events(self, query: StorageEventQuery) -> list[StorageEvent]:
-        return [event for event in self._read_path(self._events_path(query.user_id)) if _matches_query(event, query)]
+        return [
+            event
+            for event in self._read_path(self._events_path(query.user_id))
+            if query.matches(event)
+        ]
 
     def delete_events(self, query: StorageEventQuery) -> int:
         path = self._events_path(query.user_id)
         with _WRITE_LOCK:
             events = self._read_path(path)
-            kept = [event for event in events if not _matches_query(event, query)]
+            kept = [event for event in events if not query.matches(event)]
             deleted = len(events) - len(kept)
             if deleted == 0:
                 return 0
@@ -133,24 +137,12 @@ def _event_from_json(line: str, path: Path, line_number: int) -> StorageEvent:
     )
 
 
-def _matches_query(event: StorageEvent, query: StorageEventQuery) -> bool:
-    return (
-        event.user_id == query.user_id
-        and (query.agent_name is None or event.agent_name == query.agent_name)
-        and (query.stream_type is None or event.stream_type == query.stream_type)
-        and (query.stream_id is None or event.stream_id == query.stream_id)
-        and (query.event_type is None or event.event_type == query.event_type)
-        and (query.event_ids is None or event.event_id in query.event_ids)
-    )
-
-
 def _write_events_atomically(path: Path, events: list[StorageEvent]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.parent / f".{path.name}.{uuid4().hex}.tmp"
     try:
         temporary.write_text(
-            "".join(_event_json(event) + "\n" for event in events),
-            encoding="utf-8",
+            "".join(_event_json(event) + "\n" for event in events), encoding="utf-8"
         )
         os.replace(temporary, path)
     finally:
@@ -200,8 +192,7 @@ class _SqliteDatabase:
 
     def connect_to_database(self) -> sqlite3.Connection:
         connection = sqlite3.connect(
-            self.location,
-            timeout=SQLITE_BUSY_TIMEOUT_MILLISECONDS / 1_000,
+            self.location, timeout=SQLITE_BUSY_TIMEOUT_MILLISECONDS / 1_000
         )
         connection.execute(f"PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MILLISECONDS}")
         connection.execute("PRAGMA synchronous = NORMAL")

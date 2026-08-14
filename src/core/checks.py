@@ -75,13 +75,7 @@ class ActionRequest:
         action_id: str | None = None,
         argument_names: tuple[str, ...] = (),
     ) -> "ActionRequest":
-        return cls(
-            action_id or f"action-{uuid4().hex}",
-            actor,
-            resource,
-            effects,
-            argument_names,
-        )
+        return cls(action_id or f"action-{uuid4().hex}", actor, resource, effects, argument_names)
 
 
 @dataclass(frozen=True)
@@ -91,11 +85,7 @@ class ActionDecision:
     enforced: bool
 
     def to_event_data(self) -> dict[str, object]:
-        return {
-            "decision": self.decision.value,
-            "reason": self.reason,
-            "enforced": self.enforced,
-        }
+        return {"decision": self.decision.value, "reason": self.reason, "enforced": self.enforced}
 
 
 @dataclass(frozen=True)
@@ -121,17 +111,12 @@ class ActionRules:
         clean_id = action_id.strip()
         if not clean_id:
             raise ValueError("approved action id cannot be empty")
-        return ActionRules(
-            self.preset,
-            self.approved_action_ids | {clean_id},
-        )
+        return ActionRules(self.preset, self.approved_action_ids | {clean_id})
 
     def check_action(self, request: ActionRequest) -> ActionDecision:
         if self.preset == ActionMode.AUDIT:
             return ActionDecision(
-                ActionDecisionType.ALLOW,
-                "audit-only policy records the declared action",
-                False,
+                ActionDecisionType.ALLOW, "audit-only policy records the declared action", False
             )
         if self.preset == ActionMode.READ_ONLY:
             if set(request.effects) == {ActionEffect.READ}:
@@ -197,16 +182,11 @@ class ActionRunner:
         prepared = PreparedAction(request, decision)
         self._prepared_actions[request.action_id] = prepared
         self.record_event(
-            "action.prepared",
-            {**request.to_event_data(), **decision.to_event_data()},
+            "action.prepared", {**request.to_event_data(), **decision.to_event_data()}
         )
         return prepared
 
-    def apply_action(
-        self,
-        prepared: PreparedAction,
-        action: Callable[[], Result],
-    ) -> Result:
+    def apply_action(self, prepared: PreparedAction, action: Callable[[], Result]) -> Result:
         request = prepared.request
         expected = self._prepared_actions.get(request.action_id)
         if expected != prepared:
@@ -215,11 +195,7 @@ class ActionRunner:
         self.record_event("action.applying", request.to_event_data())
         return self._run_action(request, action)
 
-    def execute_action(
-        self,
-        request: ActionRequest,
-        action: Callable[[], Result],
-    ) -> Result:
+    def execute_action(self, request: ActionRequest, action: Callable[[], Result]) -> Result:
         if _is_read_only(request):
             self._check_action(request)
             self._require_action_not_prepared(request)
@@ -229,10 +205,7 @@ class ActionRunner:
 
     def _check_action(self, request: ActionRequest) -> ActionDecision:
         decision = self.policy.check_action(request)
-        self.record_event(
-            "action.checked",
-            {**request.to_event_data(), **decision.to_event_data()},
-        )
+        self.record_event("action.checked", {**request.to_event_data(), **decision.to_event_data()})
         if decision.decision == ActionDecisionType.DENY:
             self._record_blocked(request, decision)
             raise ActionNotAllowedError(request, decision)
@@ -241,11 +214,7 @@ class ActionRunner:
             raise ActionConfirmationRequired(request, decision)
         return decision
 
-    def _run_action(
-        self,
-        request: ActionRequest,
-        action: Callable[[], Result],
-    ) -> Result:
+    def _run_action(self, request: ActionRequest, action: Callable[[], Result]) -> Result:
         try:
             result = action()
         except Exception as error:
@@ -265,15 +234,8 @@ class ActionRunner:
         if request.action_id in self._prepared_actions:
             raise ValueError(f"action id is already prepared: {request.action_id}")
 
-    def _record_blocked(
-        self,
-        request: ActionRequest,
-        decision: ActionDecision,
-    ) -> None:
-        self.record_event(
-            "action.blocked",
-            {**request.to_event_data(), **decision.to_event_data()},
-        )
+    def _record_blocked(self, request: ActionRequest, decision: ActionDecision) -> None:
+        self.record_event("action.blocked", {**request.to_event_data(), **decision.to_event_data()})
 
 
 def action_requires_checker(effects: tuple[ActionEffect, ...]) -> bool:

@@ -35,9 +35,7 @@ from skill.handlers.models import (
 )
 
 
-def configure_skills_parser(
-    parser: argparse.ArgumentParser,
-) -> argparse._SubParsersAction:
+def configure_skills_parser(parser: argparse.ArgumentParser) -> argparse._SubParsersAction:
     subparsers = parser.add_subparsers(dest="skill_command")
     list_parser = subparsers.add_parser("list", help="list available skills")
     index_parser = subparsers.add_parser("index", help="print the central skill index as JSON")
@@ -52,12 +50,7 @@ def configure_skills_parser(
     configure_skill_packages_parser(packages_parser)
     models_parser = subparsers.add_parser("models", help="manage model Skills")
     configure_models_parser(models_parser)
-    for command_parser in (
-        list_parser,
-        index_parser,
-        freshness_parser,
-        validate_parser,
-    ):
+    for command_parser in (list_parser, index_parser, freshness_parser, validate_parser):
         add_config_and_user_options(command_parser, config_default="common.toml")
     return subparsers
 
@@ -99,18 +92,15 @@ def configure_skill_packages_parser(parser: argparse.ArgumentParser) -> None:
 def configure_models_parser(parser: argparse.ArgumentParser) -> None:
     subparsers = parser.add_subparsers(dest="models_command")
     list_parser = subparsers.add_parser(
-        "list",
-        help="list model Skills or zero-configuration environment profiles",
+        "list", help="list model Skills or zero-configuration environment profiles"
     )
     _add_model_read_arguments(list_parser)
     resolve_parser = subparsers.add_parser(
-        "resolve",
-        help="show the default model profile selected for this project",
+        "resolve", help="show the default model profile selected for this project"
     )
     _add_model_read_arguments(resolve_parser)
     save_parser = subparsers.add_parser(
-        "save",
-        help="create or update one model Skill from JSON stdin",
+        "save", help="create or update one model Skill from JSON stdin"
     )
     _add_model_write_arguments(save_parser)
     save_parser.add_argument("--request-stdin", action="store_true", required=True)
@@ -141,7 +131,9 @@ def run_skill_changes_command(args: argparse.Namespace) -> int:
         "undo": lambda: _undo_skill_change(args),
         "list": lambda: _list_skill_changes(args),
     }
-    return run_selected_cli_command(args.skill_change_command, handlers, "skills changes command is required")
+    return run_selected_cli_command(
+        args.skill_change_command, handlers, "skills changes command is required"
+    )
 
 
 def run_skill_packages_command(args: argparse.Namespace) -> int:
@@ -152,7 +144,9 @@ def run_skill_packages_command(args: argparse.Namespace) -> int:
         "update": lambda: _update_skill(args),
         "remove": lambda: _remove_skill(args),
     }
-    return run_selected_cli_command(args.skill_package_command, handlers, "skills packages command is required")
+    return run_selected_cli_command(
+        args.skill_package_command, handlers, "skills packages command is required"
+    )
 
 
 def run_models_command(args: argparse.Namespace) -> int:
@@ -162,10 +156,7 @@ def run_models_command(args: argparse.Namespace) -> int:
         return _save_model_skill(config, args.user_id, output)
     if args.models_command == "remove":
         return _remove_model_skill(config, args.user_id, args.name, output)
-    profiles = _read_configured_model_profiles(
-        config,
-        getattr(args, "user_id", LOCAL_USER_ID),
-    )
+    profiles = _read_configured_model_profiles(config, getattr(args, "user_id", LOCAL_USER_ID))
     if args.models_command == "list":
         return _print_model_profiles(config, profiles, output)
     if args.models_command in {None, "resolve"}:
@@ -173,19 +164,12 @@ def run_models_command(args: argparse.Namespace) -> int:
     raise ValueError(f"unknown models command: {args.models_command}")
 
 
-def _read_configured_model_profiles(
-    config: CommonConfig,
-    user_id: str,
-) -> list[ModelProfile]:
+def _read_configured_model_profiles(config: CommonConfig, user_id: str) -> list[ModelProfile]:
     store = load_event_store(config, user_id)
     return read_model_profiles(create_skills(config, store=store))
 
 
-def _print_model_profiles(
-    config: CommonConfig,
-    profiles: list[ModelProfile],
-    output: str,
-) -> int:
+def _print_model_profiles(config: CommonConfig, profiles: list[ModelProfile], output: str) -> int:
     if output == "json":
         return print_cli_json(
             {
@@ -199,11 +183,7 @@ def _print_model_profiles(
     return 0
 
 
-def _print_selected_model(
-    config: CommonConfig,
-    profiles: list[ModelProfile],
-    output: str,
-) -> int:
+def _print_selected_model(config: CommonConfig, profiles: list[ModelProfile], output: str) -> int:
     selected = select_default_model_profile(profiles)
     data = {
         "schema_version": 2,
@@ -235,12 +215,7 @@ def _save_model_skill(config: CommonConfig, user_id: str, output: str) -> int:
     return _print_model_change(profile, output, "saved")
 
 
-def _remove_model_skill(
-    config: CommonConfig,
-    user_id: str,
-    name: str,
-    output: str,
-) -> int:
+def _remove_model_skill(config: CommonConfig, user_id: str, name: str, output: str) -> int:
     _create_model_skill_manager(config, user_id).remove_model_skill(name)
     data = {"schema_version": 1, "name": name, "removed": True}
     if output == "json":
@@ -250,21 +225,14 @@ def _remove_model_skill(
 
 
 def _print_model_change(profile: ModelProfile, output: str, action: str) -> int:
-    data = {
-        "schema_version": 1,
-        "action": action,
-        "model": model_profile_to_dict(profile),
-    }
+    data = {"schema_version": 1, "action": action, "model": model_profile_to_dict(profile)}
     if output == "json":
         return print_cli_json(data)
     _print_model_profile(profile, prefix=action)
     return 0
 
 
-def _create_model_skill_manager(
-    config: CommonConfig,
-    user_id: str,
-) -> ModelSkillManager:
+def _create_model_skill_manager(config: CommonConfig, user_id: str) -> ModelSkillManager:
     store = load_event_store(config, user_id)
     return ModelSkillManager(config, store, ActionRules())
 
@@ -292,11 +260,7 @@ def _print_skill_index(config_path: Path, user_id: str) -> int:
 
 def _propose_skill_change(args: argparse.Namespace) -> int:
     updater = load_agent(args.common_config).for_user(args.user_id).skills.create_skill_updater()
-    change = updater.propose_skill_change(
-        args.name,
-        args.goal,
-        skill_type=args.skill_type,
-    )
+    change = updater.propose_skill_change(args.name, args.goal, skill_type=args.skill_type)
     print(f"Proposed Skill change: {change.change_id}")
     return 0
 
@@ -319,7 +283,11 @@ def _apply_skill_change(args: argparse.Namespace) -> int:
 def _undo_skill_change(args: argparse.Namespace) -> int:
     updater = load_agent(args.common_config).for_user(args.user_id).skills.create_skill_updater()
     manifest = updater.undo_skill_change(args.change_id)
-    restored = "removed" if manifest is None else f"restored {manifest.skill_type}:{manifest.name}@{manifest.version}"
+    restored = (
+        "removed"
+        if manifest is None
+        else f"restored {manifest.skill_type}:{manifest.name}@{manifest.version}"
+    )
     print(f"Undid Skill change: {args.change_id} ({restored})")
     return 0
 
@@ -336,8 +304,7 @@ def _show_skill_freshness(config_path: Path, user_id: str) -> int:
     store = load_event_store(config, user_id)
     rules = load_configured_freshness_rules(config, store=store)
     stats = calculate_skill_freshness(
-        read_evaluation_records(store, source_type="agent_run"),
-        rules,
+        read_evaluation_records(store, source_type="agent_run"), rules
     )
     if not stats:
         print("No skill freshness stats yet.")
@@ -367,7 +334,9 @@ def _validate_skills(config_path: Path, user_id: str) -> int:
 def _show_skill_graph(args: argparse.Namespace) -> int:
     manifests = _resolve_skills(Path(args.common_config), args.user_id, args.name)
     for manifest in manifests:
-        print(f"{manifest.name}\tprovides={','.join(manifest.provides)}\trequires={','.join(manifest.requires)}")
+        print(
+            f"{manifest.name}\tprovides={','.join(manifest.provides)}\trequires={','.join(manifest.requires)}"
+        )
     return 0
 
 
@@ -376,10 +345,7 @@ def _write_skill_lock(args: argparse.Namespace) -> int:
     index = disclosure.prepare_skill_index()
     entries = index.resolve_skill_dependencies(args.name)
     manifests = [
-        disclosure.open_skill(
-            entry.reference.name,
-            entry.reference.skill_type,
-        ).read_manifest()
+        disclosure.open_skill(entry.reference.name, entry.reference.skill_type).read_manifest()
         for entry in entries
     ]
     output = Path(args.output)
@@ -390,8 +356,7 @@ def _write_skill_lock(args: argparse.Namespace) -> int:
 
 def _pack_skill(args: argparse.Namespace) -> int:
     package_path = _load_package_manager(Path(args.common_config), args.user_id).pack_skill(
-        args.name,
-        Path(args.output),
+        args.name, Path(args.output)
     )
     print(f"Packed skill: {package_path}")
     return 0
@@ -399,8 +364,7 @@ def _pack_skill(args: argparse.Namespace) -> int:
 
 def _install_skill(args: argparse.Namespace) -> int:
     manifest = _load_package_manager(Path(args.common_config), args.user_id).install_skill(
-        args.source,
-        expected_sha256=args.expected_sha256,
+        args.source, expected_sha256=args.expected_sha256
     )
     print(f"Installed skill: {manifest.name}@{manifest.version}")
     return 0
@@ -408,9 +372,7 @@ def _install_skill(args: argparse.Namespace) -> int:
 
 def _update_skill(args: argparse.Namespace) -> int:
     manifest = _load_package_manager(Path(args.common_config), args.user_id).update_skill(
-        args.name,
-        args.source,
-        expected_sha256=args.expected_sha256,
+        args.name, args.source, expected_sha256=args.expected_sha256
     )
     print(f"Updated skill: {manifest.name}@{manifest.version}")
     return 0
@@ -423,43 +385,25 @@ def _remove_skill(args: argparse.Namespace) -> int:
     return 0
 
 
-def _resolve_skills(
-    config_path: Path,
-    user_id: str,
-    names: list[str],
-) -> list[SkillManifest]:
+def _resolve_skills(config_path: Path, user_id: str, names: list[str]) -> list[SkillManifest]:
     disclosure = _load_skill_disclosure(config_path, user_id)
     index = disclosure.prepare_skill_index()
     return [
-        disclosure.open_skill(
-            entry.reference.name,
-            entry.reference.skill_type,
-        ).read_manifest()
+        disclosure.open_skill(entry.reference.name, entry.reference.skill_type).read_manifest()
         for entry in index.resolve_skill_dependencies(names)
     ]
 
 
-def _load_skill_disclosure(
-    config_path: Path,
-    user_id: str,
-) -> ProgressiveDisclosureCore:
+def _load_skill_disclosure(config_path: Path, user_id: str) -> ProgressiveDisclosureCore:
     config = load_common_config(config_path)
-    return create_progressive_skill_disclosure(
-        config,
-        store=load_event_store(config, user_id),
-    )
+    return create_progressive_skill_disclosure(config, store=load_event_store(config, user_id))
 
 
 def _load_package_manager(config_path: Path, user_id: str) -> SkillPackageManager:
     config = load_common_config(config_path)
     store = load_event_store(config, user_id)
     return SkillPackageManager(
-        create_progressive_skill_disclosure(
-            config,
-            store=store,
-        ),
-        store,
-        ActionRules(),
+        create_progressive_skill_disclosure(config, store=store), store, ActionRules()
     )
 
 
@@ -512,7 +456,9 @@ def _read_change_cases(path: Path) -> list[SkillChangeCase]:
             "expected_configuration",
         }
         if set(item) - allowed:
-            raise ValueError("unknown evaluation case fields: " + ", ".join(sorted(set(item) - allowed)))
+            raise ValueError(
+                "unknown evaluation case fields: " + ", ".join(sorted(set(item) - allowed))
+            )
         expected_configuration = item.get("expected_configuration", {})
         if not isinstance(expected_configuration, dict):
             raise ValueError("evaluation case expected_configuration must be an object")

@@ -30,16 +30,16 @@ class CommonConfigurationInput:
         return cls(
             name=read_text(value.get("name"), "agent configuration name"),
             system=read_text(value.get("system"), "agent configuration system"),
-            skills=read_text_list(value.get("skills", []), "agent configuration skills", lower=True),
+            skills=read_text_list(
+                value.get("skills", []), "agent configuration skills", lower=True
+            ),
             max_agent_chain_depth=(
                 None
                 if value.get("max_agent_chain_depth") is None
                 else read_int(value["max_agent_chain_depth"], "max_agent_chain_depth", minimum=1)
             ),
             disabled_skills=read_text_list(
-                value.get("disabled_skills", []),
-                "agent configuration disabled_skills",
-                lower=True,
+                value.get("disabled_skills", []), "agent configuration disabled_skills", lower=True
             ),
         )
 
@@ -92,10 +92,7 @@ class WebAPI:
         return WebAPIResponse(HTTPStatus.NOT_FOUND, {"error": "route not found"})
 
     def _handle_conversations(
-        self,
-        method: str,
-        parts: list[str],
-        body: object | None,
+        self, method: str, parts: list[str], body: object | None
     ) -> WebAPIResponse:
         if method == "POST" and not parts:
             title = _optional_body_text(body, "title")
@@ -136,12 +133,7 @@ class WebAPI:
             "conversations": [asdict(item) for item in self.user.conversations.list()],
             "runs": [asdict(item) for item in self.user.runs.list(50)],
             "memory": [asdict(item) for item in self.user.memory.list()],
-            "subagents": _subagent_tree(
-                self.agent,
-                self.user_id,
-                set(),
-                [config.agent.name],
-            ),
+            "subagents": _subagent_tree(self.agent, self.user_id, set(), [config.agent.name]),
         }
 
     def _read_run(self, run_id: str) -> dict[str, object]:
@@ -165,10 +157,7 @@ def _ok(body: object, status: HTTPStatus = HTTPStatus.OK) -> WebAPIResponse:
     return WebAPIResponse(status, body)
 
 
-def _web_skill_list(
-    value: dict[str, object],
-    config: CommonConfig,
-) -> list[dict[str, object]]:
+def _web_skill_list(value: dict[str, object], config: CommonConfig) -> list[dict[str, object]]:
     disabled = set(config.agent.disabled_skills)
     selected = set(config.agent.skills)
     skills = value.get("skills", [])
@@ -185,12 +174,7 @@ def _web_skill_list(
             }
         }
         | {
-            "enabled": not {
-                item["type"],
-                item["key"],
-                item["name"],
-            }
-            & disabled,
+            "enabled": not {item["type"], item["key"], item["name"]} & disabled,
             "selected": item["key"] in selected or item["name"] in selected,
         }
         for item in skills
@@ -199,10 +183,7 @@ def _web_skill_list(
 
 
 def _subagent_tree(
-    agent: Agent,
-    user_id: str,
-    seen: set[int],
-    path: list[str],
+    agent: Agent, user_id: str, seen: set[int], path: list[str]
 ) -> list[dict[str, object]]:
     if id(agent) in seen:
         return []
@@ -219,12 +200,7 @@ def _subagent_tree(
                 "created_by_agent": subagent.created_by_agent,
                 "path": child_path,
                 "runs": [asdict(item) for item in child.runs.list(50)],
-                "children": _subagent_tree(
-                    subagent.agent,
-                    user_id,
-                    next_seen,
-                    child_path,
-                ),
+                "children": _subagent_tree(subagent.agent, user_id, next_seen, child_path),
             }
         )
     return nodes

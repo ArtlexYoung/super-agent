@@ -51,20 +51,13 @@ class MemoryItem:
 
 
 class UsageHabits:
-    def __init__(
-        self,
-        store: EventStore,
-        execute_action: MemoryActionRunner | None,
-    ) -> None:
+    def __init__(self, store: EventStore, execute_action: MemoryActionRunner | None) -> None:
         self.store = store
         self.execute_action = execute_action
 
     def record_agent_run(self, workflow: str, skills: list[str]) -> None:
         change = lambda: self.store.append_event(
-            "habit",
-            "usage",
-            "agent.completed",
-            data={"workflow": workflow, "skills": list(skills)},
+            "habit", "usage", "agent.completed", data={"workflow": workflow, "skills": list(skills)}
         )
         if self.execute_action is None:
             change()
@@ -112,10 +105,7 @@ class Memory:
         self.execute_action = execute_action
 
     def remember_long_term(
-        self,
-        text: str,
-        scope: str | None = None,
-        source_run_id: str = "",
+        self, text: str, scope: str | None = None, source_run_id: str = ""
     ) -> MemoryItem:
         item = MemoryItem(
             item_id=f"memory-{uuid4().hex}",
@@ -128,8 +118,7 @@ class Memory:
             (ActionEffect.CREATE,),
             [item.item_id],
             lambda: self._append_memory_event(
-                "memory.remembered",
-                {"item": _validate_stored_item(asdict(item))},
+                "memory.remembered", {"item": _validate_stored_item(asdict(item))}
             ),
         )
         return item
@@ -139,32 +128,32 @@ class Memory:
         return [
             _item_from_dict(item)
             for item in _sort_items(
-                item for item in self._active_items().values() if selected_scope is None or item["scope"] == selected_scope
+                item
+                for item in self._active_items().values()
+                if selected_scope is None or item["scope"] == selected_scope
             )
         ]
 
     def recall_long_term(
-        self,
-        query: str,
-        scope: str | None = None,
-        limit: int | None = None,
+        self, query: str, scope: str | None = None, limit: int | None = None
     ) -> list[MemoryItem]:
         text = read_text(query, "memory text")
         selected_scope = _clean_scope(scope or self.settings.default_scope)
-        result_limit = self.settings.recall_limit if limit is None else read_int(limit, "memory recall limit", minimum=1)
-        query_terms = Counter(_tokenize(text))
-        ranked = [(_score_text(text, query_terms, item.text), item) for item in self.list_long_term(selected_scope)]
-        ranked = [pair for pair in ranked if pair[0] > 0]
-        ranked.sort(
-            key=lambda pair: (pair[0], pair[1].created_at, pair[1].item_id),
-            reverse=True,
+        result_limit = (
+            self.settings.recall_limit
+            if limit is None
+            else read_int(limit, "memory recall limit", minimum=1)
         )
+        query_terms = Counter(_tokenize(text))
+        ranked = [
+            (_score_text(text, query_terms, item.text), item)
+            for item in self.list_long_term(selected_scope)
+        ]
+        ranked = [pair for pair in ranked if pair[0] > 0]
+        ranked.sort(key=lambda pair: (pair[0], pair[1].created_at, pair[1].item_id), reverse=True)
         return [item for _, item in ranked[:result_limit]]
 
-    def organize_long_term(
-        self,
-        operations: list[dict[str, object]],
-    ) -> list[MemoryItem]:
+    def organize_long_term(self, operations: list[dict[str, object]]) -> list[MemoryItem]:
         item_ids = _organization_item_ids(operations)
         replacements = self._run_change(
             (ActionEffect.CREATE, ActionEffect.UPDATE, ActionEffect.DELETE),
@@ -176,9 +165,7 @@ class Memory:
     def forget_long_term(self, item_id: str, reason: str = "") -> None:
         selected = _clean_item_id(item_id)
         self._run_change(
-            (ActionEffect.DELETE,),
-            [selected],
-            lambda: self._forget_items([selected], reason),
+            (ActionEffect.DELETE,), [selected], lambda: self._forget_items([selected], reason)
         )
 
     def build_prompt_instruction(self, query: str = "") -> str:
@@ -190,16 +177,15 @@ class Memory:
                 else self.list_long_term(self.settings.default_scope)[: self.settings.recall_limit]
             )
             if items:
-                sections.append("Long-term memory:\n" + "\n".join(f"- {item.text}" for item in items))
+                sections.append(
+                    "Long-term memory:\n" + "\n".join(f"- {item.text}" for item in items)
+                )
         if self.settings.include_usage_habits:
             sections.append(self.usage_habits.build_prompt_instruction())
         return "\n\n".join(section for section in sections if section)
 
     def _run_change(
-        self,
-        effects: tuple[ActionEffect, ...],
-        item_ids: list[str],
-        change: Callable[[], object],
+        self, effects: tuple[ActionEffect, ...], item_ids: list[str], change: Callable[[], object]
     ) -> object:
         if self.execute_action is None:
             return change()
@@ -219,14 +205,9 @@ class Memory:
             return selected
         return "" if self.identity is None else self.identity.run_id
 
-    def _organize_items(
-        self,
-        operations: list[dict[str, object]],
-    ) -> list[dict[str, object]]:
+    def _organize_items(self, operations: list[dict[str, object]]) -> list[dict[str, object]]:
         changes, replacements = _prepare_organization(
-            operations,
-            self._active_items(),
-            self._source_run_id(""),
+            operations, self._active_items(), self._source_run_id("")
         )
         self._append_memory_event("memory.organized", {"operations": changes})
         return replacements
@@ -234,8 +215,7 @@ class Memory:
     def _forget_items(self, item_ids: list[str], reason: str) -> None:
         selected = _require_active_item_ids(self._active_items(), item_ids)
         self._append_memory_event(
-            "memory.forgotten",
-            {"item_ids": selected, "reason": reason.strip()},
+            "memory.forgotten", {"item_ids": selected, "reason": reason.strip()}
         )
 
     def _active_items(self) -> dict[str, dict[str, object]]:
@@ -245,11 +225,7 @@ class Memory:
             raise ValueError("unknown memory streams: " + ", ".join(unknown))
         return _replay_memory(events)
 
-    def _append_memory_event(
-        self,
-        event_type: str,
-        data: dict[str, object],
-    ) -> None:
+    def _append_memory_event(self, event_type: str, data: dict[str, object]) -> None:
         self.store.append_event("memory", MEMORY_STREAM, event_type, data=data)
 
 
@@ -261,10 +237,7 @@ def create_memory_from_skill(
     execute_action: MemoryActionRunner | None = None,
 ) -> Memory:
     return Memory(
-        store,
-        identity,
-        read_memory_settings_from_skill(disclosure),
-        execute_action=execute_action,
+        store, identity, read_memory_settings_from_skill(disclosure), execute_action=execute_action
     )
 
 
@@ -279,25 +252,26 @@ def read_memory_settings_from_skill(disclosure: SkillDisclosure) -> MemorySettin
     if not instructions:
         raise ValueError("memory Skill instructions cannot be empty")
     return MemorySettings(
-        default_scope=_clean_scope(read_text(configuration.get("default_scope", "agent"), "memory default_scope")),
+        default_scope=_clean_scope(
+            read_text(configuration.get("default_scope", "agent"), "memory default_scope")
+        ),
         recall_limit=read_int(
             configuration.get("recall_limit", DEFAULT_RECALL_LIMIT),
             "memory recall limit",
             minimum=1,
         ),
-        include_in_prompt=read_bool(configuration.get("include_in_prompt", True), "memory include_in_prompt"),
+        include_in_prompt=read_bool(
+            configuration.get("include_in_prompt", True), "memory include_in_prompt"
+        ),
         include_usage_habits=read_bool(
-            configuration.get("include_usage_habits", True),
-            "memory include_usage_habits",
+            configuration.get("include_usage_habits", True), "memory include_usage_habits"
         ),
         instructions=instructions,
     )
 
 
 def _prepare_organization(
-    operations: list[dict[str, object]],
-    active: dict[str, dict[str, object]],
-    source_run_id: str,
+    operations: list[dict[str, object]], active: dict[str, dict[str, object]], source_run_id: str
 ) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
     if not isinstance(operations, list) or not operations:
         raise ValueError("memory organization requires at least one operation")
@@ -341,9 +315,7 @@ def _prepare_operation(
         if len(scopes) != 1:
             raise ValueError("memory organization cannot combine scopes")
         replacement = _new_stored_item(
-            read_text(value.get("text"), "memory text"),
-            scopes.pop(),
-            source_run_id,
+            read_text(value.get("text"), "memory text"), scopes.pop(), source_run_id
         )
     return {
         "operation": operation,
@@ -377,9 +349,7 @@ def _replay_organization(active: dict[str, dict[str, object]], value: object) ->
         _replace_active_items(active, item_ids, replacement)
 
 
-def _validate_stored_operation(
-    value: object,
-) -> tuple[list[str], dict[str, object] | None]:
+def _validate_stored_operation(value: object) -> tuple[list[str], dict[str, object] | None]:
     fields = {"operation", "item_ids", "reason", "replacement"}
     if not isinstance(value, dict) or set(value) != fields:
         raise ValueError("stored memory operation fields do not match schema")
@@ -396,10 +366,7 @@ def _validate_stored_operation(
     return item_ids, replacement
 
 
-def _add_active_item(
-    active: dict[str, dict[str, object]],
-    value: object,
-) -> None:
+def _add_active_item(active: dict[str, dict[str, object]], value: object) -> None:
     item = _validate_stored_item(value)
     item_id = str(item["item_id"])
     if item_id in active:
@@ -408,9 +375,7 @@ def _add_active_item(
 
 
 def _replace_active_items(
-    active: dict[str, dict[str, object]],
-    value: object,
-    replacement: dict[str, object] | None,
+    active: dict[str, dict[str, object]], value: object, replacement: dict[str, object] | None
 ) -> None:
     item_ids = _clean_item_ids(value)
     missing = sorted(set(item_ids) - set(active))
@@ -422,10 +387,7 @@ def _replace_active_items(
         _add_active_item(active, replacement)
 
 
-def _require_active_item_ids(
-    active: dict[str, dict[str, object]],
-    value: object,
-) -> list[str]:
+def _require_active_item_ids(active: dict[str, dict[str, object]], value: object) -> list[str]:
     selected = _clean_item_ids(value)
     missing = sorted(set(selected) - set(active))
     if missing:
@@ -449,11 +411,7 @@ def _validate_stored_item(value: object) -> dict[str, object]:
 def _new_stored_item(text: str, scope: str, source_run_id: str) -> dict[str, object]:
     return asdict(
         MemoryItem(
-            f"memory-{uuid4().hex}",
-            text,
-            scope,
-            source_run_id,
-            format_utc(datetime.now(UTC)),
+            f"memory-{uuid4().hex}", text, scope, source_run_id, format_utc(datetime.now(UTC))
         )
     )
 
@@ -502,11 +460,15 @@ def _tokenize(text: str) -> list[str]:
 def _score_text(query: str, query_terms: Counter[str], text: str) -> float:
     item_terms = Counter(_tokenize(text))
     overlap = sum(min(count, item_terms[term]) for term, count in query_terms.items())
-    return (1.0 if query.lower() in text.lower() else 0.0) + overlap / max(sum(query_terms.values()), 1)
+    return (1.0 if query.lower() in text.lower() else 0.0) + overlap / max(
+        sum(query_terms.values()), 1
+    )
 
 
 def _sort_items(items: Iterable[dict[str, object]]) -> list[dict[str, object]]:
-    return sorted(items, key=lambda item: (str(item["created_at"]), str(item["item_id"])), reverse=True)
+    return sorted(
+        items, key=lambda item: (str(item["created_at"]), str(item["item_id"])), reverse=True
+    )
 
 
 def _count_lines(label: str, counts: object) -> list[str]:

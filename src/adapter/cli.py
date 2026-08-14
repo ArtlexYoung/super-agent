@@ -125,25 +125,18 @@ def _build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command")
 
     check_parser = subparsers.add_parser(
-        "check",
-        help="check configuration, Skills, and the default model",
+        "check", help="check configuration, Skills, and the default model"
     )
     configure_check_parser(check_parser)
 
-    config_parser = subparsers.add_parser(
-        "config",
-        help="show or validate CLI-only configuration",
-    )
+    config_parser = subparsers.add_parser("config", help="show or validate CLI-only configuration")
     configure_config_parser(config_parser)
 
     skills_parser = subparsers.add_parser("skills", help="manage skills")
     configure_skills_parser(skills_parser)
     data_parser = subparsers.add_parser("data", help="manage conversations and saved data")
     _configure_data_parser(data_parser)
-    serve_parser = subparsers.add_parser(
-        "serve",
-        help="serve the Agent over the AG-UI protocol",
-    )
+    serve_parser = subparsers.add_parser("serve", help="serve the Agent over the AG-UI protocol")
     configure_serve_parser(serve_parser)
     return parser
 
@@ -181,22 +174,20 @@ def run_check_command(args: argparse.Namespace) -> int:
     checks: list[dict[str, object]] = []
     stage = "configuration"
     try:
-        config = load_common_config(None if args.common_config is None else Path(args.common_config))
+        config = load_common_config(
+            None if args.common_config is None else Path(args.common_config)
+        )
         source = str(config.source) if config.source.is_file() else "built-in defaults"
         checks.append(_check("configuration", True, source))
 
         stage = "skills"
         skills = create_skills(
-            config,
-            handlers=create_default_skill_handlers(),
-            include_freshness=False,
+            config, handlers=create_default_skill_handlers(), include_freshness=False
         )
         selected = skills.index.resolve_skill_dependencies(config.agent.skills)
         checks.append(
             _check(
-                "skills",
-                True,
-                f"{len(skills.index.entries)} available, {len(selected)} configured",
+                "skills", True, f"{len(skills.index.entries)} available, {len(selected)} configured"
             )
         )
 
@@ -244,11 +235,7 @@ def run_serve_command(args: argparse.Namespace) -> int:
     agent = load_agent(args.common_config)
     origins = tuple(args.allowed_origins or DEFAULT_ALLOWED_ORIGINS)
     server = create_ag_ui_server(
-        agent,
-        args.host,
-        args.port,
-        user_id=args.user_id,
-        allowed_origins=origins,
+        agent, args.host, args.port, user_id=args.user_id, allowed_origins=origins
     )
     host, port = server.server_address[:2]
     base_url = f"http://{host}:{port}"
@@ -309,11 +296,7 @@ def _run_prompt_command(
     agent = load_agent(common_config_path, use_storage=use_storage)
     attach_code_config_to_agent(agent, code_config_path)
     user = agent.for_user(request.user_id)
-    result = user.run(
-        request.prompt,
-        conversation_id=request.conversation_id,
-        skill=request.skill,
-    )
+    result = user.run(request.prompt, conversation_id=request.conversation_id, skill=request.skill)
     if output == "json":
         return print_cli_json(asdict(result), pretty=False)
     for warning in result.warning_messages or []:
@@ -339,7 +322,11 @@ def _run_chat_command(
     user = agent.for_user(user_id)
     conversation = None
     if use_storage:
-        conversation = user.conversations.create() if conversation_id is None else user.conversations.read(conversation_id)
+        conversation = (
+            user.conversations.create()
+            if conversation_id is None
+            else user.conversations.read(conversation_id)
+        )
     messages: list[Message] = []
 
     def clear_history() -> None:
@@ -367,10 +354,7 @@ def _run_chat_command(
         )
         if conversation is None:
             messages.extend(
-                [
-                    {"role": "user", "content": prompt},
-                    {"role": "assistant", "content": result.text},
-                ]
+                [{"role": "user", "content": prompt}, {"role": "assistant", "content": result.text}]
             )
         print(f"Agent: {result.text}")
 
@@ -380,10 +364,7 @@ def _handle_chat_command(prompt: str, clear_history: Callable[[], None]) -> bool
         return None
     if prompt == "/exit":
         return True
-    messages = {
-        "/help": "Commands: /help, /clear, /exit",
-        "/clear": "Conversation cleared.",
-    }
+    messages = {"/help": "Commands: /help, /clear, /exit", "/clear": "Conversation cleared."}
     if prompt == "/clear":
         clear_history()
     print(messages.get(prompt, f"Unknown command: {prompt}. Use /help."))
@@ -424,10 +405,7 @@ def _print_cli_error(error: Exception) -> None:
     print(f"Error: {error}", file=sys.stderr)
     message = str(error)
     if "No model is configured" in message:
-        print(
-            "Hint: set a model environment variable or add a model Skill.",
-            file=sys.stderr,
-        )
+        print("Hint: set a model environment variable or add a model Skill.", file=sys.stderr)
     elif isinstance(error, FileNotFoundError):
         print("Hint: check the explicit file or configuration path.", file=sys.stderr)
     print("Run again with --debug to show the Python traceback.", file=sys.stderr)

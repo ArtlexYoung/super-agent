@@ -26,10 +26,7 @@ from core.checks import (
 from skill.handlers.memory import read_memory_settings_from_skill
 from core.records.store import EventStore
 from skill.discovery.catalog import ProgressiveDisclosureCore, SkillDisclosure
-from skill.handlers.runtime import (
-    create_task_policy_from_skill,
-    create_workflow_policy_from_skill,
-)
+from skill.handlers.runtime import create_task_policy_from_skill, create_workflow_policy_from_skill
 from skill.handlers.mcp import read_mcp_skill_settings
 from skill.handlers.models import (
     create_model_profile_from_skill_disclosure,
@@ -57,8 +54,7 @@ class SkillPackageManager:
             disabled_names=skill_disclosure.disabled_names,
         )
         self.actions = ActionRunner(
-            action_rules or ActionRules(),
-            store.append_management_action_event,
+            action_rules or ActionRules(), store.append_management_action_event
         )
 
     def pack_skill(self, name: str, output: Path) -> Path:
@@ -97,11 +93,7 @@ class SkillPackageManager:
         return cast(
             SkillManifest,
             self.actions.execute_action(
-                ActionRequest.create(
-                    "user:skill-package",
-                    "skill:owned:install",
-                    tuple(effects),
-                ),
+                ActionRequest.create("user:skill-package", "skill:owned:install", tuple(effects)),
                 lambda: self._install_skill(source, expected_sha256),
             ),
         )
@@ -112,41 +104,31 @@ class SkillPackageManager:
             manifest = _validate_staged_skill(staged, expected_sha256)
             index = self.skill_disclosure.prepare_skill_index()
             if index.find_skill(manifest.name, manifest.skill_type) is not None:
-                raise FileExistsError(f"skill already exists: {manifest.skill_type}:{manifest.name}")
+                raise FileExistsError(
+                    f"skill already exists: {manifest.skill_type}:{manifest.name}"
+                )
             target = _managed_skill_target(self.user_skill_root, manifest)
             if target.exists():
                 raise FileExistsError(f"skill target already exists: {target}")
-            update = SkillDirectoryUpdate(staged, target, calculate_skill_directory_sha256(staged), "")
+            update = SkillDirectoryUpdate(
+                staged, target, calculate_skill_directory_sha256(staged), ""
+            )
             apply_skill_directory_updates([update])
             return self._read_skill_manifest(manifest.name, manifest.skill_type)
 
-    def update_skill(
-        self,
-        name: str,
-        source: str,
-        expected_sha256: str = "",
-    ) -> SkillManifest:
+    def update_skill(self, name: str, source: str, expected_sha256: str = "") -> SkillManifest:
         effects = [ActionEffect.READ, ActionEffect.UPDATE]
         if source.strip().startswith("git+"):
             effects.extend((ActionEffect.EXECUTE, ActionEffect.NETWORK))
         return cast(
             SkillManifest,
             self.actions.execute_action(
-                ActionRequest.create(
-                    "user:skill-package",
-                    f"skill:owned:{name}",
-                    tuple(effects),
-                ),
+                ActionRequest.create("user:skill-package", f"skill:owned:{name}", tuple(effects)),
                 lambda: self._update_skill(name, source, expected_sha256),
             ),
         )
 
-    def _update_skill(
-        self,
-        name: str,
-        source: str,
-        expected_sha256: str,
-    ) -> SkillManifest:
+    def _update_skill(self, name: str, source: str, expected_sha256: str) -> SkillManifest:
         skill_name, expected_type = _split_skill_reference(name)
         current = self._read_skill_manifest(skill_name, expected_type)
         target = _managed_skill_target(self.user_skill_root, current)
@@ -154,21 +136,29 @@ class SkillPackageManager:
             staged = _stage_skill_source(source, Path(tmp))
             proposed = _validate_staged_skill(staged, expected_sha256)
             if proposed.name != skill_name:
-                raise ValueError(f"updated skill name does not match target: {proposed.name} != {skill_name}")
+                raise ValueError(
+                    f"updated skill name does not match target: {proposed.name} != {skill_name}"
+                )
             if proposed.skill_type != current.skill_type:
-                raise ValueError(f"updated Skill type does not match target: {proposed.skill_type} != {current.skill_type}")
+                raise ValueError(
+                    f"updated Skill type does not match target: {proposed.skill_type} != {current.skill_type}"
+                )
             validate_skill_replacement(current.path, staged)
-            expected_target_sha256 = calculate_skill_directory_sha256(current.path) if current.path.absolute() == target.absolute() else ""
-            update = SkillDirectoryUpdate(staged, target, calculate_skill_directory_sha256(staged), expected_target_sha256)
+            expected_target_sha256 = (
+                calculate_skill_directory_sha256(current.path)
+                if current.path.absolute() == target.absolute()
+                else ""
+            )
+            update = SkillDirectoryUpdate(
+                staged, target, calculate_skill_directory_sha256(staged), expected_target_sha256
+            )
             apply_skill_directory_updates([update])
         return self._read_skill_manifest(skill_name, current.skill_type)
 
     def remove_skill(self, name: str) -> None:
         self.actions.execute_action(
             ActionRequest.create(
-                "user:skill-package",
-                f"skill:owned:{name}",
-                (ActionEffect.DELETE,),
+                "user:skill-package", f"skill:owned:{name}", (ActionEffect.DELETE,)
             ),
             lambda: self._remove_skill(name),
         )
@@ -181,14 +171,12 @@ class SkillPackageManager:
             raise PermissionError(f"cannot remove shared Skill: {entry.reference.key}")
         manifest = self._read_skill_manifest(skill_name, expected_type)
         _require_managed_skill_path(manifest.path, self.user_skill_root)
-        update = SkillDirectoryUpdate(None, manifest.path, "", calculate_skill_directory_sha256(manifest.path))
+        update = SkillDirectoryUpdate(
+            None, manifest.path, "", calculate_skill_directory_sha256(manifest.path)
+        )
         apply_skill_directory_updates([update])
 
-    def _read_skill_manifest(
-        self,
-        name: str,
-        expected_type: str | None = None,
-    ) -> SkillManifest:
+    def _read_skill_manifest(self, name: str, expected_type: str | None = None) -> SkillManifest:
         self.skill_disclosure.prepare_skill_index()
         return self.skill_disclosure.open_skill(name, expected_type).read_manifest()
 
@@ -283,7 +271,9 @@ def _validate_zip_member(info: zipfile.ZipInfo) -> PurePosixPath:
 def _locate_skill_directory(root: Path) -> Path:
     if (root / "skill.toml").is_file():
         return root
-    candidates = sorted(path for path in root.iterdir() if path.is_dir() and (path / "skill.toml").is_file())
+    candidates = sorted(
+        path for path in root.iterdir() if path.is_dir() and (path / "skill.toml").is_file()
+    )
     if len(candidates) != 1:
         raise ValueError("skill package must contain exactly one skill directory")
     return candidates[0]
@@ -309,24 +299,17 @@ def _managed_skill_target(skill_root: Path, manifest: SkillManifest) -> Path:
 def copy_skill_directory(source: Path, target: Path) -> None:
     """Copy one passive Skill tree while rejecting executable path indirection."""
     shutil.copytree(
-        source,
-        target,
-        symlinks=True,
-        ignore=shutil.ignore_patterns(".git", "__pycache__"),
+        source, target, symlinks=True, ignore=shutil.ignore_patterns(".git", "__pycache__")
     )
     _reject_symlinks(target)
 
 
 @contextmanager
-def create_skill_candidate(
-    target: Path,
-    source: Path | None = None,
-) -> Iterator[Path]:
+def create_skill_candidate(target: Path, source: Path | None = None) -> Iterator[Path]:
     """Yield one isolated candidate directory and remove it on every exit path."""
     target.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(
-        prefix=f".{target.name}.skill-candidate-",
-        dir=target.parent,
+        prefix=f".{target.name}.skill-candidate-", dir=target.parent
     ) as root:
         candidate = Path(root) / target.name
         if source is None:
@@ -346,7 +329,9 @@ def _write_deterministic_skill_zip(source: Path, name: str, output: Path) -> Non
             info.compress_type = zipfile.ZIP_DEFLATED
             info.create_system = 3
             info.external_attr = (stat.S_IFREG | 0o644) << 16
-            archive.writestr(info, path.read_bytes(), compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
+            archive.writestr(
+                info, path.read_bytes(), compress_type=zipfile.ZIP_DEFLATED, compresslevel=9
+            )
 
 
 def _reject_symlinks(path: Path) -> None:
@@ -407,10 +392,7 @@ def write_skill_lock_file(manifests: list[SkillManifest], path: Path) -> None:
     # Excluding timestamps and absolute paths makes identical lock content byte-for-byte stable.
     locked = [
         _lock_manifest(manifest)
-        for manifest in sorted(
-            manifests,
-            key=lambda item: (item.skill_type, item.name),
-        )
+        for manifest in sorted(manifests, key=lambda item: (item.skill_type, item.name))
     ]
     keys = {(item.skill_type, item.name) for item in locked}
     if len(keys) != len(locked):
@@ -453,11 +435,7 @@ def require_skill_directory_hash(path: Path, expected: str, label: str) -> None:
         raise ValueError(f"{label} files changed")
 
 
-def require_skill_directory_matches(
-    path: Path,
-    expected_sha256: str,
-    label: str,
-) -> None:
+def require_skill_directory_matches(path: Path, expected_sha256: str, label: str) -> None:
     """Require a directory to be absent or match the expected SHA-256."""
     if expected_sha256:
         if re.fullmatch(r"[0-9a-f]{64}", expected_sha256) is None:
@@ -505,9 +483,7 @@ def apply_skill_directory_updates(
         shutil.rmtree(backup)
 
 
-def _stage_skill_directory_updates(
-    updates: list[SkillDirectoryUpdate],
-) -> list[Path | None]:
+def _stage_skill_directory_updates(updates: list[SkillDirectoryUpdate]) -> list[Path | None]:
     staged: list[Path | None] = []
     try:
         for update in updates:
@@ -515,18 +491,12 @@ def _stage_skill_directory_updates(
             if update.source is None:
                 staged.append(None)
                 continue
-            require_skill_directory_matches(
-                update.source,
-                update.expected_source_sha256,
-                "source",
-            )
+            require_skill_directory_matches(update.source, update.expected_source_sha256, "source")
             candidate = update.target.parent / f".{update.target.name}.candidate-{uuid4().hex}"
             staged.append(candidate)
             copy_skill_directory(update.source, candidate)
             require_skill_directory_matches(
-                candidate,
-                update.expected_source_sha256,
-                "copied source",
+                candidate, update.expected_source_sha256, "copied source"
             )
     except Exception:
         _remove_skill_directories(staged)
@@ -541,11 +511,7 @@ def _activate_skill_directory_updates(
     activated: list[Path],
 ) -> None:
     for update in updates:
-        require_skill_directory_matches(
-            update.target,
-            update.expected_target_sha256,
-            "target",
-        )
+        require_skill_directory_matches(update.target, update.expected_target_sha256, "target")
     for update in updates:
         if _path_exists(update.target):
             backup = update.target.parent / f".{update.target.name}.backup-{uuid4().hex}"
@@ -559,15 +525,16 @@ def _activate_skill_directory_updates(
 
 
 def _notify_skill_directory_restored(
-    after_restore: Callable[[], None] | None,
-    error: Exception,
+    after_restore: Callable[[], None] | None, error: Exception
 ) -> None:
     if after_restore is None:
         return
     try:
         after_restore()
     except Exception as restore_error:
-        error.add_note(f"Could not refresh after restoring Skills: {type(restore_error).__name__}: {restore_error}")
+        error.add_note(
+            f"Could not refresh after restoring Skills: {type(restore_error).__name__}: {restore_error}"
+        )
 
 
 def _remove_skill_directories(paths: list[Path | None]) -> None:
@@ -576,10 +543,7 @@ def _remove_skill_directories(paths: list[Path | None]) -> None:
             shutil.rmtree(path)
 
 
-def _restore_skill_directory_updates(
-    activated: list[Path],
-    backups: dict[Path, Path],
-) -> None:
+def _restore_skill_directory_updates(activated: list[Path], backups: dict[Path, Path]) -> None:
     for target in activated:
         if _path_exists(target):
             shutil.rmtree(target)
@@ -599,10 +563,7 @@ def _show_backup_manifests(backup: Path) -> None:
 
 
 def validate_skill_directory(
-    skill_path: Path,
-    *,
-    expected_type: str | None = None,
-    expected_name: str | None = None,
+    skill_path: Path, *, expected_type: str | None = None, expected_name: str | None = None
 ) -> SkillManifest:
     """Validate one complete Skill directory through progressive disclosure."""
     disclosure = ProgressiveDisclosureCore([skill_path])
@@ -611,7 +572,9 @@ def validate_skill_directory(
         raise ValueError("skill directory must contain exactly one valid skill")
     entry = index.entries[0]
     if expected_type is not None and entry.reference.skill_type != expected_type:
-        raise ValueError(f"candidate changed Skill type: {expected_type} -> {entry.reference.skill_type}")
+        raise ValueError(
+            f"candidate changed Skill type: {expected_type} -> {entry.reference.skill_type}"
+        )
     if expected_name is not None and entry.reference.name != expected_name:
         raise ValueError(f"candidate changed skill name: {expected_name} -> {entry.reference.name}")
     opened = disclosure.open_skill(entry.reference.name, entry.reference.skill_type)
@@ -643,12 +606,11 @@ def validate_skill_replacement(current_path: Path, proposed_path: Path) -> None:
         _validate_model_replacement(current, proposed)
 
 
-def check_skill_configuration(
-    skill_path: Path,
-    expected: dict[str, object],
-) -> list[bool]:
+def check_skill_configuration(skill_path: Path, expected: dict[str, object]) -> list[bool]:
     """Compare expected Skill settings without writing disclosure state."""
-    if not isinstance(expected, dict) or not all(isinstance(name, str) and name.strip() for name in expected):
+    if not isinstance(expected, dict) or not all(
+        isinstance(name, str) and name.strip() for name in expected
+    ):
         raise ValueError("expected Skill configuration must use non-empty string keys")
     disclosure = open_single_skill_directory(skill_path)
     configuration = disclosure.core.inspect_skill_configuration(disclosure.source.reference)
@@ -678,17 +640,14 @@ def _validate_prompt_skill(disclosure: SkillDisclosure) -> None:
         raise ValueError(f"prompt Skill instructions cannot be empty: {manifest.name}")
 
 
-def _validate_model_replacement(
-    current: SkillDisclosure,
-    proposed: SkillDisclosure,
-) -> None:
+def _validate_model_replacement(current: SkillDisclosure, proposed: SkillDisclosure) -> None:
     current_profile = create_model_profile_from_skill_disclosure(current)
     proposed_profile = create_model_profile_from_skill_disclosure(proposed)
     if current_profile.agent_can_update_connection != proposed_profile.agent_can_update_connection:
         raise PermissionError("model Skill cannot change connection update ownership")
-    if not current_profile.agent_can_update_connection and model_connection_fields(current_profile) != model_connection_fields(
-        proposed_profile
-    ):
+    if not current_profile.agent_can_update_connection and model_connection_fields(
+        current_profile
+    ) != model_connection_fields(proposed_profile):
         raise PermissionError("model Skill does not allow Agent connection updates")
 
 

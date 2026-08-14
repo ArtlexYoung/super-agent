@@ -80,11 +80,7 @@ class AgentGroups:
                         "minimum": 2,
                         "maximum": settings.max_members,
                     },
-                    "quorum": {
-                        "type": "integer",
-                        "minimum": 1,
-                        "maximum": settings.max_members,
-                    },
+                    "quorum": {"type": "integer", "minimum": 1, "maximum": settings.max_members},
                     "roles": {
                         "type": "array",
                         "items": {"type": "string"},
@@ -97,8 +93,7 @@ class AgentGroups:
                 },
                 self._create_group,
                 SkillAction(
-                    (ActionEffect.CREATE, ActionEffect.UPDATE, ActionEffect.DELEGATE),
-                    "task:group",
+                    (ActionEffect.CREATE, ActionEffect.UPDATE, ActionEffect.DELEGATE), "task:group"
                 ),
                 ("prompt", "purpose", "required_features"),
                 "agent-group",
@@ -161,13 +156,7 @@ class AgentGroups:
             if context.get("reference") is not None:
                 member_tasks = [replace(task, shared_context=context) for task in member_tasks]
             self.queue._agent_pool.commit_group(choices)
-            group = self._create_group_record(
-                group_id,
-                request,
-                member_tasks,
-                choices,
-                context,
-            )
+            group = self._create_group_record(group_id, request, member_tasks, choices, context)
             self._start_group_locked(group, member_tasks, choices)
             return {"group": self._group_result_locked(group), "created": True}
 
@@ -186,8 +175,7 @@ class AgentGroups:
         with self.queue._condition:
             group = self._require_group_locked(group_id)
             self.queue._condition.wait_for(
-                lambda: self.queue._tasks_are_terminal_locked(group.task_ids),
-                timeout=wait_seconds,
+                lambda: self.queue._tasks_are_terminal_locked(group.task_ids), timeout=wait_seconds
             )
             result = self._group_result_locked(group)
         waited = max(0.0, monotonic() - started)
@@ -251,9 +239,7 @@ class AgentGroups:
         tasks = []
         for index, role in enumerate(roles):
             member_prompt = build_member_prompt(
-                request.prompt,
-                role,
-                uses_shared_context=uses_shared_context,
+                request.prompt, role, uses_shared_context=uses_shared_context
             )
             tasks.append(
                 QueuedTask(
@@ -272,18 +258,19 @@ class AgentGroups:
         return tasks
 
     def _select_group_size_locked(
-        self,
-        group_id: str,
-        request: AgentGroupRequest,
-        choices: list[SelectedAgent],
+        self, group_id: str, request: AgentGroupRequest, choices: list[SelectedAgent]
     ) -> int:
         settings = self.settings
         minimum = max(2, request.quorum)
         available = min(request.requested_members, len(choices))
         if available < minimum:
-            raise AgentUnavailableError(f"group {group_id} needs {minimum} distinct available models; found {available}")
+            raise AgentUnavailableError(
+                f"group {group_id} needs {minimum} distinct available models; found {available}"
+            )
         if available < request.requested_members and not settings.allow_reduced_group:
-            raise AgentUnavailableError(f"group {group_id} needs {request.requested_members} distinct available models; found {available}")
+            raise AgentUnavailableError(
+                f"group {group_id} needs {request.requested_members} distinct available models; found {available}"
+            )
         limit = settings.max_estimated_cost
         selected = available
         if limit > 0:
@@ -296,10 +283,7 @@ class AgentGroups:
         return selected
 
     def _budget_exceeded_result(
-        self,
-        group_id: str,
-        request: AgentGroupRequest,
-        choices: list[SelectedAgent],
+        self, group_id: str, request: AgentGroupRequest, choices: list[SelectedAgent]
     ) -> dict[str, object]:
         settings = self.settings
         result = {
@@ -316,11 +300,7 @@ class AgentGroups:
         self.queue.record_event("agent_group.budget_exceeded", dict(result))
         return {"group": result, "created": False}
 
-    def _create_group_context_locked(
-        self,
-        group_id: str,
-        prompt: str,
-    ) -> dict[str, object]:
+    def _create_group_context_locked(self, group_id: str, prompt: str) -> dict[str, object]:
         writer = self.create_shared_context
         if writer is None:
             return {"reference": None, "cache_backed": False}
@@ -356,17 +336,20 @@ class AgentGroups:
             len(tasks) < request.requested_members,
             hashlib.sha256(request.prompt.encode()).hexdigest(),
             len(request.prompt),
-            ("inline" if not isinstance(reference, str) else "cache_reference" if context.get("cache_backed") else "run_reference"),
+            (
+                "inline"
+                if not isinstance(reference, str)
+                else "cache_reference"
+                if context.get("cache_backed")
+                else "run_reference"
+            ),
             reference if isinstance(reference, str) else None,
             choices_cost(choices),
             settings.max_estimated_cost,
         )
 
     def _start_group_locked(
-        self,
-        group: AgentGroup,
-        tasks: list[QueuedTask],
-        choices: list[SelectedAgent],
+        self, group: AgentGroup, tasks: list[QueuedTask], choices: list[SelectedAgent]
     ) -> None:
         group_id = group.group_id
         self.queue._group_records[group_id] = group
@@ -380,10 +363,7 @@ class AgentGroups:
 
     def _group_result_locked(self, group: AgentGroup) -> dict[str, object]:
         settings = self.settings
-        tasks = self.queue._task_snapshots_locked(
-            group.task_ids,
-            include_result=True,
-        )
+        tasks = self.queue._task_snapshots_locked(group.task_ids, include_result=True)
         return decide_group(group, tasks, summary_chars=settings.summary_chars)
 
     def refresh(self, group_id: str) -> None:
@@ -391,13 +371,12 @@ class AgentGroups:
         if group.status != "running" or not self.queue._tasks_are_terminal_locked(group.task_ids):
             return
         result = self._group_result_locked(group)
-        self.queue._group_records[group_id] = replace(
-            group,
-            status=str(result["status"]),
-        )
+        self.queue._group_records[group_id] = replace(group, status=str(result["status"]))
         audit = dict(result)
         audit["members"] = [
-            {key: value for key, value in member.items() if key != "evidence"} for member in result["members"] if isinstance(member, dict)
+            {key: value for key, value in member.items() if key != "evidence"}
+            for member in result["members"]
+            if isinstance(member, dict)
         ]
         self.queue.record_event("agent_group.completed", audit)
 
@@ -435,20 +414,12 @@ class AgentGroupSettings:
             ("quorum", 1, settings.default_members),
         ):
             read_int(
-                getattr(settings, name),
-                f"agent_groups {name}",
-                minimum=minimum,
-                maximum=maximum,
+                getattr(settings, name), f"agent_groups {name}", minimum=minimum, maximum=maximum
             )
         read_number(settings.max_estimated_cost, "agent_groups max_estimated_cost", minimum=0)
         for name in ("allow_reduced_group", "require_different_models"):
             read_bool(getattr(settings, name), f"agent_groups {name}")
-        read_int(
-            settings.summary_chars,
-            "agent_groups summary_chars",
-            minimum=100,
-            maximum=10_000,
-        )
+        read_int(settings.summary_chars, "agent_groups summary_chars", minimum=100, maximum=10_000)
         return settings
 
 
@@ -490,8 +461,7 @@ class AgentGroup:
 
 
 def read_group_request(
-    arguments: Mapping[str, object],
-    settings: AgentGroupSettings,
+    arguments: Mapping[str, object], settings: AgentGroupSettings
 ) -> AgentGroupRequest:
     data = dict(arguments)
     requested, quorum, roles = _read_group_members(arguments, settings)
@@ -514,12 +484,7 @@ def read_group_request(
     )
 
 
-def build_member_prompt(
-    shared_prompt: str,
-    role: str,
-    *,
-    uses_shared_context: bool,
-) -> str:
+def build_member_prompt(shared_prompt: str, role: str, *, uses_shared_context: bool) -> str:
     instructions = (
         "You are one independent member of a decision group.\n"
         f"Your role: {role}\n"
@@ -534,10 +499,7 @@ def build_member_prompt(
 
 
 def decide_group(
-    group: AgentGroup,
-    tasks: list[dict[str, object]],
-    *,
-    summary_chars: int,
+    group: AgentGroup, tasks: list[dict[str, object]], *, summary_chars: int
 ) -> dict[str, object]:
     by_id = {str(item.get("task_id")): item for item in tasks}
     members: list[dict[str, object]] = []
@@ -566,8 +528,15 @@ def decide_group(
                 "evidence_chars": len(evidence),
             }
         )
-    terminal = all(str(by_id.get(task_id, {}).get("status")) in TERMINAL_TASK_STATUSES for task_id in group.task_ids)
-    decision = "supported" if counts["support"] >= group.quorum else ("rejected" if counts["reject"] >= group.quorum else "inconclusive")
+    terminal = all(
+        str(by_id.get(task_id, {}).get("status")) in TERMINAL_TASK_STATUSES
+        for task_id in group.task_ids
+    )
+    decision = (
+        "supported"
+        if counts["support"] >= group.quorum
+        else ("rejected" if counts["reject"] >= group.quorum else "inconclusive")
+    )
     return {
         **group.to_dict(),
         "status": decision if terminal else "running",
@@ -611,8 +580,7 @@ def choices_cost(choices: list[SelectedAgent]) -> float:
 
 
 def _read_group_members(
-    arguments: Mapping[str, object],
-    settings: AgentGroupSettings,
+    arguments: Mapping[str, object], settings: AgentGroupSettings
 ) -> tuple[int, int, tuple[str, ...]]:
     requested = read_int(
         arguments.get("member_count", settings.default_members),
@@ -622,10 +590,7 @@ def _read_group_members(
     )
     roles = _read_roles(arguments.get("roles"), requested)
     quorum = read_int(
-        arguments.get("quorum", settings.quorum),
-        "group quorum",
-        minimum=1,
-        maximum=requested,
+        arguments.get("quorum", settings.quorum), "group quorum", minimum=1, maximum=requested
     )
     return requested, quorum, roles
 

@@ -81,18 +81,26 @@ class ModelDefinition:
                 ProviderConnection(
                     provider=read_text(data.get("provider"), "model Skill provider"),
                     base_url=read_optional_text(data.get("base_url"), "model Skill base_url"),
-                    api_key_env=read_optional_text(data.get("api_key_env"), "model Skill api_key_env"),
+                    api_key_env=read_optional_text(
+                        data.get("api_key_env"), "model Skill api_key_env"
+                    ),
                 )
             ),
             traits=ModelTraits(
-                supports=read_text_list(data.get("supports", ["text"]), "model Skill supports", lower=True),
-                purposes=read_text_list(data.get("purposes", []), "model Skill purposes", lower=True),
-                strengths=read_text_list(data.get("strengths", []), "model Skill strengths", lower=True),
-                quality_score=read_optional_number(data.get("quality_score"), "model Skill quality_score", minimum=0, maximum=1),
+                supports=read_text_list(
+                    data.get("supports", ["text"]), "model Skill supports", lower=True
+                ),
+                purposes=read_text_list(
+                    data.get("purposes", []), "model Skill purposes", lower=True
+                ),
+                strengths=read_text_list(
+                    data.get("strengths", []), "model Skill strengths", lower=True
+                ),
+                quality_score=read_optional_number(
+                    data.get("quality_score"), "model Skill quality_score", minimum=0, maximum=1
+                ),
                 expected_latency_ms=read_optional_int(
-                    data.get("expected_latency_ms"),
-                    "model Skill expected_latency_ms",
-                    minimum=0,
+                    data.get("expected_latency_ms"), "model Skill expected_latency_ms", minimum=0
                 ),
                 pricing=ModelPricing.from_mapping(data),
             ),
@@ -185,9 +193,7 @@ class ModelDispatchChoice:
     cost: dict[str, object]
 
 
-def create_model_profile_from_skill_disclosure(
-    disclosure: SkillDisclosure,
-) -> ModelProfile:
+def create_model_profile_from_skill_disclosure(disclosure: SkillDisclosure) -> ModelProfile:
     manifest = disclosure.read_manifest()
     if manifest.skill_type != "model":
         raise ValueError(f"skill does not contain a model profile: {manifest.name}")
@@ -206,13 +212,17 @@ def create_model_profile_from_skill_disclosure(
 
 
 def read_model_profiles(
-    skills: Skills,
-    environment: Mapping[str, str] | None = None,
+    skills: Skills, environment: Mapping[str, str] | None = None
 ) -> list[ModelProfile]:
-    model_entries = [entry for entry in skills.index.entries if entry.reference.skill_type == "model"]
+    model_entries = [
+        entry for entry in skills.index.entries if entry.reference.skill_type == "model"
+    ]
     if not model_entries:
         return discover_environment_model_profiles(environment)
-    profiles = [create_model_profile_from_skill_disclosure(skills.open(entry.reference)) for entry in model_entries]
+    profiles = [
+        create_model_profile_from_skill_disclosure(skills.open(entry.reference))
+        for entry in model_entries
+    ]
     select_default_model_profile(profiles)
     return profiles
 
@@ -272,10 +282,7 @@ def discover_environment_model_profiles(
                 "openai",
                 "OpenAI model discovered from OPENAI_API_KEY.",
                 _environment_text(env, "SUPER_AGENT_MODEL") or DEFAULT_OPENAI_MODEL,
-                ProviderConnection(
-                    OPENAI_COMPATIBLE_PROVIDER,
-                    api_key_env="OPENAI_API_KEY",
-                ),
+                ProviderConnection(OPENAI_COMPATIBLE_PROVIDER, api_key_env="OPENAI_API_KEY"),
                 "environment:OPENAI_API_KEY",
                 supports=["text", "tools"],
             )
@@ -286,16 +293,16 @@ def discover_environment_model_profiles(
                 "anthropic",
                 "Anthropic model discovered from ANTHROPIC_API_KEY.",
                 _environment_text(env, "SUPER_AGENT_MODEL") or DEFAULT_ANTHROPIC_MODEL,
-                ProviderConnection(
-                    ANTHROPIC_COMPATIBLE_PROVIDER,
-                    api_key_env="ANTHROPIC_API_KEY",
-                ),
+                ProviderConnection(ANTHROPIC_COMPATIBLE_PROVIDER, api_key_env="ANTHROPIC_API_KEY"),
                 "environment:ANTHROPIC_API_KEY",
                 supports=["text", "tools"],
             )
         )
     profiles = _deduplicate_profiles(profiles)
-    return [replace(profile, definition=replace(profile.definition, default=index == 0)) for index, profile in enumerate(profiles)]
+    return [
+        replace(profile, definition=replace(profile.definition, default=index == 0))
+        for index, profile in enumerate(profiles)
+    ]
 
 
 def create_direct_provider_profile() -> ModelProfile:
@@ -316,8 +323,7 @@ def create_direct_provider_profile() -> ModelProfile:
 
 
 def model_profile_is_ready(
-    profile: ModelProfile,
-    environment: Mapping[str, str] | None = None,
+    profile: ModelProfile, environment: Mapping[str, str] | None = None
 ) -> bool:
     env = os.environ if environment is None else environment
     name = profile.connection.api_key_env
@@ -325,8 +331,7 @@ def model_profile_is_ready(
 
 
 def model_profile_to_dict(
-    profile: ModelProfile,
-    environment: Mapping[str, str] | None = None,
+    profile: ModelProfile, environment: Mapping[str, str] | None = None
 ) -> dict[str, object]:
     return {
         "key": profile.key,
@@ -348,10 +353,7 @@ def model_dispatch_to_dict(profile: ModelProfile) -> dict[str, object]:
     return {"key": profile.key, **profile.definition.to_dispatch_dict()}
 
 
-def model_profile_supports(
-    profile: ModelProfile,
-    required_features: Sequence[str],
-) -> bool:
+def model_profile_supports(profile: ModelProfile, required_features: Sequence[str]) -> bool:
     required = {item.strip().lower() for item in required_features if item.strip()}
     return required <= set(profile.traits.supports)
 
@@ -370,7 +372,11 @@ def choose_dispatch_model(
             for item in models
             if isinstance(item, dict)
             and required
-            <= {str(feature).strip().lower() for feature in item.get("supports", []) if isinstance(feature, str) and feature.strip()}
+            <= {
+                str(feature).strip().lower()
+                for feature in item.get("supports", [])
+                if isinstance(feature, str) and feature.strip()
+            }
         ]
         if isinstance(models, list)
         else []
@@ -378,18 +384,10 @@ def choose_dispatch_model(
     if not candidates:
         pricing = ModelPricing()
         return ModelDispatchChoice(
-            None,
-            pricing.resolved_dict(),
-            pricing.estimate_cost(token_counts),
+            None, pricing.resolved_dict(), pricing.estimate_cost(token_counts)
         )
     clean_purpose = purpose.strip().lower()
-    choices = [
-        (
-            item,
-            ModelPricing.from_mapping(item),
-        )
-        for item in candidates
-    ]
+    choices = [(item, ModelPricing.from_mapping(item)) for item in candidates]
     selected, pricing = min(
         enumerate(choices),
         key=lambda pair: (
@@ -406,12 +404,16 @@ def choose_dispatch_model(
 
 
 def model_connection_fields(profile: ModelProfile) -> tuple[str, str, str | None, str | None]:
-    return profile.connection.provider, profile.model, profile.connection.base_url, profile.connection.api_key_env
+    return (
+        profile.connection.provider,
+        profile.model,
+        profile.connection.base_url,
+        profile.connection.api_key_env,
+    )
 
 
 def _profile_from_super_agent_environment(
-    environment: Mapping[str, str],
-    provider: str,
+    environment: Mapping[str, str], provider: str
 ) -> ModelProfile:
     clean_provider = provider.strip().lower()
     model = _environment_text(environment, "SUPER_AGENT_MODEL")

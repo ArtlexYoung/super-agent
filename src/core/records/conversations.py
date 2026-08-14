@@ -25,10 +25,7 @@ class PendingConversationTurn:
 
 
 def prepare_conversation_turn(
-    store: EventStore,
-    action_rules: ActionRules,
-    conversation_id: str,
-    prompt: str,
+    store: EventStore, action_rules: ActionRules, conversation_id: str, prompt: str
 ) -> tuple[list[Message], PendingConversationTurn]:
     """Read history and authorize one future complete-turn commit."""
     selected_id = read_text(conversation_id, "conversation_id")
@@ -37,7 +34,11 @@ def prepare_conversation_turn(
     except KeyError:
         conversation = None
     messages: list[Message] = (
-        [] if conversation is None else [{"role": message.role, "content": message.content} for message in conversation.messages]
+        []
+        if conversation is None
+        else [
+            {"role": message.role, "content": message.content} for message in conversation.messages
+        ]
     )
     action_runner = ActionRunner(action_rules, store.append_management_action_event)
     prepared_action = action_runner.prepare_action(
@@ -48,19 +49,11 @@ def prepare_conversation_turn(
         )
     )
     return messages, PendingConversationTurn(
-        store,
-        action_runner,
-        prepared_action,
-        conversation,
-        selected_id,
-        prompt,
+        store, action_runner, prepared_action, conversation, selected_id, prompt
     )
 
 
-def complete_conversation_turn(
-    pending: PendingConversationTurn,
-    result: RunResult,
-) -> None:
+def complete_conversation_turn(pending: PendingConversationTurn, result: RunResult) -> None:
     """Apply one previously checked conversation change after a successful run."""
     pending.action_runner.apply_action(
         pending.prepared_action,
@@ -76,18 +69,10 @@ def complete_conversation_turn(
 
 
 def create_conversation(
-    store: EventStore,
-    title: str = "",
-    *,
-    conversation_id: str | None = None,
+    store: EventStore, title: str = "", *, conversation_id: str | None = None
 ) -> Conversation:
     selected_id = (
-        str(uuid4())
-        if conversation_id is None
-        else read_text(
-            conversation_id,
-            "conversation_id",
-        )
+        str(uuid4()) if conversation_id is None else read_text(conversation_id, "conversation_id")
     )
     if store.read_events("conversation", selected_id):
         raise ValueError(f"conversation already exists: {selected_id}")
@@ -119,11 +104,7 @@ def list_conversations(store: EventStore) -> list[Conversation]:
     )
 
 
-def rename_conversation(
-    store: EventStore,
-    conversation_id: str,
-    title: str,
-) -> Conversation:
+def rename_conversation(store: EventStore, conversation_id: str, title: str) -> Conversation:
     conversation = read_conversation(store, conversation_id)
     clean_title = read_text(title, "conversation title")
     if conversation.title != clean_title:
@@ -139,10 +120,7 @@ def rename_conversation(
 def clear_conversation(store: EventStore, conversation_id: str) -> Conversation:
     conversation = read_conversation(store, conversation_id)
     store.append_event(
-        "conversation",
-        conversation.conversation_id,
-        "conversation.cleared",
-        data={},
+        "conversation", conversation.conversation_id, "conversation.cleared", data={}
     )
     return read_conversation(store, conversation.conversation_id)
 
@@ -172,22 +150,14 @@ def append_conversation_turn(
         data={
             "title": "" if existing else prompt[:48].strip(),
             "user": _message_data("user", prompt, run_id),
-            "assistant": _message_data(
-                "assistant",
-                response,
-                run_id,
-                run_result=run_result,
-            ),
+            "assistant": _message_data("assistant", response, run_id, run_result=run_result),
         },
         event_id=turn_id,
     )
     return read_conversation(store, selected_id)
 
 
-def conversation_from_events(
-    user_id: str,
-    events: list[StorageEvent],
-) -> Conversation:
+def conversation_from_events(user_id: str, events: list[StorageEvent]) -> Conversation:
     ordered = sorted(events, key=lambda event: event.position)
     first = ordered[0]
     if first.event_type not in {"conversation.created", "conversation.turn_added"}:
@@ -218,11 +188,7 @@ def conversation_from_events(
 
 
 def _message_data(
-    role: str,
-    content: str,
-    run_id: str,
-    *,
-    run_result: dict[str, object] | None = None,
+    role: str, content: str, run_id: str, *, run_result: dict[str, object] | None = None
 ) -> dict[str, object]:
     return {
         "message_id": f"message-{uuid4().hex}",
@@ -256,10 +222,7 @@ def _turn_messages_from_event(event: StorageEvent) -> list[ConversationMessage]:
     return messages
 
 
-def _conversation_message_from_data(
-    event: StorageEvent,
-    name: str,
-) -> ConversationMessage:
+def _conversation_message_from_data(event: StorageEvent, name: str) -> ConversationMessage:
     data = event.data.get(name)
     if not isinstance(data, dict):
         raise ValueError(f"stored conversation {name} must be an object")
@@ -276,10 +239,5 @@ def _conversation_message_from_data(
     )
 
 
-def _stored_string(
-    data: dict[str, object],
-    name: str,
-    *,
-    allow_empty: bool = False,
-) -> str:
+def _stored_string(data: dict[str, object], name: str, *, allow_empty: bool = False) -> str:
     return read_text(data.get(name), f"stored {name}", allow_empty=allow_empty)

@@ -1884,6 +1884,17 @@ Status: implemented.
 - Keep every protected feature executable and reduce source to at most 17,500 non-empty Python
   lines without adding a default dependency or a hidden fallback.
 
+## v0.1.83: One Event Query and Audit Projection
+
+Status: implemented.
+
+- Match event queries once on `StorageEventQuery`, shared by scoped snapshots and JSONL storage;
+  SQL backends compile the same query fields without changing tenant isolation.
+- Generate detailed and critical audit rules from explicit event groups plus one sensitive-field
+  map, while unknown events and durable state streams remain protected by default.
+- Remove historical trailing-comma expansion, keep source lines at 100 characters or fewer, and
+  reduce source to at most 16,200 non-empty Python lines without changing behavior.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

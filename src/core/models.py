@@ -51,7 +51,9 @@ def read_choice(value: object, label: str, allowed: set[str]) -> str:
     return selected
 
 
-def read_int(value: object, label: str, *, minimum: int | None = None, maximum: int | None = None) -> int:
+def read_int(
+    value: object, label: str, *, minimum: int | None = None, maximum: int | None = None
+) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         if minimum is not None and maximum is not None:
             raise ValueError(f"{label} must be an integer from {minimum} to {maximum}")
@@ -65,11 +67,15 @@ def read_int(value: object, label: str, *, minimum: int | None = None, maximum: 
     return value
 
 
-def read_optional_int(value: object, label: str, *, minimum: int | None = None, maximum: int | None = None) -> int | None:
+def read_optional_int(
+    value: object, label: str, *, minimum: int | None = None, maximum: int | None = None
+) -> int | None:
     return None if value is None else read_int(value, label, minimum=minimum, maximum=maximum)
 
 
-def read_number(value: object, label: str, *, minimum: float | None = None, maximum: float | None = None) -> float:
+def read_number(
+    value: object, label: str, *, minimum: float | None = None, maximum: float | None = None
+) -> float:
     if isinstance(value, bool) or not isinstance(value, int | float):
         raise ValueError(f"{label} must be a number")
     number = float(value)
@@ -82,17 +88,14 @@ def read_number(value: object, label: str, *, minimum: float | None = None, maxi
     return number
 
 
-def read_optional_number(value: object, label: str, *, minimum: float | None = None, maximum: float | None = None) -> float | None:
+def read_optional_number(
+    value: object, label: str, *, minimum: float | None = None, maximum: float | None = None
+) -> float | None:
     return None if value is None else read_number(value, label, minimum=minimum, maximum=maximum)
 
 
 def read_text_list(
-    value: object,
-    label: str,
-    *,
-    minimum: int = 0,
-    maximum: int | None = None,
-    lower: bool = False,
+    value: object, label: str, *, minimum: int = 0, maximum: int | None = None, lower: bool = False
 ) -> list[str]:
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
         raise ValueError(f"{label} must be a string array")
@@ -127,7 +130,9 @@ def read_optional_positive_tool_integer(arguments: Mapping[str, object], name: s
     return read_optional_int(arguments.get(name), f"tool argument {name!r}", minimum=1)
 
 
-def read_optional_non_negative_tool_integer(arguments: Mapping[str, object], name: str) -> int | None:
+def read_optional_non_negative_tool_integer(
+    arguments: Mapping[str, object], name: str
+) -> int | None:
     return read_optional_int(arguments.get(name), f"tool argument {name!r}", minimum=0)
 
 
@@ -295,7 +300,9 @@ class RuntimeEventSubscribers:
             try:
                 subscriber.handle_event(event)
             except Exception as error:
-                failures.append(SubscriberFailure(name, event.event_type, type(error).__name__, str(error)))
+                failures.append(
+                    SubscriberFailure(name, event.event_type, type(error).__name__, str(error))
+                )
         return failures
 
 
@@ -333,9 +340,17 @@ class SubagentRecordOptions:
     def __post_init__(self) -> None:
         if not isinstance(self.mode, str) or self.mode not in {"full", "summary"}:
             raise ValueError("subagent record mode must be full or summary")
-        if isinstance(self.summary_chars, bool) or not isinstance(self.summary_chars, int) or self.summary_chars <= 0:
+        if (
+            isinstance(self.summary_chars, bool)
+            or not isinstance(self.summary_chars, int)
+            or self.summary_chars <= 0
+        ):
             raise ValueError("subagent summary_chars must be positive")
-        if isinstance(self.nested_results, bool) or not isinstance(self.nested_results, int) or self.nested_results < 0:
+        if (
+            isinstance(self.nested_results, bool)
+            or not isinstance(self.nested_results, int)
+            or self.nested_results < 0
+        ):
             raise ValueError("subagent nested_results cannot be negative")
 
     @property
@@ -365,8 +380,7 @@ class AgentRunOptions:
 
 
 def resolve_agent_run_options(
-    options: AgentRunOptions | None,
-    skill: str | None,
+    options: AgentRunOptions | None, skill: str | None
 ) -> AgentRunOptions | None:
     if skill is None:
         return options
@@ -402,15 +416,11 @@ class RunIdentity:
         return cls(
             user_id=validate_user_id(user_id),
             agent_name=validate_agent_name(agent_name),
-            run_id=(f"run-{uuid4().hex}" if run_id is None else _clean_identity_value(run_id, "run_id")),
-            conversation_id=_clean_optional_identity_value(
-                conversation_id,
-                "conversation_id",
+            run_id=(
+                f"run-{uuid4().hex}" if run_id is None else _clean_identity_value(run_id, "run_id")
             ),
-            parent_run_id=_clean_optional_identity_value(
-                parent_run_id,
-                "parent_run_id",
-            ),
+            conversation_id=_clean_optional_identity_value(conversation_id, "conversation_id"),
+            parent_run_id=_clean_optional_identity_value(parent_run_id, "parent_run_id"),
         )
 
     def __post_init__(self) -> None:
@@ -444,8 +454,7 @@ class SubAgentResult:
 class SubagentCallbacks:
     list_subagents: Callable[[], list[dict[str, object]]]
     run_named_subagent: Callable[
-        [str, str, object, SubagentRecordOptions, dict[str, object] | None],
-        dict[str, object],
+        [str, str, object, SubagentRecordOptions, dict[str, object] | None], dict[str, object]
     ]
 
 
