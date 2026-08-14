@@ -1847,6 +1847,20 @@ Status: implemented.
 - Replay forget and organize changes through one strict remove-and-replace path while preserving
   explicit action checks, atomic organization events, storage backends, and event names.
 
+## v0.1.80: Executable Release Contract
+
+Status: implemented.
+
+- Protect the direct `Run`, `RunTools`, and `Memory` ownership boundaries and reject the removed
+  context, factory, duplicate model state, and Core memory layers in the release gate.
+- Preserve public memory, advanced queue, group, selector, Skill update, remote storage, CLI,
+  AG-UI, Web, package, and learning operations while tightening the source budget to 18,650
+  non-empty Python lines across fewer than 48 files.
+- Replace the fixture-only offline check with a real stateless CLI, Runtime, Skill discovery, and
+  mock Provider execution that verifies structured output and an unchanged workspace.
+- Require full releases to pass Python tests and compilation, source checks, wheel and source
+  package builds, the offline benchmark, and Web typecheck, lint, and production build.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

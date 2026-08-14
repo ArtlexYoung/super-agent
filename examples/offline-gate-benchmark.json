@@ -1,18 +1,22 @@
 {
   "schema_version": 2,
   "agents": [{
-    "name": "offline-fixture",
-    "version": "1",
-    "command": ["{python}", "-c", "print('super-agent offline gate ready')"],
-    "environment": {"PYTHONDONTWRITEBYTECODE": "1"},
-    "result_json_field": null
+    "name": "super-agent-offline",
+    "version": "0.1",
+    "command": ["{python}", "{project_root}/src/cli.py", "--output", "json", "{prompt}"],
+    "environment": {
+      "PYTHONDONTWRITEBYTECODE": "1",
+      "PYTHONPATH": "{project_root}/src",
+      "SUPER_AGENT_PROVIDER": "mock"
+    },
+    "result_json_field": "text"
   }],
   "tasks": [{
-    "id": "runner-contract",
-    "prompt": "unused fixture prompt",
+    "id": "stateless-runtime",
+    "prompt": "Return the offline test response.",
     "workspace": null,
     "checks": {
-      "output_contains": ["super-agent offline gate ready"],
+      "output_contains": ["Mock response"],
       "output_excludes": ["failed"],
       "files": [],
       "workspace_unchanged": true

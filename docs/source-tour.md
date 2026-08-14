@@ -4,9 +4,10 @@ Do not start by reading every file. Read one ordinary call in this order:
 
 1. `src/super_agent.py` exports the public `Agent` from `adapter/agent.py`.
 2. `src/adapter/agent.py` lazily assembles Provider, storage, Skills, and Runtime only when used.
-3. `src/core/runtime.py` owns one run identity and task lifecycle; `core/records/events.py`
-   owns the ordered event log.
-4. `src/core/loop.py` gives the model selected context and checked tools.
+3. `src/core/runtime.py` creates one `Run` that owns the task, identity, Skill snapshot,
+   storage view, and ordered event log.
+4. `src/core/loop.py` gives the model selected context; `src/core/tools.py` receives that
+   same `Run` directly and executes checked tools.
 5. `src/skill/discovery/catalog.py` builds the shared Skill index and opens requested
    content; its optional cache recorder is supplied by `adapter/storage_backends`.
 6. `src/core/provider.py` makes and measures the selected Provider call.
@@ -63,6 +64,7 @@ For a subsystem, start at its owner:
 - Skill file lifecycle: `skill.handlers.package.SkillPackageManager` and its explicit
   validation functions.
 - Conversation state: `core.records.conversations`.
+- Long-term memory and usage-habit events: `skill.handlers.memory.Memory`.
 - Skill evidence and changes: `skill.learning`.
 - Scoped state and audit: `core.records.store` and `core.records.audit`.
 - Side-effect checks: `core.checks.ActionRunner`.

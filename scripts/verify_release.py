@@ -15,7 +15,7 @@ from pathlib import Path
 
 
 MAX_TOTAL_SOURCE_FILES = 48
-MAX_TOTAL_SOURCE_LINES = 18_700
+MAX_TOTAL_SOURCE_LINES = 18_650
 EXPECTED_SOURCE_ROOT = {"adapter", "cli.py", "core", "skill", "super_agent.py"}
 EXPECTED_DOMAIN_CHILDREN = {
     "adapter": {
@@ -96,8 +96,11 @@ REMOVED_CODE_NAMES = {
     "ModelLoop",
     "RuntimeTools",
     "RuntimeToolsContext",
+    "RunToolsContext",
+    "RuntimeMemoryStore",
     "SkillCollection",
     "SkillResult",
+    "create_run_tools",
 }
 PRESERVED_SOURCE_SYMBOLS = {
     "adapter/cli.py": {"main"},
@@ -113,8 +116,12 @@ PRESERVED_SOURCE_SYMBOLS = {
     "adapter/http/web.py": {"WebAPI"},
     "adapter/storage_backends/local_storage.py": {"JsonlStorage", "SqliteStorage"},
     "adapter/storage_backends/remote_storage.py": {"MySqlStorage", "PostgreSqlStorage"},
+    "core/model_calls.py": {"list_model_usage_stats"},
     "core/models.py": {"SubagentRecordOptions"},
     "core/records/audit.py": {"compact_subagent_result"},
+    "core/records/store.py": {"EventStore", "StorageBackend"},
+    "core/runtime.py": {"Run", "Runtime"},
+    "core/tools.py": {"RunTools"},
     "skill/handlers/memory.py": {"Memory"},
     "skill/handlers/package.py": {
         "SkillPackageManager", "apply_skill_directory_updates", "write_skill_lock_file",
@@ -122,14 +129,31 @@ PRESERVED_SOURCE_SYMBOLS = {
     "skill/learning/update.py": {
         "SkillUpdater",
     },
+    "skill/learning/run_learning.py": {
+        "explain_run_with_insight", "learn_from_run", "review_run_evidence",
+    },
     "skill/tasks/task_groups.py": {"AgentGroups", "AgentGroupSettings"},
     "skill/tasks/task_queue.py": {"TaskQueue", "create_task_queue"},
     "skill/tasks/task_selection.py": {"AgentSelector", "TaskQueueSettings"},
 }
 PRESERVED_CLASS_METHODS = {
+    ("skill/handlers/memory.py", "Memory"): {
+        "forget_long_term", "list_long_term", "organize_long_term",
+        "recall_long_term", "remember_long_term",
+    },
     ("skill/learning/update.py", "SkillUpdater"): {
         "apply_skill_change", "propose_skill_change",
         "test_skill_change", "undo_skill_change",
+    },
+    ("skill/tasks/task_groups.py", "AgentGroups"): {
+        "has_failures", "list_groups", "list_tools", "refresh",
+    },
+    ("skill/tasks/task_queue.py", "TaskQueue"): {
+        "close", "finish", "list_groups", "list_tasks", "list_tools", "read_results",
+    },
+    ("skill/tasks/task_selection.py", "AgentSelector"): {
+        "choose", "choose_group", "commit_group", "record_success",
+        "record_unavailable", "retry_delay",
     },
 }
 PRESERVED_OPTIONAL_DEPENDENCIES = {"mysql", "postgresql"}
@@ -209,6 +233,14 @@ def build_full_gate_commands(
         ),
         ("Python compile", (python, "-m", "compileall", "-q", "src")),
         ("diff check", ("git", "diff", "--check")),
+        (
+            "Python package build",
+            (
+                "uv", "build", str(root), "--out-dir",
+                str(benchmark_output.parent / "packages"),
+                "--no-python-downloads", "--no-progress",
+            ),
+        ),
         (
             "offline benchmark",
             (
@@ -306,6 +338,9 @@ def verify_release(root: Path, expected_version: str) -> list[str]:
     errors.extend(_verify_removed_code_names(source_files))
     errors.extend(_verify_agent_actions(source_root / "adapter" / "agent.py"))
     errors.extend(_verify_preserved_capabilities(source_root, project_data))
+    errors.extend(
+        _verify_offline_benchmark(root / "examples" / "offline-gate-benchmark.json")
+    )
     readme = root / "README.md"
     if not readme.is_file() or "README_cn.md" not in readme.read_text(encoding="utf-8"):
         errors.append("README.md must link to README_cn.md")
@@ -447,6 +482,39 @@ def _verify_agent_actions(path: Path) -> list[str]:
                 f"{name} actions changed: expected {sorted(expected_actions)}, "
                 f"found {sorted(actual)}"
             )
+    return errors
+
+
+def _verify_offline_benchmark(path: Path) -> list[str]:
+    errors: list[str] = []
+    value = _read_json(path, errors)
+    agents = value.get("agents")
+    tasks = value.get("tasks")
+    if not isinstance(agents, list) or len(agents) != 1 or not isinstance(agents[0], dict):
+        return [*errors, "offline gate must declare one Agent"]
+    agent = agents[0]
+    expected_command = [
+        "{python}", "{project_root}/src/cli.py", "--output", "json", "{prompt}",
+    ]
+    if agent.get("command") != expected_command:
+        errors.append("offline gate must execute the real Super Agent CLI")
+    expected_environment = {
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONPATH": "{project_root}/src",
+        "SUPER_AGENT_PROVIDER": "mock",
+    }
+    if agent.get("environment") != expected_environment:
+        errors.append("offline gate must use the explicit offline mock environment")
+    if agent.get("result_json_field") != "text":
+        errors.append("offline gate must verify the structured Agent result text")
+    if not isinstance(tasks, list) or not tasks or not isinstance(tasks[0], dict):
+        errors.append("offline gate must declare at least one task")
+    else:
+        checks = tasks[0].get("checks")
+        if not isinstance(checks, dict) or checks.get("workspace_unchanged") is not True:
+            errors.append("offline gate must prove that a stateless run leaves no files")
+        if not isinstance(checks, dict) or "Mock response" not in checks.get("output_contains", []):
+            errors.append("offline gate must verify the Provider result")
     return errors
 
 
