@@ -99,6 +99,46 @@ REMOVED_CODE_NAMES = {
     "SkillCollection",
     "SkillResult",
 }
+PRESERVED_SOURCE_SYMBOLS = {
+    "adapter/cli.py": {"main"},
+    "adapter/cli_support/cli_data.py": {
+        "configure_conversations_parser", "configure_memory_parser",
+        "configure_runs_parser", "configure_storage_parser",
+    },
+    "adapter/cli_support/cli_skills.py": {
+        "configure_skill_changes_parser", "configure_skill_packages_parser",
+        "configure_models_parser", "run_skills_command",
+    },
+    "adapter/http/agui.py": {"create_ag_ui_server"},
+    "adapter/http/web.py": {"WebAPI"},
+    "adapter/storage_backends/local_storage.py": {"JsonlStorage", "SqliteStorage"},
+    "adapter/storage_backends/remote_storage.py": {"MySqlStorage", "PostgreSqlStorage"},
+    "core/models.py": {"SubagentRecordOptions"},
+    "core/records/audit.py": {"compact_subagent_result"},
+    "skill/handlers/memory.py": {"Memory"},
+    "skill/handlers/package.py": {
+        "SkillPackageManager", "apply_skill_directory_updates", "write_skill_lock_file",
+    },
+    "skill/learning/update.py": {
+        "SkillUpdater",
+    },
+    "skill/tasks/task_groups.py": {"AgentGroups", "AgentGroupSettings"},
+    "skill/tasks/task_queue.py": {"TaskQueue", "create_task_queue"},
+    "skill/tasks/task_selection.py": {"AgentSelector", "TaskQueueSettings"},
+}
+PRESERVED_CLASS_METHODS = {
+    ("skill/learning/update.py", "SkillUpdater"): {
+        "apply_skill_change", "propose_skill_change",
+        "test_skill_change", "undo_skill_change",
+    },
+}
+PRESERVED_OPTIONAL_DEPENDENCIES = {"mysql", "postgresql"}
+PRESERVED_SKILL_RESOURCES = {
+    "task/code-multi-deep-optimization/SKILL.md",
+    "task/code-multi-deep-optimization/skill.toml",
+    "task/common-multi-producer-consumer/SKILL.md",
+    "task/common-multi-producer-consumer/skill.toml",
+}
 
 
 def main(arguments: list[str] | None = None) -> int:
@@ -265,6 +305,7 @@ def verify_release(root: Path, expected_version: str) -> list[str]:
     errors.extend(_verify_owned_agent_calls(source_root, source_files))
     errors.extend(_verify_removed_code_names(source_files))
     errors.extend(_verify_agent_actions(source_root / "adapter" / "agent.py"))
+    errors.extend(_verify_preserved_capabilities(source_root, project_data))
     readme = root / "README.md"
     if not readme.is_file() or "README_cn.md" not in readme.read_text(encoding="utf-8"):
         errors.append("README.md must link to README_cn.md")
@@ -310,6 +351,62 @@ def _verify_removed_code_names(source_files: list[Path]) -> list[str]:
                 errors.append(
                     f"removed code name returned: {name} at {path}:{node.lineno}"
                 )
+    return errors
+
+
+def _verify_preserved_capabilities(
+    source_root: Path,
+    project_data: dict[str, object],
+) -> list[str]:
+    """Reject releases that remove a high-complexity feature to reduce source size."""
+    errors = []
+    for relative, required in PRESERVED_SOURCE_SYMBOLS.items():
+        path = source_root / relative
+        if not path.is_file():
+            errors.append(f"preserved capability module is missing: {relative}")
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        actual = {
+            node.name
+            for node in tree.body
+            if isinstance(node, ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef)
+        }
+        for symbol in sorted(required - actual):
+            errors.append(f"preserved capability is missing: {relative}:{symbol}")
+    for (relative, class_name), required in PRESERVED_CLASS_METHODS.items():
+        path = source_root / relative
+        if not path.is_file():
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        owner = next(
+            (
+                node
+                for node in tree.body
+                if isinstance(node, ast.ClassDef) and node.name == class_name
+            ),
+            None,
+        )
+        actual = {
+            node.name
+            for node in (() if owner is None else owner.body)
+            if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+        }
+        for method in sorted(required - actual):
+            errors.append(
+                f"preserved capability is missing: {relative}:{class_name}.{method}"
+            )
+    optional = project_data.get("optional-dependencies", {})
+    optional_names = set(optional) if isinstance(optional, dict) else set()
+    for name in sorted(PRESERVED_OPTIONAL_DEPENDENCIES - optional_names):
+        errors.append(f"preserved optional storage dependency is missing: {name}")
+    builtin_root = source_root / "skill" / "builtin"
+    actual_resources = {
+        path.relative_to(builtin_root).as_posix()
+        for path in builtin_root.rglob("*")
+        if path.is_file()
+    }
+    for relative in sorted(PRESERVED_SKILL_RESOURCES - actual_resources):
+        errors.append(f"preserved task Skill resource is missing: {relative}")
     return errors
 
 

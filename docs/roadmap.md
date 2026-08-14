@@ -1763,6 +1763,16 @@ Status: implemented.
 - Point the Web build directly at `src/adapter/static`, update current architecture guides to the
   real imports, and require both new imports and old import failures in fresh-process tests.
 
+## v0.1.72: Preserved Capability Contract
+
+Status: implemented.
+
+- Make the static release gate reject removal of remote storage, CLI management, advanced task
+  queues and groups, record compression, Skill packaging, self-update, memory, AG-UI, or Web.
+- Preserve MySQL and PostgreSQL as optional dependencies while the default install stays empty.
+- Protect the deep-optimization and producer-consumer task Skills as packaged resources.
+- Require source consolidation to remove duplicate implementation rather than product behavior.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

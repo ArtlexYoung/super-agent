@@ -15,6 +15,9 @@ from scripts.verify_release import (
     EXPECTED_DOMAIN_CHILDREN,
     MAX_TOTAL_SOURCE_FILES,
     MAX_TOTAL_SOURCE_LINES,
+    PRESERVED_OPTIONAL_DEPENDENCIES,
+    PRESERVED_SOURCE_SYMBOLS,
+    _verify_preserved_capabilities,
     _verify_owned_agent_calls,
 )
 
@@ -50,6 +53,19 @@ class ReleaseShapeTests(unittest.TestCase):
 
     def test_default_python_install_has_no_dependencies(self) -> None:
         self.assertEqual([], self.project["project"]["dependencies"])
+
+    def test_high_complexity_capabilities_cannot_be_removed_for_size(self) -> None:
+        self.assertEqual(
+            {"mysql", "postgresql"},
+            PRESERVED_OPTIONAL_DEPENDENCIES,
+        )
+        self.assertIn("skill/tasks/task_queue.py", PRESERVED_SOURCE_SYMBOLS)
+        self.assertIn("skill/tasks/task_groups.py", PRESERVED_SOURCE_SYMBOLS)
+        self.assertIn("adapter/cli_support/cli_data.py", PRESERVED_SOURCE_SYMBOLS)
+        self.assertEqual(
+            [],
+            _verify_preserved_capabilities(Path("src"), self.project["project"]),
+        )
 
     def test_wheel_contains_only_the_public_source_layout(self) -> None:
         wheel = self.project["tool"]["hatch"]["build"]["targets"]["wheel"]
