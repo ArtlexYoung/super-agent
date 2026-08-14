@@ -1861,6 +1861,18 @@ Status: implemented.
 - Require full releases to pass Python tests and compilation, source checks, wheel and source
   package builds, the offline benchmark, and Web typecheck, lint, and production build.
 
+## v0.1.81: Locked Behavior and Reduction Contract
+
+Status: implemented.
+
+- Run the public API, Provider, stateless execution, safety, progressive disclosure, memory,
+  advanced task, Skill update, package, storage, remote SQL, audit, CLI, and AG-UI behavior suites
+  as an explicit feature contract before the complete Python suite.
+- Lock monotonically decreasing source budgets for every release through `v0.1.90`, ending at
+  no more than 9,750 non-empty Python lines without changing the default zero-dependency install.
+- Keep the current 18,602-line implementation as the exact starting ceiling so restructuring
+  cannot claim progress by first raising its baseline.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

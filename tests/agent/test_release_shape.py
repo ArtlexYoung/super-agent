@@ -13,10 +13,12 @@ from pathlib import Path
 from core import __version__
 from scripts.verify_release import (
     EXPECTED_DOMAIN_CHILDREN,
+    FINAL_SOURCE_LINE_TARGET,
     MAX_TOTAL_SOURCE_FILES,
     MAX_TOTAL_SOURCE_LINES,
     PRESERVED_OPTIONAL_DEPENDENCIES,
     PRESERVED_SOURCE_SYMBOLS,
+    SOURCE_LINE_BUDGETS,
     _verify_preserved_capabilities,
     _verify_owned_agent_calls,
 )
@@ -53,6 +55,14 @@ class ReleaseShapeTests(unittest.TestCase):
 
     def test_default_python_install_has_no_dependencies(self) -> None:
         self.assertEqual([], self.project["project"]["dependencies"])
+
+    def test_source_reduction_plan_cannot_be_silently_relaxed(self) -> None:
+        budgets = list(SOURCE_LINE_BUDGETS.values())
+
+        self.assertEqual(9_750, FINAL_SOURCE_LINE_TARGET)
+        self.assertEqual(FINAL_SOURCE_LINE_TARGET, budgets[-1])
+        self.assertEqual(MAX_TOTAL_SOURCE_LINES, SOURCE_LINE_BUDGETS[__version__])
+        self.assertTrue(all(current > following for current, following in zip(budgets, budgets[1:])))
 
     def test_high_complexity_capabilities_cannot_be_removed_for_size(self) -> None:
         self.assertEqual(
@@ -482,7 +492,7 @@ class ReleaseShapeTests(unittest.TestCase):
         )
 
         self.assertLess(len(sources), MAX_TOTAL_SOURCE_FILES)
-        self.assertLess(line_count, MAX_TOTAL_SOURCE_LINES)
+        self.assertLessEqual(line_count, MAX_TOTAL_SOURCE_LINES)
 
     def test_removed_runtime_contracts_do_not_return(self) -> None:
         source = "\n".join(

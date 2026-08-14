@@ -15,7 +15,14 @@ from pathlib import Path
 
 
 MAX_TOTAL_SOURCE_FILES = 48
-MAX_TOTAL_SOURCE_LINES = 18_650
+SOURCE_LINE_BUDGETS = {
+    "0.1.81": 18_602, "0.1.82": 17_500, "0.1.83": 16_200,
+    "0.1.84": 15_300, "0.1.85": 14_100, "0.1.86": 13_000,
+    "0.1.87": 11_900, "0.1.88": 10_900, "0.1.89": 10_200,
+    "0.1.90": 9_750,
+}
+FINAL_SOURCE_LINE_TARGET = 9_750
+MAX_TOTAL_SOURCE_LINES = SOURCE_LINE_BUDGETS["0.1.81"]
 EXPECTED_SOURCE_ROOT = {"adapter", "cli.py", "core", "skill", "super_agent.py"}
 EXPECTED_DOMAIN_CHILDREN = {
     "adapter": {
@@ -163,6 +170,17 @@ PRESERVED_SKILL_RESOURCES = {
     "task/common-multi-producer-consumer/SKILL.md",
     "task/common-multi-producer-consumer/skill.toml",
 }
+FEATURE_CONTRACT_MODULES = (
+    "tests.agent.test_public_api", "tests.agent.test_run",
+    "tests.agent.test_model_discovery", "tests.agent.test_multi_agent_tasks",
+    "tests.agent.test_record_compression", "tests.commands.test_cli",
+    "tests.agui.test_protocol", "tests.agui.test_server",
+    "tests.runtime.test_provider_calls", "tests.runtime.test_safety",
+    "tests.runtime.test_stateless", "tests.skills.test_disclosure_core",
+    "tests.skills.test_memory", "tests.skills.test_tasks", "tests.skills.test_packages",
+    "tests.skills.test_skill_update", "tests.storage.test_storage",
+    "tests.storage.test_remote_sql_storage", "tests.storage.test_audit",
+)
 
 
 def main(arguments: list[str] | None = None) -> int:
@@ -228,6 +246,10 @@ def build_full_gate_commands(
     python = sys.executable
     commands = [
         (
+            "Feature contract",
+            (python, "-m", "unittest", *FEATURE_CONTRACT_MODULES),
+        ),
+        (
             "Python tests",
             (python, "-m", "unittest", "discover", "-s", "tests", "-p", "test_*.py"),
         ),
@@ -268,6 +290,11 @@ def verify_release(root: Path, expected_version: str) -> list[str]:
     errors: list[str] = []
     if VERSION_PATTERN.fullmatch(expected_version) is None:
         errors.append("version must use the 0.x.y format")
+    planned_budget = SOURCE_LINE_BUDGETS.get(expected_version)
+    if planned_budget is None:
+        errors.append("version has no locked source-line budget")
+    elif planned_budget != MAX_TOTAL_SOURCE_LINES:
+        errors.append("current source-line budget does not match the locked release plan")
 
     project = _read_toml(root / "pyproject.toml", errors)
     web_package = _read_json(root / "web/package.json", errors)
@@ -330,9 +357,9 @@ def verify_release(root: Path, expected_version: str) -> list[str]:
         errors.append(
             f"source file count must stay below {MAX_TOTAL_SOURCE_FILES}"
         )
-    if source_lines >= MAX_TOTAL_SOURCE_LINES:
+    if source_lines > MAX_TOTAL_SOURCE_LINES:
         errors.append(
-            f"source line count must stay below {MAX_TOTAL_SOURCE_LINES}"
+            f"source line count must not exceed {MAX_TOTAL_SOURCE_LINES}"
         )
     errors.extend(_verify_owned_agent_calls(source_root, source_files))
     errors.extend(_verify_removed_code_names(source_files))

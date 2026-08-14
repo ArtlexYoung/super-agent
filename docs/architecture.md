@@ -139,5 +139,6 @@ The release suite verifies the claims above as behavior:
 - Stateless runs do not create storage or import optional state and update modules.
 - Disabled storage and failed Providers raise their original errors without substitution.
 - Skill changes remain four separate propose, test, apply, and undo operations.
-- Python source stays below 70 files and 19,500 non-empty lines, while per-file, function,
-  complexity, and directory-size limits remain enforced.
+- Python source follows the locked `v0.1.81-v0.1.90` reduction budgets and finishes below
+  9,750 non-empty lines, while per-file, function, complexity, and directory-size limits remain
+  enforced.

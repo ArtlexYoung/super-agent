@@ -23,6 +23,7 @@ class ReleaseGateTests(unittest.TestCase):
 
         self.assertEqual(
             [
+                "Feature contract",
                 "Python tests",
                 "Python compile",
                 "diff check",
@@ -38,6 +39,8 @@ class ReleaseGateTests(unittest.TestCase):
         self.assertFalse(any(command[0] in {"sh", "bash", "zsh"} for _name, command in commands))
         package_command = dict(commands)["Python package build"]
         self.assertEqual(("uv", "build"), package_command[:2])
+        feature_command = dict(commands)["Feature contract"]
+        self.assertEqual((sys.executable, "-m", "unittest"), feature_command[:3])
 
     def test_release_script_accepts_current_version(self) -> None:
         result = subprocess.run(
