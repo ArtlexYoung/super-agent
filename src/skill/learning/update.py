@@ -24,13 +24,18 @@ from skill.handlers.package import (
     SkillDirectoryUpdate,
     apply_skill_directory_updates,
     check_skill_configuration,
+    copy_skill_directory,
     require_skill_directory_hash,
     validate_skill_directory,
     validate_skill_replacement,
 )
 from core.records.store import EventStore
 from skill.discovery.catalog import ProgressiveDisclosureCore
-from skill.discovery.manifest import SkillManifest, calculate_skill_directory_sha256
+from skill.discovery.manifest import (
+    SkillManifest,
+    calculate_skill_directory_sha256,
+    next_skill_version,
+)
 
 
 @dataclass(frozen=True)
@@ -204,7 +209,7 @@ class SkillUpdater:
         current = None if entry is None else self.disclosure.open_skill(name, selected_type).read_manifest()
         parent_sha = "" if current is None else calculate_skill_directory_sha256(current.path)
         parent_version = "" if current is None else current.version
-        proposed_version = "0.1.0" if current is None else _increment_version(parent_version)
+        proposed_version = next_skill_version(parent_version)
         response = self.propose_model.send_messages(
             _proposal_messages(selected_type, name, clean_goal, None if current is None else current.path)
         )
@@ -327,7 +332,7 @@ class SkillUpdater:
             raise ValueError(f"Skill change was already applied: {change.change_id}")
         history.mkdir(parents=True)
         if target.is_dir():
-            shutil.copytree(target, history / "previous")
+            copy_skill_directory(target, history / "previous")
         _write_json(history / "apply.json", {"target_sha256": target_sha, "had_user_skill": target.is_dir()})
         return history
 
@@ -507,7 +512,10 @@ def _create_candidate(
     changes = _read_file_changes(response)
     if target.parent.exists():
         raise FileExistsError(f"Skill change directory already exists: {target.parent}")
-    target.mkdir(parents=True) if current is None else shutil.copytree(current.path, target)
+    if current is None:
+        target.mkdir(parents=True)
+    else:
+        copy_skill_directory(current.path, target)
     for relative in changes["delete_files"]:
         path = _safe_file(target, relative)
         if path.exists():
@@ -584,14 +592,6 @@ def _clean_id(value: str) -> str:
     if re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,191}", value) is None:
         raise ValueError("invalid Skill change id")
     return value
-
-
-def _increment_version(value: str) -> str:
-    match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", value)
-    if match is None:
-        raise ValueError(f"Skill version must use major.minor.patch: {value}")
-    major, minor, patch = (int(item) for item in match.groups())
-    return f"{major}.{minor}.{patch + 1}"
 
 
 def _validate_case(case: SkillChangeCase) -> None:

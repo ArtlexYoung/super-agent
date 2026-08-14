@@ -128,3 +128,13 @@ def calculate_skill_directory_sha256(path: Path) -> str:
         digest.update(file_path.read_bytes())
         digest.update(b"\0")
     return digest.hexdigest()
+
+
+def next_skill_version(value: str = "") -> str:
+    if not value:
+        return "0.1.0"
+    match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", value)
+    if match is None:
+        raise ValueError(f"Skill version must use major.minor.patch: {value}")
+    major, minor, patch = (int(item) for item in match.groups())
+    return f"{major}.{minor}.{patch + 1}"

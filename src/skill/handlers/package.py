@@ -9,13 +9,20 @@ import stat
 import subprocess
 import tempfile
 import zipfile
+from contextlib import contextmanager
 from pathlib import Path, PurePosixPath
 from dataclasses import dataclass
-from typing import Callable, cast
+from typing import Callable, Iterator, cast
 from urllib.parse import unquote
 from uuid import uuid4
 
-from core.checks import ActionEffect, ActionRequest, ActionRunner, ActionRules
+from core.checks import (
+    ActionEffect,
+    ActionRequest,
+    ActionRunner,
+    ActionRules,
+    write_bytes_atomically,
+)
 from skill.handlers.memory import read_memory_settings_from_skill
 from core.records.store import EventStore
 from skill.discovery.catalog import ProgressiveDisclosureCore, SkillDisclosure
@@ -111,14 +118,10 @@ class SkillPackageManager:
             target = _managed_skill_target(self.user_skill_root, manifest)
             if target.exists():
                 raise FileExistsError(f"skill target already exists: {target}")
-            apply_skill_directory_updates([
-                SkillDirectoryUpdate(
-                    staged,
-                    target,
-                    calculate_skill_directory_sha256(staged),
-                    "",
-                )
-            ])
+            update = SkillDirectoryUpdate(
+                staged, target, calculate_skill_directory_sha256(staged), ""
+            )
+            apply_skill_directory_updates([update])
             return self._read_skill_manifest(manifest.name, manifest.skill_type)
 
     def update_skill(
@@ -169,14 +172,10 @@ class SkillPackageManager:
                 if current.path.absolute() == target.absolute()
                 else ""
             )
-            apply_skill_directory_updates([
-                SkillDirectoryUpdate(
-                    staged,
-                    target,
-                    calculate_skill_directory_sha256(staged),
-                    expected_target_sha256,
-                )
-            ])
+            update = SkillDirectoryUpdate(
+                staged, target, calculate_skill_directory_sha256(staged), expected_target_sha256
+            )
+            apply_skill_directory_updates([update])
         return self._read_skill_manifest(skill_name, current.skill_type)
 
     def remove_skill(self, name: str) -> None:
@@ -197,14 +196,10 @@ class SkillPackageManager:
             raise PermissionError(f"cannot remove shared Skill: {entry.reference.key}")
         manifest = self._read_skill_manifest(skill_name, expected_type)
         _require_managed_skill_path(manifest.path, self.user_skill_root)
-        apply_skill_directory_updates([
-            SkillDirectoryUpdate(
-                None,
-                manifest.path,
-                "",
-                calculate_skill_directory_sha256(manifest.path),
-            )
-        ])
+        update = SkillDirectoryUpdate(
+            None, manifest.path, "", calculate_skill_directory_sha256(manifest.path)
+        )
+        apply_skill_directory_updates([update])
 
     def _read_skill_manifest(
         self,
@@ -224,7 +219,7 @@ def _stage_skill_source(source: str, temporary_root: Path) -> Path:
     path = Path(value).expanduser()
     if path.is_dir():
         copied = temporary_root / path.name
-        _copy_skill_tree(path, copied)
+        copy_skill_directory(path, copied)
         return _locate_skill_directory(copied)
     if path.is_file() and zipfile.is_zipfile(path):
         extracted = temporary_root / "archive"
@@ -253,7 +248,7 @@ def _stage_git_source(source: str, temporary_root: Path) -> Path:
     selected = _resolve_git_subdirectory(clone_path, unquote(fragment) if separator else "")
     located = _locate_skill_directory(selected)
     copied = temporary_root / located.name
-    _copy_skill_tree(located, copied)
+    copy_skill_directory(located, copied)
     return copied
 
 
@@ -330,7 +325,8 @@ def _managed_skill_target(skill_root: Path, manifest: SkillManifest) -> Path:
     return skill_root / manifest.skill_type / manifest.name
 
 
-def _copy_skill_tree(source: Path, target: Path) -> None:
+def copy_skill_directory(source: Path, target: Path) -> None:
+    """Copy one passive Skill tree while rejecting executable path indirection."""
     shutil.copytree(
         source,
         target,
@@ -338,6 +334,25 @@ def _copy_skill_tree(source: Path, target: Path) -> None:
         ignore=shutil.ignore_patterns(".git", "__pycache__"),
     )
     _reject_symlinks(target)
+
+
+@contextmanager
+def create_skill_candidate(
+    target: Path,
+    source: Path | None = None,
+) -> Iterator[Path]:
+    """Yield one isolated candidate directory and remove it on every exit path."""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(
+        prefix=f".{target.name}.skill-candidate-",
+        dir=target.parent,
+    ) as root:
+        candidate = Path(root) / target.name
+        if source is None:
+            candidate.mkdir()
+        else:
+            copy_skill_directory(source, candidate)
+        yield candidate
 
 
 def _write_deterministic_skill_zip(source: Path, name: str, output: Path) -> None:
@@ -432,7 +447,7 @@ def write_skill_lock_file(manifests: list[SkillManifest], path: Path) -> None:
                 "",
             ]
         )
-    _write_text_atomically(path, "\n".join(lines))
+    write_bytes_atomically(path, "\n".join(lines).encode())
 
 
 def _lock_manifest(manifest: SkillManifest) -> LockedSkill:
@@ -449,16 +464,6 @@ def _lock_manifest(manifest: SkillManifest) -> LockedSkill:
 def _toml_string_array(values: list[str]) -> str:
     return "[" + ", ".join(json.dumps(value) for value in values) + "]"
 
-
-def _write_text_atomically(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.parent / f".{path.name}.{uuid4().hex}.tmp"
-    try:
-        temporary.write_text(text, encoding="utf-8")
-        os.replace(temporary, path)
-    finally:
-        if temporary.exists():
-            temporary.unlink()
 
 def require_skill_directory_hash(path: Path, expected: str, label: str) -> None:
     """Reject a Skill directory when its recorded revision is no longer current."""
@@ -535,7 +540,7 @@ def _stage_skill_directory_updates(
             )
             candidate = update.target.parent / f".{update.target.name}.candidate-{uuid4().hex}"
             staged.append(candidate)
-            shutil.copytree(update.source, candidate)
+            copy_skill_directory(update.source, candidate)
             require_skill_directory_matches(
                 candidate,
                 update.expected_source_sha256,

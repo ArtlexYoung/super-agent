@@ -1792,6 +1792,16 @@ Status: implemented.
 - Keep group voting and budget policy independent while removing its duplicate task-lifecycle view.
 - Preserve nested queues, triggers, wakeups, Agent rotation, parallel groups, and compact records.
 
+## v0.1.75: One Skill File Transaction
+
+Status: implemented.
+
+- Use one isolated candidate-directory context for model Skill edits and automatic cleanup.
+- Share safe Skill copying, atomic text writes, content hashes, and version increments across
+  packages, model Skills, and self-update.
+- Keep Git, ZIP, deterministic locks, propose/test/apply/undo, ownership, and rollback behavior.
+- Leave every write explicit and continue restoring all targets when a multi-Skill update fails.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

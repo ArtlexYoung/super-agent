@@ -4,11 +4,10 @@ from __future__ import annotations
 
 import json
 import re
-import shutil
+from contextlib import ExitStack
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import cast
-from uuid import uuid4
 
 from core.config import CommonConfig
 from core.checks import ActionEffect, ActionRequest, ActionRunner, ActionRules
@@ -25,10 +24,12 @@ from skill.discovery.manifest import (
     SkillEntry,
     SkillManifest,
     calculate_skill_directory_sha256,
+    next_skill_version,
 )
 from skill.handlers.package import (
     SkillDirectoryUpdate,
     apply_skill_directory_updates,
+    create_skill_candidate,
     validate_skill_directory,
 )
 
@@ -96,7 +97,7 @@ class ModelSkillManager:
             source_path = source_document.manifest.path
             if previous_name != clean_request.name and source.source != "user":
                 raise ValueError("a shared model Skill cannot be renamed by a user overlay")
-        version = _next_patch_version(
+        version = next_skill_version(
             "" if source_document is None else source_document.manifest.version
         )
         document = _create_model_skill_document(clean_request, source_document, version)
@@ -113,7 +114,6 @@ class ModelSkillManager:
             )
         _apply_model_skill_updates(
             updates,
-            self.store,
             removed_path=(
                 source_path
                 if source is not None and source.source == "user" and source_path != target
@@ -160,7 +160,7 @@ class ModelSkillManager:
                     _with_default(replacement_document, True),
                 )
             )
-        _apply_model_skill_updates(updates, self.store, removed_path=removed_path)
+        _apply_model_skill_updates(updates, removed_path=removed_path)
 
     def _default_removal_updates(
         self,
@@ -289,29 +289,37 @@ def _with_default(
     configuration = replace(definition, default=selected).to_configuration()
     manifest = replace(
         document.manifest,
-        version=_next_patch_version(document.manifest.version),
+        version=next_skill_version(document.manifest.version),
     )
     return _ModelSkillDocument(manifest, configuration)
 
 
 def _apply_model_skill_updates(
     updates: list[tuple[Path, Path | None, _ModelSkillDocument]],
-    store: EventStore,
     *,
     removed_path: Path | None,
 ) -> None:
-    stages = _stage_model_skill_updates(updates, store)
-    try:
-        changes = [
-            SkillDirectoryUpdate(
+    with ExitStack() as candidates:
+        changes = []
+        affected = set()
+        for target, source, document in updates:
+            stage = candidates.enter_context(create_skill_candidate(target, source))
+            stage.joinpath("skill.toml").write_text(
+                _model_skill_toml(document),
+                encoding="utf-8",
+            )
+            validate_skill_directory(
+                stage,
+                expected_type="model",
+                expected_name=document.manifest.name,
+            )
+            changes.append(SkillDirectoryUpdate(
                 stage,
                 target,
                 calculate_skill_directory_sha256(stage),
                 calculate_skill_directory_sha256(target) if target.is_dir() else "",
-            )
-            for target, stage in stages
-        ]
-        affected = {target for target, _ in stages}
+            ))
+            affected.add(target)
         if removed_path is not None and removed_path not in affected:
             changes.append(
                 SkillDirectoryUpdate(
@@ -322,60 +330,6 @@ def _apply_model_skill_updates(
                 )
             )
         apply_skill_directory_updates(changes)
-    finally:
-        _remove_model_skill_stages(stages)
-
-
-def _stage_model_skill_updates(
-    updates: list[tuple[Path, Path | None, _ModelSkillDocument]],
-    store: EventStore,
-) -> list[tuple[Path, Path]]:
-    stages: list[tuple[Path, Path]] = []
-    try:
-        for target, source, document in updates:
-            stages.append(_stage_model_skill(target, source, document, store))
-    except Exception:
-        _remove_model_skill_stages(stages)
-        raise
-    return stages
-
-
-def _remove_model_skill_stages(stages: list[tuple[Path, Path]]) -> None:
-    for _, stage in stages:
-        stage_root = stage.parent
-        if stage_root.exists():
-            shutil.rmtree(stage_root)
-
-
-def _stage_model_skill(
-    target: Path,
-    source: Path | None,
-    document: _ModelSkillDocument,
-    store: EventStore,
-) -> tuple[Path, Path]:
-    target.parent.mkdir(parents=True, exist_ok=True)
-    stage_root = target.parent / f".{target.name}.model-stage-{uuid4().hex}"
-    stage = stage_root / target.name
-    stage_root.mkdir()
-    if source is None:
-        stage.mkdir()
-    else:
-        shutil.copytree(source, stage)
-    try:
-        stage.joinpath("skill.toml").write_text(
-            _model_skill_toml(document),
-            encoding="utf-8",
-        )
-        validate_skill_directory(
-            stage,
-            expected_type="model",
-            expected_name=document.manifest.name,
-        )
-    except Exception:
-        if stage_root.exists():
-            shutil.rmtree(stage_root)
-        raise
-    return target, stage
 
 
 def _model_skill_toml(document: _ModelSkillDocument) -> str:
@@ -402,16 +356,6 @@ def _toml_value(value: object) -> str:
     if isinstance(value, int | float) and not isinstance(value, bool):
         return f"{value:g}" if isinstance(value, float) else str(value)
     raise TypeError(f"unsupported model Skill TOML value: {type(value).__name__}")
-
-
-def _next_patch_version(version: str) -> str:
-    if not version:
-        return "0.1.0"
-    match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", version)
-    if match is None:
-        raise ValueError(f"model Skill version must use semantic versioning: {version}")
-    major, minor, patch = (int(item) for item in match.groups())
-    return f"{major}.{minor}.{patch + 1}"
 
 
 def _require_managed_path(path: Path, root: Path) -> None:
