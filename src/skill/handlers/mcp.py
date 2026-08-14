@@ -15,6 +15,7 @@ from typing import Any, Iterable, Mapping, Protocol
 
 from core import __version__
 from core.checks import ActionEffect
+from core.models import read_text, reject_unknown_fields
 from skill.discovery.catalog import SkillDisclosure
 
 
@@ -34,15 +35,11 @@ def read_mcp_skill_settings(disclosure: SkillDisclosure) -> McpSkillSettings:
     if manifest.skill_type != "mcp":
         raise ValueError(f"Skill is not an MCP Skill: {manifest.name}")
     configuration = disclosure.read_configuration().content
-    unknown = set(configuration) - MCP_CONFIGURATION_FIELDS
-    if unknown:
-        raise ValueError(
-            "unknown MCP Skill settings: " + ", ".join(sorted(unknown))
-        )
+    reject_unknown_fields(configuration, MCP_CONFIGURATION_FIELDS, "MCP Skill settings")
     value = configuration.get("server", manifest.name)
-    if not isinstance(value, str) or not value.strip():
+    if not isinstance(value, str):
         raise ValueError("MCP Skill configuration.server must be a non-empty string")
-    return McpSkillSettings(value.strip().lower())
+    return McpSkillSettings(read_text(value, "MCP Skill configuration.server").lower())
 
 
 class McpServer(Protocol):
@@ -79,12 +76,7 @@ class StdioMcpServer:
         if not all(isinstance(item, str) for item in clean_arguments):
             raise TypeError("MCP stdio arguments must contain only strings")
         values = dict(environment or {})
-        if not all(
-            isinstance(key, str)
-            and bool(key.strip())
-            and isinstance(value, str)
-            for key, value in values.items()
-        ):
+        if not all(isinstance(key, str) and bool(key.strip()) and isinstance(value, str) for key, value in values.items()):
             raise TypeError("MCP stdio environment must map names to strings")
         if isinstance(timeout_seconds, bool) or timeout_seconds <= 0:
             raise ValueError("MCP stdio timeout must be positive")
@@ -160,9 +152,7 @@ class McpServers:
         clean_name = _clean_server_name(name)
         if clean_name in self._servers:
             raise ValueError(f"MCP server already registered: {clean_name}")
-        if not callable(getattr(server, "list_tools", None)) or not callable(
-            getattr(server, "call_tool", None)
-        ):
+        if not callable(getattr(server, "list_tools", None)) or not callable(getattr(server, "call_tool", None)):
             raise TypeError("MCP server must define list_tools and call_tool")
         normalized = tuple(ActionEffect(effect) for effect in effects)
         if not normalized:
@@ -185,10 +175,7 @@ class McpServers:
         clean_name = _clean_server_name(name)
         registered = self._servers.get(clean_name)
         if registered is None:
-            raise KeyError(
-                f"MCP server is not registered in code: {clean_name}; "
-                "call Agent.add_tool(...) before running"
-            )
+            raise KeyError(f"MCP server is not registered in code: {clean_name}; call Agent.add_tool(...) before running")
         return registered
 
     def list_code_registrations(self) -> list[dict[str, object]]:
@@ -273,15 +260,10 @@ class _McpStdioSession:
         try:
             while True:
                 if not selector.select(self.server.timeout_seconds):
-                    raise TimeoutError(
-                        "MCP response timed out after "
-                        f"{self.server.timeout_seconds:g} seconds"
-                    )
+                    raise TimeoutError(f"MCP response timed out after {self.server.timeout_seconds:g} seconds")
                 line = process.stdout.readline()
                 if not line:
-                    raise RuntimeError(
-                        f"MCP process exited before response: {process.poll()}"
-                    )
+                    raise RuntimeError(f"MCP process exited before response: {process.poll()}")
                 response = json.loads(line)
                 if response.get("id") == request_id:
                     return response
@@ -316,18 +298,14 @@ class _McpStdioSession:
 def _clean_server_name(value: str) -> str:
     clean = value.strip().lower() if isinstance(value, str) else ""
     if _SERVER_NAME_PATTERN.fullmatch(clean) is None:
-        raise ValueError(
-            "MCP server name must use lowercase letters, numbers, '_' or '-'"
-        )
+        raise ValueError("MCP server name must use lowercase letters, numbers, '_' or '-'")
     return clean
 
 
 def _implementation_sha256(server: McpServer) -> str:
     digest = hashlib.sha256()
     implementation_type = type(server)
-    digest.update(
-        f"{implementation_type.__module__}.{implementation_type.__qualname__}".encode()
-    )
+    digest.update(f"{implementation_type.__module__}.{implementation_type.__qualname__}".encode())
     source_path = inspect.getsourcefile(implementation_type)
     if source_path is not None and Path(source_path).is_file():
         digest.update(Path(source_path).read_bytes())

@@ -2,35 +2,30 @@
 
 from __future__ import annotations
 
-import math
-from dataclasses import dataclass
+import re
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 from uuid import uuid4
+
+from core.models import (
+    format_utc,
+    parse_utc,
+    read_bool,
+    read_int,
+    read_number,
+    read_object,
+    read_optional_int,
+    read_optional_number,
+    read_text,
+    read_text_list,
+)
 
 if TYPE_CHECKING:
     from core.records.store import EventStore, StorageEvent
 
 
 EVALUATION_RECORD_SCHEMA_VERSION = 3
-EVALUATION_RECORD_FIELDS = {
-    "schema_version",
-    "record_id",
-    "created_at",
-    "revision",
-    "source",
-    "result",
-}
-EVALUATION_SOURCE_FIELDS = {"source_type", "run_id"}
-EVALUATION_RESULT_FIELDS = {
-    "success",
-    "score",
-    "token_usage",
-    "latency_ms",
-    "error_type",
-    "checks",
-}
-EVALUATION_TOKEN_USAGE_FIELDS = {"input_tokens", "output_tokens"}
 
 
 @dataclass(frozen=True)
@@ -65,6 +60,12 @@ class EvaluationRecord:
     result: EvaluationResult
 
 
+EVALUATION_RECORD_FIELDS = set(EvaluationRecord.__dataclass_fields__)
+EVALUATION_SOURCE_FIELDS = set(EvaluationSource.__dataclass_fields__)
+EVALUATION_RESULT_FIELDS = set(EvaluationResult.__dataclass_fields__)
+EVALUATION_TOKEN_USAGE_FIELDS = set(EvaluationTokenUsage.__dataclass_fields__)
+
+
 def append_evaluation_records(
     store: EventStore,
     records: list[EvaluationRecord],
@@ -90,21 +91,14 @@ def read_evaluation_records(
 ) -> list[EvaluationRecord]:
     """Project evaluation records from one scoped event store."""
     selected_events = store.read_events("skill_evaluation", snapshot=events)
-    unknown = sorted(
-        {event.event_type for event in selected_events}
-        - {"evaluation.recorded"}
-    )
+    unknown = sorted({event.event_type for event in selected_events} - {"evaluation.recorded"})
     if unknown:
         raise ValueError("unknown evaluation event types: " + ", ".join(unknown))
-    records = [
-        evaluation_record_from_dict(event.data)
-        for event in selected_events
-    ]
+    records = [evaluation_record_from_dict(event.data) for event in selected_events]
     return [
         record
         for record in records
-        if (skill_key is None or record.revision.key == skill_key)
-        and (source_type is None or record.source.source_type == source_type)
+        if (skill_key is None or record.revision.key == skill_key) and (source_type is None or record.source.source_type == source_type)
     ]
 
 
@@ -119,7 +113,7 @@ def create_evaluation_record(
     record = EvaluationRecord(
         schema_version=EVALUATION_RECORD_SCHEMA_VERSION,
         record_id=record_id or f"evaluation-{uuid4().hex}",
-        created_at=_format_datetime(created_at or datetime.now(UTC)),
+        created_at=format_utc(created_at or datetime.now(UTC)),
         revision=revision,
         source=source,
         result=result,
@@ -130,30 +124,20 @@ def create_evaluation_record(
 
 def evaluation_record_to_dict(record: EvaluationRecord) -> dict[str, object]:
     _validate_evaluation_record(record)
-    return {
-        "schema_version": record.schema_version,
-        "record_id": record.record_id,
-        "created_at": record.created_at,
-        "revision": skill_revision_to_dict(record.revision),
-        "source": {
-            "source_type": record.source.source_type,
-            "run_id": record.source.run_id,
-        },
-        "result": evaluation_result_to_dict(record.result),
-    }
+    data = asdict(record)
+    data["revision"] = skill_revision_to_dict(record.revision)
+    return data
 
 
 def evaluation_record_from_dict(value: object) -> EvaluationRecord:
-    data = _require_exact_object(value, EVALUATION_RECORD_FIELDS, "evaluation record")
-    schema_version = _required_integer(data, "schema_version")
+    data = read_object(value, "evaluation record schema", EVALUATION_RECORD_FIELDS)
+    schema_version = read_int(data["schema_version"], "evaluation schema_version")
     if schema_version != EVALUATION_RECORD_SCHEMA_VERSION:
-        raise ValueError(
-            f"evaluation record schema_version must be {EVALUATION_RECORD_SCHEMA_VERSION}"
-        )
+        raise ValueError(f"evaluation record schema_version must be {EVALUATION_RECORD_SCHEMA_VERSION}")
     record = EvaluationRecord(
         schema_version=schema_version,
-        record_id=_required_string(data, "record_id"),
-        created_at=_required_string(data, "created_at"),
+        record_id=read_text(data["record_id"], "evaluation record_id"),
+        created_at=read_text(data["created_at"], "evaluation created_at"),
         revision=skill_revision_from_dict(data["revision"]),
         source=_source_from_dict(data["source"]),
         result=evaluation_result_from_dict(data["result"]),
@@ -163,73 +147,37 @@ def evaluation_record_from_dict(value: object) -> EvaluationRecord:
 
 
 def _source_from_dict(value: object) -> EvaluationSource:
-    data = _require_exact_object(value, EVALUATION_SOURCE_FIELDS, "evaluation source")
-    return EvaluationSource(
-        source_type=_required_string(data, "source_type"),
-        run_id=_string_value(data, "run_id"),
-    )
+    data = read_object(value, "evaluation source schema", EVALUATION_SOURCE_FIELDS)
+    return _validate_source(EvaluationSource(data["source_type"], data["run_id"]))
 
 
 def evaluation_result_to_dict(result: EvaluationResult) -> dict[str, object]:
-    _validate_result(result)
-    return {
-        "success": result.success,
-        "score": result.score,
-        "token_usage": {
-            "input_tokens": result.token_usage.input_tokens,
-            "output_tokens": result.token_usage.output_tokens,
-        },
-        "latency_ms": result.latency_ms,
-        "error_type": result.error_type,
-        "checks": list(result.checks),
-    }
+    return asdict(_validate_result(result))
 
 
 def evaluation_result_from_dict(value: object) -> EvaluationResult:
-    data = _require_exact_object(value, EVALUATION_RESULT_FIELDS, "evaluation result")
-    token_data = _require_exact_object(
-        data["token_usage"],
-        EVALUATION_TOKEN_USAGE_FIELDS,
-        "evaluation token usage",
-    )
-    success = data["success"]
-    if not isinstance(success, bool):
-        raise ValueError("evaluation result success must be a boolean")
-    latency = data["latency_ms"]
-    if latency is not None:
-        latency = _non_negative_integer(latency, "evaluation result latency_ms")
-    checks = data["checks"]
-    if not isinstance(checks, list) or not all(isinstance(item, str) for item in checks):
-        raise ValueError("evaluation result checks must be a string array")
-    return EvaluationResult(
-        success=success,
-        score=_score_value(data["score"]),
-        token_usage=EvaluationTokenUsage(
-            input_tokens=_non_negative_integer(
-                token_data["input_tokens"],
-                "evaluation token usage input_tokens",
-            ),
-            output_tokens=_non_negative_integer(
-                token_data["output_tokens"],
-                "evaluation token usage output_tokens",
-            ),
-        ),
-        latency_ms=latency,
-        error_type=_string_value(data, "error_type"),
-        checks=list(checks),
+    data = read_object(value, "evaluation result schema", EVALUATION_RESULT_FIELDS)
+    tokens = read_object(data["token_usage"], "evaluation token usage schema", EVALUATION_TOKEN_USAGE_FIELDS)
+    return _validate_result(
+        EvaluationResult(
+            data["success"],
+            data["score"],
+            EvaluationTokenUsage(**tokens),
+            data["latency_ms"],
+            data["error_type"],
+            data["checks"],
+        )
     )
 
 
 def _validate_evaluation_record(record: EvaluationRecord) -> None:
     if record.schema_version != EVALUATION_RECORD_SCHEMA_VERSION:
-        raise ValueError(
-            f"evaluation record schema_version must be {EVALUATION_RECORD_SCHEMA_VERSION}"
-        )
+        raise ValueError(f"evaluation record schema_version must be {EVALUATION_RECORD_SCHEMA_VERSION}")
     if not isinstance(record.record_id, str) or not record.record_id.strip():
         raise ValueError("evaluation record_id cannot be empty")
     if not isinstance(record.created_at, str):
         raise ValueError("evaluation created_at must be a string")
-    _parse_datetime(record.created_at)
+    parse_utc(record.created_at, "evaluation created_at")
     if not isinstance(record.revision, SkillRevision):
         raise ValueError("evaluation revision must be SkillRevision")
     if not isinstance(record.source, EvaluationSource):
@@ -241,104 +189,28 @@ def _validate_evaluation_record(record: EvaluationRecord) -> None:
     _validate_result(record.result)
 
 
-def _validate_source(source: EvaluationSource) -> None:
-    for name, value in {"source_type": source.source_type, "run_id": source.run_id}.items():
-        if not isinstance(value, str):
-            raise ValueError(f"evaluation source {name} must be a string")
-    if source.source_type != "agent_run":
-        raise ValueError(f"unknown evaluation source_type: {source.source_type}")
-    if not source.run_id.strip():
+def _validate_source(source: EvaluationSource) -> EvaluationSource:
+    source_type = read_text(source.source_type, "evaluation source_type")
+    run_id = read_text(source.run_id, "evaluation run_id", allow_empty=True)
+    if source_type != "agent_run":
+        raise ValueError(f"unknown evaluation source_type: {source_type}")
+    if not run_id:
         raise ValueError("agent_run evaluation source requires run_id")
+    return EvaluationSource(source_type, run_id)
 
 
-def _validate_result(result: EvaluationResult) -> None:
-    if not isinstance(result.success, bool):
-        raise ValueError("evaluation result success must be a boolean")
-    _score_value(result.score)
+def _validate_result(result: EvaluationResult) -> EvaluationResult:
+    success = read_bool(result.success, "evaluation result success")
+    score = read_number(result.score, "evaluation result score", minimum=0, maximum=1)
     if not isinstance(result.token_usage, EvaluationTokenUsage):
         raise ValueError("evaluation token_usage must be EvaluationTokenUsage")
-    _non_negative_integer(result.token_usage.input_tokens, "evaluation input_tokens")
-    _non_negative_integer(result.token_usage.output_tokens, "evaluation output_tokens")
-    if result.latency_ms is not None:
-        _non_negative_integer(result.latency_ms, "evaluation latency_ms")
-    if not isinstance(result.error_type, str):
-        raise ValueError("evaluation error_type must be a string")
-    if not isinstance(result.checks, list) or not all(
-        isinstance(item, str) for item in result.checks
-    ):
-        raise ValueError("evaluation checks must be a string array")
-
-
-def _require_exact_object(
-    value: object,
-    fields: set[str],
-    label: str,
-) -> dict[str, Any]:
-    if not isinstance(value, dict):
-        raise ValueError(f"{label} must be a JSON object")
-    missing = fields - set(value)
-    extra = set(value) - fields
-    if missing or extra:
-        raise ValueError(
-            f"{label} schema fields do not match v3: "
-            f"missing={sorted(missing)}, extra={sorted(extra)}"
-        )
-    return value
-
-
-def _required_string(data: dict[str, Any], name: str) -> str:
-    value = _string_value(data, name)
-    if not value.strip():
-        raise ValueError(f"evaluation {name} cannot be empty")
-    return value
-
-
-def _string_value(data: dict[str, Any], name: str) -> str:
-    value = data[name]
-    if not isinstance(value, str):
-        raise ValueError(f"evaluation {name} must be a string")
-    return value
-
-
-def _required_integer(data: dict[str, Any], name: str) -> int:
-    value = data[name]
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise ValueError(f"evaluation {name} must be an integer")
-    return value
-
-
-def _non_negative_integer(value: object, label: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-        raise ValueError(f"{label} must be a non-negative integer")
-    return value
-
-
-def _score_value(value: object) -> float:
-    if isinstance(value, bool) or not isinstance(value, int | float):
-        raise ValueError("evaluation result score must be a number")
-    score = float(value)
-    if not math.isfinite(score) or not 0 <= score <= 1:
-        raise ValueError("evaluation result score must be between 0 and 1")
-    return score
-
-
-def _format_datetime(value: datetime) -> str:
-    normalized = value if value.tzinfo is not None else value.replace(tzinfo=UTC)
-    return normalized.astimezone(UTC).isoformat().replace("+00:00", "Z")
-
-
-def _parse_datetime(value: str) -> datetime:
-    try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError as error:
-        raise ValueError(f"invalid evaluation created_at: {value}") from error
-    if parsed.tzinfo is None:
-        raise ValueError("evaluation created_at must include a timezone")
-    return parsed
-
-# Immutable revision records live beside the evaluation records that store them.
-import re
-from dataclasses import dataclass
+    tokens = EvaluationTokenUsage(
+        read_int(result.token_usage.input_tokens, "evaluation input_tokens", minimum=0),
+        read_int(result.token_usage.output_tokens, "evaluation output_tokens", minimum=0),
+    )
+    latency = read_optional_int(result.latency_ms, "evaluation latency_ms", minimum=0)
+    error_type = read_text(result.error_type, "evaluation error_type", allow_empty=True)
+    return EvaluationResult(success, score, tokens, latency, error_type, read_text_list(result.checks, "evaluation checks"))
 
 
 SKILL_REVISION_SCHEMA_VERSION = 2
@@ -363,40 +235,28 @@ class SkillRevision:
 
 def skill_revision_to_dict(revision: SkillRevision) -> dict[str, object]:
     validate_skill_revision(revision)
-    return {
-        "schema_version": SKILL_REVISION_SCHEMA_VERSION,
-        "key": revision.key,
-        "type": revision.skill_type,
-        "name": revision.name,
-        "version": revision.version,
-        "content_sha256": revision.content_sha256,
-        "function_group": revision.function_group,
-        "agent_created": revision.agent_created,
-        "agent_can_update": revision.agent_can_update,
-        "freshness": revision.freshness,
-    }
+    data = asdict(revision)
+    data["schema_version"] = SKILL_REVISION_SCHEMA_VERSION
+    data["type"] = data.pop("skill_type")
+    return data
 
 
 def skill_revision_from_dict(value: object) -> SkillRevision:
-    fields = {
-        "schema_version", "key", "type", "name", "version",
-        "content_sha256", "function_group", "agent_created",
-        "agent_can_update", "freshness",
-    }
+    fields = {"schema_version", "type", *SkillRevision.__dataclass_fields__} - {"skill_type"}
     if not isinstance(value, dict) or set(value) != fields:
         raise ValueError("Skill revision fields do not match schema v2")
     if value["schema_version"] != SKILL_REVISION_SCHEMA_VERSION:
         raise ValueError(f"unsupported Skill revision schema: {value['schema_version']}")
     revision = SkillRevision(
-        key=_required_text(value["key"], "key"),
-        skill_type=_required_text(value["type"], "type"),
-        name=_required_text(value["name"], "name"),
-        version=_required_text(value["version"], "version"),
-        content_sha256=_required_text(value["content_sha256"], "content_sha256"),
-        function_group=_required_text(value["function_group"], "function_group"),
-        agent_created=_required_bool(value["agent_created"], "agent_created"),
-        agent_can_update=_required_bool(value["agent_can_update"], "agent_can_update"),
-        freshness=_optional_freshness(value["freshness"]),
+        key=read_text(value["key"], "Skill revision key"),
+        skill_type=read_text(value["type"], "Skill revision type"),
+        name=read_text(value["name"], "Skill revision name"),
+        version=read_text(value["version"], "Skill revision version"),
+        content_sha256=read_text(value["content_sha256"], "Skill revision content_sha256"),
+        function_group=read_text(value["function_group"], "Skill revision function_group"),
+        agent_created=read_bool(value["agent_created"], "Skill revision agent_created"),
+        agent_can_update=read_bool(value["agent_can_update"], "Skill revision agent_can_update"),
+        freshness=_read_freshness(value["freshness"]),
     )
     validate_skill_revision(revision)
     return revision
@@ -411,32 +271,13 @@ def validate_skill_revision(revision: SkillRevision) -> None:
         ("version", revision.version),
         ("function_group", revision.function_group),
     ):
-        _required_text(value, name)
+        read_text(value, f"Skill revision {name}")
     if re.fullmatch(r"[0-9a-f]{64}", revision.content_sha256) is None:
         raise ValueError("Skill revision content_sha256 must be lowercase SHA-256")
-    _required_bool(revision.agent_created, "agent_created")
-    _required_bool(revision.agent_can_update, "agent_can_update")
-    _optional_freshness(revision.freshness)
+    read_bool(revision.agent_created, "Skill revision agent_created")
+    read_bool(revision.agent_can_update, "Skill revision agent_can_update")
+    _read_freshness(revision.freshness)
 
 
-def _required_text(value: object, name: str) -> str:
-    if not isinstance(value, str) or not value.strip():
-        raise TypeError(f"Skill revision {name} must contain non-empty text")
-    return value.strip()
-
-
-def _required_bool(value: object, name: str) -> bool:
-    if not isinstance(value, bool):
-        raise TypeError(f"Skill revision {name} must be a boolean")
-    return value
-
-
-def _optional_freshness(value: object) -> float | None:
-    if value is None:
-        return None
-    if isinstance(value, bool) or not isinstance(value, int | float):
-        raise TypeError("Skill revision freshness must be a number or null")
-    score = float(value)
-    if not 0 <= score <= 100:
-        raise ValueError("Skill revision freshness must be between 0 and 100")
-    return score
+def _read_freshness(value: object) -> float | None:
+    return read_optional_number(value, "Skill revision freshness", minimum=0, maximum=100)

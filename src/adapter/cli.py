@@ -88,18 +88,12 @@ def _run_parsed_command(args: argparse.Namespace) -> int:
 def _run_terminal(arguments: list[str]) -> int:
     args = _build_terminal_parser().parse_args(arguments)
     cli_config = load_cli_config(args.cli_config)
-    common_config_path = (
-        None if args.common_config is None else Path(args.common_config)
-    )
+    common_config_path = None if args.common_config is None else Path(args.common_config)
     code_config_path = None if args.code_config is None else Path(args.code_config)
     output = args.output or cli_config.output
     user_id = args.user_id or cli_config.user_id
     save = cli_config.save if args.save is None else args.save
-    show_summary = (
-        cli_config.show_summary
-        if args.show_summary is None
-        else args.show_summary
-    )
+    show_summary = cli_config.show_summary if args.show_summary is None else args.show_summary
     if not args.prompt:
         if args.output not in {None, "text"}:
             raise ValueError("interactive conversation only supports text output")
@@ -187,9 +181,7 @@ def run_check_command(args: argparse.Namespace) -> int:
     checks: list[dict[str, object]] = []
     stage = "configuration"
     try:
-        config = load_common_config(
-            None if args.common_config is None else Path(args.common_config)
-        )
+        config = load_common_config(None if args.common_config is None else Path(args.common_config))
         source = str(config.source) if config.source.is_file() else "built-in defaults"
         checks.append(_check("configuration", True, source))
 
@@ -347,11 +339,7 @@ def _run_chat_command(
     user = agent.for_user(user_id)
     conversation = None
     if use_storage:
-        conversation = (
-            user.conversations.create()
-            if conversation_id is None
-            else user.conversations.read(conversation_id)
-        )
+        conversation = user.conversations.create() if conversation_id is None else user.conversations.read(conversation_id)
     messages: list[Message] = []
 
     def clear_history() -> None:

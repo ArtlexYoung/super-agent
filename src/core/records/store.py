@@ -11,6 +11,7 @@ from core.models import (
     RunEvent,
     RunIdentity,
     RunSnapshot,
+    read_text,
     validate_agent_name,
     validate_user_id,
 )
@@ -78,11 +79,7 @@ class EventStore:
         self._run_event_log = run_event_log
         self._disclosure_factory = disclosure_factory
         self.private_root = (
-            self.local_root
-            / "users"
-            / _create_scope_digest(self.user_id)
-            / "agents"
-            / _create_scope_digest(self.agent_name)
+            self.local_root / "users" / _create_scope_digest(self.user_id) / "agents" / _create_scope_digest(self.agent_name)
         )
         self._disclosure: DisclosureStorage | None = None
         if run_event_log is not None:
@@ -92,9 +89,7 @@ class EventStore:
     def disclosure(self) -> DisclosureStorage:
         if self._disclosure is None:
             if self._disclosure_factory is None:
-                raise RuntimeError(
-                    "Skill disclosure storage is unavailable for this EventStore"
-                )
+                raise RuntimeError("Skill disclosure storage is unavailable for this EventStore")
             self._disclosure = self._disclosure_factory(
                 self.private_root / "cache",
                 self,
@@ -115,9 +110,9 @@ class EventStore:
         return self._backend.append_event(
             user_id=self.user_id,
             agent_name=self.agent_name,
-            stream_type=_required_text(stream_type, "stream_type"),
-            stream_id=_required_text(stream_id, "stream_id"),
-            event_type=_required_text(event_type, "event_type"),
+            stream_type=read_text(stream_type, "stream_type"),
+            stream_id=read_text(stream_id, "stream_id"),
+            event_type=read_text(event_type, "event_type"),
             data=dict(data),
             event_id=event_id,
             created_at=created_at,
@@ -133,10 +128,7 @@ class EventStore:
     ) -> list[StorageEvent]:
         """Read canonical events without escaping this user and Agent scope."""
         if snapshot is not None:
-            if any(
-                event.user_id != self.user_id or event.agent_name != self.agent_name
-                for event in snapshot
-            ):
+            if any(event.user_id != self.user_id or event.agent_name != self.agent_name for event in snapshot):
                 raise ValueError("event snapshot does not match store scope")
             return [
                 event
@@ -161,14 +153,14 @@ class EventStore:
             StorageEventQuery(
                 user_id=self.user_id,
                 agent_name=self.agent_name,
-                stream_type=_required_text(stream_type, "stream_type"),
+                stream_type=read_text(stream_type, "stream_type"),
                 stream_id=stream_id,
             )
         )
 
     def store_for_run(self, run_id: str) -> EventStore:
         """Select the Agent-scoped store for one run inside this user scope."""
-        selected_id = _required_text(run_id, "run_id")
+        selected_id = read_text(run_id, "run_id")
         events = self._backend.read_events(
             StorageEventQuery(
                 user_id=self.user_id,
@@ -273,11 +265,7 @@ class EventStore:
             reverse=True,
         )
         if conversation_id is not None:
-            snapshots = [
-                snapshot
-                for snapshot in snapshots
-                if snapshot.conversation_id == conversation_id
-            ]
+            snapshots = [snapshot for snapshot in snapshots if snapshot.conversation_id == conversation_id]
         return snapshots if limit is None else snapshots[:limit]
 
     def read_run_events(
@@ -328,10 +316,7 @@ class EventStore:
         }
         write_bytes_atomically(
             path,
-            (
-                json.dumps(document, ensure_ascii=False, indent=2, sort_keys=True)
-                + "\n"
-            ).encode("utf-8"),
+            (json.dumps(document, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode("utf-8"),
         )
         return path
 
@@ -343,8 +328,8 @@ class EventStore:
     ) -> StorageEvent:
         return self.append_event(
             "model_call",
-            _required_text(operation_id, "model operation_id"),
-            _required_text(event_type, "model event_type"),
+            read_text(operation_id, "model operation_id"),
+            read_text(event_type, "model event_type"),
             data=dict(data),
         )
 
@@ -365,16 +350,11 @@ class EventStore:
             raise ValueError("run identity does not match runtime store scope")
 
 
-def _required_text(value: object, name: str) -> str:
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"{name} cannot be empty")
-    return value.strip()
-
-
 def _redact_events_for_display(events: list[StorageEvent]) -> list[StorageEvent]:
     from core.records.audit import DEFAULT_AUDIT_POLICY
 
     return DEFAULT_AUDIT_POLICY.redact_events(events)
+
 
 # Backend-neutral records define the storage contract used by this store.
 from dataclasses import dataclass
@@ -406,10 +386,7 @@ class StorageEventQuery:
     def __post_init__(self) -> None:
         if self.event_ids is not None and not self.event_ids:
             raise ValueError("event_ids cannot be empty")
-        if self.event_ids is not None and any(
-            not isinstance(event_id, str) or not event_id.strip()
-            for event_id in self.event_ids
-        ):
+        if self.event_ids is not None and any(not isinstance(event_id, str) or not event_id.strip() for event_id in self.event_ids):
             raise ValueError("event_ids must contain non-empty strings")
 
 
@@ -427,11 +404,8 @@ class StorageBackend(Protocol):
         data: dict[str, object],
         event_id: str | None = None,
         created_at: str | None = None,
-    ) -> StorageEvent:
-        ...
+    ) -> StorageEvent: ...
 
-    def read_events(self, query: StorageEventQuery) -> list[StorageEvent]:
-        ...
+    def read_events(self, query: StorageEventQuery) -> list[StorageEvent]: ...
 
-    def delete_events(self, query: StorageEventQuery) -> int:
-        ...
+    def delete_events(self, query: StorageEventQuery) -> int: ...

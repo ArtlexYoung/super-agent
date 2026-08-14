@@ -142,3 +142,5 @@ The release suite verifies the claims above as behavior:
 - Python source follows the locked `v0.1.81-v0.1.90` reduction budgets and finishes below
   9,750 non-empty lines, while per-file, function, complexity, and directory-size limits remain
   enforced.
+- Primitive input and persisted-record validation enters through `core.models`; domain modules
+  retain only rules that carry domain-specific meaning or public error contracts.

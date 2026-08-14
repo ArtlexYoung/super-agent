@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING, Callable, Protocol
 from uuid import uuid4
 
@@ -81,18 +81,7 @@ class ModelUsageStats:
         return self.success_count / self.call_count if self.call_count else 0.0
 
     def to_dict(self) -> dict[str, object]:
-        return {
-            "profile_key": self.profile_key,
-            "purpose": self.purpose,
-            "call_count": self.call_count,
-            "success_count": self.success_count,
-            "reliability": self.reliability,
-            "average_quality": self.average_quality,
-            "average_latency_ms": self.average_latency_ms,
-            "average_input_tokens": self.average_input_tokens,
-            "average_output_tokens": self.average_output_tokens,
-            "average_cost": self.average_cost,
-        }
+        return {**asdict(self), "reliability": self.reliability}
 
 
 @dataclass(frozen=True)
@@ -112,20 +101,13 @@ def assign_model_for_task(
 ) -> ModelAssignment:
     """Choose from declared and observed evidence without inspecting prompt keywords."""
     required = {item.strip().lower() for item in required_features if item.strip()}
-    candidates = [
-        profile
-        for profile in profiles
-        if model_profile_supports(profile, required)
-    ]
+    candidates = [profile for profile in profiles if model_profile_supports(profile, required)]
     if not candidates:
         features = ", ".join(sorted(required)) or "none"
         raise ValueError(f"no configured model supports required features: {features}")
     observed = {(item.profile_key, item.purpose): item for item in usage}
     clean_purpose = purpose.strip().lower() or "auto"
-    assignments = [
-        _score_model_candidate(profile, clean_purpose, required, observed)
-        for profile in candidates
-    ]
+    assignments = [_score_model_candidate(profile, clean_purpose, required, observed) for profile in candidates]
     return max(
         assignments,
         key=lambda item: (item.score, -profiles.index(item.profile)),
@@ -144,8 +126,7 @@ class _StatsAccumulator:
 
 
 class TextModel(Protocol):
-    def send_messages(self, messages: list[Message]) -> str:
-        ...
+    def send_messages(self, messages: list[Message]) -> str: ...
 
 
 @dataclass(frozen=True)
@@ -182,9 +163,7 @@ class ModelCaller:
         profile = assignment.profile
         if not model_profile_is_ready(profile, self.provider_pool.environment):
             requirement = profile.connection.api_key_env or "provider connection"
-            raise RuntimeError(
-                f"selected model {profile.key} is not ready; configure {requirement}"
-            )
+            raise RuntimeError(f"selected model {profile.key} is not ready; configure {requirement}")
         return SelectedModel(
             profile=profile,
             selected_by="task_evidence",
@@ -199,9 +178,7 @@ class ModelCaller:
         )
         if not model_profile_is_ready(profile, self.provider_pool.environment):
             requirement = profile.connection.api_key_env or "provider connection"
-            raise RuntimeError(
-                f"default model {profile.key} is not ready; configure {requirement}"
-            )
+            raise RuntimeError(f"default model {profile.key} is not ready; configure {requirement}")
         return SelectedModel(
             profile=profile,
             selected_by="default",
@@ -293,11 +270,7 @@ def list_model_usage_stats(
     for event in selected_events:
         if event.event_type != "task.feedback.recorded":
             continue
-        target = (
-            explicit_feedback
-            if event.data.get("source") == "explicit"
-            else implicit_feedback
-        )
+        target = explicit_feedback if event.data.get("source") == "explicit" else implicit_feedback
         target[event.stream_id] = _score(event.data.get("score"), 1.0)
     feedback_by_run = {**implicit_feedback, **explicit_feedback}
     selected_purpose = None if purpose is None else purpose.strip().lower()
@@ -316,22 +289,13 @@ def list_model_usage_stats(
         success = event.event_type == "model.call.completed"
         accumulator.calls += 1
         accumulator.successes += int(success)
-        accumulator.quality += (
-            feedback_by_run.get(event.stream_id, 1.0) if success else 0.0
-        )
+        accumulator.quality += feedback_by_run.get(event.stream_id, 1.0) if success else 0.0
         accumulator.latency_ms += _nonnegative_number(event.data.get("latency_ms"))
-        accumulator.input_tokens += _nonnegative_number(
-            event.data.get("input_tokens")
-        )
-        accumulator.output_tokens += _nonnegative_number(
-            event.data.get("output_tokens")
-        )
+        accumulator.input_tokens += _nonnegative_number(event.data.get("input_tokens"))
+        accumulator.output_tokens += _nonnegative_number(event.data.get("output_tokens"))
         accumulator.cost += _nonnegative_number(event.data.get("estimated_cost"))
     return sorted(
-        (
-            _finish_stats(profile_key, event_purpose, accumulator)
-            for (profile_key, event_purpose), accumulator in accumulators.items()
-        ),
+        (_finish_stats(profile_key, event_purpose, accumulator) for (profile_key, event_purpose), accumulator in accumulators.items()),
         key=lambda item: (item.purpose, item.profile_key),
     )
 
@@ -347,19 +311,14 @@ def infer_conversation_feedback_with_model(
         (
             index
             for index in range(len(conversation.messages) - 1, -1, -1)
-            if conversation.messages[index].role == "assistant"
-            and conversation.messages[index].run_id
+            if conversation.messages[index].role == "assistant" and conversation.messages[index].run_id
         ),
         None,
     )
     if previous_assistant_index is None:
         return None
     previous_user_prompt = next(
-        (
-            message.content
-            for message in reversed(conversation.messages[:previous_assistant_index])
-            if message.role == "user"
-        ),
+        (message.content for message in reversed(conversation.messages[:previous_assistant_index]) if message.role == "user"),
         "",
     )
     previous_response = conversation.messages[previous_assistant_index].content
@@ -388,13 +347,9 @@ def infer_conversation_feedback_with_model(
     try:
         value = json.loads(text)
     except json.JSONDecodeError as error:
-        raise ValueError(
-            f"conversation feedback response must be one JSON object: {error}"
-        ) from error
+        raise ValueError(f"conversation feedback response must be one JSON object: {error}") from error
     if not isinstance(value, dict) or set(value) != {"is_feedback", "score", "reason"}:
-        raise ValueError(
-            "conversation feedback response fields must be is_feedback, score, and reason"
-        )
+        raise ValueError("conversation feedback response fields must be is_feedback, score, and reason")
     is_feedback = value["is_feedback"]
     if not isinstance(is_feedback, bool):
         raise TypeError("conversation feedback is_feedback must be a boolean")
@@ -458,9 +413,7 @@ def _score_model_candidate(
         evidence.append(f"declared_quality={traits.quality_score:.4f}")
     cost_score = 1.0 / (1.0 + traits.pricing.total_cost_per_million)
     score += cost_score
-    evidence.append(
-        f"configured_total_cost={traits.pricing.total_cost_per_million:.4f}"
-    )
+    evidence.append(f"configured_total_cost={traits.pricing.total_cost_per_million:.4f}")
     if stats is not None and stats.call_count:
         score += stats.reliability + stats.average_quality
         evidence.extend(

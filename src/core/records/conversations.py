@@ -8,7 +8,7 @@ from uuid import uuid4
 
 from core.checks import ActionEffect, ActionRequest, ActionRunner, ActionRules, PreparedAction
 from core.provider import Message
-from core.models import Conversation, ConversationMessage, RunResult
+from core.models import Conversation, ConversationMessage, RunResult, read_text
 
 if TYPE_CHECKING:
     from core.records.store import EventStore, StorageEvent
@@ -31,15 +31,14 @@ def prepare_conversation_turn(
     prompt: str,
 ) -> tuple[list[Message], PendingConversationTurn]:
     """Read history and authorize one future complete-turn commit."""
-    selected_id = _required_text(conversation_id, "conversation_id")
+    selected_id = read_text(conversation_id, "conversation_id")
     try:
         conversation = read_conversation(store, selected_id)
     except KeyError:
         conversation = None
-    messages: list[Message] = [] if conversation is None else [
-        {"role": message.role, "content": message.content}
-        for message in conversation.messages
-    ]
+    messages: list[Message] = (
+        [] if conversation is None else [{"role": message.role, "content": message.content} for message in conversation.messages]
+    )
     action_runner = ActionRunner(action_rules, store.append_management_action_event)
     prepared_action = action_runner.prepare_action(
         ActionRequest.create(
@@ -82,9 +81,13 @@ def create_conversation(
     *,
     conversation_id: str | None = None,
 ) -> Conversation:
-    selected_id = str(uuid4()) if conversation_id is None else _required_text(
-        conversation_id,
-        "conversation_id",
+    selected_id = (
+        str(uuid4())
+        if conversation_id is None
+        else read_text(
+            conversation_id,
+            "conversation_id",
+        )
     )
     if store.read_events("conversation", selected_id):
         raise ValueError(f"conversation already exists: {selected_id}")
@@ -92,13 +95,13 @@ def create_conversation(
         "conversation",
         selected_id,
         "conversation.created",
-        data={"title": _optional_title(title)},
+        data={"title": read_text(title, "conversation title", allow_empty=True)},
     )
     return read_conversation(store, selected_id)
 
 
 def read_conversation(store: EventStore, conversation_id: str) -> Conversation:
-    selected_id = _required_text(conversation_id, "conversation_id")
+    selected_id = read_text(conversation_id, "conversation_id")
     events = store.read_events("conversation", selected_id)
     if not events:
         raise KeyError(f"conversation not found: {selected_id}")
@@ -122,7 +125,7 @@ def rename_conversation(
     title: str,
 ) -> Conversation:
     conversation = read_conversation(store, conversation_id)
-    clean_title = _required_text(title, "conversation title")
+    clean_title = read_text(title, "conversation title")
     if conversation.title != clean_title:
         store.append_event(
             "conversation",
@@ -159,7 +162,7 @@ def append_conversation_turn(
     run_result: dict[str, object],
 ) -> Conversation:
     """Commit one complete user and assistant turn as one storage event."""
-    selected_id = _required_text(conversation_id, "conversation_id")
+    selected_id = read_text(conversation_id, "conversation_id")
     existing = store.read_events("conversation", selected_id)
     turn_id = f"turn-{uuid4().hex}"
     store.append_event(
@@ -224,8 +227,8 @@ def _message_data(
     return {
         "message_id": f"message-{uuid4().hex}",
         "role": role,
-        "content": _required_text(content, "conversation message content"),
-        "run_id": _required_text(run_id, "conversation run_id"),
+        "content": read_text(content, "conversation message content"),
+        "run_id": read_text(run_id, "conversation run_id"),
         "run_result": None if run_result is None else dict(run_result),
     }
 
@@ -273,25 +276,10 @@ def _conversation_message_from_data(
     )
 
 
-def _required_text(value: object, name: str) -> str:
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"{name} cannot be empty")
-    return value.strip()
-
-
-def _optional_title(value: object) -> str:
-    if not isinstance(value, str):
-        raise TypeError("conversation title must be a string")
-    return value.strip()
-
-
 def _stored_string(
     data: dict[str, object],
     name: str,
     *,
     allow_empty: bool = False,
 ) -> str:
-    value = data.get(name)
-    if not isinstance(value, str) or (not allow_empty and not value):
-        raise ValueError(f"stored {name} must be a string")
-    return value
+    return read_text(data.get(name), f"stored {name}", allow_empty=allow_empty)

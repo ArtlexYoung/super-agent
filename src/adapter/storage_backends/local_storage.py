@@ -70,11 +70,7 @@ class JsonlStorage:
             return event
 
     def read_events(self, query: StorageEventQuery) -> list[StorageEvent]:
-        return [
-            event
-            for event in self._read_path(self._events_path(query.user_id))
-            if _matches_query(event, query)
-        ]
+        return [event for event in self._read_path(self._events_path(query.user_id)) if _matches_query(event, query)]
 
     def delete_events(self, query: StorageEventQuery) -> int:
         path = self._events_path(query.user_id)

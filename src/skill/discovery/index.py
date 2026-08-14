@@ -43,11 +43,7 @@ class DisclosureContextBudget:
     """Count prompt characters across every central disclosure stage."""
 
     def __init__(self, budget_chars: int = DEFAULT_CONTEXT_BUDGET_CHARS) -> None:
-        if (
-            isinstance(budget_chars, bool)
-            or not isinstance(budget_chars, int)
-            or budget_chars <= 0
-        ):
+        if isinstance(budget_chars, bool) or not isinstance(budget_chars, int) or budget_chars <= 0:
             raise ValueError("context budget must be a positive integer")
         self.budget_chars = budget_chars
         self.used_chars = 0
@@ -64,22 +60,13 @@ class DisclosureContextBudget:
         limit: int = DEFAULT_INLINE_CHARS,
         cache_path: Path | None = None,
     ) -> DisclosurePage:
-        if (
-            isinstance(limit, bool)
-            or not isinstance(limit, int)
-            or limit <= 0
-            or limit > MAX_PAGE_CHARS
-        ):
-            raise ValueError(
-                f"disclosure limit must be between 1 and {MAX_PAGE_CHARS} characters"
-            )
+        if isinstance(limit, bool) or not isinstance(limit, int) or limit <= 0 or limit > MAX_PAGE_CHARS:
+            raise ValueError(f"disclosure limit must be between 1 and {MAX_PAGE_CHARS} characters")
         selected_limit = limit
         if stage in CONTEXT_BUDGET_STAGES:
             selected_limit = min(limit, max(0, self.budget_chars - self.used_chars))
         page = (
-            create_reference_disclosure_page(
-                reference, kind, name, content, offset=offset, cache_path=cache_path
-            )
+            create_reference_disclosure_page(reference, kind, name, content, offset=offset, cache_path=cache_path)
             if selected_limit == 0
             else create_disclosure_page(
                 reference,
@@ -117,15 +104,8 @@ def create_disclosure_page(
     _require_content_size(content)
     if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
         raise ValueError("disclosure offset must be a non-negative integer")
-    if (
-        isinstance(limit, bool)
-        or not isinstance(limit, int)
-        or limit <= 0
-        or limit > MAX_PAGE_CHARS
-    ):
-        raise ValueError(
-            f"disclosure limit must be between 1 and {MAX_PAGE_CHARS} characters"
-        )
+    if isinstance(limit, bool) or not isinstance(limit, int) or limit <= 0 or limit > MAX_PAGE_CHARS:
+        raise ValueError(f"disclosure limit must be between 1 and {MAX_PAGE_CHARS} characters")
     end = min(len(content), offset + limit)
     return DisclosurePage(
         reference=reference,
@@ -157,8 +137,7 @@ def format_disclosure_page_for_prompt(page: DisclosurePage) -> str:
         f"- content_sha256: {page.content_sha256}\n"
         f"- total_chars: {page.total_chars}\n"
         f"- next_offset: {page.next_offset}\n"
-        "- content:\n"
-        + page.content
+        "- content:\n" + page.content
     )
 
 
@@ -199,9 +178,7 @@ def _require_content_size(content: str) -> None:
     if not isinstance(content, str):
         raise TypeError("disclosure content must be a string")
     if len(content) > MAX_CONTENT_CHARS:
-        raise ValueError(
-            f"disclosure content exceeds the explicit {MAX_CONTENT_CHARS} character limit"
-        )
+        raise ValueError(f"disclosure content exceeds the explicit {MAX_CONTENT_CHARS} character limit")
 
 
 @dataclass(frozen=True)
@@ -281,13 +258,7 @@ def _read_source_group(
     higher_keys = set(sources)
     disabled: dict[str, SkillReference] = {}
     issues = []
-    paths = sorted(
-        path
-        for root in roots
-        if root.expanduser().is_dir()
-        for path in root.expanduser().rglob("skill.toml")
-        if path.is_file()
-    )
+    paths = sorted(path for root in roots if root.expanduser().is_dir() for path in root.expanduser().rglob("skill.toml") if path.is_file())
     for path in paths:
         try:
             source = _read_skill_source(path, source_layer)
@@ -298,10 +269,7 @@ def _read_source_group(
                 continue
             elif reference.key in sources:
                 previous = sources[reference.key]
-                raise ValueError(
-                    f"duplicate skill key {reference.key}: "
-                    f"{previous.manifest_path} and {path}"
-                )
+                raise ValueError(f"duplicate skill key {reference.key}: {previous.manifest_path} and {path}")
             else:
                 sources[reference.key] = source
         except (OSError, ValueError, tomllib.TOMLDecodeError) as error:
@@ -324,9 +292,7 @@ def _read_skill_source(path: Path, source_layer: str) -> SkillSource:
         root = manifest.path.resolve()
         instructions = (manifest.path / manifest.entry.instructions).resolve()
         if instructions != root and root not in instructions.parents:
-            raise ValueError(
-                f"skill instruction path leaves skill directory: {manifest.entry.instructions}"
-            )
+            raise ValueError(f"skill instruction path leaves skill directory: {manifest.entry.instructions}")
     configuration = data.get("configuration", {})
     if not isinstance(configuration, dict):
         raise ValueError(f"skill configuration must be a TOML table: {path}")
@@ -341,11 +307,7 @@ def _read_skill_source(path: Path, source_layer: str) -> SkillSource:
 
 def _skill_is_disabled(reference: SkillReference, disabled_names: list[str]) -> bool:
     values = {item.strip().lower() for item in disabled_names}
-    return (
-        reference.skill_type in values
-        or reference.name in values
-        or reference.key in values
-    )
+    return reference.skill_type in values or reference.name in values or reference.key in values
 
 
 @dataclass(frozen=True)
@@ -396,9 +358,7 @@ class SkillIndex:
     ) -> SkillIndexEntry | None:
         clean_name = _clean_name(name)
         if expected_type is not None:
-            return self._entries_by_key.get(
-                f"{expected_type.strip().lower()}:{clean_name}"
-            )
+            return self._entries_by_key.get(f"{expected_type.strip().lower()}:{clean_name}")
         if ":" in clean_name:
             return self._entries_by_key.get(clean_name)
         matches = [entry for entry in self.entries if entry.reference.name == clean_name]
@@ -424,21 +384,11 @@ class SkillIndex:
     ) -> SkillIndexEntry:
         """Select one support Skill without interpreting task text."""
         selected_type = _clean_name(skill_type)
-        entries = [
-            entry
-            for entry in self.entries
-            if entry.reference.skill_type == selected_type
-        ]
-        configured = [
-            self.require_skill(value)
-            for value in configured_skills
-            if value.strip().lower().startswith(f"{selected_type}:")
-        ]
+        entries = [entry for entry in self.entries if entry.reference.skill_type == selected_type]
+        configured = [self.require_skill(value) for value in configured_skills if value.strip().lower().startswith(f"{selected_type}:")]
         if len(configured) > 1:
             keys = ", ".join(entry.reference.key for entry in configured)
-            raise ValueError(
-                f"select only one configured {selected_type} Skill: {keys}"
-            )
+            raise ValueError(f"select only one configured {selected_type} Skill: {keys}")
         defaults = [entry for entry in entries if entry.is_default]
         if configured:
             selected = configured[0]
@@ -453,10 +403,7 @@ class SkillIndex:
         if not defaults and len(entries) == 1:
             return entries[0]
         keys = ", ".join(entry.reference.key for entry in defaults or entries)
-        raise ValueError(
-            f"select exactly one default {selected_type} Skill"
-            + (f": {keys}" if keys else "")
-        )
+        raise ValueError(f"select exactly one default {selected_type} Skill" + (f": {keys}" if keys else ""))
 
     def resolve_skill_dependencies(self, names: list[str]) -> list[SkillIndexEntry]:
         requested = sorted({_clean_name(name) for name in names})

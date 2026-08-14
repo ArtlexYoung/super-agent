@@ -4,13 +4,20 @@ from __future__ import annotations
 
 import hashlib
 import json
-import math
 import re
 from dataclasses import asdict, dataclass, replace
 from time import monotonic
 from typing import TYPE_CHECKING, Callable, Mapping
 
 from core.checks import ActionEffect
+from core.models import (
+    read_bool,
+    read_int,
+    read_number,
+    read_required_tool_string,
+    read_text_list,
+    reject_unknown_fields,
+)
 from core.provider import estimate_text_tokens
 from skill.tasks.task_selection import (
     AgentUnavailableError,
@@ -21,7 +28,7 @@ from skill.tasks.task_selection import (
     read_optional_estimated_tokens,
     read_required_task_strings,
 )
-from skill.handlers.runtime import SkillAction, SkillTool, read_required_tool_string
+from skill.handlers.runtime import SkillAction, SkillTool
 
 if TYPE_CHECKING:
     from skill.tasks.task_queue import TaskQueue
@@ -48,10 +55,7 @@ class AgentGroups:
         with self.queue._condition:
             return [
                 *[dict(item) for item in self.queue._group_failures],
-                *[
-                    self._group_result_locked(group)
-                    for group in self.queue._group_records.values()
-                ],
+                *[self._group_result_locked(group) for group in self.queue._group_records.values()],
             ]
 
     def list_tools(self) -> tuple[SkillTool, ...]:
@@ -148,9 +152,7 @@ class AgentGroups:
                 require_different_models=settings.require_different_models,
                 commit=False,
             )
-            selected_count = self._select_group_size_locked(
-                group_id, request, choices
-            )
+            selected_count = self._select_group_size_locked(group_id, request, choices)
             if selected_count == 0:
                 return self._budget_exceeded_result(group_id, request, choices)
             choices = choices[:selected_count]
@@ -253,18 +255,20 @@ class AgentGroups:
                 role,
                 uses_shared_context=uses_shared_context,
             )
-            tasks.append(QueuedTask(
-                f"agent-task-{first_task_number + index:02d}",
-                member_prompt,
-                request.purpose,
-                request.features,
-                group_id=group_id,
-                group_role=role,
-                estimated_output_tokens=request.estimates[0],
-                estimated_cache_creation_tokens=request.estimates[1],
-                estimated_cache_read_tokens=request.estimates[2],
-                estimated_input_tokens=estimate_text_tokens(member_prompt) + shared_tokens,
-            ))
+            tasks.append(
+                QueuedTask(
+                    f"agent-task-{first_task_number + index:02d}",
+                    member_prompt,
+                    request.purpose,
+                    request.features,
+                    group_id=group_id,
+                    group_role=role,
+                    estimated_output_tokens=request.estimates[0],
+                    estimated_cache_creation_tokens=request.estimates[1],
+                    estimated_cache_read_tokens=request.estimates[2],
+                    estimated_input_tokens=estimate_text_tokens(member_prompt) + shared_tokens,
+                )
+            )
         return tasks
 
     def _select_group_size_locked(
@@ -277,14 +281,9 @@ class AgentGroups:
         minimum = max(2, request.quorum)
         available = min(request.requested_members, len(choices))
         if available < minimum:
-            raise AgentUnavailableError(
-                f"group {group_id} needs {minimum} distinct available models; found {available}"
-            )
+            raise AgentUnavailableError(f"group {group_id} needs {minimum} distinct available models; found {available}")
         if available < request.requested_members and not settings.allow_reduced_group:
-            raise AgentUnavailableError(
-                f"group {group_id} needs {request.requested_members} distinct available "
-                f"models; found {available}"
-            )
+            raise AgentUnavailableError(f"group {group_id} needs {request.requested_members} distinct available models; found {available}")
         limit = settings.max_estimated_cost
         selected = available
         if limit > 0:
@@ -309,7 +308,7 @@ class AgentGroups:
             "requested_members": request.requested_members,
             "available_members": len(choices),
             "quorum": request.quorum,
-            "estimated_cost": choices_cost(choices[:request.requested_members]),
+            "estimated_cost": choices_cost(choices[: request.requested_members]),
             "budget_limit": settings.max_estimated_cost,
             "created": False,
         }
@@ -349,7 +348,7 @@ class AgentGroups:
             group_id,
             request.purpose,
             request.features,
-            request.roles[:len(tasks)],
+            request.roles[: len(tasks)],
             tuple(task.task_id for task in tasks),
             request.quorum,
             request.requested_members,
@@ -357,11 +356,7 @@ class AgentGroups:
             len(tasks) < request.requested_members,
             hashlib.sha256(request.prompt.encode()).hexdigest(),
             len(request.prompt),
-            (
-                "inline"
-                if not isinstance(reference, str)
-                else "cache_reference" if context.get("cache_backed") else "run_reference"
-            ),
+            ("inline" if not isinstance(reference, str) else "cache_reference" if context.get("cache_backed") else "run_reference"),
             reference if isinstance(reference, str) else None,
             choices_cost(choices),
             settings.max_estimated_cost,
@@ -393,9 +388,7 @@ class AgentGroups:
 
     def refresh(self, group_id: str) -> None:
         group = self.queue._group_records[group_id]
-        if group.status != "running" or not self.queue._tasks_are_terminal_locked(
-            group.task_ids
-        ):
+        if group.status != "running" or not self.queue._tasks_are_terminal_locked(group.task_ids):
             return
         result = self._group_result_locked(group)
         self.queue._group_records[group_id] = replace(
@@ -404,9 +397,7 @@ class AgentGroups:
         )
         audit = dict(result)
         audit["members"] = [
-            {key: value for key, value in member.items() if key != "evidence"}
-            for member in result["members"]
-            if isinstance(member, dict)
+            {key: value for key, value in member.items() if key != "evidence"} for member in result["members"] if isinstance(member, dict)
         ]
         self.queue.record_event("agent_group.completed", audit)
 
@@ -415,6 +406,7 @@ class AgentGroups:
         if group is None:
             raise KeyError(f"agent group not found: {group_id}")
         return group
+
 
 GROUP_VOTES = {"support", "reject", "inconclusive"}
 MAX_GROUP_MEMBERS = 16
@@ -434,23 +426,29 @@ class AgentGroupSettings:
 
     @classmethod
     def from_dict(cls, value: Mapping[str, object]) -> "AgentGroupSettings":
-        unknown = set(value) - set(cls.__dataclass_fields__)
-        if unknown:
-            raise ValueError("unknown agent_groups settings: " + ", ".join(sorted(unknown)))
+        reject_unknown_fields(value, set(cls.__dataclass_fields__), "agent_groups settings")
         settings = cls(**dict(value))
-        if isinstance(settings.max_groups, bool) or not isinstance(settings.max_groups, int) or settings.max_groups <= 0:
-            raise ValueError("agent_groups max_groups must be a positive integer")
+        read_int(settings.max_groups, "agent_groups max_groups", minimum=1)
         for name, minimum, maximum in (
             ("max_members", 2, MAX_GROUP_MEMBERS),
             ("default_members", 2, settings.max_members),
             ("quorum", 1, settings.default_members),
         ):
-            _bounded_int(getattr(settings, name), name, minimum, maximum)
-        _nonnegative_number(settings.max_estimated_cost, "max_estimated_cost")
+            read_int(
+                getattr(settings, name),
+                f"agent_groups {name}",
+                minimum=minimum,
+                maximum=maximum,
+            )
+        read_number(settings.max_estimated_cost, "agent_groups max_estimated_cost", minimum=0)
         for name in ("allow_reduced_group", "require_different_models"):
-            if not isinstance(getattr(settings, name), bool):
-                raise TypeError(f"agent_groups {name} must be a boolean")
-        _bounded_int(settings.summary_chars, "summary_chars", 100, 10_000)
+            read_bool(getattr(settings, name), f"agent_groups {name}")
+        read_int(
+            settings.summary_chars,
+            "agent_groups summary_chars",
+            minimum=100,
+            maximum=10_000,
+        )
         return settings
 
 
@@ -497,15 +495,22 @@ def read_group_request(
 ) -> AgentGroupRequest:
     data = dict(arguments)
     requested, quorum, roles = _read_group_members(arguments, settings)
-    estimates = tuple(read_optional_estimated_tokens(data, name) for name in (
-        "estimated_output_tokens", "estimated_cache_creation_tokens",
-        "estimated_cache_read_tokens",
-    ))
+    estimates = tuple(
+        read_optional_estimated_tokens(data, name)
+        for name in (
+            "estimated_output_tokens",
+            "estimated_cache_creation_tokens",
+            "estimated_cache_read_tokens",
+        )
+    )
     return AgentGroupRequest(
         read_required_tool_string(data, "prompt"),
         read_required_tool_string(data, "purpose").strip().lower(),
         read_required_task_strings(arguments, "required_features"),
-        requested, quorum, roles, estimates,
+        requested,
+        quorum,
+        roles,
+        estimates,
     )
 
 
@@ -524,11 +529,7 @@ def build_member_prompt(
         "A failed implementation or missing measurement is inconclusive, not reject."
     )
     if uses_shared_context:
-        return (
-            f"{instructions}\n"
-            "Read the supplied shared packet with the read_shared_task_context tool before "
-            "deciding."
-        )
+        return f"{instructions}\nRead the supplied shared packet with the read_shared_task_context tool before deciding."
     return f"{instructions}\n\nShared packet:\n{shared_prompt}"
 
 
@@ -552,24 +553,21 @@ def decide_group(
         elif status in {"failed", "cancelled"}:
             failed += 1
         counts[vote] += 1
-        members.append({
-            "task_id": task_id,
-            "role": group.member_roles[index],
-            "status": "member_failed" if status == "failed" else status,
-            "agent_name": task.get("agent_name"),
-            "vote": vote,
-            "confidence": confidence,
-            "evidence": evidence[:summary_chars],
-            "evidence_sha256": hashlib.sha256(evidence.encode()).hexdigest(),
-            "evidence_chars": len(evidence),
-        })
-    terminal = all(
-        str(by_id.get(task_id, {}).get("status")) in TERMINAL_TASK_STATUSES
-        for task_id in group.task_ids
-    )
-    decision = "supported" if counts["support"] >= group.quorum else (
-        "rejected" if counts["reject"] >= group.quorum else "inconclusive"
-    )
+        members.append(
+            {
+                "task_id": task_id,
+                "role": group.member_roles[index],
+                "status": "member_failed" if status == "failed" else status,
+                "agent_name": task.get("agent_name"),
+                "vote": vote,
+                "confidence": confidence,
+                "evidence": evidence[:summary_chars],
+                "evidence_sha256": hashlib.sha256(evidence.encode()).hexdigest(),
+                "evidence_chars": len(evidence),
+            }
+        )
+    terminal = all(str(by_id.get(task_id, {}).get("status")) in TERMINAL_TASK_STATUSES for task_id in group.task_ids)
+    decision = "supported" if counts["support"] >= group.quorum else ("rejected" if counts["reject"] >= group.quorum else "inconclusive")
     return {
         **group.to_dict(),
         "status": decision if terminal else "running",
@@ -616,36 +614,23 @@ def _read_group_members(
     arguments: Mapping[str, object],
     settings: AgentGroupSettings,
 ) -> tuple[int, int, tuple[str, ...]]:
-    requested = _read_group_integer(arguments.get("member_count", settings.default_members), "member_count")
-    _bounded_int(requested, "member_count", 2, settings.max_members)
+    requested = read_int(
+        arguments.get("member_count", settings.default_members),
+        "group member_count",
+        minimum=2,
+        maximum=settings.max_members,
+    )
     roles = _read_roles(arguments.get("roles"), requested)
-    quorum = _read_group_integer(arguments.get("quorum", settings.quorum), "quorum")
-    _bounded_int(quorum, "quorum", 1, requested)
+    quorum = read_int(
+        arguments.get("quorum", settings.quorum),
+        "group quorum",
+        minimum=1,
+        maximum=requested,
+    )
     return requested, quorum, roles
-
-
-def _read_group_integer(value: object, name: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int): raise ValueError(f"group {name} must be an integer")
-    return value
 
 
 def _read_roles(value: object, count: int) -> tuple[str, ...]:
     if value is None:
         return tuple(f"independent reviewer {index}" for index in range(1, count + 1))
-    if not isinstance(value, list) or len(value) != count:
-        raise ValueError("group roles must contain exactly one role per member")
-    roles = tuple(item.strip() for item in value if isinstance(item, str) and item.strip())
-    if len(roles) != count or len(set(roles)) != count:
-        raise ValueError("group roles must be unique non-empty strings")
-    return roles
-
-
-def _bounded_int(value: object, name: str, minimum: int, maximum: int) -> None:
-    if isinstance(value, bool) or not isinstance(value, int) or not minimum <= value <= maximum:
-        raise ValueError(f"agent_groups {name} must be from {minimum} to {maximum}")
-
-
-def _nonnegative_number(value: object, name: str) -> None:
-    invalid = isinstance(value, bool) or not isinstance(value, int | float)
-    if invalid or not math.isfinite(float(value)) or value < 0:
-        raise ValueError(f"agent_groups {name} must be a finite non-negative number")
+    return tuple(read_text_list(value, "group roles", minimum=count, maximum=count))

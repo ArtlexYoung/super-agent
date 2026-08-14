@@ -141,9 +141,7 @@ def run_skill_changes_command(args: argparse.Namespace) -> int:
         "undo": lambda: _undo_skill_change(args),
         "list": lambda: _list_skill_changes(args),
     }
-    return run_selected_cli_command(
-        args.skill_change_command, handlers, "skills changes command is required"
-    )
+    return run_selected_cli_command(args.skill_change_command, handlers, "skills changes command is required")
 
 
 def run_skill_packages_command(args: argparse.Namespace) -> int:
@@ -154,9 +152,7 @@ def run_skill_packages_command(args: argparse.Namespace) -> int:
         "update": lambda: _update_skill(args),
         "remove": lambda: _remove_skill(args),
     }
-    return run_selected_cli_command(
-        args.skill_package_command, handlers, "skills packages command is required"
-    )
+    return run_selected_cli_command(args.skill_package_command, handlers, "skills packages command is required")
 
 
 def run_models_command(args: argparse.Namespace) -> int:
@@ -191,11 +187,13 @@ def _print_model_profiles(
     output: str,
 ) -> int:
     if output == "json":
-        return print_cli_json({
-            "schema_version": 2,
-            "config_path": str(config.source),
-            "models": [model_profile_to_dict(profile) for profile in profiles],
-        })
+        return print_cli_json(
+            {
+                "schema_version": 2,
+                "config_path": str(config.source),
+                "models": [model_profile_to_dict(profile) for profile in profiles],
+            }
+        )
     for profile in profiles:
         _print_model_profile(profile)
     return 0
@@ -369,10 +367,7 @@ def _validate_skills(config_path: Path, user_id: str) -> int:
 def _show_skill_graph(args: argparse.Namespace) -> int:
     manifests = _resolve_skills(Path(args.common_config), args.user_id, args.name)
     for manifest in manifests:
-        print(
-            f"{manifest.name}\tprovides={','.join(manifest.provides)}"
-            f"\trequires={','.join(manifest.requires)}"
-        )
+        print(f"{manifest.name}\tprovides={','.join(manifest.provides)}\trequires={','.join(manifest.requires)}")
     return 0
 
 

@@ -26,9 +26,7 @@ CREATE TABLE IF NOT EXISTS super_agent_storage_schema (
     version INTEGER NOT NULL
 )
 """.strip()
-_SELECT_SCHEMA_VERSION_SQL = (
-    "SELECT version FROM super_agent_storage_schema WHERE component = %s"
-)
+_SELECT_SCHEMA_VERSION_SQL = "SELECT version FROM super_agent_storage_schema WHERE component = %s"
 
 
 class RemoteSqlDatabase(SqlEventDatabase, Protocol):
@@ -77,13 +75,8 @@ class MySqlStorage(RemoteSqlStorage):
         try:
             driver = import_module("pymysql")
         except ImportError as error:
-            raise RuntimeError(
-                "MySQL storage requires the optional dependency: "
-                "pip install 'super-agent[mysql]'"
-            ) from error
-        connection_url = read_storage_connection_url(
-            "mysql", url_env, DEFAULT_MYSQL_URL_ENV
-        )
+            raise RuntimeError("MySQL storage requires the optional dependency: pip install 'super-agent[mysql]'") from error
+        connection_url = read_storage_connection_url("mysql", url_env, DEFAULT_MYSQL_URL_ENV)
         super().__init__(_MySqlDatabase(driver, connection_url))
 
 
@@ -94,13 +87,8 @@ class PostgreSqlStorage(RemoteSqlStorage):
         try:
             driver = import_module("psycopg")
         except ImportError as error:
-            raise RuntimeError(
-                "PostgreSQL storage requires the optional dependency: "
-                "pip install 'super-agent[postgresql]'"
-            ) from error
-        connection_url = read_storage_connection_url(
-            "postgresql", url_env, DEFAULT_POSTGRESQL_URL_ENV
-        )
+            raise RuntimeError("PostgreSQL storage requires the optional dependency: pip install 'super-agent[postgresql]'") from error
+        connection_url = read_storage_connection_url("postgresql", url_env, DEFAULT_POSTGRESQL_URL_ENV)
         super().__init__(_PostgreSqlDatabase(driver, connection_url))
 
 
@@ -152,9 +140,7 @@ class _MySqlDatabase:
     def __init__(self, driver: Any, connection_url: str) -> None:
         self._driver = driver
         self._connection_arguments = _mysql_connection_arguments(connection_url)
-        self.location = remote_database_location(
-            connection_url, self.name, _MYSQL_SCHEMES
-        )
+        self.location = remote_database_location(connection_url, self.name, _MYSQL_SCHEMES)
 
     def connect_to_database(self) -> Any:
         return self._driver.connect(**self._connection_arguments)
@@ -221,9 +207,7 @@ class _PostgreSqlDatabase:
     def __init__(self, driver: Any, connection_url: str) -> None:
         self._driver = driver
         self._connection_url = connection_url
-        self.location = remote_database_location(
-            connection_url, self.name, _POSTGRESQL_SCHEMES
-        )
+        self.location = remote_database_location(connection_url, self.name, _POSTGRESQL_SCHEMES)
 
     def connect_to_database(self) -> Any:
         return self._driver.connect(self._connection_url, autocommit=False)
@@ -253,9 +237,7 @@ def _mysql_connection_arguments(connection_url: str) -> dict[str, object]:
         arguments["password"] = unquote(parsed.password)
     _move_mysql_options(options, arguments)
     if options:
-        raise ValueError(
-            "unsupported MySQL storage URL options: " + ", ".join(sorted(options))
-        )
+        raise ValueError("unsupported MySQL storage URL options: " + ", ".join(sorted(options)))
     return arguments
 
 
@@ -296,9 +278,7 @@ def read_storage_connection_url(
     environment_name = clean_storage_text(url_env or default_url_env, "url_env")
     connection_url = os.environ.get(environment_name, "").strip()
     if not connection_url:
-        raise ValueError(
-            f"{backend} storage requires a connection URL in {environment_name}"
-        )
+        raise ValueError(f"{backend} storage requires a connection URL in {environment_name}")
     return connection_url
 
 

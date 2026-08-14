@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from core.models import format_utc, parse_utc, read_number, read_object
 from skill.discovery.catalog import ProgressiveDisclosureCore, SkillDisclosure
 from skill.learning.records import EvaluationRecord, SkillRevision, evaluation_record_to_dict
 
@@ -68,7 +69,7 @@ def summarize_evaluation_evidence(
 ) -> list[EvaluationEvidenceSummary]:
     ordered = sorted(
         records,
-        key=lambda record: (_parse_datetime(record.created_at), record.record_id),
+        key=lambda record: (parse_utc(record.created_at, "evaluation created_at"), record.record_id),
     )
     accumulators: dict[tuple[str, ...], _EvidenceAccumulator] = {}
     last_by_function_group: dict[str, tuple[tuple[str, ...], EvaluationRecord]] = {}
@@ -140,7 +141,7 @@ def _is_replacement_followup(
         return False
     if previous.source.run_id == current.source.run_id:
         return False
-    elapsed = _parse_datetime(current.created_at) - _parse_datetime(previous.created_at)
+    elapsed = parse_utc(current.created_at, "evaluation created_at") - parse_utc(previous.created_at, "evaluation created_at")
     return timedelta(0) <= elapsed <= timedelta(minutes=FOLLOWUP_WINDOW_MINUTES)
 
 
@@ -180,11 +181,7 @@ def _create_summary(
         ),
         same_function_followups=followups,
         same_function_successful_followups=successful_followups,
-        replacement_rate=(
-            0.0
-            if followups == 0
-            else round(successful_followups / followups, 4)
-        ),
+        replacement_rate=(0.0 if followups == 0 else round(successful_followups / followups, 4)),
         first_evaluated_at=accumulator.first_evaluated_at,
         last_evaluated_at=accumulator.last_evaluated_at,
     )
@@ -244,10 +241,6 @@ def _evidence_sha256(revision: SkillRevision, record_sha256s: list[str]) -> str:
     return digest.hexdigest()
 
 
-def _parse_datetime(value: str) -> datetime:
-    return datetime.fromisoformat(value.replace("Z", "+00:00"))
-
-
 def calculate_skill_freshness(
     records: list[EvaluationRecord],
     policy: FreshnessRules,
@@ -281,9 +274,7 @@ def _stats_from_evidence(
         "total_latency_ms": summary.total_latency_ms,
         "latency_sample_count": summary.latency_sample_count,
         "same_function_followups": summary.same_function_followups,
-        "same_function_successful_followups": (
-            summary.same_function_successful_followups
-        ),
+        "same_function_successful_followups": (summary.same_function_successful_followups),
         "first_used_at": summary.first_evaluated_at,
         "last_used_at": summary.last_evaluated_at,
     }
@@ -306,7 +297,7 @@ def _update_freshness(
     confidence = scores["confidence"] / 100
     freshness = confidence * base + (1 - confidence) * policy.initial_freshness
     stats["freshness"] = round(_clamp(freshness, 0, 100), 2)
-    stats["freshness_updated_at"] = _format_datetime(now)
+    stats["freshness_updated_at"] = format_utc(now)
 
 
 def _score_components(
@@ -315,8 +306,8 @@ def _score_components(
     policy: FreshnessRules,
 ) -> dict[str, float]:
     call_count = int(stats["call_count"])
-    first_used_at = _parse_datetime(str(stats["first_used_at"] or stats["last_used_at"]))
-    last_used_at = _parse_datetime(str(stats["last_used_at"]))
+    first_used_at = parse_utc(stats["first_used_at"] or stats["last_used_at"], "first_used_at")
+    last_used_at = parse_utc(stats["last_used_at"], "last_used_at")
     total_tokens = int(stats["total_input_tokens"]) + int(stats["total_output_tokens"])
     average_tokens = total_tokens / max(call_count, 1)
     followups = int(stats["same_function_followups"])
@@ -345,9 +336,7 @@ def _efficiency_score(
     policy: FreshnessRules,
 ) -> float:
     token_score = _clamp(
-        100
-        - max(0, average_tokens - policy.token_free_budget)
-        / policy.tokens_per_penalty_point,
+        100 - max(0, average_tokens - policy.token_free_budget) / policy.tokens_per_penalty_point,
         0,
         100,
     )
@@ -356,16 +345,11 @@ def _efficiency_score(
         return token_score
     average_latency = int(stats["total_latency_ms"]) / latency_samples
     latency_score = _clamp(
-        100
-        - max(0, average_latency - policy.latency_free_ms)
-        / policy.latency_per_penalty_point,
+        100 - max(0, average_latency - policy.latency_free_ms) / policy.latency_per_penalty_point,
         0,
         100,
     )
-    return (
-        policy.token_efficiency_weight * token_score
-        + (1 - policy.token_efficiency_weight) * latency_score
-    )
+    return policy.token_efficiency_weight * token_score + (1 - policy.token_efficiency_weight) * latency_score
 
 
 def _reliability_score(
@@ -377,23 +361,15 @@ def _reliability_score(
     empty_rate = int(stats["empty_output_count"]) / call_count
     error_rate = int(stats["error_count"]) / call_count
     return _clamp(
-        (
-            success_rate
-            - policy.empty_output_penalty * empty_rate
-            - policy.error_penalty * error_rate
-        )
-        * 100,
+        (success_rate - policy.empty_output_penalty * empty_rate - policy.error_penalty * error_rate) * 100,
         0,
         100,
     )
 
 
-def _format_datetime(value: datetime) -> str:
-    return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
-
-
 def _clamp(value: float, minimum: float, maximum: float) -> float:
     return min(max(value, minimum), maximum)
+
 
 @dataclass(frozen=True)
 class FreshnessRules:
@@ -439,80 +415,22 @@ def read_freshness_rules(disclosure: SkillDisclosure) -> FreshnessRules:
     if manifest.skill_type != "freshness":
         raise ValueError(f"skill does not use the freshness type: {manifest.name}")
     value = disclosure.read_configuration().content
-    expected = {
-        "initial", "quality_weight", "recency_weight", "frequency_weight",
-        "efficiency_weight", "reliability_weight", "replacement_weight",
-        "recency_decay_days", "full_frequency_calls_per_week",
-        "confidence_sample_count", "token_free_budget", "tokens_per_penalty_point",
-        "latency_free_ms", "latency_per_penalty_point", "token_efficiency_weight",
-        "empty_output_penalty", "error_penalty",
-    }
-    _require_fields(value, expected)
-    rules = FreshnessRules(
-        name=manifest.name,
-        initial_freshness=_score(value, "initial", maximum=100),
-        quality_weight=_score(value, "quality_weight"),
-        recency_weight=_score(value, "recency_weight"),
-        frequency_weight=_score(value, "frequency_weight"),
-        efficiency_weight=_score(value, "efficiency_weight"),
-        reliability_weight=_score(value, "reliability_weight"),
-        replacement_weight=_score(value, "replacement_weight"),
-        recency_decay_days=_positive(value, "recency_decay_days"),
-        full_frequency_calls_per_week=_positive(value, "full_frequency_calls_per_week"),
-        confidence_sample_count=_positive(value, "confidence_sample_count"),
-        token_free_budget=_nonnegative(value, "token_free_budget"),
-        tokens_per_penalty_point=_positive(value, "tokens_per_penalty_point"),
-        latency_free_ms=_nonnegative(value, "latency_free_ms"),
-        latency_per_penalty_point=_positive(value, "latency_per_penalty_point"),
-        token_efficiency_weight=_score(value, "token_efficiency_weight"),
-        empty_output_penalty=_score(value, "empty_output_penalty"),
-        error_penalty=_score(value, "error_penalty"),
+    weights = ("quality_weight", "recency_weight", "frequency_weight", "efficiency_weight", "reliability_weight", "replacement_weight")
+    unit_values = (*weights, "token_efficiency_weight", "empty_output_penalty", "error_penalty")
+    positive_values = (
+        "recency_decay_days",
+        "full_frequency_calls_per_week",
+        "confidence_sample_count",
+        "tokens_per_penalty_point",
+        "latency_per_penalty_point",
     )
-    weights = (
-        rules.quality_weight, rules.recency_weight, rules.frequency_weight,
-        rules.efficiency_weight, rules.reliability_weight, rules.replacement_weight,
-    )
-    if not math.isclose(sum(weights), 1.0, abs_tol=1e-9):
+    non_negative_values = ("token_free_budget", "latency_free_ms")
+    expected = {"initial", *unit_values, *positive_values, *non_negative_values}
+    read_object(value, "freshness settings schema", expected)
+    settings: dict[str, float] = {}
+    for names, minimum, maximum in ((unit_values, 0, 1), (positive_values, 0.000001, None), (non_negative_values, 0, None)):
+        settings.update({name: read_number(value[name], f"freshness {name}", minimum=minimum, maximum=maximum) for name in names})
+    rules = FreshnessRules(manifest.name, read_number(value["initial"], "freshness initial", minimum=0, maximum=100), **settings)
+    if not math.isclose(sum(getattr(rules, name) for name in weights), 1.0, abs_tol=1e-9):
         raise ValueError("freshness component weights must sum to 1")
     return rules
-
-
-def _require_fields(value: dict[str, object], expected: set[str]) -> None:
-    if set(value) != expected:
-        missing = sorted(expected - set(value))
-        unknown = sorted(set(value) - expected)
-        raise ValueError(
-            "freshness settings do not match schema: "
-            f"missing={missing}, unknown={unknown}"
-        )
-
-
-def _number(value: dict[str, object], name: str) -> float:
-    selected = value[name]
-    if isinstance(selected, bool) or not isinstance(selected, int | float):
-        raise TypeError(f"freshness {name} must be a number")
-    number = float(selected)
-    if not math.isfinite(number):
-        raise ValueError(f"freshness {name} must be finite")
-    return number
-
-
-def _score(value: dict[str, object], name: str, *, maximum: float = 1) -> float:
-    number = _number(value, name)
-    if not 0 <= number <= maximum:
-        raise ValueError(f"freshness {name} must be between 0 and {maximum:g}")
-    return number
-
-
-def _positive(value: dict[str, object], name: str) -> float:
-    number = _number(value, name)
-    if number <= 0:
-        raise ValueError(f"freshness {name} must be greater than 0")
-    return number
-
-
-def _nonnegative(value: dict[str, object], name: str) -> float:
-    number = _number(value, name)
-    if number < 0:
-        raise ValueError(f"freshness {name} must be non-negative")
-    return number

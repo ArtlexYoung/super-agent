@@ -1873,6 +1873,17 @@ Status: implemented.
 - Keep the current 18,602-line implementation as the exact starting ceiling so restructuring
   cannot claim progress by first raising its baseline.
 
+## v0.1.82: One Strict Input Reader
+
+Status: implemented.
+
+- Read strings, numbers, arrays, objects, UTC timestamps, unknown fields, and tool arguments
+  through one strict `core.models` boundary instead of domain-local copies.
+- Use the same normalized evaluation record conversion for persisted learning evidence and
+  direct Python values, while preserving exact schema versions and validation failures.
+- Keep every protected feature executable and reduce source to at most 17,500 non-empty Python
+  lines without adding a default dependency or a hidden fallback.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

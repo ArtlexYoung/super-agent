@@ -14,14 +14,16 @@ from adapter.repository import IncrementalRepositoryMap, IsolatedWorktreeTools
 from core.checks import ActionEffect
 from core.config import CodeConfig, CodeSettings
 from core.checks import write_bytes_atomically
+from core.models import (
+    read_optional_positive_tool_integer,
+    read_optional_tool_string,
+    read_required_tool_string,
+)
 from skill.handlers.builtins import TaskSkillHandler
 from skill.handlers.runtime import (
     SkillAction,
     SkillContext,
     SkillTool,
-    read_optional_positive_tool_integer,
-    read_optional_tool_string,
-    read_required_tool_string,
 )
 from super_agent import Agent
 
@@ -44,15 +46,8 @@ def attach_code_config_to_agent(
     ) -> tuple[str, tuple[SkillTool, ...]]:
         if context.reference.name != "code":
             return "", ()
-        config = (
-            CodeConfig.load_automatically()
-            if source is None
-            else CodeConfig.load_from_file(source)
-        )
-        instructions = (
-            "# Coding workspace (does not grant file or process authority)\n"
-            + json.dumps(asdict(config.settings), default=str)
-        )
+        config = CodeConfig.load_automatically() if source is None else CodeConfig.load_from_file(source)
+        instructions = "# Coding workspace (does not grant file or process authority)\n" + json.dumps(asdict(config.settings), default=str)
         return instructions, CodeWorkspace(config.settings).list_tools()
 
     agent.skills.add_handler(TaskSkillHandler(read_code_workspace))
@@ -64,9 +59,7 @@ class CodeWorkspace:
     def __init__(self, settings: CodeSettings) -> None:
         self.settings = settings
         self.root = settings.root.resolve()
-        self.ignored = tuple(
-            (self.root / item).resolve() for item in settings.ignored_paths
-        )
+        self.ignored = tuple((self.root / item).resolve() for item in settings.ignored_paths)
         self.processes = DeclaredProcessTools(
             self.root,
             settings.verification_commands,
@@ -128,9 +121,7 @@ class CodeWorkspace:
                 "Read Git status with a fixed command and no optional locks.",
                 {"path": path},
                 self.read_git_status,
-                SkillAction(
-                    (ActionEffect.READ, ActionEffect.EXECUTE), "workspace:git-status", "path"
-                ),
+                SkillAction((ActionEffect.READ, ActionEffect.EXECUTE), "workspace:git-status", "path"),
                 result_kind="git",
             ),
             SkillTool(
@@ -138,9 +129,7 @@ class CodeWorkspace:
                 "Read a bounded Git diff with external diff and text conversion disabled.",
                 {"path": path, "staged": {"type": "boolean"}},
                 self.read_git_diff,
-                SkillAction(
-                    (ActionEffect.READ, ActionEffect.EXECUTE), "workspace:git-diff", "path"
-                ),
+                SkillAction((ActionEffect.READ, ActionEffect.EXECUTE), "workspace:git-diff", "path"),
                 result_kind="git",
             ),
         )
@@ -158,9 +147,7 @@ class CodeWorkspace:
                     "expected_sha256": digest,
                 },
                 self.write_file,
-                SkillAction(
-                    (ActionEffect.CREATE, ActionEffect.UPDATE), "workspace:file", "path"
-                ),
+                SkillAction((ActionEffect.CREATE, ActionEffect.UPDATE), "workspace:file", "path"),
                 ("path", "content"),
                 result_kind="file",
             ),
@@ -212,9 +199,7 @@ class CodeWorkspace:
         start = read_optional_positive_tool_integer(arguments, "start_line") or 1
         requested_end = read_optional_positive_tool_integer(arguments, "end_line")
         if requested_end is not None and requested_end < start:
-            raise ValueError(
-                "workspace end_line must be greater than or equal to start_line"
-            )
+            raise ValueError("workspace end_line must be greater than or equal to start_line")
         lines = content.splitlines(keepends=True)
         if lines and start > len(lines):
             raise ValueError(f"workspace start_line exceeds file length: {len(lines)}")
@@ -253,9 +238,7 @@ class CodeWorkspace:
             for number, line in enumerate(content.splitlines(), 1):
                 if query not in line:
                     continue
-                matches.append(
-                    {"path": self._relative(candidate), "line": number, "text": line}
-                )
+                matches.append({"path": self._relative(candidate), "line": number, "text": line})
                 if len(matches) > WORKSPACE_SEARCH_LIMIT:
                     raise ValueError("workspace search has more than 200 matches; narrow the query")
         return {"query": query, "matches": matches, "skipped": skipped}
@@ -287,9 +270,7 @@ class CodeWorkspace:
 
     def write_file(self, arguments: dict[str, object]) -> dict[str, object]:
         self._require_setting("write")
-        selected = self._resolve(
-            read_required_tool_string(arguments, "path"), allow_symlink=False
-        )
+        selected = self._resolve(read_required_tool_string(arguments, "path"), allow_symlink=False)
         content = arguments.get("content")
         if not isinstance(content, str):
             raise ValueError("tool argument 'content' must be a string")
@@ -319,9 +300,7 @@ class CodeWorkspace:
 
     def patch_file(self, arguments: dict[str, object]) -> dict[str, object]:
         self._require_setting("write")
-        selected = self._resolve(
-            read_required_tool_string(arguments, "path"), allow_symlink=False
-        )
+        selected = self._resolve(read_required_tool_string(arguments, "path"), allow_symlink=False)
         current = self._read_text(selected)
         previous_sha256 = _text_sha256(current)
         _require_expected_sha256(
@@ -341,9 +320,7 @@ class CodeWorkspace:
 
     def delete_file(self, arguments: dict[str, object]) -> dict[str, object]:
         self._require_setting("write")
-        selected = self._resolve(
-            read_required_tool_string(arguments, "path"), allow_symlink=False
-        )
+        selected = self._resolve(read_required_tool_string(arguments, "path"), allow_symlink=False)
         if not selected.is_file():
             raise FileNotFoundError(f"workspace file not found: {selected}")
         current_sha256 = _text_sha256(self._read_text(selected))
@@ -377,10 +354,7 @@ class CodeWorkspace:
                     entry["size"] = child.stat().st_size
                 entries.append(entry)
                 if len(entries) > WORKSPACE_TREE_LIMIT:
-                    raise ValueError(
-                        f"workspace tree has more than {WORKSPACE_TREE_LIMIT} entries; "
-                        "narrow path or max_depth"
-                    )
+                    raise ValueError(f"workspace tree has more than {WORKSPACE_TREE_LIMIT} entries; narrow path or max_depth")
                 if kind == "directory" and child_depth < max_depth:
                     pending.append((child, child_depth))
         return entries
@@ -440,9 +414,7 @@ class CodeWorkspace:
             raise RuntimeError(completed.stderr.strip() or "Git command failed")
         output_bytes = len(completed.stdout.encode("utf-8")) + len(completed.stderr.encode("utf-8"))
         if output_bytes > WORKSPACE_GIT_OUTPUT_LIMIT:
-            raise ValueError(
-                f"Git output exceeds {WORKSPACE_GIT_OUTPUT_LIMIT} bytes; narrow the path"
-            )
+            raise ValueError(f"Git output exceeds {WORKSPACE_GIT_OUTPUT_LIMIT} bytes; narrow the path")
         return {
             "command": command,
             "returncode": completed.returncode,
@@ -472,9 +444,7 @@ class CodeWorkspace:
     def _read_text(self, path: Path) -> str:
         content = path.read_bytes()
         if len(content) > WORKSPACE_FILE_LIMIT:
-            raise ValueError(
-                f"workspace file exceeds {WORKSPACE_FILE_LIMIT} bytes: {path}"
-            )
+            raise ValueError(f"workspace file exceeds {WORKSPACE_FILE_LIMIT} bytes: {path}")
         try:
             return content.decode("utf-8")
         except UnicodeDecodeError as error:
@@ -482,9 +452,7 @@ class CodeWorkspace:
 
     def _require_read(self) -> None:
         if self.settings.read != "allow":
-            raise PermissionError(
-                f"code configuration sets reads to {self.settings.read}"
-            )
+            raise PermissionError(f"code configuration sets reads to {self.settings.read}")
 
     def _require_setting(self, name: str) -> None:
         value = getattr(self.settings, name)
@@ -541,15 +509,11 @@ def _require_expected_sha256(expected: str | None, actual: str) -> None:
     if len(selected) != 64 or any(character not in "0123456789abcdef" for character in selected):
         raise ValueError("expected_sha256 must contain exactly 64 hex characters")
     if selected != actual:
-        raise ValueError(
-            f"workspace file changed: expected {selected}, current {actual}"
-        )
+        raise ValueError(f"workspace file changed: expected {selected}, current {actual}")
 
 
 def _apply_exact_replacements(content: str, value: object) -> str:
-    if not isinstance(value, list) or not value or not all(
-        isinstance(item, dict) for item in value
-    ):
+    if not isinstance(value, list) or not value or not all(isinstance(item, dict) for item in value):
         raise ValueError("replacements must be a non-empty array of objects")
     edits: list[tuple[int, int, str]] = []
     for replacement in value:

@@ -11,7 +11,14 @@ from typing import TYPE_CHECKING, Callable
 from uuid import uuid4
 
 from core.checks import ActionEffect, ActionRequest
-from core.models import RunIdentity
+from core.models import (
+    RunIdentity,
+    format_utc,
+    read_bool,
+    read_int,
+    read_text,
+    reject_unknown_fields,
+)
 from core.records.events import usage_habits_from_events
 from core.records.store import StorageEvent
 from skill.discovery.catalog import SkillDisclosure
@@ -112,10 +119,10 @@ class Memory:
     ) -> MemoryItem:
         item = MemoryItem(
             item_id=f"memory-{uuid4().hex}",
-            text=_clean_text(text),
+            text=read_text(text, "memory text"),
             scope=_clean_scope(scope or self.settings.default_scope),
             source_run_id=self._source_run_id(source_run_id),
-            created_at=_utc_now(),
+            created_at=format_utc(datetime.now(UTC)),
         )
         self._run_change(
             (ActionEffect.CREATE,),
@@ -132,9 +139,7 @@ class Memory:
         return [
             _item_from_dict(item)
             for item in _sort_items(
-                item
-                for item in self._active_items().values()
-                if selected_scope is None or item["scope"] == selected_scope
+                item for item in self._active_items().values() if selected_scope is None or item["scope"] == selected_scope
             )
         ]
 
@@ -144,14 +149,11 @@ class Memory:
         scope: str | None = None,
         limit: int | None = None,
     ) -> list[MemoryItem]:
-        text = _clean_text(query)
+        text = read_text(query, "memory text")
         selected_scope = _clean_scope(scope or self.settings.default_scope)
-        result_limit = self.settings.recall_limit if limit is None else _positive_limit(limit)
+        result_limit = self.settings.recall_limit if limit is None else read_int(limit, "memory recall limit", minimum=1)
         query_terms = Counter(_tokenize(text))
-        ranked = [
-            (_score_text(text, query_terms, item.text), item)
-            for item in self.list_long_term(selected_scope)
-        ]
+        ranked = [(_score_text(text, query_terms, item.text), item) for item in self.list_long_term(selected_scope)]
         ranked = [pair for pair in ranked if pair[0] > 0]
         ranked.sort(
             key=lambda pair: (pair[0], pair[1].created_at, pair[1].item_id),
@@ -238,9 +240,7 @@ class Memory:
 
     def _active_items(self) -> dict[str, dict[str, object]]:
         events = self.store.read_events("memory")
-        unknown = sorted(
-            {event.stream_id for event in events if event.stream_id != MEMORY_STREAM}
-        )
+        unknown = sorted({event.stream_id for event in events if event.stream_id != MEMORY_STREAM})
         if unknown:
             raise ValueError("unknown memory streams: " + ", ".join(unknown))
         return _replay_memory(events)
@@ -274,17 +274,22 @@ def read_memory_settings_from_skill(disclosure: SkillDisclosure) -> MemorySettin
         raise ValueError(f"skill is not memory: {manifest.name}")
     configuration = disclosure.read_configuration().content
     allowed = {"default_scope", "recall_limit", "include_in_prompt", "include_usage_habits"}
-    unknown = sorted(set(configuration) - allowed)
-    if unknown:
-        raise ValueError("unknown memory configuration fields: " + ", ".join(unknown))
+    reject_unknown_fields(configuration, allowed, "memory configuration fields")
     instructions = disclosure.read_instructions().content.strip()
     if not instructions:
         raise ValueError("memory Skill instructions cannot be empty")
     return MemorySettings(
-        default_scope=_clean_scope(_read_string(configuration, "default_scope", "agent")),
-        recall_limit=_positive_limit(configuration.get("recall_limit", DEFAULT_RECALL_LIMIT)),
-        include_in_prompt=_read_bool(configuration, "include_in_prompt", True),
-        include_usage_habits=_read_bool(configuration, "include_usage_habits", True),
+        default_scope=_clean_scope(read_text(configuration.get("default_scope", "agent"), "memory default_scope")),
+        recall_limit=read_int(
+            configuration.get("recall_limit", DEFAULT_RECALL_LIMIT),
+            "memory recall limit",
+            minimum=1,
+        ),
+        include_in_prompt=read_bool(configuration.get("include_in_prompt", True), "memory include_in_prompt"),
+        include_usage_habits=read_bool(
+            configuration.get("include_usage_habits", True),
+            "memory include_usage_habits",
+        ),
         instructions=instructions,
     )
 
@@ -336,7 +341,7 @@ def _prepare_operation(
         if len(scopes) != 1:
             raise ValueError("memory organization cannot combine scopes")
         replacement = _new_stored_item(
-            _clean_text(value.get("text")),
+            read_text(value.get("text"), "memory text"),
             scopes.pop(),
             source_run_id,
         )
@@ -387,11 +392,7 @@ def _validate_stored_operation(
     replacement_value = value.get("replacement")
     if (operation == "forget") != (replacement_value is None):
         raise ValueError("stored memory replacement does not match operation")
-    replacement = (
-        None
-        if replacement_value is None
-        else _validate_stored_item(replacement_value)
-    )
+    replacement = None if replacement_value is None else _validate_stored_item(replacement_value)
     return item_ids, replacement
 
 
@@ -414,9 +415,7 @@ def _replace_active_items(
     item_ids = _clean_item_ids(value)
     missing = sorted(set(item_ids) - set(active))
     if missing:
-        raise ValueError(
-            "stored memory change references inactive items: " + ", ".join(missing)
-        )
+        raise ValueError("stored memory change references inactive items: " + ", ".join(missing))
     for item_id in item_ids:
         del active[item_id]
     if replacement is not None:
@@ -442,7 +441,7 @@ def _validate_stored_item(value: object) -> dict[str, object]:
         raise ValueError("stored long-term memory fields must be strings")
     item = {name: value[name] for name in fields}
     _clean_item_id(str(item["item_id"]))
-    _clean_text(item["text"])
+    read_text(item["text"], "memory text")
     _clean_scope(str(item["scope"]))
     return item
 
@@ -454,7 +453,7 @@ def _new_stored_item(text: str, scope: str, source_run_id: str) -> dict[str, obj
             text,
             scope,
             source_run_id,
-            _utc_now(),
+            format_utc(datetime.now(UTC)),
         )
     )
 
@@ -489,12 +488,6 @@ def _clean_item_id(value: object) -> str:
     return value.strip()
 
 
-def _clean_text(value: object) -> str:
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError("memory text cannot be empty")
-    return value.strip()
-
-
 def _clean_scope(value: str) -> str:
     selected = value.strip().lower()
     if not re.fullmatch(r"[a-z0-9][a-z0-9_.:-]{0,63}", selected):
@@ -512,26 +505,6 @@ def _score_text(query: str, query_terms: Counter[str], text: str) -> float:
     return (1.0 if query.lower() in text.lower() else 0.0) + overlap / max(sum(query_terms.values()), 1)
 
 
-def _positive_limit(value: object) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-        raise ValueError("memory recall limit must be a positive integer")
-    return value
-
-
-def _read_string(data: dict[str, object], name: str, default: str) -> str:
-    value = data.get(name, default)
-    if not isinstance(value, str):
-        raise ValueError(f"memory {name} must be a string")
-    return value
-
-
-def _read_bool(data: dict[str, object], name: str, default: bool) -> bool:
-    value = data.get(name, default)
-    if not isinstance(value, bool):
-        raise ValueError(f"memory {name} must be a boolean")
-    return value
-
-
 def _sort_items(items: Iterable[dict[str, object]]) -> list[dict[str, object]]:
     return sorted(items, key=lambda item: (str(item["created_at"]), str(item["item_id"])), reverse=True)
 
@@ -540,7 +513,3 @@ def _count_lines(label: str, counts: object) -> list[str]:
     if not isinstance(counts, dict):
         return []
     return [f"- {label} {name} used {count} times" for name, count in sorted(counts.items())]
-
-
-def _utc_now() -> str:
-    return datetime.now(UTC).isoformat().replace("+00:00", "Z")

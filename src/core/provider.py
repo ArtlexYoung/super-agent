@@ -81,9 +81,7 @@ class ModelPricing:
         known = {name: value for name, value in counts.items() if value is not None}
         prices = self.resolved_dict()
         weighted = sum(
-            count * prices[price_name]
-            for name, price_name in MODEL_TOKEN_PRICE_FIELDS
-            if (count := known.get(name)) is not None
+            count * prices[price_name] for name, price_name in MODEL_TOKEN_PRICE_FIELDS if (count := known.get(name)) is not None
         )
         total_tokens = sum(known.values())
         return {
@@ -156,16 +154,14 @@ class ProviderCall:
 
 
 class ChatProvider(Protocol):
-    def send_chat_messages(self, messages: list[Message], model: str) -> str:
-        ...
+    def send_chat_messages(self, messages: list[Message], model: str) -> str: ...
 
     def send_chat_messages_with_tools(
         self,
         messages: list[Message],
         model: str,
         tools: list[ToolDefinition],
-    ) -> ModelResponse:
-        ...
+    ) -> ModelResponse: ...
 
 
 def call_chat_model(
@@ -212,10 +208,7 @@ def call_chat_model(
 def read_model_turn(response: ModelResponse) -> ModelTurn:
     if response.tool_calls:
         return ActionTurn(
-            tuple(
-                ModelAction(call.id, call.name, dict(call.arguments))
-                for call in response.tool_calls
-            ),
+            tuple(ModelAction(call.id, call.name, dict(call.arguments)) for call in response.tool_calls),
             response.text,
         )
     if not response.text.strip():
@@ -384,10 +377,7 @@ def _provider_call_metrics(
         "output_tokens": output_tokens,
         "estimated_cost": (input_cost + output_cost) / 1_000_000,
         "pricing": call.pricing.to_dict(),
-        "estimated_cost_excludes_cache": bool(
-            call.pricing.cache_creation_cost_per_million
-            or call.pricing.cache_read_cost_per_million
-        ),
+        "estimated_cost_excludes_cache": bool(call.pricing.cache_creation_cost_per_million or call.pricing.cache_read_cost_per_million),
     }
 
 
@@ -395,10 +385,7 @@ def _model_response_text(response: ModelResponse) -> str:
     return json.dumps(
         {
             "text": response.text,
-            "tool_calls": [
-                {"name": call.name, "arguments": call.arguments}
-                for call in response.tool_calls
-            ],
+            "tool_calls": [{"name": call.name, "arguments": call.arguments} for call in response.tool_calls],
         },
         ensure_ascii=False,
         sort_keys=True,
@@ -420,11 +407,7 @@ def normalize_provider_connection(
     base_url = _optional_text(connection.base_url) or _default_base_url(provider)
     api_key_env = _optional_text(connection.api_key_env)
     if api_key_env is None and not _is_local_url(base_url):
-        api_key_env = (
-            "OPENAI_API_KEY"
-            if provider == OPENAI_COMPATIBLE_PROVIDER
-            else "ANTHROPIC_API_KEY"
-        )
+        api_key_env = "OPENAI_API_KEY" if provider == OPENAI_COMPATIBLE_PROVIDER else "ANTHROPIC_API_KEY"
     return ProviderConnection(provider, base_url, api_key_env)
 
 
@@ -444,9 +427,7 @@ def _mock_structured_response(
     if not isinstance(contract, dict):
         return None
     if set(contract) == {"is_feedback", "score", "reason"}:
-        return feedback_response or json.dumps(
-            {"is_feedback": False, "score": None, "reason": "no feedback"}
-        )
+        return feedback_response or json.dumps({"is_feedback": False, "score": None, "reason": "no feedback"})
     return None
 
 
@@ -588,9 +569,7 @@ class UserSecretResolver:
         process_environment: Mapping[str, str] | None = None,
     ) -> None:
         self.lookup = lookup
-        self.process_environment = (
-            os.environ if process_environment is None else process_environment
-        )
+        self.process_environment = os.environ if process_environment is None else process_environment
 
     def get_environment_for_user(self, user_id: str) -> Mapping[str, str]:
         from core.models import validate_user_id

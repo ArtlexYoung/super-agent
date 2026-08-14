@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable
 
 from core.checks import ActionEffect, ActionRequest
-from core.models import RunResult, Task
+from core.models import RunResult, Task, read_required_tool_string
 from core.provider import (
     ActionTurn,
     FinalTurn,
@@ -22,7 +22,6 @@ from skill.handlers.runtime import (
     SkillAction,
     SkillTool,
     TaskPolicy,
-    read_required_tool_string,
 )
 from skill.handlers.models import (
     ModelProfile,
@@ -74,23 +73,15 @@ class _ConfiguredModelTool:
     default_model_key: str
 
     def create_tool(self) -> SkillTool | None:
-        candidates = [
-            profile
-            for profile in self.profiles
-            if profile.key != self.default_model_key
-        ]
+        candidates = [profile for profile in self.profiles if profile.key != self.default_model_key]
         if not candidates:
             return None
-        candidate_data = [
-            model_profile_to_dict(profile, self.provider_pool.environment)
-            for profile in candidates
-        ]
+        candidate_data = [model_profile_to_dict(profile, self.provider_pool.environment) for profile in candidates]
         return SkillTool(
             name="use_model",
             description=(
                 "Give one explicit subtask to another configured model. "
-                "Available models: "
-                + json.dumps(candidate_data, ensure_ascii=False, sort_keys=True)
+                "Available models: " + json.dumps(candidate_data, ensure_ascii=False, sort_keys=True)
             ),
             properties={
                 "model": {
@@ -145,9 +136,7 @@ class _ConfiguredModelTool:
             raise KeyError(f"configured non-default model not found: {model_key}")
         if not model_profile_is_ready(profile, self.provider_pool.environment):
             requirement = profile.connection.api_key_env or "provider connection"
-            raise RuntimeError(
-                f"model {profile.key} is not ready; configure {requirement}"
-            )
+            raise RuntimeError(f"model {profile.key} is not ready; configure {requirement}")
         return profile
 
 
@@ -161,8 +150,7 @@ class TaskRunner:
     ) -> None:
         if not model_profiles:
             raise RuntimeError(
-                "No model is configured. Add a model Skill, configure a provider "
-                "through the environment, or pass provider= to Agent."
+                "No model is configured. Add a model Skill, configure a provider through the environment, or pass provider= to Agent."
             )
         self.model_profiles = list(model_profiles)
         self.provider_pool = provider_pool
@@ -232,11 +220,7 @@ class TaskRunner:
             "skills.disclosed",
             {
                 "names": list(selected_names),
-                "index_path": (
-                    None
-                    if run.skills.index.index_path is None
-                    else str(run.skills.index.index_path)
-                ),
+                "index_path": (None if run.skills.index.index_path is None else str(run.skills.index.index_path)),
             },
         )
         workflow = _select_workflow(contributions)
@@ -274,11 +258,7 @@ class TaskRunner:
         supports_tools = "tools" in decision.profile.traits.supports
         if "tools" in request.required_features and not supports_tools:
             raise ValueError(f"model {decision.profile.key} does not support tools")
-        definitions = (
-            state.tools.get_tool_definitions()
-            if state.workflow.uses_tools and supports_tools
-            else None
-        )
+        definitions = state.tools.get_tool_definitions() if state.workflow.uses_tools and supports_tools else None
         step = 0
         while step < state.workflow.max_steps:
             step += 1
@@ -301,11 +281,7 @@ class TaskRunner:
             if definitions is None:
                 raise RuntimeError("model requested actions when actions are unavailable")
             self._run_actions(state, turn)
-            definitions = (
-                state.tools.get_tool_definitions()
-                if state.workflow.uses_tools and supports_tools
-                else None
-            )
+            definitions = state.tools.get_tool_definitions() if state.workflow.uses_tools and supports_tools else None
         state.tools.finish()
         return _create_result(run, state, state.last_text, "max_steps")
 
@@ -314,12 +290,11 @@ class TaskRunner:
         calls = [ToolCall(item.call_id, item.name, item.arguments) for item in turn.items]
         state.messages.append(assistant_tool_call_message(turn.text, calls))
         for call in calls:
-            state.messages.append(
-                tool_result_message(call, state.tools.run_tool_call(call))
-            )
+            state.messages.append(tool_result_message(call, state.tools.run_tool_call(call)))
         state.contributions.extend(state.tools.activated_contributions)
         if state.tools.task_policy is not None:
             state.workflow = state.tools.task_policy
+
 
 def _load_configured_skills(
     run: Run,
@@ -332,10 +307,7 @@ def _load_configured_skills(
         task_entry = run.skills.index.require_skill(request.skill, "task")
         allowed = {f"task:{name}" for name in request.allowed_task_skills}
         if allowed and task_entry.reference.key not in allowed:
-            raise ValueError(
-                "requested task Skill is outside the run policy: "
-                + task_entry.reference.key
-            )
+            raise ValueError("requested task Skill is outside the run policy: " + task_entry.reference.key)
         task_contribution = run.load_skill(
             task_entry.reference,
             send_text_model_messages,
@@ -345,25 +317,14 @@ def _load_configured_skills(
             task_entry.reference.key,
             *[item for item in configured if not _has_skill_type(item, {"task"})],
         ]
-    loader_types = {
-        handler.skill_type
-        for handler in run.skills.handlers.list()
-        if handler.skill_type not in NON_EXECUTION_SKILL_TYPES
-    }
+    loader_types = {handler.skill_type for handler in run.skills.handlers.list() if handler.skill_type not in NON_EXECUTION_SKILL_TYPES}
     references = run.skills.disclosure.select_skill_references(
-        [
-            item
-            for item in configured
-            if not _has_skill_type(item, NON_EXECUTION_SKILL_TYPES)
-        ],
+        [item for item in configured if not _has_skill_type(item, NON_EXECUTION_SKILL_TYPES)],
         loader_types,
     )
     if request.skill is not None:
         references = [
-            reference
-            for reference in references
-            if reference.skill_type != "task"
-            or reference.name == task_entry.reference.name
+            reference for reference in references if reference.skill_type != "task" or reference.name == task_entry.reference.name
         ]
     contributions: list[SkillUse] = []
     names: list[str] = []
@@ -415,9 +376,7 @@ def _build_messages(
     trusted = [run.config.agent.system, UNTRUSTED_CONTEXT_POLICY]
     untrusted: list[str] = []
     if workflow.instruction:
-        untrusted.append(
-            _disclose_prompt_content(run, "workflow", workflow.name, workflow.instruction)
-        )
+        untrusted.append(_disclose_prompt_content(run, "workflow", workflow.name, workflow.instruction))
     if request.resume_checkpoint is not None:
         untrusted.append(
             _disclose_prompt_content(
@@ -437,10 +396,7 @@ def _build_messages(
         name = getattr(source, "key", kind)
         if contribution.model_context is not None:
             skill = contribution.model_context
-            content = (
-                f'<skill key="{skill.manifest.skill_type}:{skill.manifest.name}">\n'
-                f"{skill.instructions}\n</skill>"
-            )
+            content = f'<skill key="{skill.manifest.skill_type}:{skill.manifest.name}">\n{skill.instructions}\n</skill>'
             untrusted.append(_disclose_prompt_content(run, kind, name, content))
         if contribution.build_prompt_context is not None:
             context = contribution.build_prompt_context(request.prompt)
@@ -450,11 +406,7 @@ def _build_messages(
     if index:
         untrusted.append(index)
     if untrusted:
-        trusted.append(
-            "<untrusted_runtime_context>\n"
-            + "\n\n".join(untrusted)
-            + "\n</untrusted_runtime_context>"
-        )
+        trusted.append("<untrusted_runtime_context>\n" + "\n\n".join(untrusted) + "\n</untrusted_runtime_context>")
     messages: list[Message] = [{"role": "system", "content": "\n\n".join(trusted)}]
     messages.extend(
         {"role": str(item["role"]), "content": str(item.get("content", ""))}
@@ -494,8 +446,7 @@ def _create_result(
         agent_groups=skill_results.get("agent_groups"),
         warning_messages=request.warning_messages,
         run_id=run.run_id,
-        stop_reason=("completed" if stop_reason == "model_finished" else stop_reason)
-        or "completed",
+        stop_reason=("completed" if stop_reason == "model_finished" else stop_reason) or "completed",
         actions=list_run_actions(run),
     )
 

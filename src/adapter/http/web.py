@@ -8,6 +8,7 @@ from urllib.parse import unquote
 
 from super_agent import Agent
 from core.config import AgentSettings, CommonConfig
+from core.models import reject_unknown_fields, read_int, read_object, read_text, read_text_list
 from skill.discovery.catalog import skill_index_to_dict
 from skill.handlers.model_management import model_skill_input_from_dict
 
@@ -25,19 +26,23 @@ class CommonConfigurationInput:
         if not isinstance(value, dict):
             raise ValueError("agent configuration must be a JSON object")
         allowed = set(cls.__dataclass_fields__)
-        unknown = sorted(set(value) - allowed)
-        if unknown:
-            raise ValueError("unknown agent configuration fields: " + ", ".join(unknown))
+        reject_unknown_fields(value, allowed, "agent configuration fields")
         return cls(
-            name=_required_text(value.get("name"), "name"),
-            system=_required_text(value.get("system"), "system"),
-            skills=_text_list(value.get("skills", []), "skills"),
-            max_agent_chain_depth=_optional_depth(value.get("max_agent_chain_depth")),
-            disabled_skills=_text_list(
+            name=read_text(value.get("name"), "agent configuration name"),
+            system=read_text(value.get("system"), "agent configuration system"),
+            skills=read_text_list(value.get("skills", []), "agent configuration skills", lower=True),
+            max_agent_chain_depth=(
+                None
+                if value.get("max_agent_chain_depth") is None
+                else read_int(value["max_agent_chain_depth"], "max_agent_chain_depth", minimum=1)
+            ),
+            disabled_skills=read_text_list(
                 value.get("disabled_skills", []),
-                "disabled_skills",
+                "agent configuration disabled_skills",
+                lower=True,
             ),
         )
+
     def to_agent_settings(self) -> AgentSettings:
         return AgentSettings(
             name=self.name,
@@ -49,14 +54,7 @@ class CommonConfigurationInput:
 
 
 def common_configuration_to_dict(config: CommonConfig) -> dict[str, object]:
-    settings = config.agent
-    return {
-        "name": settings.name,
-        "system": settings.system,
-        "skills": list(settings.skills),
-        "max_agent_chain_depth": settings.max_agent_chain_depth,
-        "disabled_skills": list(settings.disabled_skills),
-    }
+    return asdict(config.agent)
 
 
 @dataclass(frozen=True)
@@ -135,9 +133,7 @@ class WebAPI:
             "configuration_path": str(config.source),
             "skills": _web_skill_list(skill_index_to_dict(skills.index), config),
             "models": models,
-            "conversations": [
-                asdict(item) for item in self.user.conversations.list()
-            ],
+            "conversations": [asdict(item) for item in self.user.conversations.list()],
             "runs": [asdict(item) for item in self.user.runs.list(50)],
             "memory": [asdict(item) for item in self.user.memory.list()],
             "subagents": _subagent_tree(
@@ -180,7 +176,8 @@ def _web_skill_list(
         {
             key: field
             for key, field in item.items()
-            if key not in {
+            if key
+            not in {
                 "manifest_cache_path",
                 "instructions_cache_path",
                 "configuration_cache_path",
@@ -234,43 +231,11 @@ def _subagent_tree(
 
 
 def _required_body_text(body: object | None, name: str) -> str:
-    if not isinstance(body, dict):
-        raise ValueError("request body must be a JSON object")
-    value = body.get(name)
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"request {name} must be a non-empty string")
-    return value.strip()
+    return read_text(read_object(body, "request body").get(name), f"request {name}")
 
 
 def _optional_body_text(body: object | None, name: str) -> str:
     if body is None:
         return ""
-    if not isinstance(body, dict):
-        raise ValueError("request body must be a JSON object")
-    value = body.get(name, "")
-    if not isinstance(value, str):
-        raise ValueError(f"request {name} must be a string")
-    return value.strip()
-
-
-def _required_text(value: object, name: str) -> str:
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"agent configuration {name} must be a non-empty string")
-    return value.strip()
-
-
-def _text_list(value: object, name: str) -> list[str]:
-    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
-        raise ValueError(f"agent configuration {name} must be a string array")
-    items = [item.strip().lower() for item in value]
-    if any(not item for item in items) or len(items) != len(set(items)):
-        raise ValueError(f"agent configuration {name} must contain unique values")
-    return items
-
-
-def _optional_depth(value: object) -> int | None:
-    if value is None:
-        return None
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-        raise ValueError("max_agent_chain_depth must be a positive integer or null")
-    return value
+    value = read_object(body, "request body").get(name, "")
+    return read_text(value, f"request {name}", allow_empty=True)

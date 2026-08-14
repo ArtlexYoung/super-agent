@@ -73,6 +73,7 @@ class Run:
         init=False,
         repr=False,
     )
+
     @property
     def run_id(self) -> str:
         return self.identity.run_id
@@ -126,9 +127,7 @@ class Run:
         if self.create_action_rules is None:
             if action_requires_checker(request.effects):
                 effects = ", ".join(effect.value for effect in request.effects)
-                raise RuntimeError(
-                    f"action checker is required for effects: {effects}"
-                )
+                raise RuntimeError(f"action checker is required for effects: {effects}")
             return action()
         if self._action_runner is None:
             action_rules = self.create_action_rules()
@@ -228,11 +227,7 @@ def create_checkpoint_data(
 
 
 def list_checkpoint_data(events: Iterable[RunEvent]) -> list[dict[str, object]]:
-    return [
-        dict(event.data)
-        for event in events
-        if event.event_type == "run.checkpoint.created"
-    ]
+    return [dict(event.data) for event in events if event.event_type == "run.checkpoint.created"]
 
 
 def find_checkpoint_data(
@@ -245,11 +240,7 @@ def find_checkpoint_data(
     if checkpoint_id is None:
         return checkpoints[-1]
     selected = next(
-        (
-            item
-            for item in checkpoints
-            if item.get("checkpoint_id") == checkpoint_id.strip()
-        ),
+        (item for item in checkpoints if item.get("checkpoint_id") == checkpoint_id.strip()),
         None,
     )
     if selected is None:
@@ -329,11 +320,7 @@ class Runtime:
                     "run.resumed",
                     {
                         "source_run_id": request.resumed_from_run_id,
-                        "checkpoint_id": (
-                            None
-                            if request.resume_checkpoint is None
-                            else request.resume_checkpoint.get("checkpoint_id")
-                        ),
+                        "checkpoint_id": (None if request.resume_checkpoint is None else request.resume_checkpoint.get("checkpoint_id")),
                     },
                 )
             if run.task_runner is None:
@@ -383,10 +370,7 @@ class Runtime:
                     },
                 )
             except Exception as recording_error:
-                error.add_note(
-                    "Could not record run failure: "
-                    f"{type(recording_error).__name__}: {recording_error}"
-                )
+                error.add_note(f"Could not record run failure: {type(recording_error).__name__}: {recording_error}")
             raise
 
 
@@ -403,9 +387,7 @@ def _create_run(
         identity,
         backend=runtime.storage,
         event_listener=event_listener,
-        subscribers=RuntimeEventSubscribers(
-            runtime.event_subscribers.list_subscribers()
-        ),
+        subscribers=RuntimeEventSubscribers(runtime.event_subscribers.list_subscribers()),
     )
     store = _create_run_event_store(runtime, identity, event_log)
     start_data = {"prompt": request.prompt}
@@ -491,10 +473,7 @@ def _read_model_profiles(
 
 
 def _has_model_skill(skills: Skills) -> bool:
-    return any(
-        entry.reference.skill_type == "model"
-        for entry in skills.index.entries
-    )
+    return any(entry.reference.skill_type == "model" for entry in skills.index.entries)
 
 
 def _create_task_runner(

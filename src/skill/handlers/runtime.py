@@ -7,7 +7,7 @@ from dataclasses import KW_ONLY, dataclass, field
 from typing import TYPE_CHECKING, Callable, Protocol
 
 from core.checks import ActionEffect, ActionRequest
-from core.models import RunIdentity
+from core.models import RunIdentity, read_int, reject_unknown_fields
 from core.provider import Message, ToolDefinition
 from skill.discovery.catalog import ProgressiveDisclosureCore, SkillDisclosure, SkillReference
 from skill.discovery.manifest import Skill
@@ -53,23 +53,15 @@ def _create_task_policy(
 ) -> TaskPolicy:
     manifest = disclosure.read_manifest()
     if manifest.skill_type != expected_type:
-        raise ValueError(
-            f"skill does not use the {expected_type} skill: {manifest.name}"
-        )
+        raise ValueError(f"skill does not use the {expected_type} skill: {manifest.name}")
     data = disclosure.read_configuration().content
     missing = sorted({"mode", "max_steps"} - set(data))
     if missing:
-        raise ValueError(
-            f"missing {expected_type} Skill settings: " + ", ".join(missing)
-        )
+        raise ValueError(f"missing {expected_type} Skill settings: " + ", ".join(missing))
     mode = str(data["mode"]).strip().lower()
     if mode not in WORKFLOW_MODES:
         raise ValueError(f"unknown workflow mode: {mode}")
-    unknown = sorted(set(data) - {"mode", "max_steps", "tools"})
-    if unknown:
-        raise ValueError(
-            f"unknown {expected_type} Skill settings: " + ", ".join(unknown)
-        )
+    reject_unknown_fields(data, {"mode", "max_steps", "tools"}, f"{expected_type} Skill settings")
     instruction = disclosure.read_instructions().content.strip()
     if not instruction:
         raise ValueError(f"{expected_type} Skill instructions cannot be empty")
@@ -77,15 +69,9 @@ def _create_task_policy(
         manifest.name,
         mode,
         instruction,
-        _read_max_steps(data["max_steps"], expected_type),
+        read_int(data["max_steps"], f"{expected_type} max_steps", minimum=1),
         _read_policy_tools(data.get("tools", {}), expected_type),
     )
-
-
-def _read_max_steps(value: object, skill_type: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-        raise ValueError(f"{skill_type} max_steps must be a positive integer")
-    return value
 
 
 def _read_policy_tools(
@@ -96,14 +82,8 @@ def _read_policy_tools(
         raise ValueError(f"{skill_type} tools must be a table")
     tools: dict[str, dict[str, object]] = {}
     for name, settings in value.items():
-        if (
-            not isinstance(name, str)
-            or not name.strip()
-            or not isinstance(settings, dict)
-        ):
-            raise ValueError(
-                f"{skill_type} tools must map names to settings tables"
-            )
+        if not isinstance(name, str) or not name.strip() or not isinstance(settings, dict):
+            raise ValueError(f"{skill_type} tools must map names to settings tables")
         tools[name.strip().lower()] = dict(settings)
     return tools
 
@@ -260,11 +240,7 @@ class SkillHandlers:
         return tuple(self._handlers[key] for key in sorted(self._handlers))
 
     def model_context_types(self) -> set[str]:
-        return {
-            skill_type
-            for skill_type, handler in self._handlers.items()
-            if handler.adds_model_context
-        }
+        return {skill_type for skill_type, handler in self._handlers.items() if handler.adds_model_context}
 
     def handle(self, context: SkillContext) -> SkillUse:
         handler = self.find(context.reference.skill_type)
@@ -335,7 +311,7 @@ def _validate_task_policy(policy: object) -> None:
         raise ValueError(f"TaskPolicy.mode is invalid: {policy.mode}")
     if not isinstance(policy.instruction, str) or not policy.instruction.strip():
         raise ValueError("TaskPolicy.instruction cannot be empty")
-    _read_max_steps(policy.max_steps, "TaskPolicy")
+    read_int(policy.max_steps, "TaskPolicy max_steps", minimum=1)
     _read_policy_tools(policy.tools, "TaskPolicy")
 
 
@@ -354,9 +330,7 @@ def _validate_completion_callback(result: SkillUse) -> None:
 
 
 def _validate_included_skills(references: object) -> None:
-    if not isinstance(references, tuple) or not all(
-        isinstance(reference, SkillReference) for reference in references
-    ):
+    if not isinstance(references, tuple) or not all(isinstance(reference, SkillReference) for reference in references):
         raise TypeError("SkillUse.included_skills must contain SkillReference values")
     keys = [reference.key for reference in references]
     if len(keys) != len(set(keys)):
@@ -376,25 +350,15 @@ def _validate_optional_type(value: object, expected: type, name: str) -> None:
 def _validate_skill_tool(tool: object) -> None:
     if not isinstance(tool, SkillTool):
         raise TypeError("SkillUse.tools must contain SkillTool values")
-    if (
-        not isinstance(tool.name, str)
-        or not tool.name.strip()
-        or not isinstance(tool.description, str)
-        or not tool.description.strip()
-    ):
+    if not isinstance(tool.name, str) or not tool.name.strip() or not isinstance(tool.description, str) or not tool.description.strip():
         raise ValueError("Skill tool name and description cannot be empty")
     if not isinstance(tool.properties, dict) or not callable(tool.handler):
         raise TypeError(f"Skill tool is invalid: {tool.name}")
-    if not isinstance(tool.required, tuple) or not all(
-        isinstance(name, str) and name in tool.properties
-        for name in tool.required
-    ):
+    if not isinstance(tool.required, tuple) or not all(isinstance(name, str) and name in tool.properties for name in tool.required):
         raise ValueError(f"Skill tool required names are invalid: {tool.name}")
     if not isinstance(tool.action, SkillAction):
         raise TypeError(f"Skill tool is missing an action: {tool.name}")
-    if tool.result_kind is not None and (
-        not isinstance(tool.result_kind, str) or not tool.result_kind.strip()
-    ):
+    if tool.result_kind is not None and (not isinstance(tool.result_kind, str) or not tool.result_kind.strip()):
         raise ValueError(f"Skill tool result_kind is invalid: {tool.name}")
     argument = tool.action.resource_argument
     if argument is not None and argument not in tool.properties:
@@ -413,52 +377,6 @@ def _clean_skill_type(value: object) -> str:
         raise ValueError(f"Invalid Skill type: {value}")
     return skill_type
 
-
-def read_required_tool_string(arguments: ToolArguments, name: str) -> str:
-    value = arguments.get(name)
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"tool argument {name!r} must be a non-empty string")
-    return value
-
-
-def read_optional_tool_string(arguments: ToolArguments, name: str) -> str | None:
-    value = arguments.get(name)
-    if value is None:
-        return None
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"tool argument {name!r} must be a non-empty string")
-    return value
-
-
-def read_tool_object(arguments: ToolArguments, name: str) -> dict[str, object]:
-    value = arguments.get(name)
-    if not isinstance(value, dict):
-        raise ValueError(f"tool argument {name!r} must be an object")
-    return value
-
-
-def read_optional_positive_tool_integer(
-    arguments: ToolArguments,
-    name: str,
-) -> int | None:
-    value = arguments.get(name)
-    if value is None:
-        return None
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-        raise ValueError(f"tool argument {name!r} must be a positive integer")
-    return value
-
-
-def read_optional_non_negative_tool_integer(
-    arguments: ToolArguments,
-    name: str,
-) -> int | None:
-    value = arguments.get(name)
-    if value is None:
-        return None
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-        raise ValueError(f"tool argument {name!r} must be a non-negative integer")
-    return value
 
 # Default Skill assembly uses the same handler and disclosure owners.
 from pathlib import Path
@@ -495,11 +413,7 @@ def create_progressive_skill_disclosure(
     include_freshness: bool = True,
 ) -> ProgressiveDisclosureCore:
     freshness_stats = {}
-    if (
-        store is not None
-        and include_freshness
-        and "freshness" not in config.agent.disabled_skills
-    ):
+    if store is not None and include_freshness and "freshness" not in config.agent.disabled_skills:
         from skill.learning.freshness import calculate_skill_freshness
         from skill.learning.freshness import load_freshness_rules
         from skill.learning.records import read_evaluation_records
@@ -531,11 +445,7 @@ def create_progressive_skill_disclosure(
         builtin_skill_roots=[_builtin_skill_root()],
         disabled_names=config.agent.disabled_skills,
         freshness_stats=freshness_stats,
-        recorder=(
-            create_runtime_disclosure_recorder(store, identity)
-            if should_record and store is not None
-            else None
-        ),
+        recorder=(create_runtime_disclosure_recorder(store, identity) if should_record and store is not None else None),
         record_event=None,
     )
 

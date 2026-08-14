@@ -13,7 +13,7 @@ from typing import Any, cast
 from urllib.parse import unquote, urlsplit
 
 from super_agent import Agent
-from core.models import AgentRunOptions
+from core.models import AgentRunOptions, read_text
 from adapter.http.web import WebAPI, WebAPIResponse
 from core.models import LOCAL_USER_ID, RunEvent, validate_user_id
 from core.checks import ActionBlockedError
@@ -123,9 +123,9 @@ def encode_sse_event(event: dict[str, object]) -> bytes:
 
 def _read_identifier(data: dict[str, object], name: str) -> str:
     value = data.get(name)
-    if not isinstance(value, str) or not value.strip():
+    if not isinstance(value, str):
         raise ValueError(f"AG-UI {name} must be a non-empty string")
-    clean = value.strip()
+    clean = read_text(value, f"AG-UI {name}")
     if len(clean) > 200 or any(ord(character) < 32 for character in clean):
         raise ValueError(f"AG-UI {name} must be at most 200 printable characters")
     return clean
@@ -134,9 +134,9 @@ def _read_identifier(data: dict[str, object], name: str) -> str:
 def _read_optional_skill(value: object) -> str | None:
     if value is None:
         return None
-    if not isinstance(value, str) or not value.strip():
+    if not isinstance(value, str):
         raise ValueError("AG-UI forwardedProps.skill must be a non-empty string")
-    clean = value.strip().lower()
+    clean = read_text(value, "AG-UI forwardedProps.skill").lower()
     if len(clean) > 129 or any(ord(character) < 32 for character in clean):
         raise ValueError("AG-UI forwardedProps.skill is invalid")
     return clean
@@ -157,11 +157,7 @@ def _read_user_content(value: object) -> str:
         return value.strip()
     if not isinstance(value, list):
         return ""
-    parts = [
-        str(item.get("text", "")).strip()
-        for item in value
-        if isinstance(item, dict) and item.get("type") == "text"
-    ]
+    parts = [str(item.get("text", "")).strip() for item in value if isinstance(item, dict) and item.get("type") == "text"]
     return "\n".join(part for part in parts if part)
 
 
@@ -255,9 +251,7 @@ class AGUIHTTPServer(ThreadingHTTPServer):
         self.allowed_origins = frozenset(allowed_origins)
         self.web_api = WebAPI(agent, user_id)
         self.web_api_lock = RLock()
-        self.static_root = (
-            None if static_root is None else Path(static_root).expanduser().resolve()
-        )
+        self.static_root = None if static_root is None else Path(static_root).expanduser().resolve()
         super().__init__(address, AGUIRequestHandler)
 
 
@@ -492,11 +486,7 @@ class AGUIRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.send_header(
             "Cache-Control",
-            (
-                "no-cache"
-                if candidate.name == "index.html"
-                else "public, max-age=31536000, immutable"
-            ),
+            ("no-cache" if candidate.name == "index.html" else "public, max-age=31536000, immutable"),
         )
         self._send_security_headers()
         self.end_headers()

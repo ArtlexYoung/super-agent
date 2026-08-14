@@ -2,11 +2,19 @@
 
 from __future__ import annotations
 
-import math
 import os
 from dataclasses import dataclass, replace
 from typing import Mapping, Sequence
 
+from core.models import (
+    read_bool,
+    read_optional_int,
+    read_optional_number,
+    read_optional_text,
+    read_text,
+    read_text_list,
+    reject_unknown_fields,
+)
 from core.provider import (
     ANTHROPIC_COMPATIBLE_PROVIDER,
     MOCK_PROVIDER,
@@ -66,31 +74,32 @@ class ModelDefinition:
     @classmethod
     def from_dict(cls, value: Mapping[str, object]) -> ModelDefinition:
         data = dict(value)
-        unknown = set(data) - set(MODEL_CONFIGURATION_FIELDS)
-        if unknown:
-            raise ValueError(
-                "unknown model Skill settings: " + ", ".join(sorted(unknown))
-            )
+        reject_unknown_fields(data, set(MODEL_CONFIGURATION_FIELDS), "model Skill settings")
         return cls(
-            model=_required_string(data, "model"),
-            connection=normalize_provider_connection(ProviderConnection(
-                provider=_required_string(data, "provider"),
-                base_url=_optional_string(data, "base_url"),
-                api_key_env=_optional_string(data, "api_key_env"),
-            )),
+            model=read_text(data.get("model"), "model Skill model"),
+            connection=normalize_provider_connection(
+                ProviderConnection(
+                    provider=read_text(data.get("provider"), "model Skill provider"),
+                    base_url=read_optional_text(data.get("base_url"), "model Skill base_url"),
+                    api_key_env=read_optional_text(data.get("api_key_env"), "model Skill api_key_env"),
+                )
+            ),
             traits=ModelTraits(
-                supports=_string_list(data, "supports", ["text"]),
-                purposes=_string_list(data, "purposes", []),
-                strengths=_string_list(data, "strengths", []),
-                quality_score=_optional_score(data, "quality_score"),
-                expected_latency_ms=_optional_nonnegative_integer(
-                    data, "expected_latency_ms"
+                supports=read_text_list(data.get("supports", ["text"]), "model Skill supports", lower=True),
+                purposes=read_text_list(data.get("purposes", []), "model Skill purposes", lower=True),
+                strengths=read_text_list(data.get("strengths", []), "model Skill strengths", lower=True),
+                quality_score=read_optional_number(data.get("quality_score"), "model Skill quality_score", minimum=0, maximum=1),
+                expected_latency_ms=read_optional_int(
+                    data.get("expected_latency_ms"),
+                    "model Skill expected_latency_ms",
+                    minimum=0,
                 ),
                 pricing=ModelPricing.from_mapping(data),
             ),
-            default=_boolean(data, "default", False),
-            agent_can_update_connection=_boolean(
-                data, "agent_can_update_connection", False
+            default=read_bool(data.get("default", False), "model Skill default"),
+            agent_can_update_connection=read_bool(
+                data.get("agent_can_update_connection", False),
+                "model Skill agent_can_update_connection",
             ),
         )
 
@@ -200,17 +209,10 @@ def read_model_profiles(
     skills: Skills,
     environment: Mapping[str, str] | None = None,
 ) -> list[ModelProfile]:
-    model_entries = [
-        entry for entry in skills.index.entries if entry.reference.skill_type == "model"
-    ]
+    model_entries = [entry for entry in skills.index.entries if entry.reference.skill_type == "model"]
     if not model_entries:
         return discover_environment_model_profiles(environment)
-    profiles = [
-        create_model_profile_from_skill_disclosure(
-            skills.open(entry.reference)
-        )
-        for entry in model_entries
-    ]
+    profiles = [create_model_profile_from_skill_disclosure(skills.open(entry.reference)) for entry in model_entries]
     select_default_model_profile(profiles)
     return profiles
 
@@ -218,8 +220,7 @@ def read_model_profiles(
 def select_default_model_profile(profiles: list[ModelProfile]) -> ModelProfile:
     if not profiles:
         raise RuntimeError(
-            "No model is configured. Add a model Skill, configure a provider "
-            "through the environment, or pass provider= to Agent."
+            "No model is configured. Add a model Skill, configure a provider through the environment, or pass provider= to Agent."
         )
     defaults = [profile for profile in profiles if profile.default]
     if len(defaults) > 1:
@@ -294,10 +295,7 @@ def discover_environment_model_profiles(
             )
         )
     profiles = _deduplicate_profiles(profiles)
-    return [
-        replace(profile, definition=replace(profile.definition, default=index == 0))
-        for index, profile in enumerate(profiles)
-    ]
+    return [replace(profile, definition=replace(profile.definition, default=index == 0)) for index, profile in enumerate(profiles)]
 
 
 def create_direct_provider_profile() -> ModelProfile:
@@ -347,10 +345,7 @@ def model_profile_to_dict(
 
 def model_dispatch_to_dict(profile: ModelProfile) -> dict[str, object]:
     """Expose only model contract facts needed before Agent dispatch."""
-    return {
-        "key": profile.key,
-        **profile.definition.to_dispatch_dict(),
-    }
+    return {"key": profile.key, **profile.definition.to_dispatch_dict()}
 
 
 def model_profile_supports(
@@ -369,15 +364,17 @@ def choose_dispatch_model(
 ) -> ModelDispatchChoice:
     """Choose the lowest-cost compatible declared model for one Agent dispatch."""
     required = {item.strip().lower() for item in required_features if item.strip()}
-    candidates = [
-        item
-        for item in models if isinstance(item, dict)
-        and required <= {
-            str(feature).strip().lower()
-            for feature in item.get("supports", [])
-            if isinstance(feature, str) and feature.strip()
-        }
-    ] if isinstance(models, list) else []
+    candidates = (
+        [
+            item
+            for item in models
+            if isinstance(item, dict)
+            and required
+            <= {str(feature).strip().lower() for feature in item.get("supports", []) if isinstance(feature, str) and feature.strip()}
+        ]
+        if isinstance(models, list)
+        else []
+    )
     if not candidates:
         pricing = ModelPricing()
         return ModelDispatchChoice(
@@ -409,12 +406,7 @@ def choose_dispatch_model(
 
 
 def model_connection_fields(profile: ModelProfile) -> tuple[str, str, str | None, str | None]:
-    return (
-        profile.connection.provider,
-        profile.model,
-        profile.connection.base_url,
-        profile.connection.api_key_env,
-    )
+    return profile.connection.provider, profile.model, profile.connection.base_url, profile.connection.api_key_env
 
 
 def _profile_from_super_agent_environment(
@@ -476,81 +468,6 @@ def _deduplicate_profiles(profiles: list[ModelProfile]) -> list[ModelProfile]:
             seen.add(key)
             result.append(profile)
     return result
-
-
-def _required_string(data: dict[str, object], name: str) -> str:
-    value = data.get(name)
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"model Skill {name} must be a non-empty string")
-    return value.strip()
-
-
-def _optional_string(data: dict[str, object], name: str) -> str | None:
-    value = data.get(name)
-    if value is None:
-        return None
-    if not isinstance(value, str):
-        raise ValueError(f"model Skill {name} must be a string")
-    return value.strip() or None
-
-
-def _string_list(
-    data: dict[str, object],
-    name: str,
-    default: list[str],
-) -> list[str]:
-    value = data.get(name, default)
-    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
-        raise ValueError(f"model Skill {name} must be a TOML string array")
-    result = [item.strip().lower() for item in value]
-    if any(not item for item in result):
-        raise ValueError(f"model Skill {name} cannot contain empty values")
-    if len(result) != len(set(result)):
-        raise ValueError(f"model Skill {name} cannot contain duplicates")
-    return result
-
-
-def _boolean(data: dict[str, object], name: str, default: bool) -> bool:
-    value = data.get(name, default)
-    if not isinstance(value, bool):
-        raise ValueError(f"model Skill {name} must be a TOML boolean")
-    return value
-
-
-def _optional_score(data: dict[str, object], name: str) -> float | None:
-    value = _optional_nonnegative_number(data, name)
-    if value is not None and value > 1:
-        raise ValueError(f"model Skill {name} must be between 0 and 1")
-    return value
-
-
-def _optional_nonnegative_number(
-    data: dict[str, object],
-    name: str,
-) -> float | None:
-    value = data.get(name)
-    if value is None:
-        return None
-    if isinstance(value, bool) or not isinstance(value, int | float):
-        raise ValueError(f"model Skill {name} must be a TOML number")
-    result = float(value)
-    if not math.isfinite(result) or result < 0:
-        raise ValueError(f"model Skill {name} must be finite and non-negative")
-    return result
-
-
-def _optional_nonnegative_integer(
-    data: dict[str, object],
-    name: str,
-) -> int | None:
-    value = data.get(name)
-    if value is None:
-        return None
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise ValueError(f"model Skill {name} must be a TOML integer")
-    if value < 0:
-        raise ValueError(f"model Skill {name} cannot be negative")
-    return value
 
 
 def _environment_text(environment: Mapping[str, str], name: str) -> str | None:

@@ -137,10 +137,7 @@ class UserConversations:
                     f"conversation:{conversation_id}",
                     (ActionEffect.DELETE,),
                 ),
-                lambda: clear_conversation(
-                    self.user._store(),
-                    conversation_id
-                ),
+                lambda: clear_conversation(self.user._store(), conversation_id),
             ),
         )
 
@@ -151,10 +148,7 @@ class UserConversations:
                 f"conversation:{conversation_id}",
                 (ActionEffect.DELETE,),
             ),
-            lambda: delete_conversation(
-                self.user._store(),
-                conversation_id
-            ),
+            lambda: delete_conversation(self.user._store(), conversation_id),
         )
 
 
@@ -311,6 +305,7 @@ class UserRuns:
         evidence: dict[str, object],
     ):
         from skill.learning.run_learning import review_run_evidence
+
         agent = self.user.agent
         store = self.user._store()
         skills = agent._create_skills(self.user.user_id)
@@ -441,16 +436,10 @@ class UserSkills:
 
         skills = self.list_all()
         environment = self.user.agent._user_environment(self.user.user_id)
-        has_model_skill = any(
-            entry.reference.skill_type == "model"
-            for entry in skills.index.entries
-        )
+        has_model_skill = any(entry.reference.skill_type == "model" for entry in skills.index.entries)
         if self.user.agent._uses_direct_provider() and not has_model_skill:
             environment = {}
-        return [
-            model_profile_to_dict(profile, environment)
-            for profile in read_model_profiles(skills, environment)
-        ]
+        return [model_profile_to_dict(profile, environment) for profile in read_model_profiles(skills, environment)]
 
     def save_model(self, request: "ModelSkillInput") -> "ModelProfile":
         profile = self.create_model_manager().save_model_skill(request)
@@ -506,11 +495,7 @@ def _create_skill_updater(user: UserAgent) -> "SkillUpdater":
         store=store,
         propose_model=task_runner.create_text_model(store, "skill_change_proposal"),
         test_model=task_runner.create_text_model(store, "skill_change_test"),
-        on_skill_changed=lambda manifest: (
-            agent._reload_models(user.user_id)
-            if manifest.skill_type == "model"
-            else None
-        ),
+        on_skill_changed=lambda manifest: agent._reload_models(user.user_id) if manifest.skill_type == "model" else None,
         action_rules=agent._action_rules(),
     )
 

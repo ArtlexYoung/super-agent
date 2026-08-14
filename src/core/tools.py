@@ -10,13 +10,16 @@ from skill.handlers.runtime import (
     SkillTool,
     SkillUse,
     TaskPolicy,
+)
+from core.provider import Message, ToolCall, ToolDefinition
+from core.models import (
+    SubAgentResult,
+    SubagentRecordOptions,
     read_optional_non_negative_tool_integer,
     read_optional_positive_tool_integer,
     read_optional_tool_string,
     read_required_tool_string,
 )
-from core.provider import Message, ToolCall, ToolDefinition
-from core.models import SubAgentResult, SubagentRecordOptions
 from core.runtime import Run
 from core.checks import ActionEffect, ActionRequest
 from skill.discovery.catalog import SkillDisclosure, SkillIndex, SkillReference, skill_index_to_dict
@@ -35,29 +38,15 @@ class RunTools:
     ) -> None:
         self.run = run
         self._send_text_model_messages = send_text_model_messages
-        self._subagents = (
-            run.task.subagents.list_subagents()
-            if run.task.include_subagents
-            else []
-        )
+        self._subagents = run.task.subagents.list_subagents() if run.task.include_subagents else []
         self.used_skill_names: list[str] = []
-        self._activated_skill_keys = {
-            str(item["key"]) for item in run.list_used_skill_evidence()
-        }
+        self._activated_skill_keys = {str(item["key"]) for item in run.list_used_skill_evidence()}
         self._active_task_skill = next(
-            (
-                key
-                for key in self._activated_skill_keys
-                if key.startswith("task:")
-            ),
+            (key for key in self._activated_skill_keys if key.startswith("task:")),
             None,
         )
         self.activated_contributions: list[SkillUse] = []
-        self.delegated_subagent_results = (
-            []
-            if delegated_subagent_results is None
-            else delegated_subagent_results
-        )
+        self.delegated_subagent_results = [] if delegated_subagent_results is None else delegated_subagent_results
         self.skill_session: SkillSession | None = None
         self.task_policy: TaskPolicy | None = None
         self._session_context = SkillSessionContext(
@@ -185,6 +174,7 @@ class RunTools:
 
     def _list_skills(self, arguments: dict[str, object]) -> dict[str, object]:
         return skill_index_to_dict(self.run.skills.index)
+
     def _disclose_skill_manifest(self, arguments: dict[str, object]) -> dict[str, object]:
         opened = self._open_requested_skill(arguments)
         manifest = opened.disclose_manifest()
@@ -225,10 +215,7 @@ class RunTools:
         page = self.run.skills.disclosure.read_disclosed_content(
             reference,
             offset=read_optional_non_negative_tool_integer(arguments, "offset") or 0,
-            limit=(
-                read_optional_positive_tool_integer(arguments, "limit")
-                or DEFAULT_PAGE_CHARS
-            ),
+            limit=(read_optional_positive_tool_integer(arguments, "limit") or DEFAULT_PAGE_CHARS),
         )
         return disclosure_page_to_dict(page)
 
@@ -286,9 +273,7 @@ class RunTools:
         self,
         contributions: list[SkillUse],
     ) -> TaskPolicy | None:
-        new_policies = [
-            item.task_policy for item in contributions if item.task_policy is not None
-        ]
+        new_policies = [item.task_policy for item in contributions if item.task_policy is not None]
         if len(new_policies) > 1:
             raise ValueError("activate at most one task or workflow Skill")
         if new_policies and self.task_policy is not None:
@@ -318,9 +303,7 @@ class RunTools:
         if reference.key in loading:
             raise ValueError(f"Skill activation cycle: {reference.key}")
         if self.run.skills.handlers.find(reference.skill_type) is None:
-            raise KeyError(
-                f"Skill handler not found for Skill type: {reference.skill_type}"
-            )
+            raise KeyError(f"Skill handler not found for Skill type: {reference.skill_type}")
         contribution = self.run.load_skill(
             reference,
             self._send_text_model_messages,
@@ -335,18 +318,10 @@ class RunTools:
     def _check_task_skill_access(self, reference: SkillReference) -> None:
         if reference.skill_type != "task":
             return
-        if (
-            self.run.task.allowed_task_skills
-            and reference.name not in self.run.task.allowed_task_skills
-        ):
-            raise PermissionError(
-                f"task Skill is outside this run's allowed Skills: {reference.key}"
-            )
+        if self.run.task.allowed_task_skills and reference.name not in self.run.task.allowed_task_skills:
+            raise PermissionError(f"task Skill is outside this run's allowed Skills: {reference.key}")
         if self._active_task_skill not in {None, reference.key}:
-            raise PermissionError(
-                "only one task Skill can be active in a run: "
-                f"{self._active_task_skill}, {reference.key}"
-            )
+            raise PermissionError(f"only one task Skill can be active in a run: {self._active_task_skill}, {reference.key}")
 
     def list_subagents(self, arguments: dict[str, object]) -> dict[str, object]:
         if not self._subagents:
@@ -409,7 +384,9 @@ class RunTools:
         if not isinstance(content, str):
             raise TypeError("shared task context content must be text")
         page = self.run.skills.disclosure.disclose_content(
-            "agent-group", str(shared.get("group_id", "shared-task")), content,
+            "agent-group",
+            str(shared.get("group_id", "shared-task")),
+            content,
             stage="reference-read",
         )
         return disclosure_page_to_dict(page)
@@ -429,9 +406,7 @@ class RunTools:
             reference.skill_type,
         )
         if self.run.skills.handlers.find(reference.skill_type) is None:
-            raise KeyError(
-                f"Skill handler not found for Skill type: {reference.skill_type}"
-            )
+            raise KeyError(f"Skill handler not found for Skill type: {reference.skill_type}")
         self.run.record_skill_used(entry)
         if reference.key not in self.used_skill_names:
             self.used_skill_names.append(reference.key)
@@ -444,65 +419,68 @@ def _create_disclosure_tools(
     records_cache: bool,
 ) -> tuple[SkillTool, ...]:
     reference = _skill_reference_properties(skill_index)
-    disclosure_effects = (
-        (ActionEffect.READ, ActionEffect.CREATE, ActionEffect.UPDATE)
-        if records_cache
-        else (ActionEffect.READ,)
-    )
-    tools = [SkillTool(
-        "list_skills",
-        "List every available Skill type from the central index.",
-        {},
-        run_tools._list_skills,
-        action=SkillAction((ActionEffect.READ,), "skill:index"),
-        result_kind="skill",
-    )]
+    disclosure_effects = (ActionEffect.READ, ActionEffect.CREATE, ActionEffect.UPDATE) if records_cache else (ActionEffect.READ,)
+    tools = [
+        SkillTool(
+            "list_skills",
+            "List every available Skill type from the central index.",
+            {},
+            run_tools._list_skills,
+            action=SkillAction((ActionEffect.READ,), "skill:index"),
+            result_kind="skill",
+        )
+    ]
     disclosures = (
         ("manifest", run_tools._disclose_skill_manifest),
         ("instructions", run_tools._disclose_skill_instructions),
         ("configuration", run_tools._disclose_skill_configuration),
     )
-    tools.extend(SkillTool(
-        f"disclose_skill_{part}",
-        f"Disclose one Skill's {part} through the central cache.",
-        reference,
-        handler,
-        action=SkillAction(disclosure_effects, f"skill:disclosure:{part}", "name"),
-        required=("name",),
-        result_kind="skill",
-    ) for part, handler in disclosures)
-    tools.extend((
+    tools.extend(
         SkillTool(
-            "activate_skill",
-            "Explicitly activate one Skill and attach its registered Runtime tools.",
+            f"disclose_skill_{part}",
+            f"Disclose one Skill's {part} through the central cache.",
             reference,
-            run_tools._activate_skill,
-            action=SkillAction(
-                (ActionEffect.READ,),
-                "skill:active",
-                "name",
-            ),
+            handler,
+            action=SkillAction(disclosure_effects, f"skill:disclosure:{part}", "name"),
             required=("name",),
             result_kind="skill",
-        ),
-        SkillTool(
-            "read_disclosed_content",
-            "Read one bounded page from a reference returned by progressive disclosure.",
-            {
-                "reference": {"type": "string"},
-                "offset": {"type": "integer", "minimum": 0},
-                "limit": {"type": "integer", "minimum": 1, "maximum": 32_000},
-            },
-            run_tools._read_disclosed_content,
-            action=SkillAction(
-                (ActionEffect.READ,),
-                "disclosure:content",
-                "reference",
+        )
+        for part, handler in disclosures
+    )
+    tools.extend(
+        (
+            SkillTool(
+                "activate_skill",
+                "Explicitly activate one Skill and attach its registered Runtime tools.",
+                reference,
+                run_tools._activate_skill,
+                action=SkillAction(
+                    (ActionEffect.READ,),
+                    "skill:active",
+                    "name",
+                ),
+                required=("name",),
+                result_kind="skill",
             ),
-            required=("reference",),
-            result_kind=None,
-        ),
-    ))
+            SkillTool(
+                "read_disclosed_content",
+                "Read one bounded page from a reference returned by progressive disclosure.",
+                {
+                    "reference": {"type": "string"},
+                    "offset": {"type": "integer", "minimum": 0},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 32_000},
+                },
+                run_tools._read_disclosed_content,
+                action=SkillAction(
+                    (ActionEffect.READ,),
+                    "disclosure:content",
+                    "reference",
+                ),
+                required=("reference",),
+                result_kind=None,
+            ),
+        )
+    )
     return tuple(tools)
 
 
@@ -514,11 +492,7 @@ def _read_subagent_result(value: dict[str, object]) -> SubAgentResult:
         text=str(value["text"]),
         prompt=str(value.get("prompt", "")),
         created_by_agent=bool(value.get("created_by_agent", False)),
-        subagent_results=(
-            [_read_subagent_result(item) for item in nested if isinstance(item, dict)]
-            if isinstance(nested, list)
-            else None
-        ),
+        subagent_results=([_read_subagent_result(item) for item in nested if isinstance(item, dict)] if isinstance(nested, list) else None),
         run_id=str(value.get("run_id", "")),
     )
 
@@ -526,9 +500,7 @@ def _read_subagent_result(value: dict[str, object]) -> SubAgentResult:
 def _skill_reference_properties(
     skill_index: SkillIndex,
 ) -> dict[str, dict[str, object]]:
-    skill_types = sorted(
-        {entry.reference.skill_type for entry in skill_index.entries}
-    )
+    skill_types = sorted({entry.reference.skill_type for entry in skill_index.entries})
     return {
         "name": {"type": "string"},
         "type": {"type": "string", "enum": skill_types},

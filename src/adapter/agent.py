@@ -253,11 +253,7 @@ class Agent:
             conversation_id,
             options,
         )
-        warnings = (
-            self._team.check_links()
-            if options.include_subagents and options.check_subagent_links_before_run
-            else []
-        )
+        warnings = self._team.check_links() if options.include_subagents and options.check_subagent_links_before_run else []
         request = Task(
             prompt=prompt,
             messages=prepared_messages,
@@ -528,9 +524,7 @@ class Agent:
         profiles = self._read_model_profiles(skills, user_id)
         if user_id == LOCAL_USER_ID:
             self._model_profiles = profiles
-            self._model_profile = (
-                select_default_model_profile(profiles) if profiles else None
-            )
+            self._model_profile = select_default_model_profile(profiles) if profiles else None
 
     def _ensure_initialized(self) -> None:
         if self._runtime is not None:

@@ -11,6 +11,7 @@ from typing import cast
 
 from core.config import CommonConfig
 from core.checks import ActionEffect, ActionRequest, ActionRunner, ActionRules
+from core.models import reject_unknown_fields, read_bool, read_optional_text, read_text
 from core.records.store import EventStore
 from skill.discovery.catalog import ProgressiveDisclosureCore, SkillDisclosure
 from skill.handlers.models import (
@@ -97,9 +98,7 @@ class ModelSkillManager:
             source_path = source_document.manifest.path
             if previous_name != clean_request.name and source.source != "user":
                 raise ValueError("a shared model Skill cannot be renamed by a user overlay")
-        version = next_skill_version(
-            "" if source_document is None else source_document.manifest.version
-        )
+        version = next_skill_version("" if source_document is None else source_document.manifest.version)
         document = _create_model_skill_document(clean_request, source_document, version)
         target = self.user_skill_root / "model" / clean_request.name
         if target.exists() and source_path != target:
@@ -114,11 +113,7 @@ class ModelSkillManager:
             )
         _apply_model_skill_updates(
             updates,
-            removed_path=(
-                source_path
-                if source is not None and source.source == "user" and source_path != target
-                else None
-            ),
+            removed_path=(source_path if source is not None and source.source == "user" and source_path != target else None),
         )
         return self._read_profile(clean_request.name)
 
@@ -143,11 +138,7 @@ class ModelSkillManager:
         removed_document = _read_model_skill_document(opened)
         removed_path = removed_document.manifest.path
         _require_managed_path(removed_path, self.user_skill_root)
-        remaining = [
-            item
-            for item in index.entries
-            if item.reference.skill_type == "model" and item.reference.name != clean_name
-        ]
+        remaining = [item for item in index.entries if item.reference.skill_type == "model" and item.reference.name != clean_name]
         updates: list[tuple[Path, Path | None, _ModelSkillDocument]] = []
         if removed_document.configuration.get("default") is True and remaining:
             replacement = sorted(remaining, key=lambda item: item.reference.key)[0]
@@ -170,10 +161,7 @@ class ModelSkillManager:
         updates: list[tuple[Path, Path | None, _ModelSkillDocument]] = []
         index = disclosure.prepare_skill_index()
         for entry in index.entries:
-            if (
-                entry.reference.skill_type != "model"
-                or entry.reference.name in excluded_names
-            ):
+            if entry.reference.skill_type != "model" or entry.reference.name in excluded_names:
                 continue
             opened = disclosure.open_skill(entry.reference.name, "model")
             document = _read_model_skill_document(opened)
@@ -191,9 +179,7 @@ class ModelSkillManager:
     def _read_profile(self, name: str) -> ModelProfile:
         disclosure = self._create_disclosure()
         disclosure.prepare_skill_index()
-        return create_model_profile_from_skill_disclosure(
-            disclosure.open_skill(name, "model")
-        )
+        return create_model_profile_from_skill_disclosure(disclosure.open_skill(name, "model"))
 
     def _create_disclosure(self) -> ProgressiveDisclosureCore:
         return ProgressiveDisclosureCore(
@@ -207,23 +193,17 @@ def model_skill_input_from_dict(value: object) -> ModelSkillInput:
         raise TypeError("model Skill input must be a JSON object")
     metadata_fields = {"name", "description", "agent_can_update", "previous_name"}
     allowed = metadata_fields | set(MODEL_CONFIGURATION_FIELDS)
-    unknown = sorted(set(value) - allowed)
-    if unknown:
-        raise ValueError("unknown model Skill input fields: " + ", ".join(unknown))
+    reject_unknown_fields(value, allowed, "model Skill input fields")
     return validate_model_skill_input(
         ModelSkillInput(
-            name=_required_text(value.get("name"), "name"),
-            description=_required_text(value.get("description"), "description"),
-            definition=ModelDefinition.from_dict({
-                name: value[name]
-                for name in MODEL_CONFIGURATION_FIELDS
-                if name in value
-            }),
-            agent_can_update=_boolean(
+            name=read_text(value.get("name"), "model Skill name"),
+            description=read_text(value.get("description"), "model Skill description"),
+            definition=ModelDefinition.from_dict({name: value[name] for name in MODEL_CONFIGURATION_FIELDS if name in value}),
+            agent_can_update=read_bool(
                 value.get("agent_can_update", False),
-                "agent_can_update",
+                "model Skill agent_can_update",
             ),
-            previous_name=_optional_text(value.get("previous_name"), "previous_name"),
+            previous_name=read_optional_text(value.get("previous_name"), "model Skill previous_name") or "",
         )
     )
 
@@ -235,7 +215,7 @@ def validate_model_skill_input(request: ModelSkillInput) -> ModelSkillInput:
         request,
         name=name,
         previous_name=previous_name,
-        description=_required_text(request.description, "description"),
+        description=read_text(request.description, "model Skill description"),
         definition=ModelDefinition.from_dict(request.definition.to_configuration()),
     )
 
@@ -266,10 +246,7 @@ def _create_model_skill_document(
             description=request.description,
             version=version,
             agent_can_update=request.agent_can_update,
-            provides=[
-                request.name if item == current.manifest.name else item
-                for item in current.manifest.provides
-            ],
+            provides=[request.name if item == current.manifest.name else item for item in current.manifest.provides],
         )
     return _ModelSkillDocument(manifest, request.definition.to_configuration())
 
@@ -313,12 +290,14 @@ def _apply_model_skill_updates(
                 expected_type="model",
                 expected_name=document.manifest.name,
             )
-            changes.append(SkillDirectoryUpdate(
-                stage,
-                target,
-                calculate_skill_directory_sha256(stage),
-                calculate_skill_directory_sha256(target) if target.is_dir() else "",
-            ))
+            changes.append(
+                SkillDirectoryUpdate(
+                    stage,
+                    target,
+                    calculate_skill_directory_sha256(stage),
+                    calculate_skill_directory_sha256(target) if target.is_dir() else "",
+                )
+            )
             affected.add(target)
         if removed_path is not None and removed_path not in affected:
             changes.append(
@@ -366,30 +345,10 @@ def _require_managed_path(path: Path, root: Path) -> None:
 
 
 def _clean_skill_name(value: object) -> str:
-    name = _required_text(value, "name").lower()
+    name = read_text(value, "model Skill name").lower()
     if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", name):
         raise ValueError("model Skill name must use lowercase letters, numbers, '-' or '_'")
     return name
-
-
-def _required_text(value: object, name: str) -> str:
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"model Skill {name} cannot be empty")
-    return value.strip()
-
-
-def _optional_text(value: object, name: str) -> str:
-    if value is None:
-        return ""
-    if not isinstance(value, str):
-        raise TypeError(f"model Skill {name} must be a string")
-    return value.strip()
-
-
-def _boolean(value: object, name: str) -> bool:
-    if not isinstance(value, bool):
-        raise TypeError(f"model Skill {name} must be a boolean")
-    return value
 
 
 def _quote(value: str) -> str:

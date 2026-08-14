@@ -10,7 +10,13 @@ from time import monotonic
 from typing import Callable
 
 from core.checks import ActionEffect
-from core.models import SubagentRecordOptions
+from core.models import (
+    SubagentRecordOptions,
+    read_optional_tool_string,
+    read_required_tool_string,
+    read_text_list,
+    reject_unknown_fields,
+)
 from core.records.audit import compact_subagent_result
 from skill.tasks.task_selection import (
     AgentSelector,
@@ -32,8 +38,6 @@ from skill.tasks.task_groups import (
 from skill.handlers.runtime import (
     SkillAction,
     SkillTool,
-    read_optional_tool_string,
-    read_required_tool_string,
 )
 
 
@@ -83,11 +87,7 @@ class TaskQueue:
         self._observed_terminal: set[str] = set()
         self._started_task_count = 0
         self._agent_pool = AgentSelector(settings, subagents, record_event)
-        self._groups = (
-            None
-            if group_settings is None
-            else AgentGroups(self, group_settings, create_shared_context)
-        )
+        self._groups = None if group_settings is None else AgentGroups(self, group_settings, create_shared_context)
         self._retry_timers: list[Timer] = []
         self._closed = False
 
@@ -175,11 +175,7 @@ class TaskQueue:
                 if self._groups is not None and self._groups.has_failures:
                     return
                 raise RuntimeError("agent_tasks Skill must create at least one task")
-            unfinished = [
-                task.task_id
-                for task in self._tasks.values()
-                if task.status not in TERMINAL_TASK_STATUSES
-            ]
+            unfinished = [task.task_id for task in self._tasks.values() if task.status not in TERMINAL_TASK_STATUSES]
         if unfinished:
             raise RuntimeError("agent tasks are still unfinished: " + ", ".join(unfinished))
 
@@ -244,10 +240,7 @@ class TaskQueue:
             return {
                 "task": queued.to_dict(),
                 **choice.to_dict(),
-                "rotation_limited": (
-                    self.settings.agent_selection == "rotate"
-                    and choice.candidate_count < 2
-                ),
+                "rotation_limited": (self.settings.agent_selection == "rotate" and choice.candidate_count < 2),
             }
 
     def _queue_selected_task_locked(
@@ -267,10 +260,7 @@ class TaskQueue:
             data["group_id"] = group_id
             data["group_role"] = task.group_role
         else:
-            data["rotation_limited"] = (
-                self.settings.agent_selection == "rotate"
-                and choice.candidate_count < 2
-            )
+            data["rotation_limited"] = self.settings.agent_selection == "rotate" and choice.candidate_count < 2
         self.record_event("agent_task.dispatched", data)
         self._submit_locked(choice.name, task.task_id)
         return queued
@@ -282,9 +272,7 @@ class TaskQueue:
                 if task.status == "cancelled":
                     return
                 self._started_task_count += 1
-                record_options = self.settings.record_options_for_task(
-                    self._started_task_count
-                )
+                record_options = self.settings.record_options_for_task(self._started_task_count)
                 running = self._transition_locked(
                     task,
                     "running",
@@ -333,7 +321,7 @@ class TaskQueue:
         if trigger not in _TRIGGERS:
             raise ValueError(f"unknown agent task trigger: {trigger}")
         requested_wait, wait_seconds = self._read_wait_seconds(arguments)
-        task_ids = _read_optional_string_list(arguments, "task_ids")
+        task_ids = tuple(read_text_list(arguments.get("task_ids", []), "tool argument 'task_ids'", maximum=32))
         if trigger == "selected_tasks_finished" and not task_ids:
             raise ValueError("selected_tasks_finished requires task_ids")
         started = monotonic()
@@ -519,18 +507,15 @@ class TaskQueue:
         tasks = list(self._tasks.values())
         unseen = [task for task in tasks if task.task_id not in self._observed_terminal]
         if trigger == "any_task_finished":
-            return [
-                task.task_id for task in unseen
-                if task.status in TERMINAL_TASK_STATUSES
-            ]
+            return [task.task_id for task in unseen if task.status in TERMINAL_TASK_STATUSES]
         if trigger == "any_task_completed":
             return [task.task_id for task in unseen if task.status == "completed"]
         if trigger == "any_task_failed":
             return [task.task_id for task in unseen if task.status == "failed"]
         selected = tasks if trigger == "all_tasks_finished" else [self._tasks[item] for item in task_ids]
-        return [task.task_id for task in selected] if (
-            selected and self._tasks_are_terminal_locked(task.task_id for task in selected)
-        ) else []
+        return (
+            [task.task_id for task in selected] if (selected and self._tasks_are_terminal_locked(task.task_id for task in selected)) else []
+        )
 
     def _task_snapshots_locked(
         self,
@@ -538,18 +523,11 @@ class TaskQueue:
         *,
         include_result: bool = False,
     ) -> list[dict[str, object]]:
-        tasks = (
-            self._tasks.values()
-            if task_ids is None
-            else (self._require_task_locked(task_id) for task_id in task_ids)
-        )
+        tasks = self._tasks.values() if task_ids is None else (self._require_task_locked(task_id) for task_id in task_ids)
         return [task.to_dict(include_result=include_result) for task in tasks]
 
     def _tasks_are_terminal_locked(self, task_ids: Iterable[str]) -> bool:
-        return all(
-            self._require_task_locked(task_id).status in TERMINAL_TASK_STATUSES
-            for task_id in task_ids
-        )
+        return all(self._require_task_locked(task_id).status in TERMINAL_TASK_STATUSES for task_id in task_ids)
 
     def _read_wait_seconds(
         self,
@@ -604,17 +582,12 @@ def create_task_queue(
     record_result: Callable[[dict[str, object]], None] | None = None,
     create_shared_context: Callable[[str, str], dict[str, object]] | None = None,
 ) -> TaskQueue | None:
-    unknown = set(tools) - {"agent_tasks", "agent_groups"}
-    if unknown:
-        raise ValueError("unknown task Skill tools: " + ", ".join(sorted(unknown)))
+    reject_unknown_fields(tools, {"agent_tasks", "agent_groups"}, "task Skill tools")
     if "agent_tasks" not in tools:
         if "agent_groups" in tools:
             raise ValueError("agent_groups requires agent_tasks in the same task Skill")
         return None
-    group_settings = (
-        None if "agent_groups" not in tools
-        else AgentGroupSettings.from_dict(tools["agent_groups"])
-    )
+    group_settings = None if "agent_groups" not in tools else AgentGroupSettings.from_dict(tools["agent_groups"])
     return TaskQueue(
         TaskQueueSettings.from_dict(tools["agent_tasks"]),
         subagents,
@@ -624,18 +597,3 @@ def create_task_queue(
         group_settings,
         create_shared_context,
     )
-
-
-def _read_optional_string_list(
-    arguments: dict[str, object],
-    name: str,
-) -> tuple[str, ...]:
-    value = arguments.get(name, [])
-    if not isinstance(value, list) or len(value) > 32:
-        raise ValueError(f"tool argument {name!r} must contain at most 32 strings")
-    cleaned = tuple(dict.fromkeys(
-        item.strip() for item in value if isinstance(item, str) and item.strip()
-    ))
-    if len(cleaned) != len(value):
-        raise ValueError(f"tool argument {name!r} must contain unique non-empty strings")
-    return cleaned

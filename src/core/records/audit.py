@@ -8,6 +8,8 @@ from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from typing import TYPE_CHECKING
 
+from core.models import format_utc, parse_utc, read_int
+
 if TYPE_CHECKING:
     from core.models import SubagentRecordOptions
     from core.records.store import StorageBackend, StorageEvent
@@ -29,8 +31,7 @@ class AuditEventRule:
         if self.retention not in {DETAILED, CRITICAL, PROTECTED}:
             raise ValueError(f"unknown audit retention class: {self.retention}")
         if len(self.content_fields) != len(set(self.content_fields)) or any(
-            not isinstance(field, str) or not field
-            for field in self.content_fields
+            not isinstance(field, str) or not field for field in self.content_fields
         ):
             raise ValueError("audit content fields must be unique non-empty strings")
 
@@ -87,9 +88,7 @@ class AuditPolicy:
             if field not in compacted:
                 continue
             digest = _content_digest(compacted.pop(field))
-            compacted[f"{field}_summary"] = {
-                key: digest[key] for key in ("sha256", "characters")
-            }
+            compacted[f"{field}_summary"] = {key: digest[key] for key in ("sha256", "characters")}
         compacted["record_mode"] = options.mode
         return compacted
 
@@ -117,13 +116,10 @@ class AuditPolicy:
     ) -> AuditPruneReport:
         """Preview or explicitly delete expired detailed and critical events."""
         current_time = _normalise_now(now)
-        reports = [
-            _prune_one_user(backend, user_id, self, current_time, apply)
-            for user_id in _unique_user_ids(user_ids)
-        ]
+        reports = [_prune_one_user(backend, user_id, self, current_time, apply) for user_id in _unique_user_ids(user_ids)]
         return AuditPruneReport(
             applied=apply,
-            now=_format_datetime(current_time),
+            now=format_utc(current_time),
             detailed_days=self.detailed_days,
             critical_days=self.critical_days,
             users=reports,
@@ -197,6 +193,8 @@ _EVENT_RULES = {
     "review.completed": AuditEventRule(CRITICAL),
     "review.failed": AuditEventRule(CRITICAL),
 }
+
+
 @dataclass(frozen=True)
 class AuditPruneUserReport:
     user_id: str
@@ -226,9 +224,7 @@ def compact_subagent_result(
     if not isinstance(value, dict):
         raise TypeError("subagent result must be an object")
     nested = value.get("subagent_results")
-    has_too_many_nested_results = (
-        isinstance(nested, list) and len(nested) > options.nested_results
-    )
+    has_too_many_nested_results = isinstance(nested, list) and len(nested) > options.nested_results
     if not options.is_summary and not has_too_many_nested_results:
         return dict(value)
 
@@ -237,9 +233,7 @@ def compact_subagent_result(
         compacted.update(
             subagent_results_count=len(nested),
             subagent_results=[
-                compact_subagent_result(item, options)
-                for item in nested[: options.nested_results]
-                if isinstance(item, dict)
+                compact_subagent_result(item, options) for item in nested[: options.nested_results] if isinstance(item, dict)
             ],
             subagent_results_omitted=max(0, len(nested) - options.nested_results),
         )
@@ -352,7 +346,7 @@ def _record_prune_events(
             stream_type="audit",
             stream_id="retention",
             event_type="audit.pruned",
-            created_at=_format_datetime(now),
+            created_at=format_utc(now),
             data={
                 "schema_version": 1,
                 "detailed_days": policy.detailed_days,
@@ -393,21 +387,14 @@ def _normalise_now(value: datetime | None) -> datetime:
 
 def _parse_event_time(value: str) -> datetime | None:
     try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except (TypeError, ValueError):
-        return None
-    if parsed.tzinfo is None:
+        parsed = parse_utc(value, "audit event time")
+    except ValueError:
         return None
     return parsed.astimezone(UTC)
 
 
-def _format_datetime(value: datetime) -> str:
-    return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
-
-
 def _require_positive_days(value: int, name: str) -> None:
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-        raise ValueError(f"audit {name} must be a positive integer")
+    read_int(value, f"audit {name}", minimum=1)
 
 
 DEFAULT_AUDIT_POLICY = AuditPolicy()

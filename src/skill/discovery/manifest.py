@@ -5,6 +5,8 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from core.models import read_text, reject_unknown_fields
+
 SKILL_SCHEMA_VERSION = 4
 DEFAULT_SKILL_FRESHNESS = 70.0
 SKILL_MANIFEST_FIELDS = {
@@ -40,13 +42,16 @@ class SkillManifest:
 
 
 def skill_manifest_from_dict(data: dict[str, object], path: Path) -> SkillManifest:
-    _reject_unknown_manifest_fields(data)
+    reject_unknown_fields(data, SKILL_MANIFEST_FIELDS, "skill manifest fields")
     name = _read_skill_name(path)
+    description = data.get("description")
+    if not isinstance(description, str):
+        raise ValueError("skill description must be a non-empty string")
     instructions = "SKILL.md" if path.with_name("SKILL.md").is_file() else None
     return SkillManifest(
         name=name,
-        description=_read_required_string(data, "description"),
-        version=_read_optional_string(data, "version", "0.1.0"),
+        description=read_text(description, "skill description"),
+        version=read_text(data.get("version", "0.1.0"), "skill version", allow_empty=True),
         entry=SkillEntry(instructions),
         path=path.parent,
         skill_type=_read_skill_type(data),
@@ -61,28 +66,13 @@ class Skill:
     instructions: str
 
 
-def _reject_unknown_manifest_fields(data: dict[str, object]) -> None:
-    unknown = sorted(set(data) - SKILL_MANIFEST_FIELDS)
-    if unknown:
-        raise ValueError(f"unknown skill manifest fields: {', '.join(unknown)}")
-
-
 def _read_skill_type(data: dict[str, object]) -> str:
-    skill_type = _read_optional_string(data, "type", "prompt").strip().lower()
+    skill_type = read_text(data.get("type", "prompt"), "skill type").lower()
     if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", skill_type):
         raise ValueError("skill type must use lowercase letters, numbers, '-' or '_'")
     if skill_type == "runner":
-        raise ValueError(
-            "executable SkillHandler code must be registered inside Runtime setup"
-        )
+        raise ValueError("executable SkillHandler code must be registered inside Runtime setup")
     return skill_type
-
-
-def _read_required_string(data: dict[str, object], name: str) -> str:
-    value = data.get(name)
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"skill {name} must be a non-empty string")
-    return value.strip()
 
 
 def _read_skill_name(path: Path) -> str:
@@ -94,20 +84,8 @@ def _read_skill_name(path: Path) -> str:
     return name
 
 
-def _read_optional_string(data: dict[str, object], name: str, default: str) -> str:
-    value = data.get(name, default)
-    if not isinstance(value, str):
-        raise ValueError(f"skill {name} must be a string")
-    return value
-
-
 def skill_manifest_to_dict(manifest: SkillManifest) -> dict[str, object]:
-    return {
-        "name": manifest.name,
-        "type": manifest.skill_type,
-        "description": manifest.description,
-        "version": manifest.version,
-    }
+    return {"name": manifest.name, "type": manifest.skill_type, "description": manifest.description, "version": manifest.version}
 
 
 def calculate_skill_directory_sha256(path: Path) -> str:

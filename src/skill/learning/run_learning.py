@@ -8,6 +8,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime
 from typing import Callable, TYPE_CHECKING, cast
 
+from core.models import parse_utc
 from skill.learning.freshness import calculate_skill_freshness
 from skill.learning.records import (
     SkillRevision,
@@ -80,10 +81,7 @@ def learn_from_run(
                 },
             )
         except Exception as recording_error:
-            error.add_note(
-                "Could not record learning failure: "
-                f"{type(recording_error).__name__}: {recording_error}"
-            )
+            error.add_note(f"Could not record learning failure: {type(recording_error).__name__}: {recording_error}")
         raise
     return _result_from_completed_event(
         store,
@@ -99,10 +97,7 @@ def _record_run_evaluations(
     revisions: list[SkillRevision],
     result: EvaluationResult,
 ) -> list[EvaluationRecord]:
-    existing = {
-        record.record_id: record
-        for record in read_evaluation_records(store, source_type="agent_run")
-    }
+    existing = {record.record_id: record for record in read_evaluation_records(store, source_type="agent_run")}
     records: list[EvaluationRecord] = []
     pending: list[EvaluationRecord] = []
     for revision in revisions:
@@ -118,9 +113,7 @@ def _record_run_evaluations(
             existing[record.record_id] = record
             pending.append(record)
         else:
-            if (stored.revision, stored.source, stored.result) != (
-                record.revision, record.source, record.result
-            ):
+            if (stored.revision, stored.source, stored.result) != (record.revision, record.source, record.result):
                 raise ValueError(f"run evaluation record conflicts: {record.record_id}")
         records.append(existing[record.record_id])
     append_evaluation_records(store, pending)
@@ -142,24 +135,16 @@ def _project_run_learning(
         events=stored_events,
     )
     if record_ids is None:
-        records = [
-            record for record in all_records if record.source.run_id == run_id
-        ]
+        records = [record for record in all_records if record.source.run_id == run_id]
     else:
         records_by_id = {record.record_id: record for record in all_records}
-        missing = [
-            record_id for record_id in record_ids if record_id not in records_by_id
-        ]
+        missing = [record_id for record_id in record_ids if record_id not in records_by_id]
         if missing:
             raise ValueError(f"run learning evaluation records are missing: {missing}")
         records = [records_by_id[record_id] for record_id in record_ids]
         if any(record.source.run_id != run_id for record in records):
             raise ValueError("run learning evaluation record belongs to another run")
-    freshness_by_skill = (
-        {}
-        if rules is None
-        else calculate_skill_freshness(all_records, rules)
-    )
+    freshness_by_skill = {} if rules is None else calculate_skill_freshness(all_records, rules)
     skill_keys = dict.fromkeys(record.revision.key for record in records)
     observed = {
         (
@@ -170,11 +155,7 @@ def _project_run_learning(
         if event.event_type in {"model.call.completed", "model.call.failed"}
     }
     return _RunLearningView(
-        [
-            dict(freshness_by_skill[key])
-            for key in skill_keys
-            if key in freshness_by_skill
-        ],
+        [dict(freshness_by_skill[key]) for key in skill_keys if key in freshness_by_skill],
         [
             stats.to_dict()
             for stats in list_model_usage_stats(store, events=stored_events)
@@ -210,9 +191,7 @@ def _result_from_completed_event(
     expected = {"schema_version", "evaluation_record_ids"}
     if set(completed.data) != expected or completed.data.get("schema_version") != 3:
         raise ValueError("run learning completion fields do not match schema v3")
-    record_ids = _string_list(
-        completed.data.get("evaluation_record_ids"), "evaluation_record_ids"
-    )
+    record_ids = _string_list(completed.data.get("evaluation_record_ids"), "evaluation_record_ids")
     view = _project_run_learning(
         store,
         completed.run_id,
@@ -272,10 +251,7 @@ def _evaluation_record_id(
 
 
 def _parse_event_time(value: str) -> datetime:
-    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    if parsed.tzinfo is None:
-        raise ValueError("run event time must include a timezone")
-    return parsed
+    return parse_utc(value, "run event time")
 
 
 def _string_list(value: object, name: str) -> list[str]:
@@ -328,11 +304,7 @@ def project_model_calls(events: list[RunEvent]) -> list[dict[str, object]]:
             )
             continue
         projected = next(
-            (
-                call
-                for call in reversed(calls)
-                if call["status"] == "selected"
-            ),
+            (call for call in reversed(calls) if call["status"] == "selected"),
             None,
         )
         if projected is None:
@@ -354,6 +326,7 @@ def _latest_event_data(
         if event.event_type == event_type:
             return dict(event.data)
     return {}
+
 
 REVIEW_RESPONSE_FIELDS = {"verdict", "findings", "checks"}
 FINDING_FIELDS = {"severity", "title", "evidence", "action"}
@@ -379,11 +352,7 @@ class ReviewReport:
         return self.verdict == "pass"
 
     def to_dict(self) -> dict[str, object]:
-        return {
-            "verdict": self.verdict,
-            "findings": [asdict(item) for item in self.findings],
-            "checks": list(self.checks),
-        }
+        return asdict(self)
 
 
 def review_run_evidence(
@@ -493,20 +462,22 @@ def skill_change_report_to_dict(
 def read_skill_change_report(data: dict[str, object]) -> "SkillChangeReport":
     from skill.learning.update import SkillChangeCaseResult, SkillChangeReport
 
-    results = [
-        SkillChangeCaseResult(**item)
-        for item in cast(list[dict], data["results"])
-    ]
-    baseline = [
-        SkillChangeCaseResult(**item)
-        for item in cast(list[dict], data["baseline_results"])
-    ]
+    results = [SkillChangeCaseResult(**item) for item in cast(list[dict], data["results"])]
+    baseline = [SkillChangeCaseResult(**item) for item in cast(list[dict], data["baseline_results"])]
     return SkillChangeReport(
-        str(data["report_id"]), str(data["change_id"]), float(data["score"]),
+        str(data["report_id"]),
+        str(data["change_id"]),
+        float(data["score"]),
         None if data["baseline_score"] is None else float(data["baseline_score"]),
-        bool(data["passed"]), float(data["minimum_score"]), bool(data["no_regression"]),
+        bool(data["passed"]),
+        float(data["minimum_score"]),
+        bool(data["no_regression"]),
         None if data["improvement"] is None else float(data["improvement"]),
-        float(data["minimum_improvement"]), bool(data["improvement_target_met"]),
-        str(data["candidate_sha256"]), str(data["parent_sha256"]), str(data["created_at"]),
-        results, baseline,
+        float(data["minimum_improvement"]),
+        bool(data["improvement_target_met"]),
+        str(data["candidate_sha256"]),
+        str(data["parent_sha256"]),
+        str(data["created_at"]),
+        results,
+        baseline,
     )

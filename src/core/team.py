@@ -77,9 +77,7 @@ class AgentTeam:
         clean_purpose = purpose.strip().lower()
         if not clean_purpose:
             raise ValueError("subagent purpose cannot be empty")
-        clean_features = tuple(
-            dict.fromkeys(item.strip().lower() for item in required_features if item.strip())
-        )
+        clean_features = tuple(dict.fromkeys(item.strip().lower() for item in required_features if item.strip()))
         if not clean_features:
             raise ValueError("subagent required_features cannot be empty")
         if isinstance(weight, bool) or not isinstance(weight, int | float):
@@ -116,8 +114,7 @@ class AgentTeam:
                 warnings.append(
                     "Agent chain depth is "
                     f"{len(longest_chain)} layers, configured "
-                    f"max_agent_chain_depth is {max_depth}: "
-                    + " -> ".join(longest_chain)
+                    f"max_agent_chain_depth is {max_depth}: " + " -> ".join(longest_chain)
                 )
         return warnings
 
@@ -137,10 +134,7 @@ class AgentTeam:
                 "required_features": list(subagent.required_features),
                 "agent_name": subagent.agent.config.agent.name,
                 "weight": subagent.weight,
-                "models": [
-                    model_dispatch_to_dict(profile)
-                    for profile in subagent.agent.model_profiles
-                ],
+                "models": [model_dispatch_to_dict(profile) for profile in subagent.agent.model_profiles],
             }
             for subagent in self._subagents
         ]

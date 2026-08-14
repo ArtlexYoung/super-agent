@@ -8,6 +8,10 @@ from threading import RLock
 from typing import TYPE_CHECKING, Callable
 
 from core.models import (
+    format_utc,
+    read_optional_text,
+    read_text,
+    read_text_list,
     RunEvent,
     RunIdentity,
     RunSnapshot,
@@ -78,14 +82,14 @@ class RunEventLog:
         *,
         publish_to_subscribers: bool,
     ) -> RunEvent:
-        clean_type = _required_text(event_type, "run event type")
+        clean_type = read_text(event_type, "run event type")
         content = dict(data or {})
         if self._backend is None:
             event = RunEvent(
                 run_id=self.identity.run_id,
                 sequence=len(self._events) + 1,
                 event_type=clean_type,
-                created_at=_utc_now_text(),
+                created_at=format_utc(datetime.now(UTC)),
                 agent_name=self.identity.agent_name,
                 parent_run_id=self.identity.parent_run_id,
                 data=content,
@@ -148,16 +152,6 @@ class RunEventLog:
         )
 
 
-def _required_text(value: object, name: str) -> str:
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"{name} cannot be empty")
-    return value.strip()
-
-
-def _utc_now_text() -> str:
-    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
-
-
 def run_snapshot_from_events(user_id: str, events: list[StorageEvent]) -> RunSnapshot:
     ordered = _ordered_run_events(events)
     started = ordered[0]
@@ -176,29 +170,26 @@ def run_snapshot_from_events(user_id: str, events: list[StorageEvent]) -> RunSna
     return RunSnapshot(
         run_id=started.stream_id,
         user_id=user_id,
-        conversation_id=optional_string(started.data.get("conversation_id")),
+        conversation_id=read_optional_text(started.data.get("conversation_id"), "stored conversation_id"),
         agent_name=started.agent_name,
-        parent_run_id=optional_string(started.data.get("parent_run_id")),
+        parent_run_id=read_optional_text(started.data.get("parent_run_id"), "stored parent_run_id"),
         status=status,
         prompt=str(started.data.get("prompt", "")),
         started_at=started.created_at,
         finished_at=None if terminal is None else terminal.created_at,
         event_count=len(ordered),
         last_event_type=ordered[-1].event_type,
-        workflow=optional_string(data.get("workflow")),
-        used_skills=string_list(data.get("used_skills", [])),
-        stop_reason=optional_string(data.get("stop_reason")),
+        workflow=read_optional_text(data.get("workflow"), "stored workflow"),
+        used_skills=read_text_list(data.get("used_skills", []), "stored used_skills"),
+        stop_reason=read_optional_text(data.get("stop_reason"), "stored stop_reason"),
         error=error,
     )
 
 
 def run_events_from_storage(events: list[StorageEvent]) -> list[RunEvent]:
     ordered = _ordered_run_events(events)
-    parent_run_id = optional_string(ordered[0].data.get("parent_run_id"))
-    return [
-        run_event_from_storage(event, sequence, parent_run_id)
-        for sequence, event in enumerate(ordered, 1)
-    ]
+    parent_run_id = read_optional_text(ordered[0].data.get("parent_run_id"), "stored parent_run_id")
+    return [run_event_from_storage(event, sequence, parent_run_id) for sequence, event in enumerate(ordered, 1)]
 
 
 def run_event_from_storage(
@@ -235,9 +226,7 @@ def explain_run_from_events(
         "schema_version": 2,
         "snapshot": asdict(snapshot),
         "selection_decisions": _latest_selection_decisions(events),
-        "disclosure_path": [
-            asdict(event) for event in events if event.event_type == "content.disclosed"
-        ],
+        "disclosure_path": [asdict(event) for event in events if event.event_type == "content.disclosed"],
         "events": [asdict(event) for event in events],
     }
 
@@ -275,16 +264,6 @@ def usage_habits_from_events(events: list[StorageEvent]) -> dict[str, object]:
     return data
 
 
-def string_list(value: object) -> list[str]:
-    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
-        raise ValueError("stored value must be a string array")
-    return list(value)
-
-
-def optional_string(value: object) -> str | None:
-    return value if isinstance(value, str) and value else None
-
-
 def _increment_count(counts: object, name: str) -> None:
     if isinstance(counts, dict) and name:
         counts[name] = int(counts.get(name, 0)) + 1
@@ -304,7 +283,5 @@ def _ordered_run_events(events: list[StorageEvent]) -> list[StorageEvent]:
     ):
         raise ValueError("run projection cannot combine event streams")
     if first.event_type != "run.started":
-        raise ValueError(
-            f"run stream does not start with run.started: {first.stream_id}"
-        )
+        raise ValueError(f"run stream does not start with run.started: {first.stream_id}")
     return ordered

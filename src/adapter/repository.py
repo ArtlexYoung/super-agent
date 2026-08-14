@@ -10,10 +10,10 @@ from pathlib import Path
 from re import fullmatch
 
 from core.checks import ActionEffect
+from core.models import read_required_tool_string
 from skill.handlers.runtime import (
     SkillAction,
     SkillTool,
-    read_required_tool_string,
 )
 
 
@@ -74,9 +74,7 @@ class IncrementalRepositoryMap:
             try:
                 stat = path.stat()
                 if stat.st_size > REPOSITORY_MAP_FILE_BYTES:
-                    raise ValueError(
-                        f"repository map file exceeds {REPOSITORY_MAP_FILE_BYTES} bytes"
-                    )
+                    raise ValueError(f"repository map file exceeds {REPOSITORY_MAP_FILE_BYTES} bytes")
                 content = _read_bounded_file(path)
             except (OSError, ValueError) as error:
                 self._entries.pop(relative, None)
@@ -84,9 +82,7 @@ class IncrementalRepositoryMap:
                 continue
             total_bytes += len(content)
             if total_bytes > REPOSITORY_MAP_TOTAL_BYTES:
-                raise ValueError(
-                    "repository map exceeds 50000000 total bytes; configure ignores"
-                )
+                raise ValueError("repository map exceeds 50000000 total bytes; configure ignores")
             try:
                 digest = hashlib.sha256(content).hexdigest()
                 stamp = _FileStamp(len(content), digest)
@@ -141,9 +137,7 @@ class IncrementalRepositoryMap:
                 elif child.is_file():
                     files.append(child)
                     if len(files) > REPOSITORY_MAP_FILE_LIMIT:
-                        raise ValueError(
-                            "repository map has more than 1000 files; configure ignores"
-                        )
+                        raise ValueError("repository map has more than 1000 files; configure ignores")
         return files, skipped
 
     def _is_ignored(self, path: Path) -> bool:
@@ -200,9 +194,7 @@ def _extract_symbols(
             symbols.append(_symbol(node.name, "class", node.lineno))
             for member in node.body:
                 if isinstance(member, ast.FunctionDef | ast.AsyncFunctionDef):
-                    symbols.append(
-                        _symbol(f"{node.name}.{member.name}", "method", member.lineno)
-                    )
+                    symbols.append(_symbol(f"{node.name}.{member.name}", "method", member.lineno))
         elif isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
             symbols.append(_symbol(node.name, "function", node.lineno))
         if len(symbols) > REPOSITORY_MAP_SYMBOL_LIMIT:

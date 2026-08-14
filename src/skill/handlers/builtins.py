@@ -4,6 +4,12 @@ import hashlib
 from dataclasses import asdict
 from typing import TYPE_CHECKING, Callable
 
+from core.models import (
+    read_optional_positive_tool_integer,
+    read_optional_tool_string,
+    read_required_tool_string,
+    read_tool_object,
+)
 from skill.handlers.runtime import (
     SkillContext,
     SkillHandler,
@@ -12,10 +18,6 @@ from skill.handlers.runtime import (
     SkillUse,
     SkillSession,
     SkillSessionContext,
-    read_optional_positive_tool_integer,
-    read_optional_tool_string,
-    read_required_tool_string,
-    read_tool_object,
 )
 from core.checks import ActionEffect
 from skill.discovery.manifest import Skill
@@ -55,16 +57,11 @@ class McpSkillHandler:
         registered = self.servers.require_mcp_server(settings.server_name)
         list_tool_name, run_tool_name = _mcp_tool_names(context.reference.name)
         instructions = opened.disclose_instructions().content
-        runtime_context = (
-            f"Registered MCP server: {registered.name}\n"
-            f"Runtime tools: {list_tool_name}, {run_tool_name}"
-        )
+        runtime_context = f"Registered MCP server: {registered.name}\nRuntime tools: {list_tool_name}, {run_tool_name}"
         return SkillUse(
             model_context=Skill(
                 manifest=opened.disclose_manifest(),
-                instructions="\n\n".join(
-                    part for part in (instructions, runtime_context) if part
-                ),
+                instructions="\n\n".join(part for part in (instructions, runtime_context) if part),
             ),
             tools=_create_mcp_tools(registered, list_tool_name, run_tool_name),
         )
@@ -130,11 +127,7 @@ class TaskSkillHandler:
             model_context=Skill(manifest=opened.disclose_manifest(), instructions=instructions),
             tools=(*tools, *_create_task_plan_tools(context)),
             task_policy=policy,
-            start_session=(
-                None
-                if not policy.tools
-                else lambda session: _start_task_session(policy.tools, session)
-            ),
+            start_session=(None if not policy.tools else lambda session: _start_task_session(policy.tools, session)),
         )
 
 
@@ -237,10 +230,7 @@ class _TaskPlan:
         if not all(isinstance(item, str) and item.strip() for item in value):
             raise ValueError("task plan steps must contain non-empty text")
         self.goal = goal
-        self.steps = [
-            {"step": index, "text": item.strip(), "status": "pending", "evidence": ""}
-            for index, item in enumerate(value, 1)
-        ]
+        self.steps = [{"step": index, "text": item.strip(), "status": "pending", "evidence": ""} for index, item in enumerate(value, 1)]
         self.record_event(
             "task.plan.set",
             {
@@ -260,9 +250,7 @@ class _TaskPlan:
             raise ValueError("task plan status is invalid")
         if not isinstance(evidence, str):
             raise ValueError("task plan evidence must be text")
-        if status == "in_progress" and any(
-            item["status"] == "in_progress" and item["step"] != step for item in self.steps
-        ):
+        if status == "in_progress" and any(item["status"] == "in_progress" and item["step"] != step for item in self.steps):
             raise ValueError("task plan can have only one in-progress step")
         self.steps[step - 1].update(status=status, evidence=evidence)
         self.record_event(
@@ -381,12 +369,7 @@ def _list_long_term_memory(
     arguments: dict[str, object],
 ) -> dict[str, object]:
     scope = read_optional_tool_string(arguments, "scope")
-    return {
-        "items": [
-            asdict(item)
-            for item in memory.list_long_term(scope)
-        ]
-    }
+    return {"items": [asdict(item) for item in memory.list_long_term(scope)]}
 
 
 def _remember_long_term(
@@ -419,9 +402,7 @@ def _organize_long_term_memory(
     arguments: dict[str, object],
 ) -> dict[str, object]:
     operations = arguments.get("operations")
-    if not isinstance(operations, list) or not all(
-        isinstance(item, dict) for item in operations
-    ):
+    if not isinstance(operations, list) or not all(isinstance(item, dict) for item in operations):
         raise ValueError("tool argument 'operations' must be an array of objects")
     items = memory.organize_long_term(operations)
     return {"items": [asdict(item) for item in items], "applied": True}
@@ -483,10 +464,7 @@ def _run_mcp_tool(
 
 
 def _mcp_tool_names(skill_name: str) -> tuple[str, str]:
-    clean = "".join(
-        character if character.isascii() and character.isalnum() else "_"
-        for character in skill_name.lower()
-    ).strip("_")
+    clean = "".join(character if character.isascii() and character.isalnum() else "_" for character in skill_name.lower()).strip("_")
     if not clean:
         clean = hashlib.sha256(skill_name.encode()).hexdigest()[:12]
     if len(clean) > 40:

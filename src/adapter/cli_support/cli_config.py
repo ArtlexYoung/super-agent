@@ -17,10 +17,9 @@ from core.checks import (
 from core.config import (
     CommonConfig,
     find_optional_config_file,
-    reject_unknown_settings,
     require_config_header,
 )
-from core.models import LOCAL_USER_ID
+from core.models import LOCAL_USER_ID, reject_unknown_fields
 from core.records.store import EventStore
 from super_agent import Agent
 
@@ -43,7 +42,7 @@ class CliConfig:
         source = Path(path).expanduser().absolute()
         data = tomllib.loads(source.read_text(encoding="utf-8"))
         require_config_header(data, "cli")
-        reject_unknown_settings(
+        reject_unknown_fields(
             data,
             {"schema_version", "kind", "run"},
             "CLI configuration tables",
@@ -51,7 +50,7 @@ class CliConfig:
         run = data.get("run", {})
         if not isinstance(run, dict):
             raise ValueError("CLI run settings must be a table")
-        reject_unknown_settings(
+        reject_unknown_fields(
             run,
             {"user_id", "output", "save", "show_summary"},
             "CLI run settings",
@@ -86,11 +85,7 @@ class CliConfig:
 
     @classmethod
     def create_default(cls, base_directory: str | Path | None = None) -> "CliConfig":
-        base = (
-            Path.cwd()
-            if base_directory is None
-            else Path(base_directory).expanduser().absolute()
-        )
+        base = Path.cwd() if base_directory is None else Path(base_directory).expanduser().absolute()
         return cls(LOCAL_USER_ID, "text", False, True, base / "cli.toml")
 
 

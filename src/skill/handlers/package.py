@@ -112,15 +112,11 @@ class SkillPackageManager:
             manifest = _validate_staged_skill(staged, expected_sha256)
             index = self.skill_disclosure.prepare_skill_index()
             if index.find_skill(manifest.name, manifest.skill_type) is not None:
-                raise FileExistsError(
-                    f"skill already exists: {manifest.skill_type}:{manifest.name}"
-                )
+                raise FileExistsError(f"skill already exists: {manifest.skill_type}:{manifest.name}")
             target = _managed_skill_target(self.user_skill_root, manifest)
             if target.exists():
                 raise FileExistsError(f"skill target already exists: {target}")
-            update = SkillDirectoryUpdate(
-                staged, target, calculate_skill_directory_sha256(staged), ""
-            )
+            update = SkillDirectoryUpdate(staged, target, calculate_skill_directory_sha256(staged), "")
             apply_skill_directory_updates([update])
             return self._read_skill_manifest(manifest.name, manifest.skill_type)
 
@@ -158,23 +154,12 @@ class SkillPackageManager:
             staged = _stage_skill_source(source, Path(tmp))
             proposed = _validate_staged_skill(staged, expected_sha256)
             if proposed.name != skill_name:
-                raise ValueError(
-                    f"updated skill name does not match target: {proposed.name} != {skill_name}"
-                )
+                raise ValueError(f"updated skill name does not match target: {proposed.name} != {skill_name}")
             if proposed.skill_type != current.skill_type:
-                raise ValueError(
-                    "updated Skill type does not match target: "
-                    f"{proposed.skill_type} != {current.skill_type}"
-                )
+                raise ValueError(f"updated Skill type does not match target: {proposed.skill_type} != {current.skill_type}")
             validate_skill_replacement(current.path, staged)
-            expected_target_sha256 = (
-                calculate_skill_directory_sha256(current.path)
-                if current.path.absolute() == target.absolute()
-                else ""
-            )
-            update = SkillDirectoryUpdate(
-                staged, target, calculate_skill_directory_sha256(staged), expected_target_sha256
-            )
+            expected_target_sha256 = calculate_skill_directory_sha256(current.path) if current.path.absolute() == target.absolute() else ""
+            update = SkillDirectoryUpdate(staged, target, calculate_skill_directory_sha256(staged), expected_target_sha256)
             apply_skill_directory_updates([update])
         return self._read_skill_manifest(skill_name, current.skill_type)
 
@@ -196,9 +181,7 @@ class SkillPackageManager:
             raise PermissionError(f"cannot remove shared Skill: {entry.reference.key}")
         manifest = self._read_skill_manifest(skill_name, expected_type)
         _require_managed_skill_path(manifest.path, self.user_skill_root)
-        update = SkillDirectoryUpdate(
-            None, manifest.path, "", calculate_skill_directory_sha256(manifest.path)
-        )
+        update = SkillDirectoryUpdate(None, manifest.path, "", calculate_skill_directory_sha256(manifest.path))
         apply_skill_directory_updates([update])
 
     def _read_skill_manifest(
@@ -300,9 +283,7 @@ def _validate_zip_member(info: zipfile.ZipInfo) -> PurePosixPath:
 def _locate_skill_directory(root: Path) -> Path:
     if (root / "skill.toml").is_file():
         return root
-    candidates = sorted(
-        path for path in root.iterdir() if path.is_dir() and (path / "skill.toml").is_file()
-    )
+    candidates = sorted(path for path in root.iterdir() if path.is_dir() and (path / "skill.toml").is_file())
     if len(candidates) != 1:
         raise ValueError("skill package must contain exactly one skill directory")
     return candidates[0]
@@ -406,6 +387,7 @@ def _clean_expected_sha256(value: str) -> str:
     if expected and not re.fullmatch(r"[0-9a-f]{64}", expected):
         raise ValueError("expected skill SHA-256 must contain 64 hexadecimal characters")
     return expected
+
 
 # Reproducible lock files are part of Skill package management.
 SKILL_LOCK_SCHEMA_VERSION = 2
@@ -585,10 +567,7 @@ def _notify_skill_directory_restored(
     try:
         after_restore()
     except Exception as restore_error:
-        error.add_note(
-            "Could not refresh after restoring Skills: "
-            f"{type(restore_error).__name__}: {restore_error}"
-        )
+        error.add_note(f"Could not refresh after restoring Skills: {type(restore_error).__name__}: {restore_error}")
 
 
 def _remove_skill_directories(paths: list[Path | None]) -> None:
@@ -632,14 +611,9 @@ def validate_skill_directory(
         raise ValueError("skill directory must contain exactly one valid skill")
     entry = index.entries[0]
     if expected_type is not None and entry.reference.skill_type != expected_type:
-        raise ValueError(
-            "candidate changed Skill type: "
-            f"{expected_type} -> {entry.reference.skill_type}"
-        )
+        raise ValueError(f"candidate changed Skill type: {expected_type} -> {entry.reference.skill_type}")
     if expected_name is not None and entry.reference.name != expected_name:
-        raise ValueError(
-            f"candidate changed skill name: {expected_name} -> {entry.reference.name}"
-        )
+        raise ValueError(f"candidate changed skill name: {expected_name} -> {entry.reference.name}")
     opened = disclosure.open_skill(entry.reference.name, entry.reference.skill_type)
     _validate_skill_type(opened, entry.reference.skill_type)
     return opened.read_manifest()
@@ -674,9 +648,7 @@ def check_skill_configuration(
     expected: dict[str, object],
 ) -> list[bool]:
     """Compare expected Skill settings without writing disclosure state."""
-    if not isinstance(expected, dict) or not all(
-        isinstance(name, str) and name.strip() for name in expected
-    ):
+    if not isinstance(expected, dict) or not all(isinstance(name, str) and name.strip() for name in expected):
         raise ValueError("expected Skill configuration must use non-empty string keys")
     disclosure = open_single_skill_directory(skill_path)
     configuration = disclosure.core.inspect_skill_configuration(disclosure.source.reference)
@@ -712,15 +684,10 @@ def _validate_model_replacement(
 ) -> None:
     current_profile = create_model_profile_from_skill_disclosure(current)
     proposed_profile = create_model_profile_from_skill_disclosure(proposed)
-    if (
-        current_profile.agent_can_update_connection
-        != proposed_profile.agent_can_update_connection
-    ):
+    if current_profile.agent_can_update_connection != proposed_profile.agent_can_update_connection:
         raise PermissionError("model Skill cannot change connection update ownership")
-    if (
-        not current_profile.agent_can_update_connection
-        and model_connection_fields(current_profile)
-        != model_connection_fields(proposed_profile)
+    if not current_profile.agent_can_update_connection and model_connection_fields(current_profile) != model_connection_fields(
+        proposed_profile
     ):
         raise PermissionError("model Skill does not allow Agent connection updates")
 
