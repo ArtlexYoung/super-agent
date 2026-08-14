@@ -31,10 +31,7 @@ FIXED_ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 
 class SkillPackageManager:
     def __init__(
-        self,
-        skill_disclosure: ProgressiveDisclosureCore,
-        store: EventStore,
-        action_rules: ActionRules | None = None,
+        self, skill_disclosure: ProgressiveDisclosureCore, store: EventStore, action_rules: ActionRules | None = None
     ) -> None:
         self.store = store
         self.user_skill_root = store.private_root / "skills"
@@ -51,9 +48,7 @@ class SkillPackageManager:
             Path,
             self.actions.execute_action(
                 ActionRequest.create(
-                    "user:skill-package",
-                    f"file:{output.expanduser().absolute()}",
-                    (ActionEffect.READ, ActionEffect.CREATE),
+                    "user:skill-package", f"file:{output.expanduser().absolute()}", (ActionEffect.READ, ActionEffect.CREATE)
                 ),
                 lambda: self._pack_skill(name, output),
             ),
@@ -123,18 +118,12 @@ class SkillPackageManager:
             if proposed.name != skill_name:
                 raise ValueError(f"updated skill name does not match target: {proposed.name} != {skill_name}")
             if proposed.skill_type != current.skill_type:
-                raise ValueError(
-                    f"updated Skill type does not match target: {proposed.skill_type} != {current.skill_type}"
-                )
+                raise ValueError(f"updated Skill type does not match target: {proposed.skill_type} != {current.skill_type}")
             validate_skill_replacement(current.path, staged)
             expected_target_sha256 = (
-                calculate_skill_directory_sha256(current.path)
-                if current.path.absolute() == target.absolute()
-                else ""
+                calculate_skill_directory_sha256(current.path) if current.path.absolute() == target.absolute() else ""
             )
-            update = SkillDirectoryUpdate(
-                staged, target, calculate_skill_directory_sha256(staged), expected_target_sha256
-            )
+            update = SkillDirectoryUpdate(staged, target, calculate_skill_directory_sha256(staged), expected_target_sha256)
             apply_skill_directory_updates([update])
         return self._read_skill_manifest(skill_name, current.skill_type)
 
@@ -152,9 +141,7 @@ class SkillPackageManager:
             raise PermissionError(f"cannot remove shared Skill: {entry.reference.key}")
         manifest = self._read_skill_manifest(skill_name, expected_type)
         _require_managed_skill_path(manifest.path, self.user_skill_root)
-        update = SkillDirectoryUpdate(
-            None, manifest.path, "", calculate_skill_directory_sha256(manifest.path)
-        )
+        update = SkillDirectoryUpdate(None, manifest.path, "", calculate_skill_directory_sha256(manifest.path))
         apply_skill_directory_updates([update])
 
     def _read_skill_manifest(self, name: str, expected_type: str | None = None) -> SkillManifest:
@@ -363,10 +350,7 @@ class LockedSkill:
 
 def write_skill_lock_file(manifests: list[SkillManifest], path: Path) -> None:
     # Excluding timestamps and absolute paths makes identical lock content byte-for-byte stable.
-    locked = [
-        _lock_manifest(manifest)
-        for manifest in sorted(manifests, key=lambda item: (item.skill_type, item.name))
-    ]
+    locked = [_lock_manifest(manifest) for manifest in sorted(manifests, key=lambda item: (item.skill_type, item.name))]
     keys = {(item.skill_type, item.name) for item in locked}
     if len(keys) != len(locked):
         raise ValueError("skill lock cannot contain duplicate skill keys")
@@ -476,10 +460,7 @@ def _stage_skill_directory_updates(updates: list[SkillDirectoryUpdate]) -> list[
 
 
 def _activate_skill_directory_updates(
-    updates: list[SkillDirectoryUpdate],
-    staged: list[Path | None],
-    backups: dict[Path, Path],
-    activated: list[Path],
+    updates: list[SkillDirectoryUpdate], staged: list[Path | None], backups: dict[Path, Path], activated: list[Path]
 ) -> None:
     for update in updates:
         require_skill_directory_matches(update.target, update.expected_target_sha256, "target")
@@ -501,9 +482,7 @@ def _notify_skill_directory_restored(after_restore: Callable[[], None] | None, e
     try:
         after_restore()
     except Exception as restore_error:
-        error.add_note(
-            f"Could not refresh after restoring Skills: {type(restore_error).__name__}: {restore_error}"
-        )
+        error.add_note(f"Could not refresh after restoring Skills: {type(restore_error).__name__}: {restore_error}")
 
 
 def _remove_skill_directories(paths: list[Path | None]) -> None:
@@ -610,9 +589,9 @@ def _validate_model_replacement(current: SkillDisclosure, proposed: SkillDisclos
     proposed_profile = create_model_profile_from_skill_disclosure(proposed)
     if current_profile.agent_can_update_connection != proposed_profile.agent_can_update_connection:
         raise PermissionError("model Skill cannot change connection update ownership")
-    if not current_profile.agent_can_update_connection and model_connection_fields(
-        current_profile
-    ) != model_connection_fields(proposed_profile):
+    if not current_profile.agent_can_update_connection and model_connection_fields(current_profile) != model_connection_fields(
+        proposed_profile
+    ):
         raise PermissionError("model Skill does not allow Agent connection updates")
 
 

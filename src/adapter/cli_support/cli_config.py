@@ -106,9 +106,7 @@ def load_event_store(source: CommonConfigSource = None, user_id: str = LOCAL_USE
 
     config = load_common_config(source)
     backend = create_storage_backend(config.storage.backend, str(config.storage.path), config.storage.url_env)
-    return EventStore(
-        backend, config.storage.path, user_id, config.agent.name, disclosure_factory=DisclosureStorage
-    )
+    return EventStore(backend, config.storage.path, user_id, config.agent.name, disclosure_factory=DisclosureStorage)
 
 
 def configure_config_parser(parser: argparse.ArgumentParser) -> None:

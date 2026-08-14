@@ -1906,6 +1906,17 @@ Status: implemented.
 - Use an explicit 110-character formatting ceiling to balance compact source with readable code,
   and reduce source to at most 15,300 non-empty Python lines without removing storage behavior.
 
+## v0.1.85: One Skill Discovery and Disclosure Path
+
+Status: implemented.
+
+- Build and serialize the Skill index through one canonical entry projection while retaining
+  source priority, dependency resolution, freshness, ownership, and cache metadata.
+- Record manifest, instruction, configuration, and file disclosure through one central method;
+  preserve exact file schemas, content hashes, bounded pages, and source-change checks.
+- Apply a repository-wide 130-character formatter ceiling and reduce source to at most 14,100
+  non-empty Python lines without removing behavior or introducing implicit fallback paths.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

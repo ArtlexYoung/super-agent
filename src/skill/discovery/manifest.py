@@ -80,12 +80,7 @@ def _read_skill_name(path: Path) -> str:
 
 
 def skill_manifest_to_dict(manifest: SkillManifest) -> dict[str, object]:
-    return {
-        "name": manifest.name,
-        "type": manifest.skill_type,
-        "description": manifest.description,
-        "version": manifest.version,
-    }
+    return {"name": manifest.name, "type": manifest.skill_type, "description": manifest.description, "version": manifest.version}
 
 
 def calculate_skill_directory_sha256(path: Path) -> str:

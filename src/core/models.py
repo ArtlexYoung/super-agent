@@ -65,15 +65,11 @@ def read_int(value: object, label: str, *, minimum: int | None = None, maximum: 
     return value
 
 
-def read_optional_int(
-    value: object, label: str, *, minimum: int | None = None, maximum: int | None = None
-) -> int | None:
+def read_optional_int(value: object, label: str, *, minimum: int | None = None, maximum: int | None = None) -> int | None:
     return None if value is None else read_int(value, label, minimum=minimum, maximum=maximum)
 
 
-def read_number(
-    value: object, label: str, *, minimum: float | None = None, maximum: float | None = None
-) -> float:
+def read_number(value: object, label: str, *, minimum: float | None = None, maximum: float | None = None) -> float:
     if isinstance(value, bool) or not isinstance(value, int | float):
         raise ValueError(f"{label} must be a number")
     number = float(value)
@@ -92,9 +88,7 @@ def read_optional_number(
     return None if value is None else read_number(value, label, minimum=minimum, maximum=maximum)
 
 
-def read_text_list(
-    value: object, label: str, *, minimum: int = 0, maximum: int | None = None, lower: bool = False
-) -> list[str]:
+def read_text_list(value: object, label: str, *, minimum: int = 0, maximum: int | None = None, lower: bool = False) -> list[str]:
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
         raise ValueError(f"{label} must be a string array")
     items = [item.strip().lower() if lower else item.strip() for item in value]
@@ -334,17 +328,9 @@ class SubagentRecordOptions:
     def __post_init__(self) -> None:
         if not isinstance(self.mode, str) or self.mode not in {"full", "summary"}:
             raise ValueError("subagent record mode must be full or summary")
-        if (
-            isinstance(self.summary_chars, bool)
-            or not isinstance(self.summary_chars, int)
-            or self.summary_chars <= 0
-        ):
+        if isinstance(self.summary_chars, bool) or not isinstance(self.summary_chars, int) or self.summary_chars <= 0:
             raise ValueError("subagent summary_chars must be positive")
-        if (
-            isinstance(self.nested_results, bool)
-            or not isinstance(self.nested_results, int)
-            or self.nested_results < 0
-        ):
+        if isinstance(self.nested_results, bool) or not isinstance(self.nested_results, int) or self.nested_results < 0:
             raise ValueError("subagent nested_results cannot be negative")
 
     @property
@@ -414,12 +400,8 @@ class RunIdentity:
         object.__setattr__(self, "user_id", validate_user_id(self.user_id))
         object.__setattr__(self, "agent_name", validate_agent_name(self.agent_name))
         object.__setattr__(self, "run_id", _clean_identity_value(self.run_id, "run_id"))
-        object.__setattr__(
-            self, "conversation_id", _clean_optional_identity_value(self.conversation_id, "conversation_id")
-        )
-        object.__setattr__(
-            self, "parent_run_id", _clean_optional_identity_value(self.parent_run_id, "parent_run_id")
-        )
+        object.__setattr__(self, "conversation_id", _clean_optional_identity_value(self.conversation_id, "conversation_id"))
+        object.__setattr__(self, "parent_run_id", _clean_optional_identity_value(self.parent_run_id, "parent_run_id"))
 
 
 @dataclass(frozen=True)
@@ -436,9 +418,7 @@ class SubAgentResult:
 @dataclass(frozen=True)
 class SubagentCallbacks:
     list_subagents: Callable[[], list[dict[str, object]]]
-    run_named_subagent: Callable[
-        [str, str, object, SubagentRecordOptions, dict[str, object] | None], dict[str, object]
-    ]
+    run_named_subagent: Callable[[str, str, object, SubagentRecordOptions, dict[str, object] | None], dict[str, object]]
 
 
 @dataclass(frozen=True)

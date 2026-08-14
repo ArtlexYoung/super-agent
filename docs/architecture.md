@@ -148,3 +148,5 @@ The release suite verifies the claims above as behavior:
   scope, while each backend implements only its physical query execution.
 - `StorageEvent` owns canonical field validation and immutable data copying. Storage adapters
   decode physical rows and preserve their transaction, schema, and connection responsibilities.
+- `SkillIndexEntry` has one persisted projection, and `SkillDisclosure` sends every disclosed
+  Skill document through the same cache, history, hashing, and context-budget path.

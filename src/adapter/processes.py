@@ -41,10 +41,7 @@ class GeneralToolServer:
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "operation": {
-                            "type": "string",
-                            "enum": ["sum", "mean", "minimum", "maximum", "product"],
-                        },
+                        "operation": {"type": "string", "enum": ["sum", "mean", "minimum", "maximum", "product"]},
                         "values": {"type": "array", "items": {"type": "number"}},
                     },
                     "required": ["operation", "values"],
@@ -135,11 +132,7 @@ class ProcessLimits:
             or not 1 <= self.timeout_seconds <= MAX_PROCESS_TIMEOUT_SECONDS
         ):
             raise ValueError("process timeout must be between 1 and 300 seconds")
-        if (
-            isinstance(self.output_bytes, bool)
-            or not isinstance(self.output_bytes, int)
-            or self.output_bytes <= 0
-        ):
+        if isinstance(self.output_bytes, bool) or not isinstance(self.output_bytes, int) or self.output_bytes <= 0:
             raise ValueError("process output limit must be greater than 0")
 
 
@@ -165,15 +158,10 @@ class _RunningProcess:
 class DeclaredProcessTools:
     """Run only configured argv commands with explicit bounded state."""
 
-    def __init__(
-        self, root: Path, commands: list[list[str]], execute_setting: str, limits: ProcessLimits | None = None
-    ) -> None:
+    def __init__(self, root: Path, commands: list[list[str]], execute_setting: str, limits: ProcessLimits | None = None) -> None:
         if execute_setting not in {"allow", "ask", "deny"}:
             raise ValueError("process execute setting must be allow, ask, or deny")
-        if not all(
-            command and all(isinstance(argument, str) and argument for argument in command)
-            for command in commands
-        ):
+        if not all(command and all(isinstance(argument, str) and argument for argument in command) for command in commands):
             raise ValueError("declared commands must be non-empty string arrays")
         self.root = root.resolve()
         self.commands = tuple(tuple(command) for command in commands)
@@ -189,11 +177,7 @@ class DeclaredProcessTools:
                 "Start one configured argv command with bounded time and output.",
                 {
                     "command_number": {"type": "integer", "minimum": 1},
-                    "timeout_seconds": {
-                        "type": "integer",
-                        "minimum": 1,
-                        "maximum": MAX_PROCESS_TIMEOUT_SECONDS,
-                    },
+                    "timeout_seconds": {"type": "integer", "minimum": 1, "maximum": MAX_PROCESS_TIMEOUT_SECONDS},
                 },
                 self.start_process,
                 SkillAction((ActionEffect.EXECUTE,), "workspace:command", "command_number"),
@@ -223,11 +207,7 @@ class DeclaredProcessTools:
                 "Run one configured check and wait for its bounded result.",
                 {
                     "command_number": {"type": "integer", "minimum": 1},
-                    "timeout_seconds": {
-                        "type": "integer",
-                        "minimum": 1,
-                        "maximum": MAX_PROCESS_TIMEOUT_SECONDS,
-                    },
+                    "timeout_seconds": {"type": "integer", "minimum": 1, "maximum": MAX_PROCESS_TIMEOUT_SECONDS},
                 },
                 self.run_check,
                 SkillAction((ActionEffect.EXECUTE,), "workspace:command", "command_number"),
@@ -244,9 +224,7 @@ class DeclaredProcessTools:
             raise ValueError(f"declared command number must be between 1 and {len(self.commands)}")
         if len(self._processes) >= MAX_ACTIVE_PROCESSES:
             raise RuntimeError(f"process history limit reached for this run: {MAX_ACTIVE_PROCESSES}")
-        timeout = (
-            read_optional_positive_tool_integer(arguments, "timeout_seconds") or self.limits.timeout_seconds
-        )
+        timeout = read_optional_positive_tool_integer(arguments, "timeout_seconds") or self.limits.timeout_seconds
         if timeout > MAX_PROCESS_TIMEOUT_SECONDS:
             raise ValueError("process timeout cannot exceed 300 seconds")
         command = self.commands[number - 1]
@@ -260,9 +238,7 @@ class DeclaredProcessTools:
             start_new_session=os.name == "posix",
         )
         process_id = f"process-{uuid4().hex}"
-        task = _RunningProcess(
-            process_id, command, process, time.monotonic(), timeout, self.limits.output_bytes
-        )
+        task = _RunningProcess(process_id, command, process, time.monotonic(), timeout, self.limits.output_bytes)
         self._processes[process_id] = task
         self._start_watchers(task)
         return self._snapshot(task)

@@ -73,9 +73,7 @@ class AgentTeam:
         clean_purpose = purpose.strip().lower()
         if not clean_purpose:
             raise ValueError("subagent purpose cannot be empty")
-        clean_features = tuple(
-            dict.fromkeys(item.strip().lower() for item in required_features if item.strip())
-        )
+        clean_features = tuple(dict.fromkeys(item.strip().lower() for item in required_features if item.strip()))
         if not clean_features:
             raise ValueError("subagent required_features cannot be empty")
         if isinstance(weight, bool) or not isinstance(weight, int | float):
@@ -113,9 +111,7 @@ class AgentTeam:
         return warnings
 
     def create_callbacks(self) -> SubagentCallbacks:
-        return SubagentCallbacks(
-            list_subagents=self.list_for_model, run_named_subagent=self.run_named_for_model
-        )
+        return SubagentCallbacks(list_subagents=self.list_for_model, run_named_subagent=self.run_named_for_model)
 
     def list_for_model(self) -> list[dict[str, object]]:
         return [
@@ -191,8 +187,7 @@ class AgentTeam:
             run_id=result.run_id,
         )
         parent_run.record_event(
-            "subagent.completed",
-            {"name": subagent.name, "run_id": result.run_id, "record_mode": record_options.mode},
+            "subagent.completed", {"name": subagent.name, "run_id": result.run_id, "record_mode": record_options.mode}
         )
         return subagent_result
 

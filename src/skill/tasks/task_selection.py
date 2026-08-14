@@ -135,9 +135,7 @@ class TaskQueueSettings:
         read_int(settings.max_nested_results, "agent_tasks max_nested_results", minimum=0)
         read_choice(settings.agent_selection, "agent_tasks agent_selection", {"least_busy", "rotate"})
         read_int(settings.circuit_breaker_failures, "agent_tasks circuit_breaker_failures", minimum=1)
-        read_number(
-            settings.circuit_breaker_wait_seconds, "agent_tasks circuit_breaker_wait_seconds", minimum=0
-        )
+        read_number(settings.circuit_breaker_wait_seconds, "agent_tasks circuit_breaker_wait_seconds", minimum=0)
         read_int(settings.retry_unavailable_times, "agent_tasks retry_unavailable_times", minimum=0)
         return settings
 
@@ -201,9 +199,7 @@ class _AgentHealth:
 class AgentSelector:
     """Choose available Agents and own their circuit state for one queue."""
 
-    def __init__(
-        self, settings: TaskQueueSettings, subagents: list[dict[str, object]], record_event: EventWriter
-    ) -> None:
+    def __init__(self, settings: TaskQueueSettings, subagents: list[dict[str, object]], record_event: EventWriter) -> None:
         self.settings = settings
         self.subagents = tuple(_validated_agent(item) for item in subagents)
         names = [str(item["name"]) for item in self.subagents]
@@ -225,9 +221,7 @@ class AgentSelector:
     ) -> SelectedAgent:
         matching = [item for item in self.subagents if _matches(item, task.purpose, task.required_features)]
         available = [
-            item
-            for item in matching
-            if str(item["name"]) not in (excluded or set()) and self._is_available(str(item["name"]))
+            item for item in matching if str(item["name"]) not in (excluded or set()) and self._is_available(str(item["name"]))
         ]
         available_count = len(available)
         if requested is not None:
@@ -239,16 +233,12 @@ class AgentSelector:
             available = [item for item in available if item["name"] == requested]
             if not available:
                 raise AgentUnavailableError(f"subagent is currently unavailable: {requested}")
-            return self._finish_choice(
-                available[0], "model", (available_count, active.get(requested, 0)), task, commit
-            )
+            return self._finish_choice(available[0], "model", (available_count, active.get(requested, 0)), task, commit)
         if not matching:
             raise ValueError("no suitable subagent for task")
         if not available:
             delay = self.retry_delay(task.purpose, task.required_features)
-            raise AgentUnavailableError(
-                f"all suitable subagents are unavailable; retry after {delay:.3f} seconds"
-            )
+            raise AgentUnavailableError(f"all suitable subagents are unavailable; retry after {delay:.3f} seconds")
         ranked = sorted(available, key=lambda item: self._rank(item, task, active), reverse=True)
         if self.settings.agent_selection == "rotate":
             names = tuple(str(item["name"]) for item in ranked)
@@ -260,9 +250,7 @@ class AgentSelector:
         else:
             selected = ranked[0]
             selected_by = "weighted_cost_reliability"
-        return self._finish_choice(
-            selected, selected_by, (available_count, active.get(str(selected["name"]), 0)), task, commit
-        )
+        return self._finish_choice(selected, selected_by, (available_count, active.get(str(selected["name"]), 0)), task, commit)
 
     def choose_group(
         self, tasks: list[QueuedTask], active: dict[str, int], *, require_different_models: bool, commit: bool
@@ -272,9 +260,7 @@ class AgentSelector:
             return []
         first = tasks[0]
         matching = [
-            item
-            for item in self.subagents
-            if all(_matches(item, task.purpose, task.required_features) for task in tasks)
+            item for item in self.subagents if all(_matches(item, task.purpose, task.required_features) for task in tasks)
         ]
         available = [item for item in matching if self._is_available(str(item["name"]))]
         ranked = sorted(available, key=lambda item: self._rank(item, first, active), reverse=True)
@@ -285,28 +271,18 @@ class AgentSelector:
         selected: list[SelectedAgent] = []
         selected_models: set[str] = set()
         virtual_active = dict(active)
-        selected_by = (
-            "skill_group_rotation"
-            if self.settings.agent_selection == "rotate"
-            else "weighted_group_cost_reliability"
-        )
+        selected_by = "skill_group_rotation" if self.settings.agent_selection == "rotate" else "weighted_group_cost_reliability"
         for agent in ranked:
             if len(selected) >= len(tasks):
                 break
             task = tasks[len(selected)]
-            dispatch = choose_dispatch_model(
-                agent.get("models"), task.purpose, task.required_features, task.token_counts()
-            )
+            dispatch = choose_dispatch_model(agent.get("models"), task.purpose, task.required_features, task.token_counts())
             model_key = dispatch.model or f"agent:{agent['name']}"
             if require_different_models and model_key in selected_models:
                 continue
             choice = replace(
                 self._finish_choice(
-                    agent,
-                    selected_by,
-                    (len(available), virtual_active.get(str(agent["name"]), 0)),
-                    task,
-                    commit,
+                    agent, selected_by, (len(available), virtual_active.get(str(agent["name"]), 0)), task, commit
                 ),
                 selection_key=rotation_key,
             )
@@ -314,9 +290,7 @@ class AgentSelector:
             selected_models.add(model_key)
             virtual_active[choice.name] = virtual_active.get(choice.name, 0) + 1
         if commit and self.settings.agent_selection == "rotate" and rotation_key:
-            self._rotation_positions[rotation_key] = self._rotation_positions.get(rotation_key, 0) + len(
-                selected
-            )
+            self._rotation_positions[rotation_key] = self._rotation_positions.get(rotation_key, 0) + len(selected)
         return selected
 
     def commit_group(self, choices: list[SelectedAgent]) -> None:
@@ -325,9 +299,7 @@ class AgentSelector:
             self._commit_choice(choice.name)
         if self.settings.agent_selection == "rotate" and choices:
             rotation_key = choices[0].selection_key
-            self._rotation_positions[rotation_key] = self._rotation_positions.get(rotation_key, 0) + len(
-                choices
-            )
+            self._rotation_positions[rotation_key] = self._rotation_positions.get(rotation_key, 0) + len(choices)
 
     def record_success(self, name: str) -> None:
         health = self._health[name]
@@ -374,29 +346,18 @@ class AgentSelector:
             return True
         return circuit.state == "open" and monotonic() >= circuit.retry_at
 
-    def _rank(
-        self, agent: dict[str, object], task: QueuedTask, active: dict[str, int]
-    ) -> tuple[float, float, float]:
-        cost = choose_dispatch_model(
-            agent.get("models"), task.purpose, task.required_features, task.token_counts()
-        ).cost
+    def _rank(self, agent: dict[str, object], task: QueuedTask, active: dict[str, int]) -> tuple[float, float, float]:
+        cost = choose_dispatch_model(agent.get("models"), task.purpose, task.required_features, task.token_counts()).cost
         health = self._health[str(agent["name"])]
         base = _base_score(agent, health, cost)
         exact = float(agent.get("purpose") == task.purpose and task.purpose != "auto")
         return exact, base / (1 + active.get(str(agent["name"]), 0)), base
 
     def _finish_choice(
-        self,
-        agent: dict[str, object],
-        selected_by: str,
-        counts: tuple[int, int],
-        task: QueuedTask,
-        commit: bool,
+        self, agent: dict[str, object], selected_by: str, counts: tuple[int, int], task: QueuedTask, commit: bool
     ) -> SelectedAgent:
         name = str(agent["name"])
-        dispatch = choose_dispatch_model(
-            agent.get("models"), task.purpose, task.required_features, task.token_counts()
-        )
+        dispatch = choose_dispatch_model(agent.get("models"), task.purpose, task.required_features, task.token_counts())
         health = self._health[name]
         base_score = _base_score(agent, health, dispatch.cost)
         candidate_count, active_count = counts
@@ -451,17 +412,11 @@ def estimated_token_schema() -> dict[str, object]:
 
 
 def read_optional_estimated_tokens(arguments: dict[str, object], name: str) -> int | None:
-    return read_optional_int(
-        arguments.get(name), f"tool argument {name!r}", minimum=0, maximum=MAX_ESTIMATED_TOKENS
-    )
+    return read_optional_int(arguments.get(name), f"tool argument {name!r}", minimum=0, maximum=MAX_ESTIMATED_TOKENS)
 
 
-def read_required_task_strings(
-    arguments: Mapping[str, object], name: str, *, maximum: int = 16
-) -> tuple[str, ...]:
-    return tuple(
-        read_text_list(arguments.get(name), f"tool argument {name!r}", minimum=1, maximum=maximum, lower=True)
-    )
+def read_required_task_strings(arguments: Mapping[str, object], name: str, *, maximum: int = 16) -> tuple[str, ...]:
+    return tuple(read_text_list(arguments.get(name), f"tool argument {name!r}", minimum=1, maximum=maximum, lower=True))
 
 
 def _validated_agent(value: dict[str, object]) -> dict[str, object]:
@@ -477,9 +432,7 @@ def _validated_agent(value: dict[str, object]) -> dict[str, object]:
 def _matches(agent: dict[str, object], purpose: str, features: tuple[str, ...]) -> bool:
     agent_purpose = str(agent.get("purpose", "auto")).strip().lower()
     supported = {
-        str(item).strip().lower()
-        for item in agent.get("required_features", [])
-        if isinstance(item, str) and item.strip()
+        str(item).strip().lower() for item in agent.get("required_features", []) if isinstance(item, str) and item.strip()
     }
     return (purpose == "auto" or agent_purpose in {"auto", purpose}) and set(features) <= supported
 

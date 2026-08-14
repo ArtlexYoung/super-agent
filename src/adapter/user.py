@@ -96,9 +96,7 @@ class UserConversations:
         return cast(
             Conversation,
             self.user._execute(
-                ActionRequest.create(
-                    "user:conversation", f"conversation:{conversation_id}", (ActionEffect.UPDATE,)
-                ),
+                ActionRequest.create("user:conversation", f"conversation:{conversation_id}", (ActionEffect.UPDATE,)),
                 lambda: rename_conversation(self.user._store(), conversation_id, title),
             ),
         )
@@ -107,18 +105,14 @@ class UserConversations:
         return cast(
             Conversation,
             self.user._execute(
-                ActionRequest.create(
-                    "user:conversation", f"conversation:{conversation_id}", (ActionEffect.DELETE,)
-                ),
+                ActionRequest.create("user:conversation", f"conversation:{conversation_id}", (ActionEffect.DELETE,)),
                 lambda: clear_conversation(self.user._store(), conversation_id),
             ),
         )
 
     def delete(self, conversation_id: str) -> None:
         self.user._execute(
-            ActionRequest.create(
-                "user:conversation", f"conversation:{conversation_id}", (ActionEffect.DELETE,)
-            ),
+            ActionRequest.create("user:conversation", f"conversation:{conversation_id}", (ActionEffect.DELETE,)),
             lambda: delete_conversation(self.user._store(), conversation_id),
         )
 
@@ -135,9 +129,7 @@ class UserRuns:
     def list(
         self, limit: int | None = None, *, conversation_id: str | None = None, include_sensitive: bool = False
     ) -> list[RunSnapshot]:
-        return self.user._store().list_runs(
-            limit, conversation_id=conversation_id, include_sensitive=include_sensitive
-        )
+        return self.user._store().list_runs(limit, conversation_id=conversation_id, include_sensitive=include_sensitive)
 
     def read(self, run_id: str, *, include_sensitive: bool = False) -> RunSnapshot:
         _, store = _find_run_owner(self.user, run_id)
@@ -167,14 +159,10 @@ class UserRuns:
         store = self.user._store()
         events = store.read_run_events(run_id, include_sensitive=True)
         checkpoint = find_checkpoint_data(events, checkpoint_id)
-        return self.user.agent._run_for_user(
-            prompt, self.user.user_id, resumed_from_run_id=run_id, resume_checkpoint=checkpoint
-        )
+        return self.user.agent._run_for_user(prompt, self.user.user_id, resumed_from_run_id=run_id, resume_checkpoint=checkpoint)
 
     def record_feedback(self, run_id: str, score: float, reason: str = "") -> RunEvent:
-        return self.user.agent._record_task_feedback(
-            self.user.user_id, run_id, score=score, reason=reason, source="explicit"
-        )
+        return self.user.agent._record_task_feedback(self.user.user_id, run_id, score=score, reason=reason, source="explicit")
 
     def learn(self, run_id: str) -> "RunLearningResult":
         store = self.user._store()
@@ -187,9 +175,7 @@ class UserRuns:
 
         rules = load_configured_freshness_rules(self.user.agent.config, store=store)
         result = self.user._execute(
-            ActionRequest.create(
-                "user:run-learning", f"run:{run_id}", (ActionEffect.CREATE, ActionEffect.UPDATE)
-            ),
+            ActionRequest.create("user:run-learning", f"run:{run_id}", (ActionEffect.CREATE, ActionEffect.UPDATE)),
             lambda: learn_from_run(store, run_id, rules),
         )
         if not isinstance(result, RunLearningResult):
@@ -250,9 +236,7 @@ class UserMemory:
         from skill.handlers.memory import create_memory_from_skill
 
         skills = self.user.agent._create_skills(self.user.user_id)
-        selected = skills.index.select_one_configured_or_default_skill(
-            "memory", self.user.agent.config.agent.skills
-        )
+        selected = skills.index.select_one_configured_or_default_skill("memory", self.user.agent.config.agent.skills)
         return create_memory_from_skill(skills.open(selected.reference), self.user._store())
 
 
@@ -286,10 +270,7 @@ class UserSkills:
         has_model_skill = any(entry.reference.skill_type == "model" for entry in skills.index.entries)
         if self.user.agent._uses_direct_provider() and not has_model_skill:
             environment = {}
-        return [
-            model_profile_to_dict(profile, environment)
-            for profile in read_model_profiles(skills, environment)
-        ]
+        return [model_profile_to_dict(profile, environment) for profile in read_model_profiles(skills, environment)]
 
     def save_model(self, request: "ModelSkillInput") -> "ModelProfile":
         profile = self.create_model_manager().save_model_skill(request)
@@ -320,9 +301,7 @@ class UserConfiguration:
             self.user.agent._replace_configuration(loaded)
             return loaded
 
-        updated = self.user._execute(
-            ActionRequest.create("user:configuration", "config:agent", (ActionEffect.UPDATE,)), update
-        )
+        updated = self.user._execute(ActionRequest.create("user:configuration", "config:agent", (ActionEffect.UPDATE,)), update)
         if not isinstance(updated, CommonConfig):
             raise TypeError("configuration update must return CommonConfig")
         return updated
@@ -340,9 +319,7 @@ def _create_skill_updater(user: UserAgent) -> "SkillUpdater":
         store=store,
         propose_model=task_runner.create_text_model(store, "skill_change_proposal"),
         test_model=task_runner.create_text_model(store, "skill_change_test"),
-        on_skill_changed=lambda manifest: (
-            agent._reload_models(user.user_id) if manifest.skill_type == "model" else None
-        ),
+        on_skill_changed=lambda manifest: agent._reload_models(user.user_id) if manifest.skill_type == "model" else None,
         action_rules=agent._action_rules(),
     )
 

@@ -115,9 +115,7 @@ class ActionRules:
 
     def check_action(self, request: ActionRequest) -> ActionDecision:
         if self.preset == ActionMode.AUDIT:
-            return ActionDecision(
-                ActionDecisionType.ALLOW, "audit-only policy records the declared action", False
-            )
+            return ActionDecision(ActionDecisionType.ALLOW, "audit-only policy records the declared action", False)
         if self.preset == ActionMode.READ_ONLY:
             if set(request.effects) == {ActionEffect.READ}:
                 return _allow("read-only policy allows queries")
@@ -137,10 +135,7 @@ def _check_standard_action(request: ActionRequest) -> ActionDecision:
         return _allow("standard policy allows declared reads")
     if effects == {ActionEffect.DELEGATE}:
         return _allow("standard policy allows registered subagent delegation")
-    if request.resource.startswith("skill:registered") and effects <= {
-        ActionEffect.READ,
-        ActionEffect.EXECUTE,
-    }:
+    if request.resource.startswith("skill:registered") and effects <= {ActionEffect.READ, ActionEffect.EXECUTE}:
         return _allow("standard policy allows explicitly registered code")
     if _is_internal_resource(request.resource) and effects <= _INTERNAL_EFFECTS:
         return _allow("standard policy allows scoped internal state changes")
@@ -217,8 +212,7 @@ class ActionRunner:
             result = action()
         except Exception as error:
             self.record_event(
-                "action.failed",
-                {**request.to_event_data(), "error_type": type(error).__name__, "message": str(error)},
+                "action.failed", {**request.to_event_data(), "error_type": type(error).__name__, "message": str(error)}
             )
             raise
         self.record_event("action.applied", request.to_event_data())
@@ -248,13 +242,7 @@ def write_bytes_atomically(path: Path, data: bytes) -> None:
         temporary.unlink(missing_ok=True)
 
 
-_INTERNAL_EFFECTS = {
-    ActionEffect.READ,
-    ActionEffect.CREATE,
-    ActionEffect.UPDATE,
-    ActionEffect.DELETE,
-    ActionEffect.DELEGATE,
-}
+_INTERNAL_EFFECTS = {ActionEffect.READ, ActionEffect.CREATE, ActionEffect.UPDATE, ActionEffect.DELETE, ActionEffect.DELEGATE}
 _INTERNAL_RESOURCE_PREFIXES = (
     "conversation:",
     "memory:",

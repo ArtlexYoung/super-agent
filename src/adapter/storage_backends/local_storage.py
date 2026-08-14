@@ -98,10 +98,7 @@ class JsonlStorage:
 
 def _event_json(event: StorageEvent) -> str:
     return json.dumps(
-        {"schema_version": JSONL_SCHEMA_VERSION, **asdict(event)},
-        ensure_ascii=False,
-        separators=(",", ":"),
-        sort_keys=True,
+        {"schema_version": JSONL_SCHEMA_VERSION, **asdict(event)}, ensure_ascii=False, separators=(",", ":"), sort_keys=True
     )
 
 

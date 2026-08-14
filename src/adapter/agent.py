@@ -29,12 +29,7 @@ from core.team import AgentTeam, SubAgent
 from core.records.conversations import complete_conversation_turn, prepare_conversation_turn
 from skill.handlers.runtime import Skills, SkillHandler, create_default_skill_handlers, create_skills
 from skill.handlers.mcp import McpServer, McpServers
-from skill.handlers.models import (
-    ModelProfile,
-    create_direct_provider_profile,
-    read_model_profiles,
-    select_default_model_profile,
-)
+from skill.handlers.models import ModelProfile, create_direct_provider_profile, read_model_profiles, select_default_model_profile
 
 if TYPE_CHECKING:
     from core.loop import TaskRunner
@@ -56,9 +51,7 @@ class AgentSkills:
         config = self._agent.config
         if selected in config.agent.skills:
             return
-        self._agent._replace_configuration(
-            replace(config, agent=replace(config.agent, skills=[*config.agent.skills, selected]))
-        )
+        self._agent._replace_configuration(replace(config, agent=replace(config.agent, skills=[*config.agent.skills, selected])))
 
     def add_handler(self, handler: SkillHandler) -> None:
         with self._agent._lock:
@@ -167,9 +160,7 @@ class Agent:
         if selected in self.config.paths.skills:
             return
         self._replace_configuration(
-            replace(
-                self.config, paths=replace(self.config.paths, skills=[*self.config.paths.skills, selected])
-            )
+            replace(self.config, paths=replace(self.config.paths, skills=[*self.config.paths.skills, selected]))
         )
 
     def add_tool(self, name: str, server: McpServer, *, effects: tuple[ActionEffect, ...]) -> None:
@@ -219,14 +210,8 @@ class Agent:
         resume_checkpoint: dict[str, object] | None = None,
     ) -> RunResult:
         options = run_options or AgentRunOptions()
-        prepared_messages, pending_turn = self._prepare_messages(
-            prompt, user_id, messages, conversation_id, options
-        )
-        warnings = (
-            self._team.check_links()
-            if options.include_subagents and options.check_subagent_links_before_run
-            else []
-        )
+        prepared_messages, pending_turn = self._prepare_messages(prompt, user_id, messages, conversation_id, options)
+        warnings = self._team.check_links() if options.include_subagents and options.check_subagent_links_before_run else []
         request = Task(
             prompt=prompt,
             messages=prepared_messages,
@@ -244,9 +229,7 @@ class Agent:
         )
         result = self.runtime.run_task(
             request,
-            RunIdentity.create(
-                user_id, self.config.agent.name, run_id=options.run_id, conversation_id=conversation_id
-            ),
+            RunIdentity.create(user_id, self.config.agent.name, run_id=options.run_id, conversation_id=conversation_id),
             event_listener=options.event_listener,
         )
         if pending_turn is not None:
@@ -254,12 +237,7 @@ class Agent:
         return result
 
     def _prepare_messages(
-        self,
-        prompt: str,
-        user_id: str,
-        messages: list[Message] | None,
-        conversation_id: str | None,
-        options: AgentRunOptions,
+        self, prompt: str, user_id: str, messages: list[Message] | None, conversation_id: str | None, options: AgentRunOptions
     ):
         prepared_messages = list(messages or [])
         if conversation_id is None:
@@ -267,10 +245,7 @@ class Agent:
         if messages:
             raise ValueError("conversation_id cannot be combined with explicit messages")
         prepared_messages, pending_turn = prepare_conversation_turn(
-            self._create_event_store(user_id, feature="conversation history"),
-            self._action_rules(),
-            conversation_id,
-            prompt,
+            self._create_event_store(user_id, feature="conversation history"), self._action_rules(), conversation_id, prompt
         )
         if pending_turn.conversation is not None and options.learn_from_conversation:
             self._record_conversation_feedback(pending_turn.conversation, prompt, user_id)
@@ -280,9 +255,7 @@ class Agent:
         from core.model_calls import infer_conversation_feedback_with_model
 
         store = self._create_event_store(user_id)
-        skills = create_skills(
-            self.config, handlers=self._skill_handlers, store=store, include_freshness=False
-        )
+        skills = create_skills(self.config, handlers=self._skill_handlers, store=store, include_freshness=False)
         entry = skills.index.select_one_configured_or_default_skill("feedback", self.config.agent.skills)
         feedback_skill = skills.open(entry.reference)
         feedback_skill.disclose_manifest()
@@ -291,9 +264,7 @@ class Agent:
         if feedback_skill.read_configuration().content:
             raise ValueError("feedback Skill configuration must be empty")
         model = self._create_task_runner(user_id, skills).create_text_model(store, "conversation_feedback")
-        feedback = infer_conversation_feedback_with_model(
-            conversation, prompt, instructions, model.send_messages
-        )
+        feedback = infer_conversation_feedback_with_model(conversation, prompt, instructions, model.send_messages)
         if feedback is not None:
             run_id, score, reason = feedback
             self._record_task_feedback(user_id, run_id, score=score, reason=reason, source="implicit")
@@ -346,9 +317,7 @@ class Agent:
             disclosure_factory=_create_disclosure_storage,
         )
 
-    def _create_skills(
-        self, user_id: str, *, config: CommonConfig | None = None, include_freshness: bool = False
-    ) -> Skills:
+    def _create_skills(self, user_id: str, *, config: CommonConfig | None = None, include_freshness: bool = False) -> Skills:
         return create_skills(
             config or self.config,
             handlers=self._skill_handlers,
@@ -371,18 +340,14 @@ class Agent:
 
     def _execute_action(self, user_id: str, request: ActionRequest, action) -> object:
         store = self._create_event_store(user_id)
-        return ActionRunner(self._action_rules(), store.append_management_action_event).execute_action(
-            request, action
-        )
+        return ActionRunner(self._action_rules(), store.append_management_action_event).execute_action(request, action)
 
     def _read_task_trace(self, user_id: str, run_id: str) -> TaskTrace:
         store = self._create_event_store(user_id)
         snapshot = store.read_run(run_id)
         return TaskTrace(run_id, snapshot.parent_run_id, store.read_run_events(run_id))
 
-    def _record_task_feedback(
-        self, user_id: str, run_id: str, *, score: float, reason: str, source: str
-    ) -> RunEvent:
+    def _record_task_feedback(self, user_id: str, run_id: str, *, score: float, reason: str, source: str) -> RunEvent:
         clean_score = _validate_feedback_score(score)
         if not isinstance(reason, str):
             raise TypeError("task feedback reason must be a string")
@@ -396,9 +361,7 @@ class Agent:
             parent_run_id=snapshot.parent_run_id,
         )
         return store.append_run_event(
-            identity,
-            "task.feedback.recorded",
-            {"score": clean_score, "reason": reason.strip(), "source": source},
+            identity, "task.feedback.recorded", {"score": clean_score, "reason": reason.strip(), "source": source}
         )
 
     def _user_environment(self, user_id: str) -> dict[str, str]:
@@ -431,9 +394,7 @@ class Agent:
 
     def _reload_models(self, user_id: str) -> None:
         store = None if self._storage is None else self._create_event_store(user_id)
-        skills = create_skills(
-            self.config, handlers=self._skill_handlers, store=store, include_freshness=False
-        )
+        skills = create_skills(self.config, handlers=self._skill_handlers, store=store, include_freshness=False)
         profiles = self._read_model_profiles(skills, user_id)
         if user_id == LOCAL_USER_ID:
             self._model_profiles = profiles
@@ -451,9 +412,7 @@ class Agent:
                     self.config.storage.backend, str(self.config.storage.path), self.config.storage.url_env
                 )
             store = self._create_bootstrap_store(storage)
-            skills = create_skills(
-                self.config, handlers=self._skill_handlers, store=store, include_freshness=False
-            )
+            skills = create_skills(self.config, handlers=self._skill_handlers, store=store, include_freshness=False)
             environment = self._user_secrets.get_environment_for_user(LOCAL_USER_ID)
             profiles = read_model_profiles(skills, environment)
             code_profiles: tuple[ModelProfile, ...] = ()
@@ -493,11 +452,7 @@ class Agent:
 
         selected = config or self.config
         return EventStore(
-            storage,
-            selected.storage.path,
-            LOCAL_USER_ID,
-            selected.agent.name,
-            disclosure_factory=_create_disclosure_storage,
+            storage, selected.storage.path, LOCAL_USER_ID, selected.agent.name, disclosure_factory=_create_disclosure_storage
         )
 
     def _read_model_profiles(self, skills: Skills, user_id: str) -> list[ModelProfile]:

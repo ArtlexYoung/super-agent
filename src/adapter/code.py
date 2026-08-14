@@ -14,11 +14,7 @@ from adapter.repository import IncrementalRepositoryMap, IsolatedWorktreeTools
 from core.checks import ActionEffect
 from core.config import CodeConfig, CodeSettings
 from core.checks import write_bytes_atomically
-from core.models import (
-    read_optional_positive_tool_integer,
-    read_optional_tool_string,
-    read_required_tool_string,
-)
+from core.models import read_optional_positive_tool_integer, read_optional_tool_string, read_required_tool_string
 from skill.handlers.builtins import TaskSkillHandler
 from skill.handlers.runtime import SkillAction, SkillContext, SkillTool
 from super_agent import Agent
@@ -80,11 +76,7 @@ class CodeWorkspace:
             SkillTool(
                 "read_workspace_file",
                 "Read all or an explicit inclusive line range from one UTF-8 file.",
-                {
-                    "path": path,
-                    "start_line": {"type": "integer", "minimum": 1},
-                    "end_line": {"type": "integer", "minimum": 1},
-                },
+                {"path": path, "start_line": {"type": "integer", "minimum": 1}, "end_line": {"type": "integer", "minimum": 1}},
                 self.read_file,
                 SkillAction((ActionEffect.READ,), "workspace:file", "path"),
                 ("path",),
@@ -194,9 +186,7 @@ class CodeWorkspace:
         skipped: list[dict[str, str]] = []
         for candidate in self._iter_files(selected):
             if candidate.is_symlink():
-                skipped.append(
-                    {"path": self._relative(candidate), "error": "symbolic links are not searched"}
-                )
+                skipped.append({"path": self._relative(candidate), "error": "symbolic links are not searched"})
                 continue
             try:
                 content = self._read_text(candidate)
@@ -308,9 +298,7 @@ class CodeWorkspace:
                     entry["size"] = child.stat().st_size
                 entries.append(entry)
                 if len(entries) > WORKSPACE_TREE_LIMIT:
-                    raise ValueError(
-                        f"workspace tree has more than {WORKSPACE_TREE_LIMIT} entries; narrow path or max_depth"
-                    )
+                    raise ValueError(f"workspace tree has more than {WORKSPACE_TREE_LIMIT} entries; narrow path or max_depth")
                 if kind == "directory" and child_depth < max_depth:
                     pending.append((child, child_depth))
         return entries
@@ -340,37 +328,18 @@ class CodeWorkspace:
         return self._relative(self._resolve(value))
 
     def _run_git(self, arguments: list[str]) -> dict[str, object]:
-        command = [
-            "git",
-            "--no-pager",
-            "-c",
-            "core.hooksPath=/dev/null",
-            "-c",
-            "core.fsmonitor=false",
-            *arguments,
-        ]
+        command = ["git", "--no-pager", "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", *arguments]
         environment = dict(os.environ)
         environment.update({"GIT_OPTIONAL_LOCKS": "0", "GIT_TERMINAL_PROMPT": "0", "LC_ALL": "C"})
         completed = subprocess.run(
-            command,
-            cwd=self.root,
-            env=environment,
-            capture_output=True,
-            text=True,
-            timeout=WORKSPACE_GIT_TIMEOUT,
-            check=False,
+            command, cwd=self.root, env=environment, capture_output=True, text=True, timeout=WORKSPACE_GIT_TIMEOUT, check=False
         )
         if completed.returncode != 0:
             raise RuntimeError(completed.stderr.strip() or "Git command failed")
         output_bytes = len(completed.stdout.encode("utf-8")) + len(completed.stderr.encode("utf-8"))
         if output_bytes > WORKSPACE_GIT_OUTPUT_LIMIT:
             raise ValueError(f"Git output exceeds {WORKSPACE_GIT_OUTPUT_LIMIT} bytes; narrow the path")
-        return {
-            "command": command,
-            "returncode": completed.returncode,
-            "stdout": completed.stdout,
-            "stderr": completed.stderr,
-        }
+        return {"command": command, "returncode": completed.returncode, "stdout": completed.stdout, "stderr": completed.stderr}
 
     def _resolve(self, value: str, *, allow_symlink: bool = True) -> Path:
         if Path(value).is_absolute():

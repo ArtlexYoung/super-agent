@@ -50,9 +50,7 @@ class RemoteSqlStorage(SqlEventStorage):
             cursor.execute(self._database.create_events_table_sql)
             for statement in self._database.create_event_indexes_sql:
                 cursor.execute(statement)
-            cursor.execute(
-                self._database.ensure_schema_version_sql, (_SCHEMA_COMPONENT, REMOTE_SQL_SCHEMA_VERSION)
-            )
+            cursor.execute(self._database.ensure_schema_version_sql, (_SCHEMA_COMPONENT, REMOTE_SQL_SCHEMA_VERSION))
             cursor.execute(_SELECT_SCHEMA_VERSION_SQL, (_SCHEMA_COMPONENT,))
             _require_current_schema_version(cursor.fetchone(), self.name)
             connection.commit()
@@ -70,9 +68,7 @@ class MySqlStorage(RemoteSqlStorage):
         try:
             driver = import_module("pymysql")
         except ImportError as error:
-            raise RuntimeError(
-                "MySQL storage requires the optional dependency: pip install 'super-agent[mysql]'"
-            ) from error
+            raise RuntimeError("MySQL storage requires the optional dependency: pip install 'super-agent[mysql]'") from error
         connection_url = read_storage_connection_url("mysql", url_env, DEFAULT_MYSQL_URL_ENV)
         super().__init__(_MySqlDatabase(driver, connection_url))
 

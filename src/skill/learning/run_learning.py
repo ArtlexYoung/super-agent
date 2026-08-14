@@ -64,29 +64,18 @@ def learn_from_run(store: EventStore, run_id: str, rules: FreshnessRules) -> Run
             store.append_run_event(
                 identity,
                 "learning.failed",
-                {
-                    "schema_version": 2,
-                    "stage": stage,
-                    "error_type": type(error).__name__,
-                    "message": str(error),
-                },
+                {"schema_version": 2, "stage": stage, "error_type": type(error).__name__, "message": str(error)},
             )
         except Exception as recording_error:
-            error.add_note(
-                f"Could not record learning failure: {type(recording_error).__name__}: {recording_error}"
-            )
+            error.add_note(f"Could not record learning failure: {type(recording_error).__name__}: {recording_error}")
         raise
-    return _result_from_completed_event(
-        store, completed, store.read_run_events(run_id, include_sensitive=True), rules
-    )
+    return _result_from_completed_event(store, completed, store.read_run_events(run_id, include_sensitive=True), rules)
 
 
 def _record_run_evaluations(
     store: EventStore, terminal: RunEvent, revisions: list[SkillRevision], result: EvaluationResult
 ) -> list[EvaluationRecord]:
-    existing = {
-        record.record_id: record for record in read_evaluation_records(store, source_type="agent_run")
-    }
+    existing = {record.record_id: record for record in read_evaluation_records(store, source_type="agent_run")}
     records: list[EvaluationRecord] = []
     pending: list[EvaluationRecord] = []
     for revision in revisions:
@@ -102,11 +91,7 @@ def _record_run_evaluations(
             existing[record.record_id] = record
             pending.append(record)
         else:
-            if (stored.revision, stored.source, stored.result) != (
-                record.revision,
-                record.source,
-                record.result,
-            ):
+            if (stored.revision, stored.source, stored.result) != (record.revision, record.source, record.result):
                 raise ValueError(f"run evaluation record conflicts: {record.record_id}")
         records.append(existing[record.record_id])
     append_evaluation_records(store, pending)
@@ -114,12 +99,7 @@ def _record_run_evaluations(
 
 
 def _project_run_learning(
-    store: EventStore,
-    run_id: str,
-    events: list[RunEvent],
-    *,
-    rules: FreshnessRules | None,
-    record_ids: list[str] | None = None,
+    store: EventStore, run_id: str, events: list[RunEvent], *, rules: FreshnessRules | None, record_ids: list[str] | None = None
 ) -> _RunLearningView:
     stored_events = store.read_events()
     all_records = read_evaluation_records(store, source_type="agent_run", events=stored_events)
@@ -136,10 +116,7 @@ def _project_run_learning(
     freshness_by_skill = {} if rules is None else calculate_skill_freshness(all_records, rules)
     skill_keys = dict.fromkeys(record.revision.key for record in records)
     observed = {
-        (
-            str(event.data.get("profile", "")).strip().lower(),
-            str(event.data.get("purpose", "")).strip().lower(),
-        )
+        (str(event.data.get("profile", "")).strip().lower(), str(event.data.get("purpose", "")).strip().lower())
         for event in events
         if event.event_type in {"model.call.completed", "model.call.failed"}
     }
@@ -163,10 +140,7 @@ def _read_learning_evidence(terminal: RunEvent) -> tuple[list[SkillRevision], Ev
     revisions = evidence.get("skill_revisions")
     if not isinstance(revisions, list):
         raise ValueError("run learning skill_revisions must be an array")
-    return (
-        [skill_revision_from_dict(item) for item in revisions],
-        evaluation_result_from_dict(evidence.get("result")),
-    )
+    return ([skill_revision_from_dict(item) for item in revisions], evaluation_result_from_dict(evidence.get("result")))
 
 
 def _result_from_completed_event(
@@ -203,9 +177,7 @@ def _identity_from_events(store: EventStore, events: list[RunEvent]) -> RunIdent
 def _require_terminal_event(events: list[RunEvent]) -> RunEvent:
     if not events:
         raise KeyError("run not found")
-    terminal = next(
-        (item for item in reversed(events) if item.event_type in {"run.completed", "run.failed"}), None
-    )
+    terminal = next((item for item in reversed(events) if item.event_type in {"run.completed", "run.failed"}), None)
     if terminal is None:
         raise ValueError(f"run has not finished: {events[0].run_id}")
     return terminal
@@ -386,9 +358,7 @@ def _identity_from_snapshot(snapshot) -> RunIdentity:
 
 
 def _record_review_failure(store: EventStore, snapshot, error: Exception) -> None:
-    store.append_run_event(
-        _identity_from_snapshot(snapshot), "review.failed", {"error_type": type(error).__name__}
-    )
+    store.append_run_event(_identity_from_snapshot(snapshot), "review.failed", {"error_type": type(error).__name__})
 
 
 def skill_change_report_to_dict(report: "SkillChangeReport") -> dict[str, object]:

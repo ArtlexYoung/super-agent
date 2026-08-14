@@ -6,14 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Mapping
 
-from core.models import (
-    read_int,
-    read_optional_int,
-    read_optional_text,
-    read_text,
-    read_text_list,
-    reject_unknown_fields,
-)
+from core.models import read_int, read_optional_int, read_optional_text, read_text, read_text_list, reject_unknown_fields
 
 if TYPE_CHECKING:
     from core.records.audit import AuditPolicy
@@ -59,9 +52,7 @@ class CommonConfig:
         source = Path(path).expanduser().absolute()
         data = tomllib.loads(source.read_text(encoding="utf-8"))
         require_config_header(data, "common")
-        reject_unknown_fields(
-            data, {"schema_version", "kind", "agent", "paths", "storage"}, "common configuration tables"
-        )
+        reject_unknown_fields(data, {"schema_version", "kind", "agent", "paths", "storage"}, "common configuration tables")
         base_dir = source.parent
         return cls(
             agent=_read_agent_settings(data.get("agent", {})),
@@ -113,9 +104,7 @@ class CodeConfig:
         data = tomllib.loads(source.read_text(encoding="utf-8"))
         require_config_header(data, "code")
         reject_unknown_fields(
-            data,
-            {"schema_version", "kind", "workspace", "actions", "verification"},
-            "code configuration tables",
+            data, {"schema_version", "kind", "workspace", "actions", "verification"}, "code configuration tables"
         )
         base = source.parent
         workspace = _read_code_workspace(data.get("workspace", {}), base)
@@ -143,9 +132,7 @@ class CodeConfig:
         return (
             cls.load_from_file(source)
             if source
-            else cls(
-                CodeSettings(base, list(DEFAULT_CODE_IGNORES), "allow", "ask", "ask", []), base / "code.toml"
-            )
+            else cls(CodeSettings(base, list(DEFAULT_CODE_IGNORES), "allow", "ask", "ask", []), base / "code.toml")
         )
 
 
@@ -183,9 +170,7 @@ def _read_agent_settings(data: dict[str, Any]) -> AgentSettings:
         name=read_text(data.get("name", "super-agent"), "agent name"),
         system=read_text(data.get("system", "You are a helpful agent."), "agent system"),
         skills=read_text_list(data.get("skills", []), "agent skills"),
-        max_agent_chain_depth=read_optional_int(
-            data.get("max_agent_chain_depth"), "max_agent_chain_depth", minimum=1
-        ),
+        max_agent_chain_depth=read_optional_int(data.get("max_agent_chain_depth"), "max_agent_chain_depth", minimum=1),
         disabled_skills=read_text_list(data.get("disabled_skills", []), "agent disabled_skills", lower=True),
     )
 
@@ -204,10 +189,7 @@ def _read_storage_settings(data: dict[str, Any], base_dir: Path) -> StorageSetti
     path = _resolve_path(base_dir, Path(str(data.get("path", ".super-agent"))))
     audit = _read_audit_settings(data.get("audit", {}))
     return StorageSettings(
-        backend=backend,
-        path=path,
-        url_env=read_optional_text(data.get("url_env"), "storage url_env"),
-        audit=audit,
+        backend=backend, path=path, url_env=read_optional_text(data.get("url_env"), "storage url_env"), audit=audit
     )
 
 
@@ -247,9 +229,7 @@ def _read_verification_commands(data: dict[str, Any]) -> list[list[str]]:
     reject_unknown_fields(data, {"commands"}, "code verification settings")
     commands = data.get("commands", [])
     if not isinstance(commands, list) or not all(
-        isinstance(command, list)
-        and command
-        and all(isinstance(argument, str) and argument for argument in command)
+        isinstance(command, list) and command and all(isinstance(argument, str) and argument for argument in command)
         for command in commands
     ):
         raise ValueError("code verification commands must be non-empty string arrays")

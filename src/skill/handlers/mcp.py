@@ -72,10 +72,7 @@ class StdioMcpServer:
         if not all(isinstance(item, str) for item in clean_arguments):
             raise TypeError("MCP stdio arguments must contain only strings")
         values = dict(environment or {})
-        if not all(
-            isinstance(key, str) and bool(key.strip()) and isinstance(value, str)
-            for key, value in values.items()
-        ):
+        if not all(isinstance(key, str) and bool(key.strip()) and isinstance(value, str) for key, value in values.items()):
             raise TypeError("MCP stdio environment must map names to strings")
         if isinstance(timeout_seconds, bool) or timeout_seconds <= 0:
             raise ValueError("MCP stdio timeout must be positive")
@@ -138,9 +135,7 @@ class McpServers:
         clean_name = _clean_server_name(name)
         if clean_name in self._servers:
             raise ValueError(f"MCP server already registered: {clean_name}")
-        if not callable(getattr(server, "list_tools", None)) or not callable(
-            getattr(server, "call_tool", None)
-        ):
+        if not callable(getattr(server, "list_tools", None)) or not callable(getattr(server, "call_tool", None)):
             raise TypeError("MCP server must define list_tools and call_tool")
         normalized = tuple(ActionEffect(effect) for effect in effects)
         if not normalized:
@@ -163,9 +158,7 @@ class McpServers:
         clean_name = _clean_server_name(name)
         registered = self._servers.get(clean_name)
         if registered is None:
-            raise KeyError(
-                f"MCP server is not registered in code: {clean_name}; call Agent.add_tool(...) before running"
-            )
+            raise KeyError(f"MCP server is not registered in code: {clean_name}; call Agent.add_tool(...) before running")
         return registered
 
     def list_code_registrations(self) -> list[dict[str, object]]:
@@ -239,9 +232,7 @@ class _McpStdioSession:
         try:
             while True:
                 if not selector.select(self.server.timeout_seconds):
-                    raise TimeoutError(
-                        f"MCP response timed out after {self.server.timeout_seconds:g} seconds"
-                    )
+                    raise TimeoutError(f"MCP response timed out after {self.server.timeout_seconds:g} seconds")
                 line = process.stdout.readline()
                 if not line:
                     raise RuntimeError(f"MCP process exited before response: {process.poll()}")

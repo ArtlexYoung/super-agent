@@ -69,12 +69,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 def _run_parsed_command(args: argparse.Namespace) -> int:
-    handlers = {
-        "check": run_check_command,
-        "data": _run_data_command,
-        "serve": run_serve_command,
-        "skills": run_skills_command,
-    }
+    handlers = {"check": run_check_command, "data": _run_data_command, "serve": run_serve_command, "skills": run_skills_command}
     handler = handlers.get(args.command)
     if handler is None:
         raise ValueError(f"unknown command: {args.command}")
@@ -94,21 +89,11 @@ def _run_terminal(arguments: list[str]) -> int:
         if args.output not in {None, "text"}:
             raise ValueError("interactive conversation only supports text output")
         return _run_chat_command(
-            common_config_path,
-            user_id,
-            args.conversation_id,
-            args.skill,
-            save=save,
-            code_config_path=code_config_path,
+            common_config_path, user_id, args.conversation_id, args.skill, save=save, code_config_path=code_config_path
         )
     request = _read_runtime_request_from_args(args, user_id)
     return _run_prompt_command(
-        common_config_path,
-        request,
-        output,
-        save=save,
-        show_summary=show_summary,
-        code_config_path=code_config_path,
+        common_config_path, request, output, save=save, show_summary=show_summary, code_config_path=code_config_path
     )
 
 
@@ -174,9 +159,7 @@ def run_check_command(args: argparse.Namespace) -> int:
         stage = "skills"
         skills = create_skills(config, handlers=create_default_skill_handlers(), include_freshness=False)
         selected = skills.index.resolve_skill_dependencies(config.agent.skills)
-        checks.append(
-            _check("skills", True, f"{len(skills.index.entries)} available, {len(selected)} configured")
-        )
+        checks.append(_check("skills", True, f"{len(skills.index.entries)} available, {len(selected)} configured"))
 
         stage = "model"
         profiles = read_model_profiles(skills, os.environ)
@@ -307,11 +290,7 @@ def _run_chat_command(
     user = agent.for_user(user_id)
     conversation = None
     if use_storage:
-        conversation = (
-            user.conversations.create()
-            if conversation_id is None
-            else user.conversations.read(conversation_id)
-        )
+        conversation = user.conversations.create() if conversation_id is None else user.conversations.read(conversation_id)
     messages: list[Message] = []
 
     def clear_history() -> None:
@@ -338,9 +317,7 @@ def _run_chat_command(
             else user.run(prompt, messages=messages, skill=skill)
         )
         if conversation is None:
-            messages.extend(
-                [{"role": "user", "content": prompt}, {"role": "assistant", "content": result.text}]
-            )
+            messages.extend([{"role": "user", "content": prompt}, {"role": "assistant", "content": result.text}])
         print(f"Agent: {result.text}")
 
 
@@ -378,9 +355,7 @@ def _read_runtime_request_from_args(args: argparse.Namespace, default_user_id: s
     prompt = " ".join(args.prompt).strip()
     if not prompt:
         raise ValueError("run prompt cannot be empty")
-    return CliRequest(
-        prompt=prompt, user_id=default_user_id, conversation_id=args.conversation_id, skill=args.skill
-    )
+    return CliRequest(prompt=prompt, user_id=default_user_id, conversation_id=args.conversation_id, skill=args.skill)
 
 
 def _print_cli_error(error: Exception) -> None:

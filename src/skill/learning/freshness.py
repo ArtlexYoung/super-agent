@@ -65,9 +65,7 @@ class _EvidenceAccumulator:
 def summarize_evaluation_evidence(
     records: list[EvaluationRecord], *, combine_versions: bool = False
 ) -> list[EvaluationEvidenceSummary]:
-    ordered = sorted(
-        records, key=lambda record: (parse_utc(record.created_at, "evaluation created_at"), record.record_id)
-    )
+    ordered = sorted(records, key=lambda record: (parse_utc(record.created_at, "evaluation created_at"), record.record_id))
     accumulators: dict[tuple[str, ...], _EvidenceAccumulator] = {}
     last_by_function_group: dict[str, tuple[tuple[str, ...], EvaluationRecord]] = {}
     for record in ordered:
@@ -77,10 +75,7 @@ def summarize_evaluation_evidence(
         _record_replacement_followup(accumulators, last_by_function_group, record)
         _apply_record(accumulator, record)
         last_by_function_group[record.revision.function_group] = (key, record)
-    return [
-        _create_summary(accumulator)
-        for _, accumulator in sorted(accumulators.items(), key=lambda item: item[0])
-    ]
+    return [_create_summary(accumulator) for _, accumulator in sorted(accumulators.items(), key=lambda item: item[0])]
 
 
 def _apply_record(accumulator: _EvidenceAccumulator, record: EvaluationRecord) -> None:
@@ -125,9 +120,7 @@ def _is_replacement_followup(previous: EvaluationRecord, current: EvaluationReco
         return False
     if previous.source.run_id == current.source.run_id:
         return False
-    elapsed = parse_utc(current.created_at, "evaluation created_at") - parse_utc(
-        previous.created_at, "evaluation created_at"
-    )
+    elapsed = parse_utc(current.created_at, "evaluation created_at") - parse_utc(previous.created_at, "evaluation created_at")
     return timedelta(0) <= elapsed <= timedelta(minutes=FOLLOWUP_WINDOW_MINUTES)
 
 
@@ -190,9 +183,9 @@ def _update_ewma(previous: float, value: float, sample_count: int) -> float:
 
 
 def _evaluation_record_sha256(record: EvaluationRecord) -> str:
-    content = json.dumps(
-        evaluation_record_to_dict(record), ensure_ascii=False, separators=(",", ":"), sort_keys=True
-    ).encode("utf-8")
+    content = json.dumps(evaluation_record_to_dict(record), ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode(
+        "utf-8"
+    )
     return hashlib.sha256(content).hexdigest()
 
 
@@ -277,16 +270,12 @@ def _score_components(stats: dict[str, Any], now: datetime, policy: FreshnessRul
 
 
 def _efficiency_score(stats: dict[str, Any], average_tokens: float, policy: FreshnessRules) -> float:
-    token_score = _clamp(
-        100 - max(0, average_tokens - policy.token_free_budget) / policy.tokens_per_penalty_point, 0, 100
-    )
+    token_score = _clamp(100 - max(0, average_tokens - policy.token_free_budget) / policy.tokens_per_penalty_point, 0, 100)
     latency_samples = int(stats["latency_sample_count"])
     if latency_samples == 0:
         return token_score
     average_latency = int(stats["total_latency_ms"]) / latency_samples
-    latency_score = _clamp(
-        100 - max(0, average_latency - policy.latency_free_ms) / policy.latency_per_penalty_point, 0, 100
-    )
+    latency_score = _clamp(100 - max(0, average_latency - policy.latency_free_ms) / policy.latency_per_penalty_point, 0, 100)
     return policy.token_efficiency_weight * token_score + (1 - policy.token_efficiency_weight) * latency_score
 
 
@@ -295,11 +284,7 @@ def _reliability_score(stats: dict[str, Any], policy: FreshnessRules) -> float:
     success_rate = int(stats["success_count"]) / call_count
     empty_rate = int(stats["empty_output_count"]) / call_count
     error_rate = int(stats["error_count"]) / call_count
-    return _clamp(
-        (success_rate - policy.empty_output_penalty * empty_rate - policy.error_penalty * error_rate) * 100,
-        0,
-        100,
-    )
+    return _clamp((success_rate - policy.empty_output_penalty * empty_rate - policy.error_penalty * error_rate) * 100, 0, 100)
 
 
 def _clamp(value: float, minimum: float, maximum: float) -> float:
@@ -331,9 +316,7 @@ class FreshnessRules:
 def load_freshness_rules(
     disclosure: ProgressiveDisclosureCore, configured_skills: list[str], *, disclose: bool = True
 ) -> FreshnessRules:
-    selected = disclosure.require_prepared_skill_index().select_one_configured_or_default_skill(
-        "freshness", configured_skills
-    )
+    selected = disclosure.require_prepared_skill_index().select_one_configured_or_default_skill("freshness", configured_skills)
     opened = disclosure.open_skill(selected.reference.name, selected.reference.skill_type)
     if disclose:
         opened.disclose_manifest()
@@ -366,20 +349,9 @@ def read_freshness_rules(disclosure: SkillDisclosure) -> FreshnessRules:
     expected = {"initial", *unit_values, *positive_values, *non_negative_values}
     read_object(value, "freshness settings schema", expected)
     settings: dict[str, float] = {}
-    for names, minimum, maximum in (
-        (unit_values, 0, 1),
-        (positive_values, 0.000001, None),
-        (non_negative_values, 0, None),
-    ):
-        settings.update(
-            {
-                name: read_number(value[name], f"freshness {name}", minimum=minimum, maximum=maximum)
-                for name in names
-            }
-        )
-    rules = FreshnessRules(
-        manifest.name, read_number(value["initial"], "freshness initial", minimum=0, maximum=100), **settings
-    )
+    for names, minimum, maximum in ((unit_values, 0, 1), (positive_values, 0.000001, None), (non_negative_values, 0, None)):
+        settings.update({name: read_number(value[name], f"freshness {name}", minimum=minimum, maximum=maximum) for name in names})
+    rules = FreshnessRules(manifest.name, read_number(value["initial"], "freshness initial", minimum=0, maximum=100), **settings)
     if not math.isclose(sum(getattr(rules, name) for name in weights), 1.0, abs_tol=1e-9):
         raise ValueError("freshness component weights must sum to 1")
     return rules

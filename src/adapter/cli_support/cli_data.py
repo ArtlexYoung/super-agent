@@ -38,9 +38,7 @@ def print_cli_json(value: object, *, pretty: bool = True) -> int:
     return 0
 
 
-def run_selected_cli_command(
-    command: str | None, handlers: dict[str, Callable[[], int]], missing_message: str
-) -> int:
+def run_selected_cli_command(command: str | None, handlers: dict[str, Callable[[], int]], missing_message: str) -> int:
     handler = handlers.get(command or "")
     if handler is None:
         raise ValueError(missing_message)
@@ -65,18 +63,14 @@ def configure_conversations_parser(parser: argparse.ArgumentParser) -> None:
         elif name == "create":
             selected.add_argument("--conversation-id")
         if name in {"create", "rename"}:
-            selected.add_argument(
-                "--title", default="" if name == "create" else None, required=name == "rename"
-            )
+            selected.add_argument("--title", default="" if name == "create" else None, required=name == "rename")
 
 
 def run_conversations_command(args: argparse.Namespace) -> int:
     command = args.conversations_command or "list"
     conversations = load_agent(args.common_config).for_user(args.user_id).conversations
     if command == "list":
-        return print_cli_json(
-            {"schema_version": 1, "conversations": [asdict(item) for item in conversations.list()]}
-        )
+        return print_cli_json({"schema_version": 1, "conversations": [asdict(item) for item in conversations.list()]})
     if command == "show":
         return print_cli_json(asdict(conversations.read(args.conversation_id)))
     if command == "create":
@@ -162,9 +156,7 @@ def configure_runs_parser(parser: argparse.ArgumentParser) -> None:
     feedback_parser.add_argument("--reason", default="")
     add_output_format_option(feedback_parser)
 
-    learn_parser = subparsers.add_parser(
-        "learn", help="explicitly evaluate and improve Skills from one finished run"
-    )
+    learn_parser = subparsers.add_parser("learn", help="explicitly evaluate and improve Skills from one finished run")
     add_config_and_user_options(learn_parser)
     learn_parser.add_argument("--run-id", required=True)
     add_output_format_option(learn_parser)
@@ -190,9 +182,7 @@ def _show_run_status(args: argparse.Namespace) -> int:
     snapshots = (
         [runs.read(args.run_id, include_sensitive=args.include_sensitive)]
         if args.run_id
-        else runs.list(
-            args.limit, conversation_id=args.conversation_id, include_sensitive=args.include_sensitive
-        )
+        else runs.list(args.limit, conversation_id=args.conversation_id, include_sensitive=args.include_sensitive)
     )
     if args.output == "json":
         return print_cli_json({"schema_version": 1, "runs": [asdict(item) for item in snapshots]})
@@ -230,11 +220,7 @@ def _export_run(args: argparse.Namespace) -> int:
 
 
 def _record_run_feedback(args: argparse.Namespace) -> int:
-    event = (
-        load_agent(args.common_config)
-        .for_user(args.user_id)
-        .runs.record_feedback(args.run_id, args.score, args.reason)
-    )
+    event = load_agent(args.common_config).for_user(args.user_id).runs.record_feedback(args.run_id, args.score, args.reason)
     if args.output == "json":
         return print_cli_json(asdict(event))
     else:
@@ -303,9 +289,7 @@ def _print_plan_insight(value: object) -> None:
     )
     model = value.get("model")
     if isinstance(model, dict):
-        print(
-            f"run-model\t{model.get('key', '')}\tselected_by={model.get('selected_by', '')}\treason={model.get('reason', '')}"
-        )
+        print(f"run-model\t{model.get('key', '')}\tselected_by={model.get('selected_by', '')}\treason={model.get('reason', '')}")
 
 
 def _print_model_call_insight(value: object) -> None:
@@ -364,9 +348,7 @@ def _required_object(data: dict[str, object], name: str) -> dict[str, object]:
 
 def _add_sensitive_output_argument(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
-        "--include-sensitive",
-        action="store_true",
-        help="show complete prompts, model text, tool payloads, and error messages",
+        "--include-sensitive", action="store_true", help="show complete prompts, model text, tool payloads, and error messages"
     )
 
 
@@ -388,9 +370,7 @@ def configure_storage_parser(parser: argparse.ArgumentParser) -> None:
     subparsers = parser.add_subparsers(dest="storage_command")
     copy_parser = subparsers.add_parser("copy", help="copy selected user event streams to another backend")
     copy_parser.add_argument("--common-config")
-    copy_parser.add_argument(
-        "--to-backend", choices=["jsonl", "sqlite", "mysql", "postgresql"], required=True
-    )
+    copy_parser.add_argument("--to-backend", choices=["jsonl", "sqlite", "mysql", "postgresql"], required=True)
     copy_parser.add_argument("--to-path", default=".super-agent-copy")
     copy_parser.add_argument("--to-url-env")
     copy_parser.add_argument("--user-id", action="append")
@@ -424,9 +404,7 @@ def run_storage_command(args: argparse.Namespace) -> int:
 def _run_prune_command(args: argparse.Namespace) -> int:
     config = load_common_config(args.common_config)
     backend = create_storage_backend(config.storage.backend, str(config.storage.path), config.storage.url_env)
-    report = config.storage.audit.prune_expired_events(
-        backend, args.user_id or [LOCAL_USER_ID], apply=args.apply
-    )
+    report = config.storage.audit.prune_expired_events(backend, args.user_id or [LOCAL_USER_ID], apply=args.apply)
     if args.apply:
         _refresh_disclosure_histories(config, backend, report)
     if args.output == "json":
@@ -444,9 +422,7 @@ def _run_prune_command(args: argparse.Namespace) -> int:
     return 0
 
 
-def _refresh_disclosure_histories(
-    config: CommonConfig, backend: StorageBackend, report: AuditPruneReport
-) -> None:
+def _refresh_disclosure_histories(config: CommonConfig, backend: StorageBackend, report: AuditPruneReport) -> None:
     from core.records.store import EventStore
 
     for user_report in report.users:
@@ -454,11 +430,7 @@ def _refresh_disclosure_histories(
             continue
         for agent_name in user_report.affected_agents:
             EventStore(
-                backend,
-                config.storage.path,
-                user_report.user_id,
-                agent_name,
-                disclosure_factory=DisclosureStorage,
+                backend, config.storage.path, user_report.user_id, agent_name, disclosure_factory=DisclosureStorage
             ).disclosure.refresh_history()
 
 
@@ -467,13 +439,9 @@ def _resolve_destination_path(value: str, base_directory: Path) -> Path:
     return path if path.is_absolute() else base_directory / path
 
 
-def _add_identity_arguments(
-    parser: argparse.ArgumentParser, *, inherited: bool, default_config: str | None = None
-) -> None:
+def _add_identity_arguments(parser: argparse.ArgumentParser, *, inherited: bool, default_config: str | None = None) -> None:
     default = argparse.SUPPRESS if inherited else default_config
-    add_config_and_user_options(
-        parser, config_default=default, user_default=argparse.SUPPRESS if inherited else LOCAL_USER_ID
-    )
+    add_config_and_user_options(parser, config_default=default, user_default=argparse.SUPPRESS if inherited else LOCAL_USER_ID)
 
 
 def _print_memory_items(items: list[MemoryItem]) -> None:

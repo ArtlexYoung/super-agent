@@ -59,9 +59,7 @@ class AuditPolicy:
             return self.critical_days
         return None
 
-    def redact_event_data(
-        self, stream_type: str, event_type: str, data: dict[str, object]
-    ) -> dict[str, object]:
+    def redact_event_data(self, stream_type: str, event_type: str, data: dict[str, object]) -> dict[str, object]:
         """Return a redacted copy while leaving the canonical event unchanged."""
         prepared = dict(data)
         for field in self.event_rule(stream_type, event_type).content_fields:
@@ -71,9 +69,7 @@ class AuditPolicy:
             prepared[field] = "[redacted]"
         return prepared
 
-    def compact_event_data(
-        self, event_type: str, data: dict[str, object], options: "SubagentRecordOptions"
-    ) -> dict[str, object]:
+    def compact_event_data(self, event_type: str, data: dict[str, object], options: "SubagentRecordOptions") -> dict[str, object]:
         """Remove detailed content before a summary child event is persisted."""
         if not options.is_summary:
             return dict(data)
@@ -88,25 +84,14 @@ class AuditPolicy:
 
     def redact_events(self, events: list[StorageEvent]) -> list[StorageEvent]:
         """Build a dynamically redacted view of canonical storage events."""
-        return [
-            replace(event, data=self.redact_event_data(event.stream_type, event.event_type, event.data))
-            for event in events
-        ]
+        return [replace(event, data=self.redact_event_data(event.stream_type, event.event_type, event.data)) for event in events]
 
     def prune_expired_events(
-        self,
-        backend: StorageBackend,
-        user_ids: list[str],
-        *,
-        apply: bool = False,
-        now: datetime | None = None,
+        self, backend: StorageBackend, user_ids: list[str], *, apply: bool = False, now: datetime | None = None
     ) -> AuditPruneReport:
         """Preview or explicitly delete expired detailed and critical events."""
         current_time = _normalise_now(now)
-        reports = [
-            _prune_one_user(backend, user_id, self, current_time, apply)
-            for user_id in _unique_user_ids(user_ids)
-        ]
+        reports = [_prune_one_user(backend, user_id, self, current_time, apply) for user_id in _unique_user_ids(user_ids)]
         return AuditPruneReport(
             applied=apply,
             now=format_utc(current_time),
@@ -197,9 +182,7 @@ def compact_subagent_result(value: dict[str, object], options: "SubagentRecordOp
         compacted.update(
             subagent_results_count=len(nested),
             subagent_results=[
-                compact_subagent_result(item, options)
-                for item in nested[: options.nested_results]
-                if isinstance(item, dict)
+                compact_subagent_result(item, options) for item in nested[: options.nested_results] if isinstance(item, dict)
             ],
             subagent_results_omitted=max(0, len(nested) - options.nested_results),
         )
@@ -221,9 +204,7 @@ def compact_subagent_result(value: dict[str, object], options: "SubagentRecordOp
             )
         result_digest = _content_digest(value)
         compacted.update(
-            result_sha256=result_digest["sha256"],
-            result_chars=result_digest["characters"],
-            record_mode=options.mode,
+            result_sha256=result_digest["sha256"], result_chars=result_digest["characters"], record_mode=options.mode
         )
     return compacted
 

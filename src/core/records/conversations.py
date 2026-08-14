@@ -34,19 +34,13 @@ def prepare_conversation_turn(
     except KeyError:
         conversation = None
     messages: list[Message] = (
-        []
-        if conversation is None
-        else [{"role": message.role, "content": message.content} for message in conversation.messages]
+        [] if conversation is None else [{"role": message.role, "content": message.content} for message in conversation.messages]
     )
     action_runner = ActionRunner(action_rules, store.append_management_action_event)
     prepared_action = action_runner.prepare_action(
-        ActionRequest.create(
-            "agent:conversation", f"conversation:{selected_id}", (ActionEffect.CREATE, ActionEffect.UPDATE)
-        )
+        ActionRequest.create("agent:conversation", f"conversation:{selected_id}", (ActionEffect.CREATE, ActionEffect.UPDATE))
     )
-    return messages, PendingConversationTurn(
-        store, action_runner, prepared_action, conversation, selected_id, prompt
-    )
+    return messages, PendingConversationTurn(store, action_runner, prepared_action, conversation, selected_id, prompt)
 
 
 def complete_conversation_turn(pending: PendingConversationTurn, result: RunResult) -> None:
@@ -64,9 +58,7 @@ def complete_conversation_turn(pending: PendingConversationTurn, result: RunResu
     )
 
 
-def create_conversation(
-    store: EventStore, title: str = "", *, conversation_id: str | None = None
-) -> Conversation:
+def create_conversation(store: EventStore, title: str = "", *, conversation_id: str | None = None) -> Conversation:
     selected_id = str(uuid4()) if conversation_id is None else read_text(conversation_id, "conversation_id")
     if store.read_events("conversation", selected_id):
         raise ValueError(f"conversation already exists: {selected_id}")
@@ -102,9 +94,7 @@ def rename_conversation(store: EventStore, conversation_id: str, title: str) -> 
     conversation = read_conversation(store, conversation_id)
     clean_title = read_text(title, "conversation title")
     if conversation.title != clean_title:
-        store.append_event(
-            "conversation", conversation.conversation_id, "conversation.renamed", data={"title": clean_title}
-        )
+        store.append_event("conversation", conversation.conversation_id, "conversation.renamed", data={"title": clean_title})
     return read_conversation(store, conversation.conversation_id)
 
 
@@ -120,13 +110,7 @@ def delete_conversation(store: EventStore, conversation_id: str) -> None:
 
 
 def append_conversation_turn(
-    store: EventStore,
-    conversation_id: str,
-    prompt: str,
-    response: str,
-    *,
-    run_id: str,
-    run_result: dict[str, object],
+    store: EventStore, conversation_id: str, prompt: str, response: str, *, run_id: str, run_result: dict[str, object]
 ) -> Conversation:
     """Commit one complete user and assistant turn as one storage event."""
     selected_id = read_text(conversation_id, "conversation_id")
@@ -176,9 +160,7 @@ def conversation_from_events(user_id: str, events: list[StorageEvent]) -> Conver
     )
 
 
-def _message_data(
-    role: str, content: str, run_id: str, *, run_result: dict[str, object] | None = None
-) -> dict[str, object]:
+def _message_data(role: str, content: str, run_id: str, *, run_result: dict[str, object] | None = None) -> dict[str, object]:
     return {
         "message_id": f"message-{uuid4().hex}",
         "role": role,
@@ -202,10 +184,7 @@ def _run_result_summary(result: RunResult) -> dict[str, object]:
 
 
 def _turn_messages_from_event(event: StorageEvent) -> list[ConversationMessage]:
-    messages = [
-        _conversation_message_from_data(event, "user"),
-        _conversation_message_from_data(event, "assistant"),
-    ]
+    messages = [_conversation_message_from_data(event, "user"), _conversation_message_from_data(event, "assistant")]
     if [message.role for message in messages] != ["user", "assistant"]:
         raise ValueError("conversation turn must contain user and assistant messages")
     return messages

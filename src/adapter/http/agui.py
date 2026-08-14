@@ -62,11 +62,7 @@ class AGUIEventMapper:
 
     def create_error_event(self, error: Exception) -> dict[str, str]:
         self.terminal_event_sent = True
-        return {
-            "type": "RUN_ERROR",
-            "message": str(error) or type(error).__name__,
-            "code": type(error).__name__,
-        }
+        return {"type": "RUN_ERROR", "message": str(error) or type(error).__name__, "code": type(error).__name__}
 
     def _map_core_event(self, event: RunEvent) -> list[dict[str, Any]]:
         event_type = event.event_type
@@ -150,11 +146,7 @@ def _read_user_content(value: object) -> str:
         return value.strip()
     if not isinstance(value, list):
         return ""
-    parts = [
-        str(item.get("text", "")).strip()
-        for item in value
-        if isinstance(item, dict) and item.get("type") == "text"
-    ]
+    parts = [str(item.get("text", "")).strip() for item in value if isinstance(item, dict) and item.get("type") == "text"]
     return "\n".join(part for part in parts if part)
 
 
@@ -177,11 +169,7 @@ def _tool_call_started_events(event: RunEvent) -> list[dict[str, object]]:
     call_id = str(event.data.get("call_id") or f"tool-{event.sequence}")
     arguments = event.data.get("arguments", {})
     return [
-        {
-            "type": "TOOL_CALL_START",
-            "toolCallId": call_id,
-            "toolCallName": str(event.data.get("name", "runtime_tool")),
-        },
+        {"type": "TOOL_CALL_START", "toolCallId": call_id, "toolCallName": str(event.data.get("name", "runtime_tool"))},
         {
             "type": "TOOL_CALL_ARGS",
             "toolCallId": call_id,
@@ -291,9 +279,7 @@ class AGUIRequestHandler(BaseHTTPRequestHandler):
             self._send_json(HTTPStatus.FORBIDDEN, {"error": "origin is not allowed"})
             return
         if self.headers.get_content_type() != "application/json":
-            self._send_json(
-                HTTPStatus.UNSUPPORTED_MEDIA_TYPE, {"error": "Content-Type must be application/json"}
-            )
+            self._send_json(HTTPStatus.UNSUPPORTED_MEDIA_TYPE, {"error": "Content-Type must be application/json"})
             return
         try:
             request = AGUIRunInput.from_dict(self._read_json_body())
@@ -334,17 +320,11 @@ class AGUIRequestHandler(BaseHTTPRequestHandler):
         except ActionBlockedError as error:
             self._send_json(
                 HTTPStatus.FORBIDDEN,
-                {
-                    "error": str(error),
-                    "action_id": error.request.action_id,
-                    "decision": error.decision.decision.value,
-                },
+                {"error": str(error), "action_id": error.request.action_id, "decision": error.decision.decision.value},
             )
             return
         except OSError:
-            self._send_json(
-                HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "unable to persist the requested change"}
-            )
+            self._send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "unable to persist the requested change"})
             return
         self._send_web_api_response(response)
 
@@ -451,8 +431,7 @@ class AGUIRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.send_header(
-            "Cache-Control",
-            ("no-cache" if candidate.name == "index.html" else "public, max-age=31536000, immutable"),
+            "Cache-Control", ("no-cache" if candidate.name == "index.html" else "public, max-age=31536000, immutable")
         )
         self._send_security_headers()
         self.end_headers()
@@ -504,9 +483,7 @@ def create_ag_ui_server(
         raise ValueError("AG-UI server port must be between 0 and 65535")
     if not user_id.strip():
         raise ValueError("AG-UI server user_id cannot be empty")
-    return AGUIHTTPServer(
-        (clean_host, port), agent, user_id=user_id, allowed_origins=allowed_origins, static_root=static_root
-    )
+    return AGUIHTTPServer((clean_host, port), agent, user_id=user_id, allowed_origins=allowed_origins, static_root=static_root)
 
 
 def _error_message(error: KeyError) -> str:

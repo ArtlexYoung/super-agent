@@ -88,9 +88,7 @@ class ModelDefinition:
                 supports=read_text_list(data.get("supports", ["text"]), "model Skill supports", lower=True),
                 purposes=read_text_list(data.get("purposes", []), "model Skill purposes", lower=True),
                 strengths=read_text_list(data.get("strengths", []), "model Skill strengths", lower=True),
-                quality_score=read_optional_number(
-                    data.get("quality_score"), "model Skill quality_score", minimum=0, maximum=1
-                ),
+                quality_score=read_optional_number(data.get("quality_score"), "model Skill quality_score", minimum=0, maximum=1),
                 expected_latency_ms=read_optional_int(
                     data.get("expected_latency_ms"), "model Skill expected_latency_ms", minimum=0
                 ),
@@ -125,10 +123,7 @@ class ModelDefinition:
         return data
 
     def to_public_dict(self) -> dict[str, object]:
-        return {
-            **self.to_configuration(),
-            "total_cost_per_million": self.traits.pricing.total_cost_per_million,
-        }
+        return {**self.to_configuration(), "total_cost_per_million": self.traits.pricing.total_cost_per_million}
 
     def to_dispatch_dict(self) -> dict[str, object]:
         traits = self.traits
@@ -206,9 +201,7 @@ def read_model_profiles(skills: Skills, environment: Mapping[str, str] | None = 
     model_entries = [entry for entry in skills.index.entries if entry.reference.skill_type == "model"]
     if not model_entries:
         return discover_environment_model_profiles(environment)
-    profiles = [
-        create_model_profile_from_skill_disclosure(skills.open(entry.reference)) for entry in model_entries
-    ]
+    profiles = [create_model_profile_from_skill_disclosure(skills.open(entry.reference)) for entry in model_entries]
     select_default_model_profile(profiles)
     return profiles
 
@@ -237,9 +230,7 @@ def discover_environment_model_profiles(environment: Mapping[str, str] | None = 
                 "siliconflow",
                 "Free SiliconFlow model discovered from OA3_SILICONFLOW_API_KEY.",
                 DEFAULT_SILICONFLOW_MODEL,
-                ProviderConnection(
-                    OPENAI_COMPATIBLE_PROVIDER, DEFAULT_SILICONFLOW_BASE_URL, "OA3_SILICONFLOW_API_KEY"
-                ),
+                ProviderConnection(OPENAI_COMPATIBLE_PROVIDER, DEFAULT_SILICONFLOW_BASE_URL, "OA3_SILICONFLOW_API_KEY"),
                 "environment:OA3_SILICONFLOW_API_KEY",
                 supports=["text", "tools"],
             )
@@ -282,8 +273,7 @@ def discover_environment_model_profiles(environment: Mapping[str, str] | None = 
         )
     profiles = _deduplicate_profiles(profiles)
     return [
-        replace(profile, definition=replace(profile.definition, default=index == 0))
-        for index, profile in enumerate(profiles)
+        replace(profile, definition=replace(profile.definition, default=index == 0)) for index, profile in enumerate(profiles)
     ]
 
 
@@ -294,10 +284,7 @@ def create_direct_provider_profile() -> ModelProfile:
         description="Provider supplied directly when creating the Agent.",
         version="code",
         definition=ModelDefinition(
-            "provided",
-            ProviderConnection(MOCK_PROVIDER),
-            ModelTraits(["text", "tools"], [], []),
-            default=True,
+            "provided", ProviderConnection(MOCK_PROVIDER), ModelTraits(["text", "tools"], [], []), default=True
         ),
         source="code",
         skill_key="model:provided",
@@ -310,9 +297,7 @@ def model_profile_is_ready(profile: ModelProfile, environment: Mapping[str, str]
     return name is None or bool(env.get(name, "").strip())
 
 
-def model_profile_to_dict(
-    profile: ModelProfile, environment: Mapping[str, str] | None = None
-) -> dict[str, object]:
+def model_profile_to_dict(profile: ModelProfile, environment: Mapping[str, str] | None = None) -> dict[str, object]:
     return {
         "key": profile.key,
         "name": profile.name,
@@ -377,12 +362,7 @@ def choose_dispatch_model(
 
 
 def model_connection_fields(profile: ModelProfile) -> tuple[str, str, str | None, str | None]:
-    return (
-        profile.connection.provider,
-        profile.model,
-        profile.connection.base_url,
-        profile.connection.api_key_env,
-    )
+    return (profile.connection.provider, profile.model, profile.connection.base_url, profile.connection.api_key_env)
 
 
 def _profile_from_super_agent_environment(environment: Mapping[str, str], provider: str) -> ModelProfile:
@@ -410,13 +390,7 @@ def _profile_from_super_agent_environment(environment: Mapping[str, str], provid
 
 
 def _create_ephemeral_profile(
-    name: str,
-    description: str,
-    model: str,
-    connection: ProviderConnection,
-    source: str,
-    *,
-    supports: list[str] | None = None,
+    name: str, description: str, model: str, connection: ProviderConnection, source: str, *, supports: list[str] | None = None
 ) -> ModelProfile:
     return ModelProfile(
         name=name,

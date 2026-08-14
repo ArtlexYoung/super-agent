@@ -59,9 +59,7 @@ class DisclosureContextBudget:
         if stage in CONTEXT_BUDGET_STAGES:
             selected_limit = min(limit, max(0, self.budget_chars - self.used_chars))
         page = (
-            create_reference_disclosure_page(
-                reference, kind, name, content, offset=offset, cache_path=cache_path
-            )
+            create_reference_disclosure_page(reference, kind, name, content, offset=offset, cache_path=cache_path)
             if selected_limit == 0
             else create_disclosure_page(
                 reference, kind, name, content, offset=offset, limit=selected_limit, cache_path=cache_path
@@ -208,42 +206,26 @@ def read_skill_sources(
         skill_roots, disabled_names, "project", {source.reference.key: source for source in user.sources}
     )
     builtin = _read_source_group(
-        builtin_skill_roots or [],
-        disabled_names,
-        "builtin",
-        {source.reference.key: source for source in project.sources},
+        builtin_skill_roots or [], disabled_names, "builtin", {source.reference.key: source for source in project.sources}
     )
     disabled = {
         reference.key: reference
-        for reference in [
-            *user.disabled_references,
-            *project.disabled_references,
-            *builtin.disabled_references,
-        ]
+        for reference in [*user.disabled_references, *project.disabled_references, *builtin.disabled_references]
     }
     return SkillSourceScan(
-        builtin.sources,
-        sorted(disabled.values(), key=lambda item: item.key),
-        [*user.issues, *project.issues, *builtin.issues],
+        builtin.sources, sorted(disabled.values(), key=lambda item: item.key), [*user.issues, *project.issues, *builtin.issues]
     )
 
 
 def _read_source_group(
-    roots: list[Path],
-    disabled_names: list[str],
-    source_layer: str,
-    existing_sources: dict[str, SkillSource] | None = None,
+    roots: list[Path], disabled_names: list[str], source_layer: str, existing_sources: dict[str, SkillSource] | None = None
 ) -> SkillSourceScan:
     sources = dict(existing_sources or {})
     higher_keys = set(sources)
     disabled: dict[str, SkillReference] = {}
     issues = []
     paths = sorted(
-        path
-        for root in roots
-        if root.expanduser().is_dir()
-        for path in root.expanduser().rglob("skill.toml")
-        if path.is_file()
+        path for root in roots if root.expanduser().is_dir() for path in root.expanduser().rglob("skill.toml") if path.is_file()
     )
     for path in paths:
         try:
@@ -282,9 +264,7 @@ def _read_skill_source(path: Path, source_layer: str) -> SkillSource:
     configuration = data.get("configuration", {})
     if not isinstance(configuration, dict):
         raise ValueError(f"skill configuration must be a TOML table: {path}")
-    return SkillSource(
-        SkillReference(manifest.skill_type, manifest.name), manifest, dict(configuration), path, source_layer
-    )
+    return SkillSource(SkillReference(manifest.skill_type, manifest.name), manifest, dict(configuration), path, source_layer)
 
 
 def _skill_is_disabled(reference: SkillReference, disabled_names: list[str]) -> bool:
@@ -351,16 +331,12 @@ class SkillIndex:
             raise KeyError(f"skill not found: {type_text}{name}")
         return entry
 
-    def select_one_configured_or_default_skill(
-        self, skill_type: str, configured_skills: list[str]
-    ) -> SkillIndexEntry:
+    def select_one_configured_or_default_skill(self, skill_type: str, configured_skills: list[str]) -> SkillIndexEntry:
         """Select one support Skill without interpreting task text."""
         selected_type = _clean_name(skill_type)
         entries = [entry for entry in self.entries if entry.reference.skill_type == selected_type]
         configured = [
-            self.require_skill(value)
-            for value in configured_skills
-            if value.strip().lower().startswith(f"{selected_type}:")
+            self.require_skill(value) for value in configured_skills if value.strip().lower().startswith(f"{selected_type}:")
         ]
         if len(configured) > 1:
             keys = ", ".join(entry.reference.key for entry in configured)
@@ -447,36 +423,17 @@ class DisclosureEvent:
 
 
 def skill_index_to_dict(index: SkillIndex) -> dict[str, object]:
-    return {
-        "schema_version": 6,
-        "skills": [
-            {
-                "key": entry.reference.key,
-                "name": entry.reference.name,
-                "type": entry.reference.skill_type,
-                "description": entry.description,
-                "version": entry.version,
-                "provides": list(entry.provides),
-                "requires": list(entry.requires),
-                "manifest_cache_path": _optional_path(entry.manifest_cache_path),
-                "instructions_cache_path": _optional_path(entry.instructions_cache_path),
-                "configuration_cache_path": _optional_path(entry.configuration_cache_path),
-                "files_cache_path": _optional_path(entry.files_cache_path),
-                "content_sha256": entry.content_sha256,
-                "source": entry.source,
-                "agent_created": entry.agent_created,
-                "agent_can_update": entry.agent_can_update,
-                "freshness": entry.freshness,
-                "function_group": entry.function_group,
-                "freshness_updated_at": entry.freshness_updated_at,
-                "call_count": entry.call_count,
-                "success_count": entry.success_count,
-                "same_function_successful_followups": entry.same_function_successful_followups,
-                "default": entry.is_default,
-            }
-            for entry in index.entries
-        ],
-    }
+    return {"schema_version": 6, "skills": [_skill_index_entry_to_dict(entry) for entry in index.entries]}
+
+
+def _skill_index_entry_to_dict(entry: SkillIndexEntry) -> dict[str, object]:
+    value = asdict(entry)
+    value.pop("reference")
+    value.update(key=entry.reference.key, name=entry.reference.name, type=entry.reference.skill_type)
+    value["default"] = value.pop("is_default")
+    for name in ("manifest_cache_path", "instructions_cache_path", "configuration_cache_path", "files_cache_path"):
+        value[name] = _optional_path(getattr(entry, name))
+    return value
 
 
 def _optional_path(path: Path | None) -> str | None:
@@ -518,22 +475,13 @@ def _visit_entry(
     visit_states[key] = "visiting"
     stack.append(key)
     for skill_type in sorted(entry.requires):
-        _visit_entry(
-            _find_required_entry(skill_type, index, providers),
-            index,
-            providers,
-            visit_states,
-            stack,
-            resolved,
-        )
+        _visit_entry(_find_required_entry(skill_type, index, providers), index, providers, visit_states, stack, resolved)
     stack.pop()
     visit_states[key] = "visited"
     resolved.append(entry)
 
 
-def _find_required_entry(
-    skill_type: str, index: SkillIndex, providers: dict[str, list[SkillIndexEntry]]
-) -> SkillIndexEntry:
+def _find_required_entry(skill_type: str, index: SkillIndex, providers: dict[str, list[SkillIndexEntry]]) -> SkillIndexEntry:
     try:
         named = index.find_skill(skill_type)
     except ValueError:

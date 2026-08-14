@@ -3,14 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable
 
-from skill.handlers.runtime import (
-    SkillAction,
-    SkillSession,
-    SkillSessionContext,
-    SkillTool,
-    SkillUse,
-    TaskPolicy,
-)
+from skill.handlers.runtime import SkillAction, SkillSession, SkillSessionContext, SkillTool, SkillUse, TaskPolicy
 from core.provider import Message, ToolCall, ToolDefinition
 from core.models import (
     SubAgentResult,
@@ -41,27 +34,17 @@ class RunTools:
         self._subagents = run.task.subagents.list_subagents() if run.task.include_subagents else []
         self.used_skill_names: list[str] = []
         self._activated_skill_keys = {str(item["key"]) for item in run.list_used_skill_evidence()}
-        self._active_task_skill = next(
-            (key for key in self._activated_skill_keys if key.startswith("task:")), None
-        )
+        self._active_task_skill = next((key for key in self._activated_skill_keys if key.startswith("task:")), None)
         self.activated_contributions: list[SkillUse] = []
-        self.delegated_subagent_results = (
-            [] if delegated_subagent_results is None else delegated_subagent_results
-        )
+        self.delegated_subagent_results = [] if delegated_subagent_results is None else delegated_subagent_results
         self.skill_session: SkillSession | None = None
         self.task_policy: TaskPolicy | None = None
         self._session_context = SkillSessionContext(
-            self._subagents,
-            self._run_named_subagent,
-            run.record_event,
-            self._record_subagent_result,
-            self._create_shared_context,
+            self._subagents, self._run_named_subagent, run.record_event, self._record_subagent_result, self._create_shared_context
         )
         self._tools: dict[str, SkillTool] = {}
         disclosure = run.skills.disclosure
-        self._add_tools(
-            _create_disclosure_tools(self, run.skills.index, records_cache=disclosure.recorder is not None)
-        )
+        self._add_tools(_create_disclosure_tools(self, run.skills.index, records_cache=disclosure.recorder is not None))
         self._add_tools(extra_tools)
         if run.task.shared_context is not None:
             self._add_tools(_create_shared_context_tools(self))
@@ -90,9 +73,7 @@ class RunTools:
         return tuple(self._tools.values())
 
     def run_tool_call(self, call: ToolCall) -> dict[str, object]:
-        self.run.record_event(
-            "tool.requested", {"call_id": call.id, "name": call.name, "arguments": call.arguments}
-        )
+        self.run.record_event("tool.requested", {"call_id": call.id, "name": call.name, "arguments": call.arguments})
         tool = self._tools.get(call.name)
         if tool is None:
             error = KeyError(f"unknown runtime tool: {call.name}")
@@ -116,29 +97,19 @@ class RunTools:
         self.run.record_event("tool.completed", {"call_id": call.id, "name": call.name, "result": result})
         return result
 
-    def _prepare_result(
-        self, tool: SkillTool, call: ToolCall, result: dict[str, object]
-    ) -> dict[str, object]:
+    def _prepare_result(self, tool: SkillTool, call: ToolCall, result: dict[str, object]) -> dict[str, object]:
         if not isinstance(result, dict):
             raise TypeError(f"Skill tool must return an object: {tool.name}")
         if tool.result_kind is None:
             return result
-        page = self.run.skills.disclosure.disclose_value(
-            tool.result_kind, call.id, result, stage="tool-result"
-        )
+        page = self.run.skills.disclosure.disclose_value(tool.result_kind, call.id, result, stage="tool-result")
         if page.next_offset is None:
             return result
         return {"progressive_disclosure": disclosure_page_to_dict(page)}
 
     def _record_tool_failure(self, call: ToolCall, error: Exception) -> None:
         self.run.record_event(
-            "tool.failed",
-            {
-                "call_id": call.id,
-                "name": call.name,
-                "error_type": type(error).__name__,
-                "message": str(error),
-            },
+            "tool.failed", {"call_id": call.id, "name": call.name, "error_type": type(error).__name__, "message": str(error)}
         )
 
     def _add_tools(self, tools: tuple[SkillTool, ...]) -> None:
@@ -182,11 +153,7 @@ class RunTools:
         opened = self._open_requested_skill(arguments)
         disclosed = opened.disclose_instructions()
         reference = opened.index_entry.reference
-        return {
-            "key": reference.key,
-            "instructions": disclosed.content,
-            "cache_path": _optional_path(disclosed.cache_path),
-        }
+        return {"key": reference.key, "instructions": disclosed.content, "cache_path": _optional_path(disclosed.cache_path)}
 
     def _disclose_skill_configuration(self, arguments: dict[str, object]) -> dict[str, object]:
         opened = self._open_requested_skill(arguments)
@@ -271,9 +238,7 @@ class RunTools:
             raise RuntimeError("stateful Skill startup is unavailable")
         return starters[0](self._session_context)
 
-    def _load_reference_tree(
-        self, reference: SkillReference, loading: set[str]
-    ) -> list[tuple[SkillReference, SkillUse]]:
+    def _load_reference_tree(self, reference: SkillReference, loading: set[str]) -> list[tuple[SkillReference, SkillUse]]:
         if reference.key in self._activated_skill_keys:
             return []
         if reference.key in loading:
@@ -294,9 +259,7 @@ class RunTools:
         if self.run.task.allowed_task_skills and reference.name not in self.run.task.allowed_task_skills:
             raise PermissionError(f"task Skill is outside this run's allowed Skills: {reference.key}")
         if self._active_task_skill not in {None, reference.key}:
-            raise PermissionError(
-                f"only one task Skill can be active in a run: {self._active_task_skill}, {reference.key}"
-            )
+            raise PermissionError(f"only one task Skill can be active in a run: {self._active_task_skill}, {reference.key}")
 
     def list_subagents(self, arguments: dict[str, object]) -> dict[str, object]:
         if not self._subagents:
@@ -328,9 +291,7 @@ class RunTools:
         self.delegated_subagent_results.append(_read_subagent_result(value))
 
     def _create_shared_context(self, group_id: str, content: str) -> dict[str, object]:
-        page = self.run.skills.disclosure.disclose_content(
-            "agent-group", group_id, content, stage="group-context"
-        )
+        page = self.run.skills.disclosure.disclose_content("agent-group", group_id, content, stage="group-context")
         return {
             "group_id": group_id,
             "content": content,
@@ -370,15 +331,9 @@ class RunTools:
             self.used_skill_names.append(reference.key)
 
 
-def _create_disclosure_tools(
-    run_tools: RunTools, skill_index: SkillIndex, *, records_cache: bool
-) -> tuple[SkillTool, ...]:
+def _create_disclosure_tools(run_tools: RunTools, skill_index: SkillIndex, *, records_cache: bool) -> tuple[SkillTool, ...]:
     reference = _skill_reference_properties(skill_index)
-    disclosure_effects = (
-        (ActionEffect.READ, ActionEffect.CREATE, ActionEffect.UPDATE)
-        if records_cache
-        else (ActionEffect.READ,)
-    )
+    disclosure_effects = (ActionEffect.READ, ActionEffect.CREATE, ActionEffect.UPDATE) if records_cache else (ActionEffect.READ,)
     tools = [
         SkillTool(
             "list_skills",
@@ -444,9 +399,7 @@ def _read_subagent_result(value: dict[str, object]) -> SubAgentResult:
         prompt=str(value.get("prompt", "")),
         created_by_agent=bool(value.get("created_by_agent", False)),
         subagent_results=(
-            [_read_subagent_result(item) for item in nested if isinstance(item, dict)]
-            if isinstance(nested, list)
-            else None
+            [_read_subagent_result(item) for item in nested if isinstance(item, dict)] if isinstance(nested, list) else None
         ),
         run_id=str(value.get("run_id", "")),
     )

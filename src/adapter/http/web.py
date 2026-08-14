@@ -36,9 +36,7 @@ class CommonConfigurationInput:
                 if value.get("max_agent_chain_depth") is None
                 else read_int(value["max_agent_chain_depth"], "max_agent_chain_depth", minimum=1)
             ),
-            disabled_skills=read_text_list(
-                value.get("disabled_skills", []), "agent configuration disabled_skills", lower=True
-            ),
+            disabled_skills=read_text_list(value.get("disabled_skills", []), "agent configuration disabled_skills", lower=True),
         )
 
     def to_agent_settings(self) -> AgentSettings:
@@ -161,13 +159,7 @@ def _web_skill_list(value: dict[str, object], config: CommonConfig) -> list[dict
         {
             key: field
             for key, field in item.items()
-            if key
-            not in {
-                "manifest_cache_path",
-                "instructions_cache_path",
-                "configuration_cache_path",
-                "files_cache_path",
-            }
+            if key not in {"manifest_cache_path", "instructions_cache_path", "configuration_cache_path", "files_cache_path"}
         }
         | {
             "enabled": not {item["type"], item["key"], item["name"]} & disabled,

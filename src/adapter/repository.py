@@ -84,9 +84,7 @@ class IncrementalRepositoryMap:
                 if cached is not None and cached.stamp == stamp:
                     reused += 1
                     continue
-                self._entries[relative] = _CachedMapEntry(
-                    stamp, _summarize_file(path, relative, content, digest)
-                )
+                self._entries[relative] = _CachedMapEntry(stamp, _summarize_file(path, relative, content, digest))
                 refreshed += 1
             except ValueError as error:
                 self._entries.pop(relative, None)
@@ -271,11 +269,7 @@ class IsolatedWorktreeTools:
 
     def _run_git(self, arguments: list[str]) -> str:
         completed = subprocess.run(
-            ["git", "-C", str(self.repository), *arguments],
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=60,
+            ["git", "-C", str(self.repository), *arguments], check=False, capture_output=True, text=True, timeout=60
         )
         if completed.returncode != 0:
             detail = (completed.stderr or completed.stdout).strip()[:WORKTREE_OUTPUT_LIMIT]

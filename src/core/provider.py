@@ -78,9 +78,7 @@ class ModelPricing:
         known = {name: value for name, value in counts.items() if value is not None}
         prices = self.resolved_dict()
         weighted = sum(
-            count * prices[price_name]
-            for name, price_name in MODEL_TOKEN_PRICE_FIELDS
-            if (count := known.get(name)) is not None
+            count * prices[price_name] for name, price_name in MODEL_TOKEN_PRICE_FIELDS if (count := known.get(name)) is not None
         )
         total_tokens = sum(known.values())
         return {
@@ -190,8 +188,7 @@ def call_chat_model(call: ProviderCall, provider: ChatProvider, record_event: Ev
 def read_model_turn(response: ModelResponse) -> ModelTurn:
     if response.tool_calls:
         return ActionTurn(
-            tuple(ModelAction(call.id, call.name, dict(call.arguments)) for call in response.tool_calls),
-            response.text,
+            tuple(ModelAction(call.id, call.name, dict(call.arguments)) for call in response.tool_calls), response.text
         )
     if not response.text.strip():
         raise ValueError("model returned neither final text nor actions")
@@ -223,9 +220,7 @@ class MockProvider:
             return structured
         return self.response
 
-    def send_chat_messages_with_tools(
-        self, messages: list[Message], model: str, tools: list[ToolDefinition]
-    ) -> ModelResponse:
+    def send_chat_messages_with_tools(self, messages: list[Message], model: str, tools: list[ToolDefinition]) -> ModelResponse:
         self.last_messages = messages
         self.tool_requests.append((list(messages), list(tools)))
         if self.tool_responses:
@@ -242,17 +237,13 @@ class OpenAICompatibleProvider:
         data = self._send_request({"model": model, "messages": messages})
         return str(data["choices"][0]["message"]["content"])
 
-    def send_chat_messages_with_tools(
-        self, messages: list[Message], model: str, tools: list[ToolDefinition]
-    ) -> ModelResponse:
+    def send_chat_messages_with_tools(self, messages: list[Message], model: str, tools: list[ToolDefinition]) -> ModelResponse:
         data = self._send_request({"model": model, "messages": messages, "tools": tools})
         choice = data["choices"][0]
         message = choice["message"]
         calls = [_read_openai_tool_call(item) for item in message.get("tool_calls", [])]
         stop_reason = "tool_calls" if calls else "model_finished"
-        return ModelResponse(
-            text=str(message.get("content") or ""), tool_calls=calls, stop_reason=stop_reason
-        )
+        return ModelResponse(text=str(message.get("content") or ""), tool_calls=calls, stop_reason=stop_reason)
 
     def _send_request(self, payload: dict[str, object]) -> dict[str, Any]:
         url = f"{self.base_url.rstrip('/')}/chat/completions"
@@ -270,9 +261,7 @@ class AnthropicCompatibleProvider:
         data = self._send_request(payload)
         return _read_anthropic_text(data)
 
-    def send_chat_messages_with_tools(
-        self, messages: list[Message], model: str, tools: list[ToolDefinition]
-    ) -> ModelResponse:
+    def send_chat_messages_with_tools(self, messages: list[Message], model: str, tools: list[ToolDefinition]) -> ModelResponse:
         system, non_system_messages = _split_system_message_from_user_messages(messages)
         payload = {
             "model": model,
@@ -282,15 +271,9 @@ class AnthropicCompatibleProvider:
             "tools": [_to_anthropic_tool_definition(tool) for tool in tools],
         }
         data = self._send_request(payload)
-        calls = [
-            _read_anthropic_tool_call(block)
-            for block in data.get("content", [])
-            if block.get("type") == "tool_use"
-        ]
+        calls = [_read_anthropic_tool_call(block) for block in data.get("content", []) if block.get("type") == "tool_use"]
         return ModelResponse(
-            text=_read_anthropic_text(data),
-            tool_calls=calls,
-            stop_reason="tool_calls" if calls else "model_finished",
+            text=_read_anthropic_text(data), tool_calls=calls, stop_reason="tool_calls" if calls else "model_finished"
         )
 
     def _send_request(self, payload: dict[str, object]) -> dict[str, Any]:
@@ -298,9 +281,7 @@ class AnthropicCompatibleProvider:
         return _send_json_post_request(url, payload, self.api_key)
 
 
-def create_chat_provider(
-    connection: ProviderConnection, environment: Mapping[str, str] | None = None
-) -> ChatProvider:
+def create_chat_provider(connection: ProviderConnection, environment: Mapping[str, str] | None = None) -> ChatProvider:
     settings = normalize_provider_connection(connection)
     provider = settings.provider
     if provider == MOCK_PROVIDER:
@@ -319,9 +300,7 @@ def _send_provider_call(call: ProviderCall, provider: ChatProvider) -> ModelResp
     return provider.send_chat_messages_with_tools(messages, call.model, list(call.tools))
 
 
-def _provider_call_metrics(
-    call: ProviderCall, input_tokens: int, output: str, started_at: float
-) -> dict[str, object]:
+def _provider_call_metrics(call: ProviderCall, input_tokens: int, output: str, started_at: float) -> dict[str, object]:
     output_tokens = estimate_text_tokens(output)
     input_cost = input_tokens * (call.pricing.input_cost_per_million or 0.0)
     output_cost = output_tokens * (call.pricing.output_cost_per_million or 0.0)
@@ -342,10 +321,7 @@ def _provider_call_metrics(
 
 def _model_response_text(response: ModelResponse) -> str:
     return json.dumps(
-        {
-            "text": response.text,
-            "tool_calls": [{"name": call.name, "arguments": call.arguments} for call in response.tool_calls],
-        },
+        {"text": response.text, "tool_calls": [{"name": call.name, "arguments": call.arguments} for call in response.tool_calls]},
         ensure_ascii=False,
         sort_keys=True,
     )
@@ -437,12 +413,7 @@ def _tool_call_to_anthropic_block(data: dict[str, Any]) -> dict[str, object]:
     arguments = function.get("arguments", {})
     if isinstance(arguments, str):
         arguments = json.loads(arguments or "{}")
-    return {
-        "type": "tool_use",
-        "id": str(data.get("id", "")),
-        "name": str(function.get("name", "")),
-        "input": arguments,
-    }
+    return {"type": "tool_use", "id": str(data.get("id", "")), "name": str(function.get("name", "")), "input": arguments}
 
 
 def _read_anthropic_text(data: dict[str, Any]) -> str:
@@ -502,9 +473,7 @@ UserSecretLookup = Callable[[str, str], str | None]
 class UserSecretResolver:
     """Create a non-enumerable environment view for one validated user."""
 
-    def __init__(
-        self, lookup: UserSecretLookup | None = None, process_environment: Mapping[str, str] | None = None
-    ) -> None:
+    def __init__(self, lookup: UserSecretLookup | None = None, process_environment: Mapping[str, str] | None = None) -> None:
         self.lookup = lookup
         self.process_environment = os.environ if process_environment is None else process_environment
 

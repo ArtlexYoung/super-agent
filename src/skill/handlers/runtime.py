@@ -307,9 +307,7 @@ def _validate_completion_callback(result: SkillUse) -> None:
 
 
 def _validate_included_skills(references: object) -> None:
-    if not isinstance(references, tuple) or not all(
-        isinstance(reference, SkillReference) for reference in references
-    ):
+    if not isinstance(references, tuple) or not all(isinstance(reference, SkillReference) for reference in references):
         raise TypeError("SkillUse.included_skills must contain SkillReference values")
     keys = [reference.key for reference in references]
     if len(keys) != len(set(keys)):
@@ -344,9 +342,7 @@ def _validate_skill_tool(tool: object) -> None:
         raise ValueError(f"Skill tool required names are invalid: {tool.name}")
     if not isinstance(tool.action, SkillAction):
         raise TypeError(f"Skill tool is missing an action: {tool.name}")
-    if tool.result_kind is not None and (
-        not isinstance(tool.result_kind, str) or not tool.result_kind.strip()
-    ):
+    if tool.result_kind is not None and (not isinstance(tool.result_kind, str) or not tool.result_kind.strip()):
         raise ValueError(f"Skill tool result_kind is invalid: {tool.name}")
     argument = tool.action.resource_argument
     if argument is not None and argument not in tool.properties:
@@ -409,9 +405,7 @@ def create_progressive_skill_disclosure(
         )
         policy_disclosure.prepare_skill_index()
         rules = load_freshness_rules(policy_disclosure, config.agent.skills, disclose=False)
-        freshness_stats = calculate_skill_freshness(
-            read_evaluation_records(store, source_type="agent_run"), rules
-        )
+        freshness_stats = calculate_skill_freshness(read_evaluation_records(store, source_type="agent_run"), rules)
     disabled = set(config.agent.disabled_skills)
     roots = [] if "skill" in disabled else config.paths.skills
     should_record = identity is not None if record_disclosures is None else record_disclosures
@@ -423,33 +417,23 @@ def create_progressive_skill_disclosure(
         builtin_skill_roots=[_builtin_skill_root()],
         disabled_names=config.agent.disabled_skills,
         freshness_stats=freshness_stats,
-        recorder=(
-            create_runtime_disclosure_recorder(store, identity)
-            if should_record and store is not None
-            else None
-        ),
+        recorder=(create_runtime_disclosure_recorder(store, identity) if should_record and store is not None else None),
         record_event=None,
     )
 
 
-def load_configured_freshness_rules(
-    config: CommonConfig, *, store: EventStore | None = None
-) -> FreshnessRules:
+def load_configured_freshness_rules(config: CommonConfig, *, store: EventStore | None = None) -> FreshnessRules:
     """Load deterministic freshness settings through central disclosure."""
     if "freshness" in config.agent.disabled_skills:
         raise ValueError("freshness Skills are disabled for this Agent")
     from skill.learning.freshness import load_freshness_rules
 
-    disclosure = create_progressive_skill_disclosure(
-        config, store=store, record_disclosures=False, include_freshness=False
-    )
+    disclosure = create_progressive_skill_disclosure(config, store=store, record_disclosures=False, include_freshness=False)
     disclosure.prepare_skill_index()
     return load_freshness_rules(disclosure, config.agent.skills, disclose=False)
 
 
-def load_configured_freshness_rules_if_enabled(
-    config: CommonConfig, *, store: EventStore | None = None
-) -> FreshnessRules | None:
+def load_configured_freshness_rules_if_enabled(config: CommonConfig, *, store: EventStore | None = None) -> FreshnessRules | None:
     """Load selected freshness rules, or None when explicitly disabled."""
     if "freshness" in config.agent.disabled_skills:
         return None
@@ -467,29 +451,19 @@ def create_skills(
 ) -> Skills:
     """Build one complete Skill snapshot through the central entry point."""
     disclosure = create_progressive_skill_disclosure(
-        config,
-        store=store,
-        identity=identity,
-        record_disclosures=record_disclosures,
-        include_freshness=include_freshness,
+        config, store=store, identity=identity, record_disclosures=record_disclosures, include_freshness=include_freshness
     )
     return Skills(disclosure, handlers)
 
 
-def create_runtime_disclosure_recorder(
-    store: EventStore, identity: RunIdentity | None = None
-) -> DisclosureRecorder:
+def create_runtime_disclosure_recorder(store: EventStore, identity: RunIdentity | None = None) -> DisclosureRecorder:
     """Adapt Runtime state recording to the storage-free disclosure contract."""
     disclosure = store.disclosure
     return DisclosureRecorder(
         cache_root=disclosure.cache_root,
         history_path=disclosure.history_path,
-        write_text=lambda key, kind, stage, path, content: disclosure.write_text(
-            identity, key, kind, stage, path, content
-        ),
-        write_json=lambda key, kind, stage, path, content: disclosure.write_json(
-            identity, key, kind, stage, path, content
-        ),
+        write_text=lambda key, kind, stage, path, content: disclosure.write_text(identity, key, kind, stage, path, content),
+        write_json=lambda key, kind, stage, path, content: disclosure.write_json(identity, key, kind, stage, path, content),
         read_content=disclosure.read_content,
         read_history=disclosure.read_history,
     )

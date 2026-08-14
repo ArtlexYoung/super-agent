@@ -16,23 +16,14 @@ from core.checks import ActionRules
 from core.config import CommonConfig
 from core.models import LOCAL_USER_ID
 from skill.discovery.catalog import ProgressiveDisclosureCore, skill_index_to_dict
-from skill.handlers.runtime import (
-    create_progressive_skill_disclosure,
-    create_skills,
-    load_configured_freshness_rules,
-)
+from skill.handlers.runtime import create_progressive_skill_disclosure, create_skills, load_configured_freshness_rules
 from skill.learning.freshness import calculate_skill_freshness
 from skill.learning.records import read_evaluation_records
 from skill.learning.update import SkillChangeCase
 from skill.discovery.manifest import SkillManifest
 from skill.handlers.package import SkillPackageManager, write_skill_lock_file
 from skill.handlers.model_management import ModelSkillManager, model_skill_input_from_dict
-from skill.handlers.models import (
-    ModelProfile,
-    model_profile_to_dict,
-    read_model_profiles,
-    select_default_model_profile,
-)
+from skill.handlers.models import ModelProfile, model_profile_to_dict, read_model_profiles, select_default_model_profile
 
 
 def configure_skills_parser(parser: argparse.ArgumentParser) -> argparse._SubParsersAction:
@@ -91,13 +82,9 @@ def configure_skill_packages_parser(parser: argparse.ArgumentParser) -> None:
 
 def configure_models_parser(parser: argparse.ArgumentParser) -> None:
     subparsers = parser.add_subparsers(dest="models_command")
-    list_parser = subparsers.add_parser(
-        "list", help="list model Skills or zero-configuration environment profiles"
-    )
+    list_parser = subparsers.add_parser("list", help="list model Skills or zero-configuration environment profiles")
     _add_model_read_arguments(list_parser)
-    resolve_parser = subparsers.add_parser(
-        "resolve", help="show the default model profile selected for this project"
-    )
+    resolve_parser = subparsers.add_parser("resolve", help="show the default model profile selected for this project")
     _add_model_read_arguments(resolve_parser)
     save_parser = subparsers.add_parser("save", help="create or update one model Skill from JSON stdin")
     _add_model_write_arguments(save_parser)
@@ -140,9 +127,7 @@ def run_skill_packages_command(args: argparse.Namespace) -> int:
         "update": lambda: _update_skill(args),
         "remove": lambda: _remove_skill(args),
     }
-    return run_selected_cli_command(
-        args.skill_package_command, handlers, "skills packages command is required"
-    )
+    return run_selected_cli_command(args.skill_package_command, handlers, "skills packages command is required")
 
 
 def run_models_command(args: argparse.Namespace) -> int:
@@ -275,11 +260,7 @@ def _apply_skill_change(args: argparse.Namespace) -> int:
 def _undo_skill_change(args: argparse.Namespace) -> int:
     updater = load_agent(args.common_config).for_user(args.user_id).skills.create_skill_updater()
     manifest = updater.undo_skill_change(args.change_id)
-    restored = (
-        "removed"
-        if manifest is None
-        else f"restored {manifest.skill_type}:{manifest.name}@{manifest.version}"
-    )
+    restored = "removed" if manifest is None else f"restored {manifest.skill_type}:{manifest.name}@{manifest.version}"
     print(f"Undid Skill change: {args.change_id} ({restored})")
     return 0
 
@@ -324,9 +305,7 @@ def _validate_skills(config_path: Path, user_id: str) -> int:
 def _show_skill_graph(args: argparse.Namespace) -> int:
     manifests = _resolve_skills(Path(args.common_config), args.user_id, args.name)
     for manifest in manifests:
-        print(
-            f"{manifest.name}\tprovides={','.join(manifest.provides)}\trequires={','.join(manifest.requires)}"
-        )
+        print(f"{manifest.name}\tprovides={','.join(manifest.provides)}\trequires={','.join(manifest.requires)}")
     return 0
 
 
@@ -334,10 +313,7 @@ def _write_skill_lock(args: argparse.Namespace) -> int:
     disclosure = _load_skill_disclosure(Path(args.common_config), args.user_id)
     index = disclosure.prepare_skill_index()
     entries = index.resolve_skill_dependencies(args.name)
-    manifests = [
-        disclosure.open_skill(entry.reference.name, entry.reference.skill_type).read_manifest()
-        for entry in entries
-    ]
+    manifests = [disclosure.open_skill(entry.reference.name, entry.reference.skill_type).read_manifest() for entry in entries]
     output = Path(args.output)
     write_skill_lock_file(manifests, output)
     print(f"Wrote skill lock: {output}")
@@ -345,9 +321,7 @@ def _write_skill_lock(args: argparse.Namespace) -> int:
 
 
 def _pack_skill(args: argparse.Namespace) -> int:
-    package_path = _load_package_manager(Path(args.common_config), args.user_id).pack_skill(
-        args.name, Path(args.output)
-    )
+    package_path = _load_package_manager(Path(args.common_config), args.user_id).pack_skill(args.name, Path(args.output))
     print(f"Packed skill: {package_path}")
     return 0
 
@@ -436,13 +410,7 @@ def _read_change_cases(path: Path) -> list[SkillChangeCase]:
     for item in data:
         if not isinstance(item, dict):
             raise ValueError("each evaluation case must be a JSON object")
-        allowed = {
-            "name",
-            "prompt",
-            "expected_output_contains",
-            "forbidden_output_contains",
-            "expected_configuration",
-        }
+        allowed = {"name", "prompt", "expected_output_contains", "forbidden_output_contains", "expected_configuration"}
         if set(item) - allowed:
             raise ValueError("unknown evaluation case fields: " + ", ".join(sorted(set(item) - allowed)))
         expected_configuration = item.get("expected_configuration", {})

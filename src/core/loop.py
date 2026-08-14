@@ -56,9 +56,7 @@ class _ConfiguredModelTool:
         candidates = [profile for profile in self.profiles if profile.key != self.default_model_key]
         if not candidates:
             return None
-        candidate_data = [
-            model_profile_to_dict(profile, self.provider_pool.environment) for profile in candidates
-        ]
+        candidate_data = [model_profile_to_dict(profile, self.provider_pool.environment) for profile in candidates]
         return SkillTool(
             name="use_model",
             description=(
@@ -157,21 +155,14 @@ class TaskRunner:
             "skills.disclosed",
             {
                 "names": list(selected_names),
-                "index_path": (
-                    None if run.skills.index.index_path is None else str(run.skills.index.index_path)
-                ),
+                "index_path": (None if run.skills.index.index_path is None else str(run.skills.index.index_path)),
             },
         )
         workflow = _select_workflow(contributions)
         if "tools" in request.required_features and not workflow.uses_tools:
             raise ValueError("task requires tools but the configured workflow is direct")
         model_tool = _ConfiguredModelTool(
-            tuple(self.model_profiles),
-            self.model_caller,
-            self.provider_pool,
-            run,
-            request.purpose,
-            decision.profile.key,
+            tuple(self.model_profiles), self.model_caller, self.provider_pool, run, request.purpose, decision.profile.key
         ).create_tool()
         tools = RunTools(
             run,
@@ -179,18 +170,14 @@ class TaskRunner:
             send_text_model_messages=text_model.send_messages,
             extra_tools=() if model_tool is None else (model_tool,),
         )
-        return _LoopState(
-            contributions, tools, _build_messages(run, contributions, workflow), workflow, selected_names
-        )
+        return _LoopState(contributions, tools, _build_messages(run, contributions, workflow), workflow, selected_names)
 
     def _run_model_turns(self, run: Run, decision: SelectedModel, state: _LoopState) -> RunResult:
         request = run.task
         supports_tools = "tools" in decision.profile.traits.supports
         if "tools" in request.required_features and not supports_tools:
             raise ValueError(f"model {decision.profile.key} does not support tools")
-        definitions = (
-            state.tools.get_tool_definitions() if state.workflow.uses_tools and supports_tools else None
-        )
+        definitions = state.tools.get_tool_definitions() if state.workflow.uses_tools and supports_tools else None
         step = 0
         while step < state.workflow.max_steps:
             step += 1
@@ -209,9 +196,7 @@ class TaskRunner:
             if definitions is None:
                 raise RuntimeError("model requested actions when actions are unavailable")
             self._run_actions(state, turn)
-            definitions = (
-                state.tools.get_tool_definitions() if state.workflow.uses_tools and supports_tools else None
-            )
+            definitions = state.tools.get_tool_definitions() if state.workflow.uses_tools and supports_tools else None
         state.tools.finish()
         return _create_result(run, state, state.last_text, "max_steps")
 
@@ -239,23 +224,16 @@ def _load_configured_skills(
             raise ValueError("requested task Skill is outside the run policy: " + task_entry.reference.key)
         task_contribution = run.load_skill(task_entry.reference, send_text_model_messages)
         run.record_skill_used(task_entry)
-        configured = [
-            task_entry.reference.key,
-            *[item for item in configured if not _has_skill_type(item, {"task"})],
-        ]
+        configured = [task_entry.reference.key, *[item for item in configured if not _has_skill_type(item, {"task"})]]
     loader_types = {
-        handler.skill_type
-        for handler in run.skills.handlers.list()
-        if handler.skill_type not in NON_EXECUTION_SKILL_TYPES
+        handler.skill_type for handler in run.skills.handlers.list() if handler.skill_type not in NON_EXECUTION_SKILL_TYPES
     }
     references = run.skills.disclosure.select_skill_references(
         [item for item in configured if not _has_skill_type(item, NON_EXECUTION_SKILL_TYPES)], loader_types
     )
     if request.skill is not None:
         references = [
-            reference
-            for reference in references
-            if reference.skill_type != "task" or reference.name == task_entry.reference.name
+            reference for reference in references if reference.skill_type != "task" or reference.name == task_entry.reference.name
         ]
     contributions: list[SkillUse] = []
     names: list[str] = []
@@ -284,9 +262,7 @@ def _select_workflow(contributions: list[SkillUse]) -> TaskPolicy:
     return policies[0] if policies else TaskPolicy("model-loop", "loop", "", DEFAULT_MAX_STEPS)
 
 
-def _selected_model(
-    profile: ModelProfile, selected_by: str, reason: str, evidence: tuple[str, ...] = ()
-) -> SelectedModel:
+def _selected_model(profile: ModelProfile, selected_by: str, reason: str, evidence: tuple[str, ...] = ()) -> SelectedModel:
     return SelectedModel(profile=profile, selected_by=selected_by, reason=reason, evidence=evidence)
 
 
@@ -321,9 +297,7 @@ def _build_messages(run: Run, contributions: list[SkillUse], workflow: TaskPolic
     if index:
         untrusted.append(index)
     if untrusted:
-        trusted.append(
-            "<untrusted_runtime_context>\n" + "\n\n".join(untrusted) + "\n</untrusted_runtime_context>"
-        )
+        trusted.append("<untrusted_runtime_context>\n" + "\n\n".join(untrusted) + "\n</untrusted_runtime_context>")
     messages: list[Message] = [{"role": "system", "content": "\n\n".join(trusted)}]
     messages.extend(
         {"role": str(item["role"]), "content": str(item.get("content", ""))}
@@ -392,12 +366,7 @@ def _checkpoint_facts(
 def _record_task_completed(run: Run, result: RunResult, contributions: list[SkillUse]) -> None:
     run.record_event(
         "task.completed",
-        {
-            "text": result.text,
-            "workflow": result.workflow,
-            "skills": result.skills,
-            "stop_reason": result.stop_reason,
-        },
+        {"text": result.text, "workflow": result.workflow, "skills": result.skills, "stop_reason": result.stop_reason},
     )
     seen: set[int] = set()
     for contribution in contributions:

@@ -55,20 +55,14 @@ class RunEventLog:
                 data["prompt"] = prompt
             return self.append_event(
                 "run.started",
-                {
-                    **data,
-                    "conversation_id": self.identity.conversation_id,
-                    "parent_run_id": self.identity.parent_run_id,
-                },
+                {**data, "conversation_id": self.identity.conversation_id, "parent_run_id": self.identity.parent_run_id},
             )
 
     def append_event(self, event_type: str, data: dict[str, object] | None = None) -> RunEvent:
         with self._lock:
             return self._append_event(event_type, data, publish_to_subscribers=True)
 
-    def _append_event(
-        self, event_type: str, data: dict[str, object] | None, *, publish_to_subscribers: bool
-    ) -> RunEvent:
+    def _append_event(self, event_type: str, data: dict[str, object] | None, *, publish_to_subscribers: bool) -> RunEvent:
         clean_type = read_text(event_type, "run event type")
         content = dict(data or {})
         if self._backend is None:
@@ -134,9 +128,7 @@ class RunEventLog:
 def run_snapshot_from_events(user_id: str, events: list[StorageEvent]) -> RunSnapshot:
     ordered = _ordered_run_events(events)
     started = ordered[0]
-    terminal = next(
-        (event for event in reversed(ordered) if event.event_type in {"run.completed", "run.failed"}), None
-    )
+    terminal = next((event for event in reversed(ordered) if event.event_type in {"run.completed", "run.failed"}), None)
     status = "running" if terminal is None else terminal.event_type.removeprefix("run.")
     data = {} if terminal is None else terminal.data
     error = None
@@ -164,9 +156,7 @@ def run_snapshot_from_events(user_id: str, events: list[StorageEvent]) -> RunSna
 def run_events_from_storage(events: list[StorageEvent]) -> list[RunEvent]:
     ordered = _ordered_run_events(events)
     parent_run_id = read_optional_text(ordered[0].data.get("parent_run_id"), "stored parent_run_id")
-    return [
-        run_event_from_storage(event, sequence, parent_run_id) for sequence, event in enumerate(ordered, 1)
-    ]
+    return [run_event_from_storage(event, sequence, parent_run_id) for sequence, event in enumerate(ordered, 1)]
 
 
 def run_event_from_storage(event: StorageEvent, sequence: int, parent_run_id: str | None) -> RunEvent:

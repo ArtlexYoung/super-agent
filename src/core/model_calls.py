@@ -90,10 +90,7 @@ class ModelAssignment:
 
 
 def assign_model_for_task(
-    profiles: list[ModelProfile],
-    purpose: str,
-    required_features: tuple[str, ...],
-    usage: list[ModelUsageStats],
+    profiles: list[ModelProfile], purpose: str, required_features: tuple[str, ...], usage: list[ModelUsageStats]
 ) -> ModelAssignment:
     """Choose from declared and observed evidence without inspecting prompt keywords."""
     required = {item.strip().lower() for item in required_features if item.strip()}
@@ -103,9 +100,7 @@ def assign_model_for_task(
         raise ValueError(f"no configured model supports required features: {features}")
     observed = {(item.profile_key, item.purpose): item for item in usage}
     clean_purpose = purpose.strip().lower() or "auto"
-    assignments = [
-        _score_model_candidate(profile, clean_purpose, required, observed) for profile in candidates
-    ]
+    assignments = [_score_model_candidate(profile, clean_purpose, required, observed) for profile in candidates]
     return max(assignments, key=lambda item: (item.score, -profiles.index(item.profile)))
 
 
@@ -138,9 +133,7 @@ class ModelCaller:
         self.model_profiles = list(model_profiles)
         self.provider_pool = provider_pool
 
-    def select_task_model(
-        self, purpose: str, required_features: tuple[str, ...], store: EventStore | None
-    ) -> SelectedModel:
+    def select_task_model(self, purpose: str, required_features: tuple[str, ...], store: EventStore | None) -> SelectedModel:
         usage = [] if store is None else list_model_usage_stats(store, purpose)
         assignment = assign_model_for_task(self.model_profiles, purpose, required_features, usage)
         profile = assignment.profile
@@ -162,11 +155,7 @@ class ModelCaller:
         return SelectedModel(profile=profile, selected_by="default", reason="configured default model")
 
     def create_text_model(
-        self,
-        store: EventStore | None,
-        purpose: str,
-        decision: SelectedModel,
-        record_event: EventWriter | None = None,
+        self, store: EventStore | None, purpose: str, decision: SelectedModel, record_event: EventWriter | None = None
     ) -> TextModel:
         if store is None and record_event is None:
             raise ValueError("a text model requires storage or an event writer")
@@ -188,9 +177,7 @@ class ModelCaller:
         tools: list[ToolDefinition] | None = None,
     ) -> ModelResponse:
         provider = self._prepare_model_call(decision, context)
-        return call_chat_model(
-            _to_provider_call(decision, context, messages, tools), provider, context.record_event
-        )
+        return call_chat_model(_to_provider_call(decision, context, messages, tools), provider, context.record_event)
 
     def _prepare_model_call(self, decision: SelectedModel, context: ModelCallContext) -> ChatProvider:
         profile = decision.profile
@@ -210,9 +197,7 @@ class _TextModel:
     operation_id: str
 
     def send_messages(self, messages: list[Message]) -> str:
-        response = self.model_caller.call_model(
-            messages, self.decision, ModelCallContext(self.purpose, self._record_event)
-        )
+        response = self.model_caller.call_model(messages, self.decision, ModelCallContext(self.purpose, self._record_event))
         return response.text
 
     def _record_event(self, event_type: str, data: dict[str, object]) -> object:
@@ -277,12 +262,7 @@ def infer_conversation_feedback_with_model(
     if previous_assistant_index is None:
         return None
     previous_user_prompt = next(
-        (
-            message.content
-            for message in reversed(conversation.messages[:previous_assistant_index])
-            if message.role == "user"
-        ),
-        "",
+        (message.content for message in reversed(conversation.messages[:previous_assistant_index]) if message.role == "user"), ""
     )
     previous_response = conversation.messages[previous_assistant_index].content
     payload = {
@@ -407,19 +387,11 @@ def assistant_tool_call_message(text: str, calls: list[ToolCall]) -> Message:
 
 
 def tool_result_message(call: ToolCall, result: dict[str, object]) -> Message:
-    return {
-        "role": "tool",
-        "tool_call_id": call.id,
-        "name": call.name,
-        "content": json.dumps(result, ensure_ascii=False),
-    }
+    return {"role": "tool", "tool_call_id": call.id, "name": call.name, "content": json.dumps(result, ensure_ascii=False)}
 
 
 def _to_provider_call(
-    decision: SelectedModel,
-    context: ModelCallContext,
-    messages: list[Message],
-    tools: list[ToolDefinition] | None,
+    decision: SelectedModel, context: ModelCallContext, messages: list[Message], tools: list[ToolDefinition] | None
 ) -> ProviderCall:
     return ProviderCall(
         profile_key=decision.profile.key,
@@ -428,9 +400,5 @@ def _to_provider_call(
         messages=tuple(messages),
         tools=None if tools is None else tuple(tools),
         pricing=decision.profile.traits.pricing,
-        selection={
-            "selected_by": decision.selected_by,
-            "reason": decision.reason,
-            "evidence": list(decision.evidence),
-        },
+        selection={"selected_by": decision.selected_by, "reason": decision.reason, "evidence": list(decision.evidence)},
     )

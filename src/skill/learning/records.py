@@ -80,11 +80,7 @@ def append_evaluation_records(store: EventStore, records: list[EvaluationRecord]
 
 
 def read_evaluation_records(
-    store: EventStore,
-    *,
-    skill_key: str | None = None,
-    source_type: str | None = None,
-    events: list[StorageEvent] | None = None,
+    store: EventStore, *, skill_key: str | None = None, source_type: str | None = None, events: list[StorageEvent] | None = None
 ) -> list[EvaluationRecord]:
     """Project evaluation records from one scoped event store."""
     selected_events = store.read_events("skill_evaluation", snapshot=events)
@@ -158,12 +154,7 @@ def evaluation_result_from_dict(value: object) -> EvaluationResult:
     tokens = read_object(data["token_usage"], "evaluation token usage schema", EVALUATION_TOKEN_USAGE_FIELDS)
     return _validate_result(
         EvaluationResult(
-            data["success"],
-            data["score"],
-            EvaluationTokenUsage(**tokens),
-            data["latency_ms"],
-            data["error_type"],
-            data["checks"],
+            data["success"], data["score"], EvaluationTokenUsage(**tokens), data["latency_ms"], data["error_type"], data["checks"]
         )
     )
 
@@ -208,9 +199,7 @@ def _validate_result(result: EvaluationResult) -> EvaluationResult:
     )
     latency = read_optional_int(result.latency_ms, "evaluation latency_ms", minimum=0)
     error_type = read_text(result.error_type, "evaluation error_type", allow_empty=True)
-    return EvaluationResult(
-        success, score, tokens, latency, error_type, read_text_list(result.checks, "evaluation checks")
-    )
+    return EvaluationResult(success, score, tokens, latency, error_type, read_text_list(result.checks, "evaluation checks"))
 
 
 SKILL_REVISION_SCHEMA_VERSION = 2

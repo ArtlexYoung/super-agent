@@ -53,9 +53,7 @@ class _ModelSkillDocument:
 class ModelSkillManager:
     """Manage model Skill overlays inside one user scope."""
 
-    def __init__(
-        self, config: CommonConfig, store: EventStore, action_rules: ActionRules | None = None
-    ) -> None:
+    def __init__(self, config: CommonConfig, store: EventStore, action_rules: ActionRules | None = None) -> None:
         self.config = config
         self.store = store
         self.user_skill_root = store.private_root / "skills"
@@ -66,9 +64,7 @@ class ModelSkillManager:
             ModelProfile,
             self.actions.execute_action(
                 ActionRequest.create(
-                    "user:model-skill",
-                    f"skill:owned:model:{request.name}",
-                    (ActionEffect.CREATE, ActionEffect.UPDATE),
+                    "user:model-skill", f"skill:owned:model:{request.name}", (ActionEffect.CREATE, ActionEffect.UPDATE)
                 ),
                 lambda: self._save_model_skill(request),
             ),
@@ -102,11 +98,7 @@ class ModelSkillManager:
             updates.extend(self._default_removal_updates(disclosure, {clean_request.name, previous_name}))
         _apply_model_skill_updates(
             updates,
-            removed_path=(
-                source_path
-                if source is not None and source.source == "user" and source_path != target
-                else None
-            ),
+            removed_path=(source_path if source is not None and source.source == "user" and source_path != target else None),
         )
         return self._read_profile(clean_request.name)
 
@@ -127,11 +119,7 @@ class ModelSkillManager:
         removed_document = _read_model_skill_document(opened)
         removed_path = removed_document.manifest.path
         _require_managed_path(removed_path, self.user_skill_root)
-        remaining = [
-            item
-            for item in index.entries
-            if item.reference.skill_type == "model" and item.reference.name != clean_name
-        ]
+        remaining = [item for item in index.entries if item.reference.skill_type == "model" and item.reference.name != clean_name]
         updates: list[tuple[Path, Path | None, _ModelSkillDocument]] = []
         if removed_document.configuration.get("default") is True and remaining:
             replacement = sorted(remaining, key=lambda item: item.reference.key)[0]
@@ -159,11 +147,7 @@ class ModelSkillManager:
             if document.configuration.get("default") is not True:
                 continue
             updates.append(
-                (
-                    self.user_skill_root / "model" / entry.reference.name,
-                    document.manifest.path,
-                    _with_default(document, False),
-                )
+                (self.user_skill_root / "model" / entry.reference.name, document.manifest.path, _with_default(document, False))
             )
         return updates
 
@@ -186,9 +170,7 @@ def model_skill_input_from_dict(value: object) -> ModelSkillInput:
         ModelSkillInput(
             name=read_text(value.get("name"), "model Skill name"),
             description=read_text(value.get("description"), "model Skill description"),
-            definition=ModelDefinition.from_dict(
-                {name: value[name] for name in MODEL_CONFIGURATION_FIELDS if name in value}
-            ),
+            definition=ModelDefinition.from_dict({name: value[name] for name in MODEL_CONFIGURATION_FIELDS if name in value}),
             agent_can_update=read_bool(value.get("agent_can_update", False), "model Skill agent_can_update"),
             previous_name=read_optional_text(value.get("previous_name"), "model Skill previous_name") or "",
         )
@@ -231,9 +213,7 @@ def _create_model_skill_document(
             description=request.description,
             version=version,
             agent_can_update=request.agent_can_update,
-            provides=[
-                request.name if item == current.manifest.name else item for item in current.manifest.provides
-            ],
+            provides=[request.name if item == current.manifest.name else item for item in current.manifest.provides],
         )
     return _ModelSkillDocument(manifest, request.definition.to_configuration())
 
@@ -269,19 +249,13 @@ def _apply_model_skill_updates(
             )
             affected.add(target)
         if removed_path is not None and removed_path not in affected:
-            changes.append(
-                SkillDirectoryUpdate(None, removed_path, "", calculate_skill_directory_sha256(removed_path))
-            )
+            changes.append(SkillDirectoryUpdate(None, removed_path, "", calculate_skill_directory_sha256(removed_path)))
         apply_skill_directory_updates(changes)
 
 
 def _model_skill_toml(document: _ModelSkillDocument) -> str:
     manifest = document.manifest
-    lines = [
-        'type = "model"',
-        f"description = {_quote(manifest.description)}",
-        f"version = {_quote(manifest.version)}",
-    ]
+    lines = ['type = "model"', f"description = {_quote(manifest.description)}", f"version = {_quote(manifest.version)}"]
     lines.extend(["", "[configuration]"])
     for name in MODEL_CONFIGURATION_FIELDS:
         if name in document.configuration:

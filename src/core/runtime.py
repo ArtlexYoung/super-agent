@@ -51,9 +51,7 @@ class Run:
     allow_subscriber_failures: bool = False
     create_action_rules: Callable[[], ActionRules] | None = field(default=None, repr=False)
     subagent_record_options: SubagentRecordOptions | None = field(default=None, repr=False)
-    _used_skill_entries: dict[tuple[str, str, str], SkillIndexEntry] = field(
-        default_factory=dict, init=False, repr=False
-    )
+    _used_skill_entries: dict[tuple[str, str, str], SkillIndexEntry] = field(default_factory=dict, init=False, repr=False)
     _action_runner: ActionRunner | None = field(default=None, init=False, repr=False)
     _loaded_skills: dict[tuple[str, bool], SkillUse] = field(default_factory=dict, init=False, repr=False)
 
@@ -65,9 +63,7 @@ class Run:
         if self.subagent_record_options is not None:
             from core.records.audit import DEFAULT_AUDIT_POLICY
 
-            data = DEFAULT_AUDIT_POLICY.compact_event_data(
-                event_type, data or {}, self.subagent_record_options
-            )
+            data = DEFAULT_AUDIT_POLICY.compact_event_data(event_type, data or {}, self.subagent_record_options)
         return self.event_log.append_event(event_type, data)
 
     def add_event_subscriber(self, subscriber: RuntimeEventSubscriber) -> None:
@@ -109,9 +105,7 @@ class Run:
         return self.create_action_rules is not None
 
     def load_skill(
-        self,
-        reference: SkillReference,
-        send_text_model_messages: Callable[[list[Message]], str] | None = None,
+        self, reference: SkillReference, send_text_model_messages: Callable[[list[Message]], str] | None = None
     ) -> SkillUse:
         key = (reference.key, send_text_model_messages is not None)
         loaded = self._loaded_skills.get(key)
@@ -198,9 +192,7 @@ def find_checkpoint_data(events: Iterable[RunEvent], checkpoint_id: str | None =
         raise KeyError("run has no checkpoints")
     if checkpoint_id is None:
         return checkpoints[-1]
-    selected = next(
-        (item for item in checkpoints if item.get("checkpoint_id") == checkpoint_id.strip()), None
-    )
+    selected = next((item for item in checkpoints if item.get("checkpoint_id") == checkpoint_id.strip()), None)
     if selected is None:
         raise KeyError(f"checkpoint not found: {checkpoint_id}")
     return selected
@@ -241,11 +233,7 @@ class Runtime:
         self.event_subscribers = event_subscribers or RuntimeEventSubscribers()
 
     def run_task(
-        self,
-        request: Task,
-        identity: RunIdentity,
-        *,
-        event_listener: Callable[[RunEvent], None] | None = None,
+        self, request: Task, identity: RunIdentity, *, event_listener: Callable[[RunEvent], None] | None = None
     ) -> RunResult:
         from core.loop import list_run_actions
 
@@ -269,9 +257,7 @@ class Runtime:
                     {
                         "source_run_id": request.resumed_from_run_id,
                         "checkpoint_id": (
-                            None
-                            if request.resume_checkpoint is None
-                            else request.resume_checkpoint.get("checkpoint_id")
+                            None if request.resume_checkpoint is None else request.resume_checkpoint.get("checkpoint_id")
                         ),
                     },
                 )
@@ -285,9 +271,7 @@ class Runtime:
                     "workflow": result.workflow,
                     "used_skills": list(result.skills),
                     "stop_reason": result.stop_reason,
-                    "learning_evidence": _create_run_learning_evidence(
-                        run, request.prompt, result.text, started_at=started_at
-                    ),
+                    "learning_evidence": _create_run_learning_evidence(run, request.prompt, result.text, started_at=started_at),
                 },
             )
             final_result = replace(
@@ -315,18 +299,12 @@ class Runtime:
                     },
                 )
             except Exception as recording_error:
-                error.add_note(
-                    f"Could not record run failure: {type(recording_error).__name__}: {recording_error}"
-                )
+                error.add_note(f"Could not record run failure: {type(recording_error).__name__}: {recording_error}")
             raise
 
 
 def _create_run(
-    runtime: Runtime,
-    request: Task,
-    identity: RunIdentity,
-    *,
-    event_listener: Callable[[RunEvent], None] | None,
+    runtime: Runtime, request: Task, identity: RunIdentity, *, event_listener: Callable[[RunEvent], None] | None
 ) -> Run:
     from core.records.events import RunEventLog
 
@@ -418,10 +396,7 @@ def _create_run_learning_evidence(
         "result": {
             "success": success,
             "score": 1.0 if success else 0.0,
-            "token_usage": {
-                "input_tokens": estimate_text_tokens(prompt),
-                "output_tokens": estimate_text_tokens(output),
-            },
+            "token_usage": {"input_tokens": estimate_text_tokens(prompt), "output_tokens": estimate_text_tokens(output)},
             "latency_ms": max(0, round((perf_counter() - started_at) * 1000)),
             "error_type": "" if error is None else type(error).__name__,
             "checks": ["pass:task_completed" if success else "fail:task_completed"],
