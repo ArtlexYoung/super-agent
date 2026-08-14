@@ -146,22 +146,14 @@ class Agent:
         weight: float = 1.0,
     ) -> str:
         return self._team.add_subagent(
-            agent,
-            name=name,
-            description=description,
-            created_by_agent=created_by_agent,
-            purpose=purpose,
-            required_features=required_features,
-            weight=weight,
+            agent, name=name, description=description, created_by_agent=created_by_agent, purpose=purpose, required_features=required_features, weight=weight
         )
 
     def add_skill_path(self, path: str | Path) -> None:
         selected = Path(path).expanduser().absolute()
         if selected in self.config.paths.skills:
             return
-        self._replace_configuration(
-            replace(self.config, paths=replace(self.config.paths, skills=[*self.config.paths.skills, selected]))
-        )
+        self._replace_configuration(replace(self.config, paths=replace(self.config.paths, skills=[*self.config.paths.skills, selected])))
 
     def add_tool(self, name: str, server: McpServer, *, effects: tuple[ActionEffect, ...]) -> None:
         with self._lock:
@@ -191,11 +183,7 @@ class Agent:
         run_options: AgentRunOptions | None = None,
     ) -> RunResult:
         return self._run_for_user(
-            prompt,
-            LOCAL_USER_ID,
-            messages=messages,
-            conversation_id=conversation_id,
-            run_options=resolve_agent_run_options(run_options, skill),
+            prompt, LOCAL_USER_ID, messages=messages, conversation_id=conversation_id, run_options=resolve_agent_run_options(run_options, skill)
         )
 
     def _run_for_user(
@@ -236,9 +224,7 @@ class Agent:
             complete_conversation_turn(pending_turn, result)
         return result
 
-    def _prepare_messages(
-        self, prompt: str, user_id: str, messages: list[Message] | None, conversation_id: str | None, options: AgentRunOptions
-    ):
+    def _prepare_messages(self, prompt: str, user_id: str, messages: list[Message] | None, conversation_id: str | None, options: AgentRunOptions):
         prepared_messages = list(messages or [])
         if conversation_id is None:
             return prepared_messages, None
@@ -294,10 +280,7 @@ class Agent:
         return self.runtime.run_task(
             request,
             RunIdentity.create(
-                parent_run.identity.user_id,
-                self.config.agent.name,
-                conversation_id=parent_run.identity.conversation_id,
-                parent_run_id=parent_run.run_id,
+                parent_run.identity.user_id, self.config.agent.name, conversation_id=parent_run.identity.conversation_id, parent_run_id=parent_run.run_id
             ),
         )
 
@@ -309,21 +292,10 @@ class Agent:
             raise RuntimeError("storage is disabled for this Agent")
         from core.records.store import EventStore
 
-        return EventStore(
-            self._storage,
-            self.config.storage.path,
-            user_id,
-            self.config.agent.name,
-            disclosure_factory=_create_disclosure_storage,
-        )
+        return EventStore(self._storage, self.config.storage.path, user_id, self.config.agent.name, disclosure_factory=_create_disclosure_storage)
 
     def _create_skills(self, user_id: str, *, config: CommonConfig | None = None, include_freshness: bool = False) -> Skills:
-        return create_skills(
-            config or self.config,
-            handlers=self._skill_handlers,
-            store=self._create_event_store(user_id),
-            include_freshness=include_freshness,
-        )
+        return create_skills(config or self.config, handlers=self._skill_handlers, store=self._create_event_store(user_id), include_freshness=include_freshness)
 
     def _create_task_runner(self, user_id: str, skills: Skills) -> TaskRunner:
         from core.loop import TaskRunner
@@ -360,9 +332,7 @@ class Agent:
             conversation_id=snapshot.conversation_id,
             parent_run_id=snapshot.parent_run_id,
         )
-        return store.append_run_event(
-            identity, "task.feedback.recorded", {"score": clean_score, "reason": reason.strip(), "source": source}
-        )
+        return store.append_run_event(identity, "task.feedback.recorded", {"score": clean_score, "reason": reason.strip(), "source": source})
 
     def _user_environment(self, user_id: str) -> dict[str, str]:
         return dict(self._user_secrets.get_environment_for_user(user_id))
@@ -380,10 +350,7 @@ class Agent:
                 return
             runtime = self._build_runtime(config)
             skills = create_skills(
-                config,
-                handlers=self._skill_handlers,
-                store=self._create_bootstrap_store(self._storage, config=config),
-                include_freshness=False,
+                config, handlers=self._skill_handlers, store=self._create_bootstrap_store(self._storage, config=config), include_freshness=False
             )
             profiles = self._read_model_profiles(skills, LOCAL_USER_ID)
             profile = select_default_model_profile(profiles) if profiles else None
@@ -408,9 +375,7 @@ class Agent:
                 return
             storage = self._configured_storage
             if storage is None and self._use_storage:
-                storage = _create_storage_backend(
-                    self.config.storage.backend, str(self.config.storage.path), self.config.storage.url_env
-                )
+                storage = _create_storage_backend(self.config.storage.backend, str(self.config.storage.path), self.config.storage.url_env)
             store = self._create_bootstrap_store(storage)
             skills = create_skills(self.config, handlers=self._skill_handlers, store=store, include_freshness=False)
             environment = self._user_secrets.get_environment_for_user(LOCAL_USER_ID)
@@ -451,9 +416,7 @@ class Agent:
         from core.records.store import EventStore
 
         selected = config or self.config
-        return EventStore(
-            storage, selected.storage.path, LOCAL_USER_ID, selected.agent.name, disclosure_factory=_create_disclosure_storage
-        )
+        return EventStore(storage, selected.storage.path, LOCAL_USER_ID, selected.agent.name, disclosure_factory=_create_disclosure_storage)
 
     def _read_model_profiles(self, skills: Skills, user_id: str) -> list[ModelProfile]:
         environment = self._user_secrets.get_environment_for_user(user_id)

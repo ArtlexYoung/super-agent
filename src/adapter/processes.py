@@ -85,13 +85,7 @@ def _calculate_numbers(arguments: dict[str, object]) -> dict[str, object]:
     numbers = [float(value) for value in values]
     if not all(math.isfinite(value) for value in numbers):
         raise ValueError("calculate_numbers values must be finite")
-    functions = {
-        "sum": math.fsum,
-        "mean": lambda items: math.fsum(items) / len(items),
-        "minimum": min,
-        "maximum": max,
-        "product": math.prod,
-    }
+    functions = {"sum": math.fsum, "mean": lambda items: math.fsum(items) / len(items), "minimum": min, "maximum": max, "product": math.prod}
     result = functions[operation](numbers)
     if not math.isfinite(result):
         raise OverflowError("calculate_numbers result is not finite")
@@ -113,11 +107,7 @@ def _find_text(arguments: dict[str, object]) -> dict[str, object]:
             break
         positions.append(position)
         offset = position + len(query)
-    return {
-        "query": query,
-        "positions": positions,
-        "truncated": len(positions) == MAX_TEXT_MATCHES and text.find(query, offset) >= 0,
-    }
+    return {"query": query, "positions": positions, "truncated": len(positions) == MAX_TEXT_MATCHES and text.find(query, offset) >= 0}
 
 
 @dataclass(frozen=True)
@@ -126,11 +116,7 @@ class ProcessLimits:
     output_bytes: int = DEFAULT_PROCESS_OUTPUT_LIMIT
 
     def __post_init__(self) -> None:
-        if (
-            isinstance(self.timeout_seconds, bool)
-            or not isinstance(self.timeout_seconds, int)
-            or not 1 <= self.timeout_seconds <= MAX_PROCESS_TIMEOUT_SECONDS
-        ):
+        if isinstance(self.timeout_seconds, bool) or not isinstance(self.timeout_seconds, int) or not 1 <= self.timeout_seconds <= MAX_PROCESS_TIMEOUT_SECONDS:
             raise ValueError("process timeout must be between 1 and 300 seconds")
         if isinstance(self.output_bytes, bool) or not isinstance(self.output_bytes, int) or self.output_bytes <= 0:
             raise ValueError("process output limit must be greater than 0")
@@ -229,13 +215,7 @@ class DeclaredProcessTools:
             raise ValueError("process timeout cannot exceed 300 seconds")
         command = self.commands[number - 1]
         process = subprocess.Popen(
-            command,
-            cwd=self.root,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            shell=False,
-            start_new_session=os.name == "posix",
+            command, cwd=self.root, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=False, start_new_session=os.name == "posix"
         )
         process_id = f"process-{uuid4().hex}"
         task = _RunningProcess(process_id, command, process, time.monotonic(), timeout, self.limits.output_bytes)

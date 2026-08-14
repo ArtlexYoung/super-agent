@@ -11,14 +11,7 @@ from core.provider import Message
 from core.config import AgentSettings, CommonConfig
 from core.checks import write_bytes_atomically
 from core.models import Conversation, RunEvent, RunSnapshot, resolve_agent_run_options, validate_user_id
-from core.records.conversations import (
-    clear_conversation,
-    create_conversation,
-    delete_conversation,
-    list_conversations,
-    read_conversation,
-    rename_conversation,
-)
+from core.records.conversations import clear_conversation, create_conversation, delete_conversation, list_conversations, read_conversation, rename_conversation
 from core.checks import ActionEffect, ActionRequest
 from core.models import RunResult, TaskTrace
 
@@ -57,11 +50,7 @@ class UserAgent:
         run_options: "AgentRunOptions | None" = None,
     ) -> RunResult:
         return self.agent._run_for_user(
-            prompt,
-            self.user_id,
-            messages=messages,
-            conversation_id=conversation_id,
-            run_options=resolve_agent_run_options(run_options, skill),
+            prompt, self.user_id, messages=messages, conversation_id=conversation_id, run_options=resolve_agent_run_options(run_options, skill)
         )
 
     def _store(self):
@@ -126,9 +115,7 @@ class UserRuns:
     def read_trace(self, run_id: str) -> TaskTrace:
         return self.user.agent._read_task_trace(self.user.user_id, run_id)
 
-    def list(
-        self, limit: int | None = None, *, conversation_id: str | None = None, include_sensitive: bool = False
-    ) -> list[RunSnapshot]:
+    def list(self, limit: int | None = None, *, conversation_id: str | None = None, include_sensitive: bool = False) -> list[RunSnapshot]:
         return self.user._store().list_runs(limit, conversation_id=conversation_id, include_sensitive=include_sensitive)
 
     def read(self, run_id: str, *, include_sensitive: bool = False) -> RunSnapshot:
@@ -175,8 +162,7 @@ class UserRuns:
 
         rules = load_configured_freshness_rules(self.user.agent.config, store=store)
         result = self.user._execute(
-            ActionRequest.create("user:run-learning", f"run:{run_id}", (ActionEffect.CREATE, ActionEffect.UPDATE)),
-            lambda: learn_from_run(store, run_id, rules),
+            ActionRequest.create("user:run-learning", f"run:{run_id}", (ActionEffect.CREATE, ActionEffect.UPDATE)), lambda: learn_from_run(store, run_id, rules)
         )
         if not isinstance(result, RunLearningResult):
             raise TypeError("run learning must return RunLearningResult")
@@ -225,8 +211,7 @@ class UserMemory:
 
     def forget(self, item_id: str, reason: str = "") -> None:
         self.user._execute(
-            ActionRequest.create("user:memory", f"memory:long-term:{item_id}", (ActionEffect.DELETE,)),
-            lambda: self._memory().forget_long_term(item_id, reason),
+            ActionRequest.create("user:memory", f"memory:long-term:{item_id}", (ActionEffect.DELETE,)), lambda: self._memory().forget_long_term(item_id, reason)
         )
 
     def usage_habits_instruction(self) -> str:
@@ -258,9 +243,7 @@ class UserSkills:
         from dataclasses import replace
 
         config = self.user.agent.config
-        return self.user.agent._create_skills(
-            self.user.user_id, config=replace(config, agent=replace(config.agent, disabled_skills=[]))
-        )
+        return self.user.agent._create_skills(self.user.user_id, config=replace(config, agent=replace(config.agent, disabled_skills=[])))
 
     def list_models(self) -> list[dict[str, object]]:
         from skill.handlers.models import model_profile_to_dict, read_model_profiles
@@ -378,14 +361,7 @@ def _common_config_to_toml(config: CommonConfig) -> str:
     )
     if config.storage.url_env is not None:
         lines.append(f"url_env = {_toml_string(config.storage.url_env)}")
-    lines.extend(
-        [
-            "",
-            "[storage.audit]",
-            f"detailed_days = {config.storage.audit.detailed_days}",
-            f"critical_days = {config.storage.audit.critical_days}",
-        ]
-    )
+    lines.extend(["", "[storage.audit]", f"detailed_days = {config.storage.audit.detailed_days}", f"critical_days = {config.storage.audit.critical_days}"])
     return "\n".join(lines) + "\n"
 
 

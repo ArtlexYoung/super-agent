@@ -108,9 +108,7 @@ class RunTools:
         return {"progressive_disclosure": disclosure_page_to_dict(page)}
 
     def _record_tool_failure(self, call: ToolCall, error: Exception) -> None:
-        self.run.record_event(
-            "tool.failed", {"call_id": call.id, "name": call.name, "error_type": type(error).__name__, "message": str(error)}
-        )
+        self.run.record_event("tool.failed", {"call_id": call.id, "name": call.name, "error_type": type(error).__name__, "message": str(error)})
 
     def _add_tools(self, tools: tuple[SkillTool, ...]) -> None:
         self._validate_new_tools(tools)
@@ -158,11 +156,7 @@ class RunTools:
     def _disclose_skill_configuration(self, arguments: dict[str, object]) -> dict[str, object]:
         opened = self._open_requested_skill(arguments)
         disclosed = opened.disclose_configuration()
-        return {
-            "key": opened.index_entry.reference.key,
-            "configuration": disclosed.content,
-            "cache_path": _optional_path(disclosed.cache_path),
-        }
+        return {"key": opened.index_entry.reference.key, "configuration": disclosed.content, "cache_path": _optional_path(disclosed.cache_path)}
 
     def _read_disclosed_content(self, arguments: dict[str, object]) -> dict[str, object]:
         reference = read_required_tool_string(arguments, "reference")
@@ -269,20 +263,12 @@ class RunTools:
     def run_subagent(self, arguments: dict[str, object]) -> dict[str, object]:
         if not self._subagents:
             raise RuntimeError("subagent tools require subagents added in code")
-        return self._run_named_subagent(
-            read_required_tool_string(arguments, "name"), read_required_tool_string(arguments, "prompt")
-        )
+        return self._run_named_subagent(read_required_tool_string(arguments, "name"), read_required_tool_string(arguments, "prompt"))
 
     def _run_named_subagent(
-        self,
-        name: str,
-        prompt: str,
-        record_options: SubagentRecordOptions | None = None,
-        shared_context: dict[str, object] | None = None,
+        self, name: str, prompt: str, record_options: SubagentRecordOptions | None = None, shared_context: dict[str, object] | None = None
     ) -> dict[str, object]:
-        value = self.run.task.subagents.run_named_subagent(
-            name, prompt, self.run, record_options or SubagentRecordOptions(), shared_context
-        )
+        value = self.run.task.subagents.run_named_subagent(name, prompt, self.run, record_options or SubagentRecordOptions(), shared_context)
         if record_options is None:
             self._record_subagent_result(value)
         return value
@@ -311,9 +297,7 @@ class RunTools:
         content = shared.get("content")
         if not isinstance(content, str):
             raise TypeError("shared task context content must be text")
-        page = self.run.skills.disclosure.disclose_content(
-            "agent-group", str(shared.get("group_id", "shared-task")), content, stage="reference-read"
-        )
+        page = self.run.skills.disclosure.disclose_content("agent-group", str(shared.get("group_id", "shared-task")), content, stage="reference-read")
         return disclosure_page_to_dict(page)
 
     def _open_requested_skill(self, arguments: dict[str, object]) -> SkillDisclosure:
@@ -375,11 +359,7 @@ def _create_disclosure_tools(run_tools: RunTools, skill_index: SkillIndex, *, re
             SkillTool(
                 "read_disclosed_content",
                 "Read one bounded page from a reference returned by progressive disclosure.",
-                {
-                    "reference": {"type": "string"},
-                    "offset": {"type": "integer", "minimum": 0},
-                    "limit": {"type": "integer", "minimum": 1, "maximum": 32_000},
-                },
+                {"reference": {"type": "string"}, "offset": {"type": "integer", "minimum": 0}, "limit": {"type": "integer", "minimum": 1, "maximum": 32_000}},
                 run_tools._read_disclosed_content,
                 action=SkillAction((ActionEffect.READ,), "disclosure:content", "reference"),
                 required=("reference",),
@@ -398,9 +378,7 @@ def _read_subagent_result(value: dict[str, object]) -> SubAgentResult:
         text=str(value["text"]),
         prompt=str(value.get("prompt", "")),
         created_by_agent=bool(value.get("created_by_agent", False)),
-        subagent_results=(
-            [_read_subagent_result(item) for item in nested if isinstance(item, dict)] if isinstance(nested, list) else None
-        ),
+        subagent_results=([_read_subagent_result(item) for item in nested if isinstance(item, dict)] if isinstance(nested, list) else None),
         run_id=str(value.get("run_id", "")),
     )
 

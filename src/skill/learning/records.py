@@ -8,18 +8,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from core.models import (
-    format_utc,
-    parse_utc,
-    read_bool,
-    read_int,
-    read_number,
-    read_object,
-    read_optional_int,
-    read_optional_number,
-    read_text,
-    read_text_list,
-)
+from core.models import format_utc, parse_utc, read_bool, read_int, read_number, read_object, read_optional_int, read_optional_number, read_text, read_text_list
 
 if TYPE_CHECKING:
     from core.records.store import EventStore, StorageEvent
@@ -91,18 +80,12 @@ def read_evaluation_records(
     return [
         record
         for record in records
-        if (skill_key is None or record.revision.key == skill_key)
-        and (source_type is None or record.source.source_type == source_type)
+        if (skill_key is None or record.revision.key == skill_key) and (source_type is None or record.source.source_type == source_type)
     ]
 
 
 def create_evaluation_record(
-    revision: SkillRevision,
-    source: EvaluationSource,
-    result: EvaluationResult,
-    *,
-    created_at: datetime | None = None,
-    record_id: str | None = None,
+    revision: SkillRevision, source: EvaluationSource, result: EvaluationResult, *, created_at: datetime | None = None, record_id: str | None = None
 ) -> EvaluationRecord:
     record = EvaluationRecord(
         schema_version=EVALUATION_RECORD_SCHEMA_VERSION,
@@ -153,9 +136,7 @@ def evaluation_result_from_dict(value: object) -> EvaluationResult:
     data = read_object(value, "evaluation result schema", EVALUATION_RESULT_FIELDS)
     tokens = read_object(data["token_usage"], "evaluation token usage schema", EVALUATION_TOKEN_USAGE_FIELDS)
     return _validate_result(
-        EvaluationResult(
-            data["success"], data["score"], EvaluationTokenUsage(**tokens), data["latency_ms"], data["error_type"], data["checks"]
-        )
+        EvaluationResult(data["success"], data["score"], EvaluationTokenUsage(**tokens), data["latency_ms"], data["error_type"], data["checks"])
     )
 
 
@@ -254,12 +235,7 @@ def skill_revision_from_dict(value: object) -> SkillRevision:
 def validate_skill_revision(revision: SkillRevision) -> None:
     if revision.key != f"{revision.skill_type}:{revision.name}":
         raise ValueError("Skill revision key must equal type:name")
-    for name, value in (
-        ("type", revision.skill_type),
-        ("name", revision.name),
-        ("version", revision.version),
-        ("function_group", revision.function_group),
-    ):
+    for name, value in (("type", revision.skill_type), ("name", revision.name), ("version", revision.version), ("function_group", revision.function_group)):
         read_text(value, f"Skill revision {name}")
     if re.fullmatch(r"[0-9a-f]{64}", revision.content_sha256) is None:
         raise ValueError("Skill revision content_sha256 must be lowercase SHA-256")

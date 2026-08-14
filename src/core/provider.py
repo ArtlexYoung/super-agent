@@ -14,12 +14,7 @@ ToolDefinition = dict[str, Any]
 MOCK_PROVIDER = "mock"
 OPENAI_COMPATIBLE_PROVIDER = "openai-compatible"
 ANTHROPIC_COMPATIBLE_PROVIDER = "anthropic-compatible"
-MODEL_PRICE_FIELDS = (
-    "input_cost_per_million",
-    "output_cost_per_million",
-    "cache_creation_cost_per_million",
-    "cache_read_cost_per_million",
-)
+MODEL_PRICE_FIELDS = ("input_cost_per_million", "output_cost_per_million", "cache_creation_cost_per_million", "cache_read_cost_per_million")
 MODEL_TOKEN_PRICE_FIELDS = (
     ("input_tokens", "input_cost_per_million"),
     ("output_tokens", "output_cost_per_million"),
@@ -77,9 +72,7 @@ class ModelPricing:
         counts = {name: token_counts.get(name) for name, _ in MODEL_TOKEN_PRICE_FIELDS}
         known = {name: value for name, value in counts.items() if value is not None}
         prices = self.resolved_dict()
-        weighted = sum(
-            count * prices[price_name] for name, price_name in MODEL_TOKEN_PRICE_FIELDS if (count := known.get(name)) is not None
-        )
+        weighted = sum(count * prices[price_name] for name, price_name in MODEL_TOKEN_PRICE_FIELDS if (count := known.get(name)) is not None)
         total_tokens = sum(known.values())
         return {
             "tokens": counts,
@@ -150,34 +143,19 @@ class ProviderCall:
 class ChatProvider(Protocol):
     def send_chat_messages(self, messages: list[Message], model: str) -> str: ...
 
-    def send_chat_messages_with_tools(
-        self, messages: list[Message], model: str, tools: list[ToolDefinition]
-    ) -> ModelResponse: ...
+    def send_chat_messages_with_tools(self, messages: list[Message], model: str, tools: list[ToolDefinition]) -> ModelResponse: ...
 
 
 def call_chat_model(call: ProviderCall, provider: ChatProvider, record_event: EventWriter) -> ModelResponse:
-    selected = {
-        "profile": call.profile_key,
-        "model": call.model,
-        "purpose": call.purpose,
-        "pricing": call.pricing.to_dict(),
-        **dict(call.selection or {}),
-    }
+    selected = {"profile": call.profile_key, "model": call.model, "purpose": call.purpose, "pricing": call.pricing.to_dict(), **dict(call.selection or {})}
     record_event("model.call.selected", selected)
-    input_tokens = estimate_text_tokens(
-        json.dumps({"messages": call.messages, "tools": call.tools or ()}, ensure_ascii=False, sort_keys=True)
-    )
+    input_tokens = estimate_text_tokens(json.dumps({"messages": call.messages, "tools": call.tools or ()}, ensure_ascii=False, sort_keys=True))
     started_at = perf_counter()
     try:
         response = _send_provider_call(call, provider)
     except Exception as error:
         record_event(
-            "model.call.failed",
-            {
-                **_provider_call_metrics(call, input_tokens, "", started_at),
-                "error_type": type(error).__name__,
-                "message": str(error),
-            },
+            "model.call.failed", {**_provider_call_metrics(call, input_tokens, "", started_at), "error_type": type(error).__name__, "message": str(error)}
         )
         raise
     output = response.text if not response.tool_calls else _model_response_text(response)
@@ -187,9 +165,7 @@ def call_chat_model(call: ProviderCall, provider: ChatProvider, record_event: Ev
 
 def read_model_turn(response: ModelResponse) -> ModelTurn:
     if response.tool_calls:
-        return ActionTurn(
-            tuple(ModelAction(call.id, call.name, dict(call.arguments)) for call in response.tool_calls), response.text
-        )
+        return ActionTurn(tuple(ModelAction(call.id, call.name, dict(call.arguments)) for call in response.tool_calls), response.text)
     if not response.text.strip():
         raise ValueError("model returned neither final text nor actions")
     return FinalTurn(response.text)
@@ -200,13 +176,7 @@ def estimate_text_tokens(text: str) -> int:
 
 
 class MockProvider:
-    def __init__(
-        self,
-        response: str = "Mock response",
-        *,
-        tool_responses: list[ModelResponse] | None = None,
-        feedback_response: str | None = None,
-    ) -> None:
+    def __init__(self, response: str = "Mock response", *, tool_responses: list[ModelResponse] | None = None, feedback_response: str | None = None) -> None:
         self.response = response
         self.last_messages: list[Message] = []
         self.tool_responses = list(tool_responses or [])
@@ -272,9 +242,7 @@ class AnthropicCompatibleProvider:
         }
         data = self._send_request(payload)
         calls = [_read_anthropic_tool_call(block) for block in data.get("content", []) if block.get("type") == "tool_use"]
-        return ModelResponse(
-            text=_read_anthropic_text(data), tool_calls=calls, stop_reason="tool_calls" if calls else "model_finished"
-        )
+        return ModelResponse(text=_read_anthropic_text(data), tool_calls=calls, stop_reason="tool_calls" if calls else "model_finished")
 
     def _send_request(self, payload: dict[str, object]) -> dict[str, Any]:
         url = f"{self.base_url.rstrip('/')}/v1/messages"
@@ -313,9 +281,7 @@ def _provider_call_metrics(call: ProviderCall, input_tokens: int, output: str, s
         "output_tokens": output_tokens,
         "estimated_cost": (input_cost + output_cost) / 1_000_000,
         "pricing": call.pricing.to_dict(),
-        "estimated_cost_excludes_cache": bool(
-            call.pricing.cache_creation_cost_per_million or call.pricing.cache_read_cost_per_million
-        ),
+        "estimated_cost_excludes_cache": bool(call.pricing.cache_creation_cost_per_million or call.pricing.cache_read_cost_per_million),
     }
 
 
@@ -394,11 +360,7 @@ def _to_anthropic_messages(messages: list[Message]) -> list[Message]:
             blocks.extend(_tool_call_to_anthropic_block(item) for item in message["tool_calls"])
             converted.append({"role": "assistant", "content": blocks})
         elif role == "tool":
-            block = {
-                "type": "tool_result",
-                "tool_use_id": str(message.get("tool_call_id", "")),
-                "content": str(message.get("content", "")),
-            }
+            block = {"type": "tool_result", "tool_use_id": str(message.get("tool_call_id", "")), "content": str(message.get("content", ""))}
             if converted and converted[-1]["role"] == "user" and isinstance(converted[-1]["content"], list):
                 converted[-1]["content"].append(block)
             else:

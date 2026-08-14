@@ -30,9 +30,7 @@ class AuditEventRule:
     def __post_init__(self) -> None:
         if self.retention not in {DETAILED, CRITICAL, PROTECTED}:
             raise ValueError(f"unknown audit retention class: {self.retention}")
-        if len(self.content_fields) != len(set(self.content_fields)) or any(
-            not isinstance(field, str) or not field for field in self.content_fields
-        ):
+        if len(self.content_fields) != len(set(self.content_fields)) or any(not isinstance(field, str) or not field for field in self.content_fields):
             raise ValueError("audit content fields must be unique non-empty strings")
 
 
@@ -86,19 +84,11 @@ class AuditPolicy:
         """Build a dynamically redacted view of canonical storage events."""
         return [replace(event, data=self.redact_event_data(event.stream_type, event.event_type, event.data)) for event in events]
 
-    def prune_expired_events(
-        self, backend: StorageBackend, user_ids: list[str], *, apply: bool = False, now: datetime | None = None
-    ) -> AuditPruneReport:
+    def prune_expired_events(self, backend: StorageBackend, user_ids: list[str], *, apply: bool = False, now: datetime | None = None) -> AuditPruneReport:
         """Preview or explicitly delete expired detailed and critical events."""
         current_time = _normalise_now(now)
         reports = [_prune_one_user(backend, user_id, self, current_time, apply) for user_id in _unique_user_ids(user_ids)]
-        return AuditPruneReport(
-            applied=apply,
-            now=format_utc(current_time),
-            detailed_days=self.detailed_days,
-            critical_days=self.critical_days,
-            users=reports,
-        )
+        return AuditPruneReport(applied=apply, now=format_utc(current_time), detailed_days=self.detailed_days, critical_days=self.critical_days, users=reports)
 
 
 _PROTECTED_EVENT_RULE = AuditEventRule(PROTECTED)
@@ -181,9 +171,7 @@ def compact_subagent_result(value: dict[str, object], options: "SubagentRecordOp
     if isinstance(nested, list):
         compacted.update(
             subagent_results_count=len(nested),
-            subagent_results=[
-                compact_subagent_result(item, options) for item in nested[: options.nested_results] if isinstance(item, dict)
-            ],
+            subagent_results=[compact_subagent_result(item, options) for item in nested[: options.nested_results] if isinstance(item, dict)],
             subagent_results_omitted=max(0, len(nested) - options.nested_results),
         )
     elif options.is_summary:
@@ -203,15 +191,11 @@ def compact_subagent_result(value: dict[str, object], options: "SubagentRecordOp
                 text_truncated=len(text) > options.summary_chars,
             )
         result_digest = _content_digest(value)
-        compacted.update(
-            result_sha256=result_digest["sha256"], result_chars=result_digest["characters"], record_mode=options.mode
-        )
+        compacted.update(result_sha256=result_digest["sha256"], result_chars=result_digest["characters"], record_mode=options.mode)
     return compacted
 
 
-def _prune_one_user(
-    backend: StorageBackend, user_id: str, policy: AuditPolicy, now: datetime, apply: bool
-) -> AuditPruneUserReport:
+def _prune_one_user(backend: StorageBackend, user_id: str, policy: AuditPolicy, now: datetime, apply: bool) -> AuditPruneUserReport:
     from core.records.store import StorageEventQuery
 
     events = backend.read_events(StorageEventQuery(user_id=user_id))
@@ -241,9 +225,7 @@ def _prune_one_user(
     deleted = 0
     maintenance_events = 0
     if apply and candidates:
-        deleted = backend.delete_events(
-            StorageEventQuery(user_id=user_id, event_ids=tuple(event.event_id for event in candidates))
-        )
+        deleted = backend.delete_events(StorageEventQuery(user_id=user_id, event_ids=tuple(event.event_id for event in candidates)))
         if deleted:
             maintenance_events = _record_prune_events(backend, user_id, candidates, policy, now)
     return AuditPruneUserReport(
@@ -258,9 +240,7 @@ def _prune_one_user(
     )
 
 
-def _record_prune_events(
-    backend: StorageBackend, user_id: str, candidates: list[StorageEvent], policy: AuditPolicy, now: datetime
-) -> int:
+def _record_prune_events(backend: StorageBackend, user_id: str, candidates: list[StorageEvent], policy: AuditPolicy, now: datetime) -> int:
     by_agent: dict[str, dict[str, int]] = {}
     for event in candidates:
         counts = by_agent.setdefault(event.agent_name, {DETAILED: 0, CRITICAL: 0})

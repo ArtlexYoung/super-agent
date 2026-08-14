@@ -53,10 +53,7 @@ class RunEventLog:
             data = dict(extra_data or {})
             if prompt is not None:
                 data["prompt"] = prompt
-            return self.append_event(
-                "run.started",
-                {**data, "conversation_id": self.identity.conversation_id, "parent_run_id": self.identity.parent_run_id},
-            )
+            return self.append_event("run.started", {**data, "conversation_id": self.identity.conversation_id, "parent_run_id": self.identity.parent_run_id})
 
     def append_event(self, event_type: str, data: dict[str, object] | None = None) -> RunEvent:
         with self._lock:
@@ -116,12 +113,7 @@ class RunEventLog:
         from core.records.store import StorageEventQuery
 
         return self._backend.read_events(
-            StorageEventQuery(
-                user_id=self.identity.user_id,
-                agent_name=self.identity.agent_name,
-                stream_type="run",
-                stream_id=self.identity.run_id,
-            )
+            StorageEventQuery(user_id=self.identity.user_id, agent_name=self.identity.agent_name, stream_type="run", stream_id=self.identity.run_id)
         )
 
 
@@ -233,10 +225,7 @@ def _ordered_run_events(events: list[StorageEvent]) -> list[StorageEvent]:
     ordered = sorted(events, key=lambda event: event.position)
     first = ordered[0]
     if any(
-        event.stream_type != "run"
-        or event.stream_id != first.stream_id
-        or event.user_id != first.user_id
-        or event.agent_name != first.agent_name
+        event.stream_type != "run" or event.stream_id != first.stream_id or event.user_id != first.user_id or event.agent_name != first.agent_name
         for event in ordered
     ):
         raise ValueError("run projection cannot combine event streams")

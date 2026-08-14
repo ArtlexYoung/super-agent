@@ -268,9 +268,7 @@ class IsolatedWorktreeTools:
         return (self.worktree_root / worktree_id).resolve()
 
     def _run_git(self, arguments: list[str]) -> str:
-        completed = subprocess.run(
-            ["git", "-C", str(self.repository), *arguments], check=False, capture_output=True, text=True, timeout=60
-        )
+        completed = subprocess.run(["git", "-C", str(self.repository), *arguments], check=False, capture_output=True, text=True, timeout=60)
         if completed.returncode != 0:
             detail = (completed.stderr or completed.stdout).strip()[:WORKTREE_OUTPUT_LIMIT]
             raise RuntimeError(f"git worktree operation failed: {detail}")

@@ -18,11 +18,7 @@ from core.records.store import StorageBackend
 
 
 def add_config_and_user_options(
-    parser: argparse.ArgumentParser,
-    *,
-    config_default: str | None = None,
-    config_required: bool = False,
-    user_default: str | None = LOCAL_USER_ID,
+    parser: argparse.ArgumentParser, *, config_default: str | None = None, config_required: bool = False, user_default: str | None = LOCAL_USER_ID
 ) -> None:
     parser.add_argument("--common-config", default=config_default, required=config_required)
     parser.add_argument("--user-id", default=user_default)
@@ -254,9 +250,7 @@ def _run_status_line(snapshot: RunSnapshot) -> str:
 
 def _print_run_explanation(explanation: dict[str, object]) -> None:
     snapshot = _required_object(explanation, "snapshot")
-    print(
-        f"run\t{snapshot['run_id']}\tstatus={snapshot['status']}\tagent={snapshot['agent_name']}\tevents={snapshot['event_count']}"
-    )
+    print(f"run\t{snapshot['run_id']}\tstatus={snapshot['status']}\tagent={snapshot['agent_name']}\tevents={snapshot['event_count']}")
     for decision in explanation.get("selection_decisions", []):
         if isinstance(decision, dict):
             reason = str(decision.get("reason", ""))
@@ -270,9 +264,7 @@ def _print_run_explanation(explanation: dict[str, object]) -> None:
             continue
         data = event.get("data", {})
         if isinstance(data, dict):
-            print(
-                f"disclosure\t{data.get('content_key', '')}\t{data.get('stage', '')}\tcache_hit={str(data.get('cache_hit', False)).lower()}"
-            )
+            print(f"disclosure\t{data.get('content_key', '')}\t{data.get('stage', '')}\tcache_hit={str(data.get('cache_hit', False)).lower()}")
     _print_plan_insight(explanation.get("plan"))
     _print_model_call_insight(explanation.get("model_calls"))
     _print_model_usage_insight(explanation.get("model_usage"))
@@ -347,9 +339,7 @@ def _required_object(data: dict[str, object], name: str) -> dict[str, object]:
 
 
 def _add_sensitive_output_argument(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument(
-        "--include-sensitive", action="store_true", help="show complete prompts, model text, tool payloads, and error messages"
-    )
+    parser.add_argument("--include-sensitive", action="store_true", help="show complete prompts, model text, tool payloads, and error messages")
 
 
 def _positive_integer(value: str) -> int:
@@ -395,9 +385,7 @@ def run_storage_command(args: argparse.Namespace) -> int:
     if args.output == "json":
         return print_cli_json(asdict(report))
     for result in report.users:
-        print(
-            f"{result.user_id}\tread={result.events_read}\tcopied={result.events_copied}\texisting={result.events_already_present}"
-        )
+        print(f"{result.user_id}\tread={result.events_read}\tcopied={result.events_copied}\texisting={result.events_already_present}")
     return 0
 
 
@@ -429,9 +417,7 @@ def _refresh_disclosure_histories(config: CommonConfig, backend: StorageBackend,
         if not user_report.events_deleted:
             continue
         for agent_name in user_report.affected_agents:
-            EventStore(
-                backend, config.storage.path, user_report.user_id, agent_name, disclosure_factory=DisclosureStorage
-            ).disclosure.refresh_history()
+            EventStore(backend, config.storage.path, user_report.user_id, agent_name, disclosure_factory=DisclosureStorage).disclosure.refresh_history()
 
 
 def _resolve_destination_path(value: str, base_directory: Path) -> Path:

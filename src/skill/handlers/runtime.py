@@ -125,12 +125,7 @@ class SkillTool:
             "function": {
                 "name": self.name,
                 "description": self.description,
-                "parameters": {
-                    "type": "object",
-                    "properties": self.properties,
-                    "required": list(self.required),
-                    "additionalProperties": False,
-                },
+                "parameters": {"type": "object", "properties": self.properties, "required": list(self.required), "additionalProperties": False},
             },
         }
 
@@ -327,18 +322,11 @@ def _validate_optional_type(value: object, expected: type, name: str) -> None:
 def _validate_skill_tool(tool: object) -> None:
     if not isinstance(tool, SkillTool):
         raise TypeError("SkillUse.tools must contain SkillTool values")
-    if (
-        not isinstance(tool.name, str)
-        or not tool.name.strip()
-        or not isinstance(tool.description, str)
-        or not tool.description.strip()
-    ):
+    if not isinstance(tool.name, str) or not tool.name.strip() or not isinstance(tool.description, str) or not tool.description.strip():
         raise ValueError("Skill tool name and description cannot be empty")
     if not isinstance(tool.properties, dict) or not callable(tool.handler):
         raise TypeError(f"Skill tool is invalid: {tool.name}")
-    if not isinstance(tool.required, tuple) or not all(
-        isinstance(name, str) and name in tool.properties for name in tool.required
-    ):
+    if not isinstance(tool.required, tuple) or not all(isinstance(name, str) and name in tool.properties for name in tool.required):
         raise ValueError(f"Skill tool required names are invalid: {tool.name}")
     if not isinstance(tool.action, SkillAction):
         raise TypeError(f"Skill tool is missing an action: {tool.name}")
@@ -400,9 +388,7 @@ def create_progressive_skill_disclosure(
         from skill.learning.freshness import load_freshness_rules
         from skill.learning.records import read_evaluation_records
 
-        policy_disclosure = create_progressive_skill_disclosure(
-            config, store=store, record_disclosures=False, include_freshness=False
-        )
+        policy_disclosure = create_progressive_skill_disclosure(config, store=store, record_disclosures=False, include_freshness=False)
         policy_disclosure.prepare_skill_index()
         rules = load_freshness_rules(policy_disclosure, config.agent.skills, disclose=False)
         freshness_stats = calculate_skill_freshness(read_evaluation_records(store, source_type="agent_run"), rules)

@@ -14,25 +14,9 @@ from core.checks import ActionEffect, ActionRequest, ActionRunner, ActionRules
 from core.models import reject_unknown_fields, read_bool, read_optional_text, read_text
 from core.records.store import EventStore
 from skill.discovery.catalog import ProgressiveDisclosureCore, SkillDisclosure
-from skill.handlers.models import (
-    MODEL_CONFIGURATION_FIELDS,
-    ModelDefinition,
-    ModelProfile,
-    create_model_profile_from_skill_disclosure,
-)
-from skill.discovery.manifest import (
-    DEFAULT_SKILL_FRESHNESS,
-    SkillEntry,
-    SkillManifest,
-    calculate_skill_directory_sha256,
-    next_skill_version,
-)
-from skill.handlers.package import (
-    SkillDirectoryUpdate,
-    apply_skill_directory_updates,
-    create_skill_candidate,
-    validate_skill_directory,
-)
+from skill.handlers.models import MODEL_CONFIGURATION_FIELDS, ModelDefinition, ModelProfile, create_model_profile_from_skill_disclosure
+from skill.discovery.manifest import DEFAULT_SKILL_FRESHNESS, SkillEntry, SkillManifest, calculate_skill_directory_sha256, next_skill_version
+from skill.handlers.package import SkillDirectoryUpdate, apply_skill_directory_updates, create_skill_candidate, validate_skill_directory
 
 
 @dataclass(frozen=True)
@@ -63,9 +47,7 @@ class ModelSkillManager:
         return cast(
             ModelProfile,
             self.actions.execute_action(
-                ActionRequest.create(
-                    "user:model-skill", f"skill:owned:model:{request.name}", (ActionEffect.CREATE, ActionEffect.UPDATE)
-                ),
+                ActionRequest.create("user:model-skill", f"skill:owned:model:{request.name}", (ActionEffect.CREATE, ActionEffect.UPDATE)),
                 lambda: self._save_model_skill(request),
             ),
         )
@@ -96,16 +78,12 @@ class ModelSkillManager:
         updates = [(target, source_path, document)]
         if clean_request.definition.default:
             updates.extend(self._default_removal_updates(disclosure, {clean_request.name, previous_name}))
-        _apply_model_skill_updates(
-            updates,
-            removed_path=(source_path if source is not None and source.source == "user" and source_path != target else None),
-        )
+        _apply_model_skill_updates(updates, removed_path=(source_path if source is not None and source.source == "user" and source_path != target else None))
         return self._read_profile(clean_request.name)
 
     def remove_model_skill(self, name: str) -> None:
         self.actions.execute_action(
-            ActionRequest.create("user:model-skill", f"skill:owned:model:{name}", (ActionEffect.DELETE,)),
-            lambda: self._remove_model_skill(name),
+            ActionRequest.create("user:model-skill", f"skill:owned:model:{name}", (ActionEffect.DELETE,)), lambda: self._remove_model_skill(name)
         )
 
     def _remove_model_skill(self, name: str) -> None:
@@ -126,17 +104,11 @@ class ModelSkillManager:
             replacement_opened = disclosure.open_skill(replacement.reference.name, "model")
             replacement_document = _read_model_skill_document(replacement_opened)
             updates.append(
-                (
-                    self.user_skill_root / "model" / replacement.reference.name,
-                    replacement_document.manifest.path,
-                    _with_default(replacement_document, True),
-                )
+                (self.user_skill_root / "model" / replacement.reference.name, replacement_document.manifest.path, _with_default(replacement_document, True))
             )
         _apply_model_skill_updates(updates, removed_path=removed_path)
 
-    def _default_removal_updates(
-        self, disclosure: ProgressiveDisclosureCore, excluded_names: set[str]
-    ) -> list[tuple[Path, Path | None, _ModelSkillDocument]]:
+    def _default_removal_updates(self, disclosure: ProgressiveDisclosureCore, excluded_names: set[str]) -> list[tuple[Path, Path | None, _ModelSkillDocument]]:
         updates: list[tuple[Path, Path | None, _ModelSkillDocument]] = []
         index = disclosure.prepare_skill_index()
         for entry in index.entries:
@@ -146,9 +118,7 @@ class ModelSkillManager:
             document = _read_model_skill_document(opened)
             if document.configuration.get("default") is not True:
                 continue
-            updates.append(
-                (self.user_skill_root / "model" / entry.reference.name, document.manifest.path, _with_default(document, False))
-            )
+            updates.append((self.user_skill_root / "model" / entry.reference.name, document.manifest.path, _with_default(document, False)))
         return updates
 
     def _read_profile(self, name: str) -> ModelProfile:
@@ -189,9 +159,7 @@ def validate_model_skill_input(request: ModelSkillInput) -> ModelSkillInput:
     )
 
 
-def _create_model_skill_document(
-    request: ModelSkillInput, current: _ModelSkillDocument | None, version: str
-) -> _ModelSkillDocument:
+def _create_model_skill_document(request: ModelSkillInput, current: _ModelSkillDocument | None, version: str) -> _ModelSkillDocument:
     if current is None:
         manifest = SkillManifest(
             name=request.name,
@@ -229,9 +197,7 @@ def _with_default(document: _ModelSkillDocument, selected: bool) -> _ModelSkillD
     return _ModelSkillDocument(manifest, configuration)
 
 
-def _apply_model_skill_updates(
-    updates: list[tuple[Path, Path | None, _ModelSkillDocument]], *, removed_path: Path | None
-) -> None:
+def _apply_model_skill_updates(updates: list[tuple[Path, Path | None, _ModelSkillDocument]], *, removed_path: Path | None) -> None:
     with ExitStack() as candidates:
         changes = []
         affected = set()
@@ -241,10 +207,7 @@ def _apply_model_skill_updates(
             validate_skill_directory(stage, expected_type="model", expected_name=document.manifest.name)
             changes.append(
                 SkillDirectoryUpdate(
-                    stage,
-                    target,
-                    calculate_skill_directory_sha256(stage),
-                    calculate_skill_directory_sha256(target) if target.is_dir() else "",
+                    stage, target, calculate_skill_directory_sha256(stage), calculate_skill_directory_sha256(target) if target.is_dir() else ""
                 )
             )
             affected.add(target)

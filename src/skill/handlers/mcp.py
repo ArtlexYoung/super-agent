@@ -58,12 +58,7 @@ class StdioMcpServer:
     timeout_seconds: float
 
     def __init__(
-        self,
-        command: str,
-        *,
-        arguments: Iterable[str] = (),
-        environment: Mapping[str, str] | None = None,
-        timeout_seconds: float = DEFAULT_MCP_TIMEOUT_SECONDS,
+        self, command: str, *, arguments: Iterable[str] = (), environment: Mapping[str, str] | None = None, timeout_seconds: float = DEFAULT_MCP_TIMEOUT_SECONDS
     ) -> None:
         clean_command = command.strip() if isinstance(command, str) else ""
         if not clean_command:
@@ -185,12 +180,7 @@ class _McpStdioSession:
         )
         try:
             self.send_request(
-                "initialize",
-                {
-                    "protocolVersion": MCP_PROTOCOL_VERSION,
-                    "capabilities": {},
-                    "clientInfo": {"name": "super-agent", "version": __version__},
-                },
+                "initialize", {"protocolVersion": MCP_PROTOCOL_VERSION, "capabilities": {}, "clientInfo": {"name": "super-agent", "version": __version__}}
             )
             self.send_notification("notifications/initialized", {})
         except Exception:

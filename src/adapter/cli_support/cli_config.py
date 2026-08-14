@@ -44,21 +44,11 @@ class CliConfig:
         output = str(run.get("output", "text")).strip().lower()
         if output not in {"text", "json"}:
             raise ValueError("CLI run output must be text or json")
-        return cls(
-            user_id,
-            output,
-            _read_cli_boolean(run.get("save", False), "save"),
-            _read_cli_boolean(run.get("show_summary", True), "show_summary"),
-            source,
-        )
+        return cls(user_id, output, _read_cli_boolean(run.get("save", False), "save"), _read_cli_boolean(run.get("show_summary", True), "show_summary"), source)
 
     @classmethod
-    def load_automatically(
-        cls, base_directory: str | Path | None = None, environment: dict[str, str] | None = None
-    ) -> "CliConfig":
-        base, source = find_optional_config_file(
-            "cli.toml", "SUPER_AGENT_CLI_CONFIG", base_directory=base_directory, environment=environment
-        )
+    def load_automatically(cls, base_directory: str | Path | None = None, environment: dict[str, str] | None = None) -> "CliConfig":
+        base, source = find_optional_config_file("cli.toml", "SUPER_AGENT_CLI_CONFIG", base_directory=base_directory, environment=environment)
         return cls.load_from_file(source) if source else cls.create_default(base)
 
     @classmethod

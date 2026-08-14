@@ -29,9 +29,7 @@ class DisclosureStorage:
     def write_text(self, identity: RunIdentity | None, content_key: str, kind: str, stage: str, path: Path, content: str) -> None:
         self._write_bytes(identity, content_key, kind, stage, path, content.encode())
 
-    def write_json(
-        self, identity: RunIdentity | None, content_key: str, kind: str, stage: str, path: Path, content: dict[str, object]
-    ) -> None:
+    def write_json(self, identity: RunIdentity | None, content_key: str, kind: str, stage: str, path: Path, content: dict[str, object]) -> None:
         data = (json.dumps(content, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode()
         self._write_bytes(identity, content_key, kind, stage, path, data)
 
@@ -41,22 +39,13 @@ class DisclosureStorage:
     def read_history(self) -> list[dict[str, object]]:
         return disclosure_history_from_events(self._store.read_events())
 
-    def _write_bytes(
-        self, identity: RunIdentity | None, content_key: str, kind: str, stage: str, path: Path, content: bytes
-    ) -> None:
+    def _write_bytes(self, identity: RunIdentity | None, content_key: str, kind: str, stage: str, path: Path, content: bytes) -> None:
         cache_path = self._require_cache_path(path)
         digest = hashlib.sha256(content).hexdigest()
         cache_hit = cache_path.is_file() and hashlib.sha256(cache_path.read_bytes()).hexdigest() == digest
         if not cache_hit:
             write_bytes_atomically(cache_path, content)
-        data = {
-            "content_key": content_key,
-            "kind": kind,
-            "stage": stage,
-            "reference": str(cache_path),
-            "content_sha256": digest,
-            "cache_hit": cache_hit,
-        }
+        data = {"content_key": content_key, "kind": kind, "stage": stage, "reference": str(cache_path), "content_sha256": digest, "cache_hit": cache_hit}
         if identity is None:
             self._store.append_event("disclosure", "management", "content.disclosed", data=data)
         else:
@@ -105,13 +94,7 @@ def create_local_event_store(root: str | Path, *, user_id: str = "local", agent_
     from core.records.store import EventStore
 
     path = Path(root).expanduser().absolute()
-    return EventStore(
-        JsonlStorage(path),
-        path,
-        user_id,
-        agent_name,
-        disclosure_factory=lambda cache_root, store: DisclosureStorage(cache_root, store),
-    )
+    return EventStore(JsonlStorage(path), path, user_id, agent_name, disclosure_factory=lambda cache_root, store: DisclosureStorage(cache_root, store))
 
 
 def clean_storage_text(value: object, name: str) -> str:
@@ -136,9 +119,7 @@ def utc_now_text() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
-def build_sql_event_where(
-    query: StorageEventQuery, placeholder: str, *, hash_identifiers: bool = False
-) -> tuple[str, tuple[str, ...]]:
+def build_sql_event_where(query: StorageEventQuery, placeholder: str, *, hash_identifiers: bool = False) -> tuple[str, tuple[str, ...]]:
     """Build one exact event query for local or hash-indexed remote SQL."""
     clauses: list[str] = []
     parameters: list[str] = []
@@ -153,9 +134,7 @@ def build_sql_event_where(
         clauses.append(f"{text_column} = {placeholder}")
         parameters.append(cleaned)
     if query.event_ids is not None:
-        _add_sql_event_ids(
-            clauses, parameters, event_ids=query.event_ids, placeholder=placeholder, hash_identifiers=hash_identifiers
-        )
+        _add_sql_event_ids(clauses, parameters, event_ids=query.event_ids, placeholder=placeholder, hash_identifiers=hash_identifiers)
     return " WHERE " + " AND ".join(clauses), tuple(parameters)
 
 
@@ -164,8 +143,7 @@ def split_sql_event_id_query(query: StorageEventQuery) -> list[StorageEventQuery
     if query.event_ids is None:
         return [query]
     return [
-        replace(query, event_ids=query.event_ids[index : index + SQL_EVENT_ID_BATCH_SIZE])
-        for index in range(0, len(query.event_ids), SQL_EVENT_ID_BATCH_SIZE)
+        replace(query, event_ids=query.event_ids[index : index + SQL_EVENT_ID_BATCH_SIZE]) for index in range(0, len(query.event_ids), SQL_EVENT_ID_BATCH_SIZE)
     ]
 
 
@@ -183,9 +161,7 @@ def storage_text_key(value: str) -> str:
     return sha256(value.encode("utf-8")).hexdigest()
 
 
-def _add_sql_event_ids(
-    clauses: list[str], parameters: list[str], *, event_ids: tuple[str, ...], placeholder: str, hash_identifiers: bool
-) -> None:
+def _add_sql_event_ids(clauses: list[str], parameters: list[str], *, event_ids: tuple[str, ...], placeholder: str, hash_identifiers: bool) -> None:
     cleaned = [clean_storage_text(event_id, "event_id") for event_id in event_ids]
     if not hash_identifiers:
         clauses.append(f"event_id IN ({', '.join(placeholder for _ in cleaned)})")
@@ -226,16 +202,7 @@ class _PendingSqlEvent:
     data_json: str
 
     def insert_parameters(self, hash_identifiers: bool) -> tuple[object, ...]:
-        values = (
-            self.event_id,
-            self.user_id,
-            self.agent_name,
-            self.stream_type,
-            self.stream_id,
-            self.event_type,
-            self.created_at,
-            self.data_json,
-        )
+        values = (self.event_id, self.user_id, self.agent_name, self.stream_type, self.stream_id, self.event_type, self.created_at, self.data_json)
         if not hash_identifiers:
             return values
         return (
@@ -410,9 +377,7 @@ def _copy_user_events(source: StorageBackend, destination: StorageBackend, user_
         _require_matching_event(event, stored)
         destination_events[event.event_id] = stored
         copied += 1
-    return StorageCopyUserResult(
-        user_id=user_id, events_read=len(source_events), events_copied=copied, events_already_present=already_present
-    )
+    return StorageCopyUserResult(user_id=user_id, events_read=len(source_events), events_copied=copied, events_already_present=already_present)
 
 
 def _require_matching_event(source: StorageEvent, destination: StorageEvent) -> None:
@@ -423,16 +388,7 @@ def _require_matching_event(source: StorageEvent, destination: StorageEvent) -> 
 
 
 def _event_value_without_position(event: StorageEvent) -> tuple[object, ...]:
-    return (
-        event.event_id,
-        event.user_id,
-        event.agent_name,
-        event.stream_type,
-        event.stream_id,
-        event.event_type,
-        event.created_at,
-        event.data,
-    )
+    return (event.event_id, event.user_id, event.agent_name, event.stream_type, event.stream_id, event.event_type, event.created_at, event.data)
 
 
 # Concrete backends import the shared helpers above, so load them after those definitions.

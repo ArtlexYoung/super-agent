@@ -34,9 +34,7 @@ def attach_code_config_to_agent(agent: Agent, source: str | Path | None = None) 
         if context.reference.name != "code":
             return "", ()
         config = CodeConfig.load_automatically() if source is None else CodeConfig.load_from_file(source)
-        instructions = "# Coding workspace (does not grant file or process authority)\n" + json.dumps(
-            asdict(config.settings), default=str
-        )
+        instructions = "# Coding workspace (does not grant file or process authority)\n" + json.dumps(asdict(config.settings), default=str)
         return instructions, CodeWorkspace(config.settings).list_tools()
 
     agent.skills.add_handler(TaskSkillHandler(read_code_workspace))
@@ -54,13 +52,7 @@ class CodeWorkspace:
         self.worktrees = IsolatedWorktreeTools(self.root)
 
     def list_tools(self) -> tuple[SkillTool, ...]:
-        return (
-            *self._read_tools(),
-            *self._change_tools(),
-            *self.repository.list_tools(),
-            *self.processes.list_tools(),
-            *self.worktrees.list_tools(),
-        )
+        return (*self._read_tools(), *self._change_tools(), *self.repository.list_tools(), *self.processes.list_tools(), *self.worktrees.list_tools())
 
     def _read_tools(self) -> tuple[SkillTool, ...]:
         path = _workspace_path_schema()
@@ -266,12 +258,7 @@ class CodeWorkspace:
         if updated == current:
             raise ValueError("structured patch must change file content")
         write_bytes_atomically(selected, updated.encode("utf-8"))
-        return {
-            "path": self._relative(selected),
-            "updated": True,
-            "previous_sha256": previous_sha256,
-            "sha256": _text_sha256(updated),
-        }
+        return {"path": self._relative(selected), "updated": True, "previous_sha256": previous_sha256, "sha256": _text_sha256(updated)}
 
     def delete_file(self, arguments: dict[str, object]) -> dict[str, object]:
         self._require_setting("write")
@@ -331,9 +318,7 @@ class CodeWorkspace:
         command = ["git", "--no-pager", "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", *arguments]
         environment = dict(os.environ)
         environment.update({"GIT_OPTIONAL_LOCKS": "0", "GIT_TERMINAL_PROMPT": "0", "LC_ALL": "C"})
-        completed = subprocess.run(
-            command, cwd=self.root, env=environment, capture_output=True, text=True, timeout=WORKSPACE_GIT_TIMEOUT, check=False
-        )
+        completed = subprocess.run(command, cwd=self.root, env=environment, capture_output=True, text=True, timeout=WORKSPACE_GIT_TIMEOUT, check=False)
         if completed.returncode != 0:
             raise RuntimeError(completed.stderr.strip() or "Git command failed")
         output_bytes = len(completed.stdout.encode("utf-8")) + len(completed.stderr.encode("utf-8"))
@@ -384,12 +369,7 @@ def _workspace_path_schema() -> dict[str, object]:
 
 
 def _workspace_digest_schema() -> dict[str, object]:
-    return {
-        "type": "string",
-        "description": "Exact SHA-256 returned by a prior workspace read.",
-        "minLength": 64,
-        "maxLength": 64,
-    }
+    return {"type": "string", "description": "Exact SHA-256 returned by a prior workspace read.", "minLength": 64, "maxLength": 64}
 
 
 def _replacement_schema() -> dict[str, object]:

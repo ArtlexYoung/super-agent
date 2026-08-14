@@ -89,17 +89,11 @@ class JsonlStorage:
     def _read_path(path: Path) -> list[StorageEvent]:
         if not path.is_file():
             return []
-        return [
-            _event_from_json(line, path, number)
-            for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
-            if line.strip()
-        ]
+        return [_event_from_json(line, path, number) for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1) if line.strip()]
 
 
 def _event_json(event: StorageEvent) -> str:
-    return json.dumps(
-        {"schema_version": JSONL_SCHEMA_VERSION, **asdict(event)}, ensure_ascii=False, separators=(",", ":"), sort_keys=True
-    )
+    return json.dumps({"schema_version": JSONL_SCHEMA_VERSION, **asdict(event)}, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
 
 
 def _event_from_json(line: str, path: Path, line_number: int) -> StorageEvent:

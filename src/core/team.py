@@ -104,9 +104,7 @@ class AgentTeam:
             longest_chain = find_longest_agent_chain(self.owner, root_chain, set())
             if len(longest_chain) > max_depth:
                 warnings.append(
-                    "Agent chain depth is "
-                    f"{len(longest_chain)} layers, configured "
-                    f"max_agent_chain_depth is {max_depth}: " + " -> ".join(longest_chain)
+                    f"Agent chain depth is {len(longest_chain)} layers, configured max_agent_chain_depth is {max_depth}: " + " -> ".join(longest_chain)
                 )
         return warnings
 
@@ -129,12 +127,7 @@ class AgentTeam:
         ]
 
     def run_named_for_model(
-        self,
-        name: str,
-        prompt: str,
-        run: Run,
-        record_options: SubagentRecordOptions,
-        shared_context: dict[str, object] | None = None,
+        self, name: str, prompt: str, run: Run, record_options: SubagentRecordOptions, shared_context: dict[str, object] | None = None
     ) -> dict[str, object]:
         subagent = next((item for item in self._subagents if item.name == name), None)
         if subagent is None:
@@ -151,12 +144,7 @@ class AgentTeam:
             index += 1
 
     def _run_subagent(
-        self,
-        subagent: SubAgent,
-        prompt: str,
-        parent_run: Run,
-        record_options: SubagentRecordOptions,
-        shared_context: dict[str, object] | None,
+        self, subagent: SubAgent, prompt: str, parent_run: Run, record_options: SubagentRecordOptions, shared_context: dict[str, object] | None
     ) -> SubAgentResult:
         parent_run.record_event(
             "subagent.started",
@@ -186,9 +174,7 @@ class AgentTeam:
             subagent_results=result.subagent_results,
             run_id=result.run_id,
         )
-        parent_run.record_event(
-            "subagent.completed", {"name": subagent.name, "run_id": result.run_id, "record_mode": record_options.mode}
-        )
+        parent_run.record_event("subagent.completed", {"name": subagent.name, "run_id": result.run_id, "record_mode": record_options.mode})
         return subagent_result
 
 

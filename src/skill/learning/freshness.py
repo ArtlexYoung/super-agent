@@ -62,9 +62,7 @@ class _EvidenceAccumulator:
     last_evaluated_at: str = ""
 
 
-def summarize_evaluation_evidence(
-    records: list[EvaluationRecord], *, combine_versions: bool = False
-) -> list[EvaluationEvidenceSummary]:
+def summarize_evaluation_evidence(records: list[EvaluationRecord], *, combine_versions: bool = False) -> list[EvaluationEvidenceSummary]:
     ordered = sorted(records, key=lambda record: (parse_utc(record.created_at, "evaluation created_at"), record.record_id))
     accumulators: dict[tuple[str, ...], _EvidenceAccumulator] = {}
     last_by_function_group: dict[str, tuple[tuple[str, ...], EvaluationRecord]] = {}
@@ -145,11 +143,7 @@ def _create_summary(accumulator: _EvidenceAccumulator) -> EvaluationEvidenceSumm
         average_tokens=round(total_tokens / sample_count, 2),
         total_latency_ms=accumulator.total_latency_ms,
         latency_sample_count=accumulator.latency_sample_count,
-        average_latency_ms=(
-            None
-            if accumulator.latency_sample_count == 0
-            else round(accumulator.total_latency_ms / accumulator.latency_sample_count, 2)
-        ),
+        average_latency_ms=(None if accumulator.latency_sample_count == 0 else round(accumulator.total_latency_ms / accumulator.latency_sample_count, 2)),
         same_function_followups=followups,
         same_function_successful_followups=successful_followups,
         replacement_rate=(0.0 if followups == 0 else round(successful_followups / followups, 4)),
@@ -183,9 +177,7 @@ def _update_ewma(previous: float, value: float, sample_count: int) -> float:
 
 
 def _evaluation_record_sha256(record: EvaluationRecord) -> str:
-    content = json.dumps(evaluation_record_to_dict(record), ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode(
-        "utf-8"
-    )
+    content = json.dumps(evaluation_record_to_dict(record), ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode("utf-8")
     return hashlib.sha256(content).hexdigest()
 
 
@@ -197,9 +189,7 @@ def _evidence_sha256(revision: SkillRevision, record_sha256s: list[str]) -> str:
     return digest.hexdigest()
 
 
-def calculate_skill_freshness(
-    records: list[EvaluationRecord], policy: FreshnessRules, current_time: datetime | None = None
-) -> dict[str, dict[str, Any]]:
+def calculate_skill_freshness(records: list[EvaluationRecord], policy: FreshnessRules, current_time: datetime | None = None) -> dict[str, dict[str, Any]]:
     now = current_time or datetime.now(UTC)
     stats_by_skill: dict[str, dict[str, Any]] = {}
     for summary in summarize_evaluation_evidence(records, combine_versions=True):
@@ -313,9 +303,7 @@ class FreshnessRules:
     error_penalty: float
 
 
-def load_freshness_rules(
-    disclosure: ProgressiveDisclosureCore, configured_skills: list[str], *, disclose: bool = True
-) -> FreshnessRules:
+def load_freshness_rules(disclosure: ProgressiveDisclosureCore, configured_skills: list[str], *, disclose: bool = True) -> FreshnessRules:
     selected = disclosure.require_prepared_skill_index().select_one_configured_or_default_skill("freshness", configured_skills)
     opened = disclosure.open_skill(selected.reference.name, selected.reference.skill_type)
     if disclose:
@@ -329,14 +317,7 @@ def read_freshness_rules(disclosure: SkillDisclosure) -> FreshnessRules:
     if manifest.skill_type != "freshness":
         raise ValueError(f"skill does not use the freshness type: {manifest.name}")
     value = disclosure.read_configuration().content
-    weights = (
-        "quality_weight",
-        "recency_weight",
-        "frequency_weight",
-        "efficiency_weight",
-        "reliability_weight",
-        "replacement_weight",
-    )
+    weights = ("quality_weight", "recency_weight", "frequency_weight", "efficiency_weight", "reliability_weight", "replacement_weight")
     unit_values = (*weights, "token_efficiency_weight", "empty_output_penalty", "error_penalty")
     positive_values = (
         "recency_decay_days",

@@ -24,18 +24,14 @@ class PendingConversationTurn:
     prompt: str
 
 
-def prepare_conversation_turn(
-    store: EventStore, action_rules: ActionRules, conversation_id: str, prompt: str
-) -> tuple[list[Message], PendingConversationTurn]:
+def prepare_conversation_turn(store: EventStore, action_rules: ActionRules, conversation_id: str, prompt: str) -> tuple[list[Message], PendingConversationTurn]:
     """Read history and authorize one future complete-turn commit."""
     selected_id = read_text(conversation_id, "conversation_id")
     try:
         conversation = read_conversation(store, selected_id)
     except KeyError:
         conversation = None
-    messages: list[Message] = (
-        [] if conversation is None else [{"role": message.role, "content": message.content} for message in conversation.messages]
-    )
+    messages: list[Message] = [] if conversation is None else [{"role": message.role, "content": message.content} for message in conversation.messages]
     action_runner = ActionRunner(action_rules, store.append_management_action_event)
     prepared_action = action_runner.prepare_action(
         ActionRequest.create("agent:conversation", f"conversation:{selected_id}", (ActionEffect.CREATE, ActionEffect.UPDATE))
@@ -48,12 +44,7 @@ def complete_conversation_turn(pending: PendingConversationTurn, result: RunResu
     pending.action_runner.apply_action(
         pending.prepared_action,
         lambda: append_conversation_turn(
-            pending.store,
-            pending.conversation_id,
-            pending.prompt,
-            result.text,
-            run_id=result.run_id,
-            run_result=_run_result_summary(result),
+            pending.store, pending.conversation_id, pending.prompt, result.text, run_id=result.run_id, run_result=_run_result_summary(result)
         ),
     )
 
@@ -62,12 +53,7 @@ def create_conversation(store: EventStore, title: str = "", *, conversation_id: 
     selected_id = str(uuid4()) if conversation_id is None else read_text(conversation_id, "conversation_id")
     if store.read_events("conversation", selected_id):
         raise ValueError(f"conversation already exists: {selected_id}")
-    store.append_event(
-        "conversation",
-        selected_id,
-        "conversation.created",
-        data={"title": read_text(title, "conversation title", allow_empty=True)},
-    )
+    store.append_event("conversation", selected_id, "conversation.created", data={"title": read_text(title, "conversation title", allow_empty=True)})
     return read_conversation(store, selected_id)
 
 
@@ -84,9 +70,7 @@ def list_conversations(store: EventStore) -> list[Conversation]:
     for event in store.read_events("conversation"):
         grouped.setdefault(event.stream_id, []).append(event)
     return sorted(
-        (conversation_from_events(store.user_id, events) for events in grouped.values()),
-        key=lambda item: (item.updated_at, item.conversation_id),
-        reverse=True,
+        (conversation_from_events(store.user_id, events) for events in grouped.values()), key=lambda item: (item.updated_at, item.conversation_id), reverse=True
     )
 
 

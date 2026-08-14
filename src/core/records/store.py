@@ -8,16 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Protocol
 
-from core.models import (
-    RunEvent,
-    RunIdentity,
-    RunSnapshot,
-    read_int,
-    read_object,
-    read_text,
-    validate_agent_name,
-    validate_user_id,
-)
+from core.models import RunEvent, RunIdentity, RunSnapshot, read_int, read_object, read_text, validate_agent_name, validate_user_id
 
 if TYPE_CHECKING:
     from core.records.events import RunEventLog
@@ -28,13 +19,9 @@ class DisclosureStorage(Protocol):
 
     cache_root: Path
 
-    def write_text(
-        self, identity: RunIdentity | None, content_key: str, kind: str, stage: str, path: Path, content: str
-    ) -> None: ...
+    def write_text(self, identity: RunIdentity | None, content_key: str, kind: str, stage: str, path: Path, content: str) -> None: ...
 
-    def write_json(
-        self, identity: RunIdentity | None, content_key: str, kind: str, stage: str, path: Path, content: dict[str, object]
-    ) -> None: ...
+    def write_json(self, identity: RunIdentity | None, content_key: str, kind: str, stage: str, path: Path, content: dict[str, object]) -> None: ...
 
     def read_content(self, path: str | Path) -> str: ...
 
@@ -69,9 +56,7 @@ class EventStore:
         self.agent_name = validate_agent_name(agent_name)
         self._run_event_log = run_event_log
         self._disclosure_factory = disclosure_factory
-        self.private_root = (
-            self.local_root / "users" / _create_scope_digest(self.user_id) / "agents" / _create_scope_digest(self.agent_name)
-        )
+        self.private_root = self.local_root / "users" / _create_scope_digest(self.user_id) / "agents" / _create_scope_digest(self.agent_name)
         self._disclosure: DisclosureStorage | None = None
         if run_event_log is not None:
             self._require_identity_scope(run_event_log.identity)
@@ -85,14 +70,7 @@ class EventStore:
         return self._disclosure
 
     def append_event(
-        self,
-        stream_type: str,
-        stream_id: str,
-        event_type: str,
-        *,
-        data: dict[str, object],
-        event_id: str | None = None,
-        created_at: str | None = None,
+        self, stream_type: str, stream_id: str, event_type: str, *, data: dict[str, object], event_id: str | None = None, created_at: str | None = None
     ) -> StorageEvent:
         """Append one canonical event inside this user and Agent scope."""
         return self._backend.append_event(
@@ -107,12 +85,7 @@ class EventStore:
         )
 
     def read_events(
-        self,
-        stream_type: str | None = None,
-        stream_id: str | None = None,
-        *,
-        event_type: str | None = None,
-        snapshot: list[StorageEvent] | None = None,
+        self, stream_type: str | None = None, stream_id: str | None = None, *, event_type: str | None = None, snapshot: list[StorageEvent] | None = None
     ) -> list[StorageEvent]:
         """Read canonical events without escaping this user and Agent scope."""
         query = self._scope_query(stream_type, stream_id, event_type)
@@ -149,9 +122,7 @@ class EventStore:
         if self.read_events("run", identity.run_id):
             raise ValueError(f"run already exists: {identity.run_id}")
         return self.append_run_event(
-            identity,
-            "run.started",
-            {"prompt": prompt, "conversation_id": identity.conversation_id, "parent_run_id": identity.parent_run_id},
+            identity, "run.started", {"prompt": prompt, "conversation_id": identity.conversation_id, "parent_run_id": identity.parent_run_id}
         )
 
     def append_run_event(self, identity: RunIdentity, event_type: str, data: dict[str, object] | None = None) -> RunEvent:
@@ -176,9 +147,7 @@ class EventStore:
         visible = events if include_sensitive else _redact_events_for_display(events)
         return run_snapshot_from_events(self.user_id, visible)
 
-    def list_runs(
-        self, limit: int | None = None, *, conversation_id: str | None = None, include_sensitive: bool = False
-    ) -> list[RunSnapshot]:
+    def list_runs(self, limit: int | None = None, *, conversation_id: str | None = None, include_sensitive: bool = False) -> list[RunSnapshot]:
         from core.records.events import run_snapshot_from_events
 
         if limit is not None and limit <= 0:
@@ -187,10 +156,7 @@ class EventStore:
         for event in self.read_events("run"):
             grouped.setdefault(event.stream_id, []).append(event)
         snapshots = sorted(
-            (
-                run_snapshot_from_events(self.user_id, events if include_sensitive else _redact_events_for_display(events))
-                for events in grouped.values()
-            ),
+            (run_snapshot_from_events(self.user_id, events if include_sensitive else _redact_events_for_display(events)) for events in grouped.values()),
             key=lambda item: (item.started_at, item.run_id),
             reverse=True,
         )
@@ -225,12 +191,7 @@ class EventStore:
         return path
 
     def append_model_call_event(self, operation_id: str, event_type: str, data: dict[str, object]) -> StorageEvent:
-        return self.append_event(
-            "model_call",
-            read_text(operation_id, "model operation_id"),
-            read_text(event_type, "model event_type"),
-            data=dict(data),
-        )
+        return self.append_event("model_call", read_text(operation_id, "model operation_id"), read_text(event_type, "model event_type"), data=dict(data))
 
     def append_management_action_event(self, event_type: str, data: dict[str, object]) -> StorageEvent:
         return self.append_event("action", "management", event_type, data=data)
@@ -283,9 +244,7 @@ class StorageEventQuery:
     def __post_init__(self) -> None:
         if self.event_ids is not None and not self.event_ids:
             raise ValueError("event_ids cannot be empty")
-        if self.event_ids is not None and any(
-            not isinstance(event_id, str) or not event_id.strip() for event_id in self.event_ids
-        ):
+        if self.event_ids is not None and any(not isinstance(event_id, str) or not event_id.strip() for event_id in self.event_ids):
             raise ValueError("event_ids must contain non-empty strings")
 
     def matches(self, event: StorageEvent) -> bool:

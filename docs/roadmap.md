@@ -1917,6 +1917,17 @@ Status: implemented.
 - Apply a repository-wide 130-character formatter ceiling and reduce source to at most 14,100
   non-empty Python lines without removing behavior or introducing implicit fallback paths.
 
+## v0.1.86: One Skill Change Transaction Result
+
+Status: implemented.
+
+- Return the explicit post-apply result from the verified Skill directory transaction, so apply
+  and undo no longer pass manifests through mutable callback side channels.
+- Route package and evolution management actions through one named action boundary per owner,
+  retaining exact resources, effects, audit events, hashes, rollback, and restoration callbacks.
+- Apply a 160-character formatter ceiling and reduce source to at most 13,000 non-empty Python
+  lines while preserving separate propose, test, apply, and undo operations.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

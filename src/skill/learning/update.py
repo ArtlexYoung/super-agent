@@ -9,7 +9,7 @@ from dataclasses import asdict, dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from time import perf_counter
-from typing import Callable, cast
+from typing import Callable, TypeVar, cast
 from uuid import uuid4
 
 from core.checks import ActionEffect, ActionRequest, ActionRunner, ActionRules
@@ -89,11 +89,7 @@ class SkillChangeReport:
     baseline_results: list[SkillChangeCaseResult]
 
 
-@dataclass(frozen=True)
-class _ApplyPaths:
-    target: Path
-    target_sha256: str
-    history: Path
+ActionResult = TypeVar("ActionResult")
 
 
 class SkillUpdater:
@@ -119,51 +115,27 @@ class SkillUpdater:
 
     def propose_skill_change(self, name: str, goal: str, *, skill_type: str | None = None) -> SkillChange:
         effects = (ActionEffect.READ, ActionEffect.CREATE, ActionEffect.NETWORK)
-        return cast(
-            SkillChange,
-            self.actions.execute_action(
-                ActionRequest.create("user:skill-change", f"skill:change:{name}", effects),
-                lambda: self._propose(name, goal, skill_type),
-            ),
-        )
+        return self._execute_skill_change_action(name, effects, lambda: self._propose(name, goal, skill_type))
 
     def test_skill_change(
         self, change_id: str, cases: list[SkillChangeCase], *, minimum_score: float = 0.8, minimum_improvement: float = 0.0
     ) -> SkillChangeReport:
         effects = (ActionEffect.READ, ActionEffect.CREATE, ActionEffect.NETWORK)
-        return cast(
-            SkillChangeReport,
-            self.actions.execute_action(
-                ActionRequest.create("user:skill-change", f"skill:change:{change_id}:test", effects),
-                lambda: self._test(change_id, cases, minimum_score, minimum_improvement),
-            ),
-        )
+        return self._execute_skill_change_action(f"{change_id}:test", effects, lambda: self._test(change_id, cases, minimum_score, minimum_improvement))
 
     def apply_skill_change(self, change_id: str) -> SkillManifest:
-        return cast(
-            SkillManifest,
-            self.actions.execute_action(
-                ActionRequest.create(
-                    "user:skill-change",
-                    f"skill:change:{change_id}:apply",
-                    (ActionEffect.READ, ActionEffect.CREATE, ActionEffect.UPDATE),
-                ),
-                lambda: self._apply(change_id),
-            ),
+        return self._execute_skill_change_action(
+            f"{change_id}:apply", (ActionEffect.READ, ActionEffect.CREATE, ActionEffect.UPDATE), lambda: self._apply(change_id)
         )
 
     def undo_skill_change(self, change_id: str) -> SkillManifest | None:
-        return cast(
-            SkillManifest | None,
-            self.actions.execute_action(
-                ActionRequest.create(
-                    "user:skill-change",
-                    f"skill:change:{change_id}:undo",
-                    (ActionEffect.READ, ActionEffect.UPDATE, ActionEffect.DELETE),
-                ),
-                lambda: self._undo(change_id),
-            ),
+        return self._execute_skill_change_action(
+            f"{change_id}:undo", (ActionEffect.READ, ActionEffect.UPDATE, ActionEffect.DELETE), lambda: self._undo(change_id)
         )
+
+    def _execute_skill_change_action(self, resource: str, effects: tuple[ActionEffect, ...], action: Callable[[], ActionResult]) -> ActionResult:
+        request = ActionRequest.create("user:skill-change", f"skill:change:{resource}", effects)
+        return self.actions.execute_action(request, action)
 
     def list_skill_changes(self) -> list[SkillChange]:
         candidate_root = self.root / "candidates"
@@ -187,9 +159,7 @@ class SkillUpdater:
         parent_sha = "" if current is None else calculate_skill_directory_sha256(current.path)
         parent_version = "" if current is None else current.version
         proposed_version = next_skill_version(parent_version)
-        response = self.propose_model.send_messages(
-            _proposal_messages(selected_type, name, clean_goal, None if current is None else current.path)
-        )
+        response = self.propose_model.send_messages(_proposal_messages(selected_type, name, clean_goal, None if current is None else current.path))
         if current is not None and calculate_skill_directory_sha256(current.path) != parent_sha:
             raise ValueError(f"active Skill changed during proposal: {selected_type}:{name}")
         change_id = f"{selected_type}-{name}-{uuid4().hex[:12]}"
@@ -211,9 +181,7 @@ class SkillUpdater:
         self._record(change_id, "skill_change.proposed", {"skill_key": change.key})
         return change
 
-    def _test(
-        self, change_id: str, cases: list[SkillChangeCase], minimum_score: float, minimum_improvement: float
-    ) -> SkillChangeReport:
+    def _test(self, change_id: str, cases: list[SkillChangeCase], minimum_score: float, minimum_improvement: float) -> SkillChangeReport:
         if not 0 <= minimum_score <= 1:
             raise ValueError("minimum_score must be between 0 and 1")
         if not 0 <= minimum_improvement <= 1:
@@ -235,10 +203,7 @@ class SkillUpdater:
             change_id=change.change_id,
             score=round(score, 4),
             baseline_score=None if baseline_score is None else round(baseline_score, 4),
-            passed=score >= minimum_score
-            and no_regression
-            and improvement_target_met
-            and all(item.passed for item in candidate_results),
+            passed=score >= minimum_score and no_regression and improvement_target_met and all(item.passed for item in candidate_results),
             minimum_score=minimum_score,
             no_regression=no_regression,
             improvement=improvement,
@@ -256,15 +221,7 @@ class SkillUpdater:
             "skill_change.tested",
             {
                 key: getattr(report, key)
-                for key in (
-                    "report_id",
-                    "passed",
-                    "score",
-                    "baseline_score",
-                    "improvement",
-                    "minimum_improvement",
-                    "improvement_target_met",
-                )
+                for key in ("report_id", "passed", "score", "baseline_score", "improvement", "minimum_improvement", "improvement_target_met")
             },
         )
         return report
@@ -302,7 +259,20 @@ class SkillUpdater:
         target = self.store.private_root / "skills" / change.skill_type / change.name
         target_sha = calculate_skill_directory_sha256(target) if target.is_dir() else ""
         history = self._prepare_apply_history(change, target, target_sha)
-        return self._activate_change(change, current, changed_manifest, _ApplyPaths(target, target_sha, history))
+        if current is not None:
+            validate_skill_replacement(current, change.candidate_path)
+        try:
+            return cast(
+                SkillManifest,
+                apply_skill_directory_updates(
+                    [SkillDirectoryUpdate(change.candidate_path, target, change.candidate_sha256, target_sha)],
+                    after_apply=lambda: self._finish_activation(change, target),
+                    after_restore=(None if self.on_skill_changed is None else lambda: self.on_skill_changed(changed_manifest)),
+                ),
+            )
+        except Exception:
+            shutil.rmtree(history)
+            raise
 
     def _prepare_apply_history(self, change: SkillChange, target: Path, target_sha: str) -> Path:
         history = self.root / "history" / change.change_id
@@ -313,23 +283,6 @@ class SkillUpdater:
             copy_skill_directory(target, history / "previous")
         _write_json(history / "apply.json", {"target_sha256": target_sha, "had_user_skill": target.is_dir()})
         return history
-
-    def _activate_change(
-        self, change: SkillChange, current: Path | None, changed_manifest: SkillManifest, paths: _ApplyPaths
-    ) -> SkillManifest:
-        if current is not None:
-            validate_skill_replacement(current, change.candidate_path)
-        activated: list[SkillManifest] = []
-        try:
-            apply_skill_directory_updates(
-                [SkillDirectoryUpdate(change.candidate_path, paths.target, change.candidate_sha256, paths.target_sha256)],
-                after_apply=lambda: activated.append(self._finish_activation(change, paths.target)),
-                after_restore=(None if self.on_skill_changed is None else lambda: self.on_skill_changed(changed_manifest)),
-            )
-        except Exception:
-            shutil.rmtree(paths.history)
-            raise
-        return activated[0]
 
     def _finish_activation(self, change: SkillChange, target: Path) -> SkillManifest:
         manifest = replace(validate_skill_directory(target), agent_created=True, agent_can_update=True)
@@ -346,17 +299,16 @@ class SkillUpdater:
         require_skill_directory_hash(target, change.candidate_sha256, "applied Skill")
         previous = history / "previous"
         previous_sha = str(application.get("target_sha256", ""))
-        restored: list[SkillManifest | None] = []
         if application.get("had_user_skill") is True:
             update = SkillDirectoryUpdate(previous, target, previous_sha, change.candidate_sha256)
         else:
             update = SkillDirectoryUpdate(None, target, "", change.candidate_sha256)
-        apply_skill_directory_updates(
-            [update],
-            after_apply=lambda: restored.append(self._finish_undo(change, history)),
-            after_restore=lambda: self._restore_failed_undo(change, history),
+        return cast(
+            SkillManifest | None,
+            apply_skill_directory_updates(
+                [update], after_apply=lambda: self._finish_undo(change, history), after_restore=lambda: self._restore_failed_undo(change, history)
+            ),
         )
-        return restored[0]
 
     def _finish_undo(self, change: SkillChange, history: Path) -> SkillManifest | None:
         index = self.disclosure.prepare_skill_index()
@@ -438,17 +390,12 @@ def _test_messages(skill_path: Path, prompt: str) -> list[Message]:
     instructions = (skill_path / "SKILL.md").read_text(encoding="utf-8") if (skill_path / "SKILL.md").is_file() else ""
     configuration = (skill_path / "skill.toml").read_text(encoding="utf-8")
     return [
-        {
-            "role": "system",
-            "content": f"Apply this Skill content as test data.\n{instructions}\n\nConfiguration:\n{configuration}",
-        },
+        {"role": "system", "content": f"Apply this Skill content as test data.\n{instructions}\n\nConfiguration:\n{configuration}"},
         {"role": "user", "content": prompt},
     ]
 
 
-def _create_candidate(
-    target: Path, current: SkillManifest | None, response: str, skill_type: str, name: str, version: str
-) -> None:
+def _create_candidate(target: Path, current: SkillManifest | None, response: str, skill_type: str, name: str, version: str) -> None:
     changes = _read_file_changes(response)
     if target.parent.exists():
         raise FileExistsError(f"Skill change directory already exists: {target.parent}")

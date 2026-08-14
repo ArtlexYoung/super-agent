@@ -14,9 +14,7 @@ DEFAULT_PAGE_CHARS = 8_000
 MAX_PAGE_CHARS = 32_000
 MAX_CONTENT_CHARS = 2_000_000
 DEFAULT_CONTEXT_BUDGET_CHARS = 24_000
-CONTEXT_BUDGET_STAGES = frozenset(
-    {"model-context", "tool-result", "memory-context", "subagent-result", "checkpoint", "reference-read"}
-)
+CONTEXT_BUDGET_STAGES = frozenset({"model-context", "tool-result", "memory-context", "subagent-result", "checkpoint", "reference-read"})
 
 
 @dataclass(frozen=True)
@@ -61,31 +59,18 @@ class DisclosureContextBudget:
         page = (
             create_reference_disclosure_page(reference, kind, name, content, offset=offset, cache_path=cache_path)
             if selected_limit == 0
-            else create_disclosure_page(
-                reference, kind, name, content, offset=offset, limit=selected_limit, cache_path=cache_path
-            )
+            else create_disclosure_page(reference, kind, name, content, offset=offset, limit=selected_limit, cache_path=cache_path)
         )
         if stage in CONTEXT_BUDGET_STAGES:
             self.used_chars += len(page.content)
         return page
 
     def usage(self) -> dict[str, int]:
-        return {
-            "used_chars": self.used_chars,
-            "budget_chars": self.budget_chars,
-            "remaining_chars": max(0, self.budget_chars - self.used_chars),
-        }
+        return {"used_chars": self.used_chars, "budget_chars": self.budget_chars, "remaining_chars": max(0, self.budget_chars - self.used_chars)}
 
 
 def create_disclosure_page(
-    reference: str,
-    kind: str,
-    name: str,
-    content: str,
-    *,
-    offset: int = 0,
-    limit: int = DEFAULT_INLINE_CHARS,
-    cache_path: Path | None = None,
+    reference: str, kind: str, name: str, content: str, *, offset: int = 0, limit: int = DEFAULT_INLINE_CHARS, cache_path: Path | None = None
 ) -> DisclosurePage:
     """Return one bounded page without changing or discarding source content."""
     _require_content_size(content)
@@ -128,9 +113,7 @@ def format_disclosure_page_for_prompt(page: DisclosurePage) -> str:
     )
 
 
-def create_reference_disclosure_page(
-    reference: str, kind: str, name: str, content: str, *, offset: int = 0, cache_path: Path | None = None
-) -> DisclosurePage:
+def create_reference_disclosure_page(reference: str, kind: str, name: str, content: str, *, offset: int = 0, cache_path: Path | None = None) -> DisclosurePage:
     """Return metadata without spending context characters on source content."""
     _require_content_size(content)
     if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
@@ -195,26 +178,14 @@ class SkillSourceScan:
 
 
 def read_skill_sources(
-    skill_roots: list[Path],
-    disabled_names: list[str],
-    builtin_skill_roots: list[Path] | None = None,
-    user_skill_roots: list[Path] | None = None,
+    skill_roots: list[Path], disabled_names: list[str], builtin_skill_roots: list[Path] | None = None, user_skill_roots: list[Path] | None = None
 ) -> SkillSourceScan:
     """Scan user, project, and built-in Skills in override order."""
     user = _read_source_group(user_skill_roots or [], disabled_names, "user")
-    project = _read_source_group(
-        skill_roots, disabled_names, "project", {source.reference.key: source for source in user.sources}
-    )
-    builtin = _read_source_group(
-        builtin_skill_roots or [], disabled_names, "builtin", {source.reference.key: source for source in project.sources}
-    )
-    disabled = {
-        reference.key: reference
-        for reference in [*user.disabled_references, *project.disabled_references, *builtin.disabled_references]
-    }
-    return SkillSourceScan(
-        builtin.sources, sorted(disabled.values(), key=lambda item: item.key), [*user.issues, *project.issues, *builtin.issues]
-    )
+    project = _read_source_group(skill_roots, disabled_names, "project", {source.reference.key: source for source in user.sources})
+    builtin = _read_source_group(builtin_skill_roots or [], disabled_names, "builtin", {source.reference.key: source for source in project.sources})
+    disabled = {reference.key: reference for reference in [*user.disabled_references, *project.disabled_references, *builtin.disabled_references]}
+    return SkillSourceScan(builtin.sources, sorted(disabled.values(), key=lambda item: item.key), [*user.issues, *project.issues, *builtin.issues])
 
 
 def _read_source_group(
@@ -224,9 +195,7 @@ def _read_source_group(
     higher_keys = set(sources)
     disabled: dict[str, SkillReference] = {}
     issues = []
-    paths = sorted(
-        path for root in roots if root.expanduser().is_dir() for path in root.expanduser().rglob("skill.toml") if path.is_file()
-    )
+    paths = sorted(path for root in roots if root.expanduser().is_dir() for path in root.expanduser().rglob("skill.toml") if path.is_file())
     for path in paths:
         try:
             source = _read_skill_source(path, source_layer)
@@ -242,11 +211,7 @@ def _read_source_group(
                 sources[reference.key] = source
         except (OSError, ValueError, tomllib.TOMLDecodeError) as error:
             issues.append(SkillValidationIssue(path, str(error)))
-    return SkillSourceScan(
-        sorted(sources.values(), key=lambda item: item.reference.key),
-        sorted(disabled.values(), key=lambda item: item.key),
-        issues,
-    )
+    return SkillSourceScan(sorted(sources.values(), key=lambda item: item.reference.key), sorted(disabled.values(), key=lambda item: item.key), issues)
 
 
 def _read_skill_source(path: Path, source_layer: str) -> SkillSource:
@@ -335,9 +300,7 @@ class SkillIndex:
         """Select one support Skill without interpreting task text."""
         selected_type = _clean_name(skill_type)
         entries = [entry for entry in self.entries if entry.reference.skill_type == selected_type]
-        configured = [
-            self.require_skill(value) for value in configured_skills if value.strip().lower().startswith(f"{selected_type}:")
-        ]
+        configured = [self.require_skill(value) for value in configured_skills if value.strip().lower().startswith(f"{selected_type}:")]
         if len(configured) > 1:
             keys = ", ".join(entry.reference.key for entry in configured)
             raise ValueError(f"select only one configured {selected_type} Skill: {keys}")

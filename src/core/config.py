@@ -62,22 +62,15 @@ class CommonConfig:
         )
 
     @classmethod
-    def load_automatically(
-        cls, base_directory: str | Path | None = None, environment: Mapping[str, str] | None = None
-    ) -> "CommonConfig":
-        base, source = find_optional_config_file(
-            "common.toml", "SUPER_AGENT_COMMON_CONFIG", base_directory=base_directory, environment=environment
-        )
+    def load_automatically(cls, base_directory: str | Path | None = None, environment: Mapping[str, str] | None = None) -> "CommonConfig":
+        base, source = find_optional_config_file("common.toml", "SUPER_AGENT_COMMON_CONFIG", base_directory=base_directory, environment=environment)
         return cls.load_from_file(source) if source else cls.create_default(base)
 
     @classmethod
     def create_default(cls, base_directory: str | Path | None = None) -> "CommonConfig":
         base = Path.cwd() if base_directory is None else Path(base_directory).expanduser().absolute()
         return cls(
-            agent=_read_agent_settings({}),
-            paths=PathsSettings(skills=[base / "skills"]),
-            storage=_read_storage_settings({}, base),
-            source=base / "common.toml",
+            agent=_read_agent_settings({}), paths=PathsSettings(skills=[base / "skills"]), storage=_read_storage_settings({}, base), source=base / "common.toml"
         )
 
 
@@ -103,9 +96,7 @@ class CodeConfig:
         source = Path(path).expanduser().absolute()
         data = tomllib.loads(source.read_text(encoding="utf-8"))
         require_config_header(data, "code")
-        reject_unknown_fields(
-            data, {"schema_version", "kind", "workspace", "actions", "verification"}, "code configuration tables"
-        )
+        reject_unknown_fields(data, {"schema_version", "kind", "workspace", "actions", "verification"}, "code configuration tables")
         base = source.parent
         workspace = _read_code_workspace(data.get("workspace", {}), base)
         actions = _read_code_actions(data.get("actions", {}))
@@ -123,17 +114,9 @@ class CodeConfig:
         )
 
     @classmethod
-    def load_automatically(
-        cls, base_directory: str | Path | None = None, environment: Mapping[str, str] | None = None
-    ) -> "CodeConfig":
-        base, source = find_optional_config_file(
-            "code.toml", "SUPER_AGENT_CODE_CONFIG", base_directory=base_directory, environment=environment
-        )
-        return (
-            cls.load_from_file(source)
-            if source
-            else cls(CodeSettings(base, list(DEFAULT_CODE_IGNORES), "allow", "ask", "ask", []), base / "code.toml")
-        )
+    def load_automatically(cls, base_directory: str | Path | None = None, environment: Mapping[str, str] | None = None) -> "CodeConfig":
+        base, source = find_optional_config_file("code.toml", "SUPER_AGENT_CODE_CONFIG", base_directory=base_directory, environment=environment)
+        return cls.load_from_file(source) if source else cls(CodeSettings(base, list(DEFAULT_CODE_IGNORES), "allow", "ask", "ask", []), base / "code.toml")
 
 
 def require_config_header(data: dict[str, Any], expected_kind: str) -> None:
@@ -144,11 +127,7 @@ def require_config_header(data: dict[str, Any], expected_kind: str) -> None:
 
 
 def find_optional_config_file(
-    filename: str,
-    environment_variable: str,
-    *,
-    base_directory: str | Path | None = None,
-    environment: Mapping[str, str] | None = None,
+    filename: str, environment_variable: str, *, base_directory: str | Path | None = None, environment: Mapping[str, str] | None = None
 ) -> tuple[Path, Path | None]:
     base = Path.cwd() if base_directory is None else Path(base_directory).expanduser().absolute()
     env = os.environ if environment is None else environment
@@ -188,9 +167,7 @@ def _read_storage_settings(data: dict[str, Any], base_dir: Path) -> StorageSetti
         raise ValueError(f"unknown storage backend: {backend}")
     path = _resolve_path(base_dir, Path(str(data.get("path", ".super-agent"))))
     audit = _read_audit_settings(data.get("audit", {}))
-    return StorageSettings(
-        backend=backend, path=path, url_env=read_optional_text(data.get("url_env"), "storage url_env"), audit=audit
-    )
+    return StorageSettings(backend=backend, path=path, url_env=read_optional_text(data.get("url_env"), "storage url_env"), audit=audit)
 
 
 def _read_audit_settings(data: Any) -> AuditPolicy:
@@ -216,10 +193,7 @@ def _read_code_workspace(data: dict[str, Any], base_dir: Path) -> dict[str, Any]
 
 def _read_code_actions(data: dict[str, Any]) -> dict[str, str]:
     reject_unknown_fields(data, {"read", "write", "execute"}, "code action settings")
-    values = {
-        name: read_text(data.get(name, "ask" if name != "read" else "allow"), f"code action {name}").lower()
-        for name in ("read", "write", "execute")
-    }
+    values = {name: read_text(data.get(name, "ask" if name != "read" else "allow"), f"code action {name}").lower() for name in ("read", "write", "execute")}
     if any(value not in {"allow", "ask", "deny"} for value in values.values()):
         raise ValueError("code actions must be allow, ask, or deny")
     return values
@@ -229,8 +203,7 @@ def _read_verification_commands(data: dict[str, Any]) -> list[list[str]]:
     reject_unknown_fields(data, {"commands"}, "code verification settings")
     commands = data.get("commands", [])
     if not isinstance(commands, list) or not all(
-        isinstance(command, list) and command and all(isinstance(argument, str) and argument for argument in command)
-        for command in commands
+        isinstance(command, list) and command and all(isinstance(argument, str) and argument for argument in command) for command in commands
     ):
         raise ValueError("code verification commands must be non-empty string arrays")
     return [list(command) for command in commands]

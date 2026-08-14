@@ -8,16 +8,7 @@ from dataclasses import dataclass, replace
 from time import monotonic
 from typing import Callable, Mapping
 
-from core.models import (
-    SubagentRecordOptions,
-    read_choice,
-    read_int,
-    read_number,
-    read_optional_int,
-    read_text,
-    read_text_list,
-    reject_unknown_fields,
-)
+from core.models import SubagentRecordOptions, read_choice, read_int, read_number, read_optional_int, read_text, read_text_list, reject_unknown_fields
 from core.provider import estimate_text_tokens
 from skill.handlers.models import choose_dispatch_model
 
@@ -98,13 +89,7 @@ class QueuedTask:
             "shared_context_cache_backed": bool(shared.get("cache_backed", False)),
         }
         if self.result is not None:
-            data.update(
-                {
-                    key: self.result[key]
-                    for key in ("result_sha256", "result_chars", "subagent_results_count")
-                    if key in self.result
-                }
-            )
+            data.update({key: self.result[key] for key in ("result_sha256", "result_chars", "subagent_results_count") if key in self.result})
         if include_result:
             data["result"] = self.result
         return data
@@ -211,18 +196,10 @@ class AgentSelector:
         self._rotation_positions: dict[tuple[str, ...], int] = {}
 
     def choose(
-        self,
-        task: QueuedTask,
-        active: dict[str, int],
-        requested: str | None = None,
-        excluded: set[str] | None = None,
-        *,
-        commit: bool = True,
+        self, task: QueuedTask, active: dict[str, int], requested: str | None = None, excluded: set[str] | None = None, *, commit: bool = True
     ) -> SelectedAgent:
         matching = [item for item in self.subagents if _matches(item, task.purpose, task.required_features)]
-        available = [
-            item for item in matching if str(item["name"]) not in (excluded or set()) and self._is_available(str(item["name"]))
-        ]
+        available = [item for item in matching if str(item["name"]) not in (excluded or set()) and self._is_available(str(item["name"]))]
         available_count = len(available)
         if requested is not None:
             if self.settings.agent_selection == "rotate":
@@ -252,16 +229,12 @@ class AgentSelector:
             selected_by = "weighted_cost_reliability"
         return self._finish_choice(selected, selected_by, (available_count, active.get(str(selected["name"]), 0)), task, commit)
 
-    def choose_group(
-        self, tasks: list[QueuedTask], active: dict[str, int], *, require_different_models: bool, commit: bool
-    ) -> list[SelectedAgent]:
+    def choose_group(self, tasks: list[QueuedTask], active: dict[str, int], *, require_different_models: bool, commit: bool) -> list[SelectedAgent]:
         """Select one distinct Agent per member and optionally require model diversity."""
         if not tasks:
             return []
         first = tasks[0]
-        matching = [
-            item for item in self.subagents if all(_matches(item, task.purpose, task.required_features) for task in tasks)
-        ]
+        matching = [item for item in self.subagents if all(_matches(item, task.purpose, task.required_features) for task in tasks)]
         available = [item for item in matching if self._is_available(str(item["name"]))]
         ranked = sorted(available, key=lambda item: self._rank(item, first, active), reverse=True)
         rotation_key = tuple(str(item["name"]) for item in ranked)
@@ -281,10 +254,7 @@ class AgentSelector:
             if require_different_models and model_key in selected_models:
                 continue
             choice = replace(
-                self._finish_choice(
-                    agent, selected_by, (len(available), virtual_active.get(str(agent["name"]), 0)), task, commit
-                ),
-                selection_key=rotation_key,
+                self._finish_choice(agent, selected_by, (len(available), virtual_active.get(str(agent["name"]), 0)), task, commit), selection_key=rotation_key
             )
             selected.append(choice)
             selected_models.add(model_key)
@@ -353,9 +323,7 @@ class AgentSelector:
         exact = float(agent.get("purpose") == task.purpose and task.purpose != "auto")
         return exact, base / (1 + active.get(str(agent["name"]), 0)), base
 
-    def _finish_choice(
-        self, agent: dict[str, object], selected_by: str, counts: tuple[int, int], task: QueuedTask, commit: bool
-    ) -> SelectedAgent:
+    def _finish_choice(self, agent: dict[str, object], selected_by: str, counts: tuple[int, int], task: QueuedTask, commit: bool) -> SelectedAgent:
         name = str(agent["name"])
         dispatch = choose_dispatch_model(agent.get("models"), task.purpose, task.required_features, task.token_counts())
         health = self._health[name]
@@ -394,17 +362,7 @@ def is_agent_unavailable(error: Exception) -> bool:
     if not isinstance(error, RuntimeError):
         return False
     message = str(error).lower()
-    return any(
-        marker in message
-        for marker in (
-            "not ready",
-            "agent unavailable",
-            "provider unavailable",
-            "temporarily unavailable",
-            "connection",
-            "timed out",
-        )
-    )
+    return any(marker in message for marker in ("not ready", "agent unavailable", "provider unavailable", "temporarily unavailable", "connection", "timed out"))
 
 
 def estimated_token_schema() -> dict[str, object]:
@@ -431,9 +389,7 @@ def _validated_agent(value: dict[str, object]) -> dict[str, object]:
 
 def _matches(agent: dict[str, object], purpose: str, features: tuple[str, ...]) -> bool:
     agent_purpose = str(agent.get("purpose", "auto")).strip().lower()
-    supported = {
-        str(item).strip().lower() for item in agent.get("required_features", []) if isinstance(item, str) and item.strip()
-    }
+    supported = {str(item).strip().lower() for item in agent.get("required_features", []) if isinstance(item, str) and item.strip()}
     return (purpose == "auto" or agent_purpose in {"auto", purpose}) and set(features) <= supported
 
 
@@ -443,8 +399,4 @@ def _base_score(agent: dict[str, object], health: _AgentHealth, cost: dict[str, 
 
 
 def _health_facts(health: _AgentHealth) -> dict[str, object]:
-    return {
-        "successful_tasks": health.successful_tasks,
-        "unavailable_failures": health.unavailable_failures,
-        "reliability": round(health.reliability, 8),
-    }
+    return {"successful_tasks": health.successful_tasks, "unavailable_failures": health.unavailable_failures, "reliability": round(health.reliability, 8)}

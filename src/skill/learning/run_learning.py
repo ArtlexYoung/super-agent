@@ -56,15 +56,11 @@ def learn_from_run(store: EventStore, run_id: str, rules: FreshnessRules) -> Run
         records = _record_run_evaluations(store, terminal, revisions, result)
         record_ids = [record.record_id for record in records]
         stage = "completion"
-        completed = store.append_run_event(
-            identity, LEARNING_COMPLETED_EVENT, {"schema_version": 3, "evaluation_record_ids": record_ids}
-        )
+        completed = store.append_run_event(identity, LEARNING_COMPLETED_EVENT, {"schema_version": 3, "evaluation_record_ids": record_ids})
     except Exception as error:
         try:
             store.append_run_event(
-                identity,
-                "learning.failed",
-                {"schema_version": 2, "stage": stage, "error_type": type(error).__name__, "message": str(error)},
+                identity, "learning.failed", {"schema_version": 2, "stage": stage, "error_type": type(error).__name__, "message": str(error)}
             )
         except Exception as recording_error:
             error.add_note(f"Could not record learning failure: {type(recording_error).__name__}: {recording_error}")
@@ -72,9 +68,7 @@ def learn_from_run(store: EventStore, run_id: str, rules: FreshnessRules) -> Run
     return _result_from_completed_event(store, completed, store.read_run_events(run_id, include_sensitive=True), rules)
 
 
-def _record_run_evaluations(
-    store: EventStore, terminal: RunEvent, revisions: list[SkillRevision], result: EvaluationResult
-) -> list[EvaluationRecord]:
+def _record_run_evaluations(store: EventStore, terminal: RunEvent, revisions: list[SkillRevision], result: EvaluationResult) -> list[EvaluationRecord]:
     existing = {record.record_id: record for record in read_evaluation_records(store, source_type="agent_run")}
     records: list[EvaluationRecord] = []
     pending: list[EvaluationRecord] = []
@@ -122,11 +116,7 @@ def _project_run_learning(
     }
     return _RunLearningView(
         [dict(freshness_by_skill[key]) for key in skill_keys if key in freshness_by_skill],
-        [
-            stats.to_dict()
-            for stats in list_model_usage_stats(store, events=stored_events)
-            if (stats.profile_key, stats.purpose) in observed
-        ],
+        [stats.to_dict() for stats in list_model_usage_stats(store, events=stored_events) if (stats.profile_key, stats.purpose) in observed],
     )
 
 
@@ -143,20 +133,14 @@ def _read_learning_evidence(terminal: RunEvent) -> tuple[list[SkillRevision], Ev
     return ([skill_revision_from_dict(item) for item in revisions], evaluation_result_from_dict(evidence.get("result")))
 
 
-def _result_from_completed_event(
-    store: EventStore, completed: RunEvent, events: list[RunEvent], rules: FreshnessRules
-) -> RunLearningResult:
+def _result_from_completed_event(store: EventStore, completed: RunEvent, events: list[RunEvent], rules: FreshnessRules) -> RunLearningResult:
     expected = {"schema_version", "evaluation_record_ids"}
     if set(completed.data) != expected or completed.data.get("schema_version") != 3:
         raise ValueError("run learning completion fields do not match schema v3")
     record_ids = _string_list(completed.data.get("evaluation_record_ids"), "evaluation_record_ids")
     view = _project_run_learning(store, completed.run_id, events, rules=rules, record_ids=record_ids)
     return RunLearningResult(
-        run_id=completed.run_id,
-        evaluation_record_ids=record_ids,
-        skill_freshness=view.skill_freshness,
-        model_usage=view.model_usage,
-        events=list(events),
+        run_id=completed.run_id, evaluation_record_ids=record_ids, skill_freshness=view.skill_freshness, model_usage=view.model_usage, events=list(events)
     )
 
 
@@ -166,11 +150,7 @@ def _identity_from_events(store: EventStore, events: list[RunEvent]) -> RunIdent
     if conversation_id is not None and not isinstance(conversation_id, str):
         raise ValueError("run conversation_id must be a string or null")
     return RunIdentity(
-        user_id=store.user_id,
-        agent_name=store.agent_name,
-        run_id=first.run_id,
-        conversation_id=conversation_id,
-        parent_run_id=first.parent_run_id,
+        user_id=store.user_id, agent_name=store.agent_name, run_id=first.run_id, conversation_id=conversation_id, parent_run_id=first.parent_run_id
     )
 
 
@@ -205,9 +185,7 @@ def _string_list(value: object, name: str) -> list[str]:
     return list(value)
 
 
-def explain_run_with_insight(
-    store: EventStore, run_id: str, policy: FreshnessRules | None, *, include_sensitive: bool = False
-) -> dict[str, object]:
+def explain_run_with_insight(store: EventStore, run_id: str, policy: FreshnessRules | None, *, include_sensitive: bool = False) -> dict[str, object]:
     explanation = store.explain_run(run_id, include_sensitive=include_sensitive)
     events = store.read_run_events(run_id, include_sensitive=include_sensitive)
     view = _project_run_learning(store, run_id, events, rules=policy)
@@ -281,11 +259,7 @@ class ReviewReport:
 
 
 def review_run_evidence(
-    store: EventStore,
-    run_id: str,
-    evidence: dict[str, object],
-    send_messages: Callable[[list[Message]], str],
-    disclosure: "ProgressiveDisclosureCore",
+    store: EventStore, run_id: str, evidence: dict[str, object], send_messages: Callable[[list[Message]], str], disclosure: "ProgressiveDisclosureCore"
 ) -> ReviewReport:
     """Ask a reviewer about bounded evidence and persist only the report."""
     snapshot = store.read_run(run_id, include_sensitive=True)
@@ -349,11 +323,7 @@ def _parse_finding(value: object) -> ReviewFinding:
 
 def _identity_from_snapshot(snapshot) -> RunIdentity:
     return RunIdentity(
-        snapshot.user_id,
-        snapshot.agent_name,
-        run_id=snapshot.run_id,
-        conversation_id=snapshot.conversation_id,
-        parent_run_id=snapshot.parent_run_id,
+        snapshot.user_id, snapshot.agent_name, run_id=snapshot.run_id, conversation_id=snapshot.conversation_id, parent_run_id=snapshot.parent_run_id
     )
 
 

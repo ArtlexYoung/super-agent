@@ -100,9 +100,7 @@ class ProgressiveDisclosureCore:
         self._sources_by_key = {source.reference.key: source for source in scan.sources}
         self._disabled_references = scan.disabled_references
         if self.recorder is not None:
-            self.recorder.write_json(
-                "*", "skill", "index", _require_cache_path(self._index.index_path), skill_index_to_dict(self._index)
-            )
+            self.recorder.write_json("*", "skill", "index", _require_cache_path(self._index.index_path), skill_index_to_dict(self._index))
         return self._index
 
     def inspect_skill_configuration(self, reference: SkillReference) -> dict[str, object]:
@@ -110,9 +108,7 @@ class ProgressiveDisclosureCore:
         self.require_prepared_skill_index().require_skill(reference.name, reference.skill_type)
         return dict(self._sources_by_key[reference.key].configuration)
 
-    def select_skill_references(
-        self, selected_names: list[str] | None = None, allowed_types: set[str] | None = None
-    ) -> list[SkillReference]:
+    def select_skill_references(self, selected_names: list[str] | None = None, allowed_types: set[str] | None = None) -> list[SkillReference]:
         decisions = self.explain_skill_selection(selected_names, allowed_types)
         selected = [decision.reference for decision in decisions if decision.selected]
         if self.record_event is not None:
@@ -120,17 +116,12 @@ class ProgressiveDisclosureCore:
                 "skills.selected",
                 {
                     "selected_keys": [reference.key for reference in selected],
-                    "decisions": [
-                        {"skill_key": decision.reference.key, "selected": decision.selected, "reason": decision.reason}
-                        for decision in decisions
-                    ],
+                    "decisions": [{"skill_key": decision.reference.key, "selected": decision.selected, "reason": decision.reason} for decision in decisions],
                 },
             )
         return selected
 
-    def explain_skill_selection(
-        self, selected_names: list[str] | None = None, allowed_types: set[str] | None = None
-    ) -> list[SkillSelectionDecision]:
+    def explain_skill_selection(self, selected_names: list[str] | None = None, allowed_types: set[str] | None = None) -> list[SkillSelectionDecision]:
         index = self.require_prepared_skill_index()
         handled_types = None if allowed_types is None else {name.lower() for name in allowed_types}
         requested = self._remove_disabled_skill_names(selected_names or [])
@@ -153,14 +144,7 @@ class ProgressiveDisclosureCore:
         return SkillDisclosure(self._sources_by_key[entry.reference.key], entry, self)
 
     def disclose_content(
-        self,
-        kind: str,
-        name: str,
-        content: str,
-        *,
-        stage: str = "content",
-        cache_path: Path | None = None,
-        inline_chars: int = DEFAULT_INLINE_CHARS,
+        self, kind: str, name: str, content: str, *, stage: str = "content", cache_path: Path | None = None, inline_chars: int = DEFAULT_INLINE_CHARS
     ) -> DisclosurePage:
         """Register one source and return its first bounded page."""
         clean_kind = _clean_content_label(kind, "kind")
@@ -168,31 +152,17 @@ class ProgressiveDisclosureCore:
         digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
         selected_path = cache_path
         if selected_path is None and self.recorder is not None:
-            selected_path = (
-                self.recorder.cache_root / "content" / _path_segment(clean_kind) / _path_segment(clean_name) / f"{digest}.txt"
-            )
-        reference = (
-            f"disclosure://{_path_segment(clean_kind)}/{_path_segment(clean_name)}/{digest}"
-            if selected_path is None
-            else str(selected_path)
-        )
+            selected_path = self.recorder.cache_root / "content" / _path_segment(clean_kind) / _path_segment(clean_name) / f"{digest}.txt"
+        reference = f"disclosure://{_path_segment(clean_kind)}/{_path_segment(clean_name)}/{digest}" if selected_path is None else str(selected_path)
         if self.recorder is not None and selected_path is not None:
-            self.recorder.write_text(
-                f"{clean_kind}:{clean_name}", clean_kind, _clean_content_label(stage, "stage"), selected_path, content
-            )
+            self.recorder.write_text(f"{clean_kind}:{clean_name}", clean_kind, _clean_content_label(stage, "stage"), selected_path, content)
         self._disclosed_content[reference] = (clean_kind, clean_name, content, selected_path)
-        return self.context_budget.create_page(
-            reference, clean_kind, clean_name, content, stage, limit=inline_chars, cache_path=selected_path
-        )
+        return self.context_budget.create_page(reference, clean_kind, clean_name, content, stage, limit=inline_chars, cache_path=selected_path)
 
-    def disclose_value(
-        self, kind: str, name: str, value: object, *, stage: str = "result", inline_chars: int = DEFAULT_INLINE_CHARS
-    ) -> DisclosurePage:
+    def disclose_value(self, kind: str, name: str, value: object, *, stage: str = "result", inline_chars: int = DEFAULT_INLINE_CHARS) -> DisclosurePage:
         return self.disclose_content(kind, name, serialize_disclosure_value(value), stage=stage, inline_chars=inline_chars)
 
-    def read_disclosed_content(
-        self, reference: str | Path, *, offset: int = 0, limit: int = DEFAULT_PAGE_CHARS
-    ) -> DisclosurePage:
+    def read_disclosed_content(self, reference: str | Path, *, offset: int = 0, limit: int = DEFAULT_PAGE_CHARS) -> DisclosurePage:
         selected = str(reference)
         cached = self._disclosed_content.get(selected)
         if cached is None:
@@ -202,9 +172,7 @@ class ProgressiveDisclosureCore:
             cached = ("cache", Path(selected).name, content, Path(selected))
             self._disclosed_content[selected] = cached
         kind, name, content, cache_path = cached
-        return self.context_budget.create_page(
-            selected, kind, name, content, "reference-read", offset=offset, limit=limit, cache_path=cache_path
-        )
+        return self.context_budget.create_page(selected, kind, name, content, "reference-read", offset=offset, limit=limit, cache_path=cache_path)
 
     def context_usage(self) -> dict[str, int]:
         return self.context_budget.usage()
@@ -252,9 +220,7 @@ class SkillDisclosure:
 
     def disclose_manifest(self) -> SkillManifest:
         manifest = self.read_manifest()
-        self._record_disclosed_content(
-            serialize_disclosure_value(skill_manifest_to_dict(manifest)), "manifest", self.index_entry.manifest_cache_path
-        )
+        self._record_disclosed_content(serialize_disclosure_value(skill_manifest_to_dict(manifest)), "manifest", self.index_entry.manifest_cache_path)
         return manifest
 
     def read_instructions(self) -> DisclosedText:
@@ -281,9 +247,7 @@ class SkillDisclosure:
 
     def disclose_configuration(self) -> DisclosedConfiguration:
         disclosed = self.read_configuration()
-        cache_path = self._record_disclosed_content(
-            serialize_disclosure_value(disclosed.content), "configuration", self.index_entry.configuration_cache_path
-        )
+        cache_path = self._record_disclosed_content(serialize_disclosure_value(disclosed.content), "configuration", self.index_entry.configuration_cache_path)
         return DisclosedConfiguration(disclosed.content, cache_path)
 
     def read_skill_files(self) -> DisclosedSkillFiles:
@@ -292,10 +256,7 @@ class SkillDisclosure:
 
     def disclose_skill_files(self) -> DisclosedSkillFiles:
         disclosed = self.read_skill_files()
-        files = [
-            {"path": item.relative_path, "size": item.size, "sha256": item.sha256, "content": item.content}
-            for item in disclosed.files
-        ]
+        files = [{"path": item.relative_path, "size": item.size, "sha256": item.sha256, "content": item.content} for item in disclosed.files]
         content = serialize_disclosure_value({"schema_version": 1, "files": files})
         cache_path = self._record_disclosed_content(content, "files", self.index_entry.files_cache_path)
         return DisclosedSkillFiles(disclosed.files, cache_path)
@@ -310,16 +271,10 @@ class SkillDisclosure:
             raise RuntimeError(f"skill content changed after the index was prepared: {self.source.reference.key}")
 
 
-def _build_index_entry(
-    source: SkillSource, cache_root: Path | None, stats: Mapping[str, Mapping[str, object]]
-) -> SkillIndexEntry:
+def _build_index_entry(source: SkillSource, cache_root: Path | None, stats: Mapping[str, Mapping[str, object]]) -> SkillIndexEntry:
     manifest = source.manifest
     runtime = stats.get(source.reference.key, {})
-    skill_root = (
-        None
-        if cache_root is None
-        else cache_root / "skills" / _path_segment(source.reference.skill_type) / _path_segment(source.reference.name)
-    )
+    skill_root = None if cache_root is None else cache_root / "skills" / _path_segment(source.reference.skill_type) / _path_segment(source.reference.name)
     return SkillIndexEntry(
         reference=source.reference,
         description=manifest.description,
@@ -357,12 +312,7 @@ def _read_skill_directory_files(skill_root: Path) -> list[DisclosedSkillFile]:
         except UnicodeDecodeError:
             content = None
         files.append(
-            DisclosedSkillFile(
-                relative_path=path.relative_to(skill_root).as_posix(),
-                size=len(data),
-                sha256=hashlib.sha256(data).hexdigest(),
-                content=content,
-            )
+            DisclosedSkillFile(relative_path=path.relative_to(skill_root).as_posix(), size=len(data), sha256=hashlib.sha256(data).hexdigest(), content=content)
         )
     return files
 
@@ -386,9 +336,7 @@ def _clean_content_label(value: str, name: str) -> str:
     return clean
 
 
-def _explain_selection(
-    entry: SkillIndexEntry, configured_names: set[str], selected_keys: set[str], allowed_types: set[str] | None
-) -> str:
+def _explain_selection(entry: SkillIndexEntry, configured_names: set[str], selected_keys: set[str], allowed_types: set[str] | None) -> str:
     if allowed_types is not None and entry.reference.skill_type not in allowed_types:
         return "not eligible for model context"
     if entry.reference.name in configured_names or entry.reference.key in configured_names:

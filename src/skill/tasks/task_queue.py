@@ -10,13 +10,7 @@ from time import monotonic
 from typing import Callable
 
 from core.checks import ActionEffect
-from core.models import (
-    SubagentRecordOptions,
-    read_optional_tool_string,
-    read_required_tool_string,
-    read_text_list,
-    reject_unknown_fields,
-)
+from core.models import SubagentRecordOptions, read_optional_tool_string, read_required_tool_string, read_text_list, reject_unknown_fields
 from core.records.audit import compact_subagent_result
 from skill.tasks.task_selection import (
     AgentSelector,
@@ -34,19 +28,8 @@ from skill.tasks.task_groups import AgentGroup, AgentGroups, AgentGroupSettings
 from skill.handlers.runtime import SkillAction, SkillTool
 
 
-_TRIGGERS = {
-    "timeout",
-    "any_task_finished",
-    "any_task_completed",
-    "any_task_failed",
-    "all_tasks_finished",
-    "selected_tasks_finished",
-}
-_TRANSITIONS = {
-    "created": {"queued", "cancelled"},
-    "queued": {"running", "cancelled", "failed"},
-    "running": {"queued", "completed", "failed"},
-}
+_TRIGGERS = {"timeout", "any_task_finished", "any_task_completed", "any_task_failed", "all_tasks_finished", "selected_tasks_finished"}
+_TRANSITIONS = {"created": {"queued", "cancelled"}, "queued": {"running", "cancelled", "failed"}, "running": {"queued", "completed", "failed"}}
 
 
 class TaskQueue:
@@ -254,9 +237,7 @@ class TaskQueue:
                 self.record_result(recorded_result)
             with self._condition:
                 self._agent_pool.record_success(str(running.agent_name))
-                self._transition_locked(
-                    running, "completed", result_run_id=str(recorded_result.get("run_id", "")) or None, result=recorded_result
-                )
+                self._transition_locked(running, "completed", result_run_id=str(recorded_result.get("run_id", "")) or None, result=recorded_result)
         except Exception as error:
             with self._condition:
                 current = self._require_task_locked(task_id)
@@ -278,13 +259,7 @@ class TaskQueue:
             raise ValueError("selected_tasks_finished requires task_ids")
         started = monotonic()
         self.record_event(
-            "agent_task.wait.started",
-            {
-                "trigger": trigger,
-                "task_ids": list(task_ids),
-                "requested_wait_seconds": requested_wait,
-                "wait_seconds": wait_seconds,
-            },
+            "agent_task.wait.started", {"trigger": trigger, "task_ids": list(task_ids), "requested_wait_seconds": requested_wait, "wait_seconds": wait_seconds}
         )
         with self._condition:
             self._validate_wait_task_ids_locked(task_ids)
@@ -298,9 +273,7 @@ class TaskQueue:
             tasks = self._task_snapshots_locked(include_result=True)
         waited = max(0.0, monotonic() - started)
         reason = trigger if matched else "timeout"
-        self.record_event(
-            "agent_task.wait.woke", {"reason": reason, "triggered_task_ids": matched, "waited_ms": round(waited * 1000)}
-        )
+        self.record_event("agent_task.wait.woke", {"reason": reason, "triggered_task_ids": matched, "waited_ms": round(waited * 1000)})
         return {
             "reason": reason,
             "triggered_task_ids": matched,
@@ -322,9 +295,7 @@ class TaskQueue:
                 raise ValueError(f"agent task cannot be cancelled from {task.status}: {task_id}")
             return {"task": self._transition_locked(task, "cancelled").to_dict()}
 
-    def _select_agent_locked(
-        self, task: QueuedTask, requested_agent: str | None, excluded: set[str] | None = None
-    ) -> SelectedAgent:
+    def _select_agent_locked(self, task: QueuedTask, requested_agent: str | None, excluded: set[str] | None = None) -> SelectedAgent:
         try:
             return self._agent_pool.choose(task, self._active_task_counts_locked(), requested_agent, excluded)
         except ValueError as error:
@@ -366,9 +337,7 @@ class TaskQueue:
             error_type=type(error).__name__,
             error_message=str(error),
         )
-        self.record_event(
-            "agent_task.fallback_selected", {"task_id": task.task_id, "failed_agent_name": failed_agent, **choice.to_dict()}
-        )
+        self.record_event("agent_task.fallback_selected", {"task_id": task.task_id, "failed_agent_name": failed_agent, **choice.to_dict()})
         self._record_retry_scheduled(queued, 0.0)
         self._submit_locked(choice.name, task.task_id)
 
@@ -397,16 +366,11 @@ class TaskQueue:
             self._submit_locked(choice.name, task_id)
 
     def _submit_locked(self, agent_name: str, task_id: str) -> None:
-        executor = self._executors.setdefault(
-            agent_name, ThreadPoolExecutor(max_workers=1, thread_name_prefix=f"agent-{agent_name}")
-        )
+        executor = self._executors.setdefault(agent_name, ThreadPoolExecutor(max_workers=1, thread_name_prefix=f"agent-{agent_name}"))
         executor.submit(self._consume_task, task_id)
 
     def _record_retry_scheduled(self, task: QueuedTask, delay: float) -> None:
-        self.record_event(
-            "agent_task.retry_scheduled",
-            {"task_id": task.task_id, "attempt_count": task.attempt_count, "retry_after_seconds": round(delay, 3)},
-        )
+        self.record_event("agent_task.retry_scheduled", {"task_id": task.task_id, "attempt_count": task.attempt_count, "retry_after_seconds": round(delay, 3)})
 
     def _fail_task_locked(self, task: QueuedTask, error: Exception) -> None:
         self._transition_locked(task, "failed", error_type=type(error).__name__, error_message=str(error))
@@ -421,15 +385,9 @@ class TaskQueue:
         if trigger == "any_task_failed":
             return [task.task_id for task in unseen if task.status == "failed"]
         selected = tasks if trigger == "all_tasks_finished" else [self._tasks[item] for item in task_ids]
-        return (
-            [task.task_id for task in selected]
-            if (selected and self._tasks_are_terminal_locked(task.task_id for task in selected))
-            else []
-        )
+        return [task.task_id for task in selected] if (selected and self._tasks_are_terminal_locked(task.task_id for task in selected)) else []
 
-    def _task_snapshots_locked(
-        self, task_ids: tuple[str, ...] | None = None, *, include_result: bool = False
-    ) -> list[dict[str, object]]:
+    def _task_snapshots_locked(self, task_ids: tuple[str, ...] | None = None, *, include_result: bool = False) -> list[dict[str, object]]:
         tasks = self._tasks.values() if task_ids is None else (self._require_task_locked(task_id) for task_id in task_ids)
         return [task.to_dict(include_result=include_result) for task in tasks]
 
@@ -488,11 +446,5 @@ def create_task_queue(
         return None
     group_settings = None if "agent_groups" not in tools else AgentGroupSettings.from_dict(tools["agent_groups"])
     return TaskQueue(
-        TaskQueueSettings.from_dict(tools["agent_tasks"]),
-        subagents,
-        run_subagent,
-        record_event,
-        record_result,
-        group_settings,
-        create_shared_context,
+        TaskQueueSettings.from_dict(tools["agent_tasks"]), subagents, run_subagent, record_event, record_result, group_settings, create_shared_context
     )

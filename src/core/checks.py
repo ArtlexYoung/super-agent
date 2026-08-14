@@ -67,13 +67,7 @@ class ActionRequest:
 
     @classmethod
     def create(
-        cls,
-        actor: str,
-        resource: str,
-        effects: tuple[ActionEffect, ...],
-        *,
-        action_id: str | None = None,
-        argument_names: tuple[str, ...] = (),
+        cls, actor: str, resource: str, effects: tuple[ActionEffect, ...], *, action_id: str | None = None, argument_names: tuple[str, ...] = ()
     ) -> "ActionRequest":
         return cls(action_id or f"action-{uuid4().hex}", actor, resource, effects, argument_names)
 
@@ -211,9 +205,7 @@ class ActionRunner:
         try:
             result = action()
         except Exception as error:
-            self.record_event(
-                "action.failed", {**request.to_event_data(), "error_type": type(error).__name__, "message": str(error)}
-            )
+            self.record_event("action.failed", {**request.to_event_data(), "error_type": type(error).__name__, "message": str(error)})
             raise
         self.record_event("action.applied", request.to_event_data())
         return result
@@ -243,16 +235,7 @@ def write_bytes_atomically(path: Path, data: bytes) -> None:
 
 
 _INTERNAL_EFFECTS = {ActionEffect.READ, ActionEffect.CREATE, ActionEffect.UPDATE, ActionEffect.DELETE, ActionEffect.DELEGATE}
-_INTERNAL_RESOURCE_PREFIXES = (
-    "conversation:",
-    "memory:",
-    "skill:change:",
-    "skill:active",
-    "skill:disclosure:",
-    "skill:owned:",
-    "task:plan",
-    "task:queue",
-)
+_INTERNAL_RESOURCE_PREFIXES = ("conversation:", "memory:", "skill:change:", "skill:active", "skill:disclosure:", "skill:owned:", "task:plan", "task:queue")
 
 
 def _is_internal_resource(resource: str) -> bool:

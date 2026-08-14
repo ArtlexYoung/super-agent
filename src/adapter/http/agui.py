@@ -78,23 +78,11 @@ class AGUIEventMapper:
             return [*_assistant_message_events(event), {"type": "STEP_FINISHED", "stepName": "task"}]
         if event_type == "run.completed":
             self.terminal_event_sent = True
-            return [
-                {
-                    "type": "RUN_FINISHED",
-                    "threadId": self.thread_id,
-                    "runId": self.run_id,
-                    "result": event.data,
-                    "outcome": {"type": "success"},
-                }
-            ]
+            return [{"type": "RUN_FINISHED", "threadId": self.thread_id, "runId": self.run_id, "result": event.data, "outcome": {"type": "success"}}]
         if event_type == "run.failed":
             self.terminal_event_sent = True
             return [
-                {
-                    "type": "RUN_ERROR",
-                    "message": str(event.data.get("message", "Agent run failed")),
-                    "code": str(event.data.get("error_type", "RuntimeError")),
-                }
+                {"type": "RUN_ERROR", "message": str(event.data.get("message", "Agent run failed")), "code": str(event.data.get("error_type", "RuntimeError"))}
             ]
         return []
 
@@ -170,11 +158,7 @@ def _tool_call_started_events(event: RunEvent) -> list[dict[str, object]]:
     arguments = event.data.get("arguments", {})
     return [
         {"type": "TOOL_CALL_START", "toolCallId": call_id, "toolCallName": str(event.data.get("name", "runtime_tool"))},
-        {
-            "type": "TOOL_CALL_ARGS",
-            "toolCallId": call_id,
-            "delta": json.dumps(arguments, ensure_ascii=False, separators=(",", ":")),
-        },
+        {"type": "TOOL_CALL_ARGS", "toolCallId": call_id, "delta": json.dumps(arguments, ensure_ascii=False, separators=(",", ":"))},
         {"type": "TOOL_CALL_END", "toolCallId": call_id},
     ]
 
@@ -184,10 +168,7 @@ def _tool_call_result_event(event: RunEvent) -> dict[str, object]:
     content = (
         event.data.get("result")
         if event.event_type == "tool.completed"
-        else {
-            "error": str(event.data.get("message", "Tool call failed")),
-            "errorType": str(event.data.get("error_type", "RuntimeError")),
-        }
+        else {"error": str(event.data.get("message", "Tool call failed")), "errorType": str(event.data.get("error_type", "RuntimeError"))}
     )
     return {
         "type": "TOOL_CALL_RESULT",
@@ -318,10 +299,7 @@ class AGUIRequestHandler(BaseHTTPRequestHandler):
             self._send_json(HTTPStatus.CONFLICT, {"error": str(error)})
             return
         except ActionBlockedError as error:
-            self._send_json(
-                HTTPStatus.FORBIDDEN,
-                {"error": str(error), "action_id": error.request.action_id, "decision": error.decision.decision.value},
-            )
+            self._send_json(HTTPStatus.FORBIDDEN, {"error": str(error), "action_id": error.request.action_id, "decision": error.decision.decision.value})
             return
         except OSError:
             self._send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "unable to persist the requested change"})
@@ -430,9 +408,7 @@ class AGUIRequestHandler(BaseHTTPRequestHandler):
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
-        self.send_header(
-            "Cache-Control", ("no-cache" if candidate.name == "index.html" else "public, max-age=31536000, immutable")
-        )
+        self.send_header("Cache-Control", ("no-cache" if candidate.name == "index.html" else "public, max-age=31536000, immutable"))
         self._send_security_headers()
         self.end_headers()
         if include_body:

@@ -7,17 +7,7 @@ from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING, Callable, Protocol
 from uuid import uuid4
 
-from core.provider import (
-    ChatProvider,
-    Message,
-    ModelResponse,
-    ModelPricing,
-    ProviderCall,
-    ToolCall,
-    ToolDefinition,
-    call_chat_model,
-    estimate_text_tokens,
-)
+from core.provider import ChatProvider, Message, ModelResponse, ModelPricing, ProviderCall, ToolCall, ToolDefinition, call_chat_model, estimate_text_tokens
 from core.provider import ProviderPool
 from core.models import Conversation
 from skill.handlers.models import ModelProfile, model_profile_is_ready, model_profile_supports
@@ -89,9 +79,7 @@ class ModelAssignment:
     evidence: tuple[str, ...]
 
 
-def assign_model_for_task(
-    profiles: list[ModelProfile], purpose: str, required_features: tuple[str, ...], usage: list[ModelUsageStats]
-) -> ModelAssignment:
+def assign_model_for_task(profiles: list[ModelProfile], purpose: str, required_features: tuple[str, ...], usage: list[ModelUsageStats]) -> ModelAssignment:
     """Choose from declared and observed evidence without inspecting prompt keywords."""
     required = {item.strip().lower() for item in required_features if item.strip()}
     candidates = [profile for profile in profiles if model_profile_supports(profile, required)]
@@ -140,12 +128,7 @@ class ModelCaller:
         if not model_profile_is_ready(profile, self.provider_pool.environment):
             requirement = profile.connection.api_key_env or "provider connection"
             raise RuntimeError(f"selected model {profile.key} is not ready; configure {requirement}")
-        return SelectedModel(
-            profile=profile,
-            selected_by="task_evidence",
-            reason=f"evidence score {assignment.score:.4f}",
-            evidence=assignment.evidence,
-        )
+        return SelectedModel(profile=profile, selected_by="task_evidence", reason=f"evidence score {assignment.score:.4f}", evidence=assignment.evidence)
 
     def select_default_model(self) -> SelectedModel:
         profile = next((item for item in self.model_profiles if item.default), self.model_profiles[0])
@@ -154,9 +137,7 @@ class ModelCaller:
             raise RuntimeError(f"default model {profile.key} is not ready; configure {requirement}")
         return SelectedModel(profile=profile, selected_by="default", reason="configured default model")
 
-    def create_text_model(
-        self, store: EventStore | None, purpose: str, decision: SelectedModel, record_event: EventWriter | None = None
-    ) -> TextModel:
+    def create_text_model(self, store: EventStore | None, purpose: str, decision: SelectedModel, record_event: EventWriter | None = None) -> TextModel:
         if store is None and record_event is None:
             raise ValueError("a text model requires storage or an event writer")
         return _TextModel(
@@ -169,12 +150,7 @@ class ModelCaller:
         )
 
     def call_model(
-        self,
-        messages: list[Message],
-        decision: SelectedModel,
-        context: ModelCallContext,
-        *,
-        tools: list[ToolDefinition] | None = None,
+        self, messages: list[Message], decision: SelectedModel, context: ModelCallContext, *, tools: list[ToolDefinition] | None = None
     ) -> ModelResponse:
         provider = self._prepare_model_call(decision, context)
         return call_chat_model(_to_provider_call(decision, context, messages, tools), provider, context.record_event)
@@ -208,9 +184,7 @@ class _TextModel:
         return self.record_event(event_type, data)
 
 
-def list_model_usage_stats(
-    store: EventStore, purpose: str | None = None, *, events: list[StorageEvent] | None = None
-) -> list[ModelUsageStats]:
+def list_model_usage_stats(store: EventStore, purpose: str | None = None, *, events: list[StorageEvent] | None = None) -> list[ModelUsageStats]:
     selected_events = store.read_events(snapshot=events)
     implicit_feedback: dict[str, float] = {}
     explicit_feedback: dict[str, float] = {}
@@ -239,10 +213,7 @@ def list_model_usage_stats(
         accumulator.output_tokens += _nonnegative_number(event.data.get("output_tokens"))
         accumulator.cost += _nonnegative_number(event.data.get("estimated_cost"))
     return sorted(
-        (
-            _finish_stats(profile_key, event_purpose, accumulator)
-            for (profile_key, event_purpose), accumulator in accumulators.items()
-        ),
+        (_finish_stats(profile_key, event_purpose, accumulator) for (profile_key, event_purpose), accumulator in accumulators.items()),
         key=lambda item: (item.purpose, item.profile_key),
     )
 
@@ -261,9 +232,7 @@ def infer_conversation_feedback_with_model(
     )
     if previous_assistant_index is None:
         return None
-    previous_user_prompt = next(
-        (message.content for message in reversed(conversation.messages[:previous_assistant_index]) if message.role == "user"), ""
-    )
+    previous_user_prompt = next((message.content for message in reversed(conversation.messages[:previous_assistant_index]) if message.role == "user"), "")
     previous_response = conversation.messages[previous_assistant_index].content
     payload = {
         "previous_task": previous_user_prompt,
@@ -275,12 +244,7 @@ def infer_conversation_feedback_with_model(
             "reason": "concise evidence-based reason",
         },
     }
-    text = send_messages(
-        [
-            {"role": "system", "content": policy},
-            {"role": "user", "content": json.dumps(payload, ensure_ascii=False, sort_keys=True)},
-        ]
-    )
+    text = send_messages([{"role": "system", "content": policy}, {"role": "user", "content": json.dumps(payload, ensure_ascii=False, sort_keys=True)}])
     try:
         value = json.loads(text)
     except json.JSONDecodeError as error:
@@ -328,9 +292,7 @@ def _finish_stats(profile_key: str, purpose: str, accumulator: _StatsAccumulator
     )
 
 
-def _score_model_candidate(
-    profile: ModelProfile, purpose: str, required: set[str], observed: dict[tuple[str, str], ModelUsageStats]
-) -> ModelAssignment:
+def _score_model_candidate(profile: ModelProfile, purpose: str, required: set[str], observed: dict[tuple[str, str], ModelUsageStats]) -> ModelAssignment:
     traits = profile.traits
     purpose_match = purpose != "auto" and purpose in traits.purposes
     stats = observed.get((profile.key, purpose))
@@ -347,11 +309,7 @@ def _score_model_candidate(
     if stats is not None and stats.call_count:
         score += stats.reliability + stats.average_quality
         evidence.extend(
-            [
-                f"observed_calls={stats.call_count}",
-                f"observed_reliability={stats.reliability:.4f}",
-                f"observed_quality={stats.average_quality:.4f}",
-            ]
+            [f"observed_calls={stats.call_count}", f"observed_reliability={stats.reliability:.4f}", f"observed_quality={stats.average_quality:.4f}"]
         )
     if profile.default:
         score += 0.01
@@ -376,12 +334,7 @@ def assistant_tool_call_message(text: str, calls: list[ToolCall]) -> Message:
         "role": "assistant",
         "content": text,
         "tool_calls": [
-            {
-                "id": call.id,
-                "type": "function",
-                "function": {"name": call.name, "arguments": json.dumps(call.arguments, ensure_ascii=False)},
-            }
-            for call in calls
+            {"id": call.id, "type": "function", "function": {"name": call.name, "arguments": json.dumps(call.arguments, ensure_ascii=False)}} for call in calls
         ],
     }
 
@@ -390,9 +343,7 @@ def tool_result_message(call: ToolCall, result: dict[str, object]) -> Message:
     return {"role": "tool", "tool_call_id": call.id, "name": call.name, "content": json.dumps(result, ensure_ascii=False)}
 
 
-def _to_provider_call(
-    decision: SelectedModel, context: ModelCallContext, messages: list[Message], tools: list[ToolDefinition] | None
-) -> ProviderCall:
+def _to_provider_call(decision: SelectedModel, context: ModelCallContext, messages: list[Message], tools: list[ToolDefinition] | None) -> ProviderCall:
     return ProviderCall(
         profile_key=decision.profile.key,
         model=decision.profile.model,

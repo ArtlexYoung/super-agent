@@ -6,12 +6,7 @@ import sys
 from pathlib import Path
 
 from adapter.cli_support.cli_config import load_agent, load_common_config, load_event_store
-from adapter.cli_support.cli_data import (
-    add_config_and_user_options,
-    add_output_format_option,
-    print_cli_json,
-    run_selected_cli_command,
-)
+from adapter.cli_support.cli_data import add_config_and_user_options, add_output_format_option, print_cli_json, run_selected_cli_command
 from core.checks import ActionRules
 from core.config import CommonConfig
 from core.models import LOCAL_USER_ID
@@ -152,13 +147,7 @@ def _read_configured_model_profiles(config: CommonConfig, user_id: str) -> list[
 
 def _print_model_profiles(config: CommonConfig, profiles: list[ModelProfile], output: str) -> int:
     if output == "json":
-        return print_cli_json(
-            {
-                "schema_version": 2,
-                "config_path": str(config.source),
-                "models": [model_profile_to_dict(profile) for profile in profiles],
-            }
-        )
+        return print_cli_json({"schema_version": 2, "config_path": str(config.source), "models": [model_profile_to_dict(profile) for profile in profiles]})
     for profile in profiles:
         _print_model_profile(profile)
     return 0
@@ -327,17 +316,13 @@ def _pack_skill(args: argparse.Namespace) -> int:
 
 
 def _install_skill(args: argparse.Namespace) -> int:
-    manifest = _load_package_manager(Path(args.common_config), args.user_id).install_skill(
-        args.source, expected_sha256=args.expected_sha256
-    )
+    manifest = _load_package_manager(Path(args.common_config), args.user_id).install_skill(args.source, expected_sha256=args.expected_sha256)
     print(f"Installed skill: {manifest.name}@{manifest.version}")
     return 0
 
 
 def _update_skill(args: argparse.Namespace) -> int:
-    manifest = _load_package_manager(Path(args.common_config), args.user_id).update_skill(
-        args.name, args.source, expected_sha256=args.expected_sha256
-    )
+    manifest = _load_package_manager(Path(args.common_config), args.user_id).update_skill(args.name, args.source, expected_sha256=args.expected_sha256)
     print(f"Updated skill: {manifest.name}@{manifest.version}")
     return 0
 
@@ -352,10 +337,7 @@ def _remove_skill(args: argparse.Namespace) -> int:
 def _resolve_skills(config_path: Path, user_id: str, names: list[str]) -> list[SkillManifest]:
     disclosure = _load_skill_disclosure(config_path, user_id)
     index = disclosure.prepare_skill_index()
-    return [
-        disclosure.open_skill(entry.reference.name, entry.reference.skill_type).read_manifest()
-        for entry in index.resolve_skill_dependencies(names)
-    ]
+    return [disclosure.open_skill(entry.reference.name, entry.reference.skill_type).read_manifest() for entry in index.resolve_skill_dependencies(names)]
 
 
 def _load_skill_disclosure(config_path: Path, user_id: str) -> ProgressiveDisclosureCore:

@@ -12,7 +12,7 @@ import zipfile
 from contextlib import contextmanager
 from pathlib import Path, PurePosixPath
 from dataclasses import dataclass
-from typing import Callable, Iterator, cast
+from typing import Callable, Iterator, TypeVar
 from urllib.parse import unquote
 from uuid import uuid4
 
@@ -27,12 +27,12 @@ from skill.discovery.manifest import SkillManifest, calculate_skill_directory_sh
 
 
 FIXED_ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
+ActionResult = TypeVar("ActionResult")
+TransactionResult = TypeVar("TransactionResult")
 
 
 class SkillPackageManager:
-    def __init__(
-        self, skill_disclosure: ProgressiveDisclosureCore, store: EventStore, action_rules: ActionRules | None = None
-    ) -> None:
+    def __init__(self, skill_disclosure: ProgressiveDisclosureCore, store: EventStore, action_rules: ActionRules | None = None) -> None:
         self.store = store
         self.user_skill_root = store.private_root / "skills"
         self.skill_disclosure = ProgressiveDisclosureCore(
@@ -44,14 +44,8 @@ class SkillPackageManager:
         self.actions = ActionRunner(action_rules or ActionRules(), store.append_management_action_event)
 
     def pack_skill(self, name: str, output: Path) -> Path:
-        return cast(
-            Path,
-            self.actions.execute_action(
-                ActionRequest.create(
-                    "user:skill-package", f"file:{output.expanduser().absolute()}", (ActionEffect.READ, ActionEffect.CREATE)
-                ),
-                lambda: self._pack_skill(name, output),
-            ),
+        return self._execute_package_action(
+            f"file:{output.expanduser().absolute()}", (ActionEffect.READ, ActionEffect.CREATE), lambda: self._pack_skill(name, output)
         )
 
     def _pack_skill(self, name: str, output: Path) -> Path:
@@ -74,13 +68,7 @@ class SkillPackageManager:
         effects = [ActionEffect.READ, ActionEffect.CREATE]
         if source.strip().startswith("git+"):
             effects.extend((ActionEffect.EXECUTE, ActionEffect.NETWORK))
-        return cast(
-            SkillManifest,
-            self.actions.execute_action(
-                ActionRequest.create("user:skill-package", "skill:owned:install", tuple(effects)),
-                lambda: self._install_skill(source, expected_sha256),
-            ),
-        )
+        return self._execute_package_action("skill:owned:install", tuple(effects), lambda: self._install_skill(source, expected_sha256))
 
     def _install_skill(self, source: str, expected_sha256: str) -> SkillManifest:
         with tempfile.TemporaryDirectory(prefix="super-agent-install-") as tmp:
@@ -100,13 +88,7 @@ class SkillPackageManager:
         effects = [ActionEffect.READ, ActionEffect.UPDATE]
         if source.strip().startswith("git+"):
             effects.extend((ActionEffect.EXECUTE, ActionEffect.NETWORK))
-        return cast(
-            SkillManifest,
-            self.actions.execute_action(
-                ActionRequest.create("user:skill-package", f"skill:owned:{name}", tuple(effects)),
-                lambda: self._update_skill(name, source, expected_sha256),
-            ),
-        )
+        return self._execute_package_action(f"skill:owned:{name}", tuple(effects), lambda: self._update_skill(name, source, expected_sha256))
 
     def _update_skill(self, name: str, source: str, expected_sha256: str) -> SkillManifest:
         skill_name, expected_type = _split_skill_reference(name)
@@ -120,18 +102,17 @@ class SkillPackageManager:
             if proposed.skill_type != current.skill_type:
                 raise ValueError(f"updated Skill type does not match target: {proposed.skill_type} != {current.skill_type}")
             validate_skill_replacement(current.path, staged)
-            expected_target_sha256 = (
-                calculate_skill_directory_sha256(current.path) if current.path.absolute() == target.absolute() else ""
-            )
+            expected_target_sha256 = calculate_skill_directory_sha256(current.path) if current.path.absolute() == target.absolute() else ""
             update = SkillDirectoryUpdate(staged, target, calculate_skill_directory_sha256(staged), expected_target_sha256)
             apply_skill_directory_updates([update])
         return self._read_skill_manifest(skill_name, current.skill_type)
 
     def remove_skill(self, name: str) -> None:
-        self.actions.execute_action(
-            ActionRequest.create("user:skill-package", f"skill:owned:{name}", (ActionEffect.DELETE,)),
-            lambda: self._remove_skill(name),
-        )
+        self._execute_package_action(f"skill:owned:{name}", (ActionEffect.DELETE,), lambda: self._remove_skill(name))
+
+    def _execute_package_action(self, resource: str, effects: tuple[ActionEffect, ...], action: Callable[[], ActionResult]) -> ActionResult:
+        request = ActionRequest.create("user:skill-package", resource, effects)
+        return self.actions.execute_action(request, action)
 
     def _remove_skill(self, name: str) -> None:
         skill_name, expected_type = _split_skill_reference(name)
@@ -175,11 +156,7 @@ def _stage_git_source(source: str, temporary_root: Path) -> Path:
     environment = dict(os.environ)
     environment["GIT_TERMINAL_PROMPT"] = "0"
     completed = subprocess.run(
-        ["git", "clone", "--quiet", "--depth", "1", "--", repository, str(clone_path)],
-        check=False,
-        capture_output=True,
-        text=True,
-        env=environment,
+        ["git", "clone", "--quiet", "--depth", "1", "--", repository, str(clone_path)], check=False, capture_output=True, text=True, env=environment
     )
     if completed.returncode != 0:
         message = completed.stderr.strip() or completed.stdout.strip()
@@ -224,13 +201,7 @@ def _validate_zip_member(info: zipfile.ZipInfo) -> PurePosixPath:
     name = info.filename.replace("\\", "/")
     relative = PurePosixPath(name)
     file_type = (info.external_attr >> 16) & 0o170000
-    unsafe = (
-        not name
-        or relative.is_absolute()
-        or ".." in relative.parts
-        or re.match(r"^[a-zA-Z]:", name) is not None
-        or file_type == stat.S_IFLNK
-    )
+    unsafe = not name or relative.is_absolute() or ".." in relative.parts or re.match(r"^[a-zA-Z]:", name) is not None or file_type == stat.S_IFLNK
     if unsafe:
         raise ValueError(f"unsafe path in skill package: {info.filename}")
     return relative
@@ -412,11 +383,8 @@ class SkillDirectoryUpdate:
 
 
 def apply_skill_directory_updates(
-    updates: list[SkillDirectoryUpdate],
-    *,
-    after_apply: Callable[[], None] | None = None,
-    after_restore: Callable[[], None] | None = None,
-) -> None:
+    updates: list[SkillDirectoryUpdate], *, after_apply: Callable[[], TransactionResult] | None = None, after_restore: Callable[[], None] | None = None
+) -> TransactionResult | None:
     """Apply one verified directory transaction and restore all targets on failure."""
     if not updates:
         return
@@ -426,10 +394,11 @@ def apply_skill_directory_updates(
     staged = _stage_skill_directory_updates(updates)
     backups: dict[Path, Path] = {}
     activated: list[Path] = []
+    result = None
     try:
         _activate_skill_directory_updates(updates, staged, backups, activated)
         if after_apply is not None:
-            after_apply()
+            result = after_apply()
     except Exception as error:
         _restore_skill_directory_updates(activated, backups)
         _notify_skill_directory_restored(after_restore, error)
@@ -438,6 +407,7 @@ def apply_skill_directory_updates(
         _remove_skill_directories(staged)
     for backup in backups.values():
         shutil.rmtree(backup)
+    return result
 
 
 def _stage_skill_directory_updates(updates: list[SkillDirectoryUpdate]) -> list[Path | None]:
@@ -459,9 +429,7 @@ def _stage_skill_directory_updates(updates: list[SkillDirectoryUpdate]) -> list[
     return staged
 
 
-def _activate_skill_directory_updates(
-    updates: list[SkillDirectoryUpdate], staged: list[Path | None], backups: dict[Path, Path], activated: list[Path]
-) -> None:
+def _activate_skill_directory_updates(updates: list[SkillDirectoryUpdate], staged: list[Path | None], backups: dict[Path, Path], activated: list[Path]) -> None:
     for update in updates:
         require_skill_directory_matches(update.target, update.expected_target_sha256, "target")
     for update in updates:
@@ -510,9 +478,7 @@ def _show_backup_manifests(backup: Path) -> None:
         manifest.replace(manifest.with_name("skill.toml"))
 
 
-def validate_skill_directory(
-    skill_path: Path, *, expected_type: str | None = None, expected_name: str | None = None
-) -> SkillManifest:
+def validate_skill_directory(skill_path: Path, *, expected_type: str | None = None, expected_name: str | None = None) -> SkillManifest:
     """Validate one complete Skill directory through progressive disclosure."""
     disclosure = ProgressiveDisclosureCore([skill_path])
     index = disclosure.prepare_skill_index()
@@ -589,9 +555,7 @@ def _validate_model_replacement(current: SkillDisclosure, proposed: SkillDisclos
     proposed_profile = create_model_profile_from_skill_disclosure(proposed)
     if current_profile.agent_can_update_connection != proposed_profile.agent_can_update_connection:
         raise PermissionError("model Skill cannot change connection update ownership")
-    if not current_profile.agent_can_update_connection and model_connection_fields(current_profile) != model_connection_fields(
-        proposed_profile
-    ):
+    if not current_profile.agent_can_update_connection and model_connection_fields(current_profile) != model_connection_fields(proposed_profile):
         raise PermissionError("model Skill does not allow Agent connection updates")
 
 

@@ -104,9 +104,7 @@ class Run:
     def has_action_checker(self) -> bool:
         return self.create_action_rules is not None
 
-    def load_skill(
-        self, reference: SkillReference, send_text_model_messages: Callable[[list[Message]], str] | None = None
-    ) -> SkillUse:
+    def load_skill(self, reference: SkillReference, send_text_model_messages: Callable[[list[Message]], str] | None = None) -> SkillUse:
         key = (reference.key, send_text_model_messages is not None)
         loaded = self._loaded_skills.get(key)
         if loaded is None:
@@ -232,9 +230,7 @@ class Runtime:
         self.code_model_profiles = code_model_profiles
         self.event_subscribers = event_subscribers or RuntimeEventSubscribers()
 
-    def run_task(
-        self, request: Task, identity: RunIdentity, *, event_listener: Callable[[RunEvent], None] | None = None
-    ) -> RunResult:
+    def run_task(self, request: Task, identity: RunIdentity, *, event_listener: Callable[[RunEvent], None] | None = None) -> RunResult:
         from core.loop import list_run_actions
 
         if identity.agent_name != self.config.agent.name:
@@ -256,9 +252,7 @@ class Runtime:
                     "run.resumed",
                     {
                         "source_run_id": request.resumed_from_run_id,
-                        "checkpoint_id": (
-                            None if request.resume_checkpoint is None else request.resume_checkpoint.get("checkpoint_id")
-                        ),
+                        "checkpoint_id": (None if request.resume_checkpoint is None else request.resume_checkpoint.get("checkpoint_id")),
                     },
                 )
             if run.task_runner is None:
@@ -274,12 +268,7 @@ class Runtime:
                     "learning_evidence": _create_run_learning_evidence(run, request.prompt, result.text, started_at=started_at),
                 },
             )
-            final_result = replace(
-                result,
-                actions=list_run_actions(run),
-                subscriber_failures=run.list_subscriber_failures(),
-                events=run.list_recorded_events(),
-            )
+            final_result = replace(result, actions=list_run_actions(run), subscriber_failures=run.list_subscriber_failures(), events=run.list_recorded_events())
             failures = run.list_subscriber_failures()
             if failures and not request.allow_subscriber_failures:
                 raise RuntimeEventSubscriberError(failures, final_result)
@@ -293,9 +282,7 @@ class Runtime:
                     {
                         "error_type": type(error).__name__,
                         "message": str(error),
-                        "learning_evidence": _create_run_learning_evidence(
-                            run, request.prompt, "", started_at=started_at, error=error
-                        ),
+                        "learning_evidence": _create_run_learning_evidence(run, request.prompt, "", started_at=started_at, error=error),
                     },
                 )
             except Exception as recording_error:
@@ -303,16 +290,11 @@ class Runtime:
             raise
 
 
-def _create_run(
-    runtime: Runtime, request: Task, identity: RunIdentity, *, event_listener: Callable[[RunEvent], None] | None
-) -> Run:
+def _create_run(runtime: Runtime, request: Task, identity: RunIdentity, *, event_listener: Callable[[RunEvent], None] | None) -> Run:
     from core.records.events import RunEventLog
 
     event_log = RunEventLog(
-        identity,
-        backend=runtime.storage,
-        event_listener=event_listener,
-        subscribers=RuntimeEventSubscribers(runtime.event_subscribers.list_subscribers()),
+        identity, backend=runtime.storage, event_listener=event_listener, subscribers=RuntimeEventSubscribers(runtime.event_subscribers.list_subscribers())
     )
     store = _create_run_event_store(runtime, identity, event_log)
     start_data = {"prompt": request.prompt}
@@ -360,11 +342,7 @@ def _create_run_event_store(runtime: Runtime, identity: RunIdentity, event_log: 
 
 def _create_skills(runtime: Runtime, store, identity: RunIdentity) -> Skills:
     return create_skills(
-        runtime.config,
-        handlers=runtime.skill_handlers,
-        store=store,
-        identity=identity if store is not None else None,
-        include_freshness=False,
+        runtime.config, handlers=runtime.skill_handlers, store=store, identity=identity if store is not None else None, include_freshness=False
     )
 
 
@@ -387,9 +365,7 @@ def _create_task_runner(runtime: Runtime, profiles: list[ModelProfile], user_id:
     return TaskRunner(profiles, runtime.provider_pool.create_user_provider_pool(environment))
 
 
-def _create_run_learning_evidence(
-    run: Run, prompt: str, output: str, *, started_at: float, error: Exception | None = None
-) -> dict[str, object]:
+def _create_run_learning_evidence(run: Run, prompt: str, output: str, *, started_at: float, error: Exception | None = None) -> dict[str, object]:
     success = error is None
     return {
         "schema_version": 2,

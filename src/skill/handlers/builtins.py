@@ -4,12 +4,7 @@ import hashlib
 from dataclasses import asdict
 from typing import TYPE_CHECKING, Callable
 
-from core.models import (
-    read_optional_positive_tool_integer,
-    read_optional_tool_string,
-    read_required_tool_string,
-    read_tool_object,
-)
+from core.models import read_optional_positive_tool_integer, read_optional_tool_string, read_required_tool_string, read_tool_object
 from skill.handlers.runtime import SkillContext, SkillHandler, SkillAction, SkillTool, SkillUse, SkillSession, SkillSessionContext
 from core.checks import ActionEffect
 from skill.discovery.manifest import Skill
@@ -25,9 +20,7 @@ class PromptSkillHandler:
 
     def handle_skill(self, context: SkillContext) -> SkillUse:
         opened = context.open_skill()
-        return SkillUse(
-            model_context=Skill(manifest=opened.disclose_manifest(), instructions=opened.disclose_instructions().content)
-        )
+        return SkillUse(model_context=Skill(manifest=opened.disclose_manifest(), instructions=opened.disclose_instructions().content))
 
 
 class McpSkillHandler:
@@ -48,10 +41,7 @@ class McpSkillHandler:
         instructions = opened.disclose_instructions().content
         runtime_context = f"Registered MCP server: {registered.name}\nRuntime tools: {list_tool_name}, {run_tool_name}"
         return SkillUse(
-            model_context=Skill(
-                manifest=opened.disclose_manifest(),
-                instructions="\n\n".join(part for part in (instructions, runtime_context) if part),
-            ),
+            model_context=Skill(manifest=opened.disclose_manifest(), instructions="\n\n".join(part for part in (instructions, runtime_context) if part)),
             tools=_create_mcp_tools(registered, list_tool_name, run_tool_name),
         )
 
@@ -70,9 +60,7 @@ class MemorySkillHandler:
         opened.disclose_manifest()
         opened.disclose_configuration()
         opened.disclose_instructions()
-        memory = create_memory_from_skill(
-            opened, context.require_store("memory Skill"), context.identity, execute_action=context.require_action_executor()
-        )
+        memory = create_memory_from_skill(opened, context.require_store("memory Skill"), context.identity, execute_action=context.require_action_executor())
         return create_memory_skill_contribution(memory)
 
 
@@ -122,9 +110,7 @@ def create_builtin_skill_handlers(mcp_servers: McpServers) -> tuple[SkillHandler
 def _start_task_session(tools: dict[str, dict[str, object]], context: SkillSessionContext) -> SkillSession:
     from skill.tasks.task_queue import create_task_queue
 
-    queue = create_task_queue(
-        tools, context.subagents, context.run_subagent, context.record_event, context.record_result, context.create_shared_context
-    )
+    queue = create_task_queue(tools, context.subagents, context.run_subagent, context.record_event, context.record_result, context.create_shared_context)
     if queue is None:
         raise RuntimeError("task Skill does not provide a usable task queue")
     return queue
@@ -184,12 +170,8 @@ class _TaskPlan:
         if not all(isinstance(item, str) and item.strip() for item in value):
             raise ValueError("task plan steps must contain non-empty text")
         self.goal = goal
-        self.steps = [
-            {"step": index, "text": item.strip(), "status": "pending", "evidence": ""} for index, item in enumerate(value, 1)
-        ]
-        self.record_event(
-            "task.plan.set", {"goal_sha256": hashlib.sha256(goal.encode()).hexdigest(), "step_count": len(self.steps)}
-        )
+        self.steps = [{"step": index, "text": item.strip(), "status": "pending", "evidence": ""} for index, item in enumerate(value, 1)]
+        self.record_event("task.plan.set", {"goal_sha256": hashlib.sha256(goal.encode()).hexdigest(), "step_count": len(self.steps)})
         return self._result()
 
     def update_step(self, arguments: dict[str, object]) -> dict[str, object]:
@@ -205,10 +187,7 @@ class _TaskPlan:
         if status == "in_progress" and any(item["status"] == "in_progress" and item["step"] != step for item in self.steps):
             raise ValueError("task plan can have only one in-progress step")
         self.steps[step - 1].update(status=status, evidence=evidence)
-        self.record_event(
-            "task.plan.step.updated",
-            {"step": step, "status": status, "evidence_sha256": hashlib.sha256(evidence.encode()).hexdigest()},
-        )
+        self.record_event("task.plan.step.updated", {"step": step, "status": status, "evidence_sha256": hashlib.sha256(evidence.encode()).hexdigest()})
         return self._result()
 
     def _result(self) -> dict[str, object]:
@@ -293,9 +272,7 @@ def _remember_long_term(memory: Memory, arguments: dict[str, object]) -> dict[st
 
 def _recall_long_term_memory(memory: Memory, arguments: dict[str, object]) -> dict[str, object]:
     scope = read_optional_tool_string(arguments, "scope") or memory.settings.default_scope
-    items = memory.recall_long_term(
-        read_required_tool_string(arguments, "query"), scope=scope, limit=read_optional_positive_tool_integer(arguments, "limit")
-    )
+    items = memory.recall_long_term(read_required_tool_string(arguments, "query"), scope=scope, limit=read_optional_positive_tool_integer(arguments, "limit"))
     return {"items": [asdict(item) for item in items]}
 
 
@@ -341,9 +318,7 @@ def _run_mcp_tool(registered: RegisteredMcpServer, arguments: dict[str, object])
 
 
 def _mcp_tool_names(skill_name: str) -> tuple[str, str]:
-    clean = "".join(character if character.isascii() and character.isalnum() else "_" for character in skill_name.lower()).strip(
-        "_"
-    )
+    clean = "".join(character if character.isascii() and character.isalnum() else "_" for character in skill_name.lower()).strip("_")
     if not clean:
         clean = hashlib.sha256(skill_name.encode()).hexdigest()[:12]
     if len(clean) > 40:

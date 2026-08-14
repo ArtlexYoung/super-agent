@@ -32,20 +32,14 @@ class CommonConfigurationInput:
             system=read_text(value.get("system"), "agent configuration system"),
             skills=read_text_list(value.get("skills", []), "agent configuration skills", lower=True),
             max_agent_chain_depth=(
-                None
-                if value.get("max_agent_chain_depth") is None
-                else read_int(value["max_agent_chain_depth"], "max_agent_chain_depth", minimum=1)
+                None if value.get("max_agent_chain_depth") is None else read_int(value["max_agent_chain_depth"], "max_agent_chain_depth", minimum=1)
             ),
             disabled_skills=read_text_list(value.get("disabled_skills", []), "agent configuration disabled_skills", lower=True),
         )
 
     def to_agent_settings(self) -> AgentSettings:
         return AgentSettings(
-            name=self.name,
-            system=self.system,
-            skills=self.skills,
-            max_agent_chain_depth=self.max_agent_chain_depth,
-            disabled_skills=self.disabled_skills,
+            name=self.name, system=self.system, skills=self.skills, max_agent_chain_depth=self.max_agent_chain_depth, disabled_skills=self.disabled_skills
         )
 
 
@@ -116,10 +110,7 @@ class WebAPI:
             "storage": {
                 "backend": config.storage.backend,
                 "path": str(config.storage.path),
-                "audit": {
-                    "detailed_days": config.storage.audit.detailed_days,
-                    "critical_days": config.storage.audit.critical_days,
-                },
+                "audit": {"detailed_days": config.storage.audit.detailed_days, "critical_days": config.storage.audit.critical_days},
             },
             "configuration_path": str(config.source),
             "skills": _web_skill_list(skill_index_to_dict(skills.index), config),
@@ -161,10 +152,7 @@ def _web_skill_list(value: dict[str, object], config: CommonConfig) -> list[dict
             for key, field in item.items()
             if key not in {"manifest_cache_path", "instructions_cache_path", "configuration_cache_path", "files_cache_path"}
         }
-        | {
-            "enabled": not {item["type"], item["key"], item["name"]} & disabled,
-            "selected": item["key"] in selected or item["name"] in selected,
-        }
+        | {"enabled": not {item["type"], item["key"], item["name"]} & disabled, "selected": item["key"] in selected or item["name"] in selected}
         for item in skills
         if isinstance(item, dict)
     ]

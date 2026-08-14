@@ -150,3 +150,6 @@ The release suite verifies the claims above as behavior:
   decode physical rows and preserve their transaction, schema, and connection responsibilities.
 - `SkillIndexEntry` has one persisted projection, and `SkillDisclosure` sends every disclosed
   Skill document through the same cache, history, hashing, and context-budget path.
+- Skill package, model, and evolution writes share `apply_skill_directory_updates`; the verified
+  transaction returns its post-apply value and restores every activated target before surfacing
+  a failure.

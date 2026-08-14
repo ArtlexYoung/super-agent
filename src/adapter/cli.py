@@ -21,13 +21,7 @@ from adapter.cli_support.cli_data import (
     run_runs_command,
     run_storage_command,
 )
-from adapter.cli_support.cli_config import (
-    configure_config_parser,
-    load_agent,
-    load_cli_config,
-    load_common_config,
-    run_config_command,
-)
+from adapter.cli_support.cli_config import configure_config_parser, load_agent, load_cli_config, load_common_config, run_config_command
 from adapter.code import attach_code_config_to_agent
 from adapter.cli_support.cli_skills import configure_skills_parser, run_skills_command
 from adapter.http.agui import DEFAULT_ALLOWED_ORIGINS, create_ag_ui_server
@@ -88,19 +82,13 @@ def _run_terminal(arguments: list[str]) -> int:
     if not args.prompt:
         if args.output not in {None, "text"}:
             raise ValueError("interactive conversation only supports text output")
-        return _run_chat_command(
-            common_config_path, user_id, args.conversation_id, args.skill, save=save, code_config_path=code_config_path
-        )
+        return _run_chat_command(common_config_path, user_id, args.conversation_id, args.skill, save=save, code_config_path=code_config_path)
     request = _read_runtime_request_from_args(args, user_id)
-    return _run_prompt_command(
-        common_config_path, request, output, save=save, show_summary=show_summary, code_config_path=code_config_path
-    )
+    return _run_prompt_command(common_config_path, request, output, save=save, show_summary=show_summary, code_config_path=code_config_path)
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="super-agent", description="Chat with an Agent, or pass a prompt directly without a command."
-    )
+    parser = argparse.ArgumentParser(prog="super-agent", description="Chat with an Agent, or pass a prompt directly without a command.")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     subparsers = parser.add_subparsers(dest="command")
 
@@ -128,17 +116,9 @@ def _build_terminal_parser() -> argparse.ArgumentParser:
     add_output_format_option(parser, default=None)
     parser.add_argument("--conversation-id")
     parser.add_argument("--skill", help="explicit task Skill name or task:name key")
+    parser.add_argument("--save", action=argparse.BooleanOptionalAction, default=None, help="save run events or chat messages using configured storage")
     parser.add_argument(
-        "--save",
-        action=argparse.BooleanOptionalAction,
-        default=None,
-        help="save run events or chat messages using configured storage",
-    )
-    parser.add_argument(
-        "--show-summary",
-        action=argparse.BooleanOptionalAction,
-        default=None,
-        help="show model, Skill, workflow, and run details after text output",
+        "--show-summary", action=argparse.BooleanOptionalAction, default=None, help="show model, Skill, workflow, and run details after text output"
     )
     return parser
 
@@ -193,12 +173,7 @@ def configure_serve_parser(parser: argparse.ArgumentParser) -> None:
     add_config_and_user_options(parser)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
-    parser.add_argument(
-        "--allow-origin",
-        action="append",
-        dest="allowed_origins",
-        help="browser origin allowed to call the server; may be repeated",
-    )
+    parser.add_argument("--allow-origin", action="append", dest="allowed_origins", help="browser origin allowed to call the server; may be repeated")
 
 
 def run_serve_command(args: argparse.Namespace) -> int:
@@ -233,12 +208,7 @@ def _configure_data_parser(parser: argparse.ArgumentParser) -> None:
 
 
 def _run_data_command(args: argparse.Namespace) -> int:
-    handlers = {
-        "conversations": run_conversations_command,
-        "memory": run_memory_command,
-        "runs": run_runs_command,
-        "storage": run_storage_command,
-    }
+    handlers = {"conversations": run_conversations_command, "memory": run_memory_command, "runs": run_runs_command, "storage": run_storage_command}
     handler = handlers.get(args.data_command)
     if handler is None:
         raise ValueError("data command is required")
@@ -252,13 +222,7 @@ def _is_terminal_request(arguments: list[str]) -> bool:
 
 
 def _run_prompt_command(
-    common_config_path: Path | None,
-    request: CliRequest,
-    output: str,
-    *,
-    save: bool,
-    show_summary: bool,
-    code_config_path: Path | None = None,
+    common_config_path: Path | None, request: CliRequest, output: str, *, save: bool, show_summary: bool, code_config_path: Path | None = None
 ) -> int:
     use_storage = save or request.conversation_id is not None
     agent = load_agent(common_config_path, use_storage=use_storage)
@@ -276,13 +240,7 @@ def _run_prompt_command(
 
 
 def _run_chat_command(
-    common_config_path: Path | None,
-    user_id: str,
-    conversation_id: str | None,
-    skill: str | None,
-    *,
-    save: bool,
-    code_config_path: Path | None = None,
+    common_config_path: Path | None, user_id: str, conversation_id: str | None, skill: str | None, *, save: bool, code_config_path: Path | None = None
 ) -> int:
     use_storage = save or conversation_id is not None
     agent = load_agent(common_config_path, use_storage=use_storage)

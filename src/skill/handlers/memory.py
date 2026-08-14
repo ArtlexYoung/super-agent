@@ -49,16 +49,11 @@ class UsageHabits:
         self.execute_action = execute_action
 
     def record_agent_run(self, workflow: str, skills: list[str]) -> None:
-        change = lambda: self.store.append_event(
-            "habit", "usage", "agent.completed", data={"workflow": workflow, "skills": list(skills)}
-        )
+        change = lambda: self.store.append_event("habit", "usage", "agent.completed", data={"workflow": workflow, "skills": list(skills)})
         if self.execute_action is None:
             change()
             return
-        self.execute_action(
-            ActionRequest.create("agent:memory", "memory:habits", (ActionEffect.UPDATE,), argument_names=("workflow", "skills")),
-            change,
-        )
+        self.execute_action(ActionRequest.create("agent:memory", "memory:habits", (ActionEffect.UPDATE,), argument_names=("workflow", "skills")), change)
 
     def read_usage_habits(self) -> dict[str, object]:
         return usage_habits_from_events(self.store.read_events("habit", "usage"))
@@ -101,9 +96,7 @@ class Memory:
             created_at=format_utc(datetime.now(UTC)),
         )
         self._run_change(
-            (ActionEffect.CREATE,),
-            [item.item_id],
-            lambda: self._append_memory_event("memory.remembered", {"item": _validate_stored_item(asdict(item))}),
+            (ActionEffect.CREATE,), [item.item_id], lambda: self._append_memory_event("memory.remembered", {"item": _validate_stored_item(asdict(item))})
         )
         return item
 
@@ -111,9 +104,7 @@ class Memory:
         selected_scope = None if scope is None else _clean_scope(scope)
         return [
             _item_from_dict(item)
-            for item in _sort_items(
-                item for item in self._active_items().values() if selected_scope is None or item["scope"] == selected_scope
-            )
+            for item in _sort_items(item for item in self._active_items().values() if selected_scope is None or item["scope"] == selected_scope)
         ]
 
     def recall_long_term(self, query: str, scope: str | None = None, limit: int | None = None) -> list[MemoryItem]:
@@ -128,9 +119,7 @@ class Memory:
 
     def organize_long_term(self, operations: list[dict[str, object]]) -> list[MemoryItem]:
         item_ids = _organization_item_ids(operations)
-        replacements = self._run_change(
-            (ActionEffect.CREATE, ActionEffect.UPDATE, ActionEffect.DELETE), item_ids, lambda: self._organize_items(operations)
-        )
+        replacements = self._run_change((ActionEffect.CREATE, ActionEffect.UPDATE, ActionEffect.DELETE), item_ids, lambda: self._organize_items(operations))
         return [_item_from_dict(item) for item in replacements]
 
     def forget_long_term(self, item_id: str, reason: str = "") -> None:
@@ -140,11 +129,7 @@ class Memory:
     def build_prompt_instruction(self, query: str = "") -> str:
         sections = [self.settings.instructions]
         if self.settings.include_in_prompt:
-            items = (
-                self.recall_long_term(query)
-                if query.strip()
-                else self.list_long_term(self.settings.default_scope)[: self.settings.recall_limit]
-            )
+            items = self.recall_long_term(query) if query.strip() else self.list_long_term(self.settings.default_scope)[: self.settings.recall_limit]
             if items:
                 sections.append("Long-term memory:\n" + "\n".join(f"- {item.text}" for item in items))
         if self.settings.include_usage_habits:
@@ -155,8 +140,7 @@ class Memory:
         if self.execute_action is None:
             return change()
         return self.execute_action(
-            ActionRequest.create("agent:memory", "memory:long-term:" + ",".join(item_ids), effects, argument_names=("item_ids",)),
-            change,
+            ActionRequest.create("agent:memory", "memory:long-term:" + ",".join(item_ids), effects, argument_names=("item_ids",)), change
         )
 
     def _source_run_id(self, source_run_id: str) -> str:
@@ -186,11 +170,7 @@ class Memory:
 
 
 def create_memory_from_skill(
-    disclosure: SkillDisclosure,
-    store: EventStore,
-    identity: RunIdentity | None = None,
-    *,
-    execute_action: MemoryActionRunner | None = None,
+    disclosure: SkillDisclosure, store: EventStore, identity: RunIdentity | None = None, *, execute_action: MemoryActionRunner | None = None
 ) -> Memory:
     return Memory(store, identity, read_memory_settings_from_skill(disclosure), execute_action=execute_action)
 

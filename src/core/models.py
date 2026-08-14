@@ -82,9 +82,7 @@ def read_number(value: object, label: str, *, minimum: float | None = None, maxi
     return number
 
 
-def read_optional_number(
-    value: object, label: str, *, minimum: float | None = None, maximum: float | None = None
-) -> float | None:
+def read_optional_number(value: object, label: str, *, minimum: float | None = None, maximum: float | None = None) -> float | None:
     return None if value is None else read_number(value, label, minimum=minimum, maximum=maximum)
 
 
@@ -380,13 +378,7 @@ class RunIdentity:
 
     @classmethod
     def create(
-        cls,
-        user_id: str,
-        agent_name: str,
-        *,
-        run_id: str | None = None,
-        conversation_id: str | None = None,
-        parent_run_id: str | None = None,
+        cls, user_id: str, agent_name: str, *, run_id: str | None = None, conversation_id: str | None = None, parent_run_id: str | None = None
     ) -> "RunIdentity":
         return cls(
             user_id=validate_user_id(user_id),

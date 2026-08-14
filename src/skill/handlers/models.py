@@ -6,15 +6,7 @@ import os
 from dataclasses import dataclass, replace
 from typing import Mapping, Sequence
 
-from core.models import (
-    read_bool,
-    read_optional_int,
-    read_optional_number,
-    read_optional_text,
-    read_text,
-    read_text_list,
-    reject_unknown_fields,
-)
+from core.models import read_bool, read_optional_int, read_optional_number, read_optional_text, read_text, read_text_list, reject_unknown_fields
 from core.provider import (
     ANTHROPIC_COMPATIBLE_PROVIDER,
     MOCK_PROVIDER,
@@ -89,15 +81,11 @@ class ModelDefinition:
                 purposes=read_text_list(data.get("purposes", []), "model Skill purposes", lower=True),
                 strengths=read_text_list(data.get("strengths", []), "model Skill strengths", lower=True),
                 quality_score=read_optional_number(data.get("quality_score"), "model Skill quality_score", minimum=0, maximum=1),
-                expected_latency_ms=read_optional_int(
-                    data.get("expected_latency_ms"), "model Skill expected_latency_ms", minimum=0
-                ),
+                expected_latency_ms=read_optional_int(data.get("expected_latency_ms"), "model Skill expected_latency_ms", minimum=0),
                 pricing=ModelPricing.from_mapping(data),
             ),
             default=read_bool(data.get("default", False), "model Skill default"),
-            agent_can_update_connection=read_bool(
-                data.get("agent_can_update_connection", False), "model Skill agent_can_update_connection"
-            ),
+            agent_can_update_connection=read_bool(data.get("agent_can_update_connection", False), "model Skill agent_can_update_connection"),
         )
 
     def to_configuration(self) -> dict[str, object]:
@@ -127,12 +115,7 @@ class ModelDefinition:
 
     def to_dispatch_dict(self) -> dict[str, object]:
         traits = self.traits
-        return {
-            "model": self.model,
-            "supports": list(traits.supports),
-            "purposes": list(traits.purposes),
-            **traits.pricing.to_dict(),
-        }
+        return {"model": self.model, "supports": list(traits.supports), "purposes": list(traits.purposes), **traits.pricing.to_dict()}
 
 
 @dataclass(frozen=True)
@@ -208,9 +191,7 @@ def read_model_profiles(skills: Skills, environment: Mapping[str, str] | None = 
 
 def select_default_model_profile(profiles: list[ModelProfile]) -> ModelProfile:
     if not profiles:
-        raise RuntimeError(
-            "No model is configured. Add a model Skill, configure a provider through the environment, or pass provider= to Agent."
-        )
+        raise RuntimeError("No model is configured. Add a model Skill, configure a provider through the environment, or pass provider= to Agent.")
     defaults = [profile for profile in profiles if profile.default]
     if len(defaults) > 1:
         names = ", ".join(profile.name for profile in defaults)
@@ -272,9 +253,7 @@ def discover_environment_model_profiles(environment: Mapping[str, str] | None = 
             )
         )
     profiles = _deduplicate_profiles(profiles)
-    return [
-        replace(profile, definition=replace(profile.definition, default=index == 0)) for index, profile in enumerate(profiles)
-    ]
+    return [replace(profile, definition=replace(profile.definition, default=index == 0)) for index, profile in enumerate(profiles)]
 
 
 def create_direct_provider_profile() -> ModelProfile:
@@ -283,9 +262,7 @@ def create_direct_provider_profile() -> ModelProfile:
         name="provided",
         description="Provider supplied directly when creating the Agent.",
         version="code",
-        definition=ModelDefinition(
-            "provided", ProviderConnection(MOCK_PROVIDER), ModelTraits(["text", "tools"], [], []), default=True
-        ),
+        definition=ModelDefinition("provided", ProviderConnection(MOCK_PROVIDER), ModelTraits(["text", "tools"], [], []), default=True),
         source="code",
         skill_key="model:provided",
     )
@@ -323,9 +300,7 @@ def model_profile_supports(profile: ModelProfile, required_features: Sequence[st
     return required <= set(profile.traits.supports)
 
 
-def choose_dispatch_model(
-    models: object, purpose: str, required_features: Sequence[str], token_counts: Mapping[str, int | None]
-) -> ModelDispatchChoice:
+def choose_dispatch_model(models: object, purpose: str, required_features: Sequence[str], token_counts: Mapping[str, int | None]) -> ModelDispatchChoice:
     """Choose the lowest-cost compatible declared model for one Agent dispatch."""
     required = {item.strip().lower() for item in required_features if item.strip()}
     candidates = (
@@ -333,12 +308,7 @@ def choose_dispatch_model(
             item
             for item in models
             if isinstance(item, dict)
-            and required
-            <= {
-                str(feature).strip().lower()
-                for feature in item.get("supports", [])
-                if isinstance(feature, str) and feature.strip()
-            }
+            and required <= {str(feature).strip().lower() for feature in item.get("supports", []) if isinstance(feature, str) and feature.strip()}
         ]
         if isinstance(models, list)
         else []
@@ -356,9 +326,7 @@ def choose_dispatch_model(
             pair[0],
         ),
     )[1]
-    return ModelDispatchChoice(
-        str(selected.get("model", "")) or None, pricing.resolved_dict(), pricing.estimate_cost(token_counts)
-    )
+    return ModelDispatchChoice(str(selected.get("model", "")) or None, pricing.resolved_dict(), pricing.estimate_cost(token_counts))
 
 
 def model_connection_fields(profile: ModelProfile) -> tuple[str, str, str | None, str | None]:
@@ -379,11 +347,7 @@ def _profile_from_super_agent_environment(environment: Mapping[str, str], provid
         "environment",
         "Model selected through SUPER_AGENT_PROVIDER.",
         model,
-        ProviderConnection(
-            clean_provider,
-            _environment_text(environment, "SUPER_AGENT_BASE_URL"),
-            _environment_text(environment, "SUPER_AGENT_API_KEY_ENV"),
-        ),
+        ProviderConnection(clean_provider, _environment_text(environment, "SUPER_AGENT_BASE_URL"), _environment_text(environment, "SUPER_AGENT_API_KEY_ENV")),
         "environment:SUPER_AGENT_PROVIDER",
         supports=["text", "tools"],
     )
@@ -396,9 +360,7 @@ def _create_ephemeral_profile(
         name=name,
         description=description,
         version="ephemeral",
-        definition=ModelDefinition(
-            model, normalize_provider_connection(connection), ModelTraits(list(supports or ["text"]), [], [])
-        ),
+        definition=ModelDefinition(model, normalize_provider_connection(connection), ModelTraits(list(supports or ["text"]), [], [])),
         source=source,
         skill_key="",
     )

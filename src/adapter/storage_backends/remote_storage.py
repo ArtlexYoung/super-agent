@@ -80,9 +80,7 @@ class PostgreSqlStorage(RemoteSqlStorage):
         try:
             driver = import_module("psycopg")
         except ImportError as error:
-            raise RuntimeError(
-                "PostgreSQL storage requires the optional dependency: pip install 'super-agent[postgresql]'"
-            ) from error
+            raise RuntimeError("PostgreSQL storage requires the optional dependency: pip install 'super-agent[postgresql]'") from error
         connection_url = read_storage_connection_url("postgresql", url_env, DEFAULT_POSTGRESQL_URL_ENV)
         super().__init__(_PostgreSqlDatabase(driver, connection_url))
 
