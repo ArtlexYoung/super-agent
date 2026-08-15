@@ -92,6 +92,7 @@ class ModelCallOptions:
     purpose: str
     record_event: EventWriter
     record_model_used: ModelRecorder | None = None
+    list_disclosure_references: Callable[[], tuple[str, ...]] | None = None
 
 
 class ModelCaller:
@@ -254,4 +255,4 @@ def tool_result_message(call: ToolCall, result: dict[str, object]) -> Message:
 
 
 def _to_provider_call(decision: SelectedModel, options: ModelCallOptions, messages: list[Message], tools: list[ToolDefinition] | None) -> ProviderCall:
-    return ProviderCall(profile_key=decision.profile.key, model=decision.profile.model, purpose=options.purpose, messages=tuple(messages), tools=None if tools is None else tuple(tools), pricing=decision.profile.traits.pricing, selection={"selected_by": decision.selected_by, "reason": decision.reason, "evidence": list(decision.evidence)})
+    return ProviderCall(profile_key=decision.profile.key, model=decision.profile.model, purpose=options.purpose, messages=tuple(messages), tools=None if tools is None else tuple(tools), pricing=decision.profile.traits.pricing, selection={"selected_by": decision.selected_by, "reason": decision.reason, "evidence": list(decision.evidence)}, disclosure_references=(() if options.list_disclosure_references is None else options.list_disclosure_references()))

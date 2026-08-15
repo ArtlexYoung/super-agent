@@ -2042,6 +2042,17 @@ Status: implemented.
 - Restore the previous Skill and refresh its actual manifest when activation callbacks fail,
   remove incomplete history, and tighten the source ceiling to 9,744 non-empty Python lines.
 
+## v0.1.97: Auditable Model Inputs
+
+Status: implemented.
+
+- Audit the exact Provider input order with stable whole-input, per-message, and tool-definition
+  hashes plus message roles and source owners, without storing another copy of input content.
+- Attach ordered references from the central progressive-disclosure core to each task model call,
+  so Skill, memory, tool, and subagent context can be traced back to disclosed pages.
+- Keep the same lineage schema for storage-free calls with an empty reference list and tighten the
+  source ceiling to 9,743 non-empty Python lines.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

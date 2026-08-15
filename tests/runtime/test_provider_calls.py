@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import unittest
 
 from skill.learning.run_learning import parse_review_response
@@ -80,6 +82,24 @@ class ProviderCallTests(unittest.TestCase):
         metrics = events[-1][1]
         self.assertEqual(0.3, metrics["pricing"]["cache_creation_cost_per_million"])
         self.assertTrue(metrics["estimated_cost_excludes_cache"])
+
+    def test_call_audits_ordered_input_lineage_without_message_content(self) -> None:
+        events: list[tuple[str, dict[str, object]]] = []
+        messages = ({"role": "system", "content": "rules"}, {"role": "user", "content": "secret prompt"}, {"role": "assistant", "content": "work"}, {"role": "tool", "content": "private result"})
+        tools = ({"type": "function", "function": {"name": "inspect", "parameters": {"type": "object"}}},)
+        call = ProviderCall("model:test", "test", "answer", messages, tools, disclosure_references=("disclosure://skill/example/hash",))
+
+        call_chat_model(call, MockProvider("finished"), lambda event_type, data: events.append((event_type, data)))
+
+        lineage = events[0][1]["input"]
+        encoded = json.dumps({"messages": messages, "tools": tools}, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        self.assertEqual(hashlib.sha256(encoded.encode()).hexdigest(), lineage["sha256"])
+        self.assertEqual([0, 1, 2, 3], [item["position"] for item in lineage["messages"]])
+        self.assertEqual(["runtime", "user", "model", "tool"], [item["source"] for item in lineage["messages"]])
+        self.assertEqual(["inspect"], lineage["tools"]["names"])
+        self.assertEqual(["disclosure://skill/example/hash"], lineage["disclosure_references"])
+        self.assertNotIn("secret prompt", str(lineage))
+        self.assertNotIn("private result", str(lineage))
 
     def test_provider_failure_is_recorded_and_raised_without_fallback(self) -> None:
         events: list[tuple[str, dict[str, object]]] = []

@@ -105,7 +105,7 @@ class TaskRunner:
         workflow = _select_workflow(contributions)
         if "tools" in request.required_features and not workflow.uses_tools:
             raise ValueError("task requires tools but the configured workflow is direct")
-        model_options = ModelCallOptions(request.purpose, run.record_event, run.record_model_used)
+        model_options = ModelCallOptions(request.purpose, run.record_event, run.record_model_used, run.skills.disclosure.list_disclosed_references)
         model_tool = _ConfiguredModelTool(tuple(self.model_profiles), self.model_caller, self.provider_pool, model_options, decision.profile.key).create_tool()
         tools = RunTools(run, contributions, send_text_model_messages=text_model.send_messages, extra_tools=() if model_tool is None else (model_tool,))
         return _LoopState(contributions, tools, _build_messages(run, contributions, workflow), workflow, selected_names, model_options)

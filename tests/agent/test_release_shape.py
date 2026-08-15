@@ -59,7 +59,7 @@ class ReleaseShapeTests(unittest.TestCase):
     def test_source_reduction_plan_cannot_be_silently_relaxed(self) -> None:
         budgets = list(SOURCE_LINE_BUDGETS.values())
 
-        self.assertEqual(9_744, FINAL_SOURCE_LINE_TARGET)
+        self.assertEqual(9_743, FINAL_SOURCE_LINE_TARGET)
         self.assertEqual(FINAL_SOURCE_LINE_TARGET, budgets[-1])
         self.assertEqual(MAX_TOTAL_SOURCE_LINES, SOURCE_LINE_BUDGETS[__version__])
         self.assertTrue(all(current > following for current, following in zip(budgets, budgets[1:])))

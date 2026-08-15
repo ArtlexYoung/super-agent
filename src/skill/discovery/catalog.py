@@ -127,6 +127,8 @@ class ProgressiveDisclosureCore:
     def context_usage(self) -> dict[str, int]:
         return self.context_budget.usage()
 
+    def list_disclosed_references(self) -> tuple[str, ...]: return tuple(self._disclosed_content)
+
     def read_disclosure_history(self) -> list[DisclosureEvent]:
         if self.recorder is None:
             raise RuntimeError("Skill disclosure recording is not configured")

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import os
@@ -35,17 +36,14 @@ class ModelPricing:
     cache_read_cost_per_million: float | None = None
 
     @classmethod
-    def from_mapping(cls, value: Mapping[str, object]) -> ModelPricing:
-        return cls(**{name: read_optional_number(value.get(name), f"model price {name}", minimum=0) for name in MODEL_PRICE_FIELDS})
+    def from_mapping(cls, value: Mapping[str, object]) -> ModelPricing: return cls(**{name: read_optional_number(value.get(name), f"model price {name}", minimum=0) for name in MODEL_PRICE_FIELDS})
 
     @property
-    def total_cost_per_million(self) -> float:
-        return sum(getattr(self, name) or 0.0 for name in MODEL_PRICE_FIELDS)
+    def total_cost_per_million(self) -> float: return sum(getattr(self, name) or 0.0 for name in MODEL_PRICE_FIELDS)
 
     def to_dict(self, *, include_missing: bool = True) -> dict[str, float | None]:
         data = {name: getattr(self, name) for name in MODEL_PRICE_FIELDS}
-        if not include_missing:
-            data = {name: value for name, value in data.items() if value is not None}
+        if not include_missing: data = {name: value for name, value in data.items() if value is not None}
         return {**data, "total_cost_per_million": self.total_cost_per_million}
 
     def resolved_dict(self) -> dict[str, float]:
@@ -84,8 +82,7 @@ class ModelAction:
     name: str
     arguments: dict[str, object]
 
-    def __post_init__(self) -> None:
-        read_text(self.name, "model action name")
+    def __post_init__(self) -> None: read_text(self.name, "model action name")
 
 
 @dataclass(frozen=True)
@@ -99,8 +96,7 @@ class ActionTurn:
     text: str = ""
 
     def __post_init__(self) -> None:
-        if not self.items:
-            raise ValueError("model action turn cannot be empty")
+        if not self.items: raise ValueError("model action turn cannot be empty")
 
 
 ModelTurn = FinalTurn | ActionTurn
@@ -115,6 +111,7 @@ class ProviderCall:
     tools: tuple[ToolDefinition, ...] | None = None
     pricing: ModelPricing = ModelPricing()
     selection: dict[str, object] | None = None
+    disclosure_references: tuple[str, ...] = ()
 
 
 class ChatProvider(Protocol):
@@ -124,9 +121,10 @@ class ChatProvider(Protocol):
 
 
 def call_chat_model(call: ProviderCall, provider: ChatProvider, record_event: EventWriter) -> ModelResponse:
-    selected = {"profile": call.profile_key, "model": call.model, "purpose": call.purpose, "pricing": call.pricing.to_dict(), **dict(call.selection or {})}
+    input_json = json.dumps({"messages": call.messages, "tools": call.tools or ()}, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    selected = {"profile": call.profile_key, "model": call.model, "purpose": call.purpose, "pricing": call.pricing.to_dict(), "input": _model_input_audit(call, input_json), **dict(call.selection or {})}
     record_event("model.call.selected", selected)
-    input_tokens = estimate_text_tokens(json.dumps({"messages": call.messages, "tools": call.tools or ()}, ensure_ascii=False, sort_keys=True))
+    input_tokens = estimate_text_tokens(input_json)
     started_at = perf_counter()
     try:
         response = _send_provider_call(call, provider)
@@ -139,15 +137,12 @@ def call_chat_model(call: ProviderCall, provider: ChatProvider, record_event: Ev
 
 
 def read_model_turn(response: ModelResponse) -> ModelTurn:
-    if response.tool_calls:
-        return ActionTurn(tuple(ModelAction(call.id, call.name, dict(call.arguments)) for call in response.tool_calls), response.text)
-    if not response.text.strip():
-        raise ValueError("model returned neither final text nor actions")
+    if response.tool_calls: return ActionTurn(tuple(ModelAction(call.id, call.name, dict(call.arguments)) for call in response.tool_calls), response.text)
+    if not response.text.strip(): raise ValueError("model returned neither final text nor actions")
     return FinalTurn(response.text)
 
 
-def estimate_text_tokens(text: str) -> int:
-    return 0 if not text else math.ceil(len(text) / 4)
+def estimate_text_tokens(text: str) -> int: return 0 if not text else math.ceil(len(text) / 4)
 
 
 class MockProvider:
@@ -161,15 +156,13 @@ class MockProvider:
     def send_chat_messages(self, messages: list[Message], model: str) -> str:
         self.last_messages = messages
         structured = _mock_structured_response(messages, self.feedback_response)
-        if structured is not None:
-            return structured
+        if structured is not None: return structured
         return self.response
 
     def send_chat_messages_with_tools(self, messages: list[Message], model: str, tools: list[ToolDefinition]) -> ModelResponse:
         self.last_messages = messages
         self.tool_requests.append((list(messages), list(tools)))
-        if self.tool_responses:
-            return self.tool_responses.pop(0)
+        if self.tool_responses: return self.tool_responses.pop(0)
         return ModelResponse(text=self.response, tool_calls=[], stop_reason="model_finished")
 
 
@@ -214,19 +207,16 @@ class AnthropicCompatibleProvider(_JsonProvider):
 def create_chat_provider(connection: ProviderConnection, environment: Mapping[str, str] | None = None) -> ChatProvider:
     settings = normalize_provider_connection(connection)
     provider = settings.provider
-    if provider == MOCK_PROVIDER:
-        return MockProvider()
+    if provider == MOCK_PROVIDER: return MockProvider()
     env = os.environ if environment is None else environment
     api_key = _read_api_key_from_environment(settings.api_key_env, env)
-    if provider == OPENAI_COMPATIBLE_PROVIDER:
-        return OpenAICompatibleProvider(settings.base_url or "", api_key)
+    if provider == OPENAI_COMPATIBLE_PROVIDER: return OpenAICompatibleProvider(settings.base_url or "", api_key)
     return AnthropicCompatibleProvider(settings.base_url or "", api_key)
 
 
 def _send_provider_call(call: ProviderCall, provider: ChatProvider) -> ModelResponse:
     messages = list(call.messages)
-    if call.tools is None:
-        return ModelResponse(provider.send_chat_messages(messages, call.model), [], "completed")
+    if call.tools is None: return ModelResponse(provider.send_chat_messages(messages, call.model), [], "completed")
     return provider.send_chat_messages_with_tools(messages, call.model, list(call.tools))
 
 
@@ -235,6 +225,18 @@ def _provider_call_metrics(call: ProviderCall, input_tokens: int, output: str, s
     input_cost = input_tokens * (call.pricing.input_cost_per_million or 0.0)
     output_cost = output_tokens * (call.pricing.output_cost_per_million or 0.0)
     return {"profile": call.profile_key, "model": call.model, "purpose": call.purpose, "latency_ms": max(0, round((perf_counter() - started_at) * 1000)), "input_tokens": input_tokens, "output_tokens": output_tokens, "estimated_cost": (input_cost + output_cost) / 1_000_000, "pricing": call.pricing.to_dict(), "estimated_cost_excludes_cache": bool(call.pricing.cache_creation_cost_per_million or call.pricing.cache_read_cost_per_million)}
+
+
+def _model_input_audit(call: ProviderCall, input_json: str) -> dict[str, object]:
+    sources = {"system": "runtime", "user": "user", "assistant": "model", "tool": "tool"}
+    messages = []
+    for position, message in enumerate(call.messages):
+        role = str(message.get("role", "unknown"))
+        content = json.dumps(message, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        messages.append({"position": position, "role": role, "source": sources.get(role, "unknown"), "sha256": hashlib.sha256(content.encode()).hexdigest(), "characters": len(str(message.get("content", "")))})
+    tools = call.tools or ()
+    tool_json = json.dumps(tools, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return {"schema_version": 1, "sha256": hashlib.sha256(input_json.encode()).hexdigest(), "messages": messages, "tools": {"names": [str(tool.get("function", {}).get("name", "")) for tool in tools], "sha256": hashlib.sha256(tool_json.encode()).hexdigest()}, "disclosure_references": list(dict.fromkeys(call.disclosure_references))}
 
 
 def _model_response_text(response: ModelResponse) -> str:
@@ -255,17 +257,14 @@ def normalize_provider_connection(connection: ProviderConnection) -> ProviderCon
 
 
 def _mock_structured_response(messages: list[Message], feedback_response: str | None) -> str | None:
-    if not messages:
-        return None
+    if not messages: return None
     try:
         payload = json.loads(str(messages[-1].get("content", "")))
     except json.JSONDecodeError:
         return None
-    if not isinstance(payload, dict):
-        return None
+    if not isinstance(payload, dict): return None
     contract = payload.get("response_contract")
-    if not isinstance(contract, dict):
-        return None
+    if not isinstance(contract, dict): return None
     if set(contract) == {"is_feedback", "score", "reason"}:
         return feedback_response or json.dumps({"is_feedback": False, "score": None, "reason": "no feedback"})
     return None

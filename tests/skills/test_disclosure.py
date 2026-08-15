@@ -75,6 +75,9 @@ class ProgressiveDisclosureTests(unittest.TestCase):
                 .disclosure.cache_root.joinpath("index.json")
                 .exists()
             )
+            selected = next(event for event in result.events if event.event_type == "model.call.selected")
+            references = selected.data["input"]["disclosure_references"]
+            self.assertTrue(any("skills/prompt/echo/manifest.json" in reference for reference in references))
 
 
 def _write_skill(root: Path, name: str, description: str, instruction: str) -> None:
