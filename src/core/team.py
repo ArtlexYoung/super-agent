@@ -100,7 +100,11 @@ class AgentTeam:
 
     def _run_subagent(self, subagent: SubAgent, prompt: str, parent_run: Run, record_options: SubagentRecordOptions, shared_context: dict[str, object] | None) -> SubAgentResult:
         parent_run.record_event("subagent.started", {"name": subagent.name, "agent_name": subagent.agent.config.agent.name, **record_options.record_text("prompt", prompt), "record_mode": record_options.mode, "purpose": subagent.purpose, "required_features": list(subagent.required_features)})
-        result = subagent.agent._run_as_subagent(prompt, parent_run, purpose=subagent.purpose, required_features=subagent.required_features, record_options=record_options, shared_context=shared_context)
+        try:
+            result = subagent.agent._run_as_subagent(prompt, parent_run, purpose=subagent.purpose, required_features=subagent.required_features, record_options=record_options, shared_context=shared_context)
+        except Exception as error:
+            parent_run.record_event("subagent.failed", {"name": subagent.name, "agent_name": subagent.agent.config.agent.name, "record_mode": record_options.mode, "error_type": type(error).__name__, "message": str(error)})
+            raise
         subagent_result = SubAgentResult(name=subagent.name, description=subagent.description, text=result.text, prompt=prompt, created_by_agent=subagent.created_by_agent, subagent_results=result.subagent_results, run_id=result.run_id)
         parent_run.record_event("subagent.completed", {"name": subagent.name, "run_id": result.run_id, "record_mode": record_options.mode})
         return subagent_result

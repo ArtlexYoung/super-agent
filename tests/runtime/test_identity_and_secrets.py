@@ -74,12 +74,13 @@ class IdentityAndSecretIsolationTests(unittest.TestCase):
             "MODEL_API_KEY",
         )
         root_pool = ProviderPool({})
-        alice_pool = root_pool.create_user_provider_pool(
-            resolver.get_environment_for_user("alice")
+        alice_pool = root_pool.create_run_provider_pool(
+            resolver.get_environment_for_user("alice"), (connection,)
         )
-        bob_pool = root_pool.create_user_provider_pool(
-            resolver.get_environment_for_user("bob")
+        bob_pool = root_pool.create_run_provider_pool(
+            resolver.get_environment_for_user("bob"), (connection,)
         )
+        values[("alice", "MODEL_API_KEY")] = "rotated-after-run-start"
 
         alice_provider = alice_pool.get_chat_provider("model:shared", connection)
         bob_provider = bob_pool.get_chat_provider("model:shared", connection)

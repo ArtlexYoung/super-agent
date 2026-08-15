@@ -6,8 +6,10 @@ import math
 import os
 import urllib.request
 from dataclasses import dataclass
+from threading import RLock
 from time import perf_counter
-from typing import Any, Callable, Iterator, Mapping, Protocol
+from types import MappingProxyType
+from typing import Any, Callable, Iterable, Iterator, Mapping, Protocol
 
 from core.models import DEFAULT_MAX_MODEL_INPUT_CHARACTERS, read_object, read_optional_number, read_optional_text, read_text
 
@@ -399,42 +401,43 @@ class _UserSecretEnvironment(Mapping[str, str]):
             raise TypeError("user secret lookup must return a string or None")
         return value
 
-    def __iter__(self) -> Iterator[str]:
-        return iter(())
+    def __iter__(self) -> Iterator[str]: return iter(())
 
-    def __len__(self) -> int:
-        return 0
+    def __len__(self) -> int: return 0
 
 
 class ProviderPool:
 
     def __init__(self, environment: Mapping[str, str] | None = None) -> None:
-        self.environment = os.environ if environment is None else environment
+        self.environment = MappingProxyType(dict(os.environ if environment is None else environment))
         self._providers_by_profile: dict[str, ChatProvider] = {}
         self._providers_by_connection: dict[ProviderConnection, ChatProvider] = {}
+        self._lock = RLock()
 
     def add_chat_provider(self, profile_key: str, provider: ChatProvider) -> None:
         key = _clean_profile_key(profile_key)
-        if key in self._providers_by_profile:
-            raise ValueError(f"model profile already has a provider: {key}")
-        self._providers_by_profile[key] = provider
+        with self._lock:
+            if key in self._providers_by_profile: raise ValueError(f"model profile already has a provider: {key}")
+            self._providers_by_profile[key] = provider
 
-    def create_user_provider_pool(self, environment: Mapping[str, str]) -> "ProviderPool":
-        pool = ProviderPool(environment)
-        pool._providers_by_profile = dict(self._providers_by_profile)
+    def create_run_provider_pool(self, environment: Mapping[str, str], connections: Iterable[ProviderConnection]) -> "ProviderPool":
+        names = dict.fromkeys(connection.api_key_env for connection in connections if connection.api_key_env)
+        secrets = {name: value for name in names if (value := environment.get(name)) is not None}
+        pool = ProviderPool(secrets)
+        with self._lock: pool._providers_by_profile = dict(self._providers_by_profile)
         return pool
 
     def get_chat_provider(self, profile_key: str, connection: ProviderConnection) -> ChatProvider:
         key = _clean_profile_key(profile_key)
-        selected = self._providers_by_profile.get(key)
-        if selected is not None:
-            return selected
-        normalized = normalize_provider_connection(connection)
-        provider = self._providers_by_connection.get(normalized)
-        if provider is None:
-            provider = create_chat_provider(normalized, self.environment)
-            self._providers_by_connection[normalized] = provider
-        return provider
+        with self._lock:
+            selected = self._providers_by_profile.get(key)
+            if selected is not None: return selected
+            normalized = normalize_provider_connection(connection)
+            provider = self._providers_by_connection.get(normalized)
+            if provider is None:
+                provider = create_chat_provider(normalized, self.environment)
+                self._providers_by_connection[normalized] = provider
+            return provider
 
 
 def _clean_profile_key(value: str) -> str:

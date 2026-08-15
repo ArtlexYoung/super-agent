@@ -34,6 +34,7 @@ class AuditStorageTests(unittest.TestCase):
             "agent_group.wait.started",
             "agent_group.wait.woke",
             "model.call.rejected",
+            "subagent.failed",
         )
         self.assertEqual(
             {DETAILED},

@@ -6,9 +6,10 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from core.config import CommonConfig
-from core.models import RunIdentity, RunResult, SubagentRecordOptions
+from core.models import AgentRunOptions, RunIdentity, RunResult, SubagentRecordOptions
 from core.provider import MockProvider, ModelResponse, ToolCall
 from super_agent import Agent
+from support import RecordingProvider
 
 
 class SubAgentTests(unittest.TestCase):
@@ -140,6 +141,22 @@ class SubAgentTests(unittest.TestCase):
                 child._run_as_subagent("work", parent, record_options=SubagentRecordOptions())
 
             self.assertEqual(321, run_task.call_args.args[0].max_model_input_characters)
+
+    def test_failed_subagent_records_a_terminal_parent_event(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            main = _agent(root, "main", _delegate_provider("worker", "fail", "unused"))
+            main.add_subagent(_agent(root, "worker", RecordingProvider(ConnectionError("offline"))), name="worker")
+
+            with self.assertRaisesRegex(ConnectionError, "offline"):
+                main.run("delegate", run_options=AgentRunOptions(run_id="run-parent"))
+
+            store = main._create_event_store()
+            self.assertEqual("[redacted]", next(event for event in store.read_run_events("run-parent") if event.event_type == "subagent.failed").data["message"])
+            events = store.read_run_events("run-parent", include_sensitive=True)
+            terminal = next(event for event in events if event.event_type == "subagent.failed")
+            self.assertEqual("ConnectionError", terminal.data["error_type"])
+            self.assertEqual("offline", terminal.data["message"])
 
     def test_subagent_selects_its_own_task_skill(self) -> None:
         child_provider = MockProvider(

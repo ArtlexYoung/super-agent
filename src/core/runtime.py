@@ -235,7 +235,7 @@ def _create_run(runtime: Runtime, request: Task, identity: RunIdentity, *, event
         profiles = profiles or list(runtime.code_model_profiles)
         from core.loop import TaskRunner
 
-        task_runner = TaskRunner(profiles, runtime.provider_pool.create_user_provider_pool(environment))
+        task_runner = TaskRunner(profiles, runtime.provider_pool.create_run_provider_pool(environment, (profile.connection for profile in profiles)))
         run = Run(config=runtime.config, task=request, skills=skills, identity=identity, event_log=event_log, store=store, task_runner=task_runner, create_action_rules=runtime.create_action_rules)
         skills.disclosure.set_event_writer(run.record_event)
         return run

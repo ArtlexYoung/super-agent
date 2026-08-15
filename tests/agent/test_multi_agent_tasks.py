@@ -296,6 +296,30 @@ class MultiAgentTaskTests(unittest.TestCase):
         self.assertEqual({"rotate"}, {item["agent_selection"] for item in dispatches})
         self.assertEqual({2}, {item["eligible_agent_count"] for item in dispatches})
 
+    def test_rotation_skips_an_open_circuit_without_resetting_its_cursor(self) -> None:
+        calls = []
+
+        def consume(name: str, prompt: str, _record_options) -> dict[str, object]:
+            calls.append(name)
+            if name == "beta":
+                raise ConnectionError("beta offline")
+            return {"name": name, "text": prompt, "run_id": f"run-{name}"}
+
+        queue = TaskQueue(
+            TaskQueueSettings(max_tasks=2, max_wait_seconds=1, agent_selection="rotate"),
+            [{"name": name, "purpose": "experiment", "required_features": ["text"]} for name in ("alpha", "beta", "gamma")],
+            consume,
+            lambda _name, _data: None,
+        )
+        tools = {tool.name: tool for tool in queue.list_tools()}
+        for number in range(1, 3):
+            tools["create_agent_task"].handler({"prompt": str(number), "purpose": "experiment", "required_features": ["text"]})
+            tools["dispatch_agent_task"].handler({"task_id": f"agent-task-{number:02d}"})
+            tools["wait_for_agent_tasks"].handler({"trigger": "selected_tasks_finished", "task_ids": [f"agent-task-{number:02d}"], "max_wait_seconds": 1})
+        queue.close()
+
+        self.assertEqual(["alpha", "beta", "gamma"], calls)
+
     def test_weighted_cost_selection_prefers_high_weight_low_price_agent(self) -> None:
         assignments = []
         events = []

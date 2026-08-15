@@ -178,32 +178,28 @@ class AgentSelector:
         available = [item for item in matching if item.name not in (excluded or set()) and self._is_available(item.name)]
         available_count = len(available)
         if requested is not None:
-            if self.settings.agent_selection == "rotate":
-                raise ValueError("agent_name cannot be fixed when agent_selection is rotate")
+            if self.settings.agent_selection == "rotate": raise ValueError("agent_name cannot be fixed when agent_selection is rotate")
             requested_matches = [item for item in matching if item.name == requested]
-            if not requested_matches:
-                raise ValueError(f"subagent is not suitable for task: {requested}")
+            if not requested_matches: raise ValueError(f"subagent is not suitable for task: {requested}")
             available = [item for item in available if item.name == requested]
-            if not available:
-                raise AgentUnavailableError(f"subagent is currently unavailable: {requested}")
+            if not available: raise AgentUnavailableError(f"subagent is currently unavailable: {requested}")
             return self._finish_choice(available[0], "model", (available_count, active.get(requested, 0)), task, commit)
-        if not matching:
-            raise ValueError("no suitable subagent for task")
+        if not matching: raise ValueError("no suitable subagent for task")
         if not available:
             delay = self.retry_delay(task.purpose, task.required_features)
             raise AgentUnavailableError(f"all suitable subagents are unavailable; retry after {delay:.3f} seconds")
-        ranked = sorted(available, key=lambda item: self._rank(item, task, active), reverse=True)
+        rotation_key: tuple[str, ...] = ()
         if self.settings.agent_selection == "rotate":
-            names = tuple(item.name for item in ranked)
-            position = self._rotation_positions.get(names, 0)
-            if commit:
-                self._rotation_positions[names] = position + 1
-            selected = ranked[position % len(ranked)]
+            ranked, rotation_key = self._rotated_candidates(matching, available)
+            selected = ranked[0]
             selected_by = "skill_rotation"
         else:
+            ranked = sorted(available, key=lambda item: self._rank(item, task, active), reverse=True)
             selected = ranked[0]
             selected_by = "weighted_cost_reliability"
-        return self._finish_choice(selected, selected_by, (available_count, active.get(selected.name, 0)), task, commit)
+        choice = self._finish_choice(selected, selected_by, (available_count, active.get(selected.name, 0)), task, commit)
+        if commit and rotation_key: self._commit_rotation(rotation_key, selected.name)
+        return choice
 
     def choose_group(self, tasks: list[QueuedTask], active: dict[str, int], *, require_different_models: bool, commit: bool) -> list[SelectedAgent]:
         """Select one distinct Agent per member and optionally require model diversity."""
@@ -212,11 +208,8 @@ class AgentSelector:
         first = tasks[0]
         matching = [item for item in self.subagents if all(item.matches(task.purpose, task.required_features) for task in tasks)]
         available = [item for item in matching if self._is_available(item.name)]
-        ranked = sorted(available, key=lambda item: self._rank(item, first, active), reverse=True)
-        rotation_key = tuple(item.name for item in ranked)
-        if self.settings.agent_selection == "rotate" and ranked:
-            position = self._rotation_positions.get(rotation_key, 0) % len(ranked)
-            ranked = [*ranked[position:], *ranked[:position]]
+        if self.settings.agent_selection == "rotate": ranked, rotation_key = self._rotated_candidates(matching, available)
+        else: ranked, rotation_key = sorted(available, key=lambda item: self._rank(item, first, active), reverse=True), ()
         selected: list[SelectedAgent] = []
         selected_models: set[str] = set()
         virtual_active = dict(active)
@@ -233,28 +226,22 @@ class AgentSelector:
             selected.append(choice)
             selected_models.add(model_key)
             virtual_active[choice.name] = virtual_active.get(choice.name, 0) + 1
-        if commit and self.settings.agent_selection == "rotate" and rotation_key:
-            self._rotation_positions[rotation_key] = self._rotation_positions.get(rotation_key, 0) + len(selected)
+        if commit and rotation_key and selected: self._commit_rotation(rotation_key, selected[-1].name)
         return selected
 
     def commit_group(self, choices: list[SelectedAgent]) -> None:
         """Commit one previously previewed group without selecting or pricing it again."""
         for choice in choices:
             self._commit_choice(choice.name)
-        if self.settings.agent_selection == "rotate" and choices:
-            rotation_key = choices[0].selection_key
-            self._rotation_positions[rotation_key] = self._rotation_positions.get(rotation_key, 0) + len(choices)
+        if self.settings.agent_selection == "rotate" and choices: self._commit_rotation(choices[0].selection_key, choices[-1].name)
 
     def record_success(self, name: str) -> None:
         health = self._health[name]
         health.successful_tasks += 1
         circuit = self._circuits[name]
         previous = circuit.state
-        circuit.failures = 0
-        circuit.state = "closed"
-        circuit.retry_at = 0.0
-        if previous != "closed":
-            self.record_event("agent_task.circuit_closed", {"agent_name": name, **_health_facts(health)})
+        circuit.failures, circuit.state, circuit.retry_at = 0, "closed", 0.0
+        if previous != "closed": self.record_event("agent_task.circuit_closed", {"agent_name": name, **_health_facts(health)})
 
     def record_unavailable(self, name: str, error: Exception) -> None:
         health = self._health[name]
@@ -273,9 +260,7 @@ class AgentSelector:
 
     def _is_available(self, name: str) -> bool:
         circuit = self._circuits[name]
-        if circuit.state == "closed":
-            return True
-        return circuit.state == "open" and monotonic() >= circuit.retry_at
+        return circuit.state == "closed" or (circuit.state == "open" and monotonic() >= circuit.retry_at)
 
     def _rank(self, agent: _SelectableAgent, task: QueuedTask, active: dict[str, int]) -> tuple[float, float, float]:
         cost = agent.dispatch(task).cost
@@ -284,6 +269,16 @@ class AgentSelector:
         exact = float(agent.purpose == task.purpose and task.purpose != "auto")
         return exact, base / (1 + active.get(agent.name, 0)), base
 
+    def _rotated_candidates(self, matching: list[_SelectableAgent], available: list[_SelectableAgent]) -> tuple[list[_SelectableAgent], tuple[str, ...]]:
+        key = tuple(item.name for item in matching)
+        position = self._rotation_positions.get(key, 0) % max(1, len(key))
+        by_name = {item.name: item for item in available}
+        ordered = (*key[position:], *key[:position])
+        return [by_name[name] for name in ordered if name in by_name], key
+
+    def _commit_rotation(self, key: tuple[str, ...], selected_name: str) -> None:
+        self._rotation_positions[key] = (key.index(selected_name) + 1) % len(key)
+
     def _finish_choice(self, agent: _SelectableAgent, selected_by: str, counts: tuple[int, int], task: QueuedTask, commit: bool) -> SelectedAgent:
         name = agent.name
         dispatch = agent.dispatch(task)
@@ -291,8 +286,7 @@ class AgentSelector:
         base_score = _base_score(agent, health, dispatch.cost)
         candidate_count, active_count = counts
         score = base_score if self.settings.agent_selection == "rotate" else base_score / (1 + active_count)
-        if commit:
-            self._commit_choice(name)
+        if commit: self._commit_choice(name)
         return SelectedAgent(name, selected_by, candidate_count, active_count, agent.weight, dispatch.model, dispatch.pricing, dispatch.cost, round(health.reliability, 8), health.successful_tasks, health.unavailable_failures, round(score, 8))
 
     def _commit_choice(self, name: str) -> None:

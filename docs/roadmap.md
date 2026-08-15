@@ -2064,6 +2064,17 @@ Status: implemented.
 - Audit accepted and rejected input size, limit, status, hashes, and the invariant that content was
   not truncated, while tightening the source ceiling to 9,742 non-empty Python lines.
 
+## v0.1.99: Stable Run Providers and Agent Rotation
+
+Status: implemented.
+
+- Snapshot only the model secrets and explicitly registered Providers required by one Run, so
+  later environment or registration changes affect only later runs.
+- Advance one stable Agent-and-model candidate ring across normal and grouped task dispatch,
+  skipping open circuits without resetting rotation and committing previews only when applied.
+- Pair every started subagent with a completed or failed parent event; retain complete raw errors,
+  redact normal display reads, and tighten the source ceiling to 9,741 non-empty Python lines.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

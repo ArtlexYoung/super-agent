@@ -203,7 +203,7 @@ class Agent:
 
         profiles = self._read_model_profiles(skills, user_id)
         environment = self._user_secrets.get_environment_for_user(user_id)
-        return TaskRunner(profiles, self.provider_pool.create_user_provider_pool(environment))
+        return TaskRunner(profiles, self.provider_pool.create_run_provider_pool(environment, (profile.connection for profile in profiles)))
 
     def _action_rules(self) -> ActionRules:
         with self._lock:
