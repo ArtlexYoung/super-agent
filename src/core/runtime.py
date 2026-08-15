@@ -42,9 +42,13 @@ class Run:
     _cleanup_actions: list[tuple[str, Callable[[], None]]] = field(default_factory=list, init=False, repr=False)
     _closed: bool = field(default=False, init=False, repr=False)
 
+    def __post_init__(self) -> None:
+        if self.identity.agent_name != self.config.agent.name: raise ValueError("run identity does not match Agent configuration")
+        if self.event_log.identity != self.identity: raise ValueError("run identity does not match event log scope")
+        if self.store is not None and (self.store.user_id, self.store.agent_name) != (self.identity.user_id, self.identity.agent_name): raise ValueError("run identity does not match runtime store scope")
+
     @property
-    def run_id(self) -> str:
-        return self.identity.run_id
+    def run_id(self) -> str: return self.identity.run_id
 
     def record_event(self, event_type: str, data: dict[str, object] | None = None) -> RunEvent:
         if self.task.subagent_record_options is not None:
@@ -54,8 +58,7 @@ class Run:
         return self.event_log.append_event(event_type, data)
 
     def require_store(self, feature: str) -> EventStore:
-        if self.store is None:
-            raise RuntimeError(f"{feature} requires Runtime storage")
+        if self.store is None: raise RuntimeError(f"{feature} requires Runtime storage")
         return self.store
 
     def execute_action(self, request: ActionRequest, action: Callable[[], object]) -> object:
@@ -180,8 +183,6 @@ class Runtime:
     def run_task(self, request: Task, identity: RunIdentity, *, event_listener: Callable[[RunEvent], None] | None = None) -> RunResult:
         from core.loop import list_run_actions
 
-        if identity.agent_name != self.config.agent.name:
-            raise ValueError("run identity agent_name does not match Runtime configuration")
         run = _create_run(self, request, identity, event_listener=event_listener)
         started_at = perf_counter()
         try:

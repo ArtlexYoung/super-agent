@@ -9,9 +9,41 @@ from core.provider import OpenAICompatibleProvider, ProviderConnection
 from core.provider import ProviderPool, UserSecretResolver
 from core.config import CommonConfig
 from core.models import RunIdentity, validate_user_id
+from core.records.events import RunEventLog
+from core.records.store import EventStore
+from core.runtime import Run
+from adapter.storage_backends.storage import JsonlStorage
 
 
 class IdentityAndSecretIsolationTests(unittest.TestCase):
+    def test_run_rejects_configuration_event_log_and_store_scope_mismatches(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = CommonConfig.create_default(root)
+            identity = RunIdentity.create("alice", config.agent.name)
+            backend = JsonlStorage(root)
+            cases = (
+                (RunIdentity.create("alice", "other"), RunEventLog(RunIdentity.create("alice", "other")), None, "Agent configuration"),
+                (identity, RunEventLog(RunIdentity.create("bob", config.agent.name, run_id=identity.run_id)), None, "event log scope"),
+                (identity, RunEventLog(identity), EventStore(backend, root, "alice", "other"), "runtime store scope"),
+            )
+            for selected_identity, event_log, store, message in cases:
+                with self.subTest(message=message), self.assertRaisesRegex(ValueError, message):
+                    Run(config, None, None, selected_identity, event_log, store)  # type: ignore[arg-type]
+
+    def test_scoped_event_snapshots_reject_another_user_or_agent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            backend = JsonlStorage(root)
+            alice = EventStore(backend, root, "alice", "main")
+            foreign = (
+                EventStore(backend, root, "bob", "main").append_event("custom", "one", "created", data={}),
+                EventStore(backend, root, "alice", "worker").append_event("custom", "two", "created", data={}),
+            )
+            for event in foreign:
+                with self.subTest(user=event.user_id, agent=event.agent_name), self.assertRaisesRegex(ValueError, "store scope"):
+                    alice.read_events(snapshot=[event])
+
     def test_every_user_entry_point_uses_the_same_identity_validation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             agent = Agent(CommonConfig.create_default(Path(tmp)), use_storage=True)

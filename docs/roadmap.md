@@ -2009,6 +2009,17 @@ Status: implemented.
   context, with no compatibility alias or second context owner.
 - Tighten the source ceiling to 9,747 non-empty Python lines.
 
+## v0.1.94: One Run Scope
+
+Status: implemented.
+
+- Validate Agent configuration, the complete event-log identity, and storage user-and-Agent
+  scope once when a `Run` is constructed, including direct library construction.
+- Preserve a user's identity across child Agents while assigning an independent Agent name,
+  run ID, event stream, and state scope linked only by the explicit parent run ID.
+- Reject foreign user or Agent event snapshots before projection and tighten the source ceiling
+  to 9,746 non-empty Python lines.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

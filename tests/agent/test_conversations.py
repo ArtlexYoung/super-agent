@@ -193,6 +193,8 @@ class ConversationRuntimeTests(unittest.TestCase):
             self.assertEqual([], worker.for_user("user-a").conversations.list())
             self.assertEqual(conversation.conversation_id, child_run.conversation_id)
             self.assertEqual("user-a", child_run.user_id)
+            self.assertEqual("worker", child_run.agent_name)
+            self.assertNotEqual(result.run_id, child_run.run_id)
             self.assertEqual(result.run_id, child_run.parent_run_id)
 
     def test_new_agent_instance_reads_existing_conversations(self) -> None:
