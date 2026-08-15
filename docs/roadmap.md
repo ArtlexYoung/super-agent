@@ -2075,6 +2075,18 @@ Status: implemented.
 - Pair every started subagent with a completed or failed parent event; retain complete raw errors,
   redact normal display reads, and tighten the source ceiling to 9,741 non-empty Python lines.
 
+## v0.1.100: Composable Runtime Release Gate
+
+Status: implemented.
+
+- Treat synchronous run listeners as explicit event-delivery failures: preserve the canonical
+  task result, record the failure, and apply the same strict or allowed subscriber policy.
+- Reject persisted traces with repeated start or terminal boundaries instead of projecting an
+  ambiguous lifecycle, while preserving valid post-run learning and feedback events.
+- Add Provider, listener, and child-Agent fault injection to the feature contract, proving that
+  failures remain isolated across later runs and sibling Agent scopes; tighten the source ceiling
+  to 9,740 non-empty Python lines.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

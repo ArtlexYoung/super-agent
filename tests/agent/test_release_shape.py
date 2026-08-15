@@ -13,6 +13,7 @@ from pathlib import Path
 from core import __version__
 from scripts.verify_release import (
     EXPECTED_DOMAIN_CHILDREN,
+    FEATURE_CONTRACT_MODULES,
     FINAL_SOURCE_LINE_TARGET,
     MAX_TOTAL_SOURCE_FILES,
     MAX_TOTAL_SOURCE_LINES,
@@ -59,7 +60,7 @@ class ReleaseShapeTests(unittest.TestCase):
     def test_source_reduction_plan_cannot_be_silently_relaxed(self) -> None:
         budgets = list(SOURCE_LINE_BUDGETS.values())
 
-        self.assertEqual(9_741, FINAL_SOURCE_LINE_TARGET)
+        self.assertEqual(9_740, FINAL_SOURCE_LINE_TARGET)
         self.assertEqual(FINAL_SOURCE_LINE_TARGET, budgets[-1])
         self.assertEqual(MAX_TOTAL_SOURCE_LINES, SOURCE_LINE_BUDGETS[__version__])
         self.assertTrue(all(current > following for current, following in zip(budgets, budgets[1:])))
@@ -76,6 +77,7 @@ class ReleaseShapeTests(unittest.TestCase):
             [],
             _verify_preserved_capabilities(Path("src"), self.project["project"]),
         )
+        self.assertIn("tests.runtime.test_composability", FEATURE_CONTRACT_MODULES)
 
     def test_wheel_contains_only_the_public_source_layout(self) -> None:
         wheel = self.project["tool"]["hatch"]["build"]["targets"]["wheel"]

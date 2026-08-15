@@ -51,22 +51,23 @@ class RunEventLog:
             event = run_event_from_storage(stored, len(self._events) + 1, self.identity.parent_run_id)
         self._events.append(event)
         if self._event_listener is not None:
-            self._event_listener(event)
+            try: self._event_listener(event)
+            except Exception as error:
+                self._event_listener = None
+                failure = SubscriberFailure("run_event_listener", event.event_type, type(error).__name__, str(error))
+                self._subscriber_failures.append(failure); self._append_event("runtime.subscriber.failed", failure.to_dict(), publish_to_subscribers=False)
         if publish_to_subscribers:
             self._record_subscriber_failures(event)
         return event
 
     def add_subscriber(self, subscriber: RuntimeEventSubscriber) -> None:
-        with self._lock:
-            self._subscribers.add_subscriber(subscriber)
+        with self._lock: self._subscribers.add_subscriber(subscriber)
 
     def list_subscriber_failures(self) -> list[dict[str, str]]:
-        with self._lock:
-            return [failure.to_dict() for failure in self._subscriber_failures]
+        with self._lock: return [failure.to_dict() for failure in self._subscriber_failures]
 
     def list_events(self) -> list[RunEvent]:
-        with self._lock:
-            return list(self._events)
+        with self._lock: return list(self._events)
 
     def _record_subscriber_failures(self, event: RunEvent) -> None:
         failures = self._subscribers.publish_event(event)
@@ -75,8 +76,7 @@ class RunEventLog:
             self._append_event("runtime.subscriber.failed", failure.to_dict(), publish_to_subscribers=False)
 
     def _read_stored_events(self) -> list[StorageEvent]:
-        if self._backend is None:
-            return []
+        if self._backend is None: return []
         from core.records.store import StorageEventQuery
 
         return self._backend.read_events(StorageEventQuery(user_id=self.identity.user_id, agent_name=self.identity.agent_name, stream_type="run", stream_id=self.identity.run_id))
@@ -136,17 +136,16 @@ def usage_habits_from_events(events: list[StorageEvent]) -> dict[str, object]:
 
 
 def _increment_count(counts: object, name: str) -> None:
-    if isinstance(counts, dict) and name:
-        counts[name] = int(counts.get(name, 0)) + 1
+    if isinstance(counts, dict) and name: counts[name] = int(counts.get(name, 0)) + 1
 
 
 def _ordered_run_events(events: list[StorageEvent]) -> list[StorageEvent]:
-    if not events:
-        raise ValueError("run event stream cannot be empty")
+    if not events: raise ValueError("run event stream cannot be empty")
     ordered = sorted(events, key=lambda event: event.position)
     first = ordered[0]
     if any(event.stream_type != "run" or event.stream_id != first.stream_id or event.user_id != first.user_id or event.agent_name != first.agent_name for event in ordered):
         raise ValueError("run projection cannot combine event streams")
-    if first.event_type != "run.started":
-        raise ValueError(f"run stream does not start with run.started: {first.stream_id}")
+    if first.event_type != "run.started": raise ValueError(f"run stream does not start with run.started: {first.stream_id}")
+    if any(event.event_type == "run.started" for event in ordered[1:]): raise ValueError(f"run stream starts more than once: {first.stream_id}")
+    if sum(event.event_type in {"run.completed", "run.failed"} for event in ordered) > 1: raise ValueError(f"run stream has multiple terminal events: {first.stream_id}")
     return ordered

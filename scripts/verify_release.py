@@ -23,9 +23,10 @@ SOURCE_LINE_BUDGETS = {
     "0.1.93": 9_747, "0.1.94": 9_746, "0.1.95": 9_745,
     "0.1.96": 9_744,
     "0.1.97": 9_743, "0.1.98": 9_742, "0.1.99": 9_741,
+    "0.1.100": 9_740,
 }
-FINAL_SOURCE_LINE_TARGET = 9_741
-MAX_TOTAL_SOURCE_LINES = SOURCE_LINE_BUDGETS["0.1.99"]
+FINAL_SOURCE_LINE_TARGET = 9_740
+MAX_TOTAL_SOURCE_LINES = SOURCE_LINE_BUDGETS["0.1.100"]
 EXPECTED_SOURCE_ROOT = {"adapter", "cli.py", "core", "skill", "super_agent.py"}
 EXPECTED_DOMAIN_CHILDREN = {
     "adapter": {
@@ -180,7 +181,8 @@ FEATURE_CONTRACT_MODULES = (
     "tests.agent.test_record_compression", "tests.commands.test_cli",
     "tests.agui.test_protocol", "tests.agui.test_server",
     "tests.runtime.test_provider_calls", "tests.runtime.test_safety",
-    "tests.runtime.test_stateless", "tests.skills.test_disclosure_core",
+    "tests.runtime.test_stateless", "tests.runtime.test_composability",
+    "tests.skills.test_disclosure_core",
     "tests.skills.test_memory", "tests.skills.test_tasks", "tests.skills.test_packages",
     "tests.skills.test_skill_update", "tests.storage.test_storage",
     "tests.storage.test_remote_sql_storage", "tests.storage.test_audit",
