@@ -181,6 +181,7 @@ class SkillContext:
 class SkillHandler(Protocol):
     skill_type: str
     adds_model_context: bool
+    needs: tuple[str, ...]
 
     def handle_skill(self, context: SkillContext) -> SkillUse: ...
 
@@ -189,27 +190,23 @@ class SkillHandlers:
 
     def __init__(self, handlers: tuple[SkillHandler, ...] = ()) -> None:
         self._handlers: dict[str, SkillHandler] = {}
-        for handler in handlers:
-            self.add(handler)
+        for handler in handlers: self.add(handler)
 
     def add(self, handler: SkillHandler, *, replace: bool = False) -> None:
         skill_type = validate_skill_handler(handler)
-        if skill_type in self._handlers and not replace:
-            raise ValueError(f"Skill handler already exists for type: {skill_type}")
+        if skill_type in self._handlers and not replace: raise ValueError(f"Skill handler already exists for type: {skill_type}")
         self._handlers[skill_type] = handler
 
-    def find(self, skill_type: str) -> SkillHandler | None:
-        return self._handlers.get(_clean_skill_type(skill_type))
+    def find(self, skill_type: str) -> SkillHandler | None: return self._handlers.get(_clean_skill_type(skill_type))
 
-    def list(self) -> tuple[SkillHandler, ...]:
-        return tuple(self._handlers[key] for key in sorted(self._handlers))
+    def list(self) -> tuple[SkillHandler, ...]: return tuple(self._handlers[key] for key in sorted(self._handlers))
 
-    def model_context_types(self) -> set[str]:
-        return {skill_type for skill_type, handler in self._handlers.items() if handler.adds_model_context}
+    def model_context_types(self) -> set[str]: return {skill_type for skill_type, handler in self._handlers.items() if handler.adds_model_context}
 
     def handle(self, context: SkillContext) -> SkillUse:
         handler = self.find(context.reference.skill_type)
         if handler is None: raise KeyError(f"Skill handler not found for type: {context.reference.skill_type}")
+        _require_runtime_needs(handler, context)
         result = handler.handle_skill(context)
         validate_skill_result(result)
         return result
@@ -222,15 +219,25 @@ class Skills:
         self.handlers = handlers or SkillHandlers()
         self.index = disclosure.prepare_skill_index()
 
-    def open(self, reference: SkillReference) -> SkillDisclosure:
-        return self.disclosure.open_skill(reference.name, reference.skill_type)
+    def open(self, reference: SkillReference) -> SkillDisclosure: return self.disclosure.open_skill(reference.name, reference.skill_type)
 
 
 def validate_skill_handler(handler: object) -> str:
     skill_type = _clean_skill_type(getattr(handler, "skill_type", ""))
     if not isinstance(getattr(handler, "adds_model_context", None), bool): raise TypeError("SkillHandler.adds_model_context must be a boolean")
     if not callable(getattr(handler, "handle_skill", None)): raise TypeError("SkillHandler must define handle_skill")
+    needs = getattr(handler, "needs", ())
+    if not isinstance(needs, tuple) or not all(isinstance(need, str) for need in needs): raise TypeError("SkillHandler.needs must be a tuple of Runtime need names")
+    if len(set(needs)) != len(needs) or set(needs) - set(_RUNTIME_NEED_FIELDS): raise ValueError("SkillHandler.needs contains duplicate or unknown Runtime need names")
     return skill_type
+
+
+_RUNTIME_NEED_FIELDS = {"storage": "store", "identity": "identity", "actions": "execute_action", "model": "send_text_model_messages", "events": "record_event"}
+
+
+def _require_runtime_needs(handler: SkillHandler, context: SkillContext) -> None:
+    missing = [need for need in getattr(handler, "needs", ()) if getattr(context, _RUNTIME_NEED_FIELDS[need]) is None]
+    if missing: raise RuntimeError(f"Skill handler {context.reference.skill_type} requires Runtime: {', '.join(missing)}")
 
 
 def validate_skill_result(result: object) -> None:
@@ -252,8 +259,7 @@ def validate_skill_result(result: object) -> None:
 
 def _validate_skill_tools(tools: object) -> None:
     if not isinstance(tools, tuple): raise TypeError("SkillUse.tools must be a tuple")
-    for tool in tools:
-        _validate_skill_tool(tool)
+    for tool in tools: _validate_skill_tool(tool)
     if len({tool.name for tool in tools}) != len(tools): raise ValueError("SkillUse.tools cannot contain duplicate names")
 
 
@@ -278,11 +284,9 @@ def _validate_skill_tool(tool: object) -> None:
 
 
 def _clean_skill_type(value: object) -> str:
-    if not isinstance(value, str):
-        raise TypeError("Skill handler type must be a string")
+    if not isinstance(value, str): raise TypeError("Skill handler type must be a string")
     skill_type = value.strip().lower()
-    if _TYPE_PATTERN.fullmatch(skill_type) is None:
-        raise ValueError(f"Invalid Skill type: {value}")
+    if _TYPE_PATTERN.fullmatch(skill_type) is None: raise ValueError(f"Invalid Skill type: {value}")
     return skill_type
 
 

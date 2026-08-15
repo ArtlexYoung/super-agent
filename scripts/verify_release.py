@@ -20,9 +20,10 @@ SOURCE_LINE_BUDGETS = {
     "0.1.84": 15_300, "0.1.85": 14_100, "0.1.86": 13_000,
     "0.1.87": 11_900, "0.1.88": 10_900, "0.1.89": 10_200,
     "0.1.90": 9_750, "0.1.91": 9_749, "0.1.92": 9_748,
+    "0.1.93": 9_747,
 }
-FINAL_SOURCE_LINE_TARGET = 9_748
-MAX_TOTAL_SOURCE_LINES = SOURCE_LINE_BUDGETS["0.1.92"]
+FINAL_SOURCE_LINE_TARGET = 9_747
+MAX_TOTAL_SOURCE_LINES = SOURCE_LINE_BUDGETS["0.1.93"]
 EXPECTED_SOURCE_ROOT = {"adapter", "cli.py", "core", "skill", "super_agent.py"}
 EXPECTED_DOMAIN_CHILDREN = {
     "adapter": {
@@ -100,6 +101,7 @@ REMOVED_CODE_NAMES = {
     "create_agent_task_queue",
     "create_runtime_tools",
     "ModelCalls",
+    "ModelCallContext",
     "ModelLoop",
     "RuntimeTools",
     "RuntimeToolsContext",

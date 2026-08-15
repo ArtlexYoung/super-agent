@@ -89,7 +89,7 @@ class TextModel(Protocol):
 
 
 @dataclass(frozen=True)
-class ModelCallContext:
+class ModelCallOptions:
     purpose: str
     record_event: EventWriter
     record_model_used: ModelRecorder | None = None
@@ -122,12 +122,12 @@ class ModelCaller:
             raise RuntimeError("text model event writer is not configured")
         return _TextModel(self, event_writer, purpose.strip().lower(), decision)
 
-    def call_model(self, messages: list[Message], decision: SelectedModel, context: ModelCallContext, *, tools: list[ToolDefinition] | None = None) -> ModelResponse:
+    def call_model(self, messages: list[Message], decision: SelectedModel, options: ModelCallOptions, *, tools: list[ToolDefinition] | None = None) -> ModelResponse:
         profile = decision.profile
         provider = self.provider_pool.get_chat_provider(profile.key, profile.connection)
-        if context.record_model_used is not None:
-            context.record_model_used(profile)
-        return call_chat_model(_to_provider_call(decision, context, messages, tools), provider, context.record_event)
+        if options.record_model_used is not None:
+            options.record_model_used(profile)
+        return call_chat_model(_to_provider_call(decision, options, messages, tools), provider, options.record_event)
 
 
 @dataclass(frozen=True)
@@ -138,7 +138,7 @@ class _TextModel:
     decision: SelectedModel
 
     def send_messages(self, messages: list[Message]) -> str:
-        response = self.model_caller.call_model(messages, self.decision, ModelCallContext(self.purpose, self.record_event))
+        response = self.model_caller.call_model(messages, self.decision, ModelCallOptions(self.purpose, self.record_event))
         return response.text
 
 
@@ -254,5 +254,5 @@ def tool_result_message(call: ToolCall, result: dict[str, object]) -> Message:
     return {"role": "tool", "tool_call_id": call.id, "name": call.name, "content": json.dumps(result, ensure_ascii=False)}
 
 
-def _to_provider_call(decision: SelectedModel, context: ModelCallContext, messages: list[Message], tools: list[ToolDefinition] | None) -> ProviderCall:
-    return ProviderCall(profile_key=decision.profile.key, model=decision.profile.model, purpose=context.purpose, messages=tuple(messages), tools=None if tools is None else tuple(tools), pricing=decision.profile.traits.pricing, selection={"selected_by": decision.selected_by, "reason": decision.reason, "evidence": list(decision.evidence)})
+def _to_provider_call(decision: SelectedModel, options: ModelCallOptions, messages: list[Message], tools: list[ToolDefinition] | None) -> ProviderCall:
+    return ProviderCall(profile_key=decision.profile.key, model=decision.profile.model, purpose=options.purpose, messages=tuple(messages), tools=None if tools is None else tuple(tools), pricing=decision.profile.traits.pricing, selection={"selected_by": decision.selected_by, "reason": decision.reason, "evidence": list(decision.evidence)})

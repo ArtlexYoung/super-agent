@@ -1997,6 +1997,18 @@ Status: implemented.
 - Keep failed disclosure attempts in the append-only audit trail without treating them as active
   behavior, and tighten the source ceiling to 9,748 non-empty Python lines.
 
+## v0.1.93: Explicit Runtime Needs
+
+Status: implemented.
+
+- Let trusted Skill handlers declare fixed `storage`, `identity`, `actions`, `model`, and `events`
+  needs in Python code, without adding dependency settings to passive Skill manifests.
+- Reject invalid declarations during registration and fail missing Runtime needs before invoking
+  the handler or making its contribution visible to the model.
+- Rename the immutable model-call value to `ModelCallOptions`; `Run` remains the only mutable run
+  context, with no compatibility alias or second context owner.
+- Tighten the source ceiling to 9,747 non-empty Python lines.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

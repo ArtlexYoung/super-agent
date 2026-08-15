@@ -11,7 +11,7 @@ from core.models import RunResult, Task, read_required_tool_string
 from core.provider import ActionTurn, FinalTurn, Message, ModelResponse, ProviderPool, ToolCall, read_model_turn
 from skill.handlers.runtime import SkillUse, SkillAction, SkillTool, TaskPolicy
 from skill.handlers.models import ModelProfile, model_profile_is_ready, model_profile_to_dict
-from core.model_calls import ModelCaller, ModelCallContext, SelectedModel, TextModel, UNTRUSTED_CONTEXT_POLICY, assistant_tool_call_message, tool_result_message
+from core.model_calls import ModelCaller, ModelCallOptions, SelectedModel, TextModel, UNTRUSTED_CONTEXT_POLICY, assistant_tool_call_message, tool_result_message
 from core.runtime import Run, create_checkpoint_data, hash_checkpoint_value
 from core.tools import RunTools
 from skill.discovery.index import format_disclosure_page_for_prompt
@@ -31,7 +31,7 @@ class _LoopState:
     messages: list[Message]
     workflow: TaskPolicy
     selected_skill_names: list[str]
-    model_context: ModelCallContext
+    model_options: ModelCallOptions
     last_text: str = ""
 
 
@@ -40,7 +40,7 @@ class _ConfiguredModelTool:
     profiles: tuple[ModelProfile, ...]
     model_caller: ModelCaller
     provider_pool: ProviderPool
-    model_context: ModelCallContext
+    model_options: ModelCallOptions
     default_model_key: str
 
     def create_tool(self) -> SkillTool | None:
@@ -56,11 +56,11 @@ class _ConfiguredModelTool:
         reason = read_required_tool_string(arguments, "reason")
         profile = self._require_other_model(model_key)
         selected = _selected_model(profile, "model_action", reason)
-        response = self.model_caller.call_model([{"role": "user", "content": prompt}], selected, self.model_context)
+        response = self.model_caller.call_model([{"role": "user", "content": prompt}], selected, self.model_options)
         turn = read_model_turn(response)
         if not isinstance(turn, FinalTurn):
             raise ValueError("use_model target returned actions without receiving tools")
-        self.model_context.record_event("model.used", {"model": selected.to_dict(), "reason": reason})
+        self.model_options.record_event("model.used", {"model": selected.to_dict(), "reason": reason})
         return {"model": model_key, "text": turn.text}
 
     def _require_other_model(self, model_key: str) -> ModelProfile:
@@ -105,10 +105,10 @@ class TaskRunner:
         workflow = _select_workflow(contributions)
         if "tools" in request.required_features and not workflow.uses_tools:
             raise ValueError("task requires tools but the configured workflow is direct")
-        model_context = ModelCallContext(request.purpose, run.record_event, run.record_model_used)
-        model_tool = _ConfiguredModelTool(tuple(self.model_profiles), self.model_caller, self.provider_pool, model_context, decision.profile.key).create_tool()
+        model_options = ModelCallOptions(request.purpose, run.record_event, run.record_model_used)
+        model_tool = _ConfiguredModelTool(tuple(self.model_profiles), self.model_caller, self.provider_pool, model_options, decision.profile.key).create_tool()
         tools = RunTools(run, contributions, send_text_model_messages=text_model.send_messages, extra_tools=() if model_tool is None else (model_tool,))
-        return _LoopState(contributions, tools, _build_messages(run, contributions, workflow), workflow, selected_names, model_context)
+        return _LoopState(contributions, tools, _build_messages(run, contributions, workflow), workflow, selected_names, model_options)
 
     def _run_model_turns(self, run: Run, decision: SelectedModel, state: _LoopState) -> RunResult:
         request = run.task
@@ -119,7 +119,7 @@ class TaskRunner:
         step = 0
         while step < state.workflow.max_steps:
             step += 1
-            response = self.model_caller.call_model(state.messages, decision, state.model_context, tools=definitions)
+            response = self.model_caller.call_model(state.messages, decision, state.model_options, tools=definitions)
             turn = read_model_turn(response)
             state.last_text = response.text or state.last_text
             _record_model_turn(run, step, response, state)

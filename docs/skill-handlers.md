@@ -13,10 +13,15 @@ adding task tools.
 
 ## Contract
 
-A handler declares the lowercase `skill_type` it owns, whether it adds model context, and
-`handle_skill(context)`, which returns one `SkillUse`. `SkillContext` exposes optional
-storage, model text, identity, and checked action services explicitly. A missing service
-fails when the handler requests it.
+A handler declares the lowercase `skill_type` it owns, whether it adds model context, optional
+Runtime `needs`, and `handle_skill(context)`, which returns one `SkillUse`. `SkillContext` is a
+narrow handler input rather than another run context. It exposes storage, model text, identity,
+events, and checked actions explicitly.
+
+`needs` uses only the fixed names `storage`, `identity`, `actions`, `model`, and `events`.
+Runtime checks every declared need before calling the handler. An unavailable need raises an
+error before Skill instructions or tools become model-visible; needs are trusted Python code and
+never fields in `skill.toml`.
 
 Runtime rejects duplicate handler types unless replacement is explicit. It also validates
 handler results, included Skill references, duplicate tools, and required tool arguments.

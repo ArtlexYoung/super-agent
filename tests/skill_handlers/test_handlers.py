@@ -28,6 +28,17 @@ class SkillHandlersTests(unittest.TestCase):
             {"mcp", "prompt", "task"},
             handlers.model_context_types(),
         )
+        self.assertEqual(
+            {
+                "memory": ("storage", "identity", "actions"),
+                "task": ("events",),
+            },
+            {
+                handler.skill_type: handler.needs
+                for handler in handlers.list()
+                if getattr(handler, "needs", ())
+            },
+        )
 
     def test_handlers_reject_duplicates_unless_replacement_is_explicit(self) -> None:
         handlers = SkillHandlers()
@@ -58,6 +69,22 @@ class SkillHandlersTests(unittest.TestCase):
 
         with self.assertRaisesRegex(TypeError, "must be a boolean"):
             SkillHandlers().add(handler)
+
+        handler.adds_model_context = False
+        handler.needs = ("storage", "unknown")
+        with self.assertRaisesRegex(ValueError, "unknown Runtime need"):
+            SkillHandlers().add(handler)
+
+    def test_handler_runtime_needs_fail_before_handler_execution(self) -> None:
+        handler = _ResultHandler("custom")
+        handler.needs = ("storage", "model")
+        handlers = SkillHandlers((handler,))
+        context = SkillContext(ProgressiveDisclosureCore([]), SkillReference("custom", "test"))
+
+        with self.assertRaisesRegex(RuntimeError, "requires Runtime: storage, model"):
+            handlers.handle(context)
+
+        self.assertEqual(0, handler.handle_count)
 
     def test_handlers_reject_duplicate_result_tool_names(self) -> None:
         result = SkillUse(tools=(_tool("repeat"), _tool("repeat")))
@@ -120,8 +147,10 @@ class _ResultHandler:
     def __init__(self, skill_type: str, result: object | None = None) -> None:
         self.skill_type = skill_type
         self.result = SkillUse() if result is None else result
+        self.handle_count = 0
 
     def handle_skill(self, context: SkillContext) -> SkillUse:
+        self.handle_count += 1
         return self.result  # type: ignore[return-value]
 
 

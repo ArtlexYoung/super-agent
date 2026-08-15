@@ -49,6 +49,7 @@ class McpSkillHandler:
 class MemorySkillHandler:
     skill_type = "memory"
     adds_model_context = False
+    needs = ("storage", "identity", "actions")
 
     def handle_skill(self, context: SkillContext) -> SkillUse:
         from skill.handlers.memory import create_memory_from_skill
@@ -78,6 +79,7 @@ class WorkflowSkillHandler:
 class TaskSkillHandler:
     skill_type = "task"
     adds_model_context = True
+    needs = ("events",)
 
     def __init__(self, read_additions: Callable[[SkillContext], tuple[str, tuple[SkillTool, ...]]] | None = None) -> None:
         self._read_additions = read_additions
@@ -95,16 +97,14 @@ class TaskSkillHandler:
         return SkillUse(model_context=Skill(manifest=opened.disclose_manifest(), instructions=instructions), tools=(*tools, *_create_task_plan_tools(context)), task_policy=policy, start_session=(None if not policy.tools else lambda session: _start_task_session(policy.tools, session)))
 
 
-def create_builtin_skill_handlers(mcp_servers: McpServers) -> tuple[SkillHandler, ...]:
-    return (PromptSkillHandler(), McpSkillHandler(mcp_servers), MemorySkillHandler(), WorkflowSkillHandler(), TaskSkillHandler())
+def create_builtin_skill_handlers(mcp_servers: McpServers) -> tuple[SkillHandler, ...]: return (PromptSkillHandler(), McpSkillHandler(mcp_servers), MemorySkillHandler(), WorkflowSkillHandler(), TaskSkillHandler())
 
 
 def _start_task_session(tools: dict[str, dict[str, object]], context: SkillSessionContext) -> SkillSession:
     from skill.tasks.task_queue import create_task_queue
 
     queue = create_task_queue(tools, context.subagents, context.run_subagent, context.record_event, context.record_result, context.create_shared_context)
-    if queue is None:
-        raise RuntimeError("task Skill does not provide a usable task queue")
+    if queue is None: raise RuntimeError("task Skill does not provide a usable task queue")
     return queue
 
 
@@ -113,8 +113,7 @@ def create_memory_skill_contribution(memory: Memory) -> SkillUse:
 
 
 def _create_task_plan_tools(context: SkillContext) -> tuple[SkillTool, ...]:
-    if context.record_event is None:
-        return ()
+    if context.record_event is None: return ()
     plan = _TaskPlan(context.record_event)
     action = SkillAction((ActionEffect.CREATE, ActionEffect.UPDATE), "task:plan")
     return (SkillTool("set_task_plan", "Set a bounded task plan when the task benefits from explicit steps.", {"goal": {"type": "string"}, "steps": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 20}}, plan.set_plan, action, required=("goal", "steps"), result_kind="task-plan"), SkillTool("update_task_plan_step", "Update one planned step with an explicit status and optional evidence.", {"step": {"type": "integer", "minimum": 1}, "status": {"type": "string", "enum": ["pending", "in_progress", "completed", "blocked"]}, "evidence": {"type": "string"}}, plan.update_step, action, required=("step", "status"), result_kind="task-plan"))
@@ -154,8 +153,7 @@ class _TaskPlan:
         self.record_event("task.plan.step.updated", {"step": step, "status": status, "evidence_sha256": hashlib.sha256(evidence.encode()).hexdigest()})
         return self._result()
 
-    def _result(self) -> dict[str, object]:
-        return {"goal": self.goal, "steps": [dict(item) for item in self.steps]}
+    def _result(self) -> dict[str, object]: return {"goal": self.goal, "steps": [dict(item) for item in self.steps]}
 
 
 def _create_memory_tools(memory: Memory) -> tuple[SkillTool, ...]:
