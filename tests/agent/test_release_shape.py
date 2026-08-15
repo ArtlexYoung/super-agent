@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import json
 import os
+import runpy
 import subprocess
 import sys
 import tempfile
@@ -13,6 +14,8 @@ from pathlib import Path
 from core import __version__
 from scripts.verify_release import (
     EXPECTED_DOMAIN_CHILDREN,
+    EXPECTED_EVALUATION_PACKAGE_FILES,
+    EXPECTED_SDIST_FORCE_INCLUDE,
     EXPECTED_SDIST_ROOTS,
     FEATURE_CONTRACT_MODULES,
     FINAL_SOURCE_LINE_TARGET,
@@ -99,6 +102,8 @@ class ReleaseShapeTests(unittest.TestCase):
         sdist = self.project["tool"]["hatch"]["build"]["targets"]["sdist"]
 
         self.assertEqual(EXPECTED_SDIST_ROOTS, sdist["only-include"])
+        self.assertEqual(EXPECTED_SDIST_FORCE_INCLUDE, sdist["force-include"])
+        self.assertEqual(15, len(EXPECTED_EVALUATION_PACKAGE_FILES))
         self.assertTrue(
             {"README.md", "README_cn.md", "README_en.md"}.issubset(
                 sdist["only-include"]
@@ -111,6 +116,16 @@ class ReleaseShapeTests(unittest.TestCase):
         self.assertIn("README_cn.md", readme)
         self.assertIn("README_en.md", readme)
         self.assertIn("## 致谢与借鉴", readme)
+
+    def test_evaluation_assets_live_under_tests(self) -> None:
+        project_root = Path.cwd().resolve()
+        runner = runpy.run_path("tests/eval/runner/common.py")
+
+        self.assertFalse(Path("eval").exists())
+        self.assertTrue(Path("tests/eval/README.md").is_file())
+        self.assertTrue(Path("tests/eval/reports").is_dir())
+        self.assertEqual(project_root, runner["PROJECT_ROOT"])
+        self.assertEqual(project_root / "tests" / "eval", runner["EVAL_ROOT"])
 
     def test_builtin_skill_resources_are_complete_and_packaged(self) -> None:
         root = Path("src/skill/builtin")

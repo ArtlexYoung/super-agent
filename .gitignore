@@ -11,4 +11,5 @@ build/
 .env/
 .super-agent/
 release/
+tests/eval/
 .codex/

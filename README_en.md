@@ -195,6 +195,9 @@ Scores are passed tasks / total tasks (pass rate).
 | Claude Code | `THUDM/GLM-4-9B-0414` | 100 / 164 (60.98%) | 151 / 612 (24.67%) |
 | Super Agent | `THUDM/GLM-4-9B-0414` | 103 / 164 (62.80%) | 156 / 612 (25.49%) |
 
+Full task-level reports, isolated runners, and local evaluation asset guidance live under
+[`tests/eval/`](tests/eval/README.md).
+
 ## Read Next
 
 - [Getting started](docs/getting-started.md)

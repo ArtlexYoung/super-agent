@@ -57,6 +57,26 @@ EXPECTED_SDIST_ROOTS = [
     "tests",
     "examples",
 ]
+EXPECTED_EVALUATION_PACKAGE_FILES = (
+    "tests/eval/README.md",
+    "tests/eval/reports/token-usage-glm4-9b-20260806/README.md",
+    "tests/eval/reports/token-usage-glm4-9b-20260806/humaneval_plus.md",
+    "tests/eval/reports/token-usage-glm4-9b-20260806/livecodebench_codegen.md",
+    "tests/eval/reports/token-usage-glm4-9b-20260806/summary.json",
+    "tests/eval/reports/token-usage-glm4-9b-20260806/task-token-usage.csv",
+    "tests/eval/reports/token-usage-glm4-9b-20260806/versions.json",
+    "tests/eval/runner/common.py",
+    "tests/eval/runner/raw_generate.py",
+    "tests/eval/runner/report_token_usage.py",
+    "tests/eval/runner/score_humaneval.py",
+    "tests/eval/runner/score_livecodebench.py",
+    "tests/eval/runtime/proxy/openllm_adapter.py",
+    "tests/eval/runtime/proxy/siliconflow.yaml",
+    "tests/eval/runtime/proxy/usage_logging.py",
+)
+EXPECTED_SDIST_FORCE_INCLUDE = {
+    path: path for path in EXPECTED_EVALUATION_PACKAGE_FILES
+}
 VERSION_PATTERN = re.compile(r"0\.\d+\.\d+$")
 AGENT_OWNER_MODULES = {"adapter/agent.py", "adapter/user.py"}
 EXPECTED_AGENT_ACTIONS = {
@@ -353,6 +373,8 @@ def verify_release(root: Path, expected_version: str) -> list[str]:
     )
     if sdist.get("only-include") != EXPECTED_SDIST_ROOTS:
         errors.append("sdist source roots changed")
+    if sdist.get("force-include") != EXPECTED_SDIST_FORCE_INCLUDE:
+        errors.append("sdist evaluation file allowlist changed")
 
     source_files = [
         path

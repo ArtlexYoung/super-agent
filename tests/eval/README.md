@@ -1,7 +1,7 @@
 # Eval Assets
 
 All benchmark datasets, validation harnesses, run logs, and evaluation notes for
-this project should live under `eval/`.
+this project should live under `tests/eval/`.
 
 ## Agent Benchmark Reports
 
@@ -41,13 +41,13 @@ Downloaded on 2026-07-09.
 ## Local Notes
 
 - Do not place future benchmark harnesses, result parsers, or run reports in the
-  project root. Put them under `eval/`.
+  project root. Put them under `tests/eval/`.
 - AppWorld GitHub archives contain Git LFS pointer files for some bundles. The
   usable benchmark data was prepared with:
 
 ```bash
 uvx --from appworld appworld install
-uvx --from appworld appworld download data --root eval/datasets/appworld
+uvx --from appworld appworld download data --root tests/eval/datasets/appworld
 ```
 
 - BFCL v4 data files are under `datasets/bfcl-v4/bfcl_eval/data/`.
@@ -56,16 +56,16 @@ uvx --from appworld appworld download data --root eval/datasets/appworld
 ## Smoke Commands
 
 ```bash
-cd eval/datasets/tau3-bench
+cd tests/eval/datasets/tau3-bench
 uv sync
 uv run tau2 run --domain airline --agent-llm <model> --user-llm <model> --num-trials 1 --num-tasks 5
 ```
 
 ```bash
-cd eval/datasets/bfcl-v4
+cd tests/eval/datasets/bfcl-v4
 pip install -e .
 ```
 
 ```bash
-APPWORLD_ROOT=eval/datasets/appworld uvx --from appworld appworld download data --root eval/datasets/appworld
+APPWORLD_ROOT=tests/eval/datasets/appworld uvx --from appworld appworld download data --root tests/eval/datasets/appworld
 ```

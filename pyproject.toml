@@ -24,3 +24,20 @@ sources = ["src"]
 
 [tool.hatch.build.targets.sdist]
 only-include = ["README.md", "README_cn.md", "README_en.md", "pyproject.toml", "docs", "scripts", "src", "tests", "examples"]
+
+[tool.hatch.build.targets.sdist.force-include]
+"tests/eval/README.md" = "tests/eval/README.md"
+"tests/eval/reports/token-usage-glm4-9b-20260806/README.md" = "tests/eval/reports/token-usage-glm4-9b-20260806/README.md"
+"tests/eval/reports/token-usage-glm4-9b-20260806/humaneval_plus.md" = "tests/eval/reports/token-usage-glm4-9b-20260806/humaneval_plus.md"
+"tests/eval/reports/token-usage-glm4-9b-20260806/livecodebench_codegen.md" = "tests/eval/reports/token-usage-glm4-9b-20260806/livecodebench_codegen.md"
+"tests/eval/reports/token-usage-glm4-9b-20260806/summary.json" = "tests/eval/reports/token-usage-glm4-9b-20260806/summary.json"
+"tests/eval/reports/token-usage-glm4-9b-20260806/task-token-usage.csv" = "tests/eval/reports/token-usage-glm4-9b-20260806/task-token-usage.csv"
+"tests/eval/reports/token-usage-glm4-9b-20260806/versions.json" = "tests/eval/reports/token-usage-glm4-9b-20260806/versions.json"
+"tests/eval/runner/common.py" = "tests/eval/runner/common.py"
+"tests/eval/runner/raw_generate.py" = "tests/eval/runner/raw_generate.py"
+"tests/eval/runner/report_token_usage.py" = "tests/eval/runner/report_token_usage.py"
+"tests/eval/runner/score_humaneval.py" = "tests/eval/runner/score_humaneval.py"
+"tests/eval/runner/score_livecodebench.py" = "tests/eval/runner/score_livecodebench.py"
+"tests/eval/runtime/proxy/openllm_adapter.py" = "tests/eval/runtime/proxy/openllm_adapter.py"
+"tests/eval/runtime/proxy/siliconflow.yaml" = "tests/eval/runtime/proxy/siliconflow.yaml"
+"tests/eval/runtime/proxy/usage_logging.py" = "tests/eval/runtime/proxy/usage_logging.py"

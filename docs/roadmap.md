@@ -2108,6 +2108,9 @@ Status: implemented.
   and public non-open-source material that informed the design, with clear license boundaries.
 - Package and verify all three README files, require guide links and acknowledgements at the release
   gate, and tighten the source ceiling to 9,738 non-empty Python lines.
+- Move comparative evaluation runners, reports, and ignored local assets from root `eval/` to
+  `tests/eval/`, deriving roots from the runner location and packaging only an explicit lightweight
+  allowlist while datasets, third-party snapshots, environments, caches, and run output stay local.
 
 ## Release Gate
 

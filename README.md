@@ -148,6 +148,10 @@ The agents below use the same `THUDM/GLM-4-9B-0414` model with their default con
 | Claude Code | `THUDM/GLM-4-9B-0414` | 100 / 164 (60.98%) | 151 / 612 (24.67%) |
 | Super Agent | `THUDM/GLM-4-9B-0414` | 103 / 164 (62.80%) | 156 / 612 (25.49%) |
 
+完整任务级报告、隔离运行器和本地评测资产说明位于 [`tests/eval/`](tests/eval/README.md)。
+
+Full task-level reports, isolated runners, and local evaluation asset guidance live under [`tests/eval/`](tests/eval/README.md).
+
 ## 使用文档
 
 *Usage Guides*

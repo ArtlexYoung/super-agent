@@ -17,8 +17,8 @@ from typing import Any, Iterable
 from urllib.parse import urlsplit
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-EVAL_ROOT = PROJECT_ROOT / "eval"
+EVAL_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = EVAL_ROOT.parents[1]
 RUNTIME_ROOT = EVAL_ROOT / "runtime"
 DATASET_ROOT = EVAL_ROOT / "datasets"
 MODEL = "THUDM/GLM-4-9B-0414"

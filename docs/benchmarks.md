@@ -32,3 +32,8 @@ not create side effects. `examples/general-benchmark.json` and
 The report records the manifest SHA-256, exact task output and digest, exit status, timeout,
 elapsed time, every check result, and an aggregate score. A completed process is never treated
 as a correct answer without its declared checks passing.
+
+Large comparative benchmarks are kept with the test assets instead of at the repository root.
+See [`tests/eval/`](../tests/eval/README.md) for isolated runners, local dataset and harness
+locations, and committed task-level reports. Downloaded repositories, environments, caches, and
+run output remain local and ignored.
