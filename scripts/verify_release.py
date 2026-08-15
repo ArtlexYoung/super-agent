@@ -23,10 +23,10 @@ SOURCE_LINE_BUDGETS = {
     "0.1.93": 9_747, "0.1.94": 9_746, "0.1.95": 9_745,
     "0.1.96": 9_744,
     "0.1.97": 9_743, "0.1.98": 9_742, "0.1.99": 9_741,
-    "0.1.100": 9_740, "0.1.101": 9_739,
+    "0.1.100": 9_740, "0.1.101": 9_739, "0.1.102": 9_738,
 }
-FINAL_SOURCE_LINE_TARGET = 9_739
-MAX_TOTAL_SOURCE_LINES = SOURCE_LINE_BUDGETS["0.1.101"]
+FINAL_SOURCE_LINE_TARGET = 9_738
+MAX_TOTAL_SOURCE_LINES = SOURCE_LINE_BUDGETS["0.1.102"]
 EXPECTED_SOURCE_ROOT = {"adapter", "cli.py", "core", "skill", "super_agent.py"}
 EXPECTED_DOMAIN_CHILDREN = {
     "adapter": {
@@ -49,6 +49,7 @@ EXPECTED_WHEEL_ROOTS = [
 EXPECTED_SDIST_ROOTS = [
     "README.md",
     "README_cn.md",
+    "README_en.md",
     "pyproject.toml",
     "docs",
     "scripts",
@@ -375,8 +376,10 @@ def verify_release(root: Path, expected_version: str) -> list[str]:
         _verify_offline_benchmark(root / "examples" / "offline-gate-benchmark.json")
     )
     readme = root / "README.md"
-    if not readme.is_file() or "README_cn.md" not in readme.read_text(encoding="utf-8"):
-        errors.append("README.md must link to README_cn.md")
+    readme_text = readme.read_text(encoding="utf-8") if readme.is_file() else ""
+    for marker in ("README_cn.md", "README_en.md", "## 致谢与借鉴"):
+        if marker not in readme_text:
+            errors.append(f"README.md must contain {marker}")
     return errors
 
 

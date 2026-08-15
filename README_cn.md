@@ -1,6 +1,6 @@
 # Super Agent
 
-[英文使用文档](README.md)
+[双语首页](README.md) | [English guide](README_en.md)
 
 **一个简单、轻量、高智能、自进化、Skill 优先的 Agent 运行时。**
 
@@ -191,9 +191,13 @@ checkpoint_id=...)` 从指定检查点创建新的显式运行；由于不重建
 ## 验证仓库
 
 ```bash
-python3.11 scripts/verify_release.py --version 0.1.101 --full --web
+python3.11 scripts/verify_release.py --version 0.1.102 --full --web
 ```
 
 完整的本地发布检查（包括版本一致性和打包范围）见[本地发布流程](docs/releasing.md)。
 
 零依赖对照运行器和可复现约束见[评测说明](docs/benchmarks.md)。
+
+## 致谢
+
+完整的项目、模块、许可证和借鉴边界说明见[双语致谢](README.md#致谢与借鉴)。

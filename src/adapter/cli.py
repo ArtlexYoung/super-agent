@@ -191,9 +191,7 @@ def _run_data_command(args: argparse.Namespace) -> int:
 
 
 def _is_terminal_request(arguments: list[str]) -> bool:
-    if not arguments:
-        return True
-    return arguments[0] not in CLI_COMMANDS | {"-h", "--help", "--version"}
+    return not arguments or arguments[0] not in CLI_COMMANDS | {"-h", "--help", "--version"}
 
 
 def _run_prompt_command(common_config_path: Path | None, request: CliRequest, output: str, *, save: bool, show_summary: bool, code_config_path: Path | None = None) -> int:

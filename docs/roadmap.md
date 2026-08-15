@@ -2098,6 +2098,17 @@ Status: implemented.
 - Continue the `v0.1.x` line with one unchanged release gate and tighten the source ceiling to 9,739
   non-empty Python lines.
 
+## v0.1.102: Bilingual Project Entry and Attributed References
+
+Status: implemented.
+
+- Make `README.md` a concise Chinese-and-English overview with each Chinese statement followed by
+  its English counterpart, while keeping complete usage guides in `README_cn.md` and `README_en.md`.
+- Credit the specific open-source modules, protocols, interfaces, research, evaluation projects,
+  and public non-open-source material that informed the design, with clear license boundaries.
+- Package and verify all three README files, require guide links and acknowledgements at the release
+  gate, and tighten the source ceiling to 9,738 non-empty Python lines.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

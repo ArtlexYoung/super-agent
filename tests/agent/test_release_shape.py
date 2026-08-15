@@ -13,6 +13,7 @@ from pathlib import Path
 from core import __version__
 from scripts.verify_release import (
     EXPECTED_DOMAIN_CHILDREN,
+    EXPECTED_SDIST_ROOTS,
     FEATURE_CONTRACT_MODULES,
     FINAL_SOURCE_LINE_TARGET,
     MAX_TOTAL_SOURCE_FILES,
@@ -60,7 +61,7 @@ class ReleaseShapeTests(unittest.TestCase):
     def test_source_reduction_plan_cannot_be_silently_relaxed(self) -> None:
         budgets = list(SOURCE_LINE_BUDGETS.values())
 
-        self.assertEqual(9_739, FINAL_SOURCE_LINE_TARGET)
+        self.assertEqual(9_738, FINAL_SOURCE_LINE_TARGET)
         self.assertEqual(FINAL_SOURCE_LINE_TARGET, budgets[-1])
         self.assertEqual(MAX_TOTAL_SOURCE_LINES, SOURCE_LINE_BUDGETS[__version__])
         self.assertTrue(all(current > following for current, following in zip(budgets, budgets[1:])))
@@ -93,6 +94,23 @@ class ReleaseShapeTests(unittest.TestCase):
             wheel["only-include"],
         )
         self.assertEqual(["src"], wheel["sources"])
+
+    def test_sdist_contains_all_language_guides(self) -> None:
+        sdist = self.project["tool"]["hatch"]["build"]["targets"]["sdist"]
+
+        self.assertEqual(EXPECTED_SDIST_ROOTS, sdist["only-include"])
+        self.assertTrue(
+            {"README.md", "README_cn.md", "README_en.md"}.issubset(
+                sdist["only-include"]
+            )
+        )
+
+    def test_bilingual_readme_links_guides_and_acknowledgements(self) -> None:
+        readme = Path("README.md").read_text(encoding="utf-8")
+
+        self.assertIn("README_cn.md", readme)
+        self.assertIn("README_en.md", readme)
+        self.assertIn("## 致谢与借鉴", readme)
 
     def test_builtin_skill_resources_are_complete_and_packaged(self) -> None:
         root = Path("src/skill/builtin")
