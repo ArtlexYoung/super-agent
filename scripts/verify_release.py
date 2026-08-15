@@ -1,4 +1,4 @@
-"""Run the dependency-free static checks required before a local release."""
+"""运行本地发布前所需的零依赖静态检查。"""
 
 from __future__ import annotations
 
@@ -23,10 +23,10 @@ SOURCE_LINE_BUDGETS = {
     "0.1.93": 9_747, "0.1.94": 9_746, "0.1.95": 9_745,
     "0.1.96": 9_744,
     "0.1.97": 9_743, "0.1.98": 9_742, "0.1.99": 9_741,
-    "0.1.100": 9_740,
+    "0.1.100": 9_740, "0.1.101": 9_739,
 }
-FINAL_SOURCE_LINE_TARGET = 9_740
-MAX_TOTAL_SOURCE_LINES = SOURCE_LINE_BUDGETS["0.1.100"]
+FINAL_SOURCE_LINE_TARGET = 9_739
+MAX_TOTAL_SOURCE_LINES = SOURCE_LINE_BUDGETS["0.1.101"]
 EXPECTED_SOURCE_ROOT = {"adapter", "cli.py", "core", "skill", "super_agent.py"}
 EXPECTED_DOMAIN_CHILDREN = {
     "adapter": {
@@ -426,7 +426,7 @@ def _verify_preserved_capabilities(
     source_root: Path,
     project_data: dict[str, object],
 ) -> list[str]:
-    """Reject releases that remove a high-complexity feature to reduce source size."""
+    """拒绝通过移除高复杂度功能来缩减源码的发布。"""
     errors = []
     for relative, required in PRESERVED_SOURCE_SYMBOLS.items():
         path = source_root / relative

@@ -31,7 +31,7 @@ class DisclosurePage:
 
 
 class DisclosureContextBudget:
-    """Count prompt characters across every central disclosure stage."""
+    """统计中心披露各阶段使用的 prompt 字符数。"""
 
     def __init__(self, budget_chars: int = DEFAULT_CONTEXT_BUDGET_CHARS) -> None:
         if isinstance(budget_chars, bool) or not isinstance(budget_chars, int) or budget_chars <= 0:
@@ -55,7 +55,7 @@ class DisclosureContextBudget:
 
 
 def create_disclosure_page(reference: str, kind: str, name: str, content: str, *, offset: int = 0, limit: int = DEFAULT_INLINE_CHARS, cache_path: Path | None = None) -> DisclosurePage:
-    """Return one bounded page without changing or discarding source content."""
+    """返回一个有界分页，不修改或丢弃源内容。"""
     _require_content_size(content)
     if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
         raise ValueError("disclosure offset must be a non-negative integer")
@@ -78,7 +78,7 @@ def format_disclosure_page_for_prompt(page: DisclosurePage) -> str:
 
 
 def create_reference_disclosure_page(reference: str, kind: str, name: str, content: str, *, offset: int = 0, cache_path: Path | None = None) -> DisclosurePage:
-    """Return metadata without spending context characters on source content."""
+    """返回元数据，不消耗用于源内容的上下文字数。"""
     _require_content_size(content)
     if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
         raise ValueError("disclosure offset must be a non-negative integer")
@@ -86,7 +86,7 @@ def create_reference_disclosure_page(reference: str, kind: str, name: str, conte
 
 
 def serialize_disclosure_value(value: object) -> str:
-    """Serialize structured output exactly once or fail on unsupported values."""
+    """只序列化一次结构化输出，不支持的值直接失败。"""
     content = json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True)
     _require_content_size(content)
     return content
@@ -132,7 +132,7 @@ class SkillSourceScan:
 
 
 def read_skill_sources(skill_roots: list[Path], disabled_names: list[str], builtin_skill_roots: list[Path] | None = None, user_skill_roots: list[Path] | None = None) -> SkillSourceScan:
-    """Scan user, project, and built-in Skills in override order."""
+    """按覆盖优先级扫描用户、项目和内置 Skill。"""
     user = _read_source_group(user_skill_roots or [], disabled_names, "user")
     project = _read_source_group(skill_roots, disabled_names, "project", {source.reference.key: source for source in user.sources})
     builtin = _read_source_group(builtin_skill_roots or [], disabled_names, "builtin", {source.reference.key: source for source in project.sources})
@@ -247,7 +247,7 @@ class SkillIndex:
         return entry
 
     def select_one_configured_or_default_skill(self, skill_type: str, configured_skills: list[str]) -> SkillIndexEntry:
-        """Select one support Skill without interpreting task text."""
+        """不解释任务文本，选择一个辅助 Skill。"""
         selected_type = _clean_name(skill_type)
         entries = [entry for entry in self.entries if entry.reference.skill_type == selected_type]
         configured = [self.require_skill(value) for value in configured_skills if value.strip().lower().startswith(f"{selected_type}:")]
@@ -283,7 +283,7 @@ class SkillIndex:
         return resolved
 
     def build_progressive_disclosure_prompt(self) -> str:
-        """Describe available Skills and include cache paths only when recorded."""
+        """描述可用 Skill，仅在有记录时包含缓存路径。"""
         lines = ["Progressive skill disclosure:"]
         if self.index_path is not None and self.history_path is not None:
             lines.extend([f"- index: {self.index_path}", f"- history: {self.history_path}"])

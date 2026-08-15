@@ -217,14 +217,14 @@ def _validate_staged_skill(path: Path, expected_sha256: str) -> SkillManifest:
 
 
 def copy_skill_directory(source: Path, target: Path) -> None:
-    """Copy one passive Skill tree while rejecting executable path indirection."""
+    """复制一个被动 Skill 树，并拒绝可执行的路径跳转。"""
     shutil.copytree(source, target, symlinks=True, ignore=shutil.ignore_patterns(".git", "__pycache__"))
     _reject_symlinks(target)
 
 
 @contextmanager
 def create_skill_candidate(target: Path, source: Path | None = None) -> Iterator[Path]:
-    """Yield one isolated candidate directory and remove it on every exit path."""
+    """生成一个隔离候选目录，并在所有退出路径中删除。"""
     target.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=f".{target.name}.skill-candidate-", dir=target.parent) as root:
         candidate = Path(root) / target.name
@@ -285,12 +285,12 @@ def _clean_expected_sha256(value: str) -> str:
     return expected
 
 
-# Reproducible lock files are part of Skill package management.
+# 可复现锁文件属于 Skill 包管理的一部分。
 SKILL_LOCK_SCHEMA_VERSION = 2
 
 
 def write_skill_lock_file(manifests: list[SkillManifest], path: Path) -> None:
-    # Excluding timestamps and absolute paths makes identical lock content byte-for-byte stable.
+    # 排除时间戳和绝对路径，让相同锁内容逐字节一致。
     ordered = sorted(manifests, key=lambda item: (item.skill_type, item.name))
     if len({(item.skill_type, item.name) for item in ordered}) != len(ordered):
         raise ValueError("skill lock cannot contain duplicate skill keys")
@@ -305,13 +305,13 @@ def _toml_string_array(values: list[str]) -> str:
 
 
 def require_skill_directory_hash(path: Path, expected: str, label: str) -> None:
-    """Reject a Skill directory when its recorded revision is no longer current."""
+    """记录的修订已过期时拒绝 Skill 目录。"""
     if not path.is_dir() or calculate_skill_directory_sha256(path) != expected:
         raise ValueError(f"{label} files changed")
 
 
 def require_skill_directory_matches(path: Path, expected_sha256: str, label: str) -> None:
-    """Require a directory to be absent or match the expected SHA-256."""
+    """要求目录不存在，或与预期 SHA-256 一致。"""
     if expected_sha256:
         if re.fullmatch(r"[0-9a-f]{64}", expected_sha256) is None:
             raise ValueError(f"expected {label} SHA-256 is invalid")
@@ -330,7 +330,7 @@ class SkillDirectoryUpdate:
 
 
 def apply_skill_directory_updates(updates: list[SkillDirectoryUpdate], *, after_apply: Callable[[], TransactionResult] | None = None, after_restore: Callable[[], None] | None = None) -> TransactionResult | None:
-    """Apply one verified directory transaction and restore all targets on failure."""
+    """执行已验证的目录事务，失败时恢复所有目标。"""
     if not updates:
         return
     if len({update.target.absolute() for update in updates}) != len(updates):
@@ -412,7 +412,7 @@ def _rename_backup_manifests(backup: Path, *, hide: bool) -> None:
 
 
 def validate_skill_directory(skill_path: Path, *, expected_type: str | None = None, expected_name: str | None = None) -> SkillManifest:
-    """Validate one complete Skill directory through progressive disclosure."""
+    """通过渐进式披露校验完整 Skill 目录。"""
     opened = open_single_skill_directory(skill_path)
     manifest = opened.read_manifest()
     for label, expected, actual in (("Skill type", expected_type, manifest.skill_type), ("skill name", expected_name, manifest.name)):

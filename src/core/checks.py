@@ -1,4 +1,4 @@
-"""Central action contract and checks for Runtime side effects."""
+"""Runtime 副作用的中心动作约定与检查。"""
 
 from __future__ import annotations
 
@@ -76,7 +76,7 @@ class ActionDecision:
 
 @dataclass(frozen=True)
 class PreparedAction:
-    """An allowed state change that has not run its handler yet."""
+    """尚未运行处理器的已许可状态变更。"""
 
     request: ActionRequest
     decision: ActionDecision
@@ -84,7 +84,7 @@ class PreparedAction:
 
 @dataclass(frozen=True)
 class ActionRules:
-    """Apply one small preset to every declared Runtime action."""
+    """将一个小型预设应用到所有已声明的 Runtime 动作。"""
 
     preset: ActionMode = ActionMode.STANDARD
     approved_action_ids: frozenset[str] = frozenset()
@@ -211,12 +211,12 @@ class ActionRunner:
 
 
 def action_requires_checker(effects: tuple[ActionEffect, ...]) -> bool:
-    """Return whether declared effects can change state or leave the process."""
+    """判断已声明副作用是否会改变状态或离开当前进程。"""
     return set(effects) != {ActionEffect.READ}
 
 
 def write_bytes_atomically(path: Path, data: bytes) -> None:
-    """Replace a file only after its complete new content has been written."""
+    """完整写入新内容后再替换文件。"""
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.parent / f".{path.name}.{uuid4().hex}.tmp"
     try:

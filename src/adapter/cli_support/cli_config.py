@@ -1,4 +1,4 @@
-"""CLI-only configuration and terminal confirmation behavior."""
+"""CLI 专用配置与终端确认行为。"""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ CommonConfigSource = CommonConfig | str | Path | None
 
 @dataclass(frozen=True)
 class CliConfig:
-    """Terminal behavior independent from Agent and task configuration."""
+    """定义独立于 Agent 和任务配置的终端行为。"""
 
     user_id: str
     output: str
@@ -58,7 +58,7 @@ class CliConfig:
 
 
 class TerminalActionRules(ActionRules):
-    """Ask before a CLI action leaves read-only state."""
+    """CLI 操作离开只读状态前请求确认。"""
 
     def check_action(self, request: ActionRequest) -> ActionDecision:
         decision = super().check_action(request)

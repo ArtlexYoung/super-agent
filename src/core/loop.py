@@ -1,4 +1,4 @@
-"""One model and action loop for every Agent task."""
+"""所有 Agent 任务共用的模型与动作循环。"""
 
 from __future__ import annotations
 

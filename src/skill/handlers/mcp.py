@@ -1,4 +1,4 @@
-"""Code-registered MCP servers and the built-in stdio transport."""
+"""由代码注册的 MCP 服务器与内置 stdio 传输。"""
 
 from __future__ import annotations
 
@@ -50,7 +50,7 @@ class McpServer(Protocol):
 
 @dataclass(frozen=True, init=False)
 class StdioMcpServer:
-    """A trusted stdio command registered by application code."""
+    """由应用代码注册的可信 stdio 命令。"""
 
     command: str
     arguments: tuple[str, ...]
@@ -106,7 +106,7 @@ class RegisteredMcpServer:
 
 
 class McpServers:
-    """Own MCP implementations explicitly attached to one Agent."""
+    """管理显式挂载到一个 Agent 的 MCP 实现。"""
 
     def __init__(self) -> None:
         self._servers: dict[str, RegisteredMcpServer] = {}

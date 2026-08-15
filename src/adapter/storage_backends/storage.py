@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
 
 class DisclosureStorage:
-    """Persist central disclosure content inside one user and Agent cache."""
+    """在单个用户和 Agent 缓存内持久化中心披露内容。"""
 
     def __init__(self, cache_root: Path, store: EventStore) -> None:
         self.cache_root = cache_root.expanduser().absolute()
@@ -85,7 +85,7 @@ def create_storage_backend(backend: str, path: str, url_env: str | None = None) 
 
 
 def create_local_event_store(root: str | Path, *, user_id: str = "local", agent_name: str = "super-agent") -> EventStore:
-    """Create a JSONL EventStore for tests and local Skill tooling."""
+    """为测试和本地 Skill 工具创建 JSONL EventStore。"""
     from core.records.store import EventStore
 
     path = Path(root).expanduser().absolute()
@@ -115,7 +115,7 @@ def utc_now_text() -> str:
 
 
 def build_sql_event_where(query: StorageEventQuery, placeholder: str, *, hash_identifiers: bool = False) -> tuple[str, tuple[str, ...]]:
-    """Build one exact event query for local or hash-indexed remote SQL."""
+    """为本地或哈希索引远程 SQL 构造精确事件查询。"""
     clauses: list[str] = []
     parameters: list[str] = []
     for text_column, key_column in _SQL_QUERY_FIELDS:
@@ -134,14 +134,14 @@ def build_sql_event_where(query: StorageEventQuery, placeholder: str, *, hash_id
 
 
 def split_sql_event_id_query(query: StorageEventQuery) -> list[StorageEventQuery]:
-    """Split large event-ID deletes without changing any other query field."""
+    """分批删除大量事件 ID，不改变其他查询字段。"""
     if query.event_ids is None:
         return [query]
     return [replace(query, event_ids=query.event_ids[index : index + SQL_EVENT_ID_BATCH_SIZE]) for index in range(0, len(query.event_ids), SQL_EVENT_ID_BATCH_SIZE)]
 
 
 def read_sql_event_row(row: Iterable[object], location: str | Path) -> StorageEvent:
-    """Decode the canonical nine-column SQL event projection."""
+    """解码标准的九列 SQL 事件投影。"""
     values = tuple(row)
     if len(values) != 9:
         raise ValueError(f"SQL storage event fields do not match schema at {location}")
@@ -150,7 +150,7 @@ def read_sql_event_row(row: Iterable[object], location: str | Path) -> StorageEv
 
 
 def storage_text_key(value: str) -> str:
-    """Create the remote SQL index key while retaining exact text checks."""
+    """生成远程 SQL 索引键，同时保留精确文本检查。"""
     return sha256(value.encode("utf-8")).hexdigest()
 
 
@@ -168,7 +168,7 @@ def _add_sql_event_ids(clauses: list[str], parameters: list[str], *, event_ids: 
 
 
 class SqlEventDatabase(Protocol):
-    """Database-specific facts needed by the shared SQL event executor."""
+    """描述共用 SQL 事件执行器所需的数据库差异。"""
 
     name: str
     location: str | Path
@@ -202,7 +202,7 @@ class _PendingSqlEvent:
 
 
 class SqlEventStorage:
-    """Apply one event and transaction contract to every SQL backend."""
+    """为所有 SQL 后端应用统一事件与事务约定。"""
 
     def __init__(self, database: SqlEventDatabase) -> None:
         self._database = database
@@ -235,7 +235,7 @@ class SqlEventStorage:
 
     @contextmanager
     def _cursor(self, *, write: bool = False) -> Iterator[Any]:
-        """Close every connection and commit only successful explicit writes."""
+        """关闭所有连接，仅提交成功的显式写入。"""
         connection = self._database.connect_to_database()
         try:
             cursor = connection.cursor()
@@ -334,7 +334,7 @@ def _event_value_without_position(event: StorageEvent) -> tuple[object, ...]:
     return (event.event_id, event.user_id, event.agent_name, event.stream_type, event.stream_id, event.event_type, event.created_at, event.data)
 
 
-# Concrete backends import the shared helpers above, so load them after those definitions.
+# 具体后端依赖上方的共用工具，因此在这些定义之后导入。
 from adapter.storage_backends.local_storage import JsonlStorage, SqliteStorage
 from adapter.storage_backends.remote_storage import MySqlStorage, PostgreSqlStorage
 

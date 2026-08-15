@@ -1,4 +1,4 @@
-"""Strict evaluation evidence attached directly to one Skill revision."""
+"""直接关联到单个 Skill 修订的严格评价证据。"""
 
 from __future__ import annotations
 

@@ -26,7 +26,7 @@ class AgentSettings:
 
 @dataclass(frozen=True)
 class PathsSettings:
-    # Shared Skill roots are scanned recursively; manifest type defines behavior.
+    # 递归扫描共用 Skill 根目录，由清单类型决定行为。
     skills: list[Path]
 
 
@@ -40,7 +40,7 @@ class StorageSettings:
 
 @dataclass(frozen=True)
 class CommonConfig:
-    """Configuration shared by every Agent task in one project."""
+    """一个项目中所有 Agent 任务共用的配置。"""
 
     agent: AgentSettings
     paths: PathsSettings
@@ -79,7 +79,7 @@ class CodeSettings:
 
 @dataclass(frozen=True)
 class CodeConfig:
-    """Optional configuration used only by the trusted code workspace adapter."""
+    """仅供可信代码工作区适配器使用的可选配置。"""
 
     settings: CodeSettings
     source: Path

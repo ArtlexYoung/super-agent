@@ -1,4 +1,4 @@
-"""Small ordered event log shared by stateful and stateless runs."""
+"""有状态和无状态运行共用的小型有序事件日志。"""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ RunEventListener = Callable[[RunEvent], None]
 
 
 class RunEventLog:
-    """Persist, publish, and retain one ordered run event stream."""
+    """持久化、发布并保留一条有序运行事件流。"""
 
     def __init__(self, identity: RunIdentity, *, backend: StorageBackend | None = None, event_listener: RunEventListener | None = None, subscribers: RuntimeEventSubscribers | None = None) -> None:
         self.identity = identity

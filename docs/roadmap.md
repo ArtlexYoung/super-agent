@@ -2087,6 +2087,17 @@ Status: implemented.
   failures remain isolated across later runs and sibling Agent scopes; tighten the source ceiling
   to 9,740 non-empty Python lines.
 
+## v0.1.101: Clear Chinese Source Notes and Split Language Guides
+
+Status: implemented.
+
+- Replace maintained code comments and docstrings with concise Chinese explanations while keeping
+  identifiers, protocols, commands, and type-checker directives unchanged.
+- Keep the English `README.md` and Chinese `README_cn.md` as separate, mutually linked usage guides
+  instead of mixing both languages sentence by sentence.
+- Continue the `v0.1.x` line with one unchanged release gate and tighten the source ceiling to 9,739
+  non-empty Python lines.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

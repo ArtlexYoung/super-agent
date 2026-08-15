@@ -1,1 +1,1 @@
-"""Skill handler and package tests."""
+"""Skill 处理器与包管理测试。"""

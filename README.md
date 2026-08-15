@@ -1,8 +1,8 @@
 # Super Agent
 
-[中文说明](README_cn.md)
+[Chinese documentation](README_cn.md)
 
-**A simple, lightweight, self-evolving, skill-first agent runtime.**
+**A simple, lightweight, highly intelligent, self-evolving, skill-first agent runtime.**
 
 > Skill is all you need.
 
@@ -213,7 +213,7 @@ Runnable examples are in `examples/minimal.py`, `examples/custom_skill.py`, and
 ## Verify the Repository
 
 ```bash
-python3.11 scripts/verify_release.py --version 0.1.19 --full --web
+python3.11 scripts/verify_release.py --version 0.1.101 --full --web
 ```
 
 For the complete local release gate, including version and package-shape checks, see

@@ -6,7 +6,7 @@ from skill.handlers.runtime import load_configured_freshness_rules
 
 
 class RecordingProvider(MockProvider):
-    """Record execution calls while letting MockProvider answer feedback contracts."""
+    """记录执行调用，同时由 MockProvider 响应反馈约定。"""
 
     _EXECUTION = "__test_execution_response__"
 
@@ -46,7 +46,7 @@ class RecordingProvider(MockProvider):
 
 
 class SequenceProvider(RecordingProvider):
-    """Return explicit execution responses without consuming feedback responses."""
+    """返回显式执行响应，不消耗反馈响应。"""
 
     def __init__(
         self,
@@ -85,7 +85,7 @@ class SequenceProvider(RecordingProvider):
 
 
 def load_default_freshness_rules(root: Path):
-    """Load built-in freshness rules through central Skill disclosure."""
+    """通过中心 Skill 披露加载内置保鲜度规则。"""
     return load_configured_freshness_rules(CommonConfig.create_default(root))
 
 
@@ -131,7 +131,7 @@ max_steps = 8
 
 
 def write_minimal_project(root: str | Path) -> int:
-    """Create explicit project files needed only by CLI integration tests."""
+    """创建仅供 CLI 集成测试使用的显式项目文件。"""
     project = Path(root)
     skill = project / "skills" / "task" / "default"
     skill.mkdir(parents=True, exist_ok=True)

@@ -1,4 +1,4 @@
-"""Explicit user-scoped access to one configured Agent."""
+"""提供访问已配置 Agent 的显式用户级接口。"""
 
 from __future__ import annotations
 

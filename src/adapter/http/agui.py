@@ -1,4 +1,4 @@
-"""Standard-library HTTP, SSE, management API, and static web server."""
+"""基于标准库的 HTTP、SSE、管理 API 与静态 Web 服务器。"""
 
 from __future__ import annotations
 
@@ -43,7 +43,7 @@ class AGUIRunInput:
 
 
 class AGUIEventMapper:
-    """Map one canonical Runtime stream to ordered AG-UI events."""
+    """将 Runtime 标准事件流映射为有序 AG-UI 事件。"""
 
     def __init__(self, thread_id: str, run_id: str) -> None:
         self.thread_id = thread_id

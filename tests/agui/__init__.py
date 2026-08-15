@@ -1,1 +1,1 @@
-"""AG-UI protocol and server tests."""
+"""AG-UI 协议与服务器测试。"""

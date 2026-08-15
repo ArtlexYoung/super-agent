@@ -3,7 +3,7 @@ import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
 import { defineConfig, type Plugin } from "vite"
 
-// https://vite.dev/config/
+// Vite 配置说明：https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss(), removeGeneratedTrailingWhitespace()],
   build: {

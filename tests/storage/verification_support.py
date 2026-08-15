@@ -1,4 +1,4 @@
-"""Run the same multiuser isolation proof against every storage backend."""
+"""对所有存储后端运行相同的多用户隔离验证。"""
 
 from __future__ import annotations
 
@@ -55,7 +55,7 @@ def verify_multiuser_isolation_across_storage_backends(
     remote_url_environments: dict[str, str] | None = None,
     backend_names: list[str] | None = None,
 ) -> StorageIsolationReport:
-    """Verify all mutable Runtime domains stay isolated by user and Agent."""
+    """验证所有可变 Runtime 领域始终按用户与 Agent 隔离。"""
     selected_names = list(
         STORAGE_BACKEND_NAMES if backend_names is None else backend_names
     )
@@ -161,7 +161,7 @@ def _create_verification_storage_backend(
     from adapter.storage_backends.storage import create_storage_backend
 
     url_env = remote_url_environments.get(name)
-    # Dedicated test URLs keep verification writes away from production Agent storage.
+    # 使用专用测试地址，避免验证写入生产 Agent 存储。
     if name in DEFAULT_REMOTE_URL_ENVIRONMENTS and (
         not url_env or not os.environ.get(url_env)
     ):

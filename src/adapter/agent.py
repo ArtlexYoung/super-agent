@@ -1,4 +1,4 @@
-"""Public Agent composition and external resource wiring."""
+"""提供 Agent 组合与外部资源连接的公共接口。"""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
 
 class AgentSkills:
-    """Enable passive Skills and register their trusted code mechanisms."""
+    """启用被动 Skill，并注册对应的可信代码机制。"""
 
     def __init__(self, agent: Agent) -> None:
         self._agent = agent
@@ -46,7 +46,7 @@ class AgentSkills:
 
 
 class AgentEvents:
-    """Register named observers before Runtime event delivery begins."""
+    """在 Runtime 开始分发事件前注册命名观察器。"""
 
     def __init__(self, agent: Agent) -> None:
         self._agent = agent
@@ -57,7 +57,7 @@ class AgentEvents:
 
 
 class Agent:
-    """Compose one configurable Runtime and its optional child Agents."""
+    """组合一个可配置 Runtime 及其可选子 Agent。"""
 
     def __init__(self, config: CommonConfig | str | Path | None = None, *, provider: ChatProvider | None = None, storage: StorageBackend | None = None, use_storage: bool | None = None, action_rules: ActionRules | None = None, secret_lookup: UserSecretLookup | None = None) -> None:
         if use_storage is not None and not isinstance(use_storage, bool):

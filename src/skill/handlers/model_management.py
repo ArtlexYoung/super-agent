@@ -1,4 +1,4 @@
-"""User-owned creation, update, default selection, and removal of model Skills."""
+"""由用户创建、更新、设为默认及删除的模型 Skill。"""
 
 from __future__ import annotations
 
@@ -35,7 +35,7 @@ class _ModelSkillDocument:
 
 
 class ModelSkillManager:
-    """Manage model Skill overlays inside one user scope."""
+    """在单个用户作用域内管理模型 Skill 覆盖层。"""
 
     def __init__(self, config: CommonConfig, store: EventStore, action_rules: ActionRules | None = None) -> None:
         self.config = config

@@ -1,4 +1,4 @@
-"""Evidence summaries and freshness metrics from canonical evaluations."""
+"""基于标准评价生成证据摘要与保鲜度指标。"""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Shared event semantics for optional remote SQL databases."""
+"""可选远程 SQL 数据库共用的事件语义。"""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ _SELECT_SCHEMA_VERSION_SQL = "SELECT version FROM super_agent_storage_schema WHE
 
 
 class RemoteSqlDatabase(SqlEventDatabase, Protocol):
-    """Remote schema statements plus the shared SQL event facts."""
+    """保存远程数据库结构语句与共用 SQL 事件信息。"""
 
     create_events_table_sql: str
     create_event_indexes_sql: tuple[str, ...]
@@ -29,7 +29,7 @@ class RemoteSqlDatabase(SqlEventDatabase, Protocol):
 
 
 class RemoteSqlStorage(SqlEventStorage):
-    """Store Runtime events with one backend-neutral remote SQL implementation."""
+    """用一套后端无关的远程 SQL 实现存储 Runtime 事件。"""
 
     def __init__(self, database: RemoteSqlDatabase) -> None:
         super().__init__(database)
@@ -57,7 +57,7 @@ class RemoteSqlStorage(SqlEventStorage):
 
 
 class MySqlStorage(RemoteSqlStorage):
-    """Store Runtime events in MySQL through the optional PyMySQL driver."""
+    """通过可选 PyMySQL 驱动在 MySQL 中存储 Runtime 事件。"""
 
     def __init__(self, url_env: str | None = None) -> None:
         try:
@@ -69,7 +69,7 @@ class MySqlStorage(RemoteSqlStorage):
 
 
 class PostgreSqlStorage(RemoteSqlStorage):
-    """Store Runtime events in PostgreSQL through the optional psycopg driver."""
+    """通过可选 psycopg 驱动在 PostgreSQL 中存储 Runtime 事件。"""
 
     def __init__(self, url_env: str | None = None) -> None:
         try:

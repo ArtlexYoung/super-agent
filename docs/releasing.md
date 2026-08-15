@@ -16,10 +16,10 @@ pnpm --dir web install --frozen-lockfile
 
 ## Checks
 
-Replace `0.1.70` with the version being released:
+Replace `0.1.101` with the version being released:
 
 ```bash
-.venv/bin/python scripts/verify_release.py --version 0.1.70 --full --web
+.venv/bin/python scripts/verify_release.py --version 0.1.101 --full --web
 ```
 
 Static mode is read-only. `--full` additionally runs all Python tests, compileall, diff
@@ -29,10 +29,11 @@ adds pnpm typecheck, lint, and build; a missing tool or failed command stops the
 ## Commit
 
 Update `pyproject.toml`, `src/core/__init__.py`, and `web/package.json` together. Keep
-unrelated working-tree changes out of the release commit:
+unrelated working-tree changes out of the release commit. Commit summaries use concise
+Chinese first, followed by the English meaning after `/`:
 
 ```bash
-git add -A -- . ':(exclude).gitignore' ':(exclude)README.md' ':(exclude)README_cn.md'
+git add -- <release-files>
 git diff --cached --check
-git commit -m "release: simplify runtime ownership for v0.1.70"
+git commit -m "release: 发布 v0.1.101 / release v0.1.101"
 ```

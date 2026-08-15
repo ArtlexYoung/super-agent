@@ -1,1 +1,1 @@
-"""Runtime contract tests."""
+"""Runtime 约定测试。"""

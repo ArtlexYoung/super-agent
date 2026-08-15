@@ -1,4 +1,4 @@
-"""Central audit redaction, classification, and explicit retention cleanup."""
+"""中心审计脱敏、分类与显式保留期清理。"""
 
 from __future__ import annotations
 

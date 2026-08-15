@@ -1,4 +1,4 @@
-"""Native run-scoped task queues shared by every Agent Runtime."""
+"""所有 Agent Runtime 共用的原生运行级任务队列。"""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ _TRANSITIONS = {"created": {"queued", "cancelled"}, "queued": {"running", "cance
 
 
 class TaskQueue:
-    """Give each subagent one serial consumer and wake the producer on demand."""
+    """为每个子 Agent 提供串行消费者，并按需唤醒生产者。"""
 
     hidden_tools = ("run_subagent",)
 

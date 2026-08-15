@@ -1,4 +1,4 @@
-"""Explicit code-workspace tools attached only when the code Skill is selected."""
+"""仅在选中代码 Skill 时挂载显式代码工作区工具。"""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ WORKSPACE_GIT_OUTPUT_LIMIT = 256_000
 
 
 def attach_code_config_to_agent(agent: Agent, source: str | Path | None = None) -> None:
-    """Attach code settings without reading them until task:code is loaded."""
+    """挂载代码配置，但在加载 task:code 前不读取。"""
 
     def read_code_workspace(context: SkillContext) -> tuple[str, tuple[SkillTool, ...]]:
         if context.reference.name != "code":
@@ -40,7 +40,7 @@ def attach_code_config_to_agent(agent: Agent, source: str | Path | None = None) 
 
 
 class CodeWorkspace:
-    """Keep code-task operations inside one validated workspace."""
+    """将代码任务操作限制在一个已校验的工作区内。"""
 
     def __init__(self, settings: CodeSettings) -> None:
         self.settings = settings

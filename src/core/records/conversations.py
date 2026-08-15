@@ -1,4 +1,4 @@
-"""Explicit conversation views and changes over scoped Runtime events."""
+"""基于作用域 Runtime 事件的显式对话视图与变更。"""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Clear runtime state operations over one replaceable storage backend."""
+"""基于可替换存储后端的清晰 Runtime 状态操作。"""
 
 from __future__ import annotations
 
@@ -101,8 +101,7 @@ class EventStore:
         events = self.read_events("run", identity.run_id)
         from core.records.events import run_event_from_storage
 
-        event = run_event_from_storage(stored, len(events), identity.parent_run_id)
-        return event
+        return run_event_from_storage(stored, len(events), identity.parent_run_id)
 
     def read_run(self, run_id: str, *, include_sensitive: bool = False) -> RunSnapshot:
         from core.records.events import run_snapshot_from_events

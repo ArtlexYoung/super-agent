@@ -1,4 +1,4 @@
-"""Small, explicit decision groups built on top of the native task queue."""
+"""基于原生任务队列的小型显式决策组。"""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
 
 class AgentGroups:
-    """Apply decision-group policy to one explicit task queue."""
+    """将决策组策略应用到一条显式任务队列。"""
 
     def __init__(self, queue: TaskQueue, settings: AgentGroupSettings, create_shared_context: Callable[[str, str], dict[str, object]] | None) -> None:
         self.queue = queue

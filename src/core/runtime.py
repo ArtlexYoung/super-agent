@@ -1,4 +1,4 @@
-"""Lifecycle, identity, and mutable state for Agent runs."""
+"""Agent 运行的生命周期、身份与可变状态。"""
 
 from __future__ import annotations
 
@@ -75,7 +75,7 @@ class Run:
         return self._action_runner.execute_action(request, action)
 
     def add_cleanup(self, name: str, cleanup: Callable[[], None]) -> None:
-        """Register one run-owned cleanup before the resource becomes active."""
+        """资源激活前注册由本次运行负责的清理操作。"""
         clean_name = name.strip()
         if not clean_name or not callable(cleanup):
             raise ValueError("run cleanup requires a name and callable")
@@ -84,11 +84,11 @@ class Run:
         self._cleanup_actions.append((clean_name, cleanup))
 
     def remove_cleanup(self, cleanup: Callable[[], None]) -> None:
-        """Remove one registration when its resource activation is rolled back."""
+        """资源激活回滚时移除对应注册。"""
         self._cleanup_actions = [(name, registered) for name, registered in self._cleanup_actions if registered is not cleanup]
 
     def close(self) -> None:
-        """Close every run-owned resource once, in reverse registration order."""
+        """按注册逆序关闭所有运行资源，且只关闭一次。"""
         if self._closed: return
         self._closed = True
         cleanups, self._cleanup_actions = self._cleanup_actions, []

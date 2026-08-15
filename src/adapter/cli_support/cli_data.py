@@ -1,4 +1,4 @@
-"""Data commands and shared CLI parsing and output helpers."""
+"""提供数据命令及 CLI 共用的解析与输出工具。"""
 
 from __future__ import annotations
 

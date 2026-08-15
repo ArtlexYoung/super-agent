@@ -136,7 +136,7 @@ function HeadlessCopilotKitProvider({
   agents: Record<string, HttpAgent>
   children: ReactNode
 }) {
-  // Fine-grained public entries keep optional rich-chat renderers out of the bundle.
+  // 使用细粒度公共入口，避免将可选富对话渲染器打入产物。
   const [context] = useState(() => ({
     copilotkit: new CopilotKitCoreReact({ agents__unsafe_dev_only: agents }),
     executingToolCallIds: EMPTY_SET,

@@ -1,4 +1,4 @@
-"""Small JSON management API backed by the same Agent and Runtime state."""
+"""由同一 Agent 和 Runtime 状态支持的小型 JSON 管理 API。"""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from skill.handlers.model_management import model_skill_input_from_dict
 
 
 def read_agent_settings(value: object) -> AgentSettings:
-    """Validate the complete Web configuration payload at the HTTP boundary."""
+    """在 HTTP 边界校验完整的 Web 配置内容。"""
     data = read_object(value, "agent configuration")
     reject_unknown_fields(data, {"name", "system", "skills", "max_agent_chain_depth", "disabled_skills"}, "agent configuration fields")
     return AgentSettings(name=read_text(data.get("name"), "agent configuration name"), system=read_text(data.get("system"), "agent configuration system"), skills=read_text_list(data.get("skills", []), "agent configuration skills", lower=True), max_agent_chain_depth=read_optional_int(data.get("max_agent_chain_depth"), "max_agent_chain_depth", minimum=1), disabled_skills=read_text_list(data.get("disabled_skills", []), "agent configuration disabled_skills", lower=True))

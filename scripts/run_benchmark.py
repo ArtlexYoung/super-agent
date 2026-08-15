@@ -1,4 +1,4 @@
-"""Run reproducible Agent commands from one dependency-free benchmark manifest."""
+"""根据零依赖评测清单运行可复现的 Agent 命令。"""
 
 from __future__ import annotations
 

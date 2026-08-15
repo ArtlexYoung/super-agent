@@ -1,4 +1,4 @@
-"""Incremental, bounded repository map for the optional code Skill."""
+"""供可选代码 Skill 使用的增量有界仓库映射。"""
 
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ class _CachedMapEntry:
 
 
 class IncrementalRepositoryMap:
-    """Reuse unchanged file summaries without writing an index to disk."""
+    """复用未变化的文件摘要，不向磁盘写入索引。"""
 
     def __init__(self, root: Path, ignored_paths: list[str]) -> None:
         self.root = root.resolve()
@@ -169,7 +169,7 @@ WORKTREE_OUTPUT_LIMIT = 64_000
 
 
 class IsolatedWorktreeTools:
-    """Create and inspect detached worktrees without accepting arbitrary Git args."""
+    """创建并检查分离工作树，不接受任意 Git 参数。"""
 
     def __init__(self, repository: Path) -> None:
         self.repository = repository.resolve()

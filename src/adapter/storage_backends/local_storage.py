@@ -1,4 +1,4 @@
-"""Human-readable, zero-dependency storage for local runtime state."""
+"""面向本地 Runtime 状态的可读零依赖存储。"""
 
 from __future__ import annotations
 
@@ -148,7 +148,7 @@ class _SqliteDatabase:
 
 
 class SqliteStorage(SqlEventStorage):
-    """Use the shared SQL event contract with standard-library SQLite."""
+    """使用标准库 SQLite 实现共用 SQL 事件约定。"""
 
     def __init__(self, root: str | Path) -> None:
         self.root = Path(root).expanduser().absolute()

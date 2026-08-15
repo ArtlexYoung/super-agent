@@ -1,4 +1,4 @@
-"""Registration, validation, and execution for one Agent team."""
+"""一个 Agent 团队的注册、校验与执行。"""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 
 class TeamAgent(Protocol):
-    """The small Agent surface required for child composition."""
+    """组合子 Agent 所需的最小 Agent 接口。"""
 
     config: Any
     model_profiles: list[Any]
@@ -35,7 +35,7 @@ class SubAgent:
 
 
 class AgentTeam:
-    """Own the child Agents attached to one parent Agent."""
+    """管理挂载到一个主 Agent 的子 Agent。"""
 
     def __init__(self, owner: TeamAgent) -> None:
         self.owner = owner

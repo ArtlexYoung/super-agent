@@ -1,4 +1,4 @@
-"""Run one Agent with a project-owned task Skill."""
+"""使用项目自有的任务 Skill 运行一个 Agent。"""
 
 from pathlib import Path
 

@@ -1,4 +1,4 @@
-"""Long-term memory with explicit, event-backed changes."""
+"""通过事件支持显式变更的长期记忆。"""
 
 from __future__ import annotations
 
@@ -69,7 +69,7 @@ class UsageHabits:
 
 
 class Memory:
-    """Expose only durable memory; conversation messages are short-term memory."""
+    """仅公开长期记忆；对话消息属于短期记忆。"""
 
     def __init__(self, store: EventStore, identity: RunIdentity | None = None, settings: MemorySettings | None = None, *, execute_action: MemoryActionRunner | None = None) -> None:
         if identity is not None and execute_action is None:

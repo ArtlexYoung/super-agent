@@ -1,4 +1,4 @@
-"""Weighted subagent selection and run-scoped circuit breakers."""
+"""带权重的子 Agent 选择与运行级断路器。"""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ QUEUED_TASK_PUBLIC_FIELDS = ("task_id", "status", "purpose", "required_features"
 
 
 class AgentUnavailableError(RuntimeError):
-    """Report that no compatible Agent is currently callable."""
+    """报告当前没有可调用的兼容 Agent。"""
 
 
 @dataclass(frozen=True)
@@ -160,7 +160,7 @@ class _SelectableAgent:
 
 
 class AgentSelector:
-    """Choose available Agents and own their circuit state for one queue."""
+    """为单条队列选择可用 Agent，并管理其断路状态。"""
 
     def __init__(self, settings: TaskQueueSettings, subagents: list[dict[str, object]], record_event: EventWriter) -> None:
         self.settings = settings
@@ -202,7 +202,7 @@ class AgentSelector:
         return choice
 
     def choose_group(self, tasks: list[QueuedTask], active: dict[str, int], *, require_different_models: bool, commit: bool) -> list[SelectedAgent]:
-        """Select one distinct Agent per member and optionally require model diversity."""
+        """每个成员选择不同 Agent，并可要求模型多样性。"""
         if not tasks:
             return []
         first = tasks[0]
@@ -230,7 +230,7 @@ class AgentSelector:
         return selected
 
     def commit_group(self, choices: list[SelectedAgent]) -> None:
-        """Commit one previously previewed group without selecting or pricing it again."""
+        """提交一个已预览的组，不重新选择或计价。"""
         for choice in choices:
             self._commit_choice(choice.name)
         if self.settings.agent_selection == "rotate" and choices: self._commit_rotation(choices[0].selection_key, choices[-1].name)

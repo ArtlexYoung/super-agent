@@ -1,4 +1,4 @@
-"""Task contracts shared by Agent composition and the Runtime kernel."""
+"""Agent 组合与 Runtime 内核共用的任务约定。"""
 
 from __future__ import annotations
 

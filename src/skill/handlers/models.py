@@ -1,4 +1,4 @@
-"""Model profiles carried by model Skills or discovered as ephemeral defaults."""
+"""由模型 Skill 承载或临时发现为默认值的模型配置。"""
 
 from __future__ import annotations
 

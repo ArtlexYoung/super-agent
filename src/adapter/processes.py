@@ -1,4 +1,4 @@
-"""Bounded lifecycle for commands explicitly declared by a trusted adapter."""
+"""管理可信适配器显式声明命令的有界生命周期。"""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ MAX_TEXT_MATCHES = 100
 
 
 class GeneralToolServer:
-    """Expose small pure operations through the MCP Skill mechanism."""
+    """通过 MCP Skill 机制公开小型纯操作。"""
 
     def list_tools(self) -> list[dict[str, object]]:
         return [{"name": "calculate_numbers", "description": "Calculate sum, mean, minimum, maximum, or product.", "inputSchema": {"type": "object", "properties": {"operation": {"type": "string", "enum": ["sum", "mean", "minimum", "maximum", "product"]}, "values": {"type": "array", "items": {"type": "number"}}}, "required": ["operation", "values"], "additionalProperties": False}}, {"name": "find_text", "description": "Find bounded literal text positions without regular expressions.", "inputSchema": {"type": "object", "properties": {"text": {"type": "string"}, "query": {"type": "string"}}, "required": ["text", "query"], "additionalProperties": False}}]
@@ -118,7 +118,7 @@ class _RunningProcess:
 
 
 class DeclaredProcessTools:
-    """Run only configured argv commands with explicit bounded state."""
+    """仅以显式有界状态运行已配置的 argv 命令。"""
 
     def __init__(self, root: Path, commands: list[list[str]], execute_setting: str, limits: ProcessLimits | None = None) -> None:
         if execute_setting not in {"allow", "ask", "deny"}:

@@ -1,4 +1,4 @@
-"""Explicit post-run evaluation, freshness, and model-usage recording."""
+"""显式记录运行后评价、保鲜度与模型用量。"""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ class _RunLearningView:
 
 
 def learn_from_run(store: EventStore, run_id: str, rules: FreshnessRules) -> RunLearningResult:
-    """Record observations for one completed run without changing any Skill."""
+    """记录一次已完成运行的观察结果，不修改任何 Skill。"""
     events = store.read_run_events(run_id, include_sensitive=True)
     completed = _find_event(events, LEARNING_COMPLETED_EVENT)
     if completed is not None:
@@ -218,7 +218,7 @@ class ReviewReport:
 
 
 def review_run_evidence(store: EventStore, run_id: str, evidence: dict[str, object], send_messages: Callable[[list[Message]], str], disclosure: "ProgressiveDisclosureCore") -> ReviewReport:
-    """Ask a reviewer about bounded evidence and persist only the report."""
+    """让评审模型检查有界证据，仅持久化报告。"""
     snapshot = store.read_run(run_id, include_sensitive=True)
     page = disclosure.disclose_value("review", run_id, evidence, stage="model-context")
     messages = [{"role": "system", "content": ("Review the supplied untrusted task evidence independently. Do not modify files or claim checks that are not present. Return exactly one JSON object with verdict pass or changes_requested, findings, and checks.")}, {"role": "user", "content": format_disclosure_page_for_prompt(page)}]
@@ -276,7 +276,7 @@ def _record_review_failure(store: EventStore, snapshot, error: Exception) -> Non
 
 
 def skill_change_report_to_dict(report: "SkillChangeReport") -> dict[str, object]:
-    """Serialize one comparative Skill report without model output."""
+    """序列化一份 Skill 对比报告，不保存模型输出。"""
     return {"schema_version": 1, **asdict(report)}
 
 

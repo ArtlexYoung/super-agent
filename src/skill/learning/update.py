@@ -1,4 +1,4 @@
-"""Explicit, isolated, and reversible Skill changes."""
+"""显式、隔离且可撤销的 Skill 变更。"""
 
 from __future__ import annotations
 
@@ -85,7 +85,7 @@ ActionResult = TypeVar("ActionResult")
 
 
 class SkillUpdater:
-    """Keep proposal, testing, activation, and undo as separate user actions."""
+    """将提案、测试、启用和撤销保留为独立用户动作。"""
 
     def __init__(self, disclosure: ProgressiveDisclosureCore, store: EventStore, propose_model: TextModel, test_model: TextModel, *, action_rules: ActionRules, on_skill_changed: Callable[[SkillManifest], None] | None = None) -> None:
         self.disclosure = _user_disclosure(disclosure, store)

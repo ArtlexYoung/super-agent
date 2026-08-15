@@ -19,7 +19,7 @@ RecordEvent = Callable[[str, dict[str, object]], object]
 
 @dataclass(frozen=True)
 class DisclosureRecorder:
-    """Explicit cache and history output for an otherwise read-only Skill catalog."""
+    """只读 Skill 目录的显式缓存与历史输出。"""
 
     cache_root: Path
     history_path: Path
@@ -48,13 +48,13 @@ class ProgressiveDisclosureCore:
         return self._read_skill_sources().issues
 
     def set_event_writer(self, record_event: RecordEvent) -> None:
-        """Connect Runtime events after a storage-free catalog has been prepared."""
+        """在无存储目录准备完成后连接 Runtime 事件。"""
         if self.record_event is not None:
             raise RuntimeError("Skill disclosure event writer is already configured")
         self.record_event = record_event
 
     def prepare_skill_index(self) -> SkillIndex:
-        # One core instance owns one snapshot; later selection and disclosure never rescan roots.
+        # 一个核心实例只维护一个快照，后续选择与披露不再扫描根目录。
         scan = self._read_skill_sources()
         if scan.issues:
             messages = "; ".join(f"{issue.path}: {issue.message}" for issue in scan.issues)
@@ -69,7 +69,7 @@ class ProgressiveDisclosureCore:
         return self._index
 
     def inspect_skill_configuration(self, reference: SkillReference) -> dict[str, object]:
-        """Read indexed configuration without disclosure cache or history writes."""
+        """读取已索引配置，不写入披露缓存或历史。"""
         self.require_prepared_skill_index().require_skill(reference.name, reference.skill_type)
         return dict(self._sources_by_key[reference.key].configuration)
 
@@ -96,7 +96,7 @@ class ProgressiveDisclosureCore:
         return SkillDisclosure(self._sources_by_key[entry.reference.key], entry, self)
 
     def disclose_content(self, kind: str, name: str, content: str, *, stage: str = "content", cache_path: Path | None = None, inline_chars: int = DEFAULT_INLINE_CHARS) -> DisclosurePage:
-        """Register one source and return its first bounded page."""
+        """注册一个来源并返回其首个有界分页。"""
         clean_kind = _clean_content_label(kind, "kind")
         clean_name = _clean_content_label(name, "name")
         digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
@@ -143,7 +143,7 @@ class ProgressiveDisclosureCore:
         return read_skill_sources(self.skill_roots, self.disabled_names, self.builtin_skill_roots, self.user_skill_roots)
 
     def _remove_disabled_skill_names(self, names: list[str]) -> list[str]:
-        # Ignore a bare name only when every matching skill_type is disabled.
+        # 仅当所有同名 skill_type 均被禁用时，才忽略裸名称。
         index = self.require_prepared_skill_index()
         disabled_keys = {reference.key for reference in self._disabled_references}
         disabled_names = {reference.name for reference in self._disabled_references}

@@ -1,4 +1,4 @@
-"""Direct source-tree entry point for the CLI adapter."""
+"""CLI 适配器的源码树直接入口。"""
 
 from adapter.cli import main
 

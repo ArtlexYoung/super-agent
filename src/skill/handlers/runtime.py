@@ -1,4 +1,4 @@
-"""Trusted handlers that turn passive Skill content into Runtime behavior."""
+"""将被动 Skill 内容转为 Runtime 行为的可信处理器。"""
 
 from __future__ import annotations
 
