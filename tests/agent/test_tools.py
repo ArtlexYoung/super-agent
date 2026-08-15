@@ -31,6 +31,46 @@ from skill.handlers.mcp import McpServers, StdioMcpServer
 
 
 class SkillToolsTests(unittest.TestCase):
+    def test_run_closes_registered_resources_once_in_reverse_order(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            run = _create_session(Path(tmp))
+            closed = []
+            run.add_cleanup("first", lambda: closed.append("first"))
+            RunTools(
+                run,
+                contributions=[
+                    SkillUse(start_session=lambda _context: _RecordingSession(closed))
+                ],
+            )
+            run.add_cleanup("last", lambda: closed.append("last"))
+
+            run.close()
+            run.close()
+
+            self.assertEqual(["last", "session", "first"], closed)
+            with self.assertRaisesRegex(RuntimeError, "closed run"):
+                run.add_cleanup("late", lambda: None)
+
+    def test_run_attempts_every_cleanup_and_keeps_the_failure_name(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            run = _create_session(Path(tmp))
+            closed = []
+            run.add_cleanup("first", lambda: closed.append("first"))
+
+            def fail_cleanup() -> None:
+                closed.append("broken")
+                raise RuntimeError("close failed")
+
+            run.add_cleanup("broken resource", fail_cleanup)
+            run.add_cleanup("last", lambda: closed.append("last"))
+
+            with self.assertRaisesRegex(RuntimeError, "close failed") as raised:
+                run.close()
+
+            self.assertEqual(["last", "broken", "first"], closed)
+            self.assertIn("broken resource", " ".join(raised.exception.__notes__))
+            run.close()
+
     def test_model_discloses_then_activates_one_skill_on_demand(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -414,3 +454,22 @@ def _create_task() -> Task:
 
 def _unexpected_subagent_run(*args, **kwargs) -> dict[str, object]:
     raise AssertionError("subagent callback should not run")
+
+
+class _RecordingSession:
+    hidden_tools: tuple[str, ...] = ()
+
+    def __init__(self, closed: list[str]) -> None:
+        self.closed = closed
+
+    def list_tools(self) -> tuple[SkillTool, ...]:
+        return ()
+
+    def finish(self) -> None:
+        pass
+
+    def read_results(self) -> dict[str, object]:
+        return {}
+
+    def close(self) -> None:
+        self.closed.append("session")

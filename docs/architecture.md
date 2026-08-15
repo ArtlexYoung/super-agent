@@ -39,7 +39,7 @@ source-tree execution possible.
 | Storage protocol and records | `core/records/store.py` | Concrete JSONL, SQL, or Web I/O |
 | Scoped state store | `core/records/store.py` | Backend construction or external commands |
 | One run event log | `core/records/events.py` | Durable backend selection |
-| One run lifecycle | `core/runtime.py` | CLI, Web, or storage policy |
+| One run lifecycle and cleanup | `core/runtime.py` | CLI, Web, or storage policy |
 | Agent composition | `adapter/agent.py` | Runtime internals or storage implementations |
 | Lazy Runtime resources and child graph | `core/runtime.py`, `core/team.py` | External interfaces |
 | Task queues and groups | `skill/tasks/` | Generic Run lifecycle |
@@ -72,7 +72,7 @@ Agent.run
   -> model receives the prompt, selected context, and Skill index
   -> ModelCaller sends one measured call through core Provider adapters
   -> model returns final text or checked tool calls, including explicit use_model delegation
-  -> Runtime records completion or the exact failure
+  -> Runtime closes Run-owned resources, then records completion or the exact failure
 ```
 
 There is no keyword router, separate planner engine, or preflight controller. Planning is
@@ -149,8 +149,8 @@ The release suite verifies the claims above as behavior:
 - Stateless runs do not create storage or import optional state and update modules.
 - Disabled storage and failed Providers raise their original errors without substitution.
 - Skill changes remain four separate propose, test, apply, and undo operations.
-- Python source follows the locked `v0.1.81-v0.1.90` reduction budgets and finishes below
-  9,750 non-empty lines, while per-file, function, complexity, and directory-size limits remain
+- Python source follows the locked release reduction budgets and stays below 9,750 non-empty
+  lines, while per-file, function, complexity, and directory-size limits remain
   enforced.
 - Primitive input and persisted-record validation enters through `core.models`; domain modules
   retain only rules that carry domain-specific meaning or public error contracts.

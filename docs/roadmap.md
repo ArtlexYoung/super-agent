@@ -1974,6 +1974,18 @@ Status: implemented.
 - Preserve package transactions, remote databases, CLI management, audit retention, task queues,
   model routing, and self-evolution while reducing source to at most 9,750 non-empty Python lines.
 
+## v0.1.91: One Run Cleanup Boundary
+
+Status: implemented.
+
+- Make `Run` the owner of run-scoped cleanup registrations and close them once in reverse order.
+- Move Skill Session cleanup out of `RunTools` and make Runtime close every run after the model
+  loop on success, failure, and interrupted execution without hiding the primary exception.
+- Keep `finish()` as the explicit task-completion operation; cleanup cannot reverse external side
+  effects and remains separate from action transactions.
+- Tighten the source ceiling to 9,749 non-empty Python lines and preserve the zero-dependency
+  stateless path.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

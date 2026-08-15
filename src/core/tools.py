@@ -35,11 +35,6 @@ class RunTools:
             self._add_tools(_create_subagent_tools(self))
         self._install_contributions(contributions or [])
 
-    def close(self) -> None:
-        """Wait for all run-scoped consumers before the run is finalized."""
-        if self.skill_session is not None:
-            self.skill_session.close()
-
     def finish(self) -> None:
         if self.skill_session is not None:
             self.skill_session.finish()
@@ -162,6 +157,7 @@ class RunTools:
             raise
         if new_session is not None:
             self.skill_session = new_session
+            self.run.add_cleanup("Skill session", new_session.close)
             self._remove_tools(new_session.hidden_tools)
         if new_policy is not None:
             self.task_policy = new_policy

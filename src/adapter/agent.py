@@ -182,7 +182,7 @@ class Agent:
             self._record_task_feedback(user_id, run_id, score=score, reason=reason, source="implicit")
 
     def _run_as_subagent(self, prompt: str, parent_run: Run, *, purpose: str = "auto", required_features: tuple[str, ...] = ("text",), record_options: SubagentRecordOptions, shared_context: dict[str, object] | None = None) -> RunResult:
-        request = Task(prompt=prompt, messages=[], include_subagents=True, warning_messages=[], purpose=purpose, required_features=required_features, shared_context=shared_context, allow_subscriber_failures=parent_run.allow_subscriber_failures, subagent_record_options=record_options, subagents=self._team.create_callbacks())
+        request = Task(prompt=prompt, messages=[], include_subagents=True, warning_messages=[], purpose=purpose, required_features=required_features, shared_context=shared_context, allow_subscriber_failures=parent_run.task.allow_subscriber_failures, subagent_record_options=record_options, subagents=self._team.create_callbacks())
         return self.runtime.run_task(request, RunIdentity.create(parent_run.identity.user_id, self.config.agent.name, conversation_id=parent_run.identity.conversation_id, parent_run_id=parent_run.run_id))
 
     def _create_event_store(self, user_id: str = LOCAL_USER_ID, *, feature: str | None = None) -> EventStore:

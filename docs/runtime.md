@@ -1,7 +1,8 @@
 # Runtime
 
-`Agent.run()` is the simple entry point. `core.runtime.Runtime` owns the full run:
-identity, optional storage, event recording, model turns, actions, and completion.
+`Agent.run()` is the simple entry point. `core.runtime.Runtime` creates and closes the full
+run. `Run` is the only mutable context for one execution: it owns identity, optional storage,
+event recording, model turns, actions, active Skills, and cleanup.
 
 ```python
 from super_agent import Agent
@@ -60,6 +61,10 @@ agent.events.add_subscriber(MySubscriber())
 ```
 
 Subscribers observe immutable events and cannot replace Runtime execution.
+
+Every run-owned Session or consumer registers a cleanup with `Run`. Runtime closes those
+resources once, in reverse registration order, after the task loop on both success and failure.
+Cleanup cannot undo external file, network, or database effects; those remain explicit actions.
 
 ## Stateless and Stateful Runs
 

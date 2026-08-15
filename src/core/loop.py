@@ -12,7 +12,7 @@ from core.provider import ActionTurn, FinalTurn, Message, ModelResponse, Provide
 from skill.handlers.runtime import SkillUse, SkillAction, SkillTool, TaskPolicy
 from skill.handlers.models import ModelProfile, model_profile_is_ready, model_profile_to_dict
 from core.model_calls import ModelCaller, ModelCallContext, SelectedModel, TextModel, UNTRUSTED_CONTEXT_POLICY, assistant_tool_call_message, tool_result_message
-from core.runtime import Run, hash_checkpoint_value
+from core.runtime import Run, create_checkpoint_data, hash_checkpoint_value
 from core.tools import RunTools
 from skill.discovery.index import format_disclosure_page_for_prompt
 
@@ -88,11 +88,8 @@ class TaskRunner:
         run.record_model_used(decision.profile)
         state = self._prepare_loop(run, decision)
         run.record_event("task.scheduled", {"model": decision.to_dict(), "purpose": request.purpose, "required_features": list(request.required_features), "skills": list(state.selected_skill_names), "workflow": state.workflow.name, "selection": "task_runner"})
-        run.create_checkpoint("task-ready", _checkpoint_facts(request, state, 0))
-        try:
-            result = self._run_model_turns(run, decision, state)
-        finally:
-            state.tools.close()
+        run.record_event("run.checkpoint.created", create_checkpoint_data(run.run_id, "task-ready", _checkpoint_facts(request, state, 0)))
+        result = self._run_model_turns(run, decision, state)
         _record_task_completed(run, result, state.contributions)
         return result
 
@@ -240,7 +237,7 @@ def _create_result(run: Run, state: _LoopState, text: str, stop_reason: str) -> 
 
 def _record_model_turn(run: Run, step: int, response: ModelResponse, state: _LoopState) -> None:
     run.record_event("model.turn.completed", {"step": step, "text": response.text, "actions": [call.name for call in response.tool_calls], "stop_reason": response.stop_reason})
-    run.create_checkpoint("model-step", _checkpoint_facts(None, state, step, response))
+    run.record_event("run.checkpoint.created", create_checkpoint_data(run.run_id, "model-step", _checkpoint_facts(None, state, step, response)))
 
 
 def _checkpoint_facts(request: Task | None, state: _LoopState, step: int, response: ModelResponse | None = None) -> dict[str, object]:
@@ -268,4 +265,4 @@ def _record_task_completed(run: Run, result: RunResult, contributions: list[Skil
 
 def list_run_actions(run: Run) -> list[dict[str, object]]:
     terminal = {"action.applied": "applied", "action.blocked": "blocked", "action.failed": "failed"}
-    return [{"action_id": event.data.get("action_id", ""), "resource": event.data.get("resource", ""), "effects": event.data.get("effects", []), "status": terminal[event.event_type], "reason": event.data.get("reason", "")} for event in run.list_recorded_events() if event.event_type in terminal]
+    return [{"action_id": event.data.get("action_id", ""), "resource": event.data.get("resource", ""), "effects": event.data.get("effects", []), "status": terminal[event.event_type], "reason": event.data.get("reason", "")} for event in run.event_log.list_events() if event.event_type in terminal]
