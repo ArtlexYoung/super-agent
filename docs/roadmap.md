@@ -2053,6 +2053,17 @@ Status: implemented.
 - Keep the same lineage schema for storage-free calls with an empty reference list and tighten the
   source ceiling to 9,743 non-empty Python lines.
 
+## v0.1.98: Bounded Model Input
+
+Status: implemented.
+
+- Give every run an explicit model-input character limit and inherit the same limit through nested
+  child Agents and auxiliary text-model calls.
+- Measure the canonical Provider payload at the single call boundary, accept the exact limit, and
+  reject larger input before Provider execution without truncation, summarization, or fallback.
+- Audit accepted and rejected input size, limit, status, hashes, and the invariant that content was
+  not truncated, while tightening the source ceiling to 9,742 non-empty Python lines.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

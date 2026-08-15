@@ -87,19 +87,37 @@ class ProviderCallTests(unittest.TestCase):
         events: list[tuple[str, dict[str, object]]] = []
         messages = ({"role": "system", "content": "rules"}, {"role": "user", "content": "secret prompt"}, {"role": "assistant", "content": "work"}, {"role": "tool", "content": "private result"})
         tools = ({"type": "function", "function": {"name": "inspect", "parameters": {"type": "object"}}},)
-        call = ProviderCall("model:test", "test", "answer", messages, tools, disclosure_references=("disclosure://skill/example/hash",))
+        encoded = json.dumps({"messages": messages, "tools": tools}, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        call = ProviderCall("model:test", "test", "answer", messages, tools, disclosure_references=("disclosure://skill/example/hash",), max_input_characters=len(encoded))
 
         call_chat_model(call, MockProvider("finished"), lambda event_type, data: events.append((event_type, data)))
 
         lineage = events[0][1]["input"]
-        encoded = json.dumps({"messages": messages, "tools": tools}, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         self.assertEqual(hashlib.sha256(encoded.encode()).hexdigest(), lineage["sha256"])
+        self.assertEqual(len(encoded), lineage["characters"])
+        self.assertEqual(len(encoded), lineage["limit_characters"])
+        self.assertEqual("accepted", lineage["status"])
+        self.assertFalse(lineage["truncated"])
         self.assertEqual([0, 1, 2, 3], [item["position"] for item in lineage["messages"]])
         self.assertEqual(["runtime", "user", "model", "tool"], [item["source"] for item in lineage["messages"]])
         self.assertEqual(["inspect"], lineage["tools"]["names"])
         self.assertEqual(["disclosure://skill/example/hash"], lineage["disclosure_references"])
         self.assertNotIn("secret prompt", str(lineage))
         self.assertNotIn("private result", str(lineage))
+
+    def test_oversized_input_is_audited_and_rejected_before_provider_use(self) -> None:
+        events: list[tuple[str, dict[str, object]]] = []
+        provider = MockProvider("must not run")
+        messages = ({"role": "user", "content": "hello"},)
+        encoded = json.dumps({"messages": messages, "tools": ()}, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+        with self.assertRaisesRegex(ValueError, "max_model_input_characters"):
+            call_chat_model(ProviderCall("model:test", "test", "answer", messages, max_input_characters=len(encoded) - 1), provider, lambda event_type, data: events.append((event_type, data)))
+
+        self.assertEqual([], provider.last_messages)
+        self.assertEqual(["model.call.rejected"], [event_type for event_type, _data in events])
+        self.assertEqual("rejected", events[0][1]["input"]["status"])
+        self.assertFalse(events[0][1]["input"]["truncated"])
 
     def test_provider_failure_is_recorded_and_raised_without_fallback(self) -> None:
         events: list[tuple[str, dict[str, object]]] = []

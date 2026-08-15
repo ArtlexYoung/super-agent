@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from time import perf_counter
 from typing import Any, Callable, Iterator, Mapping, Protocol
 
-from core.models import read_object, read_optional_number, read_optional_text, read_text
+from core.models import DEFAULT_MAX_MODEL_INPUT_CHARACTERS, read_object, read_optional_number, read_optional_text, read_text
 
 Message = dict[str, Any]
 ToolDefinition = dict[str, Any]
@@ -112,6 +112,7 @@ class ProviderCall:
     pricing: ModelPricing = ModelPricing()
     selection: dict[str, object] | None = None
     disclosure_references: tuple[str, ...] = ()
+    max_input_characters: int = DEFAULT_MAX_MODEL_INPUT_CHARACTERS
 
 
 class ChatProvider(Protocol):
@@ -122,7 +123,11 @@ class ChatProvider(Protocol):
 
 def call_chat_model(call: ProviderCall, provider: ChatProvider, record_event: EventWriter) -> ModelResponse:
     input_json = json.dumps({"messages": call.messages, "tools": call.tools or ()}, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    selected = {"profile": call.profile_key, "model": call.model, "purpose": call.purpose, "pricing": call.pricing.to_dict(), "input": _model_input_audit(call, input_json), **dict(call.selection or {})}
+    input_audit = _model_input_audit(call, input_json)
+    selected = {"profile": call.profile_key, "model": call.model, "purpose": call.purpose, "pricing": call.pricing.to_dict(), "input": input_audit, **dict(call.selection or {})}
+    if input_audit["status"] == "rejected":
+        record_event("model.call.rejected", selected)
+        raise ValueError(f"model input has {len(input_json)} characters; max_model_input_characters is {call.max_input_characters}")
     record_event("model.call.selected", selected)
     input_tokens = estimate_text_tokens(input_json)
     started_at = perf_counter()
@@ -236,7 +241,8 @@ def _model_input_audit(call: ProviderCall, input_json: str) -> dict[str, object]
         messages.append({"position": position, "role": role, "source": sources.get(role, "unknown"), "sha256": hashlib.sha256(content.encode()).hexdigest(), "characters": len(str(message.get("content", "")))})
     tools = call.tools or ()
     tool_json = json.dumps(tools, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    return {"schema_version": 1, "sha256": hashlib.sha256(input_json.encode()).hexdigest(), "messages": messages, "tools": {"names": [str(tool.get("function", {}).get("name", "")) for tool in tools], "sha256": hashlib.sha256(tool_json.encode()).hexdigest()}, "disclosure_references": list(dict.fromkeys(call.disclosure_references))}
+    characters = len(input_json)
+    return {"schema_version": 1, "sha256": hashlib.sha256(input_json.encode()).hexdigest(), "characters": characters, "limit_characters": call.max_input_characters, "status": "accepted" if characters <= call.max_input_characters else "rejected", "truncated": False, "messages": messages, "tools": {"names": [str(tool.get("function", {}).get("name", "")) for tool in tools], "sha256": hashlib.sha256(tool_json.encode()).hexdigest()}, "disclosure_references": list(dict.fromkeys(call.disclosure_references))}
 
 
 def _model_response_text(response: ModelResponse) -> str:

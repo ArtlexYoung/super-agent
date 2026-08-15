@@ -14,11 +14,11 @@ if TYPE_CHECKING:
 
 
 LOCAL_USER_ID = "local"
+DEFAULT_MAX_MODEL_INPUT_CHARACTERS = 120_000
 
 
 def read_object(value: object, label: str, fields: set[str] | None = None) -> dict[str, Any]:
-    if not isinstance(value, dict):
-        raise ValueError(f"{label} must be an object")
+    if not isinstance(value, dict): raise ValueError(f"{label} must be an object")
     if fields is not None and set(value) != fields:
         missing, extra = fields - set(value), set(value) - fields
         raise ValueError(f"{label} fields differ: missing={sorted(missing)}, extra={sorted(extra)}")
@@ -26,11 +26,9 @@ def read_object(value: object, label: str, fields: set[str] | None = None) -> di
 
 
 def read_text(value: object, label: str, *, allow_empty: bool = False) -> str:
-    if not isinstance(value, str):
-        raise ValueError(f"{label} must be a string")
+    if not isinstance(value, str): raise ValueError(f"{label} must be a string")
     text = value.strip()
-    if not allow_empty and not text:
-        raise ValueError(f"{label} must be a non-empty string; it cannot be empty")
+    if not allow_empty and not text: raise ValueError(f"{label} must be a non-empty string; it cannot be empty")
     return text
 
 
@@ -39,15 +37,13 @@ def read_optional_text(value: object, label: str) -> str | None:
 
 
 def read_bool(value: object, label: str) -> bool:
-    if not isinstance(value, bool):
-        raise ValueError(f"{label} must be a boolean")
+    if not isinstance(value, bool): raise ValueError(f"{label} must be a boolean")
     return value
 
 
 def read_choice(value: object, label: str, allowed: set[str]) -> str:
     selected = read_text(value, label)
-    if selected not in allowed:
-        raise ValueError(f"{label} must be " + " or ".join(sorted(allowed)))
+    if selected not in allowed: raise ValueError(f"{label} must be " + " or ".join(sorted(allowed)))
     return selected
 
 
@@ -70,15 +66,11 @@ def read_optional_int(value: object, label: str, *, minimum: int | None = None, 
 
 
 def read_number(value: object, label: str, *, minimum: float | None = None, maximum: float | None = None) -> float:
-    if isinstance(value, bool) or not isinstance(value, int | float):
-        raise ValueError(f"{label} must be a number")
+    if isinstance(value, bool) or not isinstance(value, int | float): raise ValueError(f"{label} must be a number")
     number = float(value)
-    if not math.isfinite(number):
-        raise ValueError(f"{label} must be finite")
-    if minimum is not None and number < minimum:
-        raise ValueError(f"{label} must be at least {minimum:g}")
-    if maximum is not None and number > maximum:
-        raise ValueError(f"{label} must be at most {maximum:g}")
+    if not math.isfinite(number): raise ValueError(f"{label} must be finite")
+    if minimum is not None and number < minimum: raise ValueError(f"{label} must be at least {minimum:g}")
+    if maximum is not None and number > maximum: raise ValueError(f"{label} must be at most {maximum:g}")
     return number
 
 
@@ -87,11 +79,9 @@ def read_optional_number(value: object, label: str, *, minimum: float | None = N
 
 
 def read_text_list(value: object, label: str, *, minimum: int = 0, maximum: int | None = None, lower: bool = False) -> list[str]:
-    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
-        raise ValueError(f"{label} must be a string array")
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value): raise ValueError(f"{label} must be a string array")
     items = [item.strip().lower() if lower else item.strip() for item in value]
-    if any(not item for item in items) or len(items) != len(set(items)):
-        raise ValueError(f"{label} must contain unique non-empty strings")
+    if any(not item for item in items) or len(items) != len(set(items)): raise ValueError(f"{label} must contain unique non-empty strings")
     if len(items) < minimum or maximum is not None and len(items) > maximum:
         limit = f"{minimum} to {maximum}" if maximum is not None else f"at least {minimum}"
         raise ValueError(f"{label} must contain {limit} strings")
@@ -100,8 +90,7 @@ def read_text_list(value: object, label: str, *, minimum: int = 0, maximum: int 
 
 def reject_unknown_fields(value: Mapping[str, object], allowed: set[str], label: str) -> None:
     unknown = set(value) - allowed
-    if unknown:
-        raise ValueError(f"unknown {label}: {', '.join(sorted(unknown))}")
+    if unknown: raise ValueError(f"unknown {label}: {', '.join(sorted(unknown))}")
 
 
 def project_fields(value: object, names: tuple[str, ...]) -> dict[str, object]:
@@ -327,6 +316,7 @@ class AgentRunOptions:
     skill: str | None = None
     purpose: str = "auto"
     required_features: tuple[str, ...] = ("text",)
+    max_model_input_characters: int = DEFAULT_MAX_MODEL_INPUT_CHARACTERS
 
 
 def resolve_agent_run_options(options: AgentRunOptions | None, skill: str | None) -> AgentRunOptions | None:
@@ -393,6 +383,10 @@ class Task:
     resumed_from_run_id: str | None = None
     resume_checkpoint: dict[str, object] | None = None
     subagent_record_options: SubagentRecordOptions | None = None
+    max_model_input_characters: int = DEFAULT_MAX_MODEL_INPUT_CHARACTERS
+
+    def __post_init__(self) -> None:
+        read_int(self.max_model_input_characters, "max_model_input_characters", minimum=1)
 
 
 @dataclass(frozen=True)

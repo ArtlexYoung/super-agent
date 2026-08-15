@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable
 
 from core.checks import ActionEffect, ActionRequest
-from core.models import RunResult, Task, read_required_tool_string
+from core.models import DEFAULT_MAX_MODEL_INPUT_CHARACTERS, RunResult, Task, read_required_tool_string
 from core.provider import ActionTurn, FinalTurn, Message, ModelResponse, ProviderPool, ToolCall, read_model_turn
 from skill.handlers.runtime import SkillUse, SkillAction, SkillTool, TaskPolicy
 from skill.handlers.models import ModelProfile, model_profile_is_ready, model_profile_to_dict
@@ -93,19 +93,19 @@ class TaskRunner:
         _record_task_completed(run, result, state.contributions)
         return result
 
-    def create_text_model(self, store: EventStore | None, purpose: str, record_event: Callable[[str, dict[str, object]], object] | None = None, *, decision: SelectedModel | None = None) -> TextModel:
+    def create_text_model(self, store: EventStore | None, purpose: str, record_event: Callable[[str, dict[str, object]], object] | None = None, *, decision: SelectedModel | None = None, max_input_characters: int = DEFAULT_MAX_MODEL_INPUT_CHARACTERS) -> TextModel:
         selected = decision or self.model_caller.select_default_model()
-        return self.model_caller.create_text_model(store, purpose, selected, record_event)
+        return self.model_caller.create_text_model(store, purpose, selected, record_event, max_input_characters=max_input_characters)
 
     def _prepare_loop(self, run: Run, decision: SelectedModel) -> _LoopState:
         request = run.task
-        text_model = self.create_text_model(run.store, "skill_context", run.record_event, decision=decision)
+        text_model = self.create_text_model(run.store, "skill_context", run.record_event, decision=decision, max_input_characters=request.max_model_input_characters)
         contributions, selected_names = _load_configured_skills(run, text_model.send_messages)
         run.record_event("skills.disclosed", {"names": list(selected_names), "index_path": (None if run.skills.index.index_path is None else str(run.skills.index.index_path))})
         workflow = _select_workflow(contributions)
         if "tools" in request.required_features and not workflow.uses_tools:
             raise ValueError("task requires tools but the configured workflow is direct")
-        model_options = ModelCallOptions(request.purpose, run.record_event, run.record_model_used, run.skills.disclosure.list_disclosed_references)
+        model_options = ModelCallOptions(request.purpose, run.record_event, run.record_model_used, run.skills.disclosure.list_disclosed_references, request.max_model_input_characters)
         model_tool = _ConfiguredModelTool(tuple(self.model_profiles), self.model_caller, self.provider_pool, model_options, decision.profile.key).create_tool()
         tools = RunTools(run, contributions, send_text_model_messages=text_model.send_messages, extra_tools=() if model_tool is None else (model_tool,))
         return _LoopState(contributions, tools, _build_messages(run, contributions, workflow), workflow, selected_names, model_options)

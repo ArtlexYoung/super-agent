@@ -22,10 +22,10 @@ SOURCE_LINE_BUDGETS = {
     "0.1.90": 9_750, "0.1.91": 9_749, "0.1.92": 9_748,
     "0.1.93": 9_747, "0.1.94": 9_746, "0.1.95": 9_745,
     "0.1.96": 9_744,
-    "0.1.97": 9_743,
+    "0.1.97": 9_743, "0.1.98": 9_742,
 }
-FINAL_SOURCE_LINE_TARGET = 9_743
-MAX_TOTAL_SOURCE_LINES = SOURCE_LINE_BUDGETS["0.1.97"]
+FINAL_SOURCE_LINE_TARGET = 9_742
+MAX_TOTAL_SOURCE_LINES = SOURCE_LINE_BUDGETS["0.1.98"]
 EXPECTED_SOURCE_ROOT = {"adapter", "cli.py", "core", "skill", "super_agent.py"}
 EXPECTED_DOMAIN_CHILDREN = {
     "adapter": {

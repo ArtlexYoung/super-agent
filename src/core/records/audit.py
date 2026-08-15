@@ -88,7 +88,7 @@ class AuditPolicy:
 
 _PROTECTED_EVENT_RULE = AuditEventRule(PROTECTED)
 _DETAILED_EVENTS = frozenset(
-    "model.call.selected model.call.completed model.call.failed model.turn.completed model.used task.started task.scheduled task.completed task.plan.set task.plan.step.updated tool.requested tool.completed tool.failed skills.disclosed skills.selected content.disclosed subagent.started subagent.completed runtime.subscriber.failed "
+    "model.call.selected model.call.rejected model.call.completed model.call.failed model.turn.completed model.used task.started task.scheduled task.completed task.plan.set task.plan.step.updated tool.requested tool.completed tool.failed skills.disclosed skills.selected content.disclosed subagent.started subagent.completed runtime.subscriber.failed "
     "agent_task.created agent_task.queued agent_task.dispatched agent_task.running agent_task.completed agent_task.failed agent_task.cancelled agent_task.wait.started agent_task.wait.woke agent_task.fallback_selected agent_task.retry_scheduled agent_task.retry_dispatched agent_task.circuit_opened agent_task.circuit_half_open agent_task.circuit_closed "
     "agent_group.created agent_group.reduced agent_group.budget_exceeded agent_group.completed agent_group.wait.started agent_group.wait.woke"
     .split()

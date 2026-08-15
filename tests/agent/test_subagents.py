@@ -2,8 +2,11 @@ import tempfile
 import unittest
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from core.config import CommonConfig
+from core.models import RunIdentity, RunResult, SubagentRecordOptions
 from core.provider import MockProvider, ModelResponse, ToolCall
 from super_agent import Agent
 
@@ -126,6 +129,17 @@ class SubAgentTests(unittest.TestCase):
             self.assertEqual("reviewed", reviewer_result.text)
             self.assertTrue(coder_result.created_by_agent)
             self.assertTrue(reviewer_result.created_by_agent)
+
+    def test_subagent_inherits_the_parent_model_input_limit(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            child = _agent(Path(tmp), "child")
+            parent = SimpleNamespace(task=SimpleNamespace(allow_subscriber_failures=False, max_model_input_characters=321), identity=RunIdentity.create("user", "parent"), run_id="parent-run")
+            completed = RunResult("done", "direct", [], run_id="child-run")
+
+            with patch.object(child.runtime, "run_task", return_value=completed) as run_task:
+                child._run_as_subagent("work", parent, record_options=SubagentRecordOptions())
+
+            self.assertEqual(321, run_task.call_args.args[0].max_model_input_characters)
 
     def test_subagent_selects_its_own_task_skill(self) -> None:
         child_provider = MockProvider(

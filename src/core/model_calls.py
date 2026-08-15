@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Callable, Mapping, Protocol
 from uuid import uuid4
 
 from core.provider import Message, ModelResponse, ProviderCall, ProviderPool, ToolCall, ToolDefinition, call_chat_model
-from core.models import Conversation, read_bool, read_number, read_object, read_text
+from core.models import DEFAULT_MAX_MODEL_INPUT_CHARACTERS, Conversation, read_bool, read_number, read_object, read_text
 from skill.handlers.models import ModelProfile, model_profile_is_ready, model_profile_supports
 
 if TYPE_CHECKING:
@@ -93,6 +93,7 @@ class ModelCallOptions:
     record_event: EventWriter
     record_model_used: ModelRecorder | None = None
     list_disclosure_references: Callable[[], tuple[str, ...]] | None = None
+    max_input_characters: int = DEFAULT_MAX_MODEL_INPUT_CHARACTERS
 
 
 class ModelCaller:
@@ -113,14 +114,14 @@ class ModelCaller:
         _require_ready_profile(profile, "default", self.provider_pool.environment)
         return SelectedModel(profile=profile, selected_by="default", reason="configured default model")
 
-    def create_text_model(self, store: EventStore | None, purpose: str, decision: SelectedModel, record_event: EventWriter | None = None) -> TextModel:
+    def create_text_model(self, store: EventStore | None, purpose: str, decision: SelectedModel, record_event: EventWriter | None = None, *, max_input_characters: int = DEFAULT_MAX_MODEL_INPUT_CHARACTERS) -> TextModel:
         if store is None and record_event is None:
             raise ValueError("a text model requires storage or an event writer")
         operation_id = f"model-operation-{uuid4().hex}"
         event_writer = record_event if store is None else lambda event_type, data: store.append_model_call_event(operation_id, event_type, data)
         if event_writer is None:
             raise RuntimeError("text model event writer is not configured")
-        return _TextModel(self, event_writer, purpose.strip().lower(), decision)
+        return _TextModel(self, decision, ModelCallOptions(purpose.strip().lower(), event_writer, max_input_characters=max_input_characters))
 
     def call_model(self, messages: list[Message], decision: SelectedModel, options: ModelCallOptions, *, tools: list[ToolDefinition] | None = None) -> ModelResponse:
         profile = decision.profile
@@ -133,12 +134,11 @@ class ModelCaller:
 @dataclass(frozen=True)
 class _TextModel:
     model_caller: ModelCaller
-    record_event: EventWriter
-    purpose: str
     decision: SelectedModel
+    options: ModelCallOptions
 
     def send_messages(self, messages: list[Message]) -> str:
-        response = self.model_caller.call_model(messages, self.decision, ModelCallOptions(self.purpose, self.record_event))
+        response = self.model_caller.call_model(messages, self.decision, self.options)
         return response.text
 
 
@@ -255,4 +255,4 @@ def tool_result_message(call: ToolCall, result: dict[str, object]) -> Message:
 
 
 def _to_provider_call(decision: SelectedModel, options: ModelCallOptions, messages: list[Message], tools: list[ToolDefinition] | None) -> ProviderCall:
-    return ProviderCall(profile_key=decision.profile.key, model=decision.profile.model, purpose=options.purpose, messages=tuple(messages), tools=None if tools is None else tuple(tools), pricing=decision.profile.traits.pricing, selection={"selected_by": decision.selected_by, "reason": decision.reason, "evidence": list(decision.evidence)}, disclosure_references=(() if options.list_disclosure_references is None else options.list_disclosure_references()))
+    return ProviderCall(profile_key=decision.profile.key, model=decision.profile.model, purpose=options.purpose, messages=tuple(messages), tools=None if tools is None else tuple(tools), pricing=decision.profile.traits.pricing, selection={"selected_by": decision.selected_by, "reason": decision.reason, "evidence": list(decision.evidence)}, disclosure_references=(() if options.list_disclosure_references is None else options.list_disclosure_references()), max_input_characters=options.max_input_characters)

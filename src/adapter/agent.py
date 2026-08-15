@@ -146,7 +146,7 @@ class Agent:
         options = run_options or AgentRunOptions()
         prepared_messages, pending_turn = self._prepare_messages(prompt, user_id, messages, conversation_id, options)
         warnings = self._team.check_links() if options.include_subagents and options.check_subagent_links_before_run else []
-        request = Task(prompt=prompt, messages=prepared_messages, include_subagents=options.include_subagents, warning_messages=warnings, learn_from_conversation=options.learn_from_conversation, allow_subscriber_failures=options.allow_subscriber_failures, skill=options.skill, allowed_task_skills=() if options.skill is None else (options.skill,), resumed_from_run_id=resumed_from_run_id, resume_checkpoint=resume_checkpoint, purpose=options.purpose, required_features=options.required_features, subagents=self._team.create_callbacks())
+        request = Task(prompt=prompt, messages=prepared_messages, include_subagents=options.include_subagents, warning_messages=warnings, learn_from_conversation=options.learn_from_conversation, allow_subscriber_failures=options.allow_subscriber_failures, skill=options.skill, allowed_task_skills=() if options.skill is None else (options.skill,), resumed_from_run_id=resumed_from_run_id, resume_checkpoint=resume_checkpoint, purpose=options.purpose, required_features=options.required_features, max_model_input_characters=options.max_model_input_characters, subagents=self._team.create_callbacks())
         result = self.runtime.run_task(request, RunIdentity.create(user_id, self.config.agent.name, run_id=options.run_id, conversation_id=conversation_id), event_listener=options.event_listener)
         if pending_turn is not None:
             complete_conversation_turn(pending_turn, result)
@@ -182,7 +182,7 @@ class Agent:
             self._record_task_feedback(user_id, run_id, score=score, reason=reason, source="implicit")
 
     def _run_as_subagent(self, prompt: str, parent_run: Run, *, purpose: str = "auto", required_features: tuple[str, ...] = ("text",), record_options: SubagentRecordOptions, shared_context: dict[str, object] | None = None) -> RunResult:
-        request = Task(prompt=prompt, messages=[], include_subagents=True, warning_messages=[], purpose=purpose, required_features=required_features, shared_context=shared_context, allow_subscriber_failures=parent_run.task.allow_subscriber_failures, subagent_record_options=record_options, subagents=self._team.create_callbacks())
+        request = Task(prompt=prompt, messages=[], include_subagents=True, warning_messages=[], purpose=purpose, required_features=required_features, shared_context=shared_context, allow_subscriber_failures=parent_run.task.allow_subscriber_failures, subagent_record_options=record_options, max_model_input_characters=parent_run.task.max_model_input_characters, subagents=self._team.create_callbacks())
         return self.runtime.run_task(request, RunIdentity.create(parent_run.identity.user_id, self.config.agent.name, conversation_id=parent_run.identity.conversation_id, parent_run_id=parent_run.run_id))
 
     def _create_event_store(self, user_id: str = LOCAL_USER_ID, *, feature: str | None = None) -> EventStore:
