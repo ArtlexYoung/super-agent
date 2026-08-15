@@ -80,6 +80,10 @@ class Run:
             raise RuntimeError("cannot add cleanup to a closed run")
         self._cleanup_actions.append((clean_name, cleanup))
 
+    def remove_cleanup(self, cleanup: Callable[[], None]) -> None:
+        """Remove one registration when its resource activation is rolled back."""
+        self._cleanup_actions = [(name, registered) for name, registered in self._cleanup_actions if registered is not cleanup]
+
     def close(self) -> None:
         """Close every run-owned resource once, in reverse registration order."""
         if self._closed: return
@@ -114,8 +118,11 @@ class Run:
             opened.disclose_configuration()
             self.record_skill_used(entry)
 
-    def record_skill_used(self, entry: SkillIndexEntry) -> None:
-        self._used_skill_entries[(entry.reference.key, entry.version, entry.content_sha256)] = entry
+    def record_skill_used(self, entry: SkillIndexEntry) -> None: self.record_skills_used((entry,))
+
+    def record_skills_used(self, entries: Iterable[SkillIndexEntry]) -> None:
+        additions = {(entry.reference.key, entry.version, entry.content_sha256): entry for entry in entries}
+        self._used_skill_entries = {**self._used_skill_entries, **additions}
 
     def list_used_skill_evidence(self) -> list[dict[str, object]]:
         return [{"schema_version": 2, "key": entry.reference.key, "type": entry.reference.skill_type, "name": entry.reference.name, "version": entry.version, "content_sha256": entry.content_sha256, "function_group": entry.function_group, "agent_created": entry.agent_created, "agent_can_update": entry.agent_can_update, "freshness": entry.freshness} for entry in self._used_skill_entries.values()]

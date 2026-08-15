@@ -1986,6 +1986,17 @@ Status: implemented.
 - Tighten the source ceiling to 9,749 non-empty Python lines and preserve the zero-dependency
   stateless path.
 
+## v0.1.92: Atomic Skill Activation
+
+Status: implemented.
+
+- Validate the complete tool, task-policy, and Session contribution before changing active run
+  state, while keeping passive Skill loading separate from activation.
+- Restore tools, policy, Session, activated Skill lists, evidence, and Run cleanup registrations
+  when any activation step fails; close a newly started Session exactly once.
+- Keep failed disclosure attempts in the append-only audit trail without treating them as active
+  behavior, and tighten the source ceiling to 9,748 non-empty Python lines.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

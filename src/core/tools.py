@@ -11,6 +11,8 @@ from core.checks import ActionEffect, ActionRequest
 from skill.discovery.catalog import SkillDisclosure, SkillIndex, SkillReference, skill_index_to_dict
 from skill.discovery.index import DEFAULT_PAGE_CHARS, disclosure_page_to_dict
 
+ContributionState = tuple[dict[str, SkillTool], SkillSession | None, Callable[[], None] | None, TaskPolicy | None]
+
 
 class RunTools:
     def __init__(self, run: Run, contributions: list[SkillUse] | None = None, delegated_subagent_results: list[SubAgentResult] | None = None, *, send_text_model_messages: Callable[[list[Message]], str] | None = None, extra_tools: tuple[SkillTool, ...] = ()) -> None:
@@ -23,6 +25,7 @@ class RunTools:
         self.activated_contributions: list[SkillUse] = []
         self.delegated_subagent_results = [] if delegated_subagent_results is None else delegated_subagent_results
         self.skill_session: SkillSession | None = None
+        self._session_cleanup: Callable[[], None] | None = None
         self.task_policy: TaskPolicy | None = None
         self._session_context = SkillSessionContext(self._subagents, self._run_named_subagent, run.record_event, self._record_subagent_result, self._create_shared_context)
         self._tools: dict[str, SkillTool] = {}
@@ -35,20 +38,14 @@ class RunTools:
             self._add_tools(_create_subagent_tools(self))
         self._install_contributions(contributions or [])
 
-    def finish(self) -> None:
-        if self.skill_session is not None:
-            self.skill_session.finish()
+    def finish(self) -> None: self.skill_session.finish() if self.skill_session is not None else None
 
     def read_skill_results(self) -> dict[str, object]:
-        if self.skill_session is None:
-            return {}
-        return self.skill_session.read_results()
+        return {} if self.skill_session is None else self.skill_session.read_results()
 
-    def get_tool_definitions(self) -> list[ToolDefinition]:
-        return [tool.to_provider_definition() for tool in self._tools.values()]
+    def get_tool_definitions(self) -> list[ToolDefinition]: return [tool.to_provider_definition() for tool in self._tools.values()]
 
-    def list_tools(self) -> tuple[SkillTool, ...]:
-        return tuple(self._tools.values())
+    def list_tools(self) -> tuple[SkillTool, ...]: return tuple(self._tools.values())
 
     def run_tool_call(self, call: ToolCall) -> dict[str, object]:
         self.run.record_event("tool.requested", {"call_id": call.id, "name": call.name, "arguments": call.arguments})
@@ -83,19 +80,13 @@ class RunTools:
         self._validate_new_tools(tools)
         self._tools.update({tool.name: tool for tool in tools})
 
-    def _remove_tools(self, names: tuple[str, ...]) -> None:
-        for name in names:
-            self._tools.pop(name, None)
-
     def _validate_new_tools(self, tools: tuple[SkillTool, ...]) -> None:
         names = [tool.name for tool in tools]
-        if len(names) != len(set(names)):
-            raise ValueError("Skill contribution contains duplicate tool names")
-        for tool in tools:
-            if not isinstance(tool.action, SkillAction):
-                raise TypeError(f"Skill tool must declare an action: {tool.name}")
-            if tool.name in self._tools:
-                raise ValueError(f"runtime tool name already exists: {tool.name}")
+        if len(names) != len(set(names)): raise ValueError("Skill contribution contains duplicate tool names")
+        invalid = next((tool for tool in tools if not isinstance(tool.action, SkillAction)), None)
+        if invalid is not None: raise TypeError(f"Skill tool must declare an action: {invalid.name}")
+        duplicate = next((tool.name for tool in tools if tool.name in self._tools), None)
+        if duplicate is not None: raise ValueError(f"runtime tool name already exists: {duplicate}")
 
     def _list_skills(self, arguments: dict[str, object]) -> dict[str, object]:
         return skill_index_to_dict(self.run.skills.index)
@@ -134,57 +125,78 @@ class RunTools:
 
     def _activate_reference(self, reference: SkillReference) -> list[tuple[SkillReference, SkillUse]]:
         loaded = self._load_reference_tree(reference, set())
-        self._install_contributions([item for _reference, item in loaded])
-        for item, loaded_contribution in loaded:
-            self._record_loaded_skill(item)
-            self._activated_skill_keys.add(item.key)
-            if item.skill_type == "task":
-                self._active_task_skill = item.key
-            self.activated_contributions.append(loaded_contribution)
+        entries = [self.run.skills.index.require_skill(item.name, item.skill_type) for item, _contribution in loaded]
+        previous_state: ContributionState = dict(self._tools), self.skill_session, self._session_cleanup, self.task_policy
+        previous_keys, previous_task = set(self._activated_skill_keys), self._active_task_skill
+        previous_names, previous_contributions = len(self.used_skill_names), len(self.activated_contributions)
+        try:
+            self._install_contributions([item for _reference, item in loaded])
+            for (item, loaded_contribution), entry in zip(loaded, entries, strict=True):
+                self._activated_skill_keys.add(item.key)
+                if item.skill_type == "task": self._active_task_skill = item.key
+                if item.key not in self.used_skill_names: self.used_skill_names.append(item.key)
+                self.activated_contributions.append(loaded_contribution)
+            self.run.record_skills_used(entries)
+        except Exception as error:
+            self._restore_contribution_state(previous_state, error)
+            self._activated_skill_keys, self._active_task_skill = previous_keys, previous_task
+            del self.used_skill_names[previous_names:]; del self.activated_contributions[previous_contributions:]
+            raise
         return loaded
 
     def _install_contributions(self, contributions: list[SkillUse]) -> None:
-        new_policy = self._read_new_task_policy(contributions)
-        new_session = self._start_session(contributions)
-        tools = [tool for item in contributions for tool in item.tools]
-        if new_session is not None:
-            tools.extend(new_session.list_tools())
+        new_policy, starters, tools = self._prepare_contributions(contributions)
+        new_session = None if not starters else starters[0](self._session_context)
+        cleanup = None if new_session is None else new_session.close
         try:
-            self._add_tools(tuple(tools))
-        except Exception:
-            if new_session is not None:
-                new_session.close()
+            self._finish_contribution_install(new_policy, new_session, cleanup, tools)
+        except Exception as error:
+            self._cancel_contribution_install(new_session, cleanup, error)
             raise
-        if new_session is not None:
-            self.skill_session = new_session
-            self.run.add_cleanup("Skill session", new_session.close)
-            self._remove_tools(new_session.hidden_tools)
-        if new_policy is not None:
-            self.task_policy = new_policy
+
+    def _finish_contribution_install(self, new_policy: TaskPolicy | None, new_session: SkillSession | None, cleanup: Callable[[], None] | None, tools: tuple[SkillTool, ...]) -> None:
+        session_tools = () if new_session is None else new_session.list_tools()
+        self._validate_new_tools((*tools, *session_tools))
+        if cleanup is not None: self.run.add_cleanup("Skill session", cleanup)
+        hidden = () if new_session is None else new_session.hidden_tools
+        self._tools = {name: tool for name, tool in {**self._tools, **{tool.name: tool for tool in (*tools, *session_tools)}}.items() if name not in hidden}
+        if new_session is not None: self.skill_session, self._session_cleanup = new_session, cleanup
+        if new_policy is not None: self.task_policy = new_policy
+
+    def _cancel_contribution_install(self, new_session: SkillSession | None, cleanup: Callable[[], None] | None, error: Exception) -> None:
+        if cleanup is not None: self.run.remove_cleanup(cleanup)
+        if new_session is None: return
+        try: new_session.close()
+        except Exception as cleanup_error: error.add_note(f"Skill activation cleanup failed: {cleanup_error}")
+
+    def _prepare_contributions(self, contributions: list[SkillUse]) -> tuple[TaskPolicy | None, list[Callable[[SkillSessionContext], SkillSession]], tuple[SkillTool, ...]]:
+        new_policy = self._read_new_task_policy(contributions)
+        starters = [item.start_session for item in contributions if item.start_session]
+        if len(starters) > 1 or starters and self.skill_session is not None: raise ValueError("only one stateful Skill can be active in a run")
+        tools = tuple(tool for item in contributions for tool in item.tools)
+        self._validate_new_tools(tools)
+        return new_policy, starters, tools
+
+    def _restore_contribution_state(self, state: ContributionState, primary_error: Exception) -> None:
+        tools, previous_session, previous_cleanup, policy = state
+        current_session, current_cleanup = self.skill_session, self._session_cleanup
+        self._tools, self.skill_session, self._session_cleanup, self.task_policy = tools, previous_session, previous_cleanup, policy
+        if current_session is previous_session: return
+        if current_cleanup is not None: self.run.remove_cleanup(current_cleanup)
+        if current_session is not None:
+            try: current_session.close()
+            except Exception as cleanup_error: primary_error.add_note(f"Skill activation rollback failed: {cleanup_error}")
 
     def _read_new_task_policy(self, contributions: list[SkillUse]) -> TaskPolicy | None:
         new_policies = [item.task_policy for item in contributions if item.task_policy is not None]
-        if len(new_policies) > 1:
-            raise ValueError("activate at most one task or workflow Skill")
-        if new_policies and self.task_policy is not None:
-            raise ValueError("only one task or workflow Skill can be active in a run")
+        if len(new_policies) > 1: raise ValueError("activate at most one task or workflow Skill")
+        if new_policies and self.task_policy is not None: raise ValueError("only one task or workflow Skill can be active in a run")
         return new_policies[0] if new_policies else None
 
-    def _start_session(self, contributions: list[SkillUse]) -> SkillSession | None:
-        starters = [item.start_session for item in contributions if item.start_session]
-        if not starters:
-            return None
-        if len(starters) > 1 or self.skill_session is not None:
-            raise ValueError("only one stateful Skill can be active in a run")
-        return starters[0](self._session_context)
-
     def _load_reference_tree(self, reference: SkillReference, loading: set[str]) -> list[tuple[SkillReference, SkillUse]]:
-        if reference.key in self._activated_skill_keys:
-            return []
-        if reference.key in loading:
-            raise ValueError(f"Skill activation cycle: {reference.key}")
-        if self.run.skills.handlers.find(reference.skill_type) is None:
-            raise KeyError(f"Skill handler not found for Skill type: {reference.skill_type}")
+        if reference.key in self._activated_skill_keys: return []
+        if reference.key in loading: raise ValueError(f"Skill activation cycle: {reference.key}")
+        if self.run.skills.handlers.find(reference.skill_type) is None: raise KeyError(f"Skill handler not found for Skill type: {reference.skill_type}")
         contribution = self.run.load_skill(reference, self._send_text_model_messages)
         loaded = [(reference, contribution)]
         next_loading = loading | {reference.key}
@@ -194,31 +206,24 @@ class RunTools:
         return loaded
 
     def _check_task_skill_access(self, reference: SkillReference) -> None:
-        if reference.skill_type != "task":
-            return
-        if self.run.task.allowed_task_skills and reference.name not in self.run.task.allowed_task_skills:
-            raise PermissionError(f"task Skill is outside this run's allowed Skills: {reference.key}")
-        if self._active_task_skill not in {None, reference.key}:
-            raise PermissionError(f"only one task Skill can be active in a run: {self._active_task_skill}, {reference.key}")
+        if reference.skill_type != "task": return
+        if self.run.task.allowed_task_skills and reference.name not in self.run.task.allowed_task_skills: raise PermissionError(f"task Skill is outside this run's allowed Skills: {reference.key}")
+        if self._active_task_skill not in {None, reference.key}: raise PermissionError(f"only one task Skill can be active in a run: {self._active_task_skill}, {reference.key}")
 
     def list_subagents(self, arguments: dict[str, object]) -> dict[str, object]:
-        if not self._subagents:
-            raise RuntimeError("subagent tools require subagents added in code")
+        if not self._subagents: raise RuntimeError("subagent tools require subagents added in code")
         return {"subagents": self.run.task.subagents.list_subagents()}
 
     def run_subagent(self, arguments: dict[str, object]) -> dict[str, object]:
-        if not self._subagents:
-            raise RuntimeError("subagent tools require subagents added in code")
+        if not self._subagents: raise RuntimeError("subagent tools require subagents added in code")
         return self._run_named_subagent(read_required_tool_string(arguments, "name"), read_required_tool_string(arguments, "prompt"))
 
     def _run_named_subagent(self, name: str, prompt: str, record_options: SubagentRecordOptions | None = None, shared_context: dict[str, object] | None = None) -> dict[str, object]:
         value = self.run.task.subagents.run_named_subagent(name, prompt, self.run, record_options or SubagentRecordOptions(), shared_context)
-        if record_options is None:
-            self._record_subagent_result(value)
+        if record_options is None: self._record_subagent_result(value)
         return value
 
-    def _record_subagent_result(self, value: dict[str, object]) -> None:
-        self.delegated_subagent_results.append(_read_subagent_result(value))
+    def _record_subagent_result(self, value: dict[str, object]) -> None: self.delegated_subagent_results.append(_read_subagent_result(value))
 
     def _create_shared_context(self, group_id: str, content: str) -> dict[str, object]:
         page = self.run.skills.disclosure.disclose_content("agent-group", group_id, content, stage="group-context")
@@ -241,15 +246,6 @@ class RunTools:
         name = read_required_tool_string(arguments, "name")
         skill_type = read_optional_tool_string(arguments, "type")
         return self.run.skills.disclosure.open_skill(name, expected_type=skill_type)
-
-    def _record_loaded_skill(self, reference: SkillReference) -> None:
-        entry = self.run.skills.index.require_skill(reference.name, reference.skill_type)
-        if self.run.skills.handlers.find(reference.skill_type) is None:
-            raise KeyError(f"Skill handler not found for Skill type: {reference.skill_type}")
-        self.run.record_skill_used(entry)
-        if reference.key not in self.used_skill_names:
-            self.used_skill_names.append(reference.key)
-
 
 def _create_disclosure_tools(run_tools: RunTools, skill_index: SkillIndex, *, records_cache: bool) -> tuple[SkillTool, ...]:
     reference = _skill_reference_properties(skill_index)

@@ -31,6 +31,30 @@ from skill.handlers.mcp import McpServers, StdioMcpServer
 
 
 class SkillToolsTests(unittest.TestCase):
+    def test_dynamic_skill_activation_rolls_back_every_changed_part(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_prompt_skill(root, "stateful", skill_type="stateful")
+            closed: list[str] = []
+            session = _create_session(root)
+            session.skills.handlers.add(_StatefulHandler(closed))
+            tools = _create_tool_router(session.skills.disclosure, session.skills.index, session)
+            before_tools = {tool.name for tool in tools.list_tools()}
+
+            def fail_record(_entries) -> None:
+                raise RuntimeError("recording activation failed")
+
+            session.record_skills_used = fail_record
+            with self.assertRaisesRegex(RuntimeError, "recording activation failed"):
+                tools.run_tool_call(ToolCall("activate", "activate_skill", {"name": "stateful", "type": "stateful"}))
+
+            self.assertEqual(before_tools, {tool.name for tool in tools.list_tools()})
+            self.assertEqual([], tools.used_skill_names)
+            self.assertEqual([], tools.activated_contributions)
+            self.assertEqual(["session"], closed)
+            session.close()
+            self.assertEqual(["session"], closed)
+
     def test_run_closes_registered_resources_once_in_reverse_order(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             run = _create_session(Path(tmp))
@@ -351,12 +375,12 @@ class SkillToolsTests(unittest.TestCase):
             )
 
 
-def _write_prompt_skill(root: Path, name: str) -> None:
+def _write_prompt_skill(root: Path, name: str, *, skill_type: str = "prompt") -> None:
     skill_dir = root / "skills" / name
     skill_dir.mkdir(parents=True)
     (skill_dir / "skill.toml").write_text(
         f"""
-type = "prompt"
+type = "{skill_type}"
 description = "Research helper"
 
 """.strip(),
@@ -473,3 +497,15 @@ class _RecordingSession:
 
     def close(self) -> None:
         self.closed.append("session")
+
+
+class _StatefulHandler:
+    skill_type = "stateful"
+    adds_model_context = False
+
+    def __init__(self, closed: list[str]) -> None:
+        self.closed = closed
+
+    def handle_skill(self, context: SkillContext) -> SkillUse:
+        tool = SkillTool("stateful_tool", "A test tool.", {}, lambda _arguments: {}, action=SkillAction((ActionEffect.READ,), "stateful"))
+        return SkillUse(tools=(tool,), start_session=lambda _session_context: _RecordingSession(self.closed))

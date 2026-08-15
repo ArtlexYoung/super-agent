@@ -66,6 +66,11 @@ Every run-owned Session or consumer registers a cleanup with `Run`. Runtime clos
 resources once, in reverse registration order, after the task loop on both success and failure.
 Cleanup cannot undo external file, network, or database effects; those remain explicit actions.
 
+Dynamic Skill activation validates the complete contribution before changing Runtime tools. A
+failed activation restores the previous tools, task policy, Session, Skill evidence, and cleanup
+registrations. Passive disclosure and cache reads may remain in the audit trail, but they do not
+make the failed Skill active.
+
 ## Stateless and Stateful Runs
 
 `Agent()` is stateless by default. Run events are still returned in `RunResult.events`, but
