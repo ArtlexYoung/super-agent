@@ -149,21 +149,23 @@ class SkillUpdateTests(unittest.TestCase):
                     )
                 ],
             )
+            preview = updater.preview_skill_change(change.change_id)
 
             applied = updater.apply_skill_change(change.change_id)
             user_path = agent._create_event_store("alice").private_root / "skills" / "prompt" / "writer"
             restored = updater.undo_skill_change(change.change_id)
 
             self.assertTrue(report.passed)
+            self.assertEqual("override", preview["operation"])
+            self.assertEqual(["SKILL.md", "skill.toml"], preview["files"]["updated"])
+            self.assertTrue(preview["can_apply"])
             self.assertEqual("0.1.1", applied.version)
             self.assertFalse(user_path.exists())
             self.assertIsNotNone(restored)
             self.assertEqual("0.1.0", restored.version)
             self.assertEqual("Original instructions.\n", skill.joinpath("SKILL.md").read_text())
-            event_types = [
-                event.event_type
-                for event in agent._create_event_store("alice").read_events("skill_change")
-            ]
+            events = agent._create_event_store("alice").read_events("skill_change")
+            event_types = [event.event_type for event in events]
             self.assertEqual(
                 [
                     "skill_change.proposed",
@@ -173,8 +175,33 @@ class SkillUpdateTests(unittest.TestCase):
                 ],
                 event_types,
             )
+            self.assertEqual(preview, next(event for event in events if event.event_type == "skill_change.applied").data["impact"])
             action_events = agent._create_event_store("alice").read_events("action")
             self.assertEqual(4, len([item for item in action_events if item.event_type == "action.applied"]))
+
+    def test_failed_activation_restores_skill_and_refreshes_the_restored_version(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            skill = _write_project(root)
+            agent = Agent(CommonConfig.create_default(root), provider=SequenceProvider([_proposal("Candidate instructions.\n"), "required", "baseline"]), use_storage=True)
+            updater = agent.for_user("alice").skills.create_skill_updater()
+            change = updater.propose_skill_change("writer", "make output precise")
+            updater.test_skill_change(change.change_id, [SkillChangeCase("required", "write", expected_output_contains=["required"])])
+            refreshed_versions: list[str] = []
+
+            def refresh(manifest) -> None:
+                refreshed_versions.append(manifest.version)
+                if len(refreshed_versions) == 1: raise RuntimeError("refresh failed")
+
+            updater.on_skill_changed = refresh
+            with self.assertRaisesRegex(RuntimeError, "refresh failed"):
+                updater.apply_skill_change(change.change_id)
+
+            private_root = agent._create_event_store("alice").private_root
+            self.assertEqual(["0.1.1", "0.1.0"], refreshed_versions)
+            self.assertEqual("Original instructions.\n", skill.joinpath("SKILL.md").read_text())
+            self.assertFalse((private_root / "skills" / "prompt" / "writer").exists())
+            self.assertFalse((private_root / "skill-changes" / "history" / change.change_id).exists())
 
 
 def _write_project(root: Path) -> Path:

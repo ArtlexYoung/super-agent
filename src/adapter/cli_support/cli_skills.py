@@ -33,12 +33,12 @@ def configure_skills_parser(parser: argparse.ArgumentParser) -> None:
 
 
 def configure_skill_changes_parser(parser: argparse.ArgumentParser) -> None:
-    commands = add_subcommand_parsers(parser, "skill_change_command", (("propose", "propose an isolated Skill change"), ("test", "test a change without applying it"), ("apply", "apply a passing Skill change"), ("undo", "undo an applied Skill change"), ("list", "list proposed Skill changes")))
+    commands = add_subcommand_parsers(parser, "skill_change_command", (("propose", "propose an isolated Skill change"), ("test", "test a change without applying it"), ("preview", "preview a Skill activation"), ("apply", "apply a passing Skill change"), ("undo", "undo an applied Skill change"), ("list", "list proposed Skill changes")))
     add_config_and_user_options(commands["propose"], config_default="common.toml")
     commands["propose"].add_argument("--name", required=True)
     commands["propose"].add_argument("--goal", required=True)
     commands["propose"].add_argument("--type", dest="skill_type")
-    for name in ("test", "apply", "undo"):
+    for name in ("test", "preview", "apply", "undo"):
         add_config_and_user_options(commands[name], config_default="common.toml")
         commands[name].add_argument("--change-id", required=True)
     commands["test"].add_argument("--cases", required=True)
@@ -80,7 +80,7 @@ def run_skills_command(args: argparse.Namespace) -> int:
 
 
 def run_skill_changes_command(args: argparse.Namespace) -> int:
-    handlers = {name: _run_skill_change for name in ("propose", "test", "apply", "undo", "list")}
+    handlers = {name: _run_skill_change for name in ("propose", "test", "preview", "apply", "undo", "list")}
     return run_selected_cli_command(args, "skill_change_command", handlers, "skills changes command is required")
 
 
@@ -151,6 +151,8 @@ def _run_skill_change(args: argparse.Namespace) -> int:
     elif command == "test":
         report = updater.test_skill_change(args.change_id, _read_change_cases(Path(args.cases)))
         print(f"Skill change test {report.report_id}: {'passed' if report.passed else 'failed'} score={report.score:.4f}")
+    elif command == "preview":
+        return print_cli_json(updater.preview_skill_change(args.change_id))
     elif command == "apply":
         manifest = updater.apply_skill_change(args.change_id)
         print(f"Applied Skill change: {manifest.skill_type}:{manifest.name}@{manifest.version}")

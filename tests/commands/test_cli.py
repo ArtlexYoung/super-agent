@@ -71,7 +71,7 @@ class CliTests(unittest.TestCase):
                 "list", "index", "freshness", "validate", "graph",
                 "changes", "packages", "models",
             },
-            ("skills", "changes"): {"propose", "test", "apply", "undo", "list"},
+            ("skills", "changes"): {"propose", "test", "preview", "apply", "undo", "list"},
             ("skills", "packages"): {"lock", "pack", "install", "update", "remove"},
             ("skills", "models"): {"list", "resolve", "save", "remove"},
             ("data",): {"conversations", "memory", "runs", "storage"},

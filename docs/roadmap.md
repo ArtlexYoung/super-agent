@@ -2031,6 +2031,17 @@ Status: implemented.
 - Keep configuration changes explicit between runs and tighten the source ceiling to 9,745
   non-empty Python lines.
 
+## v0.1.96: Previewed Skill Activation
+
+Status: implemented.
+
+- Preview a proposed Skill activation as an explicit create, override, or update with exact
+  versions, hashes, changed files, matching test evidence, and readiness to apply.
+- Reuse that impact report in the successful activation event and expose the read-only preview
+  through both Python and CLI before any directory replacement occurs.
+- Restore the previous Skill and refresh its actual manifest when activation callbacks fail,
+  remove incomplete history, and tighten the source ceiling to 9,744 non-empty Python lines.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof
