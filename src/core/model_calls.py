@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from copy import deepcopy
 from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING, Callable, Mapping, Protocol
 from uuid import uuid4
@@ -46,11 +47,9 @@ class ModelUsageStats:
     average_cost: float
 
     @property
-    def reliability(self) -> float:
-        return self.success_count / self.call_count if self.call_count else 0.0
+    def reliability(self) -> float: return self.success_count / self.call_count if self.call_count else 0.0
 
-    def to_dict(self) -> dict[str, object]:
-        return {**asdict(self), "reliability": self.reliability}
+    def to_dict(self) -> dict[str, object]: return {**asdict(self), "reliability": self.reliability}
 
 
 @dataclass(frozen=True)
@@ -61,7 +60,7 @@ class ModelAssignment:
     evidence: tuple[str, ...]
 
 
-def assign_model_for_task(profiles: list[ModelProfile], purpose: str, required_features: tuple[str, ...], usage: list[ModelUsageStats]) -> ModelAssignment:
+def assign_model_for_task(profiles: list[ModelProfile] | tuple[ModelProfile, ...], purpose: str, required_features: tuple[str, ...], usage: list[ModelUsageStats]) -> ModelAssignment:
     required = {item.strip().lower() for item in required_features if item.strip()}
     candidates = [profile for profile in profiles if model_profile_supports(profile, required)]
     if not candidates:
@@ -97,8 +96,8 @@ class ModelCallOptions:
 
 class ModelCaller:
 
-    def __init__(self, model_profiles: list[ModelProfile], provider_pool: ProviderPool) -> None:
-        self.model_profiles = list(model_profiles)
+    def __init__(self, model_profiles: list[ModelProfile] | tuple[ModelProfile, ...], provider_pool: ProviderPool) -> None:
+        self.model_profiles = tuple(deepcopy(model_profiles))
         self.provider_pool = provider_pool
 
     def select_task_model(self, purpose: str, required_features: tuple[str, ...], store: EventStore | None) -> SelectedModel:

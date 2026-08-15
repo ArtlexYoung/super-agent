@@ -60,7 +60,7 @@ class ProgressiveDisclosureCore:
             messages = "; ".join(f"{issue.path}: {issue.message}" for issue in scan.issues)
             raise ValueError(f"invalid skill sources: {messages}")
         cache_root = None if self.recorder is None else self.recorder.cache_root
-        entries = [_build_index_entry(source, cache_root, self.freshness_stats) for source in scan.sources]
+        entries = tuple(_build_index_entry(source, cache_root, self.freshness_stats) for source in scan.sources)
         self._index = SkillIndex(entries, index_path=None if cache_root is None else cache_root / "index.json", history_path=None if self.recorder is None else self.recorder.history_path)
         self._sources_by_key = {source.reference.key: source for source in scan.sources}
         self._disabled_references = scan.disabled_references
@@ -229,8 +229,8 @@ def _build_index_entry(source: SkillSource, cache_root: Path | None, stats: Mapp
         reference=source.reference,
         description=manifest.description,
         version=manifest.version,
-        provides=list(manifest.provides),
-        requires=list(manifest.requires),
+        provides=tuple(manifest.provides),
+        requires=tuple(manifest.requires),
         manifest_cache_path=None if skill_root is None else skill_root / "manifest.json",
         instructions_cache_path=None if skill_root is None else skill_root / "instructions.md",
         configuration_cache_path=None if skill_root is None else skill_root / "configuration.json",

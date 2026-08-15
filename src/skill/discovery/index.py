@@ -192,8 +192,8 @@ class SkillIndexEntry:
     reference: SkillReference
     description: str
     version: str
-    provides: list[str]
-    requires: list[str]
+    provides: tuple[str, ...]
+    requires: tuple[str, ...]
     manifest_cache_path: Path | None
     instructions_cache_path: Path | None
     configuration_cache_path: Path | None
@@ -220,13 +220,13 @@ class SkillSelectionDecision:
 
 @dataclass(frozen=True)
 class SkillIndex:
-    entries: list[SkillIndexEntry]
+    entries: tuple[SkillIndexEntry, ...]
     index_path: Path | None = None
     history_path: Path | None = None
     _entries_by_key: dict[str, SkillIndexEntry] = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "_entries_by_key", {entry.reference.key: entry for entry in self.entries})
+        object.__setattr__(self, "entries", tuple(self.entries)); object.__setattr__(self, "_entries_by_key", {entry.reference.key: entry for entry in self.entries})
 
     def find_skill(self, name: str, expected_type: str | None = None) -> SkillIndexEntry | None:
         clean_name = _clean_name(name)
@@ -360,7 +360,7 @@ def _clean_name(name: str) -> str:
     return value
 
 
-def _providers_by_type(entries: list[SkillIndexEntry]) -> dict[str, list[SkillIndexEntry]]:
+def _providers_by_type(entries: tuple[SkillIndexEntry, ...]) -> dict[str, list[SkillIndexEntry]]:
     providers: dict[str, list[SkillIndexEntry]] = {}
     for entry in entries:
         for skill_type in entry.provides:

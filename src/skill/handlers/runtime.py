@@ -216,7 +216,7 @@ class Skills:
 
     def __init__(self, disclosure: ProgressiveDisclosureCore, handlers: SkillHandlers | None = None) -> None:
         self.disclosure = disclosure
-        self.handlers = handlers or SkillHandlers()
+        self.handlers = SkillHandlers(() if handlers is None else handlers.list())
         self.index = disclosure.prepare_skill_index()
 
     def open(self, reference: SkillReference) -> SkillDisclosure: return self.disclosure.open_skill(reference.name, reference.skill_type)

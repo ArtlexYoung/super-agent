@@ -2020,6 +2020,17 @@ Status: implemented.
 - Reject foreign user or Agent event snapshots before projection and tighten the source ceiling
   to 9,746 non-empty Python lines.
 
+## v0.1.95: Stable Run Inputs
+
+Status: implemented.
+
+- Give each `Skills` instance an independent trusted Handler table so registration changes affect
+  only later runs, while source hashes continue to reject Skill files changed after indexing.
+- Freeze the indexed Skill collection and dependency declarations, and make `ModelCaller` own a
+  deep immutable-profile collection shared by every model choice in one task.
+- Keep configuration changes explicit between runs and tighten the source ceiling to 9,745
+  non-empty Python lines.
+
 ## Release Gate
 
 The project will not move to `1.0` because of feature count. The gate is reproducible proof

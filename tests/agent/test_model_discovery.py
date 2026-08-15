@@ -32,6 +32,7 @@ from skill.handlers.package import validate_skill_replacement
 from skill.learning.update import SkillChangeCase
 from skill.learning.records import read_evaluation_records
 from core.model_calls import (
+    ModelCaller,
     ModelUsageStats,
     assign_model_for_task,
 )
@@ -39,6 +40,15 @@ from support import RecordingProvider, SequenceProvider
 
 
 class ModelSkillTests(unittest.TestCase):
+    def test_model_caller_locks_a_deep_profile_snapshot(self) -> None:
+        profile = _profile_for_assignment("stable", default=True, quality=0.8)
+        caller = ModelCaller([profile], ProviderPool({}))
+
+        profile.traits.supports.append("tools")
+
+        self.assertIsInstance(caller.model_profiles, tuple)
+        self.assertEqual(["text"], caller.model_profiles[0].traits.supports)
+
     def test_model_definition_round_trips_one_configuration_shape(self) -> None:
         definition = ModelDefinition.from_dict({
             "provider": "mock",

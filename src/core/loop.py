@@ -78,9 +78,9 @@ class TaskRunner:
     def __init__(self, model_profiles: list[ModelProfile], provider_pool: ProviderPool) -> None:
         if not model_profiles:
             raise RuntimeError("No model is configured. Add a model Skill, configure a provider through the environment, or pass provider= to Agent.")
-        self.model_profiles = list(model_profiles)
         self.provider_pool = provider_pool
-        self.model_caller = ModelCaller(self.model_profiles, provider_pool)
+        self.model_caller = ModelCaller(model_profiles, provider_pool)
+        self.model_profiles = self.model_caller.model_profiles
 
     def run_task(self, run: Run) -> RunResult:
         request = run.task

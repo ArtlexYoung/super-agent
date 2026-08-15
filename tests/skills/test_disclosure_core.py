@@ -77,6 +77,7 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
         run_fields = {field.name for field in fields(Run)}
 
         self.assertIs(skills.index, skills.disclosure.require_prepared_skill_index())
+        self.assertIsInstance(skills.index.entries, tuple)
         self.assertIn("skills", run_fields)
         self.assertFalse(
             {"skill_disclosure", "skill_index", "skill_handlers"} & run_fields
@@ -96,6 +97,7 @@ class ProgressiveDisclosureCoreTests(unittest.TestCase):
             )
             self.assertIsNone(index.index_path)
             self.assertIsNone(index.history_path)
+            self.assertTrue(all(isinstance(value, tuple) for entry in index.entries for value in (entry.provides, entry.requires)))
             self.assertFalse((root / "state").exists())
             prompt = index.build_progressive_disclosure_prompt()
             self.assertIn("prompt:echo", prompt)

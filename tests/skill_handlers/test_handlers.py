@@ -8,6 +8,7 @@ from skill.handlers.runtime import (
     SkillAction,
     SkillContext,
     SkillHandlers,
+    Skills,
     SkillUse,
     SkillTool,
     TaskPolicy,
@@ -51,6 +52,16 @@ class SkillHandlersTests(unittest.TestCase):
 
         handlers.add(second, replace=True)
         self.assertIs(second, handlers.find("custom"))
+
+    def test_skills_lock_the_handler_table_for_one_run(self) -> None:
+        handlers = SkillHandlers()
+        first = _ResultHandler("custom")
+        handlers.add(first)
+        skills = Skills(ProgressiveDisclosureCore([]), handlers)
+
+        handlers.add(_ResultHandler("custom"), replace=True)
+
+        self.assertIs(first, skills.handlers.find("custom"))
 
     def test_handlers_validate_results(self) -> None:
         context = SkillContext(
