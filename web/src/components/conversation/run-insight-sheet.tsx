@@ -1,4 +1,4 @@
-import { Activity, BrainCircuit, Clock3, Sparkles } from "lucide-react"
+import { Activity, BrainCircuit, Clock3, Coins, Sparkles } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
@@ -55,7 +55,7 @@ function RunInsightContent({ insight }: { insight: RunInsight }) {
           <Metric label="结束原因" value={snapshot.stop_reason || "-"} />
         </div>
         <p className="mt-3 rounded-md bg-muted/60 p-3 text-sm leading-6">
-          {snapshot.prompt}
+          {contentSummary(snapshot.prompt)}
         </p>
       </section>
 
@@ -68,29 +68,46 @@ function RunInsightContent({ insight }: { insight: RunInsight }) {
                 <span className="insight-index">{index + 1}</span>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">
-                    {textValue(call.profile) ||
-                      textValue(call.model) ||
-                      "model"}
+                    {modelCallTitle(call)}
                   </p>
                   <p className="mt-0.5 text-xs text-muted-foreground">
-                    {numberValue(call.latency_ms)} ms ·{" "}
-                    {numberValue(call.input_tokens) +
-                      numberValue(call.output_tokens)}{" "}
-                    tokens
+                    {modelCallDetail(call)}
                   </p>
                 </div>
-                <Badge
-                  variant={
-                    call.status === "failed" ? "destructive" : "secondary"
-                  }
-                >
-                  {textValue(call.status) || "selected"}
+                <Badge variant="secondary">
+                  {numberValue(call.turn) > 0
+                    ? `第 ${numberValue(call.turn)} 轮`
+                    : "调度"}
                 </Badge>
               </div>
             ))}
           </div>
         ) : (
           <EmptyInsight label="暂无模型调用记录" />
+        )}
+      </section>
+
+      <section>
+        <SectionTitle icon={Coins} title="模型用量" />
+        {insight.model_usage.length ? (
+          <div className="space-y-2">
+            {insight.model_usage.map((usage, index) => (
+              <div key={index} className="insight-row">
+                <span className="insight-index">{index + 1}</span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium">
+                    第 {numberValue(usage.turn) || index + 1} 轮
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {modelUsageDetail(usage)}
+                  </p>
+                </div>
+                <Badge variant="outline">{modelCostLabel(usage)}</Badge>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <EmptyInsight label="模型未返回用量数据" />
         )}
       </section>
 
@@ -198,6 +215,55 @@ function RunInsightSkeleton() {
 
 function textValue(value: unknown): string {
   return typeof value === "string" ? value : ""
+}
+
+function contentSummary(value: unknown): string {
+  if (typeof value === "string") return value
+  if (typeof value !== "object" || value === null) return "未记录输入"
+  const redacted = value as Record<string, unknown>
+  const characters = numberValue(redacted.characters)
+  const digest = textValue(redacted.sha256)
+  return `内容已脱敏 · ${characters} 字符${digest ? ` · ${digest.slice(0, 12)}` : ""}`
+}
+
+function modelCallTitle(call: Record<string, unknown>): string {
+  const profile = textValue(call.profile)
+  if (profile) return profile
+  const status = textValue(call.status)
+  if (status === "model_fallback") return "模型回退"
+  const eventType = textValue(call.event_type)
+  if (eventType === "model.call.started") return "模型请求开始"
+  if (eventType === "model.call.completed") return "模型请求完成"
+  return status || eventType || "模型事件"
+}
+
+function modelCallDetail(call: Record<string, unknown>): string {
+  const details: string[] = []
+  if ("message_count" in call) details.push(`${numberValue(call.message_count)} 条消息`)
+  if ("text_characters" in call) details.push(`${numberValue(call.text_characters)} 字符`)
+  if ("tool_call_count" in call) details.push(`${numberValue(call.tool_call_count)} 个工具请求`)
+  if ("candidate_count" in call) details.push(`${numberValue(call.candidate_count)} 个候选模型`)
+  return details.join(" · ") || "Runtime 调度事件"
+}
+
+function modelUsageDetail(usage: Record<string, unknown>): string {
+  const details = [
+    `输入 ${numberValue(usage.input_tokens)}`,
+    `输出 ${numberValue(usage.output_tokens)}`,
+  ]
+  if ("cache_creation_tokens" in usage) {
+    details.push(`缓存创建 ${numberValue(usage.cache_creation_tokens)}`)
+  }
+  if ("cache_read_tokens" in usage) {
+    details.push(`缓存读取 ${numberValue(usage.cache_read_tokens)}`)
+  }
+  return details.join(" · ")
+}
+
+function modelCostLabel(usage: Record<string, unknown>): string {
+  return "estimated_cost" in usage
+    ? `成本 ${numberValue(usage.estimated_cost).toFixed(6)}`
+    : "已记录"
 }
 
 function numberValue(value: unknown): number {

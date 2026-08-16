@@ -85,7 +85,6 @@ export function ConfigurationPage({ controller }: ConfigurationPageProps) {
         <TabsContent value="models" className="configuration-scroll-area">
           <ModelConfiguration
             models={data.models}
-            skills={data.skills}
             busy={controller.busy}
             onSave={controller.saveModel}
             onDelete={controller.deleteModel}
@@ -124,19 +123,17 @@ function AgentConfigurationPanel(props: AgentConfigurationPanelProps) {
             <h2>Agent</h2>
             <p>身份与基础行为</p>
           </div>
-          <HelpTooltip label="Agent 组合 Provider、Runtime、SkillLoader 和 Skill；修改名称会切换到新的 Agent 隔离空间。" />
+          <HelpTooltip label="Agent 组合 Provider、Runtime、Skill 和工具；名称用于用户状态与运行记录隔离。" />
         </div>
         <div className="configuration-form-grid">
           <ConfigurationField
             label="名称"
-            help="用于运行记录、存储隔离和子 Agent 树中的稳定显示名称。"
+            help="用于运行记录和状态隔离；运行期间不可修改，避免切换到另一作用域。"
           >
             <Input
               aria-label="名称"
               value={config.name}
-              onChange={(event) =>
-                props.onChange({ ...config, name: event.target.value })
-              }
+              disabled
             />
           </ConfigurationField>
           <ConfigurationField

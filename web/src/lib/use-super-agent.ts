@@ -5,20 +5,20 @@ import {
   clearConversation,
   createConversation,
   deleteConversation,
-  deleteModelSkill,
+  deleteModelConfiguration,
   forgetMemory,
   loadBootstrap,
   loadRunInsight,
   renameConversation,
   saveAgentConfiguration,
-  saveModelSkill,
+  saveModelConfiguration,
   streamAgentRun,
 } from "@/lib/api"
 import type {
   AgentConfiguration,
   BootstrapData,
   Conversation,
-  ModelSkillInput,
+  ModelInput,
   RunInsight,
 } from "@/lib/types"
 
@@ -43,7 +43,7 @@ export interface SuperAgentController {
   clearExistingConversation: (conversationId: string) => Promise<void>
   deleteExistingConversation: (conversationId: string) => Promise<void>
   saveConfiguration: (configuration: AgentConfiguration) => Promise<void>
-  saveModel: (model: ModelSkillInput) => Promise<void>
+  saveModel: (model: ModelInput) => Promise<void>
   deleteModel: (name: string) => Promise<void>
   forgetMemoryItem: (itemId: string) => Promise<void>
   sendMessage: (prompt: string) => Promise<void>
@@ -152,16 +152,16 @@ export function useSuperAgent(): SuperAgentController {
     })
   }
 
-  async function saveModel(model: ModelSkillInput): Promise<void> {
+  async function saveModel(model: ModelInput): Promise<void> {
     await performMutation("模型配置已保存", async () => {
-      const data = await saveModelSkill(model)
+      const data = await saveModelConfiguration(model)
       applyBootstrap(data, setBootstrap, setSelectedConversationId)
     })
   }
 
   async function deleteModel(name: string): Promise<void> {
     await performMutation("模型配置已删除", async () => {
-      const data = await deleteModelSkill(name)
+      const data = await deleteModelConfiguration(name)
       applyBootstrap(data, setBootstrap, setSelectedConversationId)
     })
   }
@@ -323,15 +323,16 @@ function applyBootstrap(
 function runtimeEventLabel(eventName: string): string {
   const labels: Record<string, string> = {
     "run.started": "运行已开始",
-    "task.started": "正在理解任务",
-    "task.selected": "正在选择任务技能",
-    "task.scheduled": "正在调度能力",
-    "model.call.selected": "正在选择模型",
+    "model.call.started": "正在请求模型",
+    "model.status": "正在调度模型",
+    "model.tool.requested": "模型请求调用工具",
+    "tool.started": "正在执行工具",
     "model.call.completed": "模型响应完成",
-    "tool.requested": "正在调用工具",
     "tool.completed": "工具调用完成",
-    "task.completed": "正在整理回答",
+    "tool.failed": "工具调用失败",
+    "skill.activated": "已启用任务 Skill",
     "run.completed": "运行完成",
+    "run.failed": "运行失败",
   }
   return labels[eventName] || "Agent 正在工作"
 }

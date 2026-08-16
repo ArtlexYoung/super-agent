@@ -16,9 +16,9 @@ Super Agent 只向模型提供精简的 Skill 索引，由模型判断需要什�
 
 Super Agent gives the model a compact Skill index, lets the model decide what it needs, and discloses and executes only that content.
 
-提示、工具、记忆、工作流、任务策略和模型说明都使用同一种 Skill 格式，并经过同一条中心化渐进式披露路径。
+提示、工具使用方法、记忆方法、工作流和任务策略都使用同一种 Skill 格式，并经过同一条中心化渐进式披露路径；模型连接和密钥仍由显式配置管理。
 
-Prompts, tools, memory, workflows, task policies, and model descriptions share one Skill format and one central progressive-disclosure path.
+Prompts, tool-use methods, memory methods, workflows, and task policies share one Skill format and one central progressive-disclosure path; model connections and secrets remain explicit configuration.
 
 默认 Python 安装没有第三方运行依赖，基础 `Agent()` 无状态、不写文件，存储、记忆、MCP、学习和 Web 都按需启用。
 
@@ -28,13 +28,13 @@ The default Python install has no third-party runtime dependencies, a basic `Age
 
 *Start in One Minute*
 
-需要 Homebrew 管理的 Python 3.11 或更高版本。
+需要 Python 3.11 或更高版本。
 
-Homebrew-managed Python 3.11 or newer is required.
+Python 3.11 or newer is required.
 
 ```bash
 python3.11 -m pip install -e .
-export OPENAI_API_KEY="..."
+export OA3_SILICONFLOW_API_KEY="..."
 super-agent check
 super-agent "解释这个仓库"
 ```
@@ -73,14 +73,14 @@ SUPER_AGENT_PROVIDER=mock super-agent "你好"
 
 *Python Usage*
 
-常用库入口只需要 `Agent`。
+常用库入口只需要 `Agent` 和显式的环境模型辅助函数。
 
-The common library entry point needs only `Agent`.
+The common library entry point needs only `Agent` and the explicit environment-model helper.
 
 ```python
-from super_agent import Agent
+from super_agent import Agent, model_from_environment
 
-agent = Agent()
+agent = Agent(model_from_environment())
 result = agent.run("解释 Skill 渐进式披露")
 print(result.text)
 ```
@@ -90,10 +90,10 @@ print(result.text)
 Subagents compose naturally in code, and each Agent keeps its own models, Skills, configuration, and state scope.
 
 ```python
-from super_agent import Agent
+from super_agent import Agent, model_from_environment
 
-main = Agent()
-coder = Agent()
+main = Agent(model_from_environment())
+coder = Agent(model_from_environment())
 main.add_subagent(coder, name="coder", description="实现并验证代码修改")
 result = coder.run("修复失败的测试", skill="code")
 ```
@@ -111,7 +111,8 @@ super-agent check
 super-agent --skill code "检查这个仓库"
 super-agent config show
 super-agent skills list
-super-agent data runs status
+super-agent data storage verify --config common.toml
+super-agent data conversations list --config common.toml --user alice
 super-agent serve
 ```
 
@@ -123,8 +124,8 @@ The React client, CopilotKit example, and AG-UI endpoint are served from `http:/
 
 *Core Guarantees*
 
-- 读取不会写入，状态变更必须经过显式、受检查的动作。
-  Reads do not write, and state changes require explicit checked actions.
+- 读取不会修改业务状态；显式启用磁盘披露缓存时，只会写入有界、可丢弃的缓存文件。
+  Reads do not mutate domain state; an explicitly configured disclosure cache writes only bounded, disposable cache files.
 - Skill 内容是被动数据，不能自行注册代码、权限或密钥。
   Skill content is passive data and cannot register code, permissions, or secrets by itself.
 - Provider、工具、存储和可选功能错误会保留原始失败语义。
@@ -177,9 +178,9 @@ The complete usage guide is split by language, while this bilingual overview kee
 
 *Acknowledgements and Design References*
 
-Super Agent 感谢以下项目的作者与贡献者，项目名称和模块路径以 `v0.1.102` 编写时公开内容为准。
+Super Agent 感谢以下项目的作者与贡献者，项目名称和模块路径以 `v0.2.0` 编写时公开内容为准。
 
-Super Agent thanks the authors and contributors below, with project names and module paths referring to the public sources available when `v0.1.102` was written.
+Super Agent thanks the authors and contributors below, with project names and module paths referring to the public sources available when `v0.2.0` was written.
 
 除明确列出的协议和前端依赖外，Agent 架构均在 Python 中独立实现，致谢不表示复制或捆绑对应运行时代码。
 
@@ -247,5 +248,5 @@ Third-party projects retain their own copyrights and licenses, exact dependency 
 The full release gate checks Python tests, compilation, package contents, offline evaluation, Web types, lint, and build.
 
 ```bash
-python3.11 scripts/verify_release.py --version 0.1.102 --full --web
+python3.11 scripts/verify_release.py --version 0.2.0 --full --web
 ```

@@ -26,26 +26,26 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet"
 import { Switch } from "@/components/ui/switch"
-import type { ModelSkillInput } from "@/lib/types"
+import type { ModelInput } from "@/lib/types"
 
 interface ModelEditorProps {
-  model: ModelSkillInput | null
+  model: ModelInput | null
   busy: boolean
   onClose: () => void
-  onSave: (model: ModelSkillInput) => Promise<void>
+  onSave: (model: ModelInput) => Promise<void>
 }
 
 export function ModelEditor(props: ModelEditorProps) {
   const [advancedOpen, setAdvancedOpen] = useState(false)
-  const [draft, setDraft] = useState<ModelSkillInput | null>(null)
+  const [draft, setDraft] = useState<ModelInput | null>(null)
   const model =
     draft?.previous_name === props.model?.previous_name && draft
       ? draft
       : props.model
 
-  function update<Field extends keyof ModelSkillInput>(
+  function update<Field extends keyof ModelInput>(
     field: Field,
-    value: ModelSkillInput[Field]
+    value: ModelInput[Field]
   ): void {
     if (model) {
       setDraft({ ...model, [field]: value })
@@ -77,7 +77,7 @@ export function ModelEditor(props: ModelEditorProps) {
             {model?.previous_name ? "编辑模型" : "添加模型"}
           </SheetTitle>
           <SheetDescription>
-            连接信息写入 model Skill，密钥值保留在运行环境中。
+            连接与调度信息写入通用配置，密钥值保留在运行环境中。
           </SheetDescription>
         </SheetHeader>
         {model ? (
@@ -173,20 +173,6 @@ export function ModelEditor(props: ModelEditorProps) {
                   checked={model.default}
                   onChange={(value) => update("default", value)}
                 />
-                <SwitchField
-                  label="允许 Agent 优化"
-                  help="允许进化闭环更新此 model Skill 的路由说明和参数。"
-                  checked={model.agent_can_update}
-                  onChange={(value) => update("agent_can_update", value)}
-                />
-                <SwitchField
-                  label="允许更新连接"
-                  help="默认关闭，避免 Agent 改写供应商、地址和密钥环境变量。"
-                  checked={model.agent_can_update_connection}
-                  onChange={(value) =>
-                    update("agent_can_update_connection", value)
-                  }
-                />
               </div>
               <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
                 <CollapsibleTrigger asChild>
@@ -209,28 +195,13 @@ export function ModelEditor(props: ModelEditorProps) {
                   </Button>
                 </CollapsibleTrigger>
                 <CollapsibleContent className="space-y-4 pt-4">
-                  <ConfigInput
-                    label="优势标签"
-                    help="描述模型的相对优势，使用逗号分隔。"
-                    value={model.strengths.join(", ")}
-                    onChange={(value) =>
-                      update("strengths", commaSeparated(value))
-                    }
-                  />
                   <div className="grid gap-4 sm:grid-cols-2">
                     <NumberInput
-                      label="初始质量"
-                      help="冷启动路由质量，范围 0 到 1。"
-                      value={model.quality_score}
-                      step="0.05"
-                      onChange={(value) => update("quality_score", value)}
-                    />
-                    <NumberInput
-                      label="预计延迟（ms）"
-                      help="没有真实运行证据时使用的延迟估计。"
-                      value={model.expected_latency_ms}
-                      step="1"
-                      onChange={(value) => update("expected_latency_ms", value)}
+                      label="调度权重"
+                      help="价格相近时优先选择权重更高的模型，必须大于 0。"
+                      value={model.weight}
+                      step="0.1"
+                      onChange={(value) => update("weight", value || 1)}
                     />
                     <NumberInput
                       label="输入成本 / 百万 token"

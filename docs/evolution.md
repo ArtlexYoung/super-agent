@@ -1,112 +1,46 @@
-# Learning, Memory, and Skill Changes
+# 学习、记忆与 Skill 更新 / Learning, Memory, and Skill Changes
 
-These are three separate opt-in operations. A task run records immutable evidence but does
-not learn, rewrite memory, or change a Skill after returning its answer.
+## 记忆 / Memory
 
-## Audit Retention
+临时记忆只属于指定会话，用于本轮工作上下文；长期记忆保存抽象事实、重要偏好和稳定习惯。两者不会自动混写。
 
-Runtime writes one central event stream for model calls, tools, actions, learning, Skill
-changes, and memory changes. Detailed and critical audit entries are not permanent:
-`common.toml` keeps detailed entries for 180 days and critical entries for 365 days by
-default.
-
-```toml
-[storage.audit]
-detailed_days = 180
-critical_days = 365
-```
-
-Use `data storage prune` to preview expired entries. Add `--apply` to perform deletion. The
-operation is explicit and records its counts. Canonical events retain complete prompts,
-model output, tool payloads, and errors so later learning can use the original evidence.
-Run views dynamically redact those fields unless a CLI caller explicitly selects
-`--include-sensitive`; Web views remain redacted. This view-level redaction does not encrypt
-the backend. Conversation, long-term memory, usage habits, evaluation records, and unknown
-event types are protected until their own explicit state management is implemented.
-
-## Learn From a Run
+Temporary memory belongs to one conversation and supports current-turn context; long-term memory stores abstract facts, important preferences, and stable habits. They are not mixed automatically.
 
 ```python
-result = user.run("Complete the task")
-learning = user.runs.learn(result.run_id)
+user.memory.remember_temporary("本轮使用 JSONL", conversation_id=conversation_id)
+item = user.memory.remember_long_term("用户偏好轻量、无依赖的默认配置")
+user.memory.recall("默认配置")
+user.memory.forget(item.memory_id, "用户明确要求遗忘")
 ```
 
-Learning is explicit and idempotent. It records evaluations for the exact Skill revisions
-used by the run, recalculates deterministic freshness, and summarizes model use. Calling it
-again returns the same records. It does not propose or apply a Skill change.
+模型可以通过记忆 Skill 回忆内容，也可以在一次整理动作中把临时记忆提升为长期记忆；整理、修订、合并、拆分和遗忘都会产生明确事件。
 
-Evaluation records include Skill identity and content hash, success, score, token
-estimates, latency, error type, and source run. Readers reject malformed values and unknown
-schemas instead of guessing.
+The model may recall memory through the memory Skill and may explicitly promote temporary context during organization; organization, revision, merge, split, and forgetting produce explicit events.
 
-## Freshness Without a Model
+## Skill 进化 / Skill Evolution
 
-Freshness is calculated from recorded evidence and does not call a model. The selected
-`freshness` Skill supplies weights and thresholds. Inputs include:
+进化闭环不是“模型说改了就改”：
 
-- weighted result quality and reliability;
-- time since use and calls per active week;
-- input/output token and latency efficiency;
-- successful same-function follow-up use;
-- sample confidence for sparse evidence.
+The evolution loop is not “the model says it changed, so it changes”:
 
-```bash
-super-agent skills freshness --common-config common.toml
-```
+1. 记录运行评价、成功状态、用量和替代调用证据。
+2. 根据多维证据计算确定性的 Skill 保鲜度。
+3. 创建候选 Skill 变更，但保持原版本有效。
+4. 用声明的测试用例验证候选。
+5. 通过后显式应用；需要时显式撤销。
 
-## Change a Skill
+1. Record evaluation, success, usage, and replacement-call evidence.
+2. Calculate deterministic Skill freshness from multidimensional evidence.
+3. Create a candidate change while keeping the current version active.
+4. Test the candidate with declared cases.
+5. Apply explicitly after passing, and undo explicitly when needed.
 
-An Agent-authorized Skill can move through four explicit operations:
+`SkillEvolution` 可以独立使用；`Agent.enable_skill_evolution()` 则把同一组动作作为渐进式工具交给模型。没有 Skill Library 时，启用进化会直接失败。
 
-```text
-propose -> test -> apply -> optional undo
-```
+`SkillEvolution` can be used directly; `Agent.enable_skill_evolution()` exposes the same actions progressively to the model. Enabling evolution without a Skill Library fails directly.
 
-```bash
-super-agent skills changes propose --name prompt:concise --goal "make it clearer"
-super-agent skills changes test --change-id <id> --cases cases.json
-super-agent skills changes apply --change-id <id>
-super-agent skills changes undo --change-id <id>
-```
+## 保鲜度 / Freshness
 
-`propose` writes a complete candidate outside active Skill roots. `test`
-runs explicit cases against that candidate and, when present, its baseline. Neither can
-activate the candidate. `apply` is the only activation operation and requires a
-matching passing report with no regression. `undo` restores the prior user overlay
-or removes the newly created one.
+保鲜度不依赖另一个模型。使用时间衰减、调用频率、成功分数、输入/输出 token、缓存读写和同类替代调用计算，可复现、可解释，也可以被新的评价证据更新。
 
-Evaluation cases may also declare `expected_configuration`. These settings are read through
-the central Skill source path and combined with output checks. Memory and task candidates are
-validated by their real mechanism parsers before testing, so malformed recall or workflow
-settings cannot pass through plausible model text. New typed Skills become Agent-created,
-user-private overlays only after their comparison report passes.
-
-Built-in Skills are immutable. Project and user Skill update authority comes from trusted
-source metadata, never editable Skill TOML. Every operation passes through action rules
-and records its result. There is no background monitor, automatic application, or hidden
-undo.
-
-## Short-Term and Long-Term Memory
-
-Conversation messages are the only short-term memory. They stay inside that conversation
-and are already visible to the main model.
-
-A selected memory Skill exposes long-term operations for durable facts, preferences,
-abstractions, and habits. The main model can inspect current short-term context while
-deciding what deserves long-term storage. It can explicitly list, remember, recall,
-organize, and forget long-term items.
-
-Organization validates a complete merge, replace, or forget operation before appending one
-event. It does not start a hidden organizer model or apply a partial plan. Recall is a pure
-ranked read. Forgetting appends an explicit tombstone rather than rewriting history.
-
-```bash
-super-agent data memory list --common-config common.toml
-super-agent data memory add --common-config common.toml \
-  --text "Prefer concise answers." --scope agent
-super-agent data memory recall --common-config common.toml --query "response style"
-super-agent data memory forget --common-config common.toml --item-id <memory-id>
-```
-
-Learning records, memory items, usage habits, and Skill overlays are isolated by trusted
-user ID and Agent name.
+Freshness does not require another model. It combines time decay, call frequency, success score, input/output tokens, cache reads/writes, and replacement calls in a reproducible and explainable calculation.

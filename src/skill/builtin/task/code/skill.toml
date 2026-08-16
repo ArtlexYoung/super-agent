@@ -1,6 +1,0 @@
-type = "task"
-description = "Repository coding instructions and iterative run policy"
-
-[configuration]
-mode = "loop"
-max_steps = 20

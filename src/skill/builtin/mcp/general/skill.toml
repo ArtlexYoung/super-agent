@@ -1,5 +1,0 @@
-type = "mcp"
-description = "Optional bounded standard-library tools for general tasks"
-
-[configuration]
-server = "general"

@@ -1,162 +1,53 @@
-# CLI Reference
+# CLI
 
-The CLI keeps common actions shallow. A prompt runs one task directly; no arguments
-start an interactive conversation.
+## 直接运行 / Direct Use
 
-CLI behavior is isolated in optional `cli.toml`; it is never merged with `common.toml`:
+CLI 入口是 `super-agent`，也可以从源码运行 `python3.11 src/cli.py`。
 
-```toml
-schema_version = 1
-kind = "cli"
-
-[run]
-user_id = "local"
-output = "text"
-save = false
-show_summary = true
-```
-
-The CLI checks `SUPER_AGENT_CLI_CONFIG`, then `cli.toml`, then uses in-memory defaults.
-It never creates this file automatically. Inspect or validate it without writing:
+The CLI entry point is `super-agent`; source checkout users may run `python3.11 src/cli.py`.
 
 ```bash
-super-agent config show
-super-agent config validate --cli-config cli.toml
+super-agent "总结当前目录"
+super-agent --output json "返回结构化结果"
+super-agent --skill code --save "检查并修复代码"
+super-agent
 ```
 
-Interactive conversations support `/help`, `/clear`, and `/exit`. Clearing starts a new
-conversation when saving is enabled; it never deletes the previous conversation.
+没有参数进入交互会话；`/help`、`/skills`、`/clear` 和 `/exit` 是终端控制命令。它们不是模型触发词，不会被送入模型。
 
-## Check and Run
+Without arguments the CLI starts an interactive session; `/help`, `/skills`, `/clear`, and `/exit` are terminal controls. They are not model trigger words and are not sent to the model.
+
+## 配置命令 / Configuration Commands
 
 ```bash
-super-agent check
-super-agent check --common-config common.toml --output json
-super-agent "hello"
-super-agent --common-config common.toml --user-id alice "hello"
-super-agent --save --common-config common.toml --user-id alice
-super-agent --skill code --code-config code.toml --output json "inspect this repository"
+super-agent check --config common.toml
+super-agent config show --config common.toml
+super-agent config validate --config common.toml
+super-agent skills list --config common.toml
+super-agent skills read prompt:research --config common.toml
+super-agent data storage verify --config common.toml
+super-agent data conversations list --config common.toml --user alice
+super-agent serve --config common.toml --cli-config cli.toml
 ```
 
-`check` is read-only. It validates configuration, the central Skill index, configured
-references, and default model readiness without opening storage or calling a model.
+这些命令只在其明确职责范围内工作。`check` 和 `config` 不创建存储；`data` 需要配置中显式启用后端；`serve` 才会启动 HTTP 服务。
 
-`--output` accepts `text` or `json`. Text output explains the actual model, task Skill,
-workflow, Skills, stop reason, and run ID. One-shot runs and chat are file-free by default. `--save` explicitly enables the
-configured storage; supplying a conversation ID also makes that requirement explicit.
-Terminal flags override `cli.toml`, including `--no-save` and `--no-show-summary`. Shared
-Runtime settings always use `--common-config`; the removed generic `--config` name has no
-compatibility alias. Code settings use `--code-config` and are loaded only if `task:code` is
-activated. That task adds a bounded directory tree, ranged file reads, search, fixed Git
-status and diff reads, plus explicit file writes, structured patches, deletion, and numbered
-verification commands. Existing-file changes require the SHA-256 returned by a read. All
-non-read tools ask for terminal confirmation through the central action runner; refusal or
-EOF blocks the action. Paths outside the configured root and undeclared verification
-commands fail visibly. Declared commands run without a shell and expose separate start,
-poll, and stop tools with bounded time and output.
-The same code Skill can refresh an in-memory repository map. It reports file hashes and
-Python AST symbols, reuses unchanged parses, and states when another file type has no parser.
-`run_declared_check` is the bounded synchronous form for a single check. Its `passed` value
-is derived from the process exit code; a failed check does not trigger an automatic edit.
-The Python API exposes `user.runs.list_checkpoints(run_id)` and
-`user.runs.resume(run_id, prompt, checkpoint_id=...)`. Resume creates a new run and records
-the source run and checkpoint; it does not restore model output.
+Each command stays within its declared scope. `check` and `config` do not create storage; `data` requires an explicitly configured backend; only `serve` starts an HTTP server.
 
-## Skills
+## 三份配置 / Three Config Files
 
-```bash
-super-agent skills list --common-config common.toml
-super-agent skills index --common-config common.toml --output json
-super-agent skills validate --common-config common.toml
-super-agent skills graph --common-config common.toml --name prompt:research
-super-agent skills freshness --common-config common.toml
-```
+- `common.toml`：模型、Skill、记忆、进化、存储和运行限制。
+- `cli.toml`：输出格式、用户、保存开关、服务地址。
+- `code.toml`：工作区路径、写入/删除/Git/执行策略、验证命令。
 
-Passive package commands are `pack`, `install`, `update`, and `remove`. They validate
-paths, identities, and hashes and never execute Python from a Skill package.
+- `common.toml`: models, Skills, memory, evolution, storage, and run limits.
+- `cli.toml`: output format, user, saving, and server address.
+- `code.toml`: workspace path, write/delete/Git/execute policy, and declared checks.
 
-Models are Skills and live under the same group:
+配置文件不互相深度合并；同名或未知字段不会被静默覆盖。
 
-```bash
-super-agent skills models list --output json
-super-agent skills models resolve
-super-agent skills models save --common-config common.toml --request-stdin < model.json
-super-agent skills models remove --common-config common.toml --name fast
-```
+Configuration files are not deep-merged; duplicate or unknown fields are never silently overridden.
 
-Saved model Skills name an environment variable; they never contain its secret value.
+代码动作使用 `deny`、`ask` 或 `allow`。拼写错误和未知字段直接失败；`allow` 不会再次询问，`ask` 才会逐次确认。模型可先调用 `list_process_commands` 查看完整允许列表，再提交完全一致的参数数组。
 
-Skill content changes use separate operations:
-
-```bash
-super-agent skills changes propose --name prompt:research --goal "make it clearer"
-super-agent skills changes test --change-id <id> --cases cases.json
-super-agent skills changes apply --change-id <id>
-super-agent skills changes undo --change-id <id>
-super-agent skills changes list
-```
-
-Proposal and testing do not activate content. Application requires the latest matching
-test to pass. Undo restores or removes the exact user overlay created by that change.
-
-## Data
-
-```bash
-super-agent data conversations list --user-id alice
-super-agent data conversations create --user-id alice --title Project
-super-agent data memory list --user-id alice
-super-agent data memory recall --user-id alice --query "response style"
-super-agent data runs status --user-id alice --output json
-super-agent data runs explain --run-id <id>
-super-agent data runs feedback --run-id <id> --score 0.8
-super-agent data runs learn --run-id <id>
-```
-
-Conversation commands also provide `show`, `rename`, `clear`, and `delete`. Long-term
-memory provides `add` and `forget`. Run data provides `export`. Every operation is scoped
-by user and Agent.
-
-Run status, explanation, and export dynamically redact prompts, model output, tool payloads,
-and error messages. The canonical event remains complete. Request the original values only
-when needed:
-
-```bash
-super-agent data runs explain --run-id <id> --include-sensitive --output json
-super-agent data runs export --run-id <id> --include-sensitive --output run.json
-```
-
-The Web API does not expose an unredacted run route. Dynamic redaction is not encryption;
-direct JSONL or database access still reads complete canonical events.
-
-Copy selected users between explicit storage backends with:
-
-```bash
-super-agent data storage copy --to-backend sqlite \
-  --to-path .super-agent-copy --user-id alice
-```
-
-Identical events are skipped; conflicting content fails.
-
-Preview expired audit events, then apply the exact same plan explicitly:
-
-```bash
-super-agent data storage prune --common-config common.toml \
-  --user-id alice --output json
-super-agent data storage prune --common-config common.toml \
-  --user-id alice --apply
-```
-
-The command uses `[storage.audit]` retention settings. It never deletes conversation,
-memory, habit, evaluation, or unknown event streams. A successful applied cleanup leaves a
-small `audit.pruned` record with counts and the settings used.
-
-## Web
-
-```bash
-super-agent serve
-super-agent serve --host 127.0.0.1 --port 9000 --user-id alice
-```
-
-The Web app is at `/`, AG-UI is at `POST /ag-ui`, and management routes are under
-`/api/*`. The built-in server has no authentication or TLS; keep it on loopback or use an
-authenticated TLS proxy.
+Code actions use `deny`, `ask`, or `allow`. Misspellings and unknown fields fail; `allow` does not prompt again, while `ask` confirms each call. The model can call `list_process_commands` before submitting an exact declared argument array.

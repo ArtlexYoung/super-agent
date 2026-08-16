@@ -1,6 +1,0 @@
-type = "task"
-description = "General task instructions with optional model-planned steps"
-
-[configuration]
-mode = "loop"
-max_steps = 8

@@ -1,21 +1,13 @@
-from __future__ import annotations
+"""在代码中自然组合主 Agent 和子 Agent。"""
 
-from core.provider import MockProvider
+from core.provider import MockModel
 from super_agent import Agent
 
 
-def main() -> None:
-    master = Agent(provider=MockProvider("The team is ready."))
-    coder = Agent(provider=MockProvider("Implemented and checked the change."))
-    reviewer = Agent(provider=MockProvider("Reviewed the change and found no blocker."))
+master = Agent(MockModel("The team is ready."), name="master")
+coder = Agent(MockModel("Implemented and checked the change."), name="coder")
+reviewer = Agent(MockModel("Reviewed the change and found no blocker."), name="reviewer")
 
-    master.add_subagent(coder, name="coder", description="writes code")
-    master.add_subagent(reviewer, description="reviews risks")
-
-    print(master.run("Prepare the team").text)
-    print(coder.run("Implement the change", skill="code").text)
-    print(reviewer.run("Review the change", skill="common").text)
-
-
-if __name__ == "__main__":
-    main()
+master.add_subagent(coder, name="coder", description="writes and verifies code", purpose="code")
+master.add_subagent(reviewer, name="reviewer", description="reviews risks", purpose="review")
+print(master.run("Prepare the team").text)

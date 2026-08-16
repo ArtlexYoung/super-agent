@@ -1,295 +1,517 @@
+"""提供即开即用的终端入口和独立 CLI 配置。"""
+
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
-from dataclasses import asdict, dataclass
+import tomllib
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Sequence
 
-from adapter.cli_support.cli_data import add_config_and_user_options, add_output_format_option, configure_conversations_parser, configure_memory_parser, configure_runs_parser, configure_storage_parser, print_cli_json, run_conversations_command, run_memory_command, run_runs_command, run_selected_cli_command, run_storage_command
-from adapter.cli_support.cli_config import configure_config_parser, load_agent, load_cli_config, load_common_config, run_config_command
-from adapter.code import attach_code_config_to_agent
-from adapter.cli_support.cli_skills import configure_skills_parser, run_skills_command
-from adapter.http.agui import DEFAULT_ALLOWED_ORIGINS, create_ag_ui_server
-from core import __version__
-from core.provider import Message
-from core.models import LOCAL_USER_ID, RunResult
-from skill.handlers.runtime import create_default_skill_handlers, create_skills
-from skill.handlers.models import model_profile_is_ready, read_model_profiles, select_default_model_profile
-
-
-CLI_COMMANDS = frozenset({"check", "config", "data", "serve", "skills"})
+from adapter.process import ProcessSettings, ProcessTools
+from adapter.storage import create_storage, verify_storage
+from adapter.tools import CodeWorkspace, ToolPolicy, WorkspaceSettings, general_tools
+from core.config import Config, config_from_environment
+from core.records import AuditPolicy, Conversations, EventStore
+from skill.library import SkillLibrary
+from super_agent import Agent, AgentContext, AgentSettings
 
 
 @dataclass(frozen=True)
-class CliRequest:
-    prompt: str
-    user_id: str = LOCAL_USER_ID
-    conversation_id: str | None = None
-    skill: str | None = None
+class CliConfig:
+    """终端行为配置，不与通用 Agent 配置混在一起。"""
+
+    general_config: str | None = None
+    code_config: str | None = None
+    user_id: str = "local"
+    output: str = "text"
+    save: bool = False
+    show_summary: bool = True
+    host: str = "127.0.0.1"
+    port: int = 8765
+
+    @classmethod
+    def load(cls, path: str | Path) -> CliConfig:
+        source = Path(path).expanduser().resolve()
+        with source.open("rb") as stream:
+            value = tomllib.load(stream)
+        if not isinstance(value, dict):
+            raise TypeError("CLI configuration must be a TOML table")
+        allowed = {"version", "general_config", "code_config", "user_id", "output", "save", "show_summary", "host", "port"}
+        unknown = sorted(set(value) - allowed)
+        if unknown:
+            raise ValueError(f"unknown CLI configuration fields: {', '.join(unknown)}")
+        if value.get("version", 1) != 1:
+            raise ValueError("unsupported CLI configuration version")
+        return cls(
+            general_config=_configuration_path(value.get("general_config"), source),
+            code_config=_configuration_path(value.get("code_config"), source),
+            user_id=_text(value.get("user_id", "local"), "CLI user_id"),
+            output=_choice(value.get("output", "text"), "CLI output", {"text", "json"}),
+            save=_boolean(value.get("save", False), "CLI save"),
+            show_summary=_boolean(value.get("show_summary", True), "CLI show_summary"),
+            host=_text(value.get("host", "127.0.0.1"), "CLI host"),
+            port=_integer(value.get("port", 8765), "CLI port", 1, 65535),
+        )
+
+    @classmethod
+    def automatic(cls) -> CliConfig:
+        explicit = os.environ.get("SUPER_AGENT_CLI_CONFIG")
+        candidates = [Path(explicit).expanduser()] if explicit else [Path.cwd() / "cli.toml", Path.home() / ".config/super-agent/cli.toml"]
+        for candidate in candidates:
+            if candidate.is_file():
+                return cls.load(candidate)
+        return cls()
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
-    debug = "--debug" in arguments
-    arguments = [value for value in arguments if value != "--debug"]
     try:
-        if _is_terminal_request(arguments):
-            return _run_terminal(arguments)
-        return _run_parsed_command(_build_parser().parse_args(arguments))
-    except Exception as error:
-        if debug:
-            raise
-        _print_cli_error(error)
-        return 1
+        if arguments and arguments[0] in {"serve", "config", "skills", "data", "check"}:
+            return _run_command(arguments)
+        parser = _build_run_parser()
+        parsed = parser.parse_args(arguments)
+        cli = _load_cli(parsed.cli_config)
+        cli = _override_cli(cli, parsed)
+        agent, store = _build_agent(cli, parsed.config, parsed.code_config)
+        if parsed.prompt:
+            return _run_prompt(agent, cli, parsed.prompt, parsed.conversation_id, parsed.skill)
+        return _run_chat(agent, cli, parsed.conversation_id, parsed.skill)
+    except (TypeError, ValueError, RuntimeError, OSError) as error:
+        print(f"super-agent: {error}", file=sys.stderr)
+        return 2
 
 
-def _run_parsed_command(args: argparse.Namespace) -> int:
-    handlers = {"check": run_check_command, "config": run_config_command, "data": _run_data_command, "serve": run_serve_command, "skills": run_skills_command}
-    return run_selected_cli_command(args, "command", handlers, "command is required")
+def _run_command(arguments: list[str]) -> int:
+    command = arguments[0]
+    if command == "serve":
+        parser = argparse.ArgumentParser(prog="super-agent serve")
+        parser.add_argument("--config")
+        parser.add_argument("--cli-config")
+        parser.add_argument("--code-config")
+        parser.add_argument("--host")
+        parser.add_argument("--port", type=int)
+        parser.add_argument("--user")
+        parsed = parser.parse_args(arguments[1:])
+        cli = _load_cli(parsed.cli_config)
+        cli = CliConfig(**{**cli.__dict__, "host": parsed.host or cli.host, "port": parsed.port or cli.port, "user_id": parsed.user or cli.user_id, "save": True})
+        agent, _ = _build_agent(cli, parsed.config, parsed.code_config)
+        from adapter.http.agui import create_ag_ui_server
 
-
-def _run_terminal(arguments: list[str]) -> int:
-    args = _build_terminal_parser().parse_args(arguments)
-    cli_config = load_cli_config(args.cli_config)
-    common_config_path = None if args.common_config is None else Path(args.common_config)
-    code_config_path = None if args.code_config is None else Path(args.code_config)
-    output = args.output or cli_config.output
-    user_id = args.user_id or cli_config.user_id
-    save = cli_config.save if args.save is None else args.save
-    show_summary = cli_config.show_summary if args.show_summary is None else args.show_summary
-    if not args.prompt:
-        if args.output not in {None, "text"}:
-            raise ValueError("interactive conversation only supports text output")
-        return _run_chat_command(common_config_path, user_id, args.conversation_id, args.skill, save=save, code_config_path=code_config_path)
-    request = _read_runtime_request_from_args(args, user_id)
-    return _run_prompt_command(common_config_path, request, output, save=save, show_summary=show_summary, code_config_path=code_config_path)
-
-
-def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="super-agent", description="Chat with an Agent, or pass a prompt directly without a command.")
-    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
-    subparsers = parser.add_subparsers(dest="command")
-
-    check_parser = subparsers.add_parser("check", help="check configuration, Skills, and the default model")
-    configure_check_parser(check_parser)
-
-    config_parser = subparsers.add_parser("config", help="show or validate CLI-only configuration")
-    configure_config_parser(config_parser)
-
-    skills_parser = subparsers.add_parser("skills", help="manage skills")
-    configure_skills_parser(skills_parser)
-    data_parser = subparsers.add_parser("data", help="manage conversations and saved data")
-    _configure_data_parser(data_parser)
-    serve_parser = subparsers.add_parser("serve", help="serve the Agent over the AG-UI protocol")
-    configure_serve_parser(serve_parser)
-    return parser
-
-
-def _build_terminal_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="super-agent", description="Chat or run one prompt.")
-    parser.add_argument("prompt", nargs="*")
-    add_config_and_user_options(parser, user_default=None)
-    parser.add_argument("--cli-config")
-    parser.add_argument("--code-config")
-    add_output_format_option(parser, default=None)
-    parser.add_argument("--conversation-id")
-    parser.add_argument("--skill", help="explicit task Skill name or task:name key")
-    parser.add_argument("--save", action=argparse.BooleanOptionalAction, default=None, help="save run events or chat messages using configured storage")
-    parser.add_argument("--show-summary", action=argparse.BooleanOptionalAction, default=None, help="show model, Skill, workflow, and run details after text output")
-    return parser
-
-
-def configure_check_parser(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--common-config")
-    add_output_format_option(parser)
-
-
-def run_check_command(args: argparse.Namespace) -> int:
-    checks: list[dict[str, object]] = []
-    stage = "configuration"
-    try:
-        config = load_common_config(None if args.common_config is None else Path(args.common_config))
-        source = str(config.source) if config.source.is_file() else "built-in defaults"
-        checks.append(_check("configuration", True, source))
-
-        stage = "skills"
-        skills = create_skills(config, handlers=create_default_skill_handlers(), include_freshness=False)
-        selected = skills.index.resolve_skill_dependencies(config.agent.skills)
-        checks.append(_check("skills", True, f"{len(skills.index.entries)} available, {len(selected)} configured"))
-
-        stage = "model"
-        profiles = read_model_profiles(skills, os.environ)
-        default = select_default_model_profile(profiles)
-        ready = model_profile_is_ready(default, os.environ)
-        requirement = default.connection.api_key_env
-        detail = f"{default.key} -> {default.connection.provider}/{default.model}"
-        if not ready and requirement is not None:
-            detail += f"; missing {requirement}"
-        checks.append(_check("model", ready, detail))
-    except Exception as error:
-        checks.append(_check(stage, False, f"{type(error).__name__}: {error}"))
-
-    result = {"ok": all(bool(item["ok"]) for item in checks), "checks": checks}
-    if args.output == "json":
-        print_cli_json(result, pretty=False)
-    else:
-        for item in checks:
-            status = "OK" if item["ok"] else "FAIL"
-            print(f"{status}  {item['name']}: {item['detail']}")
-        if not result["ok"]:
-            print("Fix the failed check, then run `super-agent check` again.")
-    return 0 if result["ok"] else 1
-
-
-def _check(name: str, ok: bool, detail: str) -> dict[str, object]:
-    return {"name": name, "ok": ok, "detail": detail}
-
-
-def configure_serve_parser(parser: argparse.ArgumentParser) -> None:
-    add_config_and_user_options(parser)
-    parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=8765)
-    parser.add_argument("--allow-origin", action="append", dest="allowed_origins", help="browser origin allowed to call the server; may be repeated")
-
-
-def run_serve_command(args: argparse.Namespace) -> int:
-    agent = load_agent(args.common_config)
-    origins = tuple(args.allowed_origins or DEFAULT_ALLOWED_ORIGINS)
-    server = create_ag_ui_server(agent, args.host, args.port, user_id=args.user_id, allowed_origins=origins)
-    host, port = server.server_address[:2]
-    base_url = f"http://{host}:{port}"
-    print(f"Super Agent Web UI: {base_url}/")
-    print(f"Super Agent AG-UI endpoint: {base_url}/ag-ui")
-    if args.host not in {"127.0.0.1", "::1", "localhost"}:
-        print("Warning: this server has no authentication; protect non-local bindings.")
-    try:
+        server = create_ag_ui_server(agent, cli.host, cli.port, user_id=cli.user_id)
+        print(f"Super Agent listening at http://{cli.host}:{cli.port}")
         server.serve_forever()
-    except KeyboardInterrupt:
         return 0
-    finally:
-        server.server_close()
+    if command == "check":
+        return _check_command(arguments[1:])
+    if command == "config":
+        return _config_command(arguments[1:])
+    if command == "skills":
+        return _skills_command(arguments[1:])
+    return _data_command(arguments[1:])
+
+
+def _check_command(arguments: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="super-agent check")
+    parser.add_argument("--config")
+    parser.add_argument("--cli-config")
+    parser.add_argument("--output", choices=("text", "json"), default=None)
+    parsed = parser.parse_args(arguments)
+    cli = _load_cli(parsed.cli_config)
+    config = _load_general(parsed.config or cli.general_config)
+    if config.models:
+        config.create_model_profiles()
+    roots = _skill_roots(config)
+    library = SkillLibrary(roots, disabled_references=config.disabled_skills)
+    model_ready = _models_ready(config)
+    result = {
+        "config": "ok",
+        "skill_count": library.list_skills().total,
+        "model_count": len(config.models),
+        "model_ready": model_ready,
+    }
+    _print_value(result, parsed.output or cli.output)
+    return 0 if model_ready else 1
+
+
+def _config_command(arguments: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="super-agent config")
+    parser.add_argument("action", choices=("show", "validate"), nargs="?", default="show")
+    parser.add_argument("--config")
+    parser.add_argument("--cli-config")
+    parsed = parser.parse_args(arguments)
+    cli = _load_cli(parsed.cli_config)
+    config = _load_general(parsed.config or cli.general_config)
+    value = {"cli": cli.__dict__, "general": _config_view(config)}
+    return _print_value(value, cli.output)
+
+
+def _skills_command(arguments: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="super-agent skills")
+    parser.add_argument("action", choices=("list", "read"), nargs="?", default="list")
+    parser.add_argument("reference", nargs="?")
+    parser.add_argument("--config")
+    parser.add_argument("--page", type=int, default=1)
+    parser.add_argument("--page-size", type=int, default=20)
+    parser.add_argument("--output", choices=("text", "json"), default="json")
+    parsed = parser.parse_args(arguments)
+    config = _load_general(parsed.config)
+    library = SkillLibrary(
+        _skill_roots(config),
+        disabled_references=config.disabled_skills,
+    )
+    if parsed.action == "list":
+        value = library.list_skills(page=parsed.page, page_size=parsed.page_size).to_dict()
+    else:
+        if not parsed.reference:
+            raise ValueError("skills read requires a type:name reference")
+        value = library.preview(parsed.reference, max_characters=20_000).to_dict()
+    return _print_value(value, parsed.output)
+
+
+def _data_command(arguments: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="super-agent data")
+    parser.add_argument("resource", choices=("storage", "conversations"))
+    parser.add_argument("action", choices=("verify", "list"))
+    parser.add_argument("--config")
+    parser.add_argument("--user", default="local")
+    parser.add_argument("--output", choices=("text", "json"), default="json")
+    parsed = parser.parse_args(arguments)
+    config = _load_general(parsed.config)
+    if config.storage.backend == "none":
+        raise RuntimeError("data commands require storage in general configuration")
+    backend = create_storage(config.storage.backend, config.resolve_path(config.storage.path) or Path(config.storage.path))
+    if parsed.resource == "storage":
+        value = verify_storage(backend)
+    else:
+        value = [
+            {
+                "conversation_id": conversation.conversation_id,
+                "title": conversation.title,
+                "message_count": len(conversation.messages),
+                "created_at": conversation.created_at,
+                "updated_at": conversation.updated_at,
+            }
+            for conversation in Conversations(
+                EventStore(backend, parsed.user, config.name)
+            ).list()
+        ]
+    return _print_value(value, parsed.output)
+
+
+def _run_prompt(
+    agent: Agent,
+    cli: CliConfig,
+    prompt: str,
+    conversation_id: str | None,
+    skill: str | None,
+) -> int:
+    result = _stream_to_terminal(agent, prompt, _context(cli, conversation_id, skill), print_text=cli.output == "text")
+    if cli.output == "json":
+        print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
+    elif cli.show_summary:
+        print(f"\n[{result.run_id}] {result.stop_reason}")
     return 0
 
 
-def _configure_data_parser(parser: argparse.ArgumentParser) -> None:
-    subparsers = parser.add_subparsers(dest="data_command")
-    conversations = subparsers.add_parser("conversations", help="manage conversations")
-    configure_conversations_parser(conversations)
-    memory = subparsers.add_parser("memory", help="manage long-term memory")
-    configure_memory_parser(memory)
-    runs = subparsers.add_parser("runs", help="inspect saved runs")
-    configure_runs_parser(runs)
-    storage = subparsers.add_parser("storage", help="copy stored data")
-    configure_storage_parser(storage)
-
-
-def _run_data_command(args: argparse.Namespace) -> int:
-    handlers = {"conversations": run_conversations_command, "memory": run_memory_command, "runs": run_runs_command, "storage": run_storage_command}
-    return run_selected_cli_command(args, "data_command", handlers, "data command is required")
-
-
-def _is_terminal_request(arguments: list[str]) -> bool:
-    return not arguments or arguments[0] not in CLI_COMMANDS | {"-h", "--help", "--version"}
-
-
-def _run_prompt_command(common_config_path: Path | None, request: CliRequest, output: str, *, save: bool, show_summary: bool, code_config_path: Path | None = None) -> int:
-    use_storage = save or request.conversation_id is not None
-    agent = load_agent(common_config_path, use_storage=use_storage)
-    attach_code_config_to_agent(agent, code_config_path)
-    user = agent.for_user(request.user_id)
-    result = user.run(request.prompt, conversation_id=request.conversation_id, skill=request.skill)
-    if output == "json":
-        return print_cli_json(asdict(result), pretty=False)
-    for warning in result.warning_messages or []:
-        print(f"Warning: {warning}")
-    print(result.text)
-    if show_summary:
-        _print_run_summary(result)
-    return 0
-
-
-def _run_chat_command(common_config_path: Path | None, user_id: str, conversation_id: str | None, skill: str | None, *, save: bool, code_config_path: Path | None = None) -> int:
-    use_storage = save or conversation_id is not None
-    agent = load_agent(common_config_path, use_storage=use_storage)
-    attach_code_config_to_agent(agent, code_config_path)
-    user = agent.for_user(user_id)
-    conversation = None
-    if use_storage:
-        conversation = user.conversations.create() if conversation_id is None else user.conversations.read(conversation_id)
-    messages: list[Message] = []
-
-    def clear_history() -> None:
-        nonlocal conversation
-        messages.clear()
-        if conversation is not None:
-            conversation = user.conversations.create()
-
+def _run_chat(agent: Agent, cli: CliConfig, conversation_id: str | None, skill: str | None) -> int:
+    current = conversation_id
+    print("Super Agent. 输入 /help 查看命令，输入 /exit 退出。")
     while True:
         try:
-            prompt = input("You: ").strip()
-        except (EOFError, KeyboardInterrupt):
+            prompt = input("you> ").strip()
+        except EOFError:
+            print()
             return 0
         if not prompt:
             continue
-        handled = _handle_chat_command(prompt, clear_history)
-        if handled is not None:
-            if handled:
-                return 0
+        if prompt == "/exit" or prompt == "/quit":
+            return 0
+        if prompt == "/help":
+            print("/help  /skills  /clear  /exit")
             continue
-        result = user.run(prompt, conversation_id=conversation.conversation_id, skill=skill) if conversation is not None else user.run(prompt, messages=messages, skill=skill)
-        if conversation is None:
-            messages.extend([{"role": "user", "content": prompt}, {"role": "assistant", "content": result.text}])
-        print(f"Agent: {result.text}")
+        if prompt == "/skills":
+            print(json.dumps(agent.skill_library.list_skills().to_dict() if agent.skill_library else {"items": []}, ensure_ascii=False, indent=2))
+            continue
+        if prompt == "/clear":
+            if current is not None and cli.save:
+                agent.for_user(cli.user_id).conversations.clear(current)
+            current = None
+            print("当前会话上下文已清除。")
+            continue
+        result = _stream_to_terminal(agent, prompt, _context(cli, current, skill), print_text=True)
+        current = result.conversation_id or current
+        if cli.show_summary:
+            print(f"\n[{result.run_id}] {result.stop_reason}")
 
 
-def _handle_chat_command(prompt: str, clear_history: Callable[[], None]) -> bool | None:
-    if not prompt.startswith("/"):
+def _stream_to_terminal(agent: Agent, prompt: str, context: AgentContext, *, print_text: bool):
+    stream = agent.stream(prompt, context=context)
+    while True:
+        try:
+            event = next(stream)
+        except StopIteration as completed:
+            return completed.value
+        if print_text and event.event_type == "model.text.delta":
+            print(event.data.get("delta", ""), end="", flush=True)
+        elif event.event_type in {"run.warning", "run.failed"}:
+            print(f"\n[{event.event_type}] {event.data.get('message', event.data.get('error_type', ''))}", file=sys.stderr)
+
+
+def _build_agent(cli: CliConfig, general_path: str | None, code_path: str | None) -> tuple[Agent, object | None]:
+    config = _load_general(general_path or cli.general_config)
+    agent = Agent(config=config)
+    agent.set_instructions(*config.instructions)
+    agent.settings = AgentSettings(config.warn_subagent_depth, config.max_subagent_depth, config.limits)
+    roots = _skill_roots(config)
+    writable = config.resolve_path(config.writable_skill_path or (config.storage.path + "/skills" if cli.save else None))
+    cache = config.resolve_path(config.skill_cache_path or (config.storage.path + "/cache" if cli.save else None))
+    library = SkillLibrary(roots, writable_root=writable, cache_root=cache)
+    agent.use_skill_library(library)
+    for reference in config.enabled_skills:
+        agent.enable_skill(reference)
+    policy = ToolPolicy(confirm=_confirm_action)
+    agent.add_tools_for_skills(policy.protect_all(general_tools()))
+    _attach_code_tools(agent, code_path or cli.code_config)
+    if config.memory:
+        agent.enable_memory()
+    if config.evolution:
+        agent.enable_skill_evolution()
+    backend = None
+    if cli.save:
+        backend_name = config.storage.backend if config.storage.backend != "none" else "jsonl"
+        policy = AuditPolicy(config.storage.detailed_log_days, config.storage.critical_log_days)
+        backend = create_storage(backend_name, config.resolve_path(config.storage.path) or Path(config.storage.path), audit_policy=policy, database_url=_database_url(config))
+        agent.use_storage(backend)
+    return agent, backend
+
+
+def _attach_code_tools(agent: Agent, code_path: str | None) -> None:
+    settings = _load_code(code_path)
+    policy = ToolPolicy(settings.allowed_effects, _confirm_action)
+    agent.add_tools_for_skills(policy.protect_all(CodeWorkspace(settings.workspace).tools()))
+    if settings.process is not None:
+        agent.add_tools_for_skills(policy.protect_all(ProcessTools(settings.process).tools()))
+
+
+@dataclass(frozen=True)
+class CodeConfig:
+    workspace: WorkspaceSettings
+    process: ProcessSettings | None = None
+    allowed_effects: frozenset[str] = frozenset({"read"})
+
+
+def _load_code(path: str | None) -> CodeConfig:
+    source = Path(path).expanduser().resolve() if path else Path.cwd() / "code.toml"
+    if not source.is_file():
+        if path:
+            raise FileNotFoundError(f"code configuration not found: {source}")
+        return CodeConfig(
+            WorkspaceSettings(Path.cwd(), allow_write=True, allow_delete=True),
+        )
+    with source.open("rb") as stream:
+        value = tomllib.load(stream)
+    _reject_fields(value, {"version", "workspace", "actions", "verification"}, "code configuration")
+    if value.get("version", 1) != 1:
+        raise ValueError("unsupported code configuration version")
+    workspace = value.get("workspace", {})
+    if not isinstance(workspace, dict):
+        raise TypeError("code workspace must be a TOML table")
+    _reject_fields(workspace, {"root", "ignore"}, "code workspace")
+    root = Path(workspace.get("root", "."))
+    if not root.is_absolute():
+        root = source.parent / root
+    ignored = workspace.get("ignore", list(WorkspaceSettings(root).ignored))
+    if not isinstance(ignored, list) or any(not isinstance(item, str) or not item for item in ignored):
+        raise TypeError("code workspace ignore must be a text array")
+    actions = value.get("actions", {})
+    if not isinstance(actions, dict):
+        raise TypeError("code actions must be a TOML table")
+    _reject_fields(actions, {"write", "delete", "git", "execute"}, "code actions")
+    write = _choice(actions.get("write", "ask"), "code write action", {"deny", "ask", "allow"})
+    delete = _choice(actions.get("delete", "ask"), "code delete action", {"deny", "ask", "allow"})
+    git = _choice(actions.get("git", "allow"), "code Git action", {"deny", "allow"})
+    execute = _choice(actions.get("execute", "ask"), "code execute action", {"deny", "ask", "allow"})
+    settings = WorkspaceSettings(
+        root,
+        write != "deny",
+        delete != "deny",
+        git == "allow",
+        tuple(ignored),
+    )
+    verification = value.get("verification", {})
+    if not isinstance(verification, dict):
+        raise TypeError("code verification must be a TOML table")
+    _reject_fields(
+        verification,
+        {"commands", "timeout_seconds", "max_output_bytes", "max_processes"},
+        "code verification",
+    )
+    process = None
+    if verification.get("commands") and execute != "deny":
+        commands = verification["commands"]
+        if not isinstance(commands, list) or any(not isinstance(command, list) for command in commands):
+            raise TypeError("code verification commands must be an array of argument arrays")
+        process = ProcessSettings(
+            root,
+            tuple(tuple(_text(item, "command argument") for item in command) for command in commands),
+            timeout_seconds=_number(verification.get("timeout_seconds", 120.0), "process timeout", positive=True),
+            max_output_bytes=_integer(verification.get("max_output_bytes", 1_000_000), "process output limit", 1, 1_000_000_000),
+            max_processes=_integer(verification.get("max_processes", 8), "process limit", 1, 1_000),
+        )
+    allowed = {"read"}
+    allowed.update(effect for effect, action in (("write", write), ("delete", delete), ("execute", execute)) if action == "allow")
+    return CodeConfig(settings, process, frozenset(allowed))
+
+
+def _context(cli: CliConfig, conversation_id: str | None, skill: str | None = None) -> AgentContext:
+    return AgentContext(user_id=cli.user_id, conversation_id=conversation_id, skill=skill, save_conversation=cli.save)
+
+
+def _confirm_action(tool_name: str, effects: tuple[str, ...], arguments: Mapping[str, object]) -> bool:
+    """终端中的副作用必须由当前用户逐次确认。"""
+    if not sys.stdin.isatty():
+        return False
+    try:
+        answer = input(f"允许工具 {tool_name} 执行 {', '.join(effects)}？[y/N] ").strip().lower()
+    except EOFError:
+        return False
+    return answer in {"y", "yes"}
+
+
+def _load_cli(path: str | None) -> CliConfig:
+    return CliConfig.load(path) if path else CliConfig.automatic()
+
+
+def _override_cli(cli: CliConfig, args: argparse.Namespace) -> CliConfig:
+    values = dict(cli.__dict__)
+    for key, value in (("user_id", args.user), ("output", args.output), ("save", True if args.save else None), ("show_summary", False if args.no_summary else None)):
+        if value is not None:
+            values[key] = value
+    return CliConfig(**values)
+
+
+def _load_general(path: str | None) -> Config:
+    if path:
+        return Config.load(path)
+    candidate = Path.cwd() / "super-agent.toml"
+    return Config.load(candidate) if candidate.is_file() else config_from_environment()
+
+
+def _skill_roots(config: Config) -> tuple[Path, ...]:
+    builtin = Path(__file__).resolve().parent.parent / "skill" / "builtin"
+    roots = [builtin]
+    roots.extend(config.resolve_path(path) for path in config.skill_paths)
+    return tuple(path for path in roots if path is not None)
+
+
+def _database_url(config: Config) -> str | None:
+    return None if not config.storage.database_url_env else os.environ.get(config.storage.database_url_env)
+
+
+def _config_view(config: Config) -> dict[str, object]:
+    return {
+        "name": config.name,
+        "skill_paths": list(config.skill_paths),
+        "enabled_skills": list(config.enabled_skills),
+        "disabled_skills": list(config.disabled_skills),
+        "memory": config.memory,
+        "evolution": config.evolution,
+        "warn_subagent_depth": config.warn_subagent_depth,
+        "max_subagent_depth": config.max_subagent_depth,
+        "storage": config.storage.__dict__,
+        "models": [
+            {**item.__dict__, "pricing": item.pricing.to_dict()}
+            for item in config.models
+        ],
+    }
+
+
+def _models_ready(config: Config) -> bool:
+    if not config.models:
+        return False
+    for item in config.models:
+        key_environment = item.required_api_key_environment()
+        if key_environment and not os.environ.get(key_environment):
+            return False
+    return True
+
+
+def _build_run_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="super-agent")
+    parser.add_argument("prompt", nargs="?")
+    parser.add_argument("--config")
+    parser.add_argument("--cli-config")
+    parser.add_argument("--code-config")
+    parser.add_argument("--user", default=None)
+    parser.add_argument("--conversation-id", default=None)
+    parser.add_argument("--skill", default=None, help="explicit Skill key for this run")
+    parser.add_argument("--output", choices=("text", "json"), default=None)
+    parser.add_argument("--save", action="store_true")
+    parser.add_argument("--no-summary", action="store_true")
+    return parser
+
+
+def _print_value(value: object, output: str) -> int:
+    if output == "json":
+        print(json.dumps(value, ensure_ascii=False, indent=2))
+    else:
+        print(json.dumps(value, ensure_ascii=False, indent=2))
+    return 0
+
+
+def _text(value: object, name: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{name} must be non-empty text")
+    return value.strip()
+
+
+def _optional_text(value: object) -> str | None:
+    if value is None:
         return None
-    if prompt == "/exit":
-        return True
-    messages = {"/help": "Commands: /help, /clear, /exit", "/clear": "Conversation cleared."}
-    if prompt == "/clear":
-        clear_history()
-    print(messages.get(prompt, f"Unknown command: {prompt}. Use /help."))
-    return False
+    return _text(value, "optional text")
 
 
-def _print_run_summary(result: RunResult) -> None:
-    selected_models = []
-    for event in result.events:
-        if event.event_type != "model.call.selected":
-            continue
-        label = f"{event.data.get('profile', 'unknown')} ({event.data.get('model', 'unknown')})"
-        if label not in selected_models:
-            selected_models.append(label)
-    task_skill = next((name for name in result.skills if name.startswith("task:")), "none")
-    print()
-    print(f"Run: {result.run_id}")
-    print(f"Model: {', '.join(selected_models) if selected_models else 'none'}")
-    print(f"Task Skill: {task_skill}")
-    print(f"Workflow: {result.workflow}")
-    print(f"Skills: {', '.join(result.skills) if result.skills else 'none'}")
-    print(f"Stop: {result.stop_reason}")
+def _configuration_path(value: object, source: Path) -> str | None:
+    selected = _optional_text(value)
+    if selected is None:
+        return None
+    path = Path(selected).expanduser()
+    return str((path if path.is_absolute() else source.parent / path).resolve())
 
 
-def _read_runtime_request_from_args(args: argparse.Namespace, default_user_id: str) -> CliRequest:
-    prompt = " ".join(args.prompt).strip()
-    if not prompt:
-        raise ValueError("run prompt cannot be empty")
-    return CliRequest(prompt=prompt, user_id=default_user_id, conversation_id=args.conversation_id, skill=args.skill)
+def _boolean(value: object, name: str) -> bool:
+    if not isinstance(value, bool):
+        raise TypeError(f"{name} must be boolean")
+    return value
 
 
-def _print_cli_error(error: Exception) -> None:
-    print(f"Error: {error}", file=sys.stderr)
-    message = str(error)
-    if "No model is configured" in message:
-        print("Hint: set a model environment variable or add a model Skill.", file=sys.stderr)
-    elif isinstance(error, FileNotFoundError):
-        print("Hint: check the explicit file or configuration path.", file=sys.stderr)
-    print("Run again with --debug to show the Python traceback.", file=sys.stderr)
+def _integer(value: object, name: str, minimum: int, maximum: int) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or not minimum <= value <= maximum:
+        raise ValueError(f"{name} must be between {minimum} and {maximum}")
+    return value
 
 
-if __name__ == "__main__":
-    raise SystemExit(main())
+def _choice(value: object, name: str, choices: set[str]) -> str:
+    selected = _text(value, name)
+    if selected not in choices:
+        raise ValueError(f"{name} must be one of: {', '.join(sorted(choices))}")
+    return selected
+
+
+def _number(value: object, name: str, *, positive: bool = False) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise TypeError(f"{name} must be a number")
+    selected = float(value)
+    if positive and selected <= 0:
+        raise ValueError(f"{name} must be positive")
+    return selected
+
+
+def _reject_fields(value: Mapping[str, object], allowed: set[str], name: str) -> None:
+    unknown = sorted(set(value) - allowed)
+    if unknown:
+        raise ValueError(f"unknown {name} fields: {', '.join(unknown)}")

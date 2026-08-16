@@ -117,7 +117,7 @@ function AgentTreeNode(props: AgentTreeNodeProps) {
                 )}
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-xs font-medium">
-                    {run.prompt || "运行"}
+                    {runPromptLabel(run.prompt)}
                   </span>
                   <span className="block truncate text-[11px] text-muted-foreground">
                     {run.workflow || "direct"} · {shortRunId(run.run_id)}
@@ -163,4 +163,11 @@ function runsForConversation(
 
 function shortRunId(runId: string): string {
   return runId.length > 10 ? runId.slice(0, 10) : runId
+}
+
+function runPromptLabel(value: unknown): string {
+  if (typeof value === "string" && value.trim()) return value
+  if (typeof value !== "object" || value === null) return "运行"
+  const characters = (value as Record<string, unknown>).characters
+  return typeof characters === "number" ? `已脱敏输入 · ${characters} 字符` : "已脱敏输入"
 }

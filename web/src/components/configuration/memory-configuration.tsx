@@ -44,7 +44,7 @@ export function MemoryConfiguration(props: MemoryConfigurationProps) {
       {props.memory.length ? (
         <div className="memory-list">
           {props.memory.map((item) => (
-            <article key={item.item_id} className="memory-row">
+            <article key={item.memory_id} className="memory-row">
               <div className="memory-icon">
                 <Brain />
               </div>
@@ -52,15 +52,17 @@ export function MemoryConfiguration(props: MemoryConfigurationProps) {
                 <p className="text-sm leading-6">{item.text}</p>
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                   <Badge variant="outline">长期</Badge>
-                  <Badge variant="outline">{scopeLabel(item.scope)}</Badge>
+                  {item.labels.map((label) => (
+                    <Badge key={label} variant="outline">
+                      {label}
+                    </Badge>
+                  ))}
                   <span className="inline-flex items-center gap-1">
                     <Clock3 className="size-3" />
                     {formatDate(item.created_at)}
                   </span>
-                  {item.source_run_id ? (
-                    <span className="font-mono">
-                      {shortId(item.source_run_id)}
-                    </span>
+                  {item.source ? (
+                    <span>{item.source}</span>
                   ) : null}
                 </div>
               </div>
@@ -113,7 +115,7 @@ function ForgetMemoryButton(props: {
           <AlertDialogCancel>取消</AlertDialogCancel>
           <AlertDialogAction
             variant="destructive"
-            onClick={() => props.onForget(props.item.item_id)}
+            onClick={() => props.onForget(props.item.memory_id)}
           >
             遗忘
           </AlertDialogAction>
@@ -123,20 +125,7 @@ function ForgetMemoryButton(props: {
   )
 }
 
-function scopeLabel(scope: string): string {
-  const labels: Record<string, string> = {
-    agent: "Agent",
-    user: "用户",
-    project: "项目",
-  }
-  return labels[scope] || scope
-}
-
 function formatDate(value: string): string {
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? value : dateFormatter.format(date)
-}
-
-function shortId(value: string): string {
-  return value.length > 14 ? `${value.slice(0, 8)}...${value.slice(-4)}` : value
 }

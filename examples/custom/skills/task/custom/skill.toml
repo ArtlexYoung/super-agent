@@ -1,6 +1,0 @@
-type = "task"
-description = "Answer a task with a short, concrete result"
-
-[configuration]
-mode = "direct"
-max_steps = 1

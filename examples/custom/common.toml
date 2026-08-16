@@ -1,15 +1,5 @@
-schema_version = 1
-kind = "common"
-
-[agent]
+version = 1
 name = "custom-example"
-system = "Use the selected task Skill."
-skills = []
-disabled_skills = []
-
-[paths]
-skills = ["skills"]
-
-[storage]
-backend = "jsonl"
-path = ".super-agent"
+instructions = ["Use the selected task Skill."]
+skill_paths = ["skills"]
+models = [{ name = "offline", provider = "mock", model = "The custom Skill was selected." }]

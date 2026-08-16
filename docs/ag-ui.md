@@ -1,104 +1,30 @@
-# AG-UI Adapter
+# AG-UI 适配 / AG-UI Adapter
 
-Super Agent exposes the same Core task path through AG-UI. The adapter validates protocol
-input, calls `Agent.run(...)`, and maps canonical Runtime events to server-sent events.
-It does not own model selection, conversations, tools, or another execution engine.
+AG-UI 是可选的外部事件协议，不是核心运行时接口。核心只产生 `RunEvent`，`adapter/http/agui.py` 再把它们映射成 SSE/AG-UI 事件。
 
-```text
-AG-UI RunAgentInput
-  -> Agent.run(...)
-  -> canonical Runtime events and storage
-  -> AG-UI SSE events
-```
+AG-UI is an optional external event protocol, not the core runtime interface. Core emits `RunEvent` values; `adapter/http/agui.py` maps them to SSE/AG-UI events.
 
-## Start
+## 输入 / Input
 
-```bash
-super-agent serve
-```
+适配器读取 `threadId`、`runId`、`messages` 和可选 `forwardedProps.skill`。正文取最后一条用户消息，Skill 名称只是一次运行的显式限制，不是触发词。
 
-The default routes are:
+The adapter reads `threadId`, `runId`, `messages`, and optional `forwardedProps.skill`. The prompt is the latest user message; a Skill name is an explicit per-run restriction, not a trigger word.
 
-- `GET http://127.0.0.1:8765/`: built React client.
-- `POST http://127.0.0.1:8765/ag-ui`: AG-UI run endpoint.
-- `/api/*`: same-origin management operations.
-- `GET http://127.0.0.1:8765/health`: health check.
+## 输出 / Output
 
-`POST /ag-ui` requires `Content-Type: application/json`. `threadId` is the persisted
-conversation ID and `runId` is the canonical Runtime run ID. The latest non-empty user
-message becomes the task prompt.
+运行开始、文本增量、工具结果、运行完成或失败会映射为有序事件；同时保留 `CUSTOM` 事件，携带脱敏后的原始 Runtime 事件类型和序号。
 
-```json
-{
-  "threadId": "project-a",
-  "runId": "run-001",
-  "state": {},
-  "messages": [
-    {"id": "message-001", "role": "user", "content": "Explain this project"}
-  ],
-  "tools": [],
-  "context": [],
-  "forwardedProps": {"skill": "code"}
-}
-```
-
-`forwardedProps.skill` is optional and selects one task Skill for this run. It accepts a
-name such as `code` or a stable key such as `task:code`. When omitted, available task Skill
-descriptions remain in the central Skill index and the model may activate one during its
-normal turn. It cannot select a user, override an explicit task Skill, or change action
-authority.
-
-The response uses `text/event-stream` and official SSE framing:
-
-```text
-data: {"type":"RUN_STARTED","threadId":"project-a","runId":"run-001"}
-
-```
-
-## Event Mapping
-
-| Runtime event | AG-UI event |
-| --- | --- |
-| `run.started` | `RUN_STARTED` |
-| `task.started` | `STEP_STARTED` |
-| `tool.requested` | `TOOL_CALL_START`, `TOOL_CALL_ARGS`, `TOOL_CALL_END` |
-| `tool.completed`, `tool.failed` | `TOOL_CALL_RESULT` |
-| `task.completed` | `TEXT_MESSAGE_START`, `TEXT_MESSAGE_CONTENT`, `TEXT_MESSAGE_END` |
-| `run.completed` | `RUN_FINISHED` |
-| `run.failed` | `RUN_ERROR` |
-| every canonical event | `CUSTOM` with sequence and payload |
-
-Provider calls are currently non-streaming. Tool progress arrives live, while final
-assistant text is emitted after the model loop completes. Events are forwarded
-from the active run and are not reconstructed from logs.
-
-## Python and CopilotKit
-
-Embed the server with the public library API:
+Run start, text deltas, tool results, and run finish or failure become ordered events; `CUSTOM` events preserve the redacted Runtime event type and sequence.
 
 ```python
-from adapter.http.agui import create_ag_ui_server
-from super_agent import Agent
+from adapter.http.agui import AGUIEventMapper
 
-server = create_ag_ui_server(Agent(use_storage=True))
-server.serve_forever()
+mapper = AGUIEventMapper("thread", "run")
+for event in agent.stream("hello"):
+    for message in mapper.map_runtime_event(event):
+        send_sse(message)
 ```
 
-The Web client's CopilotKit page uses `HttpAgent` from `@ag-ui/client`,
-`CopilotKitCoreReact` from the public `/v2/context` entry, and `useAgent` from the public
-`/v2/headless` entry. It renders a small project-native chat against `/ag-ui` and reuses
-an explicitly created conversation ID. The example is lazy-loaded, so the native chat
-does not load CopilotKit and the packaged client does not include its optional rich-chat
-renderers.
+任何客户端都可以替换 AG-UI，只要它消费 `RunEvent` 或实现自己的 Adapter；核心不依赖 AG-UI 包。
 
-## Network and Identity Boundary
-
-The default server listens on `127.0.0.1`, limits request bodies to 1 MiB, validates
-content types, and allows only configured browser origins. `--user-id` fixes one Runtime
-user when the server starts; client-controlled state and forwarded properties cannot
-select another user.
-
-The server has no authentication or TLS. Keep it on loopback, or put an authenticated TLS
-reverse proxy in front of it and configure each allowed origin explicitly. Core still
-checks every declared action before its handler runs; AG-UI only transports the resulting
-events.
+Any client may replace AG-UI by consuming `RunEvent` or implementing another adapter; the core does not depend on an AG-UI package.

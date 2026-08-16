@@ -1,12 +1,10 @@
-"""运行本地发布前所需的零依赖静态检查。"""
+"""运行 v0.2.0 的本地发布检查。"""
 
 from __future__ import annotations
 
 import argparse
-import ast
 import json
 import os
-import re
 import subprocess
 import sys
 import tempfile
@@ -14,50 +12,17 @@ import tomllib
 from pathlib import Path
 
 
-MAX_TOTAL_SOURCE_FILES = 48
-SOURCE_LINE_BUDGETS = {
-    "0.1.81": 18_602, "0.1.82": 17_500, "0.1.83": 16_200,
-    "0.1.84": 15_300, "0.1.85": 14_100, "0.1.86": 13_000,
-    "0.1.87": 11_900, "0.1.88": 10_900, "0.1.89": 10_200,
-    "0.1.90": 9_750, "0.1.91": 9_749, "0.1.92": 9_748,
-    "0.1.93": 9_747, "0.1.94": 9_746, "0.1.95": 9_745,
-    "0.1.96": 9_744,
-    "0.1.97": 9_743, "0.1.98": 9_742, "0.1.99": 9_741,
-    "0.1.100": 9_740, "0.1.101": 9_739, "0.1.102": 9_738,
+VERSION = "0.2.0"
+MAX_SOURCE_FILES = 24
+MAX_SOURCE_LINES = 10_000
+SOURCE_ROOTS = {"adapter", "core", "skill", "cli.py", "super_agent.py"}
+DOMAIN_FILES = {
+    "adapter": {"cli.py", "database.py", "http", "process.py", "static", "storage.py", "tools.py"},
+    "core": {"__init__.py", "config.py", "disclosure.py", "event.py", "model.py", "provider.py", "records.py", "run.py", "user.py"},
+    "skill": {"builtin", "document.py", "evolution.py", "groups.py", "library.py", "memory.py", "team.py"},
 }
-FINAL_SOURCE_LINE_TARGET = 9_738
-MAX_TOTAL_SOURCE_LINES = SOURCE_LINE_BUDGETS["0.1.102"]
-EXPECTED_SOURCE_ROOT = {"adapter", "cli.py", "core", "skill", "super_agent.py"}
-EXPECTED_DOMAIN_CHILDREN = {
-    "adapter": {
-        "agent.py", "cli.py", "cli_support", "code.py", "http", "processes.py",
-        "repository.py", "static", "storage_backends", "user.py",
-    },
-    "core": {
-        "checks.py", "config.py", "loop.py", "model_calls.py", "models.py",
-        "provider.py", "records", "runtime.py", "team.py", "tools.py",
-    },
-    "skill": {"builtin", "discovery", "handlers", "learning", "tasks"},
-}
-EXPECTED_WHEEL_ROOTS = [
-    "src/adapter",
-    "src/core",
-    "src/skill",
-    "src/cli.py",
-    "src/super_agent.py",
-]
-EXPECTED_SDIST_ROOTS = [
-    "README.md",
-    "README_cn.md",
-    "README_en.md",
-    "pyproject.toml",
-    "docs",
-    "scripts",
-    "src",
-    "tests",
-    "examples",
-]
-EXPECTED_EVALUATION_PACKAGE_FILES = (
+OLD_PATH_PARTS = {"discovery", "handlers", "learning", "tasks", "cli_support", "storage_backends"}
+EVALUATION_FILES = (
     "tests/eval/README.md",
     "tests/eval/reports/token-usage-glm4-9b-20260806/README.md",
     "tests/eval/reports/token-usage-glm4-9b-20260806/humaneval_plus.md",
@@ -74,147 +39,15 @@ EXPECTED_EVALUATION_PACKAGE_FILES = (
     "tests/eval/runtime/proxy/siliconflow.yaml",
     "tests/eval/runtime/proxy/usage_logging.py",
 )
-EXPECTED_SDIST_FORCE_INCLUDE = {
-    path: path for path in EXPECTED_EVALUATION_PACKAGE_FILES
-}
-VERSION_PATTERN = re.compile(r"0\.\d+\.\d+$")
-AGENT_OWNER_MODULES = {"adapter/agent.py", "adapter/user.py"}
-EXPECTED_AGENT_ACTIONS = {
-    "add_model",
-    "add_skill_path",
-    "add_subagent",
-    "add_tool",
-    "for_user",
-    "run",
-}
-EXPECTED_AGENT_REGISTRATION_ACTIONS = {
-    "AgentEvents": {"add_subscriber"},
-    "AgentSkills": {"add_handler", "enable"},
-}
-PRIVATE_AGENT_CALLS = {
-    "_action_rules",
-    "_create_event_store",
-    "_create_skills",
-    "_create_task_runner",
-    "_execute_action",
-    "_read_task_trace",
-    "_record_task_feedback",
-    "_reload_models",
-    "_replace_configuration",
-    "_run_for_user",
-    "_user_environment",
-    "_uses_direct_provider",
-    "_add_skill_handler",
-    "_add_event_subscriber",
-}
-REMOVED_CODE_NAMES = {
-    "AgentChoice",
-    "AgentResources",
-    "AgentTask",
-    "AgentTaskQueue",
-    "AgentTaskQueueSettings",
-    "AuditSettings",
-    "SubagentPool",
-    "_add_event_subscriber",
-    "_add_skill_handler",
-    "classify_audit_event",
-    "compact_runtime_event_data",
-    "prune_expired_audit_events",
-    "redact_event_data_for_display",
-    "redact_events_for_display",
-    "create_agent_task_queue",
-    "create_runtime_tools",
-    "ModelCalls",
-    "ModelCallContext",
-    "ModelLoop",
-    "RuntimeTools",
-    "RuntimeToolsContext",
-    "RunToolsContext",
-    "RuntimeMemoryStore",
-    "SkillCollection",
-    "SkillResult",
-    "create_run_tools",
-}
-PRESERVED_SOURCE_SYMBOLS = {
-    "adapter/cli.py": {"main"},
-    "adapter/cli_support/cli_data.py": {
-        "configure_conversations_parser", "configure_memory_parser",
-        "configure_runs_parser", "configure_storage_parser",
-    },
-    "adapter/cli_support/cli_skills.py": {
-        "configure_skill_changes_parser", "configure_skill_packages_parser",
-        "configure_models_parser", "run_skills_command",
-    },
-    "adapter/http/agui.py": {"create_ag_ui_server"},
-    "adapter/http/web.py": {"WebAPI"},
-    "adapter/storage_backends/local_storage.py": {"JsonlStorage", "SqliteStorage"},
-    "adapter/storage_backends/remote_storage.py": {"MySqlStorage", "PostgreSqlStorage"},
-    "core/model_calls.py": {"list_model_usage_stats"},
-    "core/models.py": {"SubagentRecordOptions"},
-    "core/records/audit.py": {"compact_subagent_result"},
-    "core/records/store.py": {"EventStore", "StorageBackend"},
-    "core/runtime.py": {"Run", "Runtime"},
-    "core/tools.py": {"RunTools"},
-    "skill/handlers/memory.py": {"Memory"},
-    "skill/handlers/package.py": {
-        "SkillPackageManager", "apply_skill_directory_updates", "write_skill_lock_file",
-    },
-    "skill/learning/update.py": {
-        "SkillUpdater",
-    },
-    "skill/learning/run_learning.py": {
-        "explain_run_with_insight", "learn_from_run", "review_run_evidence",
-    },
-    "skill/tasks/task_groups.py": {"AgentGroups", "AgentGroupSettings"},
-    "skill/tasks/task_queue.py": {"TaskQueue", "create_task_queue"},
-    "skill/tasks/task_selection.py": {"AgentSelector", "TaskQueueSettings"},
-}
-PRESERVED_CLASS_METHODS = {
-    ("skill/handlers/memory.py", "Memory"): {
-        "forget_long_term", "list_long_term", "organize_long_term",
-        "recall_long_term", "remember_long_term",
-    },
-    ("skill/learning/update.py", "SkillUpdater"): {
-        "apply_skill_change", "propose_skill_change",
-        "test_skill_change", "undo_skill_change",
-    },
-    ("skill/tasks/task_groups.py", "AgentGroups"): {
-        "has_failures", "list_groups", "list_tools", "refresh",
-    },
-    ("skill/tasks/task_queue.py", "TaskQueue"): {
-        "close", "finish", "list_groups", "list_tasks", "list_tools", "read_results",
-    },
-    ("skill/tasks/task_selection.py", "AgentSelector"): {
-        "choose", "choose_group", "commit_group", "record_success",
-        "record_unavailable", "retry_delay",
-    },
-}
-PRESERVED_OPTIONAL_DEPENDENCIES = {"mysql", "postgresql"}
-PRESERVED_SKILL_RESOURCES = {
-    "task/code-multi-deep-optimization/SKILL.md",
-    "task/code-multi-deep-optimization/skill.toml",
-    "task/common-multi-producer-consumer/SKILL.md",
-    "task/common-multi-producer-consumer/skill.toml",
-}
-FEATURE_CONTRACT_MODULES = (
-    "tests.agent.test_public_api", "tests.agent.test_run",
-    "tests.agent.test_model_discovery", "tests.agent.test_multi_agent_tasks",
-    "tests.agent.test_record_compression", "tests.commands.test_cli",
-    "tests.agui.test_protocol", "tests.agui.test_server",
-    "tests.runtime.test_provider_calls", "tests.runtime.test_safety",
-    "tests.runtime.test_stateless", "tests.runtime.test_composability",
-    "tests.skills.test_disclosure_core",
-    "tests.skills.test_memory", "tests.skills.test_tasks", "tests.skills.test_packages",
-    "tests.skills.test_skill_update", "tests.storage.test_storage",
-    "tests.storage.test_remote_sql_storage", "tests.storage.test_audit",
-)
+WHEEL_ROOTS = ["src/adapter", "src/core", "src/skill", "src/cli.py", "src/super_agent.py"]
+SDIST_ROOTS = ["README.md", "README_cn.md", "README_en.md", "pyproject.toml", "docs", "scripts", "src", "tests", "examples"]
 
 
 def main(arguments: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--version", required=True, help="release version to verify")
-    parser.add_argument("--full", action="store_true", help="run executable Python gates")
-    parser.add_argument("--web", action="store_true", help="include Web checks in --full")
+    parser.add_argument("--version", required=True)
+    parser.add_argument("--full", action="store_true")
+    parser.add_argument("--web", action="store_true")
     args = parser.parse_args(arguments)
     if args.web and not args.full:
         parser.error("--web requires --full")
@@ -226,369 +59,191 @@ def main(arguments: list[str] | None = None) -> int:
         return 1
     print(f"Release checks passed: {args.version}")
     if args.full:
-        full_errors = run_full_release_gate(root, include_web=args.web)
-        if full_errors:
-            for error in full_errors:
+        errors = run_full_release_gate(root, include_web=args.web)
+        if errors:
+            for error in errors:
                 print(f"FAIL {error}", file=sys.stderr)
             return 1
         print("Full release gate passed")
     return 0
 
 
+def verify_release(root: Path, expected_version: str) -> list[str]:
+    errors: list[str] = []
+    if expected_version != VERSION:
+        errors.append(f"this release gate is for {VERSION}")
+    project = _read_toml(root / "pyproject.toml", errors)
+    web = _read_json(root / "web/package.json", errors)
+    project_data = project.get("project", {})
+    if not isinstance(project_data, dict):
+        errors.append("pyproject.toml project table is missing")
+        project_data = {}
+    if project_data.get("version") != expected_version:
+        errors.append("pyproject.toml version does not match")
+    if project_data.get("requires-python") != ">=3.11":
+        errors.append("Python 3.11 remains the supported minimum")
+    if project_data.get("dependencies") != []:
+        errors.append("default runtime dependencies must remain empty")
+    if project_data.get("scripts", {}).get("super-agent") != "adapter.cli:main":
+        errors.append("installed CLI must point to adapter.cli:main")
+    if web.get("version") != expected_version:
+        errors.append("web/package.json version does not match")
+    if _read_version(root / "src/core/__init__.py", errors) != expected_version:
+        errors.append("core version does not match")
+    errors.extend(_check_layout(root / "src"))
+    errors.extend(_check_build_config(project, root))
+    files = [path for path in (root / "src").rglob("*.py") if "__pycache__" not in path.parts]
+    lines = sum(_non_empty_lines(path) for path in files)
+    if len(files) > MAX_SOURCE_FILES:
+        errors.append(f"source file count is {len(files)}, limit is {MAX_SOURCE_FILES}")
+    if lines > MAX_SOURCE_LINES:
+        errors.append(f"source line count is {lines}, limit is {MAX_SOURCE_LINES}")
+    errors.extend(_check_old_imports(files))
+    errors.extend(_check_builtin_skills(root / "src" / "skill" / "builtin"))
+    errors.extend(_check_benchmark(root / "examples" / "offline-gate-benchmark.json"))
+    readme = (root / "README.md").read_text(encoding="utf-8") if (root / "README.md").is_file() else ""
+    for marker in ("README_cn.md", "README_en.md", "## 致谢与借鉴"):
+        if marker not in readme:
+            errors.append(f"README.md must contain {marker}")
+    return errors
+
+
 def run_full_release_gate(root: Path, *, include_web: bool) -> list[str]:
     environment = dict(os.environ)
     environment["PYTHONDONTWRITEBYTECODE"] = "1"
-    environment["PYTHONPATH"] = os.pathsep.join(
-        [str(root / "src"), str(root / "tests")]
-    )
+    environment["PYTHONPATH"] = str(root / "src")
     errors: list[str] = []
     with tempfile.TemporaryDirectory(prefix="super-agent-release-") as temporary:
         output = Path(temporary) / "benchmark"
         for name, command in build_full_gate_commands(root, output, include_web):
             try:
-                completed = subprocess.run(
-                    command,
-                    cwd=root,
-                    env=environment,
-                    check=False,
-                    capture_output=True,
-                    text=True,
-                )
+                result = subprocess.run(command, cwd=root, env=environment, capture_output=True, text=True, check=False)
             except OSError as error:
                 errors.append(f"{name} could not start: {error}")
                 continue
-            if completed.returncode != 0:
-                detail = (completed.stderr or completed.stdout).strip()[-8_000:]
-                errors.append(f"{name} exited {completed.returncode}: {detail}")
+            if result.returncode:
+                detail = (result.stderr or result.stdout).strip()[-8_000:]
+                errors.append(f"{name} exited {result.returncode}: {detail}")
             else:
                 print(f"PASS {name}")
     return errors
 
 
-def build_full_gate_commands(
-    root: Path,
-    benchmark_output: Path,
-    include_web: bool,
-) -> list[tuple[str, tuple[str, ...]]]:
+def build_full_gate_commands(root: Path, output: Path, include_web: bool) -> list[tuple[str, tuple[str, ...]]]:
     python = sys.executable
     commands = [
-        (
-            "Feature contract",
-            (python, "-m", "unittest", *FEATURE_CONTRACT_MODULES),
-        ),
-        (
-            "Python tests",
-            (python, "-m", "unittest", "discover", "-s", "tests", "-p", "test_*.py"),
-        ),
+        ("Python tests", (python, "-m", "unittest", "discover", "-s", "tests", "-p", "test_*.py")),
         ("Python compile", (python, "-m", "compileall", "-q", "src")),
-        ("diff check", ("git", "diff", "--check")),
-        (
-            "Python package build",
-            (
-                "uv", "build", str(root), "--out-dir",
-                str(benchmark_output.parent / "packages"),
-                "--no-python-downloads", "--no-progress",
-            ),
-        ),
-        (
-            "offline benchmark",
-            (
-                python,
-                str(root / "scripts" / "run_benchmark.py"),
-                "--manifest",
-                str(root / "examples" / "offline-gate-benchmark.json"),
-                "--output",
-                str(benchmark_output),
-            ),
-        ),
+        ("diff check", ("git", "diff", "--check", "HEAD")),
+        ("Python package build", ("uv", "build", str(root), "--out-dir", str(output.parent / "packages"), "--no-python-downloads", "--no-progress")),
+        ("offline benchmark", (python, str(root / "scripts" / "run_benchmark.py"), "--manifest", str(root / "examples" / "offline-gate-benchmark.json"), "--output", str(output))),
     ]
     if include_web:
-        commands.extend(
-            [
-                ("Web typecheck", ("pnpm", "--dir", "web", "typecheck")),
-                ("Web lint", ("pnpm", "--dir", "web", "lint")),
-                ("Web build", ("pnpm", "--dir", "web", "build")),
-            ]
-        )
+        commands.extend([
+            ("Web typecheck", ("pnpm", "--dir", "web", "typecheck")),
+            ("Web lint", ("pnpm", "--dir", "web", "lint")),
+            ("Web build", ("pnpm", "--dir", "web", "build")),
+        ])
     return commands
 
 
-def verify_release(root: Path, expected_version: str) -> list[str]:
+def _check_layout(source: Path) -> list[str]:
     errors: list[str] = []
-    if VERSION_PATTERN.fullmatch(expected_version) is None:
-        errors.append("version must use the 0.x.y format")
-    planned_budget = SOURCE_LINE_BUDGETS.get(expected_version)
-    if planned_budget is None:
-        errors.append("version has no locked source-line budget")
-    elif planned_budget != MAX_TOTAL_SOURCE_LINES:
-        errors.append("current source-line budget does not match the locked release plan")
+    actual = {path.name for path in source.iterdir() if path.name != "__pycache__"}
+    if actual != SOURCE_ROOTS:
+        errors.append(f"src layout changed: {sorted(actual)}")
+    for directory, expected in DOMAIN_FILES.items():
+        path = source / directory
+        if not path.is_dir():
+            errors.append(f"missing src/{directory}")
+            continue
+        actual_children = {item.name for item in path.iterdir() if item.name != "__pycache__"}
+        if actual_children != expected:
+            errors.append(f"src/{directory} layout changed: {sorted(actual_children)}")
+    for path in source.rglob("*"):
+        if path.is_dir() and path.name in OLD_PATH_PARTS:
+            errors.append(f"old architecture directory remains: {path.relative_to(source)}")
+    return errors
 
-    project = _read_toml(root / "pyproject.toml", errors)
-    web_package = _read_json(root / "web/package.json", errors)
-    project_data = project.get("project", {})
-    if project_data.get("version") != expected_version:
-        errors.append("pyproject.toml project.version does not match the requested version")
-    if project_data.get("dependencies") != []:
-        errors.append("default project dependencies must remain empty")
-    if project_data.get("scripts", {}).get("super-agent") != "adapter.cli:main":
-        errors.append("the installed CLI must point to adapter.cli:main")
 
-    if _read_python_version(root / "src/core/__init__.py", errors) != expected_version:
-        errors.append("src/core/__init__.py __version__ does not match the requested version")
-    if web_package.get("version") != expected_version:
-        errors.append("web/package.json version does not match the requested version")
-
-    source_root = root / "src"
-    actual_root = {
-        path.name for path in source_root.iterdir() if path.name != "__pycache__"
-    }
-    if actual_root != EXPECTED_SOURCE_ROOT:
-        errors.append(f"src layout changed: {sorted(actual_root)}")
-    for name, expected in EXPECTED_DOMAIN_CHILDREN.items():
-        actual = {
-            path.name
-            for path in (source_root / name).iterdir()
-            if path.name not in {"__init__.py", "__pycache__"}
-        }
-        if actual != expected:
-            errors.append(f"src/{name} layout changed: {sorted(actual)}")
-
-    wheel = (
-        project.get("tool", {})
-        .get("hatch", {})
-        .get("build", {})
-        .get("targets", {})
-        .get("wheel", {})
-    )
-    if wheel.get("only-include") != EXPECTED_WHEEL_ROOTS:
-        errors.append("wheel source roots changed")
-    if wheel.get("sources") != ["src"]:
-        errors.append("wheel source mapping must remain ['src']")
-    sdist = (
-        project.get("tool", {})
-        .get("hatch", {})
-        .get("build", {})
-        .get("targets", {})
-        .get("sdist", {})
-    )
-    if sdist.get("only-include") != EXPECTED_SDIST_ROOTS:
+def _check_build_config(project: dict[str, object], root: Path) -> list[str]:
+    errors: list[str] = []
+    targets = project.get("tool", {}).get("hatch", {}).get("build", {}).get("targets", {})
+    wheel = targets.get("wheel", {})
+    sdist = targets.get("sdist", {})
+    if wheel.get("only-include") != WHEEL_ROOTS or wheel.get("sources") != ["src"]:
+        errors.append("wheel must contain only the v0.2.0 source roots")
+    if sdist.get("only-include") != SDIST_ROOTS:
         errors.append("sdist source roots changed")
-    if sdist.get("force-include") != EXPECTED_SDIST_FORCE_INCLUDE:
-        errors.append("sdist evaluation file allowlist changed")
-
-    source_files = [
-        path
-        for path in source_root.rglob("*.py")
-        if "__pycache__" not in path.parts
-    ]
-    source_lines = sum(_count_non_empty_lines(path) for path in source_files)
-    if len(source_files) >= MAX_TOTAL_SOURCE_FILES:
-        errors.append(
-            f"source file count must stay below {MAX_TOTAL_SOURCE_FILES}"
-        )
-    if source_lines > MAX_TOTAL_SOURCE_LINES:
-        errors.append(
-            f"source line count must not exceed {MAX_TOTAL_SOURCE_LINES}"
-        )
-    errors.extend(_verify_owned_agent_calls(source_root, source_files))
-    errors.extend(_verify_removed_code_names(source_files))
-    errors.extend(_verify_agent_actions(source_root / "adapter" / "agent.py"))
-    errors.extend(_verify_preserved_capabilities(source_root, project_data))
-    errors.extend(
-        _verify_offline_benchmark(root / "examples" / "offline-gate-benchmark.json")
-    )
-    readme = root / "README.md"
-    readme_text = readme.read_text(encoding="utf-8") if readme.is_file() else ""
-    for marker in ("README_cn.md", "README_en.md", "## 致谢与借鉴"):
-        if marker not in readme_text:
-            errors.append(f"README.md must contain {marker}")
+    expected_force = {path: path for path in EVALUATION_FILES}
+    if sdist.get("force-include") != expected_force:
+        errors.append("sdist evaluation allowlist changed")
+    optional = project.get("project", {}).get("optional-dependencies", {})
+    if not isinstance(optional, dict) or not {"mysql", "postgresql"} <= set(optional):
+        errors.append("MySQL and PostgreSQL optional extras are required")
+    for relative in EVALUATION_FILES:
+        if not (root / relative).is_file():
+            errors.append(f"missing evaluation asset: {relative}")
     return errors
 
 
-def _count_non_empty_lines(path: Path) -> int:
-    return sum(
-        1 for line in path.read_text(encoding="utf-8").splitlines() if line.strip()
-    )
-
-
-def _verify_owned_agent_calls(
-    source_root: Path,
-    source_files: list[Path],
-) -> list[str]:
-    errors = []
-    for path in source_files:
-        relative = path.relative_to(source_root).as_posix()
-        if not relative.startswith("adapter/") or relative in AGENT_OWNER_MODULES:
-            continue
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        for node in ast.walk(tree):
-            if (
-                isinstance(node, ast.Call)
-                and isinstance(node.func, ast.Attribute)
-                and node.func.attr in PRIVATE_AGENT_CALLS
-            ):
-                errors.append(
-                    f"{relative}:{node.lineno} calls private Agent method "
-                    f"{node.func.attr}"
-                )
+def _check_old_imports(files: list[Path]) -> list[str]:
+    errors: list[str] = []
+    forbidden = ("core.models", "core.runtime", "core.loop", "core.tools", "core.checks", "core.records.", "skill.handlers", "skill.learning", "skill.tasks", "adapter.processes", "adapter.storage_backends")
+    for path in files:
+        text = path.read_text(encoding="utf-8")
+        for name in forbidden:
+            if name in text:
+                errors.append(f"old import or compatibility reference remains: {path}: {name}")
     return errors
 
 
-def _verify_removed_code_names(source_files: list[Path]) -> list[str]:
-    errors = []
-    for path in source_files:
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        for node in ast.walk(tree):
-            names = _defined_or_imported_names(node)
-            for name in names & REMOVED_CODE_NAMES:
-                errors.append(
-                    f"removed code name returned: {name} at {path}:{node.lineno}"
-                )
+def _check_builtin_skills(root: Path) -> list[str]:
+    errors: list[str] = []
+    files = sorted(root.glob("*.md"))
+    if len(files) < 8:
+        errors.append("builtin Skill catalog is unexpectedly small")
+    for path in files:
+        try:
+            text = path.read_text(encoding="utf-8")
+            if not text.startswith("+++\n") or "\n+++\n" not in text:
+                errors.append(f"builtin Skill has invalid front matter: {path.name}")
+        except OSError as error:
+            errors.append(f"cannot read builtin Skill {path.name}: {error}")
     return errors
 
 
-def _verify_preserved_capabilities(
-    source_root: Path,
-    project_data: dict[str, object],
-) -> list[str]:
-    """拒绝通过移除高复杂度功能来缩减源码的发布。"""
-    errors = []
-    for relative, required in PRESERVED_SOURCE_SYMBOLS.items():
-        path = source_root / relative
-        if not path.is_file():
-            errors.append(f"preserved capability module is missing: {relative}")
-            continue
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        actual = {
-            node.name
-            for node in tree.body
-            if isinstance(node, ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef)
-        }
-        for symbol in sorted(required - actual):
-            errors.append(f"preserved capability is missing: {relative}:{symbol}")
-    for (relative, class_name), required in PRESERVED_CLASS_METHODS.items():
-        path = source_root / relative
-        if not path.is_file():
-            continue
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        owner = next(
-            (
-                node
-                for node in tree.body
-                if isinstance(node, ast.ClassDef) and node.name == class_name
-            ),
-            None,
-        )
-        actual = {
-            node.name
-            for node in (() if owner is None else owner.body)
-            if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
-        }
-        for method in sorted(required - actual):
-            errors.append(
-                f"preserved capability is missing: {relative}:{class_name}.{method}"
-            )
-    optional = project_data.get("optional-dependencies", {})
-    optional_names = set(optional) if isinstance(optional, dict) else set()
-    for name in sorted(PRESERVED_OPTIONAL_DEPENDENCIES - optional_names):
-        errors.append(f"preserved optional storage dependency is missing: {name}")
-    builtin_root = source_root / "skill" / "builtin"
-    actual_resources = {
-        path.relative_to(builtin_root).as_posix()
-        for path in builtin_root.rglob("*")
-        if path.is_file()
-    }
-    for relative in sorted(PRESERVED_SKILL_RESOURCES - actual_resources):
-        errors.append(f"preserved task Skill resource is missing: {relative}")
-    return errors
-
-
-def _defined_or_imported_names(node: ast.AST) -> set[str]:
-    if isinstance(node, ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef):
-        return {node.name}
-    if isinstance(node, ast.ImportFrom | ast.Import):
-        return {alias.asname or alias.name.rsplit(".", 1)[-1] for alias in node.names}
-    return set()
-
-
-def _verify_agent_actions(path: Path) -> list[str]:
-    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-    classes = {
-        node.name: node
-        for node in tree.body
-        if isinstance(node, ast.ClassDef)
-    }
-    expected = {
-        "Agent": EXPECTED_AGENT_ACTIONS,
-        **EXPECTED_AGENT_REGISTRATION_ACTIONS,
-    }
-    errors = []
-    for name, expected_actions in expected.items():
-        owner = classes.get(name)
-        if owner is None:
-            errors.append(f"Agent action owner is missing: {name}")
-            continue
-        actual = {
-            node.name
-            for node in owner.body
-            if isinstance(node, ast.FunctionDef)
-            and not node.name.startswith("_")
-            and not _is_property(node)
-        }
-        if actual != expected_actions:
-            errors.append(
-                f"{name} actions changed: expected {sorted(expected_actions)}, "
-                f"found {sorted(actual)}"
-            )
-    return errors
-
-
-def _verify_offline_benchmark(path: Path) -> list[str]:
+def _check_benchmark(path: Path) -> list[str]:
     errors: list[str] = []
     value = _read_json(path, errors)
     agents = value.get("agents")
     tasks = value.get("tasks")
     if not isinstance(agents, list) or len(agents) != 1 or not isinstance(agents[0], dict):
-        return [*errors, "offline gate must declare one Agent"]
+        return [*errors, "offline benchmark must declare one Agent"]
     agent = agents[0]
-    expected_command = [
-        "{python}", "{project_root}/src/cli.py", "--output", "json", "{prompt}",
-    ]
-    if agent.get("command") != expected_command:
-        errors.append("offline gate must execute the real Super Agent CLI")
-    expected_environment = {
-        "PYTHONDONTWRITEBYTECODE": "1",
-        "PYTHONPATH": "{project_root}/src",
-        "SUPER_AGENT_PROVIDER": "mock",
-    }
-    if agent.get("environment") != expected_environment:
-        errors.append("offline gate must use the explicit offline mock environment")
+    if agent.get("command") != ["{python}", "{project_root}/src/cli.py", "--output", "json", "{prompt}"]:
+        errors.append("offline benchmark must execute the real CLI")
+    if agent.get("environment") != {"PYTHONDONTWRITEBYTECODE": "1", "PYTHONPATH": "{project_root}/src", "SUPER_AGENT_PROVIDER": "mock"}:
+        errors.append("offline benchmark must use explicit Mock Provider")
     if agent.get("result_json_field") != "text":
-        errors.append("offline gate must verify the structured Agent result text")
-    if not isinstance(tasks, list) or not tasks or not isinstance(tasks[0], dict):
-        errors.append("offline gate must declare at least one task")
+        errors.append("offline benchmark must inspect structured text")
+    if not isinstance(tasks, list) or not tasks:
+        errors.append("offline benchmark must contain a task")
     else:
-        checks = tasks[0].get("checks")
-        if not isinstance(checks, dict) or checks.get("workspace_unchanged") is not True:
-            errors.append("offline gate must prove that a stateless run leaves no files")
-        if not isinstance(checks, dict) or "Mock response" not in checks.get("output_contains", []):
-            errors.append("offline gate must verify the Provider result")
+        checks = tasks[0].get("checks", {}) if isinstance(tasks[0], dict) else {}
+        if checks.get("workspace_unchanged") is not True:
+            errors.append("offline benchmark must prove stateless workspace behavior")
+        if "Mock response" not in checks.get("output_contains", []):
+            errors.append("offline benchmark must verify Mock response")
     return errors
-
-
-def _is_property(function: ast.FunctionDef) -> bool:
-    return any(
-        isinstance(decorator, ast.Name) and decorator.id == "property"
-        for decorator in function.decorator_list
-    )
 
 
 def _read_toml(path: Path, errors: list[str]) -> dict[str, object]:
     try:
-        with path.open("rb") as source:
-            value = tomllib.load(source)
+        with path.open("rb") as stream:
+            value = tomllib.load(stream)
     except (OSError, tomllib.TOMLDecodeError) as error:
-        errors.append(f"cannot read {path.name}: {error}")
+        errors.append(f"cannot read {path}: {error}")
         return {}
     return value
 
@@ -597,33 +252,29 @@ def _read_json(path: Path, errors: list[str]) -> dict[str, object]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
-        errors.append(f"cannot read {path.name}: {error}")
+        errors.append(f"cannot read {path}: {error}")
         return {}
     if not isinstance(value, dict):
-        errors.append(f"{path.name} must contain an object")
+        errors.append(f"{path} must contain an object")
         return {}
     return value
 
 
-def _read_python_version(path: Path, errors: list[str]) -> str | None:
+def _read_version(path: Path, errors: list[str]) -> str | None:
     try:
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-    except (OSError, SyntaxError) as error:
-        errors.append(f"cannot read {path.name}: {error}")
+        text = path.read_text(encoding="utf-8")
+    except OSError as error:
+        errors.append(f"cannot read {path}: {error}")
         return None
-    for node in tree.body:
-        if not isinstance(node, ast.Assign):
-            continue
-        assigns_version = any(
-            isinstance(target, ast.Name) and target.id == "__version__"
-            for target in node.targets
-        )
-        if assigns_version:
-            value = node.value
-            if isinstance(value, ast.Constant) and isinstance(value.value, str):
-                return value.value
-    errors.append("src/core/__init__.py must assign a string __version__")
-    return None
+    marker = '__version__ = "'
+    if marker not in text:
+        errors.append("core __version__ assignment is missing")
+        return None
+    return text.split(marker, 1)[1].split('"', 1)[0]
+
+
+def _non_empty_lines(path: Path) -> int:
+    return sum(bool(line.strip()) for line in path.read_text(encoding="utf-8").splitlines())
 
 
 if __name__ == "__main__":

@@ -13,3 +13,4 @@ build/
 release/
 tests/eval/
 .codex/
+src/frontend/mac/.build/

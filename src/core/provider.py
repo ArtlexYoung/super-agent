@@ -1,444 +1,537 @@
+"""提供真实流式模型适配、价格计算、选择、重试与断路。"""
+
 from __future__ import annotations
 
-import hashlib
 import json
-import math
 import os
+import urllib.error
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from threading import RLock
-from time import perf_counter
-from types import MappingProxyType
-from typing import Any, Callable, Iterable, Iterator, Mapping, Protocol
+from time import monotonic
+from typing import Callable, Iterable, Iterator, Mapping
+from urllib.parse import urlparse
 
-from core.models import DEFAULT_MAX_MODEL_INPUT_CHARACTERS, read_object, read_optional_number, read_optional_text, read_text
-
-Message = dict[str, Any]
-ToolDefinition = dict[str, Any]
-
-MOCK_PROVIDER = "mock"
-OPENAI_COMPATIBLE_PROVIDER = "openai-compatible"
-ANTHROPIC_COMPATIBLE_PROVIDER = "anthropic-compatible"
-MODEL_PRICE_FIELDS = ("input_cost_per_million", "output_cost_per_million", "cache_creation_cost_per_million", "cache_read_cost_per_million")
-MODEL_TOKEN_PRICE_FIELDS = (("input_tokens", "input_cost_per_million"), ("output_tokens", "output_cost_per_million"), ("cache_creation_tokens", "cache_creation_cost_per_million"), ("cache_read_tokens", "cache_read_cost_per_million"))
+from core.model import Message, Model, ModelEvent, ModelRequest, ToolCall, estimate_tokens
 
 
-@dataclass(frozen=True)
-class ProviderConnection:
-    provider: str
-    base_url: str | None = None
-    api_key_env: str | None = None
+PRICE_FIELDS = (
+    "input_cost_per_million",
+    "output_cost_per_million",
+    "cache_creation_cost_per_million",
+    "cache_read_cost_per_million",
+)
 
 
 @dataclass(frozen=True)
 class ModelPricing:
-    input_cost_per_million: float | None = None
-    output_cost_per_million: float | None = None
-    cache_creation_cost_per_million: float | None = None
-    cache_read_cost_per_million: float | None = None
+    """记录四类 token 单价；未配置时按 1 参与相对选择。"""
 
-    @classmethod
-    def from_mapping(cls, value: Mapping[str, object]) -> ModelPricing: return cls(**{name: read_optional_number(value.get(name), f"model price {name}", minimum=0) for name in MODEL_PRICE_FIELDS})
-
-    @property
-    def total_cost_per_million(self) -> float: return sum(getattr(self, name) or 0.0 for name in MODEL_PRICE_FIELDS)
-
-    def to_dict(self, *, include_missing: bool = True) -> dict[str, float | None]:
-        data = {name: getattr(self, name) for name in MODEL_PRICE_FIELDS}
-        if not include_missing: data = {name: value for name, value in data.items() if value is not None}
-        return {**data, "total_cost_per_million": self.total_cost_per_million}
-
-    def resolved_dict(self) -> dict[str, float]:
-        data = {name: getattr(self, name) or 0.0 for name in MODEL_PRICE_FIELDS}
-        return {**data, "total_cost_per_million": sum(data.values())}
-
-    def estimate_cost(self, token_counts: Mapping[str, int | None]) -> dict[str, object]:
-        counts = {name: token_counts.get(name) for name, _ in MODEL_TOKEN_PRICE_FIELDS}
-        known = {name: value for name, value in counts.items() if value is not None}
-        prices = self.resolved_dict()
-        weighted = sum(count * prices[price_name] for name, price_name in MODEL_TOKEN_PRICE_FIELDS if (count := known.get(name)) is not None)
-        total_tokens = sum(known.values())
-        return {"tokens": counts, "estimated_cost": round(weighted / 1_000_000, 12), "blended_cost_per_million": round(weighted / total_tokens if total_tokens else 0.0, 8), "unprovided_usage": [name for name, value in counts.items() if value is None], "excludes_unprovided_usage": len(known) != len(counts)}
-
-
-@dataclass(frozen=True)
-class ToolCall:
-    id: str
-    name: str
-    arguments: dict[str, object]
-
-
-@dataclass(frozen=True)
-class ModelResponse:
-    text: str
-    tool_calls: list[ToolCall]
-    stop_reason: str
-
-
-EventWriter = Callable[[str, dict[str, object]], object]
-
-
-@dataclass(frozen=True)
-class ModelAction:
-    call_id: str
-    name: str
-    arguments: dict[str, object]
-
-    def __post_init__(self) -> None: read_text(self.name, "model action name")
-
-
-@dataclass(frozen=True)
-class FinalTurn:
-    text: str
-
-
-@dataclass(frozen=True)
-class ActionTurn:
-    items: tuple[ModelAction, ...]
-    text: str = ""
+    input_cost_per_million: float = 1.0
+    output_cost_per_million: float = 1.0
+    cache_creation_cost_per_million: float = 1.0
+    cache_read_cost_per_million: float = 1.0
 
     def __post_init__(self) -> None:
-        if not self.items: raise ValueError("model action turn cannot be empty")
+        for name in PRICE_FIELDS:
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
+                raise ValueError(f"model price must be a non-negative number: {name}")
+
+    def estimate(self, usage: Mapping[str, int | float | None]) -> float:
+        pairs = (
+            ("input_tokens", self.input_cost_per_million),
+            ("output_tokens", self.output_cost_per_million),
+            ("cache_creation_tokens", self.cache_creation_cost_per_million),
+            ("cache_read_tokens", self.cache_read_cost_per_million),
+        )
+        return sum(float(usage.get(name) or 0) * price for name, price in pairs) / 1_000_000
+
+    @property
+    def selection_price(self) -> float:
+        return sum(getattr(self, name) for name in PRICE_FIELDS)
+
+    def to_dict(self) -> dict[str, float]:
+        return {name: float(getattr(self, name)) for name in PRICE_FIELDS}
 
 
-ModelTurn = FinalTurn | ActionTurn
+class MockModel:
+    """用于测试和离线示例的可编排流式模型。"""
 
-
-@dataclass(frozen=True)
-class ProviderCall:
-    profile_key: str
-    model: str
-    purpose: str
-    messages: tuple[Message, ...]
-    tools: tuple[ToolDefinition, ...] | None = None
-    pricing: ModelPricing = ModelPricing()
-    selection: dict[str, object] | None = None
-    disclosure_references: tuple[str, ...] = ()
-    max_input_characters: int = DEFAULT_MAX_MODEL_INPUT_CHARACTERS
-
-
-class ChatProvider(Protocol):
-    def send_chat_messages(self, messages: list[Message], model: str) -> str: ...
-
-    def send_chat_messages_with_tools(self, messages: list[Message], model: str, tools: list[ToolDefinition]) -> ModelResponse: ...
-
-
-def call_chat_model(call: ProviderCall, provider: ChatProvider, record_event: EventWriter) -> ModelResponse:
-    input_json = json.dumps({"messages": call.messages, "tools": call.tools or ()}, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    input_audit = _model_input_audit(call, input_json)
-    selected = {"profile": call.profile_key, "model": call.model, "purpose": call.purpose, "pricing": call.pricing.to_dict(), "input": input_audit, **dict(call.selection or {})}
-    if input_audit["status"] == "rejected":
-        record_event("model.call.rejected", selected)
-        raise ValueError(f"model input has {len(input_json)} characters; max_model_input_characters is {call.max_input_characters}")
-    record_event("model.call.selected", selected)
-    input_tokens = estimate_text_tokens(input_json)
-    started_at = perf_counter()
-    try:
-        response = _send_provider_call(call, provider)
-    except Exception as error:
-        record_event("model.call.failed", {**_provider_call_metrics(call, input_tokens, "", started_at), "error_type": type(error).__name__, "message": str(error)})
-        raise
-    output = response.text if not response.tool_calls else _model_response_text(response)
-    record_event("model.call.completed", _provider_call_metrics(call, input_tokens, output, started_at))
-    return response
-
-
-def read_model_turn(response: ModelResponse) -> ModelTurn:
-    if response.tool_calls: return ActionTurn(tuple(ModelAction(call.id, call.name, dict(call.arguments)) for call in response.tool_calls), response.text)
-    if not response.text.strip(): raise ValueError("model returned neither final text nor actions")
-    return FinalTurn(response.text)
-
-
-def estimate_text_tokens(text: str) -> int: return 0 if not text else math.ceil(len(text) / 4)
-
-
-class MockProvider:
-    def __init__(self, response: str = "Mock response", *, tool_responses: list[ModelResponse] | None = None, feedback_response: str | None = None) -> None:
+    def __init__(
+        self,
+        response: str = "Mock response",
+        *,
+        responses: Iterable[str | Iterable[ModelEvent] | Exception] = (),
+    ) -> None:
         self.response = response
-        self.last_messages: list[Message] = []
-        self.tool_responses = list(tool_responses or [])
-        self.tool_requests: list[tuple[list[Message], list[ToolDefinition]]] = []
-        self.feedback_response = feedback_response
+        self.responses = list(responses)
+        self.requests: list[ModelRequest] = []
 
-    def send_chat_messages(self, messages: list[Message], model: str) -> str:
-        self.last_messages = messages
-        structured = _mock_structured_response(messages, self.feedback_response)
-        if structured is not None: return structured
-        return self.response
-
-    def send_chat_messages_with_tools(self, messages: list[Message], model: str, tools: list[ToolDefinition]) -> ModelResponse:
-        self.last_messages = messages
-        self.tool_requests.append((list(messages), list(tools)))
-        if self.tool_responses: return self.tool_responses.pop(0)
-        return ModelResponse(text=self.response, tool_calls=[], stop_reason="model_finished")
-
-
-@dataclass(frozen=True)
-class _JsonProvider:
-    base_url: str
-    api_key: str
-
-    def _post(self, path: str, payload: dict[str, object]) -> dict[str, Any]:
-        return _send_json_post_request(f"{self.base_url.rstrip('/')}/{path}", payload, self.api_key)
+    def stream(self, request: ModelRequest) -> Iterator[ModelEvent]:
+        self.requests.append(request)
+        selected = self.responses.pop(0) if self.responses else self.response
+        if isinstance(selected, Exception):
+            raise selected
+        if isinstance(selected, str):
+            yield ModelEvent.text_delta(selected)
+            yield ModelEvent.usage_event(
+                input_tokens=sum(estimate_tokens(message.content) for message in request.messages),
+                output_tokens=estimate_tokens(selected),
+            )
+            yield ModelEvent.done()
+            return
+        yield from selected
 
 
 @dataclass(frozen=True)
-class OpenAICompatibleProvider(_JsonProvider):
-    def send_chat_messages(self, messages: list[Message], model: str) -> str:
-        data = self._post("chat/completions", {"model": model, "messages": messages})
-        return str(data["choices"][0]["message"]["content"])
+class OpenAIModel:
+    """适配 OpenAI Chat Completions 兼容的 SSE 接口。"""
 
-    def send_chat_messages_with_tools(self, messages: list[Message], model: str, tools: list[ToolDefinition]) -> ModelResponse:
-        data = self._post("chat/completions", {"model": model, "messages": messages, "tools": tools})
-        choice = data["choices"][0]
-        message = choice["message"]
-        calls = [_read_openai_tool_call(item) for item in message.get("tool_calls", [])]
-        stop_reason = "tool_calls" if calls else "model_finished"
-        return ModelResponse(text=str(message.get("content") or ""), tool_calls=calls, stop_reason=stop_reason)
+    model: str
+    base_url: str = "https://api.openai.com/v1"
+    api_key: str | None = None
+    api_key_env: str | None = "OPENAI_API_KEY"
+    timeout_seconds: float = 120.0
+
+    def stream(self, request: ModelRequest) -> Iterator[ModelEvent]:
+        payload = {
+            "model": self.model,
+            **request.to_openai(),
+            "stream": True,
+            "stream_options": {"include_usage": True},
+        }
+        headers = {"Content-Type": "application/json"}
+        key = _resolve_key(self.api_key, self.api_key_env, self.base_url)
+        if key:
+            headers["Authorization"] = f"Bearer {key}"
+        data_stream = _post_sse(_join_url(self.base_url, "chat/completions"), payload, headers, self.timeout_seconds)
+        yield from _read_openai_stream(data_stream)
+
 
 @dataclass(frozen=True)
-class AnthropicCompatibleProvider(_JsonProvider):
-    def send_chat_messages(self, messages: list[Message], model: str) -> str:
-        system, user_messages = _split_system_message_from_user_messages(messages)
-        payload = {"model": model, "max_tokens": 4096, "system": system, "messages": user_messages}
-        data = self._post("v1/messages", payload)
-        return _read_anthropic_text(data)
+class AnthropicModel:
+    """适配 Anthropic Messages API 的 SSE 接口。"""
 
-    def send_chat_messages_with_tools(self, messages: list[Message], model: str, tools: list[ToolDefinition]) -> ModelResponse:
-        system, non_system_messages = _split_system_message_from_user_messages(messages)
-        payload = {"model": model, "max_tokens": 4096, "system": system, "messages": _to_anthropic_messages(non_system_messages), "tools": [_to_anthropic_tool_definition(tool) for tool in tools]}
-        data = self._post("v1/messages", payload)
-        calls = [_read_anthropic_tool_call(block) for block in data.get("content", []) if block.get("type") == "tool_use"]
-        return ModelResponse(text=_read_anthropic_text(data), tool_calls=calls, stop_reason="tool_calls" if calls else "model_finished")
+    model: str
+    base_url: str = "https://api.anthropic.com"
+    api_key: str | None = None
+    api_key_env: str | None = "ANTHROPIC_API_KEY"
+    max_output_tokens: int = 4096
+    timeout_seconds: float = 120.0
 
-def create_chat_provider(connection: ProviderConnection, environment: Mapping[str, str] | None = None) -> ChatProvider:
-    settings = normalize_provider_connection(connection)
-    provider = settings.provider
-    if provider == MOCK_PROVIDER: return MockProvider()
-    env = os.environ if environment is None else environment
-    api_key = _read_api_key_from_environment(settings.api_key_env, env)
-    if provider == OPENAI_COMPATIBLE_PROVIDER: return OpenAICompatibleProvider(settings.base_url or "", api_key)
-    return AnthropicCompatibleProvider(settings.base_url or "", api_key)
-
-
-def _send_provider_call(call: ProviderCall, provider: ChatProvider) -> ModelResponse:
-    messages = list(call.messages)
-    if call.tools is None: return ModelResponse(provider.send_chat_messages(messages, call.model), [], "completed")
-    return provider.send_chat_messages_with_tools(messages, call.model, list(call.tools))
-
-
-def _provider_call_metrics(call: ProviderCall, input_tokens: int, output: str, started_at: float) -> dict[str, object]:
-    output_tokens = estimate_text_tokens(output)
-    input_cost = input_tokens * (call.pricing.input_cost_per_million or 0.0)
-    output_cost = output_tokens * (call.pricing.output_cost_per_million or 0.0)
-    return {"profile": call.profile_key, "model": call.model, "purpose": call.purpose, "latency_ms": max(0, round((perf_counter() - started_at) * 1000)), "input_tokens": input_tokens, "output_tokens": output_tokens, "estimated_cost": (input_cost + output_cost) / 1_000_000, "pricing": call.pricing.to_dict(), "estimated_cost_excludes_cache": bool(call.pricing.cache_creation_cost_per_million or call.pricing.cache_read_cost_per_million)}
-
-
-def _model_input_audit(call: ProviderCall, input_json: str) -> dict[str, object]:
-    sources = {"system": "runtime", "user": "user", "assistant": "model", "tool": "tool"}
-    messages = []
-    for position, message in enumerate(call.messages):
-        role = str(message.get("role", "unknown"))
-        content = json.dumps(message, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-        messages.append({"position": position, "role": role, "source": sources.get(role, "unknown"), "sha256": hashlib.sha256(content.encode()).hexdigest(), "characters": len(str(message.get("content", "")))})
-    tools = call.tools or ()
-    tool_json = json.dumps(tools, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    characters = len(input_json)
-    return {"schema_version": 1, "sha256": hashlib.sha256(input_json.encode()).hexdigest(), "characters": characters, "limit_characters": call.max_input_characters, "status": "accepted" if characters <= call.max_input_characters else "rejected", "truncated": False, "messages": messages, "tools": {"names": [str(tool.get("function", {}).get("name", "")) for tool in tools], "sha256": hashlib.sha256(tool_json.encode()).hexdigest()}, "disclosure_references": list(dict.fromkeys(call.disclosure_references))}
+    def stream(self, request: ModelRequest) -> Iterator[ModelEvent]:
+        system, messages = _to_anthropic_messages(request.messages)
+        payload: dict[str, object] = {
+            "model": self.model,
+            "max_tokens": self.max_output_tokens,
+            "messages": messages,
+            "stream": True,
+        }
+        if system:
+            payload["system"] = system
+        if request.tools:
+            payload["tools"] = [
+                {"name": item.name, "description": item.description, "input_schema": dict(item.input_schema)}
+                for item in request.tools
+            ]
+        key = _resolve_key(self.api_key, self.api_key_env, self.base_url)
+        headers = {
+            "Content-Type": "application/json",
+            "anthropic-version": "2023-06-01",
+        }
+        if key:
+            headers["x-api-key"] = key
+        data_stream = _post_sse(_join_url(self.base_url, "v1/messages"), payload, headers, self.timeout_seconds)
+        yield from _read_anthropic_stream(data_stream)
 
 
-def _model_response_text(response: ModelResponse) -> str:
-    return json.dumps({"text": response.text, "tool_calls": [{"name": call.name, "arguments": call.arguments} for call in response.tool_calls]}, ensure_ascii=False, sort_keys=True)
+@dataclass(frozen=True)
+class ModelProfile:
+    """描述一个可选择模型的用途、特性、价格和权重。"""
+
+    name: str
+    model: Model
+    description: str = ""
+    purposes: tuple[str, ...] = ("auto",)
+    features: tuple[str, ...] = ("text", "tools")
+    weight: float = 1.0
+    pricing: ModelPricing = field(default_factory=ModelPricing)
+
+    def __post_init__(self) -> None:
+        if not self.name.strip():
+            raise ValueError("model profile name cannot be empty")
+        if isinstance(self.weight, bool) or not isinstance(self.weight, (int, float)) or self.weight <= 0:
+            raise ValueError("model profile weight must be positive")
+        if not self.purposes or not self.features:
+            raise ValueError("model profile purposes and features cannot be empty")
+
+    def matches(self, request: ModelRequest) -> bool:
+        purpose_matches = request.purpose == "auto" or "auto" in self.purposes or request.purpose in self.purposes
+        return purpose_matches and set(request.required_features) <= set(self.features)
 
 
-def normalize_provider_connection(connection: ProviderConnection) -> ProviderConnection:
-    provider = connection.provider.strip().lower()
-    if provider not in {MOCK_PROVIDER, OPENAI_COMPATIBLE_PROVIDER, ANTHROPIC_COMPATIBLE_PROVIDER}:
-        raise ValueError(f"unknown provider: {connection.provider}")
-    if provider == MOCK_PROVIDER:
-        return ProviderConnection(provider=provider)
-    base_url = read_optional_text(connection.base_url, "provider base_url") or _default_base_url(provider)
-    api_key_env = read_optional_text(connection.api_key_env, "provider api_key_env")
-    if api_key_env is None and not _is_local_url(base_url):
-        api_key_env = "OPENAI_API_KEY" if provider == OPENAI_COMPATIBLE_PROVIDER else "ANTHROPIC_API_KEY"
-    return ProviderConnection(provider, base_url, api_key_env)
+@dataclass(frozen=True)
+class RouterSettings:
+    """显式控制模型回退与断路；默认不切换模型。"""
+
+    max_fallbacks: int = 0
+    circuit_failures: int = 1
+    circuit_wait_seconds: float = 30.0
+
+    def __post_init__(self) -> None:
+        if self.max_fallbacks < 0 or self.circuit_failures < 1 or self.circuit_wait_seconds < 0:
+            raise ValueError("invalid model router settings")
 
 
-def _mock_structured_response(messages: list[Message], feedback_response: str | None) -> str | None:
-    if not messages: return None
-    try:
-        payload = json.loads(str(messages[-1].get("content", "")))
-    except json.JSONDecodeError:
-        return None
-    if not isinstance(payload, dict): return None
-    contract = payload.get("response_contract")
-    if not isinstance(contract, dict): return None
-    if set(contract) == {"is_feedback", "score", "reason"}:
-        return feedback_response or json.dumps({"is_feedback": False, "score": None, "reason": "no feedback"})
-    return None
+@dataclass
+class _ModelHealth:
+    successes: int = 0
+    failures: int = 0
+    circuit_failures: int = 0
+    retry_at: float = 0.0
+
+    @property
+    def reliability(self) -> float:
+        return (self.successes + 1) / (self.successes + self.failures + 1)
 
 
-def _read_openai_tool_call(data: dict[str, Any]) -> ToolCall:
-    function = data.get("function", {})
-    arguments = _read_tool_arguments(function.get("arguments", {}), "OpenAI tool call arguments")
-    return ToolCall(id=str(data.get("id", "")), name=str(function.get("name", "")), arguments=arguments)
+class ModelRouter:
+    """按用途、特性、权重、价格和健康度选择模型。"""
+
+    def __init__(self, profiles: Iterable[ModelProfile], settings: RouterSettings | None = None) -> None:
+        selected = tuple(profiles)
+        names = [profile.name for profile in selected]
+        if not selected or len(names) != len(set(names)):
+            raise ValueError("model profiles must have unique names")
+        self.profiles = selected
+        self.settings = settings or RouterSettings()
+        self._health = {profile.name: _ModelHealth() for profile in selected}
+        self._lock = RLock()
+
+    def stream(self, request: ModelRequest) -> Iterator[ModelEvent]:
+        candidates = self._rank(request)
+        if not candidates:
+            matching = [profile for profile in self.profiles if profile.matches(request)]
+            if matching:
+                raise RuntimeError("all matching models are temporarily unavailable behind open circuits")
+            raise RuntimeError("no configured model supports this request")
+        attempts = min(len(candidates), self.settings.max_fallbacks + 1)
+        last_error: Exception | None = None
+        for position, profile in enumerate(candidates[:attempts]):
+            yield ModelEvent.status_event(
+                "model_selected",
+                profile=profile.name,
+                candidate_count=len(candidates),
+                fallback_number=position,
+                pricing=profile.pricing.to_dict(),
+                weight=profile.weight,
+            )
+            emitted_output = False
+            try:
+                for event in profile.model.stream(request):
+                    emitted_output = emitted_output or event.event_type in {"text", "tool_call"}
+                    if event.event_type == "usage":
+                        usage = dict(event.usage)
+                        usage["estimated_cost"] = profile.pricing.estimate(usage)
+                        yield ModelEvent("usage", usage=usage, data={"profile": profile.name})
+                    else:
+                        yield event
+                self._record_success(profile.name)
+                return
+            except Exception as error:
+                last_error = error
+                self._record_failure(profile.name, error)
+                if emitted_output or not _is_temporary_model_error(error) or position + 1 >= attempts:
+                    raise
+                yield ModelEvent.status_event(
+                    "model_fallback",
+                    failed_profile=profile.name,
+                    error_type=type(error).__name__,
+                    next_profile=candidates[position + 1].name,
+                )
+        if last_error is not None:
+            raise last_error
+
+    def _rank(self, request: ModelRequest) -> list[ModelProfile]:
+        now = monotonic()
+        with self._lock:
+            candidates = [profile for profile in self.profiles if profile.matches(request)]
+            available = [profile for profile in candidates if self._health[profile.name].retry_at <= now]
+            return sorted(available, key=lambda item: self._score(item, request), reverse=True)
+
+    def _score(self, profile: ModelProfile, request: ModelRequest) -> tuple[float, float]:
+        health = self._health[profile.name]
+        exact = float(request.purpose != "auto" and request.purpose in profile.purposes)
+        value = profile.weight * health.reliability / (1.0 + profile.pricing.selection_price)
+        return exact, value
+
+    def _record_success(self, name: str) -> None:
+        with self._lock:
+            health = self._health[name]
+            health.successes += 1
+            health.circuit_failures = 0
+            health.retry_at = 0.0
+
+    def _record_failure(self, name: str, error: Exception) -> None:
+        with self._lock:
+            health = self._health[name]
+            health.failures += 1
+            if not _is_temporary_model_error(error):
+                return
+            health.circuit_failures += 1
+            if health.circuit_failures >= self.settings.circuit_failures:
+                health.retry_at = monotonic() + self.settings.circuit_wait_seconds
 
 
-def _read_anthropic_tool_call(data: dict[str, Any]) -> ToolCall:
-    arguments = _read_tool_arguments(data.get("input", {}), "Anthropic tool call input")
-    return ToolCall(id=str(data.get("id", "")), name=str(data.get("name", "")), arguments=arguments)
+def create_model(
+    provider: str,
+    model: str,
+    *,
+    base_url: str | None = None,
+    api_key_env: str | None = None,
+    api_key: str | None = None,
+) -> Model:
+    """从直白配置创建一个模型，不读取其他配置文件。"""
+    selected = provider.strip().lower()
+    if selected == "mock":
+        return MockModel(model or "Mock response")
+    if selected in {"openai", "openai-compatible"}:
+        return OpenAIModel(
+            model=model,
+            base_url=base_url or "https://api.openai.com/v1",
+            api_key=api_key,
+            api_key_env=api_key_env or "OPENAI_API_KEY",
+        )
+    if selected in {"anthropic", "anthropic-compatible"}:
+        return AnthropicModel(
+            model=model,
+            base_url=base_url or "https://api.anthropic.com",
+            api_key=api_key,
+            api_key_env=api_key_env or "ANTHROPIC_API_KEY",
+        )
+    raise ValueError(f"unknown model provider: {provider}")
 
 
-def _read_tool_arguments(value: object, label: str) -> dict[str, object]:
-    arguments = json.loads(value or "{}") if isinstance(value, str) else value
-    return dict(read_object(arguments, label))
+def _post_sse(
+    url: str,
+    payload: Mapping[str, object],
+    headers: Mapping[str, str],
+    timeout_seconds: float,
+) -> Iterator[dict[str, object]]:
+    body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()
+    request = urllib.request.Request(url, data=body, headers=dict(headers), method="POST")
+    with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
+        for raw_line in response:
+            line = raw_line.decode("utf-8").strip()
+            if not line or line.startswith(":") or line.startswith("event:"):
+                continue
+            if line.startswith("data:"):
+                line = line[5:].strip()
+            if line == "[DONE]":
+                return
+            value = json.loads(line)
+            if not isinstance(value, dict):
+                raise ValueError("model stream event must be an object")
+            yield value
 
 
-def _to_anthropic_tool_definition(tool: ToolDefinition) -> dict[str, object]:
-    function = tool.get("function", {})
-    return {"name": str(function.get("name", "")), "description": str(function.get("description", "")), "input_schema": function.get("parameters", {"type": "object", "properties": {}})}
+def _read_openai_stream(events: Iterable[dict[str, object]]) -> Iterator[ModelEvent]:
+    calls: dict[int, dict[str, str]] = {}
+    stop_reason = "model_finished"
+    for event in events:
+        usage = event.get("usage")
+        if isinstance(usage, Mapping):
+            yield ModelEvent("usage", usage=_normalize_usage(usage))
+        choices = event.get("choices")
+        if not isinstance(choices, list):
+            continue
+        for choice in choices:
+            if not isinstance(choice, Mapping):
+                continue
+            finish = choice.get("finish_reason")
+            if isinstance(finish, str) and finish:
+                stop_reason = finish
+            delta = choice.get("delta")
+            if not isinstance(delta, Mapping):
+                continue
+            content = delta.get("content")
+            if isinstance(content, str) and content:
+                yield ModelEvent.text_delta(content)
+            _collect_openai_calls(calls, delta.get("tool_calls"))
+    for index in sorted(calls):
+        call = calls[index]
+        arguments = json.loads(call["arguments"] or "{}")
+        if not isinstance(arguments, dict):
+            raise ValueError("OpenAI tool arguments must be an object")
+        yield ModelEvent.call(call["id"] or f"call-{index}", call["name"], arguments)
+    yield ModelEvent.done(stop_reason)
 
 
-def _to_anthropic_messages(messages: list[Message]) -> list[Message]:
-    converted: list[Message] = []
+def _collect_openai_calls(calls: dict[int, dict[str, str]], value: object) -> None:
+    if not isinstance(value, list):
+        return
+    for item in value:
+        if not isinstance(item, Mapping):
+            continue
+        index = int(item.get("index", 0))
+        target = calls.setdefault(index, {"id": "", "name": "", "arguments": ""})
+        if isinstance(item.get("id"), str) and item["id"]:
+            target["id"] = str(item["id"])
+        function = item.get("function")
+        if isinstance(function, Mapping):
+            if isinstance(function.get("name"), str):
+                target["name"] += str(function["name"])
+            if isinstance(function.get("arguments"), str):
+                target["arguments"] += str(function["arguments"])
+
+
+def _read_anthropic_stream(events: Iterable[dict[str, object]]) -> Iterator[ModelEvent]:
+    calls: dict[int, dict[str, str]] = {}
+    stop_reason = "model_finished"
+    for event in events:
+        event_type = event.get("type")
+        if event_type == "message_start":
+            message = event.get("message")
+            if isinstance(message, Mapping) and isinstance(message.get("usage"), Mapping):
+                yield ModelEvent("usage", usage=_normalize_usage(message["usage"]))
+        elif event_type == "content_block_start":
+            _start_anthropic_call(calls, event)
+        elif event_type == "content_block_delta":
+            delta = event.get("delta")
+            if isinstance(delta, Mapping) and delta.get("type") == "text_delta":
+                yield ModelEvent.text_delta(str(delta.get("text", "")))
+            _collect_anthropic_arguments(calls, event)
+        elif event_type == "message_delta":
+            delta = event.get("delta")
+            if isinstance(delta, Mapping) and isinstance(delta.get("stop_reason"), str):
+                stop_reason = str(delta["stop_reason"])
+            if isinstance(event.get("usage"), Mapping):
+                yield ModelEvent("usage", usage=_normalize_usage(event["usage"]))
+    for index in sorted(calls):
+        call = calls[index]
+        arguments = json.loads(call["arguments"] or "{}")
+        if not isinstance(arguments, dict):
+            raise ValueError("Anthropic tool arguments must be an object")
+        yield ModelEvent.call(call["id"], call["name"], arguments)
+    yield ModelEvent.done(stop_reason)
+
+
+def _start_anthropic_call(calls: dict[int, dict[str, str]], event: Mapping[str, object]) -> None:
+    block = event.get("content_block")
+    if not isinstance(block, Mapping) or block.get("type") != "tool_use":
+        return
+    index = int(event.get("index", 0))
+    initial = block.get("input", {})
+    arguments = "" if initial == {} else json.dumps(initial, ensure_ascii=False)
+    calls[index] = {"id": str(block.get("id", "")), "name": str(block.get("name", "")), "arguments": arguments}
+
+
+def _collect_anthropic_arguments(calls: dict[int, dict[str, str]], event: Mapping[str, object]) -> None:
+    delta = event.get("delta")
+    if not isinstance(delta, Mapping) or delta.get("type") != "input_json_delta":
+        return
+    index = int(event.get("index", 0))
+    if index not in calls:
+        raise ValueError("Anthropic tool argument delta arrived before tool start")
+    calls[index]["arguments"] += str(delta.get("partial_json", ""))
+
+
+def _to_anthropic_messages(messages: Iterable[Message]) -> tuple[str, list[dict[str, object]]]:
+    system: list[str] = []
+    converted: list[dict[str, object]] = []
     for message in messages:
-        role = str(message.get("role", ""))
-        if role == "assistant" and message.get("tool_calls"):
+        if message.role == "system":
+            system.append(message.content)
+            continue
+        if message.role == "assistant" and message.tool_calls:
             blocks: list[dict[str, object]] = []
-            if message.get("content"):
-                blocks.append({"type": "text", "text": str(message["content"])})
-            blocks.extend(_tool_call_to_anthropic_block(item) for item in message["tool_calls"])
-            converted.append({"role": "assistant", "content": blocks})
-        elif role == "tool":
-            block = {"type": "tool_result", "tool_use_id": str(message.get("tool_call_id", "")), "content": str(message.get("content", ""))}
-            if converted and converted[-1]["role"] == "user" and isinstance(converted[-1]["content"], list):
-                converted[-1]["content"].append(block)
-            else:
-                converted.append({"role": "user", "content": [block]})
+            if message.content:
+                blocks.append({"type": "text", "text": message.content})
+            blocks.extend(
+                {"type": "tool_use", "id": call.call_id, "name": call.name, "input": dict(call.arguments)}
+                for call in message.tool_calls
+            )
+            _append_anthropic_message(converted, "assistant", blocks)
+        elif message.role == "tool":
+            block = {"type": "tool_result", "tool_use_id": message.tool_call_id, "content": message.content}
+            _append_anthropic_message(converted, "user", [block])
         else:
-            converted.append({"role": role, "content": message.get("content", "")})
-    return converted
+            _append_anthropic_message(
+                converted,
+                message.role,
+                [{"type": "text", "text": message.content}],
+            )
+    return "\n\n".join(system), converted
 
 
-def _tool_call_to_anthropic_block(data: dict[str, Any]) -> dict[str, object]:
-    function = data.get("function", {})
-    arguments = _read_tool_arguments(function.get("arguments", {}), "Anthropic tool call input")
-    return {"type": "tool_use", "id": str(data.get("id", "")), "name": str(function.get("name", "")), "input": arguments}
+def _append_anthropic_message(
+    messages: list[dict[str, object]],
+    role: str,
+    blocks: list[dict[str, object]],
+) -> None:
+    if messages and messages[-1]["role"] == role:
+        content = messages[-1]["content"]
+        if not isinstance(content, list):
+            raise TypeError("Anthropic message content must be an array")
+        content.extend(blocks)
+        return
+    messages.append({"role": role, "content": blocks})
 
 
-def _read_anthropic_text(data: dict[str, Any]) -> str:
-    blocks = data.get("content", [])
-    return "".join(str(block.get("text", "")) for block in blocks if block.get("type") == "text")
+def _normalize_usage(value: Mapping[str, object]) -> dict[str, int | float | None]:
+    aliases = {
+        "input_tokens": "input_tokens",
+        "prompt_tokens": "input_tokens",
+        "output_tokens": "output_tokens",
+        "completion_tokens": "output_tokens",
+        "cache_creation_input_tokens": "cache_creation_tokens",
+        "cache_read_input_tokens": "cache_read_tokens",
+    }
+    result: dict[str, int | float | None] = {}
+    for source, target in aliases.items():
+        item = value.get(source)
+        if target in result:
+            continue
+        if isinstance(item, (int, float)) and not isinstance(item, bool):
+            result[target] = item
+    details = value.get("prompt_tokens_details")
+    if isinstance(details, Mapping):
+        cached = details.get("cached_tokens")
+        if isinstance(cached, (int, float)) and not isinstance(cached, bool):
+            result.setdefault("cache_read_tokens", cached)
+            total = result.get("input_tokens")
+            if isinstance(total, (int, float)) and cached <= total:
+                result["total_input_tokens"] = total
+                result["input_tokens"] = total - cached
+    return result
 
 
-def _read_api_key_from_environment(name: str | None, environment: Mapping[str, str]) -> str:
-    if not name:
-        return ""
-    value = environment.get(name)
-    if not value:
-        raise ValueError(f"environment variable is empty: {name}")
-    return value
+def _resolve_key(direct: str | None, environment_name: str | None, base_url: str) -> str:
+    if direct:
+        return direct
+    if environment_name:
+        value = os.environ.get(environment_name, "")
+        if value:
+            return value
+        if not _is_local_url(base_url):
+            raise ValueError(f"environment variable is empty: {environment_name}")
+    return ""
 
 
-def _default_base_url(provider: str) -> str:
-    return "https://api.openai.com/v1" if provider == OPENAI_COMPATIBLE_PROVIDER else "https://api.anthropic.com"
+def _join_url(base_url: str, path: str) -> str:
+    base = base_url.rstrip("/")
+    suffix = path.lstrip("/")
+    if base.endswith("/v1") and suffix.startswith("v1/"):
+        suffix = suffix[3:]
+    return f"{base}/{suffix}"
 
 
 def _is_local_url(value: str) -> bool:
-    from urllib.parse import urlparse
-
-    hostname = urlparse(value).hostname or ""
-    return hostname in {"localhost", "127.0.0.1", "::1"}
+    return urlparse(value).hostname in {"localhost", "127.0.0.1", "::1"}
 
 
-def _send_json_post_request(url: str, payload: dict[str, object], api_key: str) -> dict[str, Any]:
-    body = json.dumps(payload).encode("utf-8")
-    headers = {"content-type": "application/json", "anthropic-version": "2023-06-01"}
-    if api_key:
-        headers["authorization"] = f"Bearer {api_key}"
-        headers["x-api-key"] = api_key
-    request = urllib.request.Request(url, data=body, headers=headers, method="POST")
-    with urllib.request.urlopen(request, timeout=60) as response:
-        return json.loads(response.read().decode("utf-8"))
-
-
-def _split_system_message_from_user_messages(messages: list[Message]) -> tuple[str, list[Message]]:
-    if messages and messages[0]["role"] == "system":
-        return str(messages[0].get("content", "")), messages[1:]
-    return "", messages
-
-
-UserSecretLookup = Callable[[str, str], str | None]
-
-
-class UserSecretResolver:
-
-    def __init__(self, lookup: UserSecretLookup | None = None, process_environment: Mapping[str, str] | None = None) -> None:
-        self.lookup = lookup
-        self.process_environment = os.environ if process_environment is None else process_environment
-
-    def get_environment_for_user(self, user_id: str) -> Mapping[str, str]:
-        from core.models import validate_user_id
-
-        clean_user_id = validate_user_id(user_id)
-        if self.lookup is None:
-            return self.process_environment
-        return _UserSecretEnvironment(clean_user_id, self.lookup)
-
-
-class _UserSecretEnvironment(Mapping[str, str]):
-    def __init__(self, user_id: str, lookup: UserSecretLookup) -> None:
-        self.user_id = user_id
-        self.lookup = lookup
-
-    def __getitem__(self, name: str) -> str:
-        if not isinstance(name, str) or not name:
-            raise KeyError(name)
-        value = self.lookup(self.user_id, name)
-        if value is None:
-            raise KeyError(name)
-        if not isinstance(value, str):
-            raise TypeError("user secret lookup must return a string or None")
-        return value
-
-    def __iter__(self) -> Iterator[str]: return iter(())
-
-    def __len__(self) -> int: return 0
-
-
-class ProviderPool:
-
-    def __init__(self, environment: Mapping[str, str] | None = None) -> None:
-        self.environment = MappingProxyType(dict(os.environ if environment is None else environment))
-        self._providers_by_profile: dict[str, ChatProvider] = {}
-        self._providers_by_connection: dict[ProviderConnection, ChatProvider] = {}
-        self._lock = RLock()
-
-    def add_chat_provider(self, profile_key: str, provider: ChatProvider) -> None:
-        key = _clean_profile_key(profile_key)
-        with self._lock:
-            if key in self._providers_by_profile: raise ValueError(f"model profile already has a provider: {key}")
-            self._providers_by_profile[key] = provider
-
-    def create_run_provider_pool(self, environment: Mapping[str, str], connections: Iterable[ProviderConnection]) -> "ProviderPool":
-        names = dict.fromkeys(connection.api_key_env for connection in connections if connection.api_key_env)
-        secrets = {name: value for name in names if (value := environment.get(name)) is not None}
-        pool = ProviderPool(secrets)
-        with self._lock: pool._providers_by_profile = dict(self._providers_by_profile)
-        return pool
-
-    def get_chat_provider(self, profile_key: str, connection: ProviderConnection) -> ChatProvider:
-        key = _clean_profile_key(profile_key)
-        with self._lock:
-            selected = self._providers_by_profile.get(key)
-            if selected is not None: return selected
-            normalized = normalize_provider_connection(connection)
-            provider = self._providers_by_connection.get(normalized)
-            if provider is None:
-                provider = create_chat_provider(normalized, self.environment)
-                self._providers_by_connection[normalized] = provider
-            return provider
-
-
-def _clean_profile_key(value: str) -> str:
-    return read_text(value, "model profile key").lower()
+def _is_temporary_model_error(error: Exception) -> bool:
+    if isinstance(error, urllib.error.HTTPError):
+        return error.code in {408, 409, 425, 429} or error.code >= 500
+    return isinstance(error, (TimeoutError, ConnectionError, urllib.error.URLError))

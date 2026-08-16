@@ -3,7 +3,7 @@ import type {
   AgentConfiguration,
   BootstrapData,
   Conversation,
-  ModelSkillInput,
+  ModelInput,
   RunInsight,
 } from "@/lib/types"
 
@@ -76,14 +76,14 @@ export function saveAgentConfiguration(
   })
 }
 
-export function saveModelSkill(model: ModelSkillInput): Promise<BootstrapData> {
+export function saveModelConfiguration(model: ModelInput): Promise<BootstrapData> {
   return requestJSON("/api/models", {
     method: "POST",
     body: JSON.stringify(model),
   })
 }
 
-export function deleteModelSkill(name: string): Promise<BootstrapData> {
+export function deleteModelConfiguration(name: string): Promise<BootstrapData> {
   return requestJSON(`/api/models/${encodeURIComponent(name)}`, {
     method: "DELETE",
   })

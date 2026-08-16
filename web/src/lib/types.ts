@@ -34,7 +34,7 @@ export interface RunSnapshot {
   agent_name: string
   parent_run_id: string | null
   status: string
-  prompt: string
+  prompt: unknown
   started_at: string
   finished_at: string | null
   event_count: number
@@ -42,7 +42,7 @@ export interface RunSnapshot {
   workflow: string | null
   used_skills: string[]
   stop_reason: string | null
-  error: Record<string, string> | null
+  error: Record<string, unknown> | null
 }
 
 export interface SkillState {
@@ -51,52 +51,37 @@ export interface SkillState {
   type: string
   description: string
   version: string
-  provides: string[]
+  categories: string[]
   requires: string[]
+  optional_tools: string[]
   content_sha256: string
   agent_created: boolean
   agent_can_update: boolean
   freshness: number
-  function_group: string
-  freshness_updated_at: string
   call_count: number
   success_count: number
-  same_function_successful_followups: number
-  default: boolean
-  enabled: boolean
-  selected: boolean
 }
 
 export interface ModelProfile {
   key: string
   name: string
   description: string
-  version: string
   provider: string
   model: string
   base_url: string | null
   api_key_env: string | null
   supports: string[]
   purposes: string[]
-  strengths: string[]
+  weight: number
   default: boolean
-  quality_score: number
-  expected_latency_ms: number
   input_cost_per_million: number
   output_cost_per_million: number
   cache_creation_cost_per_million: number
   cache_read_cost_per_million: number
-  total_cost_per_million: number
-  source: string
-  skill_key: string | null
-  content_sha256: string | null
-  agent_created: boolean
-  agent_can_update: boolean
-  agent_can_update_connection: boolean
   ready: boolean
 }
 
-export interface ModelSkillInput {
+export interface ModelInput {
   name: string
   description: string
   provider: string
@@ -105,12 +90,8 @@ export interface ModelSkillInput {
   api_key_env: string
   supports: string[]
   purposes: string[]
-  strengths: string[]
+  weight: number
   default: boolean
-  agent_can_update: boolean
-  agent_can_update_connection: boolean
-  quality_score: number | null
-  expected_latency_ms: number | null
   input_cost_per_million: number | null
   output_cost_per_million: number | null
   cache_creation_cost_per_million: number | null
@@ -119,11 +100,17 @@ export interface ModelSkillInput {
 }
 
 export interface MemoryItem {
-  item_id: string
+  memory_id: string
   text: string
-  scope: string
-  source_run_id: string
+  lifetime: "temporary" | "long_term"
+  labels: string[]
+  source: string
+  context: string
+  conversation_id: string | null
+  source_ids: string[]
+  status: string
   created_at: string
+  updated_at: string
 }
 
 export interface SubagentNode {
@@ -152,7 +139,6 @@ export interface BootstrapData {
 export interface RunInsight {
   schema_version: number
   snapshot: RunSnapshot
-  plan: Record<string, unknown>
   model_calls: Array<Record<string, unknown>>
   model_usage: Array<Record<string, unknown>>
   skill_freshness: Array<Record<string, unknown>>

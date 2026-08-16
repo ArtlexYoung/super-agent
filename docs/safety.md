@@ -1,70 +1,35 @@
-# Explicit Actions and Skill Isolation
+# 安全与副作用 / Safety and Side Effects
 
-Super Agent checks one action contract before model-requested tools and management side
-effects. Trusted code declares what an operation can do. Skill text may request an
-operation, but it cannot choose its actor, effects, resource, or rules.
+## 默认原则 / Defaults
 
-## Effects
+读取尽量无副作用；写入、删除、进程启动、数据库连接和 Skill 覆盖都必须由明确代码路径触发。
 
-Every executable action declares at least one effect:
+Reads are intended to be side-effect free; writes, deletion, process starts, database connections, and Skill overlays require explicit code paths.
 
-- `read`: inspect scoped data.
-- `create`: create state or files.
-- `update`: change or organize existing state.
-- `delete`: remove state or append a deletion tombstone.
-- `execute`: run registered code or an external process.
-- `network`: communicate outside the Runtime process.
-- `delegate`: run a subagent registered in code.
+`preview` 是纯读取。显式配置磁盘披露缓存后，`disclose` 可能原子写入有界、可丢弃的缓存文件；它不会修改会话、记忆、Skill 或工作区状态。
 
-Core records `action.checked` before execution. Reads execute directly and finish with
-`action.applied` or `action.failed`. State changes record `action.prepared` without
-running the handler, followed by `action.applying` and `action.applied`; blocked actions
-record `action.blocked`. Trace records contain argument names, never argument values.
+`preview` is a pure read. With an explicit disk disclosure cache, `disclose` may atomically write a bounded, disposable cache file; it does not mutate conversation, memory, Skill, or workspace state.
 
-A `SkillTool` has no default action. Missing metadata or a missing Runtime action runner
-is an error before its handler runs.
+Skill 是数据，不是可执行 Python。工具的效果通过 `Tool.effects` 声明，终端适配器可以对写入或进程动作逐次询问确认。
 
-## Code-Only Rules
+A Skill is data, not executable Python. Tool effects are declared through `Tool.effects`, and the terminal adapter can ask for confirmation for each write or process action.
 
-Action authority is deliberately not a TOML field. Select it where the Agent is created:
+## 工作区保护 / Workspace Protection
 
-```python
-from core.checks import ActionMode, ActionRules
-from super_agent import Agent
+代码工具限制在配置的工作区内，拒绝路径逃逸、忽略路径、超大文件和非文本读取。替换或删除必须携带此前读取到的 SHA-256；文件被并发修改时操作失败，不覆盖新内容。
 
-read_only = Agent(action_rules=ActionRules(ActionMode.READ_ONLY))
-autonomous = Agent(action_rules=ActionRules(ActionMode.AUTONOMOUS))
-```
+Code tools stay inside the configured workspace and reject path escapes, ignored paths, oversized files, and non-text reads. Replace and delete require a SHA-256 from a prior read; concurrent changes fail instead of overwriting new content.
 
-The presets are:
+进程工具只接受预声明的参数数组，不接受 shell 字符串。验证失败会作为事实返回给模型，不会自动修改文件或伪造通过。
 
-- `standard`: the default; allows declared reads, registered code, subagent delegation,
-  scoped Agent state, and Agent-owned Skill updates. External execution, network access,
-  and deletion require explicit authorization and are blocked before execution.
-- `read_only`: allows only actions whose sole effect is `read`.
-- `autonomous`: allows every declared action. Scope and input validation still apply.
-- `audit`: records declarations without enforcing them. It must be selected explicitly.
+Process tools accept declared argument arrays, never shell strings. A failed check is returned as evidence; files are not auto-modified and success is not fabricated.
 
-CLI management commands identify themselves as user-requested operations. Model-generated
-Skill content cannot impersonate that actor.
+## 审计与脱敏 / Audit and Redaction
 
-## No Hidden Execution
+记录后端保存完整事实，展示层默认对 prompt、模型正文、工具参数和错误进行动态脱敏。详细日志默认保留 180 天，关键日志默认保留 365 天，期限可在通用配置中调整。
 
-Skill manifests, instructions, resources, memory, tool output, and subagent output are
-untrusted data. Core wraps them as untrusted model context and never interprets Skill files
-as Python or shell code. The reserved Skill type `runner` is rejected.
+Backends retain canonical facts, while views dynamically redact prompts, model text, tool payloads, and errors by default. Detailed logs live 180 days and critical logs 365 days by default; both are configurable.
 
-Custom executable behavior must be registered by trusted Runtime setup, never a Skill
-directory. MCP implementations use the narrower `Agent.add_tool(...)` API. Commands,
-arguments, environment values, transports, and effects live only in trusted application
-code; an MCP Skill can select only a registered server name. Activation rejects an MCP
-Skill when that registration is absent, and every discovery or tool call is checked before
-code or a process can start.
+动态脱敏不是加密。部署时仍需限制 JSONL 目录、数据库账号、缓存目录和 Web 监听地址的访问。
 
-Package validation also rejects symlinks and paths outside a Skill directory. Proposed
-Skill changes remain outside active roots. Testing binds the candidate and baseline hashes;
-only a matching passing report permits `skills changes apply`. The candidate and active target are
-checked again before replacement. A failed Runtime refresh restores the prior verified
-directory, while `skills changes undo` is a separate explicit action. Provider failures,
-memory-organization failures, invalid changes, and blocked actions surface as errors rather
-than alternate behavior.
+Dynamic redaction is not encryption. Deployments must still restrict access to JSONL directories, database credentials, cache directories, and Web bind addresses.

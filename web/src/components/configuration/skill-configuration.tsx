@@ -18,7 +18,7 @@ const knownGroups = [
   {
     type: "task",
     title: "任务 Skill",
-    help: "任务 Skill 同时提供模型指令和执行方式；每次运行最多使用一个。",
+    help: "任务 Skill 提供方法和执行约束；模型可选择一个主方法，也可显式组合依赖。",
   },
   {
     type: "prompt",
@@ -50,7 +50,7 @@ export function SkillConfiguration(props: SkillConfigurationProps) {
     .map((type) => ({
       type,
       title: type,
-      help: `应用注册的 ${type} Skill；Runtime 通过同名 SkillLoader 加载。`,
+      help: `应用注册的 ${type} Skill；内容由中央 SkillLibrary 渐进披露。`,
     }))
   const groups = [...knownGroups, ...customGroups]
 
@@ -149,9 +149,6 @@ function SkillRow({
           <span className="skill-name">{skill.name}</span>
           <Badge variant="outline">v{skill.version}</Badge>
           <Badge variant="outline">{skill.type}</Badge>
-          {skill.type === "task" && skill.default ? (
-            <Badge variant="secondary">默认</Badge>
-          ) : null}
           {skill.agent_created ? (
             <Badge variant="secondary">
               <Sparkles /> Agent 创建

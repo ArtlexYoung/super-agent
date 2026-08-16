@@ -1,39 +1,33 @@
-# Local Release
+# 发布 / Releasing
 
-Releases stay below `1.0` until the project release gate is intentionally changed. The
-process is local and does not push or modify remote history.
+## 本地检查 / Local Checks
 
-## Environment
+使用 Python 3.11、`uv` 和 `pnpm`：
 
-Use Homebrew-managed Python 3.11 and the existing Node installation:
-
-```bash
-brew install python@3.11
-python3.11 -m venv .venv
-.venv/bin/python -m pip install -e .
-pnpm --dir web install --frozen-lockfile
-```
-
-## Checks
-
-Replace `0.1.102` with the version being released:
+Use Python 3.11, `uv`, and `pnpm`:
 
 ```bash
-.venv/bin/python scripts/verify_release.py --version 0.1.102 --full --web
+PYTHONPATH=src:. PYTHONDONTWRITEBYTECODE=1 \
+python3.11 -m unittest discover -s tests -p 'test_*.py' -v
+
+PYTHONPATH=src:. PYTHONDONTWRITEBYTECODE=1 \
+python3.11 scripts/verify_release.py --version 0.2.0
+
+pnpm --dir web typecheck
+pnpm --dir web lint
+pnpm --dir web build
 ```
 
-Static mode is read-only. `--full` additionally runs all Python tests, compileall, diff
-validation, and the committed offline benchmark in a temporary directory. `--web` explicitly
-adds pnpm typecheck, lint, and build; a missing tool or failed command stops the gate.
+发布检查验证版本、Python 最低版本、零默认依赖、源码布局、旧目录删除、构建范围、内置 Skill 和离线评测资产。
 
-## Commit
+The release gate checks version, Python minimum, zero default dependencies, source layout, removed legacy directories, build scope, builtin Skills, and offline evaluation assets.
 
-Update `pyproject.toml`, `src/core/__init__.py`, and `web/package.json` together. Keep
-unrelated working-tree changes out of the release commit. Commit summaries use concise
-Chinese first, followed by the English meaning after `/`:
+## 版本 / Version
 
-```bash
-git add -- <release-files>
-git diff --cached --check
-git commit -m "release: 发布 v0.1.102 / release v0.1.102"
-```
+v0.2.0 是破坏性重构版本。同步更新 `pyproject.toml`、`src/core/__init__.py`、`web/package.json`、README 和发布检查脚本。
+
+v0.2.0 is a breaking rewrite. Update `pyproject.toml`, `src/core/__init__.py`, `web/package.json`, the READMEs, and the release gate together.
+
+检查通过后创建一个本地逻辑提交和标签；远程推送是单独的授权边界。
+
+After checks pass, create one local logical commit and tag; pushing to a remote is a separate authorization boundary.

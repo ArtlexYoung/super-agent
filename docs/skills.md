@@ -1,91 +1,66 @@
-# Skills
+# Skill
 
-A Skill is passive content with one manifest. Prompts, workflows, memory behavior, MCP
-descriptions, model profiles, task instructions, feedback rules, and freshness rules all use the
-same source and disclosure path.
+## 最小格式 / Minimal Format
 
-## Smallest Skill
+Skill 使用 Markdown 正文和 TOML front matter，中心 `SkillLibrary` 统一读取所有类型。
 
-```text
-skills/prompt/research/
-  skill.toml
-  SKILL.md
+Skills use Markdown bodies with TOML front matter; the central `SkillLibrary` reads every type.
+
+```markdown
++++
+name = "research"
+type = "prompt"
+description = "研究问题并整理证据"
+version = "1.0.0"
+created_by = "user"
+agent_can_update = false
+categories = ["research"]
+requires = ["search_documents"]
+optional_tools = ["open_browser"]
++++
+
+先澄清目标，再按证据组织结论。
 ```
 
-```toml
-description = "Research a question and report cited findings"
-```
+`type` 是分类，不是隐藏的执行器。Skill 文本不能直接创建工具；工具必须由可信 Python 代码注册。
 
-The directory supplies `name`, `type` defaults to `prompt`, and `version` defaults to
-`0.1.0`. An existing `SKILL.md` supplies instructions. Unknown fields fail validation.
-Stable references use `type:name`; a bare name is accepted only when unique.
+`type` is a category, not a hidden executor. Skill text cannot create tools directly; trusted Python code must register tools.
 
-Add a root in TOML or code:
+`requires` 中任一工具缺失时激活失败并回滚；`optional_tools` 中已经注册的工具会随 Skill 挂载，缺失项不会阻断纯方法内容。
 
-```toml
-[paths]
-skills = ["skills", "team-skills"]
-```
+Activation rolls back when any `requires` tool is missing. Registered `optional_tools` mount with the Skill, while absent optional tools do not block the method itself.
+
+## 渐进式披露 / Progressive Disclosure
+
+运行先看有界索引，再用 `preview` 或 Skill 工具读取正文。正文过长时返回稳定的缓存路径、偏移量和哈希，模型可以显式读取下一页。
+
+The run starts with a bounded index, then uses `preview` or Skill tools to read the body. Large bodies return a stable cache path, offset, and hash so the model can explicitly request the next page.
 
 ```python
-agent.add_skill_path("team-skills")
+from pathlib import Path
+from skill.library import SkillLibrary
+
+library = SkillLibrary((Path("skills"),))
+print(library.list_skills(page=1, page_size=20).to_dict())
+page = library.disclose("prompt:research", max_characters=1200)
+print(page.cache_path, page.sha256)
+print(library.read_disclosed(page.cache_path, offset=page.next_offset or 0).to_dict())
 ```
 
-## One Disclosure Path
+`preview`、`disclose`、缓存读取和激活共用同一个 Library，不允许各功能维护自己的披露路径。
 
-Runtime first gives the model compact index entries. The model can then use:
+`preview`, `disclose`, cache reads, and activation share one Library; features do not maintain separate disclosure paths.
 
-- `list_skills` to inspect the index;
-- `disclose_skill_manifest`, `disclose_skill_instructions`, and
-  `disclose_skill_configuration` to open one stage;
-- `read_disclosed_content` to reuse a storage-backed cached path;
-- `activate_skill` to ask Runtime to load registered behavior.
+实际分页和缓存由 Runtime 的同一个 `DisclosureStore` 完成。文件、记忆和子 Agent 结果作为工具输出过大时，也会得到同样的 `read_disclosed_content` 读取工具，而不是被静默截断。
 
-Manifest, instruction, configuration, and resource reads all pass through
-`ProgressiveDisclosureCore`. Cache paths include source identity and content hashes, so
-changed content cannot reuse stale results. Reading does not activate or count as use.
+Runtime's single `DisclosureStore` performs the actual paging and caching. Large file, memory, and subagent tool results receive the same `read_disclosed_content` tool instead of being silently truncated.
 
-There are no trigger words. The model receives descriptions and current task context and
-makes its choice during the normal model turn.
+## 更新与隔离 / Updates and Scope
 
-## Built-In Types
+Agent 自建 Skill 会记录 `created_by = "agent"`，并默认允许该 Agent 更新；用户 Skill 默认不允许 Agent 修改。更新、派生、删除都需要明确调用和当前哈希。
 
-- `prompt` contributes model instructions.
-- `workflow` defines the tool-loop policy and maximum turns.
-- `memory` contributes optional long-term memory context and tools.
-- `mcp` selects an MCP server registered in trusted code.
-- `task` combines task instructions, run mode, and stop limit.
-- `model`, `feedback`, and `freshness` configure their owning Core services.
+Agent-created Skills record `created_by = "agent"` and allow that Agent to update by default; user Skills are read-only to the Agent by default. Update, derive, and delete require explicit calls and the current hash.
 
-Skill directories cannot contain executable Python or shell runners. Runtime setup owns
-trusted handlers, while ordinary Agent users add passive content and registered MCP tools.
+Skill Library 按用户和 Agent 建立作用域视图。共享目录可以复用，写入覆盖层和缓存仍然隔离。
 
-## Task Skills
-
-A task Skill directly carries its model instructions and run policy. Built-in `common` and
-`code` tasks need no memory or storage. The model can activate an available task Skill, or a
-caller can make one explicit for a single run:
-
-```python
-result = agent.run("Inspect this change", skill="code")
-```
-
-An explicit task Skill restricts task Skill activation for that run. Omitting it leaves selection to
-model judgment. Neither option changes the Agent or later runs.
-
-## Ownership and Freshness
-
-Ownership and update permission come from trusted source metadata, never Skill-controlled
-TOML. Built-ins are read-only, project Skills are user-authorized, and applied user
-overlays are marked by Runtime.
-
-Freshness is deterministic. It combines outcomes, token use, time since use, frequency,
-latency, and successful same-function follow-ups. The model does not assign the number.
-Explicit learning updates evidence; explicit Skill change commands handle content changes.
-
-## Packages
-
-`skills packages pack`, `install`, `update`, and `remove` operate on passive
-packages. Install and
-update write only the selected user's Skill overlay. `--expected-sha256` pins external
-content. Git and ZIP input is staged and validated before one final replacement.
+The Library creates a view per user and Agent. A shared root may be reused, while writable overlays and caches remain isolated.

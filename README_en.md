@@ -8,8 +8,8 @@
 
 Super Agent gives a model a compact Skill index. The model decides what it needs, opens
 only that content, and runs the selected instructions or registered tools. Prompts,
-task instructions, run policies, memory behavior, tools, and model descriptions all use the same
-Skill format and the same progressive disclosure path.
+task instructions, run policies, memory methods, and tool-use methods all use the same
+Skill format and progressive disclosure path. Model connections and secrets remain explicit configuration.
 
 The default Python install has no third-party runtime dependencies. A basic `Agent()` is
 stateless and writes no files. Storage, conversations, memory, Skill updates, MCP, and Web
@@ -23,15 +23,15 @@ aliases or migration wrappers.
 Python 3.11 or newer is required.
 
 ```bash
-python3 -m pip install -e .
-export OPENAI_API_KEY="..."
+python3.11 -m pip install -e .
+export OA3_SILICONFLOW_API_KEY="..."
 super-agent check
 super-agent "Explain this repository"
 ```
 
 `check` only reads configuration, Skills, and model settings. It does not create storage
-or call a model. OpenAI-compatible, Anthropic-compatible, and Ollama settings can be
-discovered from the environment. An offline smoke test must be explicit:
+or call a model. `OA3_SILICONFLOW_API_KEY` selects the documented free model; other endpoints
+use generic environment variables or `common.toml`. An offline smoke test must be explicit:
 
 ```bash
 SUPER_AGENT_PROVIDER=mock super-agent check
@@ -45,46 +45,51 @@ Inside a conversation, use `/help`, `/clear`, or `/exit` for terminal controls.
 
 ## Add a Skill
 
-A Skill can be only a directory, a compact manifest, and optional instructions:
+A Skill is one Markdown file with TOML front matter:
 
-```text
-skills/prompt/research/
-  skill.toml
-  SKILL.md
-```
-
-```toml
+```markdown
++++
+name = "research"
+type = "prompt"
 description = "Research a question and report cited findings"
+version = "1.0.0"
+created_by = "user"
+agent_can_update = false
+categories = ["research"]
++++
+
+Confirm the question and evidence scope, then report conclusions with sources.
 ```
 
-The directory name becomes the Skill name, and `type` defaults to `prompt`. There are no
-trigger words. The model sees descriptions and decides which Skills to disclose or
-activate during its normal turn.
+Place the file under any directory listed in `skill_paths`. There are no trigger words.
+The model decides which Skills to disclose or activate from their descriptions. `requires`
+lists tools that must exist; `optional_tools` lists tools mounted when registered without
+making the method unavailable when they are absent.
 
 ## Use Python
 
 The common module exports one class:
 
 ```python
-from super_agent import Agent
+from super_agent import Agent, model_from_environment
 
-agent = Agent()
+agent = Agent(model_from_environment())
 result = agent.run("Explain progressive Skill disclosure")
 print(result.text)
 ```
 
-`Agent` has six direct actions: `run`, `for_user`, `add_subagent`, `add_skill_path`,
-`add_tool`, and `add_model`. Advanced contracts are imported from the module that owns
-them.
+The six most common direct `Agent` actions are `run`, `for_user`, `add_subagent`,
+`add_skill_path`, `add_tool`, and `add_model`. Advanced contracts are imported from the
+module that owns them.
 
 Compose specialized Agents in code. A task Skill selection belongs to one run and does
 not silently change later runs:
 
 ```python
-from super_agent import Agent
+from super_agent import Agent, model_from_environment
 
-main = Agent()
-coder = Agent()
+main = Agent(model_from_environment())
+coder = Agent(model_from_environment())
 main.add_subagent(coder, name="coder", description="Implements and verifies code changes")
 result = coder.run("Fix the failing test", skill="code")
 ```
@@ -92,11 +97,17 @@ result = coder.run("Fix the failing test", skill="code")
 ## Add State Only When Needed
 
 ```python
-agent = Agent(use_storage=True)
+from adapter.storage import JsonlStorage
+from super_agent import Agent, model_from_environment
+
+agent = Agent(model_from_environment())
+agent.use_storage(JsonlStorage(".super-agent/data"))
+agent.enable_memory()
 alice = agent.for_user("alice")
 conversation = alice.conversations.create("Project")
-result = alice.run("Remember my response style", conversation_id=conversation.conversation_id)
-alice.runs.learn(result.run_id)
+alice.memory.remember_long_term("The user prefers concise answers", labels=("preference",))
+result = alice.run("Continue analyzing the project", conversation_id=conversation.conversation_id)
+print(alice.runs.explain(result.run_id))
 ```
 
 Conversation messages are short-term context. Long-term memory stores durable facts,
@@ -108,26 +119,18 @@ PostgreSQL drivers are optional extras.
 
 Audit records are bounded and configurable. Detailed records are kept for 180 days and
 critical records for 365 days by default. Canonical events stay complete for learning and
-review, while CLI and Web run views dynamically replace prompts, model output, tool payloads,
-and error messages with hashes and size summaries. CLI users can explicitly add
-`--include-sensitive` to run status, explanation, or export commands. Dynamic redaction is
-not storage encryption, so protect access to the selected backend. Preview cleanup with
-`super-agent data storage prune`; add `--apply` when you explicitly want deletion.
+review, while `alice.runs.explain(run_id)` dynamically replaces prompts, model output, tool
+payloads, and errors with hashes and size summaries. Passing `include_sensitive=True` in code
+is required to read the original fields. Dynamic redaction is not storage encryption, so
+protect access to the selected backend; retention cleanup runs from the backend's explicit
+policy when records are written.
 
 ## Update a Skill Explicitly
 
 Learning records evaluation, freshness, and model-use evidence. It never changes a Skill.
-Skill changes use four visible steps:
-
-```bash
-super-agent manage skill-changes propose --name prompt:research --goal "make citations clearer"
-super-agent manage skill-changes test --change-id <id> --cases cases.json
-super-agent manage skill-changes apply --change-id <id>
-super-agent manage skill-changes undo --change-id <id>
-```
-
-Proposal and testing cannot activate a candidate. Only `apply` changes the user
-overlay, and failed tests block it.
+`SkillEvolution` separates updates into explicit `propose`, `test`, `apply`, and `undo`
+actions. Proposal and testing cannot activate a candidate; only `apply` changes the user
+overlay, and failed tests block it. See [Evolution](docs/evolution.md) for the complete flow.
 
 ## CLI and Web
 
@@ -137,38 +140,32 @@ super-agent "one task"
 super-agent --skill code "inspect this repository"
 super-agent config show
 super-agent skills list
-super-agent data runs status
+super-agent data storage verify --config common.toml
+super-agent data conversations list --config common.toml --user alice
 super-agent serve
 ```
 
-One-shot runs are stateless unless `--save` or a conversation ID is explicit. Text runs
-print the answer plus the actual model, task Skill, workflow, Skills, stop reason, and run ID.
-Use `--output json` for integrations. The React client,
+One-shot runs are stateless unless `--save` is explicit. Text runs print the answer, stop
+reason, and run ID; use `--output json` for the complete result. The React client,
 CopilotKit example, and AG-UI endpoint are served at `http://127.0.0.1:8765/`.
 
 Optional `cli.toml` controls terminal defaults only. Shared Runtime settings stay in
 `common.toml`, coding workspace settings stay in `code.toml`, and model connections stay
-in model Skills or environment variables. These files are validated separately and are
+in `common.toml` or environment variables. These files are validated separately and are
 never deep-merged.
 
 The code task exposes a bounded directory tree, ranged UTF-8 file reads, text search, and
 fixed-argument Git status and diff reads. File replacement, structured exact patches, and
 deletion require the SHA-256 returned by a prior read, so a concurrent change fails instead
 of being overwritten. Paths must remain under the configured workspace; ignored, escaping,
-oversized, and non-text reads fail visibly. Every non-read tool asks for terminal
-confirmation before it runs, and refusal or end-of-input stops the action without a hidden
-fallback. Verification commands are declared as argument arrays, then started, polled, or
+oversized, and non-text reads fail visibly. Actions in `code.toml` accept `deny`, `ask`, or
+`allow`: `deny` omits the tool, `ask` confirms each call, and `allow` follows the user's
+explicit permission without another prompt. Verification commands are declared as argument arrays, then started, polled, or
 stopped by ID with explicit time and output limits; shell strings are never accepted.
-`refresh_repository_map` provides a bounded path and metadata map and reuses unchanged
-symbol parsing within the current run. Python symbols use the standard AST parser; other
-file types report no parser rather than receiving guessed symbols.
-`run_declared_check` waits for one declared check and returns `passed` from its actual exit
-code. A failed check is evidence for the next explicit model edit; the runtime never repairs
-files or hides a failed verification.
-Long tasks create content-free checkpoints containing steps, selected Skills, workflow, and
-hashes. `user.runs.list_checkpoints(run_id)` lists them and
-`user.runs.resume(run_id, prompt, checkpoint_id=...)` starts a new explicit run from one;
-the new prompt supplies the continuation intent because model output is not reconstructed.
+`repository_map` provides a bounded path, hash, and symbol map. Python symbols use the
+standard AST parser; other file types do not receive guessed symbols. `run_check` waits for
+one declared check and returns its actual exit code. A failed check is evidence for the next
+explicit model edit; the runtime never repairs files or hides a failed verification.
 
 ## Guarantees
 
@@ -179,7 +176,7 @@ the new prompt supplies the continuation intent because model output is not reco
   subagent results, and reference reads. When it is full, the model receives only a stable
   reference and hash and must request the next page explicitly.
 - Routing is model judgment, not keyword matching.
-- Reads do not write, and state changes are explicit checked actions.
+- Reads do not mutate domain state; an explicit disclosure cache writes only bounded, disposable cache files.
 - Skill content is passive and cannot register code, permissions, or secrets.
 - Provider, storage, and optional-feature failures are visible; there is no hidden fallback.
 - A basic run does not require storage, memory, conversations, safety rules, or learning.
@@ -216,7 +213,7 @@ Runnable examples are in `examples/minimal.py`, `examples/custom_skill.py`, and
 ## Verify the Repository
 
 ```bash
-python3.11 scripts/verify_release.py --version 0.1.102 --full --web
+python3.11 scripts/verify_release.py --version 0.2.0 --full --web
 ```
 
 For the complete local release gate, including version and package-shape checks, see

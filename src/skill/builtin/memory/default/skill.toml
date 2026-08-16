@@ -1,8 +1,0 @@
-type = "memory"
-description = "Default abstract and durable long-term memory"
-
-[configuration]
-default_scope = "agent"
-recall_limit = 20
-include_in_prompt = true
-include_usage_habits = true

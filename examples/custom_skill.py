@@ -1,13 +1,13 @@
-"""使用项目自有的任务 Skill 运行一个 Agent。"""
+"""从独立 TOML 配置加载一个本地 Skill。"""
 
 from pathlib import Path
 
-from core.provider import MockProvider
+from core.config import Config
 from super_agent import Agent
 
 
-config = Path(__file__).with_name("custom") / "common.toml"
-agent = Agent(config, provider=MockProvider("The custom Skill was selected."))
-result = agent.run("Use the custom task", skill="custom")
+config = Config.load(Path(__file__).with_name("custom") / "common.toml")
+agent = Agent(config=config)
+result = agent.run("Use the custom task")
 print(result.text)
 print(", ".join(result.skills))
