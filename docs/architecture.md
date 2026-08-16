@@ -7,7 +7,7 @@ Provider  -> 提供模型智能 / provides model intelligence
 Runtime   -> 调度一次运行 / schedules one run
 Skill     -> 承载方法论和内容 / carries method and content
 Agent     -> 组合模型、Skill、工具和子 Agent / composes everything
-Adapter   -> 连接 CLI、Web、存储和外部工具 / connects interfaces and effects
+Adapter   -> 连接 CLI、存储和外部工具 / connects interfaces and effects
 ```
 
 `Provider` 只负责把中立的 `ModelRequest` 转成模型事件。`Runtime` 只负责消息、工具、限制、事件和结束条件。
@@ -18,9 +18,9 @@ Adapter   -> 连接 CLI、Web、存储和外部工具 / connects interfaces and 
 
 `Skill` is passive content and cannot register permissions, secrets, or Python code. `Agent` composes behavior in code with `add_subagent`, `add_skill_path`, `add_tool`, and `add_model`.
 
-`Adapter` 不进入核心运行循环。没有使用 Web、数据库或进程工具时，核心仍可单独运行。
+`Adapter` 不进入核心运行循环。没有使用数据库或进程工具时，核心仍可单独运行。
 
-`Adapter` does not enter the core execution loop. The core remains usable without Web, database, or process adapters.
+`Adapter` does not enter the core execution loop. The core remains usable without database or process adapters.
 
 ## 一条运行路径 / One Run Path
 
@@ -43,11 +43,11 @@ Each `RunSession` owns one `DisclosureStore`. Skill bodies and large file, memor
 ## 设计取舍 / Design Tradeoffs
 
 - 不预设触发词，Skill 是否相关由模型结合索引判断。
-- 不把记忆、会话、安全或 AG-UI 强绑定到核心。
+- 不把记忆、会话或安全规则强绑定到核心。
 - 不做隐式降级；Provider 路由的回退必须由 `RouterSettings` 明确允许。
 - 读操作与写操作分开，写操作带有工具效果和确认策略。
 
 - There is no trigger-word table; the model judges relevance from the index.
-- Memory, conversations, safety, and AG-UI are not hard-wired into the core.
+- Memory, conversations, and safety rules are not hard-wired into the core.
 - There is no hidden fallback; Provider fallback must be enabled in `RouterSettings`.
 - Reads and writes are separate, and writes carry tool effects and confirmation policy.

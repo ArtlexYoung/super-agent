@@ -11,7 +11,7 @@ Super Agent 只给模型一份精简的 Skill 索引。模型自行判断需要�
 也经过同一条渐进式披露路径；模型连接和密钥继续由显式配置管理。
 
 默认 Python 安装没有第三方运行依赖。基础 `Agent()` 无状态且不写文件。存储、对话、记忆、
-Skill 更新、MCP 和 Web 都是可选层；缺少必要条件时会明确失败。
+Skill 更新和 MCP 都是可选层；缺少必要条件时会明确失败。
 
 Super Agent 仍是实验性的 `1.0` 前软件。破坏性修改不保留兼容别名和迁移薄壳。
 
@@ -119,7 +119,7 @@ JSONL 是可直接阅读的默认存储。SQLite 同样只用标准库；MySQL �
 `propose`、`test`、`apply` 和 `undo` 四个显式动作。提案和测试都不能启用候选内容；只有
 `apply` 会修改用户覆盖层，测试失败时禁止应用。完整示例见[进化文档](docs/evolution.md)。
 
-## CLI 与 Web
+## CLI
 
 ```bash
 super-agent check
@@ -129,13 +129,10 @@ super-agent config show
 super-agent skills list
 super-agent data storage verify --config common.toml
 super-agent data conversations list --config common.toml --user alice
-super-agent serve
 ```
 
 单次运行默认无状态，只有显式传入 `--save` 才会保存。文本运行会在答案后显示结束原因和运行 ID；
 集成程序可使用 `--output json` 读取完整运行结果。
-React 页面、CopilotKit 示例和 AG-UI 接口默认位于
-`http://127.0.0.1:8765/`。
 
 可选的 `cli.toml` 只管理终端默认行为。共享 Runtime 设置放在 `common.toml`，编码工作区
 设置放在 `code.toml`，模型连接放在 `common.toml` 或环境变量中。这些文件分别校验，绝不进行
@@ -186,7 +183,6 @@ React 页面、CopilotKit 示例和 AG-UI 接口默认位于
 - [CLI](docs/cli.md)
 - [学习、记忆与 Skill 更新](docs/evolution.md)
 - [安全](docs/safety.md)
-- [Web](docs/web.md) 与 [AG-UI](docs/ag-ui.md)
 
 可直接运行的示例位于 `examples/minimal.py`、`examples/custom_skill.py` 和
 `examples/team.py`。
@@ -194,7 +190,7 @@ React 页面、CopilotKit 示例和 AG-UI 接口默认位于
 ## 验证仓库
 
 ```bash
-python3.11 scripts/verify_release.py --version 0.2.0 --full --web
+python3.11 scripts/verify_release.py --version 0.2.0 --full
 ```
 
 完整的本地发布检查（包括版本一致性和打包范围）见[本地发布流程](docs/releasing.md)。

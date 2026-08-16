@@ -43,9 +43,9 @@ Unknown fields fail explicitly. `storage.backend` accepts `none`, `memory`, `jso
 
 ## CLI 与代码配置 / CLI and Code Configuration
 
-`cli.toml` 只管理终端输出、用户、保存和服务地址；`code.toml` 只管理工作区、写入策略和预声明验证命令。三类配置分别加载、分别校验，不进行深度合并。
+`cli.toml` 只管理终端输出、用户和保存行为；`code.toml` 只管理工作区、写入策略和预声明验证命令。三类配置分别加载、分别校验，不进行深度合并。
 
-`cli.toml` controls terminal output, user, saving, and server address; `code.toml` controls workspace, write policy, and declared checks. The three scopes load and validate independently, with no deep merge.
+`cli.toml` controls terminal output, user, and saving; `code.toml` controls workspace, write policy, and declared checks. The three scopes load and validate independently, with no deep merge.
 
 ```toml
 version = 1

@@ -13,11 +13,11 @@ from pathlib import Path
 
 
 VERSION = "0.2.0"
-MAX_SOURCE_FILES = 24
+MAX_SOURCE_FILES = 22
 MAX_SOURCE_LINES = 10_000
 SOURCE_ROOTS = {"adapter", "core", "skill", "cli.py", "super_agent.py"}
 DOMAIN_FILES = {
-    "adapter": {"cli.py", "database.py", "http", "process.py", "static", "storage.py", "tools.py"},
+    "adapter": {"cli.py", "database.py", "process.py", "storage.py", "tools.py"},
     "core": {"__init__.py", "config.py", "disclosure.py", "event.py", "model.py", "provider.py", "records.py", "run.py", "user.py"},
     "skill": {"builtin", "document.py", "evolution.py", "groups.py", "library.py", "memory.py", "team.py"},
 }
@@ -47,10 +47,7 @@ def main(arguments: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--version", required=True)
     parser.add_argument("--full", action="store_true")
-    parser.add_argument("--web", action="store_true")
     args = parser.parse_args(arguments)
-    if args.web and not args.full:
-        parser.error("--web requires --full")
     root = Path(__file__).resolve().parents[1]
     errors = verify_release(root, args.version)
     if errors:
@@ -59,7 +56,7 @@ def main(arguments: list[str] | None = None) -> int:
         return 1
     print(f"Release checks passed: {args.version}")
     if args.full:
-        errors = run_full_release_gate(root, include_web=args.web)
+        errors = run_full_release_gate(root)
         if errors:
             for error in errors:
                 print(f"FAIL {error}", file=sys.stderr)
@@ -73,7 +70,6 @@ def verify_release(root: Path, expected_version: str) -> list[str]:
     if expected_version != VERSION:
         errors.append(f"this release gate is for {VERSION}")
     project = _read_toml(root / "pyproject.toml", errors)
-    web = _read_json(root / "web/package.json", errors)
     project_data = project.get("project", {})
     if not isinstance(project_data, dict):
         errors.append("pyproject.toml project table is missing")
@@ -86,10 +82,11 @@ def verify_release(root: Path, expected_version: str) -> list[str]:
         errors.append("default runtime dependencies must remain empty")
     if project_data.get("scripts", {}).get("super-agent") != "adapter.cli:main":
         errors.append("installed CLI must point to adapter.cli:main")
-    if web.get("version") != expected_version:
-        errors.append("web/package.json version does not match")
     if _read_version(root / "src/core/__init__.py", errors) != expected_version:
         errors.append("core version does not match")
+    for removed in ("web", "docs/ag-ui.md", "docs/web.md", "src/adapter/http", "src/adapter/static"):
+        if (root / removed).exists():
+            errors.append(f"removed interface remains: {removed}")
     errors.extend(_check_layout(root / "src"))
     errors.extend(_check_build_config(project, root))
     files = [path for path in (root / "src").rglob("*.py") if "__pycache__" not in path.parts]
@@ -108,14 +105,14 @@ def verify_release(root: Path, expected_version: str) -> list[str]:
     return errors
 
 
-def run_full_release_gate(root: Path, *, include_web: bool) -> list[str]:
+def run_full_release_gate(root: Path) -> list[str]:
     environment = dict(os.environ)
     environment["PYTHONDONTWRITEBYTECODE"] = "1"
     environment["PYTHONPATH"] = str(root / "src")
     errors: list[str] = []
     with tempfile.TemporaryDirectory(prefix="super-agent-release-") as temporary:
         output = Path(temporary) / "benchmark"
-        for name, command in build_full_gate_commands(root, output, include_web):
+        for name, command in build_full_gate_commands(root, output):
             try:
                 result = subprocess.run(command, cwd=root, env=environment, capture_output=True, text=True, check=False)
             except OSError as error:
@@ -129,7 +126,7 @@ def run_full_release_gate(root: Path, *, include_web: bool) -> list[str]:
     return errors
 
 
-def build_full_gate_commands(root: Path, output: Path, include_web: bool) -> list[tuple[str, tuple[str, ...]]]:
+def build_full_gate_commands(root: Path, output: Path) -> list[tuple[str, tuple[str, ...]]]:
     python = sys.executable
     commands = [
         ("Python tests", (python, "-m", "unittest", "discover", "-s", "tests", "-p", "test_*.py")),
@@ -138,12 +135,6 @@ def build_full_gate_commands(root: Path, output: Path, include_web: bool) -> lis
         ("Python package build", ("uv", "build", str(root), "--out-dir", str(output.parent / "packages"), "--no-python-downloads", "--no-progress")),
         ("offline benchmark", (python, str(root / "scripts" / "run_benchmark.py"), "--manifest", str(root / "examples" / "offline-gate-benchmark.json"), "--output", str(output))),
     ]
-    if include_web:
-        commands.extend([
-            ("Web typecheck", ("pnpm", "--dir", "web", "typecheck")),
-            ("Web lint", ("pnpm", "--dir", "web", "lint")),
-            ("Web build", ("pnpm", "--dir", "web", "build")),
-        ])
     return commands
 
 

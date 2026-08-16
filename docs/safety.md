@@ -30,6 +30,6 @@ Process tools accept declared argument arrays, never shell strings. A failed che
 
 Backends retain canonical facts, while views dynamically redact prompts, model text, tool payloads, and errors by default. Detailed logs live 180 days and critical logs 365 days by default; both are configurable.
 
-动态脱敏不是加密。部署时仍需限制 JSONL 目录、数据库账号、缓存目录和 Web 监听地址的访问。
+动态脱敏不是加密。部署时仍需限制 JSONL 目录、数据库账号和缓存目录的访问。
 
-Dynamic redaction is not encryption. Deployments must still restrict access to JSONL directories, database credentials, cache directories, and Web bind addresses.
+Dynamic redaction is not encryption. Deployments must still restrict access to JSONL directories, database credentials, and cache directories.

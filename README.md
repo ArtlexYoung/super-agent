@@ -20,9 +20,9 @@ Super Agent gives the model a compact Skill index, lets the model decide what it
 
 Prompts, tool-use methods, memory methods, workflows, and task policies share one Skill format and one central progressive-disclosure path; model connections and secrets remain explicit configuration.
 
-默认 Python 安装没有第三方运行依赖，基础 `Agent()` 无状态、不写文件，存储、记忆、MCP、学习和 Web 都按需启用。
+默认 Python 安装没有第三方运行依赖，基础 `Agent()` 无状态、不写文件，存储、记忆、MCP 和学习都按需启用。
 
-The default Python install has no third-party runtime dependencies, a basic `Agent()` is stateless and writes no files, and storage, memory, MCP, learning, and Web are opt-in.
+The default Python install has no third-party runtime dependencies, a basic `Agent()` is stateless and writes no files, and storage, memory, MCP, and learning are opt-in.
 
 ## 一分钟开始
 
@@ -98,9 +98,9 @@ main.add_subagent(coder, name="coder", description="实现并验证代码修改"
 result = coder.run("修复失败的测试", skill="code")
 ```
 
-## CLI 与 Web
+## CLI
 
-*CLI and Web*
+*CLI*
 
 CLI 保持直接入口，配置检查是只读操作，单次任务默认无状态。
 
@@ -113,12 +113,7 @@ super-agent config show
 super-agent skills list
 super-agent data storage verify --config common.toml
 super-agent data conversations list --config common.toml --user alice
-super-agent serve
 ```
-
-React 页面、CopilotKit 示例和 AG-UI 接口默认由 `http://127.0.0.1:8765/` 提供。
-
-The React client, CopilotKit example, and AG-UI endpoint are served from `http://127.0.0.1:8765/` by default.
 
 ## 核心保证
 
@@ -170,8 +165,6 @@ The complete usage guide is split by language, while this bilingual overview kee
 - [CLI](docs/cli.md)
 - [学习、记忆与 Skill 更新 / Learning, memory, and Skill changes](docs/evolution.md)
 - [安全 / Safety](docs/safety.md)
-- [Web](docs/web.md)
-- [AG-UI](docs/ag-ui.md)
 - [评测 / Benchmarks](docs/benchmarks.md)
 
 ## 致谢与借鉴
@@ -182,9 +175,9 @@ Super Agent 感谢以下项目的作者与贡献者，项目名称和模块路�
 
 Super Agent thanks the authors and contributors below, with project names and module paths referring to the public sources available when `v0.2.0` was written.
 
-除明确列出的协议和前端依赖外，Agent 架构均在 Python 中独立实现，致谢不表示复制或捆绑对应运行时代码。
+除明确列出的协议约定外，Agent 架构均在 Python 中独立实现，致谢不表示复制或捆绑对应运行时代码。
 
-Except for the explicitly listed protocols and frontend dependencies, the Agent architecture is independently implemented in Python, and acknowledgement does not imply vendoring the referenced runtime code.
+Except for the explicitly listed protocol contracts, the Agent architecture is independently implemented in Python, and acknowledgement does not imply vendoring the referenced runtime code.
 
 ### 开源 Agent 架构
 
@@ -206,18 +199,12 @@ Except for the explicitly listed protocols and frontend dependencies, the Agent 
 - **[《A Programming Paradigm for Spatiotemporal Composability》](https://github.com/cordiverse/paper)：** 论文中的可逆副作用、响应式共作用和统一上下文启发了原子 Skill 激活、逆序资源清理、显式 Runtime 需求、稳定运行快照和组合故障门禁；Super Agent 没有声称实现 Cordis 演算，而是采用了适合轻量 Python Runtime 的工程约束。
   **[A Programming Paradigm for Spatiotemporal Composability](https://github.com/cordiverse/paper):** Its revertible effects, reactive coeffects, and unified context informed atomic Skill activation, reverse-order resource cleanup, explicit Runtime needs, stable run snapshots, and composability fault gates; Super Agent does not claim to implement the Cordis calculus and instead adopts engineering constraints suitable for a lightweight Python Runtime.
 
-### 协议与界面
+### 协议
 
-*Protocols and Interface*
+*Protocols*
 
 - **[Model Context Protocol](https://github.com/modelcontextprotocol/modelcontextprotocol)：** `initialize`、`tools/list`、`tools/call` 和 stdio JSON-RPC 约定用于 MCP 适配器，Super Agent 额外要求实现与副作用在可信代码中显式注册。
   **[Model Context Protocol](https://github.com/modelcontextprotocol/modelcontextprotocol):** The MCP adapter follows `initialize`, `tools/list`, `tools/call`, and stdio JSON-RPC contracts, while Super Agent additionally requires implementations and side effects to be registered explicitly in trusted code.
-- **[AG-UI](https://github.com/ag-ui-protocol/ag-ui)（MIT）：** 运行开始、文本消息、运行完成与错误事件用于 Python SSE 适配器，使 Web 与其他客户端共享同一条 Runtime 事件流。
-  **[AG-UI](https://github.com/ag-ui-protocol/ag-ui) (MIT):** Run-start, text-message, run-finish, and error events drive the Python SSE adapter so Web and other clients share the same Runtime event stream.
-- **[CopilotKit](https://github.com/CopilotKit/CopilotKit)（MIT）：** Web 示例使用其 React 上下文和 `@ag-ui/client` 展示如何连接同一个 AG-UI 端点，而不引入第二套任务引擎。
-  **[CopilotKit](https://github.com/CopilotKit/CopilotKit) (MIT):** The Web example uses its React context and `@ag-ui/client` to connect the same AG-UI endpoint without introducing a second task engine.
-- **[shadcn/ui](https://github.com/shadcn-ui/ui)（MIT）：** Web 配置与对话页面使用其开放组件模式和 Radix 基础组件构建按钮、标签页、表单、提示和侧栏。
-  **[shadcn/ui](https://github.com/shadcn-ui/ui) (MIT):** The Web configuration and conversation pages use its open-component model and Radix primitives for buttons, tabs, forms, tooltips, and navigation.
 
 ### 评测项目
 
@@ -235,18 +222,18 @@ Except for the explicitly listed protocols and frontend dependencies, the Agent 
 - **[Claude Code](https://github.com/anthropics/claude-code)：** 其仓库受 Anthropic 商业条款约束，本项目只研究公开插件、SDK 和文档，主要参考 `feature-dev` 的探索/设计/实现阶段、`code-review` 与 `pr-review-toolkit` 的多视角复核、`plugin-dev` 的 Skill 结构和 `security-guidance` 的操作前提醒，没有将 Claude Code Runtime 代码视为开源代码。
   **[Claude Code](https://github.com/anthropics/claude-code):** Its repository is governed by Anthropic commercial terms, so this project studies only public plugins, SDKs, and documentation, mainly the exploration/design/implementation phases in `feature-dev`, multi-perspective review in `code-review` and `pr-review-toolkit`, Skill structure in `plugin-dev`, and pre-action reminders in `security-guidance`, without treating Claude Code Runtime code as open source.
 
-第三方项目保留各自版权与许可证，具体依赖版本见 `web/pnpm-lock.yaml`，本项目许可证见 [LICENSE](LICENSE)。
+第三方项目保留各自版权与许可证，本项目许可证见 [LICENSE](LICENSE)。
 
-Third-party projects retain their own copyrights and licenses, exact dependency versions are recorded in `web/pnpm-lock.yaml`, and this project is licensed under [LICENSE](LICENSE).
+Third-party projects retain their own copyrights and licenses, and this project is licensed under [LICENSE](LICENSE).
 
 ## 验证仓库
 
 *Verify the Repository*
 
-完整发布门禁会检查 Python 测试、编译、包内容、离线评测、Web 类型、lint 和构建。
+完整发布门禁会检查 Python 测试、编译、包内容、离线评测和构建。
 
-The full release gate checks Python tests, compilation, package contents, offline evaluation, Web types, lint, and build.
+The full release gate checks Python tests, compilation, package contents, offline evaluation, and build.
 
 ```bash
-python3.11 scripts/verify_release.py --version 0.2.0 --full --web
+python3.11 scripts/verify_release.py --version 0.2.0 --full
 ```

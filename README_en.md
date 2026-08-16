@@ -12,8 +12,8 @@ task instructions, run policies, memory methods, and tool-use methods all use th
 Skill format and progressive disclosure path. Model connections and secrets remain explicit configuration.
 
 The default Python install has no third-party runtime dependencies. A basic `Agent()` is
-stateless and writes no files. Storage, conversations, memory, Skill updates, MCP, and Web
-are optional layers that fail clearly when their requirements are missing.
+stateless and writes no files. Storage, conversations, memory, Skill updates, and MCP are
+optional layers that fail clearly when their requirements are missing.
 
 Super Agent is experimental pre-`1.0` software. Breaking changes do not keep compatibility
 aliases or migration wrappers.
@@ -132,7 +132,7 @@ Learning records evaluation, freshness, and model-use evidence. It never changes
 actions. Proposal and testing cannot activate a candidate; only `apply` changes the user
 overlay, and failed tests block it. See [Evolution](docs/evolution.md) for the complete flow.
 
-## CLI and Web
+## CLI
 
 ```bash
 super-agent check
@@ -142,12 +142,10 @@ super-agent config show
 super-agent skills list
 super-agent data storage verify --config common.toml
 super-agent data conversations list --config common.toml --user alice
-super-agent serve
 ```
 
 One-shot runs are stateless unless `--save` is explicit. Text runs print the answer, stop
-reason, and run ID; use `--output json` for the complete result. The React client,
-CopilotKit example, and AG-UI endpoint are served at `http://127.0.0.1:8765/`.
+reason, and run ID; use `--output json` for the complete result.
 
 Optional `cli.toml` controls terminal defaults only. Shared Runtime settings stay in
 `common.toml`, coding workspace settings stay in `code.toml`, and model connections stay
@@ -205,7 +203,6 @@ Full task-level reports, isolated runners, and local evaluation asset guidance l
 - [CLI](docs/cli.md)
 - [Learning, memory, and Skill changes](docs/evolution.md)
 - [Safety](docs/safety.md)
-- [Web](docs/web.md) and [AG-UI](docs/ag-ui.md)
 
 Runnable examples are in `examples/minimal.py`, `examples/custom_skill.py`, and
 `examples/team.py`.
@@ -213,7 +210,7 @@ Runnable examples are in `examples/minimal.py`, `examples/custom_skill.py`, and
 ## Verify the Repository
 
 ```bash
-python3.11 scripts/verify_release.py --version 0.2.0 --full --web
+python3.11 scripts/verify_release.py --version 0.2.0 --full
 ```
 
 For the complete local release gate, including version and package-shape checks, see

@@ -30,8 +30,6 @@ class CliConfig:
     output: str = "text"
     save: bool = False
     show_summary: bool = True
-    host: str = "127.0.0.1"
-    port: int = 8765
 
     @classmethod
     def load(cls, path: str | Path) -> CliConfig:
@@ -40,7 +38,7 @@ class CliConfig:
             value = tomllib.load(stream)
         if not isinstance(value, dict):
             raise TypeError("CLI configuration must be a TOML table")
-        allowed = {"version", "general_config", "code_config", "user_id", "output", "save", "show_summary", "host", "port"}
+        allowed = {"version", "general_config", "code_config", "user_id", "output", "save", "show_summary"}
         unknown = sorted(set(value) - allowed)
         if unknown:
             raise ValueError(f"unknown CLI configuration fields: {', '.join(unknown)}")
@@ -53,8 +51,6 @@ class CliConfig:
             output=_choice(value.get("output", "text"), "CLI output", {"text", "json"}),
             save=_boolean(value.get("save", False), "CLI save"),
             show_summary=_boolean(value.get("show_summary", True), "CLI show_summary"),
-            host=_text(value.get("host", "127.0.0.1"), "CLI host"),
-            port=_integer(value.get("port", 8765), "CLI port", 1, 65535),
         )
 
     @classmethod
@@ -70,7 +66,7 @@ class CliConfig:
 def main(argv: Sequence[str] | None = None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
     try:
-        if arguments and arguments[0] in {"serve", "config", "skills", "data", "check"}:
+        if arguments and arguments[0] in {"config", "skills", "data", "check"}:
             return _run_command(arguments)
         parser = _build_run_parser()
         parsed = parser.parse_args(arguments)
@@ -87,24 +83,6 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 def _run_command(arguments: list[str]) -> int:
     command = arguments[0]
-    if command == "serve":
-        parser = argparse.ArgumentParser(prog="super-agent serve")
-        parser.add_argument("--config")
-        parser.add_argument("--cli-config")
-        parser.add_argument("--code-config")
-        parser.add_argument("--host")
-        parser.add_argument("--port", type=int)
-        parser.add_argument("--user")
-        parsed = parser.parse_args(arguments[1:])
-        cli = _load_cli(parsed.cli_config)
-        cli = CliConfig(**{**cli.__dict__, "host": parsed.host or cli.host, "port": parsed.port or cli.port, "user_id": parsed.user or cli.user_id, "save": True})
-        agent, _ = _build_agent(cli, parsed.config, parsed.code_config)
-        from adapter.http.agui import create_ag_ui_server
-
-        server = create_ag_ui_server(agent, cli.host, cli.port, user_id=cli.user_id)
-        print(f"Super Agent listening at http://{cli.host}:{cli.port}")
-        server.serve_forever()
-        return 0
     if command == "check":
         return _check_command(arguments[1:])
     if command == "config":

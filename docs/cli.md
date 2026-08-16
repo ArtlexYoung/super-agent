@@ -27,21 +27,20 @@ super-agent skills list --config common.toml
 super-agent skills read prompt:research --config common.toml
 super-agent data storage verify --config common.toml
 super-agent data conversations list --config common.toml --user alice
-super-agent serve --config common.toml --cli-config cli.toml
 ```
 
-这些命令只在其明确职责范围内工作。`check` 和 `config` 不创建存储；`data` 需要配置中显式启用后端；`serve` 才会启动 HTTP 服务。
+这些命令只在其明确职责范围内工作。`check` 和 `config` 不创建存储；`data` 需要配置中显式启用后端。
 
-Each command stays within its declared scope. `check` and `config` do not create storage; `data` requires an explicitly configured backend; only `serve` starts an HTTP server.
+Each command stays within its declared scope. `check` and `config` do not create storage; `data` requires an explicitly configured backend.
 
 ## 三份配置 / Three Config Files
 
 - `common.toml`：模型、Skill、记忆、进化、存储和运行限制。
-- `cli.toml`：输出格式、用户、保存开关、服务地址。
+- `cli.toml`：输出格式、用户和保存开关。
 - `code.toml`：工作区路径、写入/删除/Git/执行策略、验证命令。
 
 - `common.toml`: models, Skills, memory, evolution, storage, and run limits.
-- `cli.toml`: output format, user, saving, and server address.
+- `cli.toml`: output format, user, and saving.
 - `code.toml`: workspace path, write/delete/Git/execute policy, and declared checks.
 
 配置文件不互相深度合并；同名或未知字段不会被静默覆盖。

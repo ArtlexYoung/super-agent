@@ -11,7 +11,7 @@ Start at the public entry point instead of beginning with adapters or builtin Sk
 5. `src/core/disclosure.py`：查看所有大内容共用的分页、缓存路径和历史。
 6. `src/skill/document.py` 与 `src/skill/library.py`：查看 Skill 格式、索引和原子激活。
 7. `src/core/records.py` 与 `src/core/user.py`：查看记录契约、用户作用域、审计脱敏和保留策略。
-8. `src/adapter/`：最后查看 CLI、HTTP 管理 API、AG-UI、存储、工作区和进程适配器。
+8. `src/adapter/`：最后查看 CLI、存储、数据库、工作区和进程适配器。
 
 1. `src/super_agent.py`: how `Agent` composes configuration, models, Skills, storage, and subagents.
 2. `src/core/run.py`: the single streaming model/tool loop.
@@ -20,7 +20,7 @@ Start at the public entry point instead of beginning with adapters or builtin Sk
 5. `src/core/disclosure.py`: shared paging, cache paths, and history for all large content.
 6. `src/skill/document.py` and `src/skill/library.py`: the Skill format, index, and atomic activation.
 7. `src/core/records.py` and `src/core/user.py`: record contracts, user scope, audit redaction, and retention.
-8. `src/adapter/`: CLI, HTTP management API, AG-UI, storage, workspace, and process adapters last.
+8. `src/adapter/`: CLI, storage, database, workspace, and process adapters last.
 
 ## 调试一轮运行 / Inspect One Run
 
