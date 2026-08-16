@@ -14,3 +14,6 @@ release/
 tests/eval/
 .codex/
 src/frontend/mac/.build/
+
+# Desktop is maintained and versioned as a separate repository.
+/desktop/
