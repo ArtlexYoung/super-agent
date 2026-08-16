@@ -239,8 +239,15 @@ def _stream_to_terminal(agent: Agent, prompt: str, context: AgentContext, *, pri
             print(f"\n[{event.event_type}] {event.data.get('message', event.data.get('error_type', ''))}", file=sys.stderr)
 
 
-def _build_agent(cli: CliConfig, general_path: str | None, code_path: str | None) -> tuple[Agent, object | None]:
-    config = _load_general(general_path or cli.general_config)
+def _build_agent(
+    cli: CliConfig,
+    general_path: str | None,
+    code_path: str | None,
+    *,
+    config: Config | None = None,
+) -> tuple[Agent, object | None]:
+    if config is None:
+        config = _load_general(general_path or cli.general_config)
     agent = Agent(config=config)
     agent.set_instructions(*config.instructions)
     agent.settings = AgentSettings(config.warn_subagent_depth, config.max_subagent_depth, config.limits)

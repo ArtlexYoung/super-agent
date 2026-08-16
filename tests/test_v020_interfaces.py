@@ -6,8 +6,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from adapter.cli import CliConfig, _load_code
+from adapter.cli import CliConfig, _build_agent, _load_code
 from adapter.storage import MemoryStorage
+from core.config import Config, ModelConfig
+from core.event import RunLimits
 from core.provider import MockModel
 from scripts.verify_release import verify_release
 from super_agent import Agent
@@ -17,6 +19,28 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class InterfaceTests(unittest.TestCase):
+    def test_agent_builder_accepts_an_already_validated_runtime_config(self):
+        config = Config(
+            name="desktop-agent",
+            instructions=("Use the desktop settings.",),
+            memory=True,
+            models=(ModelConfig("desktop", "mock", "desktop response"),),
+            limits=RunLimits(max_model_turns=3),
+        )
+        agent, storage = _build_agent(
+            CliConfig(save=False),
+            "/configuration/does/not/exist.toml",
+            None,
+            config=config,
+        )
+
+        self.assertEqual("desktop-agent", agent.name)
+        self.assertEqual(["Use the desktop settings."], agent.instructions)
+        self.assertTrue(agent.memory_enabled)
+        self.assertEqual(3, agent.settings.limits.max_model_turns)
+        self.assertEqual("desktop response", agent.run("hello").text)
+        self.assertIsNone(storage)
+
     def test_cli_config_is_separate_from_general_config(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "cli.toml"
