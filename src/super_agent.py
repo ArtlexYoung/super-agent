@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Iterable, Iterator, Mapping
-from dataclasses import dataclass, field
+from collections.abc import Iterable, Iterator, Mapping
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from core.config import Config, config_from_environment
@@ -12,28 +12,38 @@ from core.event import RunEvent, RunIdentity, RunLimits, RunResult
 from core.model import Message, Model, Tool
 from core.provider import ModelPricing, ModelProfile, ModelRouter, RouterSettings
 from core.records import AuditPolicy, Conversations, EventStore, RecordBackend
-from core.run import EventListener, RunRequest, RunSession, RunSetup, ToolContext, collect_run, stream_run
+from core.run import (
+    EventListener,
+    RunRequest,
+    RunSession,
+    RunSetup,
+    ToolContext,
+    collect_run,
+    stream_run,
+)
 from core.user import AgentUser
 from skill.evolution import CandidateRunner, SkillEvolution
-from skill.groups import AgentGroups, GroupSettings
 from skill.library import SkillLibrary
 from skill.memory import Memory
-from skill.team import AgentWorker, TaskQueue, TaskQueueSettings
+from skill.organization import (
+    AgentGroup,
+    AgentMemberSettings,
+    AgentTreeSettings,
+    agent_group_node,
+    validate_tree,
+)
+from skill.organization_runtime import (
+    AgentTreeRuntime,
+    clear_agent_tree_runtimes,
+    get_or_create_agent_tree_runtime,
+)
 
 
 @dataclass(frozen=True)
 class AgentSettings:
     """只保留跨运行且无法从组合对象推导的 Agent 设置。"""
 
-    warn_subagent_depth: int = 8
-    max_subagent_depth: int | None = None
     limits: RunLimits = field(default_factory=RunLimits)
-
-    def __post_init__(self) -> None:
-        if self.warn_subagent_depth < 1:
-            raise ValueError("subagent warning depth must be positive")
-        if self.max_subagent_depth is not None and self.max_subagent_depth < 1:
-            raise ValueError("maximum subagent depth must be positive or None")
 
 
 @dataclass(frozen=True)
@@ -51,21 +61,9 @@ class AgentContext:
     save_conversation: bool = True
     persist_run_events: bool = True
     shared_context: Mapping[str, object] | None = None
-    max_subagent_depth: int | None = None
+    agent_tree_runtime: AgentTreeRuntime | None = None
+    agent_group_id: str | None = None
     listeners: tuple[EventListener, ...] = ()
-
-
-@dataclass(frozen=True)
-class SubagentLink:
-    name: str
-    agent: Agent
-    description: str
-    purpose: str
-    features: tuple[str, ...]
-    weight: float
-    model_name: str
-    pricing: ModelPricing
-    created_by_agent: bool = False
 
 
 class Agent:
@@ -79,24 +77,27 @@ class Agent:
         config: Config | None = None,
     ) -> None:
         self.model = model
-        selected_name = name if name is not None else (config.name if config is not None else "super-agent")
+        selected_name = (
+            name
+            if name is not None
+            else (config.name if config is not None else "super-agent")
+        )
         self.name = _text(selected_name, "Agent name")
         self.config = config
         self.instructions: list[str] = []
         self.settings = AgentSettings()
+        self.agent_tree_settings = AgentTreeSettings()
         self.skill_library: SkillLibrary | None = None
         self.storage: RecordBackend | None = None
         self.audit_policy = AuditPolicy()
         self.memory_enabled = False
         self.evolution_enabled = False
         self.candidate_runner: CandidateRunner | None = None
-        self.task_settings = TaskQueueSettings()
-        self.group_settings = GroupSettings()
         self._active_tools: dict[str, Tool] = {}
         self._skill_tools: dict[str, Tool] = {}
         self._enabled_skills: list[str] = []
         self._disabled_skills: list[str] = []
-        self._subagents: list[SubagentLink] = []
+        self._agent_group_node = agent_group_node(self)
         self._router_settings = RouterSettings()
         if isinstance(model, ModelRouter):
             self._model_profiles = list(model.profiles)
@@ -109,17 +110,19 @@ class Agent:
         self._libraries: dict[tuple[str, str], SkillLibrary] = {}
         self._memories: dict[tuple[str, str], Memory] = {}
         self._evolutions: dict[tuple[str, str], SkillEvolution] = {}
-        self._teams: dict[tuple[str, str], tuple[TaskQueue, AgentGroups]] = {}
+        self._agent_tree_runtimes: dict[str, AgentTreeRuntime] = {}
         if config is not None:
             self._apply_config(config, model_was_explicit=model is not None)
 
     def _apply_config(self, config: Config, *, model_was_explicit: bool) -> None:
         """应用通用配置；只创建内存对象，不因读取配置产生持久化副作用。"""
         self.instructions = list(config.instructions)
-        self.settings = AgentSettings(
-            config.warn_subagent_depth,
-            config.max_subagent_depth,
-            config.limits,
+        self.settings = AgentSettings(config.limits)
+        self.agent_tree_settings = replace(
+            self.agent_tree_settings,
+            warn_level=config.warn_agent_level,
+            max_level=config.max_agent_level,
+            max_call_depth=config.max_agent_call_depth,
         )
         self.memory_enabled = config.memory
         self.evolution_enabled = config.evolution
@@ -225,9 +228,27 @@ class Agent:
         self._router_settings = settings
         self.model = model
 
-    def list_subagents(self) -> tuple[SubagentLink, ...]:
-        """读取代码中挂载的子 Agent，不创建或启动任务。"""
-        return tuple(self._subagents)
+    def add_group(self, name: str, *, description: str = "") -> AgentGroup:
+        """在当前 Agent 下创建一个不调用模型的结构组。"""
+        return AgentGroup(agent_group_node(self)).add_group(
+            name, description=description
+        )
+
+    def list_agent_tree(self) -> dict[str, object]:
+        """读取完整组织树和当前 Agent 所在位置。"""
+        current = agent_group_node(self)
+        return {
+            "current_group_id": current.group_id,
+            "root": current.root().to_dict(),
+        }
+
+    def validate_agent_tree(self) -> tuple[str, ...]:
+        """显式检查层级、空组和委派链路。"""
+        return validate_tree(
+            agent_group_node(self).root(),
+            warn_level=self.agent_tree_settings.warn_level,
+            max_level=self.agent_tree_settings.max_level,
+        )
 
     def list_models(self) -> tuple[ModelProfile, ...]:
         """读取当前 Agent 的模型配置。"""
@@ -237,16 +258,18 @@ class Agent:
         self.skill_library = library
         self._libraries.clear()
         self._evolutions.clear()
+        clear_agent_tree_runtimes(self)
 
     def use_storage(self, storage: RecordBackend) -> None:
         self.storage = storage
         self._libraries.clear()
         self._memories.clear()
         self._evolutions.clear()
-        self._teams.clear()
-        for link in self._subagents:
-            if link.agent.storage is None:
-                link.agent.use_storage(storage)
+        clear_agent_tree_runtimes(self)
+        for node in agent_group_node(self).walk():
+            child = node.coordinator
+            if child is not None and child is not self and child.storage is None:
+                child.use_storage(storage)
 
     def add_tool(self, tool: Tool) -> None:
         _add_unique_tool(self._active_tools, tool)
@@ -263,7 +286,9 @@ class Agent:
     def set_disabled_skills(self, *references: str) -> None:
         """替换禁用列表，并清除按用户缓存的 Skill 视图。"""
         self._disabled_skills = list(
-            dict.fromkeys(_text(item, "disabled Skill reference") for item in references)
+            dict.fromkeys(
+                _text(item, "disabled Skill reference") for item in references
+            )
         )
         self._libraries.clear()
         self._evolutions.clear()
@@ -275,17 +300,10 @@ class Agent:
         self.evolution_enabled = True
         self.candidate_runner = runner
 
-    def configure_agent_tasks(
-        self,
-        task_settings: TaskQueueSettings | None = None,
-        group_settings: GroupSettings | None = None,
-    ) -> None:
-        self.task_settings = task_settings or TaskQueueSettings()
-        self.group_settings = group_settings or GroupSettings()
-        self._teams.clear()
-
-    def configure_depth(self, *, warn_at: int = 8, maximum: int | None = None) -> None:
-        self.settings = AgentSettings(warn_at, maximum, self.settings.limits)
+    def configure_agent_tree(self, settings: AgentTreeSettings | None = None) -> None:
+        """原子替换整棵树共用的任务、等待和层级设置。"""
+        self.agent_tree_settings = settings or AgentTreeSettings()
+        clear_agent_tree_runtimes(self)
 
     def add_event_listener(self, listener: EventListener) -> None:
         if not callable(listener):
@@ -298,34 +316,15 @@ class Agent:
         *,
         name: str | None = None,
         description: str = "",
-        purpose: str = "auto",
-        required_features: Iterable[str] = ("text",),
-        weight: float = 1.0,
-        model_name: str = "default",
-        pricing: ModelPricing | None = None,
-        created_by_agent: bool = False,
+        settings: AgentMemberSettings | None = None,
     ) -> str:
-        selected = self._next_subagent_name() if name is None else _text(name, "subagent name")
-        if any(link.name == selected for link in self._subagents):
-            raise ValueError(f"subagent name already exists: {selected}")
-        if weight <= 0:
-            raise ValueError("subagent weight must be positive")
-        link = SubagentLink(
-            name=selected,
-            agent=agent,
-            description=description.strip(),
-            purpose=_text(purpose, "subagent purpose"),
-            features=tuple(dict.fromkeys(_text(item, "subagent feature") for item in required_features)),
-            weight=weight,
-            model_name=_text(model_name, "subagent model name"),
-            pricing=pricing or ModelPricing(),
-            created_by_agent=created_by_agent,
+        """把子 Agent 的已有子树挂到当前 Agent 下。"""
+        return AgentGroup(agent_group_node(self)).add_subagent(
+            agent,
+            name=name,
+            description=description,
+            settings=settings,
         )
-        self._subagents.append(link)
-        if self.storage is not None and agent.storage is None:
-            agent.use_storage(self.storage)
-        self._teams.clear()
-        return selected
 
     def stream(
         self,
@@ -337,45 +336,80 @@ class Agent:
         skill: str | None = None,
     ) -> Iterator[RunEvent]:
         """流式运行 Agent；生成器的返回值是完整 RunResult。"""
-        if context is not None and any((conversation_id is not None, skill is not None, user_id != "local")):
-            raise ValueError("context cannot be combined with direct user, conversation, or Skill options")
-        selected_context = context or AgentContext(user_id=user_id, conversation_id=conversation_id, skill=skill)
+        if context is not None and any(
+            (conversation_id is not None, skill is not None, user_id != "local")
+        ):
+            raise ValueError(
+                "context cannot be combined with direct user, conversation, or Skill options"
+            )
+        selected_context = context or AgentContext(
+            user_id=user_id, conversation_id=conversation_id, skill=skill
+        )
         model = self._require_model()
         selected_prompt = _text(prompt, "Agent prompt")
         conversation_id = selected_context.conversation_id
-        if selected_context.save_conversation and self.storage is not None and conversation_id is None:
-            conversation_id = Conversations(EventStore(self.storage, selected_context.user_id, self.name)).create(
-                selected_prompt[:48]
-            ).conversation_id
+        if (
+            selected_context.save_conversation
+            and self.storage is not None
+            and conversation_id is None
+        ):
+            conversation_id = (
+                Conversations(
+                    EventStore(self.storage, selected_context.user_id, self.name)
+                )
+                .create(selected_prompt[:48])
+                .conversation_id
+            )
         identity = selected_context.identity or RunIdentity(
             user_id=selected_context.user_id,
             agent_name=self.name,
             conversation_id=conversation_id,
         )
-        maximum_depth = selected_context.max_subagent_depth or self.settings.max_subagent_depth
-        if maximum_depth is not None and identity.depth > maximum_depth:
-            raise RuntimeError(f"subagent depth {identity.depth} exceeds configured maximum {maximum_depth}")
         store = self._event_store(identity)
-        effective_context = AgentContext(
-            user_id=selected_context.user_id,
+        library = self._library(identity, store)
+        agent_tree = (
+            selected_context.agent_tree_runtime
+            or get_or_create_agent_tree_runtime(self, identity.user_id)
+        )
+        group_id = selected_context.agent_group_id or agent_group_node(self).group_id
+        if agent_tree is not None and library is not None:
+            library.use_disclosure_store(agent_tree.disclosures)
+        tree_settings = (
+            self.agent_tree_settings if agent_tree is None else agent_tree.settings
+        )
+        if (
+            tree_settings.max_call_depth is not None
+            and identity.depth > tree_settings.max_call_depth
+        ):
+            raise RuntimeError(
+                f"Agent call depth {identity.depth} exceeds configured maximum "
+                f"{tree_settings.max_call_depth}"
+            )
+        warnings = (
+            ()
+            if agent_tree is None
+            else agent_tree.warning_messages(group_id, identity.depth)
+        )
+        effective_context = replace(
+            selected_context,
             conversation_id=conversation_id,
-            messages=selected_context.messages,
-            purpose=selected_context.purpose,
-            required_features=selected_context.required_features,
-            metadata=selected_context.metadata,
-            skill=selected_context.skill,
             identity=identity,
-            save_conversation=selected_context.save_conversation,
-            persist_run_events=selected_context.persist_run_events,
-            shared_context=selected_context.shared_context,
-            max_subagent_depth=selected_context.max_subagent_depth,
-            listeners=selected_context.listeners,
+            agent_tree_runtime=agent_tree,
+            agent_group_id=group_id,
         )
         messages = self._messages(effective_context, store)
-        library = self._library(identity, store)
-        active_tools, available_tools = self._run_tools(identity, library, store)
+        active_tools, available_tools = self._run_tools(
+            identity, library, store, agent_tree, group_id
+        )
         instructions = self._run_instructions(library, effective_context)
-        required_features = tuple(dict.fromkeys((*selected_context.required_features, *(("tools",) if active_tools else ()))))
+        required_features = tuple(
+            dict.fromkeys(
+                (
+                    *selected_context.required_features,
+                    *(("tools",) if active_tools else ()),
+                )
+            )
+        )
         request = RunRequest(
             prompt=selected_prompt,
             messages=messages,
@@ -384,7 +418,7 @@ class Agent:
             required_features=required_features,
             limits=self.settings.limits,
             metadata=dict(selected_context.metadata),
-            warning_messages=tuple(self._tree_warnings()),
+            warning_messages=warnings,
         )
         listeners = [*self._listeners, *selected_context.listeners]
         if store is not None and selected_context.persist_run_events:
@@ -396,10 +430,14 @@ class Agent:
                 return
             if effective_context.skill is not None:
                 for key in library.activate(effective_context.skill, session):
-                    tool_context.emit("skill.activated", {"key": key, "source": "explicit run skill"})
+                    tool_context.emit(
+                        "skill.activated", {"key": key, "source": "explicit run skill"}
+                    )
             for reference in self._enabled_skills:
                 for key in library.activate(reference, session):
-                    tool_context.emit("skill.activated", {"key": key, "source": "Agent.enable_skill"})
+                    tool_context.emit(
+                        "skill.activated", {"key": key, "source": "Agent.enable_skill"}
+                    )
 
         result = yield from stream_run(
             request,
@@ -408,21 +446,18 @@ class Agent:
             setup=RunSetup(
                 identity=identity,
                 listeners=tuple(listeners),
-                values={
-                    "available_tools": available_tools,
-                    **(
-                        {"disclosure_store": library.disclosures}
-                        if library is not None
-                        else {}
-                    ),
-                },
+                values=_run_values(available_tools, library, agent_tree),
                 prepare=prepare,
             ),
         )
         if conversation_id and selected_context.save_conversation:
             if store is None:
-                raise RuntimeError("conversation persistence was requested without storage")
-            Conversations(store).add_turn(conversation_id, selected_prompt, result.text, run_id=result.run_id)
+                raise RuntimeError(
+                    "conversation persistence was requested without storage"
+                )
+            Conversations(store).add_turn(
+                conversation_id, selected_prompt, result.text, run_id=result.run_id
+            )
         return result
 
     def run(
@@ -450,6 +485,8 @@ class Agent:
         identity: RunIdentity,
         library: SkillLibrary | None,
         store: EventStore | None,
+        agent_tree: AgentTreeRuntime | None,
+        group_id: str,
     ) -> tuple[dict[str, Tool], dict[str, Tool]]:
         active = dict(self._active_tools)
         available = dict(self._skill_tools)
@@ -458,20 +495,30 @@ class Agent:
                 _add_unique_tool(active, tool)
         if self.memory_enabled:
             memory = self._memory(identity, store)
-            _add_optional_tools(active, available, memory.tools(), progressive=library is not None)
+            _add_optional_tools(
+                active, available, memory.tools(), progressive=library is not None
+            )
         if self.evolution_enabled:
             if library is None:
                 raise RuntimeError("Skill evolution requires a Skill library")
             evolution = self._evolution(identity, library, store)
             _add_optional_tools(active, available, evolution.tools(), progressive=True)
-        if self._subagents:
-            queue, groups = self._team(identity, store)
-            _add_optional_tools(active, available, (*queue.tools(), *groups.tools()), progressive=library is not None)
+        if agent_tree is not None:
+            _add_optional_tools(
+                active,
+                available,
+                agent_tree.tools(group_id),
+                progressive=library is not None,
+            )
+            if library is None:
+                _add_unique_tool(active, agent_tree.disclosures.tool())
         for name in set(active) & set(available):
             raise ValueError(f"tool is both active and Skill-gated: {name}")
         return active, available
 
-    def _run_instructions(self, library: SkillLibrary | None, context: AgentContext) -> tuple[str, ...]:
+    def _run_instructions(
+        self, library: SkillLibrary | None, context: AgentContext
+    ) -> tuple[str, ...]:
         instructions = list(self.instructions)
         if library is not None:
             index = library.list_skills(page=1, page_size=20).to_dict()
@@ -483,22 +530,31 @@ class Agent:
             content = context.shared_context.get("content")
             reference = context.shared_context.get("reference")
             role = context.shared_context.get("role")
-            instructions.append(f"Shared task packet {reference}; assigned role {role}:\n{content}")
+            instruction = f"Shared task packet {reference}; assigned role {role}."
+            if isinstance(content, str) and content:
+                instruction += f"\n{content}"
+            instructions.append(instruction)
         return tuple(instructions)
 
-    def _messages(self, context: AgentContext, store: EventStore | None) -> tuple[Message | Mapping[str, object], ...]:
+    def _messages(
+        self, context: AgentContext, store: EventStore | None
+    ) -> tuple[Message | Mapping[str, object], ...]:
         messages: list[Message | Mapping[str, object]] = list(context.messages)
         if context.conversation_id and context.save_conversation:
             if store is None:
                 raise RuntimeError("conversation history was requested without storage")
             try:
-                history = Conversations(store).read(context.conversation_id).model_messages()
+                history = (
+                    Conversations(store).read(context.conversation_id).model_messages()
+                )
             except KeyError:
                 history = ()
             messages = [*history, *messages]
         return tuple(messages)
 
-    def _library(self, identity: RunIdentity, store: EventStore | None) -> SkillLibrary | None:
+    def _library(
+        self, identity: RunIdentity, store: EventStore | None
+    ) -> SkillLibrary | None:
         if self.skill_library is None:
             return None
         key = (identity.user_id, identity.agent_name)
@@ -508,6 +564,7 @@ class Agent:
                 disabled_references=self._disabled_skills,
             )
             if store is not None:
+
                 def record_library_event(
                     event: str,
                     data: Mapping[str, object],
@@ -531,70 +588,27 @@ class Agent:
             self._memories[key] = Memory(store)
         return self._memories[key]
 
-    def _evolution(self, identity: RunIdentity, library: SkillLibrary, store: EventStore | None) -> SkillEvolution:
+    def _evolution(
+        self, identity: RunIdentity, library: SkillLibrary, store: EventStore | None
+    ) -> SkillEvolution:
         key = (identity.user_id, identity.agent_name)
         if key not in self._evolutions:
-            self._evolutions[key] = SkillEvolution(library, store=store, runner=self.candidate_runner)
+            self._evolutions[key] = SkillEvolution(
+                library, store=store, runner=self.candidate_runner
+            )
         return self._evolutions[key]
 
-    def _team(self, identity: RunIdentity, store: EventStore | None) -> tuple[TaskQueue, AgentGroups]:
-        key = (identity.user_id, identity.agent_name)
-        if key not in self._teams:
-            record = None if store is None else lambda event, data: store.append("team", str(data.get("task_id") or data.get("group_id") or "team"), event, data)
-            queue = TaskQueue([self._worker(link) for link in self._subagents], self.task_settings, record_event=record)
-            self._teams[key] = (queue, AgentGroups(queue, self.group_settings, record_event=record))
-        return self._teams[key]
-
-    def _worker(self, link: SubagentLink) -> AgentWorker:
-        def run(prompt: str, parent: RunIdentity | None, shared: Mapping[str, object] | None) -> RunResult:
-            parent_identity = parent or RunIdentity(agent_name=self.name)
-            identity = parent_identity.child(link.name, conversation_id=parent_identity.conversation_id)
-            record_mode = None if shared is None else shared.get("record_mode")
-            context = AgentContext(
-                user_id=identity.user_id,
-                conversation_id=identity.conversation_id,
-                identity=identity,
-                save_conversation=False,
-                persist_run_events=record_mode != "summary",
-                shared_context=shared,
-                max_subagent_depth=self.settings.max_subagent_depth,
-            )
-            return link.agent.run(prompt, context=context)
-
-        return AgentWorker(link.name, run, link.description, link.purpose, link.features, link.weight, link.model_name, link.pricing)
-
     def _event_store(self, identity: RunIdentity) -> EventStore | None:
-        return None if self.storage is None else EventStore(self.storage, identity.user_id, identity.agent_name)
+        return (
+            None
+            if self.storage is None
+            else EventStore(self.storage, identity.user_id, identity.agent_name)
+        )
 
     def _require_store(self, user_id: str) -> EventStore:
         if self.storage is None:
             raise RuntimeError("this operation requires explicitly configured storage")
         return EventStore(self.storage, user_id, self.name)
-
-    def _tree_warnings(self) -> list[str]:
-        warnings: list[str] = []
-
-        def walk(agent: Agent, path: list[tuple[int, str]]) -> None:
-            for link in agent._subagents:
-                names = [name for _, name in path]
-                ids = [identifier for identifier, _ in path]
-                next_names = [*names, link.name]
-                if id(link.agent) in ids:
-                    warnings.append(f"Agent nesting cycle: {' -> '.join(next_names)}")
-                    continue
-                if len(next_names) >= self.settings.warn_subagent_depth:
-                    warnings.append(f"Agent nesting is {len(next_names)} levels deep: {' -> '.join(next_names)}")
-                walk(link.agent, [*path, (id(link.agent), link.name)])
-
-        walk(self, [(id(self), self.name)])
-        return list(dict.fromkeys(warnings))
-
-    def _next_subagent_name(self) -> str:
-        used = {link.name for link in self._subagents}
-        number = 1
-        while f"subagent{number:02d}" in used:
-            number += 1
-        return f"subagent{number:02d}"
 
     def _next_model_name(self) -> str:
         used = {profile.name for profile in self._model_profiles}
@@ -621,10 +635,29 @@ def _add_unique_tool(target: dict[str, Tool], tool: Tool) -> None:
     target[tool.name] = tool
 
 
-def _add_optional_tools(active: dict[str, Tool], available: dict[str, Tool], tools: Iterable[Tool], *, progressive: bool) -> None:
+def _add_optional_tools(
+    active: dict[str, Tool],
+    available: dict[str, Tool],
+    tools: Iterable[Tool],
+    *,
+    progressive: bool,
+) -> None:
     target = available if progressive else active
     for tool in tools:
         _add_unique_tool(target, tool)
+
+
+def _run_values(
+    available_tools: Mapping[str, Tool],
+    library: SkillLibrary | None,
+    agent_tree: AgentTreeRuntime | None,
+) -> dict[str, object]:
+    values: dict[str, object] = {"available_tools": available_tools}
+    if agent_tree is not None:
+        values["disclosure_store"] = agent_tree.disclosures
+    elif library is not None:
+        values["disclosure_store"] = library.disclosures
+    return values
 
 
 def _text(value: object, name: str) -> str:

@@ -14,7 +14,6 @@ from core.provider import MockModel
 from scripts.verify_release import verify_release
 from super_agent import Agent
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -128,8 +127,8 @@ commands = [["python3.11", "-V"]]
         self.assertTrue(insight["snapshot"]["error"]["message"]["redacted"])
         self.assertNotIn("private failure detail", json.dumps(insight))
 
-    def test_release_shape_matches_v020(self):
-        self.assertEqual([], verify_release(ROOT, "0.2.0"))
+    def test_release_shape_matches_v021(self):
+        self.assertEqual([], verify_release(ROOT, "0.2.1"))
 
 
 if __name__ == "__main__":

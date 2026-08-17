@@ -1,30 +1,27 @@
 import json
-import os
 import tempfile
 import unittest
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from urllib.error import URLError
 
+from adapter.storage import JsonlStorage, MemoryStorage, SqliteStorage, create_storage
 from core.config import Config, ModelConfig, config_from_dict, config_from_environment
 from core.disclosure import DisclosureStore
-from core.event import RunIdentity, RunLimits
+from core.event import RunLimits
 from core.model import Message, ModelEvent, ModelRequest, Tool, ToolCall
 from core.provider import (
-    AnthropicModel,
-    ModelProfile,
-    ModelPricing,
-    ModelRouter,
     MockModel,
+    ModelProfile,
+    ModelRouter,
     RouterSettings,
     _read_anthropic_stream,
     _read_openai_stream,
     _to_anthropic_messages,
 )
-from core.records import AuditPolicy, Conversations, EventStore, Record, RecordQuery
+from core.records import AuditPolicy, Conversations, EventStore, RecordQuery
 from core.run import RunRequest, collect_run, stream_run
-from adapter.storage import JsonlStorage, MemoryStorage, SqliteStorage, create_storage
-from super_agent import Agent, AgentContext, model_from_environment
+from super_agent import Agent, model_from_environment
 
 
 class CoreRuntimeTests(unittest.TestCase):
@@ -32,7 +29,7 @@ class CoreRuntimeTests(unittest.TestCase):
         agent = Agent(MockModel("ready"))
         result = agent.run("hello")
         self.assertEqual("ready", result.text)
-        self.assertEqual([], agent.for_user("alice").agent._subagents)
+        self.assertEqual([], agent.list_agent_tree()["root"]["children"])
         self.assertIsNone(agent.storage)
 
     def test_config_is_applied_without_creating_storage(self):
@@ -323,6 +320,23 @@ class CoreRuntimeTests(unittest.TestCase):
     def test_config_rejects_unknown_fields(self):
         with self.assertRaises(ValueError):
             config_from_dict({"unknown": True})
+
+    def test_config_uses_agent_tree_level_names_without_legacy_aliases(self):
+        config = config_from_dict(
+            {
+                "warn_agent_level": 3,
+                "max_agent_level": 7,
+                "max_agent_call_depth": 11,
+            }
+        )
+        self.assertEqual(3, config.warn_agent_level)
+        self.assertEqual(7, config.max_agent_level)
+        self.assertEqual(11, config.max_agent_call_depth)
+        for legacy_name in ("warn_subagent_depth", "max_subagent_depth"):
+            with self.subTest(legacy_name=legacy_name), self.assertRaisesRegex(
+                ValueError, legacy_name
+            ):
+                config_from_dict({legacy_name: 3})
 
 
 class RecordStorageTests(unittest.TestCase):

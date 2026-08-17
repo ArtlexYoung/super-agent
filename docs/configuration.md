@@ -19,6 +19,9 @@ enabled_skills = ["task:common"]
 disabled_skills = []
 memory = false
 evolution = false
+warn_agent_level = 8
+# max_agent_level = 6
+# max_agent_call_depth = 12
 
 [[models]]
 name = "default"
@@ -40,6 +43,10 @@ critical_log_days = 365
 未知字段直接报错。`storage.backend` 可选 `none`、`memory`、`jsonl`、`sqlite`、`mysql` 或 `postgresql`；没有显式后端时 Agent 保持无状态。
 
 Unknown fields fail explicitly. `storage.backend` accepts `none`, `memory`, `jsonl`, `sqlite`, `mysql`, or `postgresql`; without an explicit backend the Agent remains stateless.
+
+`warn_agent_level` 只产生提醒。`max_agent_level` 限制代码中组织树的层级，`max_agent_call_depth` 限制递归委派的实际调用深度；两个最大值省略时均为无限。组和子 Agent 本身只在 Python 代码中组合，不写入 TOML。
+
+`warn_agent_level` only emits warnings. `max_agent_level` limits the code-defined organization tree, and `max_agent_call_depth` limits actual recursive delegation; omitting either maximum means unlimited. Groups and subagents are composed only in Python, not TOML.
 
 ## CLI 与代码配置 / CLI and Code Configuration
 

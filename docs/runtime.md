@@ -27,13 +27,13 @@ Synchronous and streaming APIs do not maintain separate model-call logic. Tool o
 
 ## 身份与嵌套 / Identity and Nesting
 
-`RunIdentity` 固定 `user_id`、`agent_name`、`run_id`、父运行和深度。`Agent.add_subagent` 在代码中组合层级；省略名称时自动使用 `subagent01`、`subagent02` 等名称。
+`RunIdentity` 固定 `user_id`、`agent_name`、`run_id`、父运行和调用深度。`Agent.add_group` 和 `Agent.add_subagent` 在代码中组合树；根组是第 1 层，省略 Agent 名称时自动使用 `subagent01`、`subagent02` 等名称。
 
-`RunIdentity` fixes `user_id`, `agent_name`, `run_id`, parent run, and depth. `Agent.add_subagent` composes the tree in code; omitted names become `subagent01`, `subagent02`, and so on.
+`RunIdentity` fixes `user_id`, `agent_name`, `run_id`, parent run, and call depth. `Agent.add_group` and `Agent.add_subagent` compose the tree in code; the root group is level 1, and omitted Agent names become `subagent01`, `subagent02`, and so on.
 
-运行时只提醒深度过深或检测到循环链路；最大深度是可选配置。限制触发时直接失败，不在后台继续运行。
+运行开始前只在树发生变化时检查层级、空组和循环委派。结构最大层级与实际调用最大深度分别配置；限制触发时直接失败，不在后台继续运行。
 
-Runtime warns about deep nesting or cycle paths; maximum depth is optional. When a limit is reached, the run fails directly instead of continuing in the background.
+Before a run, structure is checked only after the tree changes. Maximum tree level and actual call depth are configured separately; reaching either explicit limit fails directly instead of continuing in the background.
 
 ## 事件监听 / Event Listening
 

@@ -85,18 +85,23 @@ result = agent.run("解释 Skill 渐进式披露")
 print(result.text)
 ```
 
-子 Agent 在代码中自然组合，每个 Agent 保留自己的模型、Skill、配置和状态范围。
+组和子 Agent 在代码中自然组合。第 1 层是根组，普通组不调用模型，每个 Agent 仍保留自己的模型、Skill 和配置。
 
-Subagents compose naturally in code, and each Agent keeps its own models, Skills, configuration, and state scope.
+Groups and subagents compose naturally in code. Level 1 is the root group, structural groups do not call models, and each Agent keeps its own models, Skills, and configuration.
 
 ```python
 from super_agent import Agent, model_from_environment
 
 main = Agent(model_from_environment())
 coder = Agent(model_from_environment())
-main.add_subagent(coder, name="coder", description="实现并验证代码修改")
-result = coder.run("修复失败的测试", skill="code")
+engineering = main.add_group("engineering")
+engineering.add_subagent(coder, name="coder", description="实现并验证代码修改")
+result = main.run("让工程组修复失败的测试", skill="common-multi-producer-consumer")
 ```
+
+同级组通过父组共享板交换带缓存路径的明确记录。任务队列、等待唤醒、价格和权重路由、断路重试、动态压缩及多模型决策都由同一个 `AgentTreeRuntime` 管理；不添加组或子 Agent 时不会创建这些状态。
+
+Sibling groups exchange explicit records with cache paths through their parent board. One `AgentTreeRuntime` owns queues, sleep and wake events, price and weight routing, circuit retries, adaptive compression, and multi-model decisions; none of this state is created when no group or subagent is added.
 
 ## CLI
 
@@ -235,5 +240,5 @@ Third-party projects retain their own copyrights and licenses, and this project 
 The full release gate checks Python tests, compilation, package contents, offline evaluation, and build.
 
 ```bash
-python3.11 scripts/verify_release.py --version 0.2.0 --full
+python3.11 scripts/verify_release.py --version 0.2.1 --full
 ```

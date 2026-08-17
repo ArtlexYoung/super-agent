@@ -17,7 +17,6 @@ from core.model import Tool
 from core.run import RunSession, ToolContext
 from skill.document import Skill, format_skill, parse_skill_text
 
-
 RecordEvent = Callable[[str, Mapping[str, object]], object]
 
 
@@ -56,8 +55,14 @@ class SkillLibrary:
         disabled_references: Iterable[str] = (),
     ) -> None:
         self.roots = tuple(Path(root).expanduser().resolve() for root in roots)
-        self.writable_root = None if writable_root is None else Path(writable_root).expanduser().resolve()
-        self.cache_root = None if cache_root is None else Path(cache_root).expanduser().resolve()
+        self.writable_root = (
+            None
+            if writable_root is None
+            else Path(writable_root).expanduser().resolve()
+        )
+        self.cache_root = (
+            None if cache_root is None else Path(cache_root).expanduser().resolve()
+        )
         self.record_event = record_event
         self.cache_entries = cache_entries
         self.disclosures = DisclosureStore(
@@ -74,6 +79,12 @@ class SkillLibrary:
     def refresh(self) -> None:
         self._skills = None
 
+    def use_disclosure_store(self, store: DisclosureStore) -> None:
+        """让当前作用域与运行中的其他机制共用披露缓存。"""
+        if not isinstance(store, DisclosureStore):
+            raise TypeError("Skill disclosure store must be a DisclosureStore")
+        self.disclosures = store
+
     def for_scope(
         self,
         user_id: str,
@@ -84,7 +95,11 @@ class SkillLibrary:
         """创建共享只读根、隔离可写内容和缓存的用户-Agent 视图。"""
         scope = f"{_required_text(user_id, 'user ID')}\0{_required_text(agent_name, 'Agent name')}"
         safe = hashlib.sha256(scope.encode()).hexdigest()[:24]
-        writable = None if self.writable_root is None else self.writable_root / "users" / safe / "skills"
+        writable = (
+            None
+            if self.writable_root is None
+            else self.writable_root / "users" / safe / "skills"
+        )
         cache = None if self.cache_root is None else self.cache_root / "users" / safe
         return SkillLibrary(
             self.roots,
@@ -118,7 +133,10 @@ class SkillLibrary:
         if category:
             selected = [item for item in selected if category in item.categories]
         start = (page - 1) * page_size
-        values = tuple(MappingProxyType(item.index_entry()) for item in selected[start : start + page_size])
+        values = tuple(
+            MappingProxyType(item.index_entry())
+            for item in selected[start : start + page_size]
+        )
         return SkillPage(values, page, page_size, len(selected))
 
     def find(self, reference: str) -> Skill:
@@ -142,7 +160,9 @@ class SkillLibrary:
             {skill.key, skill.name, skill.skill_type} & self.disabled_references
         )
 
-    def preview(self, reference: str, *, offset: int = 0, max_characters: int = 4000) -> DisclosedContent:
+    def preview(
+        self, reference: str, *, offset: int = 0, max_characters: int = 4000
+    ) -> DisclosedContent:
         skill = self.find(reference)
         return self.disclosures.preview(
             skill.key,
@@ -151,7 +171,9 @@ class SkillLibrary:
             max_characters=max_characters,
         )
 
-    def disclose(self, reference: str, *, offset: int = 0, max_characters: int = 4000) -> DisclosedContent:
+    def disclose(
+        self, reference: str, *, offset: int = 0, max_characters: int = 4000
+    ) -> DisclosedContent:
         skill = self.find(reference)
         value = self.disclosures.disclose(
             skill.key,
@@ -194,7 +216,9 @@ class SkillLibrary:
         try:
             self._activate(self.find(reference), session, activated, [])
             for key in activated:
-                self._record("skill.activated", {"key": key, "run_id": session.identity.run_id})
+                self._record(
+                    "skill.activated", {"key": key, "run_id": session.identity.run_id}
+                )
         except BaseException:
             session.instructions[:] = instructions
             session.tools.clear()
@@ -207,10 +231,25 @@ class SkillLibrary:
     def tools(self) -> tuple[Tool, ...]:
         """向模型公开中央索引、披露、缓存和激活操作。"""
         return (
-            Tool("list_skills", "List a page from the Skill index", self._list_tool, _list_schema()),
-            Tool("read_skill", "Read one bounded page of a Skill", self._read_tool, _read_schema()),
+            Tool(
+                "list_skills",
+                "List a page from the Skill index",
+                self._list_tool,
+                _list_schema(),
+            ),
+            Tool(
+                "read_skill",
+                "Read one bounded page of a Skill",
+                self._read_tool,
+                _read_schema(),
+            ),
             self.disclosures.tool(),
-            Tool("activate_skill", "Activate one disclosed Skill for this run", self._activate_tool, _activate_schema()),
+            Tool(
+                "activate_skill",
+                "Activate one disclosed Skill for this run",
+                self._activate_tool,
+                _activate_schema(),
+            ),
         )
 
     def create(
@@ -241,11 +280,15 @@ class SkillLibrary:
             "includes": list(includes),
             "version": "0.1.0",
             "created_by": actor,
-            "agent_can_update": actor == "agent" if agent_can_update is None else agent_can_update,
+            "agent_can_update": actor == "agent"
+            if agent_can_update is None
+            else agent_can_update,
         }
         path = root / skill_type / f"{name}.md"
         self._write_skill(path, metadata, body, expected_sha256=None)
-        self._record("skill.created", {"key": key, "actor": actor, "sha256": _file_sha256(path)})
+        self._record(
+            "skill.created", {"key": key, "actor": actor, "sha256": _file_sha256(path)}
+        )
         return self.find(key)
 
     def update(
@@ -258,7 +301,9 @@ class SkillLibrary:
         description: str | None = None,
     ) -> Skill:
         current = self.find(reference)
-        if actor == "agent" and not (current.created_by == "agent" and current.agent_can_update):
+        if actor == "agent" and not (
+            current.created_by == "agent" and current.agent_can_update
+        ):
             raise PermissionError(f"agent cannot update skill: {current.key}")
         self._require_writable_path(current.path)
         if current.sha256 != expected_sha256:
@@ -281,7 +326,9 @@ class SkillLibrary:
         )
         return updated
 
-    def derive(self, reference: str, name: str, body: str, *, actor: str = "agent") -> Skill:
+    def derive(
+        self, reference: str, name: str, body: str, *, actor: str = "agent"
+    ) -> Skill:
         source = self.find(reference)
         categories = (*source.categories, f"derived/{source.key}")
         return self.create(
@@ -296,16 +343,22 @@ class SkillLibrary:
             actor=actor,
         )
 
-    def remove(self, reference: str, *, expected_sha256: str, actor: str = "user") -> None:
+    def remove(
+        self, reference: str, *, expected_sha256: str, actor: str = "user"
+    ) -> None:
         skill = self.find(reference)
-        if actor == "agent" and not (skill.created_by == "agent" and skill.agent_can_update):
+        if actor == "agent" and not (
+            skill.created_by == "agent" and skill.agent_can_update
+        ):
             raise PermissionError(f"agent cannot remove skill: {skill.key}")
         self._require_writable_path(skill.path)
         if skill.sha256 != expected_sha256:
             raise RuntimeError(f"skill changed since it was read: {skill.key}")
         skill.path.unlink()
         self.refresh()
-        self._record("skill.removed", {"key": skill.key, "actor": actor, "sha256": skill.sha256})
+        self._record(
+            "skill.removed", {"key": skill.key, "actor": actor, "sha256": skill.sha256}
+        )
 
     def pack(self, reference: str, destination: str | Path) -> Path:
         skill = self.find(reference)
@@ -317,7 +370,9 @@ class SkillLibrary:
             archive.writestr(info, skill.path.read_bytes())
         return target
 
-    def install(self, source: str | Path, *, expected_sha256: str | None = None) -> Skill:
+    def install(
+        self, source: str | Path, *, expected_sha256: str | None = None
+    ) -> Skill:
         content, name = _read_package(source)
         digest = hashlib.sha256(content).hexdigest()
         if expected_sha256 is not None and digest != expected_sha256:
@@ -350,7 +405,9 @@ class SkillLibrary:
         self._skills = loaded
         return loaded
 
-    def _activate(self, skill: Skill, session: RunSession, activated: list[str], stack: list[str]) -> None:
+    def _activate(
+        self, skill: Skill, session: RunSession, activated: list[str], stack: list[str]
+    ) -> None:
         if skill.key in session.active_skills:
             return
         if skill.key in stack:
@@ -367,7 +424,9 @@ class SkillLibrary:
             session.add_tool(tool)
         missing = sorted(set(skill.requires) - set(session.tools))
         if missing:
-            raise RuntimeError(f"skill requires tools that are not registered: {skill.key}: {', '.join(missing)}")
+            raise RuntimeError(
+                f"skill requires tools that are not registered: {skill.key}: {', '.join(missing)}"
+            )
         for included in skill.includes:
             self._activate(self.find(included), session, activated, [*stack, skill.key])
         if len(skill.body) > 20_000:
@@ -380,7 +439,9 @@ class SkillLibrary:
         if skill.key not in activated:
             activated.append(skill.key)
 
-    def _list_tool(self, arguments: dict[str, object], _context: ToolContext) -> dict[str, object]:
+    def _list_tool(
+        self, arguments: dict[str, object], _context: ToolContext
+    ) -> dict[str, object]:
         return self.list_skills(
             page=_integer(arguments.get("page", 1), "page", 1, 1_000_000),
             page_size=_integer(arguments.get("page_size", 20), "page_size", 1, 100),
@@ -388,17 +449,31 @@ class SkillLibrary:
             category=_optional_text(arguments.get("category")),
         ).to_dict()
 
-    def _read_tool(self, arguments: dict[str, object], context: ToolContext) -> dict[str, object]:
+    def _read_tool(
+        self, arguments: dict[str, object], context: ToolContext
+    ) -> dict[str, object]:
         reference = _required_text(arguments.get("skill"), "skill")
         disclosed = self.disclose(
             reference,
             offset=_integer(arguments.get("offset", 0), "offset", 0, 10_000_000),
-            max_characters=_integer(arguments.get("max_characters", 4000), "max_characters", 1, 20_000),
+            max_characters=_integer(
+                arguments.get("max_characters", 4000), "max_characters", 1, 20_000
+            ),
         )
-        context.emit("skill.disclosed", {"key": disclosed.reference, "cache_path": disclosed.cache_path, "offset": disclosed.offset, "next_offset": disclosed.next_offset})
+        context.emit(
+            "skill.disclosed",
+            {
+                "key": disclosed.reference,
+                "cache_path": disclosed.cache_path,
+                "offset": disclosed.offset,
+                "next_offset": disclosed.next_offset,
+            },
+        )
         return disclosed.to_dict()
 
-    def _activate_tool(self, arguments: dict[str, object], context: ToolContext) -> dict[str, object]:
+    def _activate_tool(
+        self, arguments: dict[str, object], context: ToolContext
+    ) -> dict[str, object]:
         reference = _required_text(arguments.get("skill"), "skill")
         activated = self.activate(reference, context.session)
         for key in activated:
@@ -438,15 +513,26 @@ def _read_package(source: str | Path) -> tuple[bytes, str]:
     if text.startswith("git+"):
         repository, _, relative = text[4:].partition("#")
         with tempfile.TemporaryDirectory() as temporary:
-            subprocess.run(["git", "clone", "--quiet", "--depth", "1", repository, temporary], check=True)
+            subprocess.run(
+                ["git", "clone", "--quiet", "--depth", "1", repository, temporary],
+                check=True,
+            )
             return _read_package(Path(temporary) / relative)
     path = Path(source).expanduser().resolve()
     if path.is_file() and path.suffix.lower() == ".md":
         return path.read_bytes(), path.name
     if path.is_file() and path.suffix.lower() == ".zip":
         with zipfile.ZipFile(path) as archive:
-            names = [name for name in archive.namelist() if name.endswith(".md") and not name.startswith("__MACOSX/")]
-            if len(names) != 1 or Path(names[0]).is_absolute() or ".." in Path(names[0]).parts:
+            names = [
+                name
+                for name in archive.namelist()
+                if name.endswith(".md") and not name.startswith("__MACOSX/")
+            ]
+            if (
+                len(names) != 1
+                or Path(names[0]).is_absolute()
+                or ".." in Path(names[0]).parts
+            ):
                 raise ValueError("skill package must contain one safe Markdown file")
             return archive.read(names[0]), Path(names[0]).name
     if path.is_dir():
@@ -501,18 +587,42 @@ def _optional_text(value: object) -> str | None:
 
 
 def _integer(value: object, name: str, minimum: int, maximum: int) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or not minimum <= value <= maximum:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int)
+        or not minimum <= value <= maximum
+    ):
         raise ValueError(f"{name} must be between {minimum} and {maximum}")
     return value
 
 
 def _list_schema() -> dict[str, object]:
-    return {"type": "object", "properties": {"page": {"type": "integer", "minimum": 1}, "page_size": {"type": "integer", "minimum": 1, "maximum": 100}, "type": {"type": "string"}, "category": {"type": "string"}}}
+    return {
+        "type": "object",
+        "properties": {
+            "page": {"type": "integer", "minimum": 1},
+            "page_size": {"type": "integer", "minimum": 1, "maximum": 100},
+            "type": {"type": "string"},
+            "category": {"type": "string"},
+        },
+    }
 
 
 def _read_schema() -> dict[str, object]:
-    return {"type": "object", "required": ["skill"], "properties": {"skill": {"type": "string"}, "offset": {"type": "integer", "minimum": 0}, "max_characters": {"type": "integer", "minimum": 1, "maximum": 20000}}}
+    return {
+        "type": "object",
+        "required": ["skill"],
+        "properties": {
+            "skill": {"type": "string"},
+            "offset": {"type": "integer", "minimum": 0},
+            "max_characters": {"type": "integer", "minimum": 1, "maximum": 20000},
+        },
+    }
 
 
 def _activate_schema() -> dict[str, object]:
-    return {"type": "object", "required": ["skill"], "properties": {"skill": {"type": "string"}}}
+    return {
+        "type": "object",
+        "required": ["skill"],
+        "properties": {"skill": {"type": "string"}},
+    }

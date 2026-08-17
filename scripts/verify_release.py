@@ -1,4 +1,4 @@
-"""运行 v0.2.0 的本地发布检查。"""
+"""运行 v0.2.1 的本地发布检查。"""
 
 from __future__ import annotations
 
@@ -11,15 +11,25 @@ import tempfile
 import tomllib
 from pathlib import Path
 
-
-VERSION = "0.2.0"
-MAX_SOURCE_FILES = 22
+VERSION = "0.2.1"
+MAX_SOURCE_FILES = 25
 MAX_SOURCE_LINES = 10_000
 SOURCE_ROOTS = {"adapter", "core", "skill", "cli.py", "super_agent.py"}
 DOMAIN_FILES = {
     "adapter": {"cli.py", "database.py", "process.py", "storage.py", "tools.py"},
     "core": {"__init__.py", "config.py", "disclosure.py", "event.py", "model.py", "provider.py", "records.py", "run.py", "user.py"},
-    "skill": {"builtin", "document.py", "evolution.py", "groups.py", "library.py", "memory.py", "team.py"},
+    "skill": {
+        "builtin",
+        "document.py",
+        "evolution.py",
+        "library.py",
+        "memory.py",
+        "organization.py",
+        "organization_runtime.py",
+        "organization_tasks.py",
+        "organization_tools.py",
+        "organization_workers.py",
+    },
 }
 OLD_PATH_PARTS = {"discovery", "handlers", "learning", "tasks", "cli_support", "storage_backends"}
 EVALUATION_FILES = (
@@ -163,7 +173,7 @@ def _check_build_config(project: dict[str, object], root: Path) -> list[str]:
     wheel = targets.get("wheel", {})
     sdist = targets.get("sdist", {})
     if wheel.get("only-include") != WHEEL_ROOTS or wheel.get("sources") != ["src"]:
-        errors.append("wheel must contain only the v0.2.0 source roots")
+        errors.append("wheel must contain only the v0.2.1 source roots")
     if sdist.get("only-include") != SDIST_ROOTS:
         errors.append("sdist source roots changed")
     expected_force = {path: path for path in EVALUATION_FILES}

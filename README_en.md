@@ -78,7 +78,7 @@ result = agent.run("Explain progressive Skill disclosure")
 print(result.text)
 ```
 
-The six most common direct `Agent` actions are `run`, `for_user`, `add_subagent`,
+The most common direct `Agent` actions are `run`, `for_user`, `add_group`, `add_subagent`,
 `add_skill_path`, `add_tool`, and `add_model`. Advanced contracts are imported from the
 module that owns them.
 
@@ -90,9 +90,16 @@ from super_agent import Agent, model_from_environment
 
 main = Agent(model_from_environment())
 coder = Agent(model_from_environment())
-main.add_subagent(coder, name="coder", description="Implements and verifies code changes")
-result = coder.run("Fix the failing test", skill="code")
+engineering = main.add_group("engineering")
+engineering.add_subagent(coder, name="coder", description="Implements and verifies code changes")
+result = main.run("Ask engineering to fix the failing test", skill="common-multi-producer-consumer")
 ```
+
+Level 1 is always the root group. Structural groups organize Agents without calling a model,
+and an Agent keeps its existing subtree when attached. Sibling Agents exchange stable references
+through their parent board. One user-scoped tree runtime owns tasks, sleep and wake events, price
+routing, circuit retries, adaptive compression, and multi-model decisions. It is not created when
+the Agent has no groups or subagents.
 
 ## Add State Only When Needed
 
@@ -210,7 +217,7 @@ Runnable examples are in `examples/minimal.py`, `examples/custom_skill.py`, and
 ## Verify the Repository
 
 ```bash
-python3.11 scripts/verify_release.py --version 0.2.0 --full
+python3.11 scripts/verify_release.py --version 0.2.1 --full
 ```
 
 For the complete local release gate, including version and package-shape checks, see

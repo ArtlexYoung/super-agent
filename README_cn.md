@@ -73,8 +73,8 @@ result = agent.run("解释 Skill 渐进式披露")
 print(result.text)
 ```
 
-`Agent` 最常用的六个直白操作是 `run`、`for_user`、`add_subagent`、`add_skill_path`、
-`add_tool` 和 `add_model`。高级类型从其所属模块导入。
+`Agent` 常用的直白操作是 `run`、`for_user`、`add_group`、`add_subagent`、
+`add_skill_path`、`add_tool` 和 `add_model`。高级类型从其所属模块导入。
 
 专用 Agent 在代码中组合。任务 Skill 只属于本次运行，不会偷偷改变后续运行：
 
@@ -83,9 +83,14 @@ from super_agent import Agent, model_from_environment
 
 main = Agent(model_from_environment())
 coder = Agent(model_from_environment())
-main.add_subagent(coder, name="coder", description="实现并验证代码修改")
-result = coder.run("修复失败的测试", skill="code")
+engineering = main.add_group("engineering")
+engineering.add_subagent(coder, name="coder", description="实现并验证代码修改")
+result = main.run("让工程组修复失败的测试", skill="common-multi-producer-consumer")
 ```
+
+第 1 层始终是根组。普通组只组织 Agent，不调用模型；Agent 可以带着已有子树挂入任意组。
+同级 Agent 通过父组共享板交换稳定引用。任务、等待唤醒、价格路由、断路重试、动态压缩和多模型
+决策都由同一个树运行器管理，并按用户隔离。不添加组或子 Agent 时不会创建树运行状态。
 
 ## 按需添加状态
 
@@ -190,7 +195,7 @@ super-agent data conversations list --config common.toml --user alice
 ## 验证仓库
 
 ```bash
-python3.11 scripts/verify_release.py --version 0.2.0 --full
+python3.11 scripts/verify_release.py --version 0.2.1 --full
 ```
 
 完整的本地发布检查（包括版本一致性和打包范围）见[本地发布流程](docs/releasing.md)。

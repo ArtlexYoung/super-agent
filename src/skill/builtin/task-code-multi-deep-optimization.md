@@ -2,7 +2,7 @@
 name = "code-multi-deep-optimization"
 type = "task"
 description = "Nested, measured optimization batches with Agent and model rotation"
-version = "0.2.0"
+version = "0.2.1"
 created_by = "builtin"
 agent_can_update = false
 categories = ["code/optimization", "experiment/multi-agent", "competition"]
@@ -16,7 +16,7 @@ Use this method for competitions, performance work, search problems, or objectiv
 
 Establish a reproducible baseline, evaluation command, metrics, resource budget, and stopping conditions. Keep a global experiment ledger. Divide search into batches covering meaningfully different hypotheses, models, perspectives, or regions. Dispatch independent batches through rotating compatible Agents and sleep on task events. Compare all batches globally so one locally promising family does not monopolize the search.
 
-Use a staged group for uncertain batch selection, close measurements, regression disputes, candidate promotion, or stopping decisions. Routine reversible work remains one task. Shared packets contain the baseline, prior evidence, metric contract, allowed artifacts, budget, and expected report. Distinct members propose, seek counterexamples, and reproduce measurements.
+Use a staged Agent decision for uncertain batch selection, close measurements, regression disputes, candidate promotion, or stopping decisions. Routine reversible work remains one task. Shared packets contain the baseline, prior evidence, metric contract, allowed artifacts, budget, and expected report. Distinct members propose, seek counterexamples, and reproduce measurements. Parallel batch groups publish compact findings to their parent shared board so the main group compares evidence without copying every child transcript.
 
 ## First-level Agent: batch lead
 

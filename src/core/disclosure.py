@@ -9,6 +9,7 @@ import tempfile
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from threading import RLock
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
@@ -64,6 +65,7 @@ class DisclosureStore:
         self.record_event = record_event
         self._memory: dict[str, _ContentResource] = {}
         self._history: list[dict[str, object]] = []
+        self._lock = RLock()
 
     def preview(
         self,
@@ -85,18 +87,19 @@ class DisclosureStore:
         max_characters: int = 4000,
         max_serialized_characters: int | None = None,
     ) -> DisclosedContent:
-        resource = self._resource(reference, content)
-        cache_path = self._cache_path(resource)
-        value = _page_for_serialized_limit(
-            resource,
-            cache_path,
-            offset,
-            max_characters,
-            max_serialized_characters,
-        )
-        self._store(resource, cache_path)
-        self._remember(value, "content.disclosed")
-        return value
+        with self._lock:
+            resource = self._resource(reference, content)
+            cache_path = self._cache_path(resource)
+            value = _page_for_serialized_limit(
+                resource,
+                cache_path,
+                offset,
+                max_characters,
+                max_serialized_characters,
+            )
+            self._store(resource, cache_path)
+            self._remember(value, "content.disclosed")
+            return value
 
     def read(
         self,
@@ -105,13 +108,15 @@ class DisclosureStore:
         offset: int = 0,
         max_characters: int = 4000,
     ) -> DisclosedContent:
-        resource = self._load(_text(cache_path, "disclosure cache path"))
-        value = _page(resource, cache_path, offset, max_characters)
-        self._remember(value, "content.cache_read")
-        return value
+        with self._lock:
+            resource = self._load(_text(cache_path, "disclosure cache path"))
+            value = _page(resource, cache_path, offset, max_characters)
+            self._remember(value, "content.cache_read")
+            return value
 
     def history(self) -> tuple[Mapping[str, object], ...]:
-        return tuple(MappingProxyType(dict(item)) for item in self._history)
+        with self._lock:
+            return tuple(MappingProxyType(dict(item)) for item in self._history)
 
     def tool(self) -> Tool:
         return Tool(
@@ -209,7 +214,7 @@ class DisclosureStore:
             raise KeyError(f"disclosure cache path not found: {cache_path}")
         value = json.loads(selected.read_text(encoding="utf-8"))
         if not isinstance(value, dict):
-            raise ValueError("cached disclosure must be an object")
+            raise TypeError("cached disclosure must be an object")
         resource = _ContentResource(
             _text(value.get("reference"), "cached disclosure reference"),
             _text_value(value.get("content"), "cached disclosure content"),

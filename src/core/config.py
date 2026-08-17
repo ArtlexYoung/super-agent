@@ -11,7 +11,13 @@ from urllib.parse import urlparse
 
 from core.event import RunLimits
 from core.model import Model
-from core.provider import ModelPricing, ModelProfile, ModelRouter, RouterSettings, create_model
+from core.provider import (
+    ModelPricing,
+    ModelProfile,
+    ModelRouter,
+    RouterSettings,
+    create_model,
+)
 
 
 @dataclass(frozen=True)
@@ -23,7 +29,14 @@ class StorageConfig:
     critical_log_days: int = 365
 
     def __post_init__(self) -> None:
-        if self.backend not in {"none", "memory", "jsonl", "sqlite", "mysql", "postgresql"}:
+        if self.backend not in {
+            "none",
+            "memory",
+            "jsonl",
+            "sqlite",
+            "mysql",
+            "postgresql",
+        }:
             raise ValueError(f"unknown storage backend: {self.backend}")
         if self.detailed_log_days < 1 or self.critical_log_days < 1:
             raise ValueError("log retention days must be positive")
@@ -43,7 +56,11 @@ class ModelConfig:
     pricing: ModelPricing = field(default_factory=ModelPricing)
 
     def __post_init__(self) -> None:
-        for name, value in (("name", self.name), ("provider", self.provider), ("model", self.model)):
+        for name, value in (
+            ("name", self.name),
+            ("provider", self.provider),
+            ("model", self.model),
+        ):
             if not value.strip():
                 raise ValueError(f"model {name} cannot be empty")
         if self.weight <= 0:
@@ -94,8 +111,9 @@ class Config:
     disabled_skills: tuple[str, ...] = ()
     memory: bool = False
     evolution: bool = False
-    warn_subagent_depth: int = 8
-    max_subagent_depth: int | None = None
+    warn_agent_level: int = 8
+    max_agent_level: int | None = None
+    max_agent_call_depth: int | None = None
     storage: StorageConfig = field(default_factory=StorageConfig)
     models: tuple[ModelConfig, ...] = ()
     router: RouterSettings = field(default_factory=RouterSettings)
@@ -135,11 +153,27 @@ class Config:
         return (base / selected).resolve()
 
 
-def config_from_dict(value: Mapping[str, object], source_path: Path | None = None) -> Config:
+def config_from_dict(
+    value: Mapping[str, object], source_path: Path | None = None
+) -> Config:
     allowed = {
-        "version", "name", "instructions", "skill_paths", "writable_skill_path", "skill_cache_path",
-        "enabled_skills", "disabled_skills", "memory", "evolution", "storage", "models", "router", "limits",
-        "warn_subagent_depth", "max_subagent_depth",
+        "version",
+        "name",
+        "instructions",
+        "skill_paths",
+        "writable_skill_path",
+        "skill_cache_path",
+        "enabled_skills",
+        "disabled_skills",
+        "memory",
+        "evolution",
+        "storage",
+        "models",
+        "router",
+        "limits",
+        "warn_agent_level",
+        "max_agent_level",
+        "max_agent_call_depth",
     }
     _reject_unknown(value, allowed, "general configuration")
     version = value.get("version", 1)
@@ -161,11 +195,20 @@ def config_from_dict(value: Mapping[str, object], source_path: Path | None = Non
         disabled_skills=_strings(value.get("disabled_skills", []), "disabled Skills"),
         memory=_boolean(value.get("memory", False), "memory"),
         evolution=_boolean(value.get("evolution", False), "evolution"),
-        warn_subagent_depth=_integer(value.get("warn_subagent_depth", 8), "warn_subagent_depth", 1),
-        max_subagent_depth=_optional_integer(value.get("max_subagent_depth"), "max_subagent_depth", 1),
+        warn_agent_level=_integer(
+            value.get("warn_agent_level", 8), "warn_agent_level", 1
+        ),
+        max_agent_level=_optional_integer(
+            value.get("max_agent_level"), "max_agent_level", 1
+        ),
+        max_agent_call_depth=_optional_integer(
+            value.get("max_agent_call_depth"), "max_agent_call_depth", 1
+        ),
         storage=_storage_config(storage_value),
         models=tuple(_model_config(item) for item in models_value),
-        router=RouterSettings(**_known_values(router_value, RouterSettings, "model router")),
+        router=RouterSettings(
+            **_known_values(router_value, RouterSettings, "model router")
+        ),
         limits=RunLimits(**_known_values(limits_value, RunLimits, "run limits")),
         source_path=source_path,
     )
@@ -179,7 +222,11 @@ def config_from_environment(environment: Mapping[str, str] | None = None) -> Con
     base_url = values.get("SUPER_AGENT_BASE_URL", "").strip() or None
     api_key_env = values.get("SUPER_AGENT_API_KEY_ENV", "").strip() or None
     # 有硅基流动密钥时，使用文档中的零配置远程示例。
-    if provider != "mock" and not model and values.get("OA3_SILICONFLOW_API_KEY", "").strip():
+    if (
+        provider != "mock"
+        and not model
+        and values.get("OA3_SILICONFLOW_API_KEY", "").strip()
+    ):
         model = "THUDM/GLM-4-9B-0414"
         provider = "openai-compatible"
         base_url = "https://api.siliconflow.cn/v1"
@@ -214,7 +261,13 @@ def _model_config(value: object) -> ModelConfig:
     data = _mapping(value, "model configuration")
     allowed = {name for name in ModelConfig.__dataclass_fields__}
     _reject_unknown(data, allowed, "model configuration")
-    pricing = ModelPricing(**_known_values(_mapping(data.get("pricing", {}), "model pricing"), ModelPricing, "model pricing"))
+    pricing = ModelPricing(
+        **_known_values(
+            _mapping(data.get("pricing", {}), "model pricing"),
+            ModelPricing,
+            "model pricing",
+        )
+    )
     return ModelConfig(
         name=_text(data.get("name"), "model profile name"),
         provider=_text(data.get("provider"), "model provider"),
@@ -229,7 +282,9 @@ def _model_config(value: object) -> ModelConfig:
     )
 
 
-def _known_values(value: Mapping[str, object], data_class: type, name: str) -> dict[str, object]:
+def _known_values(
+    value: Mapping[str, object], data_class: type, name: str
+) -> dict[str, object]:
     allowed = set(data_class.__dataclass_fields__)
     _reject_unknown(value, allowed, name)
     return dict(value)
@@ -262,7 +317,9 @@ def _optional_text(value: object) -> str | None:
 
 
 def _strings(value: object, name: str) -> tuple[str, ...]:
-    if not isinstance(value, list) or any(not isinstance(item, str) or not item.strip() for item in value):
+    if not isinstance(value, list) or any(
+        not isinstance(item, str) or not item.strip() for item in value
+    ):
         raise TypeError(f"{name} must be a text array")
     return tuple(dict.fromkeys(item.strip() for item in value))
 
@@ -281,7 +338,9 @@ def _number(value: object, name: str) -> float:
 
 def _integer(value: object, name: str, minimum: int) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
-        raise ValueError(f"{name} must be an integer greater than or equal to {minimum}")
+        raise ValueError(
+            f"{name} must be an integer greater than or equal to {minimum}"
+        )
     return value
 
 

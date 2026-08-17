@@ -17,7 +17,7 @@ from adapter.tools import CodeWorkspace, ToolPolicy, WorkspaceSettings, general_
 from core.config import Config, config_from_environment
 from core.records import AuditPolicy, Conversations, EventStore
 from skill.library import SkillLibrary
-from super_agent import Agent, AgentContext, AgentSettings
+from super_agent import Agent, AgentContext
 
 
 @dataclass(frozen=True)
@@ -38,7 +38,15 @@ class CliConfig:
             value = tomllib.load(stream)
         if not isinstance(value, dict):
             raise TypeError("CLI configuration must be a TOML table")
-        allowed = {"version", "general_config", "code_config", "user_id", "output", "save", "show_summary"}
+        allowed = {
+            "version",
+            "general_config",
+            "code_config",
+            "user_id",
+            "output",
+            "save",
+            "show_summary",
+        }
         unknown = sorted(set(value) - allowed)
         if unknown:
             raise ValueError(f"unknown CLI configuration fields: {', '.join(unknown)}")
@@ -56,7 +64,11 @@ class CliConfig:
     @classmethod
     def automatic(cls) -> CliConfig:
         explicit = os.environ.get("SUPER_AGENT_CLI_CONFIG")
-        candidates = [Path(explicit).expanduser()] if explicit else [Path.cwd() / "cli.toml", Path.home() / ".config/super-agent/cli.toml"]
+        candidates = (
+            [Path(explicit).expanduser()]
+            if explicit
+            else [Path.cwd() / "cli.toml", Path.home() / ".config/super-agent/cli.toml"]
+        )
         for candidate in candidates:
             if candidate.is_file():
                 return cls.load(candidate)
@@ -72,9 +84,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         parsed = parser.parse_args(arguments)
         cli = _load_cli(parsed.cli_config)
         cli = _override_cli(cli, parsed)
-        agent, store = _build_agent(cli, parsed.config, parsed.code_config)
+        agent, _store = _build_agent(cli, parsed.config, parsed.code_config)
         if parsed.prompt:
-            return _run_prompt(agent, cli, parsed.prompt, parsed.conversation_id, parsed.skill)
+            return _run_prompt(
+                agent, cli, parsed.prompt, parsed.conversation_id, parsed.skill
+            )
         return _run_chat(agent, cli, parsed.conversation_id, parsed.skill)
     except (TypeError, ValueError, RuntimeError, OSError) as error:
         print(f"super-agent: {error}", file=sys.stderr)
@@ -117,7 +131,9 @@ def _check_command(arguments: list[str]) -> int:
 
 def _config_command(arguments: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="super-agent config")
-    parser.add_argument("action", choices=("show", "validate"), nargs="?", default="show")
+    parser.add_argument(
+        "action", choices=("show", "validate"), nargs="?", default="show"
+    )
     parser.add_argument("--config")
     parser.add_argument("--cli-config")
     parsed = parser.parse_args(arguments)
@@ -142,7 +158,9 @@ def _skills_command(arguments: list[str]) -> int:
         disabled_references=config.disabled_skills,
     )
     if parsed.action == "list":
-        value = library.list_skills(page=parsed.page, page_size=parsed.page_size).to_dict()
+        value = library.list_skills(
+            page=parsed.page, page_size=parsed.page_size
+        ).to_dict()
     else:
         if not parsed.reference:
             raise ValueError("skills read requires a type:name reference")
@@ -161,7 +179,10 @@ def _data_command(arguments: list[str]) -> int:
     config = _load_general(parsed.config)
     if config.storage.backend == "none":
         raise RuntimeError("data commands require storage in general configuration")
-    backend = create_storage(config.storage.backend, config.resolve_path(config.storage.path) or Path(config.storage.path))
+    backend = create_storage(
+        config.storage.backend,
+        config.resolve_path(config.storage.path) or Path(config.storage.path),
+    )
     if parsed.resource == "storage":
         value = verify_storage(backend)
     else:
@@ -187,7 +208,12 @@ def _run_prompt(
     conversation_id: str | None,
     skill: str | None,
 ) -> int:
-    result = _stream_to_terminal(agent, prompt, _context(cli, conversation_id, skill), print_text=cli.output == "text")
+    result = _stream_to_terminal(
+        agent,
+        prompt,
+        _context(cli, conversation_id, skill),
+        print_text=cli.output == "text",
+    )
     if cli.output == "json":
         print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
     elif cli.show_summary:
@@ -195,7 +221,9 @@ def _run_prompt(
     return 0
 
 
-def _run_chat(agent: Agent, cli: CliConfig, conversation_id: str | None, skill: str | None) -> int:
+def _run_chat(
+    agent: Agent, cli: CliConfig, conversation_id: str | None, skill: str | None
+) -> int:
     current = conversation_id
     print("Super Agent. 输入 /help 查看命令，输入 /exit 退出。")
     while True:
@@ -212,7 +240,15 @@ def _run_chat(agent: Agent, cli: CliConfig, conversation_id: str | None, skill: 
             print("/help  /skills  /clear  /exit")
             continue
         if prompt == "/skills":
-            print(json.dumps(agent.skill_library.list_skills().to_dict() if agent.skill_library else {"items": []}, ensure_ascii=False, indent=2))
+            print(
+                json.dumps(
+                    agent.skill_library.list_skills().to_dict()
+                    if agent.skill_library
+                    else {"items": []},
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
             continue
         if prompt == "/clear":
             if current is not None and cli.save:
@@ -220,13 +256,17 @@ def _run_chat(agent: Agent, cli: CliConfig, conversation_id: str | None, skill: 
             current = None
             print("当前会话上下文已清除。")
             continue
-        result = _stream_to_terminal(agent, prompt, _context(cli, current, skill), print_text=True)
+        result = _stream_to_terminal(
+            agent, prompt, _context(cli, current, skill), print_text=True
+        )
         current = result.conversation_id or current
         if cli.show_summary:
             print(f"\n[{result.run_id}] {result.stop_reason}")
 
 
-def _stream_to_terminal(agent: Agent, prompt: str, context: AgentContext, *, print_text: bool):
+def _stream_to_terminal(
+    agent: Agent, prompt: str, context: AgentContext, *, print_text: bool
+):
     stream = agent.stream(prompt, context=context)
     while True:
         try:
@@ -236,7 +276,10 @@ def _stream_to_terminal(agent: Agent, prompt: str, context: AgentContext, *, pri
         if print_text and event.event_type == "model.text.delta":
             print(event.data.get("delta", ""), end="", flush=True)
         elif event.event_type in {"run.warning", "run.failed"}:
-            print(f"\n[{event.event_type}] {event.data.get('message', event.data.get('error_type', ''))}", file=sys.stderr)
+            print(
+                f"\n[{event.event_type}] {event.data.get('message', event.data.get('error_type', ''))}",
+                file=sys.stderr,
+            )
 
 
 def _build_agent(
@@ -250,10 +293,15 @@ def _build_agent(
         config = _load_general(general_path or cli.general_config)
     agent = Agent(config=config)
     agent.set_instructions(*config.instructions)
-    agent.settings = AgentSettings(config.warn_subagent_depth, config.max_subagent_depth, config.limits)
     roots = _skill_roots(config)
-    writable = config.resolve_path(config.writable_skill_path or (config.storage.path + "/skills" if cli.save else None))
-    cache = config.resolve_path(config.skill_cache_path or (config.storage.path + "/cache" if cli.save else None))
+    writable = config.resolve_path(
+        config.writable_skill_path
+        or (config.storage.path + "/skills" if cli.save else None)
+    )
+    cache = config.resolve_path(
+        config.skill_cache_path
+        or (config.storage.path + "/cache" if cli.save else None)
+    )
     library = SkillLibrary(roots, writable_root=writable, cache_root=cache)
     agent.use_skill_library(library)
     for reference in config.enabled_skills:
@@ -267,9 +315,18 @@ def _build_agent(
         agent.enable_skill_evolution()
     backend = None
     if cli.save:
-        backend_name = config.storage.backend if config.storage.backend != "none" else "jsonl"
-        policy = AuditPolicy(config.storage.detailed_log_days, config.storage.critical_log_days)
-        backend = create_storage(backend_name, config.resolve_path(config.storage.path) or Path(config.storage.path), audit_policy=policy, database_url=_database_url(config))
+        backend_name = (
+            config.storage.backend if config.storage.backend != "none" else "jsonl"
+        )
+        policy = AuditPolicy(
+            config.storage.detailed_log_days, config.storage.critical_log_days
+        )
+        backend = create_storage(
+            backend_name,
+            config.resolve_path(config.storage.path) or Path(config.storage.path),
+            audit_policy=policy,
+            database_url=_database_url(config),
+        )
         agent.use_storage(backend)
     return agent, backend
 
@@ -277,9 +334,13 @@ def _build_agent(
 def _attach_code_tools(agent: Agent, code_path: str | None) -> None:
     settings = _load_code(code_path)
     policy = ToolPolicy(settings.allowed_effects, _confirm_action)
-    agent.add_tools_for_skills(policy.protect_all(CodeWorkspace(settings.workspace).tools()))
+    agent.add_tools_for_skills(
+        policy.protect_all(CodeWorkspace(settings.workspace).tools())
+    )
     if settings.process is not None:
-        agent.add_tools_for_skills(policy.protect_all(ProcessTools(settings.process).tools()))
+        agent.add_tools_for_skills(
+            policy.protect_all(ProcessTools(settings.process).tools())
+        )
 
 
 @dataclass(frozen=True)
@@ -299,7 +360,9 @@ def _load_code(path: str | None) -> CodeConfig:
         )
     with source.open("rb") as stream:
         value = tomllib.load(stream)
-    _reject_fields(value, {"version", "workspace", "actions", "verification"}, "code configuration")
+    _reject_fields(
+        value, {"version", "workspace", "actions", "verification"}, "code configuration"
+    )
     if value.get("version", 1) != 1:
         raise ValueError("unsupported code configuration version")
     workspace = value.get("workspace", {})
@@ -310,16 +373,24 @@ def _load_code(path: str | None) -> CodeConfig:
     if not root.is_absolute():
         root = source.parent / root
     ignored = workspace.get("ignore", list(WorkspaceSettings(root).ignored))
-    if not isinstance(ignored, list) or any(not isinstance(item, str) or not item for item in ignored):
+    if not isinstance(ignored, list) or any(
+        not isinstance(item, str) or not item for item in ignored
+    ):
         raise TypeError("code workspace ignore must be a text array")
     actions = value.get("actions", {})
     if not isinstance(actions, dict):
         raise TypeError("code actions must be a TOML table")
     _reject_fields(actions, {"write", "delete", "git", "execute"}, "code actions")
-    write = _choice(actions.get("write", "ask"), "code write action", {"deny", "ask", "allow"})
-    delete = _choice(actions.get("delete", "ask"), "code delete action", {"deny", "ask", "allow"})
+    write = _choice(
+        actions.get("write", "ask"), "code write action", {"deny", "ask", "allow"}
+    )
+    delete = _choice(
+        actions.get("delete", "ask"), "code delete action", {"deny", "ask", "allow"}
+    )
     git = _choice(actions.get("git", "allow"), "code Git action", {"deny", "allow"})
-    execute = _choice(actions.get("execute", "ask"), "code execute action", {"deny", "ask", "allow"})
+    execute = _choice(
+        actions.get("execute", "ask"), "code execute action", {"deny", "ask", "allow"}
+    )
     settings = WorkspaceSettings(
         root,
         write != "deny",
@@ -338,30 +409,69 @@ def _load_code(path: str | None) -> CodeConfig:
     process = None
     if verification.get("commands") and execute != "deny":
         commands = verification["commands"]
-        if not isinstance(commands, list) or any(not isinstance(command, list) for command in commands):
-            raise TypeError("code verification commands must be an array of argument arrays")
+        if not isinstance(commands, list) or any(
+            not isinstance(command, list) for command in commands
+        ):
+            raise TypeError(
+                "code verification commands must be an array of argument arrays"
+            )
         process = ProcessSettings(
             root,
-            tuple(tuple(_text(item, "command argument") for item in command) for command in commands),
-            timeout_seconds=_number(verification.get("timeout_seconds", 120.0), "process timeout", positive=True),
-            max_output_bytes=_integer(verification.get("max_output_bytes", 1_000_000), "process output limit", 1, 1_000_000_000),
-            max_processes=_integer(verification.get("max_processes", 8), "process limit", 1, 1_000),
+            tuple(
+                tuple(_text(item, "command argument") for item in command)
+                for command in commands
+            ),
+            timeout_seconds=_number(
+                verification.get("timeout_seconds", 120.0),
+                "process timeout",
+                positive=True,
+            ),
+            max_output_bytes=_integer(
+                verification.get("max_output_bytes", 1_000_000),
+                "process output limit",
+                1,
+                1_000_000_000,
+            ),
+            max_processes=_integer(
+                verification.get("max_processes", 8), "process limit", 1, 1_000
+            ),
         )
     allowed = {"read"}
-    allowed.update(effect for effect, action in (("write", write), ("delete", delete), ("execute", execute)) if action == "allow")
+    allowed.update(
+        effect
+        for effect, action in (
+            ("write", write),
+            ("delete", delete),
+            ("execute", execute),
+        )
+        if action == "allow"
+    )
     return CodeConfig(settings, process, frozenset(allowed))
 
 
-def _context(cli: CliConfig, conversation_id: str | None, skill: str | None = None) -> AgentContext:
-    return AgentContext(user_id=cli.user_id, conversation_id=conversation_id, skill=skill, save_conversation=cli.save)
+def _context(
+    cli: CliConfig, conversation_id: str | None, skill: str | None = None
+) -> AgentContext:
+    return AgentContext(
+        user_id=cli.user_id,
+        conversation_id=conversation_id,
+        skill=skill,
+        save_conversation=cli.save,
+    )
 
 
-def _confirm_action(tool_name: str, effects: tuple[str, ...], arguments: Mapping[str, object]) -> bool:
+def _confirm_action(
+    tool_name: str, effects: tuple[str, ...], arguments: Mapping[str, object]
+) -> bool:
     """终端中的副作用必须由当前用户逐次确认。"""
     if not sys.stdin.isatty():
         return False
     try:
-        answer = input(f"允许工具 {tool_name} 执行 {', '.join(effects)}？[y/N] ").strip().lower()
+        answer = (
+            input(f"允许工具 {tool_name} 执行 {', '.join(effects)}？[y/N] ")
+            .strip()
+            .lower()
+        )
     except EOFError:
         return False
     return answer in {"y", "yes"}
@@ -373,7 +483,12 @@ def _load_cli(path: str | None) -> CliConfig:
 
 def _override_cli(cli: CliConfig, args: argparse.Namespace) -> CliConfig:
     values = dict(cli.__dict__)
-    for key, value in (("user_id", args.user), ("output", args.output), ("save", True if args.save else None), ("show_summary", False if args.no_summary else None)):
+    for key, value in (
+        ("user_id", args.user),
+        ("output", args.output),
+        ("save", True if args.save else None),
+        ("show_summary", False if args.no_summary else None),
+    ):
         if value is not None:
             values[key] = value
     return CliConfig(**values)
@@ -394,7 +509,11 @@ def _skill_roots(config: Config) -> tuple[Path, ...]:
 
 
 def _database_url(config: Config) -> str | None:
-    return None if not config.storage.database_url_env else os.environ.get(config.storage.database_url_env)
+    return (
+        None
+        if not config.storage.database_url_env
+        else os.environ.get(config.storage.database_url_env)
+    )
 
 
 def _config_view(config: Config) -> dict[str, object]:
@@ -405,8 +524,9 @@ def _config_view(config: Config) -> dict[str, object]:
         "disabled_skills": list(config.disabled_skills),
         "memory": config.memory,
         "evolution": config.evolution,
-        "warn_subagent_depth": config.warn_subagent_depth,
-        "max_subagent_depth": config.max_subagent_depth,
+        "warn_agent_level": config.warn_agent_level,
+        "max_agent_level": config.max_agent_level,
+        "max_agent_call_depth": config.max_agent_call_depth,
         "storage": config.storage.__dict__,
         "models": [
             {**item.__dict__, "pricing": item.pricing.to_dict()}
@@ -475,7 +595,11 @@ def _boolean(value: object, name: str) -> bool:
 
 
 def _integer(value: object, name: str, minimum: int, maximum: int) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or not minimum <= value <= maximum:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int)
+        or not minimum <= value <= maximum
+    ):
         raise ValueError(f"{name} must be between {minimum} and {maximum}")
     return value
 
