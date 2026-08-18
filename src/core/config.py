@@ -10,7 +10,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from core.event import RunLimits
-from core.model import Model
+from core.model import Model, ModelRequestOptions, validate_model_request_options
 from core.provider import (
     ModelPricing,
     ModelProfile,
@@ -54,6 +54,8 @@ class ModelConfig:
     features: tuple[str, ...] = ("text", "tools")
     weight: float = 1.0
     pricing: ModelPricing = field(default_factory=ModelPricing)
+    request_body: Mapping[str, object] = field(default_factory=dict)
+    reasoning_effort: str | None = None
 
     def __post_init__(self) -> None:
         for name, value in (
@@ -65,6 +67,15 @@ class ModelConfig:
                 raise ValueError(f"model {name} cannot be empty")
         if self.weight <= 0:
             raise ValueError("model weight must be positive")
+        options = validate_model_request_options(
+            self.provider,
+            ModelRequestOptions(
+                request_body=self.request_body,
+                reasoning_effort=self.reasoning_effort,
+            ),
+        )
+        object.__setattr__(self, "request_body", options.request_body)
+        object.__setattr__(self, "reasoning_effort", options.reasoning_effort)
 
     def create(self) -> ModelProfile:
         model = create_model(
@@ -72,6 +83,10 @@ class ModelConfig:
             self.model,
             base_url=self.base_url,
             api_key_env=self.api_key_env,
+            request_options=ModelRequestOptions(
+                request_body=self.request_body,
+                reasoning_effort=self.reasoning_effort,
+            ),
         )
         return ModelProfile(
             self.name,
@@ -274,6 +289,8 @@ def _model_config(value: object) -> ModelConfig:
         model=_text(data.get("model"), "model name"),
         base_url=_optional_text(data.get("base_url")),
         api_key_env=_optional_text(data.get("api_key_env")),
+        request_body=dict(_mapping(data.get("request_body", {}), "model request body")),
+        reasoning_effort=_optional_text(data.get("reasoning_effort")),
         description=_optional_text(data.get("description")) or "",
         purposes=_strings(data.get("purposes", ["auto"]), "model purposes"),
         features=_strings(data.get("features", ["text", "tools"]), "model features"),

@@ -10,6 +10,90 @@ from typing import Callable, Iterable, Iterator, Mapping, Protocol
 
 JsonObject = dict[str, object]
 
+REASONING_EFFORTS = (
+    "none",
+    "minimal",
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max",
+)
+
+_OPENAI_RUNTIME_BODY_FIELDS = frozenset(
+    {"model", "messages", "tools", "stream", "stream_options"}
+)
+_ANTHROPIC_RUNTIME_BODY_FIELDS = frozenset(
+    {"model", "messages", "tools", "stream", "system"}
+)
+
+
+@dataclass(frozen=True)
+class ModelRequestOptions:
+    """附加到 Provider 请求的配置，不包含连接或路由信息。"""
+
+    request_body: Mapping[str, object] = field(default_factory=dict)
+    reasoning_effort: str | None = None
+
+
+def validate_model_request_options(
+    provider: str,
+    options: ModelRequestOptions,
+) -> ModelRequestOptions:
+    """规范化 JSON Body，并拒绝会破坏运行时协议的覆盖。"""
+    selected = provider.strip().lower()
+    protected = (
+        _OPENAI_RUNTIME_BODY_FIELDS
+        if selected in {"openai", "openai-compatible"}
+        else _ANTHROPIC_RUNTIME_BODY_FIELDS
+        if selected in {"anthropic", "anthropic-compatible"}
+        else frozenset()
+    )
+    body = _normalized_request_body(options.request_body, protected)
+    effort = _normalized_reasoning_effort(options.reasoning_effort)
+    if selected == "mock" and (body or effort is not None):
+        raise ValueError("mock models do not accept request body options")
+    if selected in {"anthropic", "anthropic-compatible"} and effort is not None:
+        raise ValueError("reasoning_effort is only supported by OpenAI-compatible models")
+    return ModelRequestOptions(request_body=body, reasoning_effort=effort)
+
+
+def _normalized_request_body(
+    value: Mapping[str, object],
+    protected: frozenset[str],
+) -> dict[str, object]:
+    if not isinstance(value, Mapping):
+        raise TypeError("model request body must be a JSON object")
+    conflicts = sorted(set(value) & protected)
+    if conflicts:
+        raise ValueError(
+            "model request body cannot override runtime fields: " + ", ".join(conflicts)
+        )
+    try:
+        normalized = json.loads(
+            json.dumps(dict(value), ensure_ascii=False, allow_nan=False)
+        )
+    except (TypeError, ValueError) as error:
+        raise ValueError(
+            f"model request body must contain JSON-compatible values: {error}"
+        ) from error
+    if not isinstance(normalized, dict):  # pragma: no cover - guarded by Mapping above
+        raise TypeError("model request body must be a JSON object")
+    return normalized
+
+
+def _normalized_reasoning_effort(value: str | None) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise TypeError("reasoning_effort must be text or absent")
+    selected = value.strip().lower()
+    if selected not in REASONING_EFFORTS:
+        raise ValueError(
+            "reasoning_effort must be one of: " + ", ".join(REASONING_EFFORTS)
+        )
+    return selected
+
 
 @dataclass(frozen=True)
 class ToolCall:

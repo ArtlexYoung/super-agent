@@ -12,7 +12,16 @@ from time import monotonic
 from typing import Callable, Iterable, Iterator, Mapping
 from urllib.parse import urlparse
 
-from core.model import Message, Model, ModelEvent, ModelRequest, ToolCall, estimate_tokens
+from core.model import (
+    Message,
+    Model,
+    ModelEvent,
+    ModelRequest,
+    ModelRequestOptions,
+    ToolCall,
+    estimate_tokens,
+    validate_model_request_options,
+)
 
 
 PRICE_FIELDS = (
@@ -93,14 +102,30 @@ class OpenAIModel:
     api_key: str | None = None
     api_key_env: str | None = "OPENAI_API_KEY"
     timeout_seconds: float = 120.0
+    request_body: Mapping[str, object] = field(default_factory=dict)
+    reasoning_effort: str | None = None
+
+    def __post_init__(self) -> None:
+        options = validate_model_request_options(
+            "openai-compatible",
+            ModelRequestOptions(
+                request_body=self.request_body,
+                reasoning_effort=self.reasoning_effort,
+            ),
+        )
+        object.__setattr__(self, "request_body", options.request_body)
+        object.__setattr__(self, "reasoning_effort", options.reasoning_effort)
 
     def stream(self, request: ModelRequest) -> Iterator[ModelEvent]:
         payload = {
+            **self.request_body,
             "model": self.model,
             **request.to_openai(),
             "stream": True,
             "stream_options": {"include_usage": True},
         }
+        if self.reasoning_effort is not None:
+            payload["reasoning_effort"] = self.reasoning_effort
         headers = {"Content-Type": "application/json"}
         key = _resolve_key(self.api_key, self.api_key_env, self.base_url)
         if key:
@@ -119,12 +144,21 @@ class AnthropicModel:
     api_key_env: str | None = "ANTHROPIC_API_KEY"
     max_output_tokens: int = 4096
     timeout_seconds: float = 120.0
+    request_body: Mapping[str, object] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        options = validate_model_request_options(
+            "anthropic-compatible",
+            ModelRequestOptions(request_body=self.request_body),
+        )
+        object.__setattr__(self, "request_body", options.request_body)
 
     def stream(self, request: ModelRequest) -> Iterator[ModelEvent]:
         system, messages = _to_anthropic_messages(request.messages)
         payload: dict[str, object] = {
-            "model": self.model,
             "max_tokens": self.max_output_tokens,
+            **self.request_body,
+            "model": self.model,
             "messages": messages,
             "stream": True,
         }
@@ -291,9 +325,13 @@ def create_model(
     base_url: str | None = None,
     api_key_env: str | None = None,
     api_key: str | None = None,
+    request_options: ModelRequestOptions | None = None,
 ) -> Model:
     """从直白配置创建一个模型，不读取其他配置文件。"""
     selected = provider.strip().lower()
+    settings = validate_model_request_options(
+        selected, request_options or ModelRequestOptions()
+    )
     if selected == "mock":
         return MockModel(model or "Mock response")
     if selected in {"openai", "openai-compatible"}:
@@ -302,6 +340,8 @@ def create_model(
             base_url=base_url or "https://api.openai.com/v1",
             api_key=api_key,
             api_key_env=api_key_env or "OPENAI_API_KEY",
+            request_body=settings.request_body,
+            reasoning_effort=settings.reasoning_effort,
         )
     if selected in {"anthropic", "anthropic-compatible"}:
         return AnthropicModel(
@@ -309,6 +349,7 @@ def create_model(
             base_url=base_url or "https://api.anthropic.com",
             api_key=api_key,
             api_key_env=api_key_env or "ANTHROPIC_API_KEY",
+            request_body=settings.request_body,
         )
     raise ValueError(f"unknown model provider: {provider}")
 

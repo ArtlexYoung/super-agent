@@ -3,6 +3,7 @@ import tempfile
 import unittest
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from unittest.mock import patch
 from urllib.error import URLError
 
 from adapter.storage import JsonlStorage, MemoryStorage, SqliteStorage, create_storage
@@ -11,13 +12,16 @@ from core.disclosure import DisclosureStore
 from core.event import RunLimits
 from core.model import Message, ModelEvent, ModelRequest, Tool, ToolCall
 from core.provider import (
+    AnthropicModel,
     MockModel,
     ModelProfile,
     ModelRouter,
+    OpenAIModel,
     RouterSettings,
     _read_anthropic_stream,
     _read_openai_stream,
     _to_anthropic_messages,
+    create_model,
 )
 from core.records import AuditPolicy, Conversations, EventStore, RecordQuery
 from core.run import RunRequest, collect_run, stream_run
@@ -233,6 +237,100 @@ class CoreRuntimeTests(unittest.TestCase):
             )
         )
         self.assertEqual(["usage", "text", "usage", "done"], [item.event_type for item in anthropic_events])
+
+    def test_openai_request_body_and_reasoning_effort_reach_the_payload(self):
+        model = OpenAIModel(
+            "reasoning-model",
+            base_url="http://127.0.0.1:8000/v1",
+            request_body={"temperature": 0.2, "metadata": {"source": "desktop"}},
+            reasoning_effort="high",
+        )
+        with patch("core.provider._post_sse", return_value=iter(())) as post:
+            list(model.stream(ModelRequest((Message("user", "hello"),))))
+        payload = post.call_args.args[1]
+        self.assertEqual(0.2, payload["temperature"])
+        self.assertEqual({"source": "desktop"}, payload["metadata"])
+        self.assertEqual("high", payload["reasoning_effort"])
+        self.assertEqual("reasoning-model", payload["model"])
+        self.assertEqual([{"role": "user", "content": "hello"}], payload["messages"])
+        self.assertTrue(payload["stream"])
+
+    def test_anthropic_request_body_can_override_non_runtime_defaults(self):
+        model = AnthropicModel(
+            "claude-compatible",
+            base_url="http://127.0.0.1:8000",
+            request_body={
+                "max_tokens": 8192,
+                "thinking": {"type": "enabled", "budget_tokens": 2048},
+            },
+        )
+        with patch("core.provider._post_sse", return_value=iter(())) as post:
+            list(model.stream(ModelRequest((Message("user", "hello"),))))
+        payload = post.call_args.args[1]
+        self.assertEqual(8192, payload["max_tokens"])
+        self.assertEqual(
+            {"type": "enabled", "budget_tokens": 2048}, payload["thinking"]
+        )
+        self.assertEqual("claude-compatible", payload["model"])
+
+    def test_request_body_cannot_replace_runtime_owned_fields(self):
+        for provider, body in (
+            ("openai-compatible", {"model": "other"}),
+            ("openai-compatible", {"messages": []}),
+            ("anthropic-compatible", {"system": "other"}),
+            ("anthropic-compatible", {"tools": []}),
+        ):
+            with self.subTest(provider=provider, body=body), self.assertRaisesRegex(
+                ValueError, "cannot override runtime fields"
+            ):
+                ModelConfig("invalid", provider, "model", request_body=body)
+
+    def test_model_config_validates_request_body_and_reasoning_effort(self):
+        config = config_from_dict(
+            {
+                "models": [
+                    {
+                        "name": "reasoning",
+                        "provider": "openai-compatible",
+                        "model": "model",
+                        "request_body": {"temperature": 0.1},
+                        "reasoning_effort": "xhigh",
+                    }
+                ]
+            }
+        )
+        self.assertEqual({"temperature": 0.1}, config.models[0].request_body)
+        self.assertEqual("xhigh", config.models[0].reasoning_effort)
+        with self.assertRaisesRegex(ValueError, "reasoning_effort must be one of"):
+            ModelConfig(
+                "invalid", "openai-compatible", "model", reasoning_effort="extreme"
+            )
+        with self.assertRaisesRegex(ValueError, "only supported by OpenAI-compatible"):
+            ModelConfig(
+                "invalid", "anthropic-compatible", "model", reasoning_effort="high"
+            )
+        with self.assertRaisesRegex(ValueError, "JSON-compatible values"):
+            ModelConfig(
+                "invalid",
+                "openai-compatible",
+                "model",
+                request_body={"stop": {"done"}},
+            )
+
+    def test_create_model_keeps_the_original_keyword_call_shape(self):
+        model = create_model(
+            "openai-compatible",
+            "legacy-model",
+            base_url="https://models.example.test/v1",
+            api_key_env="LEGACY_API_KEY",
+            api_key="legacy-secret",
+        )
+
+        self.assertIsInstance(model, OpenAIModel)
+        self.assertEqual("legacy-model", model.model)
+        self.assertEqual("https://models.example.test/v1", model.base_url)
+        self.assertEqual("LEGACY_API_KEY", model.api_key_env)
+        self.assertEqual("legacy-secret", model.api_key)
 
     def test_anthropic_messages_merge_tool_results_into_one_user_turn(self):
         _system, messages = _to_anthropic_messages(
