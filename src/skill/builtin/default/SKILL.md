@@ -1,13 +1,14 @@
-+++
-name = "default"
-type = "memory"
-description = "Temporary working context and revisable long-term experience"
-version = "0.2.0"
-created_by = "builtin"
-agent_can_update = false
-categories = ["memory/general"]
-requires = ["remember_temporary", "remember_long_term", "recall_memory", "promote_temporary_memory", "organize_long_term_memory"]
-+++
+---
+name: "default"
+description: "Temporary working context and revisable long-term experience"
+metadata:
+  super-agent-agent-can-update: "false"
+  super-agent-categories: "[\"memory/general\"]"
+  super-agent-created-by: "builtin"
+  super-agent-requires: "[\"remember_temporary\",\"remember_long_term\",\"recall_memory\",\"promote_temporary_memory\",\"organize_long_term_memory\"]"
+  super-agent-type: "memory"
+  super-agent-version: "0.2.0"
+---
 # Memory method
 
 Use temporary memory only for working context in the current conversation. It must never appear in another conversation.

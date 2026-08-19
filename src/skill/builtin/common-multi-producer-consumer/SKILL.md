@@ -1,13 +1,14 @@
-+++
-name = "common-multi-producer-consumer"
-type = "task"
-description = "Coordinate child Agents through owned queues and event-driven completion"
-version = "0.2.1"
-created_by = "builtin"
-agent_can_update = false
-categories = ["general/multi-agent", "coordination/producer-consumer"]
-requires = ["list_agent_tree", "create_agent_task", "dispatch_agent_task", "read_agent_tasks", "wait_for_agent_tasks", "cancel_agent_task", "post_shared_note", "read_shared_notes", "wait_for_shared_notes", "create_agent_decision", "wait_for_agent_decision", "read_agent_decisions"]
-+++
+---
+name: "common-multi-producer-consumer"
+description: "Coordinate child Agents through owned queues and event-driven completion"
+metadata:
+  super-agent-agent-can-update: "false"
+  super-agent-categories: "[\"general/multi-agent\",\"coordination/producer-consumer\"]"
+  super-agent-created-by: "builtin"
+  super-agent-requires: "[\"list_agent_tree\",\"create_agent_task\",\"dispatch_agent_task\",\"read_agent_tasks\",\"wait_for_agent_tasks\",\"cancel_agent_task\",\"post_shared_note\",\"read_shared_notes\",\"wait_for_shared_notes\",\"create_agent_decision\",\"wait_for_agent_decision\",\"read_agent_decisions\"]"
+  super-agent-type: "task"
+  super-agent-version: "0.2.1"
+---
 # Multi-Agent producer-consumer method
 
 Act as task producer. Inspect the Agent tree, split only independent work, and create self-contained tasks with a purpose and required features. Target an Agent group when work belongs to one department; otherwise let the current group select a suitable child. Each Agent consumes its own queue serially while different Agents may run concurrently. A child with its own subtree can activate this same Skill at the next level.

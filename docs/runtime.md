@@ -35,6 +35,16 @@ Synchronous and streaming APIs do not maintain separate model-call logic. Tool o
 
 Before a run, structure is checked only after the tree changes. Maximum tree level and actual call depth are configured separately; reaching either explicit limit fails directly instead of continuing in the background.
 
+## 批量派发 / Batch Dispatch
+
+`dispatch_agent_tasks` 是组织树提供的通用原子派发机制。调用方先创建至少两个目标、目的和所需特性一致的任务，再一次性要求不同 Agent；需要模型多样性时还可以要求不同模型。完整分配成功后任务才并行启动。
+
+`dispatch_agent_tasks` is the organization tree's generic atomic dispatch mechanism. A caller first creates at least two tasks with the same target, purpose, and required features, then requests distinct Agents in one call; distinct models may also be required. Tasks start in parallel only after the complete assignment succeeds.
+
+Agent 或模型不足时，任务保持原状态并返回明确错误，不会部分启动。Runtime 只提供这一通用机制；独立检视、交叉验证和争议裁决等方法由 `task:common-multi-review` Skill 定义。
+
+When Agent or model diversity is insufficient, tasks remain unchanged and an explicit error is returned. Runtime provides only this generic mechanism; the `task:common-multi-review` Skill defines independent review, cross-checking, and dispute adjudication.
+
 ## 事件监听 / Event Listening
 
 ```python

@@ -51,6 +51,18 @@ EVALUATION_FILES = (
 )
 WHEEL_ROOTS = ["src/adapter", "src/core", "src/skill", "src/cli.py", "src/super_agent.py"]
 SDIST_ROOTS = ["README.md", "README_cn.md", "README_en.md", "pyproject.toml", "docs", "scripts", "src", "tests", "examples"]
+REQUIRED_BUILTIN_SKILLS = {
+    "code",
+    "code-multi-deep-optimization",
+    "common",
+    "common-multi-producer-consumer",
+    "common-multi-review",
+    "conversation",
+    "default",
+    "freshness",
+    "general",
+    "self-update",
+}
 
 
 def main(arguments: list[str] | None = None) -> int:
@@ -201,16 +213,32 @@ def _check_old_imports(files: list[Path]) -> list[str]:
 
 def _check_builtin_skills(root: Path) -> list[str]:
     errors: list[str] = []
-    files = sorted(root.glob("*.md"))
-    if len(files) < 8:
-        errors.append("builtin Skill catalog is unexpectedly small")
+    files = sorted(root.glob("*/SKILL.md"))
+    missing = sorted(
+        REQUIRED_BUILTIN_SKILLS - {path.parent.name for path in files}
+    )
+    if missing:
+        errors.append(f"required builtin Skills are missing: {', '.join(missing)}")
+    legacy = sorted(path.name for path in root.glob("*.md"))
+    if legacy:
+        errors.append(f"legacy flat builtin Skills remain: {', '.join(legacy)}")
     for path in files:
         try:
             text = path.read_text(encoding="utf-8")
-            if not text.startswith("+++\n") or "\n+++\n" not in text:
-                errors.append(f"builtin Skill has invalid front matter: {path.name}")
+            expected_names = {
+                f"name: {path.parent.name}",
+                f'name: "{path.parent.name}"',
+                f"name: '{path.parent.name}'",
+            }
+            frontmatter = text.split("\n---\n", 1)[0]
+            if not text.startswith("---\n") or not any(
+                name in frontmatter.splitlines() for name in expected_names
+            ):
+                errors.append(
+                    f"builtin Skill is not a standard SKILL.md: {path.parent.name}"
+                )
         except OSError as error:
-            errors.append(f"cannot read builtin Skill {path.name}: {error}")
+            errors.append(f"cannot read builtin Skill {path.parent.name}: {error}")
     return errors
 
 

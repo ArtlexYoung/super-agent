@@ -102,6 +102,69 @@ class AgentTaskRuntime:
             self._start(queued.task_id, worker)
             return queued
 
+    def dispatch_tasks(
+        self,
+        task_ids: Iterable[str],
+        *,
+        source_group_id: str,
+        different_models: bool = False,
+        parent_identity: RunIdentity | None = None,
+    ) -> tuple[AgentTask, ...]:
+        """原子选择不同 Agent，再并行派发一组路由条件相同的任务。"""
+        selected_ids = tuple(dict.fromkeys(task_ids))
+        if len(selected_ids) < 2:
+            raise ValueError("batch dispatch requires at least two different task IDs")
+        with self._condition:
+            tasks = tuple(self._require_task(task_id) for task_id in selected_ids)
+            for task in tasks:
+                if task.source_group_id != source_group_id:
+                    raise PermissionError("a group can dispatch only its own tasks")
+                if task.status != "created":
+                    raise ValueError(
+                        f"Agent task must be created before dispatch: {task.status}"
+                    )
+            routes = {
+                (task.target_group_id, task.purpose, task.required_features)
+                for task in tasks
+            }
+            if len(routes) != 1:
+                raise ValueError(
+                    "batch-dispatched Agent tasks must share target, purpose, and features"
+                )
+            workers = self._choose_many(tasks[0], len(tasks), different_models)
+            if len(workers) != len(tasks):
+                diversity = " with different models" if different_models else ""
+                raise RuntimeError(
+                    f"not enough distinct Agents{diversity} for batch dispatch"
+                )
+            queued: list[AgentTask] = []
+            for task, worker in zip(tasks, workers, strict=True):
+                self._record(
+                    "agent_task.dispatched",
+                    {
+                        "task_id": task.task_id,
+                        "agent_name": worker.name,
+                        "group_id": worker.group_id,
+                        "model_name": worker.model_name,
+                        "weight": worker.weight,
+                        "pricing": worker.pricing.to_dict(),
+                        "selection": "batch-distinct",
+                    },
+                )
+                queued.append(
+                    self._change(
+                        task,
+                        "agent_task.queued",
+                        status="queued",
+                        agent_name=worker.name,
+                        worker_link_id=worker.link_id,
+                        parent_identity=parent_identity,
+                    )
+                )
+        for task, worker in zip(queued, workers, strict=True):
+            self._start(task.task_id, worker)
+        return tuple(queued)
+
     def list_tasks(
         self, group_id: str, *, include_results: bool = True
     ) -> list[dict[str, object]]:

@@ -1,44 +1,30 @@
-"""统一读取、披露、缓存、激活和管理 Markdown Skill。"""
+"""统一读取、披露、缓存、激活和管理标准 Agent Skill。"""
 
 from __future__ import annotations
 
 import hashlib
 import os
-import subprocess
+import shutil
 import tempfile
-import zipfile
 from collections.abc import Callable, Iterable, Mapping
-from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
 
-from core.disclosure import DisclosedContent, DisclosureStore
+from core.disclosure import DisclosedContent, DisclosurePage, DisclosureStore
 from core.model import Tool
 from core.run import RunSession, ToolContext
-from skill.document import Skill, format_skill, parse_skill_text
+from skill.document import (
+    SKILL_FILE,
+    Skill,
+    format_skill,
+    install_skill_package,
+    pack_skill,
+    parse_skill_text,
+    read_skill_package,
+    read_skill_resource_text,
+)
 
 RecordEvent = Callable[[str, Mapping[str, object]], object]
-
-
-@dataclass(frozen=True)
-class SkillPage:
-    items: tuple[Mapping[str, object], ...]
-    page: int
-    page_size: int
-    total: int
-
-    @property
-    def has_more(self) -> bool:
-        return self.page * self.page_size < self.total
-
-    def to_dict(self) -> dict[str, object]:
-        return {
-            "items": [dict(item) for item in self.items],
-            "page": self.page,
-            "page_size": self.page_size,
-            "total": self.total,
-            "has_more": self.has_more,
-        }
 
 
 class SkillLibrary:
@@ -121,7 +107,7 @@ class SkillLibrary:
         page_size: int = 20,
         skill_type: str | None = None,
         category: str | None = None,
-    ) -> SkillPage:
+    ) -> DisclosurePage:
         if page < 1 or not 1 <= page_size <= 100:
             raise ValueError("skill page and page_size are outside their limits")
         selected = sorted(
@@ -137,7 +123,7 @@ class SkillLibrary:
             MappingProxyType(item.index_entry())
             for item in selected[start : start + page_size]
         )
-        return SkillPage(values, page, page_size, len(selected))
+        return DisclosurePage(values, page, page_size, len(selected))
 
     def find(self, reference: str) -> Skill:
         skills = self._load()
@@ -243,6 +229,12 @@ class SkillLibrary:
                 self._read_tool,
                 _read_schema(),
             ),
+            Tool(
+                "read_skill_resource",
+                "Read one bounded page of a text resource inside a Skill",
+                self._resource_tool,
+                _read_schema(resource=True),
+            ),
             self.disclosures.tool(),
             Tool(
                 "activate_skill",
@@ -268,8 +260,8 @@ class SkillLibrary:
     ) -> Skill:
         root = self._require_writable_root()
         key = f"{skill_type}:{name}"
-        if key in self._load():
-            raise ValueError(f"skill already exists: {key}")
+        if any(skill.name == name for skill in self._load().values()):
+            raise ValueError(f"skill already exists: {name}")
         metadata = {
             "name": name,
             "type": skill_type,
@@ -284,7 +276,7 @@ class SkillLibrary:
             if agent_can_update is None
             else agent_can_update,
         }
-        path = root / skill_type / f"{name}.md"
+        path = root / name / SKILL_FILE
         self._write_skill(path, metadata, body, expected_sha256=None)
         self._record(
             "skill.created", {"key": key, "actor": actor, "sha256": _file_sha256(path)}
@@ -351,40 +343,36 @@ class SkillLibrary:
             skill.created_by == "agent" and skill.agent_can_update
         ):
             raise PermissionError(f"agent cannot remove skill: {skill.key}")
-        self._require_writable_path(skill.path)
+        self._require_writable_path(skill.root)
         if skill.sha256 != expected_sha256:
             raise RuntimeError(f"skill changed since it was read: {skill.key}")
-        skill.path.unlink()
+        shutil.rmtree(skill.root)
         self.refresh()
         self._record(
             "skill.removed", {"key": skill.key, "actor": actor, "sha256": skill.sha256}
         )
 
     def pack(self, reference: str, destination: str | Path) -> Path:
-        skill = self.find(reference)
-        target = Path(destination).expanduser().resolve()
-        target.parent.mkdir(parents=True, exist_ok=True)
-        info = zipfile.ZipInfo(skill.path.name, (1980, 1, 1, 0, 0, 0))
-        info.compress_type = zipfile.ZIP_DEFLATED
-        with zipfile.ZipFile(target, "w") as archive:
-            archive.writestr(info, skill.path.read_bytes())
-        return target
+        return pack_skill(self.find(reference), destination)
 
     def install(
         self, source: str | Path, *, expected_sha256: str | None = None
     ) -> Skill:
-        content, name = _read_package(source)
-        digest = hashlib.sha256(content).hexdigest()
-        if expected_sha256 is not None and digest != expected_sha256:
+        package = read_skill_package(source)
+        if expected_sha256 is not None and package.sha256 != expected_sha256:
             raise ValueError("skill package SHA-256 mismatch")
-        parsed = parse_skill_text(content.decode("utf-8"), Path(name))
-        target = self._require_writable_root() / parsed.skill_type / f"{parsed.name}.md"
-        if target.exists():
-            raise ValueError(f"skill already installed: {parsed.key}")
-        _atomic_write(target, content)
+        parsed = parse_skill_text(
+            package.skill_content.decode("utf-8"), package.skill_path
+        )
+        target = self._require_writable_root() / parsed.name / SKILL_FILE
+        if any(skill.name == parsed.name for skill in self._load().values()):
+            raise ValueError(f"skill already installed: {parsed.name}")
+        install_skill_package(package, target.parent)
         self.refresh()
         installed = self.find(parsed.key)
-        self._record("skill.installed", {"key": installed.key, "sha256": digest})
+        self._record(
+            "skill.installed", {"key": installed.key, "sha256": package.sha256}
+        )
         return installed
 
     def _load(self) -> dict[str, Skill]:
@@ -395,8 +383,8 @@ class SkillLibrary:
         for root in roots:
             if not root.exists():
                 continue
-            for path in sorted(root.rglob("*.md")):
-                if path.is_symlink():
+            for path in sorted(root.rglob(SKILL_FILE)):
+                if path.is_symlink() or path.parent.is_symlink():
                     raise ValueError(f"skill files cannot be symbolic links: {path}")
                 skill = parse_skill_text(path.read_text(encoding="utf-8"), path)
                 if skill.key in loaded:
@@ -471,6 +459,35 @@ class SkillLibrary:
         )
         return disclosed.to_dict()
 
+    def _resource_tool(
+        self, arguments: dict[str, object], context: ToolContext
+    ) -> dict[str, object]:
+        skill = self.find(_required_text(arguments.get("skill"), "skill"))
+        relative, content = read_skill_resource_text(
+            skill, _required_text(arguments.get("path"), "path")
+        )
+        value = self.disclosures.disclose(
+            f"{skill.key}:resource:{relative}",
+            content,
+            offset=_integer(arguments.get("offset", 0), "offset", 0, 10_000_000),
+            max_characters=_integer(
+                arguments.get("max_characters", 4000),
+                "max_characters",
+                1,
+                20_000,
+            ),
+        )
+        event = {
+            "key": skill.key,
+            "resource": relative,
+            "cache_path": value.cache_path,
+            "offset": value.offset,
+            "next_offset": value.next_offset,
+        }
+        self._record("skill.resource_disclosed", event)
+        context.emit("skill.resource_disclosed", event)
+        return value.to_dict()
+
     def _activate_tool(
         self, arguments: dict[str, object], context: ToolContext
     ) -> dict[str, object]:
@@ -506,40 +523,6 @@ class SkillLibrary:
     def _record(self, event_type: str, data: Mapping[str, object]) -> None:
         if self.record_event is not None:
             self.record_event(event_type, data)
-
-
-def _read_package(source: str | Path) -> tuple[bytes, str]:
-    text = str(source)
-    if text.startswith("git+"):
-        repository, _, relative = text[4:].partition("#")
-        with tempfile.TemporaryDirectory() as temporary:
-            subprocess.run(
-                ["git", "clone", "--quiet", "--depth", "1", repository, temporary],
-                check=True,
-            )
-            return _read_package(Path(temporary) / relative)
-    path = Path(source).expanduser().resolve()
-    if path.is_file() and path.suffix.lower() == ".md":
-        return path.read_bytes(), path.name
-    if path.is_file() and path.suffix.lower() == ".zip":
-        with zipfile.ZipFile(path) as archive:
-            names = [
-                name
-                for name in archive.namelist()
-                if name.endswith(".md") and not name.startswith("__MACOSX/")
-            ]
-            if (
-                len(names) != 1
-                or Path(names[0]).is_absolute()
-                or ".." in Path(names[0]).parts
-            ):
-                raise ValueError("skill package must contain one safe Markdown file")
-            return archive.read(names[0]), Path(names[0]).name
-    if path.is_dir():
-        files = list(path.glob("*.md"))
-        if len(files) == 1:
-            return files[0].read_bytes(), files[0].name
-    raise ValueError(f"unsupported skill package source: {source}")
 
 
 def _atomic_write(path: Path, content: bytes) -> None:
@@ -608,15 +591,18 @@ def _list_schema() -> dict[str, object]:
     }
 
 
-def _read_schema() -> dict[str, object]:
+def _read_schema(*, resource: bool = False) -> dict[str, object]:
+    properties = {
+        "skill": {"type": "string"},
+        "offset": {"type": "integer", "minimum": 0},
+        "max_characters": {"type": "integer", "minimum": 1, "maximum": 20000},
+    }
+    if resource:
+        properties["path"] = {"type": "string"}
     return {
         "type": "object",
-        "required": ["skill"],
-        "properties": {
-            "skill": {"type": "string"},
-            "offset": {"type": "integer", "minimum": 0},
-            "max_characters": {"type": "integer", "minimum": 1, "maximum": 20000},
-        },
+        "required": ["skill"] + (["path"] if resource else []),
+        "properties": properties,
     }
 
 

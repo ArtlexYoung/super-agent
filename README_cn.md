@@ -44,25 +44,20 @@ super-agent check
 
 ## 添加 Skill
 
-一个 Skill 只是带 TOML front matter 的 Markdown 文件：
+Skill 直接使用 Agent Skills 标准目录。创建 `skills/research/SKILL.md`：
 
 ```markdown
-+++
-name = "research"
-type = "prompt"
-description = "研究一个问题并给出带引用的结论"
-version = "1.0.0"
-created_by = "user"
-agent_can_update = false
-categories = ["research"]
-+++
+---
+name: research
+description: 研究问题并整理证据；需要调查或形成带依据结论时使用。
+---
 
 先确认问题和证据范围，再给出带来源的结论。
 ```
 
-将文件放入 `skill_paths` 指向的任意目录即可。系统没有触发词表，模型在正常调用中根据描述
-自行判断披露或启用哪些 Skill。`requires` 声明缺失即失败的必要工具，`optional_tools` 声明
-已经注册就挂载、没有注册也不阻断方法本身的工具。
+目录名必须与 `name` 一致，再将 `skills` 加入 `skill_paths`。系统没有触发词表，模型根据描述
+自行判断披露或启用哪些 Skill。类型、工具依赖、组合和更新权限是可选的 `super-agent-*`
+字符串元数据，完整格式见 [Skill 文档](docs/skills.md)。
 
 ## Python 用法
 
@@ -94,6 +89,9 @@ result = main.run("让工程组修复失败的测试", skill="common-multi-produ
 第 1 层始终是根组。普通组只组织 Agent，不调用模型；Agent 可以带着已有子树挂入任意组。
 同级 Agent 通过父组共享板交换稳定引用。任务、等待唤醒、价格路由、断路重试、动态压缩和多模型
 决策都由同一个树运行器管理，并按用户隔离。不添加组或子 Agent 时不会创建树运行状态。
+
+需要旁观者共同检视时，启用 `common-multi-review`。它先让至少两个不同 Agent 独立检查，
+再交叉验证发现；多样性不足会明确失败，不会退化成执行者自检。
 
 ## 按需添加状态
 

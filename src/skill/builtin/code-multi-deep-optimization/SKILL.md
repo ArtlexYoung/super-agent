@@ -1,13 +1,14 @@
-+++
-name = "code-multi-deep-optimization"
-type = "task"
-description = "Nested, measured optimization batches with Agent and model rotation"
-version = "0.2.1"
-created_by = "builtin"
-agent_can_update = false
-categories = ["code/optimization", "experiment/multi-agent", "competition"]
-includes = ["task:code", "task:common-multi-producer-consumer"]
-+++
+---
+name: "code-multi-deep-optimization"
+description: "Nested, measured optimization batches with Agent and model rotation"
+metadata:
+  super-agent-agent-can-update: "false"
+  super-agent-categories: "[\"code/optimization\",\"experiment/multi-agent\",\"competition\"]"
+  super-agent-created-by: "builtin"
+  super-agent-includes: "[\"task:code\",\"task:common-multi-producer-consumer\"]"
+  super-agent-type: "task"
+  super-agent-version: "0.2.1"
+---
 # Multi-Agent deep optimization method
 
 Use this method for competitions, performance work, search problems, or objectives that need many measured alternatives. Optimize explicit primary and guardrail metrics, never an unmeasured impression.

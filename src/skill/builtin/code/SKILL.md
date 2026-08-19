@@ -1,14 +1,15 @@
-+++
-name = "code"
-type = "task"
-description = "Repository coding method with explicit changes and verification"
-version = "0.2.0"
-created_by = "builtin"
-agent_can_update = false
-categories = ["code", "code/change"]
-requires = ["list_files", "read_file", "search_files", "repository_map"]
-optional_tools = ["git_status", "git_diff", "write_file", "replace_in_file", "delete_file", "list_process_commands", "start_process", "poll_process", "stop_process", "run_check"]
-+++
+---
+name: "code"
+description: "Repository coding method with explicit changes and verification"
+metadata:
+  super-agent-agent-can-update: "false"
+  super-agent-categories: "[\"code\",\"code/change\"]"
+  super-agent-created-by: "builtin"
+  super-agent-optional-tools: "[\"git_status\",\"git_diff\",\"write_file\",\"replace_in_file\",\"delete_file\",\"list_process_commands\",\"start_process\",\"poll_process\",\"stop_process\",\"run_check\"]"
+  super-agent-requires: "[\"list_files\",\"read_file\",\"search_files\",\"repository_map\"]"
+  super-agent-type: "task"
+  super-agent-version: "0.2.0"
+---
 # Repository coding method
 
 ## Discover

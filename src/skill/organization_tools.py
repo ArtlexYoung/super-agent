@@ -40,6 +40,13 @@ def agent_tree_tools(runtime: AgentTreeRuntime, group_id: str) -> tuple[Tool, ..
             ("execute",),
         ),
         Tool(
+            "dispatch_agent_tasks",
+            "Dispatch matching tasks in parallel to distinct suitable Agents",
+            partial(_dispatch_tasks, runtime, group_id),
+            schemas["dispatch_many"],
+            ("execute",),
+        ),
+        Tool(
             "read_agent_tasks",
             "Read tasks created by this group",
             partial(_read_tasks, runtime, group_id),
@@ -208,6 +215,23 @@ def _dispatch_task(
         parent_identity=context.session.identity,
     )
     return task.to_dict()
+
+
+def _dispatch_tasks(
+    runtime: AgentTreeRuntime,
+    group_id: str,
+    arguments: dict[str, object],
+    context: ToolContext,
+) -> dict[str, object]:
+    tasks = runtime.dispatch_tasks(
+        strings(arguments.get("task_ids", []), "Agent task IDs"),
+        source_group_id=group_id,
+        different_models=boolean(
+            arguments.get("different_models", False), "different_models"
+        ),
+        parent_identity=context.session.identity,
+    )
+    return {"tasks": [task.to_dict() for task in tasks]}
 
 
 def _read_tasks(
@@ -388,6 +412,12 @@ def number(value: object, name: str, minimum: float) -> float:
     return float(value)
 
 
+def boolean(value: object, name: str) -> bool:
+    if not isinstance(value, bool):
+        raise TypeError(f"{name} must be a boolean")
+    return value
+
+
 def _inconclusive(evidence: object) -> dict[str, object]:
     return {
         "decision": "inconclusive",
@@ -412,6 +442,19 @@ def _schemas() -> dict[str, dict[str, object]]:
             "properties": {
                 **task["properties"],
                 "agent_name": {"type": "string"},
+            },
+        },
+        "dispatch_many": {
+            "type": "object",
+            "required": ["task_ids"],
+            "properties": {
+                "task_ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "minItems": 2,
+                    "uniqueItems": True,
+                },
+                "different_models": {"type": "boolean"},
             },
         },
         "create_task": {
@@ -496,6 +539,7 @@ def _schemas() -> dict[str, dict[str, object]]:
 
 __all__ = [
     "agent_tree_tools",
+    "boolean",
     "estimated_cost",
     "find_task",
     "integer",

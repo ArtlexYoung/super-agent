@@ -1,13 +1,14 @@
-+++
-name = "self-update"
-type = "evolution"
-description = "Propose, test, apply, and undo updates to Agent-owned Skills"
-version = "0.2.0"
-created_by = "builtin"
-agent_can_update = false
-categories = ["evolution/skill"]
-requires = ["propose_skill_update", "test_skill_update", "apply_skill_update", "undo_skill_update", "read_skill_freshness"]
-+++
+---
+name: "self-update"
+description: "Propose, test, apply, and undo updates to Agent-owned Skills"
+metadata:
+  super-agent-agent-can-update: "false"
+  super-agent-categories: "[\"evolution/skill\"]"
+  super-agent-created-by: "builtin"
+  super-agent-requires: "[\"propose_skill_update\",\"test_skill_update\",\"apply_skill_update\",\"undo_skill_update\",\"read_skill_freshness\"]"
+  super-agent-type: "evolution"
+  super-agent-version: "0.2.0"
+---
 # Skill self-update method
 
 Only update a Skill created by this Agent and explicitly marked as Agent-updatable. Use run evidence and freshness components to state a concrete improvement reason. Create an inactive candidate first. Design cases that cover intended behavior and known regression risks, then test the candidate and baseline without changing the active Skill.

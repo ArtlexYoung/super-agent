@@ -20,6 +20,10 @@ Super Agent gives the model a compact Skill index, lets the model decide what it
 
 Prompts, tool-use methods, memory methods, workflows, and task policies share one Skill format and one central progressive-disclosure path; model connections and secrets remain explicit configuration.
 
+Skill 直接采用 Agent Skills 标准的 `<name>/SKILL.md`、YAML front matter 和 Markdown 正文，不维护私有文档变体。
+
+Skills use the Agent Skills standard `<name>/SKILL.md`, YAML front matter, and Markdown body directly, without a private document variant.
+
 默认 Python 安装没有第三方运行依赖，基础 `Agent()` 无状态、不写文件，存储、记忆、MCP 和学习都按需启用。
 
 The default Python install has no third-party runtime dependencies, a basic `Agent()` is stateless and writes no files, and storage, memory, MCP, and learning are opt-in.
@@ -101,6 +105,10 @@ result = main.run("让工程组修复失败的测试", skill="common-multi-produ
 同级组通过父组共享板交换带缓存路径的明确记录。任务队列、等待唤醒、价格和权重路由、断路重试、动态压缩及多模型决策都由同一个 `AgentTreeRuntime` 管理；不添加组或子 Agent 时不会创建这些状态。
 
 Sibling groups exchange explicit records with cache paths through their parent board. One `AgentTreeRuntime` owns queues, sleep and wake events, price and weight routing, circuit retries, adaptive compression, and multi-model decisions; none of this state is created when no group or subagent is added.
+
+`common-multi-review` 让至少两个不同 Agent 独立检视同一材料，再交叉验证发现；多样性不足时明确失败，不退化成执行者自检。
+
+`common-multi-review` assigns the same artifact to at least two distinct Agents and then cross-checks findings; insufficient diversity fails explicitly instead of degrading to executor self-review.
 
 ## CLI
 
@@ -186,6 +194,7 @@ Super Agent thanks the projects, paper, and protocol below. This table keeps onl
 | [OpenClaw](https://github.com/openclaw/openclaw) | Agent framework，MIT | Agent、会话、记忆、配置和 Skill 的组合与隔离 / composition and isolation |
 | [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) | Harness，MIT | loop、session、scope、工具和事件流水线 / loops, sessions, scopes, tools, events |
 | [Claude Code](https://github.com/anthropics/claude-code) | 公开产品，商业条款 / public product, commercial terms | 公开插件、SDK、文档中的代码流程与多视角复核 / public plugins, SDK, docs, coding flow, review |
+| [Agent Skills](https://agentskills.io/specification) | 开放规范，Apache-2.0 / open specification, Apache-2.0 | `SKILL.md`、YAML 元数据、目录资源和渐进披露 / `SKILL.md`, YAML metadata, directory resources, progressive disclosure |
 | [时空可组合性论文](https://github.com/cordiverse/paper) | 论文 / paper | 可逆副作用、响应式共作用、统一上下文 / reversible effects, coeffects, unified context |
 | [Model Context Protocol](https://github.com/modelcontextprotocol/modelcontextprotocol) | 协议 / protocol | initialize、工具发现、工具调用和 stdio JSON-RPC / initialization, discovery, calls, stdio JSON-RPC |
 | [EvalPlus](https://github.com/evalplus/evalplus) / [LiveCodeBench](https://github.com/LiveCodeBench/LiveCodeBench) | 评测项目 / evaluation projects | 代码任务数据、执行规则和结果对照 / coding tasks, execution rules, comparison |

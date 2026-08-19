@@ -19,6 +19,7 @@ The notes below describe the public repository state used for Super Agent `v0.2.
 | [OpenClaw](https://github.com/openclaw/openclaw) | `src/agents`、`src/memory`、`src/sessions`、配置层、`skills` | 代码式 Agent 组合、用户和 Agent 状态隔离、会话与 Skill 目录 |
 | [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) | `agent-loop`、`session`、`tools`、`scope`、bundle/profile、事件流水线 | 可选机制挂载、运行事件事实源、运行范围资源所有权、可替换边界 |
 | [Claude Code](https://github.com/anthropics/claude-code) | 公开插件、SDK 和文档；`feature-dev`、`code-review`、`pr-review-toolkit`、`plugin-dev`、`security-guidance` | 代码任务分阶段执行、多视角复核、Skill 结构、操作前提醒 |
+| [Agent Skills](https://github.com/agentskills/agentskills) | `SKILL.md` 规范、YAML front matter、标准资源目录、渐进披露 | Skill 的可移植目录格式、标准字段和资源边界 |
 | [《A Programming Paradigm for Spatiotemporal Composability》](https://github.com/cordiverse/paper) | 可逆副作用、响应式共作用、统一上下文 | 原子 Skill 激活、逆序清理、显式 Runtime 需求、组合约束 |
 | [Model Context Protocol](https://github.com/modelcontextprotocol/modelcontextprotocol) | `initialize`、`tools/list`、`tools/call`、stdio JSON-RPC | MCP 适配边界和显式工具注册 |
 | [EvalPlus](https://github.com/evalplus/evalplus) / [LiveCodeBench](https://github.com/LiveCodeBench/LiveCodeBench) | HumanEval+、Code Generation 数据与执行规则 | 代码能力对照评测，不进入 Runtime |
@@ -57,6 +58,12 @@ Claude Code 不是本项目的开源 Runtime 依赖。我们只参考公开插�
 
 Claude Code is not an open-source Runtime dependency of this project. We reference only observable workflows in public plugins, SDKs, and documentation: explore, design and implement, then verify; we also study multi-perspective review, plugin layout, and reminders before sensitive actions.
 
+### Agent Skills
+
+Super Agent 直接采用 Agent Skills 的 `<name>/SKILL.md`、YAML front matter、`references/`、`scripts/` 和 `assets/` 约定，并保持“索引、正文、资源”三级渐进披露。Super Agent 自己的类型、工具依赖、组合和更新权限只放在标准字符串 `metadata` 中，不新增私有顶层字段。
+
+Super Agent directly adopts Agent Skills conventions for `<name>/SKILL.md`, YAML front matter, `references/`, `scripts/`, and `assets/`, preserving metadata/body/resource progressive disclosure. Super Agent type, tool dependency, composition, and update-authority extensions live only in the standard string-valued `metadata` map, without private top-level fields.
+
 ### 时空可组合性论文
 
 论文中的可逆副作用、响应式共作用和统一上下文为能力组合提供了抽象参考。Super Agent 只将这些思想转化为轻量工程约束，例如 Skill 激活失败时不留下半成品状态、资源按逆序清理、运行上下文明确声明需求；本项目不声称实现论文中的 Cordis 演算。
@@ -90,9 +97,9 @@ EvalPlus HumanEval+ and LiveCodeBench Code Generation data and execution rules a
 
 ## 许可证与版权 / Licensing and Copyright
 
-Super Agent 自身使用仓库根目录 [Apache License 2.0](../LICENSE)。Codex、Hermes Agent、OpenClaw 和 DeepSeek Harness 的许可证信息以各自上游仓库和随附许可证文件为准；本文只记录研究时的公开声明，不替代上游许可证文本。
+Super Agent 自身使用仓库根目录 [Apache License 2.0](../LICENSE)。Codex、Hermes Agent、OpenClaw、DeepSeek Harness 和 Agent Skills 的许可证信息以各自上游仓库和随附许可证文件为准；本文只记录研究时的公开声明，不替代上游许可证文本。
 
-Super Agent is licensed under the [Apache License 2.0](../LICENSE). License information for Codex, Hermes Agent, OpenClaw, and DeepSeek Harness is governed by each upstream repository and its included license files; this document records the public notices observed during study and does not replace upstream license text.
+Super Agent is licensed under the [Apache License 2.0](../LICENSE). License information for Codex, Hermes Agent, OpenClaw, DeepSeek Harness, and Agent Skills is governed by each upstream repository and its included license files; this document records the public notices observed during study and does not replace upstream license text.
 
 Claude Code 的仓库、插件、SDK 和文档受其各自的商业或其他适用条款约束。本项目不把 Claude Code Runtime 代码作为开源代码使用，也不把其作为安装依赖。
 

@@ -48,26 +48,21 @@ Inside a conversation, use `/help`, `/clear`, or `/exit` for terminal controls.
 
 ## Add a Skill
 
-A Skill is one Markdown file with TOML front matter:
+Skills use the Agent Skills directory standard directly. Create `skills/research/SKILL.md`:
 
 ```markdown
-+++
-name = "research"
-type = "prompt"
-description = "Research a question and report cited findings"
-version = "1.0.0"
-created_by = "user"
-agent_can_update = false
-categories = ["research"]
-+++
+---
+name: research
+description: Research questions and organize evidence. Use for investigations or evidence-backed conclusions.
+---
 
 Confirm the question and evidence scope, then report conclusions with sources.
 ```
 
-Place the file under any directory listed in `skill_paths`. There are no trigger words.
-The model decides which Skills to disclose or activate from their descriptions. `requires`
-lists tools that must exist; `optional_tools` lists tools mounted when registered without
-making the method unavailable when they are absent.
+The directory name must match `name`; then add `skills` to `skill_paths`. There are no trigger
+words. The model decides which Skills to disclose or activate from their descriptions. Type,
+tool dependencies, composition, and update authority are optional string-valued
+`super-agent-*` metadata documented in [Skills](docs/skills.md).
 
 ## Use Python
 
@@ -103,6 +98,10 @@ and an Agent keeps its existing subtree when attached. Sibling Agents exchange s
 through their parent board. One user-scoped tree runtime owns tasks, sleep and wake events, price
 routing, circuit retries, adaptive compression, and multi-model decisions. It is not created when
 the Agent has no groups or subagents.
+
+Enable `common-multi-review` when several outside perspectives should inspect the same artifact.
+At least two distinct Agents review independently before another pass cross-checks findings;
+insufficient diversity fails explicitly instead of degrading to executor self-review.
 
 ## Add State Only When Needed
 

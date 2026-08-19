@@ -1,8 +1,10 @@
 import json
 import tempfile
 import unittest
+import zipfile
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from unittest.mock import patch
 from urllib.error import URLError
 
 from adapter.process import ProcessSettings, ProcessTools
@@ -12,7 +14,8 @@ from core.event import RunIdentity
 from core.model import ModelEvent, Tool
 from core.provider import MockModel, ModelPricing
 from core.records import EventStore, compact_child_result
-from core.run import FatalToolError, RunSession
+from core.run import FatalToolError, RunSession, ToolContext
+from skill.document import format_skill, parse_skill_text, read_skill_package
 from skill.evolution import (
     SkillEvidence,
     SkillEvolution,
@@ -27,26 +30,142 @@ from super_agent import Agent
 
 
 def write_skill(root: Path, name: str = "demo", body: str = "Follow the demo method.", *, created_by: str = "user") -> Path:
-    path = root / "prompt" / f"{name}.md"
+    path = root / name / "SKILL.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
-        "+++\n"
-        f'name = "{name}"\n'
-        'type = "prompt"\n'
-        'description = "A demo method"\n'
-        'version = "1.0.0"\n'
-        f'created_by = "{created_by}"\n'
-        f'agent_can_update = {str(created_by == "agent").lower()}\n'
-        'categories = ["demo"]\n'
-        '+++\n'
-        + body
-        + "\n",
+        format_skill(
+            {
+                "name": name,
+                "type": "prompt",
+                "description": "A demo method",
+                "version": "1.0.0",
+                "created_by": created_by,
+                "agent_can_update": created_by == "agent",
+                "categories": ["demo"],
+            },
+            body,
+        ),
         encoding="utf-8",
     )
     return path
 
 
 class SkillLibraryTests(unittest.TestCase):
+    def test_standard_agent_skill_defaults_and_metadata_are_loaded(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "skills" / "external-method" / "SKILL.md"
+            path.parent.mkdir(parents=True)
+            path.write_text(
+                "---\n"
+                "name: external-method\n"
+                "description: 'External standard method used for compatible Skill loading.' # selection text\n"
+                "metadata:\n"
+                "  author: 'example-org' # standard metadata\n"
+                '  version: "1.0"\n'
+                "---\n\n"
+                "Follow the external method.\n",
+                encoding="utf-8",
+            )
+            skill = SkillLibrary((path.parents[1],)).find("external-method")
+            self.assertEqual("prompt:external-method", skill.key)
+            self.assertEqual("user", skill.created_by)
+            self.assertEqual("example-org", skill.metadata["standard_metadata"]["author"])
+
+            empty_metadata = parse_skill_text(
+                "---\nname: empty-metadata\ndescription: Standard empty metadata\nmetadata: {}\n---\nbody\n",
+                Path(directory) / "empty-metadata" / "SKILL.md",
+            )
+            self.assertEqual({}, empty_metadata.metadata["standard_metadata"])
+
+    def test_nonstandard_front_matter_and_wrong_directory_are_rejected(self):
+        legacy = "+++\nname = \"legacy\"\ndescription = \"old\"\n+++\nbody\n"
+        with self.assertRaisesRegex(ValueError, "YAML front matter"):
+            parse_skill_text(legacy, Path("legacy") / "SKILL.md")
+        standard = "---\nname: right-name\ndescription: Correct format\n---\nbody\n"
+        with self.assertRaisesRegex(ValueError, "parent directory"):
+            parse_skill_text(standard, Path("wrong-name") / "SKILL.md")
+
+    def test_standard_package_preserves_and_discloses_resources(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            source_root = base / "source"
+            skill_path = write_skill(source_root)
+            reference = skill_path.parent / "references" / "method.md"
+            reference.parent.mkdir()
+            reference.write_text("evidence-" * 4, encoding="utf-8")
+            source = SkillLibrary((source_root,))
+
+            direct = SkillLibrary((), writable_root=base / "direct")
+            direct_skill = direct.install(skill_path)
+            self.assertEqual(
+                "evidence-" * 4,
+                (direct_skill.root / "references" / "method.md").read_text(
+                    encoding="utf-8"
+                ),
+            )
+
+            archive = source.pack("demo", base / "demo.zip")
+
+            installed_root = base / "installed"
+            installed = SkillLibrary((), writable_root=installed_root)
+            skill = installed.install(archive)
+            self.assertEqual("prompt:demo", skill.key)
+            self.assertEqual(
+                "evidence-" * 4,
+                (skill.root / "references" / "method.md").read_text(encoding="utf-8"),
+            )
+
+            tool = next(
+                item for item in installed.tools() if item.name == "read_skill_resource"
+            )
+            session = RunSession(RunIdentity(), [], [], {})
+            context = ToolContext(session, lambda _event, _data: None)  # type: ignore[arg-type]
+            page = tool.handler(
+                {"skill": "demo", "path": "references/method.md", "max_characters": 9},
+                context,
+            )
+            self.assertEqual("evidence-", page["content"])
+            self.assertIsNotNone(page["next_offset"])
+            with self.assertRaises(PermissionError):
+                tool.handler({"skill": "demo", "path": "../outside.md"}, context)
+
+            installed.remove(skill.key, expected_sha256=skill.sha256)
+            self.assertFalse(skill.root.exists())
+
+    def test_package_rejects_nested_skills_and_unsafe_zip_manifests(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            skill_path = write_skill(base / "source")
+            nested = skill_path.parent / "references" / "nested" / "SKILL.md"
+            nested.parent.mkdir(parents=True)
+            nested.write_text(skill_path.read_text(encoding="utf-8"), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "no nested SKILL.md"):
+                read_skill_package(skill_path)
+
+            content = skill_path.read_text(encoding="utf-8")
+            duplicate = base / "duplicate.zip"
+            with zipfile.ZipFile(duplicate, "w") as archive:
+                archive.writestr("demo/SKILL.md", content)
+                archive.writestr("demo/references/result.md", "first")
+                archive.writestr("demo/references/./result.md", "second")
+            with self.assertRaisesRegex(ValueError, "duplicate paths"):
+                read_skill_package(duplicate)
+
+            limited = base / "limited.zip"
+            with zipfile.ZipFile(limited, "w") as archive:
+                archive.writestr("demo/SKILL.md", content)
+                archive.writestr("demo/references/result.md", "result")
+            with (
+                patch("skill.document.MAX_PACKAGE_FILES", 1),
+                self.assertRaisesRegex(ValueError, "more than 1 files"),
+            ):
+                read_skill_package(limited)
+            with (
+                patch("skill.document.MAX_PACKAGE_BYTES", 10),
+                self.assertRaisesRegex(ValueError, "unpacked bytes"),
+            ):
+                read_skill_package(limited)
+
     def test_index_pages_cache_history_and_activation_share_one_library(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "skills"

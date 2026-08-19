@@ -38,6 +38,29 @@ class DisclosedContent:
 
 
 @dataclass(frozen=True)
+class DisclosurePage:
+    """一个有界的索引页。"""
+
+    items: tuple[Mapping[str, object], ...]
+    page: int
+    page_size: int
+    total: int
+
+    @property
+    def has_more(self) -> bool:
+        return self.page * self.page_size < self.total
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "items": [dict(item) for item in self.items],
+            "page": self.page,
+            "page_size": self.page_size,
+            "total": self.total,
+            "has_more": self.has_more,
+        }
+
+
+@dataclass(frozen=True)
 class _ContentResource:
     reference: str
     content: str
@@ -204,7 +227,9 @@ class DisclosureStore:
             try:
                 resource = self._memory.pop(cache_path)
             except KeyError as error:
-                raise KeyError(f"disclosure cache path not found: {cache_path}") from error
+                raise KeyError(
+                    f"disclosure cache path not found: {cache_path}"
+                ) from error
             self._memory[cache_path] = resource
             return resource
         if self.cache_root is None:
@@ -233,7 +258,7 @@ class DisclosureStore:
             "sha256": value.sha256,
         }
         self._history.append(event)
-        del self._history[:-self.max_entries]
+        del self._history[: -self.max_entries]
         if self.record_event is not None:
             self.record_event(event_type, event)
 
@@ -283,7 +308,10 @@ def _page_for_serialized_limit(
     high = min(maximum, max(1, len(resource.content) - offset))
     while low < high:
         middle = (low + high + 1) // 2
-        if _serialized_characters(_page(resource, cache_path, offset, middle)) <= serialized_limit:
+        if (
+            _serialized_characters(_page(resource, cache_path, offset, middle))
+            <= serialized_limit
+        ):
             low = middle
         else:
             high = middle - 1
@@ -309,7 +337,9 @@ def _atomic_write(path: Path, content: bytes) -> None:
 
 
 def _prune(root: Path, limit: int) -> None:
-    files = sorted(root.rglob("*.json"), key=lambda path: path.stat().st_mtime, reverse=True)
+    files = sorted(
+        root.rglob("*.json"), key=lambda path: path.stat().st_mtime, reverse=True
+    )
     for path in files[limit:]:
         path.unlink(missing_ok=True)
 
@@ -334,7 +364,11 @@ def _text_value(value: object, name: str) -> str:
 
 
 def _integer(value: object, name: str, minimum: int, maximum: int) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or not minimum <= value <= maximum:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int)
+        or not minimum <= value <= maximum
+    ):
         raise ValueError(f"{name} must be between {minimum} and {maximum}")
     return value
 
