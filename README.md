@@ -34,18 +34,17 @@ Python 3.11 or newer is required.
 
 ```bash
 python3.11 -m pip install -e .
-export OA3_SILICONFLOW_API_KEY="..."
-super-agent check
-super-agent "解释这个仓库"
+SUPER_AGENT_PROVIDER=mock super-agent check
+SUPER_AGENT_PROVIDER=mock super-agent "解释这个仓库"
 ```
 
 不带参数运行 `super-agent` 会进入交互对话，直接传入文本则执行一次任务。
 
 Run `super-agent` without arguments for an interactive conversation, or pass text directly for a one-shot task.
 
-离线检查必须显式启用 Mock Provider，不会偷偷替换真实模型。
+远程模型必须通过通用环境变量或 `common.toml` 显式配置；项目不识别私人变量名，也不会猜测供应商、模型或地址。
 
-Offline checks must explicitly select the Mock Provider and never silently replace a real model.
+Remote models must be configured explicitly through generic environment variables or `common.toml`; the project does not recognize private variable names or guess a provider, model, or endpoint.
 
 ```bash
 SUPER_AGENT_PROVIDER=mock super-agent check
@@ -176,60 +175,24 @@ The complete usage guide is split by language, while this bilingual overview kee
 
 *Acknowledgements and Design References*
 
-Super Agent 感谢以下项目的作者与贡献者，项目名称和模块路径以 `v0.2.0` 编写时公开内容为准。
+Super Agent 感谢以下项目、论文和协议。下表只保留可扫描的借鉴范围；模块、设计影响、许可证和边界说明见[致谢与借鉴详细文档](docs/acknowledgements.md)。
 
-Super Agent thanks the authors and contributors below, with project names and module paths referring to the public sources available when `v0.2.0` was written.
+Super Agent thanks the projects, paper, and protocol below. This table keeps only the scannable summary; see the [detailed acknowledgements](docs/acknowledgements.md) for modules, design impact, licensing, and boundaries.
 
-除明确列出的协议约定外，Agent 架构均在 Python 中独立实现，致谢不表示复制或捆绑对应运行时代码。
+| 项目 / Reference | 类型与许可证 / Type and license | 主要借鉴 / Main influence |
+| --- | --- | --- |
+| [OpenAI Codex](https://github.com/openai/codex) | Agent runtime，Apache-2.0 | turn、工具路由、受控执行、结构化补丁、Skill 发现 / turns, routing, controlled execution, patches, Skill discovery |
+| [Hermes Agent](https://github.com/NousResearch/hermes-agent) | Agent framework，MIT | 对话循环、工具边界、记忆、Skill、子 Agent 生命周期 / loop, tool boundaries, memory, Skills, subagents |
+| [OpenClaw](https://github.com/openclaw/openclaw) | Agent framework，MIT | Agent、会话、记忆、配置和 Skill 的组合与隔离 / composition and isolation |
+| [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) | Harness，MIT | loop、session、scope、工具和事件流水线 / loops, sessions, scopes, tools, events |
+| [Claude Code](https://github.com/anthropics/claude-code) | 公开产品，商业条款 / public product, commercial terms | 公开插件、SDK、文档中的代码流程与多视角复核 / public plugins, SDK, docs, coding flow, review |
+| [时空可组合性论文](https://github.com/cordiverse/paper) | 论文 / paper | 可逆副作用、响应式共作用、统一上下文 / reversible effects, coeffects, unified context |
+| [Model Context Protocol](https://github.com/modelcontextprotocol/modelcontextprotocol) | 协议 / protocol | initialize、工具发现、工具调用和 stdio JSON-RPC / initialization, discovery, calls, stdio JSON-RPC |
+| [EvalPlus](https://github.com/evalplus/evalplus) / [LiveCodeBench](https://github.com/LiveCodeBench/LiveCodeBench) | 评测项目 / evaluation projects | 代码任务数据、执行规则和结果对照 / coding tasks, execution rules, comparison |
 
-Except for the explicitly listed protocol contracts, the Agent architecture is independently implemented in Python, and acknowledgement does not imply vendoring the referenced runtime code.
+第三方项目保留各自版权与许可证；本项目许可证见 [LICENSE](LICENSE)。
 
-### 开源 Agent 架构
-
-*Open-source Agent Architecture*
-
-- **[OpenAI Codex](https://github.com/openai/codex)（Apache-2.0）：** 研究了 `codex-rs/core` 的 turn 生命周期、上下文与工具路由，`exec` 的受控进程和事件输出，`execpolicy` 的动作判定，`apply-patch` 的结构化修改，以及 `skills` 的发现与解析；这些经验用于代码任务链、显式副作用检查、有界命令、受检查文件修改和渐进式 Skill 披露。
-  **[OpenAI Codex](https://github.com/openai/codex) (Apache-2.0):** We studied turn lifecycle, context, and tool routing in `codex-rs/core`, controlled processes and event output in `exec`, action decisions in `execpolicy`, structured edits in `apply-patch`, and discovery and parsing in `skills`; these informed the coding task chain, explicit side-effect checks, bounded commands, checked file changes, and progressive Skill disclosure.
-- **[Hermes Agent](https://github.com/NousResearch/hermes-agent)（MIT）：** 研究了 `agent/conversation_loop.py`、`tool_executor.py`、`tool_guardrails.py`、`memory_manager.py`、`skill_*` 和 `subagent_lifecycle.py`；这些模块启发了通用任务链、工具边界、记忆整理、Skill 组织和子 Agent 委派流程。
-  **[Hermes Agent](https://github.com/NousResearch/hermes-agent) (MIT):** We studied `agent/conversation_loop.py`, `tool_executor.py`, `tool_guardrails.py`, `memory_manager.py`, `skill_*`, and `subagent_lifecycle.py`; these modules informed the general task chain, tool boundaries, memory organization, Skill organization, and subagent delegation flow.
-- **[OpenClaw](https://github.com/openclaw/openclaw)（MIT）：** 研究了 `src/agents`、`src/memory`、`src/sessions`、配置层和 `skills` 目录；这些结构启发了代码式多 Agent 组合、用户与 Agent 状态隔离、可复用 Skill 目录和通用任务工作流。
-  **[OpenClaw](https://github.com/openclaw/openclaw) (MIT):** We studied `src/agents`, `src/memory`, `src/sessions`, configuration layers, and the `skills` tree; these structures informed code-first multi-Agent composition, user and Agent state isolation, reusable Skill catalogs, and general task workflows.
-- **[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（MIT）：** 研究了 `packages/core/agent-loop`、`packages/core/session`、`packages/core/tools`、`packages/core/scope`、bundle/profile 组合和事件流水线；其“一切皆插件”思路启发了可选机制由 Skill 挂载、运行事件作为事实来源、运行范围资源所有权和可替换边界。
-  **[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (MIT):** We studied `packages/core/agent-loop`, `packages/core/session`, `packages/core/tools`, `packages/core/scope`, bundle/profile composition, and the event pipeline; its “everything is a plugin” model informed Skill-attached optional mechanisms, runtime events as facts, run-scoped resource ownership, and replaceable boundaries.
-
-### 论文与组合模型
-
-*Research and Composition Model*
-
-- **[《A Programming Paradigm for Spatiotemporal Composability》](https://github.com/cordiverse/paper)：** 论文中的可逆副作用、响应式共作用和统一上下文启发了原子 Skill 激活、逆序资源清理、显式 Runtime 需求、稳定运行快照和组合故障门禁；Super Agent 没有声称实现 Cordis 演算，而是采用了适合轻量 Python Runtime 的工程约束。
-  **[A Programming Paradigm for Spatiotemporal Composability](https://github.com/cordiverse/paper):** Its revertible effects, reactive coeffects, and unified context informed atomic Skill activation, reverse-order resource cleanup, explicit Runtime needs, stable run snapshots, and composability fault gates; Super Agent does not claim to implement the Cordis calculus and instead adopts engineering constraints suitable for a lightweight Python Runtime.
-
-### 协议
-
-*Protocols*
-
-- **[Model Context Protocol](https://github.com/modelcontextprotocol/modelcontextprotocol)：** `initialize`、`tools/list`、`tools/call` 和 stdio JSON-RPC 约定用于 MCP 适配器，Super Agent 额外要求实现与副作用在可信代码中显式注册。
-  **[Model Context Protocol](https://github.com/modelcontextprotocol/modelcontextprotocol):** The MCP adapter follows `initialize`, `tools/list`, `tools/call`, and stdio JSON-RPC contracts, while Super Agent additionally requires implementations and side effects to be registered explicitly in trusted code.
-
-### 评测项目
-
-*Evaluation Projects*
-
-- **[EvalPlus](https://github.com/evalplus/evalplus)：** HumanEval+ 数据与执行规则用于代码正确性对照评测，不进入 Super Agent Runtime。
-  **[EvalPlus](https://github.com/evalplus/evalplus):** HumanEval+ data and execution rules are used for comparative code-correctness evaluation and are not part of Super Agent Runtime.
-- **[LiveCodeBench](https://github.com/LiveCodeBench/LiveCodeBench)：** Code Generation 数据与评测约定用于公开结果表，不进入 Super Agent Runtime。
-  **[LiveCodeBench](https://github.com/LiveCodeBench/LiveCodeBench):** Code Generation data and evaluation contracts are used for the published result table and are not part of Super Agent Runtime.
-
-### 公开但非开源的参考
-
-*Public but Non-open-source Reference*
-
-- **[Claude Code](https://github.com/anthropics/claude-code)：** 其仓库受 Anthropic 商业条款约束，本项目只研究公开插件、SDK 和文档，主要参考 `feature-dev` 的探索/设计/实现阶段、`code-review` 与 `pr-review-toolkit` 的多视角复核、`plugin-dev` 的 Skill 结构和 `security-guidance` 的操作前提醒，没有将 Claude Code Runtime 代码视为开源代码。
-  **[Claude Code](https://github.com/anthropics/claude-code):** Its repository is governed by Anthropic commercial terms, so this project studies only public plugins, SDKs, and documentation, mainly the exploration/design/implementation phases in `feature-dev`, multi-perspective review in `code-review` and `pr-review-toolkit`, Skill structure in `plugin-dev`, and pre-action reminders in `security-guidance`, without treating Claude Code Runtime code as open source.
-
-第三方项目保留各自版权与许可证，本项目许可证见 [LICENSE](LICENSE)。
-
-Third-party projects retain their own copyrights and licenses, and this project is licensed under [LICENSE](LICENSE).
+Third-party projects retain their own copyrights and licenses; this project is licensed under [LICENSE](LICENSE).
 
 ## 验证仓库
 

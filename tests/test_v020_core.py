@@ -384,14 +384,22 @@ class CoreRuntimeTests(unittest.TestCase):
         self.assertEqual("alpha", selected)
         self.assertEqual("first", next(item.text for item in events if item.event_type == "text"))
 
-    def test_environment_selects_documented_siliconflow_model(self):
-        config = config_from_environment({"OA3_SILICONFLOW_API_KEY": "key"})
-        self.assertEqual("THUDM/GLM-4-9B-0414", config.models[0].model)
-        self.assertEqual("https://api.siliconflow.cn/v1", config.models[0].base_url)
-        self.assertEqual("OA3_SILICONFLOW_API_KEY", config.models[0].api_key_env)
-        model = model_from_environment({"OA3_SILICONFLOW_API_KEY": "key"})
-        self.assertEqual("THUDM/GLM-4-9B-0414", model.model)
-        self.assertEqual("https://api.siliconflow.cn/v1", model.base_url)
+    def test_environment_uses_only_explicit_generic_model_settings(self):
+        environment = {
+            "SUPER_AGENT_MODEL": "example-model",
+            "SUPER_AGENT_BASE_URL": "https://models.example.test/v1",
+            "SUPER_AGENT_API_KEY_ENV": "MODEL_API_KEY",
+        }
+        config = config_from_environment(environment)
+        self.assertEqual("example-model", config.models[0].model)
+        self.assertEqual("https://models.example.test/v1", config.models[0].base_url)
+        self.assertEqual("MODEL_API_KEY", config.models[0].api_key_env)
+        model = model_from_environment(environment)
+        self.assertEqual("example-model", model.model)
+        self.assertEqual("https://models.example.test/v1", model.base_url)
+
+    def test_environment_does_not_guess_a_model_from_unrelated_variables(self):
+        self.assertEqual((), config_from_environment({"UNRELATED_ENV": "value"}).models)
 
     def test_environment_model_requires_explicit_configuration(self):
         with self.assertRaises(RuntimeError):

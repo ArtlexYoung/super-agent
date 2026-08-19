@@ -236,16 +236,6 @@ def config_from_environment(environment: Mapping[str, str] | None = None) -> Con
     provider = values.get("SUPER_AGENT_PROVIDER", "").strip() or "openai-compatible"
     base_url = values.get("SUPER_AGENT_BASE_URL", "").strip() or None
     api_key_env = values.get("SUPER_AGENT_API_KEY_ENV", "").strip() or None
-    # 有硅基流动密钥时，使用文档中的零配置远程示例。
-    if (
-        provider != "mock"
-        and not model
-        and values.get("OA3_SILICONFLOW_API_KEY", "").strip()
-    ):
-        model = "THUDM/GLM-4-9B-0414"
-        provider = "openai-compatible"
-        base_url = "https://api.siliconflow.cn/v1"
-        api_key_env = "OA3_SILICONFLOW_API_KEY"
     if not model and provider == "mock":
         model = "Mock response"
     if not model:

@@ -42,10 +42,10 @@ class Settings:
 
 
 def settings() -> Settings:
-    api_key = os.environ.get("OA3_SILICONFLOW_API_KEY", "").strip()
+    api_key = os.environ.get("EVAL_PROVIDER_API_KEY", "").strip()
     local_token = os.environ.get("EVAL_PROXY_TOKEN", "").strip()
     if not api_key or not local_token:
-        raise RuntimeError("OA3_SILICONFLOW_API_KEY and EVAL_PROXY_TOKEN are required")
+        raise RuntimeError("EVAL_PROVIDER_API_KEY and EVAL_PROXY_TOKEN are required")
     return Settings(
         api_key=api_key,
         base_url=os.environ.get("SILICONFLOW_BASE_URL", DEFAULT_BASE_URL).rstrip("/"),

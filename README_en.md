@@ -24,19 +24,22 @@ Python 3.11 or newer is required.
 
 ```bash
 python3.11 -m pip install -e .
-export OA3_SILICONFLOW_API_KEY="..."
-super-agent check
-super-agent "Explain this repository"
+SUPER_AGENT_PROVIDER=mock super-agent check
+SUPER_AGENT_PROVIDER=mock super-agent "Explain this repository"
 ```
 
 `check` only reads configuration, Skills, and model settings. It does not create storage
-or call a model. `OA3_SILICONFLOW_API_KEY` selects the documented free model; other endpoints
-use generic environment variables or `common.toml`. An offline smoke test must be explicit:
+or call a model. Configure remote models explicitly with generic environment variables or
+`common.toml`; the project never infers a provider, model, or endpoint from private names:
 
 ```bash
-SUPER_AGENT_PROVIDER=mock super-agent check
-SUPER_AGENT_PROVIDER=mock super-agent "hello"
+export SUPER_AGENT_MODEL="your-model"
+export SUPER_AGENT_BASE_URL="https://provider.example/v1"
+export SUPER_AGENT_API_KEY_ENV="MODEL_API_KEY"
+super-agent check
 ```
+
+Provide `MODEL_API_KEY` in your external shell or secret manager first; documentation and configuration files store only the variable name, never the key value.
 
 Run `super-agent` without arguments for an interactive conversation. No project files are
 generated; add `common.toml`, `cli.toml`, `code.toml`, or local Skills only when needed.
@@ -210,6 +213,7 @@ Full task-level reports, isolated runners, and local evaluation asset guidance l
 - [CLI](docs/cli.md)
 - [Learning, memory, and Skill changes](docs/evolution.md)
 - [Safety](docs/safety.md)
+- [Acknowledgements and design references](docs/acknowledgements.md)
 
 Runnable examples are in `examples/minimal.py`, `examples/custom_skill.py`, and
 `examples/team.py`.
@@ -228,5 +232,5 @@ The dependency-free comparison runner and its reproducibility contract are docum
 
 ## Acknowledgements
 
-The projects, modules, protocols, and research that informed Super Agent are documented in the
-[bilingual acknowledgements](README.md#致谢与借鉴).
+The projects, modules, protocols, licensing notes, and design boundaries are documented in
+[Acknowledgements and Design References](docs/acknowledgements.md).

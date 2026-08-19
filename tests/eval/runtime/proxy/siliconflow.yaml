@@ -3,7 +3,7 @@ model_list:
     litellm_params:
       model: openai/THUDM/GLM-4-9B-0414
       api_base: https://api.siliconflow.cn/v1
-      api_key: os.environ/OA3_SILICONFLOW_API_KEY
+      api_key: os.environ/EVAL_PROVIDER_API_KEY
 
 litellm_settings:
   drop_params: true

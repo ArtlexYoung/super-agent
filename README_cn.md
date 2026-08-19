@@ -21,18 +21,21 @@ Super Agent 仍是实验性的 `1.0` 前软件。破坏性修改不保留兼容�
 
 ```bash
 python3.11 -m pip install -e .
-export OA3_SILICONFLOW_API_KEY="..."
-super-agent check
-super-agent "解释这个仓库"
+SUPER_AGENT_PROVIDER=mock super-agent check
+SUPER_AGENT_PROVIDER=mock super-agent "解释这个仓库"
 ```
 
-`check` 只读取配置、Skill 和模型设置，不创建存储，也不调用模型。`OA3_SILICONFLOW_API_KEY`
-会选择文档中的免费模型；其他接口使用通用环境变量或 `common.toml`。离线冒烟测试必须显式启用 Mock：
+`check` 只读取配置、Skill 和模型设置，不创建存储，也不调用模型。远程模型使用通用环境变量
+或 `common.toml` 显式配置；项目不根据私人变量名猜测供应商、模型或地址：
 
 ```bash
-SUPER_AGENT_PROVIDER=mock super-agent check
-SUPER_AGENT_PROVIDER=mock super-agent "你好"
+export SUPER_AGENT_MODEL="your-model"
+export SUPER_AGENT_BASE_URL="https://provider.example/v1"
+export SUPER_AGENT_API_KEY_ENV="MODEL_API_KEY"
+super-agent check
 ```
+
+请先在外部 Shell 或密钥管理器中提供 `MODEL_API_KEY`；文档和配置文件只保存变量名，不保存密钥值。
 
 不带参数运行 `super-agent` 会进入交互对话。程序不会生成项目文件；只有确实需要时才添加
 `common.toml`、`cli.toml`、`code.toml` 或本地 Skill。
@@ -188,6 +191,7 @@ super-agent data conversations list --config common.toml --user alice
 - [CLI](docs/cli.md)
 - [学习、记忆与 Skill 更新](docs/evolution.md)
 - [安全](docs/safety.md)
+- [致谢与借鉴](docs/acknowledgements.md)
 
 可直接运行的示例位于 `examples/minimal.py`、`examples/custom_skill.py` 和
 `examples/team.py`。
@@ -204,4 +208,4 @@ python3.11 scripts/verify_release.py --version 0.2.1 --full
 
 ## 致谢
 
-完整的项目、模块、许可证和借鉴边界说明见[双语致谢](README.md#致谢与借鉴)。
+项目、模块、许可证和借鉴边界见[致谢与借鉴详细文档](docs/acknowledgements.md)。

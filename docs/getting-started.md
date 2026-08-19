@@ -21,17 +21,25 @@ The default install has no third-party Python runtime dependency. `Agent()` crea
 Configure an OpenAI-compatible model, or explicitly select the offline Mock model:
 
 ```bash
-export OA3_SILICONFLOW_API_KEY="your-key"
-super-agent check
-super-agent "解释这个仓库"
-
 SUPER_AGENT_PROVIDER=mock super-agent check
 SUPER_AGENT_PROVIDER=mock super-agent "你好"
 ```
 
-设置 `OA3_SILICONFLOW_API_KEY` 时，运行时会使用 `THUDM/GLM-4-9B-0414` 和 `https://api.siliconflow.cn/v1`。
+远程模型必须显式提供通用设置。`SUPER_AGENT_API_KEY_ENV` 保存变量名，密钥值只存在于该变量中：
 
-When `OA3_SILICONFLOW_API_KEY` is set, the runtime selects `THUDM/GLM-4-9B-0414` at `https://api.siliconflow.cn/v1`.
+Remote models require explicit generic settings. `SUPER_AGENT_API_KEY_ENV` stores the variable name, while the key value exists only in that variable:
+
+```bash
+export SUPER_AGENT_MODEL="your-model"
+export SUPER_AGENT_BASE_URL="https://provider.example/v1"
+export SUPER_AGENT_API_KEY_ENV="MODEL_API_KEY"
+super-agent check
+super-agent "解释这个仓库"
+```
+
+请先在外部 Shell 或密钥管理器中提供 `MODEL_API_KEY`；文档和配置文件只保存变量名，不保存密钥值。
+
+Provide `MODEL_API_KEY` in your external shell or secret manager first; documentation and configuration files store only the variable name, never the key value.
 
 `check` 只读取配置和 Skill，不创建存储、不调用模型；没有模型时返回失败是预期行为。
 

@@ -26,9 +26,9 @@ warn_agent_level = 8
 [[models]]
 name = "default"
 provider = "openai-compatible"
-model = "THUDM/GLM-4-9B-0414"
-base_url = "https://api.siliconflow.cn/v1"
-api_key_env = "OA3_SILICONFLOW_API_KEY"
+model = "your-model"
+base_url = "https://provider.example/v1"
+api_key_env = "MODEL_API_KEY"
 weight = 1.0
 purposes = ["auto", "code"]
 features = ["text", "tools"]
@@ -88,12 +88,14 @@ Loading configuration is a read. Creating JSONL, connecting to a database, writi
 
 ## 环境变量 / Environment Variables
 
-- `OA3_SILICONFLOW_API_KEY`：自动选择文档中的 SiliconFlow 示例模型。
 - `SUPER_AGENT_PROVIDER=mock`：显式离线模型。
 - `SUPER_AGENT_MODEL`、`SUPER_AGENT_BASE_URL`、`SUPER_AGENT_API_KEY_ENV`：通用环境模型设置。
 - `SUPER_AGENT_CLI_CONFIG`：指定 CLI 配置文件。
 
-- `OA3_SILICONFLOW_API_KEY`: selects the documented SiliconFlow example model.
 - `SUPER_AGENT_PROVIDER=mock`: explicitly selects the offline model.
 - `SUPER_AGENT_MODEL`, `SUPER_AGENT_BASE_URL`, `SUPER_AGENT_API_KEY_ENV`: generic environment model settings.
 - `SUPER_AGENT_CLI_CONFIG`: selects a CLI configuration file.
+
+`api_key_env` 和 `SUPER_AGENT_API_KEY_ENV` 只保存变量名。密钥值不得写入 TOML、源码或文档；运行时从用户指定的环境变量读取。
+
+`api_key_env` and `SUPER_AGENT_API_KEY_ENV` store only a variable name. Key values must not be written to TOML, source, or documentation; the runtime reads the user-selected environment variable.
