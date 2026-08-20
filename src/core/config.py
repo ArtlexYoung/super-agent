@@ -77,12 +77,13 @@ class ModelConfig:
         object.__setattr__(self, "request_body", options.request_body)
         object.__setattr__(self, "reasoning_effort", options.reasoning_effort)
 
-    def create(self) -> ModelProfile:
+    def create(self, *, api_key: str | None = None) -> ModelProfile:
         model = create_model(
             self.provider,
             self.model,
             base_url=self.base_url,
             api_key_env=self.api_key_env,
+            api_key=api_key,
             request_options=ModelRequestOptions(
                 request_body=self.request_body,
                 reasoning_effort=self.reasoning_effort,
@@ -142,17 +143,28 @@ class Config:
             value = tomllib.load(stream)
         return config_from_dict(value, source)
 
-    def create_model(self) -> Model:
-        profiles = self.create_model_profiles()
+    def create_model(self, *, api_keys: Mapping[str, str] | None = None) -> Model:
+        profiles = self.create_model_profiles(api_keys=api_keys)
         if len(profiles) == 1 and self.router.max_fallbacks == 0:
             return profiles[0].model
         return ModelRouter(profiles, self.router)
 
-    def create_model_profiles(self) -> tuple[ModelProfile, ...]:
+    def create_model_profiles(
+        self, *, api_keys: Mapping[str, str] | None = None
+    ) -> tuple[ModelProfile, ...]:
         """创建保持 TOML 顺序的模型档案，不发起模型请求。"""
         if not self.models:
             raise RuntimeError("general configuration does not define a model")
-        profiles = tuple(item.create() for item in self.models)
+        profiles = tuple(
+            item.create(
+                api_key=(
+                    None
+                    if api_keys is None
+                    else api_keys.get(item.required_api_key_environment() or "")
+                )
+            )
+            for item in self.models
+        )
         names = [profile.name for profile in profiles]
         if len(names) != len(set(names)):
             raise ValueError("model profile names must be unique")

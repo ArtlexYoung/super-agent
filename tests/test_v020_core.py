@@ -332,6 +332,34 @@ class CoreRuntimeTests(unittest.TestCase):
         self.assertEqual("LEGACY_API_KEY", model.api_key_env)
         self.assertEqual("legacy-secret", model.api_key)
 
+    def test_model_creation_accepts_runtime_secrets_but_configuration_files_do_not(self):
+        secret = "desktop-runtime-secret"
+        config = ModelConfig(
+            "desktop",
+            "openai-compatible",
+            "desktop-model",
+            api_key_env="DESKTOP_MODEL_KEY",
+        )
+
+        self.assertNotIn(secret, repr(config))
+        self.assertEqual("DESKTOP_MODEL_KEY", config.required_api_key_environment())
+        model = config.create(api_key=secret).model
+        self.assertIsInstance(model, OpenAIModel)
+        self.assertEqual(secret, model.api_key)
+        with self.assertRaisesRegex(ValueError, "unknown model configuration fields: api_key"):
+            config_from_dict(
+                {
+                    "models": [
+                        {
+                            "name": "desktop",
+                            "provider": "openai-compatible",
+                            "model": "desktop-model",
+                            "api_key": secret,
+                        }
+                    ]
+                }
+            )
+
     def test_anthropic_messages_merge_tool_results_into_one_user_turn(self):
         _system, messages = _to_anthropic_messages(
             (

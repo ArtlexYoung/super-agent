@@ -288,10 +288,17 @@ def _build_agent(
     code_path: str | None,
     *,
     config: Config | None = None,
+    database_url: str | None = None,
+    model_api_keys: Mapping[str, str] | None = None,
 ) -> tuple[Agent, object | None]:
     if config is None:
         config = _load_general(general_path or cli.general_config)
     agent = Agent(config=config)
+    if model_api_keys is not None and config.models:
+        agent.replace_models(
+            config.create_model_profiles(api_keys=model_api_keys),
+            router_settings=config.router,
+        )
     agent.set_instructions(*config.instructions)
     roots = _skill_roots(config)
     writable = config.resolve_path(
@@ -325,7 +332,7 @@ def _build_agent(
             backend_name,
             config.resolve_path(config.storage.path) or Path(config.storage.path),
             audit_policy=policy,
-            database_url=_database_url(config),
+            database_url=database_url if database_url is not None else _database_url(config),
         )
         agent.use_storage(backend)
     return agent, backend

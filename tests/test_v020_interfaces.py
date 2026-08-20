@@ -10,7 +10,7 @@ from adapter.cli import CliConfig, _build_agent, _load_code
 from adapter.storage import MemoryStorage
 from core.config import Config, ModelConfig
 from core.event import RunLimits
-from core.provider import MockModel
+from core.provider import MockModel, OpenAIModel
 from scripts.verify_release import verify_release
 from super_agent import Agent
 
@@ -18,6 +18,33 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class InterfaceTests(unittest.TestCase):
+    def test_agent_builder_injects_runtime_model_keys_without_changing_config(self):
+        secret = "desktop-runtime-secret"
+        config = Config(
+            models=(
+                ModelConfig(
+                    "desktop",
+                    "openai-compatible",
+                    "desktop-model",
+                    api_key_env="DESKTOP_MODEL_KEY",
+                ),
+            )
+        )
+
+        agent, storage = _build_agent(
+            CliConfig(save=False),
+            None,
+            None,
+            config=config,
+            model_api_keys={"DESKTOP_MODEL_KEY": secret},
+        )
+
+        model = agent.list_models()[0].model
+        self.assertIsInstance(model, OpenAIModel)
+        self.assertEqual(secret, model.api_key)
+        self.assertNotIn(secret, repr(config))
+        self.assertIsNone(storage)
+
     def test_agent_builder_accepts_an_already_validated_runtime_config(self):
         config = Config(
             name="desktop-agent",
