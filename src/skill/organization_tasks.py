@@ -296,6 +296,8 @@ class AgentTaskRuntime:
             user_id=identity.user_id,
             conversation_id=identity.conversation_id,
             identity=identity,
+            purpose=task.purpose,
+            required_features=task.required_features,
             save_conversation=False,
             persist_run_events=shared.get("record_mode") != "summary",
             shared_context=shared,

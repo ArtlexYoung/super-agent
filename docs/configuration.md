@@ -27,6 +27,7 @@ warn_agent_level = 8
 name = "default"
 provider = "openai-compatible"
 model = "your-model"
+description = "擅长复杂代码修改、调试和长上下文仓库分析"
 base_url = "https://provider.example/v1"
 api_key_env = "MODEL_API_KEY"
 weight = 1.0
@@ -47,6 +48,10 @@ Unknown fields fail explicitly. `storage.backend` accepts `none`, `memory`, `jso
 `skill_paths` 指向包含 `<name>/SKILL.md` 的父目录。Skill 使用 Agent Skills 标准 YAML 格式，不使用 TOML；TOML 只负责 Runtime、CLI 和代码工作区配置。
 
 `skill_paths` points to parent directories containing `<name>/SKILL.md`. Skills use the Agent Skills standard YAML format, not TOML; TOML remains limited to Runtime, CLI, and coding-workspace configuration.
+
+`models.description` 是用户提供的模型初始说明，供应用和主 Agent 选择时参考。运行时不会覆盖它，而是按用户、Agent 和 `purpose` 另存可用性、用量、延迟与显式质量评价，并组合成当前选择画像。
+
+`models.description` is the user's initial model description for applications and parent Agents to consult. Runtime never overwrites it; availability, usage, latency, and explicit quality evaluations are stored separately by user, Agent, and `purpose`, then combined into the current selection profile.
 
 `warn_agent_level` 只产生提醒。`max_agent_level` 限制代码中组织树的层级，`max_agent_call_depth` 限制递归委派的实际调用深度；两个最大值省略时均为无限。组和子 Agent 本身只在 Python 代码中组合，不写入 TOML。
 

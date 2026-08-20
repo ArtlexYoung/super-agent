@@ -36,6 +36,10 @@ Adapter   -> 连接 CLI、存储和外部工具 / connects interfaces and effect
 4. `Runtime` executes only registered tools and either continues or ends.
 5. Listeners may write events to any `RecordBackend`; failures are never presented as success.
 
+模型选择画像同样遵守这个边界：配置中的用户描述是只读先验，客观调用结果和显式质量评价是独立状态。画像按用户和 Agent 隔离，并通过同一个事件存储契约持久化；没有存储时只保留进程内表现。
+
+Model selection profiles follow the same boundary: the configured user description is a read-only prior, while objective call outcomes and explicit quality evaluations are separate state. Profiles are isolated by user and Agent and persist through the same event-store contract; without storage, performance remains in process only.
+
 `RunSession` 只持有一个 `DisclosureStore`。Skill 正文和过大的文件、记忆、工具或子 Agent 结果都进入这一个存储，得到相同的哈希、缓存路径、偏移量和历史；没有各功能私有的截断规则。
 
 Each `RunSession` owns one `DisclosureStore`. Skill bodies and large file, memory, tool, or subagent results enter that store and receive the same hashes, cache paths, offsets, and history; features do not own private truncation rules.
@@ -49,6 +53,10 @@ Each `RunSession` owns one `DisclosureStore`. Skill bodies and large file, memor
 每个用户和根 Agent 只创建一个 `AgentTreeRuntime`。它统一保存任务、等待唤醒、共享板、决策、价格与权重选择、轮换、断路重试和动态记录压缩。同级组只通过父组共享板交换明确记录，正文进入同一个 `DisclosureStore`。
 
 Each user and root Agent gets one `AgentTreeRuntime`. It owns tasks, sleep and wake events, shared boards, decisions, price and weight selection, rotation, circuit retries, and adaptive record compression. Sibling groups exchange explicit records only through their parent board, with bodies stored in the same `DisclosureStore`.
+
+树中可见的 Agent 成员会公开不含模型对象、连接和密钥的模型画像，因此主 Agent 可以结合初始说明和表现证据派发任务。任务的 `purpose` 和所需特性会传入子 Agent 自己的模型路由，不在树运行器中复制一套模型选择逻辑。
+
+Visible Agent members expose model profiles without model objects, connections, or secrets, allowing a parent Agent to dispatch from initial descriptions and performance evidence. Task `purpose` and required features pass into the child Agent's own model router instead of duplicating model selection inside the tree runtime.
 
 结构循环和多父挂载会成为带警告的委派链接，不会破坏树。`max_agent_level` 限制结构，`max_agent_call_depth` 限制实际递归调用；两者默认都不设上限。
 

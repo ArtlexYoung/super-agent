@@ -106,6 +106,10 @@ result = main.run("让工程组修复失败的测试", skill="common-multi-produ
 
 Sibling groups exchange explicit records with cache paths through their parent board. One `AgentTreeRuntime` owns queues, sleep and wake events, price and weight routing, circuit retries, adaptive compression, and multi-model decisions; none of this state is created when no group or subagent is added.
 
+模型可以带有用户填写的初始 `description`；系统保留这份先验，并把按用户、Agent 和任务类型学习出的可靠性与显式质量评价作为独立画像附加，而不是覆盖原文。
+
+Models may carry a user-authored initial `description`; the system preserves that prior and appends separately learned reliability and explicit quality evidence by user, Agent, and task type instead of overwriting it.
+
 `common-multi-review` 让至少两个不同 Agent 独立检视同一材料，再交叉验证发现；多样性不足时明确失败，不退化成执行者自检。
 
 `common-multi-review` assigns the same artifact to at least two distinct Agents and then cross-checks findings; insufficient diversity fails explicitly instead of degrading to executor self-review.

@@ -16,10 +16,15 @@ from core.model import (
     Message,
     Model,
     ModelEvent,
+    ModelOutcome,
+    ModelPerformance,
+    ModelPerformanceBook,
     ModelRequest,
     ModelRequestOptions,
     ToolCall,
     estimate_tokens,
+    merge_model_usage,
+    model_scope_from_metadata,
     validate_model_request_options,
 )
 
@@ -195,14 +200,30 @@ class ModelProfile:
     def __post_init__(self) -> None:
         if not self.name.strip():
             raise ValueError("model profile name cannot be empty")
+        if not isinstance(self.description, str):
+            raise TypeError("model profile description must be text")
         if isinstance(self.weight, bool) or not isinstance(self.weight, (int, float)) or self.weight <= 0:
             raise ValueError("model profile weight must be positive")
         if not self.purposes or not self.features:
             raise ValueError("model profile purposes and features cannot be empty")
+        object.__setattr__(self, "description", self.description.strip())
 
     def matches(self, request: ModelRequest) -> bool:
         purpose_matches = request.purpose == "auto" or "auto" in self.purposes or request.purpose in self.purposes
         return purpose_matches and set(request.required_features) <= set(self.features)
+
+    def to_dict(self, performance: ModelPerformance) -> dict[str, object]:
+        """返回不包含模型对象、连接和密钥的选择画像。"""
+        return {
+            "name": self.name,
+            "description": self.description,
+            "purposes": list(self.purposes),
+            "features": list(self.features),
+            "weight": self.weight,
+            "pricing": self.pricing.to_dict(),
+            "selection_description": performance.selection_description(self.description),
+            "performance": performance.to_dict(),
+        }
 
 
 @dataclass(frozen=True)
@@ -220,14 +241,8 @@ class RouterSettings:
 
 @dataclass
 class _ModelHealth:
-    successes: int = 0
-    failures: int = 0
     circuit_failures: int = 0
     retry_at: float = 0.0
-
-    @property
-    def reliability(self) -> float:
-        return (self.successes + 1) / (self.successes + self.failures + 1)
 
 
 class ModelRouter:
@@ -241,9 +256,11 @@ class ModelRouter:
         self.profiles = selected
         self.settings = settings or RouterSettings()
         self._health = {profile.name: _ModelHealth() for profile in selected}
+        self._performance = ModelPerformanceBook(names)
         self._lock = RLock()
 
     def stream(self, request: ModelRequest) -> Iterator[ModelEvent]:
+        scope = model_scope_from_metadata(request.metadata)
         candidates = self._rank(request)
         if not candidates:
             matching = [profile for profile in self.profiles if profile.matches(request)]
@@ -253,29 +270,57 @@ class ModelRouter:
         attempts = min(len(candidates), self.settings.max_fallbacks + 1)
         last_error: Exception | None = None
         for position, profile in enumerate(candidates[:attempts]):
+            performance = self.get_model_performance(profile.name, request.purpose, scope=scope)
+            selection_score = self._score(profile, request, scope)[1]
             yield ModelEvent.status_event(
                 "model_selected",
                 profile=profile.name,
+                description=profile.description,
+                purposes=list(profile.purposes),
+                features=list(profile.features),
                 candidate_count=len(candidates),
                 fallback_number=position,
                 pricing=profile.pricing.to_dict(),
                 weight=profile.weight,
+                performance=performance.to_dict(),
+                selection_description=performance.selection_description(
+                    profile.description
+                ),
+                selection_score=round(selection_score, 8),
             )
             emitted_output = False
+            call_usage: dict[str, int | float | None] = {}
+            started_at = monotonic()
             try:
                 for event in profile.model.stream(request):
                     emitted_output = emitted_output or event.event_type in {"text", "tool_call"}
                     if event.event_type == "usage":
                         usage = dict(event.usage)
                         usage["estimated_cost"] = profile.pricing.estimate(usage)
+                        merge_model_usage(call_usage, usage)
                         yield ModelEvent("usage", usage=usage, data={"profile": profile.name})
                     else:
                         yield event
-                self._record_success(profile.name)
+                self._record_outcome(
+                    profile.name,
+                    request.purpose,
+                    scope,
+                    ModelOutcome(
+                        True, call_usage, (monotonic() - started_at) * 1000
+                    ),
+                )
                 return
             except Exception as error:
                 last_error = error
-                self._record_failure(profile.name, error)
+                self._record_outcome(
+                    profile.name,
+                    request.purpose,
+                    scope,
+                    ModelOutcome(
+                        False, call_usage, (monotonic() - started_at) * 1000
+                    ),
+                    error=error,
+                )
                 if emitted_output or not _is_temporary_model_error(error) or position + 1 >= attempts:
                     raise
                 yield ModelEvent.status_event(
@@ -287,30 +332,82 @@ class ModelRouter:
         if last_error is not None:
             raise last_error
 
+    def list_model_profiles(
+        self, *, purpose: str = "auto", scope: str = "local"
+    ) -> tuple[dict[str, object], ...]:
+        """返回不包含模型对象和密钥的可选择模型画像。"""
+        performances = self._performance.list_for_profiles(
+            scope, purpose, (profile.name for profile in self.profiles)
+        )
+        return tuple(
+            profile.to_dict(performance)
+            for profile, performance in zip(self.profiles, performances)
+        )
+
+    def get_model_performance(
+        self, profile_name: str, purpose: str = "auto", *, scope: str = "local"
+    ) -> ModelPerformance:
+        return self._performance.get(scope, profile_name, purpose)
+
+    def record_model_quality(
+        self,
+        profile_name: str,
+        purpose: str,
+        score: float,
+        *,
+        scope: str = "local",
+    ) -> ModelPerformance:
+        """记录外部明确给出的质量评价，不从请求成功推断质量。"""
+        return self._performance.record_quality(scope, profile_name, purpose, score)
+
+    def load_model_performance(
+        self, values: Iterable[Mapping[str, object]], *, scope: str = "local"
+    ) -> int:
+        """加载当前模型仍可使用的紧凑画像快照。"""
+        return self._performance.load(scope, values)
+
+    def _copy_model_performance_from(self, source: ModelRouter) -> None:
+        """替换模型列表时保留名称仍存在的内存画像。"""
+        self._performance.copy_from(source._performance)
+
     def _rank(self, request: ModelRequest) -> list[ModelProfile]:
         now = monotonic()
+        scope = model_scope_from_metadata(request.metadata)
         with self._lock:
             candidates = [profile for profile in self.profiles if profile.matches(request)]
             available = [profile for profile in candidates if self._health[profile.name].retry_at <= now]
-            return sorted(available, key=lambda item: self._score(item, request), reverse=True)
+            return sorted(
+                available,
+                key=lambda item: self._score(item, request, scope),
+                reverse=True,
+            )
 
-    def _score(self, profile: ModelProfile, request: ModelRequest) -> tuple[float, float]:
-        health = self._health[profile.name]
+    def _score(
+        self, profile: ModelProfile, request: ModelRequest, scope: str
+    ) -> tuple[float, float]:
         exact = float(request.purpose != "auto" and request.purpose in profile.purposes)
-        value = profile.weight * health.reliability / (1.0 + profile.pricing.selection_price)
+        performance = self._performance.get(scope, profile.name, request.purpose)
+        value = performance.routing_value(
+            profile.weight, profile.pricing.selection_price
+        )
         return exact, value
 
-    def _record_success(self, name: str) -> None:
+    def _record_outcome(
+        self,
+        name: str,
+        purpose: str,
+        scope: str,
+        outcome: ModelOutcome,
+        *,
+        error: Exception | None = None,
+    ) -> None:
         with self._lock:
             health = self._health[name]
-            health.successes += 1
-            health.circuit_failures = 0
-            health.retry_at = 0.0
-
-    def _record_failure(self, name: str, error: Exception) -> None:
-        with self._lock:
-            health = self._health[name]
-            health.failures += 1
+            self._performance.record_call(scope, name, purpose, outcome)
+            if error is None:
+                health.circuit_failures = 0
+                health.retry_at = 0.0
+                return
             if not _is_temporary_model_error(error):
                 return
             health.circuit_failures += 1

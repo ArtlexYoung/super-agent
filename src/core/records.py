@@ -15,7 +15,9 @@ from core.event import RunEvent, RunIdentity, utc_now
 from core.model import Message
 
 
-STATE_STREAMS = frozenset({"conversation", "memory", "skill_change"})
+STATE_STREAMS = frozenset(
+    {"conversation", "memory", "model_profile", "skill_change"}
+)
 CRITICAL_EVENTS = frozenset(
     {
         "run.started",
@@ -31,6 +33,7 @@ CRITICAL_EVENTS = frozenset(
         "memory.created",
         "memory.revised",
         "memory.forgotten",
+        "model.evaluated",
         "audit.pruned",
     }
 )
@@ -181,6 +184,30 @@ class EventStore:
         return self.backend.delete(
             RecordQuery(user_id=self.user_id, agent_name=self.agent_name, stream=stream, stream_id=stream_id)
         )
+
+    def replace_state(
+        self,
+        stream: str,
+        stream_id: str,
+        event_type: str,
+        data: Mapping[str, object],
+    ) -> Record:
+        """先写入新状态再清除旧状态，写入失败时保留原值。"""
+        if stream not in STATE_STREAMS:
+            raise ValueError(f"replace_state requires a state stream: {stream}")
+        previous = self.read(stream, stream_id)
+        stored = self.append(stream, stream_id, event_type, data)
+        if previous:
+            deleted = self.backend.delete(
+                RecordQuery(
+                    user_id=self.user_id,
+                    agent_name=self.agent_name,
+                    event_ids=tuple(item.event_id for item in previous),
+                )
+            )
+            if deleted != len(previous):
+                raise RuntimeError("state replacement did not remove every previous record")
+        return stored
 
     def for_agent(self, agent_name: str) -> EventStore:
         return EventStore(self.backend, self.user_id, agent_name)

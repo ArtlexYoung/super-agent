@@ -114,6 +114,8 @@ print(alice.runs.explain(result.run_id))
 
 JSONL 是可直接阅读的默认存储。SQLite 同样只用标准库；MySQL 和 PostgreSQL 驱动为可选依赖。
 
+模型可以在 `common.toml` 的 `[[models]]` 中填写 `description`，作为用户给出的初始选择依据。这段说明不会被学习覆盖；`alice.models.list(purpose="code")` 会同时返回初始说明和按用户、Agent、任务类型隔离的表现画像。调用成功只更新可靠性、token、成本和延迟，不会冒充质量判断；`alice.models.evaluate_run(result.run_id, score=0.9)` 才会显式更新质量。
+
 审计记录有保留期限且可以配置。详细记录默认保留 180 天，关键记录默认保留 365 天。原始事件完整
 保存，供学习和复盘使用；`alice.runs.explain(run_id)` 默认动态将 prompt、模型输出、工具参数/结果
 和错误消息替换为哈希与大小摘要，只有代码中显式传入 `include_sensitive=True` 才会读取原文。

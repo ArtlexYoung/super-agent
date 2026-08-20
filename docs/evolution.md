@@ -17,6 +17,22 @@ user.memory.forget(item.memory_id, "用户明确要求遗忘")
 
 The model may recall memory through the memory Skill and may explicitly promote temporary context during organization; organization, revision, merge, split, and forgetting produce explicit events.
 
+## 模型画像 / Model Profiles
+
+模型可以带有用户填写的初始描述。运行时保留这份先验，不让自动学习覆盖它；实际调用产生的可靠性、token、成本和延迟，以及用户对已完成运行给出的质量分，组成单独的学习画像。
+
+A model may carry an initial user-authored description. Runtime preserves that prior instead of letting automatic learning overwrite it; observed reliability, tokens, cost, latency, and user quality scores for completed runs form a separate learned profile.
+
+```python
+profiles = user.models.list(purpose="code")
+result = user.run("修复测试", purpose="code")
+evaluation = user.models.evaluate_run(result.run_id, score=0.9)
+```
+
+表现按用户、Agent 和任务 `purpose` 隔离。少量质量样本通过置信度平滑，只逐步影响排序；成功返回本身不增加质量分。启用存储时，每个模型和 `purpose` 只保留一条可替换聚合状态，运行评价仍留在对应运行审计中。
+
+Performance is isolated by user, Agent, and task `purpose`. Sparse quality samples are confidence-smoothed and influence ranking gradually; a successful response alone never raises quality. With storage enabled, each model and `purpose` keeps one replaceable aggregate state while the evaluation remains linked to its run audit.
+
 ## Skill 进化 / Skill Evolution
 
 进化闭环不是“模型说改了就改”：

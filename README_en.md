@@ -126,6 +126,8 @@ Agent scopes isolate conversations, memory, runs, and Skill overlays.
 JSONL is the readable default backend. SQLite also uses the standard library. MySQL and
 PostgreSQL drivers are optional extras.
 
+A model can define a user-authored `description` in `[[models]]` inside `common.toml` as an initial selection prior. Learning never overwrites that text. `alice.models.list(purpose="code")` returns both the initial description and a performance profile isolated by user, Agent, and task type. Successful calls update reliability, tokens, cost, and latency without pretending to measure quality; only `alice.models.evaluate_run(result.run_id, score=0.9)` updates explicit quality.
+
 Audit records are bounded and configurable. Detailed records are kept for 180 days and
 critical records for 365 days by default. Canonical events stay complete for learning and
 review, while `alice.runs.explain(run_id)` dynamically replaces prompts, model output, tool

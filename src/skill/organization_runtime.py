@@ -46,10 +46,12 @@ class AgentTreeRuntime(AgentTaskRuntime):
         root: AgentGroupNode,
         settings: AgentTreeSettings | None = None,
         *,
+        user_id: str = "local",
         record_event: RecordEvent | None = None,
         disclosures: DisclosureStore | None = None,
     ) -> None:
         super().__init__(root, settings or AgentTreeSettings(), record_event)
+        self.user_id = _text(user_id, "Agent tree user ID")
         self.disclosures = disclosures or DisclosureStore()
         self._notes: dict[str, list[SharedNote]] = {}
         self._decisions: dict[str, AgentDecision] = {}
@@ -83,7 +85,10 @@ class AgentTreeRuntime(AgentTaskRuntime):
             "current_group_id": node.group_id,
             "visible_path": list(node.path),
             "revision": self.root.revision,
-            "groups": [item.to_dict(recursive=False) for item in self.root.walk()],
+            "groups": [
+                item.to_dict(recursive=False, user_id=self.user_id)
+                for item in self.root.walk()
+            ],
         }
 
     def wait_for_notes(
@@ -454,6 +459,7 @@ def get_or_create_agent_tree_runtime(
     runtime = AgentTreeRuntime(
         root,
         owner.agent_tree_settings,
+        user_id=user_id,
         record_event=_tree_event_recorder(store, root.group_id),
         disclosures=library.disclosures if library is not None else DisclosureStore(),
     )

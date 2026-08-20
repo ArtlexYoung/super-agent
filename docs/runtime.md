@@ -6,9 +6,17 @@ Provider 接收 `ModelRequest`，返回 `ModelEvent`：文本增量、工具调�
 
 A Provider receives `ModelRequest` and returns `ModelEvent` values for text deltas, tool calls, usage, and status. Runtime does not know a vendor's HTTP format.
 
-模型请求带有 `purpose`、所需特性和元数据。`ModelRouter` 可以按目的、特性、权重、价格和健康度选择模型；回退由设置显式控制，断路器打开时会返回可解释失败。
+模型请求带有 `purpose`、所需特性和元数据。`ModelRouter` 可以按目的、特性、权重、价格、调用可靠性和带置信度的显式质量评价选择模型；回退由设置显式控制，断路器打开时会返回可解释失败。
 
-Requests carry a `purpose`, required features, and metadata. `ModelRouter` can select by purpose, features, weight, price, and health; fallback is explicit, and an open circuit returns an explainable failure.
+Requests carry a `purpose`, required features, and metadata. `ModelRouter` can select by purpose, features, weight, price, call reliability, and confidence-smoothed explicit quality evaluations; fallback is explicit, and an open circuit returns an explainable failure.
+
+模型画像保留用户填写的 `description`，并单独附加学习出的表现摘要。自然语言描述不会被底层关键词表硬匹配；它通过 `Agent.list_model_profiles()` 和 Agent 树提供给上层模型或应用。确定性路由只使用结构化用途、特性、价格、权重和表现证据。
+
+Model profiles preserve the user-authored `description` and append a separate learned performance summary. Natural-language descriptions are never matched by a hard-coded keyword table; `Agent.list_model_profiles()` and the Agent tree expose them to an upstream model or application. Deterministic routing uses only structured purpose, features, price, weight, and observed evidence.
+
+调用成功或失败自动更新可靠性、token、成本和延迟，但不会被解释为回答质量。完成的运行可以通过 `agent.for_user("alice").models.evaluate_run(run_id, score=0.8)` 接收一次显式质量评价；重复同一评价是幂等的，冲突分数会失败。
+
+Call success or failure automatically updates reliability, tokens, cost, and latency, but is never interpreted as answer quality. A completed run can receive one explicit quality evaluation through `agent.for_user("alice").models.evaluate_run(run_id, score=0.8)`; repeating the same evaluation is idempotent, while a conflicting score fails.
 
 ## 唯一运行循环 / One Execution Loop
 

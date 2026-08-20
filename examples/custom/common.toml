@@ -2,4 +2,4 @@ version = 1
 name = "custom-example"
 instructions = ["Use the selected task Skill."]
 skill_paths = ["skills"]
-models = [{ name = "offline", provider = "mock", model = "The custom Skill was selected." }]
+models = [{ name = "offline", provider = "mock", model = "The custom Skill was selected.", description = "Offline model for the custom Skill example" }]

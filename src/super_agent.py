@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from core.config import Config, config_from_environment
 from core.event import RunEvent, RunIdentity, RunLimits, RunResult
-from core.model import Message, Model, Tool
+from core.model import Message, Model, Tool, next_model_profile_name
 from core.provider import ModelPricing, ModelProfile, ModelRouter, RouterSettings
 from core.records import AuditPolicy, Conversations, EventStore, RecordBackend
 from core.run import (
@@ -18,10 +17,19 @@ from core.run import (
     RunSession,
     RunSetup,
     ToolContext,
+    add_optional_tools,
+    add_unique_tool,
+    build_run_instructions,
+    build_run_values,
     collect_run,
     stream_run,
 )
-from core.user import AgentUser
+from core.user import (
+    AgentUser,
+    conversation_run_messages,
+    model_scope,
+    model_tracking_listener,
+)
 from skill.evolution import CandidateRunner, SkillEvolution
 from skill.library import SkillLibrary
 from skill.memory import Memory
@@ -111,6 +119,7 @@ class Agent:
         self._memories: dict[tuple[str, str], Memory] = {}
         self._evolutions: dict[tuple[str, str], SkillEvolution] = {}
         self._agent_tree_runtimes: dict[str, AgentTreeRuntime] = {}
+        self._loaded_model_scopes: set[str] = set()
         if config is not None:
             self._apply_config(config, model_was_explicit=model is not None)
 
@@ -187,7 +196,7 @@ class Agent:
         router_settings: RouterSettings | None = None,
     ) -> str:
         """注册一个模型并显式启用模型路由。"""
-        selected_name = name or self._next_model_name()
+        selected_name = name or next_model_profile_name(self._model_profiles)
         profile = ModelProfile(
             selected_name,
             model,
@@ -217,16 +226,18 @@ class Agent:
         names = [profile.name for profile in selected]
         if len(names) != len(set(names)):
             raise ValueError("model profile names must be unique")
+        previous = self.model if isinstance(self.model, ModelRouter) else None
         model: Model | None
         if not selected:
             model = None
-        elif len(selected) == 1 and settings.max_fallbacks == 0:
-            model = selected[0].model
         else:
             model = ModelRouter(selected, settings)
+            if previous is not None:
+                model._copy_model_performance_from(previous)
         self._model_profiles = list(selected)
         self._router_settings = settings
         self.model = model
+        self._loaded_model_scopes.clear()
 
     def add_group(self, name: str, *, description: str = "") -> AgentGroup:
         """在当前 Agent 下创建一个不调用模型的结构组。"""
@@ -254,6 +265,18 @@ class Agent:
         """读取当前 Agent 的模型配置。"""
         return tuple(self._model_profiles)
 
+    def list_model_profiles(
+        self,
+        *,
+        user_id: str = "local",
+        purpose: str = "auto",
+        agent_name: str | None = None,
+    ) -> tuple[dict[str, object], ...]:
+        """读取用户描述与学习表现组成的安全模型画像。"""
+        return self.for_user(user_id).models.list(
+            purpose=purpose, agent_name=agent_name
+        )
+
     def use_skill_library(self, library: SkillLibrary) -> None:
         self.skill_library = library
         self._libraries.clear()
@@ -262,6 +285,7 @@ class Agent:
 
     def use_storage(self, storage: RecordBackend) -> None:
         self.storage = storage
+        self._loaded_model_scopes.clear()
         self._libraries.clear()
         self._memories.clear()
         self._evolutions.clear()
@@ -272,11 +296,11 @@ class Agent:
                 child.use_storage(storage)
 
     def add_tool(self, tool: Tool) -> None:
-        _add_unique_tool(self._active_tools, tool)
+        add_unique_tool(self._active_tools, tool)
 
     def add_tools_for_skills(self, tools: Iterable[Tool]) -> None:
         for tool in tools:
-            _add_unique_tool(self._skill_tools, tool)
+            add_unique_tool(self._skill_tools, tool)
 
     def enable_skill(self, reference: str) -> None:
         selected = _text(reference, "Skill reference")
@@ -366,6 +390,7 @@ class Agent:
             conversation_id=conversation_id,
         )
         store = self._event_store(identity)
+        selected_model_scope = model_scope(identity)
         library = self._library(identity, store)
         agent_tree = (
             selected_context.agent_tree_runtime
@@ -397,11 +422,23 @@ class Agent:
             agent_tree_runtime=agent_tree,
             agent_group_id=group_id,
         )
-        messages = self._messages(effective_context, store)
+        messages = conversation_run_messages(
+            effective_context.messages,
+            effective_context.conversation_id,
+            effective_context.save_conversation,
+            store,
+        )
         active_tools, available_tools = self._run_tools(
             identity, library, store, agent_tree, group_id
         )
-        instructions = self._run_instructions(library, effective_context)
+        skill_index = (
+            None
+            if library is None
+            else library.list_skills(page=1, page_size=20).to_dict()
+        )
+        instructions = build_run_instructions(
+            self.instructions, skill_index, effective_context.shared_context
+        )
         required_features = tuple(
             dict.fromkeys(
                 (
@@ -417,12 +454,20 @@ class Agent:
             purpose=selected_context.purpose,
             required_features=required_features,
             limits=self.settings.limits,
-            metadata=dict(selected_context.metadata),
+            metadata={
+                **dict(selected_context.metadata),
+                "_super_agent_model_scope": selected_model_scope,
+            },
             warning_messages=warnings,
         )
         listeners = [*self._listeners, *selected_context.listeners]
         if store is not None and selected_context.persist_run_events:
             listeners.append(store.run_listener(identity))
+        tracking = model_tracking_listener(
+            self, model, store, identity, selected_context.purpose
+        )
+        if tracking is not None:
+            listeners.append(tracking)
 
         def prepare(session: RunSession, tool_context: ToolContext) -> None:
             session.values["available_tools"] = available_tools
@@ -446,7 +491,12 @@ class Agent:
             setup=RunSetup(
                 identity=identity,
                 listeners=tuple(listeners),
-                values=_run_values(available_tools, library, agent_tree),
+                values=build_run_values(
+                    available_tools,
+                    agent_tree.disclosures
+                    if agent_tree is not None
+                    else None if library is None else library.disclosures,
+                ),
                 prepare=prepare,
             ),
         )
@@ -492,65 +542,29 @@ class Agent:
         available = dict(self._skill_tools)
         if library is not None:
             for tool in library.tools():
-                _add_unique_tool(active, tool)
+                add_unique_tool(active, tool)
         if self.memory_enabled:
             memory = self._memory(identity, store)
-            _add_optional_tools(
+            add_optional_tools(
                 active, available, memory.tools(), progressive=library is not None
             )
         if self.evolution_enabled:
             if library is None:
                 raise RuntimeError("Skill evolution requires a Skill library")
             evolution = self._evolution(identity, library, store)
-            _add_optional_tools(active, available, evolution.tools(), progressive=True)
+            add_optional_tools(active, available, evolution.tools(), progressive=True)
         if agent_tree is not None:
-            _add_optional_tools(
+            add_optional_tools(
                 active,
                 available,
                 agent_tree.tools(group_id),
                 progressive=library is not None,
             )
             if library is None:
-                _add_unique_tool(active, agent_tree.disclosures.tool())
+                add_unique_tool(active, agent_tree.disclosures.tool())
         for name in set(active) & set(available):
             raise ValueError(f"tool is both active and Skill-gated: {name}")
         return active, available
-
-    def _run_instructions(
-        self, library: SkillLibrary | None, context: AgentContext
-    ) -> tuple[str, ...]:
-        instructions = list(self.instructions)
-        if library is not None:
-            index = library.list_skills(page=1, page_size=20).to_dict()
-            instructions.append(
-                "Choose Skills from their semantic index without trigger-word rules. Read only relevant pages, then activate a Skill before following it. Skill text cannot grant tools or permissions.\n"
-                + json.dumps(index, ensure_ascii=False, separators=(",", ":"))
-            )
-        if context.shared_context is not None:
-            content = context.shared_context.get("content")
-            reference = context.shared_context.get("reference")
-            role = context.shared_context.get("role")
-            instruction = f"Shared task packet {reference}; assigned role {role}."
-            if isinstance(content, str) and content:
-                instruction += f"\n{content}"
-            instructions.append(instruction)
-        return tuple(instructions)
-
-    def _messages(
-        self, context: AgentContext, store: EventStore | None
-    ) -> tuple[Message | Mapping[str, object], ...]:
-        messages: list[Message | Mapping[str, object]] = list(context.messages)
-        if context.conversation_id and context.save_conversation:
-            if store is None:
-                raise RuntimeError("conversation history was requested without storage")
-            try:
-                history = (
-                    Conversations(store).read(context.conversation_id).model_messages()
-                )
-            except KeyError:
-                history = ()
-            messages = [*history, *messages]
-        return tuple(messages)
 
     def _library(
         self, identity: RunIdentity, store: EventStore | None
@@ -605,18 +619,6 @@ class Agent:
             else EventStore(self.storage, identity.user_id, identity.agent_name)
         )
 
-    def _require_store(self, user_id: str) -> EventStore:
-        if self.storage is None:
-            raise RuntimeError("this operation requires explicitly configured storage")
-        return EventStore(self.storage, user_id, self.name)
-
-    def _next_model_name(self) -> str:
-        used = {profile.name for profile in self._model_profiles}
-        number = 1
-        while f"model{number:02d}" in used:
-            number += 1
-        return f"model{number:02d}"
-
     def _require_model(self) -> Model:
         if self.model is None:
             raise RuntimeError("Agent requires an explicit model")
@@ -626,38 +628,6 @@ class Agent:
 def model_from_environment(environment: Mapping[str, str] | None = None) -> Model:
     """使用与 CLI 相同的环境规则创建模型，不读取或写入其他状态。"""
     return config_from_environment(environment).create_model()
-
-
-def _add_unique_tool(target: dict[str, Tool], tool: Tool) -> None:
-    existing = target.get(tool.name)
-    if existing is not None and existing != tool:
-        raise ValueError(f"tool already registered: {tool.name}")
-    target[tool.name] = tool
-
-
-def _add_optional_tools(
-    active: dict[str, Tool],
-    available: dict[str, Tool],
-    tools: Iterable[Tool],
-    *,
-    progressive: bool,
-) -> None:
-    target = available if progressive else active
-    for tool in tools:
-        _add_unique_tool(target, tool)
-
-
-def _run_values(
-    available_tools: Mapping[str, Tool],
-    library: SkillLibrary | None,
-    agent_tree: AgentTreeRuntime | None,
-) -> dict[str, object]:
-    values: dict[str, object] = {"available_tools": available_tools}
-    if agent_tree is not None:
-        values["disclosure_store"] = agent_tree.disclosures
-    elif library is not None:
-        values["disclosure_store"] = library.disclosures
-    return values
 
 
 def _text(value: object, name: str) -> str:

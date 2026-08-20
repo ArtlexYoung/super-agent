@@ -261,8 +261,8 @@ class AgentMember:
             features
         ) <= set(self.features)
 
-    def to_dict(self) -> dict[str, object]:
-        return {
+    def to_dict(self, *, user_id: str | None = None) -> dict[str, object]:
+        value: dict[str, object] = {
             "name": self.name,
             "group_id": self.group_id,
             "description": self.description,
@@ -274,6 +274,13 @@ class AgentMember:
             "created_by_agent": self.settings.created_by_agent,
             "link_id": self.link_id,
         }
+        if user_id is not None:
+            value["model_profiles"] = list(
+                self.agent.list_model_profiles(
+                    user_id=user_id, agent_name=self.name
+                )
+            )
+        return value
 
 
 @dataclass
@@ -357,7 +364,9 @@ class AgentGroupNode:
     def touch(self) -> None:
         self.root().revision += 1
 
-    def to_dict(self, *, recursive: bool = True) -> dict[str, object]:
+    def to_dict(
+        self, *, recursive: bool = True, user_id: str | None = None
+    ) -> dict[str, object]:
         value: dict[str, object] = {
             "group_id": self.group_id,
             "name": self.name,
@@ -368,11 +377,15 @@ class AgentGroupNode:
             "coordinator": None
             if self.coordinator is None
             else getattr(self.coordinator, "name", self.name),
-            "member": None if self.member is None else self.member.to_dict(),
-            "links": [link.to_dict() for link in self.links],
+            "member": None
+            if self.member is None
+            else self.member.to_dict(user_id=user_id),
+            "links": [link.to_dict(user_id=user_id) for link in self.links],
         }
         if recursive:
-            value["children"] = [child.to_dict() for child in self.children]
+            value["children"] = [
+                child.to_dict(user_id=user_id) for child in self.children
+            ]
         else:
             value["children"] = [
                 {"group_id": child.group_id, "name": child.name, "level": child.level}
