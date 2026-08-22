@@ -505,22 +505,26 @@ class RecordStorageTests(unittest.TestCase):
         redacted = AuditPolicy().audit_view([mixed_case])[0]
         self.assertTrue(redacted["data"]["Prompt"]["redacted"])
 
-    def test_jsonl_retention_runs_again_for_long_lived_data(self):
+    def test_jsonl_retention_requires_an_explicit_prune(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "records"
             policy = AuditPolicy(detailed_days=1, critical_days=10)
-            first = EventStore(JsonlStorage(root, audit_policy=policy), "alice", "agent")
+            first = EventStore(JsonlStorage(root), "alice", "agent")
             old = (datetime.now(UTC) - timedelta(days=2)).isoformat()
             first.append("run", "old", "model.usage", {"input_tokens": 1}, created_at=old)
             first.append("run", "old", "run.started", {"prompt": "kept"}, created_at=old)
 
-            reopened = JsonlStorage(root, audit_policy=policy)
+            reopened = JsonlStorage(root)
             EventStore(reopened, "alice", "agent").append(
                 "run",
                 "current",
                 "run.started",
                 {"prompt": "current"},
             )
+            before_prune = reopened.read(RecordQuery(user_id="alice"))
+            self.assertIn("model.usage", {item.event_type for item in before_prune})
+            result = policy.prune(reopened, user_id="alice", apply=True)
+            self.assertEqual(1, result["deleted"])
             records = reopened.read(RecordQuery(user_id="alice"))
             self.assertNotIn("model.usage", {item.event_type for item in records})
             self.assertEqual(2, sum(item.event_type == "run.started" for item in records))

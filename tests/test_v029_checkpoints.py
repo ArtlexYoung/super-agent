@@ -5,6 +5,7 @@ from core.event import RunCheckpoint, RunIdentity
 from core.records import EventStore
 from core.provider import MockModel
 from core.run import RunInterrupted, RunRequest, RunSetup, collect_run, stream_run
+from super_agent import Agent, AgentContext
 
 
 class CheckpointTests(unittest.TestCase):
@@ -76,6 +77,29 @@ class CheckpointTests(unittest.TestCase):
         )
         self.assertEqual(checkpoint, store.read("run-1"))
         self.assertTrue(store.delete("run-1"))
+
+    def test_agent_context_exposes_explicit_checkpoint_resume_and_interrupt(self):
+        store = MemoryCheckpointStore()
+        agent = Agent(MockModel("resumed"))
+        with self.assertRaises(RunInterrupted):
+            agent.run(
+                "pause",
+                context=AgentContext(
+                    checkpoint_store=store,
+                    interrupt_check=lambda: True,
+                ),
+            )
+        checkpoint = store.read(next(iter(store._checkpoints)))
+        loaded = store.read(checkpoint.run_id)
+        result = agent.run(
+            "resume",
+            context=AgentContext(
+                checkpoint_store=store,
+                resume_checkpoint=loaded,
+            ),
+        )
+        self.assertEqual("resumed", result.text)
+        self.assertEqual("completed", store.read(result.run_id).status)
 
 
 if __name__ == "__main__":

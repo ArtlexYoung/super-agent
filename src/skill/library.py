@@ -12,7 +12,7 @@ from types import MappingProxyType
 
 from core.disclosure import DisclosedContent, DisclosurePage, DisclosureStore
 from core.model import Tool
-from core.run import RunSession, ToolContext
+from core.run import RunContext, ToolContext
 from skill.document import (
     SKILL_FILE,
     Skill,
@@ -221,7 +221,7 @@ class SkillLibrary:
     def history(self) -> tuple[Mapping[str, object], ...]:
         return self.disclosures.history()
 
-    def activate(self, reference: str, session: RunSession) -> tuple[str, ...]:
+    def activate(self, reference: str, session: RunContext) -> tuple[str, ...]:
         instructions = list(session.instructions)
         tools = dict(session.tools)
         active_skills = list(session.active_skills)
@@ -422,7 +422,7 @@ class SkillLibrary:
         return loaded
 
     def _activate(
-        self, skill: Skill, session: RunSession, activated: list[str], stack: list[str]
+        self, skill: Skill, session: RunContext, activated: list[str], stack: list[str]
     ) -> None:
         if skill.key in session.active_skills:
             return

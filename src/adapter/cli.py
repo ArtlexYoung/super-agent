@@ -176,20 +176,39 @@ def _skills_command(arguments: list[str]) -> int:
 def _data_command(arguments: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="super-agent data")
     parser.add_argument("resource", choices=("storage", "conversations"))
-    parser.add_argument("action", choices=("verify", "list"))
+    parser.add_argument("action", choices=("verify", "list", "prune"))
     parser.add_argument("--config")
     parser.add_argument("--user", default="local")
+    parser.add_argument("--apply", action="store_true")
     parser.add_argument("--output", choices=("text", "json"), default="json")
     parsed = parser.parse_args(arguments)
+    if parsed.apply and parsed.action != "prune":
+        raise ValueError("--apply is only valid with the prune action")
+    if parsed.resource == "conversations" and parsed.action != "list":
+        raise ValueError("conversation data supports only the list action")
     config = _load_general(parsed.config)
     if config.storage.backend == "none":
         raise RuntimeError("data commands require storage in general configuration")
     backend = create_storage(
         config.storage.backend,
         config.resolve_path(config.storage.path) or Path(config.storage.path),
+        database_url=_database_url(config),
     )
     if parsed.resource == "storage":
-        value = verify_storage(backend)
+        if parsed.action == "verify":
+            value = verify_storage(backend)
+        elif parsed.action == "prune":
+            policy = AuditPolicy(
+                config.storage.detailed_log_days,
+                config.storage.critical_log_days,
+            )
+            value = policy.prune(
+                backend,
+                user_id=_text(parsed.user, "data user"),
+                apply=parsed.apply,
+            )
+        else:
+            raise ValueError("storage supports only verify or prune")
     else:
         value = [
             {
@@ -336,7 +355,6 @@ def _build_agent(
         backend = create_storage(
             backend_name,
             config.resolve_path(config.storage.path) or Path(config.storage.path),
-            audit_policy=policy,
             database_url=database_url if database_url is not None else _database_url(config),
         )
         agent.use_storage(backend)

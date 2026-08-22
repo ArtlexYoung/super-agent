@@ -133,8 +133,12 @@ critical records for 365 days by default. Canonical events stay complete for lea
 review, while `alice.runs.explain(run_id)` dynamically replaces prompts, model output, tool
 payloads, and errors with hashes and size summaries. Passing `include_sensitive=True` in code
 is required to read the original fields. Dynamic redaction is not storage encryption, so
-protect access to the selected backend; retention cleanup runs from the backend's explicit
-policy when records are written.
+protect access to the selected backend. Retention cleanup previews by default and deletes
+expired records only with `--apply`.
+
+Checkpoints are opt-in. Pass a `MemoryCheckpointStore` or `EventCheckpointStore` through the
+run context. Read with `checkpoint_store.read(run_id)`, then pass
+`AgentContext(checkpoint_store=..., resume_checkpoint=...)` for explicit recovery.
 
 ## Update a Skill Explicitly
 
@@ -152,6 +156,8 @@ super-agent --skill code "inspect this repository"
 super-agent config show
 super-agent skills list
 super-agent data storage verify --config common.toml
+super-agent data storage prune --config common.toml --user alice
+super-agent data storage prune --config common.toml --user alice --apply
 super-agent data conversations list --config common.toml --user alice
 ```
 
@@ -222,7 +228,7 @@ Runnable examples are in `examples/minimal.py`, `examples/custom_skill.py`, and
 ## Verify the Repository
 
 ```bash
-python3.11 scripts/verify_release.py --version 0.2.1 --full
+python3.11 scripts/verify_release.py --version 0.2.15 --full
 ```
 
 For the complete local release gate, including version and package-shape checks, see

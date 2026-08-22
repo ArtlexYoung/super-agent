@@ -26,9 +26,9 @@ Process tools accept declared argument arrays, never shell strings. A failed che
 
 ## 审计与脱敏 / Audit and Redaction
 
-记录后端保存完整事实，展示层默认对 prompt、模型正文、工具参数和错误进行动态脱敏。详细日志默认保留 180 天，关键日志默认保留 365 天，期限可在通用配置中调整。
+记录后端保存完整事实，展示层默认对 prompt、模型正文、工具参数和错误进行动态脱敏。详细日志默认保留 180 天，关键日志默认保留 365 天，期限可在通用配置中调整。清理先预览，只有显式 `--apply` 才删除到期记录。
 
-Backends retain canonical facts, while views dynamically redact prompts, model text, tool payloads, and errors by default. Detailed logs live 180 days and critical logs 365 days by default; both are configurable.
+Backends retain canonical facts, while views dynamically redact prompts, model text, tool payloads, and errors by default. Detailed logs live 180 days and critical logs 365 days by default; both are configurable. Cleanup previews first and deletes only with explicit `--apply`.
 
 动态脱敏不是加密。部署时仍需限制 JSONL 目录、数据库账号和缓存目录的访问。
 

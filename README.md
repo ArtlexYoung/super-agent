@@ -128,6 +128,8 @@ super-agent --skill code "检查这个仓库"
 super-agent config show
 super-agent skills list
 super-agent data storage verify --config common.toml
+super-agent data storage prune --config common.toml --user alice
+super-agent data storage prune --config common.toml --user alice --apply
 super-agent data conversations list --config common.toml --user alice
 ```
 
@@ -145,6 +147,8 @@ super-agent data conversations list --config common.toml --user alice
   User and Agent scopes isolate conversations, memory, runs, disclosure caches, and Skill overlays.
 - 运行输入、选择、工具调用、评价和 Skill 变更都可追踪，模型正文无需重复写入审计摘要。
   Run inputs, selections, tool calls, evaluations, and Skill changes are traceable without duplicating model text in audit summaries.
+- 日志清理先预览，只有 `--apply` 才删除到期详细或关键记录；检查点恢复也必须由调用方显式提供。
+  Retention cleanup previews first and deletes only with `--apply`; checkpoint recovery also requires an explicit caller-provided store.
 
 ## 评测成绩
 
@@ -216,5 +220,5 @@ Third-party projects retain their own copyrights and licenses; this project is l
 The full release gate checks Python tests, compilation, package contents, offline evaluation, and build.
 
 ```bash
-python3.11 scripts/verify_release.py --version 0.2.14 --full
+python3.11 scripts/verify_release.py --version 0.2.15 --full
 ```

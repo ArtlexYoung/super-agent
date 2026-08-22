@@ -127,11 +127,16 @@ class UserMemory:
         return self._memory().forget(memory_id, reason)
 
     def _memory(self):
-        identity = RunIdentity(user_id=self.user.user_id, agent_name=self.user.agent.name)
-        return self.user.agent._memory(identity, self._store())
-
-    def _store(self) -> EventStore:
-        return _require_store(self.user.agent, self.user.user_id)
+        identity = RunIdentity(
+            user_id=self.user.user_id,
+            agent_name=self.user.agent.name,
+        )
+        # 直接记忆调用遵循明确工作目录；没有目录或存储时仅保留在当前进程。
+        return self.user.agent._memory(
+            identity,
+            self.user.agent._event_store(identity),
+            self.user.agent.working_directory,
+        )
 
 
 class UserModels:

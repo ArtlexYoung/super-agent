@@ -119,7 +119,11 @@ JSONL 是可直接阅读的默认存储。SQLite 同样只用标准库；MySQL �
 审计记录有保留期限且可以配置。详细记录默认保留 180 天，关键记录默认保留 365 天。原始事件完整
 保存，供学习和复盘使用；`alice.runs.explain(run_id)` 默认动态将 prompt、模型输出、工具参数/结果
 和错误消息替换为哈希与大小摘要，只有代码中显式传入 `include_sensitive=True` 才会读取原文。
-动态脱敏不是存储加密，因此仍需保护存储后端；记录清理由选中的后端在写入时按保留策略执行。
+动态脱敏不是存储加密，因此仍需保护存储后端；记录清理默认只预览，必须使用 `--apply` 才会删除到期记录。
+
+检查点不会自动启用。可以把 `MemoryCheckpointStore` 或 `EventCheckpointStore` 放入运行上下文，先通过
+`checkpoint_store.read(run_id)` 读取，再用
+`AgentContext(checkpoint_store=..., resume_checkpoint=...)` 显式恢复。
 
 ## 显式更新 Skill
 
@@ -136,6 +140,8 @@ super-agent --skill code "检查这个仓库"
 super-agent config show
 super-agent skills list
 super-agent data storage verify --config common.toml
+super-agent data storage prune --config common.toml --user alice
+super-agent data storage prune --config common.toml --user alice --apply
 super-agent data conversations list --config common.toml --user alice
 ```
 
@@ -199,7 +205,7 @@ super-agent data conversations list --config common.toml --user alice
 ## 验证仓库
 
 ```bash
-python3.11 scripts/verify_release.py --version 0.2.1 --full
+python3.11 scripts/verify_release.py --version 0.2.15 --full
 ```
 
 完整的本地发布检查（包括版本一致性和打包范围）见[本地发布流程](docs/releasing.md)。

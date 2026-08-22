@@ -26,12 +26,16 @@ super-agent config validate --config common.toml
 super-agent skills list --config common.toml
 super-agent skills read prompt:research --config common.toml
 super-agent data storage verify --config common.toml
+super-agent data storage prune --config common.toml --user alice
+super-agent data storage prune --config common.toml --user alice --apply
 super-agent data conversations list --config common.toml --user alice
 ```
 
 这些命令只在其明确职责范围内工作。`check` 和 `config` 不创建存储；`data` 需要配置中显式启用后端。
+`storage prune` 默认只报告候选数量，只有 `--apply` 才执行删除；`--apply` 不能用于其他动作。
 
 Each command stays within its declared scope. `check` and `config` do not create storage; `data` requires an explicitly configured backend.
+`storage prune` reports candidates by default and deletes only with `--apply`; `--apply` is rejected for other actions.
 
 ## 三份配置 / Three Config Files
 

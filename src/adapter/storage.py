@@ -10,13 +10,9 @@ from collections.abc import Iterable
 from dataclasses import replace
 from pathlib import Path
 from threading import RLock
-from time import monotonic
 
 from core.event import CheckpointStore, RunCheckpoint
-from core.records import AuditPolicy, EventStore, MemoryStore, Record, RecordBackend, RecordQuery
-
-
-MAINTENANCE_INTERVAL_SECONDS = 24 * 60 * 60
+from core.records import EventStore, MemoryStore, Record, RecordBackend, RecordQuery
 
 
 class MemoryStorage:
@@ -114,37 +110,27 @@ class JsonlMemoryStore(EventMemoryStore):
         path: str | Path,
         user_id: str,
         agent_name: str,
-        *,
-        audit_policy: AuditPolicy | None = None,
     ) -> None:
-        super().__init__(
-            EventStore(
-                JsonlStorage(path, audit_policy=audit_policy), user_id, agent_name
-            )
-        )
+        super().__init__(EventStore(JsonlStorage(path), user_id, agent_name))
 
 
 class JsonlStorage:
-    """默认本地后端；按月和大小分段，写入时执行到期清理。"""
+    """默认本地后端；按月和大小分段，清理必须显式调用。"""
 
     def __init__(
         self,
         root: str | Path,
         *,
         max_segment_bytes: int = 4 * 1024 * 1024,
-        audit_policy: AuditPolicy | None = None,
     ) -> None:
         self.root = Path(root).expanduser().resolve()
         if max_segment_bytes < 1024:
             raise ValueError("JSONL segment size must be at least 1024 bytes")
         self.max_segment_bytes = max_segment_bytes
-        self.audit_policy = audit_policy or AuditPolicy()
         self._lock = RLock()
-        self._next_maintenance: dict[str, float] = {}
 
     def append(self, record: Record) -> Record:
         with self._lock:
-            self._maintain(record.user_id)
             records = self._read_all()
             if any(item.event_id == record.event_id for item in records):
                 raise ValueError(f"duplicate event ID: {record.event_id}")
@@ -203,25 +189,14 @@ class JsonlStorage:
         number = int(latest.stem.rsplit("-", 1)[1]) + 1
         return self.root / f"records-{month}-{number:04d}.jsonl"
 
-    def _maintain(self, user_id: str) -> None:
-        now = monotonic()
-        if self._next_maintenance.get(user_id, 0.0) > now:
-            return
-        self.audit_policy.prune(self, user_id=user_id, apply=True)
-        self._next_maintenance[user_id] = now + MAINTENANCE_INTERVAL_SECONDS
-
-
 class SqliteStorage:
     """使用标准库 SQLite 的单文件可选后端。"""
 
-    def __init__(self, path: str | Path, *, audit_policy: AuditPolicy | None = None) -> None:
+    def __init__(self, path: str | Path) -> None:
         self.path = Path(path).expanduser().resolve()
-        self.audit_policy = audit_policy or AuditPolicy()
         self._lock = RLock()
-        self._next_maintenance: dict[str, float] = {}
 
     def append(self, record: Record) -> Record:
-        self._maintain(record.user_id)
         with self._lock, self._connect() as connection:
             position = connection.execute(
                 "SELECT COALESCE(MAX(position), 0) + 1 FROM records WHERE user_id=? AND agent_name=? AND stream=? AND stream_id=?",
@@ -290,37 +265,28 @@ class SqliteStorage:
         )
         return connection
 
-    def _maintain(self, user_id: str) -> None:
-        now = monotonic()
-        if self._next_maintenance.get(user_id, 0.0) > now:
-            return
-        self.audit_policy.prune(self, user_id=user_id, apply=True)
-        self._next_maintenance[user_id] = now + MAINTENANCE_INTERVAL_SECONDS
-
-
 def create_storage(
     backend: str = "jsonl",
     path: str | Path = ".super-agent",
     *,
     database_url: str | None = None,
-    audit_policy: AuditPolicy | None = None,
 ) -> RecordBackend:
     """按用户显式选择创建记录后端，不做不可见退化。"""
     selected = backend.strip().lower()
     if selected == "memory":
         return MemoryStorage()
     if selected == "jsonl":
-        return JsonlStorage(path, audit_policy=audit_policy)
+        return JsonlStorage(path)
     if selected == "sqlite":
         target = Path(path)
         sqlite_path = target if target.suffix else target / "super-agent.sqlite3"
-        return SqliteStorage(sqlite_path, audit_policy=audit_policy)
+        return SqliteStorage(sqlite_path)
     if selected in {"mysql", "postgresql"}:
         if not database_url:
             raise ValueError(f"{selected} storage requires database_url")
         from adapter.database import DatabaseStorage
 
-        return DatabaseStorage(selected, database_url, audit_policy=audit_policy)
+        return DatabaseStorage(selected, database_url)
     raise ValueError(f"unknown storage backend: {backend}")
 
 

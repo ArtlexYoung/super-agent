@@ -253,7 +253,6 @@ class RunContext:
         return tuple(([Message("system", system)] if system else []) + self.messages)
 
 
-# Existing Skill handlers can still construct the context while the public name is clearer.
 RunSession = RunContext
 
 
@@ -760,8 +759,12 @@ class _RunEngine:
             event_sequence=len(self.events),
             turn=self.turns,
             state={
+                "user_id": identity.user_id,
                 "last_event_type": event.event_type,
                 "agent_name": identity.agent_name,
+                "conversation_id": identity.conversation_id,
+                "working_directory_id": identity.working_directory_id,
+                "parent_run_id": identity.parent_run_id,
                 "depth": identity.depth,
                 "message_count": len(self.session.messages),
                 "tool_count": len(self.session.tools),

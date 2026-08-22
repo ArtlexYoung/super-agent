@@ -11,6 +11,29 @@ from super_agent import Agent
 
 
 class WorkingDirectoryMemoryTests(unittest.TestCase):
+    def test_direct_user_memory_without_storage_stays_in_process(self):
+        agent = Agent(MockModel("answer"))
+        agent.for_user("alice").memory.remember_long_term("process local preference")
+        self.assertEqual(
+            ["process local preference"],
+            [item.text for item in agent.for_user("alice").memory.list_items()],
+        )
+        self.assertIsNone(agent.storage)
+
+    def test_direct_user_memory_uses_the_working_directory_and_is_user_isolated(self):
+        with tempfile.TemporaryDirectory() as directory:
+            agent = Agent(MockModel("answer"), working_directory=directory)
+            agent.enable_memory()
+            agent.for_user("alice").memory.remember_long_term("alice preference")
+            agent.for_user("bob").memory.remember_long_term("bob preference")
+
+            alice = agent.for_user("alice").memory.list_items()
+            bob = agent.for_user("bob").memory.list_items()
+            self.assertEqual(["alice preference"], [item.text for item in alice])
+            self.assertEqual(["bob preference"], [item.text for item in bob])
+            files = list((Path(directory) / ".super-agent" / "memory" / "users").glob("*.jsonl"))
+            self.assertEqual(2, len(files))
+
     def test_long_term_memory_is_created_inside_the_working_directory(self):
         with tempfile.TemporaryDirectory() as directory:
             agent = Agent(MockModel("answer"), working_directory=directory)

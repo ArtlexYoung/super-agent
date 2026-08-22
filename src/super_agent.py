@@ -9,7 +9,14 @@ from pathlib import Path
 
 from adapter.storage import EventMemoryStore, JsonlMemoryStore
 from core.config import Config, WorkingDirectory, config_from_environment
-from core.event import RunEvent, RunIdentity, RunLimits, RunResult
+from core.event import (
+    CheckpointStore,
+    RunCheckpoint,
+    RunEvent,
+    RunIdentity,
+    RunLimits,
+    RunResult,
+)
 from core.model import Message, Model, Tool, next_model_profile_name
 from core.provider import ModelPricing, ModelProfile, ModelRouter, RouterSettings
 from core.records import AuditPolicy, Conversations, EventStore, RecordBackend, SessionRecord
@@ -17,7 +24,7 @@ from core.run import (
     CancelCheck,
     EventListener,
     RunRequest,
-    RunSession,
+    RunContext,
     RunSetup,
     RuntimeLifecycle,
     ToolDecision,
@@ -83,6 +90,9 @@ class AgentContext:
     tool_decider: ToolDecision | None = None
     tool_timeout_seconds: float | None = None
     cancel_check: CancelCheck | None = None
+    checkpoint_store: CheckpointStore | None = None
+    resume_checkpoint: RunCheckpoint | None = None
+    interrupt_check: CancelCheck | None = None
 
 
 class Agent:
@@ -426,23 +436,20 @@ class Agent:
             working_directory=working_directory,
         )
         selected_session = selected_context.session or self._session_record
+        checkpoint = selected_context.resume_checkpoint
         selected_working_directory = _make_working_directory(
             selected_context.working_directory or self.working_directory
         )
         model = self._require_model()
         selected_prompt = _text(prompt, "Agent prompt")
-        conversation_id = selected_context.conversation_id
-        identity = selected_context.identity or RunIdentity(
-            user_id=selected_context.user_id,
-            agent_name=self.name,
-            conversation_id=conversation_id,
-            session_id=(None if selected_session is None else selected_session.session_id),
-            working_directory_id=(
-                None
-                if selected_working_directory is None
-                else selected_working_directory.identity
-            ),
+        identity = _build_run_identity(
+            selected_context,
+            self.name,
+            selected_session,
+            selected_working_directory,
+            checkpoint,
         )
+        conversation_id = identity.conversation_id
         store = self._event_store(identity)
         selected_model_scope = model_scope(identity)
         library = self._library(identity, store)
@@ -527,7 +534,7 @@ class Agent:
         if tracking is not None:
             listeners.append(tracking)
 
-        def prepare(session: RunSession, tool_context: ToolContext) -> None:
+        def prepare(session: RunContext, tool_context: ToolContext) -> None:
             session.values["available_tools"] = available_tools
             if library is None:
                 return
@@ -561,6 +568,9 @@ class Agent:
                 tool_decider=effective_context.tool_decider,
                 tool_timeout_seconds=effective_context.tool_timeout_seconds,
                 cancel_check=effective_context.cancel_check,
+                checkpoint_store=effective_context.checkpoint_store,
+                resume_checkpoint=effective_context.resume_checkpoint,
+                interrupt_check=effective_context.interrupt_check,
                 runtime_lifecycle=runtime_lifecycle,
             ),
         )
@@ -691,7 +701,6 @@ class Agent:
                     path,
                     identity.user_id,
                     identity.agent_name,
-                    audit_policy=self.audit_policy,
                 )
             elif store is not None:
                 selected_store = EventMemoryStore(store)
@@ -740,6 +749,50 @@ def _make_working_directory(
     if isinstance(value, WorkingDirectory):
         return value
     return WorkingDirectory.from_path(value)
+
+
+def _build_run_identity(
+    context: AgentContext,
+    agent_name: str,
+    session: SessionRecord | None,
+    working_directory: WorkingDirectory | None,
+    checkpoint: RunCheckpoint | None,
+) -> RunIdentity:
+    state = {} if checkpoint is None else checkpoint.state
+    if _checkpoint_value(state, "agent_name", str, agent_name) != agent_name:
+        raise ValueError("checkpoint agent_name does not match Agent")
+    checkpoint_user = _checkpoint_value(state, "user_id", str, context.user_id)
+    if context.user_id != "local" and context.user_id != checkpoint_user:
+        raise ValueError("checkpoint user_id does not match Agent context")
+    directory_id = None if working_directory is None else working_directory.identity
+    if "working_directory_id" in state and state["working_directory_id"] != directory_id:
+        raise ValueError("checkpoint working directory does not match Agent context")
+    conversation_id = context.conversation_id or _checkpoint_value(state, "conversation_id", str, None)
+    identity = context.identity or RunIdentity(
+        user_id=checkpoint_user,
+        agent_name=agent_name,
+        conversation_id=conversation_id,
+        session_id=None if session is None else session.session_id,
+        working_directory_id=directory_id,
+    )
+    if checkpoint is not None and context.identity is None:
+        identity = replace(
+            identity,
+            run_id=checkpoint.run_id,
+            session_id=checkpoint.session_id or identity.session_id,
+            parent_run_id=_checkpoint_value(state, "parent_run_id", str, None),
+            depth=_checkpoint_value(state, "depth", int, 1),
+        )
+    return identity
+
+
+def _checkpoint_value(state: Mapping[str, object], name: str, value_type: type, default: object) -> object:
+    value = state.get(name)
+    if value is None:
+        return default
+    if value is not None and (isinstance(value, bool) and value_type is int or not isinstance(value, value_type)):
+        raise ValueError(f"checkpoint {name} has an invalid value")
+    return value
 
 
 __all__ = [

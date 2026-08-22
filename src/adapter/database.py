@@ -6,14 +6,10 @@ import json
 from collections.abc import Callable, Iterable
 from contextlib import contextmanager
 from dataclasses import replace
-from time import monotonic
 from typing import Any
 from urllib.parse import unquote, urlparse
 
-from core.records import AuditPolicy, Record, RecordQuery
-
-
-MAINTENANCE_INTERVAL_SECONDS = 24 * 60 * 60
+from core.records import Record, RecordQuery
 
 
 class DatabaseStorage:
@@ -24,19 +20,15 @@ class DatabaseStorage:
         dialect: str,
         database_url: str,
         *,
-        audit_policy: AuditPolicy | None = None,
         connect: Callable[[], Any] | None = None,
     ) -> None:
         if dialect not in {"mysql", "postgresql"}:
             raise ValueError(f"unsupported database dialect: {dialect}")
         self.dialect = dialect
         self.database_url = database_url
-        self.audit_policy = audit_policy or AuditPolicy()
         self._connect_override = connect
-        self._next_maintenance: dict[str, float] = {}
 
     def append(self, record: Record) -> Record:
-        self._maintain(record.user_id)
         with self._connection() as connection:
             cursor = connection.cursor()
             try:
@@ -164,14 +156,6 @@ class DatabaseStorage:
             )
         finally:
             cursor.close()
-
-    def _maintain(self, user_id: str) -> None:
-        now = monotonic()
-        if self._next_maintenance.get(user_id, 0.0) > now:
-            return
-        self.audit_policy.prune(self, user_id=user_id, apply=True)
-        self._next_maintenance[user_id] = now + MAINTENANCE_INTERVAL_SECONDS
-
 
 def _filters(query: RecordQuery) -> tuple[list[str], list[object]]:
     clauses: list[str] = []
