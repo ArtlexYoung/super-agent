@@ -136,12 +136,16 @@ def build_run_instructions(
 
 
 def build_run_values(
-    available_tools: Mapping[str, Tool], disclosure_store: object | None
+    available_tools: Mapping[str, Tool],
+    disclosure_store: object | None,
+    working_directory: object | None = None,
 ) -> dict[str, object]:
     """组合单轮运行可选机制，不创建任何状态。"""
     values: dict[str, object] = {"available_tools": available_tools}
     if disclosure_store is not None:
         values["disclosure_store"] = disclosure_store
+    if working_directory is not None:
+        values["working_directory"] = working_directory
     return values
 
 
@@ -321,6 +325,8 @@ class _RunEngine:
                 "user_id": identity.user_id,
                 "agent_name": identity.agent_name,
                 "conversation_id": identity.conversation_id,
+                "session_id": identity.session_id,
+                "working_directory_id": identity.working_directory_id,
                 "parent_run_id": identity.parent_run_id,
                 "depth": identity.depth,
                 "purpose": self.request.purpose,

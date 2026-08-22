@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import hashlib
 import tomllib
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -18,6 +19,26 @@ from core.provider import (
     RouterSettings,
     create_model,
 )
+
+
+@dataclass(frozen=True)
+class WorkingDirectory:
+    """一个必须由调用方明确提供且不会被运行时创建的工作目录。"""
+
+    path: Path
+    identity: str
+
+    @classmethod
+    def from_path(cls, value: str | Path) -> WorkingDirectory:
+        path = Path(value).expanduser().resolve()
+        if not path.is_dir():
+            raise NotADirectoryError(f"working directory does not exist: {path}")
+        identity = hashlib.sha256(str(path).encode("utf-8")).hexdigest()[:24]
+        return cls(path, identity)
+
+    def resolve(self, value: str | Path) -> Path:
+        selected = Path(value).expanduser()
+        return selected.resolve() if selected.is_absolute() else (self.path / selected).resolve()
 
 
 @dataclass(frozen=True)
@@ -119,6 +140,7 @@ class Config:
     """通用配置只描述 Agent 组合，不包含终端或编码界面偏好。"""
 
     name: str = "super-agent"
+    working_directory: str | None = None
     instructions: tuple[str, ...] = ()
     skill_paths: tuple[str, ...] = ()
     writable_skill_path: str | None = None
@@ -179,6 +201,10 @@ class Config:
         base = Path.cwd() if self.source_path is None else self.source_path.parent
         return (base / selected).resolve()
 
+    def resolve_working_directory(self) -> WorkingDirectory | None:
+        path = self.resolve_path(self.working_directory)
+        return None if path is None else WorkingDirectory.from_path(path)
+
 
 def config_from_dict(
     value: Mapping[str, object], source_path: Path | None = None
@@ -186,6 +212,7 @@ def config_from_dict(
     allowed = {
         "version",
         "name",
+        "working_directory",
         "instructions",
         "skill_paths",
         "writable_skill_path",
@@ -214,6 +241,7 @@ def config_from_dict(
     limits_value = _mapping(value.get("limits", {}), "run limits configuration")
     return Config(
         name=_text(value.get("name", "super-agent"), "Agent name"),
+        working_directory=_optional_text(value.get("working_directory")),
         instructions=_strings(value.get("instructions", []), "Agent instructions"),
         skill_paths=_strings(value.get("skill_paths", []), "Skill paths"),
         writable_skill_path=_optional_text(value.get("writable_skill_path")),

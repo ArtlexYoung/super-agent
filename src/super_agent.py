@@ -6,7 +6,7 @@ from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from core.config import Config, config_from_environment
+from core.config import Config, WorkingDirectory, config_from_environment
 from core.event import RunEvent, RunIdentity, RunLimits, RunResult
 from core.model import Message, Model, Tool, next_model_profile_name
 from core.provider import ModelPricing, ModelProfile, ModelRouter, RouterSettings
@@ -73,6 +73,7 @@ class AgentContext:
     agent_group_id: str | None = None
     listeners: tuple[EventListener, ...] = ()
     session: SessionRecord | None = None
+    working_directory: str | Path | WorkingDirectory | None = None
 
 
 class Agent:
@@ -84,6 +85,7 @@ class Agent:
         *,
         name: str | None = None,
         config: Config | None = None,
+        working_directory: str | Path | WorkingDirectory | None = None,
     ) -> None:
         self.model = model
         selected_name = (
@@ -93,6 +95,7 @@ class Agent:
         )
         self.name = _text(selected_name, "Agent name")
         self.config = config
+        self.working_directory = _make_working_directory(working_directory)
         self.instructions: list[str] = []
         self.settings = AgentSettings()
         self.agent_tree_settings = AgentTreeSettings()
@@ -128,6 +131,8 @@ class Agent:
     def _apply_config(self, config: Config, *, model_was_explicit: bool) -> None:
         """应用通用配置；只创建内存对象，不因读取配置产生持久化副作用。"""
         self.instructions = list(config.instructions)
+        if self.working_directory is None:
+            self.working_directory = config.resolve_working_directory()
         self.settings = AgentSettings(config.limits)
         self.agent_tree_settings = replace(
             self.agent_tree_settings,
@@ -172,6 +177,24 @@ class Agent:
         if session is not None and not isinstance(session, SessionRecord):
             raise TypeError("session must be a SessionRecord or None")
         self._session_record = session
+
+    def set_working_directory(
+        self, working_directory: str | Path | WorkingDirectory | None
+    ) -> None:
+        """显式替换工作目录；不创建目录，也不改变存储位置。"""
+        self.working_directory = _make_working_directory(working_directory)
+
+    def resolve_path(
+        self, value: str | Path, *, working_directory: WorkingDirectory | None = None
+    ) -> Path:
+        """按工作目录解析路径；相对路径没有工作目录时直接失败。"""
+        selected = Path(value).expanduser()
+        if selected.is_absolute():
+            return selected.resolve()
+        base = working_directory or self.working_directory
+        if base is None:
+            raise ValueError("relative paths require an explicit working directory")
+        return base.resolve(selected)
 
     def add_skill_path(self, path: str | Path) -> None:
         """在内存中增加一个 Skill 根目录，不写入配置文件。"""
@@ -366,18 +389,30 @@ class Agent:
         user_id: str = "local",
         conversation_id: str | None = None,
         skill: str | None = None,
+        working_directory: str | Path | WorkingDirectory | None = None,
     ) -> Iterator[RunEvent]:
         """流式运行 Agent；生成器的返回值是完整 RunResult。"""
         if context is not None and any(
-            (conversation_id is not None, skill is not None, user_id != "local")
+            (
+                conversation_id is not None,
+                skill is not None,
+                user_id != "local",
+                working_directory is not None,
+            )
         ):
             raise ValueError(
                 "context cannot be combined with direct user, conversation, or Skill options"
             )
         selected_context = context or AgentContext(
-            user_id=user_id, conversation_id=conversation_id, skill=skill
+            user_id=user_id,
+            conversation_id=conversation_id,
+            skill=skill,
+            working_directory=working_directory,
         )
         selected_session = selected_context.session or self._session_record
+        selected_working_directory = _make_working_directory(
+            selected_context.working_directory or self.working_directory
+        )
         model = self._require_model()
         selected_prompt = _text(prompt, "Agent prompt")
         conversation_id = selected_context.conversation_id
@@ -386,6 +421,11 @@ class Agent:
             agent_name=self.name,
             conversation_id=conversation_id,
             session_id=(None if selected_session is None else selected_session.session_id),
+            working_directory_id=(
+                None
+                if selected_working_directory is None
+                else selected_working_directory.identity
+            ),
         )
         store = self._event_store(identity)
         selected_model_scope = model_scope(identity)
@@ -494,6 +534,7 @@ class Agent:
                     agent_tree.disclosures
                     if agent_tree is not None
                     else None if library is None else library.disclosures,
+                    selected_working_directory,
                 ),
                 prepare=prepare,
                 session_record=selected_session,
@@ -517,6 +558,7 @@ class Agent:
         user_id: str = "local",
         conversation_id: str | None = None,
         skill: str | None = None,
+        working_directory: str | Path | WorkingDirectory | None = None,
     ) -> RunResult:
         """只收集 stream()，不存在第二条同步模型调用链。"""
         return collect_run(
@@ -526,6 +568,7 @@ class Agent:
                 user_id=user_id,
                 conversation_id=conversation_id,
                 skill=skill,
+                working_directory=working_directory,
             )
         )
 
@@ -633,6 +676,16 @@ def _text(value: object, name: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{name} must be non-empty text")
     return value.strip()
+
+
+def _make_working_directory(
+    value: str | Path | WorkingDirectory | None,
+) -> WorkingDirectory | None:
+    if value is None:
+        return None
+    if isinstance(value, WorkingDirectory):
+        return value
+    return WorkingDirectory.from_path(value)
 
 
 __all__ = [

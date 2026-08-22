@@ -19,6 +19,7 @@ class RunIdentity:
     run_id: str = field(default_factory=lambda: f"run-{uuid4().hex}")
     conversation_id: str | None = None
     session_id: str | None = None
+    working_directory_id: str | None = None
     parent_run_id: str | None = None
     depth: int = 1
 
@@ -31,6 +32,11 @@ class RunIdentity:
             not isinstance(self.session_id, str) or not self.session_id.strip()
         ):
             raise ValueError("session_id must be non-empty text or None")
+        if self.working_directory_id is not None and (
+            not isinstance(self.working_directory_id, str)
+            or not self.working_directory_id.strip()
+        ):
+            raise ValueError("working_directory_id must be non-empty text or None")
         if isinstance(self.depth, bool) or not isinstance(self.depth, int) or self.depth < 1:
             raise ValueError("run depth must be a positive integer")
 
@@ -41,6 +47,7 @@ class RunIdentity:
             agent_name=agent_name,
             conversation_id=conversation_id or self.conversation_id,
             session_id=self.session_id,
+            working_directory_id=self.working_directory_id,
             parent_run_id=self.run_id,
             depth=self.depth + 1,
         )
