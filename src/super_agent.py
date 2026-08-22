@@ -19,6 +19,7 @@ from core.run import (
     RunRequest,
     RunSession,
     RunSetup,
+    RuntimeLifecycle,
     ToolDecision,
     ToolContext,
     add_optional_tools,
@@ -74,6 +75,7 @@ class AgentContext:
     persist_run_events: bool = True
     shared_context: Mapping[str, object] | None = None
     agent_tree_runtime: AgentTreeRuntime | None = None
+    runtime_lifecycle: RuntimeLifecycle | None = None
     agent_group_id: str | None = None
     listeners: tuple[EventListener, ...] = ()
     session: SessionRecord | None = None
@@ -448,6 +450,9 @@ class Agent:
             selected_context.agent_tree_runtime
             or get_or_create_agent_tree_runtime(self, identity.user_id)
         )
+        runtime_lifecycle = selected_context.runtime_lifecycle or RuntimeLifecycle(
+            identity.run_id
+        )
         group_id = selected_context.agent_group_id or agent_group_node(self).group_id
         if agent_tree is not None and library is not None:
             library.use_disclosure_store(agent_tree.disclosures)
@@ -473,6 +478,7 @@ class Agent:
             identity=identity,
             agent_tree_runtime=agent_tree,
             agent_group_id=group_id,
+            runtime_lifecycle=runtime_lifecycle,
         )
         messages = conversation_run_messages(
             effective_context.messages,
@@ -555,6 +561,7 @@ class Agent:
                 tool_decider=effective_context.tool_decider,
                 tool_timeout_seconds=effective_context.tool_timeout_seconds,
                 cancel_check=effective_context.cancel_check,
+                runtime_lifecycle=runtime_lifecycle,
             ),
         )
         if conversation_id and selected_context.save_conversation:

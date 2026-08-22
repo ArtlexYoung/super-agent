@@ -12,6 +12,7 @@ from core.disclosure import DisclosureStore
 from core.event import RunIdentity
 from core.model import Tool
 from core.records import EventStore
+from core.run import RuntimeLifecycle
 from skill.organization import (
     AgentDecision,
     AgentGroupNode,
@@ -225,6 +226,7 @@ class AgentTreeRuntime(AgentTaskRuntime):
         target_group_id: str | None = None,
         parent_identity: RunIdentity | None = None,
         estimated_output_tokens: int = 1_000,
+        runtime_lifecycle: RuntimeLifecycle | None = None,
     ) -> AgentDecision:
         with self._condition:
             if len(self._decisions) >= self.settings.max_decisions:
@@ -291,6 +293,7 @@ class AgentTreeRuntime(AgentTaskRuntime):
                         "reference": packet.cache_path,
                         "role": role,
                     },
+                    runtime_lifecycle=runtime_lifecycle,
                 )
                 for role in selected_roles[: len(workers)]
             ]

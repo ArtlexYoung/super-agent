@@ -9,6 +9,7 @@ from uuid import uuid4
 
 from core.event import RunIdentity, RunResult, utc_now
 from core.records import compact_child_result
+from core.run import RuntimeLifecycle
 from skill.organization import (
     AgentGroupNode,
     AgentMember,
@@ -38,6 +39,7 @@ class AgentTaskRuntime:
         self._version = 0
         self._condition = Condition(RLock())
         self._workers = AgentWorkerPool(settings, self._record)
+        self._task_lifecycles: dict[str, RuntimeLifecycle] = {}
 
     @property
     def version(self) -> int:
@@ -52,6 +54,7 @@ class AgentTaskRuntime:
         purpose: str = "auto",
         required_features: Iterable[str] = ("text",),
         shared_context: Mapping[str, object] | None = None,
+        runtime_lifecycle: RuntimeLifecycle | None = None,
     ) -> AgentTask:
         with self._condition:
             source = self._require_group(source_group_id)
@@ -72,6 +75,8 @@ class AgentTaskRuntime:
                 ),
             )
             self._tasks[task.task_id] = task
+            if runtime_lifecycle is not None:
+                self._task_lifecycles[task.task_id] = runtime_lifecycle
             return self._change(task, "agent_task.created")
 
     def dispatch_task(
@@ -81,9 +86,12 @@ class AgentTaskRuntime:
         source_group_id: str,
         agent_name: str | None = None,
         parent_identity: RunIdentity | None = None,
+        runtime_lifecycle: RuntimeLifecycle | None = None,
     ) -> AgentTask:
         with self._condition:
             task = self._require_task(task_id)
+            if runtime_lifecycle is not None:
+                self._task_lifecycles[task_id] = runtime_lifecycle
             if task.source_group_id != source_group_id:
                 raise PermissionError("a group can dispatch only its own tasks")
             if task.status != "created":
@@ -109,6 +117,7 @@ class AgentTaskRuntime:
         source_group_id: str,
         different_models: bool = False,
         parent_identity: RunIdentity | None = None,
+        runtime_lifecycle: RuntimeLifecycle | None = None,
     ) -> tuple[AgentTask, ...]:
         """原子选择不同 Agent，再并行派发一组路由条件相同的任务。"""
         selected_ids = tuple(dict.fromkeys(task_ids))
@@ -116,6 +125,9 @@ class AgentTaskRuntime:
             raise ValueError("batch dispatch requires at least two different task IDs")
         with self._condition:
             tasks = tuple(self._require_task(task_id) for task_id in selected_ids)
+            if runtime_lifecycle is not None:
+                for task in tasks:
+                    self._task_lifecycles[task.task_id] = runtime_lifecycle
             for task in tasks:
                 if task.source_group_id != source_group_id:
                     raise PermissionError("a group can dispatch only its own tasks")
@@ -292,6 +304,10 @@ class AgentTaskRuntime:
             agent_name=getattr(worker.agent, "name", worker.name)
         )
         identity = parent.child(worker.name, conversation_id=parent.conversation_id)
+        lifecycle = self._task_lifecycles.get(task.task_id)
+        if lifecycle is None:
+            lifecycle = RuntimeLifecycle(parent.run_id)
+            self._task_lifecycles[task.task_id] = lifecycle
         context = AgentContext(
             user_id=identity.user_id,
             conversation_id=identity.conversation_id,
@@ -303,6 +319,7 @@ class AgentTaskRuntime:
             shared_context=shared,
             agent_tree_runtime=self,
             agent_group_id=worker.group_id,
+            runtime_lifecycle=lifecycle,
         )
         return worker.agent.run(task.prompt, context=context)
 
@@ -419,6 +436,14 @@ class AgentTaskRuntime:
                 task, version=self._version, updated_at=utc_now(), **changes
             )
             self._tasks[task.task_id] = updated
+            lifecycle = self._task_lifecycles.get(task.task_id)
+            if lifecycle is not None:
+                lifecycle.record_task_event(
+                    task.task_id,
+                    status=updated.status,
+                    agent_name=updated.agent_name,
+                    worker_link_id=updated.worker_link_id,
+                )
             self._record(
                 event_type,
                 updated.to_dict(

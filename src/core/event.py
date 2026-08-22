@@ -283,6 +283,7 @@ class RunResult:
     conversation_id: str | None = None
     session_id: str | None = None
     context_ledger: Mapping[str, object] = field(default_factory=dict)
+    runtime_lifecycle: Mapping[str, object] = field(default_factory=dict)
 
     @property
     def model_turns(self) -> int:
@@ -307,5 +308,6 @@ class RunResult:
             "conversation_id": self.conversation_id,
             "session_id": self.session_id,
             "context_ledger": dict(self.context_ledger),
+            "runtime_lifecycle": dict(self.runtime_lifecycle),
             "events": [event.to_dict() for event in self.events],
         }

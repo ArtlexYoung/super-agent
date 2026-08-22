@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from dataclasses import dataclass, field, replace
+from threading import RLock
 from typing import Callable, Generator, Iterable, Mapping
 
 from core.disclosure import MAX_PAGE_CHARACTERS, DisclosureStore
@@ -16,6 +17,7 @@ from core.event import (
     RunIdentity,
     RunLimits,
     RunResult,
+    utc_now,
 )
 from core.model import (
     Message,
@@ -42,6 +44,87 @@ class FatalToolError(RuntimeError):
 
 class RunInterrupted(RuntimeError):
     """表示调用方显式要求暂停当前运行。"""
+
+
+class RuntimeLifecycle:
+    """集中记录一棵运行树的生命周期元数据，不保存模型正文。"""
+
+    def __init__(self, root_run_id: str | None = None) -> None:
+        self.root_run_id = root_run_id
+        self._runs: dict[str, dict[str, object]] = {}
+        self._tasks: dict[str, dict[str, object]] = {}
+        self._lock = RLock()
+
+    def record_run_event(self, identity: RunIdentity, event_type: str) -> None:
+        """用核心运行事件推进父子运行状态。"""
+        with self._lock:
+            state = self._runs.setdefault(
+                identity.run_id,
+                {
+                    "run_id": identity.run_id,
+                    "agent_name": identity.agent_name,
+                    "parent_run_id": identity.parent_run_id,
+                    "depth": identity.depth,
+                    "status": "created",
+                    "created_at": utc_now(),
+                },
+            )
+            if self.root_run_id is None and identity.parent_run_id is None:
+                self.root_run_id = identity.run_id
+            state["status"] = _runtime_status(event_type, str(state["status"]))
+            state["updated_at"] = utc_now()
+
+    def record_task_event(
+        self,
+        task_id: str,
+        *,
+        status: str,
+        agent_name: str | None = None,
+        worker_link_id: str | None = None,
+    ) -> None:
+        """把任务状态放在同一运行生命周期中，正文仍由任务记录自行管理。"""
+        with self._lock:
+            state = self._tasks.setdefault(
+                task_id,
+                {"task_id": task_id, "created_at": utc_now()},
+            )
+            state["status"] = status
+            if agent_name is not None:
+                state["agent_name"] = agent_name
+            if worker_link_id is not None:
+                state["worker_link_id"] = worker_link_id
+            state["updated_at"] = utc_now()
+
+    def snapshot(self) -> dict[str, object]:
+        """返回可放进事件和检查点的有限生命周期快照。"""
+        with self._lock:
+            runs = [dict(value) for value in self._runs.values()]
+            tasks = [dict(value) for value in self._tasks.values()]
+        return {
+            "root_run_id": self.root_run_id,
+            "run_count": len(runs),
+            "active_runs": sum(
+                item.get("status") in {"created", "running", "waiting"}
+                for item in runs
+            ),
+            "task_count": len(tasks),
+            "active_tasks": sum(
+                item.get("status") in {"created", "queued", "running"}
+                for item in tasks
+            ),
+            "runs": runs,
+            "tasks": tasks,
+        }
+
+
+def _runtime_status(event_type: str, previous: str) -> str:
+    return {
+        "run.started": "running",
+        "run.waiting": "waiting",
+        "run.completed": "completed",
+        "run.failed": "failed",
+        "run.interrupted": "interrupted",
+    }.get(event_type, previous)
 
 
 class ToolExecutionCenter:
@@ -100,6 +183,7 @@ class RunContext:
     context_limit: int | None = None
     context_characters: int = 0
     ledger: ContextLedger | None = None
+    runtime_lifecycle: RuntimeLifecycle | None = None
 
     def __post_init__(self) -> None:
         if self.ledger is None:
@@ -113,6 +197,8 @@ class RunContext:
                 initial_characters=self.context_characters,
             )
         self.context_characters = self.ledger.total_characters
+        if self.runtime_lifecycle is None:
+            self.runtime_lifecycle = RuntimeLifecycle(self.identity.run_id)
 
     def add_instruction(self, instruction: str) -> None:
         text = instruction.strip()
@@ -195,6 +281,7 @@ class RunSetup:
     checkpoint_store: CheckpointStore | None = None
     resume_checkpoint: RunCheckpoint | None = None
     interrupt_check: CancelCheck | None = None
+    runtime_lifecycle: RuntimeLifecycle | None = None
 
 
 @dataclass(frozen=True)
@@ -336,6 +423,7 @@ def _create_session(
         disclosures=disclosure_value or DisclosureStore(),
         values=run_values,
         context_limit=request.limits.max_context_characters,
+        runtime_lifecycle=setup.runtime_lifecycle,
     )
     for instruction in session.instructions:
         session.reserve_context(instruction, kind="instruction", source="request")
@@ -384,6 +472,9 @@ class _RunEngine:
         event = RunEvent(
             event_type,
             {"run_id": self.session.identity.run_id, **dict(data or {})},
+        )
+        self.session.runtime_lifecycle.record_run_event(
+            self.session.identity, event.event_type
         )
         self.events.append(event)
         if self.session_record is not None:
@@ -677,6 +768,7 @@ class _RunEngine:
                 "skills": list(self.session.active_skills),
                 "workflow": self.session.workflow,
                 "context_ledger": self.session.context_snapshot(),
+                "runtime_lifecycle": self.session.runtime_lifecycle.snapshot(),
             },
             created_at=event.created_at,
         )
@@ -701,6 +793,7 @@ class _RunEngine:
                 "workflow": self.session.workflow,
                 "usage": dict(self.usage),
                 "context_ledger": self.session.context_snapshot(),
+                "runtime_lifecycle": self.session.runtime_lifecycle.snapshot(),
             },
         )
         return RunResult(
@@ -717,6 +810,7 @@ class _RunEngine:
             conversation_id=identity.conversation_id,
             session_id=identity.session_id,
             context_ledger=self.session.context_snapshot(),
+            runtime_lifecycle=self.session.runtime_lifecycle.snapshot(),
         )
 
 

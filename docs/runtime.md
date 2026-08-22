@@ -29,9 +29,13 @@ run.started
   -> run.completed or run.failed
 ```
 
-同步和流式 API 不允许各自维护一套模型调用逻辑。工具输出、Skill 正文、记忆和子 Agent 摘要都进入同一 `RunSession` 上下文预算。
+同步和流式 API 不允许各自维护一套模型调用逻辑。工具输出、Skill 正文、记忆和子 Agent 摘要都进入同一 `RunContext` 上下文预算。
 
-Synchronous and streaming APIs do not maintain separate model-call logic. Tool output, Skill bodies, memory, and subagent summaries share one `RunSession` context budget.
+Synchronous and streaming APIs do not maintain separate model-call logic. Tool output, Skill bodies, memory, and subagent summaries share one `RunContext` context budget.
+
+`RuntimeLifecycle` 位于核心运行循环中，记录父子运行、任务状态、深度和活动数量。多 Agent Skill 只把任务挂到当前 `RunContext` 的生命周期；子 Agent 继续使用同一对象，因此运行事件、任务等待和恢复元数据可以对齐，而不会保存模型正文。
+
+`RuntimeLifecycle` lives in the core execution loop and records parent-child runs, task states, depth, and active counts. Multi-Agent Skills attach tasks to the current `RunContext` lifecycle; child Agents keep using that object, so run events, task waits, and recovery metadata stay aligned without storing model text.
 
 ## 身份与嵌套 / Identity and Nesting
 

@@ -198,6 +198,7 @@ def _create_task(
         required_features=strings(
             arguments.get("required_features", ["text"]), "required features"
         ),
+        runtime_lifecycle=context.session.runtime_lifecycle,
     )
     return task.to_dict()
 
@@ -213,6 +214,7 @@ def _dispatch_task(
         source_group_id=group_id,
         agent_name=optional_text(arguments.get("agent_name")),
         parent_identity=context.session.identity,
+        runtime_lifecycle=context.session.runtime_lifecycle,
     )
     return task.to_dict()
 
@@ -230,6 +232,7 @@ def _dispatch_tasks(
             arguments.get("different_models", False), "different_models"
         ),
         parent_identity=context.session.identity,
+        runtime_lifecycle=context.session.runtime_lifecycle,
     )
     return {"tasks": [task.to_dict() for task in tasks]}
 
@@ -345,6 +348,7 @@ def _create_decision(
             "estimated output tokens",
             0,
         ),
+        runtime_lifecycle=context.session.runtime_lifecycle,
     )
     return decision.to_dict()
 
